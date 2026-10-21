@@ -22,6 +22,7 @@
 #include <UltraMessage/UltraMessage.h>
 #include <UltraMessage/UltraMessageEndpoint.h>
 #include "UltraMessageAdapter.h"   // the shared translation helpers (internal)
+#include "UltraCanvasNotificationActivation.h"
 
 #include <condition_variable>
 #include <cstdlib>
@@ -293,6 +294,144 @@ TEST(presenter_applescript_keeps_the_text_out_of_the_script) {
     REQUIRE_EQ(argv[8], std::string("UltraMail"));
 }
 
+// The Windows toasts show under the posting application's own
+// AppUserModelID: its app id, with nothing an AUMID may not hold.
+TEST(presenter_windows_toast_app_id_is_the_posters) {
+    using UltraMessage::Internal::WindowsToastAppUserModelId;
+    REQUIRE_EQ(WindowsToastAppUserModelId("org.ultraos.ultramail"), std::string("org.ultraos.ultramail"));
+    REQUIRE_EQ(WindowsToastAppUserModelId("my app/<x>!"), std::string("myappx"));
+    REQUIRE_EQ(WindowsToastAppUserModelId("..-_"), std::string());
+    REQUIRE_EQ(WindowsToastAppUserModelId(""), std::string());
+    REQUIRE_EQ(WindowsToastAppUserModelId(std::string(300, 'a')).size(), size_t(128));
+}
+
+// The toast's XML: the texts escaped, the icon as the application logo, the
+// buttons as actions, a click on the toast as "default" only when there is a
+// default action, and silent at low urgency.
+TEST(presenter_windows_toast_xml_escapes_and_carries_the_actions) {
+    using UltraMessage::Internal::PresentedContent;
+    using UltraMessage::Internal::WindowsToastXml;
+    PresentedContent c;
+    c.notificationId = "01JABCDEF";
+    c.appId = "org.ultraos.ultramail";
+    c.appName = "UltraMail";
+    c.title = "New mail from <Kickstarter> & \"friends\"";
+    c.body = "Everything old is new again";
+    c.iconFile = "C:\\Program Files\\ULTRA OS\\media\\appicon\\UltraMail.png";
+    c.launch = "account=a1&uid=42";
+    c.hasDefaultAction = true;
+    c.buttons = {{"archive", "Archive"}, {"reply", "Reply & send"}};
+    std::string xml = WindowsToastXml(c);
+    // Every activation names its action, the notification and its launch -
+    // percent-encoded, then XML-escaped.
+    REQUIRE(xml.find("<toast launch=\"action=default&amp;id=01JABCDEF&amp;launch=account%3Da1%26uid%3D42\">") == 0);
+    REQUIRE(xml.find("<text>New mail from &lt;Kickstarter&gt; &amp; &quot;friends&quot;</text>") != std::string::npos);
+    REQUIRE(xml.find("<text>Everything old is new again</text>") != std::string::npos);
+    REQUIRE(xml.find("placement=\"appLogoOverride\" src=\"C:\\Program Files\\ULTRA OS\\media\\appicon\\UltraMail.png\"") !=
+            std::string::npos);
+    REQUIRE(xml.find("<action content=\"Archive\" arguments=\"action=archive&amp;id=01JABCDEF&amp;launch=") !=
+            std::string::npos);
+    REQUIRE(xml.find("<action content=\"Reply &amp; send\" arguments=\"action=reply&amp;id=01JABCDEF") !=
+            std::string::npos);
+    REQUIRE(xml.find("<audio") == std::string::npos);
+    REQUIRE(xml.find("Kickstarter>") == std::string::npos);
+
+    // No default action: a click on the toast still says which notification,
+    // for the application's own activator, with an empty action.
+    c.hasDefaultAction = false;
+    c.buttons.clear();
+    c.body.clear();
+    c.iconFile.clear();
+    c.launch.clear();
+    c.urgency = "low";
+    xml = WindowsToastXml(c);
+    REQUIRE(xml.find("<toast launch=\"action=&amp;id=01JABCDEF\">") == 0);
+    REQUIRE(xml.find("<actions>") == std::string::npos);
+    REQUIRE(xml.find("<image") == std::string::npos);
+    REQUIRE(xml.find("<audio silent=\"true\"/>") != std::string::npos);
+}
+
+TEST(presenter_windows_toast_arguments_name_the_response) {
+    using UltraMessage::Internal::PresenterResponse;
+    using UltraMessage::Internal::WindowsToastResponse;
+    std::string actionId = "stale";
+    REQUIRE(WindowsToastResponse("action=default&id=01J", actionId) == PresenterResponse::Activated);
+    REQUIRE(actionId.empty());
+    REQUIRE(WindowsToastResponse("action=&id=01J", actionId) == PresenterResponse::Activated);
+    REQUIRE(WindowsToastResponse("", actionId) == PresenterResponse::Activated);
+    REQUIRE(WindowsToastResponse("action=archive&id=01J&launch=x", actionId) == PresenterResponse::Action);
+    REQUIRE_EQ(actionId, std::string("archive"));
+}
+
+// The format the presenter writes and an application's activator reads
+// (UltraCanvasNotificationActivation.h), header-only so both share it.
+TEST(notification_activation_arguments_round_trip) {
+    UltraCanvas::NotificationActivation click;
+    click.notificationId = "01JABCDEF";
+    click.actionId = "reply";
+    click.launch = "account=a&b=c d/é%&folder=INBOX";
+    const std::string arguments = UltraCanvas::FormatNotificationArguments(click);
+    REQUIRE(arguments.find(' ') == std::string::npos);
+    const UltraCanvas::NotificationActivation back = UltraCanvas::ParseNotificationArguments(arguments);
+    REQUIRE_EQ(back.notificationId, click.notificationId);
+    REQUIRE_EQ(back.actionId, click.actionId);
+    REQUIRE_EQ(back.launch, click.launch);
+
+    // Arguments in no form of ours (an older toast's "default") are a click
+    // on the toast itself.
+    const UltraCanvas::NotificationActivation old = UltraCanvas::ParseNotificationArguments("default");
+    REQUIRE_EQ(old.actionId, std::string("default"));
+    REQUIRE(old.notificationId.empty());
+    REQUIRE(UltraCanvas::ParseNotificationArguments("").actionId.empty());
+
+    const auto fields = UltraCanvas::DecodeNotificationQuery("a=1&b&c=%zz&d=%41");
+    REQUIRE_EQ(fields.at("a"), std::string("1"));
+    REQUIRE(fields.at("b").empty());
+    REQUIRE_EQ(fields.at("c"), std::string("%zz"));
+    REQUIRE_EQ(fields.at("d"), std::string("A"));
+}
+
+// The activator's CLSID: the same for the same ID in every run, different for
+// another, and a well-formed version 5 GUID string.
+TEST(notification_activator_class_id_is_stable) {
+    const std::string mail = UltraCanvas::NotificationActivatorClassId("org.ultraos.ultramail");
+    REQUIRE_EQ(mail, UltraCanvas::NotificationActivatorClassId("org.ultraos.ultramail"));
+    REQUIRE(mail != UltraCanvas::NotificationActivatorClassId("org.ultraos.ultrafiler"));
+    REQUIRE_EQ(mail.size(), size_t(38));
+    REQUIRE(mail.front() == '{' && mail.back() == '}');
+    REQUIRE(mail[9] == '-' && mail[14] == '-' && mail[19] == '-' && mail[24] == '-');
+    REQUIRE(mail[15] == '5');
+    REQUIRE(mail[20] == '8' || mail[20] == '9' || mail[20] == 'A' || mail[20] == 'B');
+    REQUIRE(UltraCanvas::IsNotificationActivationArgument("-ToastActivated"));
+    REQUIRE(UltraCanvas::IsNotificationActivationArgument("-Embedding"));
+    REQUIRE(!UltraCanvas::IsNotificationActivationArgument("mail.eml"));
+}
+
+// `launch` travels with the notification and into what a presenter shows.
+TEST(system_notification_carries_launch) {
+    UltraMessage::SystemNotification n;
+    n.appId = "org.ultraos.ultramail";
+    n.appName = "UltraMail";
+    n.summary = "New mail";
+    n.launch = "account=a1&uid=42";
+    const UltraCanvas::JSONValue body = UltraMessage::MakeSystemNotification(n);
+    REQUIRE(UltraMsg_Validate(UltraMsgTopics::SystemNotification, body));
+    UltraMessage::SystemNotification back;
+    REQUIRE(UltraMessage::ParseSystemNotification(body, back));
+    REQUIRE_EQ(back.launch, n.launch);
+
+    UltraMsgMessage message;
+    message.envelope.id = "01JLAUNCH";
+    message.body = body;
+    UltraMessage::Internal::PresentedContent content;
+    REQUIRE(UltraMessage::Internal::ReadPresentedContent(message, 0, content));
+    REQUIRE_EQ(content.launch, n.launch);
+
+    // None given: none written, none read.
+    n.launch.clear();
+    REQUIRE(UltraMessage::MakeSystemNotification(n).Find("launch") == nullptr);
+}
+
 #if defined(ULTRAMESSAGE_HAVE_MACOS_PRESENTER)
 // The macos-presenter: listed, starts, and switches. A test binary is no
 // application bundle, so it settles on the script fallback (or says why it
@@ -345,8 +484,8 @@ TEST(windows_listener_adapter_is_listed_with_an_actionable_state) {
 
 #if defined(_WIN32)
 // Every Windows build has the presenter: listed, started on its own thread
-// with its hidden window, and switchable. Nothing is posted, so no balloon
-// appears.
+// with its hidden window, and switchable. Nothing is posted, so no toast or
+// balloon appears.
 TEST(windows_presenter_adapter_is_listed_and_starts) {
     Scoped ep{Connect("org.test.adapters.windows.presenter")};
     const auto adapters = ListAdapters(ep.handle);
@@ -361,6 +500,13 @@ TEST(windows_presenter_adapter_is_listed_and_starts) {
     }, 8000ms));
     REQUIRE(state.status == UltraMsgAdapterStatus::Running || state.status == UltraMsgAdapterStatus::Error);
     REQUIRE(!state.message.empty());
+    // Toasts on Windows 10 1903 and later in a build with C++/WinRT, balloons
+    // elsewhere.
+    if (state.status == UltraMsgAdapterStatus::Running)
+        REQUIRE(state.mode == "toast" || state.mode == "balloon");
+#if !defined(ULTRAMESSAGE_HAVE_WINRT)
+    if (state.status == UltraMsgAdapterStatus::Running) REQUIRE_EQ(state.mode, std::string("balloon"));
+#endif
     REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-presenter", false));
     REQUIRE(UltraMsg_GetAdapterState(ep.handle, "windows-presenter", state));
     REQUIRE(state.status == UltraMsgAdapterStatus::Disabled);

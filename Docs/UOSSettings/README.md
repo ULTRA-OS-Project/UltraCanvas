@@ -57,6 +57,44 @@ one.
 The table has a header and scrolls vertically when there are more
 applications than fit.
 
+### Appearance > Emoji
+
+How every application draws emoji - in a mail's subject, a chat message, a
+file name. ULTRA OS brings two emoji fonts of its own (`media/emoji/`), so
+emoji show on every computer, whatever fonts it has.
+
+| Choice | What the applications draw |
+|---|---|
+| **Colour** (the default) | Noto Color Emoji, the same pictures on every computer. |
+| **Black and white** | Noto Emoji, drawn in the colour of the text around them. |
+| **System** | The computer's own emoji font (Segoe UI Emoji on Windows, the one fontconfig prefers on Linux); Noto Color Emoji fills in where it has none. |
+
+The choice is written to `Emoji.conf` (`style=colour`, `style=monochrome` or
+`style=system`) in the settings folder below, through
+`UltraCanvas::EmojiSettings` (`UltraCanvasEmojiSettings.h`). An application
+reads it when it starts, so a change shows in the applications started after
+it - UOS-Settings' own sample line included. On macOS the applications draw
+Apple's emoji whatever the setting says.
+
+### Notifications > Registrations
+
+What Windows keeps for each application whose notifications were shown as
+toasts: its name and icon, and the program a click on one of them starts
+(`UltraCanvasNotificationActivation.h`). The table lists each application's
+ID and its click handler; **Remove all** takes them out, as the installer's
+uninstaller does - for a folder unpacked from the ZIP package, which has no
+uninstaller, before it is deleted. An application registers again the next
+time it starts or shows a notification. Elsewhere than Windows the page says
+there is nothing to remove.
+
+The same from a command prompt or a script, with no window:
+
+```
+UOS-Settings --remove-notification-registrations
+```
+
+which the ZIP package's `uc-remove-registrations.cmd` runs.
+
 ### Devices > Trusted certificates
 
 The network scanners and printers whose self-signed HTTPS certificate was
@@ -81,7 +119,8 @@ UOS-Settings and the applications that reach the devices agree on it.
 
 ## Where the settings live
 
-`FileDialog.conf` in the UltraCanvas settings folder - `%APPDATA%\UltraCanvas`
+`Emoji.conf` (Appearance > Emoji, one `style=` line) and `FileDialog.conf` in
+the UltraCanvas settings folder - `%APPDATA%\UltraCanvas`
 on Windows, `~/Library/Application Support/UltraCanvas` on macOS,
 `$XDG_CONFIG_HOME/UltraCanvas` (or `~/.config/UltraCanvas`) elsewhere. Both
 the file dialog and UOS-Settings use `UltraCanvas::FileDialogSettings`

@@ -3,9 +3,13 @@ name: Android build
 # Builds the framework for Android against a real cross-compiled sysroot:
 # scripts/android-bootstrap-sysroot.sh builds cairo, pango, glib, harfbuzz,
 # fontconfig, freetype, tinyxml2, fmt and libvips (with its JPEG, PNG, WebP,
-# TIFF, EXIF and colour management codecs) for arm64-android with vcpkg and
-# the runner's NDK, and the core library is then compiled with the NDK's
-# toolchain against them - libvips included, as on every platform. The Build
+# TIFF, EXIF and colour management codecs) with vcpkg and the runner's NDK,
+# and the core library is then compiled with the NDK's toolchain against them
+# - libvips included, as on every platform - and so is the demo, linked into
+# libUltraCanvasDemo.so and packaged with scripts/android-package-apk.sh into
+# a debug-signed APK, uploaded as the run's UltraCanvasDemo-<abi> artifact.
+# Two ABIs: arm64-v8a is what phones run, x86_64 what an emulator on a Linux
+# host or a CI runner runs at full speed (AndroidOnLinuxInvestigation.md). The Build
 # workflow's "Android backend check" only syntax-checks OS/Android with host
 # headers standing in; this is the build those headers stand in for.
 #
@@ -14,13 +18,24 @@ name: Android build
 # part of an hour to build from nothing; vcpkg's binary cache keeps every
 # library it built, so a run on a warm cache only builds the framework. A
 # manual dispatch from the Actions tab works against any branch.
+#
+# Also once a week on main, to keep that cache warm for everyone. A cache a
+# pull request saves can be read by that pull request alone; only main's are
+# shared. Main otherwise builds this only when the Android build itself
+# changes, so most pull requests found nothing there and each rebuilt all 46
+# libraries from source on its first run. The weekly run restores main's
+# cache, which also keeps GitHub from evicting it after 7 days unused; when
+# eviction has come first, the scheduled run pays for the cold build, not a
+# pull request. It saves only what it built.
 
 on:
   pull_request:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/android-package-apk.sh'
       - 'UltraCanvas/OS/Android/**'
+      - 'Apps/DemoApp/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -29,53 +44,121 @@ on:
     paths:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
+      - 'scripts/android-package-apk.sh'
       - 'UltraCanvas/OS/Android/**'
+      - 'Apps/DemoApp/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
   workflow_dispatch:
+  # Mondays 03:17 UTC: off the hour, when GitHub's scheduler is least
+  # crowded. A schedule always runs on the default branch.
+  schedule:
+    - cron: '17 3 * * 1'
 
+# A newer push cancels a pull request's run in progress; on main nothing is
+# cancelled, so the weekly run and a push's run each finish (as build.yml).
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   android:
-    name: android (arm64-v8a)
+    name: android (${{ matrix.abi }})
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    strategy:
+      # One ABI failing says nothing about the other; let both finish.
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            triplet: arm64-android
+          - abi: x86_64
+            triplet: x64-android
     env:
-      ABI: arm64-v8a
-      TRIPLET: arm64-android
+      ABI: ${{ matrix.abi }}
+      TRIPLET: ${{ matrix.triplet }}
       VCPKG_CACHE: ${{ github.workspace }}/.vcpkg/binary-cache
+      # Where vcpkg keeps the source archives and patches it fetched (it
+      # honours VCPKG_DOWNLOADS over its own downloads/ folder).
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.vcpkg/downloads
     steps:
       - uses: actions/checkout@v5
 
       # What vcpkg's ports build with on a Linux host besides the compilers
       # (the NDK's) and cmake / ninja / meson (vcpkg fetches its own):
       # autotools for gettext, libiconv and libffi, gperf for fontconfig,
-      # bison and flex for the odd generator.
+      # bison and flex for the odd generator. ImageMagick: the APK's launcher
+      # icons, sized from media/appicon/Demo.png (android-package-apk.sh).
       - name: Install host tools
         timeout-minutes: 20
         run: |
           scripts/ci-apt.sh update
           scripts/ci-apt.sh install --no-install-recommends \
             autoconf autoconf-archive automake libtool gperf bison flex \
-            pkg-config python3 python3-venv curl zip unzip tar git
+            pkg-config python3 python3-venv curl zip unzip tar git imagemagick
 
       # vcpkg's binary cache: each library it built, as one archive per
       # package. Keyed by the manifest, the libvips overlay and the script
-      # (which pins the vcpkg commit), and saved under a fresh key by every
-      # run - a failed one too, so the libraries it did build are kept -
-      # and `restore-keys` falls back to the newest cache.
+      # (which pins the vcpkg commit), and `restore-keys` falls back to the
+      # newest cache. Saved only when the run built something - a failed run
+      # too, so the libraries it did build are kept - because a cache saved
+      # by every run regardless (about 350 MB each) is what pushes the
+      # repository past its cache quota, and GitHub then evicts the oldest
+      # entries, this one included: on 2026-10-20 a run on a PR found none of
+      # the cache an earlier run of the same PR had saved two hours before and
+      # rebuilt all 46 packages. The key carries the run attempt: a key can be
+      # written once, so a re-run that finished what the first attempt could
+      # not would otherwise be refused its save and the half-built set kept.
       - name: Restore vcpkg binary cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ env.VCPKG_CACHE }}
-          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}
+          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-
             android-vcpkg-${{ env.TRIPLET }}-
+
+      # vcpkg's downloads: the source archives and patches a port fetches
+      # before it builds. The binary cache above makes a rebuild rare, but
+      # any port it misses is rebuilt from source - and its sources then come
+      # from the internet again. On 2026-10-20 fmt's backport patch got HTTP
+      # 503 from github.com three times and failed the whole job before a
+      # line of the framework was compiled. vcpkg checks every file it finds
+      # here against the SHA512 in its port, so a stale entry is harmless:
+      # it is fetched again. Saved, like the binary cache, only when a run
+      # added something, under a key that names the triplet: the two ABI jobs
+      # run at once and a key can be written once, so a shared one would keep
+      # only the first job's. Either restores the other's (restore-keys).
+      #
+      # The `path` here must be the save step's, line for line: actions/cache
+      # files a cache under a version made from its paths, and a restore
+      # with any other list - even the folder alone - finds nothing. The
+      # first cut had the exclusions only on the save, and its 316 MB were
+      # never found again.
+      - name: Restore vcpkg downloads
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ${{ env.VCPKG_DOWNLOADS }}
+            !${{ env.VCPKG_DOWNLOADS }}/tools
+            !${{ env.VCPKG_DOWNLOADS }}/temp
+          key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ env.TRIPLET }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-
+            android-vcpkg-downloads-
+
+      # What the two caches held when restored, as a hash of their file names
+      # and sizes; the same listing after the build tells whether a save would
+      # store anything new. Downloads: the archives at the top level only -
+      # downloads/tools holds tools vcpkg unpacked, fetched once and cheaply.
+      - name: List the restored caches
+        id: caches-before
+        run: |
+          mkdir -p "$VCPKG_CACHE" "$VCPKG_DOWNLOADS"
+          echo "binary=$(find "$VCPKG_CACHE" -type f -printf '%P %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "downloads=$(find "$VCPKG_DOWNLOADS" -maxdepth 1 -type f -printf '%f %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
       # The runner's NDK (ANDROID_NDK_LATEST_HOME, preinstalled on GitHub's
       # Ubuntu images).
@@ -91,24 +174,44 @@ jobs:
           export VCPKG_BINARY_SOURCES="clear;files,$VCPKG_CACHE,readwrite"
           scripts/android-bootstrap-sysroot.sh "$ABI"
 
-      - name: Save vcpkg binary cache
+      - name: List the caches after the build
+        id: caches-after
         if: always()
+        run: |
+          mkdir -p "$VCPKG_CACHE" "$VCPKG_DOWNLOADS"
+          echo "binary=$(find "$VCPKG_CACHE" -type f -printf '%P %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "downloads=$(find "$VCPKG_DOWNLOADS" -maxdepth 1 -type f -printf '%f %s\n' | sort | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.caches-after.outputs.binary != steps.caches-before.outputs.binary
         uses: actions/cache/save@v5
         with:
           path: ${{ env.VCPKG_CACHE }}
-          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}
+          key: android-vcpkg-${{ env.TRIPLET }}-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Save vcpkg downloads
+        if: always() && steps.caches-after.outputs.downloads != steps.caches-before.outputs.downloads
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ${{ env.VCPKG_DOWNLOADS }}
+            !${{ env.VCPKG_DOWNLOADS }}/tools
+            !${{ env.VCPKG_DOWNLOADS }}/temp
+          key: android-vcpkg-downloads-${{ hashFiles('UltraCanvas/OS/Android/packaging/vcpkg*.json', 'MacOS/deps/ports/libvips/**', 'scripts/android-bootstrap-sysroot.sh') }}-${{ env.TRIPLET }}-${{ github.run_id }}-${{ github.run_attempt }}
 
       # What vcpkg's logs say when a port fails: the build trees hold them.
       - name: Upload vcpkg logs
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: android-vcpkg-logs
+          name: android-vcpkg-logs-${{ matrix.abi }}
           path: |
             .vcpkg/vcpkg/buildtrees/*/*.log
           if-no-files-found: ignore
 
-      # The command the script prints: the NDK's toolchain file, the sysroot
+      # The command the script prints (plus --error-limit=0, so a link that
+      # fails lists every undefined symbol, not lld's first 20): the NDK's
+      # toolchain file, the sysroot
       # as pkg-config's only search path and as CMake's find root, static
       # pkg-config link lists (vcpkg's Android triplets build static
       # libraries).
@@ -119,9 +222,10 @@ jobs:
           cmake -G Ninja -B build-android \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI="$ABI" \
-            -DANDROID_PLATFORM=android-26 \
+            -DANDROID_PLATFORM=android-28 \
             -DCMAKE_FIND_ROOT_PATH="$sysroot" \
             -DPKG_CONFIG_ARGN=--static \
+            -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--error-limit=0 \
             -DCMAKE_BUILD_TYPE=Release
 
       # -k 0: past a failing source, so one run lists every one (the core
@@ -132,11 +236,68 @@ jobs:
           export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
           cmake --build build-android --target UltraCanvas --parallel "$(nproc)" -- -k 0
 
+      # The app library an APK carries: DemoApp's main() as
+      # ultracanvas_app_main(), linked against the static core. The NDK links
+      # shared libraries with --no-undefined, so this is where a dependency
+      # missing from the sysroot's link lists shows, which the static core
+      # cannot show.
+      - name: Build the demo app library
+        run: |
+          sysroot="$RUNNER_TEMP/android-sysroot/$TRIPLET"
+          export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
+          cmake --build build-android --target UltraCanvasDemo --parallel "$(nproc)" -- -k 0
+
+      # What is called into the library from outside, by name: NativeActivity
+      # looks up ANativeActivity_onCreate, and each native method of
+      # UltraCanvasActivity resolves to a Java_* function. A static core hands
+      # the link only the objects something references, so each must be in
+      # the library's dynamic symbol table - one missing is an app that shows
+      # nothing, or one that crashes on its first keystroke.
+      - name: Check the demo library's entry points
+        run: |
+          lib="$(find build-android -name libUltraCanvasDemo.so -print -quit)"
+          if [ -z "$lib" ]; then
+            echo "::error::libUltraCanvasDemo.so was not built"
+            exit 1
+          fi
+          readelf="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          exported="$("$readelf" --dyn-syms --wide "$lib" | awk '$7 != "UND" {print $8}')"
+          missing=0
+          for sym in ANativeActivity_onCreate $(grep -ho 'Java_org_ultraos_[A-Za-z0-9_]*(' UltraCanvas/OS/Android/*.cpp | tr -d '(' | sort -u); do
+            if grep -qx "$sym" <<<"$exported"; then
+              echo "exported: $sym"
+            else
+              echo "::error::$lib does not export $sym"
+              missing=1
+            fi
+          done
+          ls -l "$lib"
+          exit "$missing"
+
+      # The installable app: the library stripped, UltraCanvasActivity as
+      # dex, the manifest from packaging/, the demo's assets, a debug
+      # signature. The script verifies the signature and prints what a device
+      # reads from the package (name, SDK levels, native code).
+      - name: Package the demo APK
+        run: |
+          scripts/android-package-apk.sh --abi "$ABI" \
+            --lib build-android/lib/libUltraCanvasDemo.so \
+            --out "apk/UltraCanvasDemo-$ABI.apk" \
+            --ndk "$ANDROID_NDK_LATEST_HOME"
+
+      - name: Upload the demo APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: UltraCanvasDemo-${{ matrix.abi }}
+          path: apk/UltraCanvasDemo-${{ matrix.abi }}.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload the CMake logs
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: android-cmake-logs
+          name: android-cmake-logs-${{ matrix.abi }}
           path: |
             build-android/CMakeFiles/CMakeOutput.log
             build-android/CMakeFiles/CMakeError.log

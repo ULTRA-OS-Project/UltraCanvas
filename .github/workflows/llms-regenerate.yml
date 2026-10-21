@@ -1,0 +1,77 @@
+name: llms.txt regenerate
+
+# Regenerates llms.txt / llms-full.txt on main, once, after a docs change lands.
+#
+# The two files are the whole docs corpus run through
+# scripts/generate_llms_txt.py, and every pull request that touched a doc used
+# to commit them. So any two such pull requests open at once conflicted in
+# them - whichever merged second had to merge main, regenerate and run the
+# whole six-platform matrix again, and on a busy day it happened again an
+# hour later. The changelog's line 1 had the same problem and the same cure
+# (changelog-fold.yml): pull requests no longer carry the files
+# (llms-txt.yml refuses a pull request that changes them), and this job
+# writes them on main after the merge.
+#
+# The regeneration is a second commit on main, made with GITHUB_TOKEN, so it
+# starts no workflow of its own. If its push is refused (another merge landed
+# meanwhile), it starts again from the new main, up to three times; if it
+# still fails, nothing is lost - the next docs change on main regenerates
+# from scratch. A red run here is the signal to look, not a reason to commit
+# the files from a branch.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Docs/**'
+      - 'README.md'
+      - 'UltraAI/README.md'
+      - 'UltraNet/README.md'
+      - 'VirtualFS/README.md'
+      - 'Apps/UltraCanvasStart/README.md'
+      - 'Masterfile_modules.md'
+      - 'scripts/generate_llms_txt.py'
+      - '.github/workflows/llms-regenerate.yml'
+  workflow_dispatch:
+
+# Never cancel: it commits and pushes. A newer run waits and regenerates from
+# whatever main is by then, which includes this run's work.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Regenerate and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            git fetch --quiet --no-tags origin main
+            git reset --quiet --hard origin/main
+            python3 scripts/generate_llms_txt.py
+            if git diff --quiet -- llms.txt llms-full.txt; then
+              echo "llms.txt and llms-full.txt are current"
+              exit 0
+            fi
+            git add llms.txt llms-full.txt
+            git commit --quiet -m "llms.txt: regenerate from the docs on main" \
+                       -m "Written by llms-regenerate.yml; pull requests do not carry these files."
+            if git push --quiet origin HEAD:main; then
+              echo "pushed $(git rev-parse --short HEAD) (attempt $attempt)"
+              exit 0
+            fi
+            echo "push refused (main moved on); starting again from the new main"
+          done
+          echo "::error::could not push the regenerated llms.txt after three attempts; the next docs change on main will regenerate it"
+          exit 1

@@ -1,21 +1,37 @@
 name: Changelog fold
 
-# Assigns the framework's version number, once, on main.
+# Assigns the version numbers, once, on main.
 #
-# Line 1 of Docs/UltraCanvas/CHANGELOG.md IS the version — cmake reads it and
-# every project(VERSION …), compile definition and packaging script follows —
-# so every branch wanted to write that one line and two open at once always
-# collided. Branches now drop their bullets in Docs/UltraCanvas/changelog.d/
-# with no number (two files never conflict), and this job folds whatever is
-# pending into CHANGELOG.md under the next patch version after it lands.
+# Line 1 of a product's CHANGELOG.md IS its version — cmake reads it and every
+# project(VERSION …), compile definition and packaging script follows — so
+# every branch wanted to write that one line and two open at once always
+# collided. Branches now drop their bullets in a changelog.d/ beside the
+# changelog (Docs/UltraCanvas/changelog.d/ for the framework,
+# Docs/<App>/changelog.d/ for an application) with no number — two files never
+# conflict — and this job folds whatever is pending into each CHANGELOG.md under
+# that product's next version after it lands. Folding UltraFiler or UltraTexter
+# also rewrites their Windows .rc / .manifest (the script runs set-version.sh),
+# and those go into the same commit.
 #
 # The fold is a second commit on main. That is deliberate: the merge commit
-# itself still has the entry pending, so its CHANGELOG.md line 1 is the
+# itself still has the entry pending, so line 1 of the changelog there is the
 # PREVIOUS release, and a release build there would package new code under an
 # already-published number. build.yml's `gate` job skips the release build for
-# exactly that commit and lets this one — which carries the right number —
+# exactly that commit and lets this one — which carries the right numbers —
 # produce the artifacts, through the dispatch in the last step (the fold's own
 # push starts no workflow: it is made with GITHUB_TOKEN).
+#
+# An application-only entry is gated and dispatched the same way. The release
+# artifacts carry every app, each stamped with its own changelog's line 1, so
+# building the merge commit would ship that app under its previous, published
+# number. The fold commit is built instead — once, as for a framework entry.
+# Its framework number is unchanged, exactly as for a merge that edits only an
+# app changelog by hand (build.yml's publish-sdk then refreshes the existing
+# v<framework> release's assets, as it always has for such merges): an app
+# release is not a framework release, and the fold never bumps the framework
+# to make one. What the gate guarantees is one
+# release build per merge, on the commit whose line 1s are all current, so no
+# merge is built twice under one number.
 #
 # If the push below is refused (branch protection, or a race with another
 # merge), nothing is lost: the entries stay pending and the next push to main
@@ -26,7 +42,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Docs/UltraCanvas/changelog.d/**'
+      # Every product's pending entries: Docs/UltraCanvas/changelog.d/,
+      # Docs/<App>/changelog.d/, Docs/Modules/UltraWin/changelog.d/.
+      - 'Docs/**/changelog.d/**'
   workflow_dispatch:
 
 # Never cancel a fold: it commits and pushes, and a half-run that is killed
@@ -53,23 +71,31 @@ jobs:
       - name: Fold pending entries
         id: fold
         run: |
+          set -o pipefail
           python3 scripts/fold_changelog.py | tee fold.log
-          # The script prints ::folded::<version> only when it changed
-          # something; a push with nothing pending is the normal case.
+          # One ::folded:: line per product the script changed -
+          # `::folded::0.9.365` for the framework, `::folded::UltraFiler 1.89.0`
+          # for an app - and none when nothing was pending, the normal case.
+          # Joined: "0.9.365, UltraFiler 1.89.0".
           if grep -q '^::folded::' fold.log; then
-            echo "version=$(sed -nE 's/^::folded:://p' fold.log)" >> "$GITHUB_OUTPUT"
+            echo "versions=$(sed -nE 's/^::folded:://p' fold.log | paste -sd ',' - | sed 's/,/, /g')" >> "$GITHUB_OUTPUT"
           fi
           rm -f fold.log
 
       - name: Commit and push
         id: push
-        if: steps.fold.outputs.version != ''
+        if: steps.fold.outputs.versions != ''
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Docs/UltraCanvas/CHANGELOG.md Docs/UltraCanvas/changelog.d
-          git commit -m "Changelog: ${{ steps.fold.outputs.version }}" \
-                     -m "Folded from Docs/UltraCanvas/changelog.d by changelog-fold.yml."
+          # Every changelog and changelog.d (-A stages the deleted entries too),
+          # plus the Windows resource files set-version.sh rewrote. The fold
+          # touches nothing else.
+          git add -A -- ':(glob)Docs/**/CHANGELOG.md' ':(glob)Docs/**/changelog.d/**' \
+            Apps/Texter/UltraTexter.rc Apps/Texter/UltraTexter.manifest \
+            Apps/UltraFiler/UltraFiler.rc Apps/UltraFiler/UltraFiler.manifest
+          git commit -m "Changelog: ${{ steps.fold.outputs.versions }}" \
+                     -m "Folded from the changelog.d directories by changelog-fold.yml."
           # Another merge may have landed while this ran. Rebase once and try
           # again; if it still fails, the entries stay pending and the next
           # push to main folds them.
@@ -86,7 +112,7 @@ jobs:
       # build the push would have been. It names the fold commit itself, so a
       # merge that lands on main in the meantime cannot become this release.
       - name: Start the release build
-        if: steps.fold.outputs.version != ''
+        if: steps.fold.outputs.versions != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

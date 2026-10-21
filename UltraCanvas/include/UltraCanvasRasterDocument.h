@@ -23,6 +23,8 @@
 // and rotating. Rendering the text is not the document's job: a host renders
 // a text layer with RenderTextLayer (UltraCanvasRasterText.h) and puts it in
 // with AddLayer or ReplaceLayer.
+// Version: 1.4.0 - password-protected *.ucd: SetUCDPassword, LoadUCD with a password,
+//                  IsPasswordProtected
 // Version: 1.3.0 - layered UltraCanvas documents (*.ucd, UCD 2.1 UCBitmap): SaveUCD / LoadUCD,
 //                  text layers kept as text frames
 // Version: 1.2.0 - text layers: RasterizeLayer, public ReplaceLayer,
@@ -42,6 +44,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+
+class UltraCryptSecureBuffer;   // UltraCrypt/UltraCryptCore.h
 
 namespace UltraCanvas {
 
@@ -262,8 +266,28 @@ public:
     // libvips. LoadUCD also opens a UCBitmap file without a layer stack, as
     // one layer.
     bool SaveUCD(const std::string& path, std::string& error);
-    bool LoadUCD(const std::string& path, std::string& error);
+    // `password` opens a password-protected one (IsPasswordProtected); without
+    // it, or with a wrong one, the load fails and says which - the document
+    // stays as it was.
+    bool LoadUCD(const std::string& path, std::string& error, const std::string& password = std::string());
     static bool IsUCDFile(const std::string& path);
+    // A *.ucd whose header says it is password-protected (key source 1).
+    static bool IsPasswordProtected(const std::string& path);
+
+    // ----- password protection (*.ucd) -----
+    // The password this document is saved with as a *.ucd: every section
+    // encrypted with XChaCha20-Poly1305 under an Argon2id key (UCD spec 4.3).
+    // Held in memory only - in a secure buffer, zeroed when dropped - for as
+    // long as the document has it. LoadUCD sets it from the password a
+    // protected file was opened with, so saving again keeps the protection;
+    // opening any other file drops it. `hidePreview` also leaves the thumbnail
+    // out (a PRIVATE document). An empty password removes the protection.
+    // Other formats ignore it: the host warns before saving a protected image
+    // in one. Saving fails - rather than writing it unprotected - in a build
+    // without libsodium (UCD::EncryptionAvailable()).
+    void SetUCDPassword(const std::string& password, bool hidePreview = false);
+    bool HasUCDPassword() const { return ucdPassword != nullptr; }
+    bool GetUCDHidesPreview() const { return ucdHidePreview; }
     // A layered file - *.ucraster or *.ucd: SaveToFile / LoadFromFile keep
     // its layers, text layers included, rather than flatten them.
     static bool IsProjectFile(const std::string& path);
@@ -347,6 +371,9 @@ private:
     std::weak_ptr<UCRasterLayer> inPlaceEditLayer;
 
     std::string filePath;
+    // The *.ucd password (SetUCDPassword); shared, so a copied document keeps it.
+    std::shared_ptr<UltraCryptSecureBuffer> ucdPassword;
+    bool ucdHidePreview = false;
     bool modified = false;
 };
 

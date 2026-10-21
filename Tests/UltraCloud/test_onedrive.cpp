@@ -4,6 +4,7 @@
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
+#include "test_request_body.h"
 
 #include <UltraCloud/UltraCloudOneDrive.h>
 
@@ -20,7 +21,8 @@ UltraNetResult Ok() { UltraNetResult r; r.success = true; return r; }
 void Answer(UltraNetResponse& resp, int status, const std::string& body) {
     resp.statusCode = status; resp.body.assign(body.begin(), body.end());
 }
-std::string Body(const UltraNetHttpRequest& req) { return std::string(req.body.begin(), req.body.end()); }
+// Uploads name their file rather than carry its bytes: read either way.
+std::string Body(const UltraNetHttpRequest& req) { return RequestBody(req); }
 std::string WriteFile(const std::string& name, const std::string& content) {
     const std::string dir = (std::filesystem::temp_directory_path() / "ultracloud-onedrive").string();
     std::filesystem::create_directories(UltraCanvas::PathFromUtf8(dir));

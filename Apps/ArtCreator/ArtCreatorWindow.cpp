@@ -2,6 +2,12 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.10.0 - the right panel's sections are SectionCard group boxes on the
+//                  section page, as UltraPaint's, with a smaller caption; Tool Options,
+//                  Gradient (was Fill) and Line show only while their tool is active; the transform
+//                  bar's ratio lock holds for the selector's handles, its percentage
+//                  fields have no arrows and every field steps by 1; the Line card also
+//                  with the Selector or Shape Editor while a line is selected
 // Version: 1.9.0 - the colour picker opens with the design and channels it was left with
 //                 (ArtCreatorSettings: picker.design, picker.channels in config.ini)
 // Version: 1.8.2 - the colour picker offers its design list, folds its channels and is
@@ -29,7 +35,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -86,8 +92,9 @@ namespace {
     constexpr float kToolButton = 36.0f;   // a tool's button, square, 4 px around its 28 px icon
     constexpr float kToolIcon = 28.0f;
     constexpr float kRightWidth = 300.0f;
-    constexpr float kRightInner = 262.0f;
+    constexpr float kRightInner = 268.0f;   // what is visible next to the scrollbar, less its gap
     constexpr float kStatusHeight = 24.0f;
+    constexpr float kPanelGap = 8.0f;       // between the cards, and around them
 
     std::string FileNameOf(const std::string& path) {
         if (path.empty()) return "Untitled";
@@ -135,13 +142,44 @@ namespace {
     }
 
     // ui-reuse-exempt: helper that only sizes framework elements; nothing is painted here.
-    std::shared_ptr<UltraCanvasLabel> PanelTitle(const std::string& id, const std::string& text) {
-        auto l = CreateLabel(id, 0, 0, 0, 22, text);
-        l->SetFontSize(12);
-        l->SetFontWeight(FontWeight::Bold);
-        l->SetTextColor(Color(60, 60, 70, 255));
-        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        return l;
+    // One section of the right panel, as UltraPaint's: a SectionCard captioned
+    // `title`, its content a column, as wide as what is visible beside the
+    // scrollbar and as tall as its content. The caption is smaller than the
+    // card's own: it only names the section, the content is what matters.
+    std::shared_ptr<UltraCanvasGroupBox> PanelCard(const std::string& id, const std::string& title) {
+        auto card = CreateGroupBox(id, 0, 0, kRightInner, 0, title);
+        card->SetFrameStyle(GroupBoxFrameStyle::Header);
+        GroupBoxVisualStyle style = GroupBoxVisualStyle::SectionCard();
+        style.titleFont.fontSize = 9.0f;
+        style.titleVerticalPadding = 2.0f;
+        card->SetVisualStyle(style);
+        card->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        card->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+        return card;
+    }
+
+    // What a card leaves its content: its width, less its border and its
+    // padding on each side.
+    float CardInnerWidth(const UltraCanvasGroupBox& card) {
+        const GroupBoxVisualStyle& s = card.GetVisualStyle();
+        return kRightInner - 2.0f * (s.borderWidth + s.contentPadding);
+    }
+
+    // A line in the sense of the Line card: an open stroke that arrowheads,
+    // a width profile and a brush go along - a straight line, a polyline or
+    // an open path, not a closed shape.
+    bool IsOpenLine(const VectorElement& e) {
+        switch (e.Type) {
+            case VectorElementType::Line: case VectorElementType::Polyline: return true;
+            case VectorElementType::Path: {
+                const auto* path = dynamic_cast<const VectorPath*>(&e);
+                if (!path || path->Path.Closed) return false;
+                for (const auto& c : path->Path.commands)
+                    if (c.Type == PathCommandType::ClosePath) return false;
+                return true;
+            }
+            default: return false;
+        }
     }
 
     const char* ElementKindName(const VectorElement& e) {
@@ -256,6 +294,7 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     };
     toolContext.selectTool = [this](ArtToolId id) { SelectTool(id); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
+    toolContext.lockAspectRatio = lockAspectRatio;
 
     // ----- canvas -> tool -----
     // In icon mode the pointer goes to the icon's pixel grid first (IconEvent).
@@ -676,14 +715,17 @@ void ArtCreatorWindow::BuildTransformBar() {
     auto scale = column("scale", 91);
     auto scaleW = row(scale, "sw");
     caption(scaleW, "sw", "W");
-    scaleWBox = field(scaleW, "sw", 74, 0.1, 100000, 1, 10, "Scale the width by a percentage",
+    scaleWBox = field(scaleW, "sw", 74, 0.1, 100000, 1, 1, "Scale the width by a percentage",
                       [this](double v, bool merge) { ApplyScalePercent(true, v, merge); });
     scaleWBox->SetSuffix(" %");
+    // Typed, not stepped: no arrows (the keys and the wheel still step by 1).
+    scaleWBox->SetLayout(SpinnerLayout::FieldOnly);
     auto scaleH = row(scale, "sh");
     caption(scaleH, "sh", "H");
-    scaleHBox = field(scaleH, "sh", 74, 0.1, 100000, 1, 10, "Scale the height by a percentage",
+    scaleHBox = field(scaleH, "sh", 74, 0.1, 100000, 1, 1, "Scale the height by a percentage",
                       [this](double v, bool merge) { ApplyScalePercent(false, v, merge); });
     scaleHBox->SetSuffix(" %");
+    scaleHBox->SetLayout(SpinnerLayout::FieldOnly);
 
     ratioLockButton = std::make_shared<UltraCanvasButton>("ac-tf-lock", 0, 0, 28, 28, "");
     ratioLockButton->SetIcon(IconPath("lock-ratio.svg"));
@@ -695,18 +737,20 @@ void ArtCreatorWindow::BuildTransformBar() {
     lockStyle.cornerRadius = 6.0f;
     ratioLockButton->SetStyle(lockStyle);
     ratioLockButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    ratioLockButton->onToggle = [this](bool on) { lockAspectRatio = on; };
+    // The lock holds for the selector's handles too: dragging one scales
+    // both ways alike.
+    ratioLockButton->onToggle = [this](bool on) { lockAspectRatio = on; toolContext.lockAspectRatio = on; };
     transformBar->AddChild(ratioLockButton);
 
     auto angles = column("angles", 93);
     auto rotation = row(angles, "rot");
     icon(rotation, "rot", "rotate.svg");
-    rotationBox = field(rotation, "rot", 74, -3600, 3600, 1, 15, "Rotation, counter-clockwise, about the reference point",
+    rotationBox = field(rotation, "rot", 74, -3600, 3600, 1, 1, "Rotation, counter-clockwise, about the reference point",
                         [this](double v, bool merge) { ApplyRotation(v, merge); });
     rotationBox->SetSuffix("\xC2\xB0");
     auto shear = row(angles, "shear");
     icon(shear, "shear", "shear.svg");
-    shearBox = field(shear, "shear", 74, -89, 89, 1, 5, "Shear: how far the top leans to the right",
+    shearBox = field(shear, "shear", 74, -89, 89, 1, 1, "Shear: how far the top leans to the right",
                      [this](double v, bool merge) { ApplyShear(v, merge); });
     shearBox->SetSuffix("\xC2\xB0");
 
@@ -762,9 +806,6 @@ void ArtCreatorWindow::RefreshTransformBar() {
     TransformUnit(k, unit);
     for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get()}) {
         if (s->GetSuffix() != unit) s->SetSuffix(unit);
-        // Steps of a whole unit for millimetres, points and pixels, a tenth
-        // for centimetres and inches.
-        s->SetStep(k >= 20.0 ? 0.1 : 1.0);
     }
     const auto ids = selection->Ids();
     const bool sameSelection = ids == transformBarIds;
@@ -968,23 +1009,26 @@ void ArtCreatorWindow::BuildToolPalette() {
 
 void ArtCreatorWindow::BuildRightPanel() {
     rightPanel = CreateScrollableContainer("ac-right", 0, 0, kRightWidth, 0);
-    rightPanel->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // Up and down only: the cards are as wide as what the vertical scrollbar
+    // leaves, and a horizontal bar would only scroll the strip that one takes.
+    ContainerStyle rightStyle = rightPanel->GetContainerStyle();
+    rightStyle.autoShowHorizontalScrollbar = false;
+    rightPanel->SetContainerStyle(rightStyle);
+    rightPanel->layout.SetFlexColumn().SetFlexGap(kPanelGap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     rightPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    rightPanel->SetPadding(6);
-    const Color panelGround(244, 244, 246, 255);
-    rightPanel->SetBackgroundColor(panelGround);
+    rightPanel->SetPadding(kPanelGap, 0, kPanelGap, kPanelGap);
+    rightPanel->SetBackgroundColor(Colors::SectionPage);
 
     // ----- icon: on top, and only in icon mode - the icon at its size -----
     BuildIconPanel();
 
     // ----- colour: foreground = fill, background = line -----
-    rightPanel->AddChild(PanelTitle("ac-color-title", "Colour (fill / line)"));
-    colorPicker = CreateColorPicker("ac-color", fillColour, 0, 0, kRightInner, 300);
-    // The framework's light picker on the panel's grey: left as constructed it
+    auto colourPanel = PanelCard("ac-color-card", "Colour (fill / line)");
+    const float cardInner = CardInnerWidth(*colourPanel);
+    colorPicker = CreateColorPicker("ac-color", fillColour, 0, 0, cardInner, 300);
+    // The framework's light picker on the white card: left as constructed it
     // is a charcoal block with a red accent in the middle of a light panel.
-    ColorPickerStyle pickerStyle = ColorPickerStyle::Light();
-    pickerStyle.backgroundColor = panelGround;
-    colorPicker->SetStyle(pickerStyle);
+    colorPicker->SetStyle(ColorPickerStyle::Light());
     colorPicker->SetUIScale(0.78f);
     colorPicker->SetBackgroundColor(lineColour);
     colorPicker->SetShowAlpha(true);
@@ -996,47 +1040,59 @@ void ArtCreatorWindow::BuildRightPanel() {
     colorPicker->SetSlidersCollapsible(true, settings.pickerChannelsOpen);
     colorPicker->onWheelStyleChanged = [this](ColorPickerWheelStyle) { RememberColourPicker(); };
     colorPicker->onSlidersExpandedChanged = [this](bool) { RememberColourPicker(); };
-    // As tall as its content: the hue ring fills the panel's width, and what
-    // is below moves up and down as the channels fold or another design is
-    // chosen. The height is also the picker's flex basis.
+    // As tall as its content: the hue ring fills the card's width, and the
+    // card and the cards below move up and down as the channels fold or
+    // another design is chosen. The height is also the picker's flex basis.
     colorPicker->SetAutoHeight(true);
-    // Not stretched: the panel's content box is wider than what is visible
-    // beside the scrollbar, and a stretched picker lays its hex field and
-    // channel values out into the part that is covered.
+    // Not stretched: the picker lays its hex field and channel values out to
+    // the width it is given, and that is the card's inner width exactly.
     colorPicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                            .SetAlignSelf(CSSLayout::AlignSelf::Start);
     colorPicker->onColorChanged = [this](const Color& c) { fillColour = c; ApplyFillColour(c, true); };
     colorPicker->onColorChanging = [this](const Color& c) { fillColour = c; ApplyFillColour(c, false); };
     colorPicker->onBackgroundChanged = [this](const Color& c) { lineColour = c; ApplyLineColour(c, true); };
     colorPicker->onBackgroundChanging = [this](const Color& c) { lineColour = c; ApplyLineColour(c, false); };
-    rightPanel->AddChild(colorPicker);
+    colourPanel->AddChild(colorPicker);
 
-    swatches = CreateColorSwatchBar("ac-swatches", 0, 0, kRightInner, 44);
-    swatches->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    swatches->onColorSelected = [this](const Color& c) {
+    // The palettes under the picker: rows of swatches, more added from the
+    // gallery behind the "+" at the end of the last row, and a right click
+    // sets one entry. Remembered between starts (picker.palettes).
+    palettes = CreateColorPaletteManager("ac-palettes", 0, 0, cardInner);
+    palettes->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // Outlined as the picker above them outlines its fields, so a white
+    // swatch still shows its edge on the white card.
+    const ColorPickerStyle& pickerStyle = colorPicker->GetStyle();
+    ColorPaletteManagerStyle paletteStyle = palettes->GetManagerStyle();
+    paletteStyle.swatchBorder         = pickerStyle.fieldBorderColor;
+    paletteStyle.swatchHoverBorder    = pickerStyle.mutedTextColor;
+    paletteStyle.swatchSelectedBorder = pickerStyle.accentColor;
+    paletteStyle.accentColor          = pickerStyle.accentColor;
+    paletteStyle.editorPickerStyle    = pickerStyle;
+    palettes->SetManagerStyle(paletteStyle);
+    std::vector<NamedColorPalette> saved;
+    if (UltraCanvasColorPaletteManager::ParsePalettes(settings.palettes, saved)) palettes->SetPalettes(saved);
+    palettes->onColorSelected = [this](const Color& c) {
         fillColour = c;
         colorPicker->SetForegroundColor(c, false);
         ApplyFillColour(c, true);
     };
-    // Right click on a swatch sets the line (background) colour.
-    swatches->onColorAdjustSelected = [this](const Color& c) {
-        colorPicker->SetBackgroundColor(c, true);
+    palettes->onPalettesChanged = [this]() {
+        // The file holds what this window has, as RememberColourPicker.
+        settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
+        settings.Save();
     };
-    rightPanel->AddChild(swatches);
+    colourPanel->AddChild(palettes);
+    rightPanel->AddChild(colourPanel);
 
-    // ----- tool options -----
+    // ----- tool options: captioned with the active tool's name -----
     // Straight under the colours, where they are visible without scrolling:
     // the Quick Shape corners and star depth used to sit below the fold.
-    optionsTitle = PanelTitle("ac-options-title", "Tool Options");
-    rightPanel->AddChild(optionsTitle);
-    optionsPanel = std::make_shared<UltraCanvasContainer>("ac-options", 0, 0, kRightInner, 0);
-    optionsPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    optionsPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    optionsPanel = PanelCard("ac-options", "Tool Options");
     rightPanel->AddChild(optionsPanel);
 
-    // ----- fill ramp -----
-    rightPanel->AddChild(PanelTitle("ac-fill-title", "Fill"));
-    ramp = CreateGradientEditor("ac-ramp", 0, 0, static_cast<int>(kRightInner), 46);
+    // ----- fill ramp: with the Fill tool, under its options -----
+    fillPanel = PanelCard("ac-fill", "Gradient");
+    ramp = CreateGradientEditor("ac-ramp", 0, 0, static_cast<int>(cardInner), 46);
     ramp->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     ramp->onStopsChanged = [this]() { ApplyRamp(true); };
     ramp->onStopsChanging = [this]() { ApplyRamp(false); };
@@ -1046,32 +1102,43 @@ void ArtCreatorWindow::BuildRightPanel() {
         colorPicker->SetForegroundColor(ramp->GetSelectedColor(), false);
         syncingColours = false;
     };
-    rightPanel->AddChild(ramp);
+    fillPanel->AddChild(ramp);
+    rightPanel->AddChild(fillPanel);
 
-    // ----- line gallery -----
-    rightPanel->AddChild(PanelTitle("ac-line-title", "Line"));
-    linePanel = std::make_shared<UltraCanvasContainer>("ac-line", 0, 0, kRightInner, 0);
-    linePanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    linePanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    // ----- line gallery: with the tools that draw lines -----
+    linePanel = PanelCard("ac-line", "Line");
     rightPanel->AddChild(linePanel);
     RebuildLinePanel();
 
     // ----- layers -----
-    rightPanel->AddChild(PanelTitle("ac-layers-title", "Layers"));
-    layersPanel = std::make_shared<UltraCanvasContainer>("ac-layers", 0, 0, kRightInner, 0);
-    layersPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    layersPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    layersPanel = PanelCard("ac-layers", "Layers");
 
     auto buttons = std::make_shared<UltraCanvasToolbar>("ac-layer-buttons", 0, 0, 0, 30);
     ToolbarAppearance app = buttons->GetAppearance();
     app.showIconLabels = false;
-    app.backgroundColor = Color(244, 244, 246, 255);
+    app.style = ToolbarStyle::Flat;
+    app.itemSpacing = 4.0f;
+    app.backgroundColor = layersPanel->GetVisualStyle().backgroundColor;
+    app.hoverBackgroundColor = Colors::ListRowHover;
+    app.activeBackgroundColor = Colors::ListRowSelected;
     buttons->SetAppearance(app);
     buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     buttons->AddButton("ac-l-add", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer");
     buttons->AddButton("ac-l-del", "", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); })->SetTooltip("Delete layer");
     buttons->AddButton("ac-l-up", "", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); })->SetTooltip("Move up");
     buttons->AddButton("ac-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip("Move down");
+    // Flat, as UltraPaint's, and just round their 24 px icons.
+    for (auto& c : buttons->Children()) {
+        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
+            b->SetPadding(3);
+            b->SetElementSize(Size2Df(30, 30));
+            b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            ButtonStyle flat = b->GetStyle();
+            flat.cornerRadius = 6.0f;
+            flat.pressedColor = Colors::ListRowSelected;
+            b->SetStyle(flat);
+        }
+    }
     layersPanel->AddChild(buttons);
 
     layerRows = std::make_shared<UltraCanvasContainer>("ac-layer-rows", 0, 0, 0, 0);
@@ -1295,6 +1362,7 @@ void ArtCreatorWindow::OnSelectionChanged() {
     SyncLinePanelFromSelection();
     RefreshTransformBar();
     if (auto* t = ActiveTool()) t->OnSelectionChanged(toolContext);
+    UpdateToolCards();   // the Line card follows a selected line
     UpdateStatus();
 }
 
@@ -1928,12 +1996,33 @@ void ArtCreatorWindow::RebuildToolOptions() {
     if (!optionsPanel) return;
     optionsPanel->ClearChildren();
     ArtTool* t = ActiveTool();
-    if (!t) return;
-    optionsTitle->SetText(t->name);
-    t->BuildOptions(toolContext, *optionsPanel, [this]() { canvas->Refresh(); });
-    float h = 0;
-    for (const auto& c : optionsPanel->GetChildren()) h += c->GetHeight() + 3;
-    optionsPanel->SetBounds(Rect2Df(0, 0, kRightInner, h));
+    if (t) {
+        optionsPanel->SetTitle(t->name);
+        t->BuildOptions(toolContext, *optionsPanel, [this]() { canvas->Refresh(); });
+    }
+    UpdateToolCards();
+}
+
+void ArtCreatorWindow::UpdateToolCards() {
+    if (!optionsPanel) return;
+    const ArtToolId id = activeTool;
+    bool lineCard = id == ArtToolId::Pen || id == ArtToolId::Freehand || id == ArtToolId::Line;
+    // The Selector and the Shape Editor show it while a line is selected, so
+    // its arrowheads and brush are set without changing tools.
+    if (!lineCard && (id == ArtToolId::Selector || id == ArtToolId::ShapeEditor)) {
+        for (const auto& e : selection->Elements())
+            if (e && IsOpenLine(*e)) { lineCard = true; break; }
+    }
+    // Zoom and Push have nothing to set: no card rather than an empty one.
+    const bool hasOptions = !optionsPanel->GetChildren().empty();
+    bool changed = false;
+    auto show = [&changed](const std::shared_ptr<UltraCanvasGroupBox>& card, bool on) {
+        if (card && card->IsVisible() != on) { card->SetVisible(on); changed = true; }
+    };
+    show(optionsPanel, hasOptions);
+    show(fillPanel, id == ArtToolId::Fill);
+    show(linePanel, lineCard);
+    if (changed) rightPanel->InvalidateLayout();
     rightPanel->RequestRedraw();
 }
 
@@ -1966,9 +2055,6 @@ void ArtCreatorWindow::RebuildLinePanel() {
                 [this, &o](int i) { o.lineProfile = i; ApplyLineGallery("Width Profile"); });
     AddDropdown(*linePanel, "ac-ln-brush", "Brush", ArtLineGallery::BrushNames(), o.lineBrush,
                 [this, &o](int i) { o.lineBrush = i; ApplyLineGallery("Brush"); });
-    float h = 0;
-    for (const auto& c : linePanel->GetChildren()) h += c->GetHeight() + 3;
-    linePanel->SetBounds(Rect2Df(0, 0, kRightInner, h));
     rightPanel->RequestRedraw();
 }
 
@@ -2040,9 +2126,6 @@ void ArtCreatorWindow::RebuildLayerPanel() {
         row->AddChild(btn);
         layerRows->AddChild(row);
     }
-    float h = 0;
-    for (const auto& c : layersPanel->GetChildren()) h += c->GetHeight() + 3;
-    layersPanel->SetBounds(Rect2Df(0, 0, kRightInner, h + n * 28.0f));
     rightPanel->RequestRedraw();
 }
 
@@ -2292,10 +2375,8 @@ void ArtCreatorWindow::BuildIconPanel() {
     using namespace ArtOptionWidgets;
     // Built once and shown only in icon mode; nothing in it is rebuilt, so
     // the size box can switch icon mode off from its own callback.
-    iconPanel = std::make_shared<UltraCanvasContainer>("ac-icon", 0, 0, kRightInner, 0);
-    iconPanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    iconPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
-    iconPanel->AddChild(PanelTitle("ac-icon-title", "Icon"));
+    iconPanel = PanelCard("ac-icon", "Icon");
+    const float cardInner = CardInnerWidth(*iconPanel);
 
     std::vector<std::string> sizes = {"Off"};
     for (int n : ArtIconSizes()) sizes.push_back(std::to_string(n) + " x " + std::to_string(n) + " px");
@@ -2334,10 +2415,10 @@ void ArtCreatorWindow::BuildIconPanel() {
     iconPanel->AddChild(toggles);
     AddButtonRow(*iconPanel, "ac-icon-snapnow", {{"Snap to Pixels", [this]() { CmdSnapToPixels(); }}});
 
-    iconPreview = std::make_shared<ArtIconPreview>("ac-icon-preview", kRightInner);
+    iconPreview = std::make_shared<ArtIconPreview>("ac-icon-preview", cardInner);
     iconPreview->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
     iconPanel->AddChild(iconPreview);
-    iconCaption = CreateLabel("ac-icon-caption", 0, 0, kRightInner, 46, "");
+    iconCaption = CreateLabel("ac-icon-caption", 0, 0, cardInner, 46, "");
     iconCaption->SetFontSize(11);
     iconCaption->SetWrap(TextWrap::WrapWord);
     iconCaption->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -2349,10 +2430,6 @@ void ArtCreatorWindow::BuildIconPanel() {
 
 void ArtCreatorWindow::LayoutIconPanel() {
     if (!iconPanel) return;
-    float h = 0;
-    for (const auto& child : iconPanel->GetChildren())
-        if (child && child->IsVisible()) h += child->GetHeight() + 3;
-    iconPanel->SetBounds(Rect2Df(0, 0, kRightInner, h));
     iconPanel->InvalidateLayout();
     if (rightPanel) rightPanel->RequestRedraw();
 }

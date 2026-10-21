@@ -61,7 +61,12 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
 # to bin/.
 APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
       ultrafibu UltraNetMonitor DeviceExplorer ultramsg UOS-Settings UltraClaude
-      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress)
+      UltraAuthenticator UltraPassword UltraClipboard UltraWeb UltraCanvasStart ultrapress
+      SmartHomeCenter UltraDBAdmin)
+
+# AnchorPoint is peer-to-peer file sharing: the window, and `anchorpoint-cli`,
+# the same transfers from a terminal. Both output to bin/.
+APPS+=(AnchorPoint anchorpoint-cli)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.

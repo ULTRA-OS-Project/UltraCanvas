@@ -34,6 +34,7 @@ and friends report what this build actually has.
 | `openai` | `ITextLLM`, `IEmbeddings` | cloud or OpenAI-compatible server |
 | `minimax` | `IVideoGen`, `IImageGen`, `ITextToSpeech` | cloud |
 | `elevenlabs` | `ITextToSpeech` | cloud, direct or through a hosted relay |
+| `local` | `ITextLLM`, `IEmbeddings` | local — an engine the runtime downloads and supervises |
 | `qwen` | `ITextLLM`, `IEmbeddings` | local server |
 | `comfyui` | `IImageGen`, `IVideoGen` | local server |
 | `llama-cpp` | `ITextLLM`, `IEmbeddings` | local, in-process |
@@ -266,6 +267,21 @@ unless `output_format` names an ElevenLabs format. `style`, `pitch` and
 sample bytes only; URL samples are rejected rather than downloaded.
 Speech-to-text and the WebSocket input-streaming endpoint are not
 implemented yet.
+
+---
+
+## `local` — a model on this computer, nothing to install
+
+Header: `UltraAILocal.h`. The local runtime (`UltraAILocalRuntime.h`,
+[`LocalRuntime.md`](LocalRuntime.md)) downloads llama.cpp's server for this
+machine and a model from its catalogue on demand, starts the engine on
+loopback with a key, and this adapter speaks to it in the OpenAI adapter's
+wire format. `defaultModel` is a catalogue id (`qwen3-4b-q4`), a
+user-added model (`file:<path>`, `hf:<repo>:<file>`) or empty for the
+runtime's recommendation; `providerOptions["allow_download"]` lets the
+first call install under the *Ask* policy. First in the local-first
+routing. Everything else — the gallery, the catalogue, the settings, the
+errors — is in `LocalRuntime.md`.
 
 ---
 
@@ -578,6 +594,11 @@ under a text-LLM provider's id replaces the LLM-backed one for that id.
 * [`../../Research/ComfyUIIntegrationResearch.md`](../../Research/ComfyUIIntegrationResearch.md)
   — why these adapters are shaped the way they are, and the licensing
   boundary against ComfyUI.
+* [`LocalRuntime.md`](LocalRuntime.md) — the local runtime behind the
+  `local` provider: engines and models downloaded on demand and run as
+  supervised processes, so nothing has to be installed;
+  [`../../Research/UltraAILocalRuntimeDesignProposal.md`](../../Research/UltraAILocalRuntimeDesignProposal.md)
+  is its design.
 * `UltraAI/Docs/UltraNetIntegration.md` — how network adapters use
   UltraNet (HTTP, SSE, WebSocket), threading and cancellation rules.
 * `UltraAI/Docs/UltraVault.md` — credential storage for `apiKeyVaultRef`.

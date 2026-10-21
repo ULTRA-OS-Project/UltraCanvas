@@ -138,6 +138,76 @@ Two were found by actually building and running the module for the first time:
   The member is gone; `Show()` and `Hide()` drive `SetVisible()`, so there is
   one answer. `tests/WidgetTest.cpp` asserts the two agree.
 
+### The simulated home, and what it found (2026-10-20)
+
+`protocols/Simulated/` is a backend with no radio: the demo home of the
+SmartHome Center proposal (`Docs/Research/SmartHomeCenterDesignProposal.md`
+§4.7). 30 devices in 8 rooms, each a real `ISmartLight` / `ISmartThermostat`
+/ ... object, on a clock that moves them. It is always built, registered by
+`RegisterBuiltinProtocols()` under its own `SmartHomeProtocolType::Simulated`,
+and `tests/SimulatedTest.cpp` drives it through the facade (51 checks, under
+`de_DE.UTF-8`, clean under ThreadSanitizer).
+
+It was the first backend ever to run end to end through the manager, and it
+found these, all fixed:
+
+- **Deadlock on the first join.** `RegisterDevice` called
+  `DispatchDeviceDiscover` with `deviceMutex` held; that function locks it
+  again. `UpdateDeviceInfo` and `UpdateDeviceState` dispatched under it too,
+  so any callback that read the API back would have deadlocked. Every
+  dispatch now runs with no registry lock held.
+- **Devices a backend has at start-up were never registered** - only joins
+  were, and a backend resuming a saved network (Zigbee's `networkInit`, the
+  demo home) has devices before anyone joins. `EnableProtocol` adopts
+  `GetPairedDevices()` once its callbacks are wired.
+- A join registered **no device object** (`nullptr`), pairing **never
+  completed** (nothing called `DispatchPairingComplete`), and an update
+  **never refreshed** the registry's copy of the info, so `GetDevices()`
+  reported every device as it was when it joined.
+- **Every state query returned an empty struct**: `GetLightState` and the
+  rest were `return {}`. They read the device objects now; the facade gains
+  `GetBlindPosition`, `GetBatteryLevel`, `GetPowerUsage`, `GetEnergyUsage`,
+  and `SmartHomeDeviceInfo` a `Room`.
+- `SetThermostatTarget` wrote `std::to_string(float)`, which is
+  "23,500000" under a comma-decimal locale.
+- `DisableProtocol` left the protocol's devices in the registry.
+
+### The store and the automation engine (2026-10-20)
+
+**smarthome.db** (`core/SmartHomeStore.*`) is an UltraDatabase (SQLite)
+store, opened with `SmartHomeAPI::OpenStore(path)`: settings (the home's
+location), the names and rooms a person gives devices (`RenameDevice`,
+`SetDeviceRoom`, laid over the backend's on every refresh), scenes and
+automations with their actions, the event log and sensor history. The schema
+is a versioned migration list; every change to a scene or automation is
+written through; the history drops rows older than 90 days and the log keeps
+the last 20 000 events. `ExportStore` writes a consistent copy (`VACUUM
+INTO`); `SaveConfiguration` / `LoadConfiguration` are that copy and an open.
+Without SQLite the store compiles to one that refuses to open and says why.
+
+`GetSensorHistory` answers from it: a sensor's value, a thermostat's room
+temperature and a metered plug's power are recorded when they move past a
+deadband (a tenth of a degree, a percent of humidity, a watt or 2 %) and at
+least every 15 minutes.
+
+**Automations run** (`core/SmartHomeAutomationEngine.*`). The engine reads
+the forms `SmartHomeAutomationEditor` writes - the trigger JSON, the
+condition strings - documented on `SmartHomeAutomation` in the public
+header: device triggers (edge-triggered, with `forMinutes`), time triggers,
+sunrise and sunset (NOAA approximation, `SetHomeLocation`), conditions on
+time, weekday and device attributes, and the actions `notify`, `delay` and
+`activateScene` besides device commands. The automation thread evaluates
+once a second and at once when a device changes. An automation that runs
+four times in ten seconds is switched off as a loop. Every run, notice and
+scene activation goes to the event log (`GetEventLog`, `SetOnEvent`).
+
+`tests/AutomationTest.cpp` covers both on the simulated home with a clock of
+its own, and passed 40 runs in a row and under ThreadSanitizer.
+
+Still open: the home model's own room list (rooms are whatever devices name),
+`location` triggers, the safety opt-in for automations that unlock, and the
+hub service that keeps automations running with no window open.
+
 ### Known latent bug
 
 `MatterProtocol::SubscribeAttribute` stores its callback in

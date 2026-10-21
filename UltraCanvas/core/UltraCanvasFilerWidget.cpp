@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.41.0 - a remote folder being fetched or updated shows a thin blue
+//                  bar sliding along the foot of the file area, not a
+//                  "Loading folder" notice over it; its status line goes to
+//                  the host (onListingPendingChanged)
 // Version: 1.40.1 - a PowerPoint deck (.pptx, .pptm, .ppsx, .potx) previews its
 //                  slides' text; a document that cannot be read (a protected
 //                  .docx or .pptx) keeps its type glyph instead of an empty page
@@ -82,7 +86,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-18
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -3676,7 +3680,9 @@ namespace UltraCanvas {
         hoveredIndex = -1;
         lastClickedIndex = -1;
         // Both describe the listing being built now, not the one before it.
+        // The host hears of a changed status once the scan is done.
         listingFailureNotice.clear();
+        const std::string pendingBefore = listingPendingStatus;
         listingPendingStatus.clear();
         {
             // Files may have changed on disk: forget the folder stats and
@@ -3770,8 +3776,9 @@ namespace UltraCanvas {
                     entries.push_back(std::move(e));
                 }
                 // "Nothing yet" and "nothing at all" look the same in the
-                // listing; the host's status line tells them apart.
-                if (listing.empty() && remoteListingStatus)
+                // listing, and so do "as it is" and "as it was, being
+                // fetched again": the host's status line tells them apart.
+                if (remoteListingStatus)
                     listingPendingStatus = remoteListingStatus(currentPath);
             }
         }
@@ -3994,6 +4001,9 @@ namespace UltraCanvas {
         // so the fingerprint the worker takes describes the listing the user
         // is looking at, not the one that was there a moment ago.
         WatchFolder((fileListMode || !isRealDir) ? std::string() : currentPath);
+
+        if (listingPendingStatus != pendingBefore && onListingPendingChanged)
+            onListingPendingChanged(listingPendingStatus);
 
         // The listing itself changed (entries added / removed / renamed) —
         // hosts use this to refresh what they show about the folder.
@@ -5964,6 +5974,7 @@ namespace UltraCanvas {
         pendingPaste->itemKinds.assign(pendingPaste->sources.size(),
                                        PendingPaste::ItemKind::Entry);
         pendingPaste->cut = cut;
+        pendingPaste->requested = pendingPaste->sources.size();
         pendingPaste->onDone = std::move(onDone);
         // The host's standing answers, where it gave any: they stand in for
         // the first dialog of each kind, the way an "Apply to all" does.
@@ -6034,6 +6045,10 @@ namespace UltraCanvas {
                 // The merged folder's entries are through. A move leaves the
                 // folder itself behind; it goes once nothing is left in it
                 // (an entry that was skipped keeps it, and its place).
+                // A folder the user chose (not one nested in another merge)
+                // has arrived once its entries are through.
+                if (folder == pp->folder)
+                    NoteArrived(*pp, PathToUtf8(from.filename()), /*isDir=*/true);
                 if (pp->cut && fs::is_directory(UltraCanvas::PathFromUtf8(from), ec) && fs::is_empty(UltraCanvas::PathFromUtf8(from), ec)) {
                     fs::remove(UltraCanvas::PathFromUtf8(from), ec);
                     if (!ec) {
@@ -6124,7 +6139,11 @@ namespace UltraCanvas {
                 if (PasteOneEntry(*pp, src, folder, action,
                                   kind == ItemKind::MergedEntry, credit, why)) {
                     credit.Finish();          // this entry's slice, in full
-                    if (action != PasteConflictAction::Skip) ++pp->pasted;
+                    if (action != PasteConflictAction::Skip) {
+                        ++pp->pasted;
+                        if (kind == ItemKind::Entry)
+                            NoteArrived(*pp, PathToUtf8(from.filename()), isDir);
+                    }
                     break;
                 }
                 credit.Rollback();            // an attempt that failed counts
@@ -6174,6 +6193,16 @@ namespace UltraCanvas {
         const bool walkedToEnd = pendingPaste->stop == FileOpStop::Done;
         const size_t pasted = pendingPaste->pasted;
         const std::string destination = pendingPaste->folder;
+        FilerTransferResult result;
+        result.moved = cut;
+        result.cancelled = pendingPaste->stop == FileOpStop::Cancelled;
+        result.files = pendingPaste->arrivedFiles;
+        result.folders = pendingPaste->arrivedFolders;
+        result.items = result.files + result.folders;
+        result.firstName = pendingPaste->firstArrived;
+        result.skipped = pendingPaste->skipped.size();
+        result.destination = destination;
+        result.message = DescribeTransfer(result, pendingPaste->requested);
         std::vector<std::string> vacated = std::move(pendingPaste->vacatedFolders);
         std::vector<SkippedItem> skipped = std::move(pendingPaste->skipped);
         std::function<void(bool)> onDone = std::move(pendingPaste->onDone);
@@ -6190,6 +6219,7 @@ namespace UltraCanvas {
         std::unordered_set<std::string> reported{destination};
         for (const std::string& folder : vacated)
             if (reported.insert(folder).second) NotifyFolderModified(folder);
+        if (onTransferFinished && !result.message.empty()) onTransferFinished(result);
 
         // The summary: what was skipped and why, once the queue ran to its
         // end. A Stop or a Cancel already said what happened, and a paste
@@ -6206,6 +6236,42 @@ namespace UltraCanvas {
                     cut ? "Move skipped items again" : "Copy skipped items again",
                     [this, skipped, cut]() { RetrySkippedPaste(skipped, cut); });
         }
+    }
+
+    void UltraCanvasFilerWidget::NoteArrived(PendingPaste& pp, const std::string& name,
+                                             bool isDir) {
+        if (isDir) ++pp.arrivedFolders;
+        else ++pp.arrivedFiles;
+        if (pp.firstArrived.empty()) pp.firstArrived = name;
+    }
+
+    std::string UltraCanvasFilerWidget::DescribeTransfer(const FilerTransferResult& r,
+                                                         size_t requested) {
+        if (r.items == 0 && !r.cancelled && r.skipped == 0) return {};   // nothing asked to move
+        std::string where = PathToUtf8(PathFromUtf8(r.destination).filename());
+        if (where.empty()) where = r.destination;                      // a drive root
+        where = "\"" + RepairLegacyEncodedName(where) + "\"";
+        const std::string done = r.moved ? "moved" : "copied";
+        auto count = [](size_t n, const char* one, const char* many) {
+            return std::to_string(n) + " " + (n == 1 ? one : many);
+        };
+        std::string what;
+        if (r.items == 1)
+            what = "\"" + RepairLegacyEncodedName(r.firstName) + "\"";
+        else if (r.folders == 0)
+            what = count(r.items, "file", "files");
+        else if (r.files == 0)
+            what = count(r.items, "folder", "folders");
+        else
+            what = count(r.items, "item", "items");
+        if (r.cancelled)
+            return std::string(r.moved ? "Move" : "Copy") + " cancelled - "
+                 + std::to_string(r.items) + " of " + count(requested, "item", "items")
+                 + " " + done + " to " + where;
+        if (r.skipped)
+            return std::to_string(r.items) + " of " + count(r.items + r.skipped, "item", "items")
+                 + " " + done + " to " + where + " (" + std::to_string(r.skipped) + " skipped)";
+        return what + " " + done + " to " + where;
     }
 
     void UltraCanvasFilerWidget::RetrySkippedPaste(const std::vector<SkippedItem>& items,
@@ -6863,6 +6929,7 @@ namespace UltraCanvas {
         // Folders that already lost an entry (archive deletions below) —
         // seeds the queue's onFolderModified reports.
         std::vector<std::string> archiveModified;
+        std::vector<FilerEntry> archiveGone;   // ... and the entries that went
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         std::error_code ec;
         // Entries living inside an archive cannot be removed via the real
@@ -6872,6 +6939,7 @@ namespace UltraCanvas {
         // the archive once per entry, which for thousands of files takes
         // practically forever.
         std::vector<std::string> archiveOrder;
+        std::map<std::string, std::vector<FilerEntry>> archiveEntries;
         std::map<std::string, std::vector<std::string>> archiveVictims;
         std::map<std::string, std::vector<std::string>> archiveParents;
         std::vector<FilerEntry> fsVictims;
@@ -6884,6 +6952,7 @@ namespace UltraCanvas {
                     auto& list = archiveVictims[resolved.realPath];
                     if (list.empty()) archiveOrder.push_back(resolved.realPath);
                     list.push_back(resolved.virtualPath);
+                    archiveEntries[resolved.realPath].push_back(e);
                     archiveParents[resolved.realPath].push_back(
                             PathToUtf8(PathFromUtf8(e.path).parent_path()));
                     continue;
@@ -6901,6 +6970,8 @@ namespace UltraCanvas {
             }
             for (const std::string& folder : archiveParents[archive])
                 if (!folder.empty()) archiveModified.push_back(folder);
+            for (const FilerEntry& gone : archiveEntries[archive])
+                archiveGone.push_back(gone);
         }
 #else
         const std::vector<FilerEntry>& fsVictims = victims;
@@ -6913,6 +6984,11 @@ namespace UltraCanvas {
         pendingDelete->modifiedFolders = std::move(archiveModified);
         pendingDelete->onDone = std::move(onDone);
         pendingDelete->toTrash = mode == FilerDeleteMode::MoveToTrash;
+        pendingDelete->requested = victims.size();
+        for (const FilerEntry& gone : archiveGone) {
+            ++pendingDelete->removed;
+            NoteDeleted(*pendingDelete, gone);
+        }
         if (problemPolicy == FilerProblemPolicy::SkipAndReport)
             pendingDelete->skipFailedForAll = true;   // listed in the summary
         // The removals run on the file-operation worker; the window over them
@@ -6977,6 +7053,7 @@ namespace UltraCanvas {
                 }
                 credit.Finish();
                 ++pd->removed;
+                NoteDeleted(*pd, e);
                 const std::string folder = PathToUtf8(PathFromUtf8(e.path).parent_path());
                 if (!folder.empty()) pd->modifiedFolders.push_back(folder);
                 AdvancePendingDelete();
@@ -7090,6 +7167,7 @@ namespace UltraCanvas {
             }
             credit.Finish();
             ++pd->removed;
+            NoteDeleted(*pd, e);
             const std::string folder = PathToUtf8(PathFromUtf8(e.path).parent_path());
             if (!folder.empty()) pd->modifiedFolders.push_back(folder);
             AdvancePendingDelete();
@@ -7176,6 +7254,8 @@ namespace UltraCanvas {
         for (const FilerEntry& v : pd.elevatedVictims) {
             if (fs::exists(PathFromUtf8(v.path), ec)) continue;
             ++gone;
+            ++pd.removed;
+            NoteDeleted(pd, v);
             const std::string folder = PathToUtf8(PathFromUtf8(v.path).parent_path());
             if (!folder.empty()) pd.modifiedFolders.push_back(folder);
         }
@@ -7231,6 +7311,18 @@ namespace UltraCanvas {
         }
         std::unique_ptr<PendingDelete> pd = std::move(pendingDelete);
         const bool walkedToEnd = pd->stop == FileOpStop::Done;
+        FilerDeleteResult result;
+        result.toTrash = pd->toTrash;
+        // Anything short of the end - a Cancel in the progress window or in
+        // a problem dialog - left part of the selection in place.
+        result.cancelled = !walkedToEnd;
+        result.files = pd->goneFiles;
+        result.folders = pd->goneFolders;
+        result.items = result.files + result.folders;
+        result.firstName = pd->firstGone;
+        result.skipped = pd->skipped.size();
+        result.trashName = TrashDisplayName();
+        result.message = DescribeDelete(result, pd->requested);
         // Silent clear when a neighbour is waiting to inherit the selection:
         // the rescan reports that one change. Firing an empty selection first
         // would fold an attached preview pane away and open it again.
@@ -7248,6 +7340,7 @@ namespace UltraCanvas {
         // A caller that ran its own confirmation (DeletePaths) is told what
         // came of it, the way a paste's caller is.
         if (pd->onDone) pd->onDone(!pd->modifiedFolders.empty());
+        if (onDeleteFinished && !result.message.empty()) onDeleteFinished(result);
 
         // The summary: what stayed and why, once the queue ran to its end.
         // (Entries handed to the administrator were reported by that run.)
@@ -7269,6 +7362,40 @@ namespace UltraCanvas {
                                                             : FilerDeleteMode::Permanently);
                     });
         }
+    }
+
+    void UltraCanvasFilerWidget::NoteDeleted(PendingDelete& pd, const FilerEntry& entry) {
+        if (entry.isDirectory) ++pd.goneFolders;
+        else ++pd.goneFiles;
+        if (pd.firstGone.empty()) pd.firstGone = entry.name;
+    }
+
+    std::string UltraCanvasFilerWidget::DescribeDelete(const FilerDeleteResult& r,
+                                                       size_t requested) {
+        if (requested == 0 || (r.items == 0 && r.skipped == 0 && !r.cancelled)) return {};
+        auto count = [](size_t n, const char* one, const char* many) {
+            return std::to_string(n) + " " + (n == 1 ? one : many);
+        };
+        const std::string done = r.toTrash ? "moved to the " + r.trashName
+                                           : std::string("deleted");
+        std::string what;
+        if (r.items == 1)
+            what = "\"" + RepairLegacyEncodedName(r.firstName) + "\"";
+        else if (r.folders == 0)
+            what = count(r.items, "file", "files");
+        else if (r.files == 0)
+            what = count(r.items, "folder", "folders");
+        else
+            what = count(r.items, "item", "items");
+        if (r.cancelled)
+            return "Delete cancelled - " + std::to_string(r.items) + " of "
+                 + count(requested, "item", "items") + " " + done;
+        // Short of the whole selection: skipped entries, and entries an
+        // administrator prompt that was declined left in place.
+        if (r.items < requested)
+            return std::to_string(r.items) + " of " + count(requested, "item", "items")
+                 + " " + done + " (" + std::to_string(requested - r.items) + " left)";
+        return what + " " + done;
     }
 
     void UltraCanvasFilerWidget::ShowDeleteProblemDialog(const FilerEntry& entry,
@@ -10412,6 +10539,10 @@ namespace UltraCanvas {
             }
         }
 
+        // A remote folder being fetched or updated: the bar along the foot of
+        // the file area, over whatever it shows.
+        if (!listingPendingStatus.empty()) DrawListingPendingBar(ctx, bounds);
+
         // The inline rename editor is a child element the self-rendered view
         // must draw itself (the widget's Render never paints children). Placed
         // fresh each frame so it tracks scrolling and relayouts of its item.
@@ -10484,9 +10615,10 @@ namespace UltraCanvas {
                 // for - "Folder is empty!" would send the user elsewhere.
                 DrawEmptyState(ctx, bounds, "No files of the chosen type");
             } else if (!listingPendingStatus.empty()) {
-                // A remote folder still on its way: what is happening, under
-                // a turning ring - not "empty", which it may well not be.
-                DrawLoadingState(ctx, bounds);
+                // A remote folder still on its way: not "empty", which it may
+                // well not be. Nothing over the area - the bar along its foot
+                // (Render) says it is coming, the host's status line what it
+                // waits for.
             } else if (!listingFailureNotice.empty()) {
                 DrawEmptyState(ctx, bounds, listingFailureNotice);
             } else {
@@ -10677,68 +10809,45 @@ namespace UltraCanvas {
         ctx->DrawTextInRect(message, Rect2Dd(bounds));
     }
 
-    void UltraCanvasFilerWidget::DrawLoadingState(IRenderContext* ctx,
-                                                  const Rect2Di& bounds) {
-        // Same stacked layout as DrawEmptyState - icon, gap, text - so the
-        // notice does not jump when a loading folder turns out to be empty.
-        // The icon is a progress ring: a track with a bright arc that turns
-        // on the ticker (see StartListingPendingTicks); under "Loading
-        // folder" comes the host's own line about what it is waiting for.
+    Rect2Di UltraCanvasFilerWidget::ListingPendingBarRect(const Rect2Di& bounds) const {
+        // Along the foot of the file area, just above the info bar (and the
+        // hidden-items strip): where the eye goes for "more is coming" without
+        // anything covering a file.
+        const int height = 3;
+        return Rect2Di(bounds.x, bounds.y + bounds.height - InfoBarHeight() - height,
+                       bounds.width, height);
+    }
+
+    void UltraCanvasFilerWidget::DrawListingPendingBar(IRenderContext* ctx,
+                                                       const Rect2Di& bounds) {
+        // The ticker keeps it sliding and re-asks the host for its words.
         StartListingPendingTicks();
-        Rect2Di area(bounds.x, bounds.y, bounds.width,
-                     bounds.height - InfoBarHeight());
-        FontStyle fsty;
-        fsty.fontFamily = style.fontFamily;
-        fsty.fontSize = style.fontSize;
-        ctx->SetFontStyle(fsty);
-
-        const std::string title = "Loading folder";
-        const std::string status = EllipsizeText(ctx, listingPendingStatus,
-                                                 std::max(40, area.width - 24));
-        const int iconEdge = 44;
-        const int gap = 10;
-        const int lineGap = 4;
-        const Size2Di titleSize = ctx->GetTextLineDimensions(title);
-        const Size2Di statusSize = ctx->GetTextLineDimensions(status);
-        const int blockHeight = iconEdge + gap + titleSize.height +
-                                (status.empty() ? 0 : lineGap + statusSize.height);
-        const double cx = area.x + area.width / 2.0;
-        if (area.height < blockHeight + 8) {
-            // Too flat for the stack: the status line alone, or the title.
-            ctx->SetTextPaint(style.secondaryTextColor);
-            ctx->DrawTextInRect(status.empty() ? title : status, Rect2Dd(area));
-            return;
-        }
-        const int top = area.y + (area.height - blockHeight) / 2;
-
-        // The ring: a faint full track, and over it a quarter arc in the
-        // bar colour whose start angle follows the clock, one turn a second
-        // - so it visibly moves even while the server says nothing.
-        const double radius = iconEdge / 2.0 - 3.0;
-        const double cy = top + iconEdge / 2.0;
+        const Rect2Di bar = ListingPendingBarRect(bounds);
+        if (bar.width <= 0 || bar.y < bounds.y) return;
+        // A faint track the full width, and over it a segment a quarter of
+        // that width sliding in from the left and out at the right, one pass
+        // every 1.2 s: a fetch has no total to fill a bar towards, and the
+        // movement is what says it is still going.
+        Color track = style.loadingBarColor;
+        track.a = 50;
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(bar));
+        ctx->SetFillPaint(track);
+        ctx->FillRectangle(Rect2Dd(bar));
         const double elapsed = std::chrono::duration<double>(
                 std::chrono::steady_clock::now() - listingPendingSince).count();
-        const double start = std::fmod(elapsed, 1.0) * 2.0 * M_PI;
-        ctx->PushState();
-        ctx->SetLineCap(LineCap::Round);
-        ctx->SetStrokeWidth(3.0f);
-        Color track = style.secondaryTextColor;
-        track.a = 60;
-        ctx->SetStrokePaint(track);
-        ctx->DrawCircle(Point2Dd(cx, cy), radius);
-        ctx->SetStrokePaint(style.barColor);
-        ctx->DrawArc(cx, cy, radius, start, start + M_PI / 2.0);
+        const double phase = std::fmod(elapsed, 1.2) / 1.2;
+        const double segment = std::max(24.0, bar.width / 4.0);
+        const double x = bar.x - segment + phase * (bar.width + segment);
+        ctx->SetFillPaint(style.loadingBarColor);
+        ctx->FillRectangle(Rect2Dd(x, bar.y, segment, bar.height));
         ctx->PopState();
+    }
 
-        ctx->SetTextPaint(style.textColor);
-        ctx->DrawText(title, Point2Dd(cx - titleSize.width / 2.0,
-                                      top + iconEdge + gap));
-        if (!status.empty()) {
-            ctx->SetTextPaint(style.secondaryTextColor);
-            ctx->DrawText(status, Point2Dd(cx - statusSize.width / 2.0,
-                                           top + iconEdge + gap +
-                                           titleSize.height + lineGap));
-        }
+    void UltraCanvasFilerWidget::SetListingPendingStatus(const std::string& status) {
+        if (status == listingPendingStatus) return;
+        listingPendingStatus = status;
+        if (onListingPendingChanged) onListingPendingChanged(listingPendingStatus);
     }
 
     void UltraCanvasFilerWidget::StartListingPendingTicks() {
@@ -10746,21 +10855,28 @@ namespace UltraCanvas {
         auto* app = UltraCanvasApplication::GetInstance();
         if (!app) return;
         listingPendingSince = std::chrono::steady_clock::now();
-        // 50 ms: a smooth turn without repainting the display for nothing.
-        listingPendingTimer = app->StartTimer(50, true, [this](TimerId) {
+        // 40 ms: a smooth slide. Only the bar's strip is repainted, so a
+        // folder of thousands of entries shown under it costs no more.
+        listingPendingTimer = app->StartTimer(40, true, [this](TimerId) {
             if (listingPendingStatus.empty()) {
                 StopListingPendingTicks();
                 return;
             }
             // The host's words follow the fetch ("Connecting", then
             // "Reading"...). An empty answer means the data has landed and
-            // the host's Refresh() is on its way: the notice stays as it is
-            // until that rescan replaces it, rather than flashing "empty".
+            // the host's Refresh() is on its way: the bar stays until that
+            // rescan replaces it, rather than flashing "empty".
             if (remoteListingStatus) {
                 const std::string now = remoteListingStatus(currentPath);
-                if (!now.empty()) listingPendingStatus = now;
+                if (!now.empty()) SetListingPendingStatus(now);
             }
-            RequestRedraw();
+            const auto lb = GetLocalBounds();
+            const Rect2Di bar = ListingPendingBarRect(
+                    Rect2Di(static_cast<int>(lb.x), static_cast<int>(lb.y),
+                            static_cast<int>(lb.width), static_cast<int>(lb.height)));
+            InvalidateRect(Rect2Df(static_cast<float>(bar.x), static_cast<float>(bar.y),
+                                   static_cast<float>(bar.width),
+                                   static_cast<float>(bar.height)));
         });
     }
 
@@ -14597,6 +14713,11 @@ namespace UltraCanvas {
             if (idx < entries.size()) sel.push_back(&entries[idx]);
 
         if (sel.empty()) {
+            // A remote folder of which nothing is in yet: not "0 items".
+            if (entries.empty() && !listingPendingStatus.empty()) {
+                addPart("Loading folder...");
+                return;
+            }
             // Folder summary: entry counts + non-recursive size of its files.
             uint64_t files = 0, folders = 0, bytes = 0;
             for (const FilerEntry& e : entries) {
@@ -16299,6 +16420,16 @@ namespace UltraCanvas {
                 const Point2Di local(event.pointer.x, event.pointer.y);
                 const std::string dest = IncomingDropFolderAt(local, event.droppedFiles);
                 ClearIncomingDrop();
+                // A Save dialog's file icon from another window or program
+                // brings no file: it asks which folder it landed on, and is
+                // saved there. A drive's folder is no place to save to.
+                if (event.dropFolderReply) {
+                    if (compressDlg.active || dest.empty() ||
+                        (isRemotePath && isRemotePath(dest)))
+                        return false;
+                    event.dropFolderReply(dest);
+                    return true;
+                }
                 if (event.droppedFiles.empty()) return false;
                 AcceptDroppedFiles(event.droppedFiles, dest, /*copy=*/true);
                 return true;

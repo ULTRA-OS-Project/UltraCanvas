@@ -37,6 +37,16 @@ if(ULTRAAI_ADAPTER_COMFYUI)
     add_subdirectory(comfyui)
 endif()
 
+# The local runtime (engines and models downloaded on demand, run as
+# supervised processes) and the `local` provider on it. The runtime needs
+# UltraAI_AdapterShared and the siblings of the shared core; the adapter
+# needs the OpenAI one. Each skips itself with a message when it cannot
+# build.
+if(ULTRAAI_LOCAL_RUNTIME)
+    add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
+    add_subdirectory(local)
+endif()
+
 # Real adapters are added here as they land:
 # if(ULTRAAI_ADAPTER_WHISPER)   add_subdirectory(whisper)   endif()
 # if(ULTRAAI_ADAPTER_PIPER)     add_subdirectory(piper)     endif()

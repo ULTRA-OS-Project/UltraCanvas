@@ -9,9 +9,10 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
+// Version: 1.3.0 - ArtToolContext::lockAspectRatio
 // Version: 1.2.0 - ArtToolContext::iconPixel
 // Version: 1.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -107,6 +108,9 @@ struct ArtToolContext {
     std::function<void()> refreshOptions;
     // Icon mode's pixel in document units (0: off): the arrow keys nudge by it.
     double iconPixel = 0;
+    // The transform bar's ratio lock: the selector's handles scale width and
+    // height alike (shift frees a corner handle for the drag).
+    bool lockAspectRatio = false;
 };
 
 class ArtTool {

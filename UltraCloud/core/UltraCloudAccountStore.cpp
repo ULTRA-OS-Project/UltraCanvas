@@ -1,6 +1,7 @@
 // UltraCloud/core/UltraCloudAccountStore.cpp
+// Version: 0.3.0 - a pending upload's completedAt (migration 4)
 // Version: 0.2.0 - pending uploads; accounts that upload straight to the name
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudAccounts.h>
 
@@ -95,6 +96,9 @@ Result AccountStore::Open(const std::string& connectionName, const std::string& 
           "  account_id TEXT PRIMARY KEY,"
           "  server_url TEXT NOT NULL,"
           "  since INTEGER NOT NULL DEFAULT 0);" },
+        { 4, "a pending upload that was complete when the connection went",
+          "ALTER TABLE cloud_pending_uploads"
+          "  ADD COLUMN completed_at INTEGER NOT NULL DEFAULT 0;" },
     };
     return FromDb(UltraDb_Migrate(connection_, steps), "migrate cloud account store");
 }
@@ -185,11 +189,11 @@ Result AccountStore::AddPendingUpload(const PendingUpload& upload) {
         return Result::Error(ResultCode::InvalidArgument, "a pending upload needs an account and a path");
     UltraDbResult r = UltraDb_Exec(connection_,
         "INSERT INTO cloud_pending_uploads(account_id, remote_path, part_name, file_size, "
-        "started_at) VALUES(?,?,?,?,?) ON CONFLICT(account_id, remote_path) DO UPDATE SET "
-        "part_name=excluded.part_name, file_size=excluded.file_size, "
-        "started_at=excluded.started_at",
+        "started_at, completed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(account_id, remote_path) "
+        "DO UPDATE SET part_name=excluded.part_name, file_size=excluded.file_size, "
+        "started_at=excluded.started_at, completed_at=excluded.completed_at",
         { upload.accountId, upload.remotePath, upload.partName ? 1 : 0,
-          static_cast<int64_t>(upload.fileSize), upload.startedAt });
+          static_cast<int64_t>(upload.fileSize), upload.startedAt, upload.completedAt });
     return FromDb(r, "note a pending upload");
 }
 
@@ -209,7 +213,7 @@ Result AccountStore::ListPendingUploads(const std::string& accountId, int64_t no
         { accountId, now - kPendingUploadMaxAgeSeconds });
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
-        "SELECT account_id, remote_path, part_name, file_size, started_at "
+        "SELECT account_id, remote_path, part_name, file_size, started_at, completed_at "
         "FROM cloud_pending_uploads WHERE account_id=? ORDER BY started_at, remote_path",
         { accountId }, rs);
     if (!q) return FromDb(q, "list pending uploads");
@@ -221,6 +225,7 @@ Result AccountStore::ListPendingUploads(const std::string& accountId, int64_t no
         const int64_t size = row["file_size"].AsInt64();
         u.fileSize = size > 0 ? static_cast<uint64_t>(size) : 0;
         u.startedAt = row["started_at"].AsInt64();
+        u.completedAt = row["completed_at"].AsInt64();
         out.push_back(std::move(u));
     }
     return Result::Ok();

@@ -4,9 +4,12 @@ Status: **Draft specification** — reference for the v2 implementation of
 `UltraCanvas/Plugins/Documents/UltraCanvasDocument.*`. Revision **2.1** adds
 layered images (§4.7: the `LAYR` layer stack, several `BMAP` sections, text
 frames that stay text) and pins down what 2.0 left open — the `INDX` layout
-(§4.2.1) and the deflate and gzip stream formats (§2.3). The container itself
-(`UltraCanvasUCDContainer.h`) and layered images (`UCRasterDocument`, `*.ucd`)
-are implemented; the other content types are still to come.
+(§4.2.1) and the deflate and gzip stream formats (§2.3). Revision **2.2**
+defines password protection byte for byte: the `SECU` record and the layout
+of an encrypted section (§4.3.1, §4.3.2). The container itself
+(`UltraCanvasUCDContainer.h`, password protection included) and layered images
+(`UCRasterDocument`, `*.ucd`) are implemented; SuperVault and the other content
+types are still to come.
 
 UCD v2 is a multipurpose container for documents, forms, vector graphics and
 window/UI descriptions, with room for bitmap graphics and video in the future.
@@ -104,7 +107,7 @@ Detection rules:
 | Offset | Size | Field | Values / meaning |
 |---|---|---|---|
 | 12 | 1 | Version major | `2` for this specification |
-| 13 | 1 | Version minor | `1` for this revision (`0`: written before layered images; read the same way) |
+| 13 | 1 | Version minor | `2` for this revision (`1`: before §4.3.1–4.3.2 were defined; `0`: before layered images — all read the same way) |
 | 14 | 1 | Body encoding | `0` = binary (default), `1` = XML text (debug), `2` = JSON text (debug) |
 | 15 | 1 | Default body compression | `0` = none, `1` = deflate, `2` = gzip, `3` = LZMA. Applies to sections that do not override it. Default when writing: `1` (deflate). *Deflate* is a zlib stream (RFC 1950: two header bytes, the deflate data, an Adler-32 checksum) — what HTTP calls the `deflate` coding; *gzip* is a gzip member (RFC 1952). Both carry a checksum, so a damaged section is detected rather than decoded into wrong pixels. |
 | 16 | 1 | Key source | `0` = none (body not encrypted), `1` = password (key derived with Argon2id from the `SECU` parameters), `2` = SuperVault remote authorization (see 4.4). **The cipher is always XChaCha20-Poly1305** — see 4.3. |
@@ -199,7 +202,7 @@ section. A reader iterates by jumping `12 + payloadLength` per section.
 | `SC3D` | One 3D scene/model | Payload starts with the sub-format preamble (4.5). |
 | `NAVI` | Navigation: page order, bookmarks, table of contents, transitions | |
 | `LOCL` | Localization string table for one locale (see 4.6) | One section per locale; loaded on demand via `INDX`. |
-| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. | Never encrypted (it is the input to decryption). |
+| `SECU` | Security parameters: Argon2id salt, passes, memory cost and parallelism, plus permission bits (print/copy/edit/form-fill). Cost parameters are stored rather than assumed, so files written on modest hardware — and files written before the recommended costs are raised — stay readable. Layout in 4.3.1. | Never encrypted or compressed (it is the input to decryption); required when key source = `1`. |
 | `SVLT` | SuperVault remote-authorization record (see 4.4) | Never encrypted or compressed (it is the input to the authorization request); required when key source = `2`. |
 | `XTND` | Reserved for vendor/application extensions | Readers must skip unknown types. |
 
@@ -257,6 +260,54 @@ Per section, in this order:
    `SECU` parameters, or supplied by SuperVault (4.4). Each encrypted section
    carries its own random 192-bit nonce; the section header is passed as
    associated data, so editing it invalidates the tag.
+
+#### 4.3.1 `SECU` layout (key source `1`, password)
+
+| Offset | Size | Field | Meaning |
+|---|---|---|---|
+| 0 | 1 | Record version | `1` |
+| 1 | 1 | KDF | `1` = Argon2id — the only code point |
+| 2 | 1 | AEAD | `1` = XChaCha20-Poly1305 — the only code point |
+| 3 | 1 | Reserved | `0x00` |
+| 4 | 4 | Passes | uint32, Argon2id time cost |
+| 8 | 4 | Memory | uint32, Argon2id memory cost in KiB |
+| 12 | 4 | Parallelism | uint32, Argon2id lanes; `1` |
+| 16 | 16 | Salt | random per save |
+| 32 | 4 | Permissions | uint32, bit 0 print, bit 1 copy, bit 2 edit, bit 3 form-fill (`1` = allowed); advisory — anyone with the password has the content |
+| 36 | 24 | Check nonce | random |
+| 60 | 16 | Check tag | the XChaCha20-Poly1305 tag of an **empty** message under the document key, this nonce, and as associated data the ASCII bytes `UCD-SECU` followed by bytes 0–35 of this record |
+
+The **document key** is 32 bytes of Argon2id over the password's UTF-8 bytes
+with this salt and these costs. The check tag lets a reader tell a wrong
+password ("the password is not right") from a damaged section ("the file is
+damaged") before it decrypts anything, and binds the stored costs, so they
+cannot be lowered without the password.
+
+A reader refuses a record whose costs no honest writer would choose — more
+than 64 passes or more than 4 GiB of memory — before deriving anything, so a
+hostile file cannot make it allocate without bound.
+
+#### 4.3.2 An encrypted section
+
+An encrypted section has bit 0 of its section flags set, and its payload as
+stored is:
+
+| Offset | Size | Field |
+|---|---|---|
+| 0 | 24 | Nonce, random per section and per save |
+| 24 | n | Ciphertext: XChaCha20-Poly1305 of the payload *after* compression — the compression byte names what the decrypted bytes are |
+| 24 + n | 16 | Tag |
+
+The associated data is the section's 12-byte header exactly as stored (type,
+the stored length — `40 + n` — compression byte, flags, reserved), so a
+header edited to name another type, length or compression fails the tag.
+
+Writer rules for key source `1`: the header's `ENCRYPTED` flag is set; the
+`SECU` section comes before every encrypted one; every section is encrypted
+except `INDX`, `SECU`, `SVLT` and, at the writer's choice, `META`. The `INDX`
+still lists every section's type and lengths, as the section headers do — the
+sizes of a protected document are not secret, its content is. `PRIVATE` (§2.4)
+leaves the thumbnail out as well.
 
 **One cipher, one KDF — deliberately.** UCD is our own format, so it offers no
 algorithm menu: every writer emits XChaCha20-Poly1305 with Argon2id, and every
@@ -638,3 +689,13 @@ signature; loaders should keep the v1 read path during a transition period.
 
 A 2.0 reader opens a 2.1 layered image as the 2.0 rules allow: it skips the
 unknown `LAYR` and shows the first `BMAP`, or the thumbnail.
+
+### 7.2 Changes in 2.2
+
+| Aspect | 2.1 | 2.2 |
+|---|---|---|
+| Version minor | `1` | `2` |
+| `SECU` | contents named, layout open | layout defined (4.3.1), with a check tag that tells a wrong password from a damaged file |
+| Encrypted sections | "carries its own nonce" | nonce, ciphertext, tag; the stored header is the associated data (4.3.2) |
+
+Files without a password are written exactly as in 2.1.

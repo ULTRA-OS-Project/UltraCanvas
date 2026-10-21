@@ -7,6 +7,11 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.11.0 - the palette rows under the picker (UltraCanvasColorPaletteManager):
+//                   palettes added from a gallery, an entry set with a right click
+// Version: 1.10.0 - the right panel in SectionCard group boxes with small captions, as
+//                   UltraPaint's; a tool's cards (Tool Options, Gradient, Line) only while it
+//                   is active (UpdateToolCards)
 // Version: 1.9.0 - the transform bar: position, size, scale with a locked aspect ratio,
 //                  rotation and shear of the selection about a reference point
 // Version: 1.8.0 - settings (ArtCreatorSettings): the colour picker opens as it was left
@@ -18,7 +23,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -27,12 +32,13 @@
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasToolGroupButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasColorPicker.h"
-#include "UltraCanvasColorSwatchBar.h"
+#include "UltraCanvasColorPaletteManager.h"
 #include "UltraCanvasGradientEditor.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasReferencePointPicker.h"
@@ -216,6 +222,11 @@ private:
     void SetDisplayQuality(int level);
     static const char* DisplayQualityName(VectorDisplayQuality quality);
     void RebuildToolOptions();
+    // Shows the cards that belong to the active tool and hides the rest:
+    // Tool Options when the tool has any, Gradient with the Fill tool, Line with
+    // the tools that draw lines, and with the Selector or Shape Editor while
+    // a line (an open stroke) is selected.
+    void UpdateToolCards();
     void RebuildLayerPanel();
     void RebuildLinePanel();
     void SyncColourPanelFromSelection();
@@ -240,12 +251,13 @@ private:
     std::shared_ptr<UltraCanvasContainer>       rightPanel;
     std::shared_ptr<UltraCanvasColorPicker>     colorPicker;
     ArtCreatorSettings                          settings;
-    std::shared_ptr<UltraCanvasColorSwatchBar>  swatches;
+    std::shared_ptr<UltraCanvasColorPaletteManager> palettes;   // the palette rows under the picker
     std::shared_ptr<UltraCanvasGradientEditor>  ramp;
-    std::shared_ptr<UltraCanvasContainer>       optionsPanel;
-    std::shared_ptr<UltraCanvasLabel>           optionsTitle;
-    std::shared_ptr<UltraCanvasContainer>       linePanel;
-    std::shared_ptr<UltraCanvasContainer>       layersPanel;
+    // The right panel's cards (SectionCard group boxes, as UltraPaint's).
+    std::shared_ptr<UltraCanvasGroupBox>        optionsPanel;
+    std::shared_ptr<UltraCanvasGroupBox>        fillPanel;
+    std::shared_ptr<UltraCanvasGroupBox>        linePanel;
+    std::shared_ptr<UltraCanvasGroupBox>        layersPanel;
     std::shared_ptr<UltraCanvasContainer>       layerRows;
     std::shared_ptr<UltraCanvasContainer>       statusBar;
     std::shared_ptr<UltraCanvasLabel>           statusPos, statusZoom, statusSelection, statusHint;
@@ -259,7 +271,7 @@ private:
     std::shared_ptr<UltraCanvasButton>          ratioLockButton;
     // The palette's slots: one per group of tools (see PaletteGroups()).
     std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
-    std::shared_ptr<UltraCanvasContainer>       iconPanel;
+    std::shared_ptr<UltraCanvasGroupBox>        iconPanel;
     std::shared_ptr<UltraCanvasDropdown>        iconSizeBox;
     std::shared_ptr<ArtIconPreview>             iconPreview;
     std::shared_ptr<UltraCanvasLabel>           iconCaption;

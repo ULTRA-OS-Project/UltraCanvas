@@ -13,6 +13,7 @@
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 #include "UltraNet/UltraNetMime.h"
+#include "UltraNet/UltraNetSse.h"
 #include "UltraNet/UltraNetUrl.h"
 #include "UltraCanvasPathUtf8.h"
 
@@ -101,6 +102,11 @@ static const UltraNetPluginHost g_pluginHost = {
     &UltraNet_HttpGet,
     &UltraNet_HttpRequest,
     &HttpHeadersSet,
+    // ABI 3
+    &UltraNet_MimeBuildMailMessage,
+    &UltraNet_SseStreamAsync,
+    &UltraNet_CancelRequest,
+    &UltraNet_IsRequestActive,
 };
 
 const UltraNetPluginHost* UltraNet_GetPluginHost() {

@@ -139,6 +139,7 @@ struct PresentedContent {
     std::string body;
     std::string iconFile;         // the absolute path the icon names (a path or file:// URI), else ""
     std::string urgency;          // "low" | "normal" | "critical"
+    std::string launch;           // the application's own note for a click outside the bus, else ""
     bool hasDefaultAction = false;              // a click on it is its "default" action
     std::vector<NotificationAction> buttons;    // its other actions, at most kMaxPresentedButtons
 };
@@ -191,6 +192,24 @@ private:
 // The texts travel as script arguments, never inside the script, so nothing
 // in them is AppleScript.
 std::vector<std::string> AppleScriptNotificationCommand(const PresentedContent& content);
+
+// The Windows presenter's toasts (Windows 10 1903 and later) show under the
+// posting application's own AppUserModelID, so Windows heads them with its
+// name and icon rather than the broker host's. The ID is the application's
+// id with only the characters an AppUserModelID may hold (letters, digits,
+// '.', '-', '_'), at most 128 of them; "" when none is left.
+std::string WindowsToastAppUserModelId(const std::string& appId);
+// The toast as Windows reads it (ToastGeneric): the title and body, the icon
+// file as the application logo, and as each activation's arguments
+// (UltraCanvas::FormatNotificationArguments) the action - "default" for the
+// toast itself when it has a default action, else "", a button's id for the
+// button - with the notification's id and `launch`, so a click handed to the
+// application's own activator after the broker host quit says everything.
+// Silent when the urgency is "low". Every text is escaped.
+std::string WindowsToastXml(const PresentedContent& content);
+// What a toast's activation arguments ask for: a button (Action, its id) or
+// the toast itself (Activated, "").
+PresenterResponse WindowsToastResponse(const std::string& arguments, std::string& actionId);
 
 } // namespace Internal
 } // namespace UltraMessage

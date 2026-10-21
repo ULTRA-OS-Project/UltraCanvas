@@ -14,17 +14,31 @@
 //       One folder for every application (Global) or one per application
 //       (Individual); under Individual a table lists the applications, each
 //       with its own Global | Individual switch and the folder it opens in.
+//   Appearance > Emoji
+//       Which emoji every application draws: the bundled colour font (Noto
+//       Color Emoji), the bundled black-and-white one (Noto Emoji), or the
+//       system's own. Written to Emoji.conf (UltraCanvasEmojiSettings.h);
+//       applications started after the change use it.
+//   Notifications > Registrations
+//       What Windows keeps for each application whose notifications were
+//       shown as toasts: its name and icon, and the program a click starts
+//       (UltraCanvasNotificationActivation.h). Remove all takes it out - what
+//       the installer's uninstaller does, for a folder unpacked from the ZIP,
+//       which has none. Also `UOS-Settings --remove-notification-registrations`.
 //   Devices > Trusted certificates
 //       The network scanners and printers whose self-signed certificate was
 //       trusted on first use (UltraCanvasIODeviceTlsTrust.h), each with a
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.5.0 - Notifications > Registrations: the applications' Windows
+//                  notification registrations, listed and removed
+// Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
 // Version: 0.3.0 - Desktop: at sign-in the Windows desktop, UltraDesktop
 //                  beside Explorer, or UltraDesktop instead of Explorer
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -42,6 +56,7 @@ namespace UltraCanvas {
     class UltraCanvasLabel;
     class UltraCanvasDropdown;
     class UltraCanvasTextInput;
+    class UltraCanvasButton;
     enum class DesktopReplacement;   // UltraCanvasDesktopShell.h
 }
 
@@ -77,6 +92,13 @@ private:
     void RefreshLastFolderPage();
     void SetMode(bool individual);
     void SetAppScope(const std::string& appName, bool individual);
+    void BuildEmojiPage();
+    // Re-reads Emoji.conf into the page's switch.
+    void RefreshEmojiPage();
+    void BuildNotificationsPage();
+    // Re-reads the registrations into the page's table.
+    void RefreshNotificationsPage();
+    void RemoveNotificationRegistrations();
     void BuildCertificatesPage();
     // Re-reads DeviceCertificates.conf and shows a row per device in it.
     void RefreshCertificatesPage();
@@ -110,6 +132,17 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> tableRows_;   // scrolls
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> tableNote_;
     std::map<std::string, AppRow> rows_;
+
+    // ----- Emoji -----
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> emojiStyle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> emojiStatus_;
+
+    // ----- Notification registrations -----
+    // The rows are rebuilt on every refresh: nothing in a row has a callback.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> registrationRows_;   // scrolls
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> registrationNote_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> registrationStatus_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> removeRegistrations_;
 
     // ----- Trusted certificates -----
     // One row per device, made once and hidden when its key is forgotten: the

@@ -1,6 +1,8 @@
 // UltraCloud/providers/UltraCloudGoogleDrive.cpp
+// Version: 0.5.0 - a download is written to disk as it arrives (DownloadToFile),
+//                  an upload sent from the file as it goes (bodyFilePath)
 // Version: 0.4.0 - each further page of a listing is logged
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudGoogleDrive.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -223,18 +225,17 @@ Result GoogleDriveProvider::UploadResumable(const Credentials& credentials,
 
     // The chunks. Google answers 308 (Resume Incomplete) to every chunk but
     // the last, which must not be followed as a redirect.
-    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
-    if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
-    std::vector<uint8_t> chunk;
+    // Each chunk is read from the file as it is sent.
     for (int64_t offset = 0; offset < total; offset += chunkSize_) {
         const int64_t length = std::min(chunkSize_, total - offset);
-        ReadChunk(is, offset, length, chunk);
         UltraNetHttpRequest put;
         put.url = sessionUri;
         put.method = UltraNetHttpMethod::Put;
         put.headers.Set("Content-Range", ContentRange(offset, length, total));
         put.headers.Set("Content-Type", "application/octet-stream");
-        put.body = chunk;
+        put.bodyFilePath = localPath;
+        put.bodyFileOffset = offset;
+        put.bodyFileLength = length;
         put.options.followRedirects = false;
         put.options.timeoutMs = 600000;
         UltraNetResponse putResp;
@@ -261,19 +262,22 @@ Result GoogleDriveProvider::Upload(const Account&, const Credentials& credential
     if (total > simpleUploadLimit_)
         return UploadResumable(credentials, localPath, total, Leaf(p), parentId, existing, what);
 
-    std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
-    if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
-    std::string data((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-
     UltraNetHttpRequest req;
     if (!existing.empty()) {
-        // Same name already there: replace its content in place.
+        // Same name already there: replace its content in place, read from
+        // the file as it is sent.
         req.url = std::string(kUpload) + "/files/" + existing + Query({{"uploadType", "media"}});
         req.method = UltraNetHttpMethod::Custom;
         req.customMethod = "PATCH";
         req.headers.Set("Content-Type", "application/octet-stream");
-        req.body = Bytes(data);
+        req.bodyFilePath = localPath;
     } else {
+        // A multipart body frames the bytes between the metadata and the
+        // closing boundary, so it is put together in memory - at most
+        // simpleUploadLimit_ (5 MB); anything larger went resumable above.
+        std::ifstream is(UltraCanvas::PathFromUtf8(localPath), std::ios::binary);
+        if (!is) return Result::Error(ResultCode::IoError, "cannot read " + localPath);
+        std::string data((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
         JSONValue meta = JSONValue::MakeObject();
         meta.Set("name", Leaf(p));
         JSONValue parents = JSONValue::MakeArray();
@@ -302,15 +306,8 @@ Result GoogleDriveProvider::Download(const Account&, const Credentials& credenti
     if (!rid) return rid;
     UltraNetHttpRequest req;
     req.url = std::string(kApi) + "/files/" + id + Query({{"alt", "media"}});
-    UltraNetResponse resp;
-    UltraNetResult net = Send(credentials, req, resp);
-    Result r = FromHttp(net, resp, "download " + remotePath);
-    if (!r) return r;
-    std::ofstream os(UltraCanvas::PathFromUtf8(localPath), std::ios::binary | std::ios::trunc);
-    if (!os) return Result::Error(ResultCode::IoError, "cannot write " + localPath);
-    os.write(reinterpret_cast<const char*>(resp.body.data()),
-             static_cast<std::streamsize>(resp.body.size()));
-    return os ? Result::Ok() : Result::Error(ResultCode::IoError, "cannot write " + localPath);
+    // Written to disk as it arrives, not held in memory first.
+    return DownloadToFile(credentials, std::move(req), localPath, "download " + remotePath);
 }
 
 Result GoogleDriveProvider::CreateShareLink(const Account&, const Credentials& credentials,

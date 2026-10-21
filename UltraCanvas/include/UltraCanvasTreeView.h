@@ -1,7 +1,11 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-15 - SetFilterText: show only the rows matching a text, expanded
-//                to them, and put the tree back when the filter ends (TreeNode::IsShown)
+// Last Modified: 2026-10-19 - TreeNodeData::loading: a row whose children are being
+//                fetched slides a thin bar along its foot (SetLoadingBarColor)
+//                (2026-10-19: onDropFolderOfNode: the folder a node stands for, for a
+//                Save dialog's file icon dropped on it from another window or program)
+//                (2026-10-15: SetFilterText: show only the rows matching a text, expanded
+//                to them, and put the tree back when the filter ends (TreeNode::IsShown))
 //                (2026-10-13: the tree takes the keyboard focus; arrows, Page Up/Down,
 //                Home, End, Enter and Space act on the focused tree (UCKeys, every platform))
 //                (2026-10-12: GetDropTargetNode, the row a drag would drop on)
@@ -15,6 +19,8 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
 #include "UltraCanvasSmoothScroll.h"
+#include "UltraCanvasTimer.h"
+#include <chrono>
 #include <vector>
 #include <string>
 #include <memory>
@@ -149,6 +155,12 @@ struct TreeNodeData {
     // increasing value each time the variable is read/written so the most recently
     // accessed entries can float to the top.
     uint64_t accessSequence = 0;
+    // The node's children are being fetched - a lazy-loading host waiting on a
+    // server: the row slides a thin bar along its foot (the tree's
+    // loadingBarColor) until the host clears this and redraws. In place of a
+    // placeholder child whose text says "loading"; the host keeps such a child
+    // only for the expand button, hidden (visible = false).
+    bool loading = false;
 
     TreeNodeData() = default;
     TreeNodeData(const std::string& id, const std::string& displayText) 
@@ -278,6 +290,17 @@ private:
     Color checkboxBorderColor = Color(0x70, 0x70, 0x78);       // check flag box outline
     Color checkboxCheckColor = Color(0x21, 0x7A, 0x35);        // tick / mixed square
     Color dropTargetColor = Color(0x33, 0x99, 0xFF, 0x66); // drag-drop target row
+    // The bar a row whose children are being fetched (TreeNodeData::loading)
+    // slides along its foot: the accent blue.
+    Color loadingBarColor = Color(37, 99, 235, 255);
+    // Keeps those bars sliding while one is on screen: a 40 ms timer started
+    // by the frame that drew one and stopped by the first that drew none (and
+    // by the destructor). The clock the bars' position follows.
+    TimerId loadingTimer = InvalidTimerId;
+    std::chrono::steady_clock::time_point loadingSince{};
+    bool loadingDrawn = false;   // this frame drew a loading row
+    void DrawLoadingBar(IRenderContext *ctx, int x, int nodeY, int width);
+    void UpdateLoadingTicks();
     // The dashed outline round the focused row while the tree holds the
     // keyboard focus. Transparent (the default) picks a colour that shows on
     // the row: white on the selection background, the selection colour on
@@ -343,6 +366,11 @@ public:
     // that carries no files and so ends without a Drop (the file dialog's
     // Save icon, UltraCanvasFileDragIcon): its owner asks here on release.
     TreeNode* GetDropTargetNode() const { return dropTargetNode; }
+    // The local folder `node` stands for, or "" when it stands for none. Asked
+    // when a Save dialog's file icon from another window or program is
+    // dropped on a node onFilesDragAccept accepts (a Drop carrying
+    // UCEvent::dropFolderReply): the file is saved in that folder.
+    std::function<std::string(TreeNode* node)> onDropFolderOfNode;
     // Right mouse button released over a node. The event is passed along so a
     // handler can open a context menu at the pointer (event.pointerWindow).
     // A right press never changes the selection — the menu acts on the node
@@ -357,6 +385,7 @@ public:
                         float w, float h);
 
     UltraCanvasTreeView(const std::string& identifier = "TreeView");
+    ~UltraCanvasTreeView() override;
 
     // ===== TREE STRUCTURE MANAGEMENT =====
     TreeNode* SetRootNode(const TreeNodeData& rootData);
@@ -510,6 +539,9 @@ public:
     // The focus ring's colour; Colors::Transparent restores the automatic
     // choice (white on a selected row, the selection colour elsewhere).
     void SetFocusRingColor(const Color &color) { focusRingColor = color; RequestRedraw(); }
+    // The bar a loading row (TreeNodeData::loading) slides along its foot.
+    void SetLoadingBarColor(const Color &color) { loadingBarColor = color; RequestRedraw(); }
+    const Color& GetLoadingBarColor() const { return loadingBarColor; }
     const Color& GetFocusRingColor() const { return focusRingColor; }
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }

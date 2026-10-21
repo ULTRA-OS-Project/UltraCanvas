@@ -18,12 +18,16 @@
 //
 // For "true" frame-accurate demuxing, hand the bytes off to ffmpeg /
 // GStreamer — same caveat as the RTSP plug-in.
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 
 #include <curl/curl.h>
@@ -78,64 +82,72 @@ public:
         return {"rtmp", "rtmps", "rtmpe", "rtmpt", "rtmpte", "rtmpts"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {
-        std::lock_guard<std::mutex> lk(g_sessionsMutex);
-        g_sessions.clear();
+        ultranet_plugin::GuardedVoid([&]() {
+            std::lock_guard<std::mutex> lk(g_sessionsMutex);
+            g_sessions.clear();
+        });
     }
 
     UltraNetHandle OpenStream(const std::string& url,
                               const UltraNetStreamOptions& options) override {
-        if (!LibcurlHasRtmp()) return UltraNetInvalidHandle;
-        if (url.empty()) return UltraNetInvalidHandle;
-        // libcurl recognises the rtmp* schemes natively — no rewrite needed.
+        return ultranet_plugin::GuardedHandle([&]() -> UltraNetHandle {
+            if (!LibcurlHasRtmp()) return UltraNetInvalidHandle;
+            if (url.empty()) return UltraNetInvalidHandle;
+            // libcurl recognises the rtmp* schemes natively — no rewrite needed.
 
-        auto s = std::make_shared<Session>();
-        s->url  = url;
-        s->easy = curl_easy_init();
-        if (!s->easy) return UltraNetInvalidHandle;
+            auto s = std::make_shared<Session>();
+            s->url  = url;
+            s->easy = curl_easy_init();
+            if (!s->easy) return UltraNetInvalidHandle;
 
-        curl_easy_setopt(s->easy, CURLOPT_URL, url.c_str());
-        curl_easy_setopt(s->easy, CURLOPT_CONNECT_ONLY, 1L);
-        curl_easy_setopt(s->easy, CURLOPT_NOSIGNAL, 1L);
-        if (options.connectTimeoutMs > 0) {
-            curl_easy_setopt(s->easy, CURLOPT_CONNECTTIMEOUT_MS,
-                             static_cast<long>(options.connectTimeoutMs));
-        }
+            curl_easy_setopt(s->easy, CURLOPT_URL, url.c_str());
+            curl_easy_setopt(s->easy, CURLOPT_CONNECT_ONLY, 1L);
+            curl_easy_setopt(s->easy, CURLOPT_NOSIGNAL, 1L);
+            if (options.connectTimeoutMs > 0) {
+                curl_easy_setopt(s->easy, CURLOPT_CONNECTTIMEOUT_MS,
+                                 static_cast<long>(options.connectTimeoutMs));
+            }
 
-        if (curl_easy_perform(s->easy) != CURLE_OK) return UltraNetInvalidHandle;
+            if (curl_easy_perform(s->easy) != CURLE_OK) return UltraNetInvalidHandle;
 
-        const UltraNetHandle h =
-            g_nextHandle.fetch_add(1, std::memory_order_relaxed);
-        s->handle = h;
-        {
-            std::lock_guard<std::mutex> lk(g_sessionsMutex);
-            g_sessions[h] = s;
-        }
-        return h;
+            const UltraNetHandle h =
+                g_nextHandle.fetch_add(1, std::memory_order_relaxed);
+            s->handle = h;
+            {
+                std::lock_guard<std::mutex> lk(g_sessionsMutex);
+                g_sessions[h] = s;
+            }
+            return h;
+        });
     }
 
     UltraNetResult ReadFrame(UltraNetHandle handle,
                              std::vector<uint8_t>& outFrame) override {
-        outFrame.clear();
-        auto s = Find(handle);
-        if (!s) return UltraNetResult::Error(
-            UltraNetResultCode::InvalidHandle, "no such RTMP session");
+        return ultranet_plugin::Guarded("ReadFrame", [&]() -> UltraNetResult {
+            outFrame.clear();
+            auto s = Find(handle);
+            if (!s) return UltraNetResult::Error(
+                UltraNetResultCode::InvalidHandle, "no such RTMP session");
 
-        constexpr std::size_t kChunk = 8 * 1024;
-        std::vector<uint8_t> buf(kChunk);
-        std::size_t got = 0;
-        const CURLcode rc = curl_easy_recv(s->easy, buf.data(), buf.size(), &got);
-        if (rc != CURLE_OK && rc != CURLE_AGAIN) {
-            return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
-                                         curl_easy_strerror(rc));
-        }
-        if (got > 0) {
-            buf.resize(got);
-            outFrame = std::move(buf);
-        }
-        return UltraNetResult::Ok();
+            constexpr std::size_t kChunk = 8 * 1024;
+            std::vector<uint8_t> buf(kChunk);
+            std::size_t got = 0;
+            const CURLcode rc = curl_easy_recv(s->easy, buf.data(), buf.size(), &got);
+            if (rc != CURLE_OK && rc != CURLE_AGAIN) {
+                return UltraNetResult::Error(UltraNetResultCode::ReceiveFailed,
+                                             curl_easy_strerror(rc));
+            }
+            if (got > 0) {
+                buf.resize(got);
+                outFrame = std::move(buf);
+            }
+            return UltraNetResult::Ok();
+        });
     }
 };
 

@@ -15,6 +15,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasLanguageDetect.h"
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasPathUtf8.h"
@@ -90,6 +91,12 @@ void ShowEditDialog(UltraCanvasWindowBase* parent, UltraCanvasClipboardHistory& 
     if (entry.kind == ClipboardEntryKind::Code) {
         if (auto* app = UltraCanvasApplication::GetInstance()) {
             area->SetFontFamily(app->GetDefaultMonospacedFontStyle().fontFamily);
+        }
+        // Coloured as the language it is written in, when the text says.
+        const std::string language = DetectLanguageFromContent(state->originalText);
+        if (!language.empty() && language != "Markdown") {
+            area->SetHighlightSyntax(true);
+            area->SetProgrammingLanguage(language);
         }
     }
 

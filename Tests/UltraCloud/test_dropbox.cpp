@@ -4,6 +4,7 @@
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
+#include "test_request_body.h"
 
 #include <UltraCloud/UltraCloudDropbox.h>
 
@@ -21,7 +22,8 @@ UltraNetResult Fail(const std::string& m) { UltraNetResult r; r.success = false;
 void Answer(UltraNetResponse& resp, int status, const std::string& body) {
     resp.statusCode = status; resp.body.assign(body.begin(), body.end());
 }
-std::string Body(const UltraNetHttpRequest& req) { return std::string(req.body.begin(), req.body.end()); }
+// Uploads name their file rather than carry its bytes: read either way.
+std::string Body(const UltraNetHttpRequest& req) { return RequestBody(req); }
 } // namespace
 
 TEST(dropbox_paths) {
@@ -164,4 +166,31 @@ TEST(dropbox_large_upload_uses_a_session) {
     REQUIRE(dropbox.Upload(a, c, dir + "/two.bin", "/two.bin"));
     REQUIRE_EQ(endpoints.size(), (size_t)3);
     REQUIRE_EQ(bodies[2], std::string("0123456789"));
+}
+
+// A download its caller called off (UltraNet_SetThreadAbortCheck: UltraFiler
+// stopping a preview copy nobody waits for any more) ends as Cancelled, not
+// as a network failure - even when the service had already answered 200 and
+// the body was cut short - and nothing is written.
+TEST(dropbox_a_download_called_off_is_cancelled) {
+    HttpFn fake = [](const UltraNetHttpRequest&, UltraNetResponse& resp) {
+        resp.statusCode = 200;
+        resp.transferError = "Callback aborted";
+        UltraNetResult r;
+        r.success = false;
+        r.code = UltraNetResultCode::Cancelled;
+        r.message = "Callback aborted";
+        return r;
+    };
+    DropboxProvider dropbox(fake);
+    Account a; Credentials c; c.token = "tok";
+    const std::filesystem::path dir =
+            std::filesystem::temp_directory_path() / "ultracloud-dropbox-cancel";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string target = UltraCanvas::PathToUtf8(dir / "big.mp4");
+    const Result r = dropbox.Download(a, c, "/big.mp4", target);
+    REQUIRE(r.code == ResultCode::Cancelled);
+    REQUIRE(!std::filesystem::exists(dir / "big.mp4"));
+    std::filesystem::remove_all(dir);
 }

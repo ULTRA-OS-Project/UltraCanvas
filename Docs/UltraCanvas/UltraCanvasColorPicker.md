@@ -12,6 +12,7 @@
   - [Light and dark styles](#light-and-dark-styles)
   - [Compact (sliders-only) variant](#compact-sliders-only-variant)
 - [Colour Space Helpers](#colour-space-helpers)
+- [Foreground-only picker](#foreground-only-picker)
 - [Interaction Summary](#interaction-summary)
 - [Screen colour picker (eyedropper)](#screen-colour-picker-eyedropper)
 
@@ -198,6 +199,9 @@ namespace UltraCanvas {
 
         void SetShowColorWheel(bool show);               // compact mode when false
         void SetShowAlpha(bool show);
+        // false: foreground only - one swatch, no swap arrow, the right
+        // button edits the same colour (a palette entry's editor)
+        void SetShowBackgroundColor(bool show);
 
         // Foreground = current swatch, Background = previous swatch.
         Color GetForegroundColor() const;
@@ -335,6 +339,24 @@ void  RGBToHSL(const Color& c, float& h, float& s, float& l);
 Color HSLToRGB(float h, float s, float l, uint8_t a = 255);
 // HSV -> RGB is provided by the existing global Color HSV(h, s, v, a) helper.
 ```
+
+## Foreground-only picker
+
+A picker that edits one colour - a palette entry, a single fill - has no
+background colour to offer. `SetShowBackgroundColor(false)` takes it away:
+only the foreground swatch is drawn, the swap arrow is gone, and the right
+button (on the colour controls and on the eyedropper) edits the foreground as
+the left one does, so `onBackgroundChanged` never fires.
+
+```cpp
+auto entryPicker = CreateColorPicker("entry", Color(229, 57, 53, 255), 0, 0, 212, 300);
+entryPicker->SetStyle(ColorPickerStyle::Light());
+entryPicker->SetShowBackgroundColor(false);
+entryPicker->SetAutoHeight(true);
+```
+
+`UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
+opens one in a popup when a palette swatch is right-clicked.
 
 ## Interaction Summary
 

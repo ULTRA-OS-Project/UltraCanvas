@@ -17,7 +17,7 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
  toolbar:   new open save | undo redo | zoom- zoom+ fit 100% | new layer export
  ┌────┬──────────────────────────────────────┬──────────────────┐
  │tool│                                      │ Colour           │
- │pal-│         paint surface                │  picker, swatches│
+ │pal-│         paint surface                │  picker, palettes│
  │ette│   (zoom, pan, grid, marching ants)   │ Tool Options     │
  │    │                                      │ Layers           │
  └────┴──────────────────────────────────────┴──────────────────┘
@@ -30,6 +30,15 @@ folds its channels (the HSV / HSL / RGB tabs and sliders) away under
 *Channels*. It is as tall as what it shows, so the panels below move up and
 down with it, and it opens with the design and the channels it was left with
 (`picker.design` and `picker.channels` in the settings file).
+
+Under the picker are the colour palettes, one row of swatches each. A click
+on a swatch picks its colour; a right click opens a small picker that changes
+that one entry (*Revert* puts it back). The **+** at the end of the last row
+opens a gallery of colour schemes - basics, moods, design systems, retro
+machines and indexed palettes up to 256 colours for a GIF - and a scheme's
+own **+** adds it as another row. With several rows each one ends in a **−**
+that takes it away. The rows, edited colours included, are kept in the
+settings file (`picker.palettes`).
 
 ## Tools
 
@@ -143,7 +152,8 @@ JPEG, ...) holds the text as the pixels it shows.
 
 - **File:** New (presets, background), New Window, Open, Import Image
   (merge into this image or open a new window), Save, Save As, Export with
-  Options (the framework's format dialog), Quit.
+  Options (the framework's format dialog), Password Protection (see *Files*),
+  Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
   as New Image, Paste Last Copied Image (Ctrl+Alt+V), Delete, Fill with
   Foreground / Background, Settings. When Paste finds no picture on the
@@ -224,16 +234,34 @@ a list of its own. *Save* / *Save As* write the flattened image in the
 format of the extension; *Export with Options* adds the per-format knobs.
 Layered work is kept in one of the two **layered images** FileLoader lists:
 
-- **`.ucd`, an UltraCanvas layered image** - the UCD 2.1 container
+- **`.ucd`, an UltraCanvas layered image** - the UCD 2.2 container
   (`Docs/UltraCanvas/UCD-FileFormat-v2.md`): every layer's pixels, name,
   visibility, lock, opacity and blend mode, a text layer's words as a text
-  frame, and a thumbnail a file manager or UltraViewer shows without opening
-  the layers;
+  frame, and a thumbnail a file manager shows without opening the layers
+  (UltraViewer shows the layers themselves, at full size); it can be
+  password-protected (below);
 - **`.ucraster`, an UltraPaint project** - a ZIP with `document.json` and one
   PNG per layer, and for a text layer its words as an OpenDocument text
   (`layers/<n>.odt`).
 
 Both open with their layers, and their text layers as text again.
+
+**Password protection.** *File > Password Protection...* gives the image a
+password (typed twice): saved as a `.ucd`, the file is then encrypted with
+it - UCD 2.2, an Argon2id key and XChaCha20-Poly1305 for every section - and
+nothing in it opens without the password, which cannot be recovered. *Hide
+the preview too* leaves the thumbnail out as well, so a file manager shows
+nothing of the picture. The same dialog changes the password or removes the
+protection; either takes effect at the next save. Opening a protected `.ucd`
+(Open, a drop, the command line) asks for its password, and again if it is
+not right; once open, *Save* keeps it protected. So does every other way a
+file comes in: each protected file of a multi-file drop in turn, and a
+protected file copied in a file manager and pasted - *Paste as New Layer*
+or *Paste as New Image*, which keeps its password like the file opened. *Save* or *Save As* to any
+other format says first that the file goes without the protection - only a
+`.ucd` carries a password. Needs the framework built with libsodium
+(UltraCrypt); without it the dialog says so and nothing is written
+unprotected that was meant to be protected.
 
 ### Dropping a file on the canvas
 
@@ -268,6 +296,20 @@ graphics plugins the application registers: **DXF**, **DWG**, **EMF** and
 [`UltraCanvasVectorRaster`](../../Docs/UltraCanvas/UltraCanvasVectorRaster.md);
 `GetVectorRasterExtensions()` is what the running build can actually
 rasterize, and it is what the Open dialog's filter lists.
+
+A **password-protected PDF** asks for its password first - the page cannot
+even be measured without it - and again, saying so, while it is not right;
+then the raster-size question comes as for any drawing, and the page is
+rendered with the password. Cancel imports nothing. Of several files dropped
+together, each protected one asks for its password in turn, once the one
+before it is on the canvas; Cancel leaves just that file out and the rest
+come in. Files dropped together often share a password, or a few, so every
+password given in the drop (up to eight) is tried on the next protected file
+- the one that last opened a file first - and a file one of them opens comes
+in without a question; only when none fits is the password asked for, saying
+so. They are held in buffers that are zeroed when freed, and only until the
+drop has been read - or until the screen locks, after which the files still
+to come ask for their passwords again.
 
 ### 3D models
 

@@ -3,12 +3,13 @@
 // engine family. The built-in SQLite driver implements these same interfaces;
 // PostgreSQL / MySQL / ... arrive as additional drivers (Stage 2+ ships them
 // as loadable DSOs) without changing the core or any caller.
-// Version: 0.1.0 (Stage 1)
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraDatabaseCore.h"
 #include "UltraDatabaseValue.h"
+#include "UltraDatabaseSchema.h"
 
 #include <memory>
 #include <string>
@@ -22,6 +23,16 @@ public:
     virtual ~IUltraDbStatement() = default;
     virtual UltraDbResult Execute(const UltraDbParams& params,
                                   UltraDbResultSet& out) = 0;
+};
+
+// An open forward-only cursor over one query's rows (UltraDb_OpenCursor).
+// Fetch appends up to `maxRows` rows to `out` (cleared first, columns always
+// set) and sets `exhausted` once the last row has been read. Destroying the
+// cursor releases it on the engine.
+class IUltraDbCursor {
+public:
+    virtual ~IUltraDbCursor() = default;
+    virtual UltraDbResult Fetch(size_t maxRows, UltraDbResultSet& out, bool& exhausted) = 0;
 };
 
 // A live physical connection to one database.
@@ -62,6 +73,81 @@ public:
     // serialises writers wants no clause at all - and because SQLite rejects
     // "FOR UPDATE" outright.
     virtual std::string RowLockSuffix() const { return std::string(); }
+
+    // A name quoted for this engine's SQL text. The default is the SQL
+    // standard - double quotes, a quote inside doubled - which SQLite and
+    // PostgreSQL take; MySQL overrides it with backticks. The core has
+    // already refused an empty name and a NUL byte before this is called.
+    virtual std::string QuoteIdentifier(const std::string& name) const {
+        std::string out;
+        out.reserve(name.size() + 2);
+        out.push_back('"');
+        for (char c : name) {
+            if (c == '"') out.push_back('"');
+            out.push_back(c);
+        }
+        out.push_back('"');
+        return out;
+    }
+
+    // Every statement of a script with its own outcome (UltraDb_ExecBatch),
+    // stopping after the first that fails. The default runs the script as
+    // ExecuteDirect's batch does and reports it as one statement, so a driver
+    // that cannot split still answers.
+    virtual UltraDbResult ExecuteBatch(const std::string& sql,
+                                       std::vector<UltraDbStatementResult>& out) {
+        out.clear();
+        UltraDbStatementResult one;
+        one.sql = sql;
+        one.result = ExecuteDirect(sql, {}, one.rows);
+        one.returnsRows = !one.rows.Columns().empty();
+        UltraDbResult r = one.result;
+        out.push_back(std::move(one));
+        return r;
+    }
+
+    // Ask the engine to stop the statement now running on this connection,
+    // from any thread (UltraDb_CancelQuery). Must not wait for the connection
+    // to be free - the running statement holds it. The statement then fails
+    // with Cancelled; with nothing running, nothing happens.
+    virtual UltraDbResult Cancel() {
+        return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                    "this driver cannot cancel a query", DriverName());
+    }
+
+    // A forward-only cursor over `sql`'s rows, read a page at a time
+    // (UltraDb_OpenCursor), so a result too large to hold is never held.
+    virtual std::unique_ptr<IUltraDbCursor> OpenCursor(const std::string& sql,
+                                                       const UltraDbParams& params,
+                                                       UltraDbResult& error) {
+        (void)sql; (void)params;
+        error = UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                     "this driver has no cursors", DriverName());
+        return nullptr;
+    }
+
+    // Introspection, behind UltraDb_ListSchemas / ListObjects / DescribeTable
+    // (UltraDatabaseSchema.h). A driver that cannot answer keeps these
+    // defaults and the caller is told Unsupported.
+    virtual UltraDbResult ListSchemas(std::vector<std::string>& out) {
+        out.clear();
+        return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                    "this driver cannot list schemas", DriverName());
+    }
+    virtual UltraDbResult ListObjects(const std::string& schema,
+                                      std::vector<UltraDbObjectSummary>& out) {
+        (void)schema;
+        out.clear();
+        return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                    "this driver cannot list objects", DriverName());
+    }
+    virtual UltraDbResult DescribeTable(const std::string& schema, const std::string& table,
+                                        UltraDbTableSchema& out) {
+        (void)schema; (void)table;
+        out = UltraDbTableSchema{};
+        return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                    "this driver cannot describe tables", DriverName());
+    }
 };
 
 // A driver: a factory that opens connections for one or more driver ids.

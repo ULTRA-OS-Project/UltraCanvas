@@ -55,7 +55,12 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   and the splitter between them can still be dragged in between. Each pane
   carries a **header row** of a folder-tree button and the pane's own path
   bar, which navigates that pane - so the navigation row's path bar is
-  hidden while the split view is on. The **preview pane** sits under the
+  hidden while the split view is on. Turning the split view off **retires the
+  right-hand display** the way a closed tab's is retired: its background work
+  is told to stop and the display is destroyed once it has, so nothing runs
+  on behind the hidden pane and the window never waits for it. Turning the
+  split view on again makes a new display on the same folder, with the same
+  Back / Forward history. The **preview pane** sits under the
   right-hand pane's path bar, beside that display, with a splitter of its
   own; the two displays stay equal beside it. The **tree button** docks the
   folder tree down the left of that display, under its header, and takes it
@@ -263,9 +268,16 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     connection is closed once the drive has been quiet for 15 seconds.
   - **Every connection step is shown, and kept.** While a drive is busy the
     status bar shows the step its connection is at — *Connecting to
-    203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and the
-    folder view's *Loading folder* notice names the same step with how long
-    it has waited. Every job (opening a folder, an upload, a delete, a
+    203.0.113.7:21...*, *Response: 230 Logged in*, *Command: MLSD* — and,
+    for a folder being opened or updated, what it waits for with how long it
+    has waited. The folder display itself is not covered: a thin blue bar
+    slides along its foot while the folder is fetched, over the files it
+    showed before (after an upload, a rename or a delete they stay on screen
+    until the update is in, and each file of a batch upload appears as it
+    lands), or over an empty area the first time; in the folder tree, a
+    drive's folder whose subfolders are being read slides the same bar along
+    its own row, and the status bar says what it waits for when you expanded
+    it. Every job (opening a folder, an upload, a delete, a
     folder fetched ahead) is recorded in the **connection log**: the round
     button with the network symbol in the bottom-left corner of a folder
     display opens it. It is there only while that display shows a folder on
@@ -308,14 +320,22 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     about the way a local paste is - Keep both (uploaded as "name (2)"),
     Replace, Skip or Stop, with Apply to all - after a fresh look at the
     folder, so a file put there since it was opened counts too. Settings >
-    Handling's standing answer applies.
+    Handling's standing answer applies. The look goes ahead of everything
+    queued for the drive, and beside an upload or download in progress on a
+    connection of its own, so the question comes in about a second rather
+    than when that transfer ends (a server that takes one connection at a
+    time has it wait behind the transfer instead). A file still uploading to
+    that folder, or waiting to, counts as there.
   - **An FTP upload replaces a file only once it is complete.** An upload to
     an FTP or SFTP drive goes to a hidden part name (`.name.part`) and is
     renamed to its own name when the last byte is in, so the file it
     replaces stays whole until then; what one that did not finish left is
     removed before the next request to the drive, in this session or a later
-    one. UltraCloud does this (`UltraCloudUploads.h`), and its steps are in
-    the connection log.
+    one. One that was complete when the connection went, before its rename,
+    is given its name by that request instead - replacing the file there if
+    it finished within the hour, otherwise beside it as "name (2)". UltraCloud
+    does this (`UltraCloudUploads.h`), and its steps are in the connection
+    log.
   - **A service that limits requests is waited out.** When a cloud service
     answers that it is limiting requests, the drive waits as long as it
     asks (1, 2, 4 s when it does not say) and asks again, up to three times;
@@ -340,7 +360,16 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     cache folder and shown in the preview pane. The copy is kept for two
     weeks after its last use and fetched again if the file changes on the
     server. Files over 64 MB are not fetched for a preview. Video, audio,
-    documents and text on a drive are not previewed.
+    documents and text on a drive are not previewed. A copy being fetched
+    never holds the drive up, on an FTP drive or a cloud drive alike: it is
+    called off when you ask the drive for anything else (and fetched again
+    after that), when the selection moves to another file, and when the
+    window closes - also while a cloud service makes it wait out a rate
+    limit. A copy that was called off part-way keeps what had arrived, and
+    the next fetch of that file continues from there instead of starting
+    over (FTP's REST, an HTTP Range; a server that cannot continue sends the
+    whole file). A partial copy is kept for a day, and 256 MB of them at
+    most - the newest first; the cache's sweep removes the rest.
   - **RAM discs.** *+ Drive > RAM disc...* asks for a name and a size and
     creates a disc in memory (VirtualFS's RAM disc API, wrapped by
     `UltraFilerRamDisks`), which then opens in the folder view and gets a row
@@ -388,7 +417,11 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   leaving the one on display. The peek is live: double-clicking a subfolder
   in it descends further, a file activated in it opens with its OS default
   application, files can be dropped into it, and its context menu offers
-  the usual file commands (only the hover icon menu stays off). While
+  the usual file commands (only the hover icon menu stays off). Selecting
+  more files with **Ctrl** held (Ctrl+click, a Ctrl marquee, Ctrl+A) leaves
+  the pane as it is, so the window does not rearrange itself while a
+  multiple selection is gathered; the next selection made without Ctrl
+  updates it. While
   nothing previewable is selected the pane folds away, so the folder
   display always gets the whole width — the Preview toggle only enables /
   disables the feature, and **Esc** closes an open preview (turning the
@@ -544,6 +577,7 @@ the first time the new version runs.
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves. **Confirmation** — whether the drop asks before it is carried out: **Always**, **Only when files are moved** (the default) or **None**. The question names how many entries are about to be moved or copied and into which folder; files dragged in from another program are copies, so only *Always* asks about those |
 | Handling > Opening files | **Double-click (or Enter) on a file** — **Start the registered program**, the way Explorer and the Finder do (the default on Windows), or **Show it in the preview**, keeping the file inside UltraFiler (the default on Linux and macOS). A file type this system has no program for is previewed either way, so the setting never turns a double-click into nothing happening; a file that cannot be previewed always goes to the system, and the context menu's *Open with* starts a program whichever is set |
+| Handling > Protected files | **Forget passwords after** — how long UltraFiler may go without a key press, click or mouse movement before the preview forgets the passwords its **Unlock** was given and shows a file it unlocked locked again: a slider from *Never* to 120 minutes, 10 by default. Locking the screen forgets them at once whatever is set; *Never* leaves only that |
 | Handling > Tabs | **New tab** — what the **"+"** at the end of the tab strip opens: a **new view of the current folder** (the default) or the **Home folder**. Only the "+" follows this; a tab opened on a named folder — the containing folder of a search result, an entry of the History or Favorites view — still opens on that folder |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |
 | Extras > History & Favorites | **Limit of entries** — how many entries each of the History view's three lists keeps: a slider from 10 to 1000, 300 by default. The limit counts *per section*, so Files, Folders and Apps each keep that many and a day of opening documents cannot push the remembered applications out. Lowering it takes effect at once — the oldest entries past the new limit are dropped and `history.txt` rewritten, not left on disk until some later restart. Also clears the recently-used lists, the pinned entries, and the per-folder view settings |

@@ -1,7 +1,7 @@
 // core/UltraCanvasColorSwatchBar.cpp
 // Platform-independent colour swatch strip implementation.
-// Version: 1.1.0
-// Last Modified: 2026-09-26
+// Version: 1.2.0
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorSwatchBar.h"
@@ -33,6 +33,19 @@ void UltraCanvasColorSwatchBar::SetColors(const std::vector<Color>& colors) {
     selectedIndex_ = -1;
     hoverSlot_ = -1;
     if (hadSelection) SelectColor(previous, false);
+    RequestRedraw();
+}
+
+void UltraCanvasColorSwatchBar::SetColorAt(int index, const Color& c) {
+    if (index < 0 || index >= static_cast<int>(colors_.size())) return;
+    colors_[static_cast<size_t>(index)] = c;
+    RequestRedraw();
+}
+
+void UltraCanvasColorSwatchBar::SetWrap(bool wrap) {
+    if (wrap == wrap_) return;
+    wrap_ = wrap;
+    hoverSlot_ = -1;
     RequestRedraw();
 }
 
@@ -182,31 +195,95 @@ float UltraCanvasColorSwatchBar::SwatchSizeForBounds() const {
 }
 
 float UltraCanvasColorSwatchBar::GetEffectiveSwatchSize() const {
-    return SwatchSizeForBounds();
+    return ComputeGeometry().size;
+}
+
+// A wrapping bar keeps its swatches at least minSwatchSize: as many lines as
+// that takes, the colours shared out evenly over them (16 colours on two
+// lines are 8 + 8, not 14 + 2), each as large as the line's width allows up
+// to the preferred size.
+void UltraCanvasColorSwatchBar::WrapMetrics(float width, int n, float& size,
+                                            int& perLine, int& lines) const {
+    size = 0.0f;
+    perLine = 0;
+    lines = 0;
+    if (n <= 0) return;
+    const float sp = style_.spacing;
+    const float availW = std::max(1.0f, width - 2.0f * style_.padding);
+    const float minSize = std::max(1.0f, style_.minSwatchSize);
+    const int maxPerLine = std::max(1, static_cast<int>(std::floor((availW + sp) / (minSize + sp))));
+    lines = (n + maxPerLine - 1) / maxPerLine;
+    perLine = (n + lines - 1) / lines;
+    const float fit = (availW - (perLine - 1) * sp) / static_cast<float>(perLine);
+    size = std::max(1.0f, std::floor(std::min(style_.swatchSize, fit)));
+}
+
+float UltraCanvasColorSwatchBar::HeightForWidth(float width) const {
+    const int n = SlotCount();
+    if (n <= 0) return 2.0f * style_.padding;
+    if (!wrap_) return 2.0f * style_.padding + style_.swatchSize;
+    float size = 0.0f;
+    int perLine = 0, lines = 0;
+    WrapMetrics(width, n, size, perLine, lines);
+    return 2.0f * style_.padding + lines * size + (lines - 1) * style_.spacing;
+}
+
+UltraCanvasColorSwatchBar::Geometry UltraCanvasColorSwatchBar::ComputeGeometry() const {
+    Geometry g;
+    const int n = SlotCount();
+    if (n <= 0) return g;
+    if (wrap_) {
+        int lines = 0;
+        WrapMetrics(GetWidth(), n, g.size, g.perLine, lines);
+        g.spacing = style_.spacing;
+        // From the top-left: a block of colours reads as a table, and the
+        // host puts its own controls after the last line.
+        g.originX = style_.padding;
+        g.originY = style_.padding;
+        return g;
+    }
+    g.size = SwatchSizeForBounds();
+    g.spacing = SpacingForBounds();
+    g.perLine = n;
+    const float rowW = n * g.size + (n - 1) * g.spacing;
+    // Centred in both directions: the leftover space sits around the row rather
+    // than after it, so the strip stays under the middle of the image above it.
+    g.originX = std::max(style_.padding, (GetWidth() - rowW) * 0.5f);
+    g.originY = std::max(style_.padding, (GetHeight() - g.size) * 0.5f);
+    return g;
+}
+
+Rect2Df UltraCanvasColorSwatchBar::SwatchRect(int slot, const Geometry& g) const {
+    if (slot < 0 || slot >= SlotCount() || g.perLine <= 0) return Rect2Df(0, 0, 0, 0);
+    const int col = slot % g.perLine;
+    const int line = slot / g.perLine;
+    return Rect2Df(g.originX + col * (g.size + g.spacing),
+                   g.originY + line * (g.size + g.spacing), g.size, g.size);
 }
 
 Rect2Df UltraCanvasColorSwatchBar::SwatchRect(int slot) const {
-    const int n = SlotCount();
-    if (slot < 0 || slot >= n) return Rect2Df(0, 0, 0, 0);
-    const float size = SwatchSizeForBounds();
-    const float spacing = SpacingForBounds();
-    const float rowW = n * size + (n - 1) * spacing;
-    // Centred in both directions: the leftover space sits around the row rather
-    // than after it, so the strip stays under the middle of the image above it.
-    const float x = std::max(style_.padding, (GetWidth() - rowW) * 0.5f);
-    const float y = std::max(style_.padding, (GetHeight() - size) * 0.5f);
-    return Rect2Df(x + slot * (size + spacing), y, size, size);
+    return SwatchRect(slot, ComputeGeometry());
 }
 
 int UltraCanvasColorSwatchBar::SlotAt(const Point2Di& local) const {
-    const int n = SlotCount();
-    for (int slot = 0; slot < n; ++slot) {
-        if (SwatchRect(slot).Contains(static_cast<float>(local.x),
+    const Geometry g = ComputeGeometry();
+    if (g.perLine <= 0 || g.size <= 0.0f) return -1;
+    // Straight from the grid rather than testing every swatch: a 256-colour
+    // palette is hit-tested on every pointer move.
+    const float step = g.size + g.spacing;
+    const float fx = static_cast<float>(local.x) - g.originX;
+    const float fy = static_cast<float>(local.y) - g.originY;
+    if (fx < 0.0f || fy < 0.0f) return -1;
+    const int col = static_cast<int>(fx / step);
+    const int line = static_cast<int>(fy / step);
+    if (col >= g.perLine) return -1;
+    const int slot = line * g.perLine + col;
+    if (slot >= SlotCount()) return -1;
+    if (!SwatchRect(slot, g).Contains(static_cast<float>(local.x),
                                       static_cast<float>(local.y))) {
-            return slot;
-        }
+        return -1;
     }
-    return -1;
+    return slot;
 }
 
 std::string UltraCanvasColorSwatchBar::HexOf(const Color& c) {
@@ -256,8 +333,9 @@ void UltraCanvasColorSwatchBar::Render(IRenderContext* ctx,
     }
 
     const int n = SlotCount();
+    const Geometry g = ComputeGeometry();
     for (int slot = 0; slot < n; ++slot) {
-        const Rect2Df r = SwatchRect(slot);
+        const Rect2Df r = SwatchRect(slot, g);
         if (r.width <= 0.0f || r.height <= 0.0f) continue;
 
         const int colorIndex = ColorIndexOfSlot(slot);
@@ -337,6 +415,10 @@ bool UltraCanvasColorSwatchBar::OnEvent(const UCEvent& event) {
             if (slot < 0) return false;
             if (event.button == UCMouseButton::Right) {
                 const int colorIndex = ColorIndexOfSlot(slot);
+                if (colorIndex >= 0 && onColorContextClicked) {
+                    onColorContextClicked(colorIndex, event.pointerWindow);
+                    return true;
+                }
                 if (colorIndex < 0 || !onColorAdjustSelected) return false;
                 onColorAdjustSelected(colors_[static_cast<size_t>(colorIndex)]);
                 return true;

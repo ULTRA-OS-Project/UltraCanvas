@@ -40,6 +40,9 @@
 #ifdef ULTRAAI_HAS_QWEN_ADAPTER
 #include "UltraAIQwen.h"
 #endif
+#ifdef ULTRAAI_HAS_LOCAL_ADAPTER
+#include "UltraAILocal.h"
+#endif
 #ifdef ULTRAAI_HAS_ELEVENLABS_ADAPTER
 #include "UltraAIElevenLabs.h"
 #endif
@@ -171,6 +174,14 @@ Registry<IEmbeddings, EmbeddingsConfig>& EmbedsReg() {
                 r.providers["qwen"] = [](const EmbeddingsConfig& cfg,
                                          Error* err) {
                     return CreateQwenEmbeddings(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_LOCAL_ADAPTER
+            if (!r.providers.count("local")) {
+                r.providers["local"] = [](const EmbeddingsConfig& cfg,
+                                          Error* err) {
+                    return CreateLocalEmbeddings(cfg, err);
                 };
             }
 #endif

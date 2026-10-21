@@ -3,6 +3,7 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.13.0 - schema 12: the protocol of the incoming server (IMAP or JMAP)
 // Version: 0.12.2 - MarkSenderVerdictsStale (a sender trusted or blocked)
 // Version: 0.12.1 - MarkVerdictsStale (the scam warnings changed)
 // Version: 0.12.0 - schema 11: the codes of a verdict's findings
