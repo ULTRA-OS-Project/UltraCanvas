@@ -22,7 +22,7 @@ user, needs no administrator rights, and installs silently with `/S`.
 | Code signing | **the Store signs it**: no certificate needed | the installer **and every `.exe` and `.dll` in it** must be signed with a certificate from a CA in Microsoft's Trusted Root Program. `dist/` holds hundreds of DLLs, including about 130 ImageMagick coder modules. The signing scripts make only a self-signed certificate today |
 | Hosting | Microsoft's CDN | ours, at a versioned URL whose file must never change after submission (a GitHub release asset can be one) |
 | Updates | the Store delivers them | a new versioned URL for each release |
-| UltraDesktop in place of the Windows desktop | **not possible**: see *What changes inside a package* | works: the installer even offers it on its finish page |
+| UltraDesktop in place of the Windows desktop | **not possible**, and UltraDesktop says so: see *What changes inside a package* | works: the installer even offers it on its finish page |
 | UltraFiler's *Delete as administrator* | only with a capability the Store grants on request | works |
 
 What decides it is the certificate. With MSIX, the suite can be in the Store
@@ -111,8 +111,8 @@ each one affects the applications in this repository as of this writing.
 | Inside a package | Effect here |
 |---|---|
 | The install folder (`C:\Program Files\WindowsApps\...`) is **read-only** | Fine. Everything next to the `.exe` is only read: `Resources/`, `data/`, `lib/`, `Plugins/`, `cacert.pem`. Fonts, caches, crash dumps and settings go to `%APPDATA%` / `%LOCALAPPDATA%`. The one exception is the ImageMagick coder repair (`UltraCanvasCoderModuleRepair.cpp`), which renames coders in place. It does nothing on a `package-win.sh` package, because that script already renamed them. |
-| Registry writes under `HKEY_CURRENT_USER` **stay inside the package** | **UltraDesktop** takes over the desktop through two such values: the `Run` key (beside Explorer) and Winlogon's `Shell` (instead of Explorer, through UltraCanvasShellGuard). From a package both land in the package's own registry, which sign-in never reads. The switch would report success and do nothing, so the package gives UltraDesktop no Start menu entry (`NOT_IN_PACKAGE` in the script); the installer is the way to get it. Nothing else writes the registry. File associations come from the manifest, and OAuth sign-in uses a loopback listener, not a URL scheme. |
-| The program starts with **System32 as its working folder**, not its own folder | **UltraNet's default plug-in folder** is the relative `Plugins/UltraNet` (`UltraNetPlugins.cpp`). UltraMail sets an absolute one and works. Printer and scanner discovery over the network (mDNS, used by DeviceExplorer) finds no plug-in. **The file dialog** opens in the working folder the first time (`UltraCanvasModalDialog.cpp`), which is System32. A package cannot set the working folder; Microsoft's Package Support Framework can, but the fix belongs in those two places. |
+| Registry writes under `HKEY_CURRENT_USER` **stay inside the package** | **UltraDesktop** takes over the desktop through two such values: the `Run` key (beside Explorer) and Winlogon's `Shell` (instead of Explorer, through UltraCanvasShellGuard). From a package both land in the package's own registry, which sign-in never reads, so a packaged copy cannot do it. It knows this: `UltraCanvasDesktopShell::CanReplaceSystemDesktop()` is false from a package, `GetSystemDesktopSwitchUnavailableReason()` says why, and UltraDesktop's settings menu and UOS-Settings' Desktop page show that sentence where the switch would be, pointing to the installer. UltraDesktop still runs as a trial window and has its Start menu entry, as in the installer. Nothing else writes the registry. File associations come from the manifest, and OAuth sign-in uses a loopback listener, not a URL scheme. |
+| The program starts with **System32 as its working folder**, not its own folder | Fine. A package cannot choose the working folder (Microsoft's Package Support Framework can), so nothing may depend on it. **UltraNet's plug-in folder** defaults to `Plugins/UltraNet` beside the executable, or one or two folders above it (`UltraNetPlugins.cpp`), and never to the working folder unless the executable's own path is unknown. Network printer and scanner discovery (the mDNS plug-in, used by DeviceExplorer) finds its plug-in. **The file dialog** with no folder remembered opens in the working folder, unless that is the Windows folder or the root of the drive: then it opens in the home folder (`IsSystemStartFolder` in `UltraCanvasModalDialog.cpp`). |
 | Writes to `%APPDATA%` / `%LOCALAPPDATA%` are kept per package | Fine within the package. All the applications share one package, so they still see each other's settings (`%APPDATA%\UltraCanvas`, `%APPDATA%\ultraos`). They read what an unpackaged copy wrote before. |
 
 Two more points:
@@ -125,11 +125,12 @@ Two more points:
   one-line change in `build_manifest`, and it is fine for a sideloaded
   (`--mode signed`) package.
 - **Non-ASCII file names.** When a file type association opens a file,
-  Windows passes the file to the application as its first argument. Texter
-  reads that argument from the narrow `__argv`, and its root CMake target
-  embeds no UTF-8 manifest. On a machine whose code page cannot hold a
-  name, that name arrives mangled. UltraViewer embeds the manifest and is
-  fine on Windows 10 1903 and later.
+  Windows passes the file to the application as its first argument, which a
+  MinGW program reads as a narrow `argv` in the active code page. Texter and
+  UltraViewer embed the framework's manifest with the UTF-8 code page
+  (`ultracanvas_embed_windows_manifest`), so a Thai or CJK name arrives
+  intact. Windows honours that manifest from Windows 10 1903 on, which is
+  why the package's minimum Windows is 1903 (`--min-version 10.0.18362.0`).
 
 ## What is in the package
 
@@ -150,7 +151,6 @@ Two more points:
   - a console program without a desktop entry (`ultramsg`, `videofx`) is a
     command-line tool and is not one, and neither is UltraCanvasShellGuard.
 
-  The one difference from the installer is UltraDesktop (previous section).
   A program without an entry still ships in the package.
 - **File associations** for Texter (text and source code) and UltraViewer
   (images, video, audio, PDF, e-books, `.ucd`). These put the applications in

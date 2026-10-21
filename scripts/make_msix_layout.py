@@ -111,16 +111,12 @@ FILE_TYPES = {
 # nothing in the Start menu that starts it.
 #
 # Not applications, as for the installer: UltraCanvasShellGuard is what
-# sign-in starts when UltraDesktop runs instead of Explorer.
+# sign-in starts when UltraDesktop runs instead of Explorer. UltraDesktop
+# itself is one, as in the installer: from the package it cannot take the
+# Windows desktop's place (its switches are HKEY_CURRENT_USER values, which a
+# package keeps to itself), and it says so where the switch would be
+# (UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason).
 NOT_APPLICATIONS = {"UltraCanvasShellGuard"}
-
-# Listed by the installer, but not in a package. UltraDesktop's Windows modes
-# - beside Explorer (the Run key) and instead of it (Winlogon's Shell) - are
-# registry values under HKEY_CURRENT_USER, and a packaged program's writes
-# there land in the package's own registry, which sign-in never reads: the
-# switch would report success and do nothing. Its desktop entry says
-# NoDisplay too; the installer lists it anyway so it can be tried.
-NOT_IN_PACKAGE = {"UltraDesktop"}
 
 
 def pe_subsystem(path: str) -> int:
@@ -193,9 +189,6 @@ def find_apps(dist: str, repo_root: str) -> List[App]:
         entry = entries.get(exe.lower())
         if entry is None and pe_subsystem(exe_path) != 2:
             continue                # a command-line tool
-        if exe in NOT_IN_PACKAGE:
-            print(f"  No Start menu entry in a package: {exe} (see NOT_IN_PACKAGE)")
-            continue
         name = (entry or {}).get("Name") or exe
         description = (entry or {}).get("Comment") or f"{name}, part of UltraCanvas"
         # The entry's icon, else one named after the program, else the one
@@ -464,7 +457,10 @@ def main() -> None:
     parser.add_argument("--unsigned-test", action="store_true",
                         help=f"add {UNSIGNED_PUBLISHER_OID} to the Publisher, so Windows 11 "
                              "installs the unsigned package with Add-AppxPackage -AllowUnsigned")
-    parser.add_argument("--min-version", default="10.0.17763.0")
+    # 1903 (18362): the first Windows that honours the UTF-8 code page the
+    # applications' manifests ask for - before it, a file handed over by the
+    # package's file types arrives in the ANSI code page.
+    parser.add_argument("--min-version", default="10.0.18362.0")
     parser.add_argument("--max-version-tested", default="10.0.26100.0")
     parser.add_argument("--package-icon", default="UltraCanvas.png",
                         help="file in media/appicon/ for the package's StoreLogo")
