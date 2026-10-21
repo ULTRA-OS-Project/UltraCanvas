@@ -173,7 +173,7 @@ void UltraAIDashboard::OpenSettingsDialog(UltraAISettingsWindow::Page page) {
 }
 
 void UltraAIDashboard::OpenLocalModelDialog() {
-    UltraAILocalModelDialog::Show(window_.get(), "Chat", "textllm", "", nullptr);
+    UltraAI::UltraAILocalModelDialog::Show(window_.get(), "Chat", "textllm", "", nullptr);
 }
 
 void UltraAIDashboard::OpenChatDialog() {

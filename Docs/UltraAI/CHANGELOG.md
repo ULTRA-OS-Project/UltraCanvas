@@ -1,3 +1,12 @@
+#### 2026-10-21 *0.1.18*
+- **The "Get a local model" dialog is the module's, for every application.**
+  It moved from the dashboard into `UltraAI/ui/` (`UltraAILocalModelDialog.h`,
+  library `UltraAI_UI`, built in-tree with the UltraCanvas core), so UltraTexter's
+  new Edit > Translate Selection... asks for a model the same way the
+  dashboard's Chat does. `UltraAILocalModelDialog::NeedsInstall(error)` is
+  the test an application makes on a chat, embedding or translation error
+  before showing it.
+
 #### 2026-10-21 *0.1.17*
 - **Local models in the dashboard.** Settings > Services has a *Local models*
   page: what this computer is (memory, cores, GPU) and which acceleration

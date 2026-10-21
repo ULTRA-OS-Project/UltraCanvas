@@ -290,9 +290,10 @@ LocalRuntime::Instance().SetSettings(s);
   they are pinned; sizes are approximate until then.
 - The gallery index is not yet signed; it is fetched over TLS from a URL
   the settings control.
-- The dashboard (`Apps/UltraAIApp`) has the *Local models* settings page
-  and the *Get a local model* dialog (`UltraAILocalModelsPage`,
-  `UltraAILocalModelDialog`, used by its Chat dialog); another application
-  reads `"needs-install"` and asks with its own UI, or sets
-  `allow_download` after asking once, until the dialog moves into the
-  framework.
+- The *Get a local model* dialog is the module's (`UltraAI/ui/`,
+  `UltraAILocalModelDialog.h`, library `UltraAI_UI`): an application links
+  `UltraAI_UI` beside `UltraAI_Core`, tests an error with
+  `UltraAILocalModelDialog::NeedsInstall(error)` and calls `Show(window,
+  serviceName, capability, preferredModelId, onReady)`; the dashboard's Chat
+  and Texter's Translate Selection do. The *Local models* settings page is
+  the dashboard's (`Apps/UltraAIApp/UltraAILocalModelsPage`).

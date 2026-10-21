@@ -1451,6 +1451,7 @@ endif()
 if (BUILD_TEXTER_APP)
     # Create executable
     add_executable(Texter
+            Apps/Texter/UltraCanvasTextEditorTranslate.cpp
             Apps/Texter/UltraCanvasTextEditor.cpp
             Apps/Texter/UltraCanvasTextEditorHelpers.cpp
             Apps/Texter/UltraCanvasTextEditorDialogs.cpp
@@ -1477,6 +1478,13 @@ if (BUILD_TEXTER_APP)
             ${ULTRACANVAS_LIBRARY}
     )
     target_link_libraries(Texter PRIVATE fmt::fmt)
+    # Edit > Translate Selection... translates through UltraAI, local models
+    # first, and offers the download through the module's dialog. Only in a
+    # build that has the module and its UI library.
+    if(TARGET UltraAI_Core AND TARGET UltraAI_UI)
+        target_link_libraries(Texter PRIVATE UltraAI_Core UltraAI_UI)
+        target_compile_definitions(Texter PRIVATE TEXTER_HAS_ULTRAAI=1)
+    endif()
 
     # iconv - on Linux it's part of glibc, on macOS it needs explicit linking
 if(APPLE)
@@ -1888,7 +1896,6 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
         Apps/UltraAIApp/UltraAISettingsWidgets.cpp
         Apps/UltraAIApp/UltraAILocalModelsPage.cpp
-        Apps/UltraAIApp/UltraAILocalModelDialog.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
         Apps/UltraAIApp/UltraAITranslatorDialog.cpp
     )
@@ -1904,6 +1911,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         ${ULTRACANVAS_LIBRARY}
         UltraAI_Core
     )
+    if(TARGET UltraAI_UI)
+        target_link_libraries(UltraAIApp PRIVATE UltraAI_UI)
+    endif()
 
     if(TARGET fmt::fmt)
         target_link_libraries(UltraAIApp PRIVATE fmt::fmt)

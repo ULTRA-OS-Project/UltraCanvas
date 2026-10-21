@@ -1,9 +1,11 @@
-// Apps/UltraAIApp/UltraAILocalModelDialog.cpp
+// UltraAI/ui/src/LocalModelDialog.cpp
 // The "Get a local model" dialog (UltraAILocalModelDialog.h).
+// Version: 0.2.0 - in the module's UI library, for every application
 // Version: 0.1.0
 // Last Modified: 2026-10-21
 // Author: UltraAI Module
 
+#include "UltraAILocalRuntime.h"       // before the UI headers: X11's None macro
 #include "UltraAILocalModelDialog.h"
 
 #include "UltraCanvasApplication.h"
@@ -12,10 +14,9 @@
 #include <algorithm>
 #include <utility>
 
-namespace UltraAIApp {
+namespace UltraAI {
 
 using namespace UltraCanvas;
-using namespace UltraAI;
 
 namespace {
 
@@ -72,6 +73,10 @@ void OnUiThread(std::function<void()> fn) {
 }
 
 } // namespace
+
+bool UltraAILocalModelDialog::NeedsInstall(const Error& error) {
+    return error.code == ErrorCode::ModelNotFound && error.providerCode == "needs-install";
+}
 
 void UltraAILocalModelDialog::Show(UltraCanvasWindowBase* parent, const std::string& serviceName,
                                    const std::string& capability, const std::string& preferredModelId,
@@ -204,7 +209,7 @@ void UltraAILocalModelDialog::OnChoiceChanged() {
     const int index = picker_->GetSelectedIndex();
     if (index < 0 || index >= static_cast<int>(choices_.size())) {
         details_->SetText(choices_.empty()
-            ? "Add a GGUF of your own, or a Hugging Face file, in Settings > Services > Local models."
+            ? "Add a GGUF of your own, or a Hugging Face file, on UltraAI's Local models settings page."
             : "");
         return;
     }
@@ -313,4 +318,4 @@ void UltraAILocalModelDialog::PerformClose() {
     OnUiThread([]() { g_open.reset(); });
 }
 
-} // namespace UltraAIApp
+} // namespace UltraAI

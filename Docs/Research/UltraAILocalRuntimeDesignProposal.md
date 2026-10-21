@@ -1,7 +1,7 @@
 # UltraAI local runtime — models on this computer, with nothing to install (Investigation and Proposal)
 
 **Date:** 2026-10-20
-**Status:** Phase 1 of §9 implemented on 2026-10-20 (`UltraAI/runtime/`, the `local` provider, the routing change; `Docs/Modules/UltraAI/LocalRuntime.md` documents what was built and where it departs from this text — the upstream macOS archives turned out to be built for macOS 13.3, not 26); the dashboard's Local models page and the Get-a-local-model dialog of phase 2 followed on 2026-10-21 in `Apps/UltraAIApp/` (the dialog lives in the dashboard for now, not yet in the framework); phase 0, the rest of phase 2 and phases 3–4 are still a proposal
+**Status:** Phase 1 of §9 implemented on 2026-10-20 (`UltraAI/runtime/`, the `local` provider, the routing change; `Docs/Modules/UltraAI/LocalRuntime.md` documents what was built and where it departs from this text — the upstream macOS archives turned out to be built for macOS 13.3, not 26); the dashboard's Local models page and the Get-a-local-model dialog of phase 2 followed on 2026-10-21 in `Apps/UltraAIApp/` (the dialog is the module's, `UltraAI/ui/`, and Texter's Translate Selection uses it too); phase 0, the rest of phase 2 and phases 3–4 are still a proposal
 **Scope:** how UltraAI runs language, embedding, speech, image and
 text-to-speech models *on the user's own machine*, next to the endpoints it
 already has for Claude, ChatGPT and other hosted providers — with the

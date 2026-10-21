@@ -167,6 +167,13 @@ if(ULTRAAI_BUILD_ADAPTERS)
     endif()
 endif()
 
+# The one library of the module that draws: the "Get a local model" dialog
+# (UltraAI_UI). Applications link it beside UltraAI_Core; it is not part
+# of the core, which stays free of the UI.
+if(ULTRAAI_LOCAL_RUNTIME AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/ui/CMakeLists.txt")
+    add_subdirectory(ui)
+endif()
+
 # ===== Tests =====
 if(ULTRAAI_BUILD_TESTS)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
