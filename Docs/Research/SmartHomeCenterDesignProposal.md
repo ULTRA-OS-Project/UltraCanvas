@@ -12,8 +12,9 @@ the panel on the simulator. Phase 2 has begun: the §4.8 widget port is
 done - every `SmartHomeUI` widget is a container of framework elements,
 `check_ui_reuse` scans `SmartHome/ui`, the widgets have rows in the element
 catalogue, and `SmartHomeWidgetTest` drives them through a real window in
-CI. The phase's application pages (Automations, Network, backup and
-restore, notifications, kiosk mode) are still to come.
+CI. SmartHome Center 0.3.0 has the phase's Network page (the module's
+topology widget) and draws its devices with the module's icons. Automations,
+backup and restore, notifications and kiosk mode are still to come.
 **Scope:** a new application, `Apps/SmartHomeCenter`, on top of the existing
 `SmartHome` engine and `SmartHomeUI` widget library. This document also
 covers what those two libraries still need before an application can stand

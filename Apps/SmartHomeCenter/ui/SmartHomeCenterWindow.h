@@ -48,7 +48,11 @@
 #include <string>
 #include <vector>
 
-namespace UltraCanvas { class UltraCanvasBarChartElement; class ChartDataVector; }
+namespace UltraCanvas {
+class UltraCanvasBarChartElement;
+class ChartDataVector;
+namespace SmartHome { class SmartHomeNetworkTopology; }
+}
 
 namespace SmartHomeCenter {
 
@@ -122,6 +126,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildDevicesPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildEnergyPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildActivityPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildNetworkPage();
     void RebuildScenesRow();
     Stat MakeStat(const std::string& id, const std::string& caption, const std::string& icon);
     Tile MakeTile(const DeviceView& view);
@@ -203,6 +208,14 @@ private:
     std::string energyChartKey_;                      // what the chart shows now
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> energyNoteText_;   // says how many idle plugs are left out
     std::shared_ptr<ActivityTableModel> activityModel_;
+
+    // ===== NETWORK =====
+    // The module's own map of the radios (SmartHomeNetworkTopology): a card
+    // per device, linked to a router of its radio. Reloaded when the page is
+    // shown, and while shown when devices come or go.
+    std::shared_ptr<UltraCanvas::SmartHome::SmartHomeNetworkTopology> topology_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> networkHint_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> networkOpen_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> activityList_;
     std::deque<ActivityEntry> activity_;          // newest first
 

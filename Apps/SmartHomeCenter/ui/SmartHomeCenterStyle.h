@@ -14,6 +14,7 @@
 #include "UltraCanvasBadge.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasSwitch.h"
@@ -75,6 +76,11 @@ void Grow(const std::shared_ptr<UltraCanvas::UltraCanvasUIElement>& e);
 std::shared_ptr<UltraCanvas::UltraCanvasContainer> Spacer(const std::string& id);
 // A column that scrolls when its content is taller than it.
 std::shared_ptr<UltraCanvas::UltraCanvasContainer> ScrollColumn(const std::string& id, float gap);
+// A device's icon as the module's widgets draw it: white, on a round disc
+// of its category's colour (SmartHomeCategoryColor), grey while offline.
+void PaintDeviceBadge(UltraCanvas::UltraCanvasContainer& badge, UltraCanvas::UltraCanvasImageElement& icon,
+                      const DeviceView& view);
+
 void Card(const std::shared_ptr<UltraCanvas::UltraCanvasContainer>& c, float padding = 16.0f);
 std::shared_ptr<UltraCanvas::UltraCanvasLabel> Text(const std::string& id, const std::string& text, float size,
                                                     const Color& color, bool bold = false, float height = -1);

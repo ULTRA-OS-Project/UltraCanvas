@@ -2,6 +2,7 @@
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "SmartHomeCenterStyle.h"
+#include "UltraCanvasSmartHomeIcons.h"
 
 #include <algorithm>
 #include <chrono>
@@ -146,6 +147,11 @@ std::shared_ptr<UltraCanvasContainer> ScrollColumn(const std::string& id, float 
     c->SetContainerStyle(scroll);
     c->layout.SetFlexColumn().SetFlexGap(gap).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     return c;
+}
+
+void PaintDeviceBadge(UltraCanvasContainer& badge, UltraCanvasImageElement& icon, const DeviceView& view) {
+    badge.SetBackgroundColor(view.online ? SmartHomeCategoryColor(view.info.Category) : kFaint);
+    icon.SetTintColor(Colors::White);
 }
 
 void Card(const std::shared_ptr<UltraCanvasContainer>& c, float padding) {

@@ -77,7 +77,7 @@ void PrintUsage(const char* programName) {
         "  --log [--since 1h]  Print the event log\n"
         "\n"
         "Window options:\n"
-        "  --page <name>       Open on a page: home, rooms, devices, scenes, energy, activity,\n"
+        "  --page <name>       Open on a page: home, rooms, devices, scenes, energy, network, activity,\n"
         "                      settings, or device (the one --select names)\n"
         "  --first-run         Open on the getting-started guide, as on the very first start\n"
         "  --select <device>   Open with a device selected, by its name\n"
@@ -95,6 +95,7 @@ bool ParsePage(const std::string& text, SmartHomeCenter::Page& page) {
     else if (text == "devices") page = Page::Devices;
     else if (text == "scenes") page = Page::Scenes;
     else if (text == "energy") page = Page::Energy;
+    else if (text == "network") page = Page::Network;
     else if (text == "activity") page = Page::Activity;
     else if (text == "settings") page = Page::Settings;
     else if (text == "device") page = Page::Device;   // with --select
@@ -163,7 +164,7 @@ int main(int argc, char* argv[]) {
             forceFirstRun = true;
         } else if (arg == "--page") {
             if (i + 1 >= argc || !ParsePage(argv[++i], page)) {
-                std::fprintf(stderr, "--page needs one of: home, rooms, devices, scenes, energy, activity, settings, device\n");
+                std::fprintf(stderr, "--page needs one of: home, rooms, devices, scenes, energy, network, activity, settings, device\n");
                 return EXIT_FAILURE;
             }
         } else if (arg == "--select") {

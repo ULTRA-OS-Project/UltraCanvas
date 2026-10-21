@@ -25,6 +25,8 @@ Changelog and version: [`Docs/SmartHomeCenter/CHANGELOG.md`](../../Docs/SmartHom
 
 ![Energy: the metered plugs, live](../../Docs/SmartHomeCenter/images/energy.png)
 
+![Network: every device on the map of the radios](../../Docs/SmartHomeCenter/images/network.png)
+
 | Page | What it shows |
 |---|---|
 | **Home** | Inside temperature, lights on, locks, power now; the home's scenes; every room with a tile per device (a switch on the tile for whatever switches, the reading for whatever measures); the selected device's controls on the right. A leak or smoke alarm puts a red banner on top. |
@@ -33,6 +35,7 @@ Changelog and version: [`Docs/SmartHomeCenter/CHANGELOG.md`](../../Docs/SmartHom
 | **Device** | One device: its controls, every detail, its last 24 hours of readings as a chart, its name, room and removal. Opens from the inspector, Devices and Rooms. |
 | **Scenes** | A card per scene (run, edit, delete), an editor for the actions, and *Capture current state*. |
 | **Energy** | The metered plugs, live: a bar per plug drawing power, biggest first (idle plugs are left out and counted), and what each has metered so far. |
+| **Network** | The map of the radios (the module's `SmartHomeNetworkTopology`): a card per device - its icon, name and room - linked to a router of its radio, in its own room where there is one. Force, radial or tree layout and a filter by radio; zoomed far out, icons only, named on hover. Double-click a device to open it. |
 | **Activity** | What happened since the window opened, newest first: switches, locks, sensors, scenes, automations, pairing. |
 | **Settings** | Where the home is (for sunrise and sunset), the data file and a backup of it, the radios this build carries. |
 
@@ -54,13 +57,17 @@ reporting, red for an alarm or a device that stopped answering.
 | `ui/SmartHomeCenterStyle.*` | The palette, the tones per state, and the building blocks every page is made of |
 | `ui/SmartHomeCenterControls.*` | A device's controls (switch, sliders, target and mode, lock, position), shared by the inspector and the Device page |
 | `ui/SmartHomeCenterPages.h`, `ui/SmartHomeCenter*Page.cpp`, `ui/SmartHomeCenterFirstRun.cpp` | Rooms, Device, Scenes, Settings and Getting started, each a class over the `PageHost` the window implements |
-| `ui/SmartHomeCenterWindow.*` | The window: navigation, header, Home, Devices, Energy and Activity, the tiles, the inspector, the demo panel |
+| `ui/SmartHomeCenterWindow.*` | The window: navigation, header, Home, Devices, Energy, Network and Activity, the tiles, the inspector, the demo panel |
 | `main.cpp` | Bootstrap, starting the radios (or the demo home), the command line |
 | `tests/SmartHomeCenterCliTest.cpp` | The command line on the demo home, headless (`BUILD_TESTS`) |
 | `SmartHomeCenter.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/SmartHomeCenter.png` / `.svg`) |
 
-Icons are `media/icons/smarthome/*.svg`: white line drawings the window
-tints per state, so one file serves every colour.
+Icons are `media/icons/smarthome/*.svg`, white line drawings. Which one a
+device gets is the module's choice (`SmartHomeDeviceIconName` in
+`SmartHome/ui/UltraCanvasSmartHomeIcons.h`: a plug called "Kettle" gets the
+kettle), drawn white on a disc of its category's colour
+(`SmartHomeCategoryColor`) - so a device looks the same here as in the
+module's widgets.
 
 Nothing is painted by hand: tiles and figures are containers of labels,
 images, switches and badges; the controls use the framework's slider,
@@ -80,7 +87,7 @@ back four times a second and updates their tiles in place.
 SmartHomeCenter                       # the window
 SmartHomeCenter --demo                # the window, on the demo home even if a radio works
 SmartHomeCenter --page rooms          # open on a page: home, rooms, devices, scenes, energy,
-                                      #   activity, settings, device (with --select)
+                                      #   network, activity, settings, device (with --select)
 SmartHomeCenter --select "Front door" # open with a device selected
 SmartHomeCenter --first-run           # open on Getting started
 SmartHomeCenter --trigger "Under-sink leak sensor"   # demo home: stage a sensor event
@@ -102,7 +109,6 @@ with a dot whatever the locale.
 ## Not yet
 
 Phase 2 of the proposal: automations, energy per room and over time, the
-network page, the pairing wizard's per-protocol steps, notifications, a
-kiosk mode and a dark theme; and the `SmartHome/ui` widgets ported to
-framework elements. Phase 3 is the hub service that keeps automations
+pairing wizard's per-protocol steps, notifications, a kiosk mode and a dark
+theme. Phase 3 is the hub service that keeps automations
 running with the window closed.

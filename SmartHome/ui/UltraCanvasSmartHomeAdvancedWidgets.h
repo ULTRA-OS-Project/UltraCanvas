@@ -314,6 +314,10 @@ public:
     void SetOnNodeSelected(std::function<void(const std::string&)> callback) {
         onNodeSelected = callback;
     }
+    // A double-click on a device: the host opens it.
+    void SetOnNodeActivated(std::function<void(const std::string&)> callback) {
+        onNodeActivated = callback;
+    }
 
     const std::vector<TopologyViewNode>& GetNodes() const { return nodes; }
     const std::vector<NetworkLink>& GetLinks() const { return links; }
@@ -351,6 +355,7 @@ private:
     std::shared_ptr<UltraCanvasLabel> summary;
 
     std::function<void(const std::string&)> onNodeSelected;
+    std::function<void(const std::string&)> onNodeActivated;
 };
 
 // ============================================================================

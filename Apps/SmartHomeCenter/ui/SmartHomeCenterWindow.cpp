@@ -2,6 +2,8 @@
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "SmartHomeCenterWindow.h"
+// The module's widgets before anything that pulls in X11 (its `None` macro).
+#include "UltraCanvasSmartHomeAdvancedWidgets.h"
 #include "SmartHomeCenterDemo.h"   // the demo scenes' ids
 #include "SmartHomeCenterStyle.h"
 #include "SmartHomeCenterControls.h"
@@ -204,6 +206,7 @@ bool SmartHomeCenterWindow::Initialize(bool demoHome, bool firstRun) {
     pages_[Page::Devices] = BuildDevicesPage();
     pages_[Page::Scenes] = scenesPage_->Build();
     pages_[Page::Energy] = BuildEnergyPage();
+    pages_[Page::Network] = BuildNetworkPage();
     pages_[Page::Activity] = BuildActivityPage();
     pages_[Page::Settings] = settingsPage_->Build();
     pages_[Page::Device] = devicePage_->Build();
@@ -283,6 +286,7 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildSidebar() {
         {Page::Devices, "Devices", "devices"},
         {Page::Scenes, "Scenes", "scenes"},
         {Page::Energy, "Energy", "energy"},
+        {Page::Network, "Network", "gateway"},
         {Page::Activity, "Activity", "activity"},
         {Page::Settings, "Settings", "settings"},
     };
@@ -561,7 +565,7 @@ SmartHomeCenterWindow::Tile SmartHomeCenterWindow::MakeTile(const DeviceView& vi
     top->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     tile.badge = Row("shcTileBadge_" + id, 0);
     tile.badge->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-    tile.badge->SetBorderRadius(11);
+    tile.badge->SetBorderRadius(20);   // a disc, as the module draws it
     Fixed(tile.badge, 40, 40);
     tile.icon = CreateImageElement("shcTileIcon_" + id, 22, 22);
     tile.icon->SetFitMode(ImageFitMode::Contain);
@@ -616,12 +620,11 @@ void SmartHomeCenterWindow::UpdateTile(Tile& tile, const DeviceView& view) {
     const bool selected = view.info.DeviceId == selectedId_;
     tile.card->SetBackgroundColor(view.active || view.alert ? tone.soft : kSurface);
     tile.card->SetBorders(selected ? 2.0f : 1.0f, selected ? kAccent : (view.active || view.alert ? tone.border : kBorder), 14.0f);
-    tile.badge->SetBackgroundColor(view.active || view.alert ? kSurface : tone.soft);
     if (tile.iconName != view.icon) {
         tile.icon->LoadFromFile(iconsDir_ + view.icon + ".svg");
         tile.iconName = view.icon;
     }
-    tile.icon->SetTintColor(view.online ? tone.fg : kFaint);
+    PaintDeviceBadge(*tile.badge, *tile.icon, view);
     tile.name->SetText(view.info.Name);
     tile.name->SetTextColor(view.online ? kInk : kMuted);
     tile.state->SetText(view.state);
@@ -709,7 +712,7 @@ std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildInspector() {
     head->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     inspectorBadge_ = Row("shcInspBadge", 0);
     inspectorBadge_->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-    inspectorBadge_->SetBorderRadius(14);
+    inspectorBadge_->SetBorderRadius(27);   // a disc
     Fixed(inspectorBadge_, 54, 54);
     inspectorIcon_ = CreateImageElement("shcInspIcon", 28, 28);
     inspectorIcon_->SetFitMode(ImageFitMode::Contain);
@@ -813,9 +816,8 @@ void SmartHomeCenterWindow::UpdateInspector() {
         return;
     }
     const Tone tone = ToneOf(*v);
-    inspectorBadge_->SetBackgroundColor(tone.soft);
     inspectorIcon_->LoadFromFile(iconsDir_ + v->icon + ".svg");
-    inspectorIcon_->SetTintColor(v->online ? tone.fg : kFaint);
+    PaintDeviceBadge(*inspectorBadge_, *inspectorIcon_, *v);
     inspectorName_->SetText(v->info.Name);
     inspectorType_->SetText(v->typeName + " · " + RoomText(v->info.Room));
     inspectorStatus_->SetText(v->state);
@@ -1131,6 +1133,7 @@ void SmartHomeCenterWindow::ReloadAll() {
     UpdateSummary();
     UpdateDevicesTable();
     UpdateEnergy();
+    if (page_ == Page::Network) topology_->RefreshTopology();   // devices came or went
     window_->RequestRedraw();
 }
 
@@ -1213,6 +1216,47 @@ void SmartHomeCenterWindow::UpdateSummary() {
     }
 }
 
+// ===== NETWORK =====
+
+std::shared_ptr<UltraCanvasContainer> SmartHomeCenterWindow::BuildNetworkPage() {
+    auto page = Column("shcNetworkPage", 14);
+    auto card = Column("shcNetworkCard", 10);
+    Card(card, 14);
+    Grow(card);
+
+    // The module's widget: its toolbar (layout, radio filter) and its map.
+    topology_ = std::make_shared<SmartHome::SmartHomeNetworkTopology>("shcNetwork");
+    topology_->SetBackgroundColor(kSurface);
+    topology_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(300));
+    Grow(topology_);
+    topology_->SetOnNodeSelected([this](const std::string& id) {
+        std::string name = id;
+        for (const DeviceView& v : views_) if (v.info.DeviceId == id) name = v.info.Name;
+        networkHint_->SetText(name + " - double-click it, or Open, to see its page");
+        networkOpen_->SetDisabled(false);
+    });
+    topology_->SetOnNodeActivated([this](const std::string& id) { OpenDevice(id); });
+    card->AddChild(topology_);
+
+    auto foot = Row("shcNetworkFoot", 10);
+    Fixed(foot, -1, 36);
+    foot->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    networkHint_ = Text("shcNetworkHint", "Choose a device on the map", 12, kMuted, false, 20);
+    Grow(networkHint_);
+    networkHint_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+    networkOpen_ = MakeButton("shcNetworkOpen", "Open device", ButtonKind::Secondary);
+    Fixed(networkOpen_, 130, 36);
+    networkOpen_->SetDisabled(true);
+    networkOpen_->SetOnClick([this]() {
+        if (!topology_->GetSelectedNode().empty()) OpenDevice(topology_->GetSelectedNode());
+    });
+    foot->AddChild(networkHint_);
+    foot->AddChild(networkOpen_);
+    card->AddChild(foot);
+    page->AddChild(card);
+    return page;
+}
+
 // ===== PAGES =====
 
 void SmartHomeCenterWindow::ShowPage(Page page) {
@@ -1243,6 +1287,11 @@ void SmartHomeCenterWindow::ShowPage(Page page) {
             pageSubtitle_->SetText("What the metered plugs draw, live");
             UpdateEnergy();
             break;
+        case Page::Network:
+            pageTitle_->SetText("Network");
+            pageSubtitle_->SetText("Each device linked to a router of its radio  ·  double-click one to open it");
+            topology_->RefreshTopology();
+            break;
         case Page::Activity:
             pageTitle_->SetText("Activity");
             pageSubtitle_->SetText("Everything that happened since SmartHome Center opened, newest first");
@@ -1269,7 +1318,8 @@ void SmartHomeCenterWindow::ShowPage(Page page) {
             pageTitle_->SetText("Device");
             pageSubtitle_->SetText("Its controls, history and details  ·  Back returns to " +
                                    std::string(backPage_ == Page::Rooms ? "Rooms" : backPage_ == Page::Devices ? "Devices"
-                                               : backPage_ == Page::Scenes ? "Scenes" : "Home"));
+                                               : backPage_ == Page::Scenes ? "Scenes"
+                                               : backPage_ == Page::Network ? "Network" : "Home"));
             break;
         case Page::FirstRun:
             pageTitle_->SetText("Getting started");

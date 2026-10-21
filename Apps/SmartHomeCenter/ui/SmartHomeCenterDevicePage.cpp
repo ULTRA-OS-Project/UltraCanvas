@@ -60,7 +60,7 @@ std::shared_ptr<UltraCanvasContainer> DevicePage::Build() {
     head->AddChild(back);
     badge = Row("shcDevBadge", 0);
     badge->layout.SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-    badge->SetBorderRadius(14);
+    badge->SetBorderRadius(27);   // a disc
     Fixed(badge, 54, 54);
     icon = CreateImageElement("shcDevIcon", 28, 28);
     icon->SetFitMode(ImageFitMode::Contain);
@@ -235,9 +235,8 @@ void DevicePage::UpdateStates() {
     if (!v) return;
     if (!controls->Update(*v)) controls->Build(*v);
     const Tone tone = ToneOf(*v);
-    badge->SetBackgroundColor(tone.soft);
     icon->LoadFromFile(host.IconsDir() + v->icon + ".svg");
-    icon->SetTintColor(v->online ? tone.fg : kFaint);
+    PaintDeviceBadge(*badge, *icon, *v);
     name->SetText(v->info.Name);
     type->SetText(v->typeName + " · " + RoomText(v->info.Room));
     status->SetText(v->state);

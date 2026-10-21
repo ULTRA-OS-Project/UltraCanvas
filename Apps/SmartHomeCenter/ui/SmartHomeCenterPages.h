@@ -43,7 +43,7 @@ class DeviceControls;
 class RoomDevicesModel;
 class SceneActionsModel;
 
-enum class Page { Home, Rooms, Devices, Scenes, Energy, Activity, Settings, Device, FirstRun };
+enum class Page { Home, Rooms, Devices, Scenes, Energy, Network, Activity, Settings, Device, FirstRun };
 
 class PageHost {
 public:

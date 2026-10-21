@@ -81,3 +81,6 @@
     tree puts each router over a column of its devices.
   - The dashboard's device cards show the icon on their colour disc, and a
     list row now shows the device's name and state.
+  - The radial map is drawn tighter, and zoomed out past 70 % the topology
+    shows its devices as icons, named on hover (`SetDetailZoom`); a
+    double-click on a device reports through the new `SetOnNodeActivated`.

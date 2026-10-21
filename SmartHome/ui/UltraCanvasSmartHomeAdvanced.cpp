@@ -123,6 +123,9 @@ SmartHomeNetworkTopology::SmartHomeNetworkTopology(const std::string& identifier
     diagram->SetNodesConnectable(false);   // a map of the network, not an editor of it
     diagram->SetLinkDistance(190.0);       // room for a card between a router and its devices
     diagram->SetChargeStrength(-30000.0);  // cards are wide: push them well apart
+    // Zoomed out so far that a card's name would be under ~7 px, the devices
+    // show as their icons, named when hovered or selected.
+    diagram->SetDetailZoom(0.7);
     diagram->SetLegendVisible(true);
     diagram->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(200));
     Grow(*diagram);
@@ -130,6 +133,9 @@ SmartHomeNetworkTopology::SmartHomeNetworkTopology(const std::string& identifier
         selectedNodeId = id;
         ShowSelection();
         if (onNodeSelected) onNodeSelected(id);
+    };
+    diagram->onNodeDoubleClick = [this](const std::string& id) {
+        if (onNodeActivated) onNodeActivated(id);
     };
     AddChild(diagram);
 
@@ -303,12 +309,14 @@ void SmartHomeNetworkTopology::FillDiagram() {
             };
             return rank(routerOf(a)) < rank(routerOf(b));
         });
-        const double radius = std::max(230.0, leaves.size() * 100.0 / (2.0 * M_PI));
+        // As small as the cards allow - each arc slot about 80 px, the overlap
+        // pass spreading any that touch - so the map is not zoomed far out.
+        const double radius = std::max(190.0, leaves.size() * 80.0 / (2.0 * M_PI));
         std::map<std::string, std::pair<double, double>> pull;   // router -> sum of its devices' directions
         for (size_t i = 0; i < leaves.size(); ++i) {
             const double t = 2.0 * M_PI * static_cast<double>(i) / std::max<size_t>(leaves.size(), 1) - M_PI / 2.0;
             // Wider than tall: the cards are.
-            leaves[i]->X = static_cast<float>(radius * 1.35 * std::cos(t));
+            leaves[i]->X = static_cast<float>(radius * 1.3 * std::cos(t));
             leaves[i]->Y = static_cast<float>(radius * std::sin(t));
             auto& p = pull[routerOf(leaves[i])];
             p.first += std::cos(t);
@@ -321,7 +329,7 @@ void SmartHomeNetworkTopology::FillDiagram() {
                 t = std::atan2(it->second.second, it->second.first);
             }
             const double r = hubs.size() == 1 ? 0.0 : radius * 0.5;
-            hubs[i]->X = static_cast<float>(r * 1.35 * std::cos(t));
+            hubs[i]->X = static_cast<float>(r * 1.3 * std::cos(t));
             hubs[i]->Y = static_cast<float>(r * std::sin(t));
         }
     }
