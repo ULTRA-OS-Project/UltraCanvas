@@ -833,10 +833,13 @@ being finished (`last_assistant_message`, or the transcript's last assistant
 text on older Claude Code builds). A reply whose last non-blank line is not
 `Code needs to be PRed (N lines)` with the measured `N` is blocked once, with
 the line it found and the line it expected; surrounding backticks or bold and
-the ` — open as PR #<n>` suffix are accepted. The hook does not fetch, so it
-measures against `origin/main` as the clone last saw it — fetch before
-measuring and the two agree. The `SessionStart --brief` message states the
-rule and the current `N`.
+the ` — open as PR #<n>` suffix are accepted. The `Stop` form does not
+fetch, so it measures against `origin/main` as the clone last saw it — fetch
+before measuring and the two agree. The `SessionStart --brief` message
+fetches the default branch first (a clone can arrive with an `origin/main`
+older than the commit its branch was cut from, which counts all of main's
+newer commits as this checkout's), then states the rule and the current `N`;
+if the fetch fails it says the figure may be stale.
 
 `Next Task` and `Other recommendations` describe the repository, not the
 conversation. "Waiting for the test suite" belongs in `Next Task`; "the
