@@ -26,6 +26,22 @@
   file resets the status to *Ready.*
 - `anchorpoint_tests` covers stopping on either side, a stop that wakes a
   blocked read, and sending to a closed socket.
+- **A Browse… button for the save folder.** It used to be typed in, starting
+  from `.` - the folder AnchorPoint happened to be started in. *Browse…* opens
+  a folder dialog there.
+- **Choose File… and Browse… use the framework's file dialogs**
+  (`UltraCanvasFileLoader::OpenFileDialog` / `SelectFolderDialog`), like
+  every other UltraCanvas application, instead of calling the platform dialog
+  directly. A file picked to send is not added to the recent-files list.
+  The received file's path is joined with `PathFromUtf8` / `PathToUtf8`, so
+  a folder or file name in any script works on Windows too.
+- **CI builds the window.** The framework's build now includes AnchorPoint on
+  Linux (`BUILD_ANCHORPOINT`), so every Linux CI job builds the window, the
+  CLI and the tests; until now CI only built the core and CLI on their own.
+  Not on macOS and Windows yet: `AnchorPoint` and `anchorpoint` are one name
+  on their case-insensitive file systems.
+- The README no longer says the window's build is blocked by unfinished
+  UltraNet sources; it builds.
 
 #### 2026-10-14 *0.2.4*
 - **One AnchorPoint at a time.** Starting AnchorPoint while it is already

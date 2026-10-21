@@ -96,6 +96,12 @@ files the SHA-256 check needs. The protocol tests build with them;
 `ctest --test-dir build` runs them (`-DANCHORPOINT_BUILD_TESTS=OFF` skips them). The GUI links the
 UltraCanvas framework the same way `Apps/Texter` does.
 
+The framework's own build also builds AnchorPoint - window, CLI and tests -
+on Linux (`BUILD_ANCHORPOINT`, on by default there), so CI builds the window
+in every Linux job. It is off on macOS and Windows for now: their file
+systems ignore case, so the window `AnchorPoint` and the command line
+`anchorpoint` would be one file in `bin/`.
+
 ---
 
 ## CLI usage (M1)
@@ -125,10 +131,10 @@ Launch `AnchorPoint`. One copy runs per user: launching it again brings the
 running window forward (the headless `anchorpoint` is not limited). The
 window has two halves:
 
-* **Send a file** — click *Choose File…*, type the peer's address
+* **Send a file** — click *Choose File…* to pick it, type the peer's address
   (`host` or `host:port`, default port 5040), and click *Send*.
-* **Receive** — set a listen port and a save folder, then click *Receive* to
-  wait for an incoming file.
+* **Receive** — set a listen port and a save folder (type it, or pick it with
+  *Browse…*), then click *Receive* to wait for an incoming file.
 * **Stop** ends whatever is running: a listen still waiting for a peer, or a
   send or receive in progress (the peer is told). A stopped receive keeps the
   partial file; receiving the same file into the same folder again resumes it.
@@ -137,10 +143,3 @@ A Unicode progress bar and status line show live transfer state. All networking
 runs on worker threads; widgets are only ever touched from the UI thread via a
 periodic timer that reads the mutex-guarded transfer state — the threading
 contract UltraNet's off-thread callbacks will also require.
-
-> **Build note:** a full GUI *link* currently depends on the UltraCanvas core
-> library building, which in this tree is blocked by the framework's
-> half-scaffolded `Plugins/UltraNet/*` sources (`#include <UltraNet/UltraNetCore.h>`,
-> not yet present). AnchorPoint's own sources compile cleanly against the real
-> framework headers. The M2 GUI does **not** use `UltraCanvasProgressBar.h`,
-> which is an uncompiled/latent-broken header in the current tree.

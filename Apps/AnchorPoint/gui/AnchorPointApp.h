@@ -37,6 +37,7 @@ public:
 private:
     // ---- UI actions (main thread) ----
     void OnChooseFile();
+    void OnBrowseSaveDir();
     void OnSend();
     void OnStartReceiving();
     void OnStop();
@@ -55,7 +56,7 @@ private:
     UltraCanvas::UltraCanvasApplication& app_;
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
 
-    std::shared_ptr<UltraCanvas::UltraCanvasButton>     chooseBtn_, sendBtn_, recvBtn_, stopBtn_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>     chooseBtn_, sendBtn_, browseBtn_, recvBtn_, stopBtn_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>      fileLabel_, statusLabel_, barLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  peerInput_, recvPortInput_, saveDirInput_;
 

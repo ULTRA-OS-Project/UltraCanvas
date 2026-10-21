@@ -350,6 +350,7 @@ if(EMSCRIPTEN)
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
     set(BUILD_ULTRAPASSWORD OFF CACHE BOOL "Build the UltraPassword application")
+    set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
     set(BUILD_ULTRAWIN_MANAGER OFF CACHE BOOL "Build the UltraWin Manager application")
     set(BUILD_ULTRAWIN_SETUP OFF CACHE BOOL "Build the ultrawin-setup CLI tool")
     set(BUILD_ULTRAMSG_CLI OFF CACHE BOOL "Build the ultramsg command-line tool")
@@ -755,6 +756,26 @@ endif()
 option(BUILD_ULTRAPASSWORD "Build the UltraPassword application" ON)
 if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraPassword)
+endif()
+
+# ===== ANCHORPOINT =====
+# Peer-to-peer file sharing with no server file storage. Apps/AnchorPoint is
+# also its own CMake project (core + CLI build without the framework); here it
+# gets the framework's library and UltraCrypt, so the window is built - and
+# the protocol tests run - wherever the framework is. Linux only for now: the
+# window is `AnchorPoint` and the command line `anchorpoint`, one name on the
+# case-insensitive file systems macOS and Windows build on, so the two would
+# overwrite each other in bin/.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(_anchorpoint_default ON)
+else()
+    set(_anchorpoint_default OFF)
+endif()
+option(BUILD_ANCHORPOINT "Build the AnchorPoint application" ${_anchorpoint_default})
+if(BUILD_ANCHORPOINT AND TARGET UltraCrypt AND ULTRACANVAS_LIBRARY)
+    message(STATUS "")
+    message(STATUS "── Building AnchorPoint ──")
+    add_subdirectory(Apps/AnchorPoint)
 endif()
 
 # ===== DEMO APPLICATION =====

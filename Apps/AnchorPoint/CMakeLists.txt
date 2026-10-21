@@ -179,8 +179,10 @@ if(ANCHORPOINT_BUILD_GUI)
 
         target_include_directories(AnchorPoint PRIVATE
                 ${ULTRACANVAS_INCLUDE_DIRS}
-                ${ULTRACANVAS_ROOT}/include
                 ${CMAKE_CURRENT_SOURCE_DIR})
+        if(ULTRACANVAS_ROOT)   # standalone: the framework added above
+            target_include_directories(AnchorPoint PRIVATE ${ULTRACANVAS_ROOT}/include)
+        endif()
 
         target_link_libraries(AnchorPoint PRIVATE
                 anchorpoint_core

@@ -4,10 +4,13 @@
 // Author: AnchorPoint
 #include "AnchorPointApp.h"
 
-#include "UltraCanvasNativeDialogs.h"
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasPathUtf8.h"
 #include "../net/Protocol.h"
 
 #include <cstdint>
+#include <filesystem>
+#include <system_error>
 
 // ANCHORPOINT_VERSION comes from the build alone: CMake reads the first line of
 // Docs/AnchorPoint/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -144,9 +147,13 @@ bool AnchorPointGui::Build() {
     recvPortInput_->SetText(std::to_string(kDefaultPort));
     window_->AddChild(recvPortInput_);
 
-    saveDirInput_ = CreateTextInput("ap_savedir", (int)(pad + 140), (int)y, 200, 32);
+    saveDirInput_ = CreateTextInput("ap_savedir", (int)(pad + 140), (int)y, 120, 32);
     saveDirInput_->SetText(".");
     window_->AddChild(saveDirInput_);
+
+    browseBtn_ = CreateButton("ap_browse", pad + 266, y, 80, 34, "Browse…");
+    browseBtn_->SetOnClick([this]() { OnBrowseSaveDir(); });
+    window_->AddChild(browseBtn_);
 
     recvBtn_ = CreateButton("ap_recv", pad + 352, y, 104, 34, "Receive");
     recvBtn_->SetOnClick([this]() { OnStartReceiving(); });
@@ -179,15 +186,39 @@ void AnchorPointGui::Show() { if (window_) window_->Show(); }
 // UI actions
 // ===========================================================================
 void AnchorPointGui::OnChooseFile() {
-    std::string path = UltraCanvasNativeDialogs::OpenFile(
-        "Choose a file to send", {}, "", window_.get());
-    if (path.empty()) return;
-    chosenFile_ = path;
-    if (fileLabel_) fileLabel_->SetText(BaseName(path));
-    // Drop the last transfer's bar and any "Choose a file first." prompt.
-    bool busy;
-    { std::lock_guard<std::mutex> lk(stateMutex_); busy = busy_; }
-    if (!busy) ShowIdleMessage("Ready.");
+    // Any file can be sent, so no type filters; still FileLoader's dialog, as
+    // every file a user picks is (AGENTS.md, Core conventions).
+    FileDialogOptions opts;
+    opts.SetTitle("Choose a file to send")
+        .SetRegisterAsRecent(false)   // sending a file is not opening it
+        .SetParentWindow(window_.get());
+    if (!chosenFile_.empty())
+        opts.SetInitialDirectory(PathToUtf8(PathFromUtf8(chosenFile_).parent_path()));
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult r, const std::string& path) {
+        if (r != DialogResult::OK || path.empty()) return;
+        chosenFile_ = path;
+        if (fileLabel_) fileLabel_->SetText(BaseName(path));
+        // Drop the last transfer's bar and any "Choose a file first." prompt.
+        bool busy;
+        { std::lock_guard<std::mutex> lk(stateMutex_); busy = busy_; }
+        if (!busy) ShowIdleMessage("Ready.");
+    });
+}
+
+void AnchorPointGui::OnBrowseSaveDir() {
+    FileDialogOptions opts;
+    opts.SetTitle("Save received files to")
+        .SetParentWindow(window_.get());
+    // Start where the field points; "." is the folder AnchorPoint started in.
+    std::error_code ec;
+    const std::filesystem::path current = std::filesystem::absolute(
+        PathFromUtf8(saveDirInput_ ? saveDirInput_->GetText() : "."), ec);
+    if (!ec && std::filesystem::is_directory(current, ec))
+        opts.SetInitialDirectory(PathToUtf8(current));
+    UltraCanvasFileLoader::SelectFolderDialog(opts, [this](DialogResult r, const std::string& path) {
+        if (r != DialogResult::OK || path.empty() || !saveDirInput_) return;
+        saveDirInput_->SetText(path);
+    });
 }
 
 void AnchorPointGui::OnSend() {
@@ -357,10 +388,7 @@ void AnchorPointGui::ReceiveWorker(uint16_t port, std::string saveDir) {
         [&](const OfferInfo& offer, const std::string& peer) -> std::string {
             accepted = true;
             SetStatus("Receiving \"" + offer.fileName + "\" from " + peer + " …");
-            std::string out = saveDir;
-            if (!out.empty() && out.back() != '/' && out.back() != '\\') out += '/';
-            out += offer.fileName;
-            return out;
+            return PathToUtf8(PathFromUtf8(saveDir) / PathFromUtf8(offer.fileName));
         },
         [this](uint64_t d, uint64_t t) { SetProgress(d, t); }, &cancel_);
     SetActiveConnection(nullptr);
