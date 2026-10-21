@@ -403,7 +403,8 @@ from a domain of its own. Where the brand table already reported the claim
 |---|---|
 | Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
 | Romance scams | `romance-scam` |
-| Advance-fee letters | `advance-fee-fraud`, `loan-offer-fraud`, `reply-elsewhere` |
+| Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
+| Loan and credit offers | `loan-offer-fraud` |
 | Letters in an agency's name | `government-impersonation` |
 | Cryptocurrency scams | `crypto-wallet-secret`, `crypto-payment-demand`, `crypto-investment-lure` |
 | Any mail about cryptocurrency | `crypto-content` (the caution strip) |

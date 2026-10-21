@@ -74,6 +74,7 @@ TEST(preferences_round_trip) {
     out.notifyNewMail = false;
     out.scamWarnings.romance = false;
     out.scamWarnings.cryptoCaution = false;
+    out.scamWarnings.loanOffers = false;
     out.senderLists.trusted = { "friend@example.org" };
     out.senderLists.blocked = { "offers@shop.example", "@junk.example" };
     out.folderTreeContent = FolderTreeContent::CurrentAccount;
@@ -92,6 +93,7 @@ TEST(preferences_round_trip) {
     REQUIRE(in.linkDisplay == LinkDisplay::Tooltip);
     REQUIRE(!in.scamWarnings.romance);
     REQUIRE(!in.scamWarnings.cryptoCaution);
+    REQUIRE(!in.scamWarnings.loanOffers);
     REQUIRE(in.scamWarnings.phishing);          // the others stay on
     REQUIRE(in.scamWarnings.advanceFee);
     REQUIRE(in.scamWarnings == out.scamWarnings);

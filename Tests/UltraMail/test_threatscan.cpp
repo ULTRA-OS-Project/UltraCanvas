@@ -434,6 +434,17 @@ TEST(a_bare_loan_offer_from_a_stranger_is_suspicious) {
     REQUIRE(r.level >= ThreatLevel::Suspicious);
 }
 
+TEST(the_loan_switch_turns_off_only_loan_warnings) {
+    ScanInput in;
+    in.fromAddr = "finance.desk@mailbox.example";
+    in.subject  = "Loan facility at 3% yearly";
+    in.body     = "My late client left US$ 15,500,000 in a dormant account; we offer loans.";
+    in.options.loanOffers = false;
+    const ThreatReport r = ScanMessage(in);
+    REQUIRE(!r.Has("loan-offer-fraud"));
+    REQUIRE(r.Has("advance-fee-fraud"));   // the advance-fee switch is still on
+}
+
 TEST(a_proven_bank_may_offer_credit) {
     ScanInput in;
     in.fromAddr    = "offers@chase.com";
@@ -1335,6 +1346,7 @@ TEST(a_kind_of_warning_switched_off_is_not_reported) {
 TEST(every_finding_belongs_to_a_switch) {
     ThreatScanOptions none;
     none.phishing = none.romance = none.advanceFee = none.government = false;
+    none.loanOffers = false;
     none.cryptoScams = none.cryptoCaution = none.attachments = none.spamFlag = false;
     for (const char* code : { "spam-flag", "auth-failure", "brand-impersonation",
                               "sender-domain-lookalike", "borrowed-brand-pictures",

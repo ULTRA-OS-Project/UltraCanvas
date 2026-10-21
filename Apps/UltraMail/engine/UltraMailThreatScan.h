@@ -15,7 +15,7 @@
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
 // Version: 0.10.0 - loan-offer-fraud (a loan, credit or project funding offered by
-//                   anyone but a proven bank; under the advance-fee switch);
+//                   anyone but a proven bank; its own switch, loanOffers);
 //                   kThreatRulesRevision 2026-10-21
 // Version: 0.9.0 - SenderLists: senders the reader trusts (only the findings that
 //                  catch a lie or a forgery count for them) and blocks (blocked-sender,
@@ -84,7 +84,8 @@ struct ThreatScanOptions {
     bool phishing      = true;   // links that lie, a brand or a look-alike domain
                                  // claimed, credentials asked for, forged senders
     bool romance       = true;   // romance-scam
-    bool advanceFee    = true;   // advance-fee-fraud, loan-offer-fraud, reply-elsewhere
+    bool advanceFee    = true;   // advance-fee-fraud, reply-elsewhere
+    bool loanOffers    = true;   // loan-offer-fraud: a loan or credit not offered by a bank
     bool government    = true;   // government-impersonation
     bool cryptoScams   = true;   // crypto-wallet-secret, -payment-demand, -investment-lure
     bool cryptoCaution = true;   // crypto-content: the caution on any mail about crypto

@@ -813,8 +813,8 @@ bool ThreatReport::Has(const std::string& code) const {
 bool FindingEnabled(const ThreatScanOptions& o, const std::string& code) {
     if (code == "romance-scam")             return o.romance;
     if (code == "government-impersonation") return o.government;
-    if (code == "advance-fee-fraud" || code == "loan-offer-fraud" ||
-        code == "reply-elsewhere") return o.advanceFee;
+    if (code == "advance-fee-fraud" || code == "reply-elsewhere") return o.advanceFee;
+    if (code == "loan-offer-fraud")         return o.loanOffers;
     if (code == "crypto-content")           return o.cryptoCaution;
     if (code.compare(0, 7, "crypto-") == 0) return o.cryptoScams;
     if (code.compare(0, 11, "attachment-") == 0) return o.attachments;
