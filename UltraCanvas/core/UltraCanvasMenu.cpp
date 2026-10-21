@@ -1,5 +1,6 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.17.0 - an entry's width is measured once and kept (CalculateItemWidth over MeasureItemWidth)
 // Version: 1.16.0 - the labels are shaped once and kept
 // Version: 1.15.0 - MenuStyle::FromTheme
 // Version: 1.14.0 - OpenMenuAnchored (below a widget, or above it when there is no
@@ -829,6 +830,38 @@ namespace UltraCanvas {
     }
 
     int UltraCanvasMenu::CalculateItemWidth(const MenuItemData &item) const {
+        // Measured once per entry and kept with what it was measured from;
+        // a layout pass asks for every width, and shaping the label for
+        // each ask is what made a menubar's layout dear.
+        ItemWidth measured;
+        measured.label = item.label;
+        measured.shortcut = item.shortcut;
+        measured.font = item.font.value_or(style.font);
+        measured.icon = !item.iconPath.empty() || item.iconImage != nullptr;
+        measured.submenu = item.HasSubmenu();
+        measured.check = item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio;
+        measured.vertical = orientation == MenuOrientation::Vertical;
+        measured.iconSize = style.iconSize;
+        measured.iconSpacing = style.iconSpacing;
+        measured.shortcutSpacing = style.shortcutSpacing;
+        // The entry's slot, when `item` is one of ours (every caller's is).
+        const bool ours = !items.empty() && &item >= items.data() && &item < items.data() + items.size();
+        const size_t slot = ours ? static_cast<size_t>(&item - items.data()) : 0;
+        if (ours) {
+            if (slot >= itemWidths.size()) itemWidths.resize(slot + 1);
+            ItemWidth& kept = itemWidths[slot];
+            measured.width = kept.width;
+            if (kept == measured && kept.width >= 0) return kept.width;
+        }
+        const int width = MeasureItemWidth(item);
+        if (ours) {
+            measured.width = width;
+            itemWidths[slot] = measured;
+        }
+        return width;
+    }
+
+    int UltraCanvasMenu::MeasureItemWidth(const MenuItemData &item) const {
         int width = 0;
         auto ctx = GetRenderContext();
         // Without a window there is no context to measure with (a menu drawn

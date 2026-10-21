@@ -5,6 +5,7 @@
 // (IRenderContext::TextLayoutsCreated); a changed text, font or width makes
 // one more, a changed colour none. Drawn into an offscreen surface; needs
 // no display.
+// Version: 1.2.0 - the context's key respects the font; the dropdown's reordered rows
 // Version: 1.1.0 - the text input, the dropdown and the menu
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -139,6 +140,30 @@ int main() {
         Check(ctx->TextLayoutsCreated() == end, "shortened at the end again, the button makes no layout of its own");
     }
 
+    std::printf("The context's own cache\n");
+    {
+        // DrawText and the measures go through the context's string-keyed
+        // cache; its key carries the font, so the same word in two sizes is
+        // two layouts, not one measured at the first size.
+        FontStyle small;
+        small.fontSize = 12;
+        FontStyle large;
+        large.fontSize = 24;
+        ctx->SetFontStyle(small);
+        const Size2Di atSmall = ctx->GetTextLineDimensions("Hello");
+        ctx->SetFontStyle(large);
+        const Size2Di atLarge = ctx->GetTextLineDimensions("Hello");
+        ctx->SetFontStyle(small);
+        const Size2Di atSmallAgain = ctx->GetTextLineDimensions("Hello");
+        Check(atLarge.width > atSmall.width && atLarge.height > atSmall.height && atSmallAgain == atSmall,
+              "the same word measures larger in the larger font and the same again in the first");
+        FontStyle bold = small;
+        bold.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(bold);
+        Check(ctx->GetTextLineDimensions("Hello").width != atSmall.width, "and differently in bold");
+        ctx->SetFontStyle(small);
+    }
+
     std::printf("A text input\n");
     {
         auto input = CreateTextInput("i", 0, 0, 300, 34);
@@ -169,6 +194,49 @@ int main() {
         dropdown->SetSelectedIndex(1, false);
         Draw(ctx.get(), *dropdown, 1);
         Check(ctx->TextLayoutsCreated() == before + 1, "another item chosen makes one: " + std::to_string(ctx->TextLayoutsCreated() - before));
+    }
+
+    std::printf("The dropdown's rows\n");
+    {
+        // The list's rows are drawn by the delegate, one kept layout per row
+        // index: a reordered model rebuilds every row whose text moved, once.
+        std::vector<DropdownItem> rows;
+        for (const char* text : {"Alpha", "Beta", "Gamma"}) {
+            DropdownItem item;
+            item.text = text;
+            rows.push_back(item);
+        }
+        DropdownListModel model;
+        model.SetItems(&rows);
+        DropdownStyle style;
+        DropdownItemDelegate delegate;
+        delegate.SetStyle(&style);
+        auto drawRows = [&]() {
+            for (int row = 0; row < static_cast<int>(rows.size()); ++row) {
+                ListItemStyleOption option;
+                option.rect = Rect2Di(0, row * 24, 260, 24);
+                option.row = row;
+                delegate.RenderItem(ctx.get(), &model, row, 0, option);
+            }
+        };
+        unsigned long before = ctx->TextLayoutsCreated();
+        drawRows();
+        const unsigned long first = ctx->TextLayoutsCreated() - before;
+        before = ctx->TextLayoutsCreated();
+        drawRows();
+        drawRows();
+        Check(first >= 3 && ctx->TextLayoutsCreated() == before, "three rows shaped once; two repaints make no layout");
+        std::swap(rows[0], rows[1]);
+        before = ctx->TextLayoutsCreated();
+        drawRows();
+        Check(ctx->TextLayoutsCreated() == before + 2, "two rows swapped: the two rebuild, the third is kept: " + std::to_string(ctx->TextLayoutsCreated() - before));
+        rows.erase(rows.begin());
+        before = ctx->TextLayoutsCreated();
+        drawRows();
+        Check(ctx->TextLayoutsCreated() == before + 2, "the first row removed: the two that moved up rebuild: " + std::to_string(ctx->TextLayoutsCreated() - before));
+        before = ctx->TextLayoutsCreated();
+        drawRows();
+        Check(ctx->TextLayoutsCreated() == before, "and are kept again");
     }
 
     std::printf("A menu bar\n");

@@ -18,3 +18,10 @@
   `UltraCanvas/include` that carry no `Version:` line**, so the history a
   reader expects in a header's head is added where it is missing;
   `--strict` makes it a check.
+- **A menu entry's width is measured once.** `CalculateItemWidth` keeps
+  each entry's width with what it was measured from (the label, the
+  shortcut, the font, the icon, the submenu, the orientation, the style's
+  spacings) and measures again only when one changed; every layout pass
+  asked for every width before, and each ask shaped the label. A menu
+  drawn without a window (a test's offscreen surface) estimates its widths
+  instead of dereferencing a context it does not have.
