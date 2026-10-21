@@ -1,4 +1,8 @@
 // UltraCanvas/Plugins/UltraNet/jmap/JmapCore.h
+// Version: 0.3.2 - Guarded / GuardedVoid: an exception inside a plug-in
+//                  entry point becomes a PluginError result
+// Version: 0.3.1 - a null where a string or number is expected (Fastmail's
+//                  "subject": null, "to": null) reads as absent, never throws
 // Version: 0.3.0 - push: the event-source URL and the StateChange events
 //                  (phase 3)
 // Version: 0.2.0 - the write path: Email/set keyword and mailbox patches,
@@ -23,6 +27,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <exception>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -32,6 +37,62 @@
 namespace ultranet_jmap {
 
 using json = nlohmann::json;
+
+// Nothing may leave a plug-in entry point as an exception: the caller is
+// usually a worker thread with no handler, where std::terminate ends the
+// whole process (SIGABRT - how a null subject once took UltraMail down).
+// `body` runs inside a handler; what it throws - a JSON type the parser did
+// not expect, a bad_alloc, anything - comes back as a PluginError result
+// that names the call and the reason.
+template <typename Body>
+UltraNetResult Guarded(const char* what, Body&& body) {
+    try {
+        return body();
+    } catch (const std::exception& e) {
+        return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                     std::string(what) + ": " + e.what());
+    } catch (...) {
+        return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                     std::string(what) + ": an unexpected error");
+    }
+}
+
+// The same for a call with nothing to return (Shutdown, StopWatching, the
+// callbacks on the HTTP worker thread): an exception is swallowed. True when
+// the body ran through.
+template <typename Body>
+bool GuardedVoid(Body&& body) {
+    try {
+        body();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+// A string / number member of `o`, or `def` when `o` is not an object, has no
+// such member, or holds another type there - a null above all. JSON mail
+// servers write null for a missing subject, an empty To or an unknown name
+// (Fastmail: "subject": null, "to": null), and nlohmann's value() returns its
+// default only for a missing key: a null throws type_error, which took
+// UltraMail down with SIGABRT on a draft without a subject. Nothing here may
+// throw on what a server sends.
+inline std::string Str(const json& o, const char* key, const std::string& def = {}) {
+    if (!o.is_object()) return def;
+    auto it = o.find(key);
+    return it != o.end() && it->is_string() ? it->get<std::string>() : def;
+}
+inline uint32_t Uint(const json& o, const char* key, uint32_t def = 0) {
+    if (!o.is_object()) return def;
+    auto it = o.find(key);
+    if (it == o.end() || !it->is_number()) return def;
+    if (it->is_number_unsigned()) {
+        const uint64_t v = it->get<uint64_t>();
+        return v > 0xFFFFFFFFu ? 0xFFFFFFFFu : static_cast<uint32_t>(v);
+    }
+    const double v = it->get<double>();
+    return v <= 0 ? 0u : v >= 4294967295.0 ? 0xFFFFFFFFu : static_cast<uint32_t>(v);
+}
 
 inline constexpr const char* kCapCore       = "urn:ietf:params:jmap:core";
 inline constexpr const char* kCapMail       = "urn:ietf:params:jmap:mail";
@@ -56,16 +117,16 @@ inline bool ParseSession(const std::string& body, JmapSession& out, std::string&
     json j = json::parse(body, nullptr, /*allow_exceptions=*/false);
     if (j.is_discarded() || !j.is_object()) { err = "session resource is not a JSON object"; return false; }
 
-    out.apiUrl         = j.value("apiUrl", "");
-    out.downloadUrl    = j.value("downloadUrl", "");
-    out.uploadUrl      = j.value("uploadUrl", "");
-    out.eventSourceUrl = j.value("eventSourceUrl", "");
-    out.username       = j.value("username", "");
+    out.apiUrl         = Str(j, "apiUrl");
+    out.downloadUrl    = Str(j, "downloadUrl");
+    out.uploadUrl      = Str(j, "uploadUrl");
+    out.eventSourceUrl = Str(j, "eventSourceUrl");
+    out.username       = Str(j, "username");
     if (out.apiUrl.empty()) { err = "session resource has no apiUrl"; return false; }
 
     out.accountId.clear();
     if (j.contains("primaryAccounts") && j["primaryAccounts"].is_object())
-        out.accountId = j["primaryAccounts"].value(kCapMail, "");
+        out.accountId = Str(j["primaryAccounts"], kCapMail);
     if (out.accountId.empty() && j.contains("accounts") && j["accounts"].is_object() &&
         !j["accounts"].empty())
         out.accountId = j["accounts"].begin().key();
@@ -311,7 +372,7 @@ inline bool ParseUploadResponse(const std::string& body, std::string& outBlobId,
                                 std::string& err) {
     json j = json::parse(body, nullptr, /*allow_exceptions=*/false);
     if (j.is_discarded() || !j.is_object()) { err = "upload response is not a JSON object"; return false; }
-    outBlobId = j.value("blobId", "");
+    outBlobId = Str(j, "blobId");
     if (outBlobId.empty()) { err = "upload response has no blobId"; return false; }
     return true;
 }
@@ -326,8 +387,8 @@ inline bool SetErrorFor(const json& args, const char* notKey, const std::string&
     const json& failures = args[notKey];
     if (!failures.contains(id) || !failures[id].is_object()) return false;
     const json& e = failures[id];
-    err = e.value("type", "serverFail");
-    const std::string desc = e.value("description", "");
+    err = Str(e, "type", "serverFail");
+    const std::string desc = Str(e, "description");
     if (!desc.empty()) err += ": " + desc;
     return true;
 }
@@ -338,7 +399,7 @@ inline std::string CreatedId(const json& args, const std::string& creationId) {
     if (!args.is_object() || !args.contains("created") || !args["created"].is_object()) return {};
     const json& created = args["created"];
     if (!created.contains(creationId) || !created[creationId].is_object()) return {};
-    return created[creationId].value("id", "");
+    return Str(created[creationId], "id");
 }
 
 // Identity/get (RFC 8621 §6): the addresses the account may send as.
@@ -359,9 +420,9 @@ inline bool ParseIdentities(const json& args, std::vector<JmapIdentity>& out) {
     for (const auto& i : args["list"]) {
         if (!i.is_object()) continue;
         JmapIdentity id;
-        id.id    = i.value("id", "");
-        id.name  = i.value("name", "");
-        id.email = i.value("email", "");
+        id.id    = Str(i, "id");
+        id.name  = Str(i, "name");
+        id.email = Str(i, "email");
         if (!id.id.empty()) out.push_back(std::move(id));
     }
     return true;
@@ -512,8 +573,8 @@ inline bool FindMethodResponse(const std::string& body, const std::string& metho
         if (name == method) { outArgs = entry[1]; return true; }
         if (name == "error") {
             const json& a = entry[1];
-            err = a.is_object() ? a.value("type", "serverFail") : std::string("serverFail");
-            const std::string desc = a.is_object() ? a.value("description", "") : std::string{};
+            err = a.is_object() ? Str(a, "type", "serverFail") : std::string("serverFail");
+            const std::string desc = a.is_object() ? Str(a, "description") : std::string{};
             if (!desc.empty()) err += ": " + desc;
             return false;
         }
@@ -540,8 +601,8 @@ inline bool ParseMailboxes(const json& args, std::vector<JmapMailbox>& out) {
     for (const auto& m : args["list"]) {
         if (!m.is_object()) continue;
         JmapMailbox b;
-        b.id   = m.value("id", "");
-        b.name = m.value("name", "");
+        b.id   = Str(m, "id");
+        b.name = Str(m, "name");
         if (m.contains("parentId") && m["parentId"].is_string())
             b.parentId = m["parentId"].get<std::string>();
         if (m.contains("role") && m["role"].is_string()) {
@@ -549,8 +610,8 @@ inline bool ParseMailboxes(const json& args, std::vector<JmapMailbox>& out) {
             std::transform(b.role.begin(), b.role.end(), b.role.begin(),
                            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         }
-        b.totalEmails  = m.value("totalEmails", 0u);
-        b.unreadEmails = m.value("unreadEmails", 0u);
+        b.totalEmails  = Uint(m, "totalEmails");
+        b.unreadEmails = Uint(m, "unreadEmails");
         if (!b.id.empty()) out.push_back(std::move(b));
     }
     return true;
@@ -638,7 +699,7 @@ inline bool ParseQueryIds(const json& args, std::vector<std::string>& outIds,
     if (!args.is_object() || !args.contains("ids") || !args["ids"].is_array()) return false;
     for (const auto& id : args["ids"])
         if (id.is_string()) outIds.push_back(id.get<std::string>());
-    if (outTotal) *outTotal = args.value("total", 0u);
+    if (outTotal) *outTotal = Uint(args, "total");
     if (outState && args.contains("queryState") && args["queryState"].is_string())
         *outState = args["queryState"].get<std::string>();
     return true;
@@ -653,9 +714,9 @@ struct JmapEnvelope {
 };
 
 inline void ParseEmailObject(const json& m, JmapEnvelope& e) {
-    e.id     = m.value("id", "");
-    e.blobId = m.value("blobId", "");
-    e.env.subject = m.value("subject", "");
+    e.id     = Str(m, "id");
+    e.blobId = Str(m, "blobId");
+    e.env.subject = Str(m, "subject");
     // messageId / inReplyTo are arrays of bare ids; re-add the RFC 5322 angle
     // brackets so values compare equal with the IMAP plug-in's header parse.
     if (m.contains("messageId") && m["messageId"].is_array() && !m["messageId"].empty() &&
@@ -670,8 +731,8 @@ inline void ParseEmailObject(const json& m, JmapEnvelope& e) {
     }
     if (m.contains("to")) e.env.to = FormatAddressList(m["to"]);
     if (m.contains("cc")) e.env.cc = FormatAddressList(m["cc"]);
-    e.env.date  = m.value("receivedAt", "");        // UTCDate, e.g. 2026-07-17T09:00:00Z
-    e.env.size  = m.value("size", 0u);
+    e.env.date  = Str(m, "receivedAt");        // UTCDate, e.g. 2026-07-17T09:00:00Z
+    e.env.size  = Uint(m, "size");
     if (m.contains("keywords")) e.env.flags = KeywordsToFlags(m["keywords"]);
 }
 
@@ -697,12 +758,12 @@ inline bool ExtractBestBody(const json& m, std::string& outBody, std::string& ou
         if (!m.contains(listName) || !m[listName].is_array()) continue;
         for (const auto& part : m[listName]) {
             if (!part.is_object()) continue;
-            const std::string partId = part.value("partId", "");
+            const std::string partId = Str(part, "partId");
             if (partId.empty() || !values.contains(partId)) continue;
             const json& v = values[partId];
             if (!v.is_object() || !v.contains("value") || !v["value"].is_string()) continue;
             outBody        = v["value"].get<std::string>();
-            outContentType = part.value("type",
+            outContentType = Str(part, "type",
                 std::string(listName) == std::string("textBody") ? "text/plain" : "text/html");
             return true;
         }
