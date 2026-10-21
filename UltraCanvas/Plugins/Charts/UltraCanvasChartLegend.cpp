@@ -1,7 +1,7 @@
 // Plugins/Charts/UltraCanvasChartLegend.cpp
 // Shared legend component implementation.
-// Version: 1.1.0
-// Last Modified: 2026-08-20
+// Version: 1.2.0 - area-scaled size keys with explicit sample values
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cmath>
+#include <functional>
 
 namespace UltraCanvas {
 
@@ -521,20 +522,35 @@ namespace UltraCanvas {
                                        double titleH) {
         const auto format = sizeScale.formatter ? sizeScale.formatter
                                                 : DefaultLegendNumber;
-        const int samples = std::max(1, sizeScale.sampleCount);
+        // Largest first, the way printed size keys read.
+        std::vector<double> sampleValues = sizeScale.values;
+        if (sampleValues.empty()) {
+            const int count = std::max(1, sizeScale.sampleCount);
+            for (int i = 0; i < count; ++i) {
+                const double t = (count == 1)
+                                     ? 1.0
+                                     : 1.0 - static_cast<double>(i) / (count - 1);
+                sampleValues.push_back(sizeScale.minValue +
+                                       (sizeScale.maxValue - sizeScale.minValue) * t);
+            }
+        } else {
+            std::sort(sampleValues.begin(), sampleValues.end(), std::greater<double>());
+        }
+        const int samples = static_cast<int>(sampleValues.size());
 
         layout.sizeRadii.clear();
         layout.sizeLabels.clear();
         double maxLabelW = 0.0, maxLabelH = 0.0;
+        const double span = sizeScale.maxValue - sizeScale.minValue;
         for (int i = 0; i < samples; ++i) {
-            // Largest first, the way printed size keys read.
-            const double t = (samples == 1)
+            const double v = sampleValues[static_cast<size_t>(i)];
+            const double t = (std::abs(span) < 1e-12)
                                  ? 1.0
-                                 : 1.0 - static_cast<double>(i) / (samples - 1);
-            const double v = sizeScale.minValue +
-                             (sizeScale.maxValue - sizeScale.minValue) * t;
-            layout.sizeRadii.push_back(
-                sizeScale.minRadius + (sizeScale.maxRadius - sizeScale.minRadius) * t);
+                                 : std::clamp((v - sizeScale.minValue) / span, 0.0, 1.0);
+            const double r0 = sizeScale.minRadius, r1 = sizeScale.maxRadius;
+            layout.sizeRadii.push_back(sizeScale.areaScaled
+                                           ? std::sqrt(r0 * r0 + (r1 * r1 - r0 * r0) * t)
+                                           : r0 + (r1 - r0) * t);
             layout.sizeLabels.push_back(format(v));
             const Size2Di ts = ctx->GetTextLineDimensions(layout.sizeLabels.back());
             maxLabelW = std::max(maxLabelW, static_cast<double>(ts.width));

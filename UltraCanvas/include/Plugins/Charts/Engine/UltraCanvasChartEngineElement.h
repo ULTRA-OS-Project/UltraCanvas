@@ -17,9 +17,17 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.5.0 - OnThemeChanged() renamed OnChartThemeChanged(): it hid the element's
+//   OnThemeChanged(const UltraCanvasTheme&); value-axis tick labels inside the
+//   plot are label-plan obstacles
+// Version: 1.4.1 - same-side edge axes with overlapping bands stack outward
+// Version: 1.4.0 - polar furniture (rim labels, radial value rule, ring and
+//   polygon grids), polar angles / inner radius, domain gridlines, axis
+//   sub-bands on the edge rule, DrawChartMarker, domain-axis limiters with
+//   a partial extent, span annotations
 // Version: 1.3.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.3.0
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -65,6 +73,32 @@ struct ChartLimiter {
     bool dashed = true;
     std::string caption;             // solved as a LimiterCaption label
     Color captionColor = Color(120, 40, 40, 255);
+    // How far the line runs across the plot, as a fraction of the direction
+    // perpendicular to its axis: a value-axis limiter spans the domain, a
+    // limiter on a domain axis (an average age on a population pyramid's age
+    // rows) spans the value range. 0..1 = the whole plot; 0..0.5 stops at the
+    // middle - one side of a diverging chart. The caption sits at the end.
+    double extentStart = 0.0;
+    double extentEnd = 1.0;
+};
+
+// A dimension line between two value-space points, with an arrowhead at
+// each end and a boxed caption at its middle (phase 3, slot 700): the lead
+// time / cycle time / WIP spans of a cumulative flow diagram, a gap between
+// two series, a measured interval. x maps through the axis at xAxisIndex (the
+// projection's domain / u), y through yAxisIndex. The caption box is an
+// obstacle in the label plan, so solved value labels steer around it.
+struct ChartSpanAnnotation {
+    size_t xAxisIndex = 0;
+    size_t yAxisIndex = 1;
+    Point2Dd from;                   // value space
+    Point2Dd to;
+    std::string label;
+    Color color = Color(120, 122, 128, 255);
+    float width = 2.4f;
+    double arrowSize = 7.0;
+    Color boxColor = Color(235, 235, 238, 235);
+    Color textColor = Color(70, 72, 78, 255);
 };
 
 // How RenderBarConnections strokes the lines BuildBarConnections produced
@@ -82,6 +116,19 @@ struct ChartBarConnectionStyle {
     float haloWidth = 1.5f;
     Color haloColor = Color(0, 0, 0, 0);
 };
+
+// The rings a polar value grid draws: true circles, or polygons through the
+// domain ticks - the radar "web".
+enum class ChartPolarGridShape { Circle, Polygon };
+
+// Paints one point marker (Engine/UltraCanvasChartSeries.h ChartMarkerShape)
+// centred on `center`. Filled shapes take `fill` and an optional outline
+// (`stroke` with alpha 0 = none); Cross and Plus are strokes in the fill
+// colour. Shared by the scatter, bubble and line charts so a marker looks the
+// same everywhere it appears.
+void DrawChartMarker(IRenderContext* ctx, ChartMarkerShape shape, const Point2Dd& center,
+                     double radius, const Color& fill,
+                     const Color& stroke = Color(0, 0, 0, 0), float strokeWidth = 1.0f);
 
 // The legend is the shared ChartLegend component
 // (Plugins/Charts/UltraCanvasChartLegend.h): ChartLegendEntry, LegendSwatch
@@ -130,11 +177,27 @@ public:
     void SetProjectionKind(ChartProjectionKind kind);
     ChartProjectionKind GetProjectionKind() const;
 
+    // Polar projection geometry, kept across projection switches: where the
+    // domain starts (degrees, 0 = 3 o'clock, -90 = 12 o'clock), how far it
+    // sweeps (360 = full circle; 270 for a radial bar chart) and which way,
+    // and the fraction of the radius left empty in the middle (donuts, radial
+    // bars). Geometry-only - no re-describe of the axes.
+    void SetPolarAngles(double startAngleDegrees, double sweepDegrees, bool clockwise = true);
+    void SetPolarInnerRadius(double fraction);
+    // Value-grid rings under Polar: circles (default) or polygons through
+    // the domain ticks (the radar web).
+    void SetPolarGridShape(ChartPolarGridShape shape);
+    ChartPolarGridShape GetPolarGridShape() const { return polarGridShape; }
+
+    // Whether an axis maps the domain (u) or the value (v) under the current
+    // projection - ChartAxis::role, or inferred from its side when Auto.
+    bool IsDomainAxis(const ChartAxis& axis) const;
+
     // Theme and palette (Engine/UltraCanvasChartTheme.h). A theme change is
     // repaint-only - it never re-runs layout or the label solver. Content
     // charts draw their series from Palette() (typically
     // Palette().ColorAt(i, count)) and refresh anything cached from the
-    // theme - legend entry colours above all - in OnThemeChanged().
+    // theme - legend entry colours above all - in OnChartThemeChanged().
     void SetTheme(const ChartTheme& theme);
     // Resolves a built-in theme by name ("Dark", "Ocean", ...); returns false
     // and changes nothing when the name is unknown. Also reachable through
@@ -144,7 +207,10 @@ public:
     // Replace only the series palette, keeping the theme's furniture.
     void SetPalette(const ChartPalette& palette);
     const ChartPalette& Palette() const { return engineTheme.palette; }
-    virtual void OnThemeChanged() {}
+    // Named for the chart theme, not OnThemeChanged(): that name is the
+    // element's hook for the application's UltraCanvasTheme, and a
+    // parameterless overload of it hid that one (-Woverloaded-virtual).
+    virtual void OnChartThemeChanged() {}
 
     void SetLabelPolicy(const ChartLabelPolicy& policy);
     void SetLabelOptions(const LabelPlacementOptions& options);
@@ -152,7 +218,12 @@ public:
 
     // Grid lines are derived from this axis's ticks (fixes the base class's
     // fixed 10x8 grid that never matched the ticks). SIZE_MAX = no grid axis.
+    // A value axis draws lines across the domain (rings under Polar); a
+    // domain axis draws lines across the value range (spokes under Polar).
     void SetGridAxis(size_t axisIndex);
+    // A second grid source, so a chart can rule both directions - a scatter
+    // plot's x and y, a radar's rings and spokes. SIZE_MAX = none (default).
+    void SetDomainGridAxis(size_t axisIndex);
 
     size_t AddLimiter(const ChartLimiter& limiter);
     void ClearLimiters();
@@ -165,6 +236,10 @@ public:
     // ChartLabelClass::HighlightLabel.
     size_t AddHighlight(const ChartHighlight& highlight);
     void ClearHighlights();
+
+    // Span annotations (ChartSpanAnnotation above) - drawn over the content.
+    size_t AddSpanAnnotation(const ChartSpanAnnotation& span);
+    void ClearSpanAnnotations();
 
     // Legend - the shared ChartLegend component drawn and laid out by the
     // engine: an outside placement reserves its edge in the layout
@@ -327,9 +402,48 @@ private:
     uint64_t generation = 0;
     int lastLayoutWidth = -1, lastLayoutHeight = -1;
 
+    // Per axis: how far outside the plot edge its rule sits - non-zero for
+    // an edge axis stacked beyond another on the same side (RunLayout).
+    std::vector<double> axisEdgeOffsets;
     size_t gridAxisIndex = static_cast<size_t>(-1);
+    size_t domainGridAxisIndex = static_cast<size_t>(-1);
+
+    // Polar geometry, applied to the projection whenever it is polar.
+    double polarStartAngle = -90.0;
+    double polarSweep = 360.0;
+    bool polarClockwise = true;
+    double polarInnerFraction = 0.0;
+    ChartPolarGridShape polarGridShape = ChartPolarGridShape::Circle;
+    void ApplyPolarGeometry();
+    bool PolarFullCircle() const;
+    // A ring at normalised value v: a sampled circle, or the polygon through
+    // the domain ticks when the grid shape is Polygon.
+    std::vector<Point2Dd> PolarRing(double v) const;
+    // The domain axis the polygon grid and the rim labels follow.
+    const ChartAxis* PolarDomainAxis() const;
+    void RenderGridFrom(IRenderContext* ctx, size_t axisIndex);
+    // A domain edge axis under Polar: the rim, its ticks and labels.
+    void RenderPolarRimAxis(IRenderContext* ctx, size_t axisIndex);
+    // Where a rim label goes for normalised domain position u.
+    Rect2Dd PolarRimLabelBox(double u, const Size2Di& size) const;
+    // A domain axis's ticks on the rim, deduplicated (0 and 360 degrees are
+    // one spoke) and decluttered: shared by the rim pass and the label plan,
+    // which treats the kept labels as obstacles.
+    struct PolarRimTick {
+        double u = 0.0;
+        std::string label;
+        Rect2Dd box;
+        bool labelled = false;
+    };
+    std::vector<PolarRimTick> PolarRimTicks(IRenderContext* ctx, size_t axisIndex) const;
     std::vector<ChartLimiter> limiters;
     std::vector<ChartHighlight> highlights;
+    std::vector<ChartSpanAnnotation> spanAnnotations;
+    void RenderEngineSpanAnnotations(IRenderContext* ctx);
+    // A span's screen end points, false when an axis is missing.
+    bool MapSpan(const ChartSpanAnnotation& span, Point2Dd& a, Point2Dd& b) const;
+    Rect2Dd SpanCaptionBox(IRenderContext* ctx, const ChartSpanAnnotation& span,
+                           const Point2Dd& a, const Point2Dd& b) const;
     // A highlight's value-space point on the projection's screen, or invalid
     // (NaN) when its axes are out of range.
     Point2Dd MapHighlightPoint(const ChartHighlight& highlight,
@@ -367,6 +481,13 @@ private:
     void DeclutterAxisTickLabels(IRenderContext* ctx);
     // Screen segment of an axis rule (in-plot or edge) under the projection.
     void AxisScreenLine(const ChartAxis& axis, Point2Dd& lowEnd, Point2Dd& highEnd) const;
+    // Which way an axis's ticks point, and where a tick label goes: shared by
+    // the draw pass and the label plan, which treats in-plot tick labels as
+    // obstacles.
+    void TickDirection(const ChartAxis& axis, const Point2Dd& lowEnd, const Point2Dd& highEnd,
+                       double& tickDx, double& tickDy) const;
+    Rect2Dd TickLabelBox(const ChartAxis& axis, const Point2Dd& lowEnd, const Point2Dd& highEnd,
+                         double normalized, const Size2Di& size) const;
     // One axis's rule, ticks, labels and title - shared by both axis passes.
     void RenderAxisFurniture(IRenderContext* ctx, size_t axisIndex);
 };

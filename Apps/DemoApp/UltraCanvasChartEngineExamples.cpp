@@ -247,7 +247,7 @@ public:
 
     // The engine repaints on a theme change; the legend swatch colours are
     // cached in the legend entries, so they are re-derived here.
-    void OnThemeChanged() override { RebuildLegend(); }
+    void OnChartThemeChanged() override { RebuildLegend(); }
 
     // Clicking a legend entry toggles its series: the entry renders dimmed
     // (the legend's own state) and the series drops out of the bars, the

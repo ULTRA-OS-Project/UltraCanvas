@@ -32,7 +32,9 @@ enum class ChartHighlightShape {
     ConfidenceEllipse,  // computed from members: covariance ellipse at `confidence`
     Hull,               // computed: padded convex hull polygon of members
     Blob,               // computed: Chaikin-smoothed padded hull, cluster-hugging
-    ValueBand,          // [bandLow, bandHigh] on one axis, full plot extent across
+    ValueBand,          // [bandLow, bandHigh] on one axis, full plot extent across;
+                        // a domain-axis band is a vertical strip, and under Polar
+                        // a value band is a ring and a domain band a wedge
     PointHalo           // a translucent disc of `padding` px around each member
 };
 
