@@ -1,9 +1,11 @@
 // UltraCloud/core/UltraCloudService.cpp
+// Version: 0.8.0 - an upload complete under its part name when the connection
+//                  went is given its name by the next call, not removed
 // Version: 0.7.0 - uploads to FTP / SFTP by way of a part name; what an
 //                  unfinished one left is removed by the next call
 // Version: 0.6.0 - TransfersInProgress: uploads and downloads count while
 //                  they run
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudService.h>
 #include <UltraCloud/UltraCloudLog.h>
@@ -337,6 +339,36 @@ Result Guarded(Fn&& fn) {
     }
 }
 
+// Whether a failed step was not an answer from the server: it did not
+// answer, or the calling thread called the step off first (its abort check -
+// the application quitting). Either way nothing was refused, and the step is
+// asked again rather than taken as the server's no.
+bool NoAnswer(const Result& r) {
+    return r.code == ResultCode::Network || r.code == ResultCode::Cancelled;
+}
+
+// The steps PutUploadInPlace and PlaceCompletePart take, on `p`'s server.
+// `calledOff`, when given, is set once a step is called off.
+InPlaceOps ServerSteps(const Account& a, const Credentials& c, ICloudProvider& p,
+                       bool* calledOff = nullptr) {
+    InPlaceOps ops;
+    ops.rename = [&a, &c, &p, calledOff](const std::string& from, const std::string& newName,
+                                         bool& unreachable) {
+        const Result rr = Guarded([&]() { return p.Rename(a, c, from, newName); });
+        unreachable = NoAnswer(rr);
+        if (calledOff && rr.code == ResultCode::Cancelled) *calledOff = true;
+        return rr.IsOk();
+    };
+    ops.remove = [&a, &c, &p, calledOff](const std::string& target, bool& unreachable) {
+        const Result rr = Guarded([&]() { return p.Delete(a, c, target, false); });
+        unreachable = NoAnswer(rr);
+        if (calledOff && rr.code == ResultCode::Cancelled) *calledOff = true;
+        return rr.IsOk();
+    };
+    ops.say = [](const std::string& line) { LogToThread(LogKind::Step, line); };
+    return ops;
+}
+
 } // namespace
 
 void CloudService::NotePending(const PendingUpload& upload) {
@@ -409,29 +441,25 @@ Result CloudService::UploadWith(const Account& a, const Credentials& c, ICloudPr
         return r;
     }
 
-    InPlaceOps ops;
-    ops.rename = [&](const std::string& from, const std::string& newName, bool& unreachable) {
-        const Result rr = Guarded([&]() { return p.Rename(a, c, from, newName); });
-        unreachable = rr.code == ResultCode::Network;
-        return rr.IsOk();
-    };
-    ops.remove = [&](const std::string& target, bool& unreachable) {
-        const Result rr = Guarded([&]() { return p.Delete(a, c, target, false); });
-        unreachable = rr.code == ResultCode::Network;
-        return rr.IsOk();
-    };
-    ops.say = [](const std::string& line) { LogToThread(LogKind::Step, line); };
-    switch (PutUploadInPlace(folder, name, ops)) {
+    bool calledOff = false;
+    switch (PutUploadInPlace(folder, name, ServerSteps(a, c, p, &calledOff))) {
         case InPlace::Done:
             ForgetPending(a.accountId, partPath);
             return Result::Ok();
         case InPlace::Unreachable:
-            // Complete, but still under the part name, which is removed the
-            // next time the server answers. The file's own name is as it was.
+            // Complete, but still under the part name - the server stopped
+            // answering, or the rename was called off (quitting): noted as
+            // complete, so the next call that reaches the server gives it its
+            // name (PlaceCompletePart) rather than removing it as a part.
+            accounts_.AddPendingUpload({a.accountId, partPath, true, fileSize, now, Now()});
             DoneWriting(a.accountId, partPath);
-            return Result::Error(ResultCode::Network,
-                                 "the upload is complete, but the server stopped answering "
-                                 "before it could be renamed to \"" + name + "\"");
+            return Result::Error(calledOff ? ResultCode::Cancelled : ResultCode::Network,
+                                 std::string("the upload is complete, but ") +
+                                         (calledOff ? "was called off"
+                                                    : "the server stopped answering") +
+                                         " before it could be renamed to \"" + name +
+                                         "\" - it is given that name the next time this "
+                                         "account reaches the server");
         case InPlace::Refused:
             break;
     }
@@ -556,16 +584,20 @@ void CloudService::CleanUpPendingUploads(const Account& a, const Credentials& c,
         SplitRemotePath(u.remotePath, folder, name);
         const std::string forName = u.partName ? UploadNameOfPart(name) : name;
         const std::string aside = forName.empty() ? std::string() : UploadSetAsideName(forName);
-        LogToThread(LogKind::Step, "An upload of \"" + (forName.empty() ? name : forName) +
-                                   "\" did not finish: removing what it left (" +
-                                   u.remotePath + ")");
+        LogToThread(LogKind::Step,
+                    u.completedAt != 0
+                            ? "An upload of \"" + forName + "\" was complete when the server "
+                              "stopped answering, before it had its name: giving it that name (" +
+                              u.remotePath + ")"
+                            : "An upload of \"" + (forName.empty() ? name : forName) +
+                              "\" did not finish: removing what it left (" + u.remotePath + ")");
 
         std::vector<Entry> entries;
         Result r = Guarded([&]() {
             return p.List(a, c, folder.empty() ? "/" : folder, entries);
         });
         if (!r) {
-            noAnswer = r.code == ResultCode::Network;
+            noAnswer = NoAnswer(r);
             settle(u, noAnswer ? Keep::UntilItAnswers : Keep::UntilNextRun);
             LogToThread(LogKind::Step, "Cannot look in the folder: " + r.message +
                                        (noAnswer ? " - asked again once the server answers"
@@ -578,9 +610,65 @@ void CloudService::CleanUpPendingUploads(const Account& a, const Credentials& c,
                 if (e.name == n) return &e;
             return nullptr;
         };
-        // The connection went between setting the old file aside and giving
-        // the new one its name: the old one goes back.
-        if (u.partName && find(aside) && !find(forName)) {
+
+        const Entry* there = find(name);
+        const uint64_t size = there && there->size > 0 ? static_cast<uint64_t>(there->size) : 0;
+        if (there && there->isDirectory) {
+            LogToThread(LogKind::Step, "A folder of that name is there now: it is kept");
+            settle(u, Keep::No);
+            continue;
+        }
+
+        // The whole file under the part name: the connection went between
+        // the last byte and the rename. It is given its name - in place of
+        // the file there if it finished moments ago, as the upload was
+        // doing; beside it otherwise - and removed only if the server will
+        // not rename it.
+        if (!forName.empty() && IsCompletePart(u, there != nullptr, size)) {
+            if (u.completedAt == 0)
+                LogToThread(LogKind::Step, "It is all there - " + std::to_string(size) +
+                                           " bytes: giving it its name instead");
+            const Entry* target = find(forName);
+            const AtName atName = !target              ? AtName::Nothing
+                                  : target->isDirectory ? AtName::Folder
+                                                        : AtName::File;
+            const bool replace = CompletePartReplaces(u, Now());
+            const std::string kept = UploadKeptName(forName, [&find](const std::string& n) {
+                return find(n) != nullptr;
+            });
+            const CompletePart placed = PlaceCompletePart(folder, forName, atName,
+                                                          find(aside) != nullptr, replace, kept,
+                                                          ServerSteps(a, c, p));
+            if (placed == CompletePart::Unreachable) {
+                noAnswer = true;
+                settle(u, Keep::UntilItAnswers);
+                LogToThread(LogKind::Step, "Cannot rename it: the server did not answer - asked "
+                                           "again once it does");
+                continue;
+            }
+            if (placed != CompletePart::Refused) {
+                LogToThread(LogKind::Step,
+                            placed == CompletePart::Named
+                                    ? "\"" + forName + "\" is in place"
+                                    : placed == CompletePart::Replaced
+                                              ? "\"" + forName + "\" is in place, replacing the "
+                                                "file that was there"
+                                              : "\"" + forName + "\" is taken by " +
+                                                (atName == AtName::Folder
+                                                         ? std::string("a folder")
+                                                         : std::string("a file that may have "
+                                                                       "been written since")) +
+                                                ": the upload is kept beside it as \"" + kept +
+                                                "\"");
+                settle(u, Keep::No);
+                if (removed) removed->push_back(u.remotePath);
+                continue;
+            }
+            LogToThread(LogKind::Step, "The server would not rename it: removing it - \"" +
+                                       forName + "\" has to be sent again");
+        } else if (u.partName && find(aside) && !find(forName)) {
+            // The connection went between setting the old file aside and
+            // giving the new one, unfinished, its name: the old one goes back.
             const Result back = Guarded([&]() {
                 return p.Rename(a, c, folder + "/" + aside, forName);
             });
@@ -589,14 +677,6 @@ void CloudService::CleanUpPendingUploads(const Account& a, const Credentials& c,
                                        "\" when the upload stopped: it has its name back"
                              : "\"" + forName + "\" is still set aside as \"" + aside +
                                        "\": " + back.message);
-        }
-
-        const Entry* there = find(name);
-        const uint64_t size = there && there->size > 0 ? static_cast<uint64_t>(there->size) : 0;
-        if (there && there->isDirectory) {
-            LogToThread(LogKind::Step, "A folder of that name is there now: it is kept");
-            settle(u, Keep::No);
-            continue;
         }
         if (!u.partName) {
             if (!there) {
@@ -623,7 +703,7 @@ void CloudService::CleanUpPendingUploads(const Account& a, const Credentials& c,
             LogToThread(LogKind::Step, "Removed " + u.remotePath);
             settle(u, Keep::No);
             if (removed) removed->push_back(u.remotePath);
-        } else if (r.code == ResultCode::Network) {
+        } else if (NoAnswer(r)) {
             noAnswer = true;
             settle(u, Keep::UntilItAnswers);
             LogToThread(LogKind::Step, "Cannot remove it: " + r.message +

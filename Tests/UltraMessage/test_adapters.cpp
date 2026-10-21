@@ -293,6 +293,65 @@ TEST(presenter_applescript_keeps_the_text_out_of_the_script) {
     REQUIRE_EQ(argv[8], std::string("UltraMail"));
 }
 
+// The Windows toasts show under the posting application's own
+// AppUserModelID: its app id, with nothing an AUMID may not hold.
+TEST(presenter_windows_toast_app_id_is_the_posters) {
+    using UltraMessage::Internal::WindowsToastAppUserModelId;
+    REQUIRE_EQ(WindowsToastAppUserModelId("org.ultraos.ultramail"), std::string("org.ultraos.ultramail"));
+    REQUIRE_EQ(WindowsToastAppUserModelId("my app/<x>!"), std::string("myappx"));
+    REQUIRE_EQ(WindowsToastAppUserModelId("..-_"), std::string());
+    REQUIRE_EQ(WindowsToastAppUserModelId(""), std::string());
+    REQUIRE_EQ(WindowsToastAppUserModelId(std::string(300, 'a')).size(), size_t(128));
+}
+
+// The toast's XML: the texts escaped, the icon as the application logo, the
+// buttons as actions, a click on the toast as "default" only when there is a
+// default action, and silent at low urgency.
+TEST(presenter_windows_toast_xml_escapes_and_carries_the_actions) {
+    using UltraMessage::Internal::PresentedContent;
+    using UltraMessage::Internal::WindowsToastXml;
+    PresentedContent c;
+    c.appId = "org.ultraos.ultramail";
+    c.appName = "UltraMail";
+    c.title = "New mail from <Kickstarter> & \"friends\"";
+    c.body = "Everything old is new again";
+    c.iconFile = "C:\\Program Files\\ULTRA OS\\media\\appicon\\UltraMail.png";
+    c.hasDefaultAction = true;
+    c.buttons = {{"archive", "Archive"}, {"reply", "Reply & send"}};
+    std::string xml = WindowsToastXml(c);
+    REQUIRE(xml.find("<toast launch=\"default\">") == 0);
+    REQUIRE(xml.find("<text>New mail from &lt;Kickstarter&gt; &amp; &quot;friends&quot;</text>") != std::string::npos);
+    REQUIRE(xml.find("<text>Everything old is new again</text>") != std::string::npos);
+    REQUIRE(xml.find("placement=\"appLogoOverride\" src=\"C:\\Program Files\\ULTRA OS\\media\\appicon\\UltraMail.png\"") !=
+            std::string::npos);
+    REQUIRE(xml.find("<action content=\"Archive\" arguments=\"action:archive\"/>") != std::string::npos);
+    REQUIRE(xml.find("<action content=\"Reply &amp; send\" arguments=\"action:reply\"/>") != std::string::npos);
+    REQUIRE(xml.find("<audio") == std::string::npos);
+    REQUIRE(xml.find("Kickstarter>") == std::string::npos);
+
+    c.hasDefaultAction = false;
+    c.buttons.clear();
+    c.body.clear();
+    c.iconFile.clear();
+    c.urgency = "low";
+    xml = WindowsToastXml(c);
+    REQUIRE(xml.find("<toast>") == 0);
+    REQUIRE(xml.find("<actions>") == std::string::npos);
+    REQUIRE(xml.find("<image") == std::string::npos);
+    REQUIRE(xml.find("<audio silent=\"true\"/>") != std::string::npos);
+}
+
+TEST(presenter_windows_toast_arguments_name_the_response) {
+    using UltraMessage::Internal::PresenterResponse;
+    using UltraMessage::Internal::WindowsToastResponse;
+    std::string actionId = "stale";
+    REQUIRE(WindowsToastResponse("default", actionId) == PresenterResponse::Activated);
+    REQUIRE(actionId.empty());
+    REQUIRE(WindowsToastResponse("", actionId) == PresenterResponse::Activated);
+    REQUIRE(WindowsToastResponse("action:archive", actionId) == PresenterResponse::Action);
+    REQUIRE_EQ(actionId, std::string("archive"));
+}
+
 #if defined(ULTRAMESSAGE_HAVE_MACOS_PRESENTER)
 // The macos-presenter: listed, starts, and switches. A test binary is no
 // application bundle, so it settles on the script fallback (or says why it
@@ -345,8 +404,8 @@ TEST(windows_listener_adapter_is_listed_with_an_actionable_state) {
 
 #if defined(_WIN32)
 // Every Windows build has the presenter: listed, started on its own thread
-// with its hidden window, and switchable. Nothing is posted, so no balloon
-// appears.
+// with its hidden window, and switchable. Nothing is posted, so no toast or
+// balloon appears.
 TEST(windows_presenter_adapter_is_listed_and_starts) {
     Scoped ep{Connect("org.test.adapters.windows.presenter")};
     const auto adapters = ListAdapters(ep.handle);
@@ -361,6 +420,13 @@ TEST(windows_presenter_adapter_is_listed_and_starts) {
     }, 8000ms));
     REQUIRE(state.status == UltraMsgAdapterStatus::Running || state.status == UltraMsgAdapterStatus::Error);
     REQUIRE(!state.message.empty());
+    // Toasts on Windows 10 1903 and later in a build with C++/WinRT, balloons
+    // elsewhere.
+    if (state.status == UltraMsgAdapterStatus::Running)
+        REQUIRE(state.mode == "toast" || state.mode == "balloon");
+#if !defined(ULTRAMESSAGE_HAVE_WINRT)
+    if (state.status == UltraMsgAdapterStatus::Running) REQUIRE_EQ(state.mode, std::string("balloon"));
+#endif
     REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-presenter", false));
     REQUIRE(UltraMsg_GetAdapterState(ep.handle, "windows-presenter", state));
     REQUIRE(state.status == UltraMsgAdapterStatus::Disabled);

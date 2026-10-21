@@ -15,8 +15,16 @@
 // instead of a colour, for the common case of choosing what shows through a
 // transparent image: a colour, or the checkerboard that means "no colour".
 //
+// A bar can also wrap (SetWrap): the swatches then run on as many lines as
+// it takes to keep them at least `minSwatchSize`, the lines balanced, so a
+// 256-colour GIF palette is a block rather than a hairline. The host sizes
+// such a bar with HeightForWidth().
+//
+// Version: 1.2.0 - SetWrap / HeightForWidth: a palette on several lines;
+//                  SetColorAt; onColorContextClicked: a right click with the
+//                  entry's index and where it happened (to edit the entry)
 // Version: 1.1.0
-// Last Modified: 2026-09-26
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -72,12 +80,26 @@ public:
     void SetColors(const std::vector<Color>& colors);
     const std::vector<Color>& GetColors() const { return colors_; }
     int  GetColorCount() const { return static_cast<int>(colors_.size()); }
+    // Replaces one entry in place (an edited palette colour); the selection
+    // stays on that entry. An index outside the palette is ignored.
+    void SetColorAt(int index, const Color& c);
 
     // A leading swatch showing the transparency checkerboard rather than a
     // colour. It selects like any other swatch but reports through
     // onCheckeredSelected, so a host can switch to "no backdrop colour".
     void SetShowCheckeredEntry(bool show);
     bool GetShowCheckeredEntry() const { return showCheckered_; }
+
+    // ===== WRAPPING =====
+    // Off (the default): one row, the swatches shrinking to fit and centred.
+    // On: as many lines as needed to keep every swatch at least minSwatchSize,
+    // with the colours shared out evenly over the lines, left-aligned from the
+    // top-left corner.
+    void SetWrap(bool wrap);
+    bool GetWrap() const { return wrap_; }
+    // The height the bar needs at `width` to show every swatch: in wrap mode
+    // all its lines, otherwise one row at the preferred swatch size.
+    float HeightForWidth(float width) const;
 
     // ===== READY-MADE PALETTES =====
     // `steps` shades from white to black, evenly spaced (>= 2).
@@ -120,6 +142,11 @@ public:
     // ignored.
     std::function<void(const Color&)> onColorAdjustSelected;
     std::function<void()>             onCheckeredSelected;
+    // A colour swatch was clicked with the right button: the entry's index
+    // and the click in window coordinates, for a host that edits the entry in
+    // a popup there. When set it takes the right click instead of
+    // onColorAdjustSelected.
+    std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
 
     // ===== OVERRIDES =====
     // A pointer control: it never takes the keyboard, so hosts that use the
@@ -130,6 +157,20 @@ public:
     bool OnEvent(const UCEvent& event) override;
 
 private:
+    // Where the swatches go at the bar's current size.
+    struct Geometry {
+        float size    = 0.0f;   // swatch edge length
+        float spacing = 0.0f;   // gap between swatches, in both directions
+        int   perLine = 0;      // swatches per line
+        float originX = 0.0f;   // top-left of the first swatch
+        float originY = 0.0f;
+    };
+    Geometry ComputeGeometry() const;
+    // The swatch edge, swatches per line and number of lines a wrapping bar
+    // uses at `width`.
+    void WrapMetrics(float width, int n, float& size, int& perLine, int& lines) const;
+    Rect2Df SwatchRect(int slot, const Geometry& g) const;
+
     // Slots are the drawn cells: slot 0 is the checkerboard when it is shown,
     // and the colours follow. ColorIndexOfSlot() maps back to `colors_`.
     int   SlotCount() const;
@@ -146,6 +187,7 @@ private:
     std::vector<Color>  colors_;
     ColorSwatchBarStyle style_;
     bool showCheckered_    = false;
+    bool wrap_             = false;
     int  selectedIndex_    = -1;      // into colors_, -1 == none
     bool checkeredSelected_ = false;
     int  hoverSlot_        = -1;

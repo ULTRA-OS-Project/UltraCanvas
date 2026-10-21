@@ -1,5 +1,10 @@
 // include/Plugins/Charts/UltraCanvasChartElementBase.h
 // Base class for all chart elements with common functionality
+// Version: 1.5.0 - an optional icon over the empty-state message (SetEmptyIcon)
+// Version: 1.4.0 - a settable empty-state message (SetEmptyMessage), centred
+//                  on the chart's own background
+// Version: 1.3.0 - axis ticks at whole steps (1, 2, 2.5 or 5 x 10^n) with the grid
+//                  on them; ComputeChartAxisTicks; CalculateRawDataBounds
 // Version: 1.2.1 - a left press is taken only when it starts a pan
 // Version: 1.2.0 - x-axis zoom and pan that work (charts opt in); the wheel and
 //                  drags are left to the parent when nothing zooms; plot area
@@ -17,6 +22,8 @@
 #include <memory>
 #include <chrono>
 #include <functional>
+#include <string>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -28,6 +35,34 @@ namespace UltraCanvas {
         NumericValue,    // Use the 'x' numeric value (default)
         DataLabel       // Use the 'label' string property
     };
+
+// =============================================================================
+// AXIS TICKS
+// =============================================================================
+
+    // The ticks of one axis: every multiple of a whole step (1, 2, 2.5 or 5 x 10^n)
+    // between lo and hi, as a person would mark a ruler - 0, 20, 40 ... 140,
+    // never 0, 24.85, 49.7. Labels drop the decimals the step does not need
+    // and switch to K or M once the largest tick reaches ten thousand or ten
+    // million, so one axis never mixes "500" and "1K".
+    struct ChartAxisTicks {
+        double step = 0.0;            // 0 when lo..hi is empty
+        std::vector<double> values;   // ascending, all inside lo..hi
+        int decimals = 0;             // what the labels show after the point
+        double unitDivisor = 1.0;     // 1, 1e3 or 1e6
+        std::string unitSuffix;       // "", "K" or "M"
+
+        // A tick's label, as the person reads it (their locale's decimal mark).
+        std::string Format(double value) const;
+    };
+
+    // At most maxTicks intervals between lo and hi. Values that are exact
+    // multiples of the step are kept exact (0.1 + 0.2 is never 0.30000004).
+    ChartAxisTicks ComputeChartAxisTicks(double lo, double hi, int maxTicks = 6);
+
+    // The step ComputeChartAxisTicks would choose: 1, 2, 2.5 or 5 x 10^n, the
+    // smallest that splits `range` into at most maxTicks intervals.
+    double ChartNiceStep(double range, int maxTicks);
 
 // =============================================================================
 // BASE CHART ELEMENT CLASS
@@ -89,6 +124,17 @@ namespace UltraCanvas {
         bool showGrid = true;
         bool showAxes = true;
         Color gridColor = Color(220, 220, 220, 255);
+
+        // What a chart with no data says, centred: a line and an optional
+        // second, smaller one under it.
+        std::string emptyMessage = "No data to display";
+        std::string emptyDetail;
+        Color emptyMessageColor = Color(128, 128, 128, 255);
+        // An optional icon over it, in its own colours or in one colour, and
+        // on a rounded badge when the badge has a colour.
+        std::string emptyIconPath;
+        Color emptyIconColor = Color(0, 0, 0, 0);
+        Color emptyIconBadgeColor = Color(0, 0, 0, 0);
 
         // X-axis label configuration
         XAxisLabelMode xAxisLabelMode = XAxisLabelMode::NumericValue;
@@ -232,6 +278,40 @@ namespace UltraCanvas {
             gridColor = color;
             RequestRedraw();
         }
+
+        // What the chart says while it has no data ("No data to display"
+        // unless set), with an optional smaller line under it - "Connect a
+        // meter to see readings". An empty message (and no icon) draws the
+        // background alone.
+        void SetEmptyMessage(const std::string& message, const std::string& detail = "") {
+            if (message == emptyMessage && detail == emptyDetail) return;
+            emptyMessage = message;
+            emptyDetail = detail;
+            RequestRedraw();
+        }
+        const std::string& GetEmptyMessage() const { return emptyMessage; }
+        const std::string& GetEmptyDetail() const { return emptyDetail; }
+
+        void SetEmptyMessageColor(const Color& color) {
+            emptyMessageColor = color;
+            RequestRedraw();
+        }
+        const Color& GetEmptyMessageColor() const { return emptyMessageColor; }
+
+        // An icon over the empty-state message: 32 px, or 28 px on a 54 px
+        // rounded badge when badgeColor is not transparent. iconColor paints
+        // the icon in that one colour (for a single-colour icon such as the
+        // app icon sets); transparent draws it as it is. An empty path takes
+        // the icon away.
+        void SetEmptyIcon(const std::string& path, const Color& iconColor = Color(0, 0, 0, 0),
+                          const Color& badgeColor = Color(0, 0, 0, 0)) {
+            if (path == emptyIconPath && iconColor == emptyIconColor && badgeColor == emptyIconBadgeColor) return;
+            emptyIconPath = path;
+            emptyIconColor = iconColor;
+            emptyIconBadgeColor = badgeColor;
+            RequestRedraw();
+        }
+        const std::string& GetEmptyIcon() const { return emptyIconPath; }
 
         void SetShowGrid(bool show) {
             showGrid = show;
@@ -396,7 +476,22 @@ namespace UltraCanvas {
             );
         }
 
+        // The data's extent padded by 5 % on every side. Charts with a
+        // baseline (bars from zero) start from CalculateRawDataBounds and pad
+        // only where there is no baseline.
         virtual ChartDataBounds CalculateDataBounds();
+        ChartDataBounds CalculateRawDataBounds() const;
+        static void PadDataBounds(ChartDataBounds& bounds, bool padX, bool padMinY, bool padMaxY);
+
+        // The ticks the axes, labels and grid share, worked out from
+        // cachedDataBounds: y ticks inside the value range, x ticks inside
+        // the visible x range (numeric mode only).
+        ChartAxisTicks GetYAxisTicks() const {
+            return ComputeChartAxisTicks(cachedDataBounds.minY, cachedDataBounds.maxY, GetYAxisTickTarget());
+        }
+        // How many intervals the value axis aims for at most.
+        virtual int GetYAxisTickTarget() const { return 6; }
+        ChartAxisTicks GetXAxisTicks() const { return ComputeChartAxisTicks(cachedDataBounds.minX, cachedDataBounds.maxX, 8); }
 
         void InvalidateCache() {
             cacheValid = false;
@@ -432,6 +527,8 @@ namespace UltraCanvas {
         Point2Dd CalculateValueLabelPosition(const Point2Dd &pointPos, size_t index, size_t totalPoints);
 
         virtual double GetXAxisLabelPosition(size_t dataIndex, size_t totalPoints);
+        // DataLabel mode labels every n-th point, at most a dozen in view.
+        size_t GetXAxisLabelStep() const;
 
         std::string FormatAxisLabel(double value);
         void DrawSelectionIndicators(IRenderContext* ctx);

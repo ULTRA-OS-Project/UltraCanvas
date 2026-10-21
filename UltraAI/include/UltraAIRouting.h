@@ -9,7 +9,8 @@
 //   2. ULTRAAI_DEFAULT_<CAPABILITY> env var    — deployment configuration
 //      (e.g. ULTRAAI_DEFAULT_TEXTLLM=anthropic)
 //   3. a known local provider for the capability (local-first:
-//      "llama-cpp" then "qwen" for textllm, embeddings and translator,
+//      "local" (the runtime's downloaded engine), then "llama-cpp", then
+//      "qwen" for textllm, embeddings and translator,
 //      "comfyui" for imagegen, "whisper-cpp" for speechtotext, ...),
 //      then any other registered
 //      local provider (sorted by id)
@@ -26,8 +27,9 @@
 // Capability names: "textllm", "embeddings", "speechtotext",
 // "texttospeech", "imagegen", "visionanalyzer", "translator", "videogen",
 // "musicgen", "codeassist".
+// Version: 0.3.0 - "local" ranks first among the local providers
 // Version: 0.2.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-10-20
 // Author: UltraAI Module
 #pragma once
 
@@ -55,10 +57,11 @@ void SetCloudFallbackAllowed(bool allowed);
 // The effective setting: SetCloudFallbackAllowed(true) or the environment.
 bool IsCloudFallbackAllowed();
 
-// True for providers whose model runs on this machine — in-process
-// ("llama-cpp") or behind a server the user runs ("qwen", "comfyui",
-// "whisper-cpp", "piper", "stable-diffusion-cpp"). "mock" is neither local
-// nor cloud; every other id counts as a cloud provider.
+// True for providers whose model runs on this machine — an engine the
+// local runtime supervises ("local"), in-process ("llama-cpp") or behind a
+// server the user runs ("qwen", "comfyui", "whisper-cpp", "piper",
+// "stable-diffusion-cpp"). "mock" is neither local nor cloud; every other
+// id counts as a cloud provider.
 bool IsLocalProvider(const std::string& providerId);
 
 // The resolution described above, applied to a concrete registered-provider

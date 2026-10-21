@@ -1,5 +1,6 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
+// Version: 1.9.0 - SetShowBackgroundColor: a foreground-only picker
 // Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
 //                  the HSV/HSL/RGB tabs collapse with the channel sliders;
 //                  SetAutoHeight: the widget's height follows its content;
@@ -11,7 +12,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -360,6 +361,14 @@ namespace UltraCanvas {
         layoutValid = false;
         FitHeightToContent();
         SyncStyleSelector();
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetShowBackgroundColor(bool show) {
+        if (showBackground == show) return;
+        if (!show && editingBackground) EndBackgroundEdit();
+        showBackground = show;
+        hoverSwatch = HoverSwatch::NoneSwatch;
         RequestRedraw();
     }
 
@@ -1031,15 +1040,18 @@ namespace UltraCanvas {
                            ? HSV(fgSaveHue, fgSaveSat, fgSaveVal, fgSaveAlpha)
                            : GetColor();
 
-        // Previous (behind), then current (in front)
-        DrawCheckerboard(ctx, previousSwatchRect, Scaled(8.0f));
-        ctx->SetFillPaint(previewBg ? screenPickPreview : previousColor);
-        ctx->FillRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
-                                   previousSwatchRect.width, previousSwatchRect.height));
-        ctx->SetStrokePaint((targetBg || editingBackground) ? style.accentColor : style.borderColor);
-        ctx->SetStrokeWidth((targetBg || editingBackground) ? 1.5 : 1.0);
-        ctx->DrawRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
-                                   previousSwatchRect.width, previousSwatchRect.height));
+        // Previous (behind), then current (in front). A foreground-only picker
+        // has the one swatch, and nothing to swap it with.
+        if (showBackground) {
+            DrawCheckerboard(ctx, previousSwatchRect, Scaled(8.0f));
+            ctx->SetFillPaint(previewBg ? screenPickPreview : previousColor);
+            ctx->FillRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
+                                       previousSwatchRect.width, previousSwatchRect.height));
+            ctx->SetStrokePaint((targetBg || editingBackground) ? style.accentColor : style.borderColor);
+            ctx->SetStrokeWidth((targetBg || editingBackground) ? 1.5 : 1.0);
+            ctx->DrawRectangle(Rect2Dd(previousSwatchRect.x, previousSwatchRect.y,
+                                       previousSwatchRect.width, previousSwatchRect.height));
+        }
 
         DrawCheckerboard(ctx, currentSwatchRect, Scaled(8.0f));
         ctx->SetFillPaint(previewFg ? screenPickPreview : foreground);
@@ -1050,6 +1062,7 @@ namespace UltraCanvas {
         ctx->DrawRectangle(Rect2Dd(currentSwatchRect.x, currentSwatchRect.y,
                                    currentSwatchRect.width, currentSwatchRect.height));
         ctx->SetStrokeWidth(1.0);
+        if (!showBackground) return;
 
         // Swap symbol: bent double-headed arrow in the corner between the two
         // swatches — one head points at the foreground swatch (left), the other
@@ -1409,7 +1422,9 @@ namespace UltraCanvas {
         // Adjust (right) button on the colour controls edits the background
         // colour instead of the foreground (mirrors the eyedropper's
         // left=foreground / right=background rule).
-        const bool adjust = (event.button == UCMouseButton::Right);
+        // A foreground-only picker has no background: both buttons edit the
+        // one colour.
+        const bool adjust = showBackground && (event.button == UCMouseButton::Right);
 
         // Clicking inside the field being edited moves the caret (drag extends
         // the selection, double-click selects all); clicking anywhere else
@@ -1435,7 +1450,7 @@ namespace UltraCanvas {
             // foreground, right/Adjust -> background) for both the live preview
             // and the committed sample.
             if (screenPickRect.Contains(p)) {
-                bool foreground = (event.button != UCMouseButton::Right);
+                bool foreground = !showBackground || (event.button != UCMouseButton::Right);
                 if (onScreenColorPick) {
                     onScreenColorPick(foreground);
                 } else {
@@ -1489,11 +1504,11 @@ namespace UltraCanvas {
             if (currentSwatchRect.Contains(p)) {
                 return true; // current swatch is informational
             }
-            if (previousSwatchRect.Contains(p)) {
+            if (showBackground && previousSwatchRect.Contains(p)) {
                 SetColor(previousColor, true);
                 return true;
             }
-            if (swapArrowRect.Contains(p)) {
+            if (showBackground && swapArrowRect.Contains(p)) {
                 Color fg = GetColor();
                 Color bg = previousColor;
                 SetColor(bg, false);
@@ -1589,7 +1604,7 @@ namespace UltraCanvas {
             // The foreground (current) swatch sits on top of the background
             // (previous) swatch, so test it first.
             if (currentSwatchRect.Contains(p))       now = HoverSwatch::Foreground;
-            else if (previousSwatchRect.Contains(p)) now = HoverSwatch::Background;
+            else if (showBackground && previousSwatchRect.Contains(p)) now = HoverSwatch::Background;
         }
         if (now != hoverSwatch) {
             hoverSwatch = now;

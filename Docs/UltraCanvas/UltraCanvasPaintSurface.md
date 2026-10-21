@@ -79,6 +79,10 @@ doc->SaveToFile("out.png", err);               // flattened, format by extension
                                                // user's PNG save settings once they set any
 doc->SaveProject("work.ucraster", err);        // layers kept
 doc->SaveToFile("work.ucd", err);              // layers kept, as a UCD layered image
+doc->SetUCDPassword("tulip");                  // ... and from now on password-protected
+doc->SaveToFile("work.ucd", err);
+UCRasterDocument reopened;
+reopened.LoadUCD("work.ucd", err, "tulip");    // UCRasterDocument::IsPasswordProtected says it needs one
 ```
 
 ### Layered files
@@ -98,6 +102,16 @@ extension (`IsProjectFile` is true for both, `IsUCDFile` for the first):
   (`ExtractEmbeddedPreviewBytes`, the media viewer). Needs no libvips. A
   `UCBitmap` file without a stack opens as one layer; a text frame this cannot
   read leaves its layer the bitmap it shows.
+
+  **Password-protected** (UCD 2.2): `SetUCDPassword(password, hidePreview)`
+  makes every later `SaveUCD` encrypt the file (Argon2id key,
+  XChaCha20-Poly1305 per section; `hidePreview` leaves the thumbnail out
+  too), an empty password takes it off, and `HasUCDPassword` /
+  `GetUCDHidesPreview` say what is set. `IsPasswordProtected(path)` reads
+  only the header; `LoadUCD(path, error, password)` opens such a file - a
+  wrong password fails with `UCD::kWrongPassword`, without one it says the
+  file needs it - and keeps the password, so the next save is protected
+  again. Loading anything else clears it.
 - **`.ucraster`, an UltraPaint project** (`SaveProject` / `LoadProject`,
   libvips): a ZIP of `document.json`, one PNG per layer and an OpenDocument
   text per text layer.

@@ -13,12 +13,17 @@
 // With ULTRACANVAS_SCREENSHOT_DIR set, each shape is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.6.2 - the roof's dark-green ++ is lightened to read on the dark grid, and stays green
+// Version: 1.6.1 - a near-black level stays visible in the dark theme, and keeps its colour in the light
+// Version: 1.6.0 - the C shape: every cell of every slice reachable over the same area, slice labels, Page Up/Down, editing in depth
+// Version: 1.5.1 - the dark theme darkens the competitive block, and a dark competitor stays visible on it
+// Version: 1.5.0 - the attribute gutter: L and House rows are hit across it, and hiding it gives the grid the width back
 // Version: 1.4.0 - the competitive-assessment block: its rows are hit as the needs, and it gives way when hidden
 // Version: 1.3.0 - pan and zoom keep the pointed-at cell put; keyboard navigation follows the screen; editing cycles levels
 // Version: 1.2.0 - the House: roof cells only above the diagonal, each centred between its two columns; the bar strip
 // Version: 1.1.0 - rotated headers stay inside the element; a theme switch keeps non-colour settings
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "Plugins/Diagrams/UltraCanvasMatrixDiagram.h"
@@ -82,6 +87,16 @@ struct Canvas {
             }
         }
         return ink;
+    }
+
+    // The colour at (x, y), opaque.
+    Color PixelAt(int x, int y) const {
+        if (!cr) return Color(0, 0, 0, 0);
+        cairo_surface_t* s = cairo_get_target(cr);
+        cairo_surface_flush(s);
+        const unsigned char* data = cairo_image_surface_get_data(s);
+        const uint32_t p = reinterpret_cast<const uint32_t*>(data + y * cairo_image_surface_get_stride(s))[x];
+        return Color((p >> 16) & 0xFF, (p >> 8) & 0xFF, p & 0xFF, 255);
     }
 
     void Save(const std::string& name) const {
@@ -335,6 +350,17 @@ void TestThemeKeepsSettings() {
     Check(diagram->GetStyle().cellBackground != defaults.cellBackground,
           "going dark changes the colours");
 
+    // Every band drawn on its own background goes dark with the grid, and
+    // what is drawn on it turns light - the House's blocks included.
+    const MatrixDiagramStyle& dark = diagram->GetStyle();
+    auto luma = [](const Color& c) { return 0.299 * c.r + 0.587 * c.g + 0.114 * c.b; };
+    Check(luma(dark.competitiveBackground) < 90 && luma(dark.attributeBackground) < 90 &&
+          luma(dark.competitiveTickColor) < 120,
+          "going dark darkens the competitive block and the attribute gutter");
+    Check(luma(dark.improvementColor) > 160 && luma(dark.rankTextColor) > 120 &&
+          luma(dark.attributeTextColor) > 160,
+          "and lightens the direction arrows, the ranks and the attribute values");
+
     diagram->SetDarkTheme(false);
     const MatrixDiagramStyle& back = diagram->GetStyle();
     Check(back.tintCellsByLevel && back.alternateRowBands,
@@ -343,7 +369,10 @@ void TestThemeKeepsSettings() {
           "coming back keeps the sizes");
     Check(back.cellBackground == defaults.cellBackground &&
           back.labelColor == defaults.labelColor &&
-          back.hubBackground == defaults.hubBackground,
+          back.hubBackground == defaults.hubBackground &&
+          back.competitiveBackground == defaults.competitiveBackground &&
+          back.improvementColor == defaults.improvementColor &&
+          back.rollUpBarColor == defaults.rollUpBarColor,
           "coming back restores the light colours");
 }
 
@@ -607,6 +636,232 @@ void TestCompetitive() {
     int bareW = 0;
     FindCellCentre(*bare, Ref(0, 2, lastCol), kWidth, kHeight, bareCentre, bareW);
     Check(bareW > cellW, "a House without competitors keeps the whole width for its cells");
+
+    // In the dark theme the block is drawn dark like the grid beside it.
+    auto darkHouse = CreateMatrixDiagramElement("dark", 0, 0, kWidth, kHeight,
+                                                MatrixSamples::HouseOfQuality());
+    darkHouse->SetEnableTooltips(false);
+    darkHouse->SetDarkTheme(true);
+    darkHouse->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    canvas.Save("matrix-House-dark");
+    // Just inside the block's left edge, clear of its ticks and lines.
+    const Color inBlock = canvas.PixelAt(blockX + 3, centre.y);
+    Check(inBlock.r < 90 && inBlock.g < 90 && inBlock.b < 90,
+          "dark, the block's background is dark too (" + std::to_string(inBlock.r) + ", "
+          + std::to_string(inBlock.g) + ", " + std::to_string(inBlock.b) + ")");
+
+    // And the near-black "ours" line still shows on it: somewhere in the
+    // block there is a pixel as light as the label colour.
+    int light = 0;
+    for (int y = centre.y - 60; y < centre.y + 60; ++y) {
+        for (int x = blockX; x < kWidth && x < blockX + 200; ++x) {
+            const Color c = canvas.PixelAt(x, y);
+            if (c.r > 200 && c.g > 200 && c.b > 200) ++light;
+        }
+    }
+    Check(light > 20, "a competitor coloured for the light theme stays visible on the dark block");
+}
+
+// The attribute gutter stands between the row labels and the grid. Pointing
+// into it reports the whole row, as the label does, so the band of x that
+// answers for a row widens by the gutter; hiding the gutter gives that width
+// back and the grid moves left.
+void CheckAttributeGutter(const std::string& name, const MatrixModel& model) {
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    auto diagram = LaidOut(model, canvas);
+    canvas.Save("matrix-attributes-" + name);
+
+    // How far left of the grid the row still answers, and where the grid starts.
+    auto measure = [&](int& rowSpan, int& gridLeft) {
+        Point2Di centre;
+        int cellW = 0;
+        rowSpan = 0;
+        gridLeft = -1;
+        if (!FindCellCentre(*diagram, Ref(0, 2, 0), kWidth, kHeight, centre, cellW)) return;
+        gridLeft = centre.x - cellW / 2;
+        for (int x = 0; x < gridLeft; ++x) {
+            const MatrixRef ref = HoverAt(*diagram, Point2Di(x, centre.y));
+            if (ref.panel == 0 && ref.row == 2 && ref.col < 0) ++rowSpan;
+        }
+    };
+
+    int spanOn = 0, leftOn = 0;
+    measure(spanOn, leftOn);
+    Check(leftOn > 0, name + ": the first column is on screen");
+
+    diagram->SetShowAttributes(false);
+    diagram->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    int spanOff = 0, leftOff = 0;
+    measure(spanOff, leftOff);
+
+    Check(spanOn >= spanOff + 40,
+          name + ": the gutter answers for its row (" + std::to_string(spanOn) + " px of row against "
+          + std::to_string(spanOff) + " without it)");
+    Check(leftOff < leftOn, name + ": hidden, it gives its width back and the grid moves left");
+}
+
+void TestAttributeGutter() {
+    std::cout << "\nAttribute gutter\n";
+    CheckAttributeGutter("L", MatrixSamples::ImprovementTools());
+
+    MatrixModel house = MatrixSamples::HouseOfQuality();
+    house.sets[0].columns = {"Source"};
+    for (MatrixItem& item : house.sets[0].items) item.attributes = {"Survey"};
+    CheckAttributeGutter("House", house);
+
+    // A set without columns draws no gutter: the switch changes nothing.
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    auto plain = LaidOut(MatrixSamples::QualityFunctionDeployment(), canvas);
+    Point2Di before, after;
+    int w0 = 0, w1 = 0;
+    FindCellCentre(*plain, Ref(0, 2, 0), kWidth, kHeight, before, w0);
+    plain->SetShowAttributes(false);
+    plain->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    FindCellCentre(*plain, Ref(0, 2, 0), kWidth, kHeight, after, w1);
+    Check(before.x == after.x && w0 == w1, "a set without attribute columns lays out the same either way");
+}
+
+// The C draws one isometric slice per depth item. Each (row, col, depth)
+// must be reachable over a comparable area - which a slice hidden behind
+// another, or a lattice pointing the wrong way, would not give - and the
+// depth labels must answer for their whole slice.
+void TestCube() {
+    std::cout << "\nC shape (cube)\n";
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    const MatrixModel model = MatrixSamples::DefectCube();
+    Check(model.Validate().valid, "the cube sample validates");
+    auto cube = LaidOut(model, canvas);
+    canvas.Save("matrix-C");
+    Check(canvas.InkPixels(Color(252, 252, 253, 255)) > kWidth * kHeight / 20, "draws a substantial picture");
+
+    std::map<std::tuple<int, int, int>, int> hits;
+    std::map<int, int> sliceLabelHits;
+    for (int y = 0; y < kHeight; y += 2) {
+        for (int x = 0; x < kWidth; x += 2) {
+            const MatrixRef ref = HoverAt(*cube, Point2Di(x, y));
+            if (ref.IsCell()) ++hits[std::make_tuple(ref.row, ref.col, ref.depth)];
+            else if (ref.IsSlice()) ++sliceLabelHits[ref.depth];
+        }
+    }
+    const int nr = model.sets[0].Count(), nc = model.sets[1].Count(), nd = model.sets[2].Count();
+    int smallest = 1 << 30, largest = 0;
+    bool all = true;
+    for (int d = 0; d < nd; ++d) {
+        for (int r = 0; r < nr; ++r) {
+            for (int c = 0; c < nc; ++c) {
+                auto it = hits.find(std::make_tuple(r, c, d));
+                const int n = it == hits.end() ? 0 : it->second;
+                if (n == 0) all = false;
+                smallest = std::min(smallest, n);
+                largest = std::max(largest, n);
+            }
+        }
+    }
+    Check(all, "every cell of every slice can be pointed at");
+    Check(smallest > 0 && largest <= smallest * 2, "over comparable areas (" + std::to_string(smallest)
+                                                   + "-" + std::to_string(largest) + " samples)");
+    Check(static_cast<int>(hits.size()) == nr * nc * nd, "and nothing else is ever reported as a cell");
+    Check(static_cast<int>(sliceLabelHits.size()) == nd, "each slice has a label that answers for it");
+
+    // A mark is drawn in its own slice only: the Night slice's frequent
+    // weld misalignment is (2, 1, 2), and the Early slice has none there.
+    Check(cube->GetModel().LevelAt(0, 2, 1, 2) == "frequent" && cube->GetModel().LevelAt(0, 2, 1, 0).empty(),
+          "a cell is keyed by its depth as well as its row and column");
+
+    // Keyboard: Page Down walks the same cell down through the slices.
+    cube->SelectCell([] { MatrixRef r = Ref(0, 1, 1); r.depth = 0; return r; }());
+    cube->OnEvent(KeyEvent(UCKeys::PageDown));
+    Check(cube->GetSelectedCell().depth == 1 && cube->GetSelectedCell().row == 1,
+          "Page Down moves to the same cell one slice down");
+    cube->OnEvent(KeyEvent(UCKeys::PageDown));
+    cube->OnEvent(KeyEvent(UCKeys::PageDown));
+    Check(cube->GetSelectedCell().depth == 2, "and stops at the last slice");
+    cube->OnEvent(KeyEvent(UCKeys::Tab));
+    Check(cube->GetSelectedCell().IsCell() && cube->GetSelectedCell().depth == 0,
+          "Tab wraps from the last slice to the first");
+
+    // Editing steps the cell of the slice it is in, and no other.
+    cube->SetEditable(true);
+    MatrixRef early = Ref(0, 4, 0);
+    early.depth = 0;
+    Check(cube->CycleCell(early) && cube->GetModel().LevelAt(0, 4, 0, 0) == "frequent" &&
+          cube->GetModel().LevelAt(0, 4, 0, 1).empty() && cube->GetModel().LevelAt(0, 4, 0).empty(),
+          "a click steps the level of that slice's cell only");
+}
+
+// HighMediumLow's "High" is near-black. On the dark grid it is drawn in the
+// label colour instead; on the light grid it keeps its own colour; and a
+// saturated colour that is merely dark keeps its colour in both.
+void TestDarkLevels() {
+    std::cout << "\nLevel colours in the dark theme\n";
+    Canvas canvas(kWidth, kHeight);
+    if (!canvas.ctx) return;
+    const MatrixModel model = MatrixSamples::SupplyChain();
+    const int row = model.RowSet(0)->IndexOf("Supplier A");
+    const int col = model.ColSet(0)->IndexOf("W/H 1");
+    Check(model.LevelAt(0, row, col) == "high", "the X sample has a High mark at Supplier A x W/H 1");
+
+    auto diagram = LaidOut(model, canvas);
+    Point2Di centre;
+    int cellW = 0;
+    Check(FindCellCentre(*diagram, Ref(0, row, col), kWidth, kHeight, centre, cellW), "and it is on screen");
+
+    diagram->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    const Color light = canvas.PixelAt(centre.x, centre.y);
+    Check(light.r < 80 && light.g < 80 && light.b < 80, "light theme: the High mark keeps its near-black");
+
+    diagram->SetDarkTheme(true);
+    diagram->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    canvas.Save("matrix-X-dark");
+    const Color dark = canvas.PixelAt(centre.x, centre.y);
+    Check(dark.r > 160 && dark.g > 160 && dark.b > 160,
+          "dark theme: it is drawn light, so it stands out (" + std::to_string(dark.r) + ", "
+          + std::to_string(dark.g) + ", " + std::to_string(dark.b) + ")");
+
+    // The QFD scale's strong red is as dark as the grid in brightness, but
+    // plainly visible on it: it must stay red.
+    auto qfd = LaidOut(MatrixSamples::QualityFunctionDeployment(), canvas);
+    qfd->SetDarkTheme(true);
+    int strongRow = -1, strongCol = -1;
+    for (const MatrixCell& cell : qfd->GetModel().cells) {
+        if (cell.panel == 0 && cell.levelId == "strong") { strongRow = cell.row; strongCol = cell.col; break; }
+    }
+    qfd->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    Point2Di strong;
+    FindCellCentre(*qfd, Ref(0, strongRow, strongCol), kWidth, kHeight, strong, cellW);
+    const Color red = canvas.PixelAt(strong.x, strong.y);
+    Check(red.r > 150 && red.g < 90 && red.b < 90, "a saturated colour keeps its own hue in the dark");
+
+    // The Correlation scale's "++" is a dark green: visible on the dark grid,
+    // but dimly. It is lightened until it reads, and stays green.
+    auto house = LaidOut(MatrixSamples::HouseOfQuality(), canvas);
+    house->SetDarkTheme(true);
+    house->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+    int roofRow = -1, roofCol = -1;
+    for (const MatrixCell& cell : house->GetModel().cells) {
+        if (cell.panel == 1 && cell.levelId == "strongpositive") { roofRow = cell.row; roofCol = cell.col; break; }
+    }
+    Point2Di plus;
+    Check(roofRow >= 0 && FindCellCentre(*house, Ref(1, roofRow, roofCol), kWidth, kHeight, plus, cellW),
+          "the House roof has a ++ cell on screen");
+    house->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));   // the sweep hovered cells
+    const Color grid = house->GetStyle().cellBackground;
+    double farthest = 0.0;
+    Color glyph;
+    for (int y = plus.y - 8; y <= plus.y + 8; ++y) {
+        for (int x = plus.x - 10; x <= plus.x + 10; ++x) {
+            const Color c = canvas.PixelAt(x, y);
+            if (c.g <= c.r + 20 || c.g <= c.b) continue;   // green ink only
+            const double dr = c.r - grid.r, dg = c.g - grid.g, db = c.b - grid.b;
+            const double d = std::sqrt(dr * dr + dg * dg + db * db);
+            if (d > farthest) { farthest = d; glyph = c; }
+        }
+    }
+    Check(farthest >= 95.0, "dark theme: the ++ stands clear of the grid (" + std::to_string(glyph.r) + ", "
+          + std::to_string(glyph.g) + ", " + std::to_string(glyph.b) + ")");
 }
 
 } // namespace
@@ -631,6 +886,9 @@ int main() {
     TestKeyboard();
     TestEditing();
     TestCompetitive();
+    TestAttributeGutter();
+    TestCube();
+    TestDarkLevels();
     TestThemeKeepsSettings();
 
     std::cout << "\n================================\n";

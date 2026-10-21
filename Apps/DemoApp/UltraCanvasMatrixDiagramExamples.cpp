@@ -1,11 +1,13 @@
 // Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
 // Matrix diagram examples: L, T, X, Y and House arrangements with live presentation controls
+// Version: 1.6.0 - C-Shaped (Cube) tab; the read-out names a cube cell's slice and a clicked slice's total
+// Version: 1.5.0 - Attribute columns switch (the Improvement Tools departments carry two)
 // Version: 1.4.0 - Pan & zoom and Editable switches; Open JSON... and Save JSON...
 // Version: 1.3.0 - Import table... button: a spreadsheet into an Imported tab
 // Version: 1.2.0 - House of Quality tab; numbers-or-bars roll-up control
 // Version: 1.1.0 - X and Y tabs; hub, header band and cell tint controls
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -143,6 +145,7 @@ namespace UltraCanvas {
         auto swHeaderBand = addSwitch("matrixHeaderBand", "Form header", 502);
         auto swPanZoom = addSwitch("matrixPanZoom", "Pan & zoom", 530);
         auto swEditable = addSwitch("matrixEditable", "Editable", 558);
+        auto swAttributes = addSwitch("matrixAttributes", "Attribute columns", 586);
 
         // ===== DIAGRAM TABS =====
         auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
@@ -161,6 +164,7 @@ namespace UltraCanvas {
                 {"matrixSupply",    "X-Shaped",          &MatrixSamples::SupplyChain},
                 {"matrixTrace",     "Y-Shaped",          &MatrixSamples::DesignTraceability},
                 {"matrixHouse",     "House of Quality",  &MatrixSamples::HouseOfQuality},
+                {"matrixCube",      "C-Shaped (Cube)",   &MatrixSamples::DefectCube},
         };
 
         // Shared, because an import adds a diagram after the controls below
@@ -248,11 +252,24 @@ namespace UltraCanvas {
                 if (!rows || !cols) return;
                 if (ref.row >= rows->Count() || ref.col >= cols->Count()) return;
 
-                const std::string level = model.LevelAt(ref.panel, ref.row, ref.col);
+                const std::string level = model.LevelAt(ref.panel, ref.row, ref.col, ref.depth);
                 std::ostringstream out;
                 out << rows->items[static_cast<size_t>(ref.row)].label << "  x  "
-                    << cols->items[static_cast<size_t>(ref.col)].label << "   ->   "
-                    << (level.empty() ? std::string("no relationship") : level);
+                    << cols->items[static_cast<size_t>(ref.col)].label;
+                const MatrixItemSet* depths = model.DepthSet(ref.panel);
+                if (depths && ref.depth >= 0 && ref.depth < depths->Count()) {
+                    out << "  x  " << depths->items[static_cast<size_t>(ref.depth)].label;
+                }
+                out << "   ->   " << (level.empty() ? std::string("no relationship") : level);
+                readoutText->SetText(out.str());
+            };
+
+            diagram->onSliceClick = [weak, readoutText](int panel, int depth, const MatrixItem& item) {
+                auto d = weak.lock();
+                if (!d) return;
+                std::ostringstream out;
+                out << "Slice '" << item.label << "' scores "
+                    << static_cast<long>(d->GetModel().DepthScore(panel, depth));
                 readoutText->SetText(out.str());
             };
 
@@ -379,6 +396,12 @@ namespace UltraCanvas {
             }
         };
 
+        swAttributes->onStateChanged = [allDiagrams](CheckedState, CheckedState newState) {
+            for (auto& diagram : *allDiagrams) {
+                diagram->SetShowAttributes(newState == CheckedState::Checked);
+            }
+        };
+
         swBands->SetChecked(false);
         swLabelFill->SetChecked(true);
         swValues->SetChecked(false);
@@ -387,6 +410,7 @@ namespace UltraCanvas {
         swHeaderBand->SetChecked(true);
         swPanZoom->SetChecked(false);
         swEditable->SetChecked(false);
+        swAttributes->SetChecked(true);
 
         // ===== IMPORT =====
         // A spreadsheet's tabular form - column labels across the top, row

@@ -1,7 +1,8 @@
 // UltraAI/src/Routing.cpp
 // Implementation of the default-provider routing policy.
+// Version: 0.3.0 - "local" ranks first among the local providers
 // Version: 0.2.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-10-20
 // Author: UltraAI Module
 
 #include "UltraAIRouting.h"
@@ -28,13 +29,15 @@ bool Contains(const std::vector<std::string>& registered,
 }
 
 // Known local providers per capability, in preference order. "Local" means
-// the model runs on this machine: in-process (llama-cpp) or behind a server
-// the user runs (qwen against Ollama/vLLM, comfyui). In-process adapters
-// rank first — they need nothing started beforehand.
+// the model runs on this machine: an engine the local runtime downloads and
+// supervises (local), in-process (llama-cpp) or behind a server the user
+// runs (qwen against Ollama/vLLM, comfyui). The runtime ranks first — it
+// needs nothing installed or started beforehand; the in-process adapter
+// next, as it needs nothing started.
 std::vector<std::string> KnownLocalProviders(const std::string& capability) {
-    if (capability == "textllm")      return {"llama-cpp", "qwen"};
-    if (capability == "embeddings")   return {"llama-cpp", "qwen"};
-    if (capability == "translator")   return {"llama-cpp", "qwen"};   // text-LLM translator
+    if (capability == "textllm")      return {"local", "llama-cpp", "qwen"};
+    if (capability == "embeddings")   return {"local", "llama-cpp", "qwen"};
+    if (capability == "translator")   return {"local", "llama-cpp", "qwen"};   // text-LLM translator
     if (capability == "speechtotext") return {"whisper-cpp"};
     if (capability == "texttospeech") return {"piper"};
     if (capability == "imagegen")     return {"comfyui", "stable-diffusion-cpp"};
@@ -77,7 +80,7 @@ bool IsCloudFallbackAllowed() {
 }
 
 bool IsLocalProvider(const std::string& providerId) {
-    static const char* kLocal[] = {"llama-cpp", "qwen", "whisper-cpp", "piper",
+    static const char* kLocal[] = {"local", "llama-cpp", "qwen", "whisper-cpp", "piper",
                                    "comfyui", "stable-diffusion-cpp"};
     for (const char* id : kLocal) {
         if (providerId == id) return true;

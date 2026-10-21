@@ -7,6 +7,9 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.17.0 - Handling > Protected files: forgetPasswordsAfterMinutes, how long
+//                   UltraFiler goes without input before the preview forgets the
+//                   passwords Unlock was given
 // Version: 1.16.0 - the shared settings folder, and the move of the old one into it
 // Version: 1.15.0
 // Last Modified: 2026-10-12
@@ -69,6 +72,11 @@ public:
     static constexpr int kMaxPdfThumbnailPercent    = 40;
     static constexpr int kDefaultPdfThumbnailPercent = 25;
 
+    // Handling > Protected files: the range of the "Forget passwords after"
+    // slider, in minutes; 0 is never. The default is the media viewer's own.
+    static constexpr int kMaxForgetPasswordsMinutes     = 120;
+    static constexpr int kDefaultForgetPasswordsMinutes = 10;
+
     // Extras > History & Favorites: the range the "Limit of entries" slider
     // offers, and the length the three most-recently-used lists ship with.
     // Below ~10 a list forgets what was used this morning; above ~1000 it
@@ -93,6 +101,12 @@ public:
     bool pdfThumbnailAbsoluteWidth = true;
     int  pdfThumbnailWidth         = kDefaultPdfThumbnailWidth;    // pixels
     int  pdfThumbnailWidthPercent  = kDefaultPdfThumbnailPercent;  // % of width
+
+    // Handling > Protected files: how long UltraFiler may go without a key
+    // or mouse input before the preview forgets the passwords Unlock was
+    // given and shows a file it unlocked locked again. 0: never for
+    // idleness - the screen locking still forgets them.
+    int forgetPasswordsAfterMinutes = kDefaultForgetPasswordsMinutes;
 
     // Display > Treeview: the row background of the drive entries in the
     // folder tree (the drive roots on Windows, "File System" and the mounted
@@ -414,6 +428,10 @@ public:
         if (it != kv.end())
             ParseInt(it->second, pdfThumbnailWidthPercent,
                      kMinPdfThumbnailPercent, kMaxPdfThumbnailPercent);
+        it = kv.find("preview.passwords.forget.minutes");
+        if (it != kv.end())
+            ParseInt(it->second, forgetPasswordsAfterMinutes,
+                     0, kMaxForgetPasswordsMinutes);
         it = kv.find("tree.drive.background.color");
         if (it != kv.end()) ParseColor(it->second, treeDriveBackgroundColor);
         it = kv.find("tree.selected.folder.color");
@@ -536,6 +554,8 @@ public:
              << (pdfThumbnailAbsoluteWidth ? "absolute" : "relative") << "\n";
         file << "display.pdf.inventory.width = " << pdfThumbnailWidth << "\n";
         file << "display.pdf.inventory.percent = " << pdfThumbnailWidthPercent
+             << "\n";
+        file << "preview.passwords.forget.minutes = " << forgetPasswordsAfterMinutes
              << "\n";
         file << "tree.drive.background.color = "
              << FormatColor(treeDriveBackgroundColor) << "\n";

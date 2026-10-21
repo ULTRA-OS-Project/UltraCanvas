@@ -12,6 +12,7 @@
 // loop on a thread).
 #include "test_framework.h"
 
+#include <UltraNet/UltraNetCore.h>   // UltraNet_SetThreadAbortCheck
 #include <UltraNet/UltraNetFtp.h>
 
 #include "../../UltraCanvas/core/UltraNet/UltraNetFtpLog.h"
@@ -121,6 +122,21 @@ TEST(ftp_log_quotes_the_servers_refusal) {
                std::string("Couldn't connect"));
     REQUIRE_EQ(FailureMessage("Access denied: 530 Login incorrect", 30, 530, "530 Login incorrect"),
                std::string("Access denied: 530 Login incorrect"));
+}
+
+// A server turning a connection away for the ones already open, told apart
+// from a refused password and from a 421 that ends an idle session.
+TEST(ftp_log_tells_too_many_connections_from_other_refusals) {
+    REQUIRE(TooManyConnectionsReply(
+            421, "421 There are too many connections from your internet address."));
+    REQUIRE(TooManyConnectionsReply(421, "421 Too many connections (1) from this IP"));
+    REQUIRE(TooManyConnectionsReply(421, "421 Too many users are connected, please try again later."));
+    REQUIRE(TooManyConnectionsReply(
+            530, "530 Sorry, the maximum number of clients (1) from your host are already connected."));
+    REQUIRE(!TooManyConnectionsReply(530, "530 Login incorrect."));
+    REQUIRE(!TooManyConnectionsReply(421, "421 Timeout."));
+    REQUIRE(!TooManyConnectionsReply(421, "421 No transfer timeout (300 seconds): closing control connection"));
+    REQUIRE(!TooManyConnectionsReply(550, "550 Too many files"));
 }
 
 // ===== The transcript, fed what libcurl 8 says =====
@@ -287,6 +303,16 @@ public:
         bool stallData = false;
         // Never answer the listing command at all.
         bool silentListing = false;
+        // Sessions open at once that the server takes (0: any number); one
+        // more is turned away with `tooManyReply` at the greeting, or with
+        // `tooManyLoginReply` to PASS when that is set (ProFTPD's way).
+        int maxSessions = 0;
+        // How long a session that has ended still counts against
+        // maxSessions: vsftpd counts one until its process has gone.
+        int releaseDelayMs = 0;
+        std::string tooManyReply =
+                "421 There are too many connections from your internet address.";
+        std::string tooManyLoginReply;
     };
 
     ~ScriptedFtpServer() { Stop(); }
@@ -334,6 +360,11 @@ public:
         for (const std::string& c : Commands())
             if (c.substr(0, c.find(' ')) == verb) ++n;
         return n;
+    }
+    // Connections turned away for being one too many (Script::maxSessions).
+    int TurnedAway() {
+        std::lock_guard<std::mutex> lk(mutex_);
+        return turnedAway_;
     }
 
 private:
@@ -429,6 +460,23 @@ private:
         // The connection's current folder, as a real server keeps it: a login
         // lands in "/", CWD moves it.
         std::string cwd = "/";
+        // One more than the server takes: turned away at the greeting, or at
+        // the login.
+        bool overLimit = false;
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            overLimit = script_.maxSessions > 0 && open_ >= script_.maxSessions;
+            if (!overLimit) ++open_;
+        }
+        if (overLimit && script_.tooManyLoginReply.empty()) {
+            {
+                std::lock_guard<std::mutex> lk(mutex_);
+                ++turnedAway_;
+            }
+            Send(fd, script_.tooManyReply);
+            ::close(fd);
+            return;
+        }
         Send(fd, "220 Scripted FTP server ready");
         std::string line;
         while (!stop_.load() && ReadLine(fd, line)) {
@@ -440,6 +488,14 @@ private:
             if (verb == "USER") {
                 Send(fd, "331 Password required");
             } else if (verb == "PASS") {
+                if (overLimit) {
+                    {
+                        std::lock_guard<std::mutex> lk(mutex_);
+                        ++turnedAway_;
+                    }
+                    Send(fd, script_.tooManyLoginReply);
+                    break;
+                }
                 Send(fd, script_.refuseLogin ? "530 Login incorrect." : "230 Logged in");
             } else if (verb == "PWD") {
                 Send(fd, "257 \"" + cwd + "\" is the current directory");
@@ -485,6 +541,12 @@ private:
         }
         if (dataListen >= 0) ::close(dataListen);
         ::close(fd);
+        if (!overLimit) {
+            if (script_.releaseDelayMs > 0)
+                std::this_thread::sleep_for(std::chrono::milliseconds(script_.releaseDelayMs));
+            std::lock_guard<std::mutex> lk(mutex_);
+            --open_;
+        }
     }
 
     // Each control connection on a thread of its own: a call that makes a
@@ -508,6 +570,8 @@ private:
     std::mutex mutex_;
     std::vector<std::string> commands_;
     std::vector<std::string> deleted_;
+    int open_ = 0;         // sessions open now
+    int turnedAway_ = 0;   // sessions turned away for being one too many
 };
 
 // A short inactivity limit only where a test waits for it to run out; the
@@ -818,6 +882,104 @@ TEST(ftp_log_a_delete_after_a_listing_names_the_right_file) {
     REQUIRE_EQ(server.Count("USER"), 2);
 }
 
+// A server that takes one connection per address turns the delete's own
+// connection away while the listing's is kept open: the kept one is closed and
+// the delete sent once more - and the listing after it logs in afresh.
+TEST(ftp_log_a_change_on_a_one_connection_server_frees_the_kept_connection) {
+    for (const bool atLogin : {false, true}) {
+        ScriptedFtpServer server;
+        ScriptedFtpServer::Script script;
+        script.mlsdBody = "type=file;size=5;modify=20240103120000; a.txt\r\n";
+        script.maxSessions = 1;
+        // vsftpd turns it away at the greeting, ProFTPD at the login.
+        if (atLogin)
+            script.tooManyLoginReply =
+                    "530 Sorry, the maximum number of clients (1) from your host are "
+                    "already connected.";
+        if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+        Collected c;
+        std::vector<UltraNetFtpEntry> entries;
+        const UltraNetResult listed =
+                UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
+        const UltraNetResult deleted =
+                UltraNet_FtpDelete(server.Url() + "photos/a.txt", TestOptions(c));
+        const UltraNetResult again =
+                UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
+        UltraNet_FtpCloseIdleConnections();
+        server.Stop();
+
+        REQUIRE(listed.success);
+        REQUIRE(deleted.success);
+        REQUIRE(again.success);
+        REQUIRE_EQ(server.TurnedAway(), 1);
+        const std::vector<std::string> gone = server.Deleted();
+        REQUIRE_EQ(gone.size(), static_cast<std::size_t>(1));
+        REQUIRE_EQ(gone[0], std::string("/photos/a.txt"));
+        REQUIRE(c.Has(UltraNetFtpLogKind::Step,
+                      "The server takes one connection at a time: closing the one kept open "
+                      "and trying again"));
+    }
+}
+
+// The server goes on counting the closed connection for a moment after its
+// QUIT: the change is asked again, a little later, until it gets in.
+TEST(ftp_log_a_change_waits_for_the_closed_connection_to_be_let_go) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.mlsdBody = "type=file;size=5;modify=20240103120000; a.txt\r\n";
+    script.maxSessions = 1;
+    script.releaseDelayMs = 200;
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    Collected c;
+    std::vector<UltraNetFtpEntry> entries;
+    const UltraNetResult listed =
+            UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
+    const UltraNetResult deleted =
+            UltraNet_FtpDelete(server.Url() + "photos/a.txt", TestOptions(c));
+    UltraNet_FtpCloseIdleConnections();
+    server.Stop();
+
+    REQUIRE(listed.success);
+    REQUIRE(deleted.success);
+    REQUIRE(server.TurnedAway() >= 2);   // the first try, and at once after the close
+    REQUIRE_EQ(server.Deleted().size(), static_cast<std::size_t>(1));
+    REQUIRE(c.Has(UltraNetFtpLogKind::Step, "Still turned away: trying again"));
+}
+
+// Turned away with nothing kept open on this thread to close, the change
+// fails as it is: there is no second try to make.
+TEST(ftp_log_a_change_turned_away_with_nothing_kept_open_fails) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.maxSessions = 1;
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    // Another client holds the one connection.
+    std::atomic<bool> holding{true};
+    std::thread other([&]() {
+        Collected oc;
+        std::vector<UltraNetFtpEntry> entries;
+        UltraNet_FtpListDirectory(server.Url(), entries, TestOptions(oc));
+        while (holding.load()) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        UltraNet_FtpCloseIdleConnections();
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    Collected c;
+    const UltraNetResult deleted = UltraNet_FtpDelete(server.Url() + "a.txt", TestOptions(c));
+    holding.store(false);
+    other.join();
+    server.Stop();
+
+    REQUIRE(!deleted.success);
+    REQUIRE_EQ(server.TurnedAway(), 1);
+    REQUIRE(server.Deleted().empty());
+    REQUIRE(!c.Has(UltraNetFtpLogKind::Step,
+                   "The server takes one connection at a time: closing the one kept open "
+                   "and trying again"));
+}
+
 TEST(ftp_log_the_thread_sink_hears_calls_without_an_onlog) {
     ScriptedFtpServer server;
     ScriptedFtpServer::Script script;
@@ -878,10 +1040,11 @@ TEST(ftp_log_a_stalled_call_is_called_off_by_its_options) {
     REQUIRE_EQ(server.Count("LIST"), 0);
 }
 
-// The same through the calling thread's question, for a caller whose options
-// are built by a layer in between (UltraCloud); and once it is cleared, the
-// next call runs to its end.
-TEST(ftp_log_the_thread_cancel_calls_off_calls_without_their_own) {
+// The same through the calling thread's abort check, for a caller whose
+// options are built by a layer in between (UltraCloud) - asked by a listing
+// too, not only by a transfer; and once it is cleared, the next call runs to
+// its end.
+TEST(ftp_log_the_thread_abort_check_calls_off_a_listing) {
     ScriptedFtpServer server;
     ScriptedFtpServer::Script script;
     script.stallData = true;
@@ -890,13 +1053,13 @@ TEST(ftp_log_the_thread_cancel_calls_off_calls_without_their_own) {
     Collected c;
     std::atomic<bool> stop{true};
     std::function<bool()> previous =
-            UltraNet_SetThreadFtpCancel([&stop]() { return stop.load(); });
+            UltraNet_SetThreadAbortCheck([&stop]() { return stop.load(); });
     std::vector<UltraNetFtpEntry> entries;
     const auto started = std::chrono::steady_clock::now();
     const UltraNetResult r =
             UltraNet_FtpListDirectory(server.Url(), entries, TestOptions(c, 20000));
     const auto took = std::chrono::steady_clock::now() - started;
-    UltraNet_SetThreadFtpCancel(std::move(previous));
+    UltraNet_SetThreadAbortCheck(std::move(previous));
 
     // Cleared: a stalled call now waits for the inactivity limit as before.
     Collected after;

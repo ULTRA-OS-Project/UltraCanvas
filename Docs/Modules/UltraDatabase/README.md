@@ -11,18 +11,20 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented, and the PostgreSQL driver from Stage 2.**
+> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
+> introspection, streaming cursors, per-statement scripts and cancelling.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 14 tests). The **PostgreSQL** driver
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 56 tests, the PostgreSQL ones
+> against a live server where one is configured). The **PostgreSQL** driver
 > (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
 > found at configure time; it takes `?` placeholders, verifies TLS by default
 > and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
 > it, and CI tests it against a real server (`Tests/UltraFIBU`). The other
-> networked drivers (MySQL, …), async queries, pooling and streaming cursors
-> described below are still the Stage 2/3 plan.
+> networked drivers (MySQL, …), async queries and pooling described below
+> are still the Stage 2/3 plan.
 
 ---
 
@@ -150,8 +152,8 @@ App / Module (UltraMail, ULTRA Store, UltraAI, ...)
   transactions, streaming cursors and async queries. Zero is invalid.
 - `UltraDbResult` for every blocking operation — explicit error code,
   message, driver, SQLSTATE, affected-row count, timing.
-- Sync **and** async variants for queries; cancellation via
-  `UltraDb_CancelQuery(handle)`.
+- Sync **and** (planned) async variants for queries; cancellation via
+  `UltraDb_CancelQuery(connection)` from any thread.
 - Engine additions are **driver-only** — the core does not change to
   support a new DBMS.
 
@@ -197,19 +199,37 @@ UltraDb_ExecInTx(tx, "UPDATE folders SET uidnext = ? WHERE name = ?", { next, "I
 UltraDb_ExecInTx(tx, "INSERT INTO messages(...) VALUES(...)", { ... });
 UltraDb_Commit(tx);        // or UltraDb_Rollback(tx)
 
-// Async query — result delivered on a worker thread, marshal to UI.
+// Async query (planned, Stage 2) — result delivered on a worker thread.
 UltraDbHandle h = UltraDb_QueryAsync("crm",
     "SELECT * FROM contacts WHERE name ILIKE ?", { "%" + term + "%" },
     [](const UltraDbResultSet& rs) {
         // runs on the UltraDatabase worker pool — post to UI thread
     });
 
-// Streaming cursor for large result sets (rows pulled on demand).
-UltraDbHandle cur = UltraDb_OpenCursor("crm", "SELECT * FROM events", {});
-UltraDbRow row;
-while (UltraDb_FetchRow(cur, row)) { /* ... */ }
+// Streaming cursor for large result sets: a page at a time, never all of it.
+UltraDbHandle cur = UltraDb_OpenCursor("crm", "SELECT * FROM events WHERE day > ?", { since });
+UltraDbResultSet page;
+bool exhausted = false;
+while (!exhausted && UltraDb_FetchRows(cur, 1000, page, exhausted))
+    for (const auto& row : page) { /* ... */ }
 UltraDb_CloseCursor(cur);
+
+// A pasted script, every statement with its own result (a SQL console).
+std::vector<UltraDbStatementResult> results;
+UltraDb_ExecBatch("crm", script, results);   // stops after the first failure
+
+// Stop it from the UI thread: the running call returns Cancelled.
+UltraDb_CancelQuery("crm");
 ```
+
+**Cursors** step the statement as pages are asked for on SQLite; on
+PostgreSQL they are server-side - `WITH HOLD` outside a transaction, so the
+connection is free for other statements between pages, `WITHOUT HOLD`
+inside one, where they end with it. **Scripts** are split as psql splits
+them on PostgreSQL (semicolons outside text, comments and `BEGIN ATOMIC`
+bodies) and by SQLite itself on SQLite; each statement reports its text,
+outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
+both safe from another thread while the statement holds the connection.
 
 **Values.** `UltraDbValue` is a small variant: null, bool, int64,
 double, text (UTF-8), blob (bytes), and timestamp. Typed accessors
@@ -220,6 +240,52 @@ rules. Column access by name or index.
 versioned list of migration steps inside a transaction and records the
 applied version in a `ultradb_schema_version` table, so an app brings
 its own schema up to date on launch regardless of engine.
+
+### Introspection, names and column metadata
+
+`UltraDatabaseSchema.h` asks the engine what a database holds — the first
+step of the UltraDBAdmin plan (`Docs/Research/UltraDBAdminDesignProposal.md`,
+stage 0) and what anything that reads a schema it did not write needs. One
+engine-neutral model, filled by each driver from its own catalog: SQLite's
+`sqlite_master` and table-valued pragmas, PostgreSQL's `pg_catalog`.
+
+```cpp
+std::vector<std::string> schemas;               // SQLite: "main", "temp", ATTACHed
+UltraDb_ListSchemas("crm", schemas);            // PostgreSQL: namespaces, minus pg_*
+
+std::vector<UltraDbObjectSummary> objects;      // tables, views, materialized views,
+UltraDb_ListObjects("crm", "public", objects);  // foreign tables, sequences
+
+UltraDbTableSchema t;                           // columns (type, null, default, identity,
+UltraDb_DescribeTable("crm", "public", "orders", t);  // generated, collation, comment),
+                                                // primary key, foreign keys with actions,
+                                                // indexes, triggers, view text, size
+
+// A NAME cannot be bound, so it is quoted - by the engine's rules, through
+// the one function that does it. Never splice a name in any other way.
+std::string table;
+if (UltraDb_QuoteQualifiedName("crm", t.schema, t.name, table))
+    UltraDb_Query("crm", "SELECT * FROM " + table + " WHERE id > ? LIMIT ?", { lastId, 50 }, rs);
+
+// What each result column is and where it came from.
+for (const UltraDbColumnInfo& c : rs.ColumnInfo())
+    ;  // c.declaredType ("numeric(12,2)"), c.sourceSchema / sourceTable / sourceColumn
+```
+
+`UltraDb_ListConnections()` lists the registered connection names. A driver
+that cannot introspect answers `Unsupported`. On PostgreSQL the column
+metadata costs one catalog query per table the first time and nothing after
+(cached per connection, emptied by DDL on that connection; inside a
+transaction the lookup runs under a savepoint, so it cannot abort the
+caller's work). SQLite reports a column's source table where the library
+has `SQLITE_ENABLE_COLUMN_METADATA` (checked at configure time).
+
+**Numbers.** PostgreSQL `numeric` comes back as `Text`, exactly as stored
+(`AsDouble` still converts it for a caller that wants a double); `float8`
+and `float4` as `Double`. Numbers cross the driver dot-decimal in both
+directions whatever the process's locale, and `AsString()` of a `Double` is
+dot-decimal too: the shortest text that reads back exactly (`3.14`, not
+`3,140000`).
 
 ---
 
@@ -336,11 +402,13 @@ headless data module usable from any ULTRA OS process.
 | Connection registry (lazy open) | Implemented |
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
-| Test suite (14 tests) | Passing |
+| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
+| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
+| Test suite (56 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver | Planned (Stage 2) |
-| Async + streaming cursors | Planned (Stage 2) |
+| Async queries | Planned (Stage 2) |
 | Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
 **Suggested rollout** (mirrors UltraNet's staged approach):

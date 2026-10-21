@@ -33,8 +33,10 @@
 // A call that takes up a connection an earlier call left open says so
 // ("Using the open connection to ftp.example.com - already logged in")
 // instead of resolving and logging in again.
+// Version: 1.2.0 - TooManyConnectionsReply: a server that turns a new connection
+//                  away for the ones already open
 // Version: 1.1.0 - a connection kept open and used again
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -184,6 +186,22 @@ inline std::string FailureMessage(const std::string& detail, int inactivitySecon
         message += message.empty() ? lastReply : " - the server said \"" + lastReply + "\"";
     }
     return message;
+}
+
+// Whether a reply turns a new connection away because the server already has
+// as many as it takes from this address or user - vsftpd's "421 There are too
+// many connections from your internet address.", Pure-FTPd's "421 Too many
+// connections (1) from this IP", IIS's and FileZilla Server's "421 Too many
+// users are connected", ProFTPD's "530 Sorry, the maximum number of clients
+// (1) from your host are already connected." - as opposed to a password it
+// refused ("530 Login incorrect.") or a 421 that ends an idle session.
+inline bool TooManyConnectionsReply(int code, const std::string& reply) {
+    if (code != 421 && code != 530) return false;
+    std::string text = reply;
+    for (char& c : text) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    for (const char* says : {"too many", "maximum number", "already connected"})
+        if (text.find(says) != std::string::npos) return true;
+    return false;
 }
 
 // One call's log: libcurl's stream in, UltraNetFtpLogLines out, with the

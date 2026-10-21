@@ -42,5 +42,3 @@ UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::res
 UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::stream
 UltraCanvas/core/UltraCanvasMediaViewer.cpp::locale-parse::atof
 UltraCanvas/core/UltraCanvasSpreadsheetXlsxIO.cpp::locale-parse::atof
-UltraCanvas/core/UltraDatabase/UltraDatabasePostgresDriver.cpp::locale-parse::strtod
-UltraCanvas/core/UltraDatabase/UltraDatabaseValue.cpp::locale-parse::strtod

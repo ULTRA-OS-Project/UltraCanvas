@@ -14,17 +14,23 @@
 //       One folder for every application (Global) or one per application
 //       (Individual); under Individual a table lists the applications, each
 //       with its own Global | Individual switch and the folder it opens in.
+//   Appearance > Emoji
+//       Which emoji every application draws: the bundled colour font (Noto
+//       Color Emoji), the bundled black-and-white one (Noto Emoji), or the
+//       system's own. Written to Emoji.conf (UltraCanvasEmojiSettings.h);
+//       applications started after the change use it.
 //   Devices > Trusted certificates
 //       The network scanners and printers whose self-signed certificate was
 //       trusted on first use (UltraCanvasIODeviceTlsTrust.h), each with a
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
 // Version: 0.3.0 - Desktop: at sign-in the Windows desktop, UltraDesktop
 //                  beside Explorer, or UltraDesktop instead of Explorer
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-20
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -77,6 +83,9 @@ private:
     void RefreshLastFolderPage();
     void SetMode(bool individual);
     void SetAppScope(const std::string& appName, bool individual);
+    void BuildEmojiPage();
+    // Re-reads Emoji.conf into the page's switch.
+    void RefreshEmojiPage();
     void BuildCertificatesPage();
     // Re-reads DeviceCertificates.conf and shows a row per device in it.
     void RefreshCertificatesPage();
@@ -110,6 +119,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> tableRows_;   // scrolls
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> tableNote_;
     std::map<std::string, AppRow> rows_;
+
+    // ----- Emoji -----
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> emojiStyle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> emojiStatus_;
 
     // ----- Trusted certificates -----
     // One row per device, made once and hidden when its key is forgotten: the

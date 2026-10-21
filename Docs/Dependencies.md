@@ -140,6 +140,7 @@ their *License* is likewise marked **—** (OS component).
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
+| Noto Color Emoji / Noto Emoji (fonts, bundled) | [fonts.google.com/noto](https://fonts.google.com/noto/specimen/Noto+Color+Emoji) | [github.com/googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) | [OFL 1.1](https://spdx.org/licenses/OFL-1.1.html) |
 | nlohmann/json | [json.nlohmann.me](https://json.nlohmann.me/) | [github.com/nlohmann/json](https://github.com/nlohmann/json) | [MIT](https://spdx.org/licenses/MIT.html) |
 | OpenCV frontal-face Haar cascade (data only, bundled) | [opencv.org](https://opencv.org/) | [github.com/opencv/opencv](https://github.com/opencv/opencv/tree/4.x/data/haarcascades) | Intel License Agreement (BSD 3 style) |
 | OpenGL | [opengl.org](https://www.opengl.org/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
@@ -452,6 +453,13 @@ configure time naming what is missing.
 | Interfaces, registry, mock + shared adapter infrastructure (uses UltraNet / UltraVault siblings) | (core only) | (core only) | (core only) |
 | Anthropic adapter JSON (`ULTRAAI_ADAPTER_ANTHROPIC`, default ON) | vendored nlohmann/json | vendored nlohmann/json | vendored nlohmann/json |
 | Local llama.cpp adapter (`ULTRAAI_ADAPTER_LLAMACPP`, default OFF) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) | llama.cpp + ggml (FetchContent, pinned commit) |
+| Local runtime and `local` provider (`ULTRAAI_LOCAL_RUNTIME`, default ON, in-tree only) | llama.cpp `llama-server` (**runtime only** — a release archive downloaded on demand, hash-verified, spawned as a child process; never linked), through UltraNet, UltraCrypt and VirtualFS | same | same |
+
+> The local runtime links nothing new: the engine it runs is a prebuilt
+> llama.cpp release the user's machine downloads from the gallery index
+> (`Docs/Modules/UltraAI/LocalRuntime.md`) when a model is first asked for,
+> like Wine and QEMU for UltraWin. The models come from Hugging Face under
+> their own licences, named in the catalogue and shown before install.
 
 ### UltraCloud module
 

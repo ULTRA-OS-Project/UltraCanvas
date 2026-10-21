@@ -26,11 +26,19 @@
 //     too. The next call on that account - in this run or a later one -
 //     removes what is still recognisably that upload's (IsLeftByPendingUpload)
 //     before it does anything else.
+//   - finish an upload that was complete when the connection went, before it
+//     could be renamed into place, instead of removing it: the next call
+//     gives it its name (PlaceCompletePart) - replacing the file there when
+//     it finished moments ago, beside that file when it did not
+//     (CompletePartReplaces).
 //
 // The pure parts are here, header-only, so Tests/UltraCloud checks them on
 // their own; the steps against a server are in UltraCloudService.cpp.
+// Version: 0.2.0 - a complete upload whose rename the connection cut off is
+//                  given its name by the cleanup, not removed (completedAt,
+//                  PlaceCompletePart, CompletePartReplaces, UploadKeptName)
 // Version: 0.1.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -135,13 +143,17 @@ inline InPlace PutUploadInPlace(const std::string& folder, const std::string& na
     return lost ? InPlace::Unreachable : InPlace::Refused;
 }
 
-// An upload whose leftovers, if it does not finish, are to be removed.
+// An upload whose leftovers, if it does not finish, are to be removed - or,
+// at a part name, put in place if it did.
 struct PendingUpload {
     std::string accountId;
     std::string remotePath;    // what it writes: the part name, or the file's own
     bool partName = false;     // `remotePath` is a part name (UploadPartName)
     uint64_t fileSize = 0;     // the whole local file
     int64_t startedAt = 0;     // seconds since the epoch
+    // When the last byte was in at the part name, if the upload got as far as
+    // knowing it: the server stopped answering before the rename. 0 when not.
+    int64_t completedAt = 0;
 };
 
 // How long a pending upload is kept for an account that is not used again,
@@ -156,13 +168,112 @@ inline constexpr int64_t kPendingUploadMaxAgeSeconds = 30ll * 24 * 3600;
 inline constexpr int kPendingCleanupTriesPerRun = 3;
 
 // Whether a file of `sizeOnServer` bytes, found where `upload` wrote, is
-// what it left. At a part name always: nothing else writes there, and a
-// complete copy is an upload that stopped before it was renamed into place.
-// At the file's own name only when shorter than the whole file: one of the
-// full size or more was finished since, or is another file of that name,
-// and is kept.
+// what it left. At a part name always: nothing else writes there (a
+// complete one is put in place rather than removed - IsCompletePart). At the
+// file's own name only when shorter than the whole file: one of the full
+// size or more was finished since, or is another file of that name, and is
+// kept.
 inline bool IsLeftByPendingUpload(const PendingUpload& upload, uint64_t sizeOnServer) {
     return upload.partName || sizeOnServer < upload.fileSize;
+}
+
+// Whether the part `upload` wrote holds the whole file: the upload said so
+// (completedAt), or the folder's listing has it at the file's full size - a
+// process that ended between the last byte and the rename. A part the
+// listing leaves out (a server that hides dot names) is complete only when
+// the upload said so.
+inline bool IsCompletePart(const PendingUpload& upload, bool listed, uint64_t sizeOnServer) {
+    return upload.partName &&
+           (upload.completedAt != 0 || (listed && sizeOnServer == upload.fileSize));
+}
+
+// How long after it finished a complete part still replaces the file at its
+// name - what the upload was doing when the connection went. Later, that file
+// may be one written there since, and the part is kept beside it instead.
+inline constexpr int64_t kCompleteUploadReplacesSeconds = 3600;
+
+// Whether the complete part `upload` wrote replaces a file at its name at
+// `now`. A part whose upload did not see the end finished after it started,
+// so the start stands in for the end: a recent start is a recent end.
+inline bool CompletePartReplaces(const PendingUpload& upload, int64_t now) {
+    const int64_t finished = upload.completedAt != 0 ? upload.completedAt : upload.startedAt;
+    return finished != 0 && now - finished < kCompleteUploadReplacesSeconds;
+}
+
+// The name a complete upload is kept under beside a file that has its name:
+// "name (2).ext", then "name (3).ext" - the rule UltraFiler's "Keep both"
+// follows. `taken` answers whether a name is in use in the folder.
+inline std::string UploadKeptName(const std::string& name,
+                                  const std::function<bool(const std::string&)>& taken) {
+    // The extension the way std::filesystem splits one: from the last dot,
+    // unless that dot starts the name (".bashrc" has none).
+    const std::string::size_type dot = name.find_last_of('.');
+    const bool hasExt = dot != std::string::npos && dot > 0;
+    const std::string stem = hasExt ? name.substr(0, dot) : name;
+    const std::string ext = hasExt ? name.substr(dot) : std::string();
+    std::string candidate;
+    for (int n = 2; candidate.empty() || taken(candidate); ++n)
+        candidate = stem + " (" + std::to_string(n) + ")" + ext;
+    return candidate;
+}
+
+// What the folder holds at the name a complete part is for.
+enum class AtName { Nothing, File, Folder };
+
+enum class CompletePart {
+    Named,         // under its own name, which was free
+    Replaced,      // under its own name, in place of the file there
+    KeptBeside,    // under `keptName`, beside what has its name
+    Refused,       // the server would not rename it; everything as it was
+    Unreachable    // the server stopped answering; the part may still be there
+};
+
+// The cleanup's counterpart of PutUploadInPlace, for a complete upload at
+// `folder`/UploadPartName(name) whose connection went before the rename.
+// `atName` is what the folder's listing has at `name`; `setAside` whether it
+// has UploadSetAsideName(name) - the old file, set aside by an upload cut
+// off while it replaced it, which goes once the new one has the name (or
+// back to the name when the part cannot be renamed). A file at `name` is
+// replaced when `replace` (CompletePartReplaces), and otherwise kept, the
+// part put beside it as `keptName` (UploadKeptName).
+inline CompletePart PlaceCompletePart(const std::string& folder, const std::string& name,
+                                      AtName atName, bool setAside, bool replace,
+                                      const std::string& keptName, const InPlaceOps& ops) {
+    const std::string part = UploadPartName(name);
+    const std::string aside = UploadSetAsideName(name);
+    auto say = [&ops](const std::string& line) { if (ops.say) ops.say(line); };
+    bool unreachable = false;
+    if (atName == AtName::Nothing) {
+        if (ops.rename(folder + "/" + part, name, unreachable)) {
+            if (setAside) {
+                bool gone = false;
+                if (ops.remove(folder + "/" + aside, gone))
+                    say("The old \"" + name + "\", set aside as \"" + aside + "\", is removed");
+                else
+                    say("The old \"" + name + "\" could not be removed; it is still there as \"" +
+                        aside + "\"");
+            }
+            return CompletePart::Named;
+        }
+        if (unreachable) return CompletePart::Unreachable;
+        if (setAside) {
+            if (ops.rename(folder + "/" + aside, name, unreachable))
+                say("\"" + name + "\" was set aside as \"" + aside + "\": it has its name back");
+            else
+                say("\"" + name + "\" is still set aside as \"" + aside + "\"");
+        }
+        return unreachable ? CompletePart::Unreachable : CompletePart::Refused;
+    }
+    if (atName == AtName::File && replace) {
+        switch (PutUploadInPlace(folder, name, ops)) {
+            case InPlace::Done:        return CompletePart::Replaced;
+            case InPlace::Unreachable: return CompletePart::Unreachable;
+            case InPlace::Refused:     return CompletePart::Refused;
+        }
+    }
+    if (keptName.empty()) return CompletePart::Refused;
+    if (ops.rename(folder + "/" + part, keptName, unreachable)) return CompletePart::KeptBeside;
+    return unreachable ? CompletePart::Unreachable : CompletePart::Refused;
 }
 
 } // namespace UltraCloud

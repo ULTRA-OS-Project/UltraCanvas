@@ -52,7 +52,8 @@ enum class UltraDbResultCode {
     AlreadyExists,
     Unsupported,
     Internal,
-    Unknown
+    Unknown,
+    Cancelled                 // stopped by UltraDb_CancelQuery
 };
 
 // Returned by every blocking UltraDb_* call. Operator bool() reports success

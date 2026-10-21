@@ -10,6 +10,7 @@
 - [Phase-1 services](#phase-1-services)
 - [Bar series geometry](#bar-series-geometry)
   - [Bar connections](#bar-connections)
+- [Line and area series](#line-and-area-series)
 - [Phase-3 services](#phase-3-services)
 - [Themes and palettes](#themes-and-palettes)
 - [Hit regions and tooltips](#hit-regions-and-tooltips)
@@ -40,19 +41,24 @@ density, bar arrangement and slot geometry, limiters, the label plan's
 declutter, legend swatches, hit-region tooltips, the animation driver, the
 dirty model and the named-property surface. The first production client is the
 parallel coordinate chart
-([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md)).
+([`UltraCanvasParallelCoordinateChart.md`](UltraCanvasParallelCoordinateChart.md));
+the engine ports of the line, area, scatter, bubble, waterfall, diverging,
+dumbbell, financial, heatmap, Mekko, radar, radial bar, pie and polar charts are
+described in [`UltraCanvasEngineCharts.md`](UltraCanvasEngineCharts.md) and
+shown next to the legacy charts on **Charts → Chart Engine Comparison**.
 
 - Driver: `include/Plugins/Charts/Engine/UltraCanvasChartEngineElement.h`
 - Axis model: `include/Plugins/Charts/Engine/UltraCanvasChartAxis.h`
-- Bar series geometry: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
+- Bar, line and area series geometry, markers: `include/Plugins/Charts/Engine/UltraCanvasChartSeries.h`
+- Trend lines, moving averages, Heikin-Ashi: `include/Plugins/Charts/Engine/UltraCanvasChartAnalysis.h`
 - Projections: `include/Plugins/Charts/Engine/UltraCanvasChartProjection.h`
 - Label policy/plan: `include/Plugins/Charts/Engine/UltraCanvasChartLabels.h`
 - Themes and palettes: `include/Plugins/Charts/Engine/UltraCanvasChartTheme.h`
 - Model-layer tests: `Tests/ChartEngineTest.cpp` (`ctest -R ChartEngineTest`)
 - Design record: [`UltraCanvasChartEngineProposal.md`](UltraCanvasChartEngineProposal.md)
 
-**Version:** 1.3.0
-**Last Modified:** 2026-08-20
+**Version:** 1.4.0
+**Last Modified:** 2026-10-20
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -98,7 +104,35 @@ reimplemented:
 | In-plot value labels | `showTickLabels` (integrated tick labels along the rule) **or** `showEndpointLabels` (min/max at the ends) — never both: endpoint labels are suppressed while the integrated axis is active, so the extremes are not printed twice |
 
 `Normalize(value)` maps into `[0,1]`; out-of-range values map outside rather
-than clamping. Tick labels are decluttered by the 1-D pass
+than clamping.
+
+Fields that cover what the ported charts each did by hand:
+
+| Field | Effect |
+|---|---|
+| `role` | `ChartAxisRole::Domain` / `Value` / `Auto` (default): which normalised coordinate the axis maps. `Auto` reads it from the side - Bottom/Top are domain, Left/Right value, transposed under `Horizontal`. Only Polar needs it (see [Projections](#projections)) |
+| `bandStart`, `bandEnd` | The sub-band of the value direction the axis occupies - stacked panes in one plot. A price axis on `0.3..1` above a volume axis on `0..0.22`: content, ticks, grid and the edge rule all land in the band |
+| `symmetric` | Auto ranges only: widen to `[-m, m]` around zero, so diverging bars and pyramids keep zero in the middle |
+| `cyclic` | Category scale only: the range runs `0..n`, one empty slot past the last, so a full-circle Polar projection spreads `n` spokes evenly with the first at the start angle - the radar layout |
+
+```cpp
+ChartAxis price("price");
+price.side = ChartAxisSide::Left;
+price.bandStart = 0.3;                 // upper 70% of the plot
+ChartAxis volume("volume");
+volume.side = ChartAxisSide::Right;
+volume.bandEnd = 0.22;                 // the strip underneath
+volume.compactNumbers = true;
+```
+
+The remaining fields of the same kind: `absoluteLabels` prints magnitudes
+(both sides of a diverging axis read positive), `rangePadding` widens an auto
+range by a fraction of its span so marks at the extremes are not cut by the
+plot edge (never across a zero baseline), and `ChartScale::Sqrt` is a signed
+square root for area-true radii. An auto range is rounded once, by its step
+(0..1072 becomes 0..1200), and a prefixed negative reads `-$25`, not `$-25`.
+
+Tick labels are decluttered by the 1-D pass
 (`PriorityGreedy`: range ends and zero survive longest) — never by the 2-D
 solver.
 
@@ -131,12 +165,28 @@ sectors under Polar with no chart-side change. Edge-axis furniture follows the
 projection too: the engine derives which end of an edge carries the low value
 from the projection rather than assuming.
 
-Polar has no edges to hang furniture on, so an **edge** axis would be drawn as
-a straight rule along the rectangular plot bounds beside a round chart. Give
-the value axis `inPlot = true` there instead — in-plot axes are mapped through
-the projection, so it comes out as a radial rule with its ticks along it — and
-stand the category axis down, naming its slots with annotation labels around
-the rim (what the demo's Polar mode does).
+Polar has no edges to hang furniture on, so under Polar an **edge** axis is
+drawn by its role instead of its side (`IsDomainAxis(axis)` answers which):
+
+- a **domain** axis labels the rim - the outer ring is its rule, each tick a
+  short outward mark with its label pushed outward along the radius, and the
+  measure pass reserves room for those labels on all four sides. Labels that
+  would overprint one already placed are dropped, and `0°`/`360°` on a full
+  circle are one spoke;
+- a **value** axis becomes the radial rule at the start angle (`u = 0`), with
+  its ticks along it - exactly where an in-plot axis at position 0 stands.
+
+So a chart written for the vertical projection (category axis on the bottom,
+value axis on the left) gets round furniture under Polar with no chart-side
+change. The older idiom - value axis `inPlot = true`, category axis hidden,
+slot names as rim annotations (the engine demo's Polar mode) - still works.
+
+`SetPolarAngles(startDegrees, sweepDegrees, clockwise)` and
+`SetPolarInnerRadius(fraction)` reach the polar projection (`-90` = 12
+o'clock; a radial bar chart sweeps `270`; a donut leaves `0.55` empty) and
+survive projection switches. A radial bar chart runs the value *around* the
+circle: give its value axis `role = ChartAxisRole::Domain` and its category
+axis `ChartAxisRole::Value`.
 
 ## Highlights (slot 200 wash / slot 700 overlay)
 
@@ -160,15 +210,31 @@ a key describes marks the chart actually draws.
 ## Phase-1 services
 
 - **Grid follows ticks**: `SetGridAxis(index)` derives gridlines from that
-  axis's ticks, so grid and labels cannot disagree.
+  axis's ticks, so grid and labels cannot disagree. A value axis rules across
+  the domain (rings under Polar - circles, or polygons through the domain
+  ticks with `SetPolarGridShape(ChartPolarGridShape::Polygon)`, the radar
+  web); a domain axis rules across the value range (spokes under Polar).
+  `SetDomainGridAxis(index)` adds the second direction, so a scatter plot
+  rules both x and y and a radar draws rings and spokes.
 - **Limiters**: `AddLimiter({kind, axisIndex, value, color, width, dashed,
   caption})` draws reference lines (average, target, threshold...); captions
-  are solved into the label plan so they never overprint value labels.
+  are solved into the label plan so they never overprint value labels. A
+  limiter on a domain axis runs across the value range (a pyramid's average
+  age), and `extentStart` / `extentEnd` trim it to part of the plot (one side
+  of a diverging chart).
+- **Span annotations**: `AddSpanAnnotation({xAxisIndex, yAxisIndex, from, to,
+  label, ...})` draws a dimension line between two value-space points, with
+  arrowheads and a boxed caption the label plan steers around - the lead time,
+  cycle time and WIP spans of a cumulative flow diagram.
 - **Layout is measured, not guessed**: axis tick labels, titles and the legend
   reserve their measured space in the measure pass; `MeasureContent` adds
   chart-specific needs. `SolvePlotArea` never returns an empty plot. The chart
   title owns an exclusive band above every other top reservation, so axis
-  endpoint labels can never overprint it.
+  endpoint labels can never overprint it. Edge axes on the same side stack
+  outward when their bands overlap (a Mekko chart's column names under its
+  cumulative-percent ticks); a left/right axis title is drawn rotated along
+  the axis, outside its labels; the labels at the ends of a bottom/top axis
+  reserve their overhang instead of running off the element.
 
 ## Bar series geometry
 
@@ -252,12 +318,51 @@ plot-area colour that keeps a line readable where it crosses a bar of its own
 colour. A run of fewer than two bars draws nothing. The demo's Bar Charts page
 shows it on the Clustered and Stacked tabs.
 
+## Line and area series
+
+The line family shares the bar family's discipline: normalised `(u, v)`
+points in, screen geometry through the projection out, so a line chart under
+Polar is a polar line chart.
+
+```cpp
+// RenderChartContent: one series, its knots in normalised space.
+std::vector<ChartNormalizedPoint> points;
+for (size_t i = 0; i < values.size(); ++i) {
+    points.emplace_back(category.Normalize(static_cast<double>(i)),
+                        value.Normalize(values[i]));   // NaN = a gap
+}
+ChartLineOptions options;
+options.shape = ChartLineShape::Curved;   // Straight, StepAfter, StepBefore, StepMiddle
+for (const ChartLineRun& run : BuildLineRuns(*frame.projection, points, options)) {
+    if (run.points.size() >= 2) ctx->DrawLinePath(run.points, false);
+    for (const Point2Dd& knot : run.knots) {
+        DrawChartMarker(ctx, ChartMarkerShape::Circle, knot, 3.5, color);
+    }
+}
+```
+
+| Helper | Meaning |
+|---|---|
+| `BuildLineRuns(projection, points, options)` | One `ChartLineRun` per unbroken run (a non-finite point breaks the line unless `bridgeGaps`): `points` to stroke, `knots` for markers, `path` in normalised space, `indices` joined. `Curved` is the bar connections' monotone cubic - it never overshoots a knot |
+| `BuildAreaOutlines(projection, top, base, options)` | Closed outlines of the band between a top and a base line, both following the shape - an area down to its baseline, or one stacked segment |
+| `StackSeriesValues(series, arrangement)` | Per series, per index, the `base` and `top` of its band: `Grouped` (all on zero), `Stacked` (positives up, negatives down, a missing value a zero-thickness band) or `PercentStacked`. Feed the value axis with `ObserveBarSeries` - the range arithmetic is the bars' |
+| `ChartMarkerShape` + `DrawChartMarker(ctx, shape, centre, radius, fill, stroke, width)` | `NoMarker`, `Circle`, `Square`, `Diamond`, `TriangleUp`, `TriangleDown`, `Cross`, `Plus` - the one marker painter of the scatter / line family; `ChartMarkerPolygon` gives the outline for hit regions |
+
+The analysis layer's arithmetic (slot 700) is
+`Engine/UltraCanvasChartAnalysis.h`: `FitLinearTrend(xs, ys)` (slope,
+intercept, r², Pearson r), `MovingAverage` / `ExponentialMovingAverage` (NaN
+until a full window, and across a gap) and `HeikinAshiCandles`. All UI-free
+and unit-tested; the content maps the results through its axes.
+
 ## Phase-3 services
 
 - **Label plan**: labels submitted in `CollectChartLabels` go through the
   collision solver **once per invalidation, never per frame**. `allowSuppress`
   drops labels that would overprint (set `priority` on the ones that must
-  survive); leaders and rotation are drawn by the engine. Solved labels are
+  survive); `pinned` keeps a label exactly on its side of the anchor and drops
+  it rather than sliding it along (column headers, a bar's total - anything
+  whose meaning is its position); leaders and rotation are drawn by the
+  engine. Solved labels are
   kept within the plot area **plus whatever margins the chart reserved for
   itself in `MeasureContent`** (`SolveLabelBounds`): reserve a text-height
   band on the value-axis end and a bar that reaches the axis maximum keeps
@@ -285,7 +390,8 @@ shows it on the Clustered and Stacked tabs.
     `Legend().SetColorBar({colormap, min, max, ticks, formatter, ...})`,
     `quantizeLevels >= 2` draws discrete bands), or `SizeLegend` (sample
     circles keying a bubble-size scale, largest first —
-    `Legend().SetSizeScale(...)`).
+    `Legend().SetSizeScale(...)`; `areaScaled` sizes the circles like
+    area-proportional bubbles, `values` names the sample values).
   - `Legend().SetCustomArea(size, draw)` — a host-drawn panel below the
     entries, inside the legend box, for a key richer than any swatch: an
     annotated confidence-ellipse diagram, a bubble-size scale, a mini axis.
@@ -333,10 +439,12 @@ ChartThemes::Names();                        // the 14 built-in names
 ```
 
 A theme is colours only, so a theme change is **repaint-only**: no layout, no
-label re-solve (proposal §5.7). The engine calls the `OnThemeChanged()` hook
+label re-solve (proposal §5.7). The engine calls the `OnChartThemeChanged()` hook
 so content can refresh anything it cached from the theme — legend entry
 colours above all (they are stored in `ChartLegendEntry`, not looked up at
-draw time). The frozen frame carries `frame.theme` for phase-2 drawing.
+draw time). The frozen frame carries `frame.theme` for phase-2 drawing. (The hook was called `OnThemeChanged()` until 1.5.0; it was
+renamed because that name is the element's own hook for the application's
+`UltraCanvasTheme`, and the parameterless overload hid it.)
 
 The built-in themes are the palettes the pre-engine charts each carried
 privately, lifted verbatim: **Light** (default furniture, Paul Tol bright),
