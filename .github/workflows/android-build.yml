@@ -5,7 +5,8 @@ name: Android build
 # fontconfig, freetype, tinyxml2, fmt and libvips (with its JPEG, PNG, WebP,
 # TIFF, EXIF and colour management codecs) for arm64-android with vcpkg and
 # the runner's NDK, and the core library is then compiled with the NDK's
-# toolchain against them - libvips included, as on every platform. The Build
+# toolchain against them - libvips included, as on every platform - and so is
+# the demo, linked into libUltraCanvasDemo.so the way an APK carries it. The Build
 # workflow's "Android backend check" only syntax-checks OS/Android with host
 # headers standing in; this is the build those headers stand in for.
 #
@@ -30,6 +31,7 @@ on:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
       - 'UltraCanvas/OS/Android/**'
+      - 'Apps/DemoApp/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -39,6 +41,7 @@ on:
       - '.github/workflows/android-build.yml'
       - 'scripts/android-bootstrap-sysroot.sh'
       - 'UltraCanvas/OS/Android/**'
+      - 'Apps/DemoApp/**'
       - 'MacOS/deps/ports/libvips/**'
       - 'CMakeLists.txt'
       - 'UltraCanvas/CMakeLists.txt'
@@ -189,7 +192,9 @@ jobs:
             .vcpkg/vcpkg/buildtrees/*/*.log
           if-no-files-found: ignore
 
-      # The command the script prints: the NDK's toolchain file, the sysroot
+      # The command the script prints (plus --error-limit=0, so a link that
+      # fails lists every undefined symbol, not lld's first 20): the NDK's
+      # toolchain file, the sysroot
       # as pkg-config's only search path and as CMake's find root, static
       # pkg-config link lists (vcpkg's Android triplets build static
       # libraries).
@@ -200,9 +205,10 @@ jobs:
           cmake -G Ninja -B build-android \
             -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake" \
             -DANDROID_ABI="$ABI" \
-            -DANDROID_PLATFORM=android-26 \
+            -DANDROID_PLATFORM=android-28 \
             -DCMAKE_FIND_ROOT_PATH="$sysroot" \
             -DPKG_CONFIG_ARGN=--static \
+            -DCMAKE_SHARED_LINKER_FLAGS=-Wl,--error-limit=0 \
             -DCMAKE_BUILD_TYPE=Release
 
       # -k 0: past a failing source, so one run lists every one (the core
@@ -212,6 +218,44 @@ jobs:
           sysroot="$RUNNER_TEMP/android-sysroot/$TRIPLET"
           export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
           cmake --build build-android --target UltraCanvas --parallel "$(nproc)" -- -k 0
+
+      # The app library an APK carries: DemoApp's main() as
+      # ultracanvas_app_main(), linked against the static core. The NDK links
+      # shared libraries with --no-undefined, so this is where a dependency
+      # missing from the sysroot's link lists shows, which the static core
+      # cannot show.
+      - name: Build the demo app library
+        run: |
+          sysroot="$RUNNER_TEMP/android-sysroot/$TRIPLET"
+          export PKG_CONFIG_LIBDIR="$sysroot/lib/pkgconfig:$sysroot/share/pkgconfig"
+          cmake --build build-android --target UltraCanvasDemo --parallel "$(nproc)" -- -k 0
+
+      # What is called into the library from outside, by name: NativeActivity
+      # looks up ANativeActivity_onCreate, and each native method of
+      # UltraCanvasActivity resolves to a Java_* function. A static core hands
+      # the link only the objects something references, so each must be in
+      # the library's dynamic symbol table - one missing is an app that shows
+      # nothing, or one that crashes on its first keystroke.
+      - name: Check the demo library's entry points
+        run: |
+          lib="$(find build-android -name libUltraCanvasDemo.so -print -quit)"
+          if [ -z "$lib" ]; then
+            echo "::error::libUltraCanvasDemo.so was not built"
+            exit 1
+          fi
+          readelf="$ANDROID_NDK_LATEST_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+          exported="$("$readelf" --dyn-syms --wide "$lib" | awk '$7 != "UND" {print $8}')"
+          missing=0
+          for sym in ANativeActivity_onCreate $(grep -ho 'Java_org_ultraos_[A-Za-z0-9_]*(' UltraCanvas/OS/Android/*.cpp | tr -d '(' | sort -u); do
+            if grep -qx "$sym" <<<"$exported"; then
+              echo "exported: $sym"
+            else
+              echo "::error::$lib does not export $sym"
+              missing=1
+            fi
+          done
+          ls -l "$lib"
+          exit "$missing"
 
       - name: Upload the CMake logs
         if: failure()

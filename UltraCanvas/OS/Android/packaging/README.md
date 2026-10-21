@@ -6,9 +6,10 @@ what breaks without it). `vcpkg.json` and
 `scripts/android-bootstrap-sysroot.sh` cross-compile cairo, pango, glib,
 harfbuzz, fontconfig, freetype, tinyxml2, fmt and libvips for `arm64-v8a`:
 `.github/workflows/android-build.yml` runs them on every pull request that
-touches the Android build, and compiles the core library against the result.
-`build.gradle.template` has never been run, so no app has been linked against
-that library and no APK has been produced.
+touches the Android build, compiles the core library against the result, and
+links the demo into `libUltraCanvasDemo.so`, the library the manifest here
+names (see *The app library* below). `build.gradle.template` has never been
+run, so no APK has been produced.
 
 ## Building the sysroot
 
@@ -43,6 +44,30 @@ libraries into an Android build.
 **What CI covers:** `arm64-v8a`, without `--with-net`. The other ABIs and the
 `net` feature (OpenSSL, c-ares, curl) have not been run yet. The likely
 failure there is a port that has no support for that triplet.
+
+## The app library
+
+An Android app is a shared library that `NativeActivity` loads, not a program.
+DemoApp shows the shape every app takes:
+
+- **Its `main()` becomes `ultracanvas_app_main()` on Android**
+  (`Apps/DemoApp/main.cpp`, under `#ifdef __ANDROID__`). The framework's
+  `android_main()` calls it once the sandbox is set up, the assets are
+  unpacked and the first surface exists. Code guarded by `#ifdef __linux__`
+  for X11 must say `!defined(__ANDROID__)` as well: bionic defines
+  `__linux__`.
+- **CMake builds it with `add_library(... SHARED)`** where the desktop uses
+  `add_executable`; the root `CMakeLists.txt` does this for `UltraCanvasDemo`,
+  giving `libUltraCanvasDemo.so`. The manifest's `android.app.lib_name` is that
+  name without `lib` and `.so`.
+- **Nothing else is needed for the entry points.** The core is a static
+  archive, and the functions called into the library from outside it —
+  `ANativeActivity_onCreate`, and the `Java_*` functions behind
+  `UltraCanvasActivity`'s native methods — are referenced by nothing in the
+  app, so a plain link would leave them out. The core's link interface carries
+  a `-u` for each (`UltraCanvas/CMakeLists.txt`, read from
+  `OS/Android/*.cpp` at configure time), so any app linking it gets them, and
+  CI checks the demo library exports every one.
 
 ## What already works without packaging
 
