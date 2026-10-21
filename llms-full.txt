@@ -11990,7 +11990,6 @@ window->AddChild(chartRow);
 | `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element (white by default; the element's own background, so `UltraCanvasUIElement::SetBackgroundColor` sets the same colour), and the plot rectangle |
 | `SetEmptyMessage(text, detail)`, `SetEmptyMessageColor(color)` | what the chart says, centred on its background, while it has no points — "No data to display" unless set; `detail` is an optional smaller line under it, and an empty `text` and `detail` leave the background alone |
 | `SetEmptyIcon(path, iconColor, badgeColor)` | an icon over that message: 32 px, or 28 px on a 54 px rounded badge when `badgeColor` is not transparent; `iconColor` paints a single-colour icon in that colour, transparent draws it as it is; an empty `path` takes it away |
-| `SetMinimumValueSpan(span)` | the value axis covers at least `span`, centred on the data — a steady reading stays a flat line instead of a sawtooth filling the plot (line, area and scatter; 0, the default, fits the data) |
 | `SetShowValueLabels(bool)` | the y value printed at each point — on by default; drawn by the line and area charts |
 | `SetPointRadius(radius)` | the dot radius of the line and area charts (4 and 3 by default) and the offset of value labels |
 | `SetEnableZoom(bool)`, `SetEnablePan(bool)` | wheel zoom and drag pan of the x axis — off by default; see *Zoom and pan* |
@@ -48479,7 +48478,6 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
   - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
   - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
-  - [Card nodes with icons, without overlaps (2.3.0)](#card-nodes-with-icons-without-overlaps-230)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [See Also](#see-also)
 
@@ -48631,20 +48629,8 @@ struct NodeDiagramNode {
     bool   deletable  = true;
     std::vector<NodeHandle> handles;
     int    zIndex = 0;
-    double value = 1.0;                   // 2.2.0: drives NodeSizeMode::ByValue
-
-    // 2.3.0: a card look
-    std::string iconPath;                 // drawn in a disc at the leading edge
-    Color  iconBackground = Color(0, 0, 0, 0);    // the disc; transparent = icon alone
-    std::string sublabel;                 // a smaller second line under the label
-    Color  sublabelColor = Color(117, 117, 117, 255);
-    double cornerRadius = -1.0;           // Rectangle / RoundedSquare; < 0 = 15%
-    bool   shadow = false;                // a soft drop shadow
 };
 ```
-
-With an icon or a sublabel the label is left-aligned beside the icon, and a
-label or sublabel that does not fit is shortened with an ellipsis.
 
 ### NodeDiagramLink
 
@@ -48843,23 +48829,7 @@ void ApplyGridLayout();
 void ApplyHierarchicalLayout(const std::string& rootId);
 
 void SetAutoFitOnLayout(bool autoFit);
-
-// 2.3.0: move overlapping nodes apart (their rectangles plus `margin`),
-// until none overlap. Returns the passes it took; refit the view after.
-int  ResolveOverlaps(double margin = 8.0, int maxPasses = 400);
-
-// 2.3.0: level of detail - below `zoom`, a node with an icon draws as its
-// icon disc alone, named while hovered or selected. 0 (default) = off.
-void   SetDetailZoom(double zoom);
-double GetDetailZoom() const;
-bool   IsShowingIconsOnly() const;
 ```
-
-The force-directed layout ends with `ResolveOverlaps`, so its result has no
-overlapping nodes however wide they are; it no longer clamps the nodes into
-the element's bounds (the view fits the content). A host that places nodes
-itself - a radial or a tree arrangement of its own - calls `ResolveOverlaps`
-and then `FitView()`.
 
 ### Data-driven node sizing (2.2.0)
 
@@ -48958,7 +48928,6 @@ void SetGridVisible(bool visible, double spacing = 25.0);
 void SetFontFamily(const std::string& fontFamily);
 void SetFontSize(double size);
 void SetLinkDistance(double distance);
-void SetChargeStrength(double strength);   // 2.3.0: repulsion, default -300; wide nodes want more
 ```
 
 ### Selection
@@ -49323,48 +49292,6 @@ Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `value` field instead — headcount, budget, revenue, whatever the graph is about.
 `NodeSizeMode::Fixed` restores the authored sizes exactly.
 
-
-### Card nodes with icons, without overlaps (2.3.0)
-
-A network map in the style of the Smart Home topology: each node a white card
-with the device's icon on a coloured disc, its name, and its room under it.
-The nodes are placed by hand - a router with its devices in a column under
-it - and `ResolveOverlaps` makes sure nothing touches.
-
-```cpp
-auto diagram = CreateNodeDiagram("network", 0, 0, 900, 560);
-diagram->SetBackgroundColor(Color(243, 245, 248, 255));
-diagram->SetNodesConnectable(false);
-
-auto card = [&](const std::string& id, const std::string& name, const std::string& room,
-                const std::string& icon, const Color& color, double x, double y) {
-    NodeDiagramNode n(id, name);
-    n.shape          = NodeShape::Rectangle;
-    n.cornerRadius   = 10.0;
-    n.shadow         = true;
-    n.width          = 150.0;
-    n.height         = 40.0;
-    n.x              = x;
-    n.y              = y;
-    n.fillColor      = Color(255, 255, 255, 255);
-    n.borderColor    = Color(221, 227, 234, 255);
-    n.borderWidth    = 1.0;
-    n.textColor      = Color(33, 33, 33, 255);
-    n.iconPath       = GetResourcesDir() + "media/icons/smarthome/" + icon + ".svg";
-    n.iconBackground = color;
-    n.sublabel       = room;
-    diagram->AddNode(n);
-};
-card("router", "Kitchen plug", "Router", "plug", Color(79, 109, 138, 255), 0, 0);
-card("fridge", "Fridge", "Kitchen", "fridge", Color(79, 109, 138, 255), 0, 70);
-card("smoke", "Smoke alarm", "Kitchen", "smoke", Color(59, 130, 246, 255), 0, 70);   // same spot
-diagram->AddLink("l1", "router", "fridge");
-diagram->AddLink("l2", "router", "smoke");
-
-diagram->ResolveOverlaps(10.0);   // the smoke alarm moves off the fridge
-diagram->FitView();
-diagram->SetDetailZoom(0.7);      // zoomed out further: icons only, named on hover
-```
 
 ## Keyboard Shortcuts
 
@@ -74518,32 +74445,6 @@ are what an application reaches for. An SVG has no element of its own either:
 reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
-## Module widgets — Smart Home
-
-The Smart Home module's widgets (`SmartHome/ui`, library `SmartHomeUI`) are
-not framework elements - they are built **out of** the elements above, and
-are listed here so nobody writes a second light switch or thermostat panel.
-Each drives its device through `SmartHomeAPI` and reports through its own
-callback; each has getters for the elements inside it. More
-in [the module's overview](../Modules/Smarthome/README.md).
-
-| You need | Widget | Built from | Header |
-|---|---|---|---|
-| A dashboard of the home's devices: grid, rooms, list, scenes, automations, network | `SmartHomePanel` | segmented control, text input, button, the cards below, list view, `SmartHomeNetworkTopology` | `UltraCanvasSmartHomePanel.h` |
-| One device or scene as a press target | `SmartHomeDeviceCard`, `SmartHomeSceneCard` | drawn tiles | `UltraCanvasSmartHomePanel.h` |
-| A light's on/off, brightness, colour temperature, colour and presets | `SmartHomeLightControl` | switch, sliders, colour picker, colour swatch bar | `UltraCanvasSmartHomeDeviceControl.h` |
-| A thermostat's target and mode | `SmartHomeThermostatControl` | ring gauge, spinner, segmented control | same |
-| A lock with its battery and activity | `SmartHomeLockControl` | button, gauge bar, list view | same |
-| A blind's position, tilt and presets | `SmartHomeBlindControl` | buttons, sliders, a drawn preview | same |
-| A sensor's reading and its recent history | `SmartHomeSensorDisplay` | labels, line chart (`SensorHistoryMinimumSpan` floors its axis) | same |
-| A device's details with its control | `SmartHomeDeviceDialog` | labels, buttons, the control above | same |
-| Adding a device | `SmartHomePairingWizard` | buttons, gauge bar | same |
-| Editing a scene or an automation | `SmartHomeSceneEditor`, `SmartHomeAutomationEditor` | text input, list views, dropdown, switch, buttons | `UltraCanvasSmartHomeAdvancedWidgets.h` |
-| The radio network as a graph | `SmartHomeNetworkTopology` | `UltraCanvasNodeDiagram`, segmented control, dropdown | same |
-| Power and energy use | `SmartHomeEnergyMonitor` | line chart, segmented control, labels | same |
-| Timed events by day, week or as a list | `SmartHomeScheduler` | segmented controls, list view, buttons, a drawn week grid | same |
-| A group of devices switched together | `SmartHomeGroupControl` | buttons, sliders, list view, dropdown | same |
-
 ## Creating them
 
 Widgets are `std::shared_ptr`-managed. Use the `Create*` factory where one
@@ -84634,48 +84535,24 @@ What It Does
 FILE: Docs/Modules/Smarthome/README.md
 ==============================================================================
 
-## Contents
-
-- [UltraCanvas Smart Home Module - Feature Overview](#ultracanvas-smart-home-module---feature-overview)
-  - [Dashboard Panel (`SmartHomePanel`)](#dashboard-panel-smarthomepanel)
-  - [Device Cards (`SmartHomeDeviceCard`)](#device-cards-smarthomedevicecard)
-  - [Device-Specific Controls](#device-specific-controls)
-  - [Dialogs, editors and views](#dialogs-editors-and-views)
-  - [Protocol Support](#protocol-support)
-  - [Store and automations](#store-and-automations)
-  - [Application](#application)
-
 ## UltraCanvas Smart Home Module - Feature Overview
 
-> **Status: partly implemented.** The engine, the facade (`SmartHomeAPI`), the
-> store, the automation engine, the home's rooms, a simulated demo home and the
-> sixteen widgets (`SmartHome/ui`) exist and are tested; the radio backends
-> build but have met no hardware yet. Where each part stands:
-> [`SmartHome/STATUS.md`](../../../SmartHome/STATUS.md). The demo application's
-> Smart Home entry shows the dashboard panel on the simulated home.
-
-Every widget is a container of UltraCanvas elements - switches, sliders,
-buttons, spinners, segmented controls, list views, a colour picker, gauges,
-line charts, a node diagram - so focus, keyboard, hover and theming are the
-framework's. Only two pictures are drawn by the module itself: a blind in its
-window and the scheduler's week grid. The element catalogue
-([`UltraCanvasUIElements.md`](../../UltraCanvas/UltraCanvasUIElements.md#module-widgets--smart-home))
-lists which elements each widget is made of.
+> **Status: planned — specification only.** Nothing described below is
+> implemented yet: there is no `SmartHome/` source directory, no CMake target,
+> and none of the widget classes named here exist in the tree. This document is
+> the design target for the module, not a description of shipping code. The
+> demo application lists the module as *Planned* and shows this page in place of
+> a live example.
 
 ### Dashboard Panel (`SmartHomePanel`)
 
--   **Six views** - device grid, rooms (the home's rooms, a heading and a row of cards each), list, scenes, automations (double-click turns one on or off) and the network as a topology graph, picked from the toolbar
--   **Search and filters** - a search field in the toolbar; `FilterByCategory`, `FilterByRoom`, `FilterByProtocol` for a host
--   **Scene Cards** - activate a scene with one press
--   **Pairing banner** - progress and Cancel while a radio is searching
--   **Live state** - the module reports changes on its own threads; the panel applies them on the UI thread twice a second
+-   **Device Organization** - Automatic grouping by room with collapsible sections
+-   **Scene Cards** - Quick-activate preset configurations (e.g., "Movie Night", "Good Morning")
+-   **Filtering & Search** - Filter by room, device category, or search by name
+-   **Multiple Layouts** - Grid, list, compact, or detailed view modes
+-   **Real-time Status** - Online/offline indicators, battery levels, last-seen timestamps
 
 ### Device Cards (`SmartHomeDeviceCard`)
-
-Every device has an icon: the line icons in `media/icons/smarthome/`, chosen
-by `SmartHomeDeviceIconName` (`UltraCanvasSmartHomeIcons.h`) from its
-category, its kind of reading, or - for a plug - what its name says is
-plugged in.
 
 -   Visual cards showing device name, room, status, and quick toggle switch
 -   Color-coded icons by category (lights=amber, locks=green, sensors=blue, etc.)
@@ -84686,24 +84563,20 @@ plugged in.
 
 | Widget | Features |
 |---|---|
-| **Light Control** | On/off switch, brightness and colour-temperature sliders, a colour picker (hue and intensity bars), preset colours as a swatch bar |
-| **Thermostat Control** | The target in a ring gauge coloured by what it is doing, the room's temperature and humidity, a spinner for the target (the wheel steps half a degree), a segmented control for the modes |
-| **Lock Control** | A Lock / Unlock button (a jammed lock refuses), who used it last, a battery bar, the activity newest first in a list |
-| **Blind Control** | A picture of the blind, Open / Stop / Close, position and tilt sliders, a button per preset |
-| **Sensor Display** | The reading with its unit, coloured by the alert thresholds; the recent history as a line chart with a floor under its axis (2 °C, 10 %, 20 W, 50 lx), so a steady room draws a flat line |
+| **Light Control** | On/off, brightness slider, color temperature (2700K-6500K), RGB color wheel, preset colors |
+| **Thermostat Control** | Circular temperature dial, current/target temps, Heat/Cool/Auto/Eco modes, fan control, humidity display |
+| **Lock Control** | Lock/unlock with animated icon, access log history, battery status, confirmation option |
+| **Blind Control** | Position slider (0-100%), tilt angle, visual preview, Open/Stop/Close buttons |
+| **Sensor Display** | Large value readout, unit display, 24h history graph, min/max tracking, threshold alerts |
 
-### Dialogs, editors and views
+### Dialogs & Wizards
 
 | Dialog | Purpose |
 |---|---|
-| **Device Dialog** | The device's name, category, protocol, state, maker, model and firmware, the control that fits it, Rename and Remove |
-| **Pairing Wizard** | A button per radio, then a search with a progress bar and Cancel until a device joins ("Added ...") or the time runs out (what went wrong, Back) |
-| **Scene Editor** | A name, the actions in a list, a device dropdown to add one, Remove, Save |
-| **Automation Editor** | A name, what starts it (WHEN), what must hold (AND IF), what it does (THEN), a switch for enabled, Save |
-| **Network Topology** | Each device a card with its icon, name and room, linked to a router of its radio (in its own room where there is one); force, radial or tree layout with no overlapping cards; filter by radio |
-| **Energy Monitor** | Power now, the history as a line chart (power, energy or cost), today, average, peak and cost |
-| **Scheduler** | Timed events on a day or week grid or in a list; turn one off, remove it; a press on empty time asks the host to make one |
-| **Group Control** | All on / All off, brightness and colour temperature for the group, its devices in a list, add and remove |
+| **Device Dialog** | View/edit device name, room assignment, category; shows protocol, manufacturer, model |
+| **Pairing Wizard** | Step-by-step: Select protocol → Search → Configure → Complete; supports Matter, Thread, Zigbee, Z-Wave, WiFi, Bluetooth |
+| **Scene Editor** | Create/edit scenes with device selection and state configuration |
+| **Automation Editor** | Build rules with triggers (time, device state, sunrise/sunset), conditions, and actions |
 
 ### Protocol Support
 
@@ -84716,10 +84589,9 @@ through `SmartHomeAPI` brings it up.
 
 ### Store and automations
 
-The home's own database, **smarthome.db** (UltraDatabase / SQLite): the
-home's rooms (`SmartHomeRoom`, `GetRooms` and friends), scenes, automations,
-the names and rooms given to devices, the home's location, the event log and
-sensor history. **Automations run** in the module: device,
+The home's own database, **smarthome.db** (UltraDatabase / SQLite): scenes,
+automations, the names and rooms given to devices, the home's location, the
+event log and sensor history. **Automations run** in the module: device,
 time, sunrise and sunset triggers, time, weekday and device conditions, and
 device commands, notifications, delays and scenes as actions. The trigger and
 condition forms are documented on `SmartHomeAutomation` in
@@ -84728,10 +84600,8 @@ condition forms are documented on `SmartHomeAutomation` in
 ### Application
 
 **SmartHome Center** (`Apps/SmartHomeCenter`) is the home control window
-built on this module: Home with its device tiles, Rooms, Devices, a page per
-device with its history, Scenes, Energy, Activity and Settings, and a
-command line (`--list`, `--set`, `--scene`, `--history`, `--log`). It opens
-the demo home when no radio is enabled.
+built on this module: rooms and device tiles, scenes, energy, activity. It
+opens the demo home when no radio is enabled.
 
 ==============================================================================
 FILE: Docs/Modules/Smarthome/intro.md
@@ -96171,6 +96041,7 @@ cascade. The rules, with their weights:
 | `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
 | `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
 | `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate / money nobody claimed ("abandoned baggage"), taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential", "your own share", "God fearing", an "ATM card" from the FBI) — 50 when two of those appear |
+| `loan-offer-fraud` | 50 / 30 / 25 | A loan, credit or project funding offered ("loan facilities", "LOAN FUNDING / FINANCING OFFER", "fund viable projects") by anyone but a bank whose own domain is proven (a registry bank with DKIM/DMARC passing): 50 with a rate, a repayment, a return or a sum ("3% yearly repayment", "USD/EURO 10M - 500M"), 30 for the bare offer; 25 when the sender proved its own (not free-mailbox) domain, or writes from a registry bank's domain nothing proved, and names terms; nothing for a proven domain's bulk mail |
 | `crypto-payment-demand` | 40 | A crypto wallet address in the text (Bitcoin `bc1…`/`1…`/`3…`, Ethereum `0x…`, TRON `T…`) — blackmail and fake invoices; not from a proven exchange, not a token inside a link |
 | `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
@@ -96317,6 +96188,7 @@ from a domain of its own. Where the brand table already reported the claim
 | Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
 | Romance scams | `romance-scam` |
 | Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
+| Loan and credit offers | `loan-offer-fraud` |
 | Letters in an agency's name | `government-impersonation` |
 | Cryptocurrency scams | `crypto-wallet-secret`, `crypto-payment-demand`, `crypto-investment-lure` |
 | Any mail about cryptocurrency | `crypto-content` (the caution strip) |
