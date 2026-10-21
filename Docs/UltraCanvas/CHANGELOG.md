@@ -1,3 +1,133 @@
+#### 2026-10-21 *0.9.364*
+- **DemoApp builds for Android, as the library an APK carries.** On Android
+  the demo is `libUltraCanvasDemo.so` (`add_library(... SHARED)` where the
+  desktop has an executable), and its `main()` is `ultracanvas_app_main()`,
+  which the framework's `android_main()` calls once the sandbox, the unpacked
+  assets and the first surface are ready. The X11 and signal setup in
+  `Apps/DemoApp/main.cpp` now say `!defined(__ANDROID__)` too, since bionic
+  defines `__linux__`. The packaging template's manifest names the library
+  and its Gradle file builds that target alone. No APK has been built yet, so
+  it has still not run on a device.
+- **Android: an app's library now carries the entry points called into it by
+  name.** The core is a static archive, and `ANativeActivity_onCreate` and the
+  `Java_*` functions behind `UltraCanvasActivity`'s native methods are
+  referenced by nothing in an app, so a plain link left them out. Without
+  `ANativeActivity_onCreate` the activity cannot start the app, and
+  `UltraCanvasAndroidTextInput.cpp` holds only JNI functions, so the first
+  keystroke from the IME would have thrown `UnsatisfiedLinkError`. The core's
+  link interface now passes `-u` for each, read from `OS/Android/*.cpp` at
+  configure time, so a new native method needs nothing added.
+- **The Android build workflow links the demo and checks what it exports.**
+  `android-build.yml` builds `UltraCanvasDemo` after the core (the NDK links a
+  shared library with `--no-undefined`, so a dependency missing from the
+  sysroot's link lists shows here and not in the static core), then fails if
+  `libUltraCanvasDemo.so` does not export `ANativeActivity_onCreate` and every
+  `Java_*` function. It also runs when `Apps/DemoApp/` changes now.
+- **The demo's OpenGL pages build for OpenGL ES on Android.** The 3D models,
+  shader and Zarch tabs and the 3D bubble chart included desktop `GL/gl.h`;
+  on Android they include `GLES3/gl3.h`, and their GLSL 3.30 shaders are
+  compiled as GLSL ES 3.00 (`#version 300 es` plus default precision; all 27
+  validate with glslangValidator). OpenGL ES has no `glPolygonMode`,
+  `glPointSize` or `GL_PROGRAM_POINT_SIZE`: the shader tab's point shader now
+  sets `gl_PointSize` itself, and on Android the models tab's Wireframe
+  toggle draws the model filled.
+- **Android builds for API 28 (Android 9), the level its libraries need.**
+  vcpkg's Android triplets build the dependency sysroot for API 28, so glib,
+  fontconfig and libintl call libc functions bionic has only from 28 on
+  (`iconv`, `posix_spawn`, `pthread_attr_setinheritsched`,
+  `fgets_unlocked`) - the first link of an app said so. The framework built
+  for 26, which those libraries never supported; the build, the bootstrap
+  script, the syntax check and the Gradle template's `minSdk` now say 28.
+- **Android no longer calls two desktop backends it does not compile.** File
+  associations take the "not available" backend WebAssembly uses (handing a
+  file to another app is an Intent, still to be written), and the V4L2
+  camera backend registers on desktop Linux only. Video formats are listed
+  as Android's MediaCodec plays them, with MP4 the one the recorder writes,
+  instead of as GStreamer's.
+- **The UltraNet JMAP plug-in no longer aborts on a null field.** Fastmail
+  answers `Email/get` with `"subject": null`, `"to": null`, `"cc": null`
+  and `"name": null` for a draft without a subject or recipients, and
+  nlohmann's `value()` throws on a null where the key exists (its default
+  is for a missing key only); the uncaught `type_error` took UltraMail
+  down with SIGABRT in the sync thread. Every string and number the core
+  reads from a server now goes through null-safe helpers (`Str`, `Uint`
+  in `JmapCore.h`): a null, a wrong type or a missing key reads as empty
+  or zero, and an out-of-range number is clamped. The crash report's
+  response is a test.
+- **And no exception leaves the JMAP plug-in at all.** Every entry point
+  (the folder, status, envelope, message, flag, move, append, expunge, send
+  and watch calls, and the watch's worker-thread callbacks) runs inside a
+  guard (`Guarded` / `GuardedVoid` in `JmapCore.h`): whatever is thrown -
+  a JSON type the parser did not expect, a `bad_alloc` - comes back as a
+  `PluginError` result naming the call and the reason, instead of reaching
+  a caller's worker thread with no handler and ending the process.
+- **Pull requests stop colliding over generated files and each other.**
+  - `llms.txt` / `llms-full.txt` are written on `main`: the new
+    `llms-regenerate.yml` regenerates them after every docs change lands and
+    commits the result, and `llms-txt.yml` refuses a pull request that changes
+    them (it still checks the `## Contents` inventories and the README
+    mirrors, which branches keep committing). They are the whole docs corpus,
+    so any two docs pull requests open at once conflicted there, and the
+    second to merge had to merge `main`, regenerate and run the whole CI
+    matrix again - the changelog's line-1 collision, cured the same way.
+  - `scripts/check_pr_overlap.py` predicts a branch's conflicts with the other
+    open pull requests before they reach GitHub: for each one it simulates
+    the merge order GitHub will see (that branch into `main` first, this one
+    on top) with `git merge-tree`, and reports real conflicts, two branches
+    giving one application changelog the same top version (which git can
+    merge with no conflict at all), generated files, and shared files that
+    merge cleanly. It reads the open pull requests from `gh`, from
+    `--branches`, or falls back to recently active branches. `AGENTS.md`
+    rule 4 of the branch rules: run it before opening a pull request and
+    before every push.
+  - The Windows install-and-uninstall step gives the uninstaller ten seconds
+    to remove the Start-menu folder before calling it left behind, and names
+    what is still in it when it is; it failed a pull request that changes no
+    packaging while `main` at the same base passed.
+
+#### 2026-10-21 *0.9.363*
+- **The UltraNet JMAP plug-in pushes (phase 3), and the mail plug-ins share
+  one message builder.** `IMailboxProtocolPlugin::WatchMailbox` opens a
+  watch on an account and returns its handle; the plug-in then reports a
+  change (`UltraNetMailChange`: which folders when known, and whether the
+  folder list changed) on its own thread each time the server announces
+  one, and `onEnd` once the watch is over - the stream closed, the
+  connection dropped, or `StopWatching` ended it (Cancelled); the caller
+  opens the next watch when it wants one. The JMAP plug-in holds the
+  session's event source open (`UltraNet_SseStreamAsync`, `Email,Mailbox`,
+  a ping every five minutes, a stall limit of two missed pings) and reports
+  a `StateChange` whose Email or Mailbox state it has not seen - the first
+  event only records where the account stands. The defaults report "not
+  implemented", so the IMAP plug-in and test fakes are simply polled.
+  `UltraNet_MimeBuildMailMessage` (UltraNetMime.h) builds the raw RFC 5322
+  message of a `UltraNetMailMessage` - media type and charset from
+  `contentType`, the text alternative and inline pictures of an HTML body,
+  the attachments, the extra headers - and the SMTP and JMAP plug-ins both
+  send through it instead of a copy each. The plug-in host table is ABI 3:
+  `MimeBuildMailMessage`, `SseStreamAsync`, `CancelRequest` and
+  `IsRequestActive` appended; the shim refuses an older host, since every
+  plug-in in the tree calls them.
+- **The UltraNet JMAP plug-in writes as well as reads (phase 2).**
+  `StoreFlags` patches the message's keywords (`$seen`, `$answered`,
+  `$flagged`, `$draft`); `\Deleted`, which JMAP has not, moves the message
+  to the Trash mailbox, or destroys it when it is there already or the
+  account has none, and clearing it is a no-op. `MoveMessage` replaces the
+  message's `mailboxIds`, `ExpungeMessage` destroys it, `AppendMessage`
+  uploads the raw message to the session's `uploadUrl` and imports it into
+  the folder with its keywords (`Email/import`), and `FetchAllFlags` walks
+  the folder and reads every message's keywords, so a client's reconcile
+  step sees reads and deletions made elsewhere. `SendMail` sends through
+  JMAP: the raw message (built with `UltraNet_MimeBuild`, as the SMTP
+  plug-in does) is uploaded, imported into Drafts and handed to
+  `EmailSubmission/set` with the `Identity` whose address is the From (a
+  domain wildcard identity, else the account's first); on success the
+  server files it in Sent with `$draft` cleared, or destroys it when there
+  is no Sent mailbox. The `jmap://` server URL comes in
+  `UltraNetMailOptions::serverUrl`, as for SMTP. The wire shapes live in
+  `JmapCore.h` and are tested without a server
+  (`Tests/UltraNet/test_jmap_plugin.cpp`); push over the session's event
+  source (phase 3) remains.
+
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows
   each port next to its original.** Twelve engine-native elements under
