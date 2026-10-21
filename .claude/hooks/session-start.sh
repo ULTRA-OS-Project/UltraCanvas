@@ -28,7 +28,11 @@
 # all (MuPDF, libopusenc, c-ares), 24.04's package is new enough and is used
 # instead. Not mirrored: ccache (a CI build cache), and the services CI starts
 # for its live tests - PostgreSQL, Avahi and the IPP printer - whose tests
-# skip unless CI's environment asks for them. To add a package, append it.
+# skip unless CI's environment asks for them. Beyond CI's list: the libraries
+# of the UltraNet plug-ins CI's Linux row does not build (MQTT, AMQP, CoAP,
+# SNMP, SSH), so that a change to one of them compiles in a cloud session -
+# without them a guard added to all eighteen plug-ins in 2026-10 reached five
+# of them untried. To add a package, append it.
 #
 # It also generates a comma-decimal locale, de_DE.UTF-8, as CI does. The tests
 # that hold file formats to dot-decimal numbers (HTMLReaderTest,
@@ -36,11 +40,12 @@
 # ModelMS3DTest, DiagramJsonLocaleTest) run under one and skip without it - and
 # the image has none (no de_DE, checked 2026-10-15), so here they had never run.
 #
+# Version: 1.3.0 - the libraries of the MQTT, AMQP, CoAP, SNMP and SSH plug-ins
 # Version: 1.2.0 - the de_DE.UTF-8 locale the locale tests need
 # Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
 # Version: 1.1.0 - every library CI installs, not only libsodium
 # Version: 1.0.0
-# Last Modified: 2026-10-15
+# Last Modified: 2026-10-21
 # Author: UltraCanvas Framework
 set -u
 
@@ -66,6 +71,9 @@ PACKAGES=(
     libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libmp3lame-dev libopusenc-dev
     # UltraNet: curl, async DNS
     libcurl4-openssl-dev libpsl-dev libc-ares-dev
+    # UltraNet plug-ins CI's Linux row leaves out: MQTT (paho), AMQP (rabbitmq-c),
+    # CoAP (libcoap3), SNMP (net-snmp), SSH (libssh) - see above
+    libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
     libsodium-dev libsqlite3-dev libpq-dev
     # locale-gen, for the comma-decimal locale below
