@@ -1974,15 +1974,16 @@ bool UltraMailApp::HandleSendDraft(const Draft& draft, int64_t replacesOutboxId)
 void UltraMailApp::SendQueued(const std::string& fromAddr, const std::string& recipients) {
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
     DiscoveryResult disc = SettingsForEmail(fromAddr);
-    auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
+    auto plugin = SendPlugin(disc);
     auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
 
     UltraNetResult cannotSend = UltraNetResult::Ok();
     if (!smtp)
         cannotSend = UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
-            "The SMTP plug-in is not loaded, so UltraMail cannot reach a mail server. "
+            std::string("The ") + (disc.SendsThroughJmap() ? "JMAP" : "SMTP")
+            + " plug-in is not loaded, so UltraMail cannot reach a mail server. "
             "Put it on the plug-in path (" + pluginDir_ + ") and choose Retry.");
-    else if (!disc.found || AutoDiscovery::SmtpServerUrl(disc.smtp).empty())
+    else if (!disc.found || SendServerUrl(disc).empty())
         cannotSend = UltraNetResult::Error(UltraNetResultCode::InvalidState,
             "No outgoing (SMTP) server is known for " + fromAddr
             + ". Enter it in Account Settings and choose Retry.");
@@ -2103,9 +2104,9 @@ void UltraMailApp::AutoRetryOutbox() {
 
     const std::string from = pending.front().draft.fromAddr;
     DiscoveryResult disc = SettingsForEmail(from);
-    auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
+    auto plugin = SendPlugin(disc);
     const bool canSend = plugin && dynamic_cast<IMailProtocolPlugin*>(plugin.get())
-                      && disc.found && !AutoDiscovery::SmtpServerUrl(disc.smtp).empty();
+                      && disc.found && !SendServerUrl(disc).empty();
     // Silent: the warning was shown when the message first failed. A pass
     // that cannot send still saves the Drafts copies.
     FlushOutboxInBackground(canSend ? plugin : nullptr,
@@ -2187,10 +2188,19 @@ void UltraMailApp::FlushOutboxInBackground(std::shared_ptr<IUltraNetPlugin> plug
     auto accounts = std::make_shared<std::map<std::string, SmtpAccount>>(SmtpAccounts());
     auto stats = std::make_shared<Outbox::FlushStats>();
     RunOutboxJob(
-        // `plugin` rides along: it keeps the SMTP plug-in loaded while it sends.
+        // `plugin` rides along: it keeps the plug-in loaded while it sends
+        // (each account's own is held by the snapshot).
         [this, plugin, smtp, accounts, stats](Outbox& ob, const ServerCopies* copies) {
             if (smtp) {
-                *stats = ob.Flush(*smtp,
+                *stats = ob.Flush(
+                    // Each account through its own plug-in - SMTP, or JMAP for
+                    // an account that sends through its JMAP server.
+                    [accounts, smtp](const std::string& acc) -> IMailProtocolPlugin* {
+                        auto it = accounts->find(acc);
+                        if (it == accounts->end() || !it->second.plugin) return smtp;
+                        auto* own = dynamic_cast<IMailProtocolPlugin*>(it->second.plugin.get());
+                        return own ? own : smtp;
+                    },
                     [this, accounts](const std::string& acc, UltraNetMailOptions& o) {
                         return PrepareSmtp(*accounts, acc, o);
                     },
@@ -4021,12 +4031,16 @@ void UltraMailApp::CompleteAccountSetup(const AccountDraft& draft, const Discove
     else if (disc.source == "autoconfig")
         summary = "Account ready — settings found for " + EmailDomain(draft.email)
                 + (disc.displayName.empty() ? "" : " (" + disc.displayName + ")") + ".";
+    else if (disc.source == "jmap")
+        summary = "Account ready — a JMAP server was found for " + EmailDomain(draft.email) + ".";
     else
         summary = "Account ready — settings detected"
                 + (disc.displayName.empty() ? "" : " (" + disc.displayName + ")") + ".";
     std::string detail = "Incoming (" + std::string(disc.imap.protocol == MailProtocol::Jmap ? "JMAP" : "IMAP")
                        + "): " + AutoDiscovery::IncomingServerUrl(disc.imap)
-                       + "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
+                       + (disc.SendsThroughJmap()
+                              ? "\nOutgoing: through the JMAP server (no SMTP server needed)"
+                              : "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp));
     // Providers that expect OAuth2 (Gmail, Outlook), Yahoo and iCloud
     // reject the normal account password over IMAP. Gmail and Outlook sign
     // in through the browser; a typed password there, and Yahoo / iCloud
@@ -4071,8 +4085,22 @@ DiscoveryResult UltraMailApp::SettingsForEmail(const std::string& email) const {
 
 std::map<std::string, UltraMailApp::SmtpAccount> UltraMailApp::SmtpAccounts() const {
     std::map<std::string, SmtpAccount> out;
-    for (const auto& a : accounts_) out[a.accountId] = SmtpAccount{a.email, SettingsFor(a)};
+    for (const auto& a : accounts_) {
+        const DiscoveryResult settings = SettingsFor(a);
+        out[a.accountId] = SmtpAccount{a.email, settings, SendPlugin(settings)};
+    }
     return out;
+}
+
+std::string UltraMailApp::SendServerUrl(const DiscoveryResult& settings) {
+    if (!settings.found) return "";
+    if (settings.SendsThroughJmap()) return AutoDiscovery::IncomingServerUrl(settings.imap);
+    return AutoDiscovery::SmtpServerUrl(settings.smtp);
+}
+
+std::shared_ptr<IUltraNetPlugin> UltraMailApp::SendPlugin(const DiscoveryResult& settings) {
+    if (settings.SendsThroughJmap()) return UltraNet_GetPlugin("jmap");
+    return UltraNet_GetPlugin(settings.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
 }
 
 UltraNetResult UltraMailApp::PrepareSmtp(const std::map<std::string, SmtpAccount>& accounts,
@@ -4083,15 +4111,17 @@ UltraNetResult UltraMailApp::PrepareSmtp(const std::map<std::string, SmtpAccount
                                      "the account of this message no longer exists");
     const SmtpAccount& account = it->second;
     const DiscoveryResult& settings = account.settings;
-    if (!settings.found)
+    if (!settings.found || SendServerUrl(settings).empty())
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
                                      "no outgoing (SMTP) server is known for " + account.email);
-    ApplyConnection(settings.smtp, o);
+    // An account that sends through its JMAP server signs in there as its
+    // syncs do; the rest at their outgoing server.
+    const MailServerSettings& sender = settings.SendsThroughJmap() ? settings.imap : settings.smtp;
+    ApplyConnection(sender, o);
     // The account's server as it is now: a message queued before the server
     // was known (or before it was corrected) still goes out on Retry.
-    o.serverUrl = AutoDiscovery::SmtpServerUrl(settings.smtp);
-    const std::string username =
-        settings.smtp.username.empty() ? account.email : settings.smtp.username;
+    o.serverUrl = SendServerUrl(settings);
+    const std::string username = sender.username.empty() ? account.email : sender.username;
     return ResolveCredentials(accountId, username, OAuthProviderFor(settings), o.credentials);
 }
 

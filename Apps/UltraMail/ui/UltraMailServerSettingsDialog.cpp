@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.8.1 - the outgoing server is optional for a JMAP account (it
+//                  sends through JMAP); the port's security nudge leaves a
+//                  disabled security dropdown alone
 // Version: 0.8.0 - the Protocol row: the incoming server is IMAP or JMAP; the
 //                  incoming rows, the port, the security and the sign-in
 //                  choices follow the choice
@@ -124,8 +127,9 @@ std::string NoteFor(MailProtocol protocol) {
     if (protocol == MailProtocol::Jmap)
         return "A JMAP server is reached over HTTPS, usually on port 443, and "
                "answers at /.well-known/jmap (Fastmail: api.fastmail.com; Stalwart, "
-               "Cyrus and Apache James: the mail host). Mail is read through "
-               "JMAP; sending still goes through the outgoing (SMTP) server.";
+               "Cyrus and Apache James: the mail host). Mail is read and sent "
+               "through it: the outgoing (SMTP) server is optional - leave it "
+               "empty to send through JMAP.";
     return "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
            "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
            "settings\" or \"IMAP/SMTP\" in their help.";
@@ -270,8 +274,10 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         // user cannot save 587 + SSL/TLS (implicit TLS on a STARTTLS port) -
         // that sends a TLS ClientHello before the greeting and gets the IP
         // fail2ban-banned (see EffectiveSecurity). Only nudge between the two
-        // TLS modes; a deliberate "None" is left alone.
+        // TLS modes; a deliberate "None" is left alone, and so is a dropdown
+        // the protocol has fixed and disabled (JMAP is HTTPS on any port).
         r.port->onTextChanged = [sec = r.security](const std::string& text) {
+            if (sec->IsDisabled()) return;
             const int port = std::atoi(text.c_str());
             if (port <= 0) return;
             const MailSecurity cur = SecurityAt(sec->GetSelectedIndex());
@@ -290,6 +296,13 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     ServerRow imap = addServerRow("srvImap", "Incoming (" + ProtocolName(startProtocol) + ")",
                                   prefill.imap);
     ServerRow smtp = addServerRow("srvSmtp", "Outgoing (SMTP)", prefill.smtp);
+    // What an empty outgoing server means: for JMAP, sending through it.
+    auto smtpPlaceholder = [smtpHost = smtp.host.get()](MailProtocol p) {
+        smtpHost->SetPlaceholder(p == MailProtocol::Jmap
+                                     ? "Optional: empty sends through JMAP"
+                                     : "mail.example.com");
+    };
+    smtpPlaceholder(startProtocol);
     // A JMAP server is HTTPS: the security is not a choice there.
     if (startProtocol == MailProtocol::Jmap) {
         imap.security->SetSelectedIndex(SecurityIndex(MailSecurity::SslTls),
@@ -428,8 +441,10 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // unusual port stays), the security is fixed to HTTPS for JMAP, and the
     // sign-in methods are the ones the protocol has. Siblings, not the
     // dropdown itself, are captured - no cycle.
-    protocol->onSelectionChanged = [imap, imapAuth, note](int index, const DropdownItem&) {
+    protocol->onSelectionChanged = [imap, imapAuth, note, smtpPlaceholder](int index,
+                                                                           const DropdownItem&) {
         const MailProtocol chosen = ProtocolAt(index);
+        smtpPlaceholder(chosen);
         const MailProtocol other  = chosen == MailProtocol::Jmap ? MailProtocol::Imap
                                                                  : MailProtocol::Jmap;
         imap.label->SetText("Incoming (" + ProtocolName(chosen) + ")");
@@ -541,9 +556,15 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         if (r.imap.host.empty())      { status->SetText("Enter the incoming (" + ProtocolName(r.imap.protocol) + ") server."); return false; }
         if (badHost(incoming.c_str(), r.imap.host)) return false;
         if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return false; }
-        if (r.smtp.host.empty())      { status->SetText("Enter the outgoing (SMTP) server."); return false; }
-        if (badHost("Outgoing (SMTP) server", r.smtp.host)) return false;
-        if (r.smtp.port == 0)         { status->SetText("The outgoing port must be a number from 1 to 65535."); return false; }
+        // A JMAP account sends through its JMAP server unless an outgoing
+        // server is given; everything else needs one.
+        if (r.smtp.host.empty() && r.imap.protocol == MailProtocol::Jmap) {
+            r.smtp = MailServerSettings{};
+        } else {
+            if (r.smtp.host.empty())      { status->SetText("Enter the outgoing (SMTP) server."); return false; }
+            if (badHost("Outgoing (SMTP) server", r.smtp.host)) return false;
+            if (r.smtp.port == 0)         { status->SetText("The outgoing port must be a number from 1 to 65535."); return false; }
+        }
         r.found  = true;
         r.source = "manual";
         return true;

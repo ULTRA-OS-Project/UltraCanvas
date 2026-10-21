@@ -1,10 +1,12 @@
 // Tests/UltraNet/test_jmap_plugin.cpp
 // Unit tests for the JMAP plug-in's pure wire layer in JmapCore.h (session
 // parsing, URI-template expansion, request building, method-response
-// navigation, mailbox/envelope mapping, keyword↔flag conversion and the
-// uid↔Email-id map), plus a check that the built DSO exposes the
-// IMailboxProtocolPlugin interface and rejects malformed server URLs. The
-// pure tests need no server; the interface test loads the plug-in DSO.
+// navigation, mailbox/envelope mapping, keyword↔flag conversion, the
+// uid↔Email-id map and the write path: keyword and mailbox patches, destroy,
+// upload + Email/import, identities and the EmailSubmission request), plus a
+// check that the built DSO exposes the IMailboxProtocolPlugin interface and
+// rejects malformed server URLs. The pure tests need no server; the
+// interface test loads the plug-in DSO.
 #include "test_framework.h"
 
 #include <UltraNet/UltraNetCore.h>
@@ -292,6 +294,159 @@ TEST(jmap_fnv1a_stable) {
     CHECK(Fnv1a32("A1/MB1") != Fnv1a32("A1/MB2"));
 }
 
+// ---- the write path (phase 2) ---------------------------------------------
+
+TEST(jmap_keyword_patch_sets_and_clears) {
+    json set = KeywordPatch(UltraNetMailFlags::Seen | UltraNetMailFlags::Flagged, true);
+    REQUIRE_EQ(set.size(), (std::size_t)2);
+    CHECK(set["keywords/$seen"] == true);
+    CHECK(set["keywords/$flagged"] == true);
+
+    json clear = KeywordPatch(UltraNetMailFlags::Answered, false);
+    REQUIRE_EQ(clear.size(), (std::size_t)1);
+    CHECK(clear["keywords/$answered"].is_null());
+
+    // \Deleted and \Recent have no keyword: nothing to patch.
+    CHECK(KeywordPatch(UltraNetMailFlags::Deleted, true).empty());
+    CHECK(KeywordPatch(UltraNetMailFlags::Recent, true).empty());
+
+    json req = json::parse(BuildEmailSetKeywordsRequest("A1", "M7", UltraNetMailFlags::Seen, true));
+    REQUIRE_EQ(req["methodCalls"][0][0].get<std::string>(), std::string("Email/set"));
+    REQUIRE_EQ(req["methodCalls"][0][1]["accountId"].get<std::string>(), std::string("A1"));
+    CHECK(req["methodCalls"][0][1]["update"]["M7"]["keywords/$seen"] == true);
+}
+
+TEST(jmap_mailbox_patch_and_destroy_requests) {
+    json mv = json::parse(BuildEmailSetMailboxRequest("A1", "M7", "MB-trash"));
+    const json& upd = mv["methodCalls"][0][1]["update"]["M7"];
+    // The whole mailboxIds set is replaced: the message leaves where it was.
+    REQUIRE_EQ(upd["mailboxIds"].size(), (std::size_t)1);
+    CHECK(upd["mailboxIds"]["MB-trash"] == true);
+
+    json del = json::parse(BuildEmailDestroyRequest("A1", {"M7", "M8"}));
+    REQUIRE_EQ(del["methodCalls"][0][0].get<std::string>(), std::string("Email/set"));
+    REQUIRE_EQ(del["methodCalls"][0][1]["destroy"].size(), (std::size_t)2);
+    REQUIRE_EQ(del["methodCalls"][0][1]["destroy"][1].get<std::string>(), std::string("M8"));
+}
+
+TEST(jmap_import_request_and_upload_response) {
+    json req = json::parse(BuildEmailImportRequest("A1", "m", "B9", "MB-drafts",
+                                                   UltraNetMailFlags::Draft | UltraNetMailFlags::Seen));
+    REQUIRE_EQ(req["methodCalls"][0][0].get<std::string>(), std::string("Email/import"));
+    const json& email = req["methodCalls"][0][1]["emails"]["m"];
+    REQUIRE_EQ(email["blobId"].get<std::string>(), std::string("B9"));
+    CHECK(email["mailboxIds"]["MB-drafts"] == true);
+    CHECK(email["keywords"]["$draft"] == true);
+    CHECK(email["keywords"]["$seen"] == true);
+    CHECK(!email["keywords"].contains("$flagged"));
+
+    std::string blob, err;
+    REQUIRE(ParseUploadResponse(R"({"accountId":"A1","blobId":"B9","type":"message/rfc822","size":120})",
+                                blob, err));
+    REQUIRE_EQ(blob, std::string("B9"));
+    CHECK(!ParseUploadResponse(R"({"accountId":"A1"})", blob, err));
+    CHECK(!ParseUploadResponse("not json", blob, err));
+}
+
+TEST(jmap_set_response_verdicts) {
+    json args = json::parse(R"({
+        "accountId": "A1",
+        "created": { "m": { "id": "M100", "blobId": "B9", "threadId": "T1", "size": 120 } },
+        "notCreated": { "x": { "type": "overQuota", "description": "mailbox full" } },
+        "updated": { "M7": null },
+        "notUpdated": { "M8": { "type": "notFound" } },
+        "notDestroyed": { "M9": { "type": "forbidden" } }
+    })");
+    REQUIRE_EQ(CreatedId(args, "m"), std::string("M100"));
+    CHECK(CreatedId(args, "x").empty());
+    std::string err;
+    REQUIRE(SetErrorFor(args, "notCreated", "x", err));
+    REQUIRE_EQ(err, std::string("overQuota: mailbox full"));
+    CHECK(!SetErrorFor(args, "notUpdated", "M7", err));
+    REQUIRE(SetErrorFor(args, "notUpdated", "M8", err));
+    REQUIRE_EQ(err, std::string("notFound"));
+    REQUIRE(SetErrorFor(args, "notDestroyed", "M9", err));
+    CHECK(!SetErrorFor(json::object(), "notUpdated", "M8", err));
+}
+
+TEST(jmap_identities_and_bare_addresses) {
+    REQUIRE_EQ(BareAddress("Erika Example <Erika@Example.com>"), std::string("erika@example.com"));
+    REQUIRE_EQ(BareAddress("<bob@example.org>"), std::string("bob@example.org"));
+    REQUIRE_EQ(BareAddress("  bob@example.org "), std::string("bob@example.org"));
+
+    json req = json::parse(BuildIdentityGetRequest("A1"));
+    REQUIRE_EQ(req["methodCalls"][0][0].get<std::string>(), std::string("Identity/get"));
+    bool usesSubmission = false;
+    for (const auto& cap : req["using"])
+        if (cap.get<std::string>() == kCapSubmission) usesSubmission = true;
+    CHECK(usesSubmission);
+
+    json args = json::parse(R"({"accountId":"A1","list":[
+        {"id":"I1","name":"Erika","email":"erika@example.com"},
+        {"id":"I2","name":"Any","email":"*@example.com"},
+        {"id":"I3","name":"Old","email":"old@example.net"}]})");
+    std::vector<JmapIdentity> ids;
+    REQUIRE(ParseIdentities(args, ids));
+    REQUIRE_EQ(ids.size(), (std::size_t)3);
+    REQUIRE_EQ(PickIdentity(ids, "Erika <ERIKA@example.com>")->id, std::string("I1"));
+    REQUIRE_EQ(PickIdentity(ids, "alias@example.com")->id, std::string("I2"));   // the wildcard
+    REQUIRE_EQ(PickIdentity(ids, "nobody@elsewhere.org")->id, std::string("I1")); // the first
+    CHECK(PickIdentity({}, "erika@example.com") == nullptr);
+}
+
+TEST(jmap_send_request_imports_then_submits) {
+    const std::string body = BuildSendRequest("A1", "B9", "MB-drafts", "MB-sent", "I1",
+                                              "Erika <erika@example.com>",
+                                              {"Bob <bob@example.org>", "cc@example.org"});
+    json req = json::parse(body);
+    bool usesSubmission = false;
+    for (const auto& cap : req["using"])
+        if (cap.get<std::string>() == kCapSubmission) usesSubmission = true;
+    CHECK(usesSubmission);
+    REQUIRE_EQ(req["methodCalls"].size(), (std::size_t)2);
+    REQUIRE_EQ(req["methodCalls"][0][0].get<std::string>(), std::string("Email/import"));
+    REQUIRE_EQ(req["methodCalls"][1][0].get<std::string>(), std::string("EmailSubmission/set"));
+
+    const json& imp = req["methodCalls"][0][1]["emails"]["m"];
+    CHECK(imp["mailboxIds"]["MB-drafts"] == true);
+    CHECK(imp["keywords"]["$draft"] == true);
+
+    const json& sub = req["methodCalls"][1][1];
+    REQUIRE_EQ(sub["create"]["s"]["emailId"].get<std::string>(), std::string("#m"));   // back-reference
+    REQUIRE_EQ(sub["create"]["s"]["identityId"].get<std::string>(), std::string("I1"));
+    const json& env = sub["create"]["s"]["envelope"];
+    REQUIRE_EQ(env["mailFrom"]["email"].get<std::string>(), std::string("erika@example.com"));
+    REQUIRE_EQ(env["rcptTo"].size(), (std::size_t)2);
+    REQUIRE_EQ(env["rcptTo"][0]["email"].get<std::string>(), std::string("bob@example.org"));
+    // Filed in Sent once it has gone, no longer a draft, out of Drafts.
+    const json& on = sub["onSuccessUpdateEmail"]["#s"];
+    CHECK(on["mailboxIds/MB-sent"] == true);
+    CHECK(on["mailboxIds/MB-drafts"].is_null());
+    CHECK(on["keywords/$draft"].is_null());
+    CHECK(on["keywords/$seen"] == true);
+
+    // Without a Sent mailbox nothing of the send is left behind.
+    json noSent = json::parse(BuildSendRequest("A1", "B9", "MB-inbox", "", "I1",
+                                               "erika@example.com", {"bob@example.org"}));
+    const json& sub2 = noSent["methodCalls"][1][1];
+    CHECK(!sub2.contains("onSuccessUpdateEmail"));
+    REQUIRE_EQ(sub2["onSuccessDestroyEmail"][0].get<std::string>(), std::string("#s"));
+}
+
+TEST(jmap_mailbox_by_role_and_membership) {
+    std::vector<JmapMailbox> boxes;
+    JmapMailbox a; a.id = "MB1"; a.name = "Inbox"; a.role = "inbox"; boxes.push_back(a);
+    JmapMailbox b; b.id = "MB2"; b.name = "Trash"; b.role = "trash"; boxes.push_back(b);
+    REQUIRE(FindMailboxByRole(boxes, "trash") != nullptr);
+    REQUIRE_EQ(FindMailboxByRole(boxes, "trash")->id, std::string("MB2"));
+    CHECK(FindMailboxByRole(boxes, "sent") == nullptr);
+
+    json email = json::parse(R"({"id":"M1","mailboxIds":{"MB2":true}})");
+    CHECK(EmailInMailbox(email, "MB2"));
+    CHECK(!EmailInMailbox(email, "MB1"));
+    CHECK(!EmailInMailbox(json::object(), "MB1"));
+}
+
 // ---- plug-in interface test (loads the DSO if available) -------------------
 
 namespace {
@@ -326,9 +481,15 @@ TEST(jmap_plugin_exposes_mailbox_interface) {
     CHECK(!bool(r));
     REQUIRE_EQ(r.code, UltraNetResultCode::InvalidUrl);
 
-    // Phase 1 is read-only: mutations report a clear plug-in error.
-    auto w = mailbox->StoreFlags("jmap://mail.example/", "INBOX", 1,
+    // The write path checks its URL before touching the network too.
+    auto w = mailbox->StoreFlags("imap://not-jmap/", "INBOX", 1,
                                  UltraNetMailFlags::Seen, true, opt);
     CHECK(!bool(w));
-    REQUIRE_EQ(w.code, UltraNetResultCode::PluginError);
+    REQUIRE_EQ(w.code, UltraNetResultCode::InvalidUrl);
+    // SendMail takes the jmap:// URL from the options, as the SMTP plug-in does.
+    UltraNetMailMessage msg;
+    msg.from = "erika@example.com"; msg.to = {"bob@example.org"};
+    auto s = mailbox->SendMail(msg, opt);
+    CHECK(!bool(s));
+    REQUIRE_EQ(s.code, UltraNetResultCode::InvalidUrl);
 }

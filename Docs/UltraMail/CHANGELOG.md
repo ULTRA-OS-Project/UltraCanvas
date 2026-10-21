@@ -1,3 +1,27 @@
+#### 2026-10-21 *0.10.63*
+- **A JMAP account is found by itself, and sends, marks, moves and deletes
+  through JMAP.** Adding an account at a domain the provider table does not
+  know now asks the domain for its JMAP server before the autoconfig
+  documents: the DNS SRV record `_jmap._tcp.<domain>`, else
+  `https://<domain>/.well-known/jmap`; a server that answers with its
+  session resource, or asks for a sign-in first (Fastmail, Stalwart), is
+  taken - as the host the answer came from, after redirects - and the
+  wizard says *a JMAP server was found for <domain>*. Such an account has
+  no SMTP server and sends through JMAP (the UltraNet JMAP plug-in's new
+  write path - framework changelog: `jmap-write-path`): the message is
+  uploaded, submitted as the account's identity for the From address and
+  filed in Sent by the server. On the settings page the *Outgoing (SMTP)*
+  rows are optional for a JMAP account - *empty sends through JMAP* - and
+  an SMTP server entered there is used instead. Marking read or flagged,
+  moving to a folder, Junk and Delete (to the Trash mailbox, or gone for
+  good when there is none), the reconcile of reads and deletions made
+  elsewhere, and the copies in Drafts and Sent now work for a JMAP
+  account; the *phase 1 is read-only* answers are gone. A message queued
+  for an account whose plug-in is not loaded stays in the outbox with that
+  reason while the others are sent. Also: on the settings page, typing a
+  port for a JMAP server no longer flips the (disabled) security dropdown
+  to STARTTLS.
+
 #### 2026-10-21 *0.10.62*
 - **An account's incoming server can be JMAP instead of IMAP.** The server
   settings page - the account's Settings, and the manual page when nothing

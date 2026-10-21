@@ -475,11 +475,15 @@ UltraDbResult Outbox::DeleteMessage(int64_t id, const ServerCopies* copies,
 
 Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp, const OptionsResolver& prepare,
                                  const ServerCopies* copies) {
+    return Flush([&smtp](const std::string&) { return &smtp; }, prepare, copies);
+}
+
+Outbox::FlushStats Outbox::Flush(const PluginResolver& pluginFor, const OptionsResolver& prepare,
+                                 const ServerCopies* copies) {
     FlushStats stats;
     if (copies) RemoveWithdrawnCopies(*copies, stats);
     std::vector<OutboxItem> pending;
     if (!store_.ListPending(pending)) return stats;
-    MailSender sender(smtp);
     for (auto& item : pending) {
         // Being corrected in a compose window: the new version replaces it.
         if (store_.IsHeld(item.id)) continue;
@@ -492,7 +496,14 @@ Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp, const OptionsResolve
         // The resolver may name the account's server as it is now; the URL
         // stored with the message is what was known when it was queued.
         const std::string serverUrl = opts.serverUrl.empty() ? item.serverUrl : opts.serverUrl;
-        if (r) r = sender.Send(item.draft, serverUrl, opts);
+        IMailProtocolPlugin* plugin = pluginFor ? pluginFor(item.accountId) : nullptr;
+        if (r && !plugin)
+            r = UltraNetResult::Error(UltraNetResultCode::PluginNotFound,
+                                      "no plug-in is loaded that can send for this account");
+        if (r) {
+            MailSender sender(*plugin);
+            r = sender.Send(item.draft, serverUrl, opts);
+        }
         if (r) {
             if (copies) {
                 SaveSentCopy(item, *copies, stats);

@@ -9,7 +9,9 @@ This app versions itself: [`Docs/UltraMail/CHANGELOG.md`](../../Docs/UltraMail/C
 
 UltraMail is built on **UltraCanvas** (UI) and the **UltraNet** (SMTP/IMAP/JMAP/POP3)
 and **UltraDatabase** (local store) modules. An account's incoming server is
-IMAP or - chosen on its settings page - JMAP; both drive the same engine.
+IMAP or JMAP - found by discovery (SRV `_jmap._tcp`, `/.well-known/jmap`)
+or chosen on its settings page; both drive the same engine, and a JMAP
+account without an SMTP server sends through JMAP.
 
 > **Status (Phase 1–2, in progress):** the headless **engine** is implemented
 > and tested — LocalStore, MIME codec + attachment cache, contact store,

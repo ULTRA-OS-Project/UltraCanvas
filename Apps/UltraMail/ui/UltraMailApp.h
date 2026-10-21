@@ -197,14 +197,28 @@ private:
     struct SmtpAccount {
         std::string     email;
         DiscoveryResult settings;
+        // The plug-in that sends for it (SendPlugin), kept loaded for the
+        // worker; null when it is not loaded.
+        std::shared_ptr<IUltraNetPlugin> plugin;
     };
     std::map<std::string, SmtpAccount> SmtpAccounts() const;
-    // Fill an SMTP session's options for an account from the snapshot:
-    // username, TLS mode and sign-in method of its outgoing server, and the
+    // Fill a send session's options for an account from the snapshot:
+    // username, TLS mode and sign-in method of its outgoing server - or of
+    // its JMAP server, for an account that sends through JMAP - and the
     // credentials (see ResolveCredentials). Runs on the send worker.
     UltraNetResult PrepareSmtp(const std::map<std::string, SmtpAccount>& accounts,
                                const std::string& accountId, UltraNetMailOptions& options);
-    // A null `plugin` (no SMTP plug-in) only saves the Drafts copies.
+    // The server an account sends through: its outgoing (SMTP) server, or
+    // its JMAP server when it has no outgoing one (Account::SendsThroughJmap);
+    // "" when it has neither.
+    static std::string SendServerUrl(const DiscoveryResult& settings);
+    // The plug-in that sends for those settings: SMTP (plain or implicit
+    // TLS, by the outgoing server's security), or the JMAP plug-in for an
+    // account that sends through JMAP. Null when it is not loaded.
+    static std::shared_ptr<IUltraNetPlugin> SendPlugin(const DiscoveryResult& settings);
+    // A null `plugin` (no plug-in can send) only saves the Drafts copies;
+    // otherwise each account sends through its own plug-in (SmtpAccount),
+    // `plugin` standing in for an account whose own is not loaded.
     // Flush the outbox on a worker and call `onDone` on the UI thread. SMTP to
     // a slow or failing server - connect and operation timeouts per queued
     // message, an OAuth2 token refresh - used to run on the UI thread and hold

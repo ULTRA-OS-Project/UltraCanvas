@@ -2,6 +2,8 @@
 // Account auto-discovery: provider presets, Mozilla-autoconfig XML parsing,
 // username placeholder resolution and server-URL construction. All pure — no
 // network.
+// Version: 0.5.0 - the JMAP discovery step: SRV answers, the well-known
+//                  probe's verdict, the settings it yields
 // Version: 0.4.0 - the JMAP incoming server: its URL, connection, port and
 //                  stored form; a protocol change is another mailbox
 // Version: 0.3.0 - the iCloud setup guide: which addresses offer it, and its
@@ -439,6 +441,79 @@ TEST(jmap_incoming_server_has_a_jmap_url_and_an_https_connection) {
     REQUIRE(AutoDiscovery::ForAccount(account).imap.protocol == MailProtocol::Jmap);
     // The guess for a domain nothing is published for stays IMAP.
     REQUIRE(AutoDiscovery::GuessForDomain("erika@example.org").imap.protocol == MailProtocol::Imap);
+}
+
+TEST(srv_records_parse_and_the_best_target_wins) {
+    SrvTarget t;
+    REQUIRE(ParseSrvRecord("0 1 443 api.fastmail.com.", t));
+    REQUIRE_EQ(t.priority, 0); REQUIRE_EQ(t.weight, 1); REQUIRE_EQ(t.port, 443);
+    REQUIRE_EQ(t.host, std::string("api.fastmail.com"));   // the trailing dot goes
+    REQUIRE(!ParseSrvRecord("", t));
+    REQUIRE(!ParseSrvRecord("api.fastmail.com", t));
+    REQUIRE(!ParseSrvRecord("0 1 443", t));
+    REQUIRE(!ParseSrvRecord("0 1 70000 host", t));
+    REQUIRE(!ParseSrvRecord("0 1 443 host extra", t));
+
+    // Lowest priority first, then the highest weight.
+    REQUIRE(BestSrvTarget({"10 5 443 backup.example.com", "0 1 8443 jmap.example.com",
+                           "0 9 443 main.example.com"}, t));
+    REQUIRE_EQ(t.host, std::string("main.example.com"));
+    REQUIRE_EQ(t.port, 443);
+    // "." says the domain has no such service; so does a port of 0.
+    REQUIRE(!BestSrvTarget({"0 0 0 ."}, t));
+    REQUIRE(!BestSrvTarget({"0 0 443 ."}, t));
+    REQUIRE(!BestSrvTarget({}, t));
+    REQUIRE(!BestSrvTarget({"garbage"}, t));
+}
+
+TEST(well_known_jmap_probe_verdict) {
+    const std::string session = R"({"capabilities":{"urn:ietf:params:jmap:core":{}},
+        "accounts":{"A1":{}},"apiUrl":"https://api.example.com/jmap/","username":"erika"})";
+    REQUIRE(LooksLikeJmapServer(200, session));
+    REQUIRE(LooksLikeJmapServer(200, "  \n" + session));
+    REQUIRE(LooksLikeJmapServer(401, ""));                  // a sign-in first (Fastmail, Stalwart)
+    REQUIRE(!LooksLikeJmapServer(200, "<html><body>Not a JMAP server</body></html>"));
+    REQUIRE(!LooksLikeJmapServer(200, ""));
+    REQUIRE(!LooksLikeJmapServer(200, R"({"status":"ok"})"));   // JSON, but no session
+    REQUIRE(!LooksLikeJmapServer(404, session));
+    REQUIRE(!LooksLikeJmapServer(302, ""));
+    REQUIRE(!LooksLikeJmapServer(500, session));
+}
+
+TEST(jmap_server_settings_send_through_jmap) {
+    DiscoveryResult r = AutoDiscovery::JmapServer("erika@fastmail.com", "api.fastmail.com", 443);
+    REQUIRE(r.found);
+    REQUIRE_EQ(r.source, std::string("jmap"));
+    REQUIRE(r.imap.protocol == MailProtocol::Jmap);
+    REQUIRE_EQ(r.imap.host, std::string("api.fastmail.com"));
+    REQUIRE_EQ(r.imap.port, 443);
+    REQUIRE(r.imap.security == MailSecurity::SslTls);
+    REQUIRE_EQ(r.imap.username, std::string("erika@fastmail.com"));
+    REQUIRE(!r.smtp.Valid());
+    REQUIRE(r.SendsThroughJmap());
+    REQUIRE_EQ(AutoDiscovery::IncomingServerUrl(r.imap), std::string("jmap://api.fastmail.com:443/"));
+    // A port of 0 is the usual one.
+    REQUIRE_EQ(AutoDiscovery::JmapServer("e@x.org", "jmap.x.org", 0).imap.port, 443);
+    // No host, nothing found.
+    REQUIRE(!AutoDiscovery::JmapServer("e@x.org", "", 443).found);
+
+    // Stored on an account: complete without an outgoing server, and read
+    // back as the same settings.
+    Account account;
+    account.email = "erika@fastmail.com";
+    AutoDiscovery::ApplyTo(account, r);
+    REQUIRE(account.HasServers());
+    REQUIRE(account.SendsThroughJmap());
+    REQUIRE(AutoDiscovery::ForAccount(account).found);
+    REQUIRE(AutoDiscovery::ForAccount(account).SendsThroughJmap());
+    // An outgoing server given next to it is used for sending instead.
+    account.smtp.host = "smtp.fastmail.com"; account.smtp.port = 465;
+    REQUIRE(!account.SendsThroughJmap());
+    REQUIRE(account.HasServers());
+    // An IMAP account without an outgoing server is still incomplete.
+    account.imap.protocol = MailProtocol::Imap; account.smtp = MailServerSettings{};
+    REQUIRE(!account.HasServers());
+    REQUIRE(!account.SendsThroughJmap());
 }
 
 // ---- credential vault ------------------------------------------------------

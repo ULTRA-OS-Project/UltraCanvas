@@ -451,15 +451,29 @@ server is HTTPS - and leaves *Automatic*, *Normal password* and *OAuth2* as
 the sign-in methods, the ones JMAP has. Enter the server as its host name
 only - `api.fastmail.com`, or the mail host of a Stalwart or Cyrus server;
 UltraMail asks it for the JMAP session at `/.well-known/jmap`. The sign-in
-check and every later sync then go through the JMAP plug-in, and the
-*Outgoing (SMTP)* server is still used to send: JMAP submission is not yet
-part of the plug-in, nor are flag changes, moves and copies to Drafts and
-Sent, which report *phase 1 is read-only* until it is (the Drafts and Sent
-copies are then simply not kept). Switching an existing account between the
-protocols drops the mail held for it and fetches it anew: the same mailbox
-read over the other protocol numbers its messages differently. The choice
-is stored with the other server settings of the account and shown again
-on its Settings page.
+check, every later sync, marking read, moving, deleting (to the Trash
+mailbox) and the copies in Drafts and Sent then go through the JMAP plug-in.
+The *Outgoing (SMTP)* server is **optional** for a JMAP account: left
+empty, mail is sent through the JMAP server too (JMAP submission, as the
+account's own identity; the server files the sent message in Sent); an
+SMTP server entered next to it is used to send instead. Switching an
+existing account between the protocols drops the mail held for it and
+fetches it anew: the same mailbox read over the other protocol numbers its
+messages differently. The choice is stored with the other server settings
+of the account and shown again on its Settings page.
+
+**JMAP is found by itself.** Before the autoconfig documents (which only
+describe IMAP), the lookup asks the domain for its JMAP server (RFC 8620
+§2.2): the DNS SRV record `_jmap._tcp.<domain>` names it, else the domain
+itself is asked at `https://<domain>/.well-known/jmap`; a server that
+answers with its session resource, or asks for a sign-in first (401, as
+Fastmail and Stalwart do), is taken - as the host the answer came from,
+after redirects (`fastmail.com` leads to `api.fastmail.com`). The wizard
+then reports *a JMAP server was found for <domain>*, and the account is
+added with that JMAP server as its incoming server, the full address as
+its username and no SMTP server: it sends through JMAP. The provider table
+comes first, so Gmail, Outlook and the other known providers are never
+probed.
 
 **Authentication method.** Under the server rows, *Sign-in (IMAP)* and
 *Sign-in (SMTP)* choose how each server is signed in to — the same choice
@@ -504,6 +518,8 @@ Gmail, Outlook and Yahoo.
 | *The sign-in service is turned off in this build and no OAuth client is configured* | The build was configured with `-DULTRAMAIL_OAUTH_SERVICE_URL=""`, or `off` was set. Name a service (`[service] url =` in `oauth.ini`, or `ULTRAMAIL_OAUTH_SERVICE_URL`) or a client of your own (section 3). |
 | *The sign-in service did not answer … The sign-in service at … could not be reached* (and the browser never opened) | `oauth-callback.ultraos.eu` could not be reached from this computer: the name does not resolve, a proxy blocks it, or the service is down. Open `https://oauth-callback.ultraos.eu/healthz` in a browser; `trace.log` in the data folder says which way the sign-in went (*through the sign-in service …* or *directly, with this installation's own client*). An installation behind a firewall can run its own service (section 3). |
 | *The IMAP plug-in was not found* / *The JMAP plug-in was not found* | Build the UltraNet IMAP (or JMAP) plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. An account whose *Protocol* is JMAP needs `ultranet_jmap`, every other one `ultranet_imap`. |
+| *The JMAP plug-in is not loaded, so UltraMail cannot reach a mail server* on Send | The account sends through its JMAP server (no SMTP server is entered) and `ultranet_jmap` is missing: see the row above, or enter an outgoing (SMTP) server on the account's Settings page. |
+| *The server refused the submission: forbiddenFrom* on Send from a JMAP account | The JMAP server has no sending identity for the From address. Use the address the account signs in with, or add the identity (an alias) at the provider. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Update | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
 | *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |

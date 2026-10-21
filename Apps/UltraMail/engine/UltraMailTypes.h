@@ -2,6 +2,7 @@
 // Core data types for the UltraMail engine: accounts, folders, message
 // envelopes, message flags, and the per-account status rollup that drives the
 // account bar (unread today · unread before · waiting for reply).
+// Version: 0.6.1 - HasServers: a JMAP account needs no outgoing server
 // Version: 0.6.0 - the protocol of the incoming server (IMAP or JMAP)
 // Version: 0.5.0 - a signature per account (plain text or HTML)
 // Version: 0.4.0 - the authentication method per server
@@ -162,7 +163,17 @@ struct Account {
     // with LocalStore::SetAccountSignature.
     Signature          signature;
 
-    bool HasServers() const { return imap.Valid() && smtp.Valid(); }
+    // Whether the account can sync and send: an incoming server, and an
+    // outgoing one unless the incoming one is JMAP, which sends by itself
+    // (an SMTP server given next to it is used instead).
+    bool HasServers() const {
+        return imap.Valid() && (smtp.Valid() || imap.protocol == MailProtocol::Jmap);
+    }
+    // Whether mail is sent through the JMAP server: a JMAP incoming server
+    // and no outgoing (SMTP) one.
+    bool SendsThroughJmap() const {
+        return imap.protocol == MailProtocol::Jmap && !smtp.Valid();
+    }
 };
 
 // A mailbox folder within an account.

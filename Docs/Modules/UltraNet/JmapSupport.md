@@ -1,10 +1,16 @@
 # JMAP Support in UltraNet — Investigation & Design
 
-**Status:** Phase 1 implemented (read path) — see `Plugins/UltraNet/jmap/`;
-phases 2–3 remain as designed below. UltraMail consumes it since 0.10.62: an
-account's incoming server is set to JMAP on its settings page
-(`Docs/UltraMail/AccountSetup.md`, section 5), and syncs, the login check and
-the outbox copies then use this plug-in in place of the IMAP one.
+**Status:** Phases 1 (read path) and 2 (the write path: `StoreFlags`,
+`MoveMessage`, `AppendMessage`, `ExpungeMessage`, `FetchAllFlags` and
+`SendMail` through `EmailSubmission`) implemented — see
+`Plugins/UltraNet/jmap/`; phase 3 (push) remains as designed below. UltraMail
+consumes it since 0.10.62: an account's incoming server is set to JMAP on its
+settings page (`Docs/UltraMail/AccountSetup.md`, section 5), and syncs, the
+login check, the message actions and the outbox copies then use this plug-in
+in place of the IMAP one; since 0.10.63 UltraMail also finds a JMAP server by
+itself (SRV `_jmap._tcp` and the `/.well-known/jmap` probe, between the
+provider table and the autoconfig lookup) and sends through it when the
+account names no SMTP server.
 **Scope:** Add JMAP (JSON Meta Application Protocol, RFC 8620 core + RFC 8621 mail)
 as an UltraNet protocol plug-in, consumable by UltraMail alongside IMAP/SMTP.
 
@@ -196,6 +202,7 @@ account (Basic app-password auth) — phase 1 is exercisable read-only.
 2. **Interface evolution** — phase 1 ships on the uid-mapping shim
    (`JmapCore.h` `UidMap`); the `UltraNetMailEnvelope.id` extension remains a
    phase 3 follow-up.
-3. Whether `SendMail` through JMAP should be preferred by UltraMail when an
-   account is JMAP-discovered (replacing the SMTP path for those accounts) —
-   open until phase 2.
+3. *Decided with phase 2:* UltraMail sends through JMAP when the account's
+   incoming server is JMAP and no outgoing (SMTP) server is given - what a
+   JMAP-discovered account looks like; an SMTP server entered on the
+   settings page is used instead.

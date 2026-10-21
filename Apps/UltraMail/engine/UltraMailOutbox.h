@@ -7,6 +7,8 @@
 // on the server (ServerCopies): it is there on every device until the message
 // has gone out, and is deleted from Drafts once it has - when a copy goes to
 // the Sent folder instead (unless the server files sent mail itself).
+// Version: 0.10.0 - Flush with a plug-in per account (PluginResolver): a JMAP
+//                   account sends through the JMAP plug-in, the rest through SMTP
 // Version: 0.9.0 - ServerFolders::mailbox: the copies of a JMAP account go
 //                  through the JMAP plug-in
 // Version: 0.8.0 - withdrawn messages: a Drafts copy that cannot be deleted
@@ -206,6 +208,13 @@ public:
     // A held message (OutboxStore::SetHeld) is skipped: neither sent nor failed.
     // With `copies`, the copies of withdrawn messages are deleted first.
     FlushStats Flush(IMailProtocolPlugin& smtp, const OptionsResolver& prepare,
+                     const ServerCopies* copies = nullptr);
+    // Same, with the plug-in chosen per account: SMTP for most, the JMAP
+    // plug-in for an account that sends through its JMAP server. Null for an
+    // account counts as a failed send of its items, recorded on them, so the
+    // reason reaches the user; the rest are still sent.
+    using PluginResolver = std::function<IMailProtocolPlugin*(const std::string& accountId)>;
+    FlushStats Flush(const PluginResolver& pluginFor, const OptionsResolver& prepare,
                      const ServerCopies* copies = nullptr);
 
 private:

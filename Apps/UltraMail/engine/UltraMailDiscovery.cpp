@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailDiscovery.cpp
+// Version: 0.8.0 - the JMAP discovery step (SRV _jmap._tcp, /.well-known/jmap)
 // Version: 0.7.0 - IncomingServerUrl (jmap:// for a JMAP server);
 //                  IncomingMailboxChanged on a protocol change
 // Version: 0.6.0 - the autoconfig requests carry the domain only, not the
@@ -11,10 +12,14 @@
 #include "UltraMailDiscovery.h"
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetDns.h>
 #include <UltraNet/UltraNetHttp.h>
+#include <UltraNet/UltraNetUrl.h>
 #include <UltraCanvasUtils.h>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -79,6 +84,48 @@ bool OffersICloudSetupGuide(const std::string& email) {
     if (email.find('@') == std::string::npos) return true;   // nothing typed yet
     const DiscoveryResult preset = AutoDiscovery::FromPresets(email);
     return !preset.found || preset.displayName == "iCloud";
+}
+
+bool ParseSrvRecord(const std::string& record, SrvTarget& out) {
+    std::istringstream in(record);
+    SrvTarget t;
+    std::string host;
+    if (!(in >> t.priority >> t.weight >> t.port >> host)) return false;
+    if (t.priority < 0 || t.weight < 0 || t.port < 0 || t.port > 65535) return false;
+    std::string rest;
+    if (in >> rest) return false;   // more than the four fields
+    while (host.size() > 1 && host.back() == '.') host.pop_back();
+    t.host = host;
+    out = t;
+    return !out.host.empty();
+}
+
+bool BestSrvTarget(const std::vector<std::string>& records, SrvTarget& out) {
+    bool any = false;
+    SrvTarget best;
+    for (const std::string& record : records) {
+        SrvTarget t;
+        if (!ParseSrvRecord(record, t)) continue;
+        if (t.host == "." || t.port == 0) continue;   // "no service here" (RFC 2782)
+        if (!any || t.priority < best.priority ||
+            (t.priority == best.priority && t.weight > best.weight)) {
+            best = t;
+            any = true;
+        }
+    }
+    if (any) out = best;
+    return any;
+}
+
+bool LooksLikeJmapServer(int statusCode, const std::string& body) {
+    if (statusCode == 401) return true;   // a session behind a sign-in
+    if (statusCode < 200 || statusCode >= 300) return false;
+    // A session resource is a JSON object with an apiUrl; the check is
+    // deliberately shallow (the plug-in parses it for real) but an HTML
+    // page, or an empty answer, must not pass.
+    const std::size_t open = body.find_first_not_of(" \t\r\n");
+    if (open == std::string::npos || body[open] != '{') return false;
+    return body.find("\"apiUrl\"") != std::string::npos;
 }
 
 bool LooksLikeEmailAddress(const std::string& email) {
@@ -353,6 +400,64 @@ DiscoveryResult AutoDiscovery::ParseAutoconfig(const std::string& xml,
     return r;
 }
 
+DiscoveryResult AutoDiscovery::JmapServer(const std::string& email, const std::string& host,
+                                          int port) {
+    DiscoveryResult r;
+    if (host.empty()) return r;
+    r.found  = true;
+    r.source = "jmap";
+    r.imap.protocol = MailProtocol::Jmap;
+    r.imap.host     = host;
+    r.imap.port     = port > 0 ? port : DefaultPort(MailProtocol::Jmap, MailSecurity::SslTls);
+    r.imap.security = MailSecurity::SslTls;
+    r.imap.username = email;
+    r.imap.auth     = UltraNetMailAuth::Any;
+    // No outgoing server: the JMAP server sends (Account::SendsThroughJmap).
+    return r;
+}
+
+DiscoveryResult AutoDiscovery::DiscoverJmap(const std::string& email) {
+    const std::string domain = EmailDomain(email);
+    if (domain.empty()) return DiscoveryResult{};
+    if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+
+    // The hosts to ask, in order: what the SRV record names, else the
+    // domain itself (RFC 8620 §2.2 allows both).
+    std::vector<std::pair<std::string, int>> hosts;
+    std::vector<std::string> records;
+    UltraNetDnsOptions dns;
+    dns.timeoutMs = 4000;
+    if (UltraNet_DnsResolve("_jmap._tcp." + domain, records, UltraNetDnsType::SRV, dns)) {
+        SrvTarget target;
+        if (BestSrvTarget(records, target)) hosts.emplace_back(target.host, target.port);
+    }
+    hosts.emplace_back(domain, 443);
+
+    UltraNetHttpOptions http;
+    http.connectTimeoutMs = 5000;
+    http.timeoutMs        = 8000;
+    http.headers.Set("accept", "application/json");
+    for (const auto& [host, port] : hosts) {
+        const std::string url = "https://" + host + (port == 443 ? "" : ":" + PortStr(port))
+                              + "/.well-known/jmap";
+        UltraNetResponse resp;
+        UltraNetResult r = UltraNet_HttpGet(url, resp, http);
+        if (!r || !LooksLikeJmapServer(resp.statusCode, resp.GetBodyAsString())) continue;
+        // The server the answer came from: a domain's well-known URL often
+        // redirects to the API host (fastmail.com -> api.fastmail.com).
+        std::string finalHost = host;
+        int finalPort = port;
+        UltraNetUrlComponents c;
+        if (!resp.finalUrl.empty() && UltraNet_ParseUrl(resp.finalUrl, c) && !c.host.empty()
+            && c.scheme == "https") {
+            finalHost = c.host;
+            finalPort = c.port > 0 ? c.port : 443;
+        }
+        return JmapServer(email, finalHost, finalPort);
+    }
+    return DiscoveryResult{};
+}
+
 DiscoveryResult AutoDiscovery::Discover(const std::string& email) {
     DiscoveryResult preset = FromPresets(email);
     if (preset.found) return preset;
@@ -361,6 +466,12 @@ DiscoveryResult AutoDiscovery::Discover(const std::string& email) {
     if (domain.empty()) return DiscoveryResult{};
 
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+
+    // A domain that runs JMAP says so in DNS or at its well-known URL; that
+    // is the better protocol for it, so it is asked before the autoconfig
+    // documents, which only ever describe IMAP.
+    DiscoveryResult jmap = DiscoverJmap(email);
+    if (jmap.found) return jmap;
 
     // The requests name the domain only. The autoconfig format allows an
     // `?emailaddress=` parameter, which Thunderbird sends, but a server does

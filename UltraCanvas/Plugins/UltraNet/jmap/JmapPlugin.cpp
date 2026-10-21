@@ -1,12 +1,24 @@
 // UltraCanvas/Plugins/UltraNet/jmap/JmapPlugin.cpp
+// Version: 0.2.0 (Phase 2 — the write path: StoreFlags, MoveMessage,
+//                 AppendMessage, ExpungeMessage, FetchAllFlags and SendMail
+//                 through EmailSubmission)
 // Version: 0.1.0 (Phase 1 — read path)
-// JMAP (RFC 8620/8621) plug-in. Implements the IMailboxProtocolPlugin read
-// surface — folder listing, mailbox status, envelope sync, raw-message fetch
-// and the legacy bulk FetchMessages — over the UltraNet_Http* core API (no
-// libcurl code of its own; connection pooling, TLS policy, proxies and
-// timeouts come from the core). Mutations (StoreFlags / MoveMessage /
-// AppendMessage) and submission (EmailSubmission) arrive in phase 2; push via
-// the session's eventSourceUrl (UltraNetSse) in phase 3.
+// JMAP (RFC 8620/8621) plug-in. Implements the IMailboxProtocolPlugin surface
+// — folder listing, mailbox status, envelope sync, raw-message fetch, the
+// legacy bulk FetchMessages, keyword and mailbox changes, blob upload with
+// Email/import, destroy, and sending through EmailSubmission — over the
+// UltraNet_Http* core API (no libcurl code of its own; connection pooling,
+// TLS policy, proxies and timeouts come from the core). Push via the
+// session's eventSourceUrl (UltraNetSse) arrives in phase 3.
+//
+// Flags: $seen / $answered / $flagged / $draft are keywords. JMAP has no
+// \Deleted: setting it moves the message to the Trash mailbox (or destroys
+// it when it is there already, or the account has none), clearing it is a
+// no-op, and ExpungeMessage destroys. Sending: the raw message is uploaded,
+// imported into Drafts (or Sent, or the inbox) and handed to
+// EmailSubmission/set with the Identity whose address is the From; on
+// success the server files it in Sent with $draft cleared, or destroys it
+// when the account has no Sent mailbox.
 //
 // Server URL convention: "jmap://host[:port]/" resolves the session resource
 // at "https://host[:port]/.well-known/jmap" (a non-root path overrides the
@@ -26,6 +38,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetHttp.h>
+#include <UltraNet/UltraNetMime.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
@@ -131,7 +144,7 @@ UltraNetResult MapHttpFailure(const UltraNetResult& r, const UltraNetResponse& r
 class JmapPlugin : public IMailboxProtocolPlugin {
 public:
     std::string GetName() const override    { return "UltraNet-JMAP"; }
-    std::string GetVersion() const override { return "0.1.0"; }
+    std::string GetVersion() const override { return "0.2.0"; }
     std::vector<std::string> GetSupportedSchemes() const override { return {"jmap"}; }
     UltraNetResult Initialize(const UltraNetConfig&) override { return UltraNetResult::Ok(); }
     void Shutdown() override {
@@ -142,10 +155,79 @@ public:
 
     // ---- IMailProtocolPlugin ----------------------------------------------
 
-    UltraNetResult SendMail(const UltraNetMailMessage&,
-                            const UltraNetMailOptions&) override {
-        return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
-            "JMAP submission (EmailSubmission/set) is phase 2; not implemented yet");
+    // Upload the raw message, import it and submit it in one request. The
+    // server URL (options.serverUrl, as the SMTP plug-in reads it) is the
+    // jmap:// URL of the account's incoming server - one account, one
+    // protocol - with the same credentials.
+    UltraNetResult SendMail(const UltraNetMailMessage& message,
+                            const UltraNetMailOptions& options) override {
+        if (options.serverUrl.empty())
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                                         "SendMail needs the jmap:// server URL in options.serverUrl");
+        std::vector<std::string> recipients;
+        recipients.insert(recipients.end(), message.to.begin(), message.to.end());
+        recipients.insert(recipients.end(), message.cc.begin(), message.cc.end());
+        recipients.insert(recipients.end(), message.bcc.begin(), message.bcc.end());
+        if (recipients.empty())
+            return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                         "the message has no recipient");
+
+        JmapSession session;
+        std::string user, pass;
+        UltraNetResult r = GetSession(options.serverUrl, options, session, user, pass);
+        if (!r) return r;
+
+        // The identity to submit as (the From address, or the account's first).
+        std::string body;
+        r = ApiPost(session, options, user, pass, BuildIdentityGetRequest(session.accountId), body);
+        if (!r) return r;
+        json args;
+        std::string err;
+        if (!FindMethodResponse(body, "Identity/get", args, err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                         "Identity/get: " + err);
+        std::vector<JmapIdentity> identities;
+        ParseIdentities(args, identities);
+        const JmapIdentity* identity = PickIdentity(identities, message.from);
+        if (!identity)
+            return UltraNetResult::Error(UltraNetResultCode::AccessDenied,
+                                         "the account has no sending identity");
+
+        // Where the message is held while it is submitted, and filed after.
+        std::vector<JmapMailbox> mailboxes;
+        r = GetMailboxes(session, options, user, pass, mailboxes);
+        if (!r) return r;
+        const JmapMailbox* sent   = FindMailboxByRole(mailboxes, "sent");
+        const JmapMailbox* drafts = FindMailboxByRole(mailboxes, "drafts");
+        const JmapMailbox* hold   = drafts ? drafts : sent ? sent : FindMailboxByRole(mailboxes, "inbox");
+        if (!hold && !mailboxes.empty()) hold = &mailboxes.front();
+        if (!hold)
+            return UltraNetResult::Error(UltraNetResultCode::NotFound,
+                                         "the account has no mailbox to hold the message");
+
+        std::string blobId;
+        r = UploadBlob(session, options, user, pass, BuildRawMessage(message), blobId);
+        if (!r) return r;
+
+        r = ApiPost(session, options, user, pass,
+                    BuildSendRequest(session.accountId, blobId, hold->id,
+                                     sent ? sent->id : std::string(), identity->id,
+                                     message.from, recipients),
+                    body);
+        if (!r) return r;
+        if (!FindMethodResponse(body, "Email/import", args, err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, "Email/import: " + err);
+        if (SetErrorFor(args, "notCreated", "m", err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, "Email/import: " + err);
+        if (!FindMethodResponse(body, "EmailSubmission/set", args, err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                         "EmailSubmission/set: " + err);
+        if (SetErrorFor(args, "notCreated", "s", err))
+            return UltraNetResult::Error(MapSubmissionError(err), "the server refused the submission: " + err);
+        if (CreatedId(args, "s").empty())
+            return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                         "EmailSubmission/set reported no submission");
+        return UltraNetResult::Ok();
     }
 
     UltraNetResult FetchMessages(const std::string& url,
@@ -374,28 +456,290 @@ public:
         return UltraNetResult::Ok();
     }
 
-    UltraNetResult StoreFlags(const std::string&, const std::string&, uint32_t,
-                              UltraNetMailFlags, bool,
-                              const UltraNetMailOptions&) override {
-        return NotYetImplemented("StoreFlags (Email/set keyword patch)");
+    UltraNetResult StoreFlags(const std::string& serverUrl, const std::string& folder,
+                              uint32_t uid, UltraNetMailFlags flags, bool set,
+                              const UltraNetMailOptions& options) override {
+        JmapSession session;
+        std::string user, pass;
+        UltraNetResult r = GetSession(serverUrl, options, session, user, pass);
+        if (!r) return r;
+        std::string emailId;
+        r = ResolveEmailId(session, options, user, pass, folder, uid, emailId);
+        if (!r) return r;
+
+        // \Deleted: to the Trash mailbox, or gone for good when it is there
+        // already (or there is none). Clearing it has nothing to undo.
+        if (UltraNetHasFlag(flags, UltraNetMailFlags::Deleted)) {
+            if (set) {
+                std::vector<JmapMailbox> mailboxes;
+                r = GetMailboxes(session, options, user, pass, mailboxes);
+                if (!r) return r;
+                const JmapMailbox* trash = FindMailboxByRole(mailboxes, "trash");
+                const JmapMailbox* here  = FindMailboxByPath(mailboxes, folder);
+                if (trash && (!here || here->id != trash->id))
+                    r = SetMailbox(session, options, user, pass, emailId, trash->id);
+                else
+                    r = Destroy(session, options, user, pass, emailId);
+                if (!r) return r;
+            }
+            flags = flags & static_cast<UltraNetMailFlags>(
+                ~static_cast<uint32_t>(UltraNetMailFlags::Deleted));
+        }
+        if (KeywordPatch(flags, set).empty()) return UltraNetResult::Ok();
+
+        std::string body;
+        r = ApiPost(session, options, user, pass,
+                    BuildEmailSetKeywordsRequest(session.accountId, emailId, flags, set), body);
+        if (!r) return r;
+        return CheckUpdated(body, emailId);
     }
 
-    UltraNetResult MoveMessage(const std::string&, const std::string&, uint32_t,
-                               const std::string&,
-                               const UltraNetMailOptions&) override {
-        return NotYetImplemented("MoveMessage (Email/set mailboxIds patch)");
+    UltraNetResult MoveMessage(const std::string& serverUrl, const std::string& srcFolder,
+                               uint32_t uid, const std::string& dstFolder,
+                               const UltraNetMailOptions& options) override {
+        JmapSession session;
+        std::string user, pass;
+        UltraNetResult r = GetSession(serverUrl, options, session, user, pass);
+        if (!r) return r;
+        std::string emailId;
+        r = ResolveEmailId(session, options, user, pass, srcFolder, uid, emailId);
+        if (!r) return r;
+        std::vector<JmapMailbox> mailboxes;
+        r = GetMailboxes(session, options, user, pass, mailboxes);
+        if (!r) return r;
+        const JmapMailbox* dst = FindMailboxByPath(mailboxes, dstFolder);
+        if (!dst) return UltraNetResult::Error(UltraNetResultCode::NotFound,
+                                               "no such mailbox: " + dstFolder);
+        return SetMailbox(session, options, user, pass, emailId, dst->id);
     }
 
-    UltraNetResult AppendMessage(const std::string&, const std::string&,
-                                 const std::string&, UltraNetMailFlags,
-                                 const UltraNetMailOptions&) override {
-        return NotYetImplemented("AppendMessage (blob upload + Email/import)");
+    UltraNetResult AppendMessage(const std::string& serverUrl, const std::string& folder,
+                                 const std::string& rawMessage, UltraNetMailFlags flags,
+                                 const UltraNetMailOptions& options) override {
+        JmapSession session;
+        std::string user, pass;
+        UltraNetResult r = GetSession(serverUrl, options, session, user, pass);
+        if (!r) return r;
+        std::vector<JmapMailbox> mailboxes;
+        r = GetMailboxes(session, options, user, pass, mailboxes);
+        if (!r) return r;
+        const JmapMailbox* box = FindMailboxByPath(mailboxes, folder);
+        if (!box) return UltraNetResult::Error(UltraNetResultCode::NotFound,
+                                               "no such mailbox: " + folder);
+        std::string blobId;
+        r = UploadBlob(session, options, user, pass, rawMessage, blobId);
+        if (!r) return r;
+        std::string body;
+        r = ApiPost(session, options, user, pass,
+                    BuildEmailImportRequest(session.accountId, "m", blobId, box->id, flags), body);
+        if (!r) return r;
+        json args;
+        std::string err;
+        if (!FindMethodResponse(body, "Email/import", args, err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, "Email/import: " + err);
+        if (SetErrorFor(args, "notCreated", "m", err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, "Email/import: " + err);
+        const std::string created = CreatedId(args, "m");
+        if (created.empty())
+            return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                         "Email/import reported nothing created");
+        // The new message gets the folder's next uid now, so a fetch by uid
+        // finds it without walking the folder again.
+        std::lock_guard<std::mutex> lock(mutex_);
+        uidMaps_[UidKey(session, folder)].Assign(created);
+        return UltraNetResult::Ok();
+    }
+
+    UltraNetResult ExpungeMessage(const std::string& serverUrl, const std::string& folder,
+                                  uint32_t uid, const UltraNetMailOptions& options) override {
+        JmapSession session;
+        std::string user, pass;
+        UltraNetResult r = GetSession(serverUrl, options, session, user, pass);
+        if (!r) return r;
+        std::string emailId;
+        r = ResolveEmailId(session, options, user, pass, folder, uid, emailId);
+        if (!r) return r;
+        return Destroy(session, options, user, pass, emailId);
+    }
+
+    // Every live message of the folder with its keywords: the walk that
+    // assigns the uids, then Email/get of the keywords in chunks.
+    UltraNetResult FetchAllFlags(
+        const std::string& serverUrl, const std::string& folder,
+        const std::function<void(uint32_t uid, UltraNetMailFlags flags, bool flagsKnown)>& onFlags,
+        const UltraNetMailOptions& options) override {
+        JmapSession session;
+        std::string user, pass;
+        UltraNetResult r = GetSession(serverUrl, options, session, user, pass);
+        if (!r) return r;
+        std::vector<std::pair<std::string, uint32_t>> all;
+        r = MapFolderUids(session, options, user, pass, folder, 0, all);
+        if (!r) return r;
+        std::map<std::string, uint32_t> uidById(all.begin(), all.end());
+        for (std::size_t off = 0; off < all.size(); off += kEmailGetChunk) {
+            std::vector<std::string> chunk;
+            for (std::size_t i = off; i < std::min(all.size(), off + kEmailGetChunk); ++i)
+                chunk.push_back(all[i].first);
+            std::string body;
+            r = ApiPost(session, options, user, pass,
+                        BuildEmailGetRequest(session.accountId, chunk,
+                                             json::array({"id", "keywords"})), body);
+            if (!r) return r;
+            json args;
+            std::string err;
+            if (!FindMethodResponse(body, "Email/get", args, err))
+                return UltraNetResult::Error(UltraNetResultCode::PluginError, err);
+            std::vector<JmapEnvelope> envelopes;
+            ParseEmailEnvelopes(args, envelopes);
+            std::map<std::string, UltraNetMailFlags> flagsById;
+            for (const auto& e : envelopes) flagsById[e.id] = e.env.flags;
+            // A message the walk listed but Email/get did not answer for is
+            // still live: reported with its flags unknown.
+            for (const auto& id : chunk) {
+                auto f = flagsById.find(id);
+                onFlags(uidById[id], f == flagsById.end() ? UltraNetMailFlags::None : f->second,
+                        f != flagsById.end());
+            }
+        }
+        return UltraNetResult::Ok();
     }
 
 private:
-    static UltraNetResult NotYetImplemented(const std::string& what) {
-        return UltraNetResult::Error(UltraNetResultCode::PluginError,
-            "JMAP plug-in phase 1 is read-only; " + what + " arrives in phase 2");
+    // The id of the message `uid` names in `folder`, (re)walking the folder
+    // when the map does not know it yet (a fresh process, or a message that
+    // arrived since).
+    UltraNetResult ResolveEmailId(const JmapSession& session, const UltraNetMailOptions& options,
+                                  const std::string& user, const std::string& pass,
+                                  const std::string& folder, uint32_t uid, std::string& outId) {
+        outId = LookupId(session, folder, uid);
+        if (!outId.empty()) return UltraNetResult::Ok();
+        std::vector<std::pair<std::string, uint32_t>> all;
+        UltraNetResult r = MapFolderUids(session, options, user, pass, folder, 0, all);
+        if (!r) return r;
+        outId = LookupId(session, folder, uid);
+        if (outId.empty())
+            return UltraNetResult::Error(UltraNetResultCode::NotFound,
+                "no message with uid " + std::to_string(uid) + " in " + folder);
+        return UltraNetResult::Ok();
+    }
+
+    UltraNetResult SetMailbox(const JmapSession& session, const UltraNetMailOptions& options,
+                              const std::string& user, const std::string& pass,
+                              const std::string& emailId, const std::string& mailboxId) {
+        std::string body;
+        UltraNetResult r = ApiPost(session, options, user, pass,
+                                   BuildEmailSetMailboxRequest(session.accountId, emailId, mailboxId),
+                                   body);
+        if (!r) return r;
+        return CheckUpdated(body, emailId);
+    }
+
+    UltraNetResult Destroy(const JmapSession& session, const UltraNetMailOptions& options,
+                           const std::string& user, const std::string& pass,
+                           const std::string& emailId) {
+        std::string body;
+        UltraNetResult r = ApiPost(session, options, user, pass,
+                                   BuildEmailDestroyRequest(session.accountId, {emailId}), body);
+        if (!r) return r;
+        json args;
+        std::string err;
+        if (!FindMethodResponse(body, "Email/set", args, err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, "Email/set: " + err);
+        // Already gone is as good as destroyed.
+        if (SetErrorFor(args, "notDestroyed", emailId, err) && err.rfind("notFound", 0) != 0)
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, "Email/set destroy: " + err);
+        return UltraNetResult::Ok();
+    }
+
+    // The verdict of an Email/set update of `emailId`.
+    static UltraNetResult CheckUpdated(const std::string& body, const std::string& emailId) {
+        json args;
+        std::string err;
+        if (!FindMethodResponse(body, "Email/set", args, err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, "Email/set: " + err);
+        if (SetErrorFor(args, "notUpdated", emailId, err))
+            return UltraNetResult::Error(err.rfind("notFound", 0) == 0 ? UltraNetResultCode::NotFound
+                                                                        : UltraNetResultCode::PluginError,
+                                         "Email/set update: " + err);
+        return UltraNetResult::Ok();
+    }
+
+    // POST the raw message to the session's uploadUrl; `outBlobId` names it
+    // for Email/import.
+    UltraNetResult UploadBlob(const JmapSession& session, const UltraNetMailOptions& options,
+                              const std::string& user, const std::string& pass,
+                              const std::string& raw, std::string& outBlobId) {
+        UltraNetHttpRequest req;
+        req.url     = ExpandUrlTemplate(ResolveAgainst(session.apiUrl, session.uploadUrl),
+                                        {{"accountId", session.accountId}});
+        req.method  = UltraNetHttpMethod::Post;
+        req.body.assign(raw.begin(), raw.end());
+        req.options = MakeHttpOptions(options, user, pass);
+        req.headers.Set("content-type", "message/rfc822");
+        UltraNetResponse resp;
+        UltraNetResult r = UltraNet_HttpRequest(req, resp);
+        if (!r || !resp.IsSuccess()) return MapHttpFailure(r, resp, "blob upload");
+        std::string err;
+        if (!ParseUploadResponse(resp.GetBodyAsString(), outBlobId, err))
+            return UltraNetResult::Error(UltraNetResultCode::PluginError, err);
+        return UltraNetResult::Ok();
+    }
+
+    // The raw RFC 5322 message of what the caller hands SendMail - the same
+    // builder the SMTP plug-in uses, so both wire formats are one.
+    static std::string BuildRawMessage(const UltraNetMailMessage& m) {
+        UltraNetMimeBuildInput in;
+        in.from    = m.from;
+        in.to      = m.to;
+        in.cc      = m.cc;
+        in.bcc     = m.bcc;
+        in.subject = m.subject;
+        in.body    = m.body;
+        in.extraHeaders = m.headers;
+        if (!m.contentType.empty()) {
+            const std::size_t semi = m.contentType.find(';');
+            in.bodyMediaType = m.contentType.substr(0, semi);
+            while (!in.bodyMediaType.empty() && in.bodyMediaType.back() == ' ')
+                in.bodyMediaType.pop_back();
+            const std::size_t cs = m.contentType.find("charset=");
+            if (cs != std::string::npos) {
+                std::string charset = m.contentType.substr(cs + 8);
+                const std::size_t end = charset.find(';');
+                if (end != std::string::npos) charset = charset.substr(0, end);
+                if (!charset.empty() && charset.front() == '"') charset.erase(0, 1);
+                if (!charset.empty() && charset.back() == '"') charset.pop_back();
+                in.bodyCharset = charset;
+            }
+        }
+        in.alternativeText = m.alternativeText;
+        for (const auto& part : m.inlineParts) {
+            UltraNetMimeBuildAttachment a;
+            a.filename = part.filename;
+            if (!part.mediaType.empty()) a.mediaType = part.mediaType;
+            a.data      = part.data;
+            a.isInline  = true;
+            a.contentId = part.contentId;
+            in.attachments.push_back(std::move(a));
+        }
+        for (const auto& [name, bytes] : m.attachments) {
+            UltraNetMimeBuildAttachment a;
+            a.filename = name;
+            a.data     = bytes;
+            in.attachments.push_back(std::move(a));
+        }
+        return UltraNet_MimeBuild(in);
+    }
+
+    // A SetError type of EmailSubmission/set as a result code (RFC 8621 §7.5).
+    static UltraNetResultCode MapSubmissionError(const std::string& err) {
+        if (err.rfind("forbiddenFrom", 0) == 0 || err.rfind("forbiddenToSend", 0) == 0)
+            return UltraNetResultCode::AccessDenied;
+        if (err.rfind("invalidRecipients", 0) == 0 || err.rfind("invalidEmail", 0) == 0)
+            return UltraNetResultCode::InvalidState;
+        if (err.rfind("tooManyRecipients", 0) == 0 || err.rfind("tooLarge", 0) == 0 ||
+            err.rfind("rateLimit", 0) == 0)
+            return UltraNetResultCode::PluginError;
+        return UltraNetResultCode::PluginError;
     }
 
     // Fetch (or reuse) the session resource for a server URL.
