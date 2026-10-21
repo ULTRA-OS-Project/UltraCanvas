@@ -81938,7 +81938,7 @@ that one app. So:
 | Desktop application | What the app stores on the device, which servers it contacts and why, the settings that turn each contact off | The user, for the local processing; the operators of the contacted servers for theirs. The company is not a controller unless the app talks to a company server | `UltraMail.md` |
 | Hosted service | The data the company's servers receive and keep, retention, processors (hosting, e-mail delivery), transfers outside the EU | ULTRA OS Development GmbH | a future ULTRA OS cloud or account service |
 | App store listing | Points at the application's declaration; the store itself (Apple, Microsoft, Google, Flathub) has its own policy for the download and payment | the store, for the download | the store listing's privacy-policy URL |
-| The website | Cookies, server logs, contact forms, embedded content, analytics if any | ULTRA OS Development GmbH | the site's own `Datenschutzerklärung`, not kept here |
+| The website | Cookies, server logs, contact forms, downloads, embedded content, analytics if any | ULTRA OS Development GmbH | `Website.md` |
 
 Each application whose data flows differ gets its own file. Two applications
 that contact nobody but the user's own servers may share one file only when
@@ -81950,6 +81950,8 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
+| `Website.md` | www.ultraos.eu, English | draft 0.1 with marked variants: the hosting provider, log retention, cookies, contact form and analytics must be confirmed against the live site |
+| `Website.de.md` | www.ultraos.eu, German | draft 0.1, same |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
@@ -82665,3 +82667,342 @@ We update this declaration whenever UltraMail's data flows change, for example
 when a feature that contacts a server is added. The version and date at the
 top identify the current text; earlier versions are available in the project's
 source repository.
+
+==============================================================================
+FILE: Docs/Legal/Privacy/Website.de.md
+==============================================================================
+
+# Datenschutzerklärung — www.ultraos.eu
+
+**Version 0.1 (Entwurf zur rechtlichen Prüfung) · 21. Oktober 2026**
+
+Diese Erklärung beschreibt, welche personenbezogenen Daten beim Besuch von
+**www.ultraos.eu**, der Website der ULTRA OS Development GmbH, verarbeitet
+werden und welche Rechte Sie nach der Datenschutz-Grundverordnung (DSGVO)
+haben. Sie gilt nur für die Website. Die von uns veröffentlichten Anwendungen
+haben jeweils eine eigene Erklärung, verlinkt in Abschnitt 8; die Nutzung
+einer Anwendung sendet uns über diese Website keine Daten.
+
+> **Prüfstatus.** Dieser Text wurde ohne Zugang zur Hosting-Konfiguration der
+> Website erstellt. Jede Angabe in eckigen Klammern (`[…]`) ist auszufüllen,
+> jeder mit *Variante* gekennzeichnete Block ist zu behalten oder zu löschen,
+> je nachdem, was die Website tatsächlich tut, und der gesamte Text ist vor
+> der Veröffentlichung anwaltlich zu prüfen.
+
+## 1. Verantwortlicher
+
+ULTRA OS Development GmbH
+An den Klippen 23
+57462 Olpe
+Deutschland
+
+E-Mail: [privacy@ultraos.eu]
+Geschäftsführung: […]
+Handelsregister: […]
+
+Ein Datenschutzbeauftragter ist nicht bestellt, da keine Pflicht zur
+Bestellung besteht [in der rechtlichen Prüfung bestätigen].
+
+## 2. Das Wichtigste in Kürze
+
+- Der Besuch der Website erzeugt **Server-Protokolleinträge** bei unserem
+  Hosting-Anbieter, wie auf jeder Website. Sie werden kurz zur Sicherheit
+  aufbewahrt und dann gelöscht.
+- Die Website setzt **keine Cookies und nutzt keine Analyse- oder
+  Tracking-Dienste** [Variante: streichen oder anpassen, wenn die Website
+  Cookies setzt oder Analysedienste nutzt; siehe Abschnitte 4 und 7].
+- Personenbezogene Daten erhalten wir nur, wenn **Sie sie uns senden**: per
+  E-Mail [oder über das Kontaktformular].
+- Downloads unserer Anwendungen werden von [unserem Hosting-Anbieter /
+  GitHub] ausgeliefert; Abschnitt 6 sagt, was diese Stelle erfährt.
+
+## 3. Hosting und Server-Protokolle
+
+Die Website wird gehostet von [Hosting-Anbieter, Rechtsform, Anschrift,
+Land], der Daten in unserem Auftrag auf Grundlage eines Vertrags zur
+Auftragsverarbeitung verarbeitet (Art. 28 DSGVO). Beim Aufruf einer Seite
+protokolliert der Webserver:
+
+- die Adresse der aufgerufenen Seite und den Zeitpunkt des Aufrufs;
+- die IP-Adresse Ihres Geräts;
+- den verwendeten Browser und das Betriebssystem (User-Agent);
+- die Seite, von der Sie kommen, sofern Ihr Browser sie mitsendet (Referrer);
+- die übertragene Datenmenge und den HTTP-Statuscode.
+
+**Zweck:** die angeforderten Seiten auszuliefern, die Website sicher zu
+halten (Angriffe und Missbrauch zu erkennen) und Fehler zu beheben.
+**Rechtsgrundlage:** Art. 6 Abs. 1 lit. f DSGVO, unser berechtigtes
+Interesse an einer funktionierenden und sicheren Website.
+**Speicherdauer:** Protokolleinträge werden nach [7 / 14 / 30] Tagen gelöscht,
+sofern ein Eintrag nicht als Beleg eines Angriffs benötigt wird.
+**Übermittlung in Drittländer:** [keine — die Server stehen in der EU / Land
+und Garantie nennen, z. B. EU-US Data Privacy Framework oder
+Standardvertragsklauseln].
+
+## 4. Cookies und lokale Speicherung
+
+*Variante A — keine Cookies.* Die Website setzt keine Cookies und speichert
+nichts in Ihrem Browser. Ein Cookie-Banner gibt es deshalb nicht.
+
+*Variante B — nur technisch notwendige Cookies.* Die Website setzt nur
+Cookies, die nötig sind, um die aufgerufene Seite anzuzeigen [benennen:
+z. B. ein Sitzungs-Cookie für das Download-Formular, ein Cookie für die
+gewählte Sprache]. Sie werden ohne Einwilligung gesetzt (§ 25 Abs. 2 Nr. 2
+TDDDG, Art. 6 Abs. 1 lit. f DSGVO) und verfallen [mit Ende der Sitzung /
+nach N Tagen].
+
+*Variante C — einwilligungsbedürftige Cookies.* [Nur wenn die Website
+Analysedienste, eingebettete Medien oder Ähnliches nutzt: Jedes solche Cookie
+bedarf vor dem Setzen Ihrer Einwilligung (§ 25 Abs. 1 TDDDG, Art. 6 Abs. 1
+lit. a DSGVO), die über das Einwilligungs-Banner eingeholt wird; über den
+Link in der Fußzeile können Sie es jederzeit erneut öffnen, um Ihre Wahl zu
+ändern oder zu widerrufen.]
+
+## 5. Kontakt
+
+**Per E-Mail.** Wenn Sie uns schreiben, verarbeiten wir Ihre Adresse, den
+Inhalt Ihrer Nachricht und Ihre Anhänge, um Ihnen zu antworten.
+**Rechtsgrundlage:** Art. 6 Abs. 1 lit. b DSGVO, wenn Ihre Anfrage einen
+Vertrag oder den Support für eines unserer Produkte betrifft, sonst Art. 6
+Abs. 1 lit. f DSGVO, unser Interesse an der Beantwortung von Anfragen.
+**Speicherdauer:** Wir bewahren den Schriftverkehr auf, solange die
+Angelegenheit offen ist, und danach so lange, wie Handels- und Steuerrecht es
+verlangen (§ 257 HGB, § 147 AO: sechs bzw. zehn Jahre für Handelsbriefe).
+
+*Variante — Kontaktformular.* [Falls vorhanden: Das Formular fragt nach Ihrem
+Namen, Ihrer E-Mail-Adresse und Ihrer Nachricht [und …]. Die Daten werden
+über eine verschlüsselte Verbindung (TLS) an uns übertragen und wie eine
+E-Mail-Anfrage behandelt. Das Formular [nutzt kein CAPTCHA / nutzt <Name>,
+das Ihre IP-Adresse an <Anbieter> übermittelt, um Menschen von Bots zu
+unterscheiden; dessen Datenschutzerklärung gilt].]
+
+## 6. Downloads
+
+*Variante A — von unserem Host ausgeliefert.* Der Download einer Anwendung
+von dieser Website ist ein Seitenaufruf wie jeder andere: Das
+Server-Protokoll aus Abschnitt 3 verzeichnet ihn.
+
+*Variante B — von GitHub ausgeliefert.* Download-Links führen zu unseren
+Veröffentlichungen auf GitHub (GitHub, Inc., 88 Colin P. Kelly Jr. Street,
+San Francisco, CA 94107, USA; in der EU GitHub B.V., Niederlande). Wenn Sie
+einem solchen Link folgen, erfährt GitHub Ihre IP-Adresse und die
+angeforderte Datei und setzt gegebenenfalls eigene Cookies; es gilt die
+Datenschutzerklärung von GitHub. GitHub, Inc. ist unter dem EU-US Data
+Privacy Framework zertifiziert. **Rechtsgrundlage:** Art. 6 Abs. 1 lit. f
+DSGVO, unser Interesse, die Software von der Plattform zu verteilen, auf der
+sie gebaut und signiert wird, und Ihr Interesse an einem nachprüfbaren
+Download.
+
+## 7. Analyse, Schriften, eingebettete Inhalte
+
+*Variante A — keine.* Die Website nutzt keinen Analysedienst, lädt Schriften
+und Skripte von unserem eigenen Server und bettet keine Inhalte anderer
+Websites ein. Nichts auf der Website meldet Ihren Besuch an jemand anderen
+als unseren Hosting-Anbieter.
+
+*Variante B — jeden Dienst aufführen.* [Für jeden Dienst: Name und Betreiber,
+was er erhält (IP-Adresse, Seite, Cookies), Zweck, Rechtsgrundlage
+(Einwilligung, Art. 6 Abs. 1 lit. a DSGVO, über das Banner aus Abschnitt 4),
+die Garantie bei Betreibern außerhalb der EU und der Weg zum Widerruf.
+Typische Kandidaten: ein Web-Analyse-Werkzeug, eingebettete YouTube-Videos,
+von Googles Servern geladene Google Fonts, eine eingebettete Karte, ein
+Newsletter-Dienst.]
+
+## 8. Die Anwendungen
+
+Die Nutzung von UltraMail oder einer anderen unserer Anwendungen sendet
+keine Daten an diese Website oder an uns. Jede Anwendung hat ihre eigene
+Erklärung, die beschreibt, was sie auf Ihrem Gerät speichert und welche
+Server sie kontaktiert:
+
+- UltraMail: [Link zur UltraMail-Erklärung auf dieser Website]
+- […]
+
+## 9. Verschlüsselung
+
+Die Website wird über HTTPS (TLS) ausgeliefert. Alles, was Sie an sie senden
+oder von ihr empfangen, ein Kontaktformular eingeschlossen, ist auf dem Weg
+verschlüsselt.
+
+## 10. Ihre Rechte
+
+Nach der DSGVO haben Sie das Recht auf Auskunft (Art. 15), Berichtigung
+(Art. 16), Löschung (Art. 17), Einschränkung der Verarbeitung (Art. 18),
+Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21), insbesondere das
+Recht, einer auf Art. 6 Abs. 1 lit. f DSGVO gestützten Verarbeitung zu
+widersprechen, sowie das Recht, eine Einwilligung jederzeit mit Wirkung für
+die Zukunft zu widerrufen (Art. 7 Abs. 3). Außerdem haben Sie das Recht auf
+Beschwerde bei einer Aufsichtsbehörde (Art. 77); die für uns zuständige
+Behörde ist die Landesbeauftragte für Datenschutz und Informationsfreiheit
+Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213 Düsseldorf.
+
+Zur Ausübung eines Rechts schreiben Sie an [privacy@ultraos.eu].
+
+## 11. Änderungen dieser Erklärung
+
+Wir aktualisieren diese Erklärung, wann immer sich die Website in einem hier
+erheblichen Punkt ändert: ein neues Formular, ein neuer eingebetteter Dienst,
+ein neuer Hosting-Anbieter. Version und Datum am Anfang kennzeichnen den
+aktuellen Text.
+
+==============================================================================
+FILE: Docs/Legal/Privacy/Website.md
+==============================================================================
+
+# Privacy declaration — www.ultraos.eu
+
+**Version 0.1 (draft for legal review) · 21 October 2026**
+
+This declaration explains what personal data is processed when you visit
+**www.ultraos.eu**, the website of ULTRA OS Development GmbH, and what rights
+you have under the General Data Protection Regulation (GDPR). It covers the
+website only. The applications we publish each have a declaration of their
+own, linked from section 8; using an application does not send us data
+through this website.
+
+> **Review status.** This text was drafted without access to the site's
+> hosting configuration. Every item in square brackets (`[…]`) must be filled
+> in, every block marked *Variant* must be kept or deleted according to what
+> the site actually does, and the whole text must be reviewed by a lawyer
+> before it is published.
+
+## 1. Who is responsible
+
+ULTRA OS Development GmbH
+An den Klippen 23
+57462 Olpe
+Germany
+
+E-mail: [privacy@ultraos.eu]
+Managing director(s): […]
+Commercial register: […]
+
+The company has not appointed a data protection officer, because it is not
+required to [confirm with legal review].
+
+## 2. The short version
+
+- Visiting the site creates **server log entries** at our hosting provider,
+  as on every website. They are kept for a short time for security and
+  deleted.
+- The site sets **no cookies and uses no analytics or tracking**
+  [Variant: delete or adapt when the site sets cookies or uses analytics;
+  see sections 4 and 7].
+- We receive personal data only when you **send them to us**: by e-mail
+  [or through the contact form].
+- Downloads of our applications are served from [our hosting provider /
+  GitHub]; section 6 says what that party learns.
+
+## 3. Hosting and server logs
+
+The website is hosted by [hosting provider, legal form, address, country],
+which processes data on our behalf under a data processing agreement
+(Art. 28 GDPR). When you open a page, the web server records:
+
+- the address of the page requested and the time of the request;
+- the IP address of your device;
+- the browser and operating system you use (the user-agent string);
+- the page you came from, if your browser sends it (the referrer);
+- the amount of data transferred and the HTTP status code.
+
+**Purpose:** to deliver the pages you request, to keep the site secure (to
+detect attacks and abuse) and to fix faults. **Legal basis:** Art. 6(1)(f)
+GDPR, our legitimate interest in a working and secure website. **Retention:**
+log entries are deleted after [7 / 14 / 30] days unless an entry is needed as
+evidence of an attack. **Transfer outside the EU:** [none — the servers are
+in the EU / name the country and the safeguard, e.g. EU–US Data Privacy
+Framework or standard contractual clauses].
+
+## 4. Cookies and local storage
+
+*Variant A — no cookies.* The site sets no cookies and stores nothing in your
+browser. There is therefore no cookie banner.
+
+*Variant B — technically necessary cookies only.* The site sets only cookies
+that are necessary to show the page you request [name them: e.g. a session
+cookie for the download form, a cookie remembering your language choice].
+They are set without consent (§ 25(2) no. 2 TDDDG, Art. 6(1)(f) GDPR) and
+expire [at the end of the session / after N days].
+
+*Variant C — consent-based cookies.* [Only if the site uses analytics,
+embedded media or similar: each such cookie needs your consent before it is
+set (§ 25(1) TDDDG, Art. 6(1)(a) GDPR), obtained through the consent banner,
+which you can reopen at any time from the link in the footer to change or
+withdraw your choice.]
+
+## 5. Contact
+
+**By e-mail.** When you write to us, we process your address, the content of
+your message and whatever you attach, in order to answer you. **Legal basis:**
+Art. 6(1)(b) GDPR when your request concerns a contract or support for one of
+our products, otherwise Art. 6(1)(f) GDPR, our interest in answering
+enquiries. **Retention:** we keep the correspondence as long as the matter is
+open and afterwards as long as commercial and tax law require (§ 257 HGB,
+§ 147 AO: six or ten years for business letters).
+
+*Variant — contact form.* [If the site has one: The form asks for your name,
+your e-mail address and your message [and …]. The data is sent to us over an
+encrypted connection (TLS) and handled as an e-mail enquiry above. The form
+[uses no CAPTCHA / uses <name>, which transmits your IP address to <provider>
+to tell people from bots; its privacy policy applies].]
+
+## 6. Downloads
+
+*Variant A — served by our host.* Downloading an application from this site
+is a page request like any other: the server log of section 3 records it.
+
+*Variant B — served by GitHub.* Download links lead to our releases on GitHub
+(GitHub, Inc., 88 Colin P. Kelly Jr. Street, San Francisco, CA 94107, USA; in
+the EU GitHub B.V., Netherlands). When you follow such a link, GitHub learns
+your IP address and the file you requested, and may set its own cookies;
+GitHub's privacy statement applies. GitHub, Inc. is certified under the
+EU–US Data Privacy Framework. **Legal basis:** Art. 6(1)(f) GDPR, our
+interest in distributing the software from the platform where it is built
+and signed, and your interest in a verifiable download.
+
+## 7. Analytics, fonts, embedded content
+
+*Variant A — none.* The site uses no analytics service, loads its fonts and
+scripts from our own server, and embeds no content from other sites. Nothing
+on the site reports your visit to anyone but our hosting provider.
+
+*Variant B — list each one.* [For each service: its name and operator, what
+it receives (IP address, page, cookies), the purpose, the legal basis
+(consent, Art. 6(1)(a) GDPR, through the banner of section 4), the transfer
+safeguard if the operator is outside the EU, and how to withdraw. Typical
+candidates: a web analytics tool, embedded YouTube videos, Google Fonts loaded
+from Google's servers, an embedded map, a newsletter service.]
+
+## 8. The applications
+
+Using UltraMail or another application of ours does not send any data to
+this website or to us. Each application has its own declaration, which
+describes what it stores on your device and which servers it contacts:
+
+- UltraMail: [link to the UltraMail declaration on this site]
+- […]
+
+## 9. Encryption
+
+The site is served over HTTPS (TLS). Everything you send to or receive from
+it, including a contact form, travels encrypted.
+
+## 10. Your rights
+
+Under the GDPR you have the rights of access (Art. 15), rectification
+(Art. 16), erasure (Art. 17), restriction of processing (Art. 18), data
+portability (Art. 20) and objection (Art. 21), in particular the right to
+object to processing based on Art. 6(1)(f) GDPR, and the right to withdraw a
+consent at any time with effect for the future (Art. 7(3)). You also have the
+right to lodge a complaint with a supervisory authority (Art. 77); the
+authority responsible for us is the Landesbeauftragte für Datenschutz und
+Informationsfreiheit Nordrhein-Westfalen, Kavalleriestraße 2–4, 40213
+Düsseldorf, Germany.
+
+To exercise a right, write to [privacy@ultraos.eu].
+
+## 11. Changes to this declaration
+
+We update this declaration whenever the website changes in a way that
+matters here: a new form, a new embedded service, a new hosting provider.
+The version and date at the top identify the current text.

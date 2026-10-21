@@ -3,10 +3,12 @@
 // configured. It holds the UltraMail logo, the app title and an "Add email
 // account" button, centred - and, in the top-right corner where the toolbar's
 // sits later, the Settings gear, so privacy can be set before the first
-// account is added. Once an account exists
-// the app hides it and shows the account view (info-tile bar + Toolbox) instead.
+// account is added. Once an account exists the app hides it and shows the
+// account view instead: the account bar above the mail view (there is no
+// Toolbox grid; Docs/UltraMail/Concept.md 2.1 says what shipped of it).
+// Version: 0.3.1 - the comment names the account view that follows the page
 // Version: 0.3.0 - the Settings gear in the top-right corner
-// Last Modified: 2026-09-30
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

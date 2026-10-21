@@ -18,7 +18,7 @@ that one app. So:
 | Desktop application | What the app stores on the device, which servers it contacts and why, the settings that turn each contact off | The user, for the local processing; the operators of the contacted servers for theirs. The company is not a controller unless the app talks to a company server | `UltraMail.md` |
 | Hosted service | The data the company's servers receive and keep, retention, processors (hosting, e-mail delivery), transfers outside the EU | ULTRA OS Development GmbH | a future ULTRA OS cloud or account service |
 | App store listing | Points at the application's declaration; the store itself (Apple, Microsoft, Google, Flathub) has its own policy for the download and payment | the store, for the download | the store listing's privacy-policy URL |
-| The website | Cookies, server logs, contact forms, embedded content, analytics if any | ULTRA OS Development GmbH | the site's own `Datenschutzerklärung`, not kept here |
+| The website | Cookies, server logs, contact forms, downloads, embedded content, analytics if any | ULTRA OS Development GmbH | `Website.md` |
 
 Each application whose data flows differ gets its own file. Two applications
 that contact nobody but the user's own servers may share one file only when
@@ -30,6 +30,8 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.0, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.0, same |
+| `Website.md` | www.ultraos.eu, English | draft 0.1 with marked variants: the hosting provider, log retention, cookies, contact form and analytics must be confirmed against the live site |
+| `Website.de.md` | www.ultraos.eu, German | draft 0.1, same |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
