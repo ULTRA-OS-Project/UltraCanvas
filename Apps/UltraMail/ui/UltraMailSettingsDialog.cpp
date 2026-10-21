@@ -25,6 +25,7 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.13.0 - Spam/scam warnings: a switch of its own for loan and credit offers
 // Version: 1.12.0 - Mail > Connection: how long alerts about failed mail checks
 //                   wait after the computer was switched on (a dropdown, off
 //                   to 10 minutes)
@@ -1043,6 +1044,9 @@ namespace {
             { "um-set-warn-advance-fee",
               "An advance-fee letter - millions waiting for a small fee",
               &ThreatScanOptions::advanceFee },
+            { "um-set-warn-loan-offers",
+              "A loan or credit offered by anyone but your bank",
+              &ThreatScanOptions::loanOffers },
             { "um-set-warn-government",
               "A letter in the name of the FBI, Interpol, the IMF ...",
               &ThreatScanOptions::government },
