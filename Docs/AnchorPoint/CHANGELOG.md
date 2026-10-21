@@ -54,6 +54,14 @@
   paths.
 - **AnchorPoint is in the portable Linux bundle** (`package-linux.sh`): the
   window and `anchorpoint-cli`, each with its launcher.
+- **AnchorPoint has an icon.** An anchor with the binary `101011` across its
+  shank, in the UltraCanvas logo's black and neon colours (cyan ring, yellow
+  and magenta fluke tips, green digits), on a white tile:
+  `media/appicon/AnchorPoint.svg`, with its 256 px PNG beside it. The window
+  and its taskbar entry show it, the Windows `.exe` carries it, and on Linux
+  the new desktop entry (`Apps/AnchorPoint/AnchorPoint.desktop`) names it as
+  its theme icon, both installed with the program - so menus and file
+  managers show the anchor instead of a generic program icon.
 
 #### 2026-10-14 *0.2.4*
 - **One AnchorPoint at a time.** Starting AnchorPoint while it is already

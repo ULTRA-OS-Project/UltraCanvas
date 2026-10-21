@@ -9,6 +9,7 @@
 // Author: AnchorPoint
 #include "AnchorPointApp.h"
 
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasSingleInstance.h"
 
 #include <cstdlib>
@@ -38,6 +39,11 @@ int main() {
     }
     if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
         return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "AnchorPoint");
+    // One icon, everywhere the app is drawn: the window and its taskbar entry
+    // read this file; the .ico in the Windows binary and the desktop entry's
+    // theme icon come from the same media/appicon/AnchorPoint.svg
+    // (CMakeLists.txt).
+    app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/AnchorPoint.png"));
 
     AnchorPoint::AnchorPointGui gui(app);
     if (!gui.Build()) {
