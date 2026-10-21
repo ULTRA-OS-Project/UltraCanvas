@@ -1,3 +1,10 @@
+#### 2026-10-21 *0.4.9*
+- **Loan and credit offers count as financial scams.** The built-in rules
+  know the loan-offer letters' wording - "loan facilities", "loan funding",
+  "financing offer", "viable projects", "yearly repayment" and the like. One
+  phrase alone stays below the threshold, so a bank's own mention of a loan
+  offer is not called a scam; the scam letters pile several up.
+
 #### 2026-10-13 *0.4.8*
 - **UltraMail's mail is found on macOS and Windows.** EmailCleaner looked for
   UltraMail's data folder, and kept its own, under `$XDG_DATA_HOME` or
