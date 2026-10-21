@@ -318,7 +318,13 @@ public:
     bool CommissionDevice(const std::string& setupCode);  // Matter QR/numeric code
     
     // ===== DEVICE CONTROL =====
+    // Commands are queued and sent in order on the module's worker thread;
+    // these return once queued.
     bool SendCommand(const SmartHomeCommand& command);
+    // Waits until every command queued so far has been sent (true), or
+    // `timeoutMs` passes (false). For a command-line tool that exits after
+    // a command, and for tests.
+    bool WaitForCommands(int timeoutMs = 5000);
     bool SetLightState(const std::string& deviceId, const SmartHomeLightState& state);
     bool SetThermostatTarget(const std::string& deviceId, float temperature);
     bool SetThermostatMode(const std::string& deviceId, const std::string& mode);

@@ -2,6 +2,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "SmartHomeCenterWindow.h"
+#include "SmartHomeCenterDemo.h"   // the demo scenes' ids
 
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "UltraCanvasApplication.h"
@@ -60,11 +61,6 @@ constexpr float kTileWidth = 206.0f;
 constexpr float kTileHeight = 118.0f;
 constexpr unsigned kUiTimerMs = 250;
 constexpr size_t kActivityLimit = 500;
-
-const char* const kSceneMorning = "center.morning";
-const char* const kSceneEvening = "center.evening";
-const char* const kSceneAway = "center.away";
-const char* const kSceneNight = "center.night";
 
 Tone ToneOf(const DeviceView& v) {
     if (v.alert) return kAlarm;
@@ -346,10 +342,6 @@ bool SmartHomeCenterWindow::Initialize(bool demoHome) {
         LayoutForSize(static_cast<float>(width), static_cast<float>(height));
     };
 
-    if (demoHome_) {
-        CreateDemoScenes();
-        CreateDemoAutomations();
-    }
     ConnectApi();
     ShowPage(Page::Home);
     ReloadAll();
@@ -1645,85 +1637,6 @@ void SmartHomeCenterWindow::ActivateScene(const std::string& sceneId, const std:
     // The engine logs the activation; the Activity page shows it from there.
     (void)name;
     SmartHomeAPI::Instance().ActivateScene(sceneId);
-}
-
-void SmartHomeCenterWindow::CreateDemoAutomations() {
-    // What a home would set up first, in the demo home's devices: they run
-    // in the module's automation engine and show in Activity when they do.
-    // Created once; after that the store has them, with whatever the person
-    // changed.
-    auto& api = SmartHomeAPI::Instance();
-    if (!api.GetAutomations().empty()) return;
-    // From the API: the window's own list is not filled yet.
-    const auto devices = api.GetDevices();
-    auto idOf = [&](const char* name) {
-        for (const auto& d : devices) if (d.Name == name) return d.DeviceId;
-        return std::string();
-    };
-    const std::string leak = idOf("Under-sink leak sensor");
-    const std::string smoke = idOf("Kitchen smoke alarm");
-    const std::string motion = idOf("Hallway motion");
-    const std::string patio = idOf("Patio door");
-    const std::string hall = idOf("Hall light");
-    const std::string kettle = idOf("Kettle");
-    const std::string rail = idOf("Towel rail");
-    auto device = [](const std::string& id, const char* attribute, const char* value, int forMinutes = 0) {
-        std::string config = std::string(R"({"type":"device","deviceId":")") + id + R"(","attribute":")" +
-                             attribute + R"(","value":")" + value + "\"";
-        if (forMinutes > 0) config += ",\"forMinutes\":" + std::to_string(forMinutes);
-        return config + "}";
-    };
-    auto notify = [](const std::string& message) { return SmartHomeCommand{"", "notify", {{"message", message}}}; };
-
-    api.CreateAutomation({"center.leak", "Water leak", true, "device", device(leak, "triggered", "true"),
-                          {notify("Water under the kitchen sink - the kettle and towel rail are switched off"),
-                           {kettle, "turnOff", {}}, {rail, "turnOff", {}}}, {}});
-    api.CreateAutomation({"center.smoke", "Smoke alarm", true, "device", device(smoke, "triggered", "true"),
-                          {notify("Smoke in the kitchen"), {hall, "turnOn", {}}}, {}});
-    api.CreateAutomation({"center.hall", "Hall light on motion", true, "device", device(motion, "triggered", "true"),
-                          {{hall, "turnOn", {}}, {"", "delay", {{"seconds", "120"}}}, {hall, "turnOff", {}}}, {}});
-    api.CreateAutomation({"center.patio", "Patio door left open", true, "device", device(patio, "open", "true", 10),
-                          {notify("The patio door has been open for 10 minutes")}, {}});
-    api.CreateAutomation({"center.sunset", "Evening at sunset", true, "sunset", R"({"type":"sunset","offsetMinutes":-15})",
-                          {{"", "activateScene", {{"sceneId", kSceneEvening}}}}, {}});
-    // Sunset needs a place; the demo home stands in Berlin.
-    double latitude = 0, longitude = 0;
-    if (!api.GetHomeLocation(latitude, longitude)) api.SetHomeLocation(52.52, 13.405);
-}
-
-void SmartHomeCenterWindow::CreateDemoScenes() {
-    // The demo home's scenes, by device name. A real home builds its own in
-    // the scene editor (proposal phase 2); these show what one does.
-    auto& api = SmartHomeAPI::Instance();
-    const auto devices = api.GetDevices();
-    auto idOf = [&](const char* name) {
-        for (const auto& d : devices) if (d.Name == name) return d.DeviceId;
-        return std::string();
-    };
-    auto cmd = [&](const char* name, const char* command, std::map<std::string, std::string> params = {}) {
-        return SmartHomeCommand{idOf(name), command, std::move(params)};
-    };
-    api.CreateScene({kSceneMorning, "Good morning", "sunrise", {
-        cmd("Patio blinds", "setPosition", {{"position", "100"}}),
-        cmd("Bedroom blinds", "setPosition", {{"position", "100"}}),
-        cmd("Kitchen spots", "turnOn"), cmd("Kettle", "turnOn"),
-        cmd("Living room heating", "setTargetTemp", {{"temperature", "21"}}),
-        cmd("Office heating", "setTargetTemp", {{"temperature", "21"}})}, false});
-    api.CreateScene({kSceneEvening, "Evening", "sunset", {
-        cmd("Ceiling light", "setLight", {{"on", "true"}, {"brightness", "120"}, {"colorTemp", "2600"}}),
-        cmd("Floor lamp", "setLight", {{"on", "true"}, {"brightness", "150"}, {"colorTemp", "2300"}}),
-        cmd("Patio blinds", "setPosition", {{"position", "0"}}),
-        cmd("Path lights", "turnOn"), cmd("Desk lamp", "turnOff"), cmd("Workstation", "turnOff")}, false});
-    api.CreateScene({kSceneAway, "Away", "away", {
-        cmd("Ceiling light", "turnOff"), cmd("Floor lamp", "turnOff"), cmd("Kitchen spots", "turnOff"),
-        cmd("Desk lamp", "turnOff"), cmd("Bedside lamp", "turnOff"), cmd("Mirror light", "turnOff"),
-        cmd("Hall light", "turnOff"), cmd("TV", "turnOff"), cmd("Kettle", "turnOff"), cmd("Towel rail", "turnOff"),
-        cmd("Front door", "lock"), cmd("Garden gate", "lock")}, false});
-    api.CreateScene({kSceneNight, "Good night", "moon", {
-        cmd("Ceiling light", "turnOff"), cmd("Floor lamp", "turnOff"), cmd("Kitchen spots", "turnOff"),
-        cmd("TV", "turnOff"), cmd("Path lights", "turnOff"), cmd("Bedroom blinds", "setPosition", {{"position", "0"}}),
-        cmd("Front door", "lock"), cmd("Garden gate", "lock"),
-        cmd("Bedroom heating", "setTargetTemp", {{"temperature", "18"}})}, false});
 }
 
 void SmartHomeCenterWindow::ShowAbout() {

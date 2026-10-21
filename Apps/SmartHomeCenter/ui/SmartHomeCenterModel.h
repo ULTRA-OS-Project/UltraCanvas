@@ -74,8 +74,9 @@ struct HomeSummary {
 
 HomeSummary SummarizeHome(const std::vector<DeviceView>& devices);
 
-// Rooms in a stable order: the order devices name them in, rooms with no
-// name last as "Not in a room".
+// The rooms devices are in, in the home's order (SmartHomeAPI::GetRooms),
+// devices in no room last as "Not in a room". Rooms with no device are left
+// out.
 std::vector<std::string> RoomsOf(const std::vector<DeviceView>& devices);
 extern const char* const kNoRoom;
 

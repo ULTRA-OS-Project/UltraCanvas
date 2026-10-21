@@ -728,6 +728,9 @@ option(BUILD_SMARTHOME_CENTER "Build the SmartHome Center application" ON)
 if(BUILD_SMARTHOME_CENTER AND BUILD_SMARTHOME)
     message(STATUS "")
     message(STATUS "── Building SmartHome Center ──")
+    if(BUILD_TESTS OR ULTRACANVAS_BUILD_SMARTHOME_TESTS)
+        enable_testing()   # SmartHomeCenterCliTest; must be the top-level call
+    endif()
     add_subdirectory(Apps/SmartHomeCenter)
 endif()
 

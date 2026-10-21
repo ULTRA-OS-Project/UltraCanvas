@@ -707,6 +707,7 @@ void SmartHomeManager::ProcessCommandQueue() {
     while (!commandQueue.empty()) {
         PendingCommand pending = commandQueue.front();
         commandQueue.pop();
+        ++commandsRunning;
         lock.unlock();
         
         bool success = ExecuteCommand(pending.Command);
@@ -716,7 +717,15 @@ void SmartHomeManager::ProcessCommandQueue() {
         }
         
         lock.lock();
+        --commandsRunning;
     }
+    commandsIdle.notify_all();
+}
+
+bool SmartHomeManager::WaitForCommands(int timeoutMs) {
+    std::unique_lock<std::mutex> lock(commandMutex);
+    return commandsIdle.wait_for(lock, std::chrono::milliseconds(timeoutMs),
+                                 [this] { return commandQueue.empty() && commandsRunning == 0; });
 }
 
 int SmartHomeManager::GetPendingCommandCount() const {
@@ -1733,6 +1742,7 @@ bool SmartHomeAPI::IsPairing() const { return SmartHomeManager::Instance().IsPai
 bool SmartHomeAPI::CommissionDevice(const std::string& setupCode) { return SmartHomeManager::Instance().CommissionDevice(setupCode); }
 
 bool SmartHomeAPI::SendCommand(const SmartHomeCommand& command) { return SmartHomeManager::Instance().QueueCommand(command); }
+bool SmartHomeAPI::WaitForCommands(int timeoutMs) { return SmartHomeManager::Instance().WaitForCommands(timeoutMs); }
 
 bool SmartHomeAPI::SetLightState(const std::string& deviceId, const SmartHomeLightState& state) {
     SmartHomeCommand cmd;

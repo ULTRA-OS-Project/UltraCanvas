@@ -12,3 +12,6 @@
     by id; a version-1 store's room names become rooms the first time it
     opens. Rooms and choices made before the store opened are saved to it.
   - `SmartHomeHomeModelTest` covers it, with and without the store.
+- **SmartHome: `SmartHomeAPI::WaitForCommands(timeoutMs)`** waits until every
+  command queued so far has been sent - for a command-line tool that exits
+  right after a command, and for tests.

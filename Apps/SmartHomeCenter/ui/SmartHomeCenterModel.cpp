@@ -1,5 +1,5 @@
 // Apps/SmartHomeCenter/ui/SmartHomeCenterModel.cpp
-// Version: 0.1.0
+// Version: 0.2.0 - rooms in the home model's order
 // Author: UltraCanvas Framework / ULTRA OS
 #include "SmartHomeCenterModel.h"
 
@@ -300,11 +300,20 @@ HomeSummary SummarizeHome(const std::vector<DeviceView>& devices) {
 }
 
 std::vector<std::string> RoomsOf(const std::vector<DeviceView>& devices) {
-    std::vector<std::string> rooms;
+    // The home's own order (SmartHomeAPI::GetRooms), then any name a device
+    // carries that the home does not know, then the devices in no room.
+    std::vector<std::string> named;
     bool unplaced = false;
     for (const DeviceView& d : devices) {
-        if (d.info.Room.empty()) { unplaced = true; continue; }
-        if (std::find(rooms.begin(), rooms.end(), d.info.Room) == rooms.end()) rooms.push_back(d.info.Room);
+        if (d.info.Room.empty()) unplaced = true;
+        else if (std::find(named.begin(), named.end(), d.info.Room) == named.end()) named.push_back(d.info.Room);
+    }
+    std::vector<std::string> rooms;
+    for (const SmartHomeRoom& room : SmartHomeAPI::Instance().GetRooms()) {
+        if (std::find(named.begin(), named.end(), room.Name) != named.end()) rooms.push_back(room.Name);
+    }
+    for (const std::string& name : named) {
+        if (std::find(rooms.begin(), rooms.end(), name) == rooms.end()) rooms.push_back(name);
     }
     if (unplaced) rooms.push_back(kNoRoom);
     return rooms;

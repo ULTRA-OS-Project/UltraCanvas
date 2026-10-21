@@ -3,11 +3,13 @@
 # and activity, on the SmartHome module. With no radio enabled it opens the
 # module's simulated demo home.
 #
-# One target, the GUI application (with a headless --list mode). It talks to
-# the home through SmartHomeAPI alone (SmartHome/include), so it links the
+# The GUI application, over a small core with no window in it
+# (SmartHomeCenterCore: the model, the demo home, the store path and the
+# command-line actions) that SmartHomeCenterCliTest checks headless. It talks
+# to the home through SmartHomeAPI alone (SmartHome/include), so it links the
 # engine and nothing below it.
 #
-# Version: 0.1.0
+# Version: 0.2.0
 # Author: UltraCanvas Framework / ULTRA OS
 
 if(NOT ULTRACANVAS_LIBRARY)
@@ -19,10 +21,21 @@ if(NOT TARGET SmartHome)
     return()
 endif()
 
-add_executable(SmartHomeCenter
-    main.cpp
+# What the window and the command line share, with no UI types.
+add_library(SmartHomeCenterCore STATIC
+    ui/SmartHomeCenterCli.cpp
+    ui/SmartHomeCenterDemo.cpp
     ui/SmartHomeCenterModel.cpp
     ui/SmartHomeCenterPaths.cpp
+)
+target_include_directories(SmartHomeCenterCore PUBLIC
+    ${ULTRACANVAS_INCLUDE_DIRS}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+target_link_libraries(SmartHomeCenterCore PUBLIC SmartHome ${ULTRACANVAS_LIBRARY})
+target_compile_features(SmartHomeCenterCore PUBLIC cxx_std_20)
+
+add_executable(SmartHomeCenter
+    main.cpp
     ui/SmartHomeCenterWindow.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h): it owns the radios.
@@ -38,7 +51,7 @@ target_include_directories(SmartHomeCenter PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 
 # Module before the core on the link line: GNU ld resolves left to right.
-target_link_libraries(SmartHomeCenter PRIVATE SmartHome ${ULTRACANVAS_LIBRARY})
+target_link_libraries(SmartHomeCenter PRIVATE SmartHomeCenterCore SmartHome ${ULTRACANVAS_LIBRARY})
 if(TARGET fmt::fmt)
     target_link_libraries(SmartHomeCenter PRIVATE fmt::fmt)
 endif()
@@ -63,6 +76,16 @@ target_compile_definitions(SmartHomeCenter PRIVATE
     UCAPP_ICON_PATH="media/appicon/SmartHomeCenter.png")
 ultracanvas_embed_app_icon(SmartHomeCenter
     "${CMAKE_SOURCE_DIR}/media/appicon/SmartHomeCenter.png")
+
+# The command line on the demo home, with no display: --list, --set,
+# --scene, --history and --log through the functions main() calls.
+if(BUILD_TESTS OR ULTRACANVAS_BUILD_SMARTHOME_TESTS)
+    add_executable(SmartHomeCenterCliTest tests/SmartHomeCenterCliTest.cpp)
+    target_link_libraries(SmartHomeCenterCliTest PRIVATE SmartHomeCenterCore)
+    target_include_directories(SmartHomeCenterCliTest PRIVATE
+        ${CMAKE_SOURCE_DIR}/SmartHome/protocols/Simulated)
+    add_test(NAME SmartHomeCenterCli COMMAND SmartHomeCenterCliTest)
+endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     install(TARGETS SmartHomeCenter RUNTIME DESTINATION bin)

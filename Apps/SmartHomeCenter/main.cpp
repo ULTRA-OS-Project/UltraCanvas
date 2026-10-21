@@ -6,12 +6,15 @@
 // opens the simulated demo home instead and says so. --demo asks for the
 // demo home outright.
 //
-// Two ways in. Without --list it opens the window. With --list it starts the
-// home, prints it room by room and exits - usable over ssh and checkable in
-// CI. One window per user: a second start brings the first one forward.
-// Version: 0.1.0
+// Two ways in. With an action (--list, --set, --scene, --history, --log) it
+// starts the home, does that and exits - usable over ssh, scriptable, and
+// checked in CI by SmartHomeCenterCliTest through the same functions
+// (ui/SmartHomeCenterCli.h). Otherwise it opens the window. One window per
+// user: a second start brings the first one forward.
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
+#include "ui/SmartHomeCenterCli.h"
 #include "ui/SmartHomeCenterModel.h"
 #include "ui/SmartHomeCenterPaths.h"
 #include "ui/SmartHomeCenterWindow.h"
@@ -58,7 +61,19 @@ void PrintUsage(const char* programName) {
         "\n"
         "  (no options)        Open the SmartHome Center window\n"
         "  --demo              Use the simulated demo home even if a radio is available\n"
-        "  --list              Start the home, print it room by room and exit\n"
+        "\n"
+        "Actions (no window; each starts the home, does one thing and exits):\n"
+        "  --list [--csv]      Print the home room by room\n"
+        "  --set <device> <attribute>=<value>\n"
+        "                      Set a device, by name or id. Attributes: on, brightness (0-100),\n"
+        "                      colorTemp (K), target (°C), mode (heat/cool/auto/off),\n"
+        "                      locked, position (0-100)\n"
+        "  --scene <name|id>   Run a scene\n"
+        "  --history <device> [--since 24h] [--csv]\n"
+        "                      Print a device's recorded readings\n"
+        "  --log [--since 1h]  Print the event log\n"
+        "\n"
+        "Window options:\n"
         "  --page <name>       Open on a page: home, devices, energy or activity\n"
         "  --select <device>   Open with a device selected, by its name\n"
         "  --trigger <device>  Demo home: set a sensor off as the window opens\n"
@@ -66,26 +81,6 @@ void PrintUsage(const char* programName) {
         "  -v, --version       Show version information\n"
         "  -h, --help          Show this message\n",
         programName);
-}
-
-// Starts the module and its radios. Returns true when the home is the
-// simulated one.
-bool StartHome(bool forceDemo) {
-    auto& api = SmartHomeAPI::Instance();
-    api.Initialize();
-    bool anyRadio = false;
-    if (!forceDemo) {
-        for (SmartHomeProtocolType type : {SmartHomeProtocolType::Matter, SmartHomeProtocolType::Thread,
-                                           SmartHomeProtocolType::Zigbee, SmartHomeProtocolType::ZWave,
-                                           SmartHomeProtocolType::KNX}) {
-            // Only backends this build carries have a factory; EnableProtocol
-            // refuses the rest, and a carried one with no hardware fails too.
-            if (api.EnableProtocol(type)) anyRadio = true;
-        }
-    }
-    if (anyRadio) return false;
-    api.EnableProtocol(SmartHomeProtocolType::Simulated);
-    return true;
 }
 
 bool ParsePage(const std::string& text, SmartHomeCenter::Page& page) {
@@ -100,11 +95,29 @@ bool ParsePage(const std::string& text, SmartHomeCenter::Page& page) {
 } // namespace
 
 int main(int argc, char* argv[]) {
-    bool list = false;
+    enum class Action { Window, List, Set, Scene, History, Log };
+    Action action = Action::Window;
     bool demo = false;
+    bool csv = false;
+    std::string since;
+    std::vector<std::string> actionArgs;   // the device, the assignment, the scene
     SmartHomeCenter::Page page = SmartHomeCenter::Page::Home;
     std::string select;
     std::vector<std::string> triggers;
+
+    auto takeAction = [&](Action a, int args, int& i, const char* what) {
+        if (action != Action::Window) {
+            std::fprintf(stderr, "Give one action at a time\n");
+            return false;
+        }
+        if (i + args >= argc) {
+            std::fprintf(stderr, "%s\n", what);
+            return false;
+        }
+        action = a;
+        for (int k = 0; k < args; ++k) actionArgs.push_back(argv[++i]);
+        return true;
+    };
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -116,38 +129,73 @@ int main(int argc, char* argv[]) {
                         SMARTHOMECENTER_VERSION, UltraCanvas::versionString);
             return EXIT_SUCCESS;
         } else if (arg == "--list") {
-            list = true;
+            if (!takeAction(Action::List, 0, i, "")) return EXIT_FAILURE;
+        } else if (arg == "--set") {
+            if (!takeAction(Action::Set, 2, i, "--set needs a device and <attribute>=<value>")) return EXIT_FAILURE;
+        } else if (arg == "--scene") {
+            if (!takeAction(Action::Scene, 1, i, "--scene needs a scene name or id")) return EXIT_FAILURE;
+        } else if (arg == "--history") {
+            if (!takeAction(Action::History, 1, i, "--history needs a device")) return EXIT_FAILURE;
+        } else if (arg == "--log") {
+            if (!takeAction(Action::Log, 0, i, "")) return EXIT_FAILURE;
+        } else if (arg == "--csv") {
+            csv = true;
+        } else if (arg == "--since") {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "--since needs a duration, such as 30m, 24h or 7d\n");
+                return EXIT_FAILURE;
+            }
+            since = argv[++i];
         } else if (arg == "--demo") {
             demo = true;
         } else if (arg == "--page") {
             if (i + 1 >= argc || !ParsePage(argv[++i], page)) {
-                std::printf("--page needs one of: home, devices, energy, activity\n");
+                std::fprintf(stderr, "--page needs one of: home, devices, energy, activity\n");
                 return EXIT_FAILURE;
             }
         } else if (arg == "--select") {
             if (i + 1 >= argc) {
-                std::printf("--select needs a device name\n");
+                std::fprintf(stderr, "--select needs a device name\n");
                 return EXIT_FAILURE;
             }
             select = argv[++i];
         } else if (arg == "--trigger") {
             if (i + 1 >= argc) {
-                std::printf("--trigger needs a device name\n");
+                std::fprintf(stderr, "--trigger needs a device name\n");
                 return EXIT_FAILURE;
             }
             triggers.push_back(argv[++i]);
         } else {
-            std::printf("Unknown argument: %s\nUse --help for usage.\n", arg.c_str());
+            std::fprintf(stderr, "Unknown argument: %s\nUse --help for usage.\n", arg.c_str());
             return EXIT_FAILURE;
         }
     }
 
-    if (list) {
-        const bool simulated = StartHome(demo);
-        if (simulated) std::printf("Demo home - simulated devices, no radio\n");
-        std::fputs(SmartHomeCenter::FormatHomeText(SmartHomeCenter::DescribeHome()).c_str(), stdout);
+    if (action != Action::Window) {
+        int64_t sinceSeconds = action == Action::History ? 86400 : 3600;
+        if (!since.empty() && !SmartHomeCenter::ParseDuration(since, sinceSeconds)) {
+            std::fprintf(stderr, "--since needs a duration, such as 30m, 24h or 7d\n");
+            return EXIT_FAILURE;
+        }
+        const bool simulated = SmartHomeCenter::StartHome(demo);
+        std::string storeError;
+        // The list needs no store; the others read or write the home's own.
+        if (action != Action::List && !SmartHomeCenter::OpenHome(simulated, "", &storeError))
+            std::fprintf(stderr, "SmartHome store not opened: %s\n", storeError.c_str());
+        if (simulated) std::fprintf(stderr, "Demo home - simulated devices, no radio\n");
+        SmartHomeCenter::CliResult result;
+        switch (action) {
+            case Action::List: result = SmartHomeCenter::ListHome(csv); break;
+            case Action::Set: result = SmartHomeCenter::SetAttribute(actionArgs[0], actionArgs[1]); break;
+            case Action::Scene: result = SmartHomeCenter::RunScene(actionArgs[0]); break;
+            case Action::History: result = SmartHomeCenter::ShowHistory(actionArgs[0], sinceSeconds, csv); break;
+            case Action::Log: result = SmartHomeCenter::ShowLog(sinceSeconds); break;
+            case Action::Window: break;
+        }
+        std::fputs(result.out.c_str(), stdout);
+        std::fputs(result.err.c_str(), stderr);
         SmartHomeAPI::Instance().Shutdown();
-        return EXIT_SUCCESS;
+        return result.exitCode;
     }
 
     // Only the window claims the one copy per user: it owns the radios.
@@ -176,14 +224,13 @@ int main(int argc, char* argv[]) {
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/SmartHomeCenter.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
-        const bool simulated = StartHome(demo);
-        // The home's own database: scenes, automations, names and rooms,
-        // the log and the history. Without one the window still works; it
-        // just forgets on exit, and says so in the log.
-        const std::string storePath = SmartHomeCenter::DefaultStorePath(simulated);
-        if (storePath.empty() || !SmartHomeAPI::Instance().OpenStore(storePath)) {
-            debugOutput << "SmartHome store not opened: " << SmartHomeAPI::Instance().GetStoreError() << std::endl;
-        }
+        const bool simulated = SmartHomeCenter::StartHome(demo);
+        // The home's own database: rooms, scenes, automations, names, the
+        // log and the history. Without one the window still works; it just
+        // forgets on exit, and says so in the log.
+        std::string storeError;
+        if (!SmartHomeCenter::OpenHome(simulated, "", &storeError))
+            debugOutput << "SmartHome store not opened: " << storeError << std::endl;
         {
             SmartHomeCenter::SmartHomeCenterWindow window;
             if (!window.Initialize(simulated)) {

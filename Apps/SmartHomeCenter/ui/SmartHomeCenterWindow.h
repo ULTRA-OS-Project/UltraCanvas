@@ -111,8 +111,6 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildScenesRow();
     Stat MakeStat(const std::string& id, const std::string& caption, const std::string& icon);
     Tile MakeTile(const DeviceView& view);
-    void CreateDemoScenes();
-    void CreateDemoAutomations();
 
     // ===== DATA FLOW =====
     void ConnectApi();

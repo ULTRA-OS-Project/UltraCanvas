@@ -101,6 +101,7 @@ public:
     bool QueueCommand(const SmartHomeCommand& command, 
                       std::function<void(bool success)> callback = nullptr);
     void ProcessCommandQueue();
+    bool WaitForCommands(int timeoutMs);
     int GetPendingCommandCount() const;
     
     // ===== SCENE MANAGEMENT =====
@@ -252,6 +253,8 @@ private:
     std::queue<PendingCommand> commandQueue;
     mutable std::mutex commandMutex;
     std::condition_variable commandCondition;
+    std::condition_variable commandsIdle;      // the queue ran dry
+    int commandsRunning = 0;                    // under commandMutex
     
     // Scenes and automations
     std::map<std::string, SmartHomeScene> scenes;
