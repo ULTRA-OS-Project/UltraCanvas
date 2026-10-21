@@ -797,7 +797,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `NotificationActivatorClassId`) as a `NotificationActivation` (the action,
   the notification's id and its `launch` string). `RemoveNotificationRegistrations()`
   and the installer's uninstaller remove every identity listed under
-  `HKCU\Software\UltraCanvas\Notifications`; the argument format is shared,
+  `HKCU\Software\UltraCanvas\Notifications` (`ListNotificationRegistrations()`
+  lists them; UOS-Settings > Notifications > Registrations, its
+  `--remove-notification-registrations` and the ZIP's
+  `uc-remove-registrations.cmd` remove them where there is no uninstaller);
+  `scripts/check_notification_activators.py` (CI) reports an application that
+  posts a notification without registering an activator; the argument format is shared,
   header-only (`FormatNotificationArguments` / `ParseNotificationArguments`).
   No-ops elsewhere. See `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`.
 

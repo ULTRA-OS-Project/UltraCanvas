@@ -432,6 +432,36 @@ anywhere on the bus; a replacement updates it. The ULTRA OS desktop hosts one
 own notification server every notification carries `displayed` and the host
 draws nothing.
 
+### 3.9 Posting a notification from an application
+
+What an application gives a `system.notification` it wants on screen, and the
+one call that makes its clicks reach it however the notification was shown:
+
+```cpp
+// Once, at the start (UltraCanvasNotificationActivation.h): on Windows, a click
+// on the toast after the broker host quit - or with the application closed,
+// which Windows then starts - comes here, on the UI thread. Elsewhere a no-op.
+UltraCanvas::RegisterNotificationActivator("org.example.myapp",
+    [](const UltraCanvas::NotificationActivation& click) { Open(click.launch); });
+
+// Each notification.
+UltraMessage::SystemNotification n;
+n.appId   = "org.example.myapp";   // the AppUserModelID its Windows toast shows under
+n.appName = "MyApp";               // what Windows heads the toast with
+n.icon    = iconPngPath;           // its logo
+n.summary = "Export finished";
+n.actions = {{"default", "Open"}};
+n.launch  = UltraCanvas::EncodeNotificationQuery({{"file", exportedPath}});   // what the click opens
+UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSystemNotification(n));
+```
+
+While the broker runs, the click also comes back over the bus as
+`system.notification.action`; an application that acts on both opens the
+thing once. `scripts/check_notification_activators.py` (CI) reports an
+application under `Apps/` that posts a notification without registering an
+activator; sample traffic posted `Silent` says so with
+`// notification-activator-exempt: <why>`.
+
 ## 4. The C++ layer
 
 `UltraMessage::Endpoint` (`Connect`, `Subscribe`, `Post`, `PostRecorded`,

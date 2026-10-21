@@ -92,17 +92,36 @@ installer's uninstaller (`Windows/Installer/UltraCanvasSetup.nsi`) walks the
 list and removes each AppUserModelID key and CLSID key, then the list;
 `RemoveNotificationRegistrations()` does the same from code.
 
+A folder unpacked from the ZIP package has no uninstaller, so the same removal
+is offered three more ways:
+
+- UOS-Settings, *Notifications > Registrations*: the list
+  (`ListNotificationRegistrations()`) and a *Remove all* button;
+- `UOS-Settings --remove-notification-registrations`, with no window;
+- `uc-remove-registrations.cmd`, which `package-win.sh` puts in the ZIP beside
+  the programs and which runs that command - to run before deleting the folder.
+
+An application registers again the next time it starts (its activator) or
+shows a notification (its name and icon), so a removal does no harm to one
+that stays.
+
 ## API
 
 | Function | What it does |
 |---|---|
 | `RegisterNotificationActivator(appId, onActivated)` | Windows: writes the activator's registration and serves it; `onActivated` runs on the UI thread. False when nothing could be registered, and always elsewhere. |
-| `RemoveNotificationRegistrations()` | Windows: removes every identity the list names, and the list. |
+| `ListNotificationRegistrations()` | Windows: every identity the list names - `appId` and `activatorClassId` ("" when none registered one) - sorted by ID. Empty elsewhere. |
+| `RemoveNotificationRegistrations()` | Windows: removes every identity the list names, and the list; returns how many. 0 elsewhere. |
 | `NotificationActivation` | `notificationId`, `actionId`, `launch`. |
 | `FormatNotificationArguments(activation)` / `ParseNotificationArguments(arguments)` | A toast's activation arguments and back; arguments in no form of these are a click on the toast itself. |
 | `EncodeNotificationQuery(fields)` / `DecodeNotificationQuery(query)` | `key=value&...`, percent-encoded. |
 | `NotificationActivatorClassId(appId)` | The activator's CLSID, `{XXXXXXXX-XXXX-5XXX-...}`. |
 | `IsNotificationActivationArgument(argument)` | `-ToastActivated`, `-Embedding`, `/Embedding`. |
+
+Every application under `Apps/` that posts a notification registers its
+activator, or says why not (`// notification-activator-exempt: <why>`):
+`scripts/check_notification_activators.py`, run by CI
+(`notification-activators.yml`).
 
 Tested in `Tests/UltraMessage/test_adapters.cpp` (the arguments, the CLSID, the
 toast XML carrying them) and UltraMail's `test_newmail.cpp` (its launch string).

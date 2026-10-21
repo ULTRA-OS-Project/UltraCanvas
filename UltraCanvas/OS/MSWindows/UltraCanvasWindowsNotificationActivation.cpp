@@ -17,6 +17,7 @@
 // the click itself is handed to the UI thread (PostToUIThread).
 // INotificationActivationCallback is declared here from its documented ABI,
 // so no Windows SDK header newer than the toolchain's is needed.
+// Version: 1.1.0 - ListNotificationRegistrations; the removal works from it
 // Version: 1.0.0
 // Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
@@ -36,6 +37,7 @@
 #include "../../include/UltraCanvasPathUtf8.h"
 #include "UltraCanvasDebug.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -275,10 +277,10 @@ bool RegisterNotificationActivator(const std::string& appId,
     return true;
 }
 
-void RemoveNotificationRegistrations() {
+std::vector<NotificationRegistration> ListNotificationRegistrations() {
+    std::vector<NotificationRegistration> listed;
     HKEY index = nullptr;
-    if (RegOpenKeyExW(HKEY_CURRENT_USER, kIndexKey, 0, KEY_READ, &index) != ERROR_SUCCESS) return;
-    std::vector<std::pair<std::wstring, std::wstring>> listed;   // AppUserModelID, CLSID
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, kIndexKey, 0, KEY_READ, &index) != ERROR_SUCCESS) return listed;
     for (DWORD i = 0;; ++i) {
         wchar_t name[512];
         DWORD nameLength = 512;
@@ -288,18 +290,31 @@ void RemoveNotificationRegistrations() {
         const LONG result = RegEnumValueW(index, i, name, &nameLength, nullptr, &type,
                                           reinterpret_cast<BYTE*>(data), &dataBytes);
         if (result == ERROR_NO_MORE_ITEMS) break;
-        if (result != ERROR_SUCCESS) continue;
-        std::wstring classId;
-        if (type == REG_SZ && dataBytes >= sizeof(wchar_t))
-            classId.assign(data, dataBytes / sizeof(wchar_t) - (data[dataBytes / sizeof(wchar_t) - 1] ? 0 : 1));
-        listed.emplace_back(std::wstring(name, nameLength), classId);
+        if (result != ERROR_SUCCESS || nameLength == 0) continue;
+        NotificationRegistration registration;
+        registration.appId = PathUtf8Detail::Utf16ToUtf8(std::wstring(name, nameLength));
+        if (type == REG_SZ && dataBytes >= sizeof(wchar_t)) {
+            size_t length = dataBytes / sizeof(wchar_t);
+            while (length > 0 && data[length - 1] == L'\0') --length;
+            registration.activatorClassId = PathUtf8Detail::Utf16ToUtf8(std::wstring(data, length));
+        }
+        listed.push_back(std::move(registration));
     }
     RegCloseKey(index);
-    for (const auto& [appUserModelId, classId] : listed) {
-        if (!appUserModelId.empty()) DeleteTree(std::wstring(kAppUserModelIdKey) + appUserModelId);
-        if (!classId.empty()) DeleteTree(std::wstring(kClassKey) + classId);
+    std::sort(listed.begin(), listed.end(),
+              [](const NotificationRegistration& a, const NotificationRegistration& b) { return a.appId < b.appId; });
+    return listed;
+}
+
+size_t RemoveNotificationRegistrations() {
+    const std::vector<NotificationRegistration> listed = ListNotificationRegistrations();
+    for (const NotificationRegistration& registration : listed) {
+        DeleteTree(std::wstring(kAppUserModelIdKey) + Wide(registration.appId));
+        if (!registration.activatorClassId.empty())
+            DeleteTree(std::wstring(kClassKey) + Wide(registration.activatorClassId));
     }
     DeleteTree(kIndexKey);
+    return listed.size();
 }
 
 } // namespace UltraCanvas
