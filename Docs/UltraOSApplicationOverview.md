@@ -170,7 +170,7 @@ edits word-processing documents.
 
 **Built on:** TextArea, RichTextEdit, TabbedContainer, PDFView, FileLoader.
 **Version:** 1.67 (2026-10-14).
-**Notes:** there is no README yet; `Docs/Texter` holds only the changelog.
+**Docs:** [Apps/Texter/README.md](../Apps/Texter/README.md).
 
 ### UltraFiler
 

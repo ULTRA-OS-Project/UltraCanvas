@@ -10,7 +10,7 @@ This app versions itself: [`Docs/EmailCleaner/CHANGELOG.md`](../../Docs/EmailCle
 
 Full concept: [`Docs/EmailCleaner/Concept.md`](../../Docs/EmailCleaner/Concept.md).
 
-> **Status (Phase 1):** the headless **analysis engine** is implemented and
+> **Status (Phase 3):** the headless **analysis engine** is implemented and
 > tested — the shared text pipeline, the keyword rule set and its file format,
 > the classifier, the analysis store on **UltraDatabase**, the ingest over real
 > RFC 5322 messages, and the analytics that shape the store's aggregates into
@@ -19,9 +19,13 @@ Full concept: [`Docs/EmailCleaner/Concept.md`](../../Docs/EmailCleaner/Concept.m
 > domain, sized by messages / bytes / attachments / unwanted count), the
 > **timetable** (weekday x hour heatmap plus traffic over calendar time) and the
 > **messages** detail (summary, keyword evidence, attachment types, the message
-> list). Still to come: acting on what the map shows — unsubscribe, delete and
-> block from the selected block, and a rule editor in the UI rather than a
-> text file.
+> list). The selected block can be acted on — **Block sender**, **Unsubscribe**
+> and **Move to Trash**, planned on screen and confirmed before anything runs —
+> and corrected: *This is fine* / *This is spam* for an address or a whole
+> domain, and **Rules…**, the rule file edited in a dialog. Attachments open on
+> demand, except executable, script and macro-bearing ones, which are never
+> opened or copied. Not built: learning keyword rules from corrections, and
+> scanning attachment contents (see *What Phase 3 leaves out* in the concept).
 
 ## Where the mail comes from: UltraMail, or EmailCleaner's own accounts
 
