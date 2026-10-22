@@ -16,3 +16,8 @@
   refused only once clicked. They are now greyed out in both menus
   (`CanRenameHere` / `CanDeleteHere`); F2 and Del still say why. UltraFiler
   wires both, so its menus do not change.
+- **UltraCanvasFilerWidget: the hover icon menu's Copy and Cut buttons show
+  that they worked.** A copy changed nothing on screen, so a press looked
+  like it had missed. The pressed button now flashes green
+  (`FilerStyle::iconMenuDoneColor`) with a checkmark that pops in, then fades
+  back to its glyph within 0.7 s; only the button is repainted.

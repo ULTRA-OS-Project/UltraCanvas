@@ -6,3 +6,5 @@
 - **Cut on a hovered file is greyed out on a drive**, as it is in the
   right-click menu: the hover button had started a cut there that could not
   be completed.
+- **Copy and Cut on a hovered file flash a green checkmark** once the files
+  are on the clipboard, so a press visibly landed.

@@ -2462,6 +2462,7 @@ namespace UltraCanvas {
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
         CancelPendingRename();      // the timer callback captures `this`
         StopListingPendingTicks();  // so does this one
+        StopIconMenuFeedback();     // and this one
         // Detach the rename editor now: its callbacks capture `this`, and the
         // container teardown dropping its focus must not commit into a
         // half-destroyed widget.
@@ -2536,6 +2537,7 @@ namespace UltraCanvas {
         // callbacks capture `this` and could start a worker again.
         CancelPendingRename();
         StopListingPendingTicks();
+        StopIconMenuFeedback();
         StopFolderWatchTimer();
         thumbAlive->store(false);   // results still in flight redraw nothing
         {
@@ -13570,15 +13572,98 @@ namespace UltraCanvas {
         int y = item.rect.y + 2;
         for (IconMenuAction a : actions) {
             Rect2Di button(x, y, sz, sz);
-            ctx->SetFillPaint(style.iconMenuBackground);
-            ctx->FillRoundedRectangle(Rect2Dd(button), 4);
-            DrawIconMenuGlyph(ctx, a, button, IconMenuActionEnabled(a));
+            const double phase = IconMenuFeedbackPhase(a, item.entryIndex);
+            if (phase < 0) {
+                ctx->SetFillPaint(style.iconMenuBackground);
+                ctx->FillRoundedRectangle(Rect2Dd(button), 4);
+                DrawIconMenuGlyph(ctx, a, button, IconMenuActionEnabled(a));
+            } else {
+                // The done colour holds for the first 60 %, then blends back.
+                const double k = phase < 0.6 ? 1.0 : 1.0 - (phase - 0.6) / 0.4;
+                auto mix = [k](uint8_t from, uint8_t to) {
+                    return static_cast<uint8_t>(from + (to - from) * k + 0.5);
+                };
+                const Color& b0 = style.iconMenuBackground;
+                const Color& b1 = style.iconMenuDoneColor;
+                ctx->SetFillPaint(Color(mix(b0.r, b1.r), mix(b0.g, b1.g),
+                                        mix(b0.b, b1.b), mix(b0.a, b1.a)));
+                ctx->FillRoundedRectangle(Rect2Dd(button), 4);
+                if (phase < 0.75) {
+                    // A checkmark that pops: up to 1.3x over the first 30 %,
+                    // settling back to its size.
+                    const double pop = 1.0 + 0.3 * std::sin(
+                            3.14159265358979 * std::min(1.0, phase / 0.3));
+                    const double cx = button.x + button.width / 2.0;
+                    const double cy = button.y + button.height / 2.0;
+                    const double r = button.width * 0.26 * pop;
+                    ctx->SetStrokePaint(style.iconMenuGlyphColor);
+                    ctx->SetStrokeWidth(1.8f);
+                    ctx->DrawLine(Point2Dd(cx - r, cy), Point2Dd(cx - r * 0.3, cy + r * 0.7));
+                    ctx->DrawLine(Point2Dd(cx - r * 0.3, cy + r * 0.7),
+                                  Point2Dd(cx + r, cy - r * 0.7));
+                } else {
+                    DrawIconMenuGlyph(ctx, a, button, IconMenuActionEnabled(a));
+                }
+            }
             // A greyed button keeps its hit rect, so pressing it is swallowed
             // rather than falling through to the item, and its tooltip can
             // say why it is off.
             iconMenuHits.push_back({button, item.entryIndex, a});
             x += sz + gap;
         }
+    }
+
+    // ===== HOVER ICON-MENU FEEDBACK =====
+    // Copy and Cut change nothing on screen (a cut ghosts the entries, but a
+    // copy shows nothing at all), so the pressed button answers instead: it
+    // flashes the done colour with a checkmark and fades back to its glyph.
+    namespace { constexpr int kIconMenuFeedbackMs = 700; }
+
+    void UltraCanvasFilerWidget::StartIconMenuFeedback(IconMenuAction action,
+                                                       size_t entryIndex,
+                                                       const Rect2Di& button) {
+        if (entryIndex >= entries.size()) return;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        StopIconMenuFeedback();
+        iconFeedbackAction = static_cast<int>(action);
+        iconFeedbackPath   = entries[entryIndex].path;
+        iconFeedbackRect   = button;
+        iconFeedbackStart  = std::chrono::steady_clock::now();
+        // 30 ms ticks repaint only the button (its rect is in content
+        // coordinates, like every icon-menu hit rect).
+        iconFeedbackTimer = app->StartTimer(30, true, [this](TimerId) {
+            const Rect2Df dirty(static_cast<float>(iconFeedbackRect.x - scrollOffsetX),
+                                static_cast<float>(iconFeedbackRect.y - scrollOffsetY),
+                                static_cast<float>(iconFeedbackRect.width),
+                                static_cast<float>(iconFeedbackRect.height));
+            if (std::chrono::steady_clock::now() - iconFeedbackStart >=
+                std::chrono::milliseconds(kIconMenuFeedbackMs)) {
+                StopIconMenuFeedback();
+            }
+            InvalidateRect(dirty);
+        });
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::StopIconMenuFeedback() {
+        iconFeedbackAction = -1;
+        iconFeedbackPath.clear();
+        if (iconFeedbackTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(iconFeedbackTimer);
+        iconFeedbackTimer = InvalidTimerId;
+    }
+
+    double UltraCanvasFilerWidget::IconMenuFeedbackPhase(IconMenuAction action,
+                                                         size_t entryIndex) const {
+        if (iconFeedbackAction != static_cast<int>(action) ||
+            entryIndex >= entries.size() ||
+            entries[entryIndex].path != iconFeedbackPath) return -1.0;
+        const double ms = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - iconFeedbackStart).count();
+        if (ms >= kIconMenuFeedbackMs) return -1.0;
+        return ms / kIconMenuFeedbackMs;
     }
 
     bool UltraCanvasFilerWidget::IconMenuActionEnabled(IconMenuAction action) const {
@@ -16163,9 +16248,17 @@ namespace UltraCanvas {
                         std::vector<FilerEntry> targets = SelectionOrEntry(entryIdx);
                         switch (static_cast<IconMenuAction>(action)) {
                             case IconMenuAction::Copy:
-                                EntriesToClipboard(targets, false); break;
-                            case IconMenuAction::Cut:
-                                EntriesToClipboard(targets, true); break;
+                            case IconMenuAction::Cut: {
+                                const auto a = static_cast<IconMenuAction>(action);
+                                EntriesToClipboard(targets, a == IconMenuAction::Cut);
+                                for (const IconMenuHit& h : iconMenuHits) {
+                                    if (h.entryIndex == entryIdx && h.action == a) {
+                                        StartIconMenuFeedback(a, entryIdx, h.rect);
+                                        break;
+                                    }
+                                }
+                                break;
+                            }
                             case IconMenuAction::Rename:
                                 StartRename(entryIdx); break;
                             case IconMenuAction::Delete:

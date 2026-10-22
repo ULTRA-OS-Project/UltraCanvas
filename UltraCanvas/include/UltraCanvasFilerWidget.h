@@ -103,7 +103,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
-// Version: 1.41.1 - the hover icon menu's Cut is greyed out and inert on a
+// Version: 1.41.1 - the hover icon menu's Copy / Cut buttons flash green with
+//                  a checkmark once done (FilerStyle::iconMenuDoneColor);
+//                  its Cut is greyed out and inert on a
 //                  drive, matching the context menu (IconMenuActionEnabled);
 //                  both menus grey Rename / Delete on a drive whose host did
 //                  not wire remoteRename / remoteDelete (CanRenameHere,
@@ -581,6 +583,9 @@ namespace UltraCanvas {
         Color loadingBarColor      = Color(37, 99, 235, 255);
         Color iconMenuBackground   = Color(50, 50, 56, 205);
         Color iconMenuGlyphColor   = Color(255, 255, 255, 235);
+        // The hover icon menu's Copy / Cut button flashes this colour, with a
+        // checkmark in place of its glyph, once the files are on the clipboard.
+        Color iconMenuDoneColor    = Color(22, 163, 74, 235);
         Color renameFieldColor     = Color(255, 255, 255, 255);
         Color renameBorderColor    = Color(60, 140, 220, 255);
         // Text (and caret) of the inline rename editor. A dark gray rather
@@ -2095,6 +2100,21 @@ namespace UltraCanvas {
             IconMenuAction action;
         };
         std::vector<IconMenuHit> iconMenuHits;
+
+        // "Done" feedback on a hover icon-menu button: Copy / Cut flash the
+        // done colour and show a checkmark that pops in, then fade back to the
+        // glyph (kIconMenuFeedbackMs). Keyed by the entry's path, so a rescan
+        // reordering the entries cannot move it onto another file.
+        int iconFeedbackAction = -1;
+        std::string iconFeedbackPath;
+        Rect2Di iconFeedbackRect;
+        std::chrono::steady_clock::time_point iconFeedbackStart{};
+        TimerId iconFeedbackTimer = InvalidTimerId;
+        void StartIconMenuFeedback(IconMenuAction action, size_t entryIndex,
+                                   const Rect2Di& button);
+        void StopIconMenuFeedback();
+        // 0..1 through the running feedback for this button, or -1 when none.
+        double IconMenuFeedbackPhase(IconMenuAction action, size_t entryIndex) const;
 
         // Inline rename editor: a real UltraCanvasTextInput added as a child
         // while a rename runs, overlaid on the item's name, so editing has a
