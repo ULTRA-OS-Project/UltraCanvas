@@ -1,6 +1,7 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
-// Version: 0.10.1 - the bin notes wrap to their width; a style hint shows its whole text on hover
+// Version: 0.11.0 - a tile's press arms the file drag as a button's arms the others: one filter, one cancel for all four
+// Version: 0.10.1 - the bin notes and the title styles' hints wrap to their width, as tall as their text
 // Version: 0.10.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
 // Version: 0.9.0 - presets on overlay clips, by click or drop; a slider's drag one undo step
 // Version: 0.8.0 - an effect preset dragged from its bin button onto a clip
@@ -154,8 +155,9 @@ bool UltraVideoWindow::Create(const std::vector<std::string>& paths) {
     window->InstallEventFilter("ultravideo-keys", [this](const UCEvent& event) { return OnKey(event); },
                                {UCEventType::KeyDown, UCEventType::Drop});
     // A drag the window carries from the bin to the timeline: a file, an
-    // effect preset or a title style. A button's press arms its drag (the
-    // buttons' onPress below); moving away from the press starts it
+    // effect preset or a title style. A tile's or a button's press arms its
+    // drag (the albums' onItemPressed and the buttons' onPress below);
+    // moving away from the press starts it
     window->InstallEventFilter("ultravideo-drag", [this](const UCEvent& event) {
         if (event.type == UCEventType::MouseDown) { armedAt_ = event.pointerWindow; pointerDown_ = true; return false; }
         if (event.type == UCEventType::MouseUp) pointerDown_ = false;
@@ -367,9 +369,14 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
             const std::vector<size_t>& rows = music ? musicRows_ : binRows_;
             if (row < rows.size() && rows[row] < document_.media.size()) AddMediaToTimeline(document_.media[rows[row]].path);
         };
-        album->onItemDraggedOut = [this, music](size_t row, const Point2Di&) {
+        // A tile's press arms the window's file drag, as a button's press
+        // arms an effect's or a title's; the window lets the album go when
+        // the drag starts (StartDrag), so no reorder follows the press
+        album->onItemPressed = [this, music](size_t row) {
             const std::vector<size_t>& rows = music ? musicRows_ : binRows_;
-            if (row < rows.size() && rows[row] < document_.media.size()) BeginBinDrag(document_.media[rows[row]].path);
+            if (row >= rows.size() || rows[row] >= document_.media.size()) return;
+            const MediaItem& m = document_.media[rows[row]];
+            if (m.error.empty()) ArmDrag(DragKind::File, m.path);   // a file that failed to load has nothing to put on the timeline
         };
     };
     makeAlbum("uv.bin.album", binAlbum_, false);
@@ -401,7 +408,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     titlesNote_ = CreateLabel("uv.bin.titles", 0, 0, 240, 40,
                               "A click puts a title on the title lane at the playhead, or drag one there at a time; trim it and set its text in the inspector.");
     titlesNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
-    titlesNote_->SetWrap(TextWrap::WrapWord);   // the whole sentence, on the lines its width takes
+    WrapToWidth(titlesNote_);
     FollowTheme(titlesNote_, LabelVariant::Muted);
     titlesNote_->layoutItem.SetFlexShrink(0);
     titlesPage->AddChild(titlesNote_);
@@ -418,7 +425,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         titlesPage->AddChild(button);
         auto hint = CreateLabel(std::string("uv.bin.titleHint.") + st.key, 0, 0, 240, 18, st.hint);
         hint->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
-        hint->SetTooltip(st.hint);   // one line, ellipsized where the bin is narrow: the whole of it on hover
+        WrapToWidth(hint);
         hint->layoutItem.SetFlexShrink(0);
         FollowTheme(hint, LabelVariant::Faint);
         titlesPage->AddChild(hint);
@@ -432,7 +439,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 40,
                                "A click puts the effect on the selected clip, or drag it onto a clip; the inspector lists the clip's effects and removes them.");
     effectsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
-    effectsNote_->SetWrap(TextWrap::WrapWord);
+    WrapToWidth(effectsNote_);
     FollowTheme(effectsNote_, LabelVariant::Muted);
     effectsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(effectsNote_);
@@ -1059,10 +1066,12 @@ void UltraVideoWindow::OpenFiles(const std::vector<std::string>& paths) {
     });
 }
 
-void UltraVideoWindow::BeginBinDrag(const std::string& path) {
-    const MediaItem* m = document_.FindMedia(path);
-    if (!m || !m->error.empty()) return;
-    StartDrag(DragKind::File, path);
+// A note of the bin's width and as many lines as its text takes: the
+// label's height follows the wrapped text, so none of it ends in an ellipsis
+void UltraVideoWindow::WrapToWidth(const std::shared_ptr<UltraCanvasLabel>& label) {
+    label->SetWrap(TextWrap::WrapWord);
+    label->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
+    label->size.height = CSSLayout::Dimension::Auto();
 }
 
 void UltraVideoWindow::ArmDrag(DragKind kind, const std::string& key) {
@@ -1084,6 +1093,8 @@ void UltraVideoWindow::StartDrag(DragKind kind, std::string key) {   // by value
     dragKey_ = key;
     dragHover_.clear();
     if (kind == DragKind::File) {
+        binAlbum_->ReleaseDrag();   // the tile's press is the window's drag now, not the album's reorder
+        musicAlbum_->ReleaseDrag();
         const MediaItem* m = document_.FindMedia(key);
         Message(m && m->kind == MediaKind::Audio ? "Drop it on the music lane to make it the music, or on Voice & sound (A2) at a time."
                                                  : "Drop it on the main track at a time, or on the overlay lane to put it over the picture.");

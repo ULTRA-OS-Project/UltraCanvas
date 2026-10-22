@@ -2,6 +2,7 @@
 // Photo / video / music album widget: a self-rendered media grid with selectable
 // layout designs, per-item crop / zoom / stretch fitting, action icons and
 // visitor / user-edit / admin modes. A companion to UltraCanvasSlideshow.
+// Version: 1.11.0 - onItemPressed and ReleaseDrag: an owner carrying a tile's drag itself
 // Version: 1.10.0 - AlbumConfig::FromTheme, ApplyTheme
 // Version: 1.9.0
 // Last Modified: 2026-10-10
@@ -406,8 +407,18 @@ namespace UltraCanvas {
         void ClearSelection();
         bool IsSelected(size_t index) const;
 
+        // The owner carries the pressed tile itself (its drag, armed from
+        // onItemPressed, has started): the press is forgotten, so neither a
+        // reorder nor onItemDraggedOut follows it.
+        void ReleaseDrag();
+
         // ===== EVENTS =====
         std::function<void(size_t)> onItemClicked;        // single click / tap
+        // The left button pressed on a tile, before anything is decided:
+        // an app that carries the tile's drag itself arms it here and,
+        // once its drag starts, calls ReleaseDrag() so the album's own
+        // reorder (edit modes) does not follow the same press.
+        std::function<void(size_t)> onItemPressed;
         std::function<void(size_t)> onLinkClicked;        // subtitle link row clicked
         std::function<void(size_t)> onItemActivated;      // double-click: open / play
         std::function<void(size_t, size_t)> onItemsReordered;  // (from, to) — edit modes

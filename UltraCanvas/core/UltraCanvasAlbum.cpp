@@ -1,6 +1,7 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
+// Version: 1.11.0 - onItemPressed on a tile's press; ReleaseDrag forgets it for an owner carrying the tile
 // Version: 1.10.0 - AlbumConfig::FromTheme
 // Version: 1.9.0
 // Last Modified: 2026-10-10
@@ -1501,6 +1502,17 @@ namespace UltraCanvas {
         onItemDraggedOut(index, windowPos);
     }
 
+    // The owner carries the pressed tile itself (its drag, armed from
+    // onItemPressed, has started): the press is forgotten here, so neither
+    // a reorder nor a hand-over follows it
+    void UltraCanvasAlbum::ReleaseDrag() {
+        if (!dragArmed && !dragging && dragItem < 0) return;
+        dragging = false;
+        dragArmed = false;
+        dragItem = -1;
+        RequestRedraw();
+    }
+
     void UltraCanvasAlbum::FinishDrag() {
         if (dragItem >= 0 && dragItem < static_cast<int>(items.size())) {
             Point2Di cp = ToContentPoint(dragCurrent);
@@ -1864,6 +1876,7 @@ namespace UltraCanvas {
                     dragCurrent = local;
                     // Reordering only in edit / admin modes.
                     dragArmed = (config.mode != AlbumMode::Display);
+                    if (onItemPressed) onItemPressed(static_cast<size_t>(item));
                     return true;
                 }
                 return false;

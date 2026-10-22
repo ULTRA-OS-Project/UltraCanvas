@@ -43,6 +43,7 @@
 // uncaught, the abort hung in Windows' fault reporting until ctest's timeout,
 // and the lines saying what had failed were lost with the buffered output.
 // So the output is unbuffered too, and an abort ends at once.
+// Version: 1.2.2 - the wait for the scanner to listen says how long it took, in the skip message and on success
 // Version: 1.2.1 - every Connect() says how long it took, so a timeout reads apart from a refusal
 // Version: 1.2.0
 // Author: UltraCanvas Framework
@@ -381,6 +382,10 @@ public:
         std::error_code ignored;
         fs::remove(PathFromUtf8(ready), ignored);
         // -u: unbuffered, so whatever it says before failing reaches the log.
+        const auto started = std::chrono::steady_clock::now();
+        const auto sinceStart = [&] {
+            return std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        };
         if (!process.Start({python, "-u", script, "--cert", certificate, "--key", key, "--ready",
                             ready, "--log", requests, "--port", std::to_string(listenOn),
                             "--pages", "3"},
@@ -390,27 +395,36 @@ public:
         }
         // Up to a minute: a CI runner starting Python cold can be slow, and
         // a scanner that is merely slow must not read as one that failed.
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        // How long it took is said either way: a runner that needs twenty
+        // seconds to start Python is one whose first connection may time
+        // out too.
+        const auto deadline = started + std::chrono::seconds(60);
         while (std::chrono::steady_clock::now() < deadline) {
             const std::string written = ReadText(ready);
             if (!written.empty()) {
                 port = std::atoi(written.c_str());
+                waited = sinceStart();
                 if (port > 0) return true;
-                failure = "it wrote no port number";
+                failure = "it wrote no port number" + Took(waited);
                 return false;
             }
             if (!process.Running()) {
-                failure = "it exited";
+                waited = sinceStart();
+                failure = "it exited" + Took(waited);
                 return false;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        failure = "it was still running but not listening after 60 seconds";
+        waited = sinceStart();
+        failure = "it was still running but not listening" + Took(waited);
         return false;
     }
 
     // Why Start() failed.
     const std::string& Failure() const { return failure; }
+
+    // How long the last Start() waited for the scanner to listen.
+    double Waited() const { return waited; }
 
     int Port() const { return port; }
 
@@ -418,6 +432,7 @@ public:
 
 private:
     ChildProcess process;
+    double waited = 0.0;
     int port = 0;
     std::string failure;
 };
@@ -494,6 +509,7 @@ int main(int argc, char** argv) {
                   << Tail(log) << "\n";
         return finish(SkipOrFail());
     }
+    std::cout << "  the scanner was listening" << Took(scanner.Waited()) << "\n";
     const int port = scanner.Port();
     const std::string address = "127.0.0.1:" + std::to_string(port);
     const std::string url = "https://" + address + "/eSCL";
@@ -609,6 +625,7 @@ int main(int argc, char** argv) {
         Check(false, "the scanner restarts on the same port with another key - " +
                          scanner.Failure() + ":\n" + Tail(log));
     } else {
+        std::cout << "  the scanner was listening again" << Took(scanner.Waited()) << "\n";
         const IODeviceResult refused = TimedConnect(device, took);
         Check(!refused.success && refused.message.find("different certificate") != std::string::npos,
               "with another key, it is refused" + Took(took) + ": " + refused.message);
