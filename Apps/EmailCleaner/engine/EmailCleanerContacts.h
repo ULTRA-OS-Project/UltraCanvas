@@ -85,8 +85,9 @@ ContactReviewSummary Summarize(const std::vector<ContactReview>& reviews);
 // to (marked for deletion), 13 to review."
 std::string DescribeReview(const ContactReviewSummary& summary);
 
-// Delete the contacts `ids` from the address book, one by one. `removed`
-// counts the ones deleted; the first failure stops the run and is returned.
+// Delete the contacts `ids` from the address book in one transaction
+// (ContactStore::RemoveAll): all of them, or none. `removed` is how many were
+// deleted - every id on success, 0 on failure.
 UltraDbResult RemoveContacts(UltraMail::ContactStore& store,
                              const std::vector<int64_t>& ids, int& removed);
 

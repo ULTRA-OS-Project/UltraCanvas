@@ -2,6 +2,7 @@
 // Exercises the contact store: sectioned storage (Friends/Work/Leisure/
 // Services), emails/phones round-trip, section counts, search, update and
 // remove. Each test uses its own in-memory database.
+// Version: 0.3.0 - RemoveAll
 // Version: 0.2.0 - CollectSenders, SaveAll, KnownAddresses; the file store in WAL mode
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -384,6 +385,32 @@ TEST(save_all_saves_a_batch_or_nothing) {
     REQUIRE(known.count("ada@x.example") == 1);
     REQUIRE(known.count("ben@x.example") == 1);
     REQUIRE(known.count("cleo@x.example") == 0);
+}
+
+TEST(remove_all_deletes_a_batch_with_its_emails_and_phones) {
+    ContactStore s = FreshStore("remove-all");
+    std::vector<Contact> batch = {
+        MakeContact("Ada", ContactSection::Friends, "ada@x.example"),
+        MakeContact("Shop", ContactSection::Services, "deals@shop.example"),
+        MakeContact("Stranger", ContactSection::Other, "x7f@bulk.example"),
+    };
+    batch[1].phones.push_back({ "+49 30 1234", "work" });
+    REQUIRE(s.SaveAll(batch).success);
+
+    // An id that names nothing is not an error; an empty batch is nothing.
+    REQUIRE(s.RemoveAll({ batch[1].id, batch[2].id, 999999 }).success);
+    REQUIRE(s.RemoveAll({}).success);
+
+    std::vector<Contact> left;
+    REQUIRE(s.ListAll(left).success);
+    REQUIRE_EQ(left.size(), (size_t)1);
+    REQUIRE_EQ(left[0].displayName, std::string("Ada"));
+
+    // The emails went with their contacts.
+    std::set<std::string> known;
+    REQUIRE(s.KnownAddresses(known).success);
+    REQUIRE_EQ(known.size(), (size_t)1);
+    REQUIRE(known.count("ada@x.example") == 1);
 }
 
 // The address book on disk is in WAL mode, as the mail index is: in the

@@ -132,12 +132,9 @@ std::string DescribeReview(const ContactReviewSummary& summary) {
 UltraDbResult RemoveContacts(UltraMail::ContactStore& store,
                              const std::vector<int64_t>& ids, int& removed) {
     removed = 0;
-    for (int64_t id : ids) {
-        UltraDbResult r = store.Remove(id);
-        if (!r) return r;
-        ++removed;
-    }
-    return UltraDbResult::Ok();
+    UltraDbResult r = store.RemoveAll(ids);
+    if (r) removed = static_cast<int>(ids.size());
+    return r;
 }
 
 } // namespace EmailCleaner

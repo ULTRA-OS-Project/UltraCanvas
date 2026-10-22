@@ -732,8 +732,7 @@ void EmailCleanerApp::DeleteContacts(const std::vector<ContactReview>& selected)
             accountBar_.SetStatus(result
                 ? "Deleted " + std::to_string(removed) +
                   (removed == 1 ? " contact" : " contacts") + " from the address book."
-                : "Deleted " + std::to_string(removed) + " of " +
-                  std::to_string(ids.size()) + " contacts, then: " + result.message);
+                : "No contacts were deleted: " + result.message);
             RefreshContacts();
         });
 }

@@ -3,6 +3,7 @@
 // sections, each with any number of emails / phones. A global store (not
 // per-account) so contacts are shared across accounts, mirroring LocalStore's
 // UltraDatabase-backed design.
+// Version: 0.3.0 - RemoveAll (a batch delete in one transaction)
 // Version: 0.2.0 - SaveAll (a batch in one transaction), KnownAddresses; the
 //                  database in WAL mode, as the mail index is
 // Version: 0.1.0 (Phase 2)
@@ -44,6 +45,13 @@ public:
 
     UltraDbResult Get(int64_t id, Contact& out) const;
     UltraDbResult Remove(int64_t id);
+
+    // Delete every contact in `ids`, with its emails and phones, in ONE
+    // transaction: all of them, or none. Removed one by one, each contact was
+    // a commit of its own, which for a cleanup of thousands of collected
+    // senders (EmailCleaner's Contacts page) held the window on Windows. An id
+    // that names no contact is not an error.
+    UltraDbResult RemoveAll(const std::vector<int64_t>& ids);
 
     // Contacts filed in a section (not in a group of the user's own), ordered
     // by display name.

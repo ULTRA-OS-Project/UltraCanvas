@@ -250,6 +250,25 @@ UltraDbResult ContactStore::Remove(int64_t id) {
     return UltraDb_Commit(tx);
 }
 
+UltraDbResult ContactStore::RemoveAll(const std::vector<int64_t>& ids) {
+    if (ids.empty()) return UltraDbResult::Ok();
+
+    UltraDbResult beginErr;
+    UltraDbHandle tx = UltraDb_Begin(connection_, &beginErr);
+    if (tx == UltraDbInvalidHandle) return beginErr;
+    for (int64_t id : ids) {
+        for (const char* sql : { "DELETE FROM contact_emails WHERE contact_id=?",
+                                 "DELETE FROM contact_phones WHERE contact_id=?",
+                                 "DELETE FROM contacts WHERE id=?" }) {
+            if (UltraDbResult r = UltraDb_ExecInTx(tx, sql, { id }); !r) {
+                UltraDb_Rollback(tx);
+                return r;
+            }
+        }
+    }
+    return UltraDb_Commit(tx);
+}
+
 UltraDbResult ContactStore::ListWhere(const std::string& where, const UltraDbParams& params,
                                       std::vector<Contact>& out) const {
     out.clear();

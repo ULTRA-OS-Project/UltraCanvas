@@ -10,7 +10,8 @@
   (Family, Friends, Work, Leisure or a group of your own) or it has no address.
   The Delete rows start selected, every selected row is marked red, and
   **Delete selected…** removes them from the address book after a
-  confirmation that names them. The mail itself is not touched.
+  confirmation that names them, all in one go (UltraMail's new
+  `ContactStore::RemoveAll`). The mail itself is not touched.
 - **Your own sent mail is read for its recipients and kept off the map.** A
   message from the account's own address, or in the Sent folder (by its
   SPECIAL-USE role, else by name: "Sent", "Sent Items", "[Gmail]/Sent Mail",
