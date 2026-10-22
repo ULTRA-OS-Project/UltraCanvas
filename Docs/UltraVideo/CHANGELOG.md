@@ -1,3 +1,9 @@
+#### 2026-10-22 *0.7.2*
+- **The bin's notes read whole.** The sentence at the top of the *Titles*
+  and *Effects* tabs wraps to the bin's width instead of ending in an
+  ellipsis, and a title style's one-line hint shows its whole text when the
+  pointer rests on it.
+
 #### 2026-10-21 *0.7.1*
 - **Titles dragged onto their lane.** A title style in the bin's *Titles*
   tab is dragged from its button onto the title lane at a time: the lane

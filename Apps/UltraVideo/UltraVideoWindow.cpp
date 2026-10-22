@@ -1,5 +1,6 @@
 // Apps/UltraVideo/UltraVideoWindow.cpp
 // The editor window (UltraVideoWindow.h).
+// Version: 0.10.1 - the bin notes wrap to their width; a style hint shows its whole text on hover
 // Version: 0.10.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
 // Version: 0.9.0 - presets on overlay clips, by click or drop; a slider's drag one undo step
 // Version: 0.8.0 - an effect preset dragged from its bin button onto a clip
@@ -400,6 +401,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     titlesNote_ = CreateLabel("uv.bin.titles", 0, 0, 240, 40,
                               "A click puts a title on the title lane at the playhead, or drag one there at a time; trim it and set its text in the inspector.");
     titlesNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    titlesNote_->SetWrap(TextWrap::WrapWord);   // the whole sentence, on the lines its width takes
     FollowTheme(titlesNote_, LabelVariant::Muted);
     titlesNote_->layoutItem.SetFlexShrink(0);
     titlesPage->AddChild(titlesNote_);
@@ -416,6 +418,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         titlesPage->AddChild(button);
         auto hint = CreateLabel(std::string("uv.bin.titleHint.") + st.key, 0, 0, 240, 18, st.hint);
         hint->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+        hint->SetTooltip(st.hint);   // one line, ellipsized where the bin is narrow: the whole of it on hover
         hint->layoutItem.SetFlexShrink(0);
         FollowTheme(hint, LabelVariant::Faint);
         titlesPage->AddChild(hint);
@@ -429,6 +432,7 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
     effectsNote_ = CreateLabel("uv.bin.effects", 0, 0, 240, 40,
                                "A click puts the effect on the selected clip, or drag it onto a clip; the inspector lists the clip's effects and removes them.");
     effectsNote_->SetFont(Tokens::Caption.family, Tokens::Caption.size * 0.75f);
+    effectsNote_->SetWrap(TextWrap::WrapWord);
     FollowTheme(effectsNote_, LabelVariant::Muted);
     effectsNote_->layoutItem.SetFlexShrink(0);
     effectsPage->AddChild(effectsNote_);
