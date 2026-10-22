@@ -109,6 +109,18 @@ UltraCanvas/
 
 ----------
 
+## How it compares
+
+[`Docs/UltraCanvasComparison.md`](Docs/UltraCanvasComparison.md) lists every
+feature of the framework and compares it with Qt, GTK, wxWidgets, Dear ImGui,
+Flutter and Electron (feature table, pros and cons, when to choose which).
+[`Docs/UltraOSModuleOverview.md`](Docs/UltraOSModuleOverview.md) summarises
+every module and library of the project - purpose, capabilities and status -
+and [`Docs/UltraOSApplicationOverview.md`](Docs/UltraOSApplicationOverview.md)
+does the same for every application in `Apps/`.
+
+----------
+
 ## Building
 
 New to the framework? [`Docs/GettingStarted.md`](Docs/GettingStarted.md) is the
@@ -5005,6 +5017,348 @@ assistant must read, which is what stops it guessing.
 - [ ] App run and looked at on each platform you ship to
 
 ==============================================================================
+FILE: Docs/UltraCanvasComparison.md
+==============================================================================
+
+# UltraCanvas compared with Qt, GTK and other cross-platform GUI libraries
+
+An overview for programmers choosing a GUI framework: what UltraCanvas is,
+everything it ships, and how it compares with Qt, GTK, wxWidgets, Dear ImGui,
+Flutter and Electron. The UltraCanvas facts come from this repository
+(`Masterfile_modules.md`, `Docs/UltraCanvas/UltraCanvasUIElements.md`, the
+platform backends under `UltraCanvas/OS/`, the CI workflows). The facts about
+the other frameworks are general knowledge as of 2026. Check them against each
+project's current documentation before making a decision that depends on them.
+
+---
+
+## 1. UltraCanvas in one paragraph
+
+UltraCanvas is a **modular C++20 UI and rendering framework** under the
+**MIT licence**. It draws every element itself through one shared
+Cairo + Pango + HarfBuzz render path, so an application looks and lays out the
+same, pixel for pixel, on Windows, Linux, macOS and in the browser
+(WebAssembly). The core is one shared library per platform
+(`libUltraCanvas.so` / `.dylib` / `.dll`). Next to the usual widget toolkit,
+that library contains a lot that other toolkits leave to third-party
+libraries: about 70 chart and diagram elements, readers and writers for
+vector, office, PDF and media formats, networking, databases, cryptography, a
+virtual filesystem, a provider-agnostic AI module and a WebAssembly host. Its
+documentation is written for AI coding assistants as well as for people
+(`AGENTS.md`, `llms.txt`, docs whose examples CI compiles).
+
+### Minimal application
+
+```cpp
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasLabel.h"
+using namespace UltraCanvas;
+
+int main(int argc, char* argv[]) {
+    UltraCanvasApplication app;
+    if (!app.Initialize("MyApp")) return EXIT_FAILURE;
+
+    WindowConfig config;
+    config.title = "MyApp";
+    config.width = 800;
+    config.height = 600;
+    auto window = CreateWindow(config);
+
+    auto label  = CreateLabel("greeting", 20, 20, 300, 24, "Hello from UltraCanvas");
+    auto button = CreateButton("quit", 20, 60, 120, 32, "Quit");
+    button->onClick = [&app]() { app.RequestExit(); };
+
+    window->AddChild(label);
+    window->AddChild(button);
+    window->Show();
+    app.Run();
+    return EXIT_SUCCESS;
+}
+```
+
+It is plain C++: no meta-object compiler, no extra language, no code
+generator, no runtime VM. Callbacks are `std::function` lambdas and widgets
+are held in `std::shared_ptr`. The full version, with the per-platform entry
+point lines, is in [GettingStarted.md](GettingStarted.md).
+
+---
+
+## 2. Feature inventory
+
+### 2.1 Platforms and architecture
+
+| Area | What UltraCanvas provides |
+|---|---|
+| Desktop platforms | **Windows** (Win32 + Cairo), **Linux** (X11 + Cairo, with GLX / EGL for GL), **macOS** (Cocoa + Cairo, Objective-C++). CI builds all three on x86-64 **and** ARM64 (`macos-15`, `macos-15-intel`, `ubuntu-22.04`, `ubuntu-22.04-arm`, `windows-latest`, `windows-11-arm`) |
+| Browser | **WebAssembly** (Emscripten) backend, *experimental*. It runs in Chromium using the same Cairo/Pango pipeline, and the whole demo app builds as a web page |
+| Mobile | **Android** backend: window, lifecycle, EGL/GLES, clipboard, IME, multi-touch gestures, SAF files. CI compiles it, but it has **not yet run on a device** because APK packaging is still open. No iOS |
+| Others | BSD backend (X11). ULTRA OS is the native target platform |
+| Rendering | One `IRenderContext` on Cairo, shared by every platform. Lines, shapes, paths, Bézier curves, linear / radial / conic gradients, compositing modes, clipping, transforms, nearest-neighbour or smooth image scaling, HiDPI device scale, dirty-rect composition, double buffering. `UltraCanvasGLSurface` embeds raw OpenGL |
+| Text | Pango + HarfBuzz + FreeType shaping: full Unicode, bidirectional text and complex scripts, rich styled text, IME and multi-byte input |
+| Layout | A **CSS-style layout engine** with Flex (direction, wrap, grow/shrink/basis, justify/align, gap, order), Grid (explicit and auto placement, `px`/`%`/`fr`/`auto`/`min-content`/`max-content`/`fit-content` tracks) and Block. It runs a two-phase Measure → Arrange pass, plus a form-grid helper for "caption: control" rows that still fit when the captions are translated |
+| Events | Event bubbling with capture phases, keyboard focus, drag and drop, clipboard (text, images, files), custom cursors, smooth scrolling |
+| Theming | `UltraCanvasTheme` colour roles (panel, ink, accent, focus ring and so on) with light and dark presets. Elements read their style from the theme |
+| Accessibility | One role / name / text / value / event model per element, bridged to **AT-SPI** (Orca), **UI Automation** (Narrator, NVDA, JAWS) and **NSAccessibility** (VoiceOver) |
+| Packaging | One shared core per platform. The UI-free modules are linked into it, so every application shares one copy. CMake ≥ 3.16, vcpkg / MSYS2 / Homebrew dependencies, packaging scripts for Linux (AppImage), macOS (signed and notarised `.app`) and Windows |
+
+### 2.2 UI elements (about 60 in the core)
+
+| Group | Elements |
+|---|---|
+| Text entry | `TextInput` (caret, selection, undo/redo, clipboard, validation, password reveal), `TextArea` (plain, syntax-highlighted code, or live Markdown with inline LaTeX math), `RichTextEdit` (a word-processing model that round-trips ODT / DOCX), `AutoComplete`, `TagInput`, `Spinner`, password-strength meter and rule legend, spell checker |
+| Buttons and choices | Push / split / icon `Button`, `Checkbox`, `Radio` / `RadioGroup`, `Switch`, `Dropdown`, `SegmentedControl`, `Slider`, `Rating`, `Stepper`, `CurveEditor`, `GradientEditor`, `ToolGroupButton` |
+| Text, images, media | `Label` (selectable), `Badge`, `Chip`, `ImageElement` (any bitmap, SVG, animated GIF / WebP), `ZoomPanImage`, `PaintSurface` (layers, selection, brushes), `VectorElement` (SVG / XAR / DXF / DWG / EMF / WMF / AI view and edit), `MediaViewer` (images, video, audio, PDF, text, spreadsheets, eBooks, fonts), video / audio players and recorders, waveform, level meter, `VideoTimeline`, `TimecodeField`, `Album`, `Slideshow`, `EBookViewer`, `WebView` (HTML + CSS rendered as native elements, without JavaScript), `LaTeXView`, `FontViewer`, `STLElement` (3D mesh) |
+| Layout and structure | `Container` (scrolling built in), `Scrollbar`, `SplitPane` / `Splitter`, `TabbedContainer`, `GroupBox`, `Toolbar` (badges, reordering, scrolling), `Separator`, `Spacer`, `WaveSeparator` |
+| Navigation and data | `Menu` (menu bar, popup, context), menu configuration widget, `Breadcrumb`, `Pagination`, `ListView` (virtualised, model-driven, multi-column table with sortable, resizable headers), `TreeView`, `FilerWidget` (file browser), hardware-info panel, message centre |
+| Pickers and dialogs | `ColorPicker`, `ColorSwatchBar`, `DatePicker` / `DateRangePicker` / `CalendarView`, `TimePicker` / clock face, `ModalDialog` (Markdown details), file open / save / folder dialog (framework or native), input dialog, new-document dialog, progress dialog, `BusyIndicator`, image export with per-format settings, Curves, metadata dialog, 3D-model view dialog, print dialog, `TooltipManager`, splash screen, notification toasts |
+
+### 2.3 Charts, diagrams and codes (about 70 plugin elements, in the same library)
+
+Every one of them takes its data through setters and draws itself. Each is an
+ordinary element: you add it with `AddChild` like a button.
+
+- **Charts:** line, bar, scatter, area. Pie, donut, 3D pie. Sunburst,
+  treemap, nested areas. Bubble (XY, packed, matrix). Funnel, pyramid,
+  waterfall, dumbbell, diverging bar, population pyramid, Marimekko. Radar,
+  parallel coordinates. Polar, radial bar, activity rings, circular
+  infographic. Heatmap, hexbin, calendar heatmap. Jitter / box / violin.
+  Contour (2D, and 3D surfaces in software or GL), 3D scatter. Spectrogram.
+  OHLC candlesticks with volume. Quadrant (SWOT / BCG / Eisenhower). Chord.
+  **Gantt** (dependencies, critical path), **Kanban** with cumulative flow,
+  date-accurate timeline. On top of these, a three-phase chart engine for
+  writing new chart types.
+- **Diagrams:** flow chart (with an editing palette), isometric 3D blocks,
+  node graph and node editor with typed sockets, UML class and sequence
+  diagrams, ER diagrams (Chen, Crow's Foot), SysML requirements, PERT, mind
+  map, dendrogram, Gource-style tree, git graph, Sankey, arc, adjacency,
+  L/T/X/Y matrices and QFD House of Quality, Venn / Euler, word cloud,
+  parliament seats, SWOT, fishbone, hub diagrams, narrative timeline, packet
+  diagram, ticker board / LED sign, gauges (speedometer, ring, battery,
+  thermometer, LED bar, and the linear progress bar).
+- **Codes and documents:** QR codes, 1D barcodes (EAN, UPC, Code 39/128, ITF,
+  Codabar and others), a PDF view with thumbnails and search, a Markdown
+  display.
+
+### 2.4 Files and formats (`UltraCanvasFileLoader`)
+
+One facade loads, saves and converts every user file. It accepts local paths
+and `http(s)://` URLs, decompresses gzip / zlib / Zstandard / LZ4
+transparently, and keeps one runtime inventory of which formats the current
+build reads and writes. Every dialog builds its file-type list from that
+inventory. Save settings for each format (JPEG quality, PNG compression, TIFF
+codec and so on) are stored once and shared by all applications.
+
+- **Bitmaps:** PNG, JPEG, BMP, GIF, WebP, AVIF, QOI, TIFF and more, through
+  libvips, plus animated images.
+- **Vector:** SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI, DXF and DWG. A native
+  DWG decoder reads R13 to R2018 without any external program. Vector
+  editing is built in (rulers, guides, snapping, handles), as is
+  vectorisation of bitmaps.
+- **Documents:** ODT and DOCX read and written. DOC, legacy XLS (OLE2
+  compound files, including encrypted Office files), spreadsheets with
+  Excel-style formulas, HTML + CSS, Markdown, LaTeX documents and formulas,
+  eBooks, PDF (render, print, search).
+- **Media and 3D:** video and audio playback and capture. Through **VideoFX**
+  (FFmpeg): probing, frames, trim, effects, joins and export. STL and other
+  3D models rendered to bitmaps. Font files viewable without installing them.
+
+### 2.5 Modules that are not UI
+
+They ship in the same shared core. Each has a C-style, result-returning API
+and wraps its open-source engine so that the engine can be replaced.
+
+| Module | Purpose |
+|---|---|
+| **UltraNet** | HTTP(S), WebSocket, FTP, TCP / UDP, TLS (verification on by default), DNS |
+| **UltraDatabase** | Named connections, parameter binding only (no string-built SQL), transactions, cursors, async queries, migrations. SQLite is bundled; PostgreSQL is implemented; MySQL / MariaDB, MSSQL, Redis, MongoDB and DuckDB are specified as driver plug-ins |
+| **UltraCrypt / UltraVault** | AEAD-only cryptography (XChaCha20-Poly1305 + Argon2id on libsodium) and a credential vault |
+| **VirtualFS** | Virtual filesystem, archives, compression, RAM discs |
+| **UltraAI** | Provider-agnostic AI: text LLMs, embeddings, speech-to-text, text-to-speech, vision, image / video / music generation, translation, code assist. Adapters for Anthropic, OpenAI (and OpenAI-compatible servers), local Qwen / llama.cpp / Ollama / vLLM, and mocks for tests |
+| **UltraMessage** | Desktop notification / message feed and its journal |
+| **NetworkMonitor** | System-wide socket table with the process that owns each socket |
+| **WasmHost** | Runs sandboxed WebAssembly modules (wasmtime, WASI preview 1, a memory cap per instance, a time limit per call) |
+| **UltraWin** | Runs Windows applications on Linux as single native windows (Wine as a spawned child process, so no GPL code is linked) |
+| **Desktop integration** | File associations, trash, single instance, file and folder watching, volume monitor, `.desktop` files / `.lnk` shortcuts / property lists / app bundles, host file icons, camera and scanner access, hardware info, printing, elevated file operations |
+
+### 2.6 Developer experience and quality gates
+
+- **Applications built on it:** about 25 real applications in `Apps/` act as
+  the framework's test bed: a text editor (Texter), a file manager
+  (UltraFiler), a viewer, a paint program, a vector illustration program
+  (ArtCreator), mail, a video editor, a web browser, a password manager, an
+  authenticator, a desktop, settings and others. The DemoApp shows every
+  element.
+- **Documentation:** about 100 per-component docs. CI compiles their C++
+  examples against the real headers. There is an element catalogue, a module
+  registry, and `llms.txt` / `llms-full.txt` for LLM tools.
+- **Built for AI-assisted development:** `AGENTS.md` sets the conventions
+  that Claude Code, Copilot, Cursor and similar tools follow. CI enforces
+  them with checkers: no hand-painted controls, every element listed in the
+  catalogue, no `shared_ptr` cycles in callbacks, UTF-8 file paths,
+  locale-independent number formatting, and documentation that matches the
+  code.
+- **Conventions:** PascalCase everywhere, one `Create*` factory per element,
+  `std::shared_ptr` ownership, plain C++20.
+
+---
+
+## 3. Comparison
+
+### 3.0 Origins
+
+| Framework | Created | First stable release | Origin |
+|---|---|---|---|
+| **Qt** | 1991 | 1995 (public), 1.0 in 1996 | Trolltech (Haavard Nord, Eirik Chambe-Eng), now The Qt Company |
+| **wxWidgets** | 1992 | n/a | Julian Smart, University of Edinburgh |
+| **GTK** | 1997 | 1.0 in 1998 | Written for the GIMP (Spencer Kimball, Peter Mattis, Josh MacDonald), now GNOME |
+| **Electron** | 2013 (as "Atom Shell") | 1.0 in 2016 | GitHub, now the OpenJS Foundation |
+| **Dear ImGui** | 2014 | n/a | Omar Cornut |
+| **Flutter** | 2015 (as "Sky") | 1.0 in 2018 | Google |
+| **UltraCanvas** | 2025 | none yet (0.9.x) | ULTRA OS Development GmbH |
+
+### 3.1 Feature table
+
+✅ built in · 🟡 partial, experimental or via an official add-on · ❌ not available / third-party only
+
+| Feature | **UltraCanvas** | **Qt 6** | **GTK 4** | **wxWidgets** | **Dear ImGui** | **Flutter** | **Electron** |
+|---|---|---|---|---|---|---|---|
+| Language | C++20 | C++ (+ QML / JS) | C (bindings: C++, Python, Rust …) | C++ | C++ | Dart | JavaScript / TypeScript |
+| Licence | **MIT** | LGPLv3 / GPL / commercial | LGPL 2.1+ | wxWindows (LGPL + exception) | MIT | BSD-3 | MIT |
+| Rendering model | Self-drawn (Cairo) | Self-drawn (Widgets: styled; Quick: GPU scene graph) | Self-drawn (GSK, GPU) | **Native OS controls** | Immediate mode, GPU | Self-drawn (Skia / Impeller, GPU) | Chromium |
+| Windows / macOS / Linux | ✅ / ✅ / ✅ (X11) | ✅ / ✅ / ✅ | 🟡 / 🟡 / ✅ | ✅ / ✅ / ✅ | ✅ / ✅ / ✅ | ✅ / ✅ / ✅ | ✅ / ✅ / ✅ |
+| Wayland (native) | ❌ planned | ✅ | ✅ | ✅ (through GTK) | depends on backend | ✅ | ✅ |
+| ARM64 desktop builds in CI | ✅ all three OSes | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Android / iOS | 🟡 compiles, not run / ❌ | ✅ / ✅ | ❌ / ❌ | ❌ / ❌ | 🟡 / 🟡 (you write the backend) | ✅ / ✅ | ❌ / ❌ |
+| WebAssembly / browser | 🟡 experimental | ✅ | 🟡 (Broadway) | ❌ | ✅ | ✅ | n/a (it is a browser) |
+| Pixel-identical look on every OS | ✅ | 🟡 (style-dependent) | ✅ | ❌ (native by design) | ✅ | ✅ | ✅ |
+| Native OS look and feel | ❌ | 🟡 (native styles) | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Extra preprocessor / VM / runtime | none | moc (+ QML engine) | none (GObject) | none | none | Dart VM / AOT | Node + Chromium |
+| CSS-style Flex / Grid layout | ✅ | 🟡 (layouts, QML anchors) | 🟡 (boxes, grid, CSS styling) | 🟡 (sizers) | ❌ | ✅ (own model) | ✅ |
+| Theming, dark mode | ✅ | ✅ | ✅ | 🟡 (follows OS) | ✅ | ✅ | ✅ |
+| Accessibility (screen readers) | ✅ AT-SPI / UIA / NSAccessibility | ✅ | ✅ | ✅ (native) | ❌ | ✅ | ✅ |
+| Visual UI designer | ❌ | ✅ Designer / Creator | 🟡 (Cambalache) | 🟡 (third-party) | ❌ | 🟡 (DevTools) | 🟡 (web tools) |
+| Declarative UI language | ❌ (C++ only) | ✅ QML | 🟡 (Blueprint / XML) | 🟡 (XRC) | ❌ | ✅ (Dart widgets) | ✅ HTML |
+| UI string translation tooling | ❌ not documented | ✅ Linguist | ✅ gettext | ✅ gettext | ❌ | ✅ intl | 🟡 libraries |
+| Rich text / word-processor editor | ✅ ODT / DOCX round trip | 🟡 QTextEdit (HTML, ODT write) | 🟡 TextView | 🟡 wxRichTextCtrl | ❌ | ❌ | 🟡 libraries |
+| Code editor with highlighting | ✅ | ❌ (QScintilla, third-party) | 🟡 GtkSourceView (add-on) | 🟡 wxStyledTextCtrl | ❌ | ❌ | 🟡 Monaco, … |
+| Charts | ✅ about 35 types | 🟡 Qt Charts / Qt Graphs (GPL or commercial) | ❌ | ❌ | 🟡 ImPlot (third-party) | ❌ (packages) | ❌ (JS libraries) |
+| Diagrams (UML, ER, Gantt, Sankey, mind map …) | ✅ about 30 types | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ (JS libraries) |
+| QR / barcodes | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| SVG display | ✅ | ✅ (Qt SVG, Tiny 1.2) | ✅ (librsvg) | 🟡 | ❌ | 🟡 (package) | ✅ |
+| Vector formats (AI, CDR, XAR, EMF, DXF, DWG …) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| PDF view / print | ✅ / ✅ | ✅ Qt PDF / ✅ | 🟡 (Poppler) / ✅ | 🟡 / ✅ | ❌ | ❌ | ✅ |
+| Video / audio playback | ✅ | ✅ Qt Multimedia | ✅ GStreamer | 🟡 wxMediaCtrl | ❌ | 🟡 (plugins) | ✅ |
+| Video editing (trim, effects, export) | ✅ VideoFX | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Web view | 🟡 HTML + CSS, no JS | ✅ WebEngine (Chromium) | ✅ WebKitGTK | ✅ (system engine) | ❌ | 🟡 (plugin) | ✅ |
+| Networking | ✅ HTTP / WS / FTP / TLS / DNS | ✅ Qt Network | 🟡 (GIO / libsoup) | 🟡 (basic sockets) | ❌ | ✅ | ✅ (Node) |
+| Database access | ✅ SQLite, PostgreSQL (+ planned drivers) | ✅ Qt SQL | ❌ | ❌ | ❌ | 🟡 (packages) | 🟡 (Node packages) |
+| Crypto / credential vault | ✅ | 🟡 (hashes, TLS) | ❌ (libsecret, separate) | ❌ | ❌ | 🟡 | 🟡 (Node crypto) |
+| AI / LLM integration | ✅ UltraAI | ❌ | ❌ | ❌ | ❌ | 🟡 (packages) | 🟡 (packages) |
+| WebAssembly plugin host | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | 🟡 (V8) |
+| Docs written for AI coding assistants | ✅ AGENTS.md, llms.txt, CI-compiled examples | ❌ | ❌ | ❌ | ❌ | 🟡 | ❌ |
+| Maturity / production track record | 🟡 young (0.9.x) | ✅ 30+ years | ✅ 25+ years | ✅ 30+ years | ✅ | ✅ | ✅ |
+| Community and third-party ecosystem | 🟡 small | ✅ very large | ✅ large | ✅ medium | ✅ large | ✅ very large | ✅ very large |
+| Typical "hello world" footprint | medium (one shared core + Cairo / Pango / libvips) | medium to large | medium | small | tiny | medium | large (about 100 MB+) |
+
+### 3.2 Pros and cons
+
+#### UltraCanvas
+
+| ➕ Plus | ➖ Minus |
+|---|---|
+| MIT licence: static or dynamic linking, closed source allowed, no commercial licence to buy | Young (version 0.9.x). APIs still move, and no long-term-support releases yet |
+| Plain C++20: no moc, no QML, no GObject, no VM | Small community. Few Stack Overflow answers or third-party widgets |
+| Same pixels and layout on every platform (one Cairo / Pango path) | No native look: applications do not use the OS's own controls |
+| A very wide set of elements in one library: about 60 widgets, about 70 charts and diagrams, codes, media, rich text, a code editor | Linux runs on X11 only; native Wayland is planned |
+| File formats other toolkits lack (DWG / DXF, AI, CDR, XAR, EMF, ODT / DOCX, XLS, LaTeX, STL) behind one loader | Mobile is not ready: Android compiles but has not run on a device, and there is no iOS |
+| Networking, databases, crypto, VFS, AI, a WASM host and video editing are in the box, so there are fewer dependencies to choose and integrate | WebAssembly is experimental (tested in Chromium only) |
+| CSS-style Flex / Grid layout, known from the web | No visual designer and no declarative UI language. UI is written in C++ |
+| Accessibility bridges for all three desktops | No documented UI string translation workflow (like Qt Linguist or gettext) yet |
+| Documentation and CI checks made for AI-assisted development: assistants produce code that follows the house rules | CPU rendering through Cairo by default. GPU only through an explicit GL surface |
+| About 25 real applications prove the elements in daily use | Depends on a GNOME-family C stack (Cairo, Pango, GLib, libvips) on every platform, including Windows and macOS |
+
+#### Qt 6
+
+| ➕ Plus | ➖ Minus |
+|---|---|
+| The most complete and mature C++ toolkit. Desktop, mobile, embedded and web | Dual licensing: LGPL obligations, or an expensive commercial licence. Some modules (Charts, some tooling) are GPL or commercial only |
+| QML / Qt Quick for fluid GPU UIs, plus Qt Widgets for classic desktop UIs | moc and its macros, plus a second language (QML / JS) for modern UIs |
+| Qt Creator and Designer, Linguist, a large ecosystem, many jobs | Large framework and deploy size; a WebEngine build ships Chromium |
+| Excellent i18n, accessibility, Wayland and HiDPI | No diagram widgets. Charts are limited by their licence |
+
+#### GTK 4
+
+| ➕ Plus | ➖ Minus |
+|---|---|
+| LGPL, mature, the native toolkit of GNOME | Windows and macOS are second-class (look, packaging, fewer users) |
+| First-class Wayland, a GPU renderer (GSK), CSS styling | C / GObject API; C++ needs gtkmm, which tracks GTK with a delay |
+| Bindings for many languages (Python, Rust, Vala, JS) | No mobile. Few high-level widgets (no charts, diagrams or rich text editor) |
+| Good accessibility and gettext i18n | Breaking changes from GTK 3 to GTK 4 made porting expensive |
+
+#### wxWidgets
+
+| ➕ Plus | ➖ Minus |
+|---|---|
+| Uses truly native controls: apps look like the OS | Looks and behaves differently per OS, so it needs testing on each one |
+| Permissive licence (LGPL with a static-link exception), small binaries | Dated, MFC-like API style. Smaller modern ecosystem |
+| Long-term stability | No mobile or web. Custom-drawn and modern effects are hard |
+
+#### Dear ImGui
+
+| ➕ Plus | ➖ Minus |
+|---|---|
+| MIT, tiny, trivial to embed in a game or engine | Immediate mode: not meant for conventional end-user applications |
+| Very fast for tools, debug UIs and editors | No real text shaping or accessibility, limited IME |
+| GPU-rendered through any graphics API | You supply windowing and backends. No file, network or media layers |
+
+#### Flutter
+
+| ➕ Plus | ➖ Minus |
+|---|---|
+| One codebase for mobile, desktop and web, with excellent mobile support | Dart, not C++. C++ code needs FFI bridges |
+| Hot reload, a rich widget set, GPU rendering (Impeller) | Desktop is less mature than mobile. Heavier runtime |
+| Huge package ecosystem | Charts, diagrams and file formats come from third-party packages of varying quality |
+
+#### Electron
+
+| ➕ Plus | ➖ Minus |
+|---|---|
+| Web technologies (HTML / CSS / JS) and the entire npm ecosystem | Ships Chromium + Node with every app: 100 MB+ on disk, high memory use |
+| The fastest path for web teams; the same UI as a web app | Slower start-up, weaker native integration, a large security surface |
+| Mature: VS Code, Slack, Discord | Not a C++ framework. Native code goes through Node add-ons |
+
+---
+
+## 4. When to choose UltraCanvas
+
+**A good fit when:**
+
+- You write **C++** and want a **permissive MIT** licence, with no LGPL
+  relinking duties and no commercial licence fees.
+- The application is **data-, document- or graphics-heavy**: dashboards,
+  engineering and CAD viewers, office and publishing tools, media tools,
+  diagram editors. The built-in charts, diagrams and format readers then
+  replace a pile of third-party libraries.
+- You want the **same look on Windows, macOS and Linux** (x86-64 and ARM64),
+  and not three native looks.
+- You build with **AI coding assistants**. The repository's docs and CI
+  checks are designed so that an assistant produces code that matches the
+  framework.
+
+**Choose something else when:**
+
+- **Mobile (iOS / Android) is a first-class requirement today.** Use Qt or
+  Flutter.
+- You need **native Wayland**, a **native OS look**, or a **long-term-support
+  release** right now. Use Qt, GTK (Linux-first) or wxWidgets (native look).
+- Your team wants a **visual designer** or a **declarative UI language**
+  (QML, Dart, HTML). Use Qt Quick, Flutter or Electron.
+- You need a **full browser engine with JavaScript** inside the application.
+  Use Qt WebEngine, WebKitGTK or Electron.
+- It is an in-game or engine **debug / tool UI**. Use Dear ImGui.
+
+==============================================================================
 FILE: Docs/UltraCanvasSDK.md
 ==============================================================================
 
@@ -5175,6 +5529,1172 @@ runtime dependency beyond the libraries named above.
 The package version in `UltraCanvasConfigVersion.cmake` is the framework's,
 with `SameMajorVersion` compatibility, so `find_package(UltraCanvas 0.9)`
 accepts any 0.x SDK.
+
+==============================================================================
+FILE: Docs/UltraOSApplicationOverview.md
+==============================================================================
+
+# ULTRA OS applications: an overview
+
+A short summary of every application in `Apps/`: what each one is for, what
+it can do, which modules it is built on and how far it has come. The facts
+come from each application's README and docs, the first line of its
+changelog and its build file. The modules themselves are summarised in
+[UltraOSModuleOverview.md](UltraOSModuleOverview.md).
+
+Every application versions itself: the first line of its changelog,
+`Docs/<App>/CHANGELOG.md`, is its version. The versions below are those
+first lines as of 2026-10-18.
+
+---
+
+## Overview table
+
+| Application | What it is | Version | Main modules |
+|---|---|---|---|
+| **Creative and media** | | | |
+| [UltraPaint](#ultrapaint) | Bitmap editor (Paint Shop Pro / GIMP class) | 0.2.25 | PaintSurface, PixelFX |
+| [ArtCreator](#artcreator) | Vector drawing editor (Xara Designer / ArtWorks class) | 0.7.3 | VectorEdit, Vector plugin |
+| [UltraVideo](#ultravideo) | Video editor with timeline and one-button export | 0.7.0 | VideoFX |
+| [UltraViewer](#ultraviewer) | Universal media viewer | 1.0.7 | MediaViewer |
+| **Documents and files** | | | |
+| [Texter](#texter) | Text, code and word-processing editor | 1.67 | TextArea, RichTextEdit, FileLoader |
+| [UltraFiler](#ultrafiler) | Windows Explorer-style file manager | 1.75.0 | FilerWidget, VirtualFS, UltraCloud |
+| [AnchorPoint](#anchorpoint) | Peer-to-peer file transfer | 0.2.4 | UltraCrypt |
+| **Web and publishing** | | | |
+| [UltraWeb](#ultraweb) | Browser for web pages and WebAssembly apps | 0.8.3 | HTMLReader, WasmHost, UltraNet |
+| [UltraPress](#ultrapress) | Website and shop builder (WordPress class) | 0.8.2 | UltraCloud, UltraNet |
+| **Communication** | | | |
+| [UltraMail](#ultramail) | Email client | 0.10.59 | UltraNet, UltraDatabase, UltraVault, UltraMessage |
+| [EmailCleaner](#emailcleaner) | Mailbox analysis and clean-up | 0.4.8 | UltraMail engine, UltraDatabase |
+| [UltraSocial](#ultrasocial) | Cross-posting to social networks | 0.2.2 | UltraNet, UltraDatabase, UltraVault |
+| **Security** | | | |
+| [UltraPassword](#ultrapassword) | Password vault | 0.1.4 | UltraCrypt |
+| [UltraAuthenticator](#ultraauthenticator) | TOTP / HOTP two-factor codes | 0.2.8 | UltraCrypt |
+| **AI** | | | |
+| [UltraAIApp](#ultraaiapp) | Dashboard for the UltraAI services | 0.1.15 | UltraAI |
+| [UltraClaude](#ultraclaude) | Desktop chat with Claude on a Pro / Max subscription | 0.4.2 | core |
+| **Business** | | | |
+| [UltraFIBU](#ultrafibu) | German double-entry bookkeeping | 0.24.5 | UltraDatabase, UltraCrypt |
+| **Desktop and system** | | | |
+| [UltraDesktop](#ultradesktop) | The ULTRA OS desktop | 0.4.1 | DesktopShell, ClipboardHistory, UltraMessage |
+| [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
+| [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
+| [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
+| [UltraNetMonitor](#ultranetmonitor) | Which process holds which network connection | 0.17 | NetworkMonitor |
+| [DeviceExplorer](#deviceexplorer) | Printers, scanners and cameras | 0.2.2 | IODeviceManager |
+| [UltraWinManager](#ultrawinmanager) | Runs Windows applications on Linux | 0.1.2 (UltraWin) | UltraWin |
+| [UltraWinSetup](#ultrawinsetup) | Command line for the UltraWin VM tier | 0.1.2 (UltraWin) | UltraWin |
+| [UltraMessageCli](#ultramessagecli) | Command line for the UltraMessage bus | no changelog | UltraMessage |
+| **Developer** | | | |
+| [UltraCanvasStart](#ultracanvasstart) | Sets a computer up for UltraCanvas development | 0.4.3 | core |
+| [DemoApp](#demoapp) | Showcase of every element, chart and format | 0.9.337 (framework) | everything |
+| [CSSLayoutTests](#csslayouttests) | Tests for the CSS layout engine | no changelog | CSSLayout |
+
+---
+
+## Creative and media
+
+### UltraPaint
+
+**Purpose:** a bitmap editor with layers, selections, brushes and shapes. Its
+feature-gap analysis aims it at the Paint Shop Pro / GIMP class.
+
+**Capabilities:**
+- A grouped tool palette: selections (including lasso and magic wand),
+  brushes, airbrush, lines, shapes, smudge, clone, dodge / burn, fill,
+  gradient, text.
+- Layers with opacity, blend modes and locks, plus text layers.
+- Adjustments: levels, curves, hue / saturation, posterise, colour to alpha.
+- Filters: blurs, sharpen, edge detection, noise, pixelate, oil paint,
+  erode / dilate.
+- Opens and saves every raster format FileLoader lists. Layered files are
+  saved as `.ucd` (UCD 2.1) or `.ucraster`.
+- Imports vector drawings and 3D models, pastes from the clipboard history,
+  and has a magnifier.
+
+**Built on:** `UltraCanvasPaintSurface`, PixelFX (libvips), the clipboard
+history and the Models plugin (both optional).
+**Version:** 0.2.25 (2026-10-16).
+
+### ArtCreator
+
+**Purpose:** a vector drawing editor of the Xara Designer / ArtWorks class,
+built on the framework's vector editing layer, which other editors can
+reuse.
+
+**Capabilities:**
+- 19 tools, including selector, shape editor, pen, freehand, line,
+  rectangle, ellipse, polygon / star and text.
+- Effects: fill and transparency ramps, shadow, feather, contour, bevel,
+  blend, mould.
+- Rulers, guides, grid and snapping. Arrange, group, align and layers.
+- Icon mode: pixel grid, snapping to pixels, a preview, export at icon sizes.
+- Opens SVG, XAR, EMF, WMF, DXF and DWG. Saves XAR (native), SVG, DXF, EMF
+  and WMF. Exports PDF, AI, EPS, CDR and bitmaps at any size.
+
+**Built on:** VectorStorage, VectorEdit, the Bézier path model, the vector
+canvas, the gradient editor and the Vector plugin.
+**Version:** 0.7.3 (2026-10-17).
+**Notes:** without the Vector plugin it can draw but has no file formats.
+The later phases are listed in `Docs/Research/ArtCreatorVectorCanvasProposal.md`.
+
+### UltraVideo
+
+**Purpose:** a video editor for ULTRA OS and the other UltraCanvas desktops:
+clips, photos and music on one timeline, a live preview and one-button
+export.
+
+**Capabilities:**
+- A media bin for video, photos (including HEIC and camera raw) and songs.
+- A viewer with scrubbing, playing through proxies on a background thread.
+- A timeline with titles, an overlay-video lane, a voice-and-sound lane,
+  music, transitions and fades.
+- A "Make a story" wizard and an inspector with Clip, Audio and Project tabs.
+- Undo / redo. Projects are `.ultravideo` JSON files, which the `videofx
+  render` command can also render.
+- Export presets: MP4 (720p, 1080p, 4K), WebM, GIF, ProRes, MP3. Export runs
+  in the background and can be cancelled.
+
+**Built on:** VideoFX (FFmpeg), the video timeline and timecode field
+elements, and GStreamer for the draft player.
+**Version:** 0.7.0 (2026-10-16).
+**Notes:** it is not built without VideoFX. The roadmap is in
+`UltraVideoDesignProposal.md` §11.
+
+### UltraViewer
+
+**Purpose:** a universal media viewer: one full-window
+`UltraCanvasMediaViewer` that shows every kind of media the framework
+reads.
+
+**Capabilities:**
+- Bitmaps (JPEG, PNG, animated GIF, WebP, HEIC, AVIF, JXL, PSD, EXR and
+  more) through libvips, and SVG through librsvg.
+- Video and audio playback with play, pause, seek and volume.
+- PDF, eBooks (EPUB, FB2, MOBI, AZW), spreadsheets (ODS, CSV), STL models,
+  text and Markdown.
+- Browsing a folder or a playlist, a slideshow with transitions, drag and
+  drop.
+- Image tools: zoom, rotate, mirror, colour adjustments, sharpen, save as.
+
+**Built on:** MediaViewer, PDFView, EBookViewer, the spreadsheet and STL
+elements.
+**Version:** 1.0.7 (2026-10-14).
+**Notes:** `.ucd` files show only their embedded thumbnail for now. Full
+rendering is planned for the UCD v2 engine.
+
+---
+
+## Documents and files
+
+### Texter
+
+**Purpose:** UltraTexter, a text editor with tabs and autosave that also
+edits word-processing documents.
+
+**Capabilities:**
+- Tabs, autosave (every 60 s by default), and one running copy (a second
+  start's files open in it).
+- Syntax highlighting and a Markdown toolbar and side bar.
+- Word-processing tabs for `.odt` and `.docx` (and `.doc`, read only):
+  styles, tables with merged cells, footnotes, comments, tracked changes,
+  columns.
+- Spell checking, Find / Replace, a search-as-you-type bar, Go to line.
+- Character encodings through iconv, and file statistics.
+- PDF view (through MuPDF, optional) and printing.
+
+**Built on:** TextArea, RichTextEdit, TabbedContainer, PDFView, FileLoader.
+**Version:** 1.67 (2026-10-14).
+**Docs:** [Apps/Texter/README.md](../Apps/Texter/README.md).
+
+### UltraFiler
+
+**Purpose:** a Windows Explorer-style file manager built entirely from
+UltraCanvas elements.
+
+**Capabilities:**
+- Browser-style tabs, a folder tree loaded on demand, a breadcrumb path
+  bar, view and sort settings per folder.
+- Views: details, list, thumbnails, size bars, treemap. A split view shows
+  two folders, with drag and drop between them.
+- A preview pane for images, video, audio, PDF, spreadsheets, 3D models and
+  text.
+- Search that filters as you type, a background scan of sub-folders,
+  type-ahead, History and Favorites.
+- Remote drives: FTP, FTPS, SFTP, Dropbox, OneDrive, Google Drive,
+  Nextcloud and WebDAV, with a connection log and cached listings.
+- RAM discs, packing and unpacking archives, finding text in files.
+
+**Built on:** FilerWidget, TreeView, MediaViewer, SplitPane, VirtualFS,
+UltraCloud (optional).
+**Version:** 1.75.0 (2026-10-17).
+**Notes:** Windows, Linux and macOS. Without UltraCloud there are no remote
+drives. On Windows without ImDisk a RAM disc is only a folder.
+
+### AnchorPoint
+
+**Purpose:** peer-to-peer file transfer directly from one computer to
+another, with no file storage on a server.
+
+**Capabilities:**
+- A simple transfer protocol (Hello / Offer / Accept / Chunk / Done /
+  Verified) with 256 KiB chunks and a SHA-256 check of the whole file.
+- Interrupted transfers resume where they stopped.
+- Incoming file names are cleaned, so a peer cannot write outside the save
+  folder.
+- A command-line program and a window with live progress.
+
+**Built on:** UltraCrypt, plain sockets behind a transport interface.
+**Version:** 0.2.4 (2026-10-14).
+**Notes:** works on a local network. Internet use (signalling, STUN hole
+punching, a relay, end-to-end encryption, pairing codes) is planned for
+milestone 3.
+
+---
+
+## Web and publishing
+
+### UltraWeb
+
+**Purpose:** the ULTRA OS browser. It shows HTML / CSS pages as native
+UltraCanvas elements, and runs WebAssembly apps that build their UI from
+UltraCanvas elements.
+
+**Capabilities:**
+- Web pages through the framework's HTML reader: character sets, style
+  sheets, pictures, links, back and forward.
+- Forms (POST), file uploads, downloads and a downloads list.
+- Tabs with their own history.
+- A sandbox for WebAssembly apps: timers, fetch under browser rules, storage
+  per site, clipboard writes.
+- `--check` and `--page` modes that run without a window.
+
+**Built on:** WasmHost (wasmtime), UltraNet, the HTML page loader and
+`UltraCanvasWebView`.
+**Version:** 0.8.3 (2026-10-16).
+**Notes:** no JavaScript yet. Bookmarks, history, per-app permissions and
+packaged macOS / Windows builds are still to come.
+
+### UltraPress
+
+**Purpose:** the website and shop builder of ULTRA OS, of the WordPress
+class. Published pages are meant to be rendered by the framework compiled to
+WebAssembly, with a plain HTML version of every page for search engines and
+screen readers.
+
+**Capabilities:**
+- One `ultrapress` program: commands (`new`, `check`, `page`, `publish`,
+  `import`, `hosts`) and an editor window.
+- A block editor (heading, text, rich text, hero, picture, columns, card,
+  features) with a live re-render, and text edited in place on the page.
+- A site is a folder of JSON files, published as static files.
+- A WordPress export importer and a media library.
+- Uploads only the changed files to an FTP, SFTP, WebDAV or Nextcloud host.
+
+**Built on:** its own engine, renderer and hosting libraries, UltraCloud,
+UltraNet.
+**Version:** 0.8.2 (2026-10-16).
+**Notes:** phase 1. The WebAssembly renderer, new pages and menus from the
+window, undo, newsletters and the phase 2 server side (forms, sign-ups) are
+not built yet.
+
+---
+
+## Communication
+
+### UltraMail
+
+**Purpose:** the ULTRA OS email client for everyday mail accounts.
+
+**Capabilities:**
+- An account wizard that finds server settings itself (provider presets and
+  Mozilla autoconfig), and OAuth2 browser sign-in for Gmail, Outlook and
+  Yahoo.
+- IMAP sync into a local store, background sync, flags kept in step both
+  ways.
+- A composer with Reply, Forward, rich text and signatures. Sending goes
+  through an outbox that retries.
+- Sender badges (contact, business, new, advertisement, spam, scam) and a
+  check of each message for phishing and known scam patterns.
+- HTML mail drawn natively through the CSS layout engine (no web view),
+  attachments in the media viewer, inline images.
+- An address book, one-click unsubscribe, copy buttons for one-time codes,
+  new-mail alerts on the desktop feed.
+
+**Built on:** UltraDatabase, UltraNet (IMAP / SMTP / POP3 / JMAP plugins),
+UltraVault, UltraCrypt, UltraMessage, UltraCloud (optional, for cloud links),
+HTMLReader.
+**Version:** 0.10.59 (2026-10-17).
+**Notes:** the docs describe it as phase 1–2, in progress.
+
+### EmailCleaner
+
+**Purpose:** analyses mailboxes to show who fills them and with what kind of
+mail, for cleaning up cluttered or spam-heavy accounts.
+
+**Capabilities:**
+- Loads several accounts into an analysis database, from UltraMail's cache
+  or from accounts added in EmailCleaner (app password).
+- A keyword classifier for advertising, adult content, romance scams,
+  phishing, financial fraud and executable attachments. It undoes
+  obfuscation tricks first, and its rules are in an editable file.
+- A sender map (treemap by sending domain) and a timetable (weekday × hour
+  heatmap, traffic over time).
+- A detail view with the evidence behind each verdict.
+- Actions on a selected block: block the sender, move to trash, unsubscribe.
+
+**Built on:** the UltraMail engine, UltraDatabase, UltraNet, UltraVault.
+**Version:** 0.4.8 (2026-10-13).
+**Notes:** accounts that need OAuth have to be set up in UltraMail first.
+
+### UltraSocial
+
+**Purpose:** write one post and publish it to several social networks.
+
+**Capabilities:**
+- One draft, adapted to each network (character limits, cutting at word
+  boundaries, media and caption limits).
+- Mastodon, Bluesky, Telegram, Reddit, X, LinkedIn and Facebook Pages.
+- OAuth2 / PKCE sign-in, or pasted tokens and app passwords.
+- Image posts on Mastodon, Bluesky, X and Facebook; Telegram photos and
+  albums.
+- "Post later" with a queue and up to 5 retries, and a history of recent
+  posts with links.
+
+**Built on:** UltraNet (HTTP, OAuth2), UltraDatabase, UltraVault, UltraCrypt.
+**Version:** 0.2.2 (2026-10-12).
+**Notes:** Instagram, Reddit media, LinkedIn images and AI adaptation of
+drafts are still open.
+
+---
+
+## Security
+
+### UltraPassword
+
+**Purpose:** the ULTRA OS password vault: every password in one encrypted
+file, organised in a tree of groups.
+
+**Capabilities:**
+- Groups nested to any depth, a card per password, search across the vault.
+- Records how each site signs you in, with a rating from Weak to Very
+  strong.
+- A password generator with a strength meter. Copied passwords are cleared
+  from the clipboard after 30 seconds.
+- Argon2id + XChaCha20-Poly1305, atomic writes, file mode 0600.
+- Locks on demand, after 5 minutes idle or when minimised, with a growing
+  wait after wrong passwords.
+- Export as a vault file or CSV. Import from Chrome, Edge, Firefox or
+  Bitwarden CSV.
+
+**Built on:** UltraCrypt.
+**Version:** 0.1.4 (2026-10-13).
+**Notes:** its docs say it cannot protect against malware running as the
+same user while the vault is unlocked.
+
+### UltraAuthenticator
+
+**Purpose:** generates offline TOTP / HOTP sign-in codes (the codes Google
+Authenticator and Aegis produce), kept in a vault behind a master password.
+
+**Capabilities:**
+- Adds accounts by QR code (camera, image file or screen) or by typing the
+  setup key, with a strict `otpauth://` parser.
+- An encrypted vault (Argon2id + XChaCha20-Poly1305). Seeds are wiped from
+  memory right after each code is computed.
+- A lock screen with a growing wait, locking when idle or minimised, and an
+  option to hide codes until clicked.
+- A password-protected "Show key" to move an account to another device.
+- Encrypted backup and restore with its own passphrase.
+
+**Built on:** UltraCrypt, libzbar for QR decoding, the camera support.
+**Version:** 0.2.8 (2026-10-13).
+**Notes:** it depends on a correct system clock and cannot recover a lost
+master password.
+
+---
+
+## AI
+
+### UltraAIApp
+
+**Purpose:** the dashboard for the UltraAI module: a grid of service tiles,
+each opening a dialog that tries out one AI capability.
+
+**Capabilities:**
+- Ten services: chat, embeddings, speech to text, text to speech,
+  translation, image generation, vision, video generation, music generation,
+  code assist.
+- A chat dialog and a translator dialog (source language, formality).
+- A settings window to choose providers, allow a cloud fallback and edit
+  endpoints.
+- Uses the module's providers: Anthropic, OpenAI-compatible servers, local
+  Qwen / Ollama / llama.cpp, ComfyUI, MiniMax, and mocks.
+
+**Built on:** UltraAI (with UltraNet and UltraVault).
+**Version:** 0.1.15 (2026-10-16).
+**Notes:** described in its build file as a dashboard demo. Services run
+locally by default.
+
+### UltraClaude
+
+**Purpose:** a desktop chat window for Claude that runs on a Claude Pro or
+Max subscription. It drives the official Claude Code CLI and never holds an
+API key or token itself.
+
+**Capabilities:**
+- Sign-in through `claude auth login`, and log out from the app.
+- A list of chats, each resuming the same CLI session in its own folder.
+- A choice of model, permission mode (Ask / Accept edits / Plan / Allow
+  everything) and working folder.
+- Answers streamed as they arrive, with a Stop button.
+- A badge per chat counting the lines not yet in the repository's default
+  branch.
+- Headless `--print`, `--list-chats` and `--count-lines` modes.
+
+**Built on:** the UltraCanvas core. It runs the CLI as a child process.
+**Version:** 0.4.2 (2026-10-15).
+**Notes:** needs `claude` on the PATH.
+
+---
+
+## Business
+
+### UltraFIBU
+
+**Purpose:** German double-entry bookkeeping (Finanzbuchhaltung) with a
+German interface, for small businesses.
+
+**Capabilities:**
+- Company setup with any fiscal-year start, SKR03 / SKR04 charts of
+  accounts, tax keys.
+- Documents (Belege) through draft, posting, payment and reversal. Journal,
+  account balances, a GoBD audit log, period locking.
+- DATEV import and export with file checking.
+- Bank statement import and payment matching.
+- UStVA calculation with an ELSTER XML file, and One-Stop-Shop.
+- Customers and suppliers with EU VAT-ID checks, invoice PDFs, and an
+  `ultrafibu` command line.
+
+**Built on:** UltraDatabase (SQLite, or PostgreSQL for several users),
+UltraCrypt, UltraVault, the PDF writer.
+**Version:** 0.24.5 (2026-10-15).
+**Notes:** it does not file tax returns itself. The ELSTER output is an XML
+file for manual upload; the ERiC library is not included.
+
+---
+
+## Desktop and system
+
+### UltraDesktop
+
+**Purpose:** the ULTRA OS desktop: one screen-sized window under all other
+windows, holding the taskbar, the desktop organiser, the info panel and the
+wallpaper.
+
+**Capabilities:**
+- A taskbar (left by default, or top or bottom) with system buttons and the
+  running applications.
+- A right bar with virtual desktops, a sticker board, notes and a screenshot
+  button.
+- Records every copy into an encrypted clipboard history (leaving out copies
+  password managers mark as secret), with a quick panel on `Super+V`.
+- An info panel: mail count, network traffic, VPN, Bluetooth, Wi-Fi, USB,
+  keyboard, webcam, microphone, battery.
+- Draws notifications as toasts (UltraMessage is the notification server).
+- On Windows it can run beside Explorer or instead of it, and you can always
+  switch back.
+
+**Built on:** DesktopShell, ClipboardHistory, UltraMessage and the message
+centre.
+**Version:** 0.4.1 (2026-10-15).
+**Notes:** back ends for X11 (Linux, BSD) and Win32. On macOS it runs, but
+the running-apps group stays empty.
+
+### UOS-Settings
+
+**Purpose:** the ULTRA OS settings application, for settings that belong to
+the system rather than to one app.
+
+**Capabilities:**
+- A page tree with the selected page beside it. There is no Apply button:
+  every change is saved at once.
+- Desktop: taskbar edge, wallpaper, RAM disc folder, file manager, number of
+  virtual desktops.
+- On Windows: what starts at sign-in (the Windows desktop, UltraDesktop
+  beside Explorer, or UltraDesktop instead of Explorer).
+- File dialogs: one shared last-used folder or one per application.
+- Devices: the scanner and printer certificates trusted on first use, which
+  can be forgotten.
+
+**Built on:** the UltraCanvas core and UltraDesktop's settings code.
+**Version:** 0.5.0 (2026-10-15).
+
+### UltraClipboard
+
+**Purpose:** the full clipboard history viewer: find, reuse, edit, save or
+pin anything you copied.
+
+**Capabilities:**
+- Pinned entries first, then Today / Yesterday / Earlier, with thumbnails.
+- Copy, Edit, Save as and Delete on every entry, with Undo for 8 seconds.
+- Search (ignoring case and accents) and filters: text, images, files,
+  links, pinned.
+- Save as text, HTML, ODT or DOCX, any image type, or as the copied files.
+- Shares its history with UltraDesktop's quick panel, and records while it
+  is open where no UltraDesktop is running.
+
+**Built on:** ClipboardHistory.
+**Version:** 0.1.5 (2026-10-14).
+
+### UltraCleaner
+
+**Purpose:** finds and removes the leftovers macOS, Windows and Linux leave
+behind, and shows the exact paths before it deletes anything.
+
+**Capabilities:**
+- An overview with a usage chart per drive.
+- Rule-driven clean-up of temporary files, caches, logs, crash reports,
+  thumbnails, package downloads, build leftovers and the trash.
+- Only removes paths a rule named, and checks each one twice (when found and
+  when removed). Modes: simulate, move to trash, delete permanently.
+- Photo albums: identical files, identical images, and similar shots found
+  by perceptual hashing.
+- On Windows: registry entries that point at missing files, removed after a
+  backup, with restore.
+- A command line and tests share the same engine.
+
+**Built on:** its own headless engine, the UltraCanvas core for image
+decoding.
+**Version:** 0.66 (2026-10-17).
+
+### UltraNetMonitor
+
+**Purpose:** shows live which processes hold which network connections, the
+view `ss -p` gives, in a window. It only observes and never blocks traffic.
+
+**Capabilities:**
+- A live process list beside a connection list, refreshed every second,
+  sortable and filterable.
+- A "Via" column that follows loopback chains through local proxies, VPNs
+  and antivirus software.
+- Host names, and open / close events.
+- Recording into a history (hour, day, week, month) with roll-ups after 30
+  days.
+- CSV export, and many command-line options (`--list`, `--by-app`,
+  `--history` and others).
+
+**Built on:** NetworkMonitor, UltraDatabase (SQLite).
+**Version:** 0.17 (2026-10-15).
+**Notes:** without elevation only your own processes are attributed. Byte
+counts exist only on Linux.
+
+### DeviceExplorer
+
+**Purpose:** the user interface of IODeviceManager: shows the printers,
+scanners and cameras connected to the computer.
+
+**Capabilities:**
+- A device tree, groupable by category and filterable, with details
+  (General, Connection, Status).
+- Scans on a worker thread, then follows hot-plugging.
+- Asks a selected printer for its status and ink / toner levels.
+- Back ends: CUPS, the Windows spooler, SANE, V4L2, and IPP / eSCL network
+  devices.
+- Read-only: it never prints, scans or changes a setting.
+
+**Built on:** IODeviceManager.
+**Version:** 0.2.2 (2026-10-15).
+**Notes:** local scanners and cameras only on Linux. Audio, storage, serial,
+Bluetooth and GPIO devices wait on new IODeviceManager back ends.
+
+### UltraWinManager
+
+**Purpose:** the graphical front end for running Windows applications on
+ULTRA OS through the UltraWin module.
+
+**Capabilities:**
+- Environments: isolated Wine prefixes, component installs, launching a
+  `.exe` or `.msi` into an environment.
+- Programs: the installed Start-menu programs of all environments, started
+  by double-click.
+- Windows VM: provisioning from install media, start / suspend / resume /
+  stop.
+- Shows which engines the host has (Wine, winetricks, QEMU, KVM) and how to
+  get the missing ones.
+
+**Built on:** UltraWin.
+**Version:** follows the UltraWin changelog, 0.1.2 (2026-10-12).
+**Notes:** Linux / ULTRA OS only. The Wine tier works; the VM tier has not
+been validated on real hardware yet.
+
+### UltraWinSetup
+
+**Purpose:** `ultrawin-setup`, a command-line tool that drives the UltraWin
+VM tier.
+
+**Capabilities:** `status`, `provision` from a Windows ISO and the virtio
+drivers, `start` / `stop` / `suspend` / `resume` / `watch`, `run` a program
+in the VM or under Wine, install components, list programs.
+
+**Built on:** UltraWin (no UI).
+**Version:** follows the UltraWin changelog, 0.1.2 (2026-10-12).
+**Notes:** Linux only. You supply your own Windows licence and ISO.
+
+### UltraMessageCli
+
+**Purpose:** `ultramsg`, the command line for the UltraMessage bus, for shell
+scripts and tests (the equivalent of `osascript` or `busctl`).
+
+**Capabilities:** `post` a message, `tail` live messages, `query` the
+journal, list `conversations` and `endpoints`, `mark-read`, `dismiss`,
+`delete`, `export`. It starts a broker itself if none is running.
+
+**Built on:** UltraMessage (no UI).
+**Version:** no changelog (source header 0.1.0).
+**Notes:** local to one user session; it is not a network protocol.
+
+---
+
+## Developer
+
+### UltraCanvasStart
+
+**Purpose:** sets a computer up for UltraCanvas development: the application
+form of [GettingStarted.md](GettingStarted.md), for programmers on a machine
+with nothing installed yet.
+
+**Capabilities:**
+- Six steps: your computer, features, tools (checked and installed),
+  framework (prebuilt SDK or built from source), project, build.
+- Writes a project skeleton: `CMakeLists.txt`, `main.cpp`, presets, README,
+  and an instruction file for the AI assistant you choose.
+- A headless command line (`--check`, `--plan`, `--create`) that CI runs.
+- Shipped as standalone archives for Linux, Windows and macOS.
+
+**Built on:** its own engine library on the UltraCanvas core.
+**Version:** 0.4.3 (2026-10-17).
+**Notes:** it can only check and install for the platform it runs on.
+
+### DemoApp
+
+**Purpose:** the framework's showcase (`UltraCanvasDemo`): every element,
+chart, diagram, module and file format, one page at a time.
+
+**Capabilities:**
+- 131 example pages: input elements, menus, pickers, tree and list views,
+  tabs, the spreadsheet, the ODT and rich-text editors.
+- Chart and diagram pages, media and format pages (SVG, CDR, DWG, barcodes,
+  audio, PixelFX, AudioFX, AI).
+- OpenGL pages (models, shaders).
+- The message centre and notification toasts.
+- Builds for the browser through Emscripten.
+
+**Built on:** the whole framework and every plugin.
+**Version:** the framework version, 0.9.337 (2026-10-18).
+
+### CSSLayoutTests
+
+**Purpose:** a test program without UI for the CSS layout engine, for
+framework developers.
+
+**Capabilities:** 35 test cases covering block stacking, absolute / fixed /
+relative positioning, Flex (grow, wrap, gaps, nesting), Grid (fixed, `fr`
+and auto tracks, spans), invalidation and caching, and intrinsic sizing.
+
+**Built on:** CSSLayout.
+**Version:** no changelog (source header 1.4.0).
+
+==============================================================================
+FILE: Docs/UltraOSModuleOverview.md
+==============================================================================
+
+# ULTRA OS modules and libraries: an overview
+
+A short summary of every module and library in the ULTRA OS / UltraCanvas
+project: what each one is for, what it can do, and how far it has been built.
+The authoritative registry, with the full public function surface of every
+module, is [`Masterfile_modules.md`](../Masterfile_modules.md). Each module's
+own documentation is under `Docs/Modules/<Name>/` or `Docs/UltraCanvas/`. For
+how UltraCanvas compares with Qt, GTK and others, see
+[UltraCanvasComparison.md](UltraCanvasComparison.md).
+
+**Status legend:** ✅ implemented and in the build · 🟡 partly implemented ·
+📝 specified or proposed only
+
+---
+
+## Overview table
+
+| Module | Purpose in one line | Status |
+|---|---|---|
+| [UltraCanvas core](#ultracanvas-core) | Cross-platform C++20 UI, rendering, layout and events | ✅ |
+| [Chart and diagram plugins](#chart-diagram-and-code-plugins) | About 70 charts, diagrams, gauges and codes as UI elements | ✅ |
+| [FileLoader](#fileloader) | Loads, saves and converts every user file through one facade | ✅ |
+| [File-format plugins](#file-format-plugins) | Vector, document, 3D-model, video and text format readers and writers | ✅ |
+| [HTMLReader](#htmlreader) | HTML + CSS parsed and laid out as native elements | ✅ |
+| [PixelFX](#pixelfx) | Bitmap processing and analysis engine | ✅ |
+| [AudioFX](#audiofx) | Audio effects, analysis and clean-up | 🟡 |
+| [VideoFX](#videofx) | Headless video editing and export on FFmpeg | ✅ |
+| [IODeviceManager](#iodevicemanager) | Printers, scanners and cameras behind one API | 🟡 |
+| [OCR](#ocr) | Text recognition in images and scanned pages | 🟡 |
+| [Vectorizer](#vectorizer) | Bitmap to SVG tracing | ✅ |
+| [QRCode and Barcode](#qrcode-and-barcode) | Generating QR codes and 1D barcodes | ✅ |
+| [UltraNet](#ultranet) | Networking: HTTP(S), WebSocket, FTP, TCP/UDP, TLS, DNS | ✅ |
+| [NetworkMonitor](#networkmonitor) | System-wide socket table with the owning process | ✅ |
+| [UltraDatabase](#ultradatabase) | Named database connections with mandatory parameter binding | 🟡 |
+| [UltraCrypt](#ultracrypt) | Hashing, AEAD encryption, key derivation, secure random | ✅ |
+| [UltraVault](#ultravault) | System-wide store for credentials and secrets | 🟡 |
+| [VirtualFS](#virtualfs) | Archives as folders, compression, RAM discs | ✅ |
+| [UltraCloud](#ultracloud) | Cloud storage accounts, uploads and share links | ✅ |
+| [UltraAI](#ultraai) | Provider-agnostic AI: LLM, speech, vision, generation | ✅ |
+| [UltraMessage](#ultramessage) | Messages, notifications and commands between applications | 🟡 |
+| [WasmHost](#wasmhost) | Sandboxed WebAssembly runtime for applications | 🟡 |
+| [UltraWin](#ultrawin) | Windows applications on Linux as native windows | 🟡 |
+| [UltraAndroid](#ultraandroid) | Android applications on Linux as native windows | 📝 |
+| [UltraScript](#ultrascript) | Scripting and automation language (an AppleScript equivalent) | 📝 |
+| [SmartHome](#smarthome) | Smart-home devices: Matter, Thread, Zigbee, Z-Wave, KNX | 🟡 |
+| [OAuth sign-in service](#oauth-sign-in-service) | Server that brokers OAuth2 sign-ins for mail and cloud | ✅ |
+
+---
+
+## UI and rendering
+
+### UltraCanvas core
+
+**Purpose:** the universal UI layer of ULTRA OS. One C++20 code base
+renders every application on Windows, Linux, macOS, WebAssembly (experimental)
+and Android (in progress). It is one shared library per platform, and most
+UI-free modules are linked into it.
+
+**Capabilities:**
+- About 60 UI elements: text inputs, code and Markdown editor, rich-text
+  editor with ODT/DOCX round trips, buttons, choices, sliders, menus,
+  toolbars, tabs, split panes, a virtualised list and table view, tree view,
+  file browser, date / time / colour pickers, dialogs, tooltips, toasts,
+  media players and recorders, a video timeline, an image viewer, a paint
+  surface and a vector editing canvas.
+- Cairo + Pango + HarfBuzz rendering: gradients, paths, compositing, HiDPI,
+  Unicode and complex scripts, plus an OpenGL surface.
+- A CSS-style layout engine (Flex, Grid, Block), a theme with colour roles
+  for light and dark, event bubbling and capture, drag and drop, clipboard.
+- Accessibility bridges for AT-SPI, UI Automation and NSAccessibility.
+- Desktop integration: file associations, trash, single instance, folder
+  watching, volume monitor, hardware info, spell checker, printing,
+  shortcuts and app bundles, host file icons.
+- Raster editing (`UCRasterDocument`: layers, selection, brush engine) and
+  vector editing (`VectorStorage`, Bézier paths, gradient editor).
+- Data formats: JSON (yyjson), vector and 3D-model storage, a CAD palette.
+
+**Docs:** `Docs/UltraCanvas/UltraCanvasUIElements.md` (the element catalogue)
+and about 100 component docs in `Docs/UltraCanvas/`.
+
+### Chart, diagram and code plugins
+
+**Purpose:** ready-made visualisation elements in the same library, under
+`UltraCanvas/Plugins/{Charts,Diagrams,QRCode,Barcode}`.
+
+**Capabilities:**
+- **About 35 chart types:** line, bar, area, scatter, pie and donut,
+  sunburst, treemap, bubble, funnel, waterfall, Marimekko, radar, polar,
+  heatmap, contour and 3D surface, 3D scatter, spectrogram, candlesticks,
+  Gantt, Kanban, timeline. A chart engine lets you write new chart types.
+- **About 30 diagram types:** flow chart, UML class and sequence, ER, SysML
+  requirements, PERT, mind map, Sankey, Venn, word cloud, fishbone, git
+  graph, node editor, parliament, matrices / House of Quality, ticker board,
+  gauges (including the framework's progress bar).
+
+---
+
+## Files and media
+
+### FileLoader
+
+**Purpose:** the one way an application loads, saves or converts a user
+file, so no application has its own format list or reader code.
+
+**Capabilities:**
+- Loads from paths or `http(s)://` URLs. Decompresses gzip, zlib,
+  Zstandard and LZ4 transparently.
+- Keeps a runtime inventory of which formats the current build reads and
+  writes, and which plugin provides each one. Every Open / Save dialog's
+  file types come from it.
+- Stores save settings per format (JPEG quality, PNG compression, TIFF codec
+  and so on) once, for every application.
+- Lets an application register its own codecs (`RegisterMediaCodec`).
+
+**Docs:** `Docs/Modules/FileLoader/README.md`, `formats.md` (the full
+load / save matrix).
+
+### File-format plugins
+
+**Purpose:** the per-format readers and writers behind FileLoader, under
+`UltraCanvas/Plugins/`.
+
+**Capabilities:**
+- **Vector:** SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI, DXF, and DWG (a native
+  decoder for R13 to R2018).
+- **Documents:** ODT and DOCX (read and write), DOC, legacy XLS (OLE2,
+  including encrypted Office files), eBooks, LaTeX documents and formulas,
+  PDF through MuPDF (view, search, print), Markdown.
+- **3D models:** STL, OBJ, PLY, 3DS, FBX, COLLADA, STEP, X3D, Blend,
+  Alembic, MS3D, DirectX `.x`. They are rendered to bitmaps or shown in the
+  STL element.
+- **Video:** WebM, plus the platform media frameworks for playback.
+
+### HTMLReader
+
+**Purpose:** the framework's single implementation of reading HTML and CSS.
+
+**Capabilities:** an HTML parser and document model, CSS style sheets and
+the cascade, building native UltraCanvas elements from a page, a page loader,
+HTML forms (filled in and submitted), import into rich documents, and the
+`UltraCanvasWebView` element. There is no JavaScript. UltraWeb and the
+Markdown / rich-text paths use it.
+
+### PixelFX
+
+**Purpose:** the bitmap processing and analysis engine, built on libvips.
+
+**Capabilities:** more than 300 operations in 14 categories: arithmetic,
+colour-space conversion (RGB, HSV, Lab, CMYK, XYZ …), format and bit-depth
+casts, filtering (convolution, edges, blur, sharpen), histograms,
+morphology, FFT / frequency domain, geometric transforms, and metadata
+decoding (EXIF and others). UltraPaint and UltraViewer use it.
+
+**Docs:** `Docs/Modules/PixelFX/README.md`.
+
+### AudioFX
+
+**Purpose:** audio processing for applications: loading, effects, analysis
+and clean-up.
+
+**Capabilities (as documented):** universal audio loading, effects
+processing, effect chains and batch processing, analysis, noise reduction.
+Today the demo app has a live playground (choose a track, apply an effect,
+hear and see the result), on top of the core's audio player, recorder and
+waveform elements. There is no separate library target yet.
+
+**Docs:** `Docs/Modules/AudioFX/README.md`.
+
+### VideoFX
+
+**Purpose:** headless video editing and conversion on FFmpeg. It is a
+shared library of its own, so FFmpeg stays out of the core.
+
+**Capabilities:**
+- Probing media and pulling frames.
+- A segment timeline with trim, speed, 26 effect types and 30 transitions.
+- Text, image and picture-in-picture overlays.
+- Pan and zoom on stills, with built-in face detection to keep faces in
+  shot, and one-call slideshows.
+- Background music with fades, looping and ducking.
+- Joins and export, run as a job on a worker thread.
+
+UltraVideo is built on it.
+
+**Docs:** `Docs/Modules/VideoFX/README.md`.
+
+### IODeviceManager
+
+**Purpose:** one API for the peripherals an application operates.
+
+**Capabilities:** discovering devices, sessions, configuration and work.
+Today that means:
+- **Printers:** Linux, macOS and Windows, plus driverless IPP printers on
+  every platform.
+- **Scanners:** Linux, plus eSCL network scanners on every platform.
+- **Webcams:** Linux.
+
+Each category adds its own operations (`ScannerDevice`, `CameraDevice`,
+`PrinterDevice`). DeviceExplorer is built on it.
+
+**Docs:** `Docs/Modules/IODeviceManager/` (`Architecture.md`, `Gaps.md`).
+
+### OCR
+
+**Purpose:** extracting machine-readable text from images and scanned
+pages, local-first.
+
+**Capabilities:** a plugin under `UltraCanvas/Plugins/Documents/OCR` with
+engine selection, a Tesseract engine, a language catalogue, image bridging
+and exporters (version 0.1). UltraAI's vision analysers are the planned
+cloud alternative.
+
+**Docs:** `Docs/Modules/OCR/`.
+
+### Vectorizer
+
+**Purpose:** turning bitmaps into vector graphics.
+
+**Capabilities:** traces PNG, JPEG, WebP, TIFF or any libvips image into
+colour or black-and-white SVG (phase 1 implemented). Next it is planned for
+the image element ("Trace bitmap…") and the PDF viewer.
+
+**Docs:** `Docs/Modules/Vectorizer/`.
+
+### QRCode and Barcode
+
+**Purpose:** machine-readable codes as UI elements.
+
+**Capabilities:**
+- **QR codes:** configurable error correction, URLs, vCards, Wi-Fi and
+  custom data, with styling, and export to PNG, SVG or PDF.
+- **1D barcodes:** EAN, UPC, Code 39/128, ITF, Codabar and others, with the
+  human-readable line.
+
+**Docs:** `Docs/Modules/QRCode/`, `Docs/UltraCanvas/UltraCanvasBarcodeElement.md`.
+
+---
+
+## Networking, data and security
+
+### UltraNet
+
+**Purpose:** every kind of network communication for clients and servers,
+behind one consistently named API (`UltraNet_*`). TLS verification is on by
+default.
+
+**Capabilities:**
+- HTTP(S): synchronous and asynchronous (streaming, cancel, pause, resume,
+  transfer statistics), downloads and uploads, server-sent events.
+- WebSocket, FTP / FTPS / SFTP, TCP / UDP, TLS, DNS.
+- OAuth2 with PKCE through the system browser, and a shared app registry.
+
+Protocol plugins live under `Plugins/UltraNet/`.
+
+**Docs:** `Docs/Modules/UltraNet/README.md`.
+
+### NetworkMonitor
+
+**Purpose:** the operating system's socket table with the process behind
+every connection, as a library (what `ss -p` / `netstat -p` show). It only
+observes; it never blocks or changes traffic.
+
+**Capabilities:** Linux (netlink `sock_diag`), Windows and macOS back ends,
+persistence, host-name resolution and change events (phase 2 complete).
+UltraNetMonitor is built on it.
+
+**Docs:** `Docs/Modules/NetworkMonitor/README.md`.
+
+### UltraDatabase
+
+**Purpose:** unified database access through named connections that an
+application defines once. Values are always bound as parameters, so SQL
+injection through the API is impossible, and credentials come from
+UltraVault.
+
+**Capabilities:**
+- Queries (synchronous and asynchronous), prepared statements,
+  transactions, cursors, cancellation and versioned migrations.
+- SQLite is bundled, and the PostgreSQL driver is implemented.
+- MySQL / MariaDB, MSSQL, Redis / Valkey, MongoDB and DuckDB are specified
+  as driver plugins.
+
+**Docs:** `Docs/Modules/UltraDatabase/README.md`.
+
+### UltraCrypt
+
+**Purpose:** the single place where cryptography is implemented, for data at
+rest and data integrity. There is one cipher and one key-derivation
+function, and no algorithm menu.
+
+**Capabilities (on libsodium):**
+- Secure buffers, secure zeroing, constant-time comparison, a CSPRNG.
+- SHA-1 and SHA-2 hashes and HMAC.
+- XChaCha20-Poly1305 AEAD, with Argon2id and HKDF for keys.
+- Base16 / Base32 / Base64.
+
+Tested against published test vectors.
+
+**Docs:** `Docs/Modules/UltraCrypt/README.md`.
+
+### UltraVault
+
+**Purpose:** the system-wide home for API keys, tokens and passphrases, so
+no application stores its own secrets.
+
+**Capabilities:** `Put` / `Get` / `Delete` / `List`, with namespaced keys
+(`vendor.app.purpose`) and ACLs. It has a memory back end and an encrypted
+file back end (Argon2id + XChaCha20-Poly1305, tamper-evident). UltraAI,
+UltraCloud and UltraDatabase take their credentials from it. Back ends for
+the platform keychains are planned.
+
+**Docs:** `Docs/Modules/UltraVault/`.
+
+### VirtualFS
+
+**Purpose:** archives and scratch storage. Files inside archives, including
+archives nested inside archives, are reached as if they were ordinary
+folders.
+
+**Capabilities:**
+- Archive traversal and format detection on libarchive.
+- Entry caching and password handling.
+- Raw buffer compression.
+- RAM discs: native on Linux and macOS; on Windows through ImDisk if it is
+  installed, otherwise storage-backed.
+
+**Docs:** `Docs/Modules/VirtualFS/README.md`.
+
+### UltraCloud
+
+**Purpose:** cloud accounts and "upload this and give me a share link", so
+no application talks to a cloud provider on its own.
+
+**Capabilities:**
+- Providers: Nextcloud / ownCloud, generic WebDAV, Dropbox, OneDrive,
+  Google Drive (OAuth2 + PKCE, with automatic token refresh), FTP / FTPS /
+  SFTP.
+- Operations: list, upload, download, share links (with password and
+  expiry), delete and rename.
+- Accounts are stored in UltraDatabase and secrets in UltraVault.
+- Shared add-account and link-picker dialogs, and provider plugin libraries.
+
+**Docs:** `Docs/Modules/UltraCloud/README.md`.
+
+---
+
+## AI, messaging and runtimes
+
+### UltraAI
+
+**Purpose:** provider-agnostic AI. Applications ask for a capability, and the
+user chooses a cloud service or a local model.
+
+**Capabilities:**
+- Text LLMs, embeddings, speech-to-text, text-to-speech and vision.
+- Image, video and music generation, translation and code assist.
+- Adapters: Anthropic, OpenAI and OpenAI-compatible servers, Qwen,
+  llama.cpp, Ollama, vLLM, ComfyUI, ElevenLabs, MiniMax, and a mock for
+  tests.
+- API keys are resolved through UltraVault.
+
+**Docs:** `Docs/Modules/UltraAI/README.md`.
+
+### UltraMessage
+
+**Purpose:** the message channel of ULTRA OS, modelled on the RISC OS Wimp.
+Applications send each other structured messages (broadcast or targeted,
+recorded delivery that bounces when unacknowledged, reply by return),
+receive what the platform publishes, and expose commands that scripts and
+AI agents may call.
+
+**Capabilities:** a broker with in-process hosting and lock-file election,
+a Unix-socket / named-pipe transport, `Post` / `PostRecorded` / `Request` /
+`Reply`, a journal, and a bridge to the UI (phase 1 done, phase 2 feed
+adapters started). The desktop message centre and the notification toasts
+use it.
+
+**Docs:** `Docs/Modules/UltraMessage/`.
+
+### WasmHost
+
+**Purpose:** runs WebAssembly modules for UltraCanvas applications, safely.
+
+**Capabilities:** compiling from binary or text format, linking the host
+functions an application offers, WASI preview 1 with nothing granted, a
+memory cap per instance and a time limit per call. It wraps wasmtime, which
+can be replaced. It is on by default on Linux and Windows (phase 1).
+UltraWeb is its first user.
+
+### UltraWin
+
+**Purpose:** runs Windows applications on Linux / ULTRA OS as single native
+windows, never a Windows desktop, with the user's home folder mapped as
+`U:`.
+
+**Capabilities (stage 1):** isolated Wine environments with persisted drive
+mappings, launching and supervising applications, and a component installer
+(a winetricks wrapper). Wine runs as a child process, so no GPL code is
+linked. A QEMU/KVM + FreeRDP virtual-machine tier is planned.
+
+**Docs:** `Docs/Modules/UltraWin/README.md`.
+
+### UltraAndroid
+
+**Purpose:** runs other people's Android applications on Linux / ULTRA OS as
+single native windows, with the user's folders at one fixed mount point. It
+is not the Android back end, which runs UltraCanvas applications *on*
+Android.
+
+**Status:** specified only. It plans a host-side stage, a container tier
+and a VM tier behind one API.
+
+### UltraScript
+
+**Purpose:** the scripting language of ULTRA OS, a cross-platform
+equivalent of AppleScript for automating UltraCanvas applications.
+
+**Planned capabilities:** three syntax styles (Modern, Natural, Classic), a
+recorder that turns user actions into script code, an SDEF-compatible
+dictionary generated from element metadata, and a Script Editor
+application.
+
+**Status:** specified only (`Docs/Research/UltraScriptSpecification.md`).
+
+---
+
+## Home and server
+
+### SmartHome
+
+**Purpose:** controlling smart-home devices from ULTRA OS.
+
+**Capabilities:** a `SmartHomeManager` (device registry, command queue,
+threads), a dashboard panel, device cards and other widgets. It has
+protocol back ends for Matter, Thread, Zigbee, Z-Wave and KNX.
+
+**Status:** the engine and UI targets build. Every protocol back end is
+switched off until its vendor SDK is vendored.
+
+**Docs:** `SmartHome/STATUS.md`, `Docs/Modules/Smarthome/README.md`.
+
+### OAuth sign-in service
+
+**Purpose:** a small FastAPI server (`Server/OAuthCallback`, running at
+`oauth-callback.ultraos.eu`). It stands between the applications and the
+OAuth2 providers: Google, Microsoft and Yahoo mail for UltraMail, and Google
+Drive, OneDrive and Dropbox for UltraCloud.
+
+---
+
+## Applications built on the modules
+
+These are not libraries, but they show the modules in use. Each one
+versions itself with its own changelog in `Docs/<App>/`. Each application is described in
+more detail in [UltraOSApplicationOverview.md](UltraOSApplicationOverview.md).
+
+| Application | What it is | Main modules |
+|---|---|---|
+| DemoApp | Showcase of every element and module | all |
+| Texter | Text and code editor with tabs | core, FileLoader |
+| UltraFiler | Windows Explorer-style file manager | core, VirtualFS, FileLoader |
+| UltraViewer | Universal media viewer | core (`UltraCanvasMediaViewer`), FileLoader |
+| UltraPaint | Bitmap editor (Paint Shop Pro / GIMP class) | raster editing, PixelFX |
+| ArtCreator | Vector illustration program (Xara / ArtWorks class) | vector editing |
+| UltraVideo | Video editor | VideoFX |
+| UltraMail | Mail client | UltraNet, UltraDatabase, UltraVault, UltraCloud |
+| EmailCleaner | Clean-up of large, old mailboxes | UltraNet, UltraDatabase |
+| UltraSocial | Posting to social networks | UltraNet, UltraDatabase, UltraVault, UltraCrypt |
+| UltraWeb | Browser for web pages and WebAssembly apps | HTMLReader, WasmHost |
+| UltraPress | Website and shop builder that publishes WebAssembly | UltraNet, UltraCloud |
+| UltraAIApp | Dashboard for the AI services | UltraAI |
+| UltraClaude | Desktop chat with Claude through the Claude Code CLI | core |
+| UltraPassword | Password vault | UltraCrypt |
+| UltraAuthenticator | TOTP / HOTP sign-in codes | UltraCrypt |
+| UltraClipboard | Clipboard history | core |
+| UltraCleaner | Removes caches, temporary files and leftovers | core |
+| UltraNetMonitor | Live view of which process holds which connection | NetworkMonitor |
+| DeviceExplorer | Printers, scanners and cameras | IODeviceManager |
+| AnchorPoint | Peer-to-peer file sharing without server storage | UltraNet, UltraCrypt |
+| UltraFIBU | German double-entry accounting (DATEV, ELSTER) | UltraDatabase, UltraCrypt, UltraCloud |
+| UltraDesktop | The ULTRA OS desktop (also beside or instead of Explorer) | core, UltraMessage |
+| UOS-Settings | System settings of ULTRA OS | core |
+| UltraWinManager / UltraWinSetup | Windows-application management | UltraWin |
+| UltraCanvasStart | Sets a computer up for writing UltraCanvas apps | core |
+| UltraMessageCli | Command-line client for UltraMessage | UltraMessage |
 
 ==============================================================================
 FILE: Docs/UltraCanvas/AndroidOnLinuxInvestigation.md
