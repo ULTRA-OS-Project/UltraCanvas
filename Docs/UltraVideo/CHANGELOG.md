@@ -1,3 +1,13 @@
+#### 2026-10-21 *0.7.1*
+- **Titles dragged onto their lane.** A title style in the bin's *Titles*
+  tab is dragged from its button onto the title lane at a time: the lane
+  shows the insertion marker with the style's name (`UltraCanvasVideoTimeline`
+  1.3.0, `SetDropFeedback`), snapped as a file drop is, and the drop puts the
+  title there. A drop on another lane says titles go on the title lane,
+  `Esc` lets go, and the click still puts the style at the playhead. The
+  window carries its three drags - a file from a tile, an effect preset and
+  a title style from their buttons - through one path now.
+
 #### 2026-10-16 *0.7.0*
 - **Effects on overlay clips.** The bin's effect presets now also work on
   a clip on the overlay lane, by a click with it selected or by dragging

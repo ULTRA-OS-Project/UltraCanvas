@@ -4,6 +4,7 @@
 // drag feedback, readouts), hit testing and the interactions that turn into
 // reported changes. The model operations it previews with live in
 // UltraCanvasVideoTimelineModel.cpp.
+// Version: 1.2.0 - the application's drop feedback, ring and marker in one (SetDropFeedback); DragLeave clears both
 // Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
 // Last Modified: 2026-10-14
@@ -285,6 +286,33 @@ std::vector<std::string> UltraCanvasVideoTimeline::GetSelection() const {
 
 void UltraCanvasVideoTimeline::SetSelectedTransition(const std::string& clipId) {
     selectedTransition = clipId;
+    RequestRedraw();
+}
+
+double UltraCanvasVideoTimeline::SetDropFeedback(const DropFeedback& feedback) {
+    dropTargetClip = feedback.clipId;
+    dropActive = false;
+    dropLabel.clear();
+    double at = -1.0;
+    for (size_t i = 0; i < model.tracks.size() && !feedback.trackId.empty(); ++i) {
+        if (model.tracks[i].id != feedback.trackId) continue;
+        at = DropTime(model.tracks[i], feedback.seconds);
+        dropActive = true;
+        dropTrackIndex = i;
+        dropSeconds = at;
+        dropCount = 0;
+        dropLabel = feedback.label;
+        break;
+    }
+    RequestRedraw();
+    return at;
+}
+
+void UltraCanvasVideoTimeline::ClearDropFeedback() {
+    if (!dropActive && dropLabel.empty() && dropTargetClip.empty()) return;
+    dropActive = false;
+    dropLabel.clear();
+    dropTargetClip.clear();
     RequestRedraw();
 }
 
@@ -1096,7 +1124,8 @@ void UltraCanvasVideoTimeline::DrawDragFeedback(IRenderContext* ctx, const Rect2
         const double x = std::floor(SecondsToX(dropSeconds));
         ctx->SetFillPaint(style.focus);
         ctx->FillRectangle(Rect2Dd(x - 1.0, lane.top, 2.0, lane.height));
-        std::string text = dropCount > 0 ? std::to_string(dropCount) + (dropCount == 1 ? " file" : " files") + " at " : "Insert at ";
+        std::string text = !dropLabel.empty() ? dropLabel + " at "
+                           : dropCount > 0 ? std::to_string(dropCount) + (dropCount == 1 ? " file" : " files") + " at " : "Insert at ";
         text += TimelineTimecode(dropSeconds, model.frameRate);
         DrawReadout(ctx, text, static_cast<float>(x) + 8.0f, lane.top + 4.0f);
     }
@@ -1232,11 +1261,8 @@ bool UltraCanvasVideoTimeline::OnEvent(const UCEvent& event) {
         case UCEventType::KeyDown: return IsFocused() ? HandleKey(event) : false;
         case UCEventType::DragEnter:
         case UCEventType::DragOver: return HandleDrop(event, x, y, false);
-        case UCEventType::DragLeave:
-            if (dropActive) {
-                dropActive = false;
-                RequestRedraw();
-            }
+        case UCEventType::DragLeave:   // the system's drag, or the application's carried one
+            ClearDropFeedback();
             return false;
         case UCEventType::Drop: return HandleDrop(event, x, y, true);
         default: return false;
@@ -1937,15 +1963,7 @@ bool UltraCanvasVideoTimeline::HandleDrop(const UCEvent& event, float x, float y
         return false;
     }
     const TimelineTrack& track = model.tracks[hit.trackIndex];
-    double seconds = std::max(0.0, hit.seconds);
-    if (track.IsMagnetic()) {   // the nearest cut
-        double best = track.End();
-        for (double cut : TimelineCuts(track)) if (std::fabs(cut - seconds) < std::fabs(best - seconds)) best = cut;
-        seconds = best;
-    } else {
-        bool snapped = false;
-        seconds = SnapTime(seconds, "", snapped);
-    }
+    const double seconds = DropTime(track, hit.seconds);
     if (drop) {
         dropActive = false;
         RequestRedraw();
@@ -1956,8 +1974,22 @@ bool UltraCanvasVideoTimeline::HandleDrop(const UCEvent& event, float x, float y
     dropTrackIndex = hit.trackIndex;
     dropSeconds = seconds;
     dropCount = static_cast<int>(event.droppedFiles.size());
+    dropLabel.clear();
     RequestRedraw();
     return true;
+}
+
+// Where a drop at `seconds` on the track lands: the nearest cut on a
+// magnetic track, the snap points (playhead, cuts, markers) otherwise
+double UltraCanvasVideoTimeline::DropTime(const TimelineTrack& track, double seconds) const {
+    seconds = std::max(0.0, seconds);
+    if (track.IsMagnetic()) {
+        double best = track.End();
+        for (double cut : TimelineCuts(track)) if (std::fabs(cut - seconds) < std::fabs(best - seconds)) best = cut;
+        return best;
+    }
+    bool snapped = false;
+    return SnapTime(seconds, "", snapped);
 }
 
 // ============================================================================
