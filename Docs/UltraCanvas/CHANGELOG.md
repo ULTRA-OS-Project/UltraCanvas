@@ -1,3 +1,190 @@
+#### 2026-10-22 *0.9.373*
+- **ChatCube Direct: the ULTRA OS native messenger, as an UltraIM provider.**
+  A provider module (`UltraCanvas/Plugins/UltraIM/direct/`, loaded as
+  `Plugins/UltraIM/ultraim_direct`) with a key-pair identity made on the
+  device and kept in its `DeviceKeyVault`, end-to-end encrypted messages
+  (X25519 key agreement, HKDF, XChaCha20-Poly1305, authenticated header)
+  sent peer to peer over an UltraRTC data channel whose set-up is signed
+  with the identity keys, the ChatCube relay for sign-in, presence,
+  signalling, the offline queue and groups, delivery and read receipts, and
+  a local SQLite record of contacts, conversations, history and the outbox,
+  and 1:1 voice and video calls (signed invite / accept / reject / camera /
+  hang-up over the relay, an UltraRTC peer per call with Opus and VP8, mute,
+  camera off; a dropped media connection waits briefly for the hang-up
+  that explains it), and the local network with or without a relay: an
+  mDNS announcement (`_chatcube._tcp`) and discovery, a TCP connection both
+  ends authenticate with their identity keys carrying the same signed
+  signalling, the nearby list, and the outbox waiting for the link when
+  there is no relay.
+  `Tests/UltraIM/DirectProviderTests.cpp` runs two providers against a local
+  relay end to end; CI installs the relay for it.
+- **UltraNet: WebSockets failed on every Linux machine whose libcurl was
+  built without them, Ubuntu 24.04's included.** The configure check looked
+  only for the `curl_ws_send` symbol, which libcurl exports either way, so it
+  kept the system library, and every `UltraNet_WebSocketConnect` then failed
+  ("not built in"). It now asks the library which protocols it was built
+  with (`curl_version_info`), and without `ws` builds the vendored curl in
+  `third_party/curl`, as it already did for a curl without versioned symbols.
+  Found by ChatCube Direct's relay socket.
+- **Device TLS trust: a verification that times out goes on to first-use
+  learning.** The ordinary verified request a device gets first, to spare a
+  device with a vouched-for certificate any pinning, returned its result
+  whenever it was not a certificate refusal - a timeout included. On the
+  Windows runners that first request to the eSCL live test's self-signed
+  scanner on 127.0.0.1 timed out at its 10 s twice (CI runs 3938 and 4091),
+  with no request ever reaching the scanner, the way a chain build that
+  stalls on an unknown root does. A timeout now goes on to the first-use
+  probe and the pinned request, as a refused chain does; a device that is
+  simply away still times out, once more.
+- **`package-macos.sh`: the staple and the validate each get their own
+  retry budget, and a longer one.** Apple's CloudKit ticket lookup still
+  drops the connection on the Intel runner (stapler exit 68) for minutes
+  at a time: the 0.9.307 release build got `UltraFiler.app` stapled on its
+  fifth and last try and then had no try left for the validate, and
+  0.9.348 lost all five tries on the demo image inside two minutes - both
+  red on main after a notarization Apple had accepted. Each of the two now
+  has `STAPLE_ATTEMPTS` tries of its own (default 8, was 5 shared) with a
+  pause growing from 20 s to 60 s, about six minutes each, before the run
+  is given up.
+- **UltraCanvasVideoTile: live pictures pushed from any thread.** A new
+  element (`UltraCanvasVideoTile.h`) for a call's video, a self view or
+  frames a program decodes itself: `PushFrame` copies RGBA or BGRA pixels
+  into a one-frame inbox from any thread, the newest frame wins and one
+  upload to the UI thread is in flight at a time; `Contain` or `Cover`
+  fitting, mirroring for a self view, a caption without a picture, corner
+  radius and border. Catalogued under *Text, images and media*; documented
+  in `Docs/UltraCanvas/UltraCanvasVideo.md`.
+- **UltraCrypt: AES-CTR and PBKDF2, for formats defined elsewhere.**
+  `UltraCrypt_AesCtrEncrypt` / `UltraCrypt_AesCtrDecrypt` (AES-128/192/256,
+  a 128-bit big-endian counter from the IV, any length, on the bitsliced
+  constant-time AES the CBC mode uses) and `UltraCrypt_DeriveKeyPbkdf2`
+  (PBKDF2-HMAC-SHA-256/512, the password's HMAC state keyed once). Like
+  AES-CBC they are interop only - nothing UltraCanvas defines uses them -
+  and are here for Matrix's room-key export files and attachments. Tested
+  against SP 800-38A F.5, RFC 7914 and SHA-512 values.
+- **UltraCrypt: X25519 key agreement.** `UltraCrypt_KeyExchange` derives the
+  secret two parties share from one's secret and the other's public key,
+  refusing a low-order public key; `UltraCrypt_SignaturePublicKeyToKeyExchange`
+  and `UltraCrypt_SignatureSecretKeyToKeyExchange` turn an Ed25519 identity
+  into its X25519 form, so one key pair signs and encrypts;
+  `UltraCrypt_GenerateKeyExchangeKeyPair` makes an ephemeral pair. The
+  module had signatures and AEAD but nothing between them, which end-to-end
+  encryption needs (ChatCube Direct). Tested against the RFC 7748 vector.
+- **UltraIM: a Matrix provider.** `UltraCanvas/Plugins/UltraIM/matrix/`
+  (module `ultraim_matrix`, provider `matrix`) speaks the Matrix
+  client-server API to any homeserver: password or token sign-in with
+  `.well-known` discovery, the session kept in a `DeviceKeyVault`, `/sync`
+  as a long poll, direct chats (`m.direct`) and groups, invitations accepted
+  by answering, replies, edits, redactions, read receipts, typing, presence
+  and history paged back with `/messages`; our own messages go out under the
+  client message id as the transaction id, so their echo meets the
+  optimistic row. `Tests/UltraIM/MatrixProviderTests.cpp` runs against a
+  real Synapse (`Tests/UltraIM/matrix_test_server.py`); CI installs it.
+- **Matrix: end-to-end encryption (Olm and Megolm).** The cryptography is
+  vodozemac, Matrix's audited Rust implementation, behind a C ABI shim
+  (`Plugins/UltraIM/matrix/olm-c`, built with Corrosion; option
+  `ULTRAIM_MATRIX_E2EE`, on, needs cargo - without it the provider builds and
+  encrypted rooms say they cannot be read). `MatrixCrypto` keeps the rest:
+  this device's keys signed and published with one-time and fallback keys
+  topped up, other users' device lists with their keys trusted on first use,
+  an Olm session per device carrying each room's key to every device of its
+  members, a Megolm session per room rotated by the room's settings and when
+  someone leaves, decryption with a replay guard and room and sender checks,
+  and messages whose key is late shown as waiting and replaced when it comes.
+  New direct chats and groups are encrypted; signing in again reuses the
+  device while its keys are here. Everything is in one internal file per
+  device, sealed with a key the vault holds. `UltraIM_ExportEncryptionKeys` /
+  `UltraIM_ImportEncryptionKeys` (new provider calls) write and read the
+  room-key export file Element uses; `UltraIMConversation::isEncrypted` marks
+  encrypted conversations. `cmake/UltraCanvasRust.cmake` now holds the
+  Windows Rust toolchain pick and the Corrosion fetch the Vectorizer plugin
+  had to itself. Tests: `Tests/UltraIM/MatrixCryptoTests.cpp` (no server),
+  and in `MatrixProviderTests` only ciphertext on the server, a second
+  device, a key import, the same device after signing in again, and an
+  encrypted room with matrix-nio (`matrix_nio_peer.py`), key exports read
+  both ways; CI installs `matrix-nio[e2e]`.
+- **UltraIM: an instant-messaging framework, the base of the ChatCube
+  messenger.** A new UI-free module (`UltraCanvas/{include,core}/UltraIM/`,
+  target `UltraIM`) with one `UltraIM_*` API for every messenger network:
+  providers implement `IUltraIMProviderPlugin` and ship as modules loaded by
+  `UltraIM_RefreshProviders` (checked against
+  `ULTRAIM_PLUGIN_HOST_ABI_VERSION`) or are registered in-process; every
+  event and callback reaches the application through the dispatcher it
+  installs, so a UI subscribes on its UI thread and needs no lock; a
+  conversation fetch merges every connected provider; sends carry a client
+  message id for optimistic display; calls are started, answered, muted and
+  ended through the same API (`UltraIM_SetCallMuted`, result code
+  `InvalidState`); a video call's pictures reach the application through
+  sinks (`UltraIM_SetCallVideoSinks`, RGBA on a media thread), its camera
+  is switched with `UltraIM_SetCallCamera`, and the other side's camera
+  arrives as `CallMediaChange`; `UltraIM_FetchNearbyContacts` and the
+  `NearbyChange` event list the people on the local network, and
+  `UltraIMCredentials::localNetwork` asks a provider to look there. Plan:
+  `Docs/Research/ChatCubeDirectPlan.md`; doc: `Docs/Modules/UltraIM/README.md`;
+  tests: `Tests/UltraIM` (`ULTRACANVAS_BUILD_ULTRAIM_TESTS`).
+- **UltraNet mDNS: announcing services, not only finding them.** The mDNS
+  plug-in gains `IServiceDiscoveryPlugin` (`UltraNet/UltraNetPlugins.h`):
+  `Advertise(UltraNetServiceAdvertisement{serviceType, instanceName, port,
+  txt}, handle)` announces a service of the program's own until
+  `StopAdvertising` - an Avahi entry group on a threaded poll (renamed on a
+  name clash, re-announced when the daemon restarts), Bonjour's
+  `DNSServiceRegister`, or Windows' `DnsServiceRegister` (1703+, bound at
+  run time like the browse calls). Browsing is unchanged. ChatCube's local
+  network is its first user.
+- **UltraRTC: WebRTC peer connections and data channels.** A new UI-free
+  module (`UltraCanvas/{include,core}/UltraRTC/`, target `UltraRTC`) wraps
+  libdatachannel 0.24.6 - vendored with libjuice, usrsctp, libsrtp and plog
+  under `UltraCanvas/third_party/libdatachannel/` - behind `UltraRtc_*`
+  functions and opaque handles: peers with STUN / TURN servers, SDP and
+  candidates passed through untouched, DTLS always on, the W3C state
+  machines as events through an injectable dispatcher, and data channels
+  carrying text and binary messages. Built where OpenSSL is found; without
+  it every call answers `Unsupported`. Audio tracks: Opus (48 kHz
+  mono, in-band FEC, loss concealment) with the microphone and the speaker
+  through `UltraCanvasAudioRecorder` (live mode) and `UltraCanvasAudioPlayer`
+  (push sink), or fed and read by the application; needs libopus.
+  Video tracks: VP8 (libvpx through FFmpeg's libavcodec, an RFC 7741 payload
+  format of UltraRTC's own, key-frame recovery by RTCP PLI after a loss)
+  with the camera through `UltraCanvasVideoRecorder`'s live preview, or fed
+  and read by the application as RGBA. The RTCP handlers that answer the
+  receiver (NACK, PLI) now sit where its reports reach them. ChatCube's
+  peer-to-peer chat, voice and video calls run on it. Doc: `Docs/Modules/UltraRTC/README.md`;
+  tests: `Tests/UltraRTC` (two peers in one process).
+- **UltraVault: `DeviceKeyVault::Use` lets several vaults share the process.**
+  The process holds one open UltraVault store, so a vault opened directly
+  stayed open until another one opened - after which the first read the
+  second's secrets. `Use(function)` opens the vault's own file, runs the
+  function and closes it again, under a lock every `DeviceKeyVault` in the
+  process shares. ChatCube Direct and the Matrix provider, which sit in one
+  program, now reach their vaults only this way.
+- **`UltraCanvasVideoTimeline` 1.3.0: `SetDropFeedback`.** An application that
+  carries a drop of its own onto the timeline (UltraVideo drags an effect
+  preset onto a clip and a title style onto the title lane) tells the
+  element in one call per pointer move what it would do: the clip to ring
+  (as `SetDropTargetClip` rings it) and the lane and time of the insertion
+  marker, with its own label in the readout, the time snapped as a file
+  drop is and returned. `ClearDropFeedback` takes both away, and so does a
+  `DragLeave` event now, so a carried drag ends the way a system drag does.
+- **VideoFX 0.16.1: a clip's faces are looked for in three frames, not one.**
+  `keepFacesInView` on a video segment under `Fill` read one frame from the
+  middle of the clip's used range, so a person who walks into shot late, or
+  is on one side at that moment, was missed or half-kept. The engine now
+  reads frames a quarter, half and three quarters of the way through and
+  keeps every face of the three, so the crop stays around all the places
+  they were; still found once per clip and range. `VideoFXTest` renders a
+  clip whose face appears only in its last third and reads the face back
+  from the filled frame.
+- **VideoFX: a frame scaled to RGBA no longer overruns its buffer.** The
+  three places that hand libswscale a plain pixel vector as its destination
+  (`VideoFX_ExtractFrame` and the thumbnails, `FitFrame`, the photo scaler
+  of the export) sized it to the pixels exactly, and the scaler's
+  vectorised paths write a few words past the last pixel they fill, as they
+  may into FFmpeg's own padded frame buffers: a 200 x 600 frame overran by
+  16 bytes and corrupted the heap (`free(): corrupted unsorted chunks` in
+  `sws_freeContext`), found by valgrind under the new three-frame face
+  test. Each buffer now carries `kSwsSlack` (64 bytes) and is trimmed back
+  afterwards.
+
 #### 2026-10-22 *0.9.372*
 - **CI runs the Android demo on an emulator.** A new job in
   `android-build.yml` installs the `UltraCanvasDemo-x86_64` APK on an API 30
