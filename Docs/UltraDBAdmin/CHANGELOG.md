@@ -1,3 +1,41 @@
+#### 2026-10-22 *0.4*
+- **Exporting: a table, or the rows of a query, to CSV, TSV, JSON, SQL or a
+  workbook** (`Docs/Research/UltraDBAdminDesignProposal.md`). Browse's
+  **Export…** writes every row of the table or view shown, read through a
+  cursor a page at a time, so a table of millions of rows is never held at
+  once; the SQL tab's **Export rows…** writes the rows shown. The Save
+  dialog's types are FileLoader's spreadsheet writers - ODS, XLSX, CSV, TSV -
+  and JSON and SQL. CSV and TSV go through the framework's Text Export dialog
+  (separator, quote, quoting, line ending, charset, BOM) and its writer's
+  quoting; JSON is an object per row; SQL is INSERT statements in the
+  engine's own dialect between BEGIN and COMMIT, after a SQLite table's own
+  CREATE TABLE and indexes, so the file rebuilds the table; a workbook keeps
+  numbers as numbers - PostgreSQL's exact numerics too - and never turns
+  text into a formula. A file is written beside its name and put in place
+  when complete: an export that fails, or the window closing mid-way, never
+  leaves half a file where one was.
+- **Importing: rows from CSV files and workbooks, and SQL files** (stage 2 of
+  `Docs/Research/UltraDBAdminDesignProposal.md`). Browse's **Import…** puts
+  the rows of a file into the table shown: the file types are the
+  framework's spreadsheet formats (CSV, TSV, ODS, XLSX, XLS); delimited text
+  goes through the framework's Text Import dialog (encoding, separators,
+  decimal mark, preview), a workbook through its spreadsheet reader, with a
+  choice of sheet. A form gives each column of the table a column of the
+  file - matched by name when the first row names them, else in order,
+  leaving a numbered key to the database - says whether an empty cell is
+  NULL and shows the first rows as they will be inserted. Every row goes in
+  with bound values in one transaction, or, when one fails, none, and the
+  status names the file row that failed. A number column gets the number
+  ("1.234,50" from a German export is 1234.50), a text column the text as
+  written ("01067" stays "01067"); dates from a workbook are ISO 8601. The
+  SQL tab's **Import SQL…** reads a `.sql` or `.sql.gz` file through
+  FileLoader, says how many statements it holds and which of them DROP,
+  DELETE, TRUNCATE, ALTER or UPDATE, and runs it on the console's session -
+  as one transaction unless the file begins and commits its own (a SQLite
+  `.dump`), so a failure or Stop leaves nothing of it. A file only psql can
+  run (pg_dump's `COPY ... FROM stdin`, backslash commands) is refused with
+  the reason.
+
 #### 2026-10-22 *0.3*
 - **Editing a table's structure, staged** (stage 2 of
   `Docs/Research/UltraDBAdminDesignProposal.md`). In Structure, **Add

@@ -1,3 +1,24 @@
+#### 2026-10-22 *0.9.377*
+- **`CSVFormatRecord` writes one CSV/TSV record** (`UltraCanvasCSVImport.h`):
+  the fields quoted as `CSVExportOptions` says - all of them, or those
+  holding the separator, the quote character or a line break, a quote inside
+  doubled - and the options' line ending. The spreadsheet's CSV export now
+  writes its rows with it, so a writer that streams rows it never holds at
+  once - UltraDBAdmin's table export - quotes exactly as the spreadsheet
+  does. With *quote all fields*, an empty cell the sheet never set is now
+  written `""` like every other field, where it used to be left out between
+  two separators.
+- **UltraDatabase: a SQLite statement that changes no rows reports none.**
+  `sqlite3_changes()` and `sqlite3_last_insert_rowid()` keep the last INSERT,
+  UPDATE or DELETE's figures until the next one, and the SQLite driver handed
+  them on for every statement - so in a script, a `CREATE TRIGGER`, a
+  `CREATE VIEW` or a `SELECT` after an INSERT reported the INSERT's "2 rows
+  affected" (UltraDBAdmin's SQL console showed it so), and `lastInsertId`
+  the INSERT's row id. The driver now reports a statement's counts only when
+  it changed rows itself, as the connection's running total shows; an
+  INSERT's own count still leaves out what its triggers changed.
+  PostgreSQL was right already: each result carries its own count.
+
 #### 2026-10-22 *0.9.376*
 - **UltraIM: a Telegram provider, and sign-in in steps.**
   `UltraCanvas/Plugins/UltraIM/telegram/` (module `ultraim_telegram`,
