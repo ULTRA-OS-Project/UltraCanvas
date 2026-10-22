@@ -241,13 +241,9 @@ UltraDbResult ContactStore::Get(int64_t id, Contact& out) const {
 }
 
 UltraDbResult ContactStore::Remove(int64_t id) {
-    UltraDbHandle tx = UltraDb_Begin(connection_);
-    if (tx == UltraDbInvalidHandle)
-        return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
-    UltraDb_ExecInTx(tx, "DELETE FROM contact_emails WHERE contact_id=?", { id });
-    UltraDb_ExecInTx(tx, "DELETE FROM contact_phones WHERE contact_id=?", { id });
-    UltraDb_ExecInTx(tx, "DELETE FROM contacts WHERE id=?", { id });
-    return UltraDb_Commit(tx);
+    // RemoveAll's transaction: a failed statement rolls the whole delete back
+    // and is returned, where this used to commit regardless and report success.
+    return RemoveAll({ id });
 }
 
 UltraDbResult ContactStore::RemoveAll(const std::vector<int64_t>& ids) {
