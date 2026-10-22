@@ -10,6 +10,7 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.16.2 - a clip re-exported over an old file of the same name has its faces looked for afresh
 // Version: 0.16.1 - a face only in a clip's last third still places the Fill crop
 // Version: 0.16.0 - overlay effects (filter text, the export, the preview, project files);
 //                  blur radii scaled on proxies
@@ -1349,12 +1350,21 @@ static void TestEngine() {
             const std::string lateFace = TempPath("late-face.mkv");
             VideoFXExportSettings tallOut = base;
             tallOut.width = tall.width; tallOut.height = tall.height;
-            CHECK_OK(VideoFX_Export({VideoFXSegment::FromImageFrame(greenTall, 2.0, stillMotion),
-                                     VideoFXSegment::FromImageFrame(tall, 1.0, stillMotion)}, lateFace, tallOut),
-                     "a tall clip, green for two seconds, the photo on top for one");
             VideoFXExportSettings wideFill = base;
             wideFill.width = tall.width * 2; wideFill.height = tall.width; wideFill.fitMode = VideoFXFitMode::Fill;
             VideoFXSegment late = VideoFXSegment::FromFile(lateFace);
+            // First a clip of the same name and length with no face in it,
+            // filled around its faces: the (empty) answer is remembered for
+            // the file. The real clip then replaces it under the same name -
+            // a re-export over an old file - and must be looked at afresh.
+            CHECK_OK(VideoFX_Export({VideoFXSegment::FromImageFrame(greenTall, 3.0, stillMotion)}, lateFace, tallOut),
+                     "a tall clip, green throughout, under the name the late-face clip will take");
+            late.keepFacesInView = true;
+            CHECK_OK(VideoFX_Export({late}, TempPath("late-face-none.mkv"), wideFill), "filled keeping its faces: none");
+            late.keepFacesInView = false;
+            CHECK_OK(VideoFX_Export({VideoFXSegment::FromImageFrame(greenTall, 2.0, stillMotion),
+                                     VideoFXSegment::FromImageFrame(tall, 1.0, stillMotion)}, lateFace, tallOut),
+                     "a tall clip, green for two seconds, the photo on top for one, over the old file");
             const std::string centred = TempPath("late-face-centred.mkv"), kept = TempPath("late-face-kept.mkv");
             CHECK_OK(VideoFX_Export({late}, centred, wideFill), "filled without looking for faces");
             CHECK_OK(VideoFX_ExtractFrame(centred, 2.5, f), "its frame in the last third");
@@ -1364,7 +1374,7 @@ static void TestEngine() {
             CHECK_OK(VideoFX_Export({late}, kept, wideFill), "filled keeping the faces");
             CHECK_OK(VideoFX_ExtractFrame(kept, 2.5, f), "its frame in the last third");
             CentreColour(f, r, g, b);
-            CHECK(r > 60 && !(g > 200 && r < 60), "the face seen three quarters through moves the crop up onto the photo");
+            CHECK(r > 60 && !(g > 200 && r < 60), "the face seen three quarters through moves the crop up onto the photo (the faces of the old file under that name forgotten)");
         } else {
             CHECK(false, "the test photo could not be read");
         }

@@ -46,7 +46,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     steps:
       - uses: actions/checkout@v5
       - name: Check for functions named like a Win32 A/W macro

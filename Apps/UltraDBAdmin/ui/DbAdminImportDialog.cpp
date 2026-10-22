@@ -5,6 +5,7 @@
 
 #include "DbAdminExport.h"
 #include "DbAdminModels.h"
+#include "DbAdminTheme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -29,7 +30,6 @@ namespace {
 
 constexpr float kRowHeight = 28.0f;
 constexpr size_t kPreviewRows = 50;
-const Color kErrorColor(176, 32, 32);
 
 std::shared_ptr<UltraCanvasModalDialog> MakeDialog(const std::string& title, int width, int height) {
     DialogConfig config;
@@ -41,6 +41,7 @@ std::shared_ptr<UltraCanvasModalDialog> MakeDialog(const std::string& title, int
     config.position   = DialogPosition::CenterParent;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!dialog) return nullptr;
+    dialog->SetFollowTheme(true);
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
     return dialog;
@@ -60,13 +61,12 @@ UltraCanvasButton* AddButtons(UltraCanvasModalDialog* dialog, const std::string&
     buttons->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->layoutItem.SetFlexShrink(0);
     buttons->AddStretchSpacer(1);
-    auto cancel = CreateButton(id + "-cancel", 0, 0, 90, kRowHeight, "Cancel");
+    auto cancel = MakeDialogButton(id + "-cancel", "Cancel", 90);
     cancel->SetOnClick([dialog]() { dialog->CloseDialog(DialogResult::Cancel); });
     buttons->AddChild(cancel);
     UltraCanvasButton* raw = nullptr;
     if (onPrimary) {
-        auto run = CreateButton(id + "-run", 0, 0, 150, kRowHeight, primary);
-        run->SetStyle(ButtonStyles::PrimaryStyle());
+        auto run = MakeDialogButton(id + "-run", primary, 150, ButtonRole::Primary);
         run->SetOnClick(std::move(onPrimary));
         raw = run.get();
         buttons->AddChild(run);
@@ -208,7 +208,7 @@ void ShowSqlImportDialog(UltraCanvasWindowBase* parent, const SqlImportInfo& inf
                                                        : std::string()) + "."));
     if (!summary.unsupported.empty()) {
         auto why = MakeText("dbsWhy", "It cannot run here: " + summary.unsupported + ".", 60);
-        why->SetTextColor(kErrorColor);
+        why->SetTextColor(ErrorColor());
         dialog->AddChild(why);
     } else if (summary.statements == 0) {
         dialog->AddChild(MakeText("dbsWhy", "It holds no statements."));
@@ -219,12 +219,12 @@ void ShowSqlImportDialog(UltraCanvasWindowBase* parent, const SqlImportInfo& inf
         const std::string risky = RiskyText(summary);
         if (!risky.empty()) {
             auto warning = MakeText("dbsRisky", "It changes or removes what is there: " + risky + ".");
-            warning->SetTextColor(kErrorColor);
+            warning->SetTextColor(ErrorColor());
             dialog->AddChild(warning);
         }
         if (info.production) {
             auto warning = MakeText("dbsProduction", info.connectionName + " is a production connection.");
-            warning->SetTextColor(kErrorColor);
+            warning->SetTextColor(ErrorColor());
             dialog->AddChild(warning);
         }
         auto atomic = UltraCanvasCheckbox::CreateCheckbox(
@@ -271,7 +271,7 @@ void ShowRowImportDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema
 
     auto intro = MakeText("dbiIntro", "", 40);
     form->intro = intro.get();
-    if (production) intro->SetTextColor(kErrorColor);
+    if (production) intro->SetTextColor(ErrorColor());
     dialog->AddChild(intro);
 
     auto options = CreateContainer("dbiOptions", 0, 0, 0, 28);
@@ -348,12 +348,13 @@ void ShowRowImportDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema
     preview->SetModel(form->preview);
     preview->SetShowHeader(true);
     preview->SetShowItemTooltips(true);
+    StyleList(*preview);
     preview->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexGrow(1).SetFlexShrink(1)
         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     dialog->AddChild(preview);
 
     auto error = MakeText("dbiError", "", 36);
-    error->SetTextColor(kErrorColor);
+    error->SetTextColor(ErrorColor());
     form->error = error.get();
     dialog->AddChild(error);
     form->import = AddButtons(dialog.get(), "dbiButtons", "Import", [form]() { Import(*form); });

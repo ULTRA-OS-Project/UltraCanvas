@@ -10241,7 +10241,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.9.0
+**Version:** 1.11.0
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -10581,9 +10581,9 @@ album->onLinkClicked = [album](size_t i){
 
 ```cpp
 std::function<void(size_t)> onItemClicked;       // single click / tap
+std::function<void(size_t)> onItemPressed;       // the left button down on a tile, before anything is decided
 std::function<void(size_t)> onItemActivated;     // double click: open / play
 std::function<void(size_t,size_t)> onItemsReordered;  // (from, to) — edit modes
-std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;  // a tile dragged past the edge (edit modes)
 std::function<void(size_t)> onItemRemoved;       // after RemoveItem
 std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 ```
@@ -10594,12 +10594,21 @@ std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 - **Double-click** → `onItemActivated` (open / play).
 - **Right-click** (or the kebab icon) → per-item action menu.
 - **Drag** a tile (edit / admin) → reorder; fires `onItemsReordered`.
-- **Drag** a tile past the album's edge (edit / admin) → the reorder ends
-  and `onItemDraggedOut(index, windowPos)` fires once, with the pointer's
-  window position. The app carries the item on from there with the window's
-  own mouse events - a media bin hands its file to a timeline's drop path,
-  say. Set the callback only where that is wanted; without it a drag that
-  leaves the album is simply a reorder that ends where the pointer returns.
+- **Press** a tile → `onItemPressed(index)`, before a click or a reorder
+  is decided, in every mode. An app that carries the tile's drag itself -
+  a media bin whose tiles land on a timeline, the way the app carries a
+  drag from a button's press - arms it here and, once its drag has
+  started, calls `ReleaseDrag()`: the album forgets the press, so neither
+  a click nor a reorder follows it. (The album's own hand-over,
+  `onItemDraggedOut`, went in 1.11.0: it needed an edit mode and the
+  album's reorder to run first.)
+
+  ```cpp
+  size_t pressedTile = 0;   // the app's own drag is armed from here
+  album->onItemPressed = [&](size_t index) { pressedTile = index; };
+  // ... and where the app's drag starts, after the pointer moved away:
+  album->ReleaseDrag();
+  ```
 - **Mouse wheel** → scroll (vertical for grids, horizontal for the filmstrip).
 
 ## Demo
@@ -32054,7 +32063,17 @@ Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
 item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
 turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
 `FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
-so no icon assets are required.
+so no icon assets are required; Rename is a serif *T* beside a text caret, as
+it edits the name rather than the file. Each button's tooltip says what it does
+and gives its shortcut - *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
+(Ctrl+X)*, *Rename (F2)*, *Delete (Del)*. Pressing Copy or Cut answers on the button: it
+flashes green (`FilerStyle::iconMenuDoneColor`) with a checkmark that pops in,
+then fades back to its glyph within 0.7 s - a copy changes nothing else on
+screen. On a drive Cut is greyed out and does nothing,
+as it is in the context menu - its tooltip says to copy, then delete. On a drive
+whose host did not wire `remoteRename` / `remoteDelete`, Rename / Delete are
+greyed out the same way, in the hover strip and in the context menu (F2 and Del
+still report why).
 
 A button acts on the hovered entry — or on the **whole selection** when the
 hovered entry is part of it — and, like a drag, **never changes the selection**:
@@ -75080,6 +75099,11 @@ enum class TreeLineStyle {
     Solid = 2         // Solid lines
 };
 
+enum class TreeExpanderStyle {
+    Box = 0,          // + or - in a square (the default)
+    Chevron = 1       // An arrow: pointing right when closed, down when open
+};
+
 enum class TreeCheckState {
     Unchecked = 0,
     Checked = 1,
@@ -75526,6 +75550,28 @@ come below. The stub ends at the child's expand button, or reaches its icon
 when the child has none. Lines are drawn over the row background, so they stay
 visible on the selected row, and take `SetLineColor` (default gray).
 
+#### Expander Style
+```cpp
+void SetExpanderStyle(TreeExpanderStyle style);
+TreeExpanderStyle GetExpanderStyle() const;
+void SetExpanderArrowColor(const Color& color);
+const Color& GetExpanderArrowColor() const;
+```
+How the expand button of a row with children looks. `TreeExpanderStyle::Box`
+(the default) is the `+` / `-` in a square, coloured by
+`SetExpandButtonColor`. `TreeExpanderStyle::Chevron` is an arrow instead,
+pointing right on a closed row and down on an open one, drawn with a 1.5 px
+round stroke in `SetExpanderArrowColor` (default a mid grey,
+`Color(0x70, 0x70, 0x78)`). It takes the same place and the same click as the
+box, so switching changes no row's layout. A modern tree without connectors:
+
+```cpp
+auto tree = std::make_shared<UltraCanvasTreeView>("schemaTree");
+tree->SetLineStyle(TreeLineStyle::NoLine);
+tree->SetExpanderStyle(TreeExpanderStyle::Chevron);
+tree->SetExpanderArrowColor(Color(88, 96, 110));
+```
+
 #### Root Lines
 ```cpp
 void SetShowRootLines(bool show);
@@ -75731,6 +75777,7 @@ void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
+void SetExpanderArrowColor(const Color& color);
 void SetCheckboxColors(const Color& background, const Color& border, const Color& check);
 ```
 Sets various color properties for the tree view. `SetBackgroundColor` is
@@ -75738,6 +75785,8 @@ inherited from `UltraCanvasUIElement`.
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
+`SetExpanderArrowColor` is the arrow's colour under `TreeExpanderStyle::Chevron`
+(see [Expander Style](#expander-style)).
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
 `SetLoadingBarColor` sets the bar a loading row slides along its foot (default
@@ -76108,6 +76157,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 | 1.1.0 | 2026-08-08 | Floating scroll-to-top button for long trees |
 | 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 | 1.2.1 | 2026-10-07 | Docs: columns API (`SetColumns`, `TreeViewColumn`, `data.cells`), real constructors and builder calls |
+| 1.3.0 | 2026-10-22 | `SetExpanderStyle`: the expand button as an arrow (`TreeExpanderStyle::Chevron`), `SetExpanderArrowColor` |
 
 ## See Also
 

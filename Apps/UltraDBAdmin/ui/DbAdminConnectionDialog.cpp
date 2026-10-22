@@ -3,6 +3,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnectionDialog.h"
 
+#include "DbAdminTheme.h"
+
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
@@ -179,6 +181,7 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
     config.position   = DialogPosition::CenterParent;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!dialog) return;
+    dialog->SetFollowTheme(true);
     form->dialog = dialog.get();
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
@@ -205,7 +208,9 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
     file->SetPlaceholder("/path/to/database.db");
     file->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     fileRow->AddChild(file);
-    auto browse = CreateButton("dbcBrowse", 0, 0, 0, kRowHeight, "Choose…");
+    auto browse = CreateButton("dbcBrowse", 0, 0, 0, kRowHeight, "Choose");
+    StyleButton(*browse, ButtonRole::Standard);
+    browse->SetPadding(4.0f, 11.0f);
     browse->layoutItem.SetFlexShrink(0);
     fileRow->AddChild(browse);
     AddTypedRow(grid, "dbcFile", "File:", fileRow, form->sqliteRows);
@@ -271,7 +276,7 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
     dialog->AddChild(grid);
 
     auto error = CreateLabel("dbcError", 0, 0, 0, 36, "");
-    error->SetTextColor(Color(176, 32, 32));
+    error->SetTextColor(ErrorColor());
     error->SetWrap(TextWrap::WrapWord);
     dialog->AddChild(error);
     form->error = error.get();
@@ -281,11 +286,10 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
     auto buttons = CreateContainer("dbcButtons", 0, 0, 0, 36);
     buttons->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->AddStretchSpacer(1);
-    auto cancel = CreateButton("dbcCancel", 0, 0, 90, kRowHeight, "Cancel");
+    auto cancel = MakeDialogButton("dbcCancel", "Cancel", 90);
     cancel->SetOnClick([form]() { form->dialog->CloseDialog(DialogResult::Cancel); });
     buttons->AddChild(cancel);
-    auto save = CreateButton("dbcSave", 0, 0, 90, kRowHeight, "Save");
-    save->SetStyle(ButtonStyles::PrimaryStyle());
+    auto save = MakeDialogButton("dbcSave", "Save", 90, ButtonRole::Primary);
     save->SetOnClick([form]() { Save(*form); });
     buttons->AddChild(save);
     dialog->AddChild(buttons);

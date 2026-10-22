@@ -1,3 +1,67 @@
+#### 2026-10-22 *0.9.381*
+- **`UltraCanvasAlbum` 1.11.0: `onItemPressed` and `ReleaseDrag`.** An
+  application that carries a tile's drag itself - UltraVideo's bin, whose
+  tiles land on the timeline - hears the left button press on a tile in
+  `onItemPressed(index)`, arms its own drag there as it does from a button's
+  press, and calls `ReleaseDrag()` when that drag starts, so the album's
+  reorder (edit modes) does not follow the same press. `onItemDraggedOut`
+  (1.9.0), which needed an edit mode and let the album decide when a tile
+  had left, is gone: it had that one caller. UltraVideo's bin is a
+  `Display` album now - the hover actions, a double-click and the drag.
+- **CI: the gate, the lint checks and the Android backend check run on
+  `ubuntu-22.04`.** They ran on `ubuntu-latest`, a separate pool from the
+  `ubuntu-22.04` one the build legs use, and on 2026-10-21 that pool held
+  them for up to three hours - the gate alone kept one pull request's six
+  builds from starting for ninety minutes - while the build legs ran at once.
+  Every script they run passes under that image's Python 3.10.
+  The Doc examples check moves too: a baseline entry drops the
+  `UltraCanvas::` one clang writes before a type and another leaves out
+  (`check_doc_examples.py` 1.8.0), so its clang 14 and the 24.04 image's
+  clang 18 read the baseline alike.
+- **VideoFX 0.16.2: a clip's faces are looked for afresh when its file
+  changes.** The faces found in a clip (`keepFacesInView` under `Fill`) are
+  remembered per file and range for the preview's sake; the file's size and
+  write time are part of the key now, so a clip re-exported over an old one
+  of the same name no longer frames to the faces of the old one.
+  `VideoFXTest` exports a faceless clip under the name the late-face clip
+  then takes, and the crop follows the new file's face.
+
+#### 2026-10-22 *0.9.380*
+- **Tree view: the expand button can be an arrow.** `SetExpanderStyle`
+  (`TreeExpanderStyle::Chevron`) draws a row's expand button as an arrow -
+  pointing right when the row is closed, down when it is open - in
+  `SetExpanderArrowColor`, instead of the `+` / `-` in a grey square that
+  every tree had. It takes the same place and the same click, so a tree
+  switches without any row moving; `TreeExpanderStyle::Box` stays the
+  default. The demo app's TreeView page shows it on the multi-selection
+  tree, with a switch back to the box and its dotted lines; UltraDBAdmin's
+  connection tree is the first application to use it.
+
+#### 2026-10-22 *0.9.379*
+- **UltraCanvasFilerWidget: the hover icon menu's Rename button shows a "T"
+  and its buttons name their keys.** The Rename button drew a pencil, which
+  reads as "edit the file"; it renames, so it now draws a serif *T* beside a
+  text caret - "type the name". The strip's tooltips say what each button does
+  and give its shortcut: *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
+  (Ctrl+X)*, *Rename (F2)*, *Delete (Del)*.
+- **UltraCanvasFilerWidget: the hover icon menu's Cut is greyed out on a
+  drive.** The context menu greys Cut out there and Ctrl+X refuses it, but
+  the hover button put the files on the clipboard as a cut anyway, ghosting
+  entries whose move off the drive could not be completed. It is now drawn
+  dimmed and a press does nothing; its tooltip says to copy, then delete.
+- **UltraCanvasFilerWidget: Rename and Delete are greyed out on a drive that
+  cannot do them.** On a drive whose host did not wire `remoteRename` /
+  `remoteDelete`, the context menu offered Rename, Delete and Delete
+  Permanently and the hover icon menu offered Rename and Delete, and each
+  refused only once clicked. They are now greyed out in both menus
+  (`CanRenameHere` / `CanDeleteHere`); F2 and Del still say why. UltraFiler
+  wires both, so its menus do not change.
+- **UltraCanvasFilerWidget: the hover icon menu's Copy and Cut buttons show
+  that they worked.** A copy changed nothing on screen, so a press looked
+  like it had missed. The pressed button now flashes green
+  (`FilerStyle::iconMenuDoneColor`) with a checkmark that pops in, then fades
+  back to its glyph within 0.7 s; only the button is repainted.
+
 #### 2026-10-22 *0.9.378*
 - **A core built with `ULTRACANVAS_ENABLE_CHARTS=OFF` links again.** The
   option dropped every source under `Plugins/Charts/`, but code outside it is

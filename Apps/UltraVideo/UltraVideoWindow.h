@@ -8,6 +8,7 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.8.1 - WrapToWidth for the bin notes; BeginBinDrag gone, a tile's press arms the drag
 // Version: 0.8.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
 // Version: 0.7.0 - presets on overlay clips; Edit's merge key for a slider's drag
 // Version: 0.6.0 - an effect preset dragged from its bin button onto a clip
@@ -113,10 +114,10 @@ private:
     // its insertion marker, lane and time are the element's), an effect
     // preset from its button (onto a clip, ringed as the target) or a title
     // style from its button (onto the title lane, the element's marker
-    // showing where). A button's press arms its drag and the pointer moving
-    // away starts it; the album starts a file's itself (BeginBinDrag)
+    // showing where). A tile's or a button's press arms its drag and the
+    // pointer moving away starts it
     enum class DragKind { Nothing, File, Effect, Title };
-    void BeginBinDrag(const std::string& path);
+    static void WrapToWidth(const std::shared_ptr<UltraCanvas::UltraCanvasLabel>& label);   // a bin note: wrapped, as tall as its text
     void ArmDrag(DragKind kind, const std::string& key);
     void StartDrag(DragKind kind, std::string key);
     void CarryDrag(const UltraCanvas::UCEvent& event, bool drop);
