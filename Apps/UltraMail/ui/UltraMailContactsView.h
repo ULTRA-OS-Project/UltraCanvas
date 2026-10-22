@@ -4,6 +4,7 @@
 // scrolling list of the selected one's contacts. Add with the button, edit by
 // double-clicking a row, delete with the row's bin icon; the row's right-click
 // menu also moves it to another section or group. Backed by ContactStore.
+// Version: 0.4.0 - EditContact takes the address to edit
 // Version: 0.3.0 - groups of the user's own, filter, virtualised list (a
 //                  thousand contacts no longer build a thousand elements),
 //                  delete icon, "Move to group".
@@ -50,9 +51,12 @@ public:
     // The contact editor ("Add contact" / "Edit contact"), usable without this
     // view on screen - the mail list opens it for a message's sender. Saves to
     // the store, refreshes this view when it is built, then calls `onSaved`.
-    // Only the primary address is edited; a contact's other addresses stay.
+    // One address is edited: `address` when the contact has it (the one a
+    // suggestion or a message named), else the primary one; the contact's
+    // other addresses stay.
     void EditContact(Contact contact, bool isNew, UltraCanvas::UltraCanvasWindowBase* parent,
-                     std::function<void(const Contact&)> onSaved = nullptr);
+                     std::function<void(const Contact&)> onSaved = nullptr,
+                     const std::string& address = std::string());
 
     // Called after any change to the address book made here, so the app can
     // re-read it (the sender badges).

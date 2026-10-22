@@ -12,3 +12,10 @@
   suggestions as they now are.
 - **Blocked senders are not suggested**, whether blocked from that menu, the
   sender menu or *Settings > Warnings > Trusted & blocked*.
+- **Edit contact edits the address it was opened for.** The contact editor
+  always showed - and saved over - a contact's primary address, so *Edit
+  contact…* on a contact's second address, from a suggestion or from a
+  message that address sent, showed another one. It now shows that address
+  and changes only it, keeping its label and the contact's other addresses;
+  emptied, the address is removed, and changed to another of the contact's
+  addresses, the two become one.

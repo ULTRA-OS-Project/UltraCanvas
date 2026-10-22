@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailContactsView.cpp
+// Version: 0.5.0 - EditContact edits the address it is opened for (a
+//                  recipient suggestion, a message's sender), not always
+//                  the primary one
 // Version: 0.4.0 - groups of the user's own, a filter, and the contact list
 //                  as a virtualised UltraCanvasListView with a delete icon per
 //                  row; section changes restyle the sidebar instead of
@@ -80,14 +83,6 @@ std::string SubLine(const Contact& c) {
         sub += c.organization;
     }
     return sub;
-}
-
-bool SameAddress(const std::string& a, const std::string& b) {
-    if (a.size() != b.size()) return false;
-    for (std::size_t i = 0; i < a.size(); ++i)
-        if (std::tolower(static_cast<unsigned char>(a[i])) !=
-            std::tolower(static_cast<unsigned char>(b[i]))) return false;
-    return true;
 }
 
 // One contact per row: [initial] name / address · phone · organisation, and
@@ -566,7 +561,8 @@ void ContactsView::ConfirmDeleteGroup(const std::string& group) {
 }
 
 void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBase* parent,
-                               std::function<void(const Contact&)> onSaved) {
+                               std::function<void(const Contact&)> onSaved,
+                               const std::string& address) {
     if (!store_) return;
 
     DialogConfig config;
@@ -617,7 +613,11 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
     addRow("cName", "Name", name);
 
     auto email = CreateEmailInput("cEmailIn", 0, 0, 0, Theme::kControlHeight);
-    email->SetText(contact.PrimaryEmail());
+    // The address the field edits: `address` when the contact has it, else
+    // the primary one.
+    const std::size_t editIdx = EditableEmailIndex(contact.emails, address);
+    email->SetText(editIdx == std::string::npos ? std::string()
+                                                : contact.emails[editIdx].address);
     email->SetPlaceholder("erika@example.com");
     addRow("cEmail", "Email", email);
 
@@ -670,7 +670,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
     // Capture by value; `contact` carries id + section through the callback.
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [this, contact, name, email, phone, org, notes, parent, onSaved](DialogResult result) mutable {
+        [this, contact, editIdx, name, email, phone, org, notes, parent, onSaved](DialogResult result) mutable {
             if (result != DialogResult::OK) return;
             contact.displayName = name->GetText();
             if (contact.displayName.empty()) {
@@ -683,29 +683,13 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
             contact.organization = org->GetText();
             contact.notes = notes->GetText();
 
-            // The field edits the primary address only (PrimaryEmail(): the
-            // one marked primary, else the first); every other address the
-            // contact has stays. Rebuilding the list from the field alone
-            // dropped them - including the one a message came from, when the
-            // editor was opened for that message's sender.
-            const std::string addr = email->GetText();
-            std::size_t primaryIdx = 0;
-            for (std::size_t i = 0; i < contact.emails.size(); ++i)
-                if (contact.emails[i].primary) { primaryIdx = i; break; }
-            std::vector<ContactEmail> kept;
-            for (std::size_t i = 0; i < contact.emails.size(); ++i) {
-                if (i == primaryIdx) continue;
-                ContactEmail e = contact.emails[i];
-                if (SameAddress(e.address, addr)) continue;   // now the primary
-                e.primary = false;
-                kept.push_back(e);
-            }
-            contact.emails.clear();
-            if (!addr.empty()) {
-                ContactEmail e; e.address = addr; e.primary = true;
-                contact.emails.push_back(e);
-            }
-            contact.emails.insert(contact.emails.end(), kept.begin(), kept.end());
+            // The field edits one address (editIdx); every other address the
+            // contact has stays, as does the edited one's label and primary
+            // mark. Rebuilding the list from the field alone dropped them -
+            // including the one a message came from, when the editor was
+            // opened for that message's sender. Emptied, the address goes; one
+            // changed to another of the contact's addresses merges with it.
+            ReplaceContactEmail(contact.emails, editIdx, email->GetText());
 
             const std::string num = phone->GetText();
             contact.phones.clear();

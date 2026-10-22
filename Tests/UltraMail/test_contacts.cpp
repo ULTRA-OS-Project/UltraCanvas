@@ -2,6 +2,7 @@
 // Exercises the contact store: sectioned storage (Friends/Work/Leisure/
 // Services), emails/phones round-trip, section counts, search, update and
 // remove. Each test uses its own in-memory database.
+// Version: 0.3.0 - EditableEmailIndex, ReplaceContactEmail
 // Version: 0.2.0 - CollectSenders, SaveAll, KnownAddresses; the file store in WAL mode
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -407,4 +408,63 @@ TEST(file_contact_store_uses_wal) {
     }
     UltraDb_CloseConnection("contacts-wal");
     fs::remove_all(dir, ec);
+}
+
+namespace {
+
+std::vector<ContactEmail> ThreeEmails() {
+    std::vector<ContactEmail> v(3);
+    v[0].address = "anna@home.example";  v[0].label = "home"; v[0].primary = true;
+    v[1].address = "anna@work.example";  v[1].label = "work";
+    v[2].address = "anna@club.example";
+    return v;
+}
+
+} // namespace
+
+TEST(editable_email_is_the_one_named_else_the_primary) {
+    const auto v = ThreeEmails();
+    REQUIRE(EditableEmailIndex(v, "ANNA@work.example") == 1);
+    REQUIRE(EditableEmailIndex(v, "") == 0);
+    REQUIRE(EditableEmailIndex(v, "someone@else.example") == 0);
+    REQUIRE(EditableEmailIndex({}, "anna@work.example") == std::string::npos);
+}
+
+TEST(replace_contact_email_edits_only_that_address) {
+    auto v = ThreeEmails();
+    ReplaceContactEmail(v, 1, "anna@job.example");
+    REQUIRE(v.size() == 3);
+    REQUIRE_EQ(v[0].address, std::string("anna@home.example"));
+    REQUIRE(v[0].primary);
+    REQUIRE_EQ(v[1].address, std::string("anna@job.example"));
+    REQUIRE_EQ(v[1].label, std::string("work"));   // kept
+    REQUIRE(!v[1].primary);
+    REQUIRE_EQ(v[2].address, std::string("anna@club.example"));
+}
+
+TEST(replace_contact_email_removes_an_emptied_address) {
+    auto v = ThreeEmails();
+    ReplaceContactEmail(v, 0, "");   // the primary goes
+    REQUIRE(v.size() == 2);
+    REQUIRE_EQ(v[0].address, std::string("anna@work.example"));
+    REQUIRE(v[0].primary);           // another one takes the mark
+}
+
+TEST(replace_contact_email_merges_with_a_duplicate) {
+    auto v = ThreeEmails();
+    ReplaceContactEmail(v, 2, "Anna@Home.example");   // the club one becomes the home one
+    REQUIRE(v.size() == 2);
+    REQUIRE_EQ(v[0].address, std::string("anna@work.example"));
+    REQUIRE_EQ(v[1].address, std::string("Anna@Home.example"));
+    REQUIRE(v[1].primary);           // the merged one was primary
+    REQUIRE(!v[0].primary);
+}
+
+TEST(replace_contact_email_adds_to_a_contact_without_one) {
+    std::vector<ContactEmail> v;
+    ReplaceContactEmail(v, std::string::npos, "new@example.com");
+    REQUIRE(v.size() == 1);
+    REQUIRE(v[0].primary);
+    ReplaceContactEmail(v, std::string::npos, "");
+    REQUIRE(v.size() == 1);
 }

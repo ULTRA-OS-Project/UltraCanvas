@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
 // Version: 0.9.38 - a recipient suggestion's menu: Edit contact, Delete address,
-//                  Set as SPAM; blocked senders are not suggested
+//                  Set as SPAM; blocked senders are not suggested; Edit contact
+//                  (here and for a message's sender) edits that address
 // Version: 0.9.37 - the new-mail notification carries where its click leads
 //                   (launch), and UltraMail is the activator of its Windows
 //                   toasts, so a click opens the mail after the broker host
@@ -1171,7 +1172,8 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
                 RefreshContactIndex();
                 Refresh();   // badges
                 done();
-            });
+            },
+            address);   // the address right-clicked, whichever of the contact's it is
     };
     view->deleteRecipientAddress = [this, raw, book](const std::string& address,
                                                      std::function<void()> done) {
@@ -3174,7 +3176,7 @@ void UltraMailApp::EditSenderContact(const MessageEnvelope& m, bool isNew) {
     contactsView_.EditContact(contact, /*isNew=*/!found, parent, [this](const Contact&) {
         RefreshContactIndex();
         Refresh();   // badges: the sender is (still) in the address book
-    });
+    }, m.fromAddr);   // the sender's address, whichever of the contact's it is
 }
 
 void UltraMailApp::AddSenderToContactGroup(const MessageEnvelope& m,
