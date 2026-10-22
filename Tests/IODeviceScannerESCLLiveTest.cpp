@@ -43,6 +43,8 @@
 // uncaught, the abort hung in Windows' fault reporting until ctest's timeout,
 // and the lines saying what had failed were lost with the buffered output.
 // So the output is unbuffered too, and an abort ends at once.
+// Version: 1.2.2 - the wait for the scanner to listen says how long it took, in the skip message and on success
+// Version: 1.2.1 - every Connect() says how long it took, so a timeout reads apart from a refusal
 // Version: 1.2.0
 // Author: UltraCanvas Framework
 
@@ -62,6 +64,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <locale>
 #include <random>
 #include <sstream>
 #include <string>
@@ -103,6 +106,24 @@ int SkipOrFail() {
 
 int g_passed = 0;
 int g_failed = 0;
+
+// Connect(), and how long it took, in the message: a trust refusal is
+// immediate, a connection that times out takes the request's whole 10 s,
+// and a log that says which is what a failure on a runner leaves behind.
+IODeviceResult TimedConnect(const ScannerDevicePtr& device, double& seconds) {
+    const auto started = std::chrono::steady_clock::now();
+    IODeviceResult result = device->Connect();
+    seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    return result;
+}
+
+std::string Took(double seconds) {
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out.precision(seconds < 10.0 ? 2 : 1);
+    out << std::fixed << " (" << seconds << " s)";
+    return out.str();
+}
 
 void Check(bool condition, const std::string& what) {
     std::cout << (condition ? "  [ OK ] " : "  [FAIL] ") << what << "\n";
@@ -361,6 +382,10 @@ public:
         std::error_code ignored;
         fs::remove(PathFromUtf8(ready), ignored);
         // -u: unbuffered, so whatever it says before failing reaches the log.
+        const auto started = std::chrono::steady_clock::now();
+        const auto sinceStart = [&] {
+            return std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+        };
         if (!process.Start({python, "-u", script, "--cert", certificate, "--key", key, "--ready",
                             ready, "--log", requests, "--port", std::to_string(listenOn),
                             "--pages", "3"},
@@ -370,27 +395,36 @@ public:
         }
         // Up to a minute: a CI runner starting Python cold can be slow, and
         // a scanner that is merely slow must not read as one that failed.
-        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(60);
+        // How long it took is said either way: a runner that needs twenty
+        // seconds to start Python is one whose first connection may time
+        // out too.
+        const auto deadline = started + std::chrono::seconds(60);
         while (std::chrono::steady_clock::now() < deadline) {
             const std::string written = ReadText(ready);
             if (!written.empty()) {
                 port = std::atoi(written.c_str());
+                waited = sinceStart();
                 if (port > 0) return true;
-                failure = "it wrote no port number";
+                failure = "it wrote no port number" + Took(waited);
                 return false;
             }
             if (!process.Running()) {
-                failure = "it exited";
+                waited = sinceStart();
+                failure = "it exited" + Took(waited);
                 return false;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        failure = "it was still running but not listening after 60 seconds";
+        waited = sinceStart();
+        failure = "it was still running but not listening" + Took(waited);
         return false;
     }
 
     // Why Start() failed.
     const std::string& Failure() const { return failure; }
+
+    // How long the last Start() waited for the scanner to listen.
+    double Waited() const { return waited; }
 
     int Port() const { return port; }
 
@@ -398,6 +432,7 @@ public:
 
 private:
     ChildProcess process;
+    double waited = 0.0;
     int port = 0;
     std::string failure;
 };
@@ -474,6 +509,7 @@ int main(int argc, char** argv) {
                   << Tail(log) << "\n";
         return finish(SkipOrFail());
     }
+    std::cout << "  the scanner was listening" << Took(scanner.Waited()) << "\n";
     const int port = scanner.Port();
     const std::string address = "127.0.0.1:" + std::to_string(port);
     const std::string url = "https://" + address + "/eSCL";
@@ -496,7 +532,8 @@ int main(int argc, char** argv) {
     Check(IODeviceTrustedCertificates().empty(), "  with no device key kept yet");
 
     // --- First contact: the key is learned --------------------------------------
-    IODeviceResult connected = device->Connect();
+    double took = 0.0;
+    IODeviceResult connected = TimedConnect(device, took);
     // Once, on a Windows runner, the first connection timed out with the
     // scanner listening and nothing in its request log: the runner, not the
     // trust, was too slow to answer. So a first try the scanner never saw -
@@ -506,11 +543,11 @@ int main(int argc, char** argv) {
     if (!connected.success && ReadLines(firstRequests).empty() &&
         IODeviceTrustedCertificates().empty()) {
         std::cout << "  (the first try never reached the scanner - " << connected.message
-                  << " - so it is made once more)\n";
-        connected = device->Connect();
+                  << Took(took) << " - so it is made once more)\n";
+        connected = TimedConnect(device, took);
     }
     Check(connected.success,
-          "it connects over https, its self-signed certificate trusted on first use: " +
+          "it connects over https, its self-signed certificate trusted on first use" + Took(took) + ": " +
               connected.message);
     if (!connected.success) {
         std::cout << Tail(log) << "\n";
@@ -588,9 +625,10 @@ int main(int argc, char** argv) {
         Check(false, "the scanner restarts on the same port with another key - " +
                          scanner.Failure() + ":\n" + Tail(log));
     } else {
-        const IODeviceResult refused = device->Connect();
+        std::cout << "  the scanner was listening again" << Took(scanner.Waited()) << "\n";
+        const IODeviceResult refused = TimedConnect(device, took);
         Check(!refused.success && refused.message.find("different certificate") != std::string::npos,
-              "with another key, it is refused: " + refused.message);
+              "with another key, it is refused" + Took(took) + ": " + refused.message);
         Check(refused.message.find("UOS-Settings") != std::string::npos,
               "  and the message says where the old key is forgotten");
         Check(ReadLines(secondRequests).empty(),
@@ -599,18 +637,18 @@ int main(int argc, char** argv) {
         Check(kept.pin == firstPin, "  and the key kept is still the first one");
 
         Check(IODeviceForgetCertificate(url), "forgetting the key kept for it");
-        const IODeviceResult relearned = device->Connect();
+        const IODeviceResult relearned = TimedConnect(device, took);
         kept = KeptFor(address);
         Check(relearned.success && kept.pin == secondPin && kept.name == "Acme MegaScan 42",
-              "  lets the next connection learn its new key, kept under its name: " +
+              "  lets the next connection learn its new key, kept under its name" + Took(took) + ": " +
                   relearned.message);
         device->Disconnect();
 
         IODeviceForgetCertificate(url);
         SetEnv("ULTRACANVAS_DEVICE_TLS_TOFU", "0");
-        const IODeviceResult notLearned = device->Connect();
+        const IODeviceResult notLearned = TimedConnect(device, took);
         Check(!notLearned.success && IODeviceTrustedCertificates().empty(),
-              "with learning switched off, a scanner whose key is not kept is refused: " +
+              "with learning switched off, a scanner whose key is not kept is refused" + Took(took) + ": " +
                   notLearned.message);
         UnsetEnv("ULTRACANVAS_DEVICE_TLS_TOFU");
     }
