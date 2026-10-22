@@ -655,6 +655,16 @@ if(BUILD_ULTRACLAUDE)
     add_subdirectory(Apps/UltraClaude)
 endif()
 
+# ===== CHATCUBE =====
+# The ULTRA OS native messenger on UltraIM: peer-to-peer, end-to-end
+# encrypted chat with no account, groups through a relay (Server/ChatCubeRelay).
+option(BUILD_CHATCUBE "Build the ChatCube messenger" ON)
+if(BUILD_CHATCUBE)
+    message(STATUS "")
+    message(STATUS "── Building ChatCube ──")
+    add_subdirectory(Apps/ChatCube)
+endif()
+
 # ===== ULTRANETMONITOR =====
 # Shows which processes hold which network connections, live, from the
 # operating system's socket table (the NetworkMonitor module). Headless
@@ -1373,6 +1383,24 @@ if(ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS AND TARGET UltraMessage)
     add_subdirectory(Tests/UltraMessage)
     message(STATUS "")
     message(STATUS "── UltraMessage test suite enabled (target: UltraMessageTests) ──")
+endif()
+# ===== ULTRAIM TESTS =====
+# Headless: a fake provider registered in-process and one loaded as a module.
+option(ULTRACANVAS_BUILD_ULTRAIM_TESTS "Build the UltraIM test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAIM_TESTS AND TARGET UltraIM)
+    enable_testing()
+    add_subdirectory(Tests/UltraIM)
+    message(STATUS "")
+    message(STATUS "── UltraIM test suite enabled (target: UltraIMTests) ──")
+endif()
+# ===== ULTRARTC TESTS =====
+# Two peers in one process over host candidates: no network service needed.
+option(ULTRACANVAS_BUILD_ULTRARTC_TESTS "Build the UltraRTC test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRARTC_TESTS AND TARGET UltraRTC)
+    enable_testing()
+    add_subdirectory(Tests/UltraRTC)
+    message(STATUS "")
+    message(STATUS "── UltraRTC test suite enabled (target: UltraRTCTests) ──")
 endif()
 option(BUILD_ULTRAMSG_CLI "Build the ultramsg command-line tool" ON)
 if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)

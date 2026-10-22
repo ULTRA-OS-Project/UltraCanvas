@@ -197,6 +197,30 @@ rec->OpenCamera();
 rec->ShowSaveDialog();   // pick a path, then records to it
 ```
 
+`UltraCanvasVideoTile` (`UltraCanvasVideoTile.h`) — a picture fed frame by
+frame from **any thread**: a call's video (UltraRTC, ChatCube), a self view,
+frames a program decodes itself. `PushFrame` copies the pixels (RGBA or BGRA,
+any stride) into a one-frame inbox; the newest frame wins, and one upload to
+the UI thread is in flight at a time, so a fast producer never queues up
+work. `ClearFrame` (any thread) goes back to the caption. On the UI thread:
+`SetCaption` (shown without a frame - "Connecting…", "Camera off"),
+`SetFit` (`VideoTileFit::Contain`, whole and letterboxed, or `Cover`,
+filling and cropped), `SetMirrored` (a self view, from the next frame) and
+`SetStyle` (`VideoTileStyle`: background, caption colour and size, corner
+radius - it clips the picture too - and border). Without an application
+loop the next `Render` picks the pending frame up.
+
+```cpp
+auto tile = std::make_shared<UltraCanvasVideoTile>("remote", 0, 0, 640, 360);
+tile->SetFit(VideoTileFit::Cover);
+tile->SetCaption("Connecting...");
+
+// From a decoder or capture thread, for every picture:
+std::vector<uint8_t> rgba(640 * 360 * 4, 128);
+tile->PushFrame(rgba.data(), 640, 360);                     // RGBA, rows packed
+tile->PushFrame(rgba.data(), 640, 360, 640 * 4, VideoTilePixelFormat::BGRA32);
+```
+
 ### Devices — `UltraCanvasVideoDevices.h`
 
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,

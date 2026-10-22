@@ -148,6 +148,7 @@ vault.Lock();                                       // wipes the derived key
 
 | Group | Members |
 |---|---|
+| Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under a lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) must each `Use()` theirs: one opened directly stays open until another opens, and reads the other's secrets after that |
 | Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |

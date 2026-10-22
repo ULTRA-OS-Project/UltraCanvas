@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chatcube-relay"
+version = "1.0.0"
+description = "The ChatCube relay: accounts, contacts, presence, P2P signalling, offline queue and group fan-out for ChatCube Direct - it stores and forwards end-to-end encrypted envelopes only"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "cryptography>=42",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+chatcube-relay = "chatcube_relay.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["chatcube_relay*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -801,6 +801,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorder.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCAudioDevices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCVideoDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayerElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioRecorderElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWaveformElement.cpp
@@ -816,6 +818,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoRecorder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoPlayerElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoRecorderElement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoTile.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVideoHoverPreview.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
@@ -2823,6 +2826,25 @@ if(ULTRACANVAS_ENABLE_NET)
             # test when its result variable is already set, so it must not reuse
             # a name we pre-initialised (UC_CURL_HAS_WS).
             check_symbol_exists(curl_ws_send "curl/curl.h;curl/websockets.h" UC_SYS_CURL_HAS_WS)
+            # The symbol is not enough: Ubuntu 24.04's libcurl 8.5 exports
+            # curl_ws_send but is built without WebSockets (the protocol list
+            # has no "ws", and every connect answers "not built in"). Ask the
+            # library itself which protocols it was built with.
+            if(UC_SYS_CURL_HAS_WS)
+                include(CheckCSourceRuns)
+                check_c_source_runs("
+                    #include <curl/curl.h>
+                    #include <string.h>
+                    int main(void) {
+                        const curl_version_info_data* info = curl_version_info(CURLVERSION_NOW);
+                        for (const char* const* p = info->protocols; p && *p; ++p)
+                            if (strcmp(*p, \"ws\") == 0) return 0;
+                        return 1;
+                    }" UC_SYS_CURL_WS_BUILT_IN)
+                if(NOT UC_SYS_CURL_WS_BUILT_IN)
+                    set(UC_SYS_CURL_HAS_WS FALSE)
+                endif()
+            endif()
             unset(CMAKE_REQUIRED_INCLUDES)
             unset(CMAKE_REQUIRED_LIBRARIES)
             if(UC_SYS_CURL_HAS_WS)
@@ -3613,12 +3635,262 @@ if(TARGET UltraMessage)
     message(STATUS "  [✓] UltraMessageCenter - ENABLED")
 endif()
 
+# ===== BUILD ULTRARTC (WebRTC peers, data channels, calls) =====
+# UI-free. The engine is libdatachannel, vendored with libjuice, usrsctp,
+# libsrtp and plog under third_party/libdatachannel (VENDORED.md there) and
+# linked privately into the archive: no engine type reaches a public header.
+# Its DTLS runs on OpenSSL; without OpenSSL the module builds from
+# UltraRTCStub.cpp and every call answers Unsupported.
+option(ULTRACANVAS_ENABLE_ULTRARTC "Build the UltraRTC real-time communication library" ON)
+if(ULTRACANVAS_ENABLE_ULTRARTC)
+    if(NOT TARGET OpenSSL::SSL)
+        find_package(OpenSSL QUIET)
+    endif()
+    set(_ultrartc_engine FALSE)
+    if(TARGET OpenSSL::SSL AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdatachannel/CMakeLists.txt")
+        # The engine's own switches, set before it reads them. Static,
+        # position-independent (it ends up inside the shared core), no
+        # examples, tests or WebSocket client (UltraNet carries signalling).
+        set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
+        set(NO_TESTS ON CACHE BOOL "" FORCE)
+        set(NO_WEBSOCKET ON CACHE BOOL "" FORCE)
+        set(LIBSRTP_TEST_APPS OFF CACHE BOOL "" FORCE)
+        set(ENABLE_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+        set(WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+        set(USE_GNUTLS OFF CACHE BOOL "" FORCE)
+        set(USE_MBEDTLS OFF CACHE BOOL "" FORCE)
+        set(USE_NICE OFF CACHE BOOL "" FORCE)
+        set(PREFER_SYSTEM_LIB OFF CACHE BOOL "" FORCE)
+        set(_ultrartc_saved_pic "${CMAKE_POSITION_INDEPENDENT_CODE}")
+        set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+        # Its option(BUILD_SHARED_LIBS ... ON) would otherwise put ON in the
+        # cache for the whole project: every later add_library() without a
+        # type turned shared, and Corrosion linked the Vectorizer's vtracer_c
+        # DLL instead of its archive. A plain variable here (CMP0077) keeps
+        # the cache untouched; what the user set stays as it was.
+        if(NOT DEFINED BUILD_SHARED_LIBS)
+            set(BUILD_SHARED_LIBS OFF)
+            set(_ultrartc_unset_shared TRUE)
+        endif()
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdatachannel
+                         ${CMAKE_CURRENT_BINARY_DIR}/third_party/libdatachannel EXCLUDE_FROM_ALL)
+        if(_ultrartc_unset_shared)
+            unset(BUILD_SHARED_LIBS)
+            unset(_ultrartc_unset_shared)
+        endif()
+        set(CMAKE_POSITION_INDEPENDENT_CODE "${_ultrartc_saved_pic}")
+        if(TARGET datachannel-static)
+            set(_ultrartc_engine TRUE)
+        endif()
+    endif()
+
+    # The archive is uc-rtc; UltraRTC is its home ("MODULE HOMES").
+    if(_ultrartc_engine)
+        # Call audio is Opus (raw libopus; the Ogg Opus file codecs elsewhere
+        # use libopusenc / opusfile on top of it); call video is VP8 through
+        # FFmpeg's libavcodec (VideoFX's dependency), with our own RTP
+        # payload handlers. The device glue (UltraRTCAudioDevices.cpp,
+        # UltraRTCVideoDevices.cpp) is compiled into the core library, next
+        # to the recorders and player it uses.
+        add_library(uc-rtc STATIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCEngine.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCOpus.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCVideoCodec.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCVp8Rtp.cpp)
+        target_link_libraries(uc-rtc PRIVATE datachannel-static)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(UC_RTC_OPUS opus)
+        endif()
+        if(UC_RTC_OPUS_FOUND)
+            target_compile_definitions(uc-rtc PRIVATE ULTRARTC_HAVE_OPUS=1)
+            target_include_directories(uc-rtc PRIVATE ${UC_RTC_OPUS_INCLUDE_DIRS})
+            target_link_directories(uc-rtc PUBLIC ${UC_RTC_OPUS_LIBRARY_DIRS})
+            target_link_libraries(uc-rtc PUBLIC ${UC_RTC_OPUS_LIBRARIES})
+        endif()
+        if(PkgConfig_FOUND)
+            pkg_check_modules(UC_RTC_FFMPEG libavcodec>=58.134 libavutil>=56.70 libswscale>=5.9)
+        endif()
+        if(UC_RTC_FFMPEG_FOUND)
+            target_compile_definitions(uc-rtc PRIVATE ULTRARTC_HAVE_FFMPEG=1)
+            target_include_directories(uc-rtc PRIVATE ${UC_RTC_FFMPEG_INCLUDE_DIRS})
+            target_link_directories(uc-rtc PUBLIC ${UC_RTC_FFMPEG_LIBRARY_DIRS})
+            target_link_libraries(uc-rtc PUBLIC ${UC_RTC_FFMPEG_LIBRARIES})
+        endif()
+    else()
+        add_library(uc-rtc STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraRTC/UltraRTCStub.cpp)
+    endif()
+    set_target_properties(uc-rtc PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultrartc")
+    target_compile_features(uc-rtc PUBLIC cxx_std_20)
+    target_include_directories(uc-rtc
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas/include>)
+    target_link_libraries(uc-rtc PUBLIC Threads::Threads)
+    target_compile_definitions(uc-rtc PUBLIC ULTRACANVAS_HAS_ULTRARTC=1)
+    _ultracanvas_module_home(UltraRTC uc-rtc)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraRTC)
+    endif()
+    if(_ultrartc_engine)
+        if(UC_RTC_OPUS_FOUND)
+            set(_ultrartc_audio "Opus ${UC_RTC_OPUS_VERSION}")
+        else()
+            set(_ultrartc_audio "no Opus (pkg-config opus): audio off")
+        endif()
+        if(UC_RTC_FFMPEG_FOUND)
+            set(_ultrartc_video "VP8 via libavcodec ${UC_RTC_FFMPEG_libavcodec_VERSION}")
+        else()
+            set(_ultrartc_video "no FFmpeg (libavcodec, libswscale): video off")
+        endif()
+        message(STATUS "  [✓] UltraRTC - ENABLED (libdatachannel, OpenSSL ${OPENSSL_VERSION}, ${_ultrartc_audio}, ${_ultrartc_video})")
+    else()
+        message(STATUS "  [✓] UltraRTC - ENABLED without an engine (no OpenSSL): every call answers Unsupported")
+    endif()
+else()
+    message(STATUS "  [−] UltraRTC - DISABLED")
+endif()
+
+# ===== BUILD ULTRAIM (instant-messaging framework) =====
+# UI-free: the provider registry, the event bus with its injected dispatcher
+# and the loader of provider modules (Plugins/UltraIM/<name>/, which link the
+# core like any library). Docs/Research/ChatCubeDirectPlan.md.
+option(ULTRACANVAS_ENABLE_ULTRAIM "Build the UltraIM instant-messaging library" ON)
+if(ULTRACANVAS_ENABLE_ULTRAIM)
+    # The archive is uc-im; UltraIM is its home ("MODULE HOMES").
+    add_library(uc-im STATIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraIM/UltraIMManager.cpp)
+    set_target_properties(uc-im PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultraim")
+    target_compile_features(uc-im PUBLIC cxx_std_20)
+    target_include_directories(uc-im
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas/include>)
+    target_link_libraries(uc-im PUBLIC uc-crypt Threads::Threads ${CMAKE_DL_LIBS})
+    target_compile_definitions(uc-im PUBLIC ULTRACANVAS_HAS_ULTRAIM=1)
+    _ultracanvas_module_home(UltraIM uc-im)
+    if(NOT ULTRACANVAS_BUILD_SHARED)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraIM)
+    endif()
+    message(STATUS "  [✓] UltraIM - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM - DISABLED")
+endif()
+
 # Every module archive is defined by now: fold them into a shared core, in one
 # call and dependents first (see "MODULE HOMES"). A static core links each
 # through its home instead. VirtualFS has no dependency on the others.
+set(_ultracanvas_optional_archives "")
+foreach(_archive uc-im uc-rtc)
+    if(TARGET ${_archive})
+        list(APPEND _ultracanvas_optional_archives ${_archive})
+    endif()
+endforeach()
 _ultracanvas_absorb_modules(
-    uc-net uc-win uc-message uc-networkmonitor uc-database uc-vault uc-crypt
-    VirtualFS)
+    uc-net uc-win ${_ultracanvas_optional_archives} uc-message uc-networkmonitor
+    uc-database uc-vault uc-crypt VirtualFS)
+
+# ===== ULTRAIM PROVIDER: CHATCUBE DIRECT =====
+# The ULTRA OS native messenger as an UltraIM provider module
+# (Plugins/UltraIM/direct/, Docs/Research/ChatCubeDirectPlan.md). Its code is
+# an archive so the tests can link it directly; the module is that archive
+# plus the UltraIM_PluginInit entry point, loaded from <build>/Plugins/UltraIM.
+if(TARGET UltraIM AND TARGET UltraRTC AND TARGET UltraNet AND TARGET UltraDatabase AND TARGET UltraVault)
+    set(_ultraim_direct_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/direct)
+    add_library(UltraIMDirectCore STATIC
+        ${_ultraim_direct_dir}/DirectCrypto.cpp
+        ${_ultraim_direct_dir}/DirectStore.cpp
+        ${_ultraim_direct_dir}/DirectRelayClient.cpp
+        ${_ultraim_direct_dir}/DirectCalls.cpp
+        ${_ultraim_direct_dir}/DirectLan.cpp
+        ${_ultraim_direct_dir}/DirectLinks.cpp
+        ${_ultraim_direct_dir}/DirectProvider.cpp)
+    set_target_properties(UltraIMDirectCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMDirectCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMDirectCore PUBLIC ${_ultraim_direct_dir})
+    target_link_libraries(UltraIMDirectCore PUBLIC
+        ${ULTRACANVAS_LIB_NAME} UltraIM UltraRTC UltraNet UltraDatabase UltraVault UltraCrypt)
+
+    add_library(UltraIMDirectPlugin MODULE ${_ultraim_direct_dir}/DirectModule.cpp)
+    set_target_properties(UltraIMDirectPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_direct"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMDirectPlugin PRIVATE UltraIMDirectCore)
+    message(STATUS "  [✓] UltraIM provider ChatCube Direct - ENABLED")
+else()
+    message(STATUS "  [−] UltraIM provider ChatCube Direct - DISABLED (needs UltraIM, UltraRTC, UltraNet, UltraDatabase, UltraVault)")
+endif()
+
+# ----- UltraIM provider: Matrix ------------------------------------------------
+# The Matrix client-server API (Plugins/UltraIM/matrix/): password sign-in,
+# /sync, direct chats and groups, receipts, typing, edits, redactions. Like
+# Direct, an archive the tests link, and the module loaded from
+# <build>/Plugins/UltraIM.
+#
+# End-to-end encryption (Olm / Megolm) is vodozemac, Matrix's audited Rust
+# implementation, behind a C ABI shim (matrix/olm-c, built with Corrosion like
+# the Vectorizer plugin). Without cargo the provider still builds and reads
+# and writes unencrypted rooms; encrypted ones then say they cannot be read.
+option(ULTRAIM_MATRIX_E2EE "Matrix provider: end-to-end encryption through vodozemac (requires cargo)" ON)
+if(TARGET UltraIM AND TARGET UltraNet AND TARGET UltraVault AND TARGET UltraCrypt)
+    set(_ultraim_matrix_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/matrix)
+    add_library(UltraIMMatrixCore STATIC
+        ${_ultraim_matrix_dir}/MatrixHttp.cpp
+        ${_ultraim_matrix_dir}/MatrixOlm.cpp
+        ${_ultraim_matrix_dir}/MatrixCrypto.cpp
+        ${_ultraim_matrix_dir}/MatrixProvider.cpp)
+    set_target_properties(UltraIMMatrixCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMMatrixCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMMatrixCore PUBLIC ${_ultraim_matrix_dir})
+    target_link_libraries(UltraIMMatrixCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraNet UltraVault UltraCrypt)
+
+    set(_ultraim_matrix_e2ee "no (ULTRAIM_MATRIX_E2EE is OFF)")
+    if(ULTRAIM_MATRIX_E2EE AND ULTRACANVAS_PLATFORM STREQUAL "WASM")
+        set(_ultraim_matrix_e2ee "no (not in a WebAssembly build)")
+    elseif(ULTRAIM_MATRIX_E2EE)
+        find_program(CARGO_EXECUTABLE cargo)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/UltraCanvasRust.cmake)
+        ultracanvas_find_rust_toolchain(_uc_rust_ok _uc_rust_why)
+        if(NOT CARGO_EXECUTABLE)
+            set(_ultraim_matrix_e2ee "no (cargo not found; install via https://rustup.rs/)")
+        elseif(NOT _uc_rust_ok)
+            set(_ultraim_matrix_e2ee "no (no native Windows Rust toolchain)")
+            message(STATUS "  Matrix end-to-end encryption needs a native Windows Rust toolchain. ${_uc_rust_why}")
+        else()
+            ultracanvas_fetch_corrosion()
+            corrosion_import_crate(
+                MANIFEST_PATH ${_ultraim_matrix_dir}/olm-c/Cargo.toml
+                PROFILE       release
+                CRATES        ultraim_olm)
+            target_include_directories(UltraIMMatrixCore PRIVATE ${_ultraim_matrix_dir}/olm-c/include)
+            target_compile_definitions(UltraIMMatrixCore PRIVATE ULTRAIM_HAVE_OLM=1)
+            target_link_libraries(UltraIMMatrixCore PUBLIC ultraim_olm)
+            # What Rust's std needs from the system, named here because
+            # Corrosion's list can come through empty (see Plugins/Vectorizer).
+            if(WIN32)
+                target_link_libraries(UltraIMMatrixCore PUBLIC ntdll userenv ws2_32 dbghelp bcrypt)
+            elseif(UNIX AND NOT APPLE)
+                target_link_libraries(UltraIMMatrixCore PUBLIC pthread dl m)
+            endif()
+            set(_ultraim_matrix_e2ee "yes (vodozemac)")
+        endif()
+    endif()
+
+    add_library(UltraIMMatrixPlugin MODULE ${_ultraim_matrix_dir}/MatrixModule.cpp)
+    set_target_properties(UltraIMMatrixPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_matrix"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMMatrixPlugin PRIVATE UltraIMMatrixCore)
+    message(STATUS "  [✓] UltraIM provider Matrix - ENABLED (end-to-end encryption: ${_ultraim_matrix_e2ee})")
+else()
+    message(STATUS "  [−] UltraIM provider Matrix - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
+endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
@@ -4190,6 +4462,18 @@ endif()
 if(TARGET UltraDatabase)
     list(APPEND _uc_export_targets UltraDatabase)
 endif()
+# UltraIM and UltraRTC, the messaging modules: their homes as for the others;
+# on a static core their archives go along.
+foreach(_uc_module_pair "UltraIM;uc-im" "UltraRTC;uc-rtc")
+    list(GET _uc_module_pair 0 _uc_home)
+    list(GET _uc_module_pair 1 _uc_archive)
+    if(TARGET ${_uc_home})
+        list(APPEND _uc_export_targets ${_uc_home})
+        if(NOT ULTRACANVAS_BUILD_SHARED)
+            list(APPEND _uc_export_targets ${_uc_archive})
+        endif()
+    endif()
+endforeach()
 # UltraNet: exportable only on a system libcurl, which CMake re-finds as
 # CURL::libcurl. The vendored libcurl (ULTRACANVAS_USE_VENDORED_CURL, built by
 # cmake/VendoredCurl.cmake) is an EXCLUDE_FROM_ALL sub-build with no
@@ -4215,6 +4499,15 @@ if(TARGET UltraNet)
         set(_uc_package_blocked
             "a static libUltraCanvas names UltraNet in its link interface, and this UltraNet links the vendored libcurl, which has no installable package - build with ULTRACANVAS_BUILD_SHARED=ON, or against a system libcurl with WebSocket support")
     endif()
+endif()
+
+# UltraRTC, likewise: its engine is the vendored libdatachannel (with libjuice,
+# usrsctp and libsrtp), a sub-build with no installable package of ours. A
+# shared core folds it in; a static core names it, and then there is no
+# package to install. (Without OpenSSL UltraRTC is the stub, and exports.)
+if(NOT _uc_package_blocked AND NOT ULTRACANVAS_BUILD_SHARED AND _ultrartc_engine)
+    set(_uc_package_blocked
+        "a static libUltraCanvas names UltraRTC in its link interface, and UltraRTC's engine is the vendored libdatachannel, which has no installable package - build with ULTRACANVAS_BUILD_SHARED=ON")
 endif()
 
 if(_uc_package_blocked)

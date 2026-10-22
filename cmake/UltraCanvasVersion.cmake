@@ -125,6 +125,7 @@ _ultracanvas_declare_product(ULTRACLEANER        "Docs/UltraCleaner/CHANGELOG.md
 _ultracanvas_declare_product(ULTRACANVASSTART    "Docs/UltraCanvasStart/CHANGELOG.md")
 _ultracanvas_declare_product(UOSSETTINGS         "Docs/UOSSettings/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRACLAUDE         "Docs/UltraClaude/CHANGELOG.md")
+_ultracanvas_declare_product(CHATCUBE            "Docs/ChatCube/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRANETMONITOR     "Docs/UltraNetMonitor/CHANGELOG.md")
 _ultracanvas_declare_product(ULTRADBADMIN        "Docs/UltraDBAdmin/CHANGELOG.md")
 _ultracanvas_declare_product(DEVICEEXPLORER      "Docs/DeviceExplorer/CHANGELOG.md")

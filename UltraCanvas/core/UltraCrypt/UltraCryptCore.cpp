@@ -8,11 +8,12 @@
 // fallback, which returned success while passing plaintext through). Nothing
 // here ever reports success without doing the work.
 //
-// Version: 0.3.0
+// Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraCanvasTextUtils.h"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <mutex>
@@ -1060,6 +1061,98 @@ UltraCryptResult UltraCrypt_DeriveKeyHkdf(
 }
 
 // ============================================================================
+// PBKDF2 (RFC 8018) - interop only
+// ============================================================================
+namespace {
+
+#ifdef ULTRACRYPT_HAVE_SODIUM
+// One PBKDF2 block, T_i = U_1 ^ ... ^ U_c, with the password's HMAC state
+// keyed once and copied for every U (the key schedule is two of the four
+// compressions an HMAC costs, and formats ask for 100 000+ iterations).
+template <typename State, int (*Init)(State*, const unsigned char*, size_t),
+          int (*Update)(State*, const unsigned char*, unsigned long long),
+          int (*Final)(State*, unsigned char*), size_t kLen>
+bool Pbkdf2Block(const UltraCryptSecureBuffer& password, const std::vector<uint8_t>& salt,
+                 uint32_t iterations, uint32_t index, uint8_t out[kLen]) {
+    State keyed;
+    if (Init(&keyed, password.Data(), password.GetSize()) != 0) return false;
+    uint8_t u[kLen];
+    State state = keyed;
+    const unsigned char empty = 0;
+    Update(&state, salt.empty() ? &empty : salt.data(), salt.size());
+    const unsigned char be[4] = {static_cast<unsigned char>(index >> 24), static_cast<unsigned char>(index >> 16),
+                                 static_cast<unsigned char>(index >> 8), static_cast<unsigned char>(index)};
+    Update(&state, be, 4);
+    Final(&state, u);
+    std::memcpy(out, u, kLen);
+    for (uint32_t c = 1; c < iterations; ++c) {
+        state = keyed;
+        Update(&state, u, kLen);
+        Final(&state, u);
+        for (size_t k = 0; k < kLen; ++k) out[k] ^= u[k];
+    }
+    UltraCrypt_SecureZero(u, sizeof(u));
+    UltraCrypt_SecureZero(&state, sizeof(state));
+    UltraCrypt_SecureZero(&keyed, sizeof(keyed));
+    return true;
+}
+#endif
+
+} // namespace
+
+UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(
+        UltraCryptHashAlgorithm algorithm,
+        const UltraCryptSecureBuffer& password,
+        const std::vector<uint8_t>& salt,
+        uint32_t iterations,
+        size_t outputLength,
+        UltraCryptSecureBuffer& outKey) {
+    outKey.Clear();
+    if (algorithm == UltraCryptHashAlgorithm::SHA1) {
+        return UltraCryptResult::Error(
+            UltraCryptResultCode::NotSupported,
+            "PBKDF2-SHA-1 is not offered: the formats PBKDF2 is here for use SHA-256 or SHA-512");
+    }
+    if (iterations == 0 || outputLength == 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "PBKDF2 needs at least one iteration and a non-zero output length");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    const size_t hashLen = UltraCrypt_GetDigestSize(algorithm);
+    UltraCryptSecureBuffer okm(outputLength);
+    if (okm.GetSize() != outputLength) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "could not allocate output buffer");
+    }
+    uint8_t block[crypto_auth_hmacsha512_BYTES];
+    size_t produced = 0;
+    for (uint32_t index = 1; produced < outputLength; ++index) {
+        const bool ok = algorithm == UltraCryptHashAlgorithm::SHA256
+            ? Pbkdf2Block<crypto_auth_hmacsha256_state, crypto_auth_hmacsha256_init, crypto_auth_hmacsha256_update,
+                          crypto_auth_hmacsha256_final, crypto_auth_hmacsha256_BYTES>(password, salt, iterations,
+                                                                                     index, block)
+            : Pbkdf2Block<crypto_auth_hmacsha512_state, crypto_auth_hmacsha512_init, crypto_auth_hmacsha512_update,
+                          crypto_auth_hmacsha512_final, crypto_auth_hmacsha512_BYTES>(password, salt, iterations,
+                                                                                     index, block);
+        if (!ok) {
+            UltraCrypt_SecureZero(block, sizeof(block));
+            return UltraCryptResult::Error(UltraCryptResultCode::InternalError, "HMAC init failed");
+        }
+        const size_t take = std::min(outputLength - produced, hashLen);
+        std::memcpy(okm.Data() + produced, block, take);
+        produced += take;
+    }
+    UltraCrypt_SecureZero(block, sizeof(block));
+    outKey = std::move(okm);
+    return UltraCryptResult::Ok();
+#else
+    (void)password; (void)salt;
+    return NoBackend();
+#endif
+}
+
+// ============================================================================
 // Digital signatures (Ed25519)
 // ============================================================================
 // libsodium's crypto_sign is Ed25519 (RFC 8032) with the 64-byte secret key
@@ -1295,6 +1388,119 @@ UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm algorithm,
     }
     return UltraCrypt_Verify(algorithm, publicKey, bytes.data(), bytes.size(),
                              signature);
+}
+
+// ============================================================================
+// Key agreement (X25519)
+// ============================================================================
+
+namespace {
+constexpr size_t kX25519KeyBytes = 32;
+}
+
+size_t UltraCrypt_GetKeyExchangeKeySize() {
+    return kX25519KeyBytes;
+}
+
+size_t UltraCrypt_GetKeyExchangeSecretSize() {
+    return kX25519KeyBytes;
+}
+
+UltraCryptResult UltraCrypt_GenerateKeyExchangeKeyPair(std::vector<uint8_t>& outPublicKey,
+                                                       UltraCryptSecureBuffer& outSecretKey) {
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    static_assert(crypto_scalarmult_curve25519_BYTES == kX25519KeyBytes, "key size");
+    std::vector<uint8_t> pk(kX25519KeyBytes, 0);
+    UltraCryptSecureBuffer sk(kX25519KeyBytes);
+    if (crypto_box_keypair(pk.data(), sk.Data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "key pair generation failed");
+    }
+    outPublicKey = std::move(pk);
+    outSecretKey = std::move(sk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outPublicKey;
+    (void)outSecretKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_SignaturePublicKeyToKeyExchange(
+        UltraCryptSignatureAlgorithm algorithm,
+        const std::vector<uint8_t>& signaturePublicKey,
+        std::vector<uint8_t>& outKeyExchangePublicKey) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (signaturePublicKey.size() != kEd25519PublicKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "public key must be 32 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    std::vector<uint8_t> pk(kX25519KeyBytes, 0);
+    if (crypto_sign_ed25519_pk_to_curve25519(pk.data(), signaturePublicKey.data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "not a valid Ed25519 public key");
+    }
+    outKeyExchangePublicKey = std::move(pk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outKeyExchangePublicKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_SignatureSecretKeyToKeyExchange(
+        UltraCryptSignatureAlgorithm algorithm,
+        const UltraCryptSecureBuffer& signatureSecretKey,
+        UltraCryptSecureBuffer& outKeyExchangeSecretKey) {
+    if (!KnownSignatureAlgorithm(algorithm)) return UnknownSignatureAlgorithm();
+    if (signatureSecretKey.GetSize() != kEd25519SecretKeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "secret key must be 64 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    UltraCryptSecureBuffer sk(kX25519KeyBytes);
+    if (crypto_sign_ed25519_sk_to_curve25519(sk.Data(), signatureSecretKey.Data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "secret key conversion failed");
+    }
+    outKeyExchangeSecretKey = std::move(sk);
+    return UltraCryptResult::Ok();
+#else
+    (void)outKeyExchangeSecretKey;
+    return NoBackend();
+#endif
+}
+
+UltraCryptResult UltraCrypt_KeyExchange(const UltraCryptSecureBuffer& mySecretKey,
+                                        const std::vector<uint8_t>& theirPublicKey,
+                                        UltraCryptSecureBuffer& outSharedSecret) {
+    if (mySecretKey.GetSize() != kX25519KeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "secret key must be 32 bytes");
+    }
+    if (theirPublicKey.size() != kX25519KeyBytes) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidKeySize,
+                                       "public key must be 32 bytes");
+    }
+    if (!EnsureReady()) return NoBackend();
+#ifdef ULTRACRYPT_HAVE_SODIUM
+    UltraCryptSecureBuffer shared(kX25519KeyBytes);
+    // crypto_scalarmult fails on the low-order points that would give an
+    // all-zero (attacker-known) secret.
+    if (crypto_scalarmult(shared.Data(), mySecretKey.Data(), theirPublicKey.data()) != 0) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidArgument,
+                                       "public key is a low-order point");
+    }
+    outSharedSecret = std::move(shared);
+    return UltraCryptResult::Ok();
+#else
+    (void)outSharedSecret;
+    return NoBackend();
+#endif
 }
 
 // ============================================================================

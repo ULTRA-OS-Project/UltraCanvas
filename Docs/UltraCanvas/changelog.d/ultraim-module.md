@@ -1,0 +1,19 @@
+- **UltraIM: an instant-messaging framework, the base of the ChatCube
+  messenger.** A new UI-free module (`UltraCanvas/{include,core}/UltraIM/`,
+  target `UltraIM`) with one `UltraIM_*` API for every messenger network:
+  providers implement `IUltraIMProviderPlugin` and ship as modules loaded by
+  `UltraIM_RefreshProviders` (checked against
+  `ULTRAIM_PLUGIN_HOST_ABI_VERSION`) or are registered in-process; every
+  event and callback reaches the application through the dispatcher it
+  installs, so a UI subscribes on its UI thread and needs no lock; a
+  conversation fetch merges every connected provider; sends carry a client
+  message id for optimistic display; calls are started, answered, muted and
+  ended through the same API (`UltraIM_SetCallMuted`, result code
+  `InvalidState`); a video call's pictures reach the application through
+  sinks (`UltraIM_SetCallVideoSinks`, RGBA on a media thread), its camera
+  is switched with `UltraIM_SetCallCamera`, and the other side's camera
+  arrives as `CallMediaChange`; `UltraIM_FetchNearbyContacts` and the
+  `NearbyChange` event list the people on the local network, and
+  `UltraIMCredentials::localNetwork` asks a provider to look there. Plan:
+  `Docs/Research/ChatCubeDirectPlan.md`; doc: `Docs/Modules/UltraIM/README.md`;
+  tests: `Tests/UltraIM` (`ULTRACANVAS_BUILD_ULTRAIM_TESTS`).

@@ -228,6 +228,34 @@ static std::string TestBase64(const std::string& in) {
 
 static const UltraVault::DeviceKeyVaultProfile kTestProfile{"test.vault", "test.app."};
 
+// Two vaults in one process (two messenger providers, say): the process has
+// one open UltraVault store, and Use() lets them take turns without either
+// reading the other's.
+static void TestDeviceKeyVaultTurns(const fs::path& dir) {
+    using UltraVault::DeviceKeyVault;
+    std::printf("device-key vaults taking turns\n");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    DeviceKeyVault first(UltraCanvas::PathToUtf8(dir / "first"), {"first.vault", "test.first."});
+    DeviceKeyVault second(UltraCanvas::PathToUtf8(dir / "second"), {"second.vault", "test.second."});
+    bool stored = false;
+    Check(first.Use([&](DeviceKeyVault& v) { stored = v.Store("session", "one"); }) && stored, "Use stores in the first");
+    Check(second.Use([&](DeviceKeyVault& v) { stored = v.Store("session", "two"); }) && stored, "Use stores in the second");
+    Check(!first.IsUnlocked() && !second.IsUnlocked(), "Use closes the vault again");
+    std::string a, b;
+    Check(first.Use([&](DeviceKeyVault& v) { v.Retrieve("session", a); }) && a == "one", "the first reads its own");
+    Check(second.Use([&](DeviceKeyVault& v) { v.Retrieve("session", b); }) && b == "two", "the second reads its own");
+    // One left open the old way is opened afresh by Use, not trusted.
+    Check(second.TryAutoUnlock(), "the second opened directly");
+    a.clear();
+    Check(first.Use([&](DeviceKeyVault& v) { v.Retrieve("session", a); }) && a == "one",
+          "Use reopens the first even while the second is open");
+    DeviceKeyVault nowhere;
+    bool ran = false;
+    Check(!nowhere.Use([&](DeviceKeyVault&) { ran = true; }) && !ran, "a vault that cannot open does not run the use");
+    fs::remove_all(dir, ec);
+}
+
 static void TestDeviceKeyVault(const fs::path& dir) {
     using UltraVault::DeviceKeyVault;
     using UltraVault::UnlockStatus;
@@ -437,6 +465,7 @@ int main() {
     if (UltraCrypt_IsAvailable()) {
         TestFileBackend("ultravault_test.vault");
         TestDeviceKeyVault(fs::temp_directory_path() / "ultravault_devicekey_test");
+        TestDeviceKeyVaultTurns(fs::temp_directory_path() / "ultravault_devicekey_turns");
         TestDeviceKeyVaultInUtf8Folder(fs::temp_directory_path() / "ultravault_utf8_test");
     } else {
         std::printf("file backend: SKIPPED (UltraCrypt backend "

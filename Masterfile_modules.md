@@ -1739,12 +1739,19 @@ backing library is never visible in a public header.
 - `UltraCrypt_AesCbcEncrypt`, `UltraCrypt_AesCbcDecrypt`,
   `UltraCrypt_GetAesBlockSize` (AES-128/192/256-CBC, interop only;
   constant-time portable software, independent of libsodium)
+- `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
+  only - Matrix key exports and attachments, WebCrypto)
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
-  `UltraCrypt_RecommendedKdfParams`
+  `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
+  (PBKDF2-HMAC-SHA-256/512, interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
   and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
+- `UltraCrypt_KeyExchange`, `UltraCrypt_GenerateKeyExchangeKeyPair`,
+  `UltraCrypt_SignaturePublicKeyToKeyExchange`,
+  `UltraCrypt_SignatureSecretKeyToKeyExchange`,
+  `UltraCrypt_GetKeyExchangeKeySize` / `…SecretSize` (X25519, RFC 7748)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
@@ -1767,7 +1774,8 @@ defects, not shortcuts.
 **XChaCha20-Poly1305** and keyed with **Argon2id**; no algorithm menu is
 offered, because the formats are ours and a second choice would only be a
 second code path in every reader. AES-256-GCM is present solely for reading
-foreign data and is hardware-gated. Algorithm agility lives in format
+foreign data and is hardware-gated; AES-CBC, AES-CTR and PBKDF2 solely for
+formats defined elsewhere. Algorithm agility lives in format
 version numbers, not in per-file algorithm identifiers.
 
 **Implementation status (this branch):** Implemented on libsodium
@@ -2476,3 +2484,120 @@ a crash or a hang of the host; after a trap or an interruption an instance
 refuses further calls; host functions are registered through the unchecked
 host-function API (measured at 7 ns per empty call against 82 ns for the
 checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.
+
+---
+
+### **18. UltraIM**
+
+The instant-messaging framework: one UI-free API through which an
+application signs in to messengers, lists conversations, sends and receives
+messages and places calls, whatever the network. Every network is a provider
+plug-in — ChatCube Direct (the ULTRA OS native peer-to-peer messenger) first,
+then Matrix, Telegram, XMPP and other services with an open API. The first
+consumer is the ChatCube application (`Apps/ChatCube/`). Plan:
+`Docs/Research/ChatCubeDirectPlan.md`.
+
+UltraIM elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- No UltraCanvas UI dependency: no element, window, list model or render
+  context in the module or its plug-ins
+- Networking only through UltraNet and UltraRTC; no socket, no libcurl call
+- Synchronous rejections (not connected, capability missing, bad argument)
+  return `UltraIMResult`; network outcomes arrive as `UltraIMEvent`s
+- Every event and every result callback is delivered through the dispatcher
+  the application installs (`UltraIM_SetEventDispatcher`); without one they
+  run on the calling thread
+- Providers are loadable modules exporting `UltraIM_PluginInit` and checked
+  against `ULTRAIM_PLUGIN_HOST_ABI_VERSION`
+- Credentials and private keys at rest go through UltraVault
+
+**Proposed Functions (Phase 1):**
+- `UltraIM_Initialize`, `UltraIM_Shutdown`
+- `UltraIM_RegisterProvider`, `UltraIM_UnregisterProvider`,
+  `UltraIM_RefreshProviders`, `UltraIM_ListProviders`
+- `UltraIM_SetEventDispatcher`, `UltraIM_Subscribe`, `UltraIM_Unsubscribe`
+- `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
+- `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
+- `UltraIM_SendText`, `UltraIM_SendFile`, `UltraIM_SendImage`,
+  `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`, `UltraIM_DeleteMessage`,
+  `UltraIM_EditMessage`, `UltraIM_MarkRead`, `UltraIM_SetTyping`
+- `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
+  `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
+  `UltraIM_SetCallVideoSinks`
+- `UltraIM_FetchNearbyContacts` (people on the local network)
+- `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
+  to encrypted conversations as a passphrase-protected file)
+
+**Implementation status:** Phase 1 core implemented — target `UltraIM`
+(`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
+provider registry, the module loader (`UltraIM_PluginInit`, ABI 1), the event
+bus with the injected dispatcher, the merged conversation fetch and every
+forwarding call above. Provider: ChatCube Direct
+(`UltraCanvas/Plugins/UltraIM/direct/`, module `ultraim_direct`): key-pair
+identity, end-to-end encrypted messages peer to peer over UltraRTC data
+channels, the relay (`Server/ChatCubeRelay`) for rendezvous, the offline
+queue and groups, delivery and read receipts, local history, and 1:1 voice
+and video calls (signed invite / accept / reject / camera / hang-up over the
+relay, Opus and VP8 over an UltraRTC peer per call), and the local network
+with or without a relay (mDNS announcement and discovery, a TCP connection
+both ends authenticate with their identity keys carrying the signalling).
+Provider: Matrix (`UltraCanvas/Plugins/UltraIM/matrix/`, module
+`ultraim_matrix`): password or token sign-in with .well-known discovery,
+`/sync`, direct chats and groups, invitations, replies, edits, redactions,
+receipts, typing, presence, paged history, and end-to-end encryption -
+Olm and Megolm through vodozemac (Rust, behind a C ABI shim built with
+Corrosion), device keys trusted on first use, room keys shared per device,
+new rooms created encrypted, Element-compatible key export. Tests in `Tests/UltraIM`. See
+`Docs/Modules/UltraIM/README.md`.
+
+---
+
+### **19. UltraRTC**
+
+Real-time communication: WebRTC peer connections, data channels, and audio
+and video calls behind one UltraCanvas-owned API, `UltraRtc_*` free
+functions with opaque `UltraRtcHandle`s and `UltraRtcResult` from every
+blocking call. Design: `Docs/Research/UltraRTCDesignProposal.md`.
+
+**A wrapped engine.** libdatachannel (with libjuice, usrsctp, libsrtp),
+vendored under `UltraCanvas/third_party/libdatachannel/`, linked privately: no
+engine type reaches a caller. SDP passes through untouched; DTLS is
+mandatory. Built when OpenSSL is found; otherwise every call answers
+`Unsupported`.
+
+**Proposed Functions (Phase 1 — peers and data channels):**
+- `UltraRtc_Initialize`, `UltraRtc_Shutdown`, `UltraRtc_GetCapabilities`,
+  `UltraRtc_SetEventDispatcher`
+- `UltraRtc_CreatePeer`, `UltraRtc_ClosePeer`, `UltraRtc_SetPeerEventCallback`
+- `UltraRtc_CreateOffer`, `UltraRtc_CreateAnswer`,
+  `UltraRtc_SetLocalDescription`, `UltraRtc_SetRemoteDescription`,
+  `UltraRtc_AddIceCandidate`, `UltraRtc_GetConnectionState`
+- `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
+
+Also: `UltraRtc_IsAvailable`, `UltraRtc_GetLocalDescription`,
+`UltraRtc_GetRemoteDescription`, `UltraRtc_GetIceGatheringState`,
+`UltraRtc_GetSignalingState`, `UltraRtc_DataChannelSendText` /
+`UltraRtc_DataChannelSendBinary`, `UltraRtc_GetDataChannelLabel`,
+`UltraRtc_GetDataChannelPeer`, `UltraRtc_GetDataChannelBufferedAmount`.
+
+**Phase 2 — audio:** `UltraRtc_AddAudioTrack`, `UltraRtc_SendAudioFrame`,
+`UltraRtc_SetAudioFrameCallback`, `UltraRtc_SetTrackEnabled`,
+`UltraRtc_IsTrackOpen`, `UltraRtc_StartMicrophone` / `UltraRtc_StopMicrophone`,
+`UltraRtc_StartPlayback` / `UltraRtc_StopPlayback`.
+
+**Phase 3 — video:** `UltraRtc_AddVideoTrack`, `UltraRtc_SendVideoFrame`,
+`UltraRtc_SetVideoFrameCallback`, `UltraRtc_RequestKeyFrame`,
+`UltraRtc_StartCamera` / `UltraRtc_StopCamera`; pictures shown with the
+`UltraCanvasVideoTile` element.
+
+**Implementation status:** Phases 1 to 3 implemented — target `UltraRTC`
+(`UltraCanvas/{include,core}/UltraRTC/`, umbrella `<UltraRTC/UltraRTC.h>`):
+peers, ICE configuration, events through an injectable dispatcher, data
+channels with text and binary messages; Opus audio tracks (48 kHz mono,
+in-band FEC, loss concealment) with the microphone and speaker through
+`UltraCanvasAudioRecorder` (live mode) and `UltraCanvasAudioPlayer` (push
+sink); VP8 video tracks (libvpx through FFmpeg's libavcodec, our own RFC 7741
+payload handlers, key-frame recovery by PLI) with the camera through
+`UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
+`opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
+Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
