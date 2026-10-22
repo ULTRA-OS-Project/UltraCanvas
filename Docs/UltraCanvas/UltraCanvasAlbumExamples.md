@@ -378,7 +378,6 @@ std::function<void(size_t)> onItemClicked;       // single click / tap
 std::function<void(size_t)> onItemPressed;       // the left button down on a tile, before anything is decided
 std::function<void(size_t)> onItemActivated;     // double click: open / play
 std::function<void(size_t,size_t)> onItemsReordered;  // (from, to) — edit modes
-std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;  // a tile dragged past the edge (edit modes)
 std::function<void(size_t)> onItemRemoved;       // after RemoveItem
 std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 ```
@@ -389,17 +388,14 @@ std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 - **Double-click** → `onItemActivated` (open / play).
 - **Right-click** (or the kebab icon) → per-item action menu.
 - **Drag** a tile (edit / admin) → reorder; fires `onItemsReordered`.
-- **Drag** a tile past the album's edge (edit / admin) → the reorder ends
-  and `onItemDraggedOut(index, windowPos)` fires once, with the pointer's
-  window position. The app carries the item on from there with the window's
-  own mouse events - a media bin hands its file to a timeline's drop path,
-  say. Set the callback only where that is wanted; without it a drag that
-  leaves the album is simply a reorder that ends where the pointer returns.
-- **Press** a tile → `onItemPressed(index)`, before a click, a reorder or a
-  drag out is decided. An app that carries the tile's drag itself - the
-  way it carries a drag from a button's press - arms it here and, once
-  its drag has started, calls `ReleaseDrag()`: the album forgets the press,
-  so no reorder follows it and `onItemDraggedOut` never fires for it.
+- **Press** a tile → `onItemPressed(index)`, before a click or a reorder
+  is decided, in every mode. An app that carries the tile's drag itself -
+  a media bin whose tiles land on a timeline, the way the app carries a
+  drag from a button's press - arms it here and, once its drag has
+  started, calls `ReleaseDrag()`: the album forgets the press, so neither
+  a click nor a reorder follows it. (The album's own hand-over,
+  `onItemDraggedOut`, went in 1.11.0: it needed an edit mode and the
+  album's reorder to run first.)
 
   ```cpp
   size_t pressedTile = 0;   // the app's own drag is armed from here

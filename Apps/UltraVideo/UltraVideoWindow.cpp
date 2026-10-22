@@ -307,10 +307,9 @@ std::shared_ptr<UltraCanvasTabbedContainer> UltraVideoWindow::BuildMediaBin() {
         cfg.imageDisplay = AlbumImageDisplay::Crop;
         cfg.actionDisplay = AlbumActionDisplay::OnHover;
         cfg.showBorder = false;
-        cfg.allowSelection = true;
-        cfg.mode = AlbumMode::UserEdit;      // tiles can be dragged (out to the timeline)
+        cfg.mode = AlbumMode::Display;       // no reorder, no selection: the hover actions, a double-click, and the window's own drag from a press
         album->SetConfig(cfg);
-        album->SetFollowTheme(true);         // the panel, raised tiles, captions, the selection
+        album->SetFollowTheme(true);         // the panel, raised tiles, captions
         AlbumAction add;
         add.id = "add";
         add.label = music ? "Use as music" : "Add to the timeline";

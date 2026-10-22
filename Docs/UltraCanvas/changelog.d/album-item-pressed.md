@@ -4,4 +4,6 @@
   `onItemPressed(index)`, arms its own drag there as it does from a button's
   press, and calls `ReleaseDrag()` when that drag starts, so the album's
   reorder (edit modes) does not follow the same press. `onItemDraggedOut`
-  stays for an application that lets the album decide when a tile has left.
+  (1.9.0), which needed an edit mode and let the album decide when a tile
+  had left, is gone: it had that one caller. UltraVideo's bin is a
+  `Display` album now - the hover actions, a double-click and the drag.

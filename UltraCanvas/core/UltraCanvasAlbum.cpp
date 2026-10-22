@@ -1,7 +1,7 @@
 // core/UltraCanvasAlbum.cpp
 // Photo / video / music album widget with selectable layout designs, per-item
 // crop / zoom / stretch fitting, action icons and visitor / edit / admin modes.
-// Version: 1.11.0 - onItemPressed on a tile's press; ReleaseDrag forgets it for an owner carrying the tile
+// Version: 1.11.0 - onItemPressed on a tile's press; ReleaseDrag forgets it for an owner carrying the tile; DragOut gone
 // Version: 1.10.0 - AlbumConfig::FromTheme
 // Version: 1.9.0
 // Last Modified: 2026-10-10
@@ -1490,21 +1490,9 @@ namespace UltraCanvas {
         activePopupMenu->OpenMenu(winPos, *win, settings);
     }
 
-    // A tile dragged past the album's edge: the reorder is over, the app
-    // carries the item on from here
-    void UltraCanvasAlbum::DragOut(const Point2Di& windowPos) {
-        if (!dragging || dragItem < 0 || dragItem >= static_cast<int>(items.size()) || !onItemDraggedOut) return;
-        const size_t index = static_cast<size_t>(dragItem);
-        dragging = false;
-        dragArmed = false;
-        dragItem = -1;
-        RequestRedraw();
-        onItemDraggedOut(index, windowPos);
-    }
-
     // The owner carries the pressed tile itself (its drag, armed from
     // onItemPressed, has started): the press is forgotten here, so neither
-    // a reorder nor a hand-over follows it
+    // a click nor a reorder follows it
     void UltraCanvasAlbum::ReleaseDrag() {
         if (!dragArmed && !dragging && dragItem < 0) return;
         dragging = false;
@@ -1735,7 +1723,6 @@ namespace UltraCanvas {
                 }
                 dragArmed = false;
                 draggingScrollbar = false;
-                DragOut(Point2Di(event.pointerWindow.x, event.pointerWindow.y));
                 return true;
             }
             case UCEventType::MouseWheel: {
@@ -1770,11 +1757,6 @@ namespace UltraCanvas {
                     if (dx * dx + dy * dy >= kDragThreshold * kDragThreshold) {
                         dragging = true;
                     }
-                }
-                if (dragging && onItemDraggedOut &&
-                    !Rect2Di(0, 0, static_cast<int>(GetWidth()), static_cast<int>(GetHeight())).Contains(local)) {
-                    DragOut(Point2Di(event.pointerWindow.x, event.pointerWindow.y));
-                    return true;
                 }
                 int newHover = TileAt(ToContentPoint(local));
                 if (dragging || newHover != hoveredItem) {
