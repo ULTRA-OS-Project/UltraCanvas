@@ -48,6 +48,15 @@ rule:
   weighs above the family - otherwise an installed colour font would still
   win.
 
+Noto Color Emoji is a bitmap font: its glyphs are 109 px pictures that
+fontconfig has to scale to the size of the text. A system `fonts.conf` does
+that through its `conf.d/10-scale-bitmap-fonts.conf`; the `fonts.conf` the
+framework writes where there is none (the packaged Windows and Android
+builds) carries the same rules, and `GenerateBitmapScalingConfig()`
+(`UltraCanvasApplication.h`) hands them to a configuration made another way.
+Without them every colour emoji is drawn 109 px high, whatever the size of
+the text around it.
+
 A change applies to the applications started after it. Where the text engine
 is not fontconfig the call does nothing: macOS draws Apple Color Emoji (its
 bundles leave `media/emoji/` out), and the WebAssembly pages do not preload
