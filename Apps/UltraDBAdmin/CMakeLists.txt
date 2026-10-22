@@ -40,6 +40,7 @@ add_executable(UltraDBAdmin
     ui/DbAdminModels.cpp
     ui/DbAdminRowDialog.cpp
     ui/DbAdminStructureDialog.cpp
+    ui/DbAdminTheme.cpp
     ui/DbAdminWindow.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).

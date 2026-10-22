@@ -5,6 +5,7 @@
 
 #include "DbAdminExport.h"
 #include "DbAdminModels.h"
+#include "DbAdminTheme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -41,6 +42,7 @@ std::shared_ptr<UltraCanvasModalDialog> MakeDialog(const std::string& title, int
     config.position   = DialogPosition::CenterParent;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!dialog) return nullptr;
+    dialog->SetFollowTheme(true);
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
     return dialog;
@@ -60,13 +62,12 @@ UltraCanvasButton* AddButtons(UltraCanvasModalDialog* dialog, const std::string&
     buttons->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->layoutItem.SetFlexShrink(0);
     buttons->AddStretchSpacer(1);
-    auto cancel = CreateButton(id + "-cancel", 0, 0, 90, kRowHeight, "Cancel");
+    auto cancel = MakeDialogButton(id + "-cancel", "Cancel", 90);
     cancel->SetOnClick([dialog]() { dialog->CloseDialog(DialogResult::Cancel); });
     buttons->AddChild(cancel);
     UltraCanvasButton* raw = nullptr;
     if (onPrimary) {
-        auto run = CreateButton(id + "-run", 0, 0, 150, kRowHeight, primary);
-        run->SetStyle(ButtonStyles::PrimaryStyle());
+        auto run = MakeDialogButton(id + "-run", primary, 150, ButtonRole::Primary);
         run->SetOnClick(std::move(onPrimary));
         raw = run.get();
         buttons->AddChild(run);
@@ -348,6 +349,7 @@ void ShowRowImportDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema
     preview->SetModel(form->preview);
     preview->SetShowHeader(true);
     preview->SetShowItemTooltips(true);
+    StyleList(*preview);
     preview->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexGrow(1).SetFlexShrink(1)
         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     dialog->AddChild(preview);
