@@ -3,6 +3,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminStructureDialog.h"
 
+#include "DbAdminTheme.h"
+
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
@@ -43,6 +45,7 @@ std::shared_ptr<UltraCanvasModalDialog> MakeDialog(const std::string& title, int
     config.position   = DialogPosition::CenterParent;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!dialog) return nullptr;
+    dialog->SetFollowTheme(true);
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
     return dialog;
@@ -57,7 +60,7 @@ std::shared_ptr<UltraCanvasLabel> MakeIntro(const std::string& id, const std::st
 
 std::shared_ptr<UltraCanvasLabel> MakeError(const std::string& id) {
     auto error = CreateLabel(id, 0, 0, 0, 36, "");
-    error->SetTextColor(Color(176, 32, 32));
+    error->SetTextColor(ErrorColor());
     error->SetWrap(TextWrap::WrapWord);
     error->layoutItem.SetFlexShrink(0);
     return error;
@@ -70,11 +73,10 @@ void AddButtons(UltraCanvasModalDialog* dialog, const std::string& id, const std
     buttons->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->layoutItem.SetFlexShrink(0);
     buttons->AddStretchSpacer(1);
-    auto cancel = CreateButton(id + "-cancel", 0, 0, 90, kRowHeight, "Cancel");
+    auto cancel = MakeDialogButton(id + "-cancel", "Cancel", 90);
     cancel->SetOnClick([dialog]() { dialog->CloseDialog(DialogResult::Cancel); });
     buttons->AddChild(cancel);
-    auto save = CreateButton(id + "-save", 0, 0, 120, kRowHeight, primary);
-    save->SetStyle(ButtonStyles::PrimaryStyle());
+    auto save = MakeDialogButton(id + "-save", primary, 120, ButtonRole::Primary);
     save->SetOnClick(std::move(onPrimary));
     buttons->AddChild(save);
     dialog->AddChild(buttons);

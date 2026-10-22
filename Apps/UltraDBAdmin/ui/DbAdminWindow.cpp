@@ -9,6 +9,7 @@
 #include "DbAdminSqlScript.h"
 #include "DbAdminRowDialog.h"
 #include "DbAdminStructureDialog.h"
+#include "DbAdminTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasCSVExportDialog.h"
@@ -38,9 +39,11 @@ namespace {
 constexpr float kWindowWidth   = 1180.0f;
 constexpr float kWindowHeight  = 740.0f;
 constexpr float kPagePadding   = 10.0f;
-constexpr float kTabPadding    = 8.0f;
+constexpr float kTabPadding    = 10.0f;
 constexpr float kSectionGap    = 8.0f;
-constexpr float kControlHeight = 28.0f;
+constexpr float kControlHeight = kButtonHeight;
+constexpr float kBarHeight     = 34.0f;
+constexpr float kHeaderHeight  = 48.0f;
 constexpr int   kTreeWidth     = 280;
 constexpr int   kTreeMinWidth  = 180;
 constexpr int   kStatementWidth = 380;
@@ -50,10 +53,6 @@ constexpr size_t kPageSize     = 200;
 constexpr int kBrowseTab    = 0;
 constexpr int kStructureTab = 1;
 constexpr int kSqlTab       = 2;
-
-const Color kErrorColor(176, 32, 32);
-const Color kStatusColor(70, 70, 76);
-const Color kProductionColor(190, 30, 30);
 
 const char* const kPlaceholderText = "…";
 
@@ -81,12 +80,12 @@ void MakePlainColumn(const std::shared_ptr<UltraCanvasContainer>& container) {
     container->SetContainerStyle(plain);
 }
 
-std::shared_ptr<UltraCanvasContainer> MakeToolbar(const std::string& id) {
-    auto bar = CreateContainer(id, 0, 0, 0, 34);
+std::shared_ptr<UltraCanvasContainer> MakeToolbar(const std::string& id, float height = kBarHeight) {
+    auto bar = CreateContainer(id, 0, 0, 0, height);
     bar->layout.SetFlexRow()
-               .SetFlexGap(8)
+               .SetFlexGap(6)
                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(34));
+    bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(height));
     ContainerStyle plainBar;
     plainBar.autoShowScrollbars = false;
     bar->SetContainerStyle(plainBar);
@@ -99,22 +98,13 @@ void PinToolbar(const std::shared_ptr<UltraCanvasUIElement>& bar) {
     bar->layoutItem.SetFlexShrink(0);
 }
 
-// As wide as its label: given no width, the layout measures the text.
-std::shared_ptr<UltraCanvasButton> MakeToolbarButton(const std::string& id, const std::string& text,
-                                                     const std::string& tooltip) {
-    auto button = CreateButton(id, 0, 0, 0, kControlHeight, text);
-    button->layoutItem.SetFlexShrink(0);
-    button->SetTooltip(tooltip);
-    return button;
-}
-
 // Takes what the controls leave, and gives it back first (ellipsized).
 std::shared_ptr<UltraCanvasLabel> MakeBarStatus(const std::string& id, const std::string& text = "") {
     auto label = CreateLabel(id, 0, 0, 0, 24, text);
     label->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     label->layoutItem.SetFlexGrow(1);
     label->layoutItem.SetFlexShrink(1);
-    label->SetTextColor(kStatusColor);
+    label->SetTextColor(StatusColor());
     label->SetAlignment(TextAlignment::Left);
     return label;
 }
@@ -128,15 +118,27 @@ std::shared_ptr<UltraCanvasContainer> MakeTabPage(const std::string& id) {
     return page;
 }
 
+// The splitters are the gaps between the cards: the ground, a grip on it.
 SplitPaneStyle PaneStyle() {
     SplitPaneStyle style;
-    style.splitterThickness = 6;
+    style.splitterThickness = 8;
     style.splitterHitMargin = 3;
-    style.splitterColor     = Color(232, 232, 236);
     style.handle.shape      = SplitterHandleShape::RoundedSquare;
-    style.handle.crossSize  = 9;
-    style.handle.axisLength = 44;
-    return style;
+    style.handle.crossSize  = 8;
+    style.handle.axisLength = 40;
+    return SplitPaneStyle::FromTheme(UltraCanvasTheme::Current(), style);
+}
+
+// The tree's icon for a node of the given kind.
+std::string ObjectIcon(UltraDbObjectKind kind) {
+    switch (kind) {
+        case UltraDbObjectKind::Table:            return IconPath("node-table");
+        case UltraDbObjectKind::View:             return IconPath("node-view");
+        case UltraDbObjectKind::MaterializedView: return IconPath("node-materialized-view");
+        case UltraDbObjectKind::ForeignTable:     return IconPath("node-foreign-table");
+        case UltraDbObjectKind::Sequence:         return IconPath("node-sequence");
+    }
+    return IconPath("node-table");
 }
 
 std::shared_ptr<UltraCanvasListView> MakeList(const std::string& id, const std::shared_ptr<IListModel>& model) {
@@ -144,6 +146,7 @@ std::shared_ptr<UltraCanvasListView> MakeList(const std::string& id, const std::
     view->SetModel(model);
     view->SetShowHeader(true);
     view->SetShowItemTooltips(true);
+    StyleList(*view);
     return view;
 }
 
@@ -216,9 +219,11 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     window_ = CreateWindow(config);
     if (!window_) return false;
 
+    // White cards on the grey ground: the header, the tree and the tabs.
     page_ = CreateContainer("dbaPage", 0, 0, 0, 0);
     MakePlainColumn(page_);
     page_->SetPadding(kPagePadding);
+    page_->SetBackgroundColor(UltraCanvasTheme::Current().roles.ground);
 
     auto toolbar = BuildToolbar();
     page_->AddChild(toolbar);
@@ -234,13 +239,24 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     split_->SetPaneMinSize(1, 420);
     MakePlainColumn(treePane);
     MakePlainColumn(tabPane);
+    // The tabs' card: the pane draws it, a pixel round the tabs.
+    MakeCard(*tabPane);
+    tabPane->SetPadding(1.0f);
     FillWith(treePane, BuildTreePane());
 
     tabs_ = CreateTabbedContainer("dbaTabs", 0, 0, 0, 0);
     tabs_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    tabs_->SetTabStyle(TabStyle::Modern);
+    tabs_->SetTabHeight(38);
+    tabs_->SetTabMinWidth(110);
+    tabs_->SetFollowTheme(true);
+    tabs_->SetActiveTabIndicatorThickness(3);
     tabs_->AddTab("Browse", BuildBrowsePage());
     tabs_->AddTab("Structure", BuildStructurePage());
     tabs_->AddTab("SQL", BuildSqlPage());
+    tabs_->SetTabIcon(kBrowseTab, IconPath("tab-browse"));
+    tabs_->SetTabIcon(kStructureTab, IconPath("tab-structure"));
+    tabs_->SetTabIcon(kSqlTab, IconPath("tab-sql"));
     tabs_->SetActiveTab(kBrowseTab);
     FillWith(tabPane, tabs_);
     FillWith(page_, split_);
@@ -270,7 +286,7 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     ClearObject("Pick a table or view in the tree.");
     UpdateSqlBar();
     if (!storeNote_.empty()) SetStatus(storeNote_, true);
-    else if (store_.All().empty()) SetStatus("No connections yet - Add connection… names a SQLite file or a PostgreSQL server.");
+    else if (store_.All().empty()) SetStatus("No connections yet - Add connection names a SQLite file or a PostgreSQL server.");
     else SetStatus(std::to_string(store_.All().size()) + " connections. Expand one to see its tables.");
     return true;
 }
@@ -293,25 +309,39 @@ void DbAdminWindow::LayoutForSize(float width, float height) {
 // ===== CONSTRUCTION =====
 
 std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildToolbar() {
-    auto bar = MakeToolbar("dbaToolbar");
+    auto bar = MakeToolbar("dbaToolbar", kHeaderHeight);
+    MakeCard(*bar);
+    bar->SetPadding(0.0f, 10.0f);
 
-    auto add = MakeToolbarButton("dbaAdd", "Add connection…", "A SQLite file or a PostgreSQL server");
+    auto title = CreateLabel("dbaTitle", 0, 0, 0, 24, "UltraDBAdmin");
+    title->SetFontSize(15.0f);
+    title->SetFontWeight(FontWeight::Bold);
+    title->SetTextColor(UltraCanvasTheme::Current().roles.accentHover);
+    title->layoutItem.SetFlexShrink(0);
+    title->SetMargin(0.0f, 6.0f);
+    bar->AddChild(title);
+    bar->AddChild(MakeBarDivider("dbaTitleDivider"));
+
+    auto add = MakeActionButton("dbaAdd", "Add connection", "add", "A SQLite file or a PostgreSQL server",
+                                ButtonRole::Primary);
     add->SetOnClick([this]() { AddConnection(); });
     bar->AddChild(add);
 
-    editButton_ = MakeToolbarButton("dbaEdit", "Edit…", "Change the selected connection");
+    editButton_ = MakeActionButton("dbaEdit", "Edit", "edit", "Change the selected connection");
     editButton_->SetOnClick([this]() { EditConnection(); });
     bar->AddChild(editButton_);
 
-    removeButton_ = MakeToolbarButton("dbaRemove", "Remove",
-                                      "Take the selected connection off the list; the database is not touched");
+    removeButton_ = MakeActionButton("dbaRemove", "Remove", "delete",
+                                     "Take the selected connection off the list; the database is not touched",
+                                     ButtonRole::Danger);
     removeButton_->SetOnClick([this]() { RemoveConnection(); });
     bar->AddChild(removeButton_);
 
-    auto refresh = MakeToolbarButton("dbaRefresh", "Refresh",
-                                     "Read the selected connection's schemas and tables again");
+    auto refresh = MakeActionButton("dbaRefresh", "Refresh", "refresh",
+                                    "Read the selected connection's schemas and tables again");
     refresh->SetOnClick([this]() { RefreshSelected(); });
     bar->AddChild(refresh);
+    bar->AddChild(MakeBarDivider("dbaStatusDivider"));
 
     statusLabel_ = MakeBarStatus("dbaStatus");
     bar->AddChild(statusLabel_);
@@ -321,8 +351,17 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildToolbar() {
 std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildTreePane() {
     auto pane = CreateContainer("dbaTreePane", 0, 0, 0, 0);
     MakePlainColumn(pane);
+    MakeCard(*pane);
+    pane->SetPadding(6.0f);
+    auto heading = CreateLabel("dbaTreeHeading", 0, 0, 0, 22, "CONNECTIONS");
+    heading->SetFontSize(10.5f);
+    heading->SetFontWeight(FontWeight::Bold);
+    heading->SetTextColor(StatusColor());
+    heading->SetMargin(2.0f, 6.0f, 0.0f, 6.0f);
+    heading->layoutItem.SetFlexShrink(0);
+    pane->AddChild(heading);
     tree_ = std::make_shared<UltraCanvasTreeView>("dbaTree");
-    tree_->SetRowHeight(24);
+    StyleTree(*tree_);
     tree_->SetSelectionMode(TreeSelectionMode::Single);
     // A connection is opened only when it is expanded: the children are read
     // then, from the placeholder each unread node carries.
@@ -340,11 +379,12 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildBrowsePage() {
     auto page = MakeTabPage("dbaBrowsePage");
     auto bar = MakeToolbar("dbaBrowseBar");
 
-    prevButton_ = MakeToolbarButton("dbaPrev", "Previous", "The page before");
+    // Icons alone: the pair reads as a pager beside the row range.
+    prevButton_ = MakeActionButton("dbaPrev", "", "previous", "The page before");
     prevButton_->SetOnClick([this]() { if (pageIndex_ > 0) LoadPage(pageIndex_ - 1); });
     bar->AddChild(prevButton_);
 
-    nextButton_ = MakeToolbarButton("dbaNext", "Next", "The page after");
+    nextButton_ = MakeActionButton("dbaNext", "", "next", "The page after");
     nextButton_->SetOnClick([this]() { LoadPage(pageIndex_ + 1); });
     bar->AddChild(nextButton_);
 
@@ -355,17 +395,18 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildBrowsePage() {
     browseNote_ = MakeBarStatus("dbaBrowseNote");
     bar->AddChild(browseNote_);
 
-    importButton_ = MakeToolbarButton("dbaImport", "Import…",
-                                      "Put the rows of a CSV file or a workbook into this table, all or none");
+    importButton_ = MakeActionButton("dbaImport", "Import", "import",
+                                     "Put the rows of a CSV file or a workbook into this table, all or none");
     importButton_->SetOnClick([this]() { ImportIntoTable(); });
     bar->AddChild(importButton_);
 
-    exportButton_ = MakeToolbarButton("dbaExport", "Export…",
-                                      "Write every row of this table or view to a file: CSV, TSV, JSON, SQL or a workbook");
+    exportButton_ = MakeActionButton("dbaExport", "Export", "export",
+                                     "Write every row of this table or view to a file: CSV, TSV, JSON, SQL or a workbook");
     exportButton_->SetOnClick([this]() { ExportRows(ExportSource::Table); });
     bar->AddChild(exportButton_);
+    bar->AddChild(MakeBarDivider("dbaBrowseDivider"));
 
-    reloadButton_ = MakeToolbarButton("dbaReload", "Reload", "Read this page and the row count again");
+    reloadButton_ = MakeActionButton("dbaReload", "Reload", "refresh", "Read this page and the row count again");
     reloadButton_->SetOnClick([this]() {
         if (!pager_) return;
         LoadPage(pageIndex_);
@@ -393,31 +434,33 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildBrowsePage() {
 std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildEditBar() {
     auto bar = MakeToolbar("dbaEditBar");
 
-    addRowButton_ = MakeToolbarButton("dbaAddRow", "Add row…", "Stage a new row");
+    addRowButton_ = MakeActionButton("dbaAddRow", "Add row", "add", "Stage a new row");
     addRowButton_->SetOnClick([this]() { AddRow(); });
     bar->AddChild(addRowButton_);
 
-    editRowButton_ = MakeToolbarButton("dbaEditRow", "Edit row…",
-                                       "Stage changes to the selected row (or double-click it)");
+    editRowButton_ = MakeActionButton("dbaEditRow", "Edit row", "edit",
+                                      "Stage changes to the selected row (or double-click it)");
     editRowButton_->SetOnClick([this]() { EditRow(SelectedBrowseRow()); });
     bar->AddChild(editRowButton_);
 
-    deleteRowButton_ = MakeToolbarButton("dbaDeleteRow", "Delete row", "Stage the deletion of the selected row");
+    deleteRowButton_ = MakeActionButton("dbaDeleteRow", "Delete row", "delete",
+                                        "Stage the deletion of the selected row", ButtonRole::Danger);
     deleteRowButton_->SetOnClick([this]() { DeleteSelectedRow(); });
     bar->AddChild(deleteRowButton_);
 
     pendingLabel_ = MakeBarStatus("dbaPending");
     bar->AddChild(pendingLabel_);
 
-    previewButton_ = MakeToolbarButton("dbaPreview", "Preview SQL…", "The statements Commit will run");
+    previewButton_ = MakeActionButton("dbaPreview", "Preview SQL", "preview", "The statements Commit will run");
     previewButton_->SetOnClick([this]() { PreviewChanges(); });
     bar->AddChild(previewButton_);
 
-    revertButton_ = MakeToolbarButton("dbaRevert", "Revert", "Drop every staged change");
+    revertButton_ = MakeActionButton("dbaRevert", "Revert", "revert", "Drop every staged change");
     revertButton_->SetOnClick([this]() { RevertChanges(); });
     bar->AddChild(revertButton_);
 
-    commitButton_ = MakeToolbarButton("dbaCommit", "Commit", "Write every staged change, in one transaction");
+    commitButton_ = MakeActionButton("dbaCommit", "Commit", "apply", "Write every staged change, in one transaction",
+                                     ButtonRole::Primary);
     commitButton_->SetOnClick([this]() { CommitChanges(); });
     bar->AddChild(commitButton_);
     return bar;
@@ -429,20 +472,24 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructurePage() {
     structureInfo_ = MakeBarStatus("dbaStructureInfo");
     infoBar->AddChild(structureInfo_);
 
-    renameTableButton_ = MakeToolbarButton("dbaRenameTable", "Rename table…", "Stage a new name for the table");
+    renameTableButton_ = MakeActionButton("dbaRenameTable", "Rename table", "rename", "Stage a new name for the table");
     renameTableButton_->SetOnClick([this]() { RenameTable(); });
     infoBar->AddChild(renameTableButton_);
+    infoBar->AddChild(MakeBarDivider("dbaStructureDivider"));
 
-    structurePreviewButton_ = MakeToolbarButton("dbaStructurePreview", "Preview SQL…", "The statements Apply will run");
+    structurePreviewButton_ = MakeActionButton("dbaStructurePreview", "Preview SQL", "preview",
+                                               "The statements Apply will run");
     structurePreviewButton_->SetOnClick([this]() { PreviewStructure(); });
     infoBar->AddChild(structurePreviewButton_);
 
-    structureRevertButton_ = MakeToolbarButton("dbaStructureRevert", "Revert", "Drop every staged structure change");
+    structureRevertButton_ = MakeActionButton("dbaStructureRevert", "Revert", "revert",
+                                              "Drop every staged structure change");
     structureRevertButton_->SetOnClick([this]() { RevertStructure(); });
     infoBar->AddChild(structureRevertButton_);
 
-    structureApplyButton_ = MakeToolbarButton("dbaStructureApply", "Apply",
-                                              "Change the table: every staged change, in one transaction");
+    structureApplyButton_ = MakeActionButton("dbaStructureApply", "Apply", "apply",
+                                             "Change the table: every staged change, in one transaction",
+                                             ButtonRole::Primary);
     structureApplyButton_->SetOnClick([this]() { ApplyStructure(); });
     infoBar->AddChild(structureApplyButton_);
     page->AddChild(infoBar);
@@ -477,6 +524,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructurePage() {
 
     definitionArea_ = std::make_shared<UltraCanvasTextArea>("dbaDefinition");
     definitionArea_->ApplyCodeStyle("SQL");
+    definitionArea_->SetBorders(1.0f, UltraCanvasTheme::Current().roles.line, 6.0f);
     definitionArea_->SetReadOnly(true);
     definitionArea_->SetWordWrap(true);
     FillWith(definitionPane, definitionArea_);
@@ -488,28 +536,32 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructurePage() {
 std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildStructureBar() {
     auto bar = MakeToolbar("dbaStructureBar");
 
-    addColumnButton_ = MakeToolbarButton("dbaAddColumn", "Add column…", "Stage a new column");
+    addColumnButton_ = MakeActionButton("dbaAddColumn", "Add column", "add", "Stage a new column");
     addColumnButton_->SetOnClick([this]() { AddColumn(); });
     bar->AddChild(addColumnButton_);
 
-    editColumnButton_ = MakeToolbarButton("dbaEditColumn", "Edit column…",
-                                          "Stage a new name, type, NOT NULL or default for the selected column "
-                                          "(or double-click it)");
+    editColumnButton_ = MakeActionButton("dbaEditColumn", "Edit column", "edit",
+                                         "Stage a new name, type, NOT NULL or default for the selected column "
+                                         "(or double-click it)");
     editColumnButton_->SetOnClick([this]() { EditColumn(SelectedColumn()); });
     bar->AddChild(editColumnButton_);
 
-    dropColumnButton_ = MakeToolbarButton("dbaDropColumn", "Drop column",
-                                          "Stage dropping the selected column, with its data; on a column "
-                                          "already to be dropped, keep it after all");
+    dropColumnButton_ = MakeActionButton("dbaDropColumn", "Drop column", "delete",
+                                         "Stage dropping the selected column, with its data; on a column "
+                                         "already to be dropped, keep it after all",
+                                         ButtonRole::Danger);
     dropColumnButton_->SetOnClick([this]() { DropSelectedColumn(); });
     bar->AddChild(dropColumnButton_);
+    bar->AddChild(MakeBarDivider("dbaIndexDivider"));
 
-    addIndexButton_ = MakeToolbarButton("dbaAddIndex", "Add index…", "Stage a new index, on the selected column to begin with");
+    addIndexButton_ = MakeActionButton("dbaAddIndex", "Add index", "key",
+                                       "Stage a new index, on the selected column to begin with");
     addIndexButton_->SetOnClick([this]() { AddIndex(); });
     bar->AddChild(addIndexButton_);
 
-    dropIndexButton_ = MakeToolbarButton("dbaDropIndex", "Drop index",
-                                         "Stage dropping the index selected in the list of keys and indexes");
+    dropIndexButton_ = MakeActionButton("dbaDropIndex", "Drop index", "delete",
+                                        "Stage dropping the index selected in the list of keys and indexes",
+                                        ButtonRole::Danger);
     dropIndexButton_->SetOnClick([this]() { DropSelectedIndex(); });
     bar->AddChild(dropIndexButton_);
 
@@ -522,27 +574,30 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
     auto page = MakeTabPage("dbaSqlPage");
     auto bar = MakeToolbar("dbaSqlBar");
 
-    runButton_ = MakeToolbarButton("dbaRun", "Run",
-                                   "Run the selected text, or the whole script (Ctrl+Enter)");
+    runButton_ = MakeActionButton("dbaRun", "Run", "run",
+                                  "Run the selected text, or the whole script (Ctrl+Enter)", ButtonRole::Primary);
     runButton_->SetOnClick([this]() { RunSql(); });
     bar->AddChild(runButton_);
 
-    stopButton_ = MakeToolbarButton("dbaStop", "Stop", "Cancel the running statement");
+    stopButton_ = MakeActionButton("dbaStop", "Stop", "stop", "Cancel the running statement", ButtonRole::Danger);
     stopButton_->SetOnClick([this]() { StopSql(); });
     bar->AddChild(stopButton_);
+    bar->AddChild(MakeBarDivider("dbaSqlFileDivider"));
 
-    importSqlButton_ = MakeToolbarButton("dbaImportSql", "Import SQL…",
-                                         "Run a SQL file (.sql, or .sql.gz) on the connection picked in the tree");
+    importSqlButton_ = MakeActionButton("dbaImportSql", "Import SQL", "import",
+                                        "Run a SQL file (.sql, or .sql.gz) on the connection picked in the tree");
     importSqlButton_->SetOnClick([this]() { ImportSql(); });
     bar->AddChild(importSqlButton_);
 
-    exportRowsButton_ = MakeToolbarButton("dbaExportRows", "Export rows…",
-                                          "Write the rows shown below to a file: CSV, TSV, JSON, SQL or a workbook");
+    exportRowsButton_ = MakeActionButton("dbaExportRows", "Export rows", "export",
+                                         "Write the rows shown below to a file: CSV, TSV, JSON, SQL or a workbook");
     exportRowsButton_->SetOnClick([this]() { ExportRows(ExportSource::Result); });
     bar->AddChild(exportRowsButton_);
+    bar->AddChild(MakeBarDivider("dbaSqlHistoryDivider"));
 
-    historyDropdown_ = CreateDropdown("dbaHistory", 0, 0, 260, kControlHeight);
+    historyDropdown_ = CreateDropdown("dbaHistory", 0, 0, 220, kControlHeight);
     historyDropdown_->layoutItem.SetFlexShrink(0);
+    historyDropdown_->SetFollowTheme(true);
     historyDropdown_->SetTooltip("Scripts run on this connection, newest first: pick one to put it back in the editor");
     historyDropdown_->onSelectionChanged = [this](int index, const DropdownItem&) {
         if (index >= 0 && static_cast<size_t>(index) < historyShown_.size())
@@ -568,6 +623,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
 
     sqlEditor_ = std::make_shared<UltraCanvasTextArea>("dbaSqlEditor");
     sqlEditor_->ApplyCodeStyle("SQL");
+    sqlEditor_->SetBorders(1.0f, UltraCanvasTheme::Current().roles.line, 6.0f);
     sqlEditor_->onBeforeKeyDown = [this](const UCEvent& event) {
         const bool enter = event.virtualKey == UCKeys::Return || event.virtualKey == UCKeys::NumPadEnter;
         if (enter && (event.ctrl || event.meta)) {
@@ -632,7 +688,7 @@ void DbAdminWindow::Background(std::function<std::function<void()>()> work) {
 void DbAdminWindow::SetStatus(const std::string& text, bool error) {
     if (!statusLabel_) return;
     statusLabel_->SetText(OneLine(text));
-    statusLabel_->SetTextColor(error ? kErrorColor : kStatusColor);
+    statusLabel_->SetTextColor(error ? ErrorColor() : StatusColor());
     statusLabel_->SetTooltip(text);
 }
 
@@ -663,7 +719,8 @@ void DbAdminWindow::AddConnectionNode(const ConnectionSpec& spec) {
     TreeNodeData data(id, spec.name);
     data.tooltip = Describe(spec) + (spec.readOnly ? "\nread only" : "") +
                    (spec.production ? "\nPRODUCTION" : "");
-    if (spec.production) data.textColor = kProductionColor;
+    if (spec.production) data.textColor = ErrorColor();
+    data.leftIcon = TreeNodeIcon(IconPath(spec.production ? "node-connection-production" : "node-connection"));
     tree_->AddNode("root", data);
     NodeRef ref;
     ref.kind = NodeRef::Kind::Connection;
@@ -687,8 +744,13 @@ void DbAdminWindow::ResetNode(const std::string& nodeId) {
     }
     loading_.erase(nodeId);
     if (node->IsExpanded()) tree_->CollapseNode(node);
+    // The placeholder is there for the expand button alone: hidden, while
+    // the node's own loading bar says it is being read.
+    node->data.loading = false;
     const std::string placeholder = nodeId + "/" + kPlaceholderText;
-    tree_->AddNode(nodeId, TreeNodeData(placeholder, kPlaceholderText));
+    TreeNodeData hidden(placeholder, kPlaceholderText);
+    hidden.visible = false;
+    tree_->AddNode(nodeId, hidden);
     NodeRef ref = nodes_[nodeId];
     ref.kind = NodeRef::Kind::Placeholder;
     nodes_[placeholder] = ref;
@@ -699,9 +761,10 @@ void DbAdminWindow::LoadChildren(const std::string& nodeId) {
     if (!ref || loading_.count(nodeId)) return;
     const ConnectionSpec* spec = store_.Find(ref->connectionId);
     if (!spec) return;
-    if (TreeNode* placeholder = tree_->FindNode(nodeId + "/" + kPlaceholderText)) {
-        placeholder->data.text = "Loading…";
-        placeholder->data.textColor = kStatusColor;
+    if (TreeNode* node = tree_->FindNode(nodeId)) {
+        node->data.loading = true;
+        // A failed read's message goes while it tries again.
+        if (TreeNode* placeholder = tree_->FindNode(nodeId + "/" + kPlaceholderText)) placeholder->data.visible = false;
         tree_->RequestRedraw();
     }
     loading_.insert(nodeId);
@@ -722,6 +785,7 @@ void DbAdminWindow::LoadChildren(const std::string& nodeId) {
         });
     } else {
         loading_.erase(nodeId);
+        if (TreeNode* node = tree_->FindNode(nodeId)) node->data.loading = false;
     }
 }
 
@@ -731,7 +795,8 @@ void DbAdminWindow::ShowLoadError(const std::string& nodeId, const UltraDbResult
     if (TreeNode* placeholder = tree_->FindNode(nodeId + "/" + kPlaceholderText)) {
         placeholder->data.text = "Could not read: " + CellText(UltraDbValue(result.message), 80);
         placeholder->data.tooltip = result.message;
-        placeholder->data.textColor = kErrorColor;
+        placeholder->data.textColor = ErrorColor();
+        placeholder->data.visible = true;
     }
     SetStatus(result.message, true);
     tree_->RequestRedraw();
@@ -741,7 +806,9 @@ void DbAdminWindow::ApplySchemas(const std::string& nodeId, const UltraDbResult&
                                  const std::vector<std::string>& schemas) {
     loading_.erase(nodeId);
     const NodeRef* ref = RefOf(nodeId);
-    if (!ref || !tree_->FindNode(nodeId)) return;   // removed meanwhile
+    TreeNode* node = ref ? tree_->FindNode(nodeId) : nullptr;
+    if (!node) return;   // removed meanwhile
+    node->data.loading = false;
     if (!result) { ShowLoadError(nodeId, result); return; }
     const NodeRef parent = *ref;
     const std::string placeholder = nodeId + "/" + kPlaceholderText;
@@ -751,6 +818,7 @@ void DbAdminWindow::ApplySchemas(const std::string& nodeId, const UltraDbResult&
     for (const auto& schema : schemas) {
         const std::string id = nodeId + "/" + std::to_string(++nextNodeId_);
         TreeNodeData data(id, schema);
+        data.leftIcon = TreeNodeIcon(IconPath("node-schema"));
         tree_->AddNode(nodeId, data);
         NodeRef child = parent;
         child.kind = NodeRef::Kind::Schema;
@@ -761,7 +829,9 @@ void DbAdminWindow::ApplySchemas(const std::string& nodeId, const UltraDbResult&
     }
     if (schemas.empty()) {
         const std::string id = nodeId + "/" + std::to_string(++nextNodeId_);
-        tree_->AddNode(nodeId, TreeNodeData(id, "(no schemas)"));
+        TreeNodeData none(id, "No schemas");
+        none.textColor = StatusColor();
+        tree_->AddNode(nodeId, none);
     }
     const ConnectionSpec* spec = store_.Find(parent.connectionId);
     SetStatus((spec ? spec->name : std::string("Connection")) + ": " + std::to_string(schemas.size()) +
@@ -778,7 +848,9 @@ void DbAdminWindow::ApplyObjects(const std::string& nodeId, const UltraDbResult&
                                  const std::vector<UltraDbObjectSummary>& objects) {
     loading_.erase(nodeId);
     const NodeRef* ref = RefOf(nodeId);
-    if (!ref || !tree_->FindNode(nodeId)) return;
+    TreeNode* node = ref ? tree_->FindNode(nodeId) : nullptr;
+    if (!node) return;
+    node->data.loading = false;
     if (!result) { ShowLoadError(nodeId, result); return; }
     const NodeRef parent = *ref;
     const std::string placeholder = nodeId + "/" + kPlaceholderText;
@@ -786,9 +858,9 @@ void DbAdminWindow::ApplyObjects(const std::string& nodeId, const UltraDbResult&
     nodes_.erase(placeholder);
     for (const auto& object : objects) {
         const std::string id = nodeId + "/" + std::to_string(++nextNodeId_);
-        std::string text = object.name;
-        if (object.kind != UltraDbObjectKind::Table) text += std::string("  (") + KindWord(object.kind) + ")";
-        TreeNodeData data(id, text);
+        // The icon tells a view or a sequence from a table; the tooltip names it.
+        TreeNodeData data(id, object.name);
+        data.leftIcon = TreeNodeIcon(ObjectIcon(object.kind));
         data.tooltip = object.schema + "." + object.name + " - " + KindWord(object.kind);
         tree_->AddNode(nodeId, data);
         NodeRef child = parent;
@@ -799,7 +871,9 @@ void DbAdminWindow::ApplyObjects(const std::string& nodeId, const UltraDbResult&
     }
     if (objects.empty()) {
         const std::string id = nodeId + "/" + std::to_string(++nextNodeId_);
-        tree_->AddNode(nodeId, TreeNodeData(id, "(empty)"));
+        TreeNodeData none(id, "Empty");
+        none.textColor = StatusColor();
+        tree_->AddNode(nodeId, none);
     }
     tree_->RequestRedraw();
 }
@@ -922,7 +996,7 @@ void DbAdminWindow::ClearObject(const std::string& message) {
     definitionArea_->SetText("", false);
     structureInfo_->SetText(message);
     browseNote_->SetText(message);
-    browseNote_->SetTextColor(kStatusColor);
+    browseNote_->SetTextColor(StatusColor());
     edits_ = EditBuffer();
     UpdateBrowseBar();
     UpdateEditBar();
@@ -969,7 +1043,7 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
     if (!result) {
         const std::string label = objectLabel_;
         ClearObject(label + ": " + OneLine(result.message));
-        browseNote_->SetTextColor(kErrorColor);
+        browseNote_->SetTextColor(ErrorColor());
         SetStatus(result.message, true);
         return;
     }
@@ -1006,7 +1080,7 @@ void DbAdminWindow::ApplySequence(uint64_t generation, const UltraDbResult& resu
     if (!result) {
         const std::string label = objectLabel_;
         ClearObject(label + ": " + OneLine(result.message));
-        browseNote_->SetTextColor(kErrorColor);
+        browseNote_->SetTextColor(ErrorColor());
         SetStatus(result.message, true);
         return;
     }
@@ -1037,7 +1111,7 @@ void DbAdminWindow::ApplyPage(uint64_t generation, size_t page, const UltraDbRes
         browseModel_->Clear();
         pageRows_ = 0;
         browseNote_->SetText(OneLine(result.message));
-        browseNote_->SetTextColor(kErrorColor);
+        browseNote_->SetTextColor(ErrorColor());
         SetStatus(result.message, true);
         UpdateBrowseBar();
         return;
@@ -1059,7 +1133,7 @@ void DbAdminWindow::ApplyPage(uint64_t generation, size_t page, const UltraDbRes
     } else {
         browseNote_->SetText("No primary key: while the table changes, a row can move between pages.");
     }
-    browseNote_->SetTextColor(kStatusColor);
+    browseNote_->SetTextColor(StatusColor());
     UpdateBrowseBar();
 }
 
@@ -1361,7 +1435,7 @@ void DbAdminWindow::UpdateEditBar() {
     }
     pendingLabel_->SetText(text);
     pendingLabel_->SetTooltip(text);
-    pendingLabel_->SetTextColor(any ? kProductionColor : kStatusColor);
+    pendingLabel_->SetTextColor(any ? ErrorColor() : StatusColor());
     UpdateStructureBar();          // a commit holds structure edits too
     UpdateBrowseBar();             // and an import
 }
@@ -1666,9 +1740,9 @@ void DbAdminWindow::UpdateStructureBar() {
     structurePending_->SetText(text);
     structurePending_->SetTooltip(structure_.NeedsRebuild()
                                       ? text + "\n\nSQLite changes a column's type, NOT NULL or default only by "
-                                               "rebuilding the table; Preview SQL… shows every step."
+                                               "rebuilding the table; Preview SQL shows every step."
                                       : text);
-    structurePending_->SetTextColor(any ? kProductionColor : kStatusColor);
+    structurePending_->SetTextColor(any ? ErrorColor() : StatusColor());
 }
 
 // ===== IMPORT =====
@@ -1806,12 +1880,12 @@ void DbAdminWindow::ImportSql() {
     const ConnectionSpec* spec = SelectedConnection();
     if (!spec) {
         sqlInfo_->SetText("Pick a connection (or anything in it) in the tree first.");
-        sqlInfo_->SetTextColor(kErrorColor);
+        sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
     if (RunnerFor(*spec)->IsRunning()) {
         sqlInfo_->SetText("A script is still running on this connection: Stop it, or wait.");
-        sqlInfo_->SetTextColor(kErrorColor);
+        sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
     // A SQL script is no media format, so FileLoader's inventory has no type
@@ -1825,7 +1899,7 @@ void DbAdminWindow::ImportSql() {
         if (result != DialogResult::OK || path.empty()) return;
         const std::string name = PathToUtf8(PathFromUtf8(path).filename());
         sqlInfo_->SetText("Reading " + name + "…");
-        sqlInfo_->SetTextColor(kStatusColor);
+        sqlInfo_->SetTextColor(StatusColor());
         Background([this, id, path, name]() -> std::function<void()> {
             const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path);
             std::string script, error = file.success ? std::string() : file.error;
@@ -1839,7 +1913,7 @@ void DbAdminWindow::ImportSql() {
                 if (!spec) return;
                 if (!error.empty()) {
                     sqlInfo_->SetText(name + " cannot be imported: " + error);
-                    sqlInfo_->SetTextColor(kErrorColor);
+                    sqlInfo_->SetTextColor(ErrorColor());
                     return;
                 }
                 UpdateSqlBar();
@@ -1864,7 +1938,7 @@ void DbAdminWindow::ImportSql() {
                         options);
                     if (!started) {
                         sqlInfo_->SetText("A script is still running on this connection: Stop it, or wait.");
-                        sqlInfo_->SetTextColor(kErrorColor);
+                        sqlInfo_->SetTextColor(ErrorColor());
                         return;
                     }
                     sqlConnectionId_ = id;
@@ -2062,7 +2136,7 @@ void DbAdminWindow::RunSql() {
     const ConnectionSpec* spec = SelectedConnection();
     if (!spec) {
         sqlInfo_->SetText("Pick a connection (or anything in it) in the tree first.");
-        sqlInfo_->SetTextColor(kErrorColor);
+        sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
     const std::string script = sqlEditor_->HasSelection() ? sqlEditor_->GetSelectedText() : sqlEditor_->GetText();
@@ -2080,7 +2154,7 @@ void DbAdminWindow::RunSql() {
     });
     if (!started) {
         sqlInfo_->SetText("A script is still running on this connection: Stop it, or wait.");
-        sqlInfo_->SetTextColor(kErrorColor);
+        sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
     sqlConnectionId_ = id;
@@ -2140,7 +2214,7 @@ void DbAdminWindow::ApplyOutcome(const std::string& connectionId, const RunOutco
     UpdateSqlBar();
     sqlInfo_->SetText(info);
     sqlInfo_->SetTooltip(outcome.result.message);
-    sqlInfo_->SetTextColor(bad ? kErrorColor : kStatusColor);
+    sqlInfo_->SetTextColor(bad ? ErrorColor() : StatusColor());
 }
 
 void DbAdminWindow::ShowStatementRows(int row) {
@@ -2166,14 +2240,14 @@ void DbAdminWindow::UpdateSqlBar() {
     if (busy) {
         const ConnectionSpec* on = store_.Find(sqlConnectionId_);
         sqlInfo_->SetText("Running on " + (on ? on->name : std::string("the connection")) + "…");
-        sqlInfo_->SetTextColor(kStatusColor);
+        sqlInfo_->SetTextColor(StatusColor());
     } else if (spec) {
         sqlInfo_->SetText(std::string("Runs on ") + spec->name + (spec->production ? " - PRODUCTION" : "") +
                           (spec->readOnly ? " (read only)" : ""));
-        sqlInfo_->SetTextColor(spec->production ? kProductionColor : kStatusColor);
+        sqlInfo_->SetTextColor(spec->production ? ErrorColor() : StatusColor());
     } else {
         sqlInfo_->SetText("Pick a connection in the tree; the script runs there.");
-        sqlInfo_->SetTextColor(kStatusColor);
+        sqlInfo_->SetTextColor(StatusColor());
     }
     FillHistory();
 }

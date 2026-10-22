@@ -1,3 +1,28 @@
+#### 2026-10-22 *1.91.0*
+- **A remote drive's path bar shows the drive, not a broken local path.** The
+  path bar read an FTP / SFTP / cloud drive's path as a folder on this
+  computer: on Windows it showed *Computer > C: > Users > <name> >
+  ultracloud:*, and the *ultracloud:* node opened a local folder that does
+  not exist - an empty display, with that path in the title and the tab. A
+  drive's path bar is now *Computer > FTP: <drive> > <folder> > ...*, each
+  node opening that folder on the drive; the split view's pane headers
+  follow it.
+- **A tab on a drive's top folder is titled with the drive's name** instead of
+  its raw `ultracloud://<account>/` address; a tab deeper in the drive keeps
+  the folder's name.
+
+#### 2026-10-22 *1.90.0*
+- **The Rename button on a hovered file shows a "T", not a pencil.** The
+  pencil looked like "edit the file"; the button renames it, so it now draws
+  a text glyph. The strip's tooltips also name each button's keyboard
+  shortcut (Ctrl+C, Ctrl+X, F2, Del). UltraCanvasFilerWidget does this
+  (framework changelog: `filer-rename-text-glyph`).
+- **Cut on a hovered file is greyed out on a drive**, as it is in the
+  right-click menu: the hover button had started a cut there that could not
+  be completed.
+- **Copy and Cut on a hovered file flash a green checkmark** once the files
+  are on the clipboard, so a press visibly landed.
+
 #### 2026-10-21 *1.89.0*
 - **Changes on an FTP drive go on the connection already open.** A delete, a
   rename, a new folder - and the rename that puts an upload in place - each

@@ -895,7 +895,7 @@ namespace UltraCanvas {
                                 "DemoApp/UltraCanvasTreeViewExamples.cpp",
                                 "Docs/UltraCanvas/UltraCanvasTreeViewExamples.md")
                 .AddVariant("treeview", "File Explorer Style")
-                .AddVariant("treeview", "Multi-Selection Tree")
+                .AddVariant("treeview", "Multi-Selection Tree (arrow expanders)")
                 .AddVariant("treeview", "Debugger Variables (columns)")
                 .AddVariant("treeview", "Connecting Lines (none / dotted / solid)")
                 .AddVariant("treeview", "Checkable Nodes");

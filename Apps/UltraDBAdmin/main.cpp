@@ -9,6 +9,7 @@
 // quits (UltraCanvasSingleInstance.h).
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "ui/DbAdminTheme.h"
 #include "ui/DbAdminWindow.h"
 
 #include "engine/DbAdminPaths.h"
@@ -109,6 +110,8 @@ int main(int argc, char* argv[]) {
         // media/appicon/UltraDBAdmin.svg (see CMakeLists.txt).
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraDBAdmin.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
+        // Before the window: its elements are styled from the theme as they are made.
+        UltraCanvasTheme::SetCurrent(UltraDBAdmin::AppTheme());
 
         UltraDBAdmin::DbAdminWindow window;
         if (!window.Initialize(UltraDBAdmin::DataDirectory())) {
