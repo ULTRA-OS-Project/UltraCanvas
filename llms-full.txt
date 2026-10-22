@@ -9382,6 +9382,152 @@ metadata) without decoding the frames; `GetAnimation()` is what triggers the
 full decode.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasAppSettings.md
+==============================================================================
+
+# UltraCanvas App Settings Documentation
+
+## Overview
+
+**UltraCanvasAppSettings** is an application's own preferences in one JSON
+file of the shared settings folder: `<settings folder>/<App>/settings.json`
+(`UltraCanvasSettingsFolder.h` names the folder per platform:
+`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas`
+on macOS, `~/.config/UltraCanvas` elsewhere). The look chosen last, the
+window's size, the things opened last - every application has a few, and
+before this each kept them its own way. This class is the one place:
+UltraPress's `settings.json` (`ui/UltraPressSettings.h`) is one, UltraFIBU's
+list of the bookkeepings opened last is another.
+
+The values are typed, so a program reads `GetInt("window.width", 0)` and
+never parses. A dotted key is a path into nested objects, so
+`"window.width"` is `{"window": {"width": 1200}}` in the file: it stays
+readable, and a group of values has a name. A list of strings is a JSON
+array, and two calls keep a recent list on one: `Remember` puts an entry
+first, once, and keeps the newest eight (or as many as asked); `Forget`
+drops one. The entries are the application's strings - a path it
+normalised, a name - compared as text.
+
+**File Location**: `include/UltraCanvasAppSettings.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ **One file per application**, under the shared settings folder, named
+  from the application's name
+- ✅ **Typed values** - string, int, bool, number, list of strings - each
+  with a fallback for a value that is missing or of another type
+- ✅ **Dotted keys** as nested objects (`"window.width"`)
+- ✅ **A recent list** on any key: `Remember` (first, once, capped) and
+  `Forget`
+- ✅ **Nothing read or written on its own**: `Load()` reads the file,
+  `Save()` writes it whole, pretty, and makes the folder first
+- ✅ A missing, unreadable or broken file is **the defaults**, and `Load()`
+  says so; without a home the file is empty and both calls do nothing
+- ✅ The whole **document** for what the typed calls do not cover
+  (`Document()`, an `UltraCanvasJSON` value)
+
+## API
+
+```cpp
+explicit UltraCanvasAppSettings(const std::string& app);   // <settings folder>/<app>/settings.json
+static UltraCanvasAppSettings AtFile(const std::string& file);   // a test's temp file
+const std::string& File() const;        // UTF-8; empty without a settings folder
+
+bool Load();                            // false: none, unreadable, not an object - the defaults
+bool Save() const;                      // false: cannot be written
+
+bool Has(const std::string& key) const;
+std::string GetString(const std::string& key, const std::string& fallback = "") const;
+int GetInt(const std::string& key, int fallback = 0) const;
+bool GetBool(const std::string& key, bool fallback = false) const;
+double GetNumber(const std::string& key, double fallback = 0.0) const;
+std::vector<std::string> GetList(const std::string& key) const;   // each once, the empty ones dropped
+
+void Set(const std::string& key, const std::string& value);
+void Set(const std::string& key, const char* value);
+void Set(const std::string& key, int value);
+void Set(const std::string& key, bool value);
+void Set(const std::string& key, double value);
+void Set(const std::string& key, const std::vector<std::string>& values);
+bool Remove(const std::string& key);
+
+void Remember(const std::string& key, const std::string& entry, std::size_t keep = 8);
+void Forget(const std::string& key, const std::string& entry);
+
+JSONValue& Document();
+```
+
+## Usage
+
+The program's settings, read before its window opens and written when
+something changes. Read again before a write when another part of the
+program may have written meanwhile - the file is small, and the last
+writer wins otherwise.
+
+```cpp
+UltraCanvas::UltraCanvasAppSettings settings("UltraPress");   // <settings folder>/UltraPress/settings.json
+settings.Load();                                              // false: nothing saved yet
+const bool dark = settings.GetBool("dark", false);
+const int width = settings.GetInt("window.width", 1500);
+const int height = settings.GetInt("window.height", 920);
+const std::vector<std::string> recent = settings.GetList("recent");
+
+settings.Set("dark", true);
+settings.Set("window.width", 1200);
+settings.Set("window.height", 700);
+settings.Remember("recent", "/home/erika/sites/shop");   // first, once, eight kept
+settings.Forget("recent", "/home/erika/sites/old");      // gone since
+settings.Save();
+```
+
+The file this writes:
+
+```json
+{
+  "dark": true,
+  "window": {
+    "width": 1200,
+    "height": 700
+  },
+  "recent": [
+    "/home/erika/sites/shop"
+  ]
+}
+```
+
+An application with a typed view of its own, like UltraPress's
+`UltraPressSettings` struct, reads the file through this class and keeps
+the typed fields itself; what it gains is the file's place, its format and
+the list handling, which are then the same in every application.
+
+A test runs it on a temp folder:
+
+```cpp
+UltraCanvas::UltraCanvasAppSettings test = UltraCanvas::UltraCanvasAppSettings::AtFile("/tmp/t/settings.json");
+test.Set("look", "dark");
+test.Save();
+```
+
+## Notes
+
+- Every path in and out is UTF-8, as every path in an UltraCanvas
+  application is (`UltraCanvasPathUtf8.h`).
+- A value of another type than asked for is the fallback: `GetInt` on a
+  string is the fallback, not 0 parsed out of it.
+- `Set` on a dotted key makes the objects on the way and replaces a scalar
+  in the way; `Set` with a scalar on a key that holds an object replaces
+  the object.
+- `AppSettingsTest` (`Tests/AppSettingsTest.cpp`) covers it.
+
+## Related
+
+- `UltraCanvasSettingsFolder.h` - the folder the file is in
+- `UltraCanvasDataFolder.h` - the data folder, for what is not a preference
+- `UltraCanvasStartPage` - the page that shows the recent list
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasArcDiagramExamples.md
 ==============================================================================
 
@@ -14420,6 +14566,7 @@ void SetFont(const std::string& family, float size,
              FontWeight weight = FontWeight::Normal);
 void SetFontSize(float size);
 void SetTextAlign(TextAlignment align);
+void SetEllipsize(EllipsizeMode mode);   // how a text that does not fit is shortened: End (default), Middle, Start
 
 // Layout configuration
 void SetPadding(float all);                                      // inherited from UltraCanvasUIElement
@@ -14554,6 +14701,7 @@ struct ButtonStyle {
     float fontSize = 12.0f;
     FontWeight fontWeight = FontWeight::Normal;
     TextAlignment textAlign = TextAlignment::Center;
+    EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;   // Middle keeps a path's first and last part
 
     int iconSpacing = 4;          // space between icon and text
     float cornerRadius = 3.0f;
@@ -22183,6 +22331,10 @@ design brief was *good usability above all*, so this document first surveys the
 common date-selection philosophies, explains the trade-offs, and then documents
 the API that was chosen.
 
+**File Location**: `include/UltraCanvasDatePicker.h`
+**Version**: 1.4.0 - the version history is in the header's head
+**Author**: UltraCanvas Framework
+
 ## Contents
 
 - [1. Selection philosophies surveyed](#1-selection-philosophies-surveyed)
@@ -22292,7 +22444,7 @@ Useful methods:
 | `SetSelectionMode(mode)` | `Single` (typeable) / `Range` / `Multiple` / `Week` |
 | `SetDateFormat(fmt)` | Display & parse format (`yyyy MM dd` tokens) |
 | `SetAllowTextInput(bool)` | Toggle free-text entry (default on for `Single`) |
-| `SetPlaceholder(text)` | Empty-state hint |
+| `SetPlaceholder(text)` / `GetPlaceholder()` | Empty-state hint, set at any time |
 | `SetMinDate/SetMaxDate` | Hard bounds |
 | `SetDateEnabledPredicate(fn)` | Arbitrary per-date enable/disable |
 | `SetFirstDayOfWeek(0..6)` | 0=Sunday (default), 1=Monday |
@@ -56851,6 +57003,40 @@ transparent pixels alone at every step). A window puts its popups on with
 `CompositeToSurfaceWithOpacity`, so a popup with rounded corners - a menu -
 shows the window behind its corners while it fades in and after.
 
+## The layouts the context keeps
+
+Two caches hold shaped text, and they are keyed differently.
+
+**The context's own cache** serves `DrawText`, `DrawTextInRect`,
+`GetTextLineDimensions` and the other measures that take a string: a
+process-wide store (20 MB, shared by every context) looked up by a key the
+backend builds from the call and the render state. The key holds:
+
+- the text (its first 300 bytes) and whether it is markup;
+- the size asked for (`DrawTextInRect`'s rectangle, 0 x 0 for `DrawText`),
+  which also decides the end-ellipsis a rectangle gets;
+- the font: family, size, weight and slant;
+- the text style: alignment, vertical alignment, indent, wrap, line height;
+- the pinned Pango resolution, so a layout made at one point-to-pixel ratio
+  is never reused at another.
+
+Left out on purpose: the device scale (a layout's extents are in logical
+units and, with hint metrics off, the same at any scale - only the paint
+differs), and the process-wide font options (antialias, hint style, hint
+metrics - changing one clears the whole cache, so no entry survives them).
+The same word in two fonts is therefore two entries, and
+`TextLayoutCacheTest` checks that it measures differently in each.
+
+**An element's own layout** (`CreateTextLayout`) is not in that store: it
+belongs to the element, which keeps it between draws through
+`UltraCanvasTextLayoutCache` (`UltraCanvasTextLayoutCache.h`) keyed on what
+it was built from - the text, the font, the wrap, the alignment, the
+shortening, the width - and rebuilds it only when one of those changed.
+The label, the button, the text input, the dropdown and the menu keep
+theirs this way. `TextLayoutsCreated()` counts the layouts
+`CreateTextLayout` made on a context, which is how a test tells "ten draws,
+one layout" from "a layout per draw".
+
 ## Tests
 
 `Tests/RenderContextTest.cpp` (CTest `RenderContextTest`) exercises every
@@ -66183,6 +66369,132 @@ engine recalculating the translated formulas to Excel's results, the refusals,
 and UltraFiler's preview page and detail pane.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasStartPage.md
+==============================================================================
+
+# UltraCanvas Start Page Documentation
+
+<!-- doc-check: void OpenSite(const std::string& dir); void PickFolder(); std::shared_ptr<UltraCanvas::UltraCanvasWindow> window; -->
+
+## Overview
+
+**UltraCanvasStartPage** is the page an application shows when it has
+nothing open yet: a title, the reason this page and not the thing itself,
+the entries opened last as buttons, the one action that opens an existing
+thing, a section of the application's own fields for making a new one, and
+a status line that says why something could not be done.
+
+Started with no argument - a double-click on Windows - a program that
+needs a file or a folder used to print its usage into a console that closed
+before it could be read, which looked like a crash. UltraPress's start
+window (a site folder) and UltraFIBU's (a bookkeeping file) are both this
+page with their own words and their own "new" fields.
+
+**File Location**: `include/UltraCanvasStartPage.h`
+**Version**: 1.1.1
+**Base Class**: `UltraCanvasContainer`
+**Author**: UltraCanvas Framework
+
+## Features
+
+- ✅ Parts laid out **top to bottom in the order they are added**, at the
+  width the page was made with; `PreferredHeight()` is what the window
+  holding it should be
+- ✅ A **section of the application's own fields**, laid out row by row:
+  a captioned field, a note, a button (`AddField`, `AddNote`, `AddButton`)
+- ✅ **Recent entries** as buttons: the last path part and the whole entry,
+  shortened in the middle where it does not fit (the drive and the name
+  stay), the whole entry as the tooltip
+- ✅ The **action** as the theme's primary button, with a muted note under it
+- ✅ A **section** for the application's own fields: a heading and a
+  container of the named height, the fields placed in it from (0, 0)
+- ✅ A **status line**, muted or in the theme's error colour
+- ✅ Everything follows the framework theme (`UltraCanvasTheme`): light or
+  dark, the headings and notes by their label variant
+
+## Header Include
+
+```cpp
+#include "UltraCanvasStartPage.h"
+```
+
+## Class Reference
+
+```cpp
+explicit UltraCanvasStartPage(const std::string& identifier, int width);
+
+void SetTitle(const std::string& text);
+void SetHint(const std::string& text);                       // up to three lines
+void SetRecent(const std::string& heading, const std::vector<std::string>& entries,
+               std::function<void(const std::string&)> onPick, int shown = 5);
+std::shared_ptr<UltraCanvasButton> AddAction(const std::string& text, std::function<void()> onClick,
+                                             const std::string& note = std::string(), bool primary = true);
+std::shared_ptr<UltraCanvasContainer> AddSection(const std::string& heading, int height = 0);
+int AddField(const std::string& caption, const std::shared_ptr<UltraCanvasUIElement>& input,
+             int captionWidth = 190);                        // a row of the current section
+std::shared_ptr<UltraCanvasLabel> AddNote(const std::string& text, int height = 40);
+std::shared_ptr<UltraCanvasButton> AddButton(const std::string& text, std::function<void()> onClick,
+                                             int width = 0);  // 0: the column
+static int RowHeight();                                      // 34
+std::shared_ptr<UltraCanvasLabel> AddStatusLine();
+void Say(const std::string& text, bool error);
+
+int PreferredHeight() const;
+int Width() const;
+static int Margin();            // the content column's distance from the edge
+int ContentWidth() const;       // the column's width: the sections are this wide
+```
+
+## Usage
+
+A start window: the page in a window of its preferred height. The
+application keeps the recent list itself (a list in its settings file,
+`UltraCanvasAppSettings.h`) and decides what a picked entry means.
+
+```cpp
+auto page = std::make_shared<UltraCanvas::UltraCanvasStartPage>("start", 620);
+page->SetTitle("UltraPress");
+page->SetHint("No site is open yet. Open a site folder, or create a new site.");
+page->SetRecent("Opened last", {"/home/erika/sites/shop", "/home/erika/sites/blog"},
+                [](const std::string& dir) { OpenSite(dir); });
+page->AddAction("Open a site folder\xE2\x80\xA6", []() { PickFolder(); },
+                "A folder with a site.json in it.");
+
+// The application's own fields for a new site: a section the page lays
+// out row by row - the caption at the left, the input beside it as wide as
+// the rest of the column, a button, a note under them.
+page->AddSection("A new site");
+auto name = UltraCanvas::CreateTextInput("name", 0, 0, 0, 0);
+page->AddField("Site name", name, 96);
+page->AddButton("Create it in a folder\xE2\x80\xA6", []() { PickFolder(); }, 300);
+page->AddNote("The starter site goes into the folder you choose; an empty or a new one.");
+
+page->AddStatusLine();
+window->AddChild(page);
+window->SetWindowSize(page->Width(), page->PreferredHeight());
+```
+
+Why something could not be done goes on the status line:
+
+```cpp
+page->Say("\"/home/erika/sites/old\" holds no site any more.", true);   // the theme's error colour
+page->Say("Creating the site\xE2\x80\xA6", false);                        // muted
+```
+
+## Notes
+
+- The page is a container with absolute children; add it to a window at
+  (0, 0) and size the window to `Width()` by `PreferredHeight()`.
+- The hint has room for three lines of 14 px text: a folder's full path and
+  what was wrong with it.
+- A section grows with the rows `AddField`, `AddNote` and `AddButton` put
+  in it, `RowHeight()` tall with 10 px between them, until the next part is
+  added; an input with a width of its own (a date picker, a dropdown) keeps
+  its size, one without gets the rest of the column. A section made with a
+  height is the application's to lay out from (0, 0) in the container
+  `AddSection` returns, `ContentWidth()` wide.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasStepper.md
 ==============================================================================
 
@@ -74551,6 +74863,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| The page an application shows with nothing open yet - title, why this page, the entries opened last as buttons, the open action, a section of the app's own fields for a new thing, a status line; `PreferredHeight()` sizes the window ([doc](UltraCanvasStartPage.md)) | `UltraCanvasStartPage` | `UltraCanvasStartPage.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar, a pulsing circle or a ring of circling dots (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
@@ -97445,7 +97758,7 @@ FILE: Docs/UltraPress/README.md
 
 # UltraPress
 
-**Status:** Phase 1 under way. UltraPress 0.8.0 is the headless engine, the
+**Status:** Phase 1 under way. UltraPress 0.8 is the headless engine, the
 `ultrapress` program - the commands and the editor window -, the block
 renderer on real elements, the WordPress importer, the publisher onto
 web hosts and the media library: a site as a folder of JSON files, the
@@ -97472,6 +97785,7 @@ This app versions itself: [`CHANGELOG.md`](CHANGELOG.md).
 ## The window
 
 ```bash
+ultrapress                    # the start window: open a site folder, or create a new site in one
 ultrapress mysite             # the editor: pages and blocks on the left, the page in the middle, properties on the right
 ultrapress mysite --check     # render every page without a window; element counts and warnings
 ```
@@ -97479,7 +97793,16 @@ ultrapress mysite --check     # render every page without a window; element coun
 `ultrapress` is one program: a command word first (`new`, `check`, `page`,
 `publish`, `import`, `hosts`, `help`) runs that command without a window, a
 site folder opens the editor. There is no second `UltraPress` binary: two
-names that differ only in case are one name on macOS and Windows.
+names that differ only in case are one name on macOS and Windows. Started
+with no folder - a double-click - or with a folder that holds no site, it
+opens the start window (`Apps/UltraPress/ui/UltraPressStart.h`): it says
+why, *Open a site folder…* goes through the folder dialog onto an existing
+site, and a name with *Create it in a folder…* writes the starter site into
+a folder of your choice; the editor opens from there. The sites opened last
+are offered first, as buttons under *Opened last* (the eight newest, the
+whole path as the button's tooltip). The window is the framework's start
+page (`UltraCanvasStartPage`) with UltraPress's words and its one field. On Windows the installer
+puts *UltraPress* into the Start menu, which starts it this way.
 
 **Publish** writes the static site under `<site>/.ultrapress/publish` and
 uploads it onto the site's host on a worker thread; the status line under
@@ -97497,8 +97820,12 @@ block's properties, generated from the registry - a text input for a
 line, a text area for paragraphs and HTML, a checkbox for a flag, an
 integer for a number, and links, items and lists as JSON applied as soon
 as it parses - or, with no block selected, the page's title, description,
-status and pinning. Every change re-renders the page in the middle;
-*Save site* writes the folder (`ui/UltraPressWindow.h`).
+status and pinning. *Site settings…* in the side column puts the site
+itself there instead: name, tagline, address, language and owner; the
+address is checked as typed (`IsSiteAddress`: `https://` and a host, no
+trailing slash) and the rule stands under the field, in the error colour,
+until it is met. Every change re-renders the page in the middle; *Save
+site* writes the folder (`ui/UltraPressWindow.h`).
 
 The window has two looks. Its colours are a framework theme
 (`Apps/UltraPress/ui/UltraPressTheme.h`, `ThemeFor(dark)`: the brand's red accent, its
@@ -97507,8 +97834,10 @@ one), and every element of the columns and the dialogs follows that theme,
 so *Dark look* / *Light look* in the side column switches them all at
 once; the side column keeps its night blue in both, through the theme's
 own `press.*` roles, and the page in the middle keeps the site's colours,
-because it is the site. The choice is remembered in
-`<settings folder>/UltraPress/look` and read before the window opens.
+because it is the site. The choice is remembered with the program's other
+settings - the sites opened last, the editor window's size - in
+`<settings folder>/UltraPress/settings.json` (`ui/UltraPressSettings.h`)
+and read before the window opens.
 
 The page is rendered on real UltraCanvas elements by the block renderer
 (`Apps/UltraPress/render/UltraPressRender.h`, target `UltraPressRender`),
@@ -97761,7 +98090,7 @@ every statement in it is true of both.
 |---|---|---|
 | `UltraMail.md` | UltraMail, English | draft 1.1, needs the bracketed items and legal review |
 | `UltraMail.de.md` | UltraMail, German (the version a German consumer can rely on) | draft 1.1, same |
-| `UltraPress.md` | UltraPress, English - the program of 0.8, which contacts the web host the user configures and nothing else | draft 0.3, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
+| `UltraPress.md` | UltraPress, English - the program of 0.8, which contacts the web host the user configures and nothing else | draft 0.5, needs the bracketed items and legal review; the German version and the server-tier sections follow with the features |
 | `Template.md` | The section skeleton for the next product | — |
 
 The English and German versions of one product say the same thing; a change
@@ -98533,7 +98862,7 @@ FILE: Docs/Legal/Privacy/UltraPress.md
 
 # Privacy declaration — UltraPress
 
-**Version 0.3 (draft for legal review) · 15 October 2026**
+**Version 0.5 (draft for legal review) · 20 October 2026**
 
 This declaration explains what personal data the **UltraPress** application
 processes, where that processing happens, which third parties it contacts and
@@ -98594,7 +98923,7 @@ required to [confirm with legal review].
 | The host list | the hosts you added: the kind (FTP, WebDAV, Nextcloud), the server address, your user name, the folder, a display name | `hosts.db` in the program's data folder (`%APPDATA%\UltraPress` on Windows, `~/Library/Application Support/UltraPress` on macOS, `~/.local/share/UltraPress` elsewhere, or `$XDG_DATA_HOME/UltraPress` where that is set); a list that UltraPress 0.5 to 0.7 kept under `UltraPress` in the shared UltraCanvas settings folder is moved there, whole, the first time the hosts are opened |
 | The host passwords | the password of each host, and for an SFTP host the path of the private key file you named (the key itself stays where it is) | the encrypted credential vault `vault/` beside `hosts.db`, opened with a key file the program writes on your device (UltraVault) |
 | The site's host | the id of the host the site publishes to and the folder on it; no password | `hosting` in `site.json` |
-| The look | one word, `dark` or `light`: which look of the window you chose last | `look` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere) |
+| The settings | which look of the window you chose last (`dark` or `light`), the paths of the site folders the editor opened last (eight at most, so the start window can offer them) and the editor window's last size | `settings.json` under `UltraPress` in the shared UltraCanvas settings folder (`%APPDATA%\UltraCanvas` on Windows, `~/Library/Application Support/UltraCanvas` on macOS, `~/.config/UltraCanvas` elsewhere); the `look` file of UltraPress 0.8.0 to 0.8.2 is read into it once and removed |
 
 UltraPress writes no caches, logs or history files of its own. Its messages
 go to the terminal it was started from, or to the window's status line.
