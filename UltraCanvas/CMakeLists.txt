@@ -3663,8 +3663,21 @@ if(ULTRACANVAS_ENABLE_ULTRARTC)
         set(PREFER_SYSTEM_LIB OFF CACHE BOOL "" FORCE)
         set(_ultrartc_saved_pic "${CMAKE_POSITION_INDEPENDENT_CODE}")
         set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+        # Its option(BUILD_SHARED_LIBS ... ON) would otherwise put ON in the
+        # cache for the whole project: every later add_library() without a
+        # type turned shared, and Corrosion linked the Vectorizer's vtracer_c
+        # DLL instead of its archive. A plain variable here (CMP0077) keeps
+        # the cache untouched; what the user set stays as it was.
+        if(NOT DEFINED BUILD_SHARED_LIBS)
+            set(BUILD_SHARED_LIBS OFF)
+            set(_ultrartc_unset_shared TRUE)
+        endif()
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/third_party/libdatachannel
                          ${CMAKE_CURRENT_BINARY_DIR}/third_party/libdatachannel EXCLUDE_FROM_ALL)
+        if(_ultrartc_unset_shared)
+            unset(BUILD_SHARED_LIBS)
+            unset(_ultrartc_unset_shared)
+        endif()
         set(CMAKE_POSITION_INDEPENDENT_CODE "${_ultrartc_saved_pic}")
         if(TARGET datachannel-static)
             set(_ultrartc_engine TRUE)
