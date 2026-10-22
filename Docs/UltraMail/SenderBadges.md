@@ -208,9 +208,12 @@ used twice:
 * **In the badge.** A registry sender that is not (yet) in the address book
   reads as a **business contact** — blue — rather than as an unknown sender,
   with the tooltip naming the service and what kind of service it is.
-* **In the address book.** `ContactCollector::CollectSender()` — which the app
-  runs over each synced folder — files a registry sender under **Services**,
-  carrying the service's name as the contact's `organization` and a note
+* **In the address book.** `ContactCollector::CollectSenders()` — which the
+  app runs over each sync's new inbox mail — files a registry sender under
+  **Services**, but only when the receiving server proved its domain (DKIM or
+  DMARC: the scan's `verifiedDomain`, `DomainProven`): the registry knows a
+  service by its address, and anyone can write that address in a From line.
+  It files it carrying the service's name as the contact's `organization` and a note
   saying what it is and that UltraMail added it. A robot display name is
   replaced by the service's own name only when the header carries none
   ("Kickstarter" beats an empty From name). Any other sender is **not**

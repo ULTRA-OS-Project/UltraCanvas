@@ -33,3 +33,11 @@
   recipient written as "Anna Schmidt <anna@example.com>" was remembered with
   that whole text as its address - a second contact beside the real one. Its
   name and address are now read apart.
+- **A forged service is not filed as one.** A sender in the known-sender
+  registry (a shop, a platform) went under Services on its From address
+  alone, which anyone can write. It is added now only when the receiving
+  server proved the sender's domain (DKIM or DMARC).
+- **Remove what the old collector left behind.** *Contacts*, right-click
+  *Other* > *Remove collected contacts…* lists the contacts there that are a
+  name and an address and nothing else, never written to (no mail in the
+  Sent folders went to them), and removes them all at once after asking.

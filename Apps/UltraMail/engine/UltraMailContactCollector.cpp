@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailContactCollector.cpp
+// Version: 0.5.0 - a service only with its domain proven; NeverWrittenTo
 // Version: 0.4.0 - incoming mail adds only known services, and never a
 //                  blocked or forgotten address; Collect reads "Name <address>"
 // Version: 0.3.0 - CollectSenders: a batch in one read and one transaction
@@ -61,10 +62,12 @@ Contact ContactForService(const SenderBrand& brand, const std::string& name,
 }
 
 // The registry's entry for a sender incoming mail may add, or null: only a
-// known service, and not one the user blocked. (Forgotten addresses are
-// checked by the callers, who have the list.)
-const SenderBrand* CollectableService(const std::string& email) {
-    if (email.empty()) return nullptr;
+// known service whose domain the receiving server proved, and not one the
+// user blocked. (Forgotten addresses are checked by the callers, who have the
+// list.)
+const SenderBrand* CollectableService(const std::string& email,
+                                      const std::string& verifiedDomain) {
+    if (email.empty() || !DomainProven(email, verifiedDomain)) return nullptr;
     const SenderBrand* brand = BrandForAddress(email);
     if (!brand) return nullptr;
     if (!GetSenderLists().BlockedBy(email).empty()) return nullptr;
@@ -72,6 +75,26 @@ const SenderBrand* CollectableService(const std::string& email) {
 }
 
 } // namespace
+
+bool DomainProven(const std::string& address, const std::string& verifiedDomain) {
+    const std::size_t at = address.rfind('@');
+    if (at == std::string::npos || verifiedDomain.empty()) return false;
+    std::string host = Lower(address.substr(at + 1));
+    std::string proven = Lower(verifiedDomain);
+    while (!host.empty() && host.back() == '>') host.pop_back();
+    if (host.empty()) return false;
+    // `inner` is `outer` or a subdomain of it.
+    auto within = [](const std::string& inner, const std::string& outer) {
+        return inner == outer ||
+               (inner.size() > outer.size() &&
+                inner.compare(inner.size() - outer.size(), outer.size(), outer) == 0 &&
+                inner[inner.size() - outer.size() - 1] == '.');
+    };
+    // A parent counts only below the top level: "com" vouches for nothing.
+    const bool provenHasDot = proven.find('.') != std::string::npos;
+    const bool hostHasDot = host.find('.') != std::string::npos;
+    return (provenHasDot && within(host, proven)) || (hostHasDot && within(proven, host));
+}
 
 bool ContactCollector::Collect(ContactStore& store, const std::string& name,
                                const std::string& recipient, ContactSection section) {
@@ -105,8 +128,8 @@ bool ContactCollector::Collect(ContactStore& store, const std::string& name,
 }
 
 bool ContactCollector::CollectSender(ContactStore& store, const std::string& name,
-                                     const std::string& email) {
-    const SenderBrand* brand = CollectableService(email);
+                                     const std::string& email, const std::string& verifiedDomain) {
+    const SenderBrand* brand = CollectableService(email, verifiedDomain);
     if (!brand) return false;
     std::set<std::string> forgotten;
     store.ForgottenAddresses(forgotten);
@@ -114,25 +137,37 @@ bool ContactCollector::CollectSender(ContactStore& store, const std::string& nam
     return SaveIfNew(store, ContactForService(*brand, name, email), email);
 }
 
-int ContactCollector::CollectSenders(
-        ContactStore& store, const std::vector<std::pair<std::string, std::string>>& senders) {
+int ContactCollector::CollectSenders(ContactStore& store, const std::vector<SenderSeen>& senders) {
     if (senders.empty()) return 0;
     std::set<std::string> known;
     if (!store.KnownAddresses(known)) return 0;
     std::set<std::string> forgotten;
     store.ForgottenAddresses(forgotten);
     std::vector<Contact> fresh;
-    for (const auto& [name, email] : senders) {
-        const SenderBrand* brand = CollectableService(email);
+    for (const SenderSeen& seen : senders) {
+        const SenderBrand* brand = CollectableService(seen.address, seen.verifiedDomain);
         if (!brand) continue;
-        const std::string key = Lower(email);
+        const std::string key = Lower(seen.address);
         if (forgotten.count(key)) continue;
         // In the address book already, or earlier in this batch.
         if (!known.insert(key).second) continue;
-        fresh.push_back(ContactForService(*brand, name, email));
+        fresh.push_back(ContactForService(*brand, seen.name, seen.address));
     }
     if (fresh.empty()) return 0;
     return store.SaveAll(fresh) ? static_cast<int>(fresh.size()) : 0;
+}
+
+std::vector<Contact> ContactCollector::NeverWrittenTo(
+        const std::vector<Contact>& contacts, const std::map<std::string, double>& writtenTo) {
+    std::vector<Contact> out;
+    for (const Contact& c : contacts) {
+        if (c.section != ContactSection::Other || !c.group.empty()) continue;
+        if (c.emails.size() != 1 || !c.phones.empty()) continue;
+        if (!c.organization.empty() || !c.notes.empty()) continue;
+        if (writtenTo.count(Lower(c.emails.front().address))) continue;
+        out.push_back(c);
+    }
+    return out;
 }
 
 } // namespace UltraMail

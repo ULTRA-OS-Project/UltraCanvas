@@ -3,7 +3,7 @@
 // sections, each with any number of emails / phones. A global store (not
 // per-account) so contacts are shared across accounts, mirroring LocalStore's
 // UltraDatabase-backed design.
-// Version: 0.3.0 - Forget / ForgottenAddresses: addresses the user deleted,
+// Version: 0.3.0 - RemoveAll (many contacts in one transaction); Forget / ForgottenAddresses: addresses the user deleted,
 //                  which the collector does not add again
 // Version: 0.2.0 - SaveAll (a batch in one transaction), KnownAddresses; the
 //                  database in WAL mode, as the mail index is
@@ -52,6 +52,8 @@ public:
 
     UltraDbResult Get(int64_t id, Contact& out) const;
     UltraDbResult Remove(int64_t id);
+    // Remove every contact in `ids` as Remove does, in ONE transaction.
+    UltraDbResult RemoveAll(const std::vector<int64_t>& ids);
 
     // Contacts filed in a section (not in a group of the user's own), ordered
     // by display name.

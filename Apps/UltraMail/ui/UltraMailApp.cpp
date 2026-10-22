@@ -2,7 +2,9 @@
 // Version: 0.9.38 - a recipient suggestion's menu: Edit contact, Delete address,
 //                  Set as SPAM; blocked senders are not suggested; Edit contact
 //                  (here and for a message's sender) edits that address; a
-//                  deleted address is forgotten
+//                  deleted address is forgotten; a known service is collected
+//                  only with its domain proven; Contacts > Other > Remove
+//                  collected contacts
 // Version: 0.9.37 - the new-mail notification carries where its click leads
 //                   (launch), and UltraMail is the activator of its Windows
 //                   toasts, so a click opens the mail after the broker host
@@ -2418,8 +2420,14 @@ void UltraMailApp::CollectContacts(const std::string& accountId, const std::stri
     // CollectSender, not Collect: a sender in the known-sender registry is
     // filed under Services as a business contact (with the service's name as
     // the organization), everything else lands in Other as before.
-    for (const auto& m : msgs)
-        ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr);
+    std::map<int64_t, MessageSecurity> verdicts;
+    store_.ListSecurity(accountId, folder, verdicts);
+    for (const auto& m : msgs) {
+        const auto v = verdicts.find(m.uid);
+        ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr,
+                                        v == verdicts.end() ? std::string()
+                                                            : v->second.verifiedDomain);
+    }
 }
 
 void UltraMailApp::StartBackgroundSync() {
@@ -2963,7 +2971,9 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The senders of the mail this sync brought, for the address book's
         // collector on the UI thread afterwards. Filled on the worker, read
         // once it has finished (onDone runs after the last progress call).
-        auto arrived = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
+        // Only their identity: what the scan proved of each sender is read from
+        // the store then, once its body has been downloaded and scanned.
+        auto arrived = std::make_shared<std::vector<MessageEnvelope>>();
         // Stash the credential-resolve code so the UI thread can tell an expired
         // OAuth sign-in (offer re-sign-in) from an ordinary sync failure.
         auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Success);
@@ -3055,7 +3065,19 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 if (contacts_.IsOpen()) {
                     Trace::Stage step("Address book: the senders of " +
                                       std::to_string(arrived->size()) + " new message(s)", 0);
-                    ContactCollector::CollectSenders(contacts_, *arrived);
+                    // A known service is filed only when the server proved
+                    // its domain: the verdict the sync stored with the body.
+                    std::map<int64_t, MessageSecurity> verdicts;
+                    store_.ListSecurity(aid, "INBOX", verdicts);
+                    std::vector<SenderSeen> senders;
+                    senders.reserve(arrived->size());
+                    for (const MessageEnvelope& m : *arrived) {
+                        const auto v = verdicts.find(m.uid);
+                        senders.push_back({m.fromName, m.fromAddr,
+                                           v == verdicts.end() ? std::string()
+                                                               : v->second.verifiedDomain});
+                    }
+                    ContactCollector::CollectSenders(contacts_, senders);
                 }
                 Refresh();   // authoritative, correctly sorted final list
             });
@@ -3067,7 +3089,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             // Sender icons are not fetched here: a download held the sync
             // for its whole round trip. The list asks for the icons of the
             // rows it paints, and the icon cache's own threads fetch them.
-            if (m.folder == "INBOX") arrived->emplace_back(m.fromName, m.fromAddr);
+            if (m.folder == "INBOX") arrived->push_back(m);
             feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             newMail_.Note(m);   // and the notification on screen, when the sync ends
             progressBuf->push_back(m);
@@ -3237,6 +3259,13 @@ void UltraMailApp::OpenContacts() {
 
     contactsView_.SetStore(&contacts_);
     contactsView_.onChanged = [this]() { RefreshContactIndex(); Refresh(); };
+    // Who the user writes to (the Sent folders), for "Remove collected
+    // contacts…": read when asked, so it is as current as the mail.
+    contactsView_.writtenTo = [this]() {
+        std::map<std::string, double> written;
+        store_.WeighSentRecipients(written, static_cast<int64_t>(std::time(nullptr)));
+        return written;
+    };
     win->AddChild(contactsView_.Build());
     contactsView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
     win->onWindowResize = [this](int cw, int ch) {

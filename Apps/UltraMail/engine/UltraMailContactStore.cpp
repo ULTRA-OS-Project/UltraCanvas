@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailContactStore.cpp
-// Version: 0.3.0 - forgotten_addresses (schema 3): Forget, ForgottenAddresses
+// Version: 0.3.0 - RemoveAll; forgotten_addresses (schema 3): Forget, ForgottenAddresses
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailContactStore.h"
@@ -277,6 +277,22 @@ UltraDbResult ContactStore::Remove(int64_t id) {
     UltraDb_ExecInTx(tx, "DELETE FROM contact_emails WHERE contact_id=?", { id });
     UltraDb_ExecInTx(tx, "DELETE FROM contact_phones WHERE contact_id=?", { id });
     UltraDb_ExecInTx(tx, "DELETE FROM contacts WHERE id=?", { id });
+    return UltraDb_Commit(tx);
+}
+
+UltraDbResult ContactStore::RemoveAll(const std::vector<int64_t>& ids) {
+    if (ids.empty()) return UltraDbResult::Ok();
+    UltraDbHandle tx = UltraDb_Begin(connection_);
+    if (tx == UltraDbInvalidHandle)
+        return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
+    for (int64_t id : ids) {
+        for (const char* sql : { "DELETE FROM contact_emails WHERE contact_id=?",
+                                 "DELETE FROM contact_phones WHERE contact_id=?",
+                                 "DELETE FROM contacts WHERE id=?" }) {
+            UltraDbResult r = UltraDb_ExecInTx(tx, sql, { id });
+            if (!r) { UltraDb_Rollback(tx); return r; }
+        }
+    }
     return UltraDb_Commit(tx);
 }
 

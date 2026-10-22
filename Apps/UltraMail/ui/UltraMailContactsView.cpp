@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailContactsView.cpp
-// Version: 0.5.0 - a deleted contact's addresses are forgotten (not collected
+// Version: 0.5.0 - Other's menu: "Remove collected contacts…" (the
+//                  strangers the old collector added); a deleted contact's addresses are forgotten (not collected
 //                  again); EditContact edits the address it is opened for (a
 //                  recipient suggestion, a message's sender), not always
 //                  the primary one
@@ -18,6 +19,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
 #include "UltraMailAlerts.h"
+#include "UltraMailContactCollector.h"
 #include "UltraMailTheme.h"
 #include "UltraCanvasEvent.h"
 
@@ -519,8 +521,56 @@ void ContactsView::ShowPlaceMenu(const ContactPlace& place, const UCEvent& event
         item.enabled = false;
         menu_->AddItem(item);
     }
+    // What the collector added for every sender of inbox mail until 0.4.0:
+    // a name and an address in Other, never written to.
+    if (!place.isGroup && place.section == ContactSection::Other && writtenTo) {
+        menu_->AddItem(MenuItemData::Separator());
+        menu_->AddItem(MenuItemData::Action("Remove collected contacts\xE2\x80\xA6",
+                                            [this]() { ConfirmRemoveCollected(); }));
+    }
     PopupElementSettings settings;
     menu_->OpenMenu(event.pointerWindow, *window, settings);
+}
+
+void ContactsView::ConfirmRemoveCollected() {
+    if (!store_ || !writtenTo) return;
+    std::vector<Contact> other;
+    if (UltraDbResult r = store_->ListBySection(ContactSection::Other, other); !r) {
+        AlertError(Window(), "The contacts could not be read.", DetailLine(r));
+        return;
+    }
+    const std::vector<Contact> found = ContactCollector::NeverWrittenTo(other, writtenTo());
+    if (found.empty()) {
+        UltraCanvasAlert::Info("Nothing to remove: every contact in Other was either written "
+                               "to or has more than a name and an address.",
+                               "Remove collected contacts", nullptr, Window());
+        return;
+    }
+    std::string examples;
+    for (std::size_t i = 0; i < found.size() && i < 5; ++i) {
+        const Contact& c = found[i];
+        examples += "\n  \xE2\x80\xA2 " + (c.displayName.empty() ? c.PrimaryEmail()
+                                                           : c.displayName + " <" + c.PrimaryEmail() + ">");
+    }
+    if (found.size() > 5) examples += "\n  \xE2\x80\xA6 and " + std::to_string(found.size() - 5) + " more";
+    std::vector<int64_t> ids;
+    for (const Contact& c : found) ids.push_back(c.id);
+    const std::string question =
+        "Remove " + std::to_string(found.size()) + " contact" + (found.size() == 1 ? "" : "s") +
+        " from Other?\n\nEach is a name and an address and nothing else, and no mail in your "
+        "Sent folders went to it - what UltraMail used to add for every sender of mail in "
+        "the inbox, spam included:" + examples +
+        "\n\nWriting to one of them later adds it again.";
+    UltraCanvasAlert::Confirm(question, "Remove collected contacts",
+        [this, ids](bool yes) {
+            if (!yes || !store_) return;
+            if (UltraDbResult r = store_->RemoveAll(ids); !r) {
+                AlertError(Window(), "The contacts could not be removed.", DetailLine(r));
+                return;
+            }
+            Changed();
+        },
+        Window());
 }
 
 void ContactsView::AskNewGroup() {
