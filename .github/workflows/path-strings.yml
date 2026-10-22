@@ -56,7 +56,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     steps:
       - uses: actions/checkout@v5
       # The rules first, against examples of their own: a member or a
