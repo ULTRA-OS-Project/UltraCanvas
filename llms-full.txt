@@ -2728,7 +2728,12 @@ Provider: Matrix (`UltraCanvas/Plugins/UltraIM/matrix/`, module
 receipts, typing, presence, paged history, and end-to-end encryption -
 Olm and Megolm through vodozemac (Rust, behind a C ABI shim built with
 Corrosion), device keys trusted on first use, room keys shared per device,
-new rooms created encrypted, Element-compatible key export. Tests in `Tests/UltraIM`. See
+new rooms created encrypted, Element-compatible key export. Provider:
+Telegram (`UltraCanvas/Plugins/UltraIM/telegram/`, module `ultraim_telegram`)
+on TDLib's JSON interface, loaded at run time (not linked): sign-in in steps
+(`UltraIMAuthStep`, result `NeedsInput`), the main chat list, private chats
+and groups, replies, edits, deletion, read marks, typing, presence, history,
+people by username or phone number. Tests in `Tests/UltraIM`. See
 `Docs/Modules/UltraIM/README.md`.
 
 ---
@@ -3650,6 +3655,7 @@ their *License* is likewise marked **—** (OS component).
 | SANE | [sane-project.org](http://www.sane-project.org/) | [gitlab.com/sane-project/backends](https://gitlab.com/sane-project/backends) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | SQLite | [sqlite.org](https://www.sqlite.org/) | [github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) | [public domain](https://spdx.org/licenses/blessing.html) |
 | Tesseract | [tesseract-ocr.github.io](https://tesseract-ocr.github.io/) | [github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
+| TDLib (runtime, not linked) | [core.telegram.org/tdlib](https://core.telegram.org/tdlib) | [github.com/tdlib/td](https://github.com/tdlib/td) | [BSL 1.0](https://spdx.org/licenses/BSL-1.0.html) |
 | TinyXML2 | [leethomason.github.io/tinyxml2](https://leethomason.github.io/tinyxml2/) | [github.com/leethomason/tinyxml2](https://github.com/leethomason/tinyxml2) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
 | V4L2 (Video4Linux2) | [docs.kernel.org](https://docs.kernel.org/userspace-api/media/v4l/v4l2.html) | [git.linuxtv.org/v4l-utils.git](https://git.linuxtv.org/v4l-utils.git) | — |
@@ -88761,6 +88767,15 @@ says whether our camera goes on; `UltraIM_SetCallCamera` turns it off and on
 during the call, and the other side gets `CallMediaChange` (`isVideo` = the
 camera is on), so it can show a caption instead of a frozen picture.
 
+A sign-in that takes more than one round (Telegram: the phone number, the
+code Telegram sends, the two-step password, a name for a new account)
+answers `NeedsInput` until the last step. `UltraIMProviderInfo::authStep`
+says what comes next (`PhoneNumber`, `Code`, `Password`, `Registration`) and
+`authHint` how to say it (where the code went, the password's hint), and
+`AuthStepChange` reports each change. Call `UltraIM_SignIn` again with that
+one field set (`otpCode`, `password`, `displayName`); the rest of the
+credentials need not be repeated.
+
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
 `UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
@@ -88934,11 +88949,57 @@ device, and an encrypted room with
 (`matrix_nio_peer.py`), key export files read both ways - with
 `matrix-nio[e2e]` in that python (`ULTRAIM_TEST_MATRIX_NIO_REQUIRED` in CI).
 
+## Provider: Telegram
+
+`UltraCanvas/Plugins/UltraIM/telegram/` (module `ultraim_telegram`, provider
+id `telegram`) is a client of TDLib, Telegram's own client library, through
+its JSON interface (`td_create_client_id` / `td_send` / `td_receive` /
+`td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
+provider builds on every platform but WebAssembly (which loads no native
+library) and works wherever a libtdjson is found - the
+`tdlib/` folder next to the provider modules, `ULTRAIM_TDJSON_PATH`, or the
+system's `libtdjson.so` / `.dylib` / `tdjson.dll` (TDLib 1.7 or later; 1.8.69
+is what the tests use). One thread receives for every client in the process.
+
+- **Sign-in:** `UltraIMLoginType::PhoneOTP`, in steps (above): the phone
+  number with its country code, the code, the two-step password when the
+  account has one, a name for a new number. Telegram also needs the
+  *application's* API ID and hash (my.telegram.org): `credentials.apiId` /
+  `apiHash`, or built in (CMake `ULTRAIM_TELEGRAM_API_ID` /
+  `ULTRAIM_TELEGRAM_API_HASH`), or `ULTRAIM_TELEGRAM_API_ID` / `_HASH` in the
+  environment; they are kept with the session. `server = "test"` uses
+  Telegram's test servers. TDLib keeps the session, the chats and the history
+  in its own database under the provider's data directory, encrypted with a
+  key the vault holds; a later `SignIn` with nothing given resumes it.
+- **Chats:** the main chat list (`loadChats`, in TDLib's order, pinned first);
+  private chats, basic groups and supergroups, channels. A conversation's id
+  is the chat id, a message's the message id, a contact's the user id.
+  `AddContact` takes `@username`, a `t.me/` link or `+phone`; `CreateGroup`
+  makes a basic group of such members.
+- **Messages:** text with replies, photos, files, audio, voice, video and
+  stickers as their captions or names (not downloaded yet), the group's
+  service messages as system lines; edits (`MessageUpdate`), deletion for
+  everyone (`MessageDelete`); our own message reported `Sent` under its client
+  message id once TDLib has sent it, then `Read` when the other side's read
+  mark passes it; typing, presence, unread counts; `FetchMessages` pages back
+  with `getChatHistory`.
+- **Not yet:** secret chats (end-to-end encrypted; listed, marked encrypted,
+  not opened), media download and upload, calls, QR-code and e-mail sign-in.
+
+Tests: `Tests/UltraIM/TelegramProviderTests.cpp` against `FakeTdJson`, a
+libtdjson stand-in that keeps a small Telegram in memory (several providers
+in one process talk through it; `FAKE_TDJSON_ACCOUNTS` and an `echobot`
+account for trying ChatCube on it); `Tests/UltraIM/TelegramTdlibTests.cpp`
+hands every request the provider builds to the real TDLib, offline - it
+answers a request it cannot parse at once, so anything else means TDLib's
+names and fields are right. `ULTRAIM_TDJSON_PATH` names the library; CI
+takes it from the `tdjson` wheel and sets `ULTRAIM_TEST_TDLIB_REQUIRED`.
+
 ## Status
 
 Implemented: the registry, the module loader, the event bus and dispatcher,
 the merged conversation fetch and every forwarding call; the ChatCube
-Direct provider and the Matrix provider (above). Next: Telegram.
+Direct, Matrix and Telegram providers (above). Next: XMPP and others.
 
 ==============================================================================
 FILE: Docs/Modules/UltraMessage/README.md
@@ -95752,24 +95813,6 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/msix-desktop-switch.md
-==============================================================================
-
-- **The Microsoft Store copy says why it cannot become the Windows desktop.**
-  Both of UltraDesktop's switches are values under `HKEY_CURRENT_USER`. A
-  program running from its MSIX package writes into the package's own
-  registry, which sign-in never reads, so the switch would have reported
-  success and changed nothing. Run from a package, the settings menu now
-  offers *Use as the Windows desktop...*, which explains this and points to
-  the UltraCanvas installer. It also keeps *Close UltraDesktop*, since a
-  packaged copy is always a trial run with no title bar to close.
-  `--use-as-desktop` fails with the same explanation. The framework change
-  behind it, `UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason`,
-  is in the framework changelog. The
-  MSIX package now gives UltraDesktop a Start menu entry, as the installer
-  does.
-
-==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
 ==============================================================================
 
@@ -97536,22 +97579,6 @@ clean, and each of those is a test in
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/downloads-folder-and-plugin-folder.md
-==============================================================================
-
-- **Saving an attachment opens in the Downloads folder on Windows.** The save
-  dialog's first folder looked for `Downloads` under `HOME`, which Windows does
-  not set, and read it through the narrow `getenv`. So on Windows it fell back
-  to `.` - the folder UltraMail was started from, which is System32 from the
-  MSIX package. It now takes the Downloads folder Windows names, wherever it
-  was moved or redirected (`GetWellKnownUserFolders`), and the home folder
-  (`HOME`, or `USERPROFILE` on Windows) as UTF-8 when there is none.
-- **The UltraNet plug-in folder comes from UltraNet.** UltraMail looked for
-  `Plugins/UltraNet` beside its executable itself. UltraNet now does that by
-  default, so UltraMail keeps only its `ULTRAMAIL_PLUGIN_DIR` override, which
-  it now reads as UTF-8.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
