@@ -8,10 +8,15 @@ European VAT numbers, and a German user interface.
 - Design and rationale: [`Docs/Research/UltraFIBUDesignProposal.md`](../../Docs/Research/UltraFIBUDesignProposal.md)
 - Version and history: [`Docs/UltraFIBU/CHANGELOG.md`](../../Docs/UltraFIBU/CHANGELOG.md)
 
-> **Status: phase A1.** The headless engine and the `ultrafibu` command line are
-> built and tested. The German UI waits for `UltraCanvasDataGrid` (proposal
-> §3.3); DATEV, ELSTER, OSS, bank import and the journal are the phases after
-> that. Nothing here files a tax return yet.
+> **Status:** the engine, the `ultrafibu` command line and the German window
+> are built and tested. Done: documents and the journal (posting, payment,
+> reversal, GoBD hash chain, period locking), the invoice PDF, DATEV export and
+> import, bank-statement import with payment matching, the UStVA with its
+> ELSTER XML file (phase A5), the One-Stop-Shop return (phase A6), the EU VAT
+> rates table, and one book shared on a PostgreSQL server (phase A8, engine
+> only). Not done: the ZM, XRechnung / ZUGFeRD (phase A7), server mode in the
+> window and the commands, and filing itself - UltraFIBU writes the ELSTER and
+> OSS files, and they are uploaded by hand.
 
 ## Layout
 
@@ -129,8 +134,9 @@ a file - or with one that holds no bookkeeping yet - the window starts with a
 form that sets one up or opens an existing one. Where the UI library cannot be
 built, `ultrafibu` is the commands alone.
 
-Four tabs over the same file the CLI writes: **Belege**, **Journal**, **Summen
-und Salden** and **Partner**. Each is a table you can sort by clicking a column
+Four tables over the same file the CLI writes: **Belege**, **Journal**,
+**Summen und Salden** and **Partner** - plus **EU-Steuersätze** (the rates
+table and its editor) and **Beleg erfassen**, the entry form. Each is a table you can sort by clicking a column
 and narrow by typing; amounts sort by their value and dates by their day, not
 by how they read as text. The summary line under each table describes the rows
 actually showing, so filtering to one customer gives that customer's open
@@ -139,10 +145,12 @@ total and says it is filtered.
 The journal re-checks the hash chain and the double entry every time it loads
 and reports both in its summary line.
 
-Two buttons write: **Beleg buchen** posts the selected draft, and **Rechnung
-als PDF** prints it. Everything else is read-only — entering a document is
-`ultrafibu beleg-neu` until the position editor exists. Both buttons go through
-the store, so a frozen period or an already-posted document is refused there
+The buttons that write: **Neue Rechnung** and **Eingangsrechnung erfassen** open
+the entry form, which offers per position only the tax keys the partner allows;
+**Beleg hochladen** copies PDFs and photographed documents into the archive (or drop them on
+the window);
+**Beleg buchen** posts the selected draft; and **Rechnung als PDF** prints it.
+The tables themselves are read-only. Every button goes through the store, so a frozen period or an already-posted document is refused there
 and the reason appears in the status line.
 
 ## The decisions worth knowing
