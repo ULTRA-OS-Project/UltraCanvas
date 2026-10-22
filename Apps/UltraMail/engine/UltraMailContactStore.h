@@ -3,7 +3,6 @@
 // sections, each with any number of emails / phones. A global store (not
 // per-account) so contacts are shared across accounts, mirroring LocalStore's
 // UltraDatabase-backed design.
-// Version: 0.3.0 - RemoveAll (a batch delete in one transaction)
 // Version: 0.2.0 - SaveAll (a batch in one transaction), KnownAddresses; the
 //                  database in WAL mode, as the mail index is
 // Version: 0.1.0 (Phase 2)
