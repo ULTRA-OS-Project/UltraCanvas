@@ -319,6 +319,17 @@ std::string ExportCSVToString(const CSVExportOptions& options, int sheetIndex = 
 const std::string& GetLastError() const;
 ```
 
+The CSV writer's quoting is public in `UltraCanvasCSVImport.h`, for a writer
+that streams rows it never holds at once (UltraDBAdmin's table export), so it
+quotes exactly as the spreadsheet does:
+
+```cpp
+// One record: fields quoted as the options say (all, or those holding the
+// separator, the quote or a line break; a quote inside doubled), then the
+// options' line ending. UTF-8; CSVEncodeFromUtf8 turns it into the charset.
+std::string CSVFormatRecord(const std::vector<std::string>& fields, const CSVExportOptions& opt);
+```
+
 ### View Settings
 
 ```cpp

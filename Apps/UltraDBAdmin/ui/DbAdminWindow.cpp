@@ -11,6 +11,7 @@
 #include "DbAdminStructureDialog.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasCSVExportDialog.h"
 #include "UltraCanvasCSVImportDialog.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasPathUtf8.h"
@@ -18,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <filesystem>
 #include <utility>
 
 // ULTRADBADMIN_VERSION comes from the build alone: CMake reads the first line
@@ -189,6 +191,7 @@ std::string FirstLine(const std::string& script) {
 
 DbAdminWindow::~DbAdminWindow() {
     // Nothing posted from now on reaches the window; then the threads end.
+    *exportStop_ = true;
     alive_.reset();
     jobs_.Stop();
     runners_.clear();
@@ -249,7 +252,7 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     };
     // Staged changes are not lost to a closed window without a word.
     window_->onWindowClosing = [this]() -> bool {
-        if (committing_ || applying_ || importing_) {
+        if (committing_ || applying_ || importing_ || exporting_) {
             SetStatus("Changes are being written: close the window once that has finished.");
             return false;
         }
@@ -356,6 +359,11 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildBrowsePage() {
                                       "Put the rows of a CSV file or a workbook into this table, all or none");
     importButton_->SetOnClick([this]() { ImportIntoTable(); });
     bar->AddChild(importButton_);
+
+    exportButton_ = MakeToolbarButton("dbaExport", "Export…",
+                                      "Write every row of this table or view to a file: CSV, TSV, JSON, SQL or a workbook");
+    exportButton_->SetOnClick([this]() { ExportRows(ExportSource::Table); });
+    bar->AddChild(exportButton_);
 
     reloadButton_ = MakeToolbarButton("dbaReload", "Reload", "Read this page and the row count again");
     reloadButton_->SetOnClick([this]() {
@@ -527,6 +535,11 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
                                          "Run a SQL file (.sql, or .sql.gz) on the connection picked in the tree");
     importSqlButton_->SetOnClick([this]() { ImportSql(); });
     bar->AddChild(importSqlButton_);
+
+    exportRowsButton_ = MakeToolbarButton("dbaExportRows", "Export rows…",
+                                          "Write the rows shown below to a file: CSV, TSV, JSON, SQL or a workbook");
+    exportRowsButton_->SetOnClick([this]() { ExportRows(ExportSource::Result); });
+    bar->AddChild(exportRowsButton_);
 
     historyDropdown_ = CreateDropdown("dbaHistory", 0, 0, 260, kControlHeight);
     historyDropdown_->layoutItem.SetFlexShrink(0);
@@ -1107,6 +1120,7 @@ void DbAdminWindow::UpdateBrowseBar() {
     nextButton_->SetDisabled(!open || pageLoading_ || !more);
     reloadButton_->SetDisabled(!open);
     importButton_->SetDisabled(!ImportBlockReason().empty());
+    UpdateExportButtons();
     importButton_->SetTooltip(ImportBlockReason().empty()
                                   ? std::string("Put the rows of a CSV file or a workbook into this table, all or none")
                                   : ImportBlockReason());
@@ -1863,6 +1877,179 @@ void DbAdminWindow::ImportSql() {
     });
 }
 
+// ===== EXPORT =====
+
+void DbAdminWindow::UpdateExportButtons() {
+    if (!exportButton_ || !exportRowsButton_) return;
+    exportButton_->SetDisabled(!pager_ || exporting_);
+    exportRowsButton_->SetDisabled(exporting_ || sqlResultModel_->Rows().Columns().empty());
+}
+
+void DbAdminWindow::ExportRows(ExportSource source) {
+    if (exporting_) return;
+    std::string name;
+    if (source == ExportSource::Table) {
+        if (!pager_) { SetStatus("Open a table or view to export it."); return; }
+        name = pager_->Table().name;
+    } else {
+        if (sqlResultModel_->Rows().Columns().empty()) { SetStatus("Run a query, and pick a statement that returned rows."); return; }
+        name = "query result";
+    }
+    // The types are the framework's spreadsheet writers - workbooks, CSV,
+    // TSV - and the two this app writes itself: JSON and SQL.
+    FileDialogOptions options;
+    options.SetTitle(source == ExportSource::Table ? "Export " + objectLabel_ : std::string("Export the rows shown"))
+        .SetDefaultFileName(name + ".csv")
+        .SetParentWindow(window_.get());
+    UltraCanvasFileLoader::AddSaveTypes(options, MediaFormatCategory::Spreadsheet);
+    options.AddFilter("JSON (an object per row)", std::vector<std::string>{"json"});
+    options.AddFilter("SQL INSERT statements", std::vector<std::string>{"sql"});
+    const uint64_t generation = objectGen_;
+    UltraCanvasFileLoader::SaveFileDialog(options, [this, source, generation](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty()) return;
+        if (source == ExportSource::Table && generation != objectGen_) return;
+        StartExport(source, path);
+    });
+}
+
+void DbAdminWindow::StartExport(ExportSource source, const std::string& path) {
+    std::string extension = PathToUtf8(PathFromUtf8(path).extension());
+    for (auto& c : extension)
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    ExportOptions options;
+    if (extension == ".json") {
+        options.format = ExportFormat::Json;
+        RunExport(source, path, options);
+        return;
+    }
+    if (extension == ".sql") {
+        options.format = ExportFormat::Sql;
+        RunExport(source, path, options);
+        return;
+    }
+    if (extension == ".xlsx" || extension == ".ods") {
+        RunExport(source, path, options);           // the workbook path: see RunExport
+        return;
+    }
+    // Delimited text: the framework's Text Export dialog sets how it is written,
+    // previewed on the rows at hand.
+    const UltraDbResultSet& sample = source == ExportSource::Table ? browseModel_->Rows() : sqlResultModel_->Rows();
+    auto preview = std::make_shared<UltraCanvasSpreadsheet>("dbaExportPreview", 0, 0, 10, 10);
+    if (SpreadsheetSheet* sheet = preview->GetSheet(0)) {
+        for (size_t c = 0; c < sample.Columns().size(); ++c)
+            sheet->SetCellValue(0, static_cast<int>(c), sample.Columns()[c]);
+        for (size_t r = 0; r < sample.Size() && r < 50; ++r)
+            for (size_t c = 0; c < sample.Row(r).Size(); ++c)
+                sheet->SetCellValue(static_cast<int>(r) + 1, static_cast<int>(c), CsvField(sample.Row(r)[c]));
+    }
+    CSVExportOptions initial;
+    if (extension == ".tsv") initial.fieldSeparator = '\t';
+    ShowCSVExportDialog(
+        preview.get(), initial,
+        [this, source, path, preview](const CSVExportOptions& csv) {
+            ExportOptions chosen;
+            chosen.format = ExportFormat::Csv;
+            chosen.csv = csv;
+            RunExport(source, path, chosen);
+        },
+        window_.get());
+}
+
+void DbAdminWindow::RunExport(ExportSource source, const std::string& path, ExportOptions options) {
+    const ConnectionSpec* spec = source == ExportSource::Table ? store_.Find(objectConnectionId_)
+                                                               : store_.Find(sqlConnectionId_);
+    if (!spec || exporting_) return;
+    if (source == ExportSource::Table && !pager_) return;
+    const std::string connection = RegisteredName(*spec);
+    std::string extension = PathToUtf8(PathFromUtf8(path).extension());
+    for (auto& c : extension)
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    const bool workbook = extension == ".xlsx" || extension == ".ods";
+    options.engine = spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+    const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+    exporting_ = true;
+    UpdateExportButtons();
+    SetStatus("Exporting to " + name + "…");
+
+    std::weak_ptr<char> alive = alive_;
+    auto progress = [alive, this, name](size_t rows) {
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app || alive.expired()) return;
+        app->PostToUIThread([alive, this, name, rows]() {
+            if (!alive.expired() && exporting_)
+                SetStatus("Exporting to " + name + "… " + Grouped(static_cast<int64_t>(rows)) + " rows");
+        });
+    };
+    if (source == ExportSource::Result) {
+        const UltraDbResultSet rows = sqlResultModel_->Rows();
+        if (workbook) {
+            std::string error;
+            const bool ok = WriteWorkbook(path, "query result", rows, error);
+            FinishExport(ok ? UltraDbResult::Ok() : UltraDbResult::Error(UltraDbResultCode::Internal, name + ": " + error),
+                         rows.Size(), path, false);
+            return;
+        }
+        if (options.format == ExportFormat::Sql) {
+            UltraDb_QuoteIdentifier(connection, "query_result", options.table);
+            options.preamble = "-- The rows of a query: put the name of the table they go into in place of "
+                               "query_result.\n";
+        }
+        Background([this, connection, rows, path, options]() -> std::function<void()> {
+            size_t written = 0;
+            const UltraDbResult result = ExportResult(connection, rows, path, options, written);
+            return [this, result, written, path]() { FinishExport(result, written, path, false); };
+        });
+        return;
+    }
+
+    const UltraDbTableSchema table = pager_->Table();
+    const std::shared_ptr<std::atomic<bool>> stop = exportStop_;
+    const bool sqlite = spec->IsSqlite();
+    // One job on the queue, through a cursor: a page at a time, never the whole table.
+    Background([this, connection, table, path, options, workbook, stop, progress, sqlite]() mutable -> std::function<void()> {
+        std::string sql;
+        UltraDbResult result = TableQuery(connection, table, sql);
+        if (result && workbook) {
+            UltraDbResultSet rows;
+            bool truncated = false;
+            result = ReadRows(connection, sql, static_cast<size_t>(SpreadsheetLimits::MaxRows - 1), rows, truncated);
+            return [this, result, rows, path, truncated, table]() {
+                if (!result) { FinishExport(result, 0, path, false); return; }
+                std::string error;
+                const bool ok = WriteWorkbook(path, table.name, rows, error);
+                FinishExport(ok ? result : UltraDbResult::Error(UltraDbResultCode::Internal, error), rows.Size(), path,
+                             truncated);
+            };
+        }
+        if (result && options.format == ExportFormat::Sql) {
+            result = UltraDb_QuoteQualifiedName(connection, table.schema, table.name, options.table);
+            if (result && sqlite) result = SqlitePreamble(connection, table, options.preamble);
+            else if (result)
+                options.preamble = "-- The rows of " + table.schema + "." + table.name +
+                                   " only: its definition is pg_dump --schema-only's to write.\n";
+        }
+        size_t written = 0;
+        if (result) result = ExportQuery(connection, sql, path, options, written, stop.get(), progress);
+        return [this, result, written, path]() { FinishExport(result, written, path, false); };
+    });
+}
+
+void DbAdminWindow::FinishExport(const UltraDbResult& result, size_t rows, const std::string& path, bool truncated) {
+    exporting_ = false;
+    UpdateExportButtons();
+    const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+    if (!result) {
+        SetStatus("Not exported: " + OneLine(result.message), true);
+        return;
+    }
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(PathFromUtf8(path), ec);
+    SetStatus(Grouped(static_cast<int64_t>(rows)) + (rows == 1 ? " row" : " rows") + " exported to " + name +
+                  (ec ? std::string() : " (" + HumanSize(static_cast<int64_t>(size)) + ")") +
+                  (truncated ? " - a workbook holds no more rows; export CSV for all of them." : "."),
+              truncated);
+}
+
 // ===== SQL =====
 
 SqlRunner* DbAdminWindow::RunnerFor(const ConnectionSpec& spec) {
@@ -1962,6 +2149,7 @@ void DbAdminWindow::ShowStatementRows(int row) {
     const UltraDbStatementResult* statement = statementModel_->At(row);
     if (statement && statement->returnsRows) sqlResultModel_->Replace(statement->rows);
     else sqlResultModel_->Clear();
+    UpdateExportButtons();
 }
 
 void DbAdminWindow::UpdateSqlBar() {

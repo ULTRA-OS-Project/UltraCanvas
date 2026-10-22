@@ -24,13 +24,10 @@ std::string Lower(std::string text) {
 
 // A column that takes numbers: by how its values come back, or - since an
 // exact numeric comes back as text (PostgreSQL's numeric) - by its declared
-// type, read as SQLite reads it for affinity.
+// type.
 bool Numeric(const UltraDbColumnSchema& column) {
-    if (column.valueType == UltraDbType::Int || column.valueType == UltraDbType::Double) return true;
-    const std::string type = Lower(column.declaredType);
-    for (const char* part : {"int", "num", "dec", "real", "doub", "floa", "serial"})
-        if (type.find(part) != std::string::npos) return true;
-    return false;
+    return column.valueType == UltraDbType::Int || column.valueType == UltraDbType::Double ||
+           NumericType(column.declaredType);
 }
 
 // A column an INSERT may leave out: the database fills it.
@@ -49,6 +46,13 @@ const ImportCell& CellAt(const ImportGrid& grid, size_t row, int column) {
 }
 
 } // namespace
+
+bool NumericType(const std::string& declaredType) {
+    const std::string type = Lower(declaredType);
+    for (const char* part : {"int", "num", "dec", "real", "doub", "floa", "serial"})
+        if (type.find(part) != std::string::npos) return true;
+    return false;
+}
 
 ImportCell ImportCell::Text(std::string text) {
     ImportCell cell;

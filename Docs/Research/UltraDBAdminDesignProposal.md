@@ -529,6 +529,9 @@ and workbooks through FileLoader's spreadsheet formats and the framework's
 Text Import dialog, mapped onto a table and inserted all or none; SQL files
 (`.sql`, `.sql.gz`) summarised and run on the console as one transaction.
 Stage 2 is complete apart from editing in the grid cell itself and blobs.
+**Export, stage 1's last item, followed**: a table through a cursor, or a
+query's rows, to CSV / TSV (the framework's Text Export dialog and writer),
+JSON, SQL INSERTs (with a SQLite table's own CREATE TABLE) or a workbook.
 
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for

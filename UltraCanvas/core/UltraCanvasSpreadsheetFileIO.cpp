@@ -1,6 +1,8 @@
 // core/UltraCanvasSpreadsheetFileIO.cpp
 // Spreadsheet file I/O implementation (ODS, XLSX, CSV); LoadFromFile also
 // dispatches .xls to LoadXLS (UltraCanvasSpreadsheetXlsIO.cpp)
+// Version: 1.0.3 - CSV rows through CSVFormatRecord (UltraCanvasCSVImport.h); with "quote all fields"
+//                  an empty cell is written "" as every other field is
 // Version: 1.0.2
 // Last Modified: 2026-10-09
 // Author: UltraCanvas Framework
@@ -1697,42 +1699,16 @@ public:
     // separator, quote character, quoting policy and line ending.
     static std::string Build(const SpreadsheetSheet* sheet, const CSVExportOptions& opt) {
         std::string out;
-        const char delimiter = opt.fieldSeparator;
-        const char quote = opt.textDelimiter;
-        const bool quoting = quote != 0;
-        const std::string eol =
-            (opt.lineEnding == CSVExportOptions::LineEnding::CRLF) ? "\r\n" : "\n";
-
         CellRange used = sheet->GetUsedRange();
-
+        std::vector<std::string> fields;
         for (int row = used.start.row; row <= used.end.row; ++row) {
+            fields.clear();
             for (int col = used.start.col; col <= used.end.col; ++col) {
-                if (col > used.start.col) out += delimiter;
-
                 const SpreadsheetCell* cell = sheet->GetCellIfExists(row, col);
-                if (!cell) continue;
-                std::string value = cell->GetDisplayValue();
-
-                bool needsQuote = quoting && (opt.quoteAllFields ||
-                    value.find(delimiter) != std::string::npos ||
-                    value.find(quote) != std::string::npos ||
-                    value.find('\n') != std::string::npos ||
-                    value.find('\r') != std::string::npos);
-
-                if (needsQuote) {
-                    out += quote;
-                    for (char c : value) {
-                        if (c == quote) out += quote;  // double the quote to escape
-                        out += c;
-                    }
-                    out += quote;
-                } else {
-                    out += value;
-                }
+                fields.push_back(cell ? cell->GetDisplayValue() : std::string());
             }
-            out += eol;
+            out += CSVFormatRecord(fields, opt);
         }
-
         return out;
     }
 

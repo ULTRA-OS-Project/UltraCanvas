@@ -396,6 +396,21 @@ add_test(NAME ArchiveRunTest COMMAND ArchiveRunTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ArchiveRunTest")
 
+# ===== CSV FORMAT RECORD TEST =====
+# CSVFormatRecord, the quoting both CSV writers share (the spreadsheet's export
+# and UltraDBAdmin's streamed one), and a record read back by CSVParse.
+# Header-only, no UI.
+message(STATUS "  Building CSVFormatRecordTest...")
+add_executable(CSVFormatRecordTest ${CMAKE_CURRENT_SOURCE_DIR}/CSVFormatRecordTest.cpp)
+target_include_directories(CSVFormatRecordTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(CSVFormatRecordTest PRIVATE cxx_std_20)
+set_target_properties(CSVFormatRecordTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME CSVFormatRecordTest COMMAND CSVFormatRecordTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: CSVFormatRecordTest")
+
 # ===== CODER MODULE REPAIR TEST =====
 # The repair of an installed Windows package whose ImageMagick coder carries
 # a system DLL's name, on a scratch coder folder: the pseudo-formats deleted,
