@@ -1,9 +1,10 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.4.0 - onCellDoubleClicked, GetCellRect
 // Version: 1.3.0 - the hover follows the rows when they scroll under a still pointer
 // Version: 1.2.0 - model callbacks inert once the view is destroyed; OnModelChanged
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-22
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
@@ -513,6 +514,17 @@ namespace UltraCanvas {
             colX += colW;
         }
         return -1;
+    }
+
+    Rect2Di UltraCanvasListView::GetCellRect(int row, int column) const {
+        if (!model || row < 0 || row >= model->GetRowCount() || column < 0) return Rect2Di();
+        const int colCount = model->GetColumnCount();
+        if (column >= std::max(colCount, 1)) return Rect2Di();
+        const Rect2Di rowRect = GetRowRect(row);
+        if (colCount <= 1) return rowRect;
+        int colX = rowRect.x;
+        for (int col = 0; col < column; ++col) colX += GetColumnWidth(col);
+        return Rect2Di(colX, rowRect.y, GetColumnWidth(column), rowRect.height);
     }
 
     int UltraCanvasListView::GetHeaderColumnAt(int x, int y, int* columnStartX) const {
@@ -1106,6 +1118,14 @@ namespace UltraCanvas {
         int row = GetRowAtY(event.pointer.y);
         if (row >= 0) {
             if (onItemDoubleClicked) onItemDoubleClicked(row);
+            if (onCellDoubleClicked) {
+                int colX = 0;
+                const int col = GetColumnAt(event.pointer.x, &colX);
+                if (col >= 0) {
+                    onCellDoubleClicked(row, col, Point2Di(event.pointer.x - colX,
+                                                           event.pointer.y - GetRowRect(row).y));
+                }
+            }
             RequestRedraw();
             return true;
         }

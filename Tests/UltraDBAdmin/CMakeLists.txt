@@ -12,6 +12,7 @@ enable_language(C)
 set(_dbadmin ${CMAKE_SOURCE_DIR}/Apps/UltraDBAdmin)
 add_executable(UltraDBAdminEngineTests
     UltraDBAdminEngineTests.cpp
+    ${_dbadmin}/engine/DbAdminBlob.cpp
     ${_dbadmin}/engine/DbAdminConnections.cpp
     ${_dbadmin}/engine/DbAdminEditBuffer.cpp
     ${_dbadmin}/engine/DbAdminExport.cpp

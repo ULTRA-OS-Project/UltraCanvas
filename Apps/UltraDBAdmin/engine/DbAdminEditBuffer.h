@@ -15,6 +15,10 @@
 //
 // A plain value class: the window keeps one for the table it shows, and hands
 // a copy to the worker that builds or commits the statements.
+//
+// A blob is the one value not typed: a file's bytes, loaded into the cell,
+// are bound as a blob (SQLite's BLOB, PostgreSQL's bytea).
+// Version: 0.2.0 - a blob value: a file's bytes for a cell
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -22,6 +26,7 @@
 #include <UltraDatabase/UltraDatabase.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
@@ -30,14 +35,18 @@ namespace UltraDBAdmin {
 
 // What one column of a change is set to.
 struct CellValue {
-    enum class Kind { Text, Null, Default };
+    enum class Kind { Text, Null, Default, Blob };
     Kind kind = Kind::Text;
     std::string text;             // Kind::Text: as typed
+    std::vector<uint8_t> bytes;   // Kind::Blob: the bytes
 
-    static CellValue Of(std::string value) { return CellValue{Kind::Text, std::move(value)}; }
-    static CellValue NullValue() { return CellValue{Kind::Null, {}}; }
-    static CellValue DefaultValue() { return CellValue{Kind::Default, {}}; }
-    bool operator==(const CellValue& other) const { return kind == other.kind && text == other.text; }
+    static CellValue Of(std::string value) { return CellValue{Kind::Text, std::move(value), {}}; }
+    static CellValue NullValue() { return CellValue{Kind::Null, {}, {}}; }
+    static CellValue DefaultValue() { return CellValue{Kind::Default, {}, {}}; }
+    static CellValue BlobValue(std::vector<uint8_t> value) { return CellValue{Kind::Blob, {}, std::move(value)}; }
+    bool operator==(const CellValue& other) const {
+        return kind == other.kind && text == other.text && bytes == other.bytes;
+    }
 };
 
 struct RowChange {
@@ -112,7 +121,7 @@ private:
 };
 
 // A value as it reads in the SQL preview: 'text' (quotes doubled), 42, NULL,
-// DEFAULT, X'0a1b…'. For showing only.
+// DEFAULT, X'0a1b…' (a blob: its first 32 bytes). For showing only.
 std::string PreviewLiteral(const UltraDbValue& value);
 std::string PreviewLiteral(const CellValue& value);
 

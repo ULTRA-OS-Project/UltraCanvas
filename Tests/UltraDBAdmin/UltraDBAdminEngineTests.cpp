@@ -14,9 +14,13 @@
 // inserted all or none. And exporting: CSV, TSV, JSON and SQL written row by
 // row through a cursor, read back exactly, a SQL file that rebuilds the table
 // on SQLite and refills one on PostgreSQL, and a stopped export leaving the
-// file that was there.
+// file that was there. And Browse's filters (bound values, LIKE escaped,
+// ILIKE on PostgreSQL), a blob staged and written, rows copied as CSV, JSON
+// and INSERTs, a blob's kind and hex dump, the table a SELECT reads.
+// Version: 0.2.0 - filters, blobs, rows as text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "DbAdminBlob.h"
 #include "DbAdminConnections.h"
 #include "DbAdminEditBuffer.h"
 #include "DbAdminExport.h"
@@ -240,6 +244,214 @@ void TestPager() {
     Check(!oddPager.HasStableOrder(), "a table without a key says its order is not stable");
     Check(oddPager.LoadPage(0, page).success && page.Size() == 1, "and still pages");
     UltraDb_CloseConnection(c);
+}
+
+// A PostgreSQL connection registered and open under `name`, or "" when none
+// is configured or reached (a failure instead when one is required).
+std::string PostgresConnection(const std::string& name) {
+    const char* database = std::getenv("ULTRAFIBU_TEST_PG_DB");
+    const bool required = std::getenv("ULTRAFIBU_TEST_PG_REQUIRED") != nullptr;
+    if (!database || !*database) {
+        Check(!required, "a PostgreSQL server is configured");
+        std::printf("  [SKIP] no PostgreSQL configured (ULTRAFIBU_TEST_PG_DB)\n");
+        return std::string();
+    }
+    auto env = [](const char* key, const char* fallback) {
+        const char* v = std::getenv(key);
+        return std::string(v && *v ? v : fallback);
+    };
+    UltraDbConnectionConfig cfg;
+    cfg.name = name;
+    cfg.driver = "postgresql";
+    cfg.database = database;
+    cfg.host = env("ULTRAFIBU_TEST_PG_HOST", "/var/run/postgresql");
+    cfg.port = std::atoi(env("ULTRAFIBU_TEST_PG_PORT", "5432").c_str());
+    cfg.user = env("ULTRAFIBU_TEST_PG_USER", "");
+    cfg.tls = UltraDbTls::Disable;       // the local test server
+    if (!UltraDb_RegisterConnection(cfg) || !UltraDb_OpenConnection(name)) {
+        Check(!required, "the PostgreSQL server is reached");
+        std::printf("  [SKIP] PostgreSQL not reached\n");
+        UltraDb_CloseConnection(name);
+        return std::string();
+    }
+    return name;
+}
+
+int64_t Counted(const TablePager& pager) {
+    int64_t n = -1;
+    if (!pager.CountRows(n).success) return -1;
+    return n;
+}
+
+void TestPagerFilters() {
+    Section("Browse filters (SQLite)");
+    TempDir dir;
+    ConnectionStore store;
+    store.OpenInMemory();
+    const std::string c = MakeSqlite(store, dir, 450);
+    UltraDb_Exec(c, "INSERT INTO items(id, label, weight) VALUES (451, NULL, 1), (452, '50% off', 2), "
+                    "(453, '50 off', 3), (454, 'a_b', 4), (455, 'axb', 5)");
+    UltraDbTableSchema table;
+    UltraDb_DescribeTable(c, "main", "items", table);
+    TablePager pager(c, table, 200, SqlEngine::Sqlite);
+    std::string error;
+
+    Check(!pager.SetFilter({"nope", FilterOp::Equals, "1"}, error) && !error.empty(), "an unknown column is refused");
+    Check(!pager.SetFilter({"label", FilterOp::Contains, ""}, error), "a comparison needs a value");
+    Check(pager.SetFilter({"label", FilterOp::Contains, "ITEM 1"}, error), "a filter is set");
+    Check(Counted(pager) == 111, "contains matches anywhere, in any case (item 1, 10-19, 100-199)");
+    Check(pager.SetFilter({"label", FilterOp::StartsWith, "item 4"}, error) && pager.Filters().size() == 1,
+          "a second filter for the column replaces the first");
+    Check(Counted(pager) == 62, "starts with (item 4, 40-49, 400-450)");
+    Check(pager.SetFilter({"weight", FilterOp::Greater, "200"}, error) && pager.Filters().size() == 2,
+          "a filter on another column is added");
+    Check(Counted(pager) == 11, "both must hold (item 4, 40-49); a number compares as a number");
+    pager.RemoveFilter("label");
+    Check(Counted(pager) == 49, "weight > 200: ids 1-49");
+    UltraDbResultSet page;
+    Check(pager.LoadPage(0, page).success && page.Size() == 49 && page.Row(0)["id"].AsInt64() == 1,
+          "the page holds the filtered rows, in key order");
+
+    pager.ClearFilters();
+    pager.SetFilter({"label", FilterOp::Contains, "50%"}, error);
+    Check(Counted(pager) == 1, "a % in the value is matched literally");
+    pager.SetFilter({"label", FilterOp::Contains, "a_b"}, error);
+    Check(Counted(pager) == 1, "so is an _");
+    pager.SetFilter({"label", FilterOp::IsNull, ""}, error);
+    Check(Counted(pager) == 1, "is NULL takes no value");
+    pager.SetFilter({"label", FilterOp::IsNotNull, ""}, error);
+    Check(Counted(pager) == 454, "is not NULL");
+    pager.SetFilter({"id", FilterOp::Equals, "300"}, error);
+    pager.SetFilter({"weight", FilterOp::LessOrEqual, "75"}, error);
+    Check(Counted(pager) == 1, "= on a number column, with <=");
+
+    std::string sql;
+    pager.ClearFilters();
+    pager.SetFilter({"label", FilterOp::Contains, "x"}, error);
+    pager.PageSql(sql);
+    Check(sql == "SELECT * FROM \"main\".\"items\" WHERE CAST(\"label\" AS TEXT) LIKE ? ESCAPE '\\' "
+                 "ORDER BY \"id\" ASC LIMIT ? OFFSET ?",
+          "the value is a bound parameter, never written in: " + sql);
+    Check(FilterText({"total", FilterOp::GreaterOrEqual, "10"}) == "total ≥ '10'" &&
+          FilterText({"note", FilterOp::IsNull, ""}) == "note is NULL",
+          "a filter reads as a short phrase");
+    UltraDb_CloseConnection(c);
+}
+
+void TestPagerFiltersPostgres() {
+    Section("Browse filters, blobs (PostgreSQL)");
+    const std::string c = PostgresConnection("dbadmin-filter-pg");
+    if (c.empty()) return;
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    UltraDb_Exec(c, "CREATE SCHEMA \"" + schema + "\"");
+    const std::string items = "\"" + schema + "\".items";
+    UltraDb_Exec(c, "CREATE TABLE " + items + " (id serial PRIMARY KEY, label text, qty integer, "
+                    "seen date, data bytea)");
+    UltraDb_Exec(c, "INSERT INTO " + items + " (label, qty, seen) VALUES ('Red Pen', 5, '2026-01-02'), "
+                    "('blue pen', 12, '2026-03-04'), ('Ink', 40, NULL), ('100% cotton', 7, '2026-05-06')");
+    UltraDbTableSchema table;
+    Check(UltraDb_DescribeTable(c, schema, "items", table).success, "the table is described");
+    TablePager pager(c, table, 200, SqlEngine::Postgres);
+    std::string error;
+    pager.SetFilter({"label", FilterOp::Contains, "PEN"}, error);
+    Check(Counted(pager) == 2, "contains ignores case on PostgreSQL too (ILIKE)");
+    pager.SetFilter({"label", FilterOp::Contains, "100%"}, error);
+    Check(Counted(pager) == 1, "a % is matched literally");
+    pager.ClearFilters();
+    pager.SetFilter({"qty", FilterOp::GreaterOrEqual, "10"}, error);
+    Check(Counted(pager) == 2, "an integer column compares with the typed value as a number");
+    pager.SetFilter({"seen", FilterOp::Less, "2026-04-01"}, error);
+    Check(Counted(pager) == 1, "a date compares as a date");
+    pager.ClearFilters();
+    pager.SetFilter({"seen", FilterOp::IsNull, ""}, error);
+    UltraDbResultSet page;
+    Check(pager.LoadPage(0, page).success && page.Size() == 1 && page.Row(0)["label"].AsString() == "Ink",
+          "is NULL, and the page is filtered");
+    pager.ClearFilters();
+    pager.SetFilter({"qty", FilterOp::Equals, "many"}, error);
+    int64_t none = 0;
+    Check(!pager.CountRows(none).success, "a value the column cannot take is the database's error");
+
+    // A blob staged into a bytea column and written.
+    std::vector<uint8_t> bytes = {0x89, 'P', 'N', 'G', 0x00, 0xff, 0x10};
+    UltraDbResultSet rows = Rows(c, "SELECT * FROM " + items + " WHERE id = 1");
+    EditBuffer edits(table);
+    Check(edits.UpdateRow(rows.Row(0), {{"data", CellValue::BlobValue(bytes)}}, error), "a blob is staged");
+    size_t failed = 0;
+    Check(edits.Commit(c, failed).success, "and committed");
+    rows = Rows(c, "SELECT data FROM " + items + " WHERE id = 1");
+    Check(rows.Size() == 1 && rows.Row(0)["data"].AsBlob() == bytes, "the bytea holds the bytes exactly");
+
+    UltraDb_Exec(c, "DROP SCHEMA \"" + schema + "\" CASCADE");
+    UltraDb_CloseConnection(c);
+}
+
+void TestBlobsAndRowsText() {
+    Section("Blobs, rows as text");
+    TempDir dir;
+    ConnectionStore store;
+    store.OpenInMemory();
+    const std::string c = MakeSqlite(store, dir, 2);
+    UltraDb_Exec(c, "CREATE TABLE files(id INTEGER PRIMARY KEY, name TEXT, data BLOB)");
+    UltraDb_Exec(c, "INSERT INTO files VALUES (1, 'a', X'0102'), (2, 'b', NULL)");
+    UltraDbTableSchema files;
+    UltraDb_DescribeTable(c, "main", "files", files);
+    UltraDbResultSet rows = Rows(c, "SELECT * FROM files ORDER BY id");
+
+    std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n', 0, 0, 0, 13};
+    EditBuffer edits(files);
+    std::string error;
+    Check(edits.UpdateRow(rows.Row(0), {{"data", CellValue::BlobValue({0x01, 0x02})}}, error) && edits.Empty(),
+          "the same bytes are no change");
+    Check(edits.UpdateRow(rows.Row(1), {{"data", CellValue::BlobValue(png)}}, error) && edits.Count() == 1,
+          "a file's bytes are staged for a cell");
+    const CellValue* staged = edits.PendingCell(rows.Row(1), "data");
+    Check(staged && staged->kind == CellValue::Kind::Blob && staged->bytes == png, "the grid sees the staged bytes");
+    std::vector<GeneratedStatement> statements;
+    edits.Statements(c, statements);
+    Check(statements.size() == 1 && statements[0].params[0].Type() == UltraDbType::Blob &&
+              Has(statements[0].preview, "X'89504e470d0a1a0a0000000d'"),
+          "it binds as a blob and previews as X'..'");
+    size_t failed = 0;
+    Check(edits.Commit(c, failed).success, "it is written");
+    UltraDbResultSet back = Rows(c, "SELECT data FROM files WHERE id = 2");
+    Check(back.Row(0)["data"].AsBlob() == png, "and reads back exactly");
+
+    // What a blob is.
+    Check(SniffBlob(png).image && SniffBlob(png).extension == "png", "a PNG by its signature");
+    Check(SniffBlob({0xff, 0xd8, 0xff, 0xe0}).extension == "jpg", "a JPEG");
+    const std::string pdf = "%PDF-1.7\n";
+    Check(SniffBlob(std::vector<uint8_t>(pdf.begin(), pdf.end())).extension == "pdf", "a PDF");
+    const std::string svg = "<?xml version=\"1.0\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"/>";
+    Check(SniffBlob(std::vector<uint8_t>(svg.begin(), svg.end())).image, "an SVG is a picture");
+    const std::string text = "Grüße\nline two";
+    Check(SniffBlob(std::vector<uint8_t>(text.begin(), text.end())).text, "UTF-8 text is text");
+    Check(!SniffBlob({0x00, 0x01, 0x02}).text && SniffBlob({0x00, 0x01}).extension == "bin",
+          "anything else is binary data");
+    const std::string dump = HexDump({'A', 'B', 0x00, 0xff});
+    Check(dump == "00000000  41 42 00 ff                                       |AB..|\n",
+          "a hex dump line: offset, bytes, characters: " + dump);
+    Check(Has(HexDump(std::vector<uint8_t>(40, 7), 16), "24 B more"), "a long blob says how much is not shown");
+
+    // Rows as text.
+    std::vector<UltraDbRow> picked = {rows.Row(0), rows.Row(1)};
+    const std::vector<std::string> columns = rows.Columns();
+    Check(RowsText(columns, picked, ExportFormat::Csv, SqlEngine::Sqlite, "") == "id,name,data\n1,a,\\x0102\n2,b,\n",
+          "CSV: a header, NULL empty: " + RowsText(columns, picked, ExportFormat::Csv, SqlEngine::Sqlite, ""));
+    const std::string json = RowsText(columns, picked, ExportFormat::Json, SqlEngine::Sqlite, "");
+    Check(json == "[\n{\"id\": 1, \"name\": \"a\", \"data\": \"\\\\x0102\"},\n{\"id\": 2, \"name\": \"b\", \"data\": null}\n]\n",
+          "JSON: an array of objects: " + json);
+    const std::string sql = RowsText(columns, picked, ExportFormat::Sql, SqlEngine::Sqlite, QuotedName("my \"files\""));
+    Check(sql == "INSERT INTO \"my \"\"files\"\"\" (\"id\", \"name\", \"data\") VALUES (1, 'a', X'0102');\n"
+                 "INSERT INTO \"my \"\"files\"\"\" (\"id\", \"name\", \"data\") VALUES (2, 'b', NULL);\n",
+          "SQL: one INSERT per row, every name quoted: " + sql);
+    UltraDb_CloseConnection(c);
+
+    Check(StatementTable("SELECT a FROM orders WHERE x = 1") == "orders", "the table a SELECT reads");
+    Check(StatementTable("select * from \"main\".\"line items\" o join x") == "\"main\".\"line items\"",
+          "schema-qualified, as written");
+    Check(StatementTable("SELECT (SELECT 1 FROM t), 2") == "" && StatementTable("SELECT * FROM (SELECT 1)") == "",
+          "not one inside parentheses, nor a subquery");
 }
 
 void TestSqlRunner() {
@@ -1128,6 +1340,9 @@ int main() {
     TestSqlScript();
     TestImport();
     TestExport();
+    TestPagerFilters();
+    TestPagerFiltersPostgres();
+    TestBlobsAndRowsText();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

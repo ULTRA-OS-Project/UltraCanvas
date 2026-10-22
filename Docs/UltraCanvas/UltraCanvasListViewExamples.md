@@ -11,6 +11,7 @@
   - [Styling](#styling)
   - [Column widths](#column-widths)
   - [Scrolling](#scrolling)
+  - [Where a cell is](#where-a-cell-is)
   - [Tooltips](#tooltips)
 - [Model Reference](#model-reference)
   - [Data roles](#data-roles)
@@ -22,6 +23,7 @@
   - [UltraCanvasDefaultListDelegate](#ultracanvasdefaultlistdelegate)
 - [Selection Reference](#selection-reference)
 - [Events / Callbacks](#events--callbacks)
+  - [Editing a cell in place](#editing-a-cell-in-place)
 - [Usage Examples](#usage-examples)
   - [Simple single-selection list](#simple-single-selection-list)
   - [Multi-column list with header](#multi-column-list-with-header)
@@ -41,7 +43,7 @@
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.0.2
+**Version:** 1.1.0 - `onCellDoubleClicked`, `GetCellRect`: an editor over a cell
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -269,6 +271,19 @@ hidden), and the element's `width` and `height`. For diagnostics and tests. The 
 every paint and, if the scrollbar disagrees (a model that grew between an
 arrange and the paint), logs `scrollbar was stale at paint` to
 `debugOutput` and refreshes it first.
+
+### Where a cell is
+
+```cpp
+int GetColumnAt(int x, int* columnStartX = nullptr) const;
+Rect2Di GetCellRect(int row, int column) const;
+```
+
+`GetColumnAt` names the column under an element-local x - the column a
+right-click (`onContextMenu`'s `event.pointer`) landed in. `GetCellRect` is a
+cell's box, element-local and as scrolled now: its column's left edge and
+width, its row's top and height; empty for a row or column that does not
+exist (see [Editing a cell in place](#editing-a-cell-in-place)).
 
 ### Tooltips
 
@@ -519,6 +534,9 @@ std::function<bool(const UCEvent&)> onKeyDown;
 // the pointer, so a preview hung on them follows the scroll too.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+// A double-click on a cell, after onItemDoubleClicked: the column it hit,
+// for an owner that edits the cell in place.
+std::function<void(int row, int column, const Point2Di& posInCell)> onCellDoubleClicked;
 
 // A click (press and release in the same cell) on a column header. A press
 // on a resize border starts a drag instead and never reports a click.
@@ -530,7 +548,53 @@ std::function<void(int column)> onHeaderClicked;
 std::function<void(int row, const UCEvent& event)> onContextMenu;
 ```
 
-`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
+`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second; `onItemDoubleClicked` and `onCellDoubleClicked` likewise on a double-click.
+
+### Editing a cell in place
+
+The view draws its cells and edits none: an owner that edits a cell lays a
+text field over it. `GetCellRect(row, column)` says where the cell is,
+element-local and as scrolled now; `GetPositionInWindow()` turns it into the
+window's coordinates. A field absolutely positioned in the container the
+list sits in covers the cell:
+
+```cpp
+class GridEditor {
+public:
+    GridEditor(std::shared_ptr<UltraCanvasContainer> page, std::shared_ptr<UltraCanvasListView> list)
+        : page_(std::move(page)), list_(std::move(list)) {
+        editor_ = CreateTextInput("cellEditor", 0, 0, 100, 24);
+        editor_->layoutItem.position = CSSLayout::Position();
+        editor_->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        editor_->SetVisible(false);
+        editor_->onEnterPressed = [this](const std::string& text) { Store(text); return true; };
+        editor_->onEscapePressed = [this]() { editor_->SetVisible(false); return true; };
+        page_->AddChild(editor_);
+        list_->onCellDoubleClicked = [this](int row, int column, const Point2Di&) { Edit(row, column); };
+    }
+
+private:
+    void Edit(int row, int column) {
+        const Rect2Di cell = list_->GetCellRect(row, column);
+        const Point2Df at = list_->GetPositionInWindow();
+        const Point2Df origin = page_->GetPositionInWindow();
+        editor_->layoutItem.position->left = CSSLayout::Dimension::Px(at.x + cell.x - origin.x);
+        editor_->layoutItem.position->top = CSSLayout::Dimension::Px(at.y + cell.y - origin.y);
+        editor_->SetElementSize(CSSLayout::Dimension::Px(static_cast<float>(cell.width)),
+                                CSSLayout::Dimension::Px(static_cast<float>(cell.height)));
+        editor_->SetVisible(true);
+        editor_->SetFocus(true);
+        page_->InvalidateLayout();
+    }
+    void Store(const std::string& text);             // your model's update
+    std::shared_ptr<UltraCanvasContainer> page_;
+    std::shared_ptr<UltraCanvasListView> list_;
+    std::shared_ptr<UltraCanvasTextInput> editor_;
+};
+```
+
+UltraDBAdmin's Browse grid edits its cells this way
+(`Apps/UltraDBAdmin/ui/DbAdminWindow.cpp`, `BeginCellEdit`).
 
 `onHeaderClicked` is where sorting is wired up: re-order the rows by the
 column, toggling the direction when it is already the sort column, then tell

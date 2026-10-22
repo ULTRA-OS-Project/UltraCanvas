@@ -23,6 +23,7 @@ endif()
 
 add_executable(UltraDBAdmin
     main.cpp
+    engine/DbAdminBlob.cpp
     engine/DbAdminConnections.cpp
     engine/DbAdminEditBuffer.cpp
     engine/DbAdminExport.cpp
@@ -35,6 +36,7 @@ add_executable(UltraDBAdmin
     engine/DbAdminSqliteTable.cpp
     engine/DbAdminStructureEdit.cpp
     engine/DbAdminTablePager.cpp
+    ui/DbAdminBlobDialog.cpp
     ui/DbAdminConnectionDialog.cpp
     ui/DbAdminImportDialog.cpp
     ui/DbAdminModels.cpp

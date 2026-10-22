@@ -3,10 +3,16 @@
 // the tree of connections -> schemas -> tables, views and sequences on the
 // left, and three tabs on the right:
 //   Browse    - the selected table a page at a time (TablePager), sorted on
-//               the server by a click on a column header, Previous / Next;
-//               and edited: a row changed, added or deleted is staged
-//               (EditBuffer), shown in the grid and as SQL, and written by
-//               Commit in one transaction, or dropped by Revert;
+//               the server by a click on a column header, Previous / Next,
+//               narrowed by filters (a column, a comparison, a value: bound,
+//               one per column); and edited: a row changed, added or deleted
+//               is staged (EditBuffer), shown in the grid and as SQL, and
+//               written by Commit in one transaction, or dropped by Revert.
+//               A double-click edits a cell in place; a blob is viewed (the
+//               picture, or a hex dump), saved to a file or loaded from one;
+//               selected rows are copied as CSV, JSON or INSERT statements
+//               (the right-click menu, Ctrl+C for CSV) - as the console's
+//               rows are;
 //   Structure - its columns, its keys, indexes, foreign keys and triggers,
 //               and a view's definition; and edited: a column added,
 //               changed, renamed or dropped, an index added or dropped, the
@@ -31,6 +37,7 @@
 // PostToUIThread, guarded by a token that dies with the window. A result for
 // something no longer shown - another table was picked meanwhile - is
 // recognised by its generation number and dropped.
+// Version: 0.2.0 - filters, editing in the cell, blobs, rows copied as text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -51,9 +58,11 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextArea.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
@@ -135,6 +144,36 @@ private:
     void SortBrowse(int column);
     void UpdateBrowseBar();
     void ClearObject(const std::string& message);
+
+    // ===== FILTERS =====
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildFilterBar();
+    void FillFilterColumns();               // the open table's columns, in the dropdown
+    void ShowFilterOf(int column);          // the column's filter, if it has one, in the fields
+    void ApplyFilter();                     // the fields' filter, for their column
+    void RemoveFilter();                    // the chosen column's
+    void ClearFilters();
+    // Browse with `pager` from now on: page 0 again, counted again.
+    void ReplacePager(std::shared_ptr<TablePager> pager);
+    void UpdateFilterBar();
+
+    // ===== IN THE CELL =====
+    void BeginCellEdit(int row, int column);
+    void FinishCellEdit(bool keep);         // keep: stage what was typed
+    void SetCellNull(int row, int column);
+    const UltraDbColumnSchema* BrowseColumn(int column) const;   // null: not a column of the table
+    bool IsBlobColumn(int column) const;
+
+    // ===== BLOBS =====
+    // The cell's bytes - staged ones first - in the blob dialog.
+    void ViewBlob(int row, int column, bool console);
+    void SaveBlob(const std::vector<uint8_t>& bytes, const std::string& name);
+    void LoadBlob(int row, int column);     // a file's bytes, staged for the cell
+
+    // ===== COPY =====
+    enum class RowsSource { Browse, Console };
+    void ShowBrowseMenu(int row, const UltraCanvas::UCEvent& event);
+    void ShowResultMenu(int row, const UltraCanvas::UCEvent& event);
+    void CopyRows(RowsSource source, ExportFormat format);
 
     // ===== EDITING =====
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildEditBar();
@@ -243,6 +282,27 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> browseNote_;
     std::shared_ptr<ResultSetModel> browseModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> browseView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> browsePage_;
+    uint64_t countGen_ = 0;              // the row count asked for last; an older answer is dropped
+
+    // Filters: the column, the comparison, the value, and what is set.
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> filterColumn_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> filterOp_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filterValue_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> filterApplyButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> filterRemoveButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> filterClearButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> filterSummary_;
+
+    // The editor laid over a cell while it is edited, and what it edits.
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> cellEditor_;
+    bool cellEditing_ = false;
+    UltraDbRow cellRow_;                 // the row as read: its key addresses it
+    std::string cellColumn_;
+    uint64_t cellGen_ = 0;
+
+    // The right-click menu shown last; kept until the next one.
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> menu_;
 
     // Editing: the staged changes of the table Browse shows.
     EditBuffer edits_;
@@ -302,6 +362,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> sqlInfo_;
     std::shared_ptr<StatementModel> statementModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> statementView_;
+    int shownStatement_ = -1;            // the statement whose rows sqlResultModel_ holds
     std::shared_ptr<ResultSetModel> sqlResultModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> sqlResultProxy_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> sqlResultView_;
