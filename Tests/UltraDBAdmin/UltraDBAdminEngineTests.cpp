@@ -2,9 +2,14 @@
 // UltraDBAdmin's engine without a window: the connection store (its file
 // never holds a password, its vault does), cell formatting, the Browse pager
 // (pages, sorting, quoting), the SQL runner (a script on a worker thread,
-// Stop, history), the job queue the window's queries run on, and the staged
-// row edits of Browse (the SQL they become, one transaction, all or nothing).
-// SQLite throughout, in temporary folders only.
+// Stop, history), the job queue the window's queries run on, the staged
+// row edits of Browse (the SQL they become, one transaction, all or nothing),
+// and the staged structure edits of Structure: the CREATE TABLE parser, the
+// DDL per engine, SQLite's table rebuild keeping rows, CHECKs, indexes,
+// triggers, foreign keys and AUTOINCREMENT. SQLite in temporary folders; the
+// structure edits also on PostgreSQL where the tests of UltraDatabase find
+// one (ULTRAFIBU_TEST_PG_*, as CI sets them; REQUIRED makes a missing server
+// a failure, not a skip).
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnections.h"
@@ -12,16 +17,20 @@
 #include "DbAdminFormat.h"
 #include "DbAdminJobQueue.h"
 #include "DbAdminSqlRunner.h"
+#include "DbAdminSqliteTable.h"
+#include "DbAdminStructureEdit.h"
 #include "DbAdminTablePager.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include <UltraDatabase/UltraDatabase.h>
 #include <UltraVault/UltraVault.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -364,6 +373,386 @@ void TestEditBuffer() {
     UltraDb_CloseConnection(c);
 }
 
+bool Has(const std::string& text, const std::string& part) { return text.find(part) != std::string::npos; }
+
+size_t StepWith(const std::vector<DdlStep>& steps, const std::string& part) {
+    for (size_t i = 0; i < steps.size(); ++i)
+        if (Has(steps[i].sql, part)) return i;
+    return steps.size();
+}
+
+size_t ColumnAt(const StructureEdit& edit, const std::string& name) {
+    for (size_t i = 0; i < edit.Columns().size(); ++i)
+        if (edit.Columns()[i].name == name) return i;
+    return edit.Columns().size();
+}
+
+void TestSqliteTable() {
+    Section("Reading a CREATE TABLE");
+    std::string error;
+    Check(CheckSqlFragment("numeric(10, 2)", "The type", error), "a type with its precision is one fragment");
+    Check(CheckSqlFragment("'it''s'", "The default", error), "a quoted default with a doubled quote is one");
+    Check(!CheckSqlFragment("int; DROP TABLE x", "The type", error) && Has(error, ";"),
+          "a semicolon is refused: " + error);
+    Check(!CheckSqlFragment("text -- note", "The type", error), "so is a comment");
+    Check(!CheckSqlFragment("(1", "The default", error), "and an open parenthesis");
+    Check(!CheckSqlFragment("'open", "The default", error), "and an open quote");
+
+    Check(SqliteDefaultClause("0") == "DEFAULT 0", "a number is a default as it stands");
+    Check(SqliteDefaultClause("-1") == "DEFAULT -1", "so is a signed one");
+    Check(SqliteDefaultClause("'x'") == "DEFAULT 'x'", "and a string");
+    Check(SqliteDefaultClause("CURRENT_TIMESTAMP") == "DEFAULT CURRENT_TIMESTAMP", "and CURRENT_TIMESTAMP");
+    Check(SqliteDefaultClause("datetime('now')") == "DEFAULT (datetime('now'))",
+          "an expression gets the parentheses table_info leaves off");
+    Check(SqliteDefaultClause("(1 + 2)") == "DEFAULT (1 + 2)", "and is not wrapped twice");
+
+    const std::string sql =
+        "CREATE TABLE \"Order Items\" (\n"
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+        "  \"unit price\" NUMERIC(10, 2) NOT NULL DEFAULT 0 CHECK (\"unit price\" >= 0),\n"
+        "  note TEXT COLLATE NOCASE, -- a comment\n"
+        "  parent INTEGER REFERENCES \"Order Items\"(id) ON DELETE SET NULL NOT DEFERRABLE,\n"
+        "  total REAL GENERATED ALWAYS AS (\"unit price\" * 2) VIRTUAL,\n"
+        "  CONSTRAINT u UNIQUE (note), CHECK (id > 0))";
+    SqliteCreateTable parsed;
+    Check(ParseCreateTable(sql, parsed, error), "a definition with every kind of clause is read (" + error + ")");
+    Check(parsed.columns.size() == 5 && parsed.autoincrement && !parsed.withoutRowid,
+          "five columns, AUTOINCREMENT, a rowid table");
+    if (parsed.columns.size() == 5) {
+        const auto& price = parsed.columns[1];
+        Check(price.name == "unit price" && price.constraints.size() == 3 && price.constraints[0].kind == "NOT NULL" &&
+              price.constraints[1].kind == "DEFAULT" && price.constraints[2].kind == "CHECK",
+              "a quoted column name and its constraints");
+        Check(parsed.columns[3].constraints.size() == 1 && parsed.columns[3].constraints[0].kind == "REFERENCES",
+              "SET NULL and NOT DEFERRABLE stay inside REFERENCES");
+        Check(parsed.columns[4].constraints.size() == 1 && parsed.columns[4].constraints[0].kind == "GENERATED",
+              "a generated column");
+    }
+
+    ColumnRewrite rewrite;
+    rewrite.column = "UNIT PRICE";               // SQLite's names know no case
+    rewrite.setType = true;
+    rewrite.type = "REAL";
+    rewrite.setNotNull = true;
+    rewrite.notNull = false;
+    rewrite.setDefault = true;
+    rewrite.hasDefault = true;
+    rewrite.defaultExpression = "abs(-1.5)";
+    std::string rewritten;
+    Check(RewriteCreateTable(sql, "\"main\".\"_new\"", {rewrite}, rewritten, error), "the definition is rewritten");
+    Check(rewritten.rfind("CREATE TABLE \"main\".\"_new\" (\n  id INTEGER", 0) == 0, "under the new name: " + rewritten);
+    Check(Has(rewritten, "\"unit price\" REAL CHECK (\"unit price\" >= 0) DEFAULT (abs(-1.5)),\n"),
+          "only the changed column: its CHECK kept, NOT NULL gone, the new default: " + rewritten);
+    Check(Has(rewritten, "note TEXT COLLATE NOCASE, -- a comment\n") && Has(rewritten, "CHECK (id > 0))"),
+          "every other byte as it was");
+
+    Check(!ParseCreateTable("CREATE VIRTUAL TABLE t USING fts5(a)", parsed, error), "a virtual table is refused");
+    Check(!ParseCreateTable("CREATE TABLE t AS SELECT 1 AS a", parsed, error), "and CREATE TABLE AS SELECT");
+    Check(!ParseCreateTable("CREATE TABLE t (a INTEGER PRIMARY KEY FROBNICATE)", parsed, error) && Has(error, "FROBNICATE"),
+          "and a clause it does not know, by name: " + error);
+    Check(ParseCreateTable("CREATE TABLE t (a TEXT PRIMARY KEY, b) WITHOUT ROWID", parsed, error) &&
+              parsed.withoutRowid && parsed.columns.size() == 2,
+          "WITHOUT ROWID, and an untyped column");
+}
+
+// Apply a structure edit, reporting what failed.
+bool ApplyEdit(const std::string& c, const StructureEdit& edit, std::string& message) {
+    SqliteTableSource source;
+    if (edit.Engine() == SqlEngine::Sqlite) {
+        const UltraDbResult read = ReadSqliteTableSource(c, edit.Table().schema, edit.Table().name, source);
+        if (!read) { message = read.message; return false; }
+    }
+    std::vector<DdlStep> steps;
+    UltraDbResult result = edit.Plan(c, source, steps);
+    if (!result) { message = result.message; return false; }
+    size_t failed = 0;
+    result = StructureEdit::Apply(c, steps, failed);
+    if (!result) { message = result.message + " (in: " + (failed < steps.size() ? steps[failed].sql : "") + ")"; return false; }
+    return true;
+}
+
+void TestStructureEditSqlite() {
+    Section("Editing structure (SQLite)");
+    TempDir dir;
+    ConnectionStore store;
+    store.OpenInMemory();
+    const std::string c = MakeSqlite(store, dir, 0);
+    UltraDb_Exec(c, "PRAGMA foreign_keys = ON");
+    UltraDb_Exec(c, "CREATE TABLE parent(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL "
+                    "CHECK (length(name) < 20), price TEXT DEFAULT '0', note TEXT)");
+    UltraDb_Exec(c, "CREATE TABLE child(id INTEGER PRIMARY KEY, pid INTEGER REFERENCES parent(id))");
+    UltraDb_Exec(c, "CREATE INDEX parent_name ON parent(name)");
+    UltraDb_Exec(c, "CREATE TABLE log(what TEXT)");
+    UltraDb_Exec(c, "CREATE TRIGGER parent_log AFTER INSERT ON parent BEGIN INSERT INTO log VALUES (new.name); END");
+    UltraDb_Exec(c, "CREATE VIEW priced AS SELECT name, price FROM parent");
+    UltraDb_Exec(c, "INSERT INTO parent(name, price, note) VALUES ('a', '1.5', 'x'), ('b', '2', NULL), ('c', '3', NULL)");
+    UltraDb_Exec(c, "DELETE FROM parent WHERE id = 3");      // AUTOINCREMENT remembers 3
+    UltraDb_Exec(c, "INSERT INTO child(pid) VALUES (1), (2)");
+
+    UltraDbTableSchema parent, view;
+    UltraDb_DescribeTable(c, "main", "parent", parent);
+    UltraDb_DescribeTable(c, "main", "priced", view);
+    Check(!StructureEdit(view, SqlEngine::Sqlite).ReadOnlyReason().empty(), "a view's structure is not edited here");
+
+    StructureEdit edit(parent, SqlEngine::Sqlite);
+    std::string error;
+    const size_t price = ColumnAt(edit, "price");
+    ColumnDraft draft = edit.Columns()[price];
+    draft.type = "REAL";
+    draft.notNull = true;
+    draft.defaultExpression = "0";
+    Check(edit.UpdateColumn(price, draft, error) && edit.NeedsRebuild(), "a type change asks for a rebuild");
+    draft = edit.Columns()[ColumnAt(edit, "note")];
+    draft.name = "remark";
+    Check(edit.UpdateColumn(ColumnAt(edit, "note"), draft, error) && edit.Columns()[3].origin == "note",
+          "a rename keeps the column's origin");
+    ColumnDraft qty;
+    qty.name = "qty";
+    qty.type = "INTEGER";
+    qty.notNull = true;
+    Check(!edit.AddColumn(qty, error), "SQLite adds a NOT NULL column only with a default: " + error);
+    qty.hasDefault = true;
+    qty.defaultExpression = "1";
+    Check(edit.AddColumn(qty, error), "with one it is staged");
+    ColumnDraft clash = qty;
+    clash.name = "NAME";
+    Check(!edit.AddColumn(clash, error), "a name taken, in another case, is refused: " + error);
+    ColumnDraft bad = qty;
+    bad.name = "bad";
+    bad.type = "int); DROP TABLE child; --";
+    Check(!edit.AddColumn(bad, error), "a type that is not one fragment is refused: " + error);
+    Check(!edit.DropColumn(ColumnAt(edit, "id"), error), "a key column is not dropped: " + error);
+    Check(!edit.DropColumn(ColumnAt(edit, "name"), error) && Has(error, "parent_name"),
+          "nor an indexed one, naming the index: " + error);
+    Check(edit.AddIndex({"parent_price", {"price"}, false}, error), "a new index is staged");
+    Check(!edit.AddIndex({"PARENT_NAME", {"qty"}, false}, error), "an index name taken is refused");
+    Check(!edit.AddIndex({"none", {}, false}, error), "an index on nothing is refused");
+    Check(edit.Count() == 4 && !edit.Destructive(), "four changes, none of them a drop");
+
+    SqliteTableSource source;
+    Check(ReadSqliteTableSource(c, "main", "parent", source).success && source.foreignKeys &&
+              source.sequence == 3 && source.indexes.size() == 1 && source.triggers.size() == 1 &&
+              source.referencedBy == std::vector<std::string>{"child"},
+          "the source: foreign keys on, the sequence, the index, the trigger, who refers to it");
+    std::vector<DdlStep> steps;
+    Check(edit.Plan(c, source, steps).success, "the plan is made");
+    Check(!steps.empty() && steps.front().phase == DdlStep::Phase::Before &&
+              steps.front().sql == "PRAGMA foreign_keys = OFF" && steps.back().phase == DdlStep::Phase::After &&
+              steps.back().sql == "PRAGMA foreign_keys = ON",
+          "foreign keys go off before the transaction and on after it");
+    const size_t create = StepWith(steps, "CREATE TABLE \"main\".\"_dbadmin_new_parent\"");
+    const size_t rename = StepWith(steps, "RENAME COLUMN \"note\" TO \"remark\"");
+    const size_t add = StepWith(steps, "ADD COLUMN \"qty\" INTEGER NOT NULL DEFAULT 1");
+    const size_t index = StepWith(steps, "CREATE INDEX \"main\".\"parent_price\" ON \"parent\" (\"price\")");
+    Check(create < rename && rename < add && add < index && index < steps.size(),
+          "rebuild, then rename, then add, then the new index");
+    Check(create < steps.size() && Has(steps[create].sql, "price REAL DEFAULT 0 NOT NULL") == false &&
+              Has(steps[create].sql, "price REAL NOT NULL DEFAULT 0") &&
+              Has(steps[create].sql, "CHECK (length(name) < 20)"),
+          "the new definition rewrites price alone: " + (create < steps.size() ? steps[create].sql : ""));
+    Check(StepWith(steps, "INSERT INTO \"main\".\"_dbadmin_new_parent\" (\"id\", \"name\", \"price\", \"note\") SELECT") <
+              steps.size(),
+          "the rows are copied by name, the rowid alias with them");
+    Check(StepWith(steps, "foreign_key_check(\"child\")") < steps.size(), "the children are checked before COMMIT");
+    const std::string text = StructureEdit::PlanText(steps);
+    Check(Has(text, "PRAGMA foreign_keys = OFF;\nBEGIN;\n") && Has(text, "COMMIT;\n") &&
+              text.size() > text.rfind("COMMIT;") && Has(text.substr(text.rfind("COMMIT;")), "PRAGMA foreign_keys = ON;\n"),
+          "the preview shows where the transaction is");
+
+    std::string message;
+    Check(ApplyEdit(c, edit, message), "the edit is applied (" + message + ")");
+    const UltraDbResultSet types = Rows(c, "SELECT DISTINCT typeof(price) AS t FROM parent");
+    Check(types.Size() == 1 && types.Row(0)["t"].AsString() == "real", "the prices are REAL now");
+    Check(Rows(c, "SELECT count(*) AS n FROM child").Row(0)["n"].AsInt64() == 2, "the child rows are all there");
+    Check(Rows(c, "PRAGMA foreign_keys").Row(0)[0].AsInt64() == 1, "foreign keys are on again");
+    Check(Rows(c, "SELECT seq FROM sqlite_sequence WHERE name = 'parent'").Row(0)["seq"].AsInt64() == 3,
+          "AUTOINCREMENT goes on after 3, not after the highest row left");
+    Check(!UltraDb_Exec(c, "INSERT INTO parent(name) VALUES ('a name of far more than twenty characters')").success,
+          "the CHECK constraint is still there");
+    UltraDb_Exec(c, "INSERT INTO parent(name) VALUES ('d')");
+    const UltraDbResultSet d = Rows(c, "SELECT id, price, remark, qty FROM parent WHERE name = 'd'");
+    Check(d.Size() == 1 && d.Row(0)["id"].AsInt64() == 4 && d.Row(0)["price"].AsDouble() == 0.0 &&
+              d.Row(0)["qty"].AsInt64() == 1,
+          "a new row: number 4, the new default, the new column");
+    Check(Rows(c, "SELECT count(*) AS n FROM log").Row(0)["n"].AsInt64() == 4, "the trigger still fires");
+    Check(Rows(c, "SELECT count(*) AS n FROM sqlite_master WHERE type = 'index' AND name IN "
+                  "('parent_name', 'parent_price')").Row(0)["n"].AsInt64() == 2,
+          "the old index is back, the new one is there");
+    Check(Rows(c, "SELECT count(*) AS n FROM priced").Row(0)["n"].AsInt64() == 3, "the view still reads the table");
+    Check(Rows(c, "SELECT count(*) AS n FROM sqlite_master WHERE name LIKE '_dbadmin%'").Row(0)["n"].AsInt64() == 0,
+          "no temporary table is left");
+
+    // A rebuild the data refuses changes nothing.
+    UltraDb_DescribeTable(c, "main", "parent", parent);
+    SqliteTableSource before;
+    ReadSqliteTableSource(c, "main", "parent", before);
+    StructureEdit strict(parent, SqlEngine::Sqlite);
+    draft = strict.Columns()[ColumnAt(strict, "remark")];
+    draft.notNull = true;                        // two rows hold NULL
+    strict.UpdateColumn(ColumnAt(strict, "remark"), draft, error);
+    Check(!ApplyEdit(c, strict, message) && Has(message, "NOT NULL"), "NOT NULL over NULLs fails: " + message);
+    SqliteTableSource unchanged;
+    ReadSqliteTableSource(c, "main", "parent", unchanged);
+    Check(unchanged == before, "and the table is exactly as it was");
+    Check(Rows(c, "PRAGMA foreign_keys").Row(0)[0].AsInt64() == 1, "with foreign keys on again");
+
+    // Drops, and the table's own name.
+    UltraDb_Exec(c, "CREATE INDEX parent_qty ON parent(qty)");
+    UltraDb_DescribeTable(c, "main", "parent", parent);
+    StructureEdit drops(parent, SqlEngine::Sqlite);
+    Check(!drops.DropColumn(ColumnAt(drops, "qty"), error), "an indexed column waits for its index");
+    Check(drops.DropIndex("parent_qty", error) && drops.DropColumn(ColumnAt(drops, "qty"), error),
+          "once its index goes, the column can go (" + error + ")");
+    Check(drops.DropColumn(ColumnAt(drops, "remark"), error) && drops.Destructive(), "a drop is destructive");
+    Check(drops.RestoreColumn(ColumnAt(drops, "remark"), error) && drops.Count() == 2, "and can be taken back");
+    Check(drops.RenameTable("Parent Things", error), "the rename is staged");
+    Check(ApplyEdit(c, drops, message), "drops and the rename are applied (" + message + ")");
+    UltraDbTableSchema renamed;
+    Check(UltraDb_DescribeTable(c, "main", "Parent Things", renamed).success && renamed.columns.size() == 4,
+          "the table has its new name and a column fewer");
+    Check(Has(Rows(c, "SELECT sql FROM sqlite_master WHERE name = 'child'").Row(0)["sql"].AsString(), "Parent Things"),
+          "and the child's foreign key follows it");
+
+    // A table with no rowid alias keeps its rowids through a rebuild.
+    UltraDb_Exec(c, "CREATE TABLE plain(a TEXT, b TEXT)");
+    UltraDb_Exec(c, "INSERT INTO plain VALUES ('1', 'x'), ('2', 'y'), ('3', 'z')");
+    UltraDb_Exec(c, "DELETE FROM plain WHERE a = '1'");
+    UltraDbTableSchema plain;
+    UltraDb_DescribeTable(c, "main", "plain", plain);
+    StructureEdit retype(plain, SqlEngine::Sqlite);
+    draft = retype.Columns()[0];
+    draft.type = "INTEGER";
+    retype.UpdateColumn(0, draft, error);
+    Check(ApplyEdit(c, retype, message), "a table without a key is rebuilt (" + message + ")");
+    const UltraDbResultSet rowids = Rows(c, "SELECT rowid AS r, typeof(a) AS t FROM plain ORDER BY rowid");
+    Check(rowids.Size() == 2 && rowids.Row(0)["r"].AsInt64() == 2 && rowids.Row(1)["r"].AsInt64() == 3 &&
+              rowids.Row(0)["t"].AsString() == "integer",
+          "with the rowids it had");
+    UltraDb_CloseConnection(c);
+}
+
+// PostgreSQL, where a server is configured (see the header).
+void TestStructureEditPostgres() {
+    Section("Editing structure (PostgreSQL)");
+    const char* database = std::getenv("ULTRAFIBU_TEST_PG_DB");
+    const bool required = std::getenv("ULTRAFIBU_TEST_PG_REQUIRED") != nullptr;
+    if (!database || !*database) {
+        Check(!required, "a PostgreSQL server is configured");
+        std::printf("  [SKIP] no PostgreSQL configured (ULTRAFIBU_TEST_PG_DB)\n");
+        return;
+    }
+    auto env = [](const char* name, const char* fallback) {
+        const char* v = std::getenv(name);
+        return std::string(v && *v ? v : fallback);
+    };
+    UltraDbConnectionConfig cfg;
+    cfg.name = "dbadmin-structure-pg";
+    cfg.driver = "postgresql";
+    cfg.database = database;
+    cfg.host = env("ULTRAFIBU_TEST_PG_HOST", "/var/run/postgresql");
+    cfg.port = std::atoi(env("ULTRAFIBU_TEST_PG_PORT", "5432").c_str());
+    cfg.user = env("ULTRAFIBU_TEST_PG_USER", "");
+    cfg.tls = UltraDbTls::Disable;       // the local test server
+    const std::string c = cfg.name;
+    if (!UltraDb_RegisterConnection(cfg) || !UltraDb_OpenConnection(c)) {
+        Check(!required, "the PostgreSQL server is reached");
+        std::printf("  [SKIP] PostgreSQL not reached\n");
+        UltraDb_CloseConnection(c);
+        return;
+    }
+    // A schema of its own, so a parallel run cannot meet it.
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    UltraDb_Exec(c, "CREATE SCHEMA \"" + schema + "\"");
+    const std::string items = "\"" + schema + "\".items";
+    UltraDb_Exec(c, "CREATE TABLE " + items + " (id serial PRIMARY KEY, label varchar(20) NOT NULL, "
+                    "qty text DEFAULT '1', note text)");
+    UltraDb_Exec(c, "INSERT INTO " + items + " (label, qty) VALUES ('a', '5'), ('b', '7')");
+
+    UltraDbTableSchema table;
+    Check(UltraDb_DescribeTable(c, schema, "items", table).success, "the table is described");
+    StructureEdit edit(table, SqlEngine::Postgres);
+    std::string error;
+    ColumnDraft draft = edit.Columns()[ColumnAt(edit, "qty")];
+    draft.type = "integer";
+    draft.defaultExpression = "1";
+    Check(edit.UpdateColumn(ColumnAt(edit, "qty"), draft, error), "a type change is staged");
+    draft = edit.Columns()[ColumnAt(edit, "label")];
+    draft.notNull = false;
+    edit.UpdateColumn(ColumnAt(edit, "label"), draft, error);
+    draft = edit.Columns()[ColumnAt(edit, "note")];
+    draft.name = "Remark";
+    edit.UpdateColumn(ColumnAt(edit, "note"), draft, error);
+    ColumnDraft added;
+    added.name = "added";
+    Check(!edit.AddColumn(added, error), "PostgreSQL needs a type: " + error);
+    added.type = "timestamptz";
+    added.hasDefault = true;
+    added.defaultExpression = "now()";
+    Check(edit.AddColumn(added, error), "a new column with an expression default");
+    edit.AddIndex({"items_added", {"added"}, false}, error);
+    Check(!edit.NeedsRebuild(), "PostgreSQL never rebuilds");
+
+    std::vector<DdlStep> steps;
+    Check(edit.Plan(c, SqliteTableSource(), steps).success, "the plan is made");
+    const std::string alter = "ALTER TABLE \"" + schema + "\".\"items\"";
+    const size_t dropDefault = StepWith(steps, alter + " ALTER COLUMN \"qty\" DROP DEFAULT");
+    const size_t type = StepWith(steps, alter + " ALTER COLUMN \"qty\" TYPE integer USING CAST(\"qty\" AS integer)");
+    const size_t setDefault = StepWith(steps, alter + " ALTER COLUMN \"qty\" SET DEFAULT 1");
+    Check(dropDefault < type && type < setDefault && setDefault < steps.size(),
+          "the old default goes, the type converts, the new default comes");
+    Check(StepWith(steps, alter + " ALTER COLUMN \"label\" DROP NOT NULL") < steps.size() &&
+              StepWith(steps, alter + " RENAME COLUMN \"note\" TO \"Remark\"") < steps.size() &&
+              StepWith(steps, alter + " ADD COLUMN \"added\" timestamptz DEFAULT now()") < steps.size() &&
+              StepWith(steps, "CREATE INDEX \"items_added\" ON " + std::string("\"") + schema + "\".\"items\"") <
+                  steps.size(),
+          "NOT NULL, the rename, the new column and its index");
+    Check(std::all_of(steps.begin(), steps.end(), [](const DdlStep& s) { return s.phase == DdlStep::Phase::Inside; }),
+          "all of it in the transaction");
+    std::string message;
+    Check(ApplyEdit(c, edit, message), "the edit is applied (" + message + ")");
+    const UltraDbResultSet qty = Rows(c, "SELECT sum(qty) AS s, pg_typeof(min(qty))::text AS t FROM " + items);
+    Check(qty.Size() == 1 && qty.Row(0)["s"].AsInt64() == 12 && qty.Row(0)["t"].AsString() == "integer",
+          "the text became integers");
+    Check(UltraDb_Exec(c, "INSERT INTO " + items + " (label) VALUES (NULL)").success, "label takes NULL now");
+    Check(Rows(c, "SELECT count(*) AS n FROM " + items + " WHERE \"Remark\" IS NULL AND added IS NOT NULL")
+                  .Row(0)["n"].AsInt64() == 3,
+          "the renamed column and the new one, filled by its default");
+
+    // A type change keeps an unchanged default, set again after the conversion.
+    UltraDb_Exec(c, "ALTER TABLE " + items + " ADD COLUMN code text DEFAULT 'x'");
+    UltraDb_DescribeTable(c, schema, "items", table);
+    StructureEdit retype(table, SqlEngine::Postgres);
+    draft = retype.Columns()[ColumnAt(retype, "code")];
+    draft.type = "varchar(10)";
+    retype.UpdateColumn(ColumnAt(retype, "code"), draft, error);
+    Check(retype.Plan(c, SqliteTableSource(), steps).success &&
+              StepWith(steps, "\"code\" DROP DEFAULT") < StepWith(steps, "\"code\" TYPE varchar(10)") &&
+              StepWith(steps, "\"code\" TYPE varchar(10)") < StepWith(steps, "\"code\" SET DEFAULT 'x'::text") &&
+              StepWith(steps, "\"code\" SET DEFAULT 'x'::text") < steps.size(),
+          "a default is dropped before a type change and set again after it");
+    Check(ApplyEdit(c, retype, message), "and the change applies (" + message + ")");
+    UltraDb_Exec(c, "INSERT INTO " + items + " (label) VALUES ('c')");
+    Check(Rows(c, "SELECT code FROM " + items + " WHERE label = 'c'").Row(0)["code"].AsString() == "x",
+          "with the default still there");
+    UltraDb_Exec(c, "ALTER TABLE " + items + " DROP COLUMN code");
+
+    // A conversion that fails leaves the table as it was.
+    UltraDb_DescribeTable(c, schema, "items", table);
+    StructureEdit failing(table, SqlEngine::Postgres);
+    draft = failing.Columns()[ColumnAt(failing, "label")];
+    draft.type = "integer";                         // 'a' is no integer
+    failing.UpdateColumn(ColumnAt(failing, "label"), draft, error);
+    failing.RenameTable("things", error);
+    Check(!ApplyEdit(c, failing, message), "a cast the data refuses fails: " + message);
+    UltraDbTableSchema after;
+    Check(UltraDb_DescribeTable(c, schema, "items", after).success && after.columns.size() == 5 &&
+              after.columns[1].declaredType == table.columns[1].declaredType,
+          "nothing changed, the rename included");
+
+    UltraDb_Exec(c, "DROP SCHEMA \"" + schema + "\" CASCADE");
+    UltraDb_CloseConnection(c);
+}
+
 void TestJobQueue() {
     Section("Job queue");
     std::mutex m;
@@ -416,6 +805,9 @@ int main() {
     TestSqlRunner();
     TestJobQueue();
     TestEditBuffer();
+    TestSqliteTable();
+    TestStructureEditSqlite();
+    TestStructureEditPostgres();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

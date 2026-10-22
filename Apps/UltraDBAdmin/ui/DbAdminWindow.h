@@ -8,7 +8,11 @@
 //               (EditBuffer), shown in the grid and as SQL, and written by
 //               Commit in one transaction, or dropped by Revert;
 //   Structure - its columns, its keys, indexes, foreign keys and triggers,
-//               and a view's definition;
+//               and a view's definition; and edited: a column added,
+//               changed, renamed or dropped, an index added or dropped, the
+//               table renamed is staged (StructureEdit), shown in the lists
+//               and as DDL, and written by Apply in one transaction - on
+//               SQLite with the table rebuilt where SQLite's ALTER cannot;
 //   SQL       - a script editor with Run (Ctrl+Enter) and Stop, what each
 //               statement did, and the rows of the one selected.
 // Nothing is painted by hand: UltraCanvasTreeView, UltraCanvasListView over
@@ -30,6 +34,7 @@
 #include "DbAdminJobQueue.h"
 #include "DbAdminModels.h"
 #include "DbAdminSqlRunner.h"
+#include "DbAdminStructureEdit.h"
 #include "DbAdminTablePager.h"
 
 #include "UltraCanvasButton.h"
@@ -111,7 +116,8 @@ private:
 
     // ===== BROWSE AND STRUCTURE =====
     void OpenObject(const NodeRef& ref);
-    void ApplyTable(uint64_t generation, const UltraDbResult& result, const UltraDbTableSchema& table);
+    void ApplyTable(uint64_t generation, const UltraDbResult& result, const UltraDbTableSchema& table,
+                    const SqliteTableSource& source);
     void LoadPage(size_t page);
     void ApplyPage(uint64_t generation, size_t page, const UltraDbResult& result, UltraDbResultSet rows);
     void ApplyCount(uint64_t generation, const UltraDbResult& result, int64_t rows);
@@ -138,9 +144,34 @@ private:
                      const std::string& failedSql);
     void RevertChanges();
     void UpdateEditBar();
-    // Runs `then` at once when nothing is staged, else after the user agrees
-    // to drop the staged changes ("... and `what`?"; empty: just drop them).
+    // Runs `then` at once when nothing is staged - rows or structure - else
+    // after the user agrees to drop the staged changes ("... and `what`?";
+    // empty: just drop them).
     void ConfirmDiscard(const std::string& what, std::function<void()> then);
+
+    // ===== STRUCTURE EDITING =====
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildStructureBar();
+    // Why the structure cannot be edited now, or "": no table, a view, a
+    // read-only connection, an Apply or a Commit under way.
+    std::string StructureBlockReason() const;
+    int SelectedColumn() const;             // -1: none
+    void AddColumn();
+    void EditColumn(int row);
+    void DropSelectedColumn();              // or restore it, if it is to be dropped
+    void AddIndex();
+    void DropSelectedIndex();
+    void RenameTable();
+    void AfterStructureEdit();              // redraw the lists, recount the bar
+    void PreviewStructure();
+    void ApplyStructure();
+    void RunApplyStructure();
+    void FinishApplyStructure(uint64_t generation, const UltraDbResult& result, const std::string& failedSql,
+                              const std::string& finalName, size_t count);
+    void RevertStructure();
+    void UpdateStructureBar();
+    // Asks before `drop` throws away `count` staged changes of one kind
+    // ("row change", "structure change").
+    void ConfirmRevert(size_t count, const std::string& kind, std::function<void()> drop);
 
     // ===== SQL =====
     SqlRunner* RunnerFor(const ConnectionSpec& spec);
@@ -188,7 +219,22 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> revertButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> commitButton_;
 
-    // Structure
+    // Structure, and its staged edits. `source_` is the SQLite table's own
+    // definition as it was read with the table: Apply reads it again and
+    // refuses if it changed meanwhile.
+    StructureEdit structure_;
+    SqliteTableSource source_;
+    bool applying_ = false;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> addColumnButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> editColumnButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> dropColumnButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> addIndexButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> dropIndexButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> renameTableButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> structurePending_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> structurePreviewButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> structureRevertButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> structureApplyButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> structureInfo_;
     std::shared_ptr<ColumnSchemaModel> columnModel_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> columnView_;
@@ -201,6 +247,7 @@ private:
     // late answer is told from a fresh one; a page answer must also be for
     // the page now asked for.
     std::string objectConnectionId_;    // the connection's id; empty: none
+    NodeRef objectRef_;                 // the tree row it was opened from
     std::string objectLabel_;
     std::shared_ptr<const TablePager> pager_;
     size_t pageIndex_ = 0;
