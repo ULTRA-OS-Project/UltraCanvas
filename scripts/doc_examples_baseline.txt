@@ -129,7 +129,6 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'SizeLegend'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Top'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'UltraCanvasChartEngine'
-Docs/UltraCanvas/UltraCanvasCircularChartProposal.md::no member named 'None' in 'UltraCanvas::RingTipLabel'
 Docs/UltraCanvas/UltraCanvasCircularChartProposal.md::too few arguments to function call, expected at least 7, have 5
 Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::'UMLMember::isOperation' does not exist (no member named 'isOperation' in 'UltraCanvas::UMLMember')
 Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'AddClassifier' in 'UltraCanvas::UltraCanvasClassDiagram'
@@ -295,7 +294,6 @@ Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::date' doe
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::iconImage' does not exist (no member named 'iconImage' in 'UltraCanvas::TimelineItem')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineNodeShape::Chevron' does not exist (no member named 'Chevron' in 'UltraCanvas::TimelineNodeShape')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineNodeShape::Flag' does not exist (no member named 'Flag' in 'UltraCanvas::TimelineNodeShape')
-Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineNodeShape::None' does not exist (no member named 'None' in 'UltraCanvas::TimelineNodeShape')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddEra(const std::string& name, GanttDate from, GanttDate to)` - the header has: int AddEra(const std::string& name, double from, double to);
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddMilestone(const std::string& name, GanttDate on)` - the header has: int AddMilestone(const std::string& name, double serial); | int AddMilestone(const std::string& name, int year, int month, int day);
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddSpan(const std::string& name, GanttDate from, GanttDate to)` - the header has: int AddSpan(const std::string& name, double from, double to); | int AddSpan(const std::string& name, int y1, int m1, int d1, int y2, int m2, int d2);

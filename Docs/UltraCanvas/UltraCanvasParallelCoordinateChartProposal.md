@@ -458,7 +458,7 @@ pcp->SetLegendMode(UltraCanvas::PCPLegendMode::ColorBar);
 pcp->SetLineMode(UltraCanvas::PCPLineMode::Curved);
 pcp->SetCurveType(UltraCanvas::PCPCurveType::CatmullRom);
 pcp->SetCurveTension(0.6f);
-pcp->SetAxisTitlePosition(UltraCanvas::PCPAxisTitlePosition::Below);
+pcp->SetAxisTitlePosition(UltraCanvas::PCPAxisTitlePosition::BelowAxis);
 pcp->SetShowAxisTicks(true, 6);
 pcp->SetAxisGapBands(true);                                // faint alternating bands
 pcp->SetChartTitle("Parallel Coordinate Chart with Value-based Coloring");

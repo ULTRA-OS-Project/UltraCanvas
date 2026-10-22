@@ -468,7 +468,7 @@ enum class MindMapStructure { Balanced, LogicRight, LogicLeft,
 
 enum class MindMapTopicSide  { Auto, Left, Right };
 enum class MindMapNodeShape  { RoundedRect, Rect, Pill, Circle, Ellipse,
-                               Diamond, Hexagon, Cloud, Bang, Underline, None };
+                               Diamond, Hexagon, Cloud, Bang, Underline, NoShape };
 enum class MindMapConnector  { Straight, Curve, Elbow, RoundedElbow, Arc, TaperedBranch };
 enum class MindMapTheme      { Default, Professional, Colorful, Pastel,
                                Dark, Blueprint, HandDrawn };
