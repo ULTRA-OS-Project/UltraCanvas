@@ -60,6 +60,6 @@
 
   With the switch explaining itself, the MSIX package gives UltraDesktop a
   Start menu entry again, as the installer does. Texter 1.70, UltraDesktop
-  0.4.2 and UOS-Settings 0.7.1 carry the application side. UltraMail 0.10.66
-  and EmailCleaner 0.4.9 drop their own copies of the plug-in folder lookup,
+  0.4.2 and UOS-Settings 0.7.1 carry the application side. UltraMail 0.10.67
+  and EmailCleaner 0.4.10 drop their own copies of the plug-in folder lookup,
   and UltraMail's save dialog finds the Downloads folder on Windows.

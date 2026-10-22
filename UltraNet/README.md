@@ -475,19 +475,25 @@ closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
 whose network has since gone away waits up to two minutes for its reply.
 (One pool per thread: libcurl does not support sharing connections between
 threads that transfer at the same time.) A change - delete, rename, create or
-remove a folder - is the exception on FTP: it always logs in on a connection
-of its own and closes it, because libcurl sends those commands before it
-changes folder, and they name the entry from the folder a login lands in; on
-a kept connection that a listing left in a subfolder they would name another
-file. A server that takes one connection per address or user (vsftpd's
-`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
-away - *421 There are too many connections from your internet address.*,
-or a 530 saying the maximum number of clients is reached - while the
-thread's kept one is open. Turned away so before any of its commands was
-sent, the change closes the kept connection and is sent again: at once, and
-after 0.3 s and 1 s more if the server is still counting the closed one
-(the waits end early when the call is called off). The log says *The server
-takes one connection at a time: closing the one kept open and trying again*.
+remove a folder - takes up the kept connection too. Its commands (`DELE`,
+`RNFR` / `RNTO`, `MKD`, `RMD`) go once libcurl has changed into the entry's
+folder (`CURLOPT_POSTQUOTE`) and name the entry within it; libcurl goes back
+to the folder that connection's login landed in first, so it does not matter
+where the last listing left it. (Sent before the change of folder, as they
+once were, they ran wherever the connection was, and a change needed a
+connection of its own: a second login each time.)
+
+A server that takes one connection per address (vsftpd's `max_per_ip`,
+ProFTPD's `MaxClientsPerHost`) still turns away a call that needs a new one
+while the thread keeps another open - one as another account on that server,
+which libcurl does not take up for this one: *421 There are too many
+connections from your internet address.*, or a 530 saying the maximum number
+of clients is reached. Turned away so at the greeting or the login, before
+anything was asked and with no byte moved, any FTP call closes the thread's
+kept connection and is made again: at once, and after 0.3 s and 1 s more if
+the server is still counting the closed one (the waits end early when the
+call is called off). The log says *The server takes one connection at a
+time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.

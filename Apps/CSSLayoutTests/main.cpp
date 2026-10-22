@@ -862,6 +862,31 @@ void test_flex_column_wrapping_child_height_for_width() {
     expectMeasured("inner height tracks wrap (3 lines)", *inner, 100.f, 60.f);
 }
 
+// A wrapping row inside a column (cards in a dashboard): the column measures
+// it at "at most" its width, and the row has to wrap there - it used to wrap
+// only at an Exact width, measured one line high, and the column clipped the
+// rest of the cards.
+void test_flex_wrap_row_height_in_column() {
+    beginTest("flex column: a wrapping row is measured with all its lines");
+    LayoutContext ctx;
+    auto outer = makeFlexRoot(FlexDirection::Column, FlexWrap::NoWrap, JustifyContent::Start);
+    auto row = makeFlexRoot(FlexDirection::Row, FlexWrap::Wrap, JustifyContent::Start,
+                            AlignItems::Start, AlignContent::Start);
+    { FlexItem fi; fi.grow = 0; fi.shrink = 0; fi.alignSelf = AlignSelf::Stretch;
+      row->layoutItem.data = fi; }
+    for (const char* name : {"a", "b", "c", "d"}) row->AddChild(makeFlexChild(name, 80, 30, 0, 0));
+    outer->AddChild(row);
+
+    // 200 wide: two 80px cards a line, so two lines, 60px.
+    MeasureConstraints c{
+        { ConstraintMode::Exact,     200.f },
+        { ConstraintMode::Unbounded, INFINITY }
+    };
+    outer->Measure(c, ctx);
+    expectMeasured("row measured with both lines", *row, 160.f, 60.f);   // its widest line
+    expectMeasured("column as tall as the row", *outer, 200.f, 60.f);
+}
+
 void test_grid_auto_track_uses_intrinsic() {
     beginTest("grid auto track sizes from leaf child content width");
     LayoutContext ctx;
@@ -1036,6 +1061,7 @@ int main() {
 
     test_flex_uses_intrinsic_for_auto_basis();
     test_flex_column_wrapping_child_height_for_width();
+    test_flex_wrap_row_height_in_column();
     test_grid_auto_track_uses_intrinsic();
 
     test_flex_default_does_not_stretch();
