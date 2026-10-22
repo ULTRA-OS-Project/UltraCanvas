@@ -1,7 +1,8 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
 // Version: 0.9.0 - a streamed download sends the site's cookies; the cookie
-//                  jar is written when the window closes
+//                  jar is written when the window closes; Ctrl+Shift+Delete
+//                  clears it
 // Version: 0.8.0 - target="_blank" links open in a new tab
 // Version: 0.7.0 - tabs: a tab strip above the toolbar, one page or app per tab
 // Version: 0.6.0 - a downloads list: a panel above the status bar
@@ -316,6 +317,17 @@ void UltraWebWindow::InstallShortcuts() {
                 window_->SetFocusedElement(address_.get());
                 address_->SelectAll();
                 return true;
+            case UCKeys::Delete: {
+                // Ctrl+Shift+Delete, as in browsers: forget every site's cookies.
+                if (!e.shift) return false;
+                auto jar = SharedCookieJar();
+                const size_t count = jar->Count();
+                jar->Clear();
+                jar->Flush();
+                SetStatus(count == 0 ? std::string("No cookies to clear")
+                                     : "Cleared " + std::to_string(count) + (count == 1 ? " cookie" : " cookies"));
+                return true;
+            }
             default: return false;
         }
     }, { UCEventType::KeyDown });

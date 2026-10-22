@@ -463,6 +463,13 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
   its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
+  `AllowsResource(url, why)` answers the same question for an address the
+  page loads outside the loader - a `<video>`'s stream.
+- **Whose page:** a style sheet or a picture is fetched through
+  `PageLoaderServices::fetchResource` with the address of the page it is
+  for, when the host sets it (else through `fetch`). A browser keeps its
+  cookie rules there: UltraWeb sends a page's cookies only to the page's own
+  site.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.
 - **Threading:** the loader is used from one thread, and `fetch` calls its
   `done` back on it. A newer `Load` or `Cancel` drops the answers of the
@@ -586,6 +593,51 @@ width, pictures arriving) keeps what was typed and the focus. Mail keeps
 as text on a line of its own. The view passes its own `onChooseFiles` on to
 file inputs; UltraWeb answers it with the file dialog.
 
+### Video and audio
+
+`<video>` and `<audio>` are players the host makes: the builder asks
+`BuildOptions::mediaFactory` with an `HTML::MediaRequest` - the element
+(`node`, the same pointer on every build of one parsed document), its
+addresses in order (`src=""`, then each `<source>` with its `type`), the
+`poster`, `controls`, `autoplay`, `loop` and `muted` - and places what comes
+back as a picture is placed: on a line of its own, by the text-align it
+inherits, never wider than the line. The size is a browser's: CSS `width` /
+`height` (a percentage of the box it is in), else the `width` and `height`
+attributes, else 640 x 360 for a video (one side given, the other at 16:9)
+and 300 x 40 for an audio player. A player inside an inline element breaks
+its line, as a block does, and in a flex or grid container it is an item.
+
+Without a factory, when the factory answers null (it cannot play any of the
+addresses), and for a `<video>` without a source, the element's fallback
+content - the text and links between its tags - is shown, as a browser that
+cannot play it shows it. An `<audio>` without `controls` that does not play
+by itself shows nothing.
+
+```cpp
+HTML::BuildOptions options;
+options.mediaFactory = [](const HTML::MediaRequest& request) -> std::shared_ptr<UltraCanvasUIElement> {
+    if (request.sources.empty()) return nullptr;
+    auto player = CreateVideoPlayer("player", 0, 0, static_cast<long>(request.width),
+                                    static_cast<long>(request.height));
+    if (!player->LoadFromUrl(request.sources.front().src)) return nullptr;   // the fallback, then
+    return player;
+};
+```
+
+`UltraCanvasWebView` sets the factory itself (`SetMediaPlayback`, on by
+default): each `<video>` and `<audio>` is an `UltraCanvasVideoPlayerElement`
+(which plays sound too) on the first address the page may load - http(s)
+streamed by the platform's media framework, mixed content refused, a local
+file from a local page, no `data:` - at most 16 a page. The view keeps a
+player for as long as its page: a rebuild (a new width, pictures arriving)
+hands the same one back, so playback goes on, and another page stops it.
+`autoplay` plays only a muted element, as browsers allow; a sound waits for
+the reader's click. A video without `controls` that cannot play by itself
+shows them anyway. `GetMediaPlayers()` lists the page's players.
+`Tests/HTMLMediaTest.cpp` covers the builder against a fake factory and the
+view with a WAV it writes (played when the build has a media backend and
+GStreamer's base plugins, else its fallback).
+
 ## HTML into an editable document
 
 `ImportHTMLToRichDocument(html, options)` and `AppendHTMLToRichDocument`
@@ -661,13 +713,13 @@ blocks new ones.
 | `include/HTMLReader/HTMLParser.h` | `Parser`, `ParseOptions` |
 | `include/HTMLReader/CSSStyleSheet.h` | `CssColor`, `CssLength`, `Declaration`, `Selector`, `Rule`, `StyleSheet`, the matcher templates |
 | `include/HTMLReader/HTMLStyleResolver.h` | `ComputedStyle`, `ResolverOptions`, `StyleResolver`, `NodeSelectorTraits`, `Matches` |
-| `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
+| `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML`, `MediaRequest`, `MediaSource` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
 | `include/HTMLReader/HTMLPageLoader.h` | `PageLoader`, `PageLoaderServices`, `PageLoaderLimits`, `FetchResult`, `LoadedPage`, `PageKind` |
 | `include/HTMLReader/HTMLForms.h` | `FormSubmission`, `FormController` (forms with real widgets) |
 | `include/UltraCanvasWebView.h` | `UltraCanvasWebView`, the element that shows pages from URLs |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `HTMLMediaTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, video and audio, the viewer |
 | `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
 
 ## Fuzzing
