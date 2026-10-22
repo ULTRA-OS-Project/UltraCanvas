@@ -5276,7 +5276,7 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     FilerTabState* raw = state.get();
     tabStates.push_back(std::move(state));
 
-    const int index = tabbedContainer->AddTab(TabTitleForPath(path), raw->page);
+    const int index = tabbedContainer->AddTab(TabTitleFor(path), raw->page);
     tabbedContainer->SetTabIcon(index, TabIconForPath(path));
     if (activate) {
         // Fires onTabChange, which points `filer` at the new tab.
@@ -6524,6 +6524,23 @@ void UltraFilerWindow::FillFolderBreadcrumb(
     BuildFolderBreadcrumb(crumb, path, std::move(onNavigate), options);
 }
 
+std::string UltraFilerWindow::TabTitleFor(const std::string& path) const {
+    // A drive's folder is named by its last segment; its top folder has none,
+    // and the local rule (the path's filename) would title the tab with the
+    // raw "ultracloud://<account>/" address - so it takes the drive's name.
+    if (IsRemoteFilerPath(path)) {
+        const std::string name = RemoteFilerName(path);
+        if (!name.empty()) return name;
+        RemoteDrive drive;
+        const std::string accountId = RemoteFilerAccountId(path);
+        if (remoteDrives && remoteDrives->Find(accountId, drive) &&
+            !drive.displayName.empty())
+            return drive.displayName;
+        return accountId.empty() ? path : accountId;
+    }
+    return TabTitleForPath(path);
+}
+
 void UltraFilerWindow::FillRemoteBreadcrumb(
         UltraCanvasBreadcrumb* crumb, const std::string& path,
         std::function<void(const std::string&)> onNavigate) {
@@ -6668,7 +6685,7 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     }
     const int index = TabIndexOf(tab);
     if (index >= 0) {
-        tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
+        tabbedContainer->SetTabTitle(index, TabTitleFor(path));
         tabbedContainer->SetTabIcon(index, TabIconForPath(path));
     }
     // The connection log button comes with a remote drive and goes with it.
