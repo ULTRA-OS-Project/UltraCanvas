@@ -903,6 +903,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     Winlogon shell setting naming UltraCanvasShellGuard, which restarts a
     crashing desktop and starts Explorer for the session when it cannot run;
     elsewhere the session decides and the calls say so).
+    `GetSystemDesktopSwitchUnavailableReason` - why the switch is off where
+    the platform has one (a Windows copy running from its MSIX package).
   - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
     (Windows `ExitWindowsEx`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /

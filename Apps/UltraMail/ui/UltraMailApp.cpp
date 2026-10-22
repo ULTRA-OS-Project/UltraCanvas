@@ -109,6 +109,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasDataFolder.h"     // DataFolderHome
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetHttp.h>
@@ -1055,42 +1056,13 @@ void UltraMailApp::HandleReload() {
 }
 
 std::string UltraMailApp::ResolvePluginDirectory() {
-    namespace fs = std::filesystem;
-    if (const char* pd = std::getenv("ULTRAMAIL_PLUGIN_DIR"); pd && *pd) return pd;
-
-    // A directory counts when it holds at least one plug-in DSO, so an empty
-    // Plugins/UltraNet next to the executable does not shadow the real one.
-    auto holdsPlugin = [](const fs::path& dir) {
-        std::error_code ec;
-        if (!fs::is_directory(dir, ec) || ec) return false;
-        for (const auto& entry : fs::directory_iterator(dir, ec)) {
-            if (ec) return false;
-            const std::string ext = PathToUtf8(entry.path().extension());
-            if (ext == ".so" || ext == ".dll" || ext == ".dylib") return true;
-        }
-        return false;
-    };
-
-    const fs::path relative = PathFromUtf8("Plugins") / "UltraNet";
-    std::vector<fs::path> candidates;
-    const std::string exeDir = UltraCanvas::GetExecutableDir();
-    if (!exeDir.empty()) {
-        // The build tree puts the executable at <build>/ and the DSOs at
-        // <build>/Plugins/UltraNet; an installed or copied app may sit one
-        // or two levels deeper (bin/, Apps/UltraMail/).
-        fs::path base = UltraCanvas::PathFromUtf8(exeDir);
-        for (int up = 0; up < 3; ++up) {
-            candidates.push_back(base / relative);
-            base = base.parent_path();
-        }
-    }
-    candidates.push_back(relative);   // the registry's own default (cwd)
-
-    for (const auto& c : candidates)
-        if (holdsPlugin(c)) return PathToUtf8(c.lexically_normal());
-    // Nothing found: keep the first executable-relative path so the diagnostic
-    // names a concrete place to put the DSOs.
-    return PathToUtf8(candidates.front().lexically_normal());
+    // ULTRAMAIL_PLUGIN_DIR names another folder. Otherwise UltraNet's own
+    // default, which this function used to work out itself: Plugins/UltraNet
+    // beside the executable or one or two folders above it, whichever holds a
+    // plug-in, and the one beside the executable when none does - a concrete
+    // place for the diagnostic to name.
+    if (const std::string dir = GetEnvUtf8("ULTRAMAIL_PLUGIN_DIR"); !dir.empty()) return dir;
+    return UltraNet_GetPluginDirectory();
 }
 
 IMailboxProtocolPlugin* UltraMailApp::ImapPlugin() const {
@@ -3498,13 +3470,14 @@ void UltraMailApp::SaveAttachment(const Attachment& attachment) {
 
 std::string UltraMailApp::DefaultSaveDirectory() {
     // The user's Downloads folder when it exists, else their home, else the
-    // working directory — the same order a browser's save dialog uses.
-    if (const char* home = std::getenv("HOME"); home && *home) {
-        std::error_code ec;
-        const std::filesystem::path downloads = PathFromUtf8(home) / "Downloads";
-        if (std::filesystem::is_directory(downloads, ec)) return PathToUtf8(downloads);
-        return home;
-    }
+    // working directory — the same order a browser's save dialog uses. The
+    // Downloads folder as the platform names it (on Windows the known folder,
+    // wherever it was moved or redirected to), the home from HOME or, on
+    // Windows, where HOME is not set, USERPROFILE - all as UTF-8. Reading
+    // HOME alone, narrowly, found neither on Windows.
+    for (const UserFolderInfo& folder : GetWellKnownUserFolders())
+        if (folder.kind == UserFolderKind::Downloads) return folder.path;
+    if (const std::string home = DataFolderHome(); !home.empty()) return home;
     return ".";
 }
 

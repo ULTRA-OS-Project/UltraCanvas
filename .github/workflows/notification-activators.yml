@@ -8,7 +8,10 @@ name: Notification activators
 # UltraCanvas::RegisterNotificationActivator (UltraCanvasNotificationActivation.h).
 # Without it the click does nothing, as it did for every toast until UltraMail
 # 0.10.65. An application with a reason not to register (Silent sample traffic)
-# says so with `// notification-activator-exempt: <why>`.
+# says so with `// notification-activator-exempt: <why>`. From the MSIX package
+# Windows reads the activator from the package manifest instead, so the check
+# also holds scripts/make_msix_layout.py's NOTIFICATION_ACTIVATORS to the
+# applications that register one, and to the CLSID they register.
 
 # Trigger policy matches build.yml / callback-cycles.yml: `pull_request` covers
 # feature branches, so listing them under `push` too would run this check
@@ -19,6 +22,8 @@ on:
     paths:
       - 'Apps/**'
       - 'scripts/check_notification_activators.py'
+      # The MSIX manifest declares the same activators (NOTIFICATION_ACTIVATORS).
+      - 'scripts/make_msix_layout.py'
       - '.github/workflows/notification-activators.yml'
   pull_request:
     # `branches` filters the BASE branch: a pull request based on another
@@ -29,6 +34,8 @@ on:
     paths:
       - 'Apps/**'
       - 'scripts/check_notification_activators.py'
+      # The MSIX manifest declares the same activators (NOTIFICATION_ACTIVATORS).
+      - 'scripts/make_msix_layout.py'
       - '.github/workflows/notification-activators.yml'
   workflow_dispatch:
 

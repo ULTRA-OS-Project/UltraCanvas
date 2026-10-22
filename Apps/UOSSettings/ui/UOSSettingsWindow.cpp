@@ -1,12 +1,13 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.5.1 - Desktop: from an MSIX package, why "At sign-in" is missing
 // Version: 0.5.0 - Notifications > Registrations: listed, and removed with one button
 // Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -461,6 +462,16 @@ void UOSSettingsWindow::BuildDesktopPage() {
         addRow("uos-dt-replace-row", "At sign-in", systemDesktop_);
     }
     page->AddChild(body);
+
+    // Windows, but a copy that cannot switch (the Microsoft Store one, whose
+    // registry changes sign-in never sees): say why the choice is missing.
+    if (const std::string why = UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason();
+        !why.empty()) {
+        auto note = MakeText("uos-dt-replace-note", "At sign-in: " + why, kTextWidth, kTextFontSize,
+                             kMutedTextColor);
+        note->SetMargin(10, 0, 0, 0);
+        page->AddChild(note);
+    }
 
     desktopStatus_ = MakeLabel("uos-dt-status", "", kTextFontSize, kMutedTextColor);
     desktopStatus_->SetMargin(10, 0, 0, 0);

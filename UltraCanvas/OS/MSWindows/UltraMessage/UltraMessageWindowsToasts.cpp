@@ -1,6 +1,17 @@
 // UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsToasts.cpp
 // See UltraMessageWindowsToasts.h. Built where the C++/WinRT headers are (the
 // MSYS2 `cppwinrt` package or the Windows SDK), with the notification listener.
+//
+// From an MSIX package Windows shows a toast only under one of the package's
+// own applications ("<package family name>!<Application Id>"), heads it with
+// the name and icon the package manifest gives that application, and hands a
+// click on it after this process quit to the activator the manifest declares
+// for it. So there each toast goes under the posting application's own ID -
+// asked of Windows by the poster's process, which the broker saw on the
+// connection - and nothing is written under HKEY_CURRENT_USER, where a
+// packaged program's writes stay in the package anyway.
+// Version: 0.3.0 - from an MSIX package: under the poster's package
+//                 AppUserModelID, nothing registered
 // Version: 0.2.0 - the activations carry the notification's id and launch
 //                 (UltraCanvasNotificationActivation.h), for the application's
 //                 own activator; the ID is listed for the uninstaller
@@ -16,6 +27,7 @@
 #include <windows.h>
 
 #include "UltraMessageWindowsToasts.h"
+#include "../UltraCanvasWindowsPackage.h"
 
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Data.Xml.Dom.h>
@@ -98,6 +110,18 @@ bool RegisterToastApplication(const std::wstring& appUserModelId, const std::str
     return ok;
 }
 
+// From an MSIX package: the posting process's AppUserModelID when it runs from
+// this same package (UltraMail -> "<family>!UltraMail"), so the toast is
+// headed with its name and a click reaches its activator; empty otherwise.
+std::wstring PackagedPosterAppUserModelId(int senderProcessId) {
+    if (senderProcessId <= 0) return {};
+    const std::wstring poster =
+        UltraCanvas::WindowsPackage::ApplicationUserModelIdOfProcess(static_cast<DWORD>(senderProcessId));
+    const std::wstring family = UltraCanvas::WindowsPackage::CurrentPackageFamilyName();
+    if (poster.empty() || family.empty() || poster.rfind(family + L"!", 0) != 0) return {};
+    return poster;
+}
+
 struct ShownToast {
     std::string notificationId;
     std::wstring appUserModelId;
@@ -158,15 +182,29 @@ public:
         const std::string appId = WindowsToastAppUserModelId(content.appId);
         if (appId.empty() || content.notificationId.empty()) return false;
         try {
-            const std::wstring appUserModelId = Widen(appId);
-            if (registered_.count(appId) == 0) {
-                if (!RegisterToastApplication(appUserModelId, content.appName.empty() ? appId : content.appName,
-                                              content.iconFile))
-                    return false;
-                registered_.insert(appId);
+            std::wstring appUserModelId;
+            WUN::ToastNotifier notifier{nullptr};
+            if (UltraCanvas::WindowsPackage::IsRunningFromPackage()) {
+                // The poster's own application in this package; one posted
+                // from elsewhere goes under this process's application, its
+                // name in the toast's subtitle (ReadPresentedContent).
+                appUserModelId = PackagedPosterAppUserModelId(content.senderProcessId);
+                if (appUserModelId.empty()) {
+                    notifier = WUN::ToastNotificationManager::CreateToastNotifier();
+                    appUserModelId = UltraCanvas::WindowsPackage::ApplicationUserModelIdOfProcess(GetCurrentProcessId());
+                } else {
+                    notifier = WUN::ToastNotificationManager::CreateToastNotifier(winrt::hstring(appUserModelId));
+                }
+            } else {
+                appUserModelId = Widen(appId);
+                if (registered_.count(appId) == 0) {
+                    if (!RegisterToastApplication(appUserModelId, content.appName.empty() ? appId : content.appName,
+                                                  content.iconFile))
+                        return false;
+                    registered_.insert(appId);
+                }
+                notifier = WUN::ToastNotificationManager::CreateToastNotifier(winrt::hstring(appUserModelId));
             }
-            WUN::ToastNotifier notifier =
-                WUN::ToastNotificationManager::CreateToastNotifier(winrt::hstring(appUserModelId));
             // Turned off - for the application, for the user, or by policy:
             // their choice, and no balloon goes round it.
             if (notifier.Setting() != WUN::NotificationSetting::Enabled) return true;
@@ -256,8 +294,13 @@ public:
             // Already off the screen.
         }
         try {
-            WUN::ToastNotificationManager::History().Remove(shown.toast.Tag(), kGroup,
-                                                            winrt::hstring(shown.appUserModelId));
+            // Without an ID (a packaged process Windows would not name) the
+            // History is this application's own.
+            if (shown.appUserModelId.empty())
+                WUN::ToastNotificationManager::History().Remove(shown.toast.Tag(), kGroup);
+            else
+                WUN::ToastNotificationManager::History().Remove(shown.toast.Tag(), kGroup,
+                                                                winrt::hstring(shown.appUserModelId));
         } catch (const winrt::hresult_error&) {
             // Not in the Action Center.
         }

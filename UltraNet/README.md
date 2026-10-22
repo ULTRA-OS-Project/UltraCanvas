@@ -91,7 +91,12 @@ planned (see the status table below).
 `UltraNet/UltraNetPlugins.h`.
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
-`UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
+`UltraNet_RefreshPlugins()` from `UltraNet_GetPluginDirectory()`. Until an
+application sets another with `UltraNet_SetPluginDirectory()`, that is
+`Plugins/UltraNet` beside the executable, or one or two folders above it,
+whichever holds a plug-in. It is never the working directory, unless the
+executable's own path is unknown: a packaged Windows application starts in
+System32. A plug-in reaches the core **only through the host
 table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,

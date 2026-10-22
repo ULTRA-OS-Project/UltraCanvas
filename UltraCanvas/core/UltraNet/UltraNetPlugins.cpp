@@ -43,6 +43,9 @@ using UltraCanvas::PathToUtf8;
                                     const char* sym)    { return reinterpret_cast<void*>(GetProcAddress(h, sym)); }
 #else
   #include <dlfcn.h>
+  #if defined(__APPLE__)
+    #include <mach-o/dyld.h>
+  #endif
   using PluginLibHandle = void*;
   // RTLD_LOCAL: a plug-in takes nothing from the host's symbol table any more
   // (everything comes through the host table), so nothing it exports needs to
@@ -68,6 +71,69 @@ static bool IsPluginFile(const std::filesystem::path& p) {
 #else
     return ext == ".so" || ext == ".dylib";
 #endif
+}
+
+// The running executable's folder, or an empty path where the platform does
+// not say. UltraNet does not link the UltraCanvas core, so it asks the system
+// itself, as UltraNetHttpEasy.cpp does for the CA bundle beside the app.
+static std::filesystem::path ExecutableFolder() {
+#if defined(_WIN32) || defined(_WIN64)
+    std::wstring buffer(32768, L'\0');
+    const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length == 0 || length >= buffer.size()) return {};
+    buffer.resize(length);
+    return std::filesystem::path(buffer).parent_path();   // path-string-ok: a wide string
+#elif defined(__APPLE__)
+    uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string buffer(size, '\0');
+    if (size == 0 || _NSGetExecutablePath(buffer.data(), &size) != 0) return {};
+    buffer.resize(std::char_traits<char>::length(buffer.c_str()));
+    return PathFromUtf8(buffer).parent_path();
+#elif defined(__linux__)
+    std::error_code ec;
+    const std::filesystem::path exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+    return ec ? std::filesystem::path() : exe.parent_path();
+#else
+    return {};
+#endif
+}
+
+// Where plug-ins are looked for until UltraNet_SetPluginDirectory() names
+// another folder: Plugins/UltraNet beside the executable, or one or two
+// folders above it (the build tree has the executable at <build>/, an
+// installed one may sit in bin/), the first of those that holds a plug-in;
+// else the one beside the executable. Only with no executable path at all is
+// it the folder of that name in the working directory - never first, because
+// the working directory is wherever the application was started from: System32
+// for a packaged Windows application (MSIX), any folder for one started from
+// a shortcut or by another program. It used to be that relative path alone,
+// so every application that did not set a folder of its own - DeviceExplorer's
+// printer and scanner discovery, which loads the mDNS plug-in - found no
+// plug-in unless it happened to be started in its own folder. UltraMail and
+// EmailCleaner resolved it themselves the same way.
+static std::string DefaultPluginDirectory() {
+    namespace fs = std::filesystem;
+    const fs::path relative = PathFromUtf8("Plugins") / "UltraNet";
+    const fs::path exeFolder = ExecutableFolder();
+    if (exeFolder.empty()) return PathToUtf8(relative);
+
+    auto holdsPlugin = [](const fs::path& folder) {
+        std::error_code ec;
+        if (!fs::is_directory(folder, ec) || ec) return false;
+        for (const auto& entry : fs::directory_iterator(folder, ec)) {
+            if (ec) return false;
+            if (IsPluginFile(entry.path())) return true;
+        }
+        return false;
+    };
+    fs::path base = exeFolder;
+    for (int up = 0; up < 3; ++up) {
+        if (holdsPlugin(base / relative)) return PathToUtf8((base / relative).lexically_normal());
+        if (!base.has_parent_path() || base.parent_path() == base) break;
+        base = base.parent_path();
+    }
+    return PathToUtf8((exeFolder / relative).lexically_normal());
 }
 
 // Plug-in DSO contract — see UltraNetPlugins.h for the full description. The
@@ -119,7 +185,7 @@ struct Registry {
     std::mutex mutex;
     std::unordered_map<std::string, std::shared_ptr<IUltraNetPlugin>> byName;
     std::unordered_map<std::string, std::shared_ptr<IUltraNetPlugin>> byScheme;
-    std::string pluginDirectory = "Plugins/UltraNet";
+    std::string pluginDirectory = DefaultPluginDirectory();
 
     // Tracks plugin libraries we've already dlopen'd so RefreshPlugins()
     // is idempotent. Keyed by the canonical filesystem path of the DSO.

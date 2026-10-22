@@ -96,7 +96,7 @@ A config starts without filters: the dialog then lists every file under an
 | `FileDialogConfig` field | |
 |---|---|
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
-| `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
+| `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory - but the home folder when the working directory is the root of the drive (where Finder starts a macOS application) or the Windows folder (where a packaged Windows application starts: System32). A relative folder is read against the working directory, under the same rule |
 | `defaultFileName` | Put into the name field (Save) |
 | `defaultExtension` | Save: added to a name that still has no extension after the chosen type's - under All files, or with no filters (undotted, e.g. `"png"`) |
 | `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |

@@ -719,6 +719,7 @@ bool ReplaceSystemDesktop(const std::string&, const std::vector<std::string>&, D
 }
 bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
 bool IsSystemDesktopRunning() { return true; }              // whatever the session started is the system's
+std::string SystemDesktopSwitchUnavailableReason() { return {}; }   // there is no switch
 
 // Signing out is the session manager's (logind, the display manager), which
 // this backend does not talk to yet.

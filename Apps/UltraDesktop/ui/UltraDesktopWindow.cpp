@@ -2,6 +2,8 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.4.1 - from an MSIX package: the desktop switch says why it is not
+//                  there, and "Close UltraDesktop" stays
 // Version: 0.4.0 - Windows: instead of Explorer - the tray icons (StartTray,
 //                  RefreshTray), sign out / restart / shut down, the Win key
 //                  (appsShortcut_); the other screens' wallpaper
@@ -1027,6 +1029,19 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
                 if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
             }));
         }
+    } else if (const std::string why = UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason();
+               !why.empty()) {
+        // Windows, but a copy that cannot switch - the Microsoft Store one,
+        // whose registry changes sign-in never sees. Say so where the switch
+        // would be, rather than leave it out without a word; and this is
+        // always a trial run, with no title bar to close.
+        popupMenu_->AddItem(MenuItemData::Separator());
+        popupMenu_->AddItem(MenuItemData::Action("Use as the Windows desktop...", [this, why]() {
+            UltraCanvasDialogManager::ShowInformation(why, "UltraDesktop", nullptr, window_.get());
+        }));
+        popupMenu_->AddItem(MenuItemData::Action("Close UltraDesktop", []() {
+            if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->RequestExit();
+        }));
     }
     // As the shell, nothing else offers the end of the session.
     if (shellSession_ && UltraCanvasDesktopShell::CanEndSession()) {

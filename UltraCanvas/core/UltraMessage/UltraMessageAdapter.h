@@ -140,6 +140,12 @@ struct PresentedContent {
     std::string iconFile;         // the absolute path the icon names (a path or file:// URI), else ""
     std::string urgency;          // "low" | "normal" | "critical"
     std::string launch;           // the application's own note for a click outside the bus, else ""
+    // The posting process when the broker saw it on the connection itself
+    // (envelope.from.verified), else 0. A presenter that has to show the
+    // notification under the poster's own identity asks the system with it:
+    // Windows, from an MSIX package, where every toast belongs to one of the
+    // package's applications.
+    int senderProcessId = 0;
     bool hasDefaultAction = false;              // a click on it is its "default" action
     std::vector<NotificationAction> buttons;    // its other actions, at most kMaxPresentedButtons
 };

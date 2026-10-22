@@ -620,6 +620,10 @@ std::vector<std::shared_ptr<IUltraNetPlugin>> UltraNet_GetAllPlugins();
 // Loads plug-in DSOs from UltraNet_GetPluginDirectory(). Idempotent.
 void UltraNet_RefreshPlugins();
 
+// The folder plug-ins are loaded from (UTF-8). Until it is set, it is
+// Plugins/UltraNet beside the executable, or one or two folders above it,
+// whichever holds a plug-in - never the working directory, unless the
+// executable's own path is unknown.
 std::string UltraNet_GetPluginDirectory();
 void        UltraNet_SetPluginDirectory(const std::string& path);
 

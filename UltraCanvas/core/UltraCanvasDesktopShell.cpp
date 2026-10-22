@@ -6,10 +6,11 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.5.0 - GetSystemDesktopSwitchUnavailableReason
 // Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
 // Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
 // Version: 1.2.0 - the platform's own application list; shortcut entries launch
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -529,6 +530,10 @@ bool UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement how) {
     return how != DesktopReplacement::Off && DesktopShellBackend::CanReplaceSystemDesktop(how);
 }
 
+std::string UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason() {
+    return DesktopShellBackend::SystemDesktopSwitchUnavailableReason();
+}
+
 DesktopReplacement UltraCanvasDesktopShell::GetSystemDesktopReplacement() {
     return DesktopShellBackend::GetSystemDesktopReplacement();
 }
@@ -860,6 +865,7 @@ namespace DesktopShellBackend {
     }
     bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever replaced
     bool IsSystemDesktopRunning() { return true; }              // whatever runs is the system's
+    std::string SystemDesktopSwitchUnavailableReason() { return {}; }   // there is no switch
 
     bool CanEndSession() { return false; }
     bool EndSession(SessionEnd, std::string& error) {

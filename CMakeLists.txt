@@ -1623,6 +1623,14 @@ endif()
     ultracanvas_embed_app_icon(Texter
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/Texter.png")
 
+    # Embed manifest with UTF-8 active code page (Windows only), as UltraViewer
+    # does: the files to open arrive as main()'s narrow argv - from Explorer's
+    # "Open with", from the MSIX package's file types, from a second start
+    # handing them over - and without it a name the ANSI code page cannot hold
+    # (Thai, CJK) arrived as '?'. This target has no .rc of its own; the
+    # standalone UltraTexter target (Apps/Texter) embeds UltraTexter.manifest.
+    ultracanvas_embed_windows_manifest(Texter)
+
     # Compiler warnings
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(Texter PRIVATE
