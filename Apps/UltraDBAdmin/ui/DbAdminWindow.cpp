@@ -54,11 +54,6 @@ constexpr int kBrowseTab    = 0;
 constexpr int kStructureTab = 1;
 constexpr int kSqlTab       = 2;
 
-// The theme's danger and muted ink (DbAdminTheme.cpp).
-const Color kErrorColor(190, 38, 38);
-const Color kStatusColor(88, 96, 110);
-const Color kProductionColor(190, 38, 38);
-
 const char* const kPlaceholderText = "…";
 
 
@@ -109,7 +104,7 @@ std::shared_ptr<UltraCanvasLabel> MakeBarStatus(const std::string& id, const std
     label->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     label->layoutItem.SetFlexGrow(1);
     label->layoutItem.SetFlexShrink(1);
-    label->SetTextColor(kStatusColor);
+    label->SetTextColor(StatusColor());
     label->SetAlignment(TextAlignment::Left);
     return label;
 }
@@ -361,7 +356,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildTreePane() {
     auto heading = CreateLabel("dbaTreeHeading", 0, 0, 0, 22, "CONNECTIONS");
     heading->SetFontSize(10.5f);
     heading->SetFontWeight(FontWeight::Bold);
-    heading->SetTextColor(kStatusColor);
+    heading->SetTextColor(StatusColor());
     heading->SetMargin(2.0f, 6.0f, 0.0f, 6.0f);
     heading->layoutItem.SetFlexShrink(0);
     pane->AddChild(heading);
@@ -693,7 +688,7 @@ void DbAdminWindow::Background(std::function<std::function<void()>()> work) {
 void DbAdminWindow::SetStatus(const std::string& text, bool error) {
     if (!statusLabel_) return;
     statusLabel_->SetText(OneLine(text));
-    statusLabel_->SetTextColor(error ? kErrorColor : kStatusColor);
+    statusLabel_->SetTextColor(error ? ErrorColor() : StatusColor());
     statusLabel_->SetTooltip(text);
 }
 
@@ -724,7 +719,7 @@ void DbAdminWindow::AddConnectionNode(const ConnectionSpec& spec) {
     TreeNodeData data(id, spec.name);
     data.tooltip = Describe(spec) + (spec.readOnly ? "\nread only" : "") +
                    (spec.production ? "\nPRODUCTION" : "");
-    if (spec.production) data.textColor = kProductionColor;
+    if (spec.production) data.textColor = ErrorColor();
     data.leftIcon = TreeNodeIcon(IconPath(spec.production ? "node-connection-production" : "node-connection"));
     tree_->AddNode("root", data);
     NodeRef ref;
@@ -800,7 +795,7 @@ void DbAdminWindow::ShowLoadError(const std::string& nodeId, const UltraDbResult
     if (TreeNode* placeholder = tree_->FindNode(nodeId + "/" + kPlaceholderText)) {
         placeholder->data.text = "Could not read: " + CellText(UltraDbValue(result.message), 80);
         placeholder->data.tooltip = result.message;
-        placeholder->data.textColor = kErrorColor;
+        placeholder->data.textColor = ErrorColor();
         placeholder->data.visible = true;
     }
     SetStatus(result.message, true);
@@ -835,7 +830,7 @@ void DbAdminWindow::ApplySchemas(const std::string& nodeId, const UltraDbResult&
     if (schemas.empty()) {
         const std::string id = nodeId + "/" + std::to_string(++nextNodeId_);
         TreeNodeData none(id, "No schemas");
-        none.textColor = kStatusColor;
+        none.textColor = StatusColor();
         tree_->AddNode(nodeId, none);
     }
     const ConnectionSpec* spec = store_.Find(parent.connectionId);
@@ -877,7 +872,7 @@ void DbAdminWindow::ApplyObjects(const std::string& nodeId, const UltraDbResult&
     if (objects.empty()) {
         const std::string id = nodeId + "/" + std::to_string(++nextNodeId_);
         TreeNodeData none(id, "Empty");
-        none.textColor = kStatusColor;
+        none.textColor = StatusColor();
         tree_->AddNode(nodeId, none);
     }
     tree_->RequestRedraw();
@@ -1001,7 +996,7 @@ void DbAdminWindow::ClearObject(const std::string& message) {
     definitionArea_->SetText("", false);
     structureInfo_->SetText(message);
     browseNote_->SetText(message);
-    browseNote_->SetTextColor(kStatusColor);
+    browseNote_->SetTextColor(StatusColor());
     edits_ = EditBuffer();
     UpdateBrowseBar();
     UpdateEditBar();
@@ -1048,7 +1043,7 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
     if (!result) {
         const std::string label = objectLabel_;
         ClearObject(label + ": " + OneLine(result.message));
-        browseNote_->SetTextColor(kErrorColor);
+        browseNote_->SetTextColor(ErrorColor());
         SetStatus(result.message, true);
         return;
     }
@@ -1085,7 +1080,7 @@ void DbAdminWindow::ApplySequence(uint64_t generation, const UltraDbResult& resu
     if (!result) {
         const std::string label = objectLabel_;
         ClearObject(label + ": " + OneLine(result.message));
-        browseNote_->SetTextColor(kErrorColor);
+        browseNote_->SetTextColor(ErrorColor());
         SetStatus(result.message, true);
         return;
     }
@@ -1116,7 +1111,7 @@ void DbAdminWindow::ApplyPage(uint64_t generation, size_t page, const UltraDbRes
         browseModel_->Clear();
         pageRows_ = 0;
         browseNote_->SetText(OneLine(result.message));
-        browseNote_->SetTextColor(kErrorColor);
+        browseNote_->SetTextColor(ErrorColor());
         SetStatus(result.message, true);
         UpdateBrowseBar();
         return;
@@ -1138,7 +1133,7 @@ void DbAdminWindow::ApplyPage(uint64_t generation, size_t page, const UltraDbRes
     } else {
         browseNote_->SetText("No primary key: while the table changes, a row can move between pages.");
     }
-    browseNote_->SetTextColor(kStatusColor);
+    browseNote_->SetTextColor(StatusColor());
     UpdateBrowseBar();
 }
 
@@ -1440,7 +1435,7 @@ void DbAdminWindow::UpdateEditBar() {
     }
     pendingLabel_->SetText(text);
     pendingLabel_->SetTooltip(text);
-    pendingLabel_->SetTextColor(any ? kProductionColor : kStatusColor);
+    pendingLabel_->SetTextColor(any ? ErrorColor() : StatusColor());
     UpdateStructureBar();          // a commit holds structure edits too
     UpdateBrowseBar();             // and an import
 }
@@ -1747,7 +1742,7 @@ void DbAdminWindow::UpdateStructureBar() {
                                       ? text + "\n\nSQLite changes a column's type, NOT NULL or default only by "
                                                "rebuilding the table; Preview SQL shows every step."
                                       : text);
-    structurePending_->SetTextColor(any ? kProductionColor : kStatusColor);
+    structurePending_->SetTextColor(any ? ErrorColor() : StatusColor());
 }
 
 // ===== IMPORT =====
@@ -1885,12 +1880,12 @@ void DbAdminWindow::ImportSql() {
     const ConnectionSpec* spec = SelectedConnection();
     if (!spec) {
         sqlInfo_->SetText("Pick a connection (or anything in it) in the tree first.");
-        sqlInfo_->SetTextColor(kErrorColor);
+        sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
     if (RunnerFor(*spec)->IsRunning()) {
         sqlInfo_->SetText("A script is still running on this connection: Stop it, or wait.");
-        sqlInfo_->SetTextColor(kErrorColor);
+        sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
     // A SQL script is no media format, so FileLoader's inventory has no type
@@ -1904,7 +1899,7 @@ void DbAdminWindow::ImportSql() {
         if (result != DialogResult::OK || path.empty()) return;
         const std::string name = PathToUtf8(PathFromUtf8(path).filename());
         sqlInfo_->SetText("Reading " + name + "…");
-        sqlInfo_->SetTextColor(kStatusColor);
+        sqlInfo_->SetTextColor(StatusColor());
         Background([this, id, path, name]() -> std::function<void()> {
             const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path);
             std::string script, error = file.success ? std::string() : file.error;
@@ -1918,7 +1913,7 @@ void DbAdminWindow::ImportSql() {
                 if (!spec) return;
                 if (!error.empty()) {
                     sqlInfo_->SetText(name + " cannot be imported: " + error);
-                    sqlInfo_->SetTextColor(kErrorColor);
+                    sqlInfo_->SetTextColor(ErrorColor());
                     return;
                 }
                 UpdateSqlBar();
@@ -1943,7 +1938,7 @@ void DbAdminWindow::ImportSql() {
                         options);
                     if (!started) {
                         sqlInfo_->SetText("A script is still running on this connection: Stop it, or wait.");
-                        sqlInfo_->SetTextColor(kErrorColor);
+                        sqlInfo_->SetTextColor(ErrorColor());
                         return;
                     }
                     sqlConnectionId_ = id;
@@ -2141,7 +2136,7 @@ void DbAdminWindow::RunSql() {
     const ConnectionSpec* spec = SelectedConnection();
     if (!spec) {
         sqlInfo_->SetText("Pick a connection (or anything in it) in the tree first.");
-        sqlInfo_->SetTextColor(kErrorColor);
+        sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
     const std::string script = sqlEditor_->HasSelection() ? sqlEditor_->GetSelectedText() : sqlEditor_->GetText();
@@ -2159,7 +2154,7 @@ void DbAdminWindow::RunSql() {
     });
     if (!started) {
         sqlInfo_->SetText("A script is still running on this connection: Stop it, or wait.");
-        sqlInfo_->SetTextColor(kErrorColor);
+        sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
     sqlConnectionId_ = id;
@@ -2219,7 +2214,7 @@ void DbAdminWindow::ApplyOutcome(const std::string& connectionId, const RunOutco
     UpdateSqlBar();
     sqlInfo_->SetText(info);
     sqlInfo_->SetTooltip(outcome.result.message);
-    sqlInfo_->SetTextColor(bad ? kErrorColor : kStatusColor);
+    sqlInfo_->SetTextColor(bad ? ErrorColor() : StatusColor());
 }
 
 void DbAdminWindow::ShowStatementRows(int row) {
@@ -2245,14 +2240,14 @@ void DbAdminWindow::UpdateSqlBar() {
     if (busy) {
         const ConnectionSpec* on = store_.Find(sqlConnectionId_);
         sqlInfo_->SetText("Running on " + (on ? on->name : std::string("the connection")) + "…");
-        sqlInfo_->SetTextColor(kStatusColor);
+        sqlInfo_->SetTextColor(StatusColor());
     } else if (spec) {
         sqlInfo_->SetText(std::string("Runs on ") + spec->name + (spec->production ? " - PRODUCTION" : "") +
                           (spec->readOnly ? " (read only)" : ""));
-        sqlInfo_->SetTextColor(spec->production ? kProductionColor : kStatusColor);
+        sqlInfo_->SetTextColor(spec->production ? ErrorColor() : StatusColor());
     } else {
         sqlInfo_->SetText("Pick a connection in the tree; the script runs there.");
-        sqlInfo_->SetTextColor(kStatusColor);
+        sqlInfo_->SetTextColor(StatusColor());
     }
     FillHistory();
 }

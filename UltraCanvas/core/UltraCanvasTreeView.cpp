@@ -1,6 +1,7 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
 // The history is in the header (include/UltraCanvasTreeView.h).
+// Version: 1.8.0 - TreeExpanderStyle::Chevron, the expand button as an arrow
 // Version: 1.7.0 - a loading row (TreeNodeData::loading) slides a thin bar along its foot
 // Version: 1.6.0 - SetFilterText: rows hidden by a filter (TreeNode::IsShown)
 // Version: 1.5.0 - keys read UCKeys and work once the tree is focused; focus ring
@@ -1370,14 +1371,30 @@ namespace UltraCanvas {
                 int buttonX = nodeX + kExpanderButtonOffset;
                 int buttonY = nodeY + (rowHeight - kExpanderButtonSize) / 2;
 
-                // Draw button background
-                ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, kExpanderButtonSize, kExpanderButtonSize),
-                                         expandButtonColor, 1.0, Colors::Gray);
+                if (expanderStyle == TreeExpanderStyle::Chevron) {
+                    // An arrow in the button's square: > closed, v open.
+                    const double cx = buttonX + kExpanderButtonSize / 2.0;
+                    const double cy = buttonY + kExpanderButtonSize / 2.0;
+                    std::vector<Point2Dd> arrow;
+                    if (node->IsExpanded()) arrow = {{cx - 3.5, cy - 1.75}, {cx, cy + 1.75}, {cx + 3.5, cy - 1.75}};
+                    else                    arrow = {{cx - 1.75, cy - 3.5}, {cx + 1.75, cy}, {cx - 1.75, cy + 3.5}};
+                    ctx->PushState();
+                    ctx->SetStrokePaint(expanderArrowColor);
+                    ctx->SetStrokeWidth(1.5);
+                    ctx->SetLineCap(LineCap::Round);
+                    ctx->SetLineJoin(LineJoin::Round);
+                    ctx->DrawLinePath(arrow, false);
+                    ctx->PopState();
+                } else {
+                    // Draw button background
+                    ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, kExpanderButtonSize, kExpanderButtonSize),
+                                             expandButtonColor, 1.0, Colors::Gray);
 
-                // Draw +/- symbol
-                ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
-                if (!node->IsExpanded()) {
-                    ctx->DrawFilledRectangle(Rect2Di(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
+                    // Draw +/- symbol
+                    ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
+                    if (!node->IsExpanded()) {
+                        ctx->DrawFilledRectangle(Rect2Di(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
+                    }
                 }
             }
 

@@ -59,6 +59,12 @@ void MakeCard(UltraCanvas::UltraCanvasContainer& container);
 // A thin upright line between two groups of a bar's buttons.
 std::shared_ptr<UltraCanvas::UltraCanvasContainer> MakeBarDivider(const std::string& id);
 
+// The theme's colours for a message: an error - and a production
+// connection, a slip on which is the costly kind - in its danger red, any
+// other status in its muted ink.
+UltraCanvas::Color ErrorColor();
+UltraCanvas::Color StatusColor();
+
 // The lists' and the tree's colours, rows and header from the theme.
 void StyleList(UltraCanvas::UltraCanvasListView& view);
 void StyleTree(UltraCanvas::UltraCanvasTreeView& tree);

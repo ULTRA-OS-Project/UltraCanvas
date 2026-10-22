@@ -13,5 +13,6 @@
   selection whose text stays readable. The tree shows a connection
   (red for production), a schema, a table, a view, a materialized view, a
   foreign table and a sequence each by its icon, without the "(view)"
-  suffix, and a node being read by a thin bar along its row instead of a
-  "Loading…" line.
+  suffix, opens with an arrow instead of a +/- box, and shows a node being
+  read by a thin bar along its row instead of a "Loading…" line. Error
+  messages, in the window and in every dialog, take the theme's red.

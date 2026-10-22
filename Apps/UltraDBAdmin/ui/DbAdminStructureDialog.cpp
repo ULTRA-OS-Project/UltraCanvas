@@ -60,7 +60,7 @@ std::shared_ptr<UltraCanvasLabel> MakeIntro(const std::string& id, const std::st
 
 std::shared_ptr<UltraCanvasLabel> MakeError(const std::string& id) {
     auto error = CreateLabel(id, 0, 0, 0, 36, "");
-    error->SetTextColor(Color(176, 32, 32));
+    error->SetTextColor(ErrorColor());
     error->SetWrap(TextWrap::WrapWord);
     error->layoutItem.SetFlexShrink(0);
     return error;

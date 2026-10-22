@@ -123,6 +123,14 @@ std::shared_ptr<UltraCanvasContainer> MakeBarDivider(const std::string& id) {
     return divider;
 }
 
+Color ErrorColor() {
+    return UltraCanvasTheme::Current().roles.danger;
+}
+
+Color StatusColor() {
+    return UltraCanvasTheme::Current().roles.inkMuted;
+}
+
 void StyleList(UltraCanvasListView& view) {
     const ThemeRoles& r = UltraCanvasTheme::Current().roles;
     ListViewStyle style = view.GetStyle();
@@ -150,10 +158,11 @@ void StyleTree(UltraCanvasTreeView& tree) {
     const ThemeRoles& r = UltraCanvasTheme::Current().roles;
     tree.SetRowHeight(26);
     tree.SetLineStyle(TreeLineStyle::NoLine);
+    tree.SetExpanderStyle(TreeExpanderStyle::Chevron);
+    tree.SetExpanderArrowColor(r.inkMuted);
     tree.SetSelectionColor(r.accentSoft);
     tree.SetHoverColor(Color(243, 246, 252));
     tree.SetTextColor(r.ink);
-    tree.SetExpandButtonColor(r.panel);
     tree.SetBackgroundColor(r.panel);
     tree.SetBorders(0.0f);
     tree.SetVerticalScrollbarStyle(ScrollbarStyle::Modern());   // the lists' slim one

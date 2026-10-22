@@ -186,7 +186,7 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
     dialog->AddChild(scroll);
 
     auto error = CreateLabel("dbrError", 0, 0, 0, 36, "");
-    error->SetTextColor(Color(176, 32, 32));
+    error->SetTextColor(ErrorColor());
     error->SetWrap(TextWrap::WrapWord);
     error->layoutItem.SetFlexShrink(0);
     dialog->AddChild(error);

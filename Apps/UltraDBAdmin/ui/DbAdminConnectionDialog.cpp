@@ -276,7 +276,7 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
     dialog->AddChild(grid);
 
     auto error = CreateLabel("dbcError", 0, 0, 0, 36, "");
-    error->SetTextColor(Color(176, 32, 32));
+    error->SetTextColor(ErrorColor());
     error->SetWrap(TextWrap::WrapWord);
     dialog->AddChild(error);
     form->error = error.get();
