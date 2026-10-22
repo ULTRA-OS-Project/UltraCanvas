@@ -2,6 +2,10 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
+// Version: 4.7.0 - with a vertical scrollbar showing, the children are laid out
+//                 a track narrower: they were laid out across the full width
+//                 and clipped a track short, so the right edge of every row
+//                 (a right-aligned value, a slider's end) sat under the bar
 // Version: 4.3.3 - a re-layout keeps the scroll position of a container scrolled to its
 //                 end: UpdateScrollability set the ranges for a viewport measured with
 //                 the scrollbars hidden too, which clamped the position a track short
@@ -12,7 +16,7 @@
 //                 scrolled text, slivers below it); FinishArrange
 // Version: 4.3.0 - clipChildren = false draws children unclipped (overflow: visible)
 // Version: 4.2.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -69,6 +73,20 @@ namespace UltraCanvas {
     void UltraCanvasContainer::Arrange(const Rect2Df& finalRect, const LayoutContext& ctx) {
         UltraCanvasUIElement::Arrange(finalRect, ctx);
         FinishArrange();
+
+        // Whether a vertical scrollbar shows is known only once the children
+        // are placed, and it takes a track's width from the content area
+        // (GetContentArea, the clip). Lay them out again with that strip kept
+        // free, so nothing sits under the bar: as CSS overflow:auto does.
+        // Narrower content is only ever taller, so the bar stays and this
+        // second pass is the last.
+        if (verticalScrollbar && verticalScrollbar->IsVisible()) {
+            const CSSLayout::Dimension savedRight = box.padding.right;
+            box.padding.right = CSSLayout::Dimension::Px(GetPaddingRight() + style.scrollbarStyle.trackSize);
+            UltraCanvasUIElement::Arrange(finalRect, ctx);
+            box.padding.right = savedRight;
+            FinishArrange();   // the ranges and the bars, against the real padding
+        }
     }
 
     void UltraCanvasContainer::FinishArrange() {

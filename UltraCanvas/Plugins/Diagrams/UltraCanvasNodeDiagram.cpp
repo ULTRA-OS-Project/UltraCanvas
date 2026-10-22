@@ -7,6 +7,7 @@
 // See header for full changelog (2.0.6 + 2.0.5 + 2.0.4 + 2.0.3 + 2.0.2 + 2.0.1 patches + 2.0.0 mayor).
 
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include <locale>
 #include <sstream>
@@ -569,76 +570,11 @@ void UltraCanvasNodeDiagram::RunForceDirectedLayout(int iterations) {
         }
     }
     
-    // 2.0.6: ANTI-OVERLAP POST-PROCESS PASS.
-    //
-    // Force-directed simulations with discrete timesteps can leave residual
-    // node overlaps even when the energy minimum has been found - the
-    // repulsive force is continuous and never quite enough to stop two nodes
-    // from clipping when they're already very close. This pass runs after the
-    // main simulation and physically separates any pair of overlapping nodes
-    // by their bounding-box radii plus a small margin. Iterates a few times
-    // because pushing A-B apart may create a new B-C overlap.
-    {
-        const int kSeparationIterations = 8;
-        const double kMargin = 6.0;  // Extra gap between separated nodes
-        for (int sepIter = 0; sepIter < kSeparationIterations; ++sepIter) {
-            bool anyOverlap = false;
-            for (auto it1 = nodes.begin(); it1 != nodes.end(); ++it1) {
-                auto it2 = it1;
-                for (++it2; it2 != nodes.end(); ++it2) {
-                    auto& a = it1->second;
-                    auto& b = it2->second;
-                    
-                    // Use the larger half-dimension as the effective radius
-                    // (covers both circle and rectangular shapes well enough).
-                    double ar = std::max(a.width, a.height) * 0.5f;
-                    double br = std::max(b.width, b.height) * 0.5f;
-                    double minDist = ar + br + kMargin;
-                    
-                    double acx = a.x + a.width  * 0.5f;
-                    double acy = a.y + a.height * 0.5f;
-                    double bcx = b.x + b.width  * 0.5f;
-                    double bcy = b.y + b.height * 0.5f;
-                    double dx = bcx - acx;
-                    double dy = bcy - acy;
-                    double dist = std::sqrt(dx * dx + dy * dy);
-                    
-                    if (dist < minDist) {
-                        anyOverlap = true;
-                        // Compute push direction (handle the dist==0 edge case
-                        // by picking an arbitrary unit vector).
-                        double pushX, pushY;
-                        if (dist < 0.001f) {
-                            pushX = 1.0;
-                            pushY = 0.0;
-                        } else {
-                            pushX = dx / dist;
-                            pushY = dy / dist;
-                        }
-                        // Total push needed to separate them, split half each
-                        double push = (minDist - dist) * 0.5f;
-                        // Skip pinned nodes - all push goes to the other one
-                        bool aPinned = a.isPinned;
-                        bool bPinned = b.isPinned;
-                        if (aPinned && bPinned) continue;  // Can't move either
-                        double aWeight = aPinned ? 0.0 : (bPinned ? 2.0 : 1.0);
-                        double bWeight = bPinned ? 0.0 : (aPinned ? 2.0 : 1.0);
-                        a.x -= pushX * push * aWeight;
-                        a.y -= pushY * push * aWeight;
-                        b.x += pushX * push * bWeight;
-                        b.y += pushY * push * bWeight;
-                    }
-                }
-            }
-            // Re-clamp to bounds after pushing
-            for (auto& pair : nodes) {
-                if (pair.second.isPinned) continue;
-                pair.second.x = std::max(30.0, std::min(width - 30.0, pair.second.x));
-                pair.second.y = std::max(30.0, std::min(height - 30.0, pair.second.y));
-            }
-            if (!anyOverlap) break;  // Stable
-        }
-    }
+    // 2.0.6 / 2.3.0: what the discrete simulation leaves clipping, moved
+    // apart by the nodes' rectangles. Not clamped back into the bounds: that
+    // is what used to push them onto each other again; the view fits the
+    // content instead.
+    ResolveOverlaps(6.0);
 }
 
 void UltraCanvasNodeDiagram::ApplyCircularLayout() {
@@ -1144,6 +1080,105 @@ void UltraCanvasNodeDiagram::SetFontSize(double size) {
 
 void UltraCanvasNodeDiagram::SetLinkDistance(double distance) {
     style.linkDistance = distance;
+}
+
+void UltraCanvasNodeDiagram::SetChargeStrength(double strength) {
+    style.chargeStrength = strength;
+}
+
+// 2.3.0: rectangles, not circles - a 140x36 card treated as a circle of
+// radius 70 is pushed far too far vertically and not far enough at the
+// corners. Each overlapping pair moves apart along the axis it overlaps
+// least, which is the smallest move that separates them; repeated, because
+// moving A off B can push it onto C.
+int UltraCanvasNodeDiagram::ResolveOverlaps(double margin, int maxPasses) {
+    if (nodes.size() < 2) return 0;
+    std::vector<NodeDiagramNode*> list;
+    list.reserve(nodes.size());
+    for (auto& pair : nodes) list.push_back(&pair.second);
+
+    int pass = 0;
+    for (; pass < maxPasses; ++pass) {
+        bool moved = false;
+        for (size_t i = 0; i < list.size(); ++i) {
+            for (size_t j = i + 1; j < list.size(); ++j) {
+                NodeDiagramNode& a = *list[i];
+                NodeDiagramNode& b = *list[j];
+                if (a.isPinned && b.isPinned) continue;
+                const double dx = (b.x + b.width * 0.5) - (a.x + a.width * 0.5);
+                const double dy = (b.y + b.height * 0.5) - (a.y + a.height * 0.5);
+                const double px = (a.width + b.width) * 0.5 + margin - std::abs(dx);
+                const double py = (a.height + b.height) * 0.5 + margin - std::abs(dy);
+                // Floating-point residue of an earlier separation is not an
+                // overlap: below a hundredth of a pixel, the pair is apart.
+                if (px <= 0.01 || py <= 0.01) continue;
+                moved = true;
+                // The later node of the pair moves the whole way and the
+                // earlier one stays (unless the later is pinned): the crowd
+                // then builds outwards from the first nodes instead of
+                // shuffling back and forth through itself.
+                const double aShare = b.isPinned ? 1.0 : 0.0;
+                const double bShare = 1.0 - aShare;
+                // Half a pixel more than the overlap, so a separated pair is
+                // clearly apart and is not found again by the next pass.
+                constexpr double kSlack = 0.5;
+                // Two nodes on the same spot: the later one goes right / down,
+                // the same for every pair, so they spread instead of swapping.
+                if (px < py) {
+                    const double dir = dx != 0.0 ? (dx > 0.0 ? 1.0 : -1.0) : 1.0;
+                    a.x -= dir * (px + kSlack) * aShare;
+                    b.x += dir * (px + kSlack) * bShare;
+                } else {
+                    const double dir = dy != 0.0 ? (dy > 0.0 ? 1.0 : -1.0) : 1.0;
+                    a.y -= dir * (py + kSlack) * aShare;
+                    b.y += dir * (py + kSlack) * bShare;
+                }
+            }
+        }
+        if (!moved) break;
+    }
+
+    // Did not settle (a node squeezed between two others can be pushed back
+    // and forth): place the nodes one at a time instead, pinned ones first,
+    // each where it is if that is free, otherwise at the nearest free spot
+    // beside one of the nodes it touches. Cannot cycle - a placed node does
+    // not move again.
+    if (pass == maxPasses) {
+        auto overlaps = [margin](const NodeDiagramNode& a, double x, double y, const NodeDiagramNode& b) {
+            return x < b.x + b.width + margin - 0.01 && b.x < x + a.width + margin - 0.01 &&
+                   y < b.y + b.height + margin - 0.01 && b.y < y + a.height + margin - 0.01;
+        };
+        std::stable_sort(list.begin(), list.end(),
+                         [](const NodeDiagramNode* a, const NodeDiagramNode* b) { return a->isPinned && !b->isPinned; });
+        std::vector<NodeDiagramNode*> placed;
+        for (NodeDiagramNode* n : list) {
+            auto freeAt = [&](double x, double y) {
+                for (const NodeDiagramNode* p : placed) if (overlaps(*n, x, y, *p)) return false;
+                return true;
+            };
+            if (!n->isPinned && !freeAt(n->x, n->y)) {
+                double bestX = n->x, bestY = n->y, best = -1.0;
+                for (const NodeDiagramNode* p : placed) {
+                    const double cx[4] = {p->x - n->width - margin, p->x + p->width + margin, n->x, n->x};
+                    const double cy[4] = {n->y, n->y, p->y - n->height - margin, p->y + p->height + margin};
+                    for (int k = 0; k < 4; ++k) {
+                        const double d = (cx[k] - n->x) * (cx[k] - n->x) + (cy[k] - n->y) * (cy[k] - n->y);
+                        if ((best < 0.0 || d < best) && freeAt(cx[k], cy[k])) { best = d; bestX = cx[k]; bestY = cy[k]; }
+                    }
+                }
+                if (best < 0.0) {   // nothing free beside anything: below everything
+                    double bottom = n->y;
+                    for (const NodeDiagramNode* p : placed) bottom = std::max(bottom, p->y + p->height + margin);
+                    bestY = bottom;
+                }
+                n->x = bestX;
+                n->y = bestY;
+            }
+            placed.push_back(n);
+        }
+    }
+    if (pass > 0) RequestRedraw();
+    return pass;
 }
 
 void UltraCanvasNodeDiagram::ApplyTheme(NodeDiagramTheme t) {
@@ -2316,19 +2351,77 @@ void UltraCanvasNodeDiagram::RenderArrowHead(IRenderContext* ctx, double tipX, d
 // NODES
 // =============================================================================
 
+bool UltraCanvasNodeDiagram::IsShowingIconsOnly() const {
+    return detailZoom > 0.0 && viewport.GetZoomLevel() < detailZoom;
+}
+
 void UltraCanvasNodeDiagram::RenderNodes(IRenderContext* ctx) {
+    const bool iconsOnly = IsShowingIconsOnly();
     // Render in z-order (back to front)
     for (const auto& nodeId : nodeOrder) {
         auto it = nodes.find(nodeId);
         if (it == nodes.end()) continue;
         const NodeDiagramNode& node = it->second;
-        
+
+        if (iconsOnly && !node.iconPath.empty()) {
+            const bool named = node.isSelected || node.id == hoveredNodeId;
+            if (!named) RenderNodeIconOnly(ctx, node, false);
+            continue;
+        }
         RenderNodeShape(ctx, node);
         RenderNodeLabel(ctx, node);
         if (!node.handles.empty()) {
             RenderNodeHandles(ctx, node);
         }
     }
+    // The hovered or selected node's name, drawn last so no icon covers it.
+    if (iconsOnly) {
+        for (const auto& nodeId : nodeOrder) {
+            auto it = nodes.find(nodeId);
+            if (it == nodes.end() || it->second.iconPath.empty()) continue;
+            if (it->second.isSelected || it->second.id == hoveredNodeId) RenderNodeIconOnly(ctx, it->second, true);
+        }
+    }
+}
+
+void UltraCanvasNodeDiagram::RenderNodeIconOnly(IRenderContext* ctx, const NodeDiagramNode& node, bool withLabel) {
+    const double cx = node.x + node.width / 2.0;
+    const double cy = node.y + node.height / 2.0;
+    const double r = node.height / 2.0;
+    const Color disc = node.iconBackground.a > 0 ? node.iconBackground : node.fillColor;
+
+    if (node.shadow) {
+        ctx->SetFillPaint(Color(0, 0, 0, 30));
+        ctx->FillCircle({cx, cy + 2.0}, r + 1.0);
+    }
+    ctx->SetFillPaint(disc);
+    ctx->FillCircle({cx, cy}, r);
+    // A ring in the node's border colour where it has a heavy border (a hub),
+    // the selection colour when selected.
+    if (node.isSelected || node.borderWidth > 1.0) {
+        ctx->SetStrokePaint(node.isSelected ? style.selectionColor : node.borderColor);
+        ctx->SetStrokeWidth(node.isSelected ? style.selectionWidth : node.borderWidth);
+        ctx->DrawCircle({cx, cy}, r + 2.0);
+    }
+    if (auto img = UCImage::Get(node.iconPath); img && img->IsValid()) {
+        const double inset = r * 0.45;
+        ctx->DrawImage(*img, Rect2Dd(cx - r + inset, cy - r + inset, 2 * (r - inset), 2 * (r - inset)),
+                       ImageFitMode::Contain);
+    }
+    if (!withLabel || node.label.empty()) return;
+
+    // The name in a pill under the disc, at a size that reads at this zoom.
+    const double zoom = std::max(0.05, viewport.GetZoomLevel());
+    const double fontSize = (node.fontSize > 0 ? node.fontSize : style.baseFontSize) * 1.15 / zoom;
+    ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+    ctx->SetFontSize(fontSize);
+    const Size2Di dim = ctx->GetTextLineDimensions(node.label);
+    const double padX = 6.0 / zoom, padY = 3.0 / zoom;
+    const Rect2Dd pill(cx - dim.width / 2.0 - padX, cy + r + 4.0 / zoom, dim.width + 2 * padX, dim.height + 2 * padY);
+    ctx->SetFillPaint(Color(33, 33, 33, 230));
+    ctx->FillRoundedRectangle(pill, pill.height / 2.0);
+    ctx->SetTextPaint(Color(255, 255, 255, 255));
+    ctx->DrawText(node.label, {pill.x + padX, pill.y + padY});
 }
 
 void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiagramNode& node) {
@@ -2352,27 +2445,49 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
         borderWidth = style.selectionWidth;
     }
     
-    ctx->SetFillPaint(fillColor);
-    ctx->SetStrokePaint(borderColor);
-    ctx->SetStrokeWidth(borderWidth);
-    
     double centerX = node.x + node.width / 2.0;
     double centerY = node.y + node.height / 2.0;
     double radius = std::min(node.width, node.height) / 2.0;
-    
+    // 2.3.0: corners for Rectangle / RoundedSquare; < 0 keeps the old 15%.
+    const double corner = node.cornerRadius >= 0.0 ? node.cornerRadius
+                                                   : std::min(node.width, node.height) * 0.15;
+    const bool rounded = node.shape == NodeShape::RoundedSquare ||
+                         (node.shape == NodeShape::Rectangle && node.cornerRadius > 0.0);
+
+    // 2.3.0: a soft shadow, two offset layers under the shape.
+    if (node.shadow) {
+        for (int layer = 0; layer < 2; ++layer) {
+            const double grow = 1.0 + layer;
+            ctx->SetFillPaint(Color(0, 0, 0, layer == 0 ? 28 : 14));
+            const Rect2Dd r(node.x - grow + 1.0, node.y - grow + 3.0, node.width + 2 * grow - 2.0,
+                            node.height + 2 * grow - 2.0);
+            if (node.shape == NodeShape::Circle) ctx->FillCircle({centerX, centerY + 2.0}, radius + grow - 1.0);
+            else if (rounded) ctx->FillRoundedRectangle(r, corner + grow);
+            else ctx->FillRectangle(r);
+        }
+    }
+
+    ctx->SetFillPaint(fillColor);
+    ctx->SetStrokePaint(borderColor);
+    ctx->SetStrokeWidth(borderWidth);
+
     switch (node.shape) {
         case NodeShape::Circle:
             ctx->FillCircle({centerX, centerY}, radius);
             ctx->DrawCircle({centerX, centerY}, radius);
             break;
         case NodeShape::RoundedSquare: {
-            double r = std::min(node.width, node.height) * 0.15f;
-            ctx->FillRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), r);
-            ctx->DrawRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), r);
+            ctx->FillRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), corner);
+            ctx->DrawRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), corner);
             break;
         }
         case NodeShape::Square:
         case NodeShape::Rectangle:
+            if (rounded) {
+                ctx->FillRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), corner);
+                ctx->DrawRoundedRectangle(Rect2Dd(node.x, node.y, node.width, node.height), corner);
+                break;
+            }
             ctx->FillRectangle(Rect2Dd(node.x, node.y, node.width, node.height));
             ctx->DrawRectangle(Rect2Dd(node.x, node.y, node.width, node.height));
             break;
@@ -2449,12 +2564,87 @@ void UltraCanvasNodeDiagram::RenderNodeShape(IRenderContext* ctx, const NodeDiag
     }
 }
 
+namespace {
+
+// `text` cut at a character boundary and ended with an ellipsis so it fits
+// `maxWidth` in the context's current font; unchanged when it fits.
+std::string FitTextToWidth(IRenderContext* ctx, const std::string& text, double maxWidth) {
+    if (maxWidth <= 0.0) return {};
+    if (ctx->GetTextLineDimensions(text).width <= maxWidth) return text;
+    static const std::string kEllipsis = "\xE2\x80\xA6";   // U+2026
+    std::string cut = text;
+    while (!cut.empty()) {
+        // Drop one UTF-8 character: its continuation bytes, then its lead.
+        size_t n = cut.size() - 1;
+        while (n > 0 && (static_cast<unsigned char>(cut[n]) & 0xC0) == 0x80) --n;
+        cut.erase(n);
+        while (!cut.empty() && cut.back() == ' ') cut.pop_back();
+        if (ctx->GetTextLineDimensions(cut + kEllipsis).width <= maxWidth) return cut + kEllipsis;
+    }
+    return kEllipsis;
+}
+
+} // namespace
+
 void UltraCanvasNodeDiagram::RenderNodeLabel(IRenderContext* ctx, const NodeDiagramNode& node) {
+    const double fontSize = node.fontSize > 0 ? node.fontSize : style.baseFontSize;
+
+    // 2.3.0: the card layout - an icon in a disc at the leading edge, the
+    // label (and the sublabel under it) left-aligned beside it, shortened
+    // with an ellipsis when they do not fit.
+    if (!node.iconPath.empty() || !node.sublabel.empty()) {
+        const double pad = std::max(4.0, node.height * 0.14);
+        double textLeft = node.x + pad + 2.0;
+        if (!node.iconPath.empty()) {
+            const double d = std::max(8.0, node.height - 2.0 * pad);
+            const Rect2Dd disc(node.x + pad, node.y + (node.height - d) / 2.0, d, d);
+            if (node.iconBackground.a > 0) {
+                ctx->SetFillPaint(node.iconBackground);
+                ctx->FillCircle({disc.x + d / 2.0, disc.y + d / 2.0}, d / 2.0);
+            }
+            const double inset = node.iconBackground.a > 0 ? d * 0.2 : 0.0;
+            if (auto img = UCImage::Get(node.iconPath); img && img->IsValid()) {
+                ctx->DrawImage(*img, Rect2Dd(disc.x + inset, disc.y + inset, d - 2 * inset, d - 2 * inset),
+                               ImageFitMode::Contain);
+            }
+            textLeft = disc.x + d + pad * 0.9;
+        }
+        const double maxWidth = node.x + node.width - pad - textLeft;
+
+        ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+        ctx->SetFontSize(fontSize);
+        const std::string label = FitTextToWidth(ctx, node.label, maxWidth);
+        const double labelHeight = ctx->GetTextLineDimensions(label.empty() ? std::string("M") : label).height;
+
+        std::string sub;
+        double subHeight = 0.0;
+        if (!node.sublabel.empty()) {
+            ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+            ctx->SetFontSize(fontSize * 0.85);
+            sub = FitTextToWidth(ctx, node.sublabel, maxWidth);
+            subHeight = ctx->GetTextLineDimensions(sub).height;
+        }
+        double y = node.y + (node.height - labelHeight - subHeight) / 2.0;
+        if (!label.empty()) {
+            ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
+            ctx->SetFontSize(fontSize);
+            ctx->SetTextPaint(node.textColor);
+            ctx->DrawText(label, {textLeft, y});
+        }
+        if (!sub.empty()) {
+            ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
+            ctx->SetFontSize(fontSize * 0.85);
+            ctx->SetTextPaint(node.sublabelColor);
+            ctx->DrawText(sub, {textLeft, y + labelHeight});
+        }
+        return;
+    }
+
     if (node.label.empty()) return;
     
     ctx->SetTextPaint(node.textColor);
     ctx->SetFontFace(style.fontFamily, FontWeight::Bold, FontSlant::Normal);
-    ctx->SetFontSize(node.fontSize > 0 ? node.fontSize : style.baseFontSize);
+    ctx->SetFontSize(fontSize);
     
     Size2Di nodeTextDim = ctx->GetTextLineDimensions(node.label);
     int textWidth = nodeTextDim.width;
@@ -3408,6 +3598,17 @@ std::string UltraCanvasNodeDiagram::ToJson() const {
         out << "      \"draggable\": " << (n.draggable ? "true" : "false") << ",\n";
         out << "      \"selectable\": " << (n.selectable ? "true" : "false") << ",\n";
         out << "      \"deletable\": " << (n.deletable ? "true" : "false");
+        // 2.3.0: the card look, written only when used.
+        if (!n.iconPath.empty()) {
+            out << ",\n      \"iconPath\": " << EscapeJsonString(n.iconPath);
+            out << ",\n      \"iconBackground\": " << ColorToJsonString(n.iconBackground);
+        }
+        if (!n.sublabel.empty()) {
+            out << ",\n      \"sublabel\": " << EscapeJsonString(n.sublabel);
+            out << ",\n      \"sublabelColor\": " << ColorToJsonString(n.sublabelColor);
+        }
+        if (n.cornerRadius >= 0.0) out << ",\n      \"cornerRadius\": " << n.cornerRadius;
+        if (n.shadow) out << ",\n      \"shadow\": true";
         if (!n.handles.empty()) {
             out << ",\n      \"handles\": [\n";
             for (size_t i = 0; i < n.handles.size(); ++i) {
@@ -3542,6 +3743,12 @@ bool UltraCanvasNodeDiagram::FromJson(const std::string& json) {
         n.draggable   = ExtractBoolValue(nodeJson, "draggable", true);
         n.selectable  = ExtractBoolValue(nodeJson, "selectable", true);
         n.deletable   = ExtractBoolValue(nodeJson, "deletable", true);
+        n.iconPath       = ExtractStringValue(nodeJson, "iconPath");                     // 2.3.0
+        n.iconBackground = ExtractColorValue(nodeJson, "iconBackground", n.iconBackground);
+        n.sublabel       = ExtractStringValue(nodeJson, "sublabel");
+        n.sublabelColor  = ExtractColorValue(nodeJson, "sublabelColor", n.sublabelColor);
+        n.cornerRadius   = ExtractNumberValue(nodeJson, "cornerRadius", -1.0);
+        n.shadow         = ExtractBoolValue(nodeJson, "shadow", false);
         
         // Handles
         auto handleObjects = ExtractObjectArray(nodeJson, "handles");

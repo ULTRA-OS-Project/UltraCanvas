@@ -2,6 +2,7 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
+// Version: 4.7.0 - children are laid out clear of a showing vertical scrollbar
 // Version: 4.6.0 - OnThemeChanged reaches every child
 // Version: 4.5.0 - FinishArrange for subclasses that place their own children
 // Version: 4.4.0 - ContainerStyle::clipChildren (false: CSS overflow: visible)
@@ -60,6 +61,8 @@ namespace UltraCanvas {
         // narrows the viewport by its track size, which would otherwise
         // fabricate a track-sized horizontal overflow of content that was laid
         // out against the full width.
+        // When the vertical bar shows, the children are laid out a track
+        // narrower, clear of it (as CSS overflow:auto), not under it.
         bool autoShowVerticalScrollbar = true;
         bool autoShowHorizontalScrollbar = true;
         bool forceShowVerticalScrollbar = false;
