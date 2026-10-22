@@ -528,7 +528,10 @@ options) is lost. **Import followed**: rows from CSV files
 and workbooks through FileLoader's spreadsheet formats and the framework's
 Text Import dialog, mapped onto a table and inserted all or none; SQL files
 (`.sql`, `.sql.gz`) summarised and run on the console as one transaction.
-Stage 2 is complete apart from editing in the grid cell itself and blobs.
+**The rest of stage 2 followed**: Browse filters per column (bound
+values), editing a cell in place, blobs viewed (picture, text or hex), saved
+and loaded, and rows copied as CSV, JSON or INSERT statements - stage 2 is
+complete.
 **Export, stage 1's last item, followed**: a table through a cursor, or a
 query's rows, to CSV / TSV (the framework's Text Export dialog and writer),
 JSON, SQL INSERTs (with a SQLite table's own CREATE TABLE) or a workbook.

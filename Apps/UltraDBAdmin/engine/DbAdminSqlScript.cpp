@@ -117,4 +117,32 @@ std::string RiskyText(const ScriptSummary& summary) {
     return text;
 }
 
+std::string StatementTable(const std::string& statement) {
+    std::vector<SqlToken> tokens;
+    std::string error;
+    if (!TokenizeSql(statement, tokens, error)) return std::string();
+    int depth = 0;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+        const SqlToken& token = tokens[i];
+        if (token.kind == SqlToken::Kind::Punct && token.text == "(") ++depth;
+        if (token.kind == SqlToken::Kind::Punct && token.text == ")") --depth;
+        if (depth != 0 || !IsWord(token, "FROM")) continue;
+        // A name, or schema.name: words and quoted names joined by dots.
+        std::string name;
+        size_t k = i + 1;
+        while (k < tokens.size() &&
+               (tokens[k].kind == SqlToken::Kind::Word || tokens[k].kind == SqlToken::Kind::QuotedName)) {
+            name += tokens[k].text;
+            if (k + 2 < tokens.size() && tokens[k + 1].kind == SqlToken::Kind::Punct && tokens[k + 1].text == ".") {
+                name += ".";
+                k += 2;
+                continue;
+            }
+            break;
+        }
+        return name;
+    }
+    return std::string();
+}
+
 } // namespace UltraDBAdmin

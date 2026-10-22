@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminExport.cpp
+// Version: 0.2.0 - RowsText, QuotedName
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminExport.h"
@@ -176,6 +177,54 @@ bool ExportWriter::Open(const std::string& path, const ExportOptions& options, c
     return true;
 }
 
+std::string QuotedName(const std::string& name) {
+    std::string out = "\"";
+    for (const char c : name) {
+        if (c == '"') out += '"';
+        out += c;
+    }
+    return out + "\"";
+}
+
+std::string RowsText(const std::vector<std::string>& columns, const std::vector<UltraDbRow>& rows,
+                     ExportFormat format, SqlEngine engine, const std::string& table) {
+    std::string text;
+    switch (format) {
+        case ExportFormat::Csv: {
+            const CSVExportOptions options;   // comma, quotes where needed, LF
+            text = UltraCanvas::CSVFormatRecord(columns, options);
+            for (const auto& row : rows) {
+                std::vector<std::string> fields;
+                for (size_t i = 0; i < row.Size(); ++i) fields.push_back(CsvField(row[i]));
+                text += UltraCanvas::CSVFormatRecord(fields, options);
+            }
+            break;
+        }
+        case ExportFormat::Json: {
+            text = "[";
+            for (size_t r = 0; r < rows.size(); ++r) {
+                text += r == 0 ? "\n{" : ",\n{";
+                for (size_t i = 0; i < rows[r].Size() && i < columns.size(); ++i)
+                    text += (i == 0 ? "" : ", ") + JsonString(columns[i]) + ": " + JsonValue(rows[r][i]);
+                text += "}";
+            }
+            text += rows.empty() ? "]\n" : "\n]\n";
+            break;
+        }
+        case ExportFormat::Sql: {
+            std::string names;
+            for (size_t i = 0; i < columns.size(); ++i) names += (i == 0 ? "" : ", ") + QuotedName(columns[i]);
+            for (const auto& row : rows) {
+                text += "INSERT INTO " + table + " (" + names + ") VALUES (";
+                for (size_t i = 0; i < row.Size(); ++i) text += (i == 0 ? "" : ", ") + SqlLiteral(row[i], engine);
+                text += ");\n";
+            }
+            break;
+        }
+    }
+    return text;
+}
+
 bool ExportWriter::Write(const UltraDbRow& row, std::string& error) {
     std::string text;
     switch (options_.format) {
@@ -269,10 +318,10 @@ UltraDbResult ExportResult(const std::string& connection, const UltraDbResultSet
 
 UltraDbResult ExportQuery(const std::string& connection, const std::string& sql, const std::string& path,
                           const ExportOptions& options, size_t& written, const std::atomic<bool>* cancel,
-                          const std::function<void(size_t)>& progress) {
+                          const std::function<void(size_t)>& progress, const UltraDbParams& params) {
     written = 0;
     UltraDbResult result;
-    const UltraDbHandle cursor = UltraDb_OpenCursor(connection, sql, {}, &result);
+    const UltraDbHandle cursor = UltraDb_OpenCursor(connection, sql, params, &result);
     if (cursor == UltraDbInvalidHandle) return result;
     ExportWriter writer;
     std::string error;
@@ -306,11 +355,11 @@ UltraDbResult ExportQuery(const std::string& connection, const std::string& sql,
 }
 
 UltraDbResult ReadRows(const std::string& connection, const std::string& sql, size_t limit, UltraDbResultSet& out,
-                       bool& truncated) {
+                       bool& truncated, const UltraDbParams& params) {
     out = UltraDbResultSet();
     truncated = false;
     UltraDbResult result;
-    const UltraDbHandle cursor = UltraDb_OpenCursor(connection, sql, {}, &result);
+    const UltraDbHandle cursor = UltraDb_OpenCursor(connection, sql, params, &result);
     if (cursor == UltraDbInvalidHandle) return result;
     bool exhausted = false, first = true;
     UltraDbResultSet page;

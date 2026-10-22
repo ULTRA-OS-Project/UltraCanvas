@@ -1,5 +1,7 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Version: 1.6.0 - onCellDoubleClicked: the cell a double-click hit; GetCellRect: where a
+//                  cell is, for an editor laid over it
 // Version: 1.5.0 - onKeyDown: a key reaches the owner first (a dropdown's
 //                  type-ahead); SetFocusedRow: the arrow keys' move, from code
 // Version: 1.4.0 - SetAcceptsFocus: a list inside another element (a dropdown's
@@ -12,7 +14,7 @@
 //                  subclasses, instead of wrapping those callbacks
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth: what fitting a
 //                  column to its title and its rows' text takes
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-22
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -86,6 +88,9 @@ namespace UltraCanvas {
         // left the rows area.
         std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
         std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+        // A double-click on a cell, after onItemDoubleClicked: which column
+        // it hit, for an owner that edits the cell in place.
+        std::function<void(int row, int column, const Point2Di& posInCell)> onCellDoubleClicked;
 
         // A click (press and release in the same cell) on a column header, when
         // the header is shown. Fires after a press that did not start a column
@@ -237,6 +242,13 @@ namespace UltraCanvas {
         // Column under an element-local x coordinate (-1 if outside the rows
         // viewport). columnStartX receives the column's element-local left edge.
         int GetColumnAt(int x, int* columnStartX = nullptr) const;
+
+        // Where a cell is, element-local, as it is drawn now (scrolled):
+        // its column's left edge and width, its row's top and height. An
+        // owner lays an editor over it (GetPositionInWindow for the
+        // window's coordinates). Empty for a row or column that does not
+        // exist; a row scrolled out of view lies outside the viewport.
+        Rect2Di GetCellRect(int row, int column) const;
 
         // Header column under an element-local point (-1 when the header is
         // hidden or the point is outside it). columnStartX receives the

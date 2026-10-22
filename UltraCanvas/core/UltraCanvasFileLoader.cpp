@@ -1,6 +1,7 @@
 // core/UltraCanvasFileLoader.cpp
 // Cross-platform implementation of the file selection dialog facade.
 // NotifyRecentFile is implemented per-platform in OS/<platform>/UltraCanvas*FileLoader.cpp.
+// Version: 1.9.0 - SaveFile
 // Version: 1.8.0 - LoadTextDocument / OpenTextDocument read a .pptx as an outline
 // Version: 1.7.0 - RequestNewDocumentPassword; SaveTextDocument saves a
 //                  password-protected .docx
@@ -154,6 +155,38 @@ namespace UltraCanvas {
         out.success = true;
         MaybeDecompress(out, autoDecompress);
         return out;
+    }
+
+    bool UltraCanvasFileLoader::SaveFile(const std::string& path, const std::vector<uint8_t>& bytes,
+                                         std::string& error) {
+        error.clear();
+        if (path.empty()) { error = "empty path"; return false; }
+        if (IsUrl(path)) { error = "a URL cannot be saved to"; return false; }
+        const std::filesystem::path target = PathFromUtf8(path);
+        std::filesystem::path partial = target;
+        partial += ".part";
+        {
+            std::ofstream out(partial, std::ios::binary | std::ios::trunc);
+            if (!out) { error = "cannot write " + path; return false; }
+            if (!bytes.empty()) out.write(reinterpret_cast<const char*>(bytes.data()),
+                                          static_cast<std::streamsize>(bytes.size()));
+            out.close();
+            if (!out) {
+                std::error_code ignored;
+                std::filesystem::remove(partial, ignored);
+                error = "the file could not be completed (is the disk full?)";
+                return false;
+            }
+        }
+        std::error_code ec;
+        std::filesystem::rename(partial, target, ec);
+        if (ec) {
+            std::error_code ignored;
+            std::filesystem::remove(partial, ignored);
+            error = "cannot put the file in place: " + ec.message();
+            return false;
+        }
+        return true;
     }
 
     // ===== FILE DIALOGS =====
