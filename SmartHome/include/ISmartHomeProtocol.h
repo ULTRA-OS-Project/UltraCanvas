@@ -19,7 +19,7 @@ namespace SmartHome {
 // ===== PROTOCOL CAPABILITY FLAGS =====
 
 enum class ProtocolCapability : uint32_t {
-    None                = 0,
+    NoCapabilities                = 0,
     Discovery           = 1 << 0,
     Pairing             = 1 << 1,
     Commissioning       = 1 << 2,

@@ -1,7 +1,3 @@
-// Pull the X11/window chain (UltraCanvasLinuxDragDrop.h uses the X11 `None` macro) BEFORE
-// the QRCode header, which does `#undef None` for its QRGradientType::None / QRLogoStyle::None
-// enumerators. Otherwise DragDrop.h would be parsed after None is undef'd (its Xlib re-include
-// being guarded) and fail to compile.
 #include "UltraCanvasFileLoader.h"
 
 #include "Plugins/QRCode/UltraCanvasQRCode.h"
@@ -635,14 +631,14 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasQRCode::ClearGradient() {
-        config_.style.gradientType = QRGradientType::None;
+        config_.style.gradientType = QRGradientType::NoGradient;
         RequestRedraw();
     }
 
     void UltraCanvasQRCode::SetLogo(std::shared_ptr<UCImage> logo, float scale) {
         config_.style.logoImage = std::move(logo);
         config_.style.logoScale = std::clamp(scale, 0.0f, 0.40f);
-        if (config_.style.logoStyle == QRLogoStyle::None)
+        if (config_.style.logoStyle == QRLogoStyle::NoLogo)
             config_.style.logoStyle = QRLogoStyle::CenterWithBorder;
         RequestRedraw();
     }
@@ -654,7 +650,7 @@ namespace UltraCanvas {
 
     void UltraCanvasQRCode::ClearLogo() {
         config_.style.logoImage.reset();
-        config_.style.logoStyle = QRLogoStyle::None;
+        config_.style.logoStyle = QRLogoStyle::NoLogo;
         RequestRedraw();
     }
 
@@ -714,7 +710,7 @@ namespace UltraCanvas {
         config_.style.moduleScale     = 1.0f;
         config_.style.moduleRoundness = 0.0f;
         config_.style.finderStyle     = QRFinderStyle::Standard;
-        config_.style.gradientType    = QRGradientType::None;
+        config_.style.gradientType    = QRGradientType::NoGradient;
         config_.style.foregroundColor = Colors::Black;
         config_.style.backgroundColor = Colors::White;
 
@@ -873,7 +869,7 @@ namespace UltraCanvas {
 
     void UltraCanvasQRCode::ApplyDataPaint(IRenderContext* ctx, const Rect2Df& qrRect) {
         const auto& st = config_.style;
-        if (st.gradientType == QRGradientType::None) {
+        if (st.gradientType == QRGradientType::NoGradient) {
             ctx->SetFillPaint(st.foregroundColor);
             return;
         }
@@ -1088,7 +1084,7 @@ namespace UltraCanvas {
 
     void UltraCanvasQRCode::DrawLogo(IRenderContext* ctx, const Rect2Df& qrRect) const {
         const auto& st = config_.style;
-        if (st.logoStyle == QRLogoStyle::None || !st.logoImage) return;
+        if (st.logoStyle == QRLogoStyle::NoLogo || !st.logoImage) return;
 
         // The logo and its margin hide QR modules in the centre. If they hide
         // more than the error correction can recover, the code stops scanning.
@@ -1119,7 +1115,7 @@ namespace UltraCanvas {
 
         ctx->SetFillPaint(st.logoBorderColor);
         switch (st.logoStyle) {
-            case QRLogoStyle::None:
+            case QRLogoStyle::NoLogo:
                 return;
 
             case QRLogoStyle::Center:

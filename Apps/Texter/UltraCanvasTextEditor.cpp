@@ -696,6 +696,10 @@ namespace {
                             OnEditGoToLine();
                         }),
                         MenuItemData::Separator(),
+                        MenuItemData::Action("Translate Selection...", [this]() {
+                            OnEditTranslateSelection();
+                        }),
+                        MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Select All", "Ctrl+A", [this]() {
                             OnEditSelectAll();
                         }),

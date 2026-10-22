@@ -1337,7 +1337,7 @@ void UltraMailApp::RunMailboxAction(
                          "No incoming mail server is known for this account.");
             return;
         }
-        if (vault_.MethodFor(accountId) == SignInMethod::None) {
+        if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) {
             AlertWarning(parent, actionName + " could not be completed.",
                          "No password or sign-in is stored for this account in the "
                          "credential vault.");
@@ -1364,7 +1364,7 @@ void UltraMailApp::RunMailboxAction(
             // Default Success: only a credential failure carries an auth code the
             // UI thread can turn into a re-sign-in offer; a mailbox-op failure
             // keeps Success here and falls through to the plain error alert.
-            UltraNetResultCode credCode = UltraNetResultCode::Success;
+            UltraNetResultCode credCode = UltraNetResultCode::Ok;
             if (!cred) {
                 outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
@@ -1411,7 +1411,7 @@ void UltraMailApp::RunMailboxActionQuiet(
     if (serverUrl.empty() || !settings.found) return;
     IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
     if (!mailbox) return;                    // quiet: no plug-in, nothing to push
-    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) return;
 
     UltraNetMailOptions opts;
     ApplyConnection(settings.imap, opts);
@@ -2439,7 +2439,7 @@ void UltraMailApp::MaintainPushWatches() {
         if (!jmap) break;
         const DiscoveryResult d = SettingsFor(a);
         if (!d.found || d.imap.protocol != MailProtocol::Jmap) continue;
-        if (vault_.MethodFor(a.accountId) == SignInMethod::None) continue;
+        if (vault_.MethodFor(a.accountId) == SignInMethod::NoSignIn) continue;
         const std::string url = AutoDiscovery::IncomingServerUrl(d.imap);
         if (url.empty()) continue;
         wanted.insert(a.accountId);
@@ -2675,7 +2675,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     if (serverUrl.empty() || !settings.found) return;
     IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
     if (!mailbox) return;
-    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) return;
 
     UltraNetMailOptions opts;
     ApplyConnection(settings.imap, opts);
@@ -2833,7 +2833,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The password — or the Google sign-in — lives in the vault. Without
         // either the login would be rejected anyway, so report the real reason
         // instead of a bad-password error from the server.
-        if (vault_.MethodFor(acc.accountId) == SignInMethod::None) {
+        if (vault_.MethodFor(acc.accountId) == SignInMethod::NoSignIn) {
             if (userInitiated)
                 AlertWarning(parent, "New mail cannot be fetched for " + who + ".",
                              "No password or sign-in is stored for this account "
@@ -2884,7 +2884,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         auto arrived = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
         // Stash the credential-resolve code so the UI thread can tell an expired
         // OAuth sign-in (offer re-sign-in) from an ordinary sync failure.
-        auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Success);
+        auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Ok);
         svc->SyncInBackground(aid, acc.serverUrl, opts,
                               [this, aid, username, provider, credCode](UltraNetMailOptions& o) {
                                   UltraNetResult r = ResolveCredentials(aid, username, provider,
@@ -3856,7 +3856,7 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     EnsureVaultUnlocked([this, account, current, parent]() {
         const std::string accountId = account.accountId;
         ServerSettingsDialog::Verifier verify;
-        if (vault_.MethodFor(accountId) != SignInMethod::None) {
+        if (vault_.MethodFor(accountId) != SignInMethod::NoSignIn) {
             verify = LoginVerifier([this, accountId, current](
                     const ServerSettingsDialog::Result&,
                     const std::string& username, UltraNetCredentials& c) {

@@ -69,7 +69,7 @@ std::string CsvField(const UltraDbValue& value) {
 std::string JsonValue(const UltraDbValue& value) {
     switch (value.Type()) {
         case UltraDbType::Null:   return "null";
-        case UltraDbType::Bool:   return value.AsBool() ? "true" : "false";
+        case UltraDbType::Boolean:   return value.AsBool() ? "true" : "false";
         case UltraDbType::Int:    return value.AsString();
         case UltraDbType::Double: return Finite(value) ? value.AsString() : "null";
         case UltraDbType::Blob:   return JsonString("\\x" + Hex(value.AsBlob()));
@@ -81,7 +81,7 @@ std::string JsonValue(const UltraDbValue& value) {
 std::string SqlLiteral(const UltraDbValue& value, SqlEngine engine) {
     switch (value.Type()) {
         case UltraDbType::Null:   return "NULL";
-        case UltraDbType::Bool:   return value.AsBool() ? "TRUE" : "FALSE";
+        case UltraDbType::Boolean:   return value.AsBool() ? "TRUE" : "FALSE";
         case UltraDbType::Int:    return value.AsString();
         case UltraDbType::Double: return Finite(value) ? value.AsString() : "NULL";
         case UltraDbType::Blob:
@@ -109,7 +109,7 @@ WorkbookCell WorkbookValue(const UltraDbValue& value, bool numericColumn) {
             cell.kind = WorkbookCell::Kind::Number;
             cell.number = value.AsDouble();
             break;
-        case UltraDbType::Bool:
+        case UltraDbType::Boolean:
             cell.kind = WorkbookCell::Kind::Boolean;
             cell.boolean = value.AsBool();
             break;

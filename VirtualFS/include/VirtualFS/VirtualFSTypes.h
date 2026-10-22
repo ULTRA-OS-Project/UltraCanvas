@@ -11,16 +11,6 @@
 #include <cstdint>
 #include <memory>
 
-// X11's Xlib.h defines Success and None as object-like macros, which would
-// break the enum members below when this header is included after X11.
-// Shield the header body; the macros are restored at the end of the file.
-// (Use sites in application code compiled against X11 still need to avoid
-// or #undef these names themselves - that cannot be fixed from here.)
-#pragma push_macro("Success")
-#pragma push_macro("None")
-#undef Success
-#undef None
-
 namespace VirtualFS {
 
 // ============================================================================
@@ -36,7 +26,7 @@ class VirtualFSManager;
 // ============================================================================
 
 enum class VirtualFSResult {
-    Success = 0,            // Operation completed successfully
+    Ok = 0,            // Operation completed successfully
     
     // General errors (1-99)
     Error = 1,              // Generic error
@@ -81,7 +71,7 @@ enum class VirtualFSResult {
 // ============================================================================
 
 enum class VirtualFSCapability : uint32_t {
-    None            = 0,
+    NoCapabilities            = 0,
     
     // Basic operations
     Read            = 1 << 0,   // Can read files
@@ -378,7 +368,7 @@ struct VirtualFSProviderInfo {
     std::string libraryName;            // Underlying library (e.g., "libarchive 3.6.0")
     std::vector<std::string> extensions;     // Supported extensions
     std::vector<std::string> mimeTypes;      // Supported MIME types
-    VirtualFSCapability capabilities = VirtualFSCapability::None;
+    VirtualFSCapability capabilities = VirtualFSCapability::NoCapabilities;
     int priority = 0;                   // Higher = preferred for conflicts
 };
 
@@ -466,7 +456,7 @@ using VirtualFSEntryCallback = std::function<void(const VirtualFSEntry& entry)>;
 // Convert result to human-readable string
 inline std::string VirtualFSResultToString(VirtualFSResult result) {
     switch (result) {
-        case VirtualFSResult::Success: return "Success";
+        case VirtualFSResult::Ok: return "Success";
         case VirtualFSResult::Error: return "Generic error";
         case VirtualFSResult::NotFound: return "File or directory not found";
         case VirtualFSResult::AccessDenied: return "Access denied";
@@ -536,6 +526,3 @@ inline std::string VirtualFSCompressionMethodToString(VirtualFSCompressionMethod
 }
 
 } // namespace VirtualFS
-
-#pragma pop_macro("None")
-#pragma pop_macro("Success")

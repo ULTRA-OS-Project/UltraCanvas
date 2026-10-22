@@ -278,7 +278,7 @@ namespace ConnectionGeometry {
                 DrawOrganic(start, end, style, thickness); break;
         }
 
-        if (style.capStyle != ConnectionCapStyle::None) {
+        if (style.capStyle != ConnectionCapStyle::NoCap) {
             DrawCaps(start, end, style, thickness);
         }
 
@@ -480,7 +480,7 @@ namespace ConnectionGeometry {
                 break;
             }
 
-            case ConnectionCapStyle::None:
+            case ConnectionCapStyle::NoCap:
             default:
                 break;
         }

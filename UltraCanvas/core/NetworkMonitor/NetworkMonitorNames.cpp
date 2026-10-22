@@ -60,7 +60,7 @@ std::unique_ptr<INameSource> NetworkMonitor_CreateSystemDnsSource() {
 namespace {
 
 int Strength(NameSource source) {
-    return NetworkMonitor_NameIsObserved(source) ? 2 : (source == NameSource::None ? 0 : 1);
+    return NetworkMonitor_NameIsObserved(source) ? 2 : (source == NameSource::NoSource ? 0 : 1);
 }
 
 // ===== THE TABLE =====
@@ -455,7 +455,7 @@ void NetworkMonitor_RemoveNameListener(NameListenerId id) {
 
 void NetworkMonitor_ObserveName(const DnsObservation& observation) {
     if (observation.queryName.empty() || observation.addresses.empty() ||
-        observation.source == NameSource::None) {
+        observation.source == NameSource::NoSource) {
         return;
     }
     DnsObservation stamped = observation;

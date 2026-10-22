@@ -56,7 +56,7 @@ struct WmfFont {
 };
 
 struct WmfObject {
-    enum Kind { None, Pen, Brush, Font } kind = None;
+    enum Kind { NoObject, Pen, Brush, Font } kind = NoObject;
     WmfPen pen;
     WmfBrush brush;
     WmfFont font;
@@ -186,7 +186,7 @@ private:
 
     void Alloc(WmfObject obj) {
         for (auto& slot : slots) {
-            if (slot.kind == WmfObject::None) {
+            if (slot.kind == WmfObject::NoObject) {
                 slot = obj;
                 return;
             }

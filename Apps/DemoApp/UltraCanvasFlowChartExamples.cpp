@@ -194,7 +194,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildOrderExampleChart() {
     chart->SetConnectionColor("c5", Color(220, 120, 80, 255));
     chart->SetConnectionWidth("c5", 2.5f);
     
-    chart->AddConnection("c6", "process3", "note1", FlowChartConnectionStyle::Straight, FlowChartArrowStyle::None);
+    chart->AddConnection("c6", "process3", "note1", FlowChartConnectionStyle::Straight, FlowChartArrowStyle::NoArrow);
     chart->SetConnectionLineStyle("c6", FlowChartLineStyle::Dotted);
     chart->SetConnectionColor("c6", Color(180, 180, 180, 255));
     chart->SetConnectionWidth("c6", 1.5f);

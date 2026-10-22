@@ -107,7 +107,7 @@ TransportResponse ConvertResponse(const UltraNetResponse& netResp) {
 Error MapNetError(const UltraNetResult& result) {
     Error e;
     switch (result.code) {
-        case UltraNetResultCode::Success:
+        case UltraNetResultCode::Ok:
             return e;
         case UltraNetResultCode::Cancelled:
             e.code = ErrorCode::Cancelled; break;

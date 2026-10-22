@@ -478,6 +478,12 @@ namespace UltraCanvas {
         void OnEditSearch();
         void OnEditReplace();
         void OnEditGoToLine();
+        // Edit > Translate Selection...: through UltraAI, a model on this
+        // computer first (UltraCanvasTextEditorTranslate.cpp).
+        void OnEditTranslateSelection();
+        void TranslateSelection(const std::string& text, const std::string& language);
+        std::string lastTranslateLanguage = "en";
+        bool translating = false;
 
         void OnViewIncreaseFontSize();
         void OnViewDecreaseFontSize();

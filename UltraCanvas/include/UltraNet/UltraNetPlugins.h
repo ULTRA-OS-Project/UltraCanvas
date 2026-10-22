@@ -64,7 +64,7 @@ enum class UltraNetMailAuth {
     OAuth2,             // SASL XOAUTH2 / OAUTHBEARER with credentials.token
     Kerberos,           // SASL GSSAPI (the system's Kerberos ticket)
     NTLM,               // SASL NTLM
-    None                // no sign-in: the credentials are not sent (an SMTP relay
+    NoAuth              // no sign-in: the credentials are not sent (an SMTP relay
                         // that trusts the network, an IMAP PREAUTH greeting)
 };
 
@@ -183,7 +183,7 @@ public:
 
 // IMAP system flags as a bitfield.
 enum class UltraNetMailFlags : uint32_t {
-    None     = 0,
+    NoFlags     = 0,
     Seen     = 1u << 0,   // \Seen
     Answered = 1u << 1,   // \Answered
     Flagged  = 1u << 2,   // \Flagged
@@ -224,7 +224,7 @@ struct UltraNetMailEnvelope {
     std::vector<std::string> to;
     std::vector<std::string> cc;
     std::string date;                     // raw Date header
-    UltraNetMailFlags flags = UltraNetMailFlags::None;
+    UltraNetMailFlags flags = UltraNetMailFlags::NoFlags;
     uint32_t size = 0;                    // RFC822.SIZE, if known
 };
 

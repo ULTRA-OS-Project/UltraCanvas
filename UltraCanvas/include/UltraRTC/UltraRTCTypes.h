@@ -19,7 +19,7 @@ constexpr UltraRtcHandle UltraRtcInvalidHandle = 0;
 // ============================================================================
 
 enum class UltraRtcResultCode {
-    Success,
+    Ok,
     NotInitialized,
     InvalidHandle,
     InvalidArgument,
@@ -38,7 +38,7 @@ struct UltraRtcResult {
 
     operator bool() const { return success; }
 
-    static UltraRtcResult Ok() { return {UltraRtcResultCode::Success, true, std::string()}; }
+    static UltraRtcResult Ok() { return {UltraRtcResultCode::Ok, true, std::string()}; }
     static UltraRtcResult Error(UltraRtcResultCode code, const std::string& message) {
         return {code, false, message};
     }

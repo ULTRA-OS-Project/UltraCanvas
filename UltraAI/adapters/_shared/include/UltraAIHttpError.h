@@ -16,7 +16,7 @@ namespace UltraAI {
 
 // Map an HTTP status code to an Error. `detail` (typically a snippet of the
 // response body) is appended to the message; Error::providerCode carries the
-// numeric status as text. Statuses < 400 return ErrorCode::None.
+// numeric status as text. Statuses < 400 return ErrorCode::Ok.
 Error MapHttpStatus(int statusCode, const std::string& detail = "");
 
 // Parse a Retry-After header value into milliseconds. Only the

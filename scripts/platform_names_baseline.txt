@@ -1,18 +1,22 @@
-# Functions of ours named like a Win32 A/W macro (CreateFile, DrawText, ...),
-# recorded so CI can block *new* ones while these are worked off. Each line is
-# <path>::<kind>::<name>.
+# Identifiers of ours that a platform header takes for itself, recorded so CI
+# can block *new* ones while these are worked off. Each line is
+# <path>::<kind>::<name>; the kind says which platform (win32-*, x11-*,
+# objc-*) - see scripts/check_platform_names.py.
 #
-# These are debt, not exceptions: in a translation unit that includes
-# <windows.h> the name becomes NameW, and the Windows link fails as soon as the
-# declaring and the calling file disagree. Rename the function and remove the
-# line.
+# These are debt, not exceptions. win32-*: in a translation unit that includes
+# <windows.h> the name becomes NameW and the Windows link fails as soon as the
+# declaring and the calling file disagree. x11-* / objc-*: in a file that
+# includes the platform header first the name no longer compiles. Rename the
+# identifier and remove the line.
 #
 # Do not add to this file to silence a new finding. A site that is correct as
 # it stands says so where it is:
 #     hr = item->GetDisplayName(&name);   // win32-name-ok: <why>
+#     uint8_t Status = 0;                 // x11-name-ok: <why>
+#     int NO = 0;                         // objc-name-ok: <why>
 #
 # Regenerate with:
-#     python3 scripts/check_win32_names.py --update-baseline
+#     python3 scripts/check_platform_names.py --update-baseline
 Apps/Texter/UltraCanvasTextEditor.cpp::win32-name-member::ReplaceText
 Tests/DWGReaderTest.cpp::win32-name-declaration::FindText
 Tests/MathFontTest.cpp::win32-name-member::GetGlyphOutline

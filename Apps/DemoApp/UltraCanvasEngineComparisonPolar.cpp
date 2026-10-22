@@ -607,7 +607,7 @@ EnginePieLabelContent EngineContentOf(LabelContent content) {
 
 // Dropdown order: Auto, Inside, Outside, Hidden.
 const LabelPosition kLegacyPositions[] = {LabelPosition::Auto, LabelPosition::Inside,
-                                          LabelPosition::Outside, LabelPosition::None};
+                                          LabelPosition::Outside, LabelPosition::NoLabels};
 const EnginePieLabelPosition kEnginePositions[] = {
     EnginePieLabelPosition::Auto, EnginePieLabelPosition::Inside,
     EnginePieLabelPosition::Outside, EnginePieLabelPosition::Hidden};

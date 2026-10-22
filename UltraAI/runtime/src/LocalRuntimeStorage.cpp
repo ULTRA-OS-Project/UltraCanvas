@@ -187,7 +187,7 @@ Error UnpackArchive(const fs::path& archive, const fs::path& dest) {
     std::string detail;
     const VirtualFS::VirtualFSResult r = VirtualFS::VirtualFS_ExtractAll(PathToUtf8(archive), PathToUtf8(dest),
                                                    options, nullptr, &detail);
-    if (r != VirtualFS::VirtualFSResult::Success) {
+    if (r != VirtualFS::VirtualFSResult::Ok) {
         error.code    = ErrorCode::UnsupportedFormat;
         error.message = "cannot unpack " + PathToUtf8(archive.filename()) + ": " +
                         (detail.empty() ? VirtualFS::VirtualFSResultToString(r) : detail);

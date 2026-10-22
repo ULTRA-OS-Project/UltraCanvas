@@ -46,7 +46,7 @@ class Imap : public IMailboxProtocolPlugin {
 public:
     struct Stored {
         uint32_t uid; std::string folder; std::string raw; bool deleted = false;
-        UltraNetMailFlags flags = UltraNetMailFlags::None;
+        UltraNetMailFlags flags = UltraNetMailFlags::NoFlags;
     };
     std::vector<Stored> messages;
     bool appendFails = false;

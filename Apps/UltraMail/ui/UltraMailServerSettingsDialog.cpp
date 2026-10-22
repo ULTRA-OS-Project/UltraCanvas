@@ -71,7 +71,7 @@ constexpr AuthChoice kAuthChoices[] = {
     { UltraNetMailAuth::OAuth2,            "OAuth2" },
     { UltraNetMailAuth::Kerberos,          "Kerberos / GSSAPI" },
     { UltraNetMailAuth::NTLM,              "NTLM" },
-    { UltraNetMailAuth::None,              "No authentication" },
+    { UltraNetMailAuth::NoAuth,              "No authentication" },
 };
 
 // Whether a sign-in method is offered for a server of `protocol`. JMAP signs
@@ -80,7 +80,7 @@ constexpr AuthChoice kAuthChoices[] = {
 // is for the outgoing server only (`offerNone`): an SMTP relay may trust the
 // network, but a mailbox always needs a sign-in.
 bool OffersAuth(UltraNetMailAuth auth, MailProtocol protocol, bool offerNone) {
-    if (auth == UltraNetMailAuth::None) return offerNone;
+    if (auth == UltraNetMailAuth::NoAuth) return offerNone;
     if (protocol != MailProtocol::Jmap) return true;
     return auth == UltraNetMailAuth::Any || auth == UltraNetMailAuth::Password
         || auth == UltraNetMailAuth::OAuth2;

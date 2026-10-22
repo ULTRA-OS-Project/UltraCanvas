@@ -89,7 +89,7 @@ enum class SmartHomeLightCapability : uint32_t {
 };
 
 enum class SmartHomeSecurityLevel {
-    None,
+    NoSecurity,
     Basic,
     Encrypted,
     Certified
@@ -107,7 +107,7 @@ struct SmartHomeDeviceInfo {
     SmartHomeDeviceCategory Category = SmartHomeDeviceCategory::Unknown;
     SmartHomeProtocolType Protocol = SmartHomeProtocolType::Unknown;
     SmartHomeDeviceState State = SmartHomeDeviceState::Unknown;
-    SmartHomeSecurityLevel Security = SmartHomeSecurityLevel::None;
+    SmartHomeSecurityLevel Security = SmartHomeSecurityLevel::NoSecurity;
     bool Reachable = false;
     uint64_t LastSeen = 0;
     // What the device can actually do, as lower-case tags: "switch", "dimmer",

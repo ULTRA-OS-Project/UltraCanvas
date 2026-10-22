@@ -406,15 +406,15 @@ struct UltraCanvasMathLayout::Impl {
         // Rules 5 and 6: a Bin that cannot be binary becomes Ord.
         const bool spacing = !env.textRun;
         if (spacing) {
-            MathAtomClass prev = MathAtomClass::None;
+            MathAtomClass prev = MathAtomClass::NoClass;
             for (size_t i = 0; i < items.size(); ++i) {
-                if (items[i].cls == MathAtomClass::None) continue;
+                if (items[i].cls == MathAtomClass::NoClass) continue;
                 if (items[i].cls == MathAtomClass::Bin) {
-                    const bool badPrev = prev == MathAtomClass::None || prev == MathAtomClass::Bin || prev == MathAtomClass::Op ||
+                    const bool badPrev = prev == MathAtomClass::NoClass || prev == MathAtomClass::Bin || prev == MathAtomClass::Op ||
                                          prev == MathAtomClass::Rel || prev == MathAtomClass::Open || prev == MathAtomClass::Punct;
-                    MathAtomClass next = MathAtomClass::None;
-                    for (size_t j = i + 1; j < items.size(); ++j) if (items[j].cls != MathAtomClass::None) { next = items[j].cls; break; }
-                    const bool badNext = next == MathAtomClass::None || next == MathAtomClass::Rel || next == MathAtomClass::Close || next == MathAtomClass::Punct;
+                    MathAtomClass next = MathAtomClass::NoClass;
+                    for (size_t j = i + 1; j < items.size(); ++j) if (items[j].cls != MathAtomClass::NoClass) { next = items[j].cls; break; }
+                    const bool badNext = next == MathAtomClass::NoClass || next == MathAtomClass::Rel || next == MathAtomClass::Close || next == MathAtomClass::Punct;
                     if (badPrev || badNext) items[i].cls = MathAtomClass::Ord;
                 }
                 prev = items[i].cls;
@@ -434,11 +434,11 @@ struct UltraCanvasMathLayout::Impl {
         }
         // Assemble with spacing and italic corrections (rules 17, 20).
         HBuilder hb;
-        MathAtomClass prev = MathAtomClass::None;
+        MathAtomClass prev = MathAtomClass::NoClass;
         for (size_t i = 0; i < items.size(); ++i) {
             const Item& it = items[i];
             if (!it.box) continue;
-            if (spacing && it.cls != MathAtomClass::None && prev != MathAtomClass::None) {
+            if (spacing && it.cls != MathAtomClass::NoClass && prev != MathAtomClass::NoClass) {
                 int sp = kSpacing[static_cast<int>(prev)][static_cast<int>(it.cls)];
                 if (sp < 0) sp = it.env.style.IsScript() ? 0 : -sp;
                 const float mu = Size(it.env) / 18.f;
@@ -452,7 +452,7 @@ struct UltraCanvasMathLayout::Impl {
                 it.atom->kind == MathAtomKind::Char && !it.atom->isTextChar) {
                 hb.Kern(it.box->italicsCorrection);
             }
-            if (it.cls != MathAtomClass::None) prev = it.cls;
+            if (it.cls != MathAtomClass::NoClass) prev = it.cls;
         }
         return hb.Finish();
     }

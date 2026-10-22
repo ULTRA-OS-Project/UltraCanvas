@@ -112,7 +112,7 @@ int main(int argc, char** argv) {
 
     std::printf("Listing\n");
     VirtualFSLibArchiveProvider provider;
-    Check(provider.Open(archivePath.string()) == VirtualFSResult::Success, "archive opens");
+    Check(provider.Open(archivePath.string()) == VirtualFSResult::Ok, "archive opens");
 
     std::vector<std::string> paths;
     bool allUtf8 = true;
@@ -132,16 +132,16 @@ int main(int argc, char** argv) {
           "unflagged name that is already UTF-8 is kept, not re-decoded");
 
     std::vector<uint8_t> data;
-    Check(provider.ReadFile(germanDir + "/" + germanFile, data) == VirtualFSResult::Success &&
+    Check(provider.ReadFile(germanDir + "/" + germanFile, data) == VirtualFSResult::Ok &&
           std::string(data.begin(), data.end()) == "hallo",
           "an IBM437-named entry reads by its UTF-8 name");
-    Check(provider.ReadFile(thai, data) == VirtualFSResult::Success &&
+    Check(provider.ReadFile(thai, data) == VirtualFSResult::Ok &&
           std::string(data.begin(), data.end()) == "thai",
           "a Thai-named entry reads by its name");
 
     std::printf("Extracting\n");
     const fs::path dest = work / "out";
-    Check(provider.ExtractAll(dest.string()) == VirtualFSResult::Success, "ExtractAll succeeds");
+    Check(provider.ExtractAll(dest.string()) == VirtualFSResult::Ok, "ExtractAll succeeds");
 
     std::vector<std::string> onDisk;
     bool diskUtf8 = true;

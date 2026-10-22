@@ -239,7 +239,7 @@ namespace UltraCanvas {
                 case 1:  w->SetOverlay(WaveformOverlay::RMS);            break;
                 case 2:  w->SetOverlay(WaveformOverlay::ZeroAxis);       break;
                 case 3:  w->SetOverlay(WaveformOverlay::RMSAndZeroAxis); break;
-                default: w->SetOverlay(WaveformOverlay::None);           break;
+                default: w->SetOverlay(WaveformOverlay::NoOverlay);           break;
             }
         };
         container->AddChild(overlayDrop);

@@ -56,7 +56,7 @@ bool Bound(const CellValue& value, UltraDbValue& out) {
 std::string PreviewLiteral(const UltraDbValue& value) {
     switch (value.Type()) {
         case UltraDbType::Null:   return "NULL";
-        case UltraDbType::Bool:   return value.AsBool() ? "TRUE" : "FALSE";
+        case UltraDbType::Boolean:   return value.AsBool() ? "TRUE" : "FALSE";
         case UltraDbType::Int:
         case UltraDbType::Double: return value.AsString();
         case UltraDbType::Text:   return QuotedText(value.AsString());

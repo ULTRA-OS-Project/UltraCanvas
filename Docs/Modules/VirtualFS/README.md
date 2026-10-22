@@ -242,7 +242,7 @@ provides.
 
 VirtualFSRamDisk disk;
 if (VirtualFS_CreateRamDisk("scratch", 256 * 1024 * 1024, disk)
-        == VirtualFSResult::Success) {
+        == VirtualFSResult::Ok) {
 
     // A real path: any process, any API, not just VirtualFS_*
     std::ofstream out(disk.mountPath + "/frame.raw", std::ios::binary);

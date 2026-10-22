@@ -10,10 +10,6 @@
 #include <string>
 #include <vector>
 
-#ifdef None
-#undef None
-#endif
-
 namespace UltraCanvas {
 
     enum class QRErrorCorrection {
@@ -50,7 +46,7 @@ namespace UltraCanvas {
     };
 
     enum class QRLogoStyle {
-        None = 0,
+        NoLogo = 0,
         Center,
         CenterWithBorder,
         CenterRounded,
@@ -58,7 +54,7 @@ namespace UltraCanvas {
     };
 
     enum class QRGradientType {
-        None = 0,
+        NoGradient = 0,
         Linear,
         Radial,
         Diagonal
@@ -74,11 +70,11 @@ namespace UltraCanvas {
         Color backgroundColor = Colors::White;
         Color finderColor     = Color(0, 0, 0, 0);
 
-        QRGradientType gradientType       = QRGradientType::None;
+        QRGradientType gradientType       = QRGradientType::NoGradient;
         Color          gradientStartColor = Colors::Black;
         Color          gradientEndColor   = Color(0, 102, 204);
 
-        QRLogoStyle              logoStyle        = QRLogoStyle::None;
+        QRLogoStyle              logoStyle        = QRLogoStyle::NoLogo;
         std::shared_ptr<UCImage> logoImage;
         float                    logoScale        = 0.20f;
         float                    logoBorderWidth  = 4.0f;
