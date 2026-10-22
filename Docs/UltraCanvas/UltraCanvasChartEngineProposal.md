@@ -998,7 +998,15 @@ option(ULTRACANVAS_CHART_RUNTIME_MODULES "Build charts as loadable modules (T3)"
 ```
 
 With `ULTRACANVAS_ENABLE_CHARTS=OFF` the core library contains no chart code at
-all — which is not possible today.
+all — which is not possible today. Code outside `Plugins/Charts/` is built on
+four of its files: every diagram derives from `UltraCanvasChartElementBase`
+(the Matrix and Packet diagrams draw `UltraCanvasChartLegend` too), the
+progress dialog shows an `UltraCanvasCircularProgressChart`, and those use
+`UltraCanvasColormap`. So `OFF` drops every other chart source and keeps those
+four (`UltraCanvas/CMakeLists.txt`); until 2026-10 it dropped them too, and the
+library compiled but anything using a diagram or the progress dialog failed
+to link. The `Image codecs` workflow builds this configuration and links a
+diagram and the progress dialog against it.
 
 ### 12.9 Effect on the delivery phases
 
