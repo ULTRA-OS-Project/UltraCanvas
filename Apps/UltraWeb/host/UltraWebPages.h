@@ -1,20 +1,26 @@
 // Apps/UltraWeb/host/UltraWebPages.h
 // What the HTML reader needs from the outside world to show web pages
 // (HTML::PageLoaderServices), the real ones: http(s) through UltraNet with
-// TLS verification on and no cookies, file:// from the disk, RFC 3986 URL
-// resolution and charset conversion from UltraNet. Every answer arrives on
-// the UI thread, through `post`.
+// TLS verification on and the browser's cookies (UltraWebCookies.h), file://
+// from the disk, RFC 3986 URL resolution and charset conversion from UltraNet.
+// Redirects are followed here, not by UltraNet, so that the cookies each hop
+// sets are kept and the next hop gets its own. Every answer arrives on the UI
+// thread, through `post`.
 //
 // Also the address-bar decision: which addresses are WebAssembly apps and
 // which are pages.
+// Version: 0.9.0 - cookies: MakePageServices takes the jar; redirects followed
+//                  hop by hop
 // Version: 0.8.3 - ToPageUrl: '\' is a separator only on Windows
 // Version: 0.4.0 - AcceptExtensions (file uploads)
 // Version: 0.3.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "HTMLReader/HTMLPageLoader.h"
+
+#include <memory>
 
 #include <functional>
 #include <string>
@@ -22,10 +28,17 @@
 
 namespace UltraWeb {
 
+class CookieJar;
+
 // Pages larger than this are refused (HTML, style sheets and pictures).
 constexpr int64_t kMaxPageBytes = 16ll * 1024 * 1024;
 
-UltraCanvas::HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void()>)> post);
+// Redirects followed for one fetch before it fails.
+constexpr int kMaxRedirects = 20;
+
+// `cookies` null: no cookies are sent or kept (the headless --page).
+UltraCanvas::HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void()>)> post,
+                                                      std::shared_ptr<CookieJar> cookies = nullptr);
 
 // True for an address that names a WebAssembly app rather than a page:
 // about: addresses, and paths and URLs ending in .wasm or .wat.
