@@ -63,6 +63,9 @@ PACKAGES=(
     libunwind-dev
     # media: GStreamer, FFmpeg (VideoFX), audio codecs
     libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+    # GStreamer's playbin and decoders: without them every player opens
+    # nothing, and HTMLMediaTest checks only the fallback content
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good
     libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev
     libflac-dev libvorbis-dev libogg-dev libopus-dev libopusfile-dev libmp3lame-dev libopusenc-dev
     # UltraNet: curl, async DNS

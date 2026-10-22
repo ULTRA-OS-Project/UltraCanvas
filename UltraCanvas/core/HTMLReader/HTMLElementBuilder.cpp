@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.35.0 - <video> and <audio> through BuildOptions::mediaFactory
+//                  (BuildMedia), placed and sized as browsers place them
 // Version: 1.34.0 - target="_blank" (and named targets, <base target>): such a
 //                   link goes to BuildOptions::onLinkActivatedNewWindow
 // Version: 1.33.0 - file uploads (a chooser button, BuildOptions::onChooseFiles);
@@ -1087,6 +1089,18 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildItem(Node& element) {
         }
         return unwrapImage(*raster);
     }
+    if (IsMedia(element)) {
+        std::shared_ptr<UltraCanvasUIElement> player;
+        auto row = std::dynamic_pointer_cast<UltraCanvasContainer>(BuildMedia(element, &player));
+        if (row && player) {
+            // In a flex or grid line the player is the item, not its row.
+            row->RemoveChild(player);
+            player->box.margin.top = CSSLayout::Dimension::Px(style.marginTop);
+            player->box.margin.bottom = CSSLayout::Dimension::Px(style.marginBottom);
+            RegisterAnchors(element, player, /*deep=*/true);
+            return player;
+        }
+    }
     if (element.tag == "table" || style.display == DisplayMode::Table) {
         return BuildTable(element, /*inlineBox=*/true);
     }
@@ -1464,6 +1478,19 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
                     warnings.push_back("svg without raster <image> skipped");
                 }
             }
+            return;
+        }
+        // <video> and <audio>: the host's player on a line of its own, else
+        // (no factory, no source) the fallback content in the run.
+        if (IsMedia(child)) {
+            flushRun();
+            if (auto media = BuildMedia(child)) {
+                RegisterAnchors(child, media, /*deep=*/true);
+                addFlowChild(media, childStyle.marginTop, childStyle.marginBottom);
+                return;
+            }
+            for (const auto& grand : child.children)
+                if (!grand->IsElement("source") && !grand->IsElement("track")) processChild(*grand);
             return;
         }
         if (child.tag == "hr") {
@@ -2166,6 +2193,90 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
     return row;
 }
 
+bool ElementBuilder::IsMedia(const Node& node) const {
+    return opts.mediaFactory && node.IsElement() && (node.tag == "video" || node.tag == "audio");
+}
+
+std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildMedia(Node& element,
+                                                                 std::shared_ptr<UltraCanvasUIElement>* player) {
+    if (!opts.mediaFactory) return nullptr;
+    MediaRequest request;
+    request.node = &element;
+    request.video = element.tag == "video";
+    const std::string src = Trim(element.GetAttribute("src"));
+    if (!src.empty()) request.sources.push_back({ src, Trim(element.GetAttribute("type")) });
+    for (const auto& childPtr : element.children) {
+        if (!childPtr->IsElement("source")) continue;
+        const std::string sourceSrc = Trim(childPtr->GetAttribute("src"));
+        if (!sourceSrc.empty()) request.sources.push_back({ sourceSrc, Trim(childPtr->GetAttribute("type")) });
+    }
+    if (request.sources.empty()) {
+        warnings.push_back("<" + element.tag + "> without a source: its fallback content is shown");
+        return nullptr;
+    }
+    request.poster = Trim(element.GetAttribute("poster"));
+    request.controls = element.HasAttribute("controls");
+    request.autoplay = element.HasAttribute("autoplay");
+    request.loop = element.HasAttribute("loop");
+    request.muted = element.HasAttribute("muted");
+    // An <audio> without controls is not shown; one that does not play by
+    // itself has nothing to be.
+    if (!request.video && !request.controls && !request.autoplay) return nullptr;
+
+    // The size: CSS, else the attributes, else the defaults; a video's
+    // missing side follows 16:9.
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    auto attributePx = [&](const char* name) {
+        float value = 0.f;
+        const std::string text = Trim(element.GetAttribute(name));
+        if (text.empty() || text.back() == '%' || !TryParseFloat(text, value) || value <= 0.f) return 0.f;
+        return value;
+    };
+    float width = 0.f, height = 0.f;
+    if (style.widthPx) width = *style.widthPx;
+    else if (style.widthPercent) width = EstimateContentWidth(element);
+    else width = attributePx("width");
+    if (style.heightPx) height = *style.heightPx;
+    else height = attributePx("height");
+    if (request.video) {
+        if (width <= 0.f && height <= 0.f) { width = 640.f; height = 360.f; }
+        else if (height <= 0.f) height = width * 9.f / 16.f;
+        else if (width <= 0.f) width = height * 16.f / 9.f;
+    } else {
+        if (width <= 0.f) width = 300.f;
+        if (height <= 0.f) height = 40.f;
+    }
+    request.width = width;
+    request.height = height;
+
+    std::shared_ptr<UltraCanvasUIElement> made = opts.mediaFactory(request);
+    if (!made) return nullptr;
+    made->size.width = CSSLayout::Dimension::Px(width);
+    made->size.height = CSSLayout::Dimension::Px(height);
+    CSSLayout::BoxConstraints constraints;
+    constraints.maxWidth = CSSLayout::Dimension::Pct(100.f);   // never wider than its line
+    constraints.minWidth = CSSLayout::Dimension::Px(0.f);
+    made->boxConstraints = constraints;
+    made->box.margin.left = CSSLayout::Dimension::Px(style.marginLeft);
+    made->box.margin.right = CSSLayout::Dimension::Px(style.marginRight);
+    made->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
+    ++elementCount;
+    if (player) *player = made;
+
+    // On a full-width row, placed as a picture is: by the text-align it
+    // inherits, at the start of the line by default.
+    auto row = MakeContainer("medialine");
+    row->size.width = CSSLayout::Dimension::Pct(100.f);
+    CSSLayout::JustifyContent justify = CSSLayout::JustifyContent::FlexStart;
+    if (style.textAlign == TextAlignMode::Center)     justify = CSSLayout::JustifyContent::Center;
+    else if (style.textAlign == TextAlignMode::Right) justify = CSSLayout::JustifyContent::FlexEnd;
+    row->layout.SetFlex(CSSLayout::FlexDirection::Row, CSSLayout::FlexWrap::NoWrap)
+               .SetFlexJustifyContent(justify)
+               .SetFlexAlignItems(CSSLayout::AlignItems::End);
+    row->AddChild(made);
+    return row;
+}
+
 std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {
     auto rule = MakeContainer("hr");
     const ComputedStyle& style = resolver.StyleOf(&element);
@@ -2513,6 +2624,8 @@ bool ElementBuilder::HasBlockDescendant(const Node& element) const {
         const ComputedStyle& style = resolver.StyleOf(&child);
         if (style.display == DisplayMode::Hidden) continue;
         if (child.tag == "table" || IsBlockDisplay(style.display)) return true;
+        // A player is a line of its own: a run of text cannot hold it.
+        if (IsMedia(child)) return true;
         // A control drawn for display only is a block of its own.
         if (!opts.interactiveForms && IsFormControl(child)) return true;
         if (style.display == DisplayMode::InlineBlock) continue;   // a box of its own

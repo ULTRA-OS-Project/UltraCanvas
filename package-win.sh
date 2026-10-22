@@ -96,6 +96,19 @@ if [ -d ./build/Plugins/UltraNet ]; then
     cp ./build/Plugins/UltraNet/*.dll "$DIST_DIR/Plugins/UltraNet/" 2>/dev/null || true
     echo "Copied UltraNet plugins"
 fi
+# UltraIM provider modules (ultraim_direct/matrix/telegram): ChatCube loads
+# them from <exe>/Plugins/UltraIM, and without ultraim_direct it can only
+# report "The ChatCube Direct module was not found". Before the DLL closure,
+# like the UltraNet plug-ins, so their dependencies come along.
+if [ -d ./build/Plugins/UltraIM ]; then
+    mkdir -p "$DIST_DIR/Plugins/UltraIM"
+    cp ./build/Plugins/UltraIM/*.dll "$DIST_DIR/Plugins/UltraIM/" 2>/dev/null || true
+    echo "Copied UltraIM providers"
+fi
+if [ -f "$DIST_DIR/ChatCube.exe" ] && [ ! -f "$DIST_DIR/Plugins/UltraIM/ultraim_direct.dll" ]; then
+    echo "Error: ChatCube.exe is packaged without Plugins/UltraIM/ultraim_direct.dll, its ChatCube Direct provider" >&2
+    exit 1
+fi
 # Chart/Element runtime modules (MODULE DSOs on a shared-core build), if present.
 if [ -d ./build/Plugins/Elements ]; then
     mkdir -p "$DIST_DIR/Plugins/Elements"

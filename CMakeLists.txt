@@ -2165,6 +2165,19 @@ if (BUILD_TESTS)
     add_test(NAME WebViewTest COMMAND WebViewTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # <video> and <audio>: the builder's media requests and fallback content,
+    # and the web view's players kept across rebuilds (headless; plays a WAV
+    # when the build has a media backend).
+    add_executable(HTMLMediaTest Tests/HTMLMediaTest.cpp)
+    target_include_directories(HTMLMediaTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLMediaTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLMediaTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLMediaTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLMediaTest COMMAND HTMLMediaTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # HTML forms with real widgets: encodings, the builder's widgets and their
     # places, the entry list, submit / Enter / reset, radio groups, form="id",
     # what was typed across a rebuild (headless).

@@ -61,6 +61,7 @@ set(ULTRANET_TEST_SOURCES
     test_download.cpp
     test_abort.cpp
     test_session.cpp
+    test_cookie_jar.cpp
     test_oauth2.cpp
     test_oauth2_apps.cpp
     test_oauth2_service.cpp

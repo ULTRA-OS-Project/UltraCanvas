@@ -1,6 +1,8 @@
 // core/UltraCanvasWebView.cpp
 // A web page as an element: PageLoader + ElementBuilder + history.
 // See include/UltraCanvasWebView.h.
+// Version: 1.5.0 - <video> and <audio> in the framework's video player, kept
+//                  across rebuilds of one page (MakeMedia)
 // Version: 1.4.0 - onOpenInNewWindow: target="_blank" links go to the host
 // Version: 1.3.0 - a download keeps the page on show, its address and history
 // Version: 1.2.0 - file inputs choose through onChooseFiles
@@ -8,7 +10,7 @@
 //                  SubmitForm (GET as a navigation, POST through LoadPost); what
 //                  was typed survives a rebuild
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWebView.h"
@@ -20,6 +22,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <unordered_set>
 
 namespace UltraCanvas {
 
@@ -90,6 +93,7 @@ UltraCanvasWebView::UltraCanvasWebView(const std::string& identifier, float w, f
 
 UltraCanvasWebView::~UltraCanvasWebView() {
     *alive = false;
+    DropMedia();
 }
 
 void UltraCanvasWebView::SetServices(HTML::PageLoaderServices services, HTML::PageLoaderLimits limits) {
@@ -305,6 +309,20 @@ void UltraCanvasWebView::Build() {
         };
     }
 
+    // <video> and <audio>: the players of this document, made once each.
+    // Another document lets the last one's go (they stop).
+    if (mediaDocument != page->document.get()) {
+        DropMedia();
+        mediaDocument = page->document.get();
+    }
+    auto usedMedia = std::make_shared<std::unordered_set<const HTML::Node*>>();
+    if (mediaPlayback && live) {
+        options.mediaFactory = [this, usedMedia](const HTML::MediaRequest& request) {
+            usedMedia->insert(request.node);
+            return MakeMedia(request);
+        };
+    }
+
     // The same document built again: keep what the reader typed.
     std::vector<HTML::FormController::State> typed;
     if (formsDocument == page->document.get())
@@ -321,6 +339,12 @@ void UltraCanvasWebView::Build() {
     }
     forms = std::move(result.forms);
     formsDocument = page->document.get();
+    // A player this build no longer shows (an @media rule hid it) stops.
+    for (auto it = media.begin(); it != media.end();) {
+        if (usedMedia->count(it->first)) { ++it; continue; }
+        it->second->Unload();
+        it = media.erase(it);
+    }
     if (typed.size() == forms.size())
         for (size_t i = 0; i < forms.size(); ++i) forms[i]->Restore(typed[i]);
     builtWidth = width;
@@ -445,6 +469,81 @@ void UltraCanvasWebView::SubmitForm(const HTML::FormSubmission& submission) {
     const std::string base = target.substr(0, target.find_first_of("?#"));
     const std::string query = submission.Encoded();
     Navigate(query.empty() ? base + "?" : base + "?" + query);
+}
+
+// ===== MEDIA =================================================================
+
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasWebView::MakeMedia(const HTML::MediaRequest& request) {
+    if (auto found = media.find(request.node); found != media.end()) return found->second;
+    if (!loader || media.size() >= kMaxMediaPerPage) return nullptr;
+    // The first source the page may load and the player can open: http(s)
+    // (mixed content refused), a local file from a local page. A data: URL
+    // is not played.
+    std::string chosen;
+    for (const HTML::MediaSource& source : request.sources) {
+        const std::string url = ResolveLink(source.src);
+        const std::string scheme = SchemeOf(url);
+        if (scheme != "http" && scheme != "https" && scheme != "file") continue;
+        std::string why;
+        if (!loader->AllowsResource(url, why)) continue;
+        chosen = WithoutFragment(url);
+        break;
+    }
+    if (chosen.empty()) return nullptr;
+
+    static unsigned counter = 0;
+    auto player = std::make_shared<UltraCanvasVideoPlayerElement>(
+        GetIdentifier() + "_media" + std::to_string(++counter), 0, 0,
+        static_cast<long>(request.width), static_cast<long>(request.height));
+    // Sound by itself is not played: autoplay only when muted. Without
+    // controls and without autoplay a video could never start, so it gets
+    // its controls anyway (a browser offers them in its context menu).
+    const bool autoplay = request.autoplay && request.muted;
+    VideoPlayerStyle style = player->GetStyle();
+    style.showControls = request.controls || !autoplay;
+    if (!request.video) {
+        // An audio player is its control bar, opaque so that a source with
+        // a picture shows none, and without the volume slider, which would
+        // leave the seek bar no room at 300px (the mute button stays).
+        style.autoHideControls = false;
+        style.controlBarHeight = std::max(24, std::min(40, static_cast<int>(request.height)));
+        style.backgroundColor = Color(48, 48, 48);
+        style.controlBarColor = Color(48, 48, 48);
+        style.showVolumeSlider = request.width >= 420.f;
+    }
+    player->SetStyle(style);
+    auto engine = player->GetPlayer();
+    engine->SetMute(request.muted);
+    engine->SetLoop(request.loop);
+    bool loaded = false;
+    if (SchemeOf(chosen) == "file") {
+        std::string path = PercentDecoded(chosen.substr(7));
+        path = path.substr(0, path.find('?'));
+#ifdef _WIN32
+        if (path.size() >= 3 && path[0] == '/' && path[2] == ':') path.erase(0, 1);   // /C:/x -> C:/x
+#endif
+        loaded = player->LoadFromFile(path);
+    } else {
+        loaded = player->LoadFromUrl(chosen);
+    }
+    // No media framework in this build, or the source would not open: the
+    // element's fallback content instead.
+    if (!loaded) return nullptr;
+    if (autoplay) player->Play();
+    media[request.node] = player;
+    return player;
+}
+
+void UltraCanvasWebView::DropMedia() {
+    for (auto& entry : media) entry.second->Unload();
+    media.clear();
+    mediaDocument = nullptr;
+}
+
+std::vector<std::shared_ptr<UltraCanvasVideoPlayerElement>> UltraCanvasWebView::GetMediaPlayers() const {
+    std::vector<std::shared_ptr<UltraCanvasVideoPlayerElement>> players;
+    for (const auto& entry : media) players.push_back(entry.second);
+    return players;
 }
 
 std::string UltraCanvasWebView::GetUrl() const {

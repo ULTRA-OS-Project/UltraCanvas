@@ -1,3 +1,88 @@
+#### 2026-10-22 *0.9.383*
+- **`<video>` and `<audio>` in the HTML reader.** `HTML::BuildOptions::mediaFactory`
+  asks the host for a player with an `HTML::MediaRequest`: the element, its
+  sources in order (`src`, then the `<source>`s with their types), its
+  poster, `controls` / `autoplay` / `loop` / `muted`, and the size a browser
+  gives it (CSS, else the attributes, else 640 x 360 or an audio bar of
+  300 x 40). The player is placed as a picture is. Without a factory, or when
+  it answers null, the fallback content between the tags shows, as before.
+  `UltraCanvasWebView` sets the factory itself (`SetMediaPlayback`, on by
+  default). Each element plays in an `UltraCanvasVideoPlayerElement` on the
+  first address the page may load. The view keeps a player across rebuilds
+  of the same page, so playback goes on, and stops it when the page changes.
+  `autoplay` plays only a muted element (`Tests/HTMLMediaTest.cpp`).
+- **`HTML::PageLoaderServices::fetchResource`** fetches a style sheet or a
+  picture together with the address of the page it is for, when the host
+  sets it; otherwise `fetch` is used as before. UltraWeb uses it to keep
+  cookies from going to third parties. `PageLoader::AllowsResource` applies
+  the loader's scheme rules (mixed content, local files) to an address the
+  page loads outside the loader, and `PageUrl()` returns the address of the
+  page on show.
+- **`UltraNetCookieJar`, a browser's cookie jar in UltraNet**
+  (`UltraNet/UltraNetCookieJar.h`). Unlike a session's libcurl cookies, the
+  caller sees every cookie and decides when they go. `Store` applies a
+  `Set-Cookie` header, and `HeaderFor` returns the `Cookie` header for a
+  request, by RFC 6265bis: expiry (at most 400 days), `Domain` and `Path`,
+  `Secure`, `SameSite` and the `__Secure-` / `__Host-` prefixes. A request
+  for another site's page (`Classify`, `SiteOf`) neither sends nor sets one.
+  The cookies with an expiry are kept in a tab-separated text file (UltraNet
+  pulls in no JSON engine). UltraWeb is its first user; its tests are in
+  `Tests/UltraNet/test_cookie_jar.cpp`.
+- **GStreamer's base and good plugins are installed on the Linux CI row and
+  in cloud sessions** (`.github/workflows/build.yml`,
+  `.claude/hooks/session-start.sh`). Without `playbin` every video player
+  opened nothing, so `HTMLMediaTest` could only check the fallback content;
+  now it plays its WAV there.
+- **A save that fails says why.** The vector writers (SVG, PDF, EPS, AI, CDR,
+  XAR), the layered-image project file and the `.ucd` writer reported only
+  "Failed to create SVG file: <path>", "Could not create <path>" or "Could not
+  write <path>", so ArtCreator and UltraPaint showed that and nothing more.
+  They now give the reason: the folder does not exist, a folder has the
+  file's name, the file is marked read-only, access is denied (locked by
+  another program, or no permission), the location is read-only, the disk is
+  full, or else the system's own error text and code.
+- **Saving a drawing no longer risks the one already there.** The vector
+  writers truncated the target before the first byte of the new drawing
+  existed, so a save that failed partway - a full disk, a network share that
+  went away, a codec error - left the file empty or cut short, and the
+  drawing it held was gone. They now write through `WriteFileAtomically`: the
+  new file is written beside the old one and replaces it only once it is
+  complete, and a save that fails leaves the old file and no temporary one
+  behind. They also check that the write finished; a disk that filled up
+  partway used to pass as saved. `SVGConverterTest` covers saving over a
+  file, a missing folder and a folder in the way.
+  - `UltraCanvasFileError.h` 1.2.0: `FileWriteFailureReason(path, errno)` is
+    `DescribeFileWriteError`'s answer, else the system error the failing call
+    left, for a write that failed although the file still opens;
+    `DescribeFileWriteError` names a file marked read-only.
+  - `UltraCanvasFileLoader::SaveVectorDocument` reports the destination's
+    reason when the writer gave none.
+
+#### 2026-10-22 *0.9.382*
+- **ChatCube Direct: a relay behind a redirect.** `RelayClient` no longer
+  lets libcurl follow redirects - on a 301/302 libcurl sends a POST again
+  without its body, which the relay answered with 422. It follows them
+  itself (up to three), body and all, and keeps the new base address, which
+  `DirectProvider` stores after sign-in. `SetBaseUrl` takes an address
+  without a scheme as `https://`, and a 422's `detail` becomes the error
+  message. DirectProviderTests 0.1.1 checks both against the relay behind
+  a redirector.
+- **The Windows and Linux packages carry the UltraIM provider modules.**
+  `package-win.sh` and `package-linux.sh` copy `Plugins/UltraIM` next to the
+  executables (before the dependency closure, so the modules' own libraries
+  come along), and `package-linux.sh` lists ChatCube. Either script now
+  fails when ChatCube is packaged without `ultraim_direct`, instead of
+  shipping an app that can only say its module was not found.
+- **UltraDatabase: a connection closed at exit wrote into freed memory.**
+  The manager's table of retired connections was a function-local static,
+  first built by the first `UltraDb_CloseConnection`. UltraMessage's atexit
+  handler - registered earlier - closes its journal after that table was
+  already destroyed, and the process aborted in `free()` as it exited
+  (`malloc_consolidate(): unaligned fastbin chunk`). The table is now never
+  destroyed, like the handle tables. `UltraDatabaseExitClose`, a test
+  program of its own, closes a connection from such a handler under glibc's
+  strict heap checks.
+
 #### 2026-10-22 *0.9.381*
 - **`UltraCanvasAlbum` 1.11.0: `onItemPressed` and `ReleaseDrag`.** An
   application that carries a tile's drag itself - UltraVideo's bin, whose

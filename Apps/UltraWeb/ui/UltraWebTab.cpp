@@ -1,13 +1,15 @@
 // Apps/UltraWeb/ui/UltraWebTab.cpp
 // One browser tab (UltraWebTab.h): what used to be the whole window's page
 // or app, now one per tab.
+// Version: 0.3.0 - pages carry the browser's cookies (SharedCookieJar)
 // Version: 0.2.0 - target="_blank" links go to the window (a new tab)
 // Version: 0.1.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebTab.h"
 
+#include "../host/UltraWebCookies.h"
 #include "../host/UltraWebFetch.h"
 #include "../host/UltraWebPages.h"
 #include "../host/UltraWebStorage.h"
@@ -79,7 +81,7 @@ UltraWebTab::UltraWebTab(const std::string& id, Host host)
     webView_->layoutItem.SetFlexGrow(1);
     webView_->layoutItem.SetFlexShrink(1);
     webView_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    webView_->SetServices(MakePageServices(host_.post));
+    webView_->SetServices(MakePageServices(host_.post, SharedCookieJar()));
     webView_->SetScheduler(host_.post);
     HTML::BuildOptions pageOptions;
     pageOptions.style.baseFontSizePx = 16.f;

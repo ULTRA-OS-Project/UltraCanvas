@@ -14,19 +14,29 @@
 // Without a scheduler the view uses the running application's.
 //
 // No JavaScript: <script> is not run, <noscript> content is shown.
+//
+// <video> and <audio> play in the framework's video player
+// (UltraCanvasVideoPlayerElement, which plays sound too): http(s) streamed by
+// the platform's media framework, local files from a local page. The player
+// lives as long as its page - a rebuild keeps it playing, leaving the page
+// stops it. A page plays nothing by itself unless it is muted (autoplay with
+// sound waits for the reader's click, as browsers do).
+// Version: 1.5.0 - <video> and <audio>: SetMediaPlayback, the players kept
+//                  across rebuilds of one page
 // Version: 1.4.0 - onOpenInNewWindow: target="_blank" links go to the host
 // Version: 1.3.0 - a download keeps the page on show and its history
 // Version: 1.2.0 - onChooseFiles: file uploads
 // Version: 1.1.0 - SetInteractiveForms / SubmitForm: forms with real widgets,
 //                  sent by GET or POST
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasContainer.h"
 #include "HTMLReader/HTMLElementBuilder.h"
 #include "HTMLReader/HTMLPageLoader.h"
+#include "UltraCanvasVideoPlayerElement.h"
 
 #include <functional>
 #include <memory>
@@ -59,6 +69,13 @@ public:
     // Send a form as its submit button would: GET appends the fields to the
     // action as a query, POST sends them in the form's enctype.
     void SubmitForm(const HTML::FormSubmission& submission);
+    // <video> and <audio> as players (on by default). Off: their fallback
+    // content is shown, as in a reader that plays nothing.
+    void SetMediaPlayback(bool on) { mediaPlayback = on; }
+    // The players of the page on show, in no particular order.
+    std::vector<std::shared_ptr<UltraCanvasVideoPlayerElement>> GetMediaPlayers() const;
+    // Players on one page at most; a <video> past it shows its fallback.
+    static constexpr size_t kMaxMediaPerPage = 16;
 
     // ===== NAVIGATION =====
     void Navigate(const std::string& url);
@@ -126,6 +143,10 @@ private:
     void SetLoading(bool value);
     void RememberScroll();
     void Post(std::function<void()> task);
+    // BuildOptions::mediaFactory: the page's player for a <video> or
+    // <audio>, the one built before for it when the document is the same.
+    std::shared_ptr<UltraCanvasUIElement> MakeMedia(const HTML::MediaRequest& request);
+    void DropMedia();
 
     std::unique_ptr<HTML::PageLoader> loader;
     std::function<void(std::function<void()>)> scheduler;
@@ -138,6 +159,11 @@ private:
     std::vector<std::shared_ptr<HTML::FormController>> forms;
     const HTML::Document* formsDocument = nullptr;
     bool interactiveForms = true;
+    bool mediaPlayback = true;
+    // The page's players by the element they play, and the document they
+    // belong to (another document: they are let go).
+    std::unordered_map<const HTML::Node*, std::shared_ptr<UltraCanvasVideoPlayerElement>> media;
+    const HTML::Document* mediaDocument = nullptr;
     unsigned formCounter = 0;
     std::vector<HistoryEntry> history;
     int historyIndex = -1;
