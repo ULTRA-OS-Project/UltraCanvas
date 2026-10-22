@@ -47,6 +47,7 @@
 #include <ctime>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
 #include <unordered_set>
 #include <map>
 #include <fmt/os.h>
@@ -2577,6 +2578,41 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         return false;
     }
 
+    namespace {
+        // Why a file stream failed, in enough detail to act on: what failed
+        // (opening or writing), the system's error code and text (errno,
+        // which the C runtime sets when it cannot open or write the file),
+        // and what the folder and the file itself say - the usual causes.
+        std::string SaveFailureReason(const std::string& filePath, const char* what) {
+            const int err = errno;
+            std::string reason = std::string("The file ") + what + ".";
+            if (err != 0) {
+                reason += "\nSystem error " + std::to_string(err) + ": " + std::strerror(err) + ".";
+            }
+
+            std::error_code ec;
+            const std::filesystem::path path = PathFromUtf8(filePath);
+            const std::filesystem::path folder = path.parent_path();
+            if (!folder.empty() && !std::filesystem::is_directory(folder, ec)) {
+                reason += "\nThe folder \"" + PathToUtf8(folder) + "\" does not exist (any more).";
+            } else if (std::filesystem::exists(path, ec)) {
+                if (std::filesystem::is_directory(path, ec)) {
+                    reason += "\nA folder has this name.";
+                } else {
+                    const auto perms = std::filesystem::status(path, ec).permissions();
+                    if (!ec && (perms & std::filesystem::perms::owner_write) == std::filesystem::perms::none) {
+                        reason += "\nThe file is marked read-only.";
+                    }
+                }
+            }
+            if (err == EACCES || err == EPERM || err == EBUSY) {
+                reason += "\nThe file may be read-only, open with exclusive access in another "
+                          "program, or in a folder you are not allowed to write to.";
+            }
+            return reason;
+        }
+    }
+
     bool UltraCanvasTextEditor::SaveDocument(int docIndex) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return false;
@@ -2585,6 +2621,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         auto doc = documents[docIndex];
 
         if (doc->filePath.empty()) {
+            lastSaveError = "The document has no file name yet.";
             return false; // No file path set, use SaveDocumentAs
         }
 
@@ -2603,6 +2640,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 "Saving to the legacy Word 97-2003 (.doc) format is not "
                 "supported. Save as .docx instead.",
                 "Unsupported Format", nullptr, this);
+            lastSaveError = "Texter cannot save the Word 97-2003 (.doc) format.";
             return false;
         }
 
@@ -2614,6 +2652,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             std::string saveError;
             if (!UltraCanvasFileLoader::SaveTextDocument(*document, filePath, saveError)) {
                 debugOutput << "Failed to save document: " << saveError << std::endl;
+                lastSaveError = saveError;
                 UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
                                                     nullptr, this);
                 return false;
@@ -2636,16 +2675,24 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             text = document->ToPlainText();
         }
 
+        errno = 0;
         std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
         if (!file.is_open()) {
-            debugOutput << "Failed to save file: " << filePath << std::endl;
+            lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+            debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
             return false;
         }
         file.write(text.data(), static_cast<std::streamsize>(text.size()));
-        return file.good();
+        file.close();
+        if (!file) {
+            lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+            return false;
+        }
+        return true;
     }
 
     bool UltraCanvasTextEditor::SaveDocumentAs(int docIndex, const std::string& filePath) {
+        lastSaveError.clear();
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return false;
         }
@@ -2658,6 +2705,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (doc->IsPdf() && doc->pdfView) {
                 if (!doc->pdfView->SaveAs(filePath)) {
                     debugOutput << "Failed to save PDF: " << filePath << std::endl;
+                    lastSaveError = "The PDF could not be written.";
                     return false;
                 }
                 doc->filePath     = filePath;
@@ -2684,6 +2732,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // the runs the writer receives.
             if (doc->IsRichDocument() && doc->richEdit) {
                 if (!SaveRichDocumentAs(docIndex, filePath, targetExt)) {
+                    if (lastSaveError.empty()) lastSaveError = "The document could not be written.";
                     return false;
                 }
                 doc->filePath = filePath;
@@ -2718,14 +2767,21 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             // In hex mode, save raw bytes directly — no encoding conversion, no BOM
             if (doc->textArea->IsHexMode()) {
                 std::vector<uint8_t> rawBytes = doc->textArea->GetRawBytes();
+                errno = 0;
                 std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
                 if (!file.is_open()) {
-                    debugOutput << "Failed to save file: " << filePath << std::endl;
+                    lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+                    debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
                 file.write(reinterpret_cast<const char*>(rawBytes.data()),
                            static_cast<std::streamsize>(rawBytes.size()));
                 file.close();
+                if (!file) {
+                    lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+                    debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
+                    return false;
+                }
             } else if (isWordTarget) {
                 if (targetExt == "doc") {
                     UltraCanvasDialogManager::ShowError(
@@ -2745,6 +2801,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 std::string saveError;
                 if (!UltraCanvasFileLoader::SaveTextDocument(rich, filePath, saveError)) {
                     debugOutput << "Failed to save document: " << saveError << std::endl;
+                    lastSaveError = saveError;
                     UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
                                                         nullptr, this);
                     return false;
@@ -2777,9 +2834,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                     }
                 }
 
+                errno = 0;
                 std::ofstream file(UltraCanvas::PathFromUtf8(filePath), std::ios::binary);
                 if (!file.is_open()) {
-                    debugOutput << "Failed to save file: " << filePath << std::endl;
+                    lastSaveError = SaveFailureReason(filePath, "could not be opened for writing");
+                    debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
                     return false;
                 }
 
@@ -2800,6 +2859,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 file.write(reinterpret_cast<const char*>(outputBytes.data()),
                            static_cast<std::streamsize>(outputBytes.size()));
                 file.close();
+                if (!file) {
+                    lastSaveError = SaveFailureReason(filePath, "could not be written completely");
+                    debugOutput << "Failed to save file: " << filePath << ": " << lastSaveError << std::endl;
+                    return false;
+                }
             }
 
             doc->filePath = filePath;
@@ -2867,6 +2931,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         } catch (const std::exception& e) {
             debugOutput << "Error saving file: " << e.what() << std::endl;
+            lastSaveError = std::string("Saving stopped with an error: ") + e.what();
             return false;
         }
     }
@@ -3636,7 +3701,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (doc->filePath.empty()) {
             OnFileSaveAs();
         } else {
-            SaveDocument(activeDocumentIndex);
+            // A file that cannot be written says why and offers the Save
+            // dialog; it used to fail without a word, the tab still unsaved.
+            SaveOrOfferSaveAs(activeDocumentIndex, [this](bool) { UpdateMenuStates(); });
         }
         UpdateMenuStates();
     }
@@ -3730,7 +3797,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 opts,
                 [this, doc](DialogResult result, const std::string& filePath) {
                     if (result == DialogResult::OK && !filePath.empty()) {
-                        SaveDocumentAs(activeDocumentIndex, filePath);
+                        if (!SaveDocumentAs(activeDocumentIndex, filePath)) {
+                            OfferSaveAsAfterFailure(documents[activeDocumentIndex], filePath,
+                                                    [this](bool) { UpdateMenuStates(); });
+                        }
                     }
                 }
         );
@@ -4954,10 +5024,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                                     }
                             );
                         } else {
-                            bool saved = SaveDocument(docIndex);
-                            if (onComplete) {
-                                onComplete(saved);
-                            }
+                            SaveOrOfferSaveAs(docIndex, onComplete);
                         }
                     } else if (result == DialogResult::No) {
                         if (onComplete) {
@@ -4968,6 +5035,66 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             onComplete(false);
                         }
                     }
+                },
+                GetWindow()
+        );
+    }
+
+    void UltraCanvasTextEditor::SaveOrOfferSaveAs(int docIndex, std::function<void(bool)> onDone) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
+            if (onDone) onDone(false);
+            return;
+        }
+        if (SaveDocument(docIndex)) {
+            if (onDone) onDone(true);
+            return;
+        }
+        auto doc = documents[docIndex];
+        OfferSaveAsAfterFailure(doc, doc->filePath, onDone);
+    }
+
+    void UltraCanvasTextEditor::OfferSaveAsAfterFailure(std::shared_ptr<DocumentTab> doc,
+                                                        const std::string& failedPath,
+                                                        std::function<void(bool)> onDone) {
+        const std::string reason = lastSaveError.empty() ? "The file could not be written." : lastSaveError;
+        const std::string message = "\"" + failedPath + "\" could not be saved.\n\n" + reason +
+                                    "\n\nChoose another name or folder to save it.";
+
+        UltraCanvasDialogManager::ShowMessage(
+                message,
+                "Save Failed",
+                DialogType::Error,
+                DialogButtons::OK,
+                [this, doc, failedPath, onDone](DialogResult) {
+                    FileDialogOptions opts;
+                    opts.title = "Save File";
+                    opts.filters = DialogFileFilters(true);
+                    opts.defaultFileName = PathToUtf8(PathFromUtf8(failedPath).filename());
+                    opts.initialDirectory = PathToUtf8(PathFromUtf8(failedPath).parent_path());
+                    opts.parentWindow = GetWindow();
+
+                    UltraCanvasFileLoader::SaveFileDialog(
+                            opts,
+                            [this, doc, onDone](DialogResult saveResult, const std::string& filePath) {
+                                if (saveResult != DialogResult::OK || filePath.empty()) {
+                                    if (onDone) onDone(false);
+                                    return;
+                                }
+                                // Found again by the tab, not by an index taken
+                                // before the dialogs: they may have run a while.
+                                auto it = std::find(documents.begin(), documents.end(), doc);
+                                if (it == documents.end()) {
+                                    if (onDone) onDone(false);
+                                    return;
+                                }
+                                const int idx = static_cast<int>(it - documents.begin());
+                                if (SaveDocumentAs(idx, filePath)) {
+                                    if (onDone) onDone(true);
+                                    return;
+                                }
+                                OfferSaveAsAfterFailure(doc, filePath, onDone);
+                            }
+                    );
                 },
                 GetWindow()
         );
@@ -4999,31 +5126,25 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 DialogButtons::YesNoCancel,
                 [this, modifiedDocs, onComplete](DialogResult result) {
                     if (result == DialogResult::Yes) {
-                        // First, save all documents that already have a file path
-                        bool allSaved = true;
-                        std::vector<int> unsavedNewDocs;
+                        // Documents with a file path first, then the new ones.
+                        // A file that cannot be written is not passed over in
+                        // silence: SaveOrOfferSaveAs says why and offers the
+                        // Save dialog, and the window stays open unless it
+                        // ends up saved.
+                        std::vector<int> ordered;
                         for (int idx : modifiedDocs) {
-                            if (!documents[idx]->filePath.empty()) {
-                                if (!SaveDocument(idx)) {
-                                    allSaved = false;
-                                }
-                            } else {
-                                unsavedNewDocs.push_back(idx);
-                            }
+                            if (!documents[idx]->filePath.empty()) ordered.push_back(idx);
+                        }
+                        for (int idx : modifiedDocs) {
+                            if (documents[idx]->filePath.empty()) ordered.push_back(idx);
                         }
 
-                        if (unsavedNewDocs.empty()) {
-                            if (onComplete) {
-                                onComplete(allSaved);
-                            }
-                            return;
-                        }
-
-                        // Chain Save As dialogs for new documents one at a time.
-                        // saveNext lives in a shared_ptr so the async dialog callback can
-                        // recurse into it after the enclosing scope has returned.
-                        auto remaining = std::make_shared<std::vector<int>>(unsavedNewDocs);
-                        auto savedFlag = std::make_shared<bool>(allSaved);
+                        // Chain the saves one at a time, since each may open a
+                        // dialog. saveNext lives in a shared_ptr so the async dialog
+                        // callback can recurse into it after the enclosing scope has
+                        // returned.
+                        auto remaining = std::make_shared<std::vector<int>>(ordered);
+                        auto savedFlag = std::make_shared<bool>(true);
                         auto saveNext = std::make_shared<std::function<void()>>();
                         *saveNext = [this, remaining, savedFlag, onComplete, saveNext]() {
                             if (remaining->empty()) {
@@ -5035,6 +5156,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                             int idx = remaining->front();
                             remaining->erase(remaining->begin());
                             auto doc = documents[idx];
+
+                            if (!doc->filePath.empty()) {
+                                SaveOrOfferSaveAs(idx, [savedFlag, saveNext](bool saved) {
+                                    if (!saved) *savedFlag = false;
+                                    (*saveNext)();
+                                });
+                                return;
+                            }
 
                             FileDialogOptions opts;
                             opts.title = "Save File";
