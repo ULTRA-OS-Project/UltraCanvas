@@ -5315,13 +5315,19 @@ The stopgap this replaces, still worth knowing for a build that predates it:
 
 ## 6. CI
 
-**Do not add an emulator job yet.** The `android-check` job in
+**Written before there was an APK** (the job now exists - see the status
+below): do not add an emulator job yet. The `android-check` job in
 `.github/workflows/build.yml` is deliberately a *compile* gate, and adding a
 runtime job that can only ever be skipped would undo the discipline it encodes.
 The moment an APK is reproducible, the job below becomes worth its minutes.
-**Status:** it is now - `android-build.yml` packages `UltraCanvasDemo-x86_64.apk`
-on every run (`scripts/android-package-apk.sh`) - so the emulator job below is
-the next step, installing that artifact.
+**Status:** done. The `emulator` job in `.github/workflows/android-build.yml`
+installs the `UltraCanvasDemo-x86_64` artifact on an API 30 emulator and runs
+`scripts/android-emulator-smoke.sh`, which passes only on the window backend's
+`first frame presented: WxH, with content` logcat line (written once per
+process, straight to logcat), and uploads the screenshot and logcat as
+`android-emulator-smoke` whatever happens. Its first run earned its keep: the
+APK could not load at all (`libc++_shared.so` was not packaged), which no
+compile-time gate could have seen.
 
 GitHub-hosted `ubuntu-latest` x86_64 runners do expose `/dev/kvm`; they need
 the group-permission fix, which is the standard first step of every emulator
@@ -11990,6 +11996,7 @@ window->AddChild(chartRow);
 | `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element (white by default; the element's own background, so `UltraCanvasUIElement::SetBackgroundColor` sets the same colour), and the plot rectangle |
 | `SetEmptyMessage(text, detail)`, `SetEmptyMessageColor(color)` | what the chart says, centred on its background, while it has no points — "No data to display" unless set; `detail` is an optional smaller line under it, and an empty `text` and `detail` leave the background alone |
 | `SetEmptyIcon(path, iconColor, badgeColor)` | an icon over that message: 32 px, or 28 px on a 54 px rounded badge when `badgeColor` is not transparent; `iconColor` paints a single-colour icon in that colour, transparent draws it as it is; an empty `path` takes it away |
+| `SetMinimumValueSpan(span)` | the value axis covers at least `span`, centred on the data — a steady reading stays a flat line instead of a sawtooth filling the plot (line, area and scatter; 0, the default, fits the data) |
 | `SetShowValueLabels(bool)` | the y value printed at each point — on by default; drawn by the line and area charts |
 | `SetPointRadius(radius)` | the dot radius of the line and area charts (4 and 3 by default) and the offset of value labels |
 | `SetEnableZoom(bool)`, `SetEnablePan(bool)` | wheel zoom and drag pan of the x axis — off by default; see *Zoom and pan* |
@@ -38317,7 +38324,7 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 
 ## Overview
 
-The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
+The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, JPEG XL, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
 
 1. **Encoded file size** — bytes on disk after `UCImage::Save()`
 2. **Encode time** — milliseconds spent in `UCImage::Save()`
@@ -38467,9 +38474,15 @@ const CodecEntry kAllCodecs[] = {
     { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
     { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
     { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
+    { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
     { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
 };
 ```
+
+JPEG XL is charted only where libvips can both save and load `.jxl`
+(`VipsCanSave(".jxl") && VipsCanLoad(".jxl")`): it needs a libvips built with
+libjxl, which Ubuntu 22.04's is not. Elsewhere the JXL column is left out
+rather than shown as a failure.
 
 ### CodecResult (per-codec output row)
 
@@ -48478,6 +48491,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
   - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
   - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
+  - [Card nodes with icons, without overlaps (2.3.0)](#card-nodes-with-icons-without-overlaps-230)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [See Also](#see-also)
 
@@ -48629,8 +48643,20 @@ struct NodeDiagramNode {
     bool   deletable  = true;
     std::vector<NodeHandle> handles;
     int    zIndex = 0;
+    double value = 1.0;                   // 2.2.0: drives NodeSizeMode::ByValue
+
+    // 2.3.0: a card look
+    std::string iconPath;                 // drawn in a disc at the leading edge
+    Color  iconBackground = Color(0, 0, 0, 0);    // the disc; transparent = icon alone
+    std::string sublabel;                 // a smaller second line under the label
+    Color  sublabelColor = Color(117, 117, 117, 255);
+    double cornerRadius = -1.0;           // Rectangle / RoundedSquare; < 0 = 15%
+    bool   shadow = false;                // a soft drop shadow
 };
 ```
+
+With an icon or a sublabel the label is left-aligned beside the icon, and a
+label or sublabel that does not fit is shortened with an ellipsis.
 
 ### NodeDiagramLink
 
@@ -48829,7 +48855,23 @@ void ApplyGridLayout();
 void ApplyHierarchicalLayout(const std::string& rootId);
 
 void SetAutoFitOnLayout(bool autoFit);
+
+// 2.3.0: move overlapping nodes apart (their rectangles plus `margin`),
+// until none overlap. Returns the passes it took; refit the view after.
+int  ResolveOverlaps(double margin = 8.0, int maxPasses = 400);
+
+// 2.3.0: level of detail - below `zoom`, a node with an icon draws as its
+// icon disc alone, named while hovered or selected. 0 (default) = off.
+void   SetDetailZoom(double zoom);
+double GetDetailZoom() const;
+bool   IsShowingIconsOnly() const;
 ```
+
+The force-directed layout ends with `ResolveOverlaps`, so its result has no
+overlapping nodes however wide they are; it no longer clamps the nodes into
+the element's bounds (the view fits the content). A host that places nodes
+itself - a radial or a tree arrangement of its own - calls `ResolveOverlaps`
+and then `FitView()`.
 
 ### Data-driven node sizing (2.2.0)
 
@@ -48928,6 +48970,7 @@ void SetGridVisible(bool visible, double spacing = 25.0);
 void SetFontFamily(const std::string& fontFamily);
 void SetFontSize(double size);
 void SetLinkDistance(double distance);
+void SetChargeStrength(double strength);   // 2.3.0: repulsion, default -300; wide nodes want more
 ```
 
 ### Selection
@@ -49292,6 +49335,48 @@ Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `value` field instead — headcount, budget, revenue, whatever the graph is about.
 `NodeSizeMode::Fixed` restores the authored sizes exactly.
 
+
+### Card nodes with icons, without overlaps (2.3.0)
+
+A network map in the style of the Smart Home topology: each node a white card
+with the device's icon on a coloured disc, its name, and its room under it.
+The nodes are placed by hand - a router with its devices in a column under
+it - and `ResolveOverlaps` makes sure nothing touches.
+
+```cpp
+auto diagram = CreateNodeDiagram("network", 0, 0, 900, 560);
+diagram->SetBackgroundColor(Color(243, 245, 248, 255));
+diagram->SetNodesConnectable(false);
+
+auto card = [&](const std::string& id, const std::string& name, const std::string& room,
+                const std::string& icon, const Color& color, double x, double y) {
+    NodeDiagramNode n(id, name);
+    n.shape          = NodeShape::Rectangle;
+    n.cornerRadius   = 10.0;
+    n.shadow         = true;
+    n.width          = 150.0;
+    n.height         = 40.0;
+    n.x              = x;
+    n.y              = y;
+    n.fillColor      = Color(255, 255, 255, 255);
+    n.borderColor    = Color(221, 227, 234, 255);
+    n.borderWidth    = 1.0;
+    n.textColor      = Color(33, 33, 33, 255);
+    n.iconPath       = GetResourcesDir() + "media/icons/smarthome/" + icon + ".svg";
+    n.iconBackground = color;
+    n.sublabel       = room;
+    diagram->AddNode(n);
+};
+card("router", "Kitchen plug", "Router", "plug", Color(79, 109, 138, 255), 0, 0);
+card("fridge", "Fridge", "Kitchen", "fridge", Color(79, 109, 138, 255), 0, 70);
+card("smoke", "Smoke alarm", "Kitchen", "smoke", Color(59, 130, 246, 255), 0, 70);   // same spot
+diagram->AddLink("l1", "router", "fridge");
+diagram->AddLink("l2", "router", "smoke");
+
+diagram->ResolveOverlaps(10.0);   // the smoke alarm moves off the fridge
+diagram->FitView();
+diagram->SetDetailZoom(0.7);      // zoomed out further: icons only, named on hover
+```
 
 ## Keyboard Shortcuts
 
@@ -89334,19 +89419,25 @@ closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
 whose network has since gone away waits up to two minutes for its reply.
 (One pool per thread: libcurl does not support sharing connections between
 threads that transfer at the same time.) A change - delete, rename, create or
-remove a folder - is the exception on FTP: it always logs in on a connection
-of its own and closes it, because libcurl sends those commands before it
-changes folder, and they name the entry from the folder a login lands in; on
-a kept connection that a listing left in a subfolder they would name another
-file. A server that takes one connection per address or user (vsftpd's
-`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
-away - *421 There are too many connections from your internet address.*,
-or a 530 saying the maximum number of clients is reached - while the
-thread's kept one is open. Turned away so before any of its commands was
-sent, the change closes the kept connection and is sent again: at once, and
-after 0.3 s and 1 s more if the server is still counting the closed one
-(the waits end early when the call is called off). The log says *The server
-takes one connection at a time: closing the one kept open and trying again*.
+remove a folder - takes up the kept connection too. Its commands (`DELE`,
+`RNFR` / `RNTO`, `MKD`, `RMD`) go once libcurl has changed into the entry's
+folder (`CURLOPT_POSTQUOTE`) and name the entry within it; libcurl goes back
+to the folder that connection's login landed in first, so it does not matter
+where the last listing left it. (Sent before the change of folder, as they
+once were, they ran wherever the connection was, and a change needed a
+connection of its own: a second login each time.)
+
+A server that takes one connection per address (vsftpd's `max_per_ip`,
+ProFTPD's `MaxClientsPerHost`) still turns away a call that needs a new one
+while the thread keeps another open - one as another account on that server,
+which libcurl does not take up for this one: *421 There are too many
+connections from your internet address.*, or a 530 saying the maximum number
+of clients is reached. Turned away so at the greeting or the login, before
+anything was asked and with no byte moved, any FTP call closes the thread's
+kept connection and is made again: at once, and after 0.3 s and 1 s more if
+the server is still counting the closed one (the waits end early when the
+call is called off). The log says *The server takes one connection at a
+time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.
