@@ -48,6 +48,8 @@
 #include <map>
 #include <sstream>
 #include <variant>
+#include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include <cerrno>
 
 namespace UltraCanvas {
     namespace VectorConverter {
@@ -801,15 +803,21 @@ namespace UltraCanvas {
                 const ConversionOptions& options) {
             std::string data = ExportToString(document, options);
             if (data.empty()) return false;
+            errno = 0;
             std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
             if (!file.is_open()) {
                 if (options.WarningCallback) {
-                    options.WarningCallback("Failed to create CDR file: " + filename);
+                    options.WarningCallback("Failed to create CDR file: " + UltraCanvas::FileWriteFailureReason(filename, errno));
                 }
                 return false;
             }
             file.write(data.data(), static_cast<std::streamsize>(data.size()));
-            return file.good();
+            file.close();
+            if (!file) {
+                if (options.WarningCallback) options.WarningCallback("Failed to write CDR file: " + UltraCanvas::FileWriteFailureReason(filename, errno));
+                return false;
+            }
+            return true;
         }
 
         std::string CDRConverter::ExportToString(

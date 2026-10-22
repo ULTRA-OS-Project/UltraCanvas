@@ -21,6 +21,8 @@
 #include <fstream>
 #include <sstream>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include <cerrno>
 
 namespace UltraCanvas {
 namespace VectorConverter {
@@ -66,15 +68,21 @@ bool ExportOnlyConverter::Export(
         const ConversionOptions& options) {
     std::string data = ExportToString(document, options);
     if (data.empty()) return false;
+    errno = 0;
     std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
     if (!file.is_open()) {
         if (options.WarningCallback) {
-            options.WarningCallback("Failed to create file: " + filename);
+            options.WarningCallback("Failed to create file: " + UltraCanvas::FileWriteFailureReason(filename, errno));
         }
         return false;
     }
     file.write(data.data(), static_cast<std::streamsize>(data.size()));
-    return file.good();
+    file.close();
+    if (!file) {
+        if (options.WarningCallback) options.WarningCallback("Failed to write file: " + UltraCanvas::FileWriteFailureReason(filename, errno));
+        return false;
+    }
+    return true;
 }
 
 bool ExportOnlyConverter::ExportToStream(

@@ -39,6 +39,7 @@
 #include <fstream>
 #include <iterator>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // FileWriteFailureReason
 
 #ifdef ULTRACANVAS_HAS_NET
 #include "UltraNet/UltraNetHttp.h"
@@ -596,8 +597,11 @@ namespace UltraCanvas {
             collected.push_back(n);
         });
         if (!ok) {
-            outError = "Could not save the file";
-            if (!collected.empty()) outError += ": " + collected.front();
+            // The writer's own reason when it gave one (the file writers say
+            // why the file could not be created or written), else what the
+            // destination says.
+            outError = "Could not save the file: " +
+                       (!collected.empty() ? collected.front() : FileWriteFailureReason(filePath, 0));
         }
         if (notes) *notes = std::move(collected);
         return ok;

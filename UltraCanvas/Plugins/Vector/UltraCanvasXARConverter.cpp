@@ -26,6 +26,8 @@
 #include <map>
 #include <variant>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include <cerrno>
 
 namespace UltraCanvas {
 
@@ -2504,14 +2506,20 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
             auto data = ExportToMemory(document, options, xarOptions);
             if (data.empty()) return false;
 
+            errno = 0;
             std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
             if (!file.is_open()) {
-                LogWarning("Failed to create XAR file: " + filename);
+                LogWarning("Failed to create XAR file: " + UltraCanvas::FileWriteFailureReason(filename, errno));
                 return false;
             }
             file.write(reinterpret_cast<const char*>(data.data()),
                        static_cast<std::streamsize>(data.size()));
-            return file.good();
+            file.close();
+            if (!file) {
+                LogWarning("Failed to write XAR file: " + UltraCanvas::FileWriteFailureReason(filename, errno));
+                return false;
+            }
+            return true;
         }
 
         std::vector<uint8_t> XARConverter::Impl::ExportToMemory(

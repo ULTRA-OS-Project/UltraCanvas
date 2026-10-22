@@ -55,6 +55,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasFileError.h"   // FileWriteFailureReason
 
 // ULTRATEXTER_VERSION comes from the build alone: CMake reads the first line
 // of Docs/Texter/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
@@ -2579,35 +2580,17 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     namespace {
-        // Why a file stream failed, in enough detail to act on: what failed
-        // (opening or writing), the system's error code and text (errno,
-        // which the C runtime sets when it cannot open or write the file),
-        // and what the folder and the file itself say - the usual causes.
+        // Why a file stream failed, in enough detail to act on: the step that
+        // failed (opening or writing), then the framework's reading of the
+        // destination - missing folder, read-only file, locked by another
+        // program, disk full - or the system's own error (errno, which the C
+        // runtime sets when it cannot open or write the file).
         std::string SaveFailureReason(const std::string& filePath, const char* what) {
             const int err = errno;
-            std::string reason = std::string("The file ") + what + ".";
+            std::string reason = std::string("The file ") + what + ".\n" +
+                                 FileWriteFailureReason(filePath, err);
             if (err != 0) {
-                reason += "\nSystem error " + std::to_string(err) + ": " + std::strerror(err) + ".";
-            }
-
-            std::error_code ec;
-            const std::filesystem::path path = PathFromUtf8(filePath);
-            const std::filesystem::path folder = path.parent_path();
-            if (!folder.empty() && !std::filesystem::is_directory(folder, ec)) {
-                reason += "\nThe folder \"" + PathToUtf8(folder) + "\" does not exist (any more).";
-            } else if (std::filesystem::exists(path, ec)) {
-                if (std::filesystem::is_directory(path, ec)) {
-                    reason += "\nA folder has this name.";
-                } else {
-                    const auto perms = std::filesystem::status(path, ec).permissions();
-                    if (!ec && (perms & std::filesystem::perms::owner_write) == std::filesystem::perms::none) {
-                        reason += "\nThe file is marked read-only.";
-                    }
-                }
-            }
-            if (err == EACCES || err == EPERM || err == EBUSY) {
-                reason += "\nThe file may be read-only, open with exclusive access in another "
-                          "program, or in a folder you are not allowed to write to.";
+                reason += "\n(System error " + std::to_string(err) + ": " + std::strerror(err) + ")";
             }
             return reason;
         }
