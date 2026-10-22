@@ -13595,10 +13595,16 @@ namespace UltraCanvas {
                 break;
             }
             case IconMenuAction::Rename: {
-                // Pencil over a baseline.
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx + r * 0.9, cy - r * 0.9));
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx - r * 0.5, cy + r));
-                ctx->DrawLine(Point2Dd(cx - r, cy + r), Point2Dd(cx - r, cy + r * 0.5));
+                // A serif "T" beside a text caret: it edits the NAME, so it
+                // reads as "type text" rather than a pencil, which looked like
+                // "edit the file's contents".
+                double tx = cx - r * 0.3;
+                ctx->DrawLine(Point2Dd(tx - r * 0.9, cy - r), Point2Dd(tx + r * 0.9, cy - r));
+                ctx->DrawLine(Point2Dd(tx - r * 0.9, cy - r), Point2Dd(tx - r * 0.9, cy - r * 0.7));
+                ctx->DrawLine(Point2Dd(tx + r * 0.9, cy - r), Point2Dd(tx + r * 0.9, cy - r * 0.7));
+                ctx->DrawLine(Point2Dd(tx, cy - r), Point2Dd(tx, cy + r));
+                ctx->DrawLine(Point2Dd(tx - r * 0.35, cy + r), Point2Dd(tx + r * 0.35, cy + r));
+                ctx->DrawLine(Point2Dd(cx + r * 1.15, cy - r * 0.6), Point2Dd(cx + r * 1.15, cy + r));
                 break;
             }
             case IconMenuAction::Delete: {
@@ -14940,7 +14946,14 @@ namespace UltraCanvas {
         size_t iconEntry = 0;
         int iconAction = IconMenuActionAt(localPoint, iconEntry);
         if (iconAction >= 0) {
-            static const char* kIconMenuTips[] = { "Copy", "Cut", "Rename", "Delete" };
+            // Say what each button does to the file and give its keyboard
+            // shortcut, so the strip also teaches the keys.
+            static const char* kIconMenuTips[] = {
+                "Copy to clipboard (Ctrl+C)",
+                "Cut to clipboard (Ctrl+X)",
+                "Rename (F2)",
+                "Delete (Del)",
+            };
             target = TooltipTarget::IconButton;
             entry  = iconEntry;
             action = iconAction;

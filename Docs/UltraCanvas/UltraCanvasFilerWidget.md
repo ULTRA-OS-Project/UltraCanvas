@@ -1874,7 +1874,10 @@ Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
 item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
 turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
 `FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
-so no icon assets are required.
+so no icon assets are required; Rename is a serif *T* beside a text caret, as
+it edits the name rather than the file. Each button's tooltip says what it does
+and gives its shortcut - *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
+(Ctrl+X)*, *Rename (F2)*, *Delete (Del)*.
 
 A button acts on the hovered entry — or on the **whole selection** when the
 hovered entry is part of it — and, like a drag, **never changes the selection**:
