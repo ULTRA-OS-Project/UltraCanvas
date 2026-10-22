@@ -81,6 +81,12 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.29.1 - a remote drive's path bar is its own (FillRemoteBreadcrumb):
+//                  it was resolved as a local path, which on Windows put an
+//                  "ultracloud:" node under the user folder that opened an
+//                  empty display; a tab on a drive's top folder is titled
+//                  with the drive's name, not its ultracloud:// address
+//                  (TabTitleFor)
 // Version: 1.29.0 - AllowCloseDuringTransfers: closing during an upload or a
 //                  download asks first; an upload onto a name that is taken
 //                  asks Keep both / Replace / Skip (PlanRemoteUploads)
@@ -740,6 +746,14 @@ private:
     void FillFolderBreadcrumb(UltraCanvasBreadcrumb* crumb, const std::string& path,
                               std::function<void(const std::string&)> onNavigate);
     void FillComputerBreadcrumb(UltraCanvasBreadcrumb* crumb);
+    // FillFolderBreadcrumb for a remote drive's path: Computer, the drive
+    // under its tree label, then its folders - never resolved against the
+    // local filesystem.
+    // A tab's caption for `path`: the folder's name, the home folder's
+    // "Home", and on a drive's top folder the drive's name.
+    std::string TabTitleFor(const std::string& path) const;
+    void FillRemoteBreadcrumb(UltraCanvasBreadcrumb* crumb, const std::string& path,
+                              std::function<void(const std::string&)> onNavigate);
     // Pin > To Favorites: each target goes into the tab its kind belongs to.
     void PinTargetsToFavorites();
     // Pin > To Treeview: each target folder appears under the tree's Pinned
