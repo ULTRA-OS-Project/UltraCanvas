@@ -168,7 +168,7 @@ namespace UltraCanvas {
 
         // Multi-Selection Tree, with the arrow expanders: an arrow pointing
         // right on a closed row and down on an open one, instead of the +/- box.
-        auto multiBox = TreeDemoGroupBox("MultiTreeBox", 340, 50, 300, "Multi-Selection TreeView (Ctrl+Click), arrows");
+        auto multiBox = TreeDemoGroupBox("MultiTreeBox", 340, 50, 300, "Multi-Selection (Ctrl+Click), arrows");
         container->AddChild(multiBox);
         auto multiTree = std::make_shared<UltraCanvasTreeView>("MultiTree", 300, 200);
         multiTree->SetRowHeight(20);
