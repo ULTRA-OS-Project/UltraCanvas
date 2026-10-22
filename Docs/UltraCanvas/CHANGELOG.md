@@ -1,3 +1,25 @@
+#### 2026-10-22 *0.9.378*
+- **A core built with `ULTRACANVAS_ENABLE_CHARTS=OFF` links again.** The
+  option dropped every source under `Plugins/Charts/`, but code outside it is
+  built on four of them: every diagram derives from
+  `UltraCanvasChartElementBase` (the Matrix and Packet diagrams draw
+  `UltraCanvasChartLegend` too), and the progress dialog - which
+  `UltraCanvasFileLoader` reaches - shows an
+  `UltraCanvasCircularProgressChart`; those use `UltraCanvasColormap`. The
+  library compiled, and then a program using a diagram or the file loader
+  failed to link with undefined chart symbols. With charts off the core now
+  keeps those four files and drops the rest.
+- **CI tests JPEG XL for real.** `build.yml`'s Linux rows run on Ubuntu
+  22.04, whose libvips has no libjxl, so `ImageJxlTest` only ever reported
+  SKIP there. A new workflow, `Image codecs` (`image-codecs.yml`), builds the
+  core and the headless image tests (`ImageJxlTest`, `ImageIcoQoiTest`,
+  `ImageGifSaverTest`) on Ubuntu 24.04, whose libvips 8.15 reads and writes
+  JPEG XL, and fails when `ImageJxlTest` skips instead of passing. It
+  configures the core with charts and every app and optional module off -
+  the chart-free core no other job builds - and links `ImageJxlTest` (which
+  reaches the progress dialog) and `MatrixDiagramRenderTest` (a diagram)
+  against it, so that configuration cannot stop linking unnoticed again.
+
 #### 2026-10-22 *0.9.377*
 - **`CSVFormatRecord` writes one CSV/TSV record** (`UltraCanvasCSVImport.h`):
   the fields quoted as `CSVExportOptions` says - all of them, or those
