@@ -97,9 +97,13 @@ list of what the proposals still wait for:
     python3 scripts/check_doc_examples.py --all --update-baseline   # after fixing some
 
 A baseline entry is the doc and the message, without the line, so editing
-elsewhere in a doc does not disturb it. The file only shrinks: fix a doc's
-findings and rewrite it, never add to it to let a new one through.
+elsewhere in a doc does not disturb it, and without the `UltraCanvas::` one
+clang puts before a type and another leaves out, so the clang on the runner
+does not disturb it either. The file only shrinks: fix a doc's findings and
+rewrite it, never add to it to let a new one through.
 """
+# Version: 1.8.0 - a baseline key drops the UltraCanvas:: a clang writes before
+#                 a type's name, so the file holds under clang 14 and 18 alike
 # Version: 1.7.0 - the shared precompiled header is reused by what it was
 #                 built from (the headers' content, the flags, clang), not by
 #                 mtimes, and --pch-key prints that, so CI can cache it
@@ -1721,11 +1725,19 @@ def component_docs():
     return sorted(docs)
 
 
+# clang names a type in its own words: clang 18 writes `'SurfaceLegendMode'`
+# where clang 14 writes `'UltraCanvas::SurfaceLegendMode'`, and a baseline
+# written by one would fail under the other. The namespace is dropped from
+# the key, so the file reads the same whichever clang the runner has.
+NAMESPACE_IN_MESSAGE = re.compile(r"\bUltraCanvas::")
+
+
 def finding_key(doc, message):
     rel = Path(doc)
     if rel.is_absolute() and ROOT in rel.parents:
         rel = rel.relative_to(ROOT)
-    return "%s::%s" % (rel.as_posix(), message.replace(str(ROOT) + os.sep, ""))
+    message = NAMESPACE_IN_MESSAGE.sub("", message.replace(str(ROOT) + os.sep, ""))
+    return "%s::%s" % (rel.as_posix(), message)
 
 
 def load_baseline(path):
