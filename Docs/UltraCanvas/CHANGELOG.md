@@ -1,3 +1,217 @@
+#### 2026-10-22 *0.9.374*
+- **An application's preferences in one file: `UltraCanvasAppSettings`.**
+  `<settings folder>/<App>/settings.json`, read with `Load()` and written
+  whole with `Save()`; typed values (`GetString`, `GetInt`, `GetBool`,
+  `GetNumber`, `GetList`, `Set`, `Remove`) with a fallback each, dotted
+  keys as nested objects (`"window.width"`), and a recent list on any key
+  (`Remember` puts an entry first, once, and keeps the newest eight;
+  `Forget` drops one). A missing or broken file is the defaults. UltraPress's
+  settings file is one; UltraFIBU's list of the bookkeepings opened last
+  moved into one. `AppSettingsTest` covers it
+  ([doc](UltraCanvasAppSettings.md)).
+- **A start-up and shut-down test can end the program:
+  `ULTRACANVAS_CLOSE_AFTER_MS`.** With the variable set, `Run()` asks every
+  window to close after that many milliseconds, the way the window
+  manager's close button would (`UltraCanvasApplication::CloseAllWindows()`,
+  which an application or a test calls itself too): the window's
+  `onWindowClosing` may refuse, `onWindowClosed` runs, the settings are
+  written, and `Run()` returns. `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run
+  ./ultrapress` opens, runs two seconds and ends, with no X client to send
+  the close.
+- **The start page has a headless test of its own: `StartPageTest`.** The
+  parts laid out top to bottom, the preferred height growing by what each
+  takes, the recent entries as buttons that hand back the whole entry, the
+  action as wide as the column, a section at the margin and the rows put
+  in it, the status line in the error colour. It and `AppSettingsTest`
+  run on the macOS and Windows CI rows too (`ULTRACANVAS_BUILD_STARTPAGE_TESTS`,
+  `Tests/StartPageTests.cmake`), with the UltraPress suites and the
+  UltraFIBU start window test, on each platform's own path rules.
+- **The date picker's hint is the one the application set.**
+  `UltraCanvasDatePicker::SetPlaceholder` now reaches the field after it
+  was built; until now the field kept "Select a date" whatever was set
+  later, which is what UltraFIBU's start window showed for its
+  *TT.MM.JJJJ*. `GetPlaceholder` reads it back.
+- **A button's text can lose its middle instead of its end:
+  `ButtonStyle::ellipsize`, `SetEllipsize`.** `EllipsizeMiddle` keeps the
+  first and the last part of a path readable, `EllipsizeStart` the end;
+  the default is unchanged; the layout the text is shaped with is kept
+  from draw to draw, as the label keeps its own, and rebuilt only when the
+  text, the width, the font, the alignment or the mode changes. The start
+  page's recent entries use it, so a long folder keeps its drive and its
+  name on the button.
+- **SmartHome: several listeners per notification.** `SmartHomeListener`
+  holds any of the module's twelve callbacks; `SmartHomeAPI::AddListener`
+  adds one and returns the id `RemoveListener` takes. Each notification calls
+  the `SetOn*` slot, as before, and then every listener with that member set,
+  with no module lock held. Once `RemoveListener` returns the listener is not
+  running and is not called again (from inside a notification it stops every
+  later call). `SmartHomePanel` listens this way, so the application hosting
+  it keeps its own callbacks - before, the two took the single slot from
+  each other.
+  - `SmartHomeListenerTest` covers it, removal raced against a notifying
+    thread included.
+- **SmartHome: the dashboard panel drew every device card on top of the
+  first.** `SmartHomePanel` laid its cards out in a grid but drew each at its
+  own origin, so 30 devices showed as one card. Each is drawn where it is
+  laid out now (grid, list, rooms and scenes), and the room view groups the
+  cards by the home's rooms (`SmartHomeAPI::GetRooms`) when the panel was
+  given none of its own.
+- **Demo application: the Smart Home entry shows the module.** With the
+  `SmartHomeUI` widgets in the build it starts the simulated home and opens
+  the dashboard panel on it, with buttons for its device, room, list and
+  scene views; without them it shows the module's documentation as before.
+- **SmartHome: the home has rooms of its own.** `SmartHomeRoom` (id, name,
+  icon, floor, sort order) and, on `SmartHomeAPI`, `GetRooms`, `GetRoom`,
+  `CreateRoom`, `UpdateRoom`, `DeleteRoom`, `AssignDeviceToRoom`,
+  `GetDeviceRoom` and `SetOnHomeChange`. A room name a backend reports
+  becomes a room the first time a device brings it; `SmartHomeDeviceInfo`
+  gains `RoomId` beside `Room`, which is now the name of the home's room the
+  device is in - the person's choice over the backend's. Renaming a room
+  renames it on its devices, and the backend's old name does not bring the
+  old room back; deleting one leaves its devices in no room. `SetDeviceRoom`
+  by name still works and makes the room when there is none.
+  - smarthome.db migration 2 adds the `room` table and keeps a device's room
+    by id; a version-1 store's room names become rooms the first time it
+    opens. Rooms and choices made before the store opened are saved to it.
+  - `SmartHomeHomeModelTest` covers it, with and without the store.
+- **SmartHome: `SmartHomeAPI::WaitForCommands(timeoutMs)`** waits until every
+  command queued so far has been sent - for a command-line tool that exits
+  right after a command, and for tests.
+- **SmartHome: the device controls are built from framework elements.**
+  `SmartHomeLightControl`, `SmartHomeThermostatControl`,
+  `SmartHomeLockControl`, `SmartHomeBlindControl` and
+  `SmartHomeSensorDisplay` are now `UltraCanvasContainer`s laid out by flex,
+  where they used to paint every control and hit-test the pointer against
+  fixed positions. The light has a switch, brightness and colour-temperature
+  sliders, a colour picker (hue and intensity bars) and a swatch bar for its
+  presets; the thermostat a ring gauge for the target, a spinner and a
+  segmented control for the mode (the mouse wheel still steps it half a
+  degree); the lock a button, a battery bar and its activity in a list view;
+  the blind Open / Stop / Close buttons, position and tilt sliders and a
+  button per preset. Focus, keyboard, hover and theming are the elements'.
+  - The public API is kept. `SetBrightnessEnabled`, `SetColorTempEnabled`,
+    `SetColorEnabled`, `SetTiltEnabled`, `SetCelsius` and `SetGraphRange` are
+    out-of-line now and show or hide their rows; getters such as
+    `GetPowerSwitch()`, `GetBrightnessSlider()`, `GetLockButton()` and
+    `GetOpenButton()` reach the elements.
+  - `SetState`, `SetPosition` and `SetTilt` put a state into the elements
+    without echoing it back to the device as a command.
+  - A sensor's history is a line chart with a floor under its value axis,
+    `SensorHistoryMinimumSpan` (2 °C, 10 %, 20 W, 50 lx): a room steady at
+    20.6-20.7 °C draws a flat line, not a sawtooth across the whole graph.
+- **SmartHome: the device dialog, the pairing wizard and the scene and
+  automation editors are built from framework elements too.** The dialog
+  holds the device's control as a real child - before, it painted the
+  control itself and passed it events by hand, so a container-based control
+  in it got none. The editors take the name in a text input, list their
+  actions, triggers and conditions in list views, pick a device from a
+  dropdown, and enable an automation with a switch. Getters reach the
+  elements (`GetCloseButton()`, `GetSaveButton()`, `GetNameInput()`, ...).
+  - The pairing wizard is protocol buttons, then a search with a progress
+    bar and Cancel, then "Added ..." or what went wrong. It used to wait on a
+    "choose a found device" step nothing ever filled; it now watches for the
+    device that joins the home, on an application timer (`Poll()` for a host
+    without an event loop), and leaves SmartHomeAPI's callbacks to the host.
+    `SetSearchTimeout`, `IsSearching` and `GetErrorMessage` are new.
+- **SmartHome: the dashboard panel and the topology, energy, scheduler and
+  group widgets are built from framework elements.** `SmartHomePanel` is a
+  container: a toolbar (a segmented control for its six views, a search
+  field, "Add device"), a pairing banner, and a scrolling body whose
+  children are the device and scene cards themselves, in rows that wrap.
+  It used to lay the cards out and draw them by hand and pass them events
+  itself. The module's callbacks, which arrive on its threads, now only note
+  the change; `Poll()` applies it on the UI thread from an application
+  timer. Its automations are a list view (double-click turns one on or off)
+  and its network view is a `SmartHomeNetworkTopology`.
+  - `SmartHomeNetworkTopology` is an `UltraCanvasNodeDiagram` under a
+    layout switch and a radio filter; `SetAutoRefresh` uses an application
+    timer instead of refreshing from `Render`.
+  - `SmartHomeEnergyMonitor` plots power, energy or cost as a line chart
+    with a segmented control; `SmartHomeGroupControl` has buttons, sliders, a
+    list view and a dropdown to add a device; `SmartHomeScheduler` has a
+    segmented control for day / week / list, a list view, Turn off / Remove,
+    and draws only its week grid.
+  - New getters reach the elements; `GetNodes()`, `GetLinks()`,
+    `GetEvents()`, `GetViewMode()`, `GetSelectedEvent()`, `GetGroup()`,
+    `GetDeviceCard()`, `GetSceneCard()` and `IsPairing()` are new.
+  - The demo application's Smart Home entry drops its own view buttons: the
+    panel's toolbar has them.
+  - `scripts/check_ui_reuse.py` scans `SmartHome/ui`; the element catalogue
+    lists the Smart Home widgets and what each is built from.
+  - `SmartHomeWidgetTest` drives the controls, the dialog, the wizard (a
+    simulated device pairs through it), the editors, the advanced widgets and
+    the panel through a real window
+    and the application's dispatch; CI's Linux row now builds the Smart Home suite
+    (`BUILD_TESTS` turns it on) and runs that test on a virtual display.
+- **SmartHome: device icons, and a network map that reads.**
+  - Sixteen new line icons in `media/icons/smarthome/` beside the existing
+    ones (TV, fridge, kettle, computer, heater, gate, camera, speaker, fan,
+    appliance, gateway, CO, air quality, light level, pressure, vibration),
+    and `UltraCanvasSmartHomeIcons.h`: `SmartHomeDeviceIconName` picks a
+    device's icon by category, by its kind of reading for a sensor, and by
+    its name for a plug or switch (a plug called "Kettle" gets the kettle);
+    `SmartHomeCategoryColor` gives the disc colour.
+  - `SmartHomeNetworkTopology` draws each device as a white card with its
+    icon, name and room (routers larger, bordered in their radio's colour)
+    on a light canvas, and no two cards overlap in any layout. A device is
+    linked to a router of its radio in its own room when there is one (the
+    rest are shared out evenly) instead of every device to the first
+    router; radial puts each router inside the arc of its own devices, and
+    tree puts each router over a column of its devices.
+  - The dashboard's device cards show the icon on their colour disc, and a
+    list row now shows the device's name and state.
+  - The radial map is drawn tighter, and zoomed out past 70 % the topology
+    shows its devices as icons, named on hover (`SetDetailZoom`); a
+    double-click on a device reports through the new `SetOnNodeActivated`.
+- **The start page every application shows with nothing open:
+  `UltraCanvasStartPage`.** A container that lays out, top to bottom, a
+  title, the reason this page and not the thing itself, the entries opened
+  last as buttons (their whole path in a tooltip), the one action that
+  opens an existing thing, a section of the application's own fields for
+  a new one - laid out row by row by the page (`AddField` puts a caption
+  and an input on a row, `AddNote` a line of text, `AddButton` a button)
+  - and a status line in the theme's error colour when something could
+  not be done; `PreferredHeight()` is what the window should be.
+  UltraPress's start window (a site folder) and UltraFIBU's (a bookkeeping
+  file) are both this page with their own words and fields
+  ([doc](UltraCanvasStartPage.md)).
+- **One way to keep a text layout between draws:
+  `UltraCanvasTextLayoutCache`.** The inputs a layout is built from - the
+  text, the font, the wrap, the alignment, the shortening, the width - are a
+  key (`TextLayoutKey`), and `Get(ctx, key)` hands back the layout held
+  while the key is the one it was built with, else a new one with the key
+  applied. The label keeps its layout this way now, so no setter of its
+  resets it (only the inline images, which are not in the key), and the
+  button's middle-shortened text does too, and so do the text input (its
+  text and its placeholder), the dropdown (the closed button's text and
+  each row of its list) and the menu (each entry's label and header),
+  which shaped their text on every draw before; the next element copies
+  the pattern instead of choosing one. `IRenderContext::CreateTextLayout` counts
+  the layouts it made (`TextLayoutsCreated`; the backend implements
+  `MakeTextLayout`), and `TextLayoutCacheTest` draws a label, a button, a
+  text input, a dropdown and a menu bar ten times each and finds one
+  layout per text.
+- **`scripts/check_version_history.py` lists the headers under
+  `UltraCanvas/include` that carry no `Version:` line**, so the history a
+  reader expects in a header's head is added where it is missing;
+  `--strict` makes it a check.
+- **A menu entry's width is measured once.** `CalculateItemWidth` keeps
+  each entry's width with what it was measured from (the label, the
+  shortcut, the font, the icon, the submenu, the orientation, the style's
+  spacings) and measures again only when one changed; every layout pass
+  asked for every width before, and each ask shaped the label. A menu
+  drawn without a window (a test's offscreen surface) estimates its widths
+  instead of dereferencing a context it does not have. The kept layout and
+  the kept width are one slot per entry, moved with the entries by
+  `InsertItem` and `RemoveItem`, so the entries that only shifted rebuild
+  nothing.
+- **The render context doc explains the context's own text cache**: what
+  its key holds (the text, the size, the font, the text style, the
+  resolution) and leaves out (the device scale, the font options), and how
+  an element's own layout differs from it.
+- **The dropdown, the tree view and the timer headers carry a version
+  history**, reconstructed from the framework changelog.
+
 #### 2026-10-22 *0.9.373*
 - **ChatCube Direct: the ULTRA OS native messenger, as an UltraIM provider.**
   A provider module (`UltraCanvas/Plugins/UltraIM/direct/`, loaded as
