@@ -3473,6 +3473,14 @@ namespace UltraCanvas {
                isRemotePath && isRemotePath(currentPath);
     }
 
+    bool UltraCanvasFilerWidget::CanRenameHere() const {
+        return !ShowingRemoteFolder() || static_cast<bool>(remoteRename);
+    }
+
+    bool UltraCanvasFilerWidget::CanDeleteHere() const {
+        return !ShowingRemoteFolder() || static_cast<bool>(remoteDelete);
+    }
+
     bool UltraCanvasFilerWidget::IsRemoteEntryPath(const std::string& path) const {
         return !path.empty() && isRemotePath && isRemotePath(path);
     }
@@ -7848,7 +7856,7 @@ namespace UltraCanvas {
         // carry the rename out; otherwise refuse now rather than let someone
         // type a new name that goes nowhere.
         if (ShowingRemoteFolder()) {
-            if (!remoteRename) {
+            if (!CanRenameHere()) {
                 ReportError("Cannot rename on this drive.");
                 return;
             }
@@ -13574,7 +13582,12 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasFilerWidget::IconMenuActionEnabled(IconMenuAction action) const {
-        return !(action == IconMenuAction::Cut && ShowingRemoteFolder());
+        switch (action) {
+            case IconMenuAction::Cut:    return !ShowingRemoteFolder();
+            case IconMenuAction::Rename: return CanRenameHere();
+            case IconMenuAction::Delete: return CanDeleteHere();
+            default:                     return true;
+        }
     }
 
     void UltraCanvasFilerWidget::DrawIconMenuGlyph(IRenderContext* ctx,
@@ -14968,8 +14981,15 @@ namespace UltraCanvas {
             entry  = iconEntry;
             action = iconAction;
             text   = kIconMenuTips[iconAction];
-            if (!IconMenuActionEnabled(static_cast<IconMenuAction>(iconAction)))
-                text = "Cut is not available on a drive - copy, then delete";
+            if (!IconMenuActionEnabled(static_cast<IconMenuAction>(iconAction))) {
+                static const char* kIconMenuOffTips[] = {
+                    "",
+                    "Cut is not available on a drive - copy, then delete",
+                    "Rename is not available on this drive",
+                    "Delete is not available on this drive",
+                };
+                text = kIconMenuOffTips[iconAction];
+            }
         } else if (renamingIndex < 0 && !IsInInfoBar(localPoint) &&
                    hoveredSplitter < 0) {
             Point2Di content = ToContentPoint(localPoint);
@@ -15461,17 +15481,20 @@ namespace UltraCanvas {
                   [this]() { CutSelection(); }, "Ctrl+X");
         addAction("Paste", "paste.svg", ClipboardHasContent(),
                   [this]() { Paste(); }, "Ctrl+V");
-        addAction("Delete", "delete.svg", hasSel, [this]() {
+        // Rename and the deletes are greyed out on a drive the host cannot
+        // carry them out on, rather than offered and then refused.
+        addAction("Delete", "delete.svg", hasSel && CanDeleteHere(), [this]() {
             DeleteSelection(FilerDeleteMode::MoveToTrash);
         }, "Del");
-        addAction("Delete Permanently", "delete-permanently.svg", hasSel, [this]() {
+        addAction("Delete Permanently", "delete-permanently.svg",
+                  hasSel && CanDeleteHere(), [this]() {
             DeleteSelection(FilerDeleteMode::Permanently);
         }, "Shift+Del");
         addAction("Duplicate", "duplicate.svg", hasSel && !ShowingRemoteFolder(),
                   [this]() { DuplicateSelection(); }, "Ctrl+D");
         {
             size_t renameIdx = singleSel ? selection.front() : 0;
-            addAction("Rename", "rename.svg", singleSel,
+            addAction("Rename", "rename.svg", singleSel && CanRenameHere(),
                       [this, renameIdx]() { StartRename(renameIdx); }, "F2");
         }
         menu.AddItem(MenuItemData::Separator());

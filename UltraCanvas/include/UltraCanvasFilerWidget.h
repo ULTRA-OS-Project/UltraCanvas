@@ -104,7 +104,10 @@
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
 // Version: 1.41.1 - the hover icon menu's Cut is greyed out and inert on a
-//                  drive, matching the context menu (IconMenuActionEnabled)
+//                  drive, matching the context menu (IconMenuActionEnabled);
+//                  both menus grey Rename / Delete on a drive whose host did
+//                  not wire remoteRename / remoteDelete (CanRenameHere,
+//                  CanDeleteHere)
 // Version: 1.41.0 - a remote folder being fetched or updated: a thin blue bar
 //                  at the foot of the file area (FilerStyle::loadingBarColor)
 //                  in place of the "Loading folder" notice over it; the status
@@ -2722,6 +2725,12 @@ namespace UltraCanvas {
 
         // True while the listing on screen is a remote drive's.
         bool ShowingRemoteFolder() const;
+        // Whether a rename / delete can be carried out here: always on this
+        // computer, and on a drive only when the host wired remoteRename /
+        // remoteDelete. The context menu and the hover icon menu grey the
+        // item out when not, rather than offering it and then refusing.
+        bool CanRenameHere() const;
+        bool CanDeleteHere() const;
         // True for a path on a remote drive (the isRemotePath hook). The
         // background readers - thumbnails, text and folder previews, media
         // probes, folder stats - skip such a path: it is not on this disk.
@@ -2998,7 +3007,8 @@ namespace UltraCanvas {
         void DrawIconMenuGlyph(IRenderContext* ctx, IconMenuAction action,
                                const Rect2Di& button, bool enabled = true);
         // Whether a hover icon-menu button may act here: Cut is greyed out on
-        // a drive, as the context menu's Cut is (see CutSelection).
+        // a drive, as the context menu's Cut is (see CutSelection), and
+        // Rename / Delete where CanRenameHere / CanDeleteHere say no.
         bool IconMenuActionEnabled(IconMenuAction action) const;
         // The selection rectangle of a running rubber-band drag.
         void DrawMarquee(IRenderContext* ctx);

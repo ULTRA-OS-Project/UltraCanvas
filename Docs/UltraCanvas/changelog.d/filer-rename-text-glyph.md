@@ -9,3 +9,10 @@
   the hover button put the files on the clipboard as a cut anyway, ghosting
   entries whose move off the drive could not be completed. It is now drawn
   dimmed and a press does nothing; its tooltip says to copy, then delete.
+- **UltraCanvasFilerWidget: Rename and Delete are greyed out on a drive that
+  cannot do them.** On a drive whose host did not wire `remoteRename` /
+  `remoteDelete`, the context menu offered Rename, Delete and Delete
+  Permanently and the hover icon menu offered Rename and Delete, and each
+  refused only once clicked. They are now greyed out in both menus
+  (`CanRenameHere` / `CanDeleteHere`); F2 and Del still say why. UltraFiler
+  wires both, so its menus do not change.
