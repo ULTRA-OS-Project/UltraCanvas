@@ -147,6 +147,8 @@ UltraIMProviderInfo DescribeProvider(const IUltraIMProviderPlugin& provider) {
     info.loginType = provider.GetLoginType();
     info.connectionState = provider.GetConnectionState();
     info.localUserId = provider.GetLocalUserId();
+    info.authStep = provider.GetAuthStep();
+    info.authHint = provider.GetAuthHint();
     info.hasStoredSession = provider.HasStoredSession();
     return info;
 }

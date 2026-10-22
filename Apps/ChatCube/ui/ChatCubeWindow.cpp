@@ -243,7 +243,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     sidebar->AddChild(idRow);
 
     auto addRow = MakeRow("cc-add-row");
-    contactId_ = MakeInput("cc-add-id", "ChatCube ID, or @name:server on Matrix", kSidebarWidth - 16 - 60);
+    contactId_ = MakeInput("cc-add-id", "ChatCube ID, a Matrix or Telegram contact", kSidebarWidth - 16 - 60);
     contactId_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     contactId_->onEnterPressed = [this](const std::string&) { AddContact(); return true; };
     addRow->AddChild(contactId_);
@@ -286,6 +286,38 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     matrixKeysForm_->AddChild(importKeys);
     matrixKeysForm_->SetVisible(false);
     sidebar->AddChild(matrixKeysForm_);
+
+    // A Telegram account: the phone number, then the code, then the
+    // two-step password if there is one - one field at a time.
+    telegramToggle_ = MakeButton("cc-telegram", "Telegram account", kSidebarWidth - 16);
+    telegramToggle_->SetOnClick([this]() { ToggleTelegramForm(); });
+    sidebar->AddChild(telegramToggle_);
+    telegramForm_ = std::make_shared<UltraCanvasContainer>("cc-telegram-form");
+    telegramForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    telegramForm_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto next = [this](const std::string&) { SignInToTelegram(false); return true; };
+    telegramPhone_ = MakeInput("cc-telegram-phone", "Phone number, e.g. +44 20 7946 0000", kSidebarWidth - 16);
+    telegramPhone_->onEnterPressed = next;
+    telegramForm_->AddChild(telegramPhone_);
+    telegramApiId_ = MakeInput("cc-telegram-api-id", "API ID (my.telegram.org; empty if built in)", kSidebarWidth - 16);
+    telegramForm_->AddChild(telegramApiId_);
+    telegramApiHash_ = MakeInput("cc-telegram-api-hash", "API hash", kSidebarWidth - 16);
+    telegramForm_->AddChild(telegramApiHash_);
+    telegramCode_ = MakeInput("cc-telegram-code", "The code Telegram sent", kSidebarWidth - 16);
+    telegramCode_->onEnterPressed = next;
+    telegramForm_->AddChild(telegramCode_);
+    telegramPassword_ = MakeInput("cc-telegram-password", "Two-step verification password", kSidebarWidth - 16);
+    telegramPassword_->SetInputType(TextInputType::Password);
+    telegramPassword_->onEnterPressed = next;
+    telegramForm_->AddChild(telegramPassword_);
+    telegramName_ = MakeInput("cc-telegram-name", "Your name (a new account)", kSidebarWidth - 16);
+    telegramName_->onEnterPressed = next;
+    telegramForm_->AddChild(telegramName_);
+    telegramNext_ = MakeButton("cc-telegram-go", "Send me the code", kSidebarWidth - 16, true);
+    telegramNext_->SetOnClick([this]() { SignInToTelegram(false); });
+    telegramForm_->AddChild(telegramNext_);
+    telegramForm_->SetVisible(false);
+    sidebar->AddChild(telegramForm_);
 
     groupForm_ = std::make_shared<UltraCanvasContainer>("cc-group-form");
     groupForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -557,6 +589,10 @@ void ChatCubeWindow::SignIn() {
         if (UltraIM_GetProviderInfo(matrixProviderId_, matrixInfo) && matrixInfo.hasStoredSession &&
             matrixInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToMatrix(true);
+        UltraIMProviderInfo telegramInfo;
+        if (UltraIM_GetProviderInfo(telegramProviderId_, telegramInfo) && telegramInfo.hasStoredSession &&
+            telegramInfo.connectionState == UltraIMConnectionState::Disconnected)
+            SignInToTelegram(true);
     });
 }
 
@@ -585,9 +621,7 @@ void ChatCubeWindow::AddContact() {
 
 void ChatCubeWindow::AddContactById(const std::string& id) {
     SetStatus("Adding contact\xE2\x80\xA6");
-    // @name:server is someone on Matrix; anything else a ChatCube ID.
-    const std::string provider = !id.empty() && id[0] == '@' ? matrixProviderId_ : providerId_;
-    UltraIM_AddContact(provider, id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
+    UltraIM_AddContact(ProviderOfAddress(id), id, [this](const UltraIMResult& r, const UltraIMConversation& c) {
         if (!r) {
             SetStatus("Could not add the contact: " + r.message);
             return;
@@ -617,6 +651,83 @@ void ChatCubeWindow::ToggleMatrixForm() {
         matrixForm_->SetVisible(!matrixForm_->IsVisible());
     }
     if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::ToggleTelegramForm() {
+    UltraIMProviderInfo info;
+    if (!UltraIM_GetProviderInfo(telegramProviderId_, info)) {
+        SetStatus("The Telegram module was not found (Plugins/UltraIM).");
+        return;
+    }
+    if (info.connectionState == UltraIMConnectionState::Connected) {
+        SetStatus("Telegram: signed in");
+        return;
+    }
+    telegramForm_->SetVisible(!telegramForm_->IsVisible());
+    UpdateTelegramForm();
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::UpdateTelegramForm() {
+    UltraIMProviderInfo info;
+    UltraIM_GetProviderInfo(telegramProviderId_, info);
+    const UltraIMAuthStep step = info.authStep;
+    const bool start = step == UltraIMAuthStep::Idle || step == UltraIMAuthStep::PhoneNumber;
+    telegramPhone_->SetVisible(start);
+    telegramApiId_->SetVisible(start);
+    telegramApiHash_->SetVisible(start);
+    telegramCode_->SetVisible(step == UltraIMAuthStep::Code);
+    telegramPassword_->SetVisible(step == UltraIMAuthStep::Password);
+    telegramName_->SetVisible(step == UltraIMAuthStep::Registration);
+    if (step == UltraIMAuthStep::Code && !info.authHint.empty()) telegramCode_->SetPlaceholder(info.authHint);
+    if (step == UltraIMAuthStep::Password && !info.authHint.empty()) telegramPassword_->SetPlaceholder(info.authHint);
+    telegramNext_->SetText(start ? "Send me the code" : "Sign in to Telegram");
+    if (window_) window_->RequestRedraw();
+}
+
+void ChatCubeWindow::SignInToTelegram(bool stored) {
+    UltraIMCredentials credentials;
+    credentials.loginType = UltraIMLoginType::PhoneOTP;
+    if (!stored) {
+        UltraIMProviderInfo info;
+        UltraIM_GetProviderInfo(telegramProviderId_, info);
+        switch (info.authStep) {
+            case UltraIMAuthStep::Code:         credentials.otpCode = Trim(telegramCode_->GetText()); break;
+            case UltraIMAuthStep::Password:     credentials.password = telegramPassword_->GetText(); break;
+            case UltraIMAuthStep::Registration: credentials.displayName = Trim(telegramName_->GetText()); break;
+            default:
+                credentials.phoneNumber = Trim(telegramPhone_->GetText());
+                credentials.apiId = Trim(telegramApiId_->GetText());
+                credentials.apiHash = Trim(telegramApiHash_->GetText());
+                if (credentials.phoneNumber.empty()) {
+                    SetStatus("Telegram: enter your phone number with its country code.");
+                    return;
+                }
+                break;
+        }
+        telegramNext_->SetDisabled(true);
+    }
+    SetStatus("Telegram: signing in\xE2\x80\xA6");
+    UltraIM_SignIn(telegramProviderId_, credentials, [this, stored](const UltraIMResult& r) {
+        telegramNext_->SetDisabled(false);
+        if (r.code == UltraIMResultCode::NeedsInput) {
+            telegramForm_->SetVisible(true);
+            UpdateTelegramForm();
+            SetStatus("Telegram: " + r.message);
+            return;
+        }
+        if (!r) {
+            SetStatus("Telegram: " + r.message);
+            if (stored) telegramForm_->SetVisible(true);
+            UpdateTelegramForm();
+            return;
+        }
+        // Nothing of the sign-in is kept here: TDLib keeps the session.
+        telegramCode_->SetText("");
+        telegramPassword_->SetText("");
+        telegramForm_->SetVisible(false);
+        RefreshConversations();
+    });
 }
 
 void ChatCubeWindow::ExportMatrixKeys() {
@@ -740,9 +851,8 @@ void ChatCubeWindow::CreateGroup() {
         if (!id.empty()) members.push_back(id);
     }
     SetStatus("Creating the group\xE2\x80\xA6");
-    // Members given as @name:server: a Matrix room.
-    const bool onMatrix = !members.empty() && members.front()[0] == '@';
-    UltraIM_CreateGroup(onMatrix ? matrixProviderId_ : providerId_, title, members,
+    // The members' addresses say where: a Matrix room, a Telegram group, or ChatCube.
+    UltraIM_CreateGroup(members.empty() ? providerId_ : ProviderOfAddress(members.front()), title, members,
                         [this](const UltraIMResult& r, const UltraIMConversation& c) {
         if (!r) {
             SetStatus("Could not create the group: " + r.message);
@@ -755,6 +865,14 @@ void ChatCubeWindow::CreateGroup() {
         SetStatus("Created " + c.title);
         OpenConversation(c.conversationId);
     });
+}
+
+std::string ChatCubeWindow::ProviderOfAddress(const std::string& address) const {
+    if (address.empty()) return providerId_;
+    if (address[0] == '@') return address.find(':') != std::string::npos ? matrixProviderId_ : telegramProviderId_;
+    if (address[0] == '+' || address.rfind("t.me/", 0) == 0 || address.rfind("https://t.me/", 0) == 0)
+        return telegramProviderId_;
+    return providerId_;
 }
 
 std::string ChatCubeWindow::ProviderOf(const std::string& conversationId) const {
@@ -1044,8 +1162,9 @@ void ChatCubeWindow::OnCallEvent(const UltraIMEvent& e) {
 // =================================================================== UltraIM
 
 void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
-    if (e.providerId != providerId_ && e.providerId != matrixProviderId_) return;
+    if (e.providerId != providerId_ && e.providerId != matrixProviderId_ && e.providerId != telegramProviderId_) return;
     const bool matrix = e.providerId == matrixProviderId_;
+    const bool telegram = e.providerId == telegramProviderId_;
     switch (e.type) {
         case UltraIMEventType::MessageReceive:
             if (e.conversationId == activeConversation_) {
@@ -1103,6 +1222,20 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (e.conversationId == activeConversation_) messages_->Remove(e.message.messageId);
             break;
         case UltraIMEventType::ConnectionStateChange:
+            if (telegram) {
+                if (e.connectionState == UltraIMConnectionState::Connected) {
+                    SetStatus("Telegram: signed in");
+                    telegramToggle_->SetText("Telegram: signed in");
+                    RefreshConversations();
+                } else if (e.connectionState == UltraIMConnectionState::Error) {
+                    SetStatus("Telegram: " + e.errorText);
+                } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
+                    SetStatus("Telegram: " + (e.errorText.empty() ? std::string("reconnecting\xE2\x80\xA6") : e.errorText));
+                } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
+                    telegramToggle_->SetText("Telegram account");
+                }
+                break;
+            }
             if (matrix) {
                 // Matrix speaks for itself on the status line, Direct below.
                 if (e.connectionState == UltraIMConnectionState::Connected) {
@@ -1138,7 +1271,17 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
         case UltraIMEventType::NearbyChange:
             RefreshNearby();
             break;
+        case UltraIMEventType::AuthStepChange:
+            if (telegram) UpdateTelegramForm();
+            break;
         case UltraIMEventType::AuthRequire:
+            if (telegram) {
+                SetStatus("Telegram: the session ended - sign in again");
+                telegramForm_->SetVisible(true);
+                telegramToggle_->SetText("Telegram account");
+                UpdateTelegramForm();
+                break;
+            }
             if (matrix) {
                 SetStatus("Matrix: the session ended - sign in again");
                 matrixForm_->SetVisible(true);

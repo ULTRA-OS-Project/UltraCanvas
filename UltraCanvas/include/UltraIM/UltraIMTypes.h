@@ -165,6 +165,17 @@ enum class UltraIMLoginType {
     KeyPair             // ChatCube Direct: a key pair made on the device, no password
 };
 
+// Where a sign-in that takes more than one round stands (Telegram: the phone
+// number, then the code Telegram sends, then the cloud password when the
+// account has one; a new number registers with a name).
+enum class UltraIMAuthStep {
+    Idle,           // nothing asked (signed in, or not started); not `None`, which X11 #defines
+    PhoneNumber,    // credentials.phoneNumber
+    Code,           // credentials.otpCode: the code sent by SMS or to another device
+    Password,       // credentials.password: the account's two-step password
+    Registration    // credentials.displayName: a new account's name
+};
+
 struct UltraIMCredentials {
     UltraIMLoginType loginType = UltraIMLoginType::UsernamePassword;
     std::string server;             // Homeserver / relay URL ("" = the provider's default)
@@ -201,6 +212,8 @@ struct UltraIMProviderInfo {
     UltraIMConnectionState  connectionState = UltraIMConnectionState::Disconnected;
     std::string             localUserId;   // Signed-in identity ("" when signed out)
     bool                    hasStoredSession = false; // Can sign in without asking the user
+    UltraIMAuthStep         authStep = UltraIMAuthStep::Idle; // What SignIn needs next
+    std::string             authHint;      // e.g. where the code went, the password's hint
 };
 
 struct UltraIMSendOptions {
@@ -244,6 +257,7 @@ enum class UltraIMEventType {
     ConversationRemove,     // conversationId left or deleted
     ConnectionStateChange,  // connectionState, errorText
     AuthRequire,            // the session expired; sign in again
+    AuthStepChange,         // authStep, errorText (the hint): SignIn wants that next
     CallReceive,            // callId, contactId, isVideo
     CallStateChange,        // callId, callState, errorText
     CallMediaChange,        // callId, isVideo: the other side turned its camera on or off
@@ -264,6 +278,7 @@ struct UltraIMEvent {
     std::string             callId;
     bool                    isVideo = false;
     UltraIMCallState        callState = UltraIMCallState::Ringing;
+    UltraIMAuthStep         authStep = UltraIMAuthStep::Idle;
     std::string             errorText;
 };
 
@@ -288,6 +303,7 @@ enum class UltraIMResultCode {
     PluginError,
     Unsupported,
     InvalidState,           // Not possible now (another call is in progress, ...)
+    NeedsInput,             // SignIn: one more step - see UltraIMProviderInfo::authStep
     Unknown
 };
 

@@ -3896,6 +3896,50 @@ else()
     message(STATUS "  [−] UltraIM provider Matrix - DISABLED (needs UltraIM, UltraNet, UltraVault, UltraCrypt)")
 endif()
 
+# ----- UltraIM provider: Telegram ----------------------------------------------
+# On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
+# run time: nothing of TDLib is linked, so the provider builds everywhere and
+# signs in wherever a libtdjson is found (next to the plugins in tdlib/, or
+# ULTRAIM_TDJSON_PATH, or the system's). The application's API credentials
+# from my.telegram.org can be built in; otherwise the user gives them.
+# Not in WebAssembly: there is no libtdjson to load there, and no loadable
+# provider module either.
+set(ULTRAIM_TELEGRAM_API_ID "" CACHE STRING "Telegram API ID (my.telegram.org) built into the Telegram provider")
+set(ULTRAIM_TELEGRAM_API_HASH "" CACHE STRING "Telegram API hash (my.telegram.org) built into the Telegram provider")
+if(EMSCRIPTEN)
+    message(STATUS "  [−] UltraIM provider Telegram - SKIPPED (WebAssembly: no run-time loading of TDLib)")
+elseif(TARGET UltraIM AND TARGET UltraVault AND TARGET UltraCrypt)
+    set(_ultraim_telegram_dir ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraIM/telegram)
+    add_library(UltraIMTelegramCore STATIC
+        ${_ultraim_telegram_dir}/TdJson.cpp
+        ${_ultraim_telegram_dir}/TelegramRequests.cpp
+        ${_ultraim_telegram_dir}/TelegramProvider.cpp)
+    set_target_properties(UltraIMTelegramCore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_compile_features(UltraIMTelegramCore PUBLIC cxx_std_20)
+    target_include_directories(UltraIMTelegramCore PUBLIC ${_ultraim_telegram_dir})
+    target_link_libraries(UltraIMTelegramCore PUBLIC ${ULTRACANVAS_LIB_NAME} UltraIM UltraVault UltraCrypt)
+    if(UNIX)
+        target_link_libraries(UltraIMTelegramCore PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
+    endif()
+    set(_ultraim_telegram_keys "not built in")
+    if(ULTRAIM_TELEGRAM_API_ID AND ULTRAIM_TELEGRAM_API_HASH)
+        target_compile_definitions(UltraIMTelegramCore PRIVATE
+            ULTRAIM_TELEGRAM_API_ID=${ULTRAIM_TELEGRAM_API_ID}
+            ULTRAIM_TELEGRAM_API_HASH="${ULTRAIM_TELEGRAM_API_HASH}")
+        set(_ultraim_telegram_keys "built in")
+    endif()
+
+    add_library(UltraIMTelegramPlugin MODULE ${_ultraim_telegram_dir}/TelegramModule.cpp)
+    set_target_properties(UltraIMTelegramPlugin PROPERTIES
+        OUTPUT_NAME "ultraim_telegram"
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
+    target_link_libraries(UltraIMTelegramPlugin PRIVATE UltraIMTelegramCore)
+    message(STATUS "  [✓] UltraIM provider Telegram - ENABLED (TDLib loaded at run time; API credentials ${_ultraim_telegram_keys})")
+else()
+    message(STATUS "  [−] UltraIM provider Telegram - DISABLED (needs UltraIM, UltraVault, UltraCrypt)")
+endif()
+
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
 set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")

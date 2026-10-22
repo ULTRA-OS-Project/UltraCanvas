@@ -99,6 +99,13 @@ private:
     // format Element reads), and back from one.
     void ExportMatrixKeys();
     void ImportMatrixKeys();
+    // Telegram signs in in steps: the form shows the field the next one needs.
+    void ToggleTelegramForm();
+    void SignInToTelegram(bool stored);
+    void UpdateTelegramForm();
+    // The provider an address belongs to: @name:server Matrix, +phone /
+    // @username / t.me/... Telegram, anything else a ChatCube ID.
+    std::string ProviderOfAddress(const std::string& address) const;
     // The provider of a conversation (Direct, or Matrix for its rooms).
     std::string ProviderOf(const std::string& conversationId) const;
     void ToggleGroupForm();
@@ -153,6 +160,16 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> matrixPassword_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixSignIn_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> matrixKeysForm_;   // once signed in
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> telegramForm_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramPhone_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramApiId_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramApiHash_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramCode_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramPassword_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramName_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramNext_;
+    std::string telegramProviderId_ = "telegram";
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
     std::string matrixProviderId_ = "matrix";
     std::string activeProvider_;    // the open conversation's provider

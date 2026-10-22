@@ -2549,7 +2549,12 @@ Provider: Matrix (`UltraCanvas/Plugins/UltraIM/matrix/`, module
 receipts, typing, presence, paged history, and end-to-end encryption -
 Olm and Megolm through vodozemac (Rust, behind a C ABI shim built with
 Corrosion), device keys trusted on first use, room keys shared per device,
-new rooms created encrypted, Element-compatible key export. Tests in `Tests/UltraIM`. See
+new rooms created encrypted, Element-compatible key export. Provider:
+Telegram (`UltraCanvas/Plugins/UltraIM/telegram/`, module `ultraim_telegram`)
+on TDLib's JSON interface, loaded at run time (not linked): sign-in in steps
+(`UltraIMAuthStep`, result `NeedsInput`), the main chat list, private chats
+and groups, replies, edits, deletion, read marks, typing, presence, history,
+people by username or phone number. Tests in `Tests/UltraIM`. See
 `Docs/Modules/UltraIM/README.md`.
 
 ---
