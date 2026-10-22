@@ -1082,6 +1082,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     Winlogon shell setting naming UltraCanvasShellGuard, which restarts a
     crashing desktop and starts Explorer for the session when it cannot run;
     elsewhere the session decides and the calls say so).
+    `GetSystemDesktopSwitchUnavailableReason` - why the switch is off where
+    the platform has one (a Windows copy running from its MSIX package).
   - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
     (Windows `ExitWindowsEx`).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
@@ -23634,7 +23636,8 @@ if (UltraCanvasDesktopShell::CanReplaceSystemDesktop(DesktopReplacement::Instead
 
 | Call | Meaning |
 |---|---|
-| `CanReplaceSystemDesktop(how = Beside)` | Whether this platform has that switch for which desktop a session starts: true on Windows, for both; false where the session itself decides (ULTRA OS, Linux) and elsewhere. |
+| `CanReplaceSystemDesktop(how = Beside)` | Whether this platform has that switch for which desktop a session starts: true on Windows, for both; false where the session itself decides (ULTRA OS, Linux) and elsewhere - and on Windows from a copy running out of its MSIX package (the Microsoft Store), whose `HKEY_CURRENT_USER` writes stay in the package's own registry, which sign-in never reads. |
+| `GetSystemDesktopSwitchUnavailableReason()` | Why `CanReplaceSystemDesktop()` is false where the platform has the switch, as a sentence to show the user (today: the MSIX package, with the installer as the way); `""` when the switch can be used and where there is none. UltraDesktop's settings menu and UOS-Settings show it where the switch would be. `ReplaceSystemDesktop` fails with the same sentence, and `RestoreSystemDesktop` from a package fails unless nothing was replaced. |
 | `ReplaceSystemDesktop(program, arguments, &error, how = Beside)` | From now on this account's sign-in starts `program` (an absolute path) with `arguments`, beside the system's desktop or instead of it. One at a time: switching to one removes the other. `Instead` is refused, writing nothing, when UltraCanvasShellGuard is not beside `program`. No administrator rights; no other account changes. |
 | `RestoreSystemDesktop(&error)` | The way back from either: the start at sign-in removed, the account's shell setting removed when it names the guard (never another program's), and the taskbar given the recorded state — as it was, not a default. True, changing nothing, when nothing was replaced (and on every platform without the switch). |
 | `GetSystemDesktopReplacement()` | `Off`, `Beside` or `Instead`, as the account is set now. |
@@ -27309,7 +27312,7 @@ page, for example, keeps the plain *Try again / Skip* choice.
 | Function | Purpose |
 |---|---|
 | `RunHelperIfRequested(argc, argv, exitCode)` | Host side, first in `main()`. True: this process was the helper, the work is done, return `exitCode`. False: an ordinary start. Calling it at all installs the retry. |
-| `IsAvailable()` | A backend exists, the helper is installed, and this process is not already elevated. |
+| `IsAvailable()` | A backend exists, the helper is installed, this process is not already elevated, and it may start an elevated process at all: on Windows, a copy running from an MSIX package only when the package declares the restricted capability `allowElevation` ([UltraCanvasWindowsMSIX](UltraCanvasWindowsMSIX.md)). |
 | `ProcessIsElevated()` | The process token's elevation state (Windows); false elsewhere. |
 | `IsPermissionFailure(ec)` | Is this `std::error_code` from a filesystem call the refusal administrator rights may resolve (`ERROR_ACCESS_DENIED` / `EACCES`)? |
 | `DeleteElevated(paths)` | Delete these entries (files, or folders with everything in them) through the helper. **Blocks** until the consent prompt is answered and the helper has exited — run it off the UI thread. One prompt for the whole list. |
@@ -28111,7 +28114,7 @@ A config starts without filters: the dialog then lists every file under an
 | `FileDialogConfig` field | |
 |---|---|
 | `dialogType` | `Open`, `OpenMultiple`, `Save` or `SelectFolder` |
-| `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory |
+| `initialDirectory` | Where it opens. Empty means the last used folder (below), else the working directory - but the home folder when the working directory is the root of the drive (where Finder starts a macOS application) or the Windows folder (where a packaged Windows application starts: System32). A relative folder is read against the working directory, under the same rule |
 | `defaultFileName` | Put into the name field (Save) |
 | `defaultExtension` | Save: added to a name that still has no extension after the chosen type's - under All files, or with no filters (undotted, e.g. `"png"`) |
 | `filters`, `selectedFilterIndex` | `FileFilter{description, extensions}`; the index is the dropdown's first choice |
@@ -49691,6 +49694,7 @@ even when the application itself is not running. Header:
 - [Registering the activator](#registering-the-activator)
 - [The launch string](#the-launch-string)
 - [What is written, and how it is removed](#what-is-written-and-how-it-is-removed)
+- [From the MSIX package](#from-the-msix-package)
 - [API](#api)
 
 ## Why it is needed
@@ -49784,6 +49788,43 @@ is offered three more ways:
 An application registers again the next time it starts (its activator) or
 shows a notification (its name and icon), so a removal does no harm to one
 that stays.
+
+## From the MSIX package
+
+A program running from an MSIX package (`package-win-msix.sh`,
+[UltraCanvasWindowsMSIX](UltraCanvasWindowsMSIX.md)) works differently in
+three ways:
+
+- **Its `HKEY_CURRENT_USER` writes stay inside the package.** The registry
+  above would be invisible to Windows, so nothing is written.
+- **The activator comes from the package manifest.** Each application that
+  registers one has a `windows.comServer` extension, which names its
+  executable with `-ToastActivated` and the CLSID, and a
+  `windows.toastNotificationActivation` extension, which names the same CLSID.
+  `RegisterNotificationActivator` only serves the class. It writes a line to
+  the debug log when the manifest does not name that CLSID.
+- **Its toasts belong to the package's applications.** Windows shows a toast
+  only under `<package family name>!<Application Id>`, headed with that
+  application's name and icon from the manifest. So the presenter asks Windows
+  for the posting process's own AppUserModelID (`GetApplicationUserModelId`,
+  with the process the broker saw on the connection) and shows the toast
+  under it. A click after the broker host quit then reaches that
+  application's activator. A notification from a process outside the package
+  goes under the presenting application's own ID, with the poster's name as
+  its subtitle.
+
+The manifest's declarations come from `NOTIFICATION_ACTIVATORS` in
+`scripts/make_msix_layout.py`: each application's executable and the ID it
+registers under. The CLSID is derived as `NotificationActivatorClassId`
+derives it. `scripts/check_notification_activators.py` fails CI in three
+cases:
+
+- an application registers an activator but has no row there;
+- a row names an ID its sources do not contain;
+- the Python derivation no longer gives the CLSID that the C++ test pins.
+
+None of this has run on Windows yet: toasts from the package, and clicks on
+them after the program has quit, are still to be tried.
 
 ## API
 
@@ -79121,7 +79162,7 @@ user, needs no administrator rights, and installs silently with `/S`.
 | Code signing | **the Store signs it**: no certificate needed | the installer **and every `.exe` and `.dll` in it** must be signed with a certificate from a CA in Microsoft's Trusted Root Program. `dist/` holds hundreds of DLLs, including about 130 ImageMagick coder modules. The signing scripts make only a self-signed certificate today |
 | Hosting | Microsoft's CDN | ours, at a versioned URL whose file must never change after submission (a GitHub release asset can be one) |
 | Updates | the Store delivers them | a new versioned URL for each release |
-| UltraDesktop in place of the Windows desktop | **not possible**: see *What changes inside a package* | works: the installer even offers it on its finish page |
+| UltraDesktop in place of the Windows desktop | **not possible**, and UltraDesktop says so: see *What changes inside a package* | works: the installer even offers it on its finish page |
 | UltraFiler's *Delete as administrator* | only with a capability the Store grants on request | works |
 
 What decides it is the certificate. With MSIX, the suite can be in the Store
@@ -79210,25 +79251,31 @@ each one affects the applications in this repository as of this writing.
 | Inside a package | Effect here |
 |---|---|
 | The install folder (`C:\Program Files\WindowsApps\...`) is **read-only** | Fine. Everything next to the `.exe` is only read: `Resources/`, `data/`, `lib/`, `Plugins/`, `cacert.pem`. Fonts, caches, crash dumps and settings go to `%APPDATA%` / `%LOCALAPPDATA%`. The one exception is the ImageMagick coder repair (`UltraCanvasCoderModuleRepair.cpp`), which renames coders in place. It does nothing on a `package-win.sh` package, because that script already renamed them. |
-| Registry writes under `HKEY_CURRENT_USER` **stay inside the package** | **UltraDesktop** takes over the desktop through two such values: the `Run` key (beside Explorer) and Winlogon's `Shell` (instead of Explorer, through UltraCanvasShellGuard). From a package both land in the package's own registry, which sign-in never reads. The switch would report success and do nothing, so the package gives UltraDesktop no Start menu entry (`NOT_IN_PACKAGE` in the script); the installer is the way to get it. Nothing else writes the registry. File associations come from the manifest, and OAuth sign-in uses a loopback listener, not a URL scheme. |
-| The program starts with **System32 as its working folder**, not its own folder | **UltraNet's default plug-in folder** is the relative `Plugins/UltraNet` (`UltraNetPlugins.cpp`). UltraMail sets an absolute one and works. Printer and scanner discovery over the network (mDNS, used by DeviceExplorer) finds no plug-in. **The file dialog** opens in the working folder the first time (`UltraCanvasModalDialog.cpp`), which is System32. A package cannot set the working folder; Microsoft's Package Support Framework can, but the fix belongs in those two places. |
+| Registry writes under `HKEY_CURRENT_USER` **stay inside the package** | **UltraDesktop** takes over the desktop through two such values: the `Run` key (beside Explorer) and Winlogon's `Shell` (instead of Explorer, through UltraCanvasShellGuard). From a package both land in the package's own registry, which sign-in never reads, so a packaged copy cannot do it. It knows this: `UltraCanvasDesktopShell::CanReplaceSystemDesktop()` is false from a package, `GetSystemDesktopSwitchUnavailableReason()` says why, and UltraDesktop's settings menu and UOS-Settings' Desktop page show that sentence where the switch would be, pointing to the installer. UltraDesktop still runs as a trial window and has its Start menu entry, as in the installer. **Toast notifications** register their AppUserModelID and COM activator under `HKEY_CURRENT_USER\Software\Classes` outside a package. From the package nothing is written. The manifest declares each activator (`windows.comServer` and `windows.toastNotificationActivation`, from `NOTIFICATION_ACTIVATORS` in the script), and the presenter shows each toast under the posting application's own package identity - see *From the MSIX package* in [UltraCanvasNotificationActivation](UltraCanvasNotificationActivation.md). Not yet tried on Windows. File associations come from the manifest, and OAuth sign-in uses a loopback listener, not a URL scheme. |
+| The program starts with **System32 as its working folder**, not its own folder | Fine. A package cannot choose the working folder (Microsoft's Package Support Framework can), so nothing may depend on it. **UltraNet's plug-in folder** defaults to `Plugins/UltraNet` beside the executable, or one or two folders above it (`UltraNetPlugins.cpp`), and never to the working folder unless the executable's own path is unknown. Network printer and scanner discovery (the mDNS plug-in, used by DeviceExplorer) finds its plug-in. **The file dialog** with no folder remembered opens in the working folder, unless that is the Windows folder or the root of the drive: then it opens in the home folder (`IsSystemStartFolder` in `UltraCanvasModalDialog.cpp`). |
 | Writes to `%APPDATA%` / `%LOCALAPPDATA%` are kept per package | Fine within the package. All the applications share one package, so they still see each other's settings (`%APPDATA%\UltraCanvas`, `%APPDATA%\ultraos`). They read what an unpackaged copy wrote before. |
 
 Two more points:
 
 - **Elevation.** UltraFiler's *Delete as administrator* restarts its own
   `.exe` with `runas`. A packaged program can do that only with the
-  restricted capability `allowElevation`. Microsoft grants it to Store apps
-  only on request, with a written justification, so the manifest does not
-  declare it. Inside the package, that command fails. Declaring it is a
-  one-line change in `build_manifest`, and it is fine for a sideloaded
-  (`--mode signed`) package.
+  restricted capability `allowElevation`. Microsoft grants that capability
+  to Store apps only on request, with a written justification, so the
+  manifest does not declare it unless asked: `MSIX_ALLOW_ELEVATION=1`
+  (`make_msix_layout.py --allow-elevation`), for a sideloaded or enterprise
+  package. Without it, `ElevatedFileOperations::IsAvailable()` is false in
+  the package, so the Filer does not offer the command. A permission error
+  then ends with *Skip*, as on the platforms without the retry.
+  `OS/MSWindows/UltraCanvasWindowsPackage.h` reads the installed
+  `AppxManifest.xml` to tell. Whether `runas` works in a package that does
+  declare it has not been tried on Windows yet.
 - **Non-ASCII file names.** When a file type association opens a file,
-  Windows passes the file to the application as its first argument. Texter
-  reads that argument from the narrow `__argv`, and its root CMake target
-  embeds no UTF-8 manifest. On a machine whose code page cannot hold a
-  name, that name arrives mangled. UltraViewer embeds the manifest and is
-  fine on Windows 10 1903 and later.
+  Windows passes the file to the application as its first argument, which a
+  MinGW program reads as a narrow `argv` in the active code page. Texter and
+  UltraViewer embed the framework's manifest with the UTF-8 code page
+  (`ultracanvas_embed_windows_manifest`), so a Thai or CJK name arrives
+  intact. Windows honours that manifest from Windows 10 1903 on, which is
+  why the package's minimum Windows is 1903 (`--min-version 10.0.18362.0`).
 
 ## What is in the package
 
@@ -79249,7 +79296,6 @@ Two more points:
   - a console program without a desktop entry (`ultramsg`, `videofx`) is a
     command-line tool and is not one, and neither is UltraCanvasShellGuard.
 
-  The one difference from the installer is UltraDesktop (previous section).
   A program without an entry still ships in the package.
 - **File associations** for Texter (text and source code) and UltraViewer
   (images, video, audio, PDF, e-books, `.ucd`). These put the applications in
@@ -89233,7 +89279,13 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   (`UltraCanvas::RegisterNotificationActivator`) - Windows starts the
   application when it is not running - which has everything it needs. Each
   AppUserModelID is listed under `HKCU\Software\UltraCanvas\Notifications`
-  for the uninstaller, which removes it with its activator. Where toasts are not
+  for the uninstaller, which removes it with its activator. A presenter running
+  from the MSIX package writes nothing there, because its registry writes stay
+  in the package. It shows the toast under the posting process's own package
+  AppUserModelID (`<family>!<Application Id>`, asked of Windows with the
+  process the broker saw on the connection). The package manifest declares
+  that application's name, icon and activator (*From the MSIX package* in
+  `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`). Where toasts are not
   available, or one cannot be shown, it is a notification-area balloon
   (`Shell_NotifyIconW`, `NIF_INFO`, mode `balloon`), which needs no
   registration: Windows heads it with the name of the process hosting the
@@ -89932,7 +89984,12 @@ planned (see the status table below).
 `UltraNet/UltraNetPlugins.h`.
 
 A plug-in is a DSO (`Plugins/UltraNet/*.so|.dll`) loaded by
-`UltraNet_RefreshPlugins()`, and it reaches the core **only through the host
+`UltraNet_RefreshPlugins()` from `UltraNet_GetPluginDirectory()`. Until an
+application sets another with `UltraNet_SetPluginDirectory()`, that is
+`Plugins/UltraNet` beside the executable, or one or two folders above it,
+whichever holds a plug-in. It is never the working directory, unless the
+executable's own path is unknown: a packaged Windows application starts in
+System32. A plug-in reaches the core **only through the host
 table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
@@ -95695,6 +95752,24 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/msix-desktop-switch.md
+==============================================================================
+
+- **The Microsoft Store copy says why it cannot become the Windows desktop.**
+  Both of UltraDesktop's switches are values under `HKEY_CURRENT_USER`. A
+  program running from its MSIX package writes into the package's own
+  registry, which sign-in never reads, so the switch would have reported
+  success and changed nothing. Run from a package, the settings menu now
+  offers *Use as the Windows desktop...*, which explains this and points to
+  the UltraCanvas installer. It also keeps *Close UltraDesktop*, since a
+  packaged copy is always a trial run with no title bar to close.
+  `--use-as-desktop` fails with the same explanation. The framework change
+  behind it, `UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason`,
+  is in the framework changelog. The
+  MSIX package now gives UltraDesktop a Start menu entry, as the installer
+  does.
+
+==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
 ==============================================================================
 
@@ -97461,6 +97536,22 @@ clean, and each of those is a test in
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/downloads-folder-and-plugin-folder.md
+==============================================================================
+
+- **Saving an attachment opens in the Downloads folder on Windows.** The save
+  dialog's first folder looked for `Downloads` under `HOME`, which Windows does
+  not set, and read it through the narrow `getenv`. So on Windows it fell back
+  to `.` - the folder UltraMail was started from, which is System32 from the
+  MSIX package. It now takes the Downloads folder Windows names, wherever it
+  was moved or redirected (`GetWellKnownUserFolders`), and the home folder
+  (`HOME`, or `USERPROFILE` on Windows) as UTF-8 when there is none.
+- **The UltraNet plug-in folder comes from UltraNet.** UltraMail looked for
+  `Plugins/UltraNet` beside its executable itself. UltraNet now does that by
+  default, so UltraMail keeps only its `ULTRAMAIL_PLUGIN_DIR` override, which
+  it now reads as UTF-8.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
