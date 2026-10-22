@@ -712,8 +712,10 @@ std::vector<VideoFXRect> FacesInClip(const std::string& path, double start, doub
     static std::map<std::string, std::vector<VideoFXRect>> found;
     std::error_code ec;
     const std::filesystem::path file = UltraCanvas::PathFromUtf8(path);
-    const auto written = std::filesystem::last_write_time(file, ec).time_since_epoch().count();
-    const auto size = std::filesystem::file_size(file, ec);
+    // The write time's tick count is whatever the file clock's rep is (a
+    // 128-bit integer on libc++, which std::to_string has no overload for)
+    const auto written = static_cast<long long>(std::filesystem::last_write_time(file, ec).time_since_epoch().count());
+    const auto size = static_cast<unsigned long long>(std::filesystem::file_size(file, ec));
     const std::string key = path + "|" + std::to_string(written) + "|" + std::to_string(size) + "|" +
                             FormatNumber(start) + "|" + FormatNumber(end);
     {
