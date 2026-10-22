@@ -1,3 +1,28 @@
+#### 2026-10-22 *0.9.379*
+- **UltraCanvasFilerWidget: the hover icon menu's Rename button shows a "T"
+  and its buttons name their keys.** The Rename button drew a pencil, which
+  reads as "edit the file"; it renames, so it now draws a serif *T* beside a
+  text caret - "type the name". The strip's tooltips say what each button does
+  and give its shortcut: *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
+  (Ctrl+X)*, *Rename (F2)*, *Delete (Del)*.
+- **UltraCanvasFilerWidget: the hover icon menu's Cut is greyed out on a
+  drive.** The context menu greys Cut out there and Ctrl+X refuses it, but
+  the hover button put the files on the clipboard as a cut anyway, ghosting
+  entries whose move off the drive could not be completed. It is now drawn
+  dimmed and a press does nothing; its tooltip says to copy, then delete.
+- **UltraCanvasFilerWidget: Rename and Delete are greyed out on a drive that
+  cannot do them.** On a drive whose host did not wire `remoteRename` /
+  `remoteDelete`, the context menu offered Rename, Delete and Delete
+  Permanently and the hover icon menu offered Rename and Delete, and each
+  refused only once clicked. They are now greyed out in both menus
+  (`CanRenameHere` / `CanDeleteHere`); F2 and Del still say why. UltraFiler
+  wires both, so its menus do not change.
+- **UltraCanvasFilerWidget: the hover icon menu's Copy and Cut buttons show
+  that they worked.** A copy changed nothing on screen, so a press looked
+  like it had missed. The pressed button now flashes green
+  (`FilerStyle::iconMenuDoneColor`) with a checkmark that pops in, then fades
+  back to its glyph within 0.7 s; only the button is repainted.
+
 #### 2026-10-22 *0.9.378*
 - **A core built with `ULTRACANVAS_ENABLE_CHARTS=OFF` links again.** The
   option dropped every source under `Plugins/Charts/`, but code outside it is
