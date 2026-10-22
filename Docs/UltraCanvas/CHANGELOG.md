@@ -1,3 +1,118 @@
+#### 2026-10-22 *0.9.372*
+- **CI runs the Android demo on an emulator.** A new job in
+  `android-build.yml` installs the `UltraCanvasDemo-x86_64` APK on an API 30
+  x86_64 emulator (KVM on the runner), starts it, and passes only when the app
+  presents a first frame with something drawn in it -
+  `scripts/android-emulator-smoke.sh`, which also runs against a local
+  emulator. It fails when the app dies first, draws a frame of one colour
+  everywhere, or shows nothing in four minutes, and uploads the screenshot and
+  logcat as `android-emulator-smoke` whatever the outcome. The window backend
+  logs `first frame presented: WxH, with content` once per process, straight
+  to logcat, for it to wait on.
+- **Android APKs now carry `libc++_shared.so`; before, the app could not
+  start.** The emulator's first run stopped in `UltraCanvasActivity.onCreate`
+  with `dlopen failed: library "libc++_shared.so" not found`: the demo links
+  the NDK's shared C++ runtime, which no device provides. The APKs CI built
+  since the packaging landed are all affected. `android-package-apk.sh` now
+  reads the library's `NEEDED` entries, ships what the NDK provides, leaves
+  API 28 system libraries to the device, and stops on anything else.
+- **Android: `Run()` now runs.** The Android backend's `InitializeNative`
+  never set `initialized`, which every other backend sets there, so `Run()`
+  stopped at "Cannot run - application not initialized" and the app showed
+  nothing. The emulator's second run found it: the demo loaded, initialised
+  all its pages, and quit before its first frame.
+
+#### 2026-10-22 *0.9.371*
+- **`SetMinimumValueSpan(span)` on the chart base**: the value axis covers
+  at least `span`, centred on the data, so a reading that holds steady
+  (20.6-20.7 °C) is a flat line on a sensible axis instead of a sawtooth
+  across the whole plot. Line, area and scatter charts; 0 (the default)
+  fits the axis to the data as before.
+- **UltraCanvasContainer: children are laid out clear of the vertical
+  scrollbar.** A scrolling container laid its children out across its full
+  width and then clipped them a scrollbar's width short, so the right edge
+  of every row sat under the bar - a right-aligned value lost its unit, a
+  slider its end, a card its border (SmartHome Center's Home cards, the
+  Smart Home light control in its dialog) - and with both bars allowed the
+  bar's width made up a horizontal overflow. Once the vertical bar shows,
+  the container lays its children out again a track narrower; narrower
+  content is only taller, so the bar stays and the second pass is the last.
+  `ScrollContainerGutterTest` covers it. The Smart Home light control's own
+  workaround is gone.
+- **CSS layout: a wrapping flex row inside a column is as tall as all its
+  lines.** A column measures its children at "at most" its width, and the
+  flex layout wrapped a row only at an exact width - so a `FlexWrap::Wrap`
+  row of cards measured one line high, the column gave it that height, and
+  every line after the first was clipped (or the row reported all its cards
+  side by side as its width and widened the page). An at-most width is a
+  wrap budget now, as the code's own note already said it was.
+  `CSSLayoutTests` covers it (`test_flex_wrap_row_height_in_column`).
+- **UltraNet: an FTP change uses the connection kept open.**
+  `UltraNet_FtpDelete`, `UltraNet_FtpRename`, `UltraNet_FtpCreateDirectory`
+  and `UltraNet_FtpRemoveDirectory` sent their commands before libcurl changed
+  folder (`CURLOPT_QUOTE`), naming the entry from the folder a login lands in,
+  so each needed a connection of its own: a second login per change, and on a
+  server that takes one connection per address a refusal that the previous
+  release had to work around by closing the kept connection. Now on FTP the
+  commands go once libcurl has changed into the entry's folder
+  (`CURLOPT_POSTQUOTE`, `ftpquote::Plan::afterFolderChange`) and name the
+  entry within it; on a kept connection libcurl goes back to that
+  connection's login folder first (it records it per connection), so the
+  change takes the kept connection up like any transfer - one login for a
+  listing and the changes after it, and no second connection asked of a
+  one-connection server. SFTP's commands, with full paths, are as they were.
+  - The "too many connections" recovery moves from the changes into every FTP
+    call: a call that needs a new connection all the same - another account
+    on the same server, which libcurl does not take up for this one - and is
+    turned away at the greeting or the login (`ftplog::TooManyConnectionsReply`),
+    before anything was asked and with no byte moved, closes the thread's kept
+    connection (`ThreadConnections::UsedBefore`: one an earlier call used) and
+    is made again, at once and after 0.3 s and 1 s. Listings and transfers too,
+    so two accounts on such a server can take turns on one thread.
+  - `test_ftp_log.cpp`: a delete and a rename elsewhere on the kept connection
+    name the right files on one login; a one-connection server is not asked
+    for a second; another account's change and the listing after it get in.
+    The scripted server does RNFR / RNTO; `UltraNetFtpQuoteTest` checks the
+    bare names.
+- **DemoApp's image performance page benchmarks JPEG XL again.** JXL was
+  taken out of the codec list in 0.1.35 because the libvips of the day could
+  not write it, so its column only ever showed a failure. It is back, between
+  TIFF and BMP, and is charted only where libvips can both save and load
+  `.jxl` (a libvips built with libjxl - Ubuntu 24.04's, not 22.04's); on any
+  other build the column is left out instead of failing.
+- **`ImageJxlTest`: JPEG XL is now under test.** The framework claims `.jxl`
+  for loading and saving (the format inventory, the export encoder, the Save
+  dialog's JPEG XL settings), but nothing checked that a file it writes reads
+  back. The new headless test writes a lossless and a lossy `.jxl` with
+  `ExportVImage`, reads each back through `UCImageRaster` and compares the
+  pixels (lossless exact, the transparent area kept), checks that the quality
+  option reaches the encoder, and saves a loaded PNG as `.jxl` with
+  `UCImageRaster::Save` - the calls the demo app's image performance page
+  makes. It reports SKIP on a libvips built without libjxl, which includes
+  Ubuntu 22.04's (CI's Linux runner); Ubuntu 24.04's passes it.
+- **UltraCanvasNodeDiagram 2.3.0: card nodes, and no overlapping nodes.**
+  - A node can carry an icon (`iconPath`, drawn in a disc of
+    `iconBackground` at its leading edge), a second, smaller line
+    (`sublabel`), rounded corners (`cornerRadius`) and a drop shadow
+    (`shadow`). With an icon the label sits beside it, left-aligned; a label
+    that does not fit ends in an ellipsis instead of running out of the
+    node. The fields round-trip through `ToJson` / `FromJson`.
+  - `ResolveOverlaps(margin)` moves overlapping nodes apart by their
+    rectangles until none overlap; should its passes not settle, it places
+    the nodes one by one at the nearest free spot. Pinned nodes stay put. A host that places
+    nodes itself calls it before `FitView()`.
+  - The force-directed layout ends with it. Its old overlap pass treated a
+    wide node as a circle of its half-width, stopped after eight passes and
+    clamped the nodes back into the element's bounds - so wide nodes in a
+    small element came out on top of each other. It no longer clamps; the
+    view fits the content.
+  - `SetChargeStrength()` sets the force layout's repulsion.
+  - `SetDetailZoom(zoom)`: below that zoom, nodes with an icon draw as their
+    icon disc alone - a name too small to read is left out - and show their
+    name in a pill while hovered or selected (`IsShowingIconsOnly()`).
+  - `NodeDiagramOverlapTest` covers the overlap removal (and its fallback), the force layout
+    with thirty wide nodes in a 300 x 200 element, and the JSON fields.
+
 #### 2026-10-21 *0.9.370*
 - **CI builds an installable Android APK of the demo, for phones and for an
   emulator.** `scripts/android-package-apk.sh` packages an app library with

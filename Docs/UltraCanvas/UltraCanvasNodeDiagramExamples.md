@@ -41,6 +41,7 @@
   - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
   - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
   - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
+  - [Card nodes with icons, without overlaps (2.3.0)](#card-nodes-with-icons-without-overlaps-230)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [See Also](#see-also)
 
@@ -192,8 +193,20 @@ struct NodeDiagramNode {
     bool   deletable  = true;
     std::vector<NodeHandle> handles;
     int    zIndex = 0;
+    double value = 1.0;                   // 2.2.0: drives NodeSizeMode::ByValue
+
+    // 2.3.0: a card look
+    std::string iconPath;                 // drawn in a disc at the leading edge
+    Color  iconBackground = Color(0, 0, 0, 0);    // the disc; transparent = icon alone
+    std::string sublabel;                 // a smaller second line under the label
+    Color  sublabelColor = Color(117, 117, 117, 255);
+    double cornerRadius = -1.0;           // Rectangle / RoundedSquare; < 0 = 15%
+    bool   shadow = false;                // a soft drop shadow
 };
 ```
+
+With an icon or a sublabel the label is left-aligned beside the icon, and a
+label or sublabel that does not fit is shortened with an ellipsis.
 
 ### NodeDiagramLink
 
@@ -392,7 +405,23 @@ void ApplyGridLayout();
 void ApplyHierarchicalLayout(const std::string& rootId);
 
 void SetAutoFitOnLayout(bool autoFit);
+
+// 2.3.0: move overlapping nodes apart (their rectangles plus `margin`),
+// until none overlap. Returns the passes it took; refit the view after.
+int  ResolveOverlaps(double margin = 8.0, int maxPasses = 400);
+
+// 2.3.0: level of detail - below `zoom`, a node with an icon draws as its
+// icon disc alone, named while hovered or selected. 0 (default) = off.
+void   SetDetailZoom(double zoom);
+double GetDetailZoom() const;
+bool   IsShowingIconsOnly() const;
 ```
+
+The force-directed layout ends with `ResolveOverlaps`, so its result has no
+overlapping nodes however wide they are; it no longer clamps the nodes into
+the element's bounds (the view fits the content). A host that places nodes
+itself - a radial or a tree arrangement of its own - calls `ResolveOverlaps`
+and then `FitView()`.
 
 ### Data-driven node sizing (2.2.0)
 
@@ -491,6 +520,7 @@ void SetGridVisible(bool visible, double spacing = 25.0);
 void SetFontFamily(const std::string& fontFamily);
 void SetFontSize(double size);
 void SetLinkDistance(double distance);
+void SetChargeStrength(double strength);   // 2.3.0: repulsion, default -300; wide nodes want more
 ```
 
 ### Selection
@@ -855,6 +885,48 @@ Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `value` field instead — headcount, budget, revenue, whatever the graph is about.
 `NodeSizeMode::Fixed` restores the authored sizes exactly.
 
+
+### Card nodes with icons, without overlaps (2.3.0)
+
+A network map in the style of the Smart Home topology: each node a white card
+with the device's icon on a coloured disc, its name, and its room under it.
+The nodes are placed by hand - a router with its devices in a column under
+it - and `ResolveOverlaps` makes sure nothing touches.
+
+```cpp
+auto diagram = CreateNodeDiagram("network", 0, 0, 900, 560);
+diagram->SetBackgroundColor(Color(243, 245, 248, 255));
+diagram->SetNodesConnectable(false);
+
+auto card = [&](const std::string& id, const std::string& name, const std::string& room,
+                const std::string& icon, const Color& color, double x, double y) {
+    NodeDiagramNode n(id, name);
+    n.shape          = NodeShape::Rectangle;
+    n.cornerRadius   = 10.0;
+    n.shadow         = true;
+    n.width          = 150.0;
+    n.height         = 40.0;
+    n.x              = x;
+    n.y              = y;
+    n.fillColor      = Color(255, 255, 255, 255);
+    n.borderColor    = Color(221, 227, 234, 255);
+    n.borderWidth    = 1.0;
+    n.textColor      = Color(33, 33, 33, 255);
+    n.iconPath       = GetResourcesDir() + "media/icons/smarthome/" + icon + ".svg";
+    n.iconBackground = color;
+    n.sublabel       = room;
+    diagram->AddNode(n);
+};
+card("router", "Kitchen plug", "Router", "plug", Color(79, 109, 138, 255), 0, 0);
+card("fridge", "Fridge", "Kitchen", "fridge", Color(79, 109, 138, 255), 0, 70);
+card("smoke", "Smoke alarm", "Kitchen", "smoke", Color(59, 130, 246, 255), 0, 70);   // same spot
+diagram->AddLink("l1", "router", "fridge");
+diagram->AddLink("l2", "router", "smoke");
+
+diagram->ResolveOverlaps(10.0);   // the smoke alarm moves off the fridge
+diagram->FitView();
+diagram->SetDetailZoom(0.7);      // zoomed out further: icons only, named on hover
+```
 
 ## Keyboard Shortcuts
 

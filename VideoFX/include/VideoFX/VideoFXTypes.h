@@ -2,6 +2,7 @@
 // Types for the VideoFX module: results, media information, frames, effects,
 // timeline segments and export settings. No FFmpeg type appears here - the
 // engine behind them is private to the module and can be swapped.
+// Version: 0.16.1 - keepFacesInView on a video segment reads three frames of the clip
 // Version: 0.16.0 - VideoFXOverlay::effects: an image or video overlay's own look
 // Version: 0.15.0 - keepInView / keepFacesInView on a video segment: the Fill crop
 //                  stays around the regions (faces found in a sampled frame)
@@ -389,8 +390,9 @@ struct VideoFXSegment {
     std::vector<VideoFXRect> keepInView;
     // Image: with no keepInView given, find the faces with VideoFX's built-in
     // detector (VideoFX_DetectFaces) and keep those in shot. File (video),
-    // fitMode Fill: the faces in one frame from the middle of the clip's
-    // used range place the crop (a clip of another shape keeps its people)
+    // fitMode Fill: the faces in three frames of the clip's used range (a
+    // quarter, half and three quarters of the way through, all of them
+    // kept) place the crop, so a clip of another shape keeps its people
     bool keepFacesInView = false;
 
     static VideoFXSegment FromFile(const std::string& path, double start = 0.0, double end = 0.0);

@@ -1918,12 +1918,19 @@ backing library is never visible in a public header.
 - `UltraCrypt_AesCbcEncrypt`, `UltraCrypt_AesCbcDecrypt`,
   `UltraCrypt_GetAesBlockSize` (AES-128/192/256-CBC, interop only;
   constant-time portable software, independent of libsodium)
+- `UltraCrypt_AesCtrEncrypt`, `UltraCrypt_AesCtrDecrypt` (AES-CTR, interop
+  only - Matrix key exports and attachments, WebCrypto)
 - `UltraCrypt_DeriveKeyFromPassword`, `UltraCrypt_DeriveKeyHkdf`,
-  `UltraCrypt_RecommendedKdfParams`
+  `UltraCrypt_RecommendedKdfParams`, `UltraCrypt_DeriveKeyPbkdf2`
+  (PBKDF2-HMAC-SHA-256/512, interop only)
 - `UltraCrypt_Sign`, `UltraCrypt_Verify`, `UltraCrypt_SignFile`,
   `UltraCrypt_VerifyFile`, `UltraCrypt_GenerateSignatureKeyPair`,
   `UltraCrypt_SignatureKeyPairFromSeed`, `UltraCrypt_GetSignaturePublicKey`
   and the `UltraCrypt_GetSignature*Size` family (Ed25519, RFC 8032)
+- `UltraCrypt_KeyExchange`, `UltraCrypt_GenerateKeyExchangeKeyPair`,
+  `UltraCrypt_SignaturePublicKeyToKeyExchange`,
+  `UltraCrypt_SignatureSecretKeyToKeyExchange`,
+  `UltraCrypt_GetKeyExchangeKeySize` / `…SecretSize` (X25519, RFC 7748)
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
@@ -1946,7 +1953,8 @@ defects, not shortcuts.
 **XChaCha20-Poly1305** and keyed with **Argon2id**; no algorithm menu is
 offered, because the formats are ours and a second choice would only be a
 second code path in every reader. AES-256-GCM is present solely for reading
-foreign data and is hardware-gated. Algorithm agility lives in format
+foreign data and is hardware-gated; AES-CBC, AES-CTR and PBKDF2 solely for
+formats defined elsewhere. Algorithm agility lives in format
 version numbers, not in per-file algorithm identifiers.
 
 **Implementation status (this branch):** Implemented on libsodium
@@ -2655,6 +2663,123 @@ a crash or a hang of the host; after a trap or an interruption an instance
 refuses further calls; host functions are registered through the unchecked
 host-function API (measured at 7 ns per empty call against 82 ns for the
 checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.
+
+---
+
+### **18. UltraIM**
+
+The instant-messaging framework: one UI-free API through which an
+application signs in to messengers, lists conversations, sends and receives
+messages and places calls, whatever the network. Every network is a provider
+plug-in — ChatCube Direct (the ULTRA OS native peer-to-peer messenger) first,
+then Matrix, Telegram, XMPP and other services with an open API. The first
+consumer is the ChatCube application (`Apps/ChatCube/`). Plan:
+`Docs/Research/ChatCubeDirectPlan.md`.
+
+UltraIM elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- No UltraCanvas UI dependency: no element, window, list model or render
+  context in the module or its plug-ins
+- Networking only through UltraNet and UltraRTC; no socket, no libcurl call
+- Synchronous rejections (not connected, capability missing, bad argument)
+  return `UltraIMResult`; network outcomes arrive as `UltraIMEvent`s
+- Every event and every result callback is delivered through the dispatcher
+  the application installs (`UltraIM_SetEventDispatcher`); without one they
+  run on the calling thread
+- Providers are loadable modules exporting `UltraIM_PluginInit` and checked
+  against `ULTRAIM_PLUGIN_HOST_ABI_VERSION`
+- Credentials and private keys at rest go through UltraVault
+
+**Proposed Functions (Phase 1):**
+- `UltraIM_Initialize`, `UltraIM_Shutdown`
+- `UltraIM_RegisterProvider`, `UltraIM_UnregisterProvider`,
+  `UltraIM_RefreshProviders`, `UltraIM_ListProviders`
+- `UltraIM_SetEventDispatcher`, `UltraIM_Subscribe`, `UltraIM_Unsubscribe`
+- `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
+- `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
+- `UltraIM_SendText`, `UltraIM_SendFile`, `UltraIM_SendImage`,
+  `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`, `UltraIM_DeleteMessage`,
+  `UltraIM_EditMessage`, `UltraIM_MarkRead`, `UltraIM_SetTyping`
+- `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
+  `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
+  `UltraIM_SetCallVideoSinks`
+- `UltraIM_FetchNearbyContacts` (people on the local network)
+- `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
+  to encrypted conversations as a passphrase-protected file)
+
+**Implementation status:** Phase 1 core implemented — target `UltraIM`
+(`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
+provider registry, the module loader (`UltraIM_PluginInit`, ABI 1), the event
+bus with the injected dispatcher, the merged conversation fetch and every
+forwarding call above. Provider: ChatCube Direct
+(`UltraCanvas/Plugins/UltraIM/direct/`, module `ultraim_direct`): key-pair
+identity, end-to-end encrypted messages peer to peer over UltraRTC data
+channels, the relay (`Server/ChatCubeRelay`) for rendezvous, the offline
+queue and groups, delivery and read receipts, local history, and 1:1 voice
+and video calls (signed invite / accept / reject / camera / hang-up over the
+relay, Opus and VP8 over an UltraRTC peer per call), and the local network
+with or without a relay (mDNS announcement and discovery, a TCP connection
+both ends authenticate with their identity keys carrying the signalling).
+Provider: Matrix (`UltraCanvas/Plugins/UltraIM/matrix/`, module
+`ultraim_matrix`): password or token sign-in with .well-known discovery,
+`/sync`, direct chats and groups, invitations, replies, edits, redactions,
+receipts, typing, presence, paged history, and end-to-end encryption -
+Olm and Megolm through vodozemac (Rust, behind a C ABI shim built with
+Corrosion), device keys trusted on first use, room keys shared per device,
+new rooms created encrypted, Element-compatible key export. Tests in `Tests/UltraIM`. See
+`Docs/Modules/UltraIM/README.md`.
+
+---
+
+### **19. UltraRTC**
+
+Real-time communication: WebRTC peer connections, data channels, and audio
+and video calls behind one UltraCanvas-owned API, `UltraRtc_*` free
+functions with opaque `UltraRtcHandle`s and `UltraRtcResult` from every
+blocking call. Design: `Docs/Research/UltraRTCDesignProposal.md`.
+
+**A wrapped engine.** libdatachannel (with libjuice, usrsctp, libsrtp),
+vendored under `UltraCanvas/third_party/libdatachannel/`, linked privately: no
+engine type reaches a caller. SDP passes through untouched; DTLS is
+mandatory. Built when OpenSSL is found; otherwise every call answers
+`Unsupported`.
+
+**Proposed Functions (Phase 1 — peers and data channels):**
+- `UltraRtc_Initialize`, `UltraRtc_Shutdown`, `UltraRtc_GetCapabilities`,
+  `UltraRtc_SetEventDispatcher`
+- `UltraRtc_CreatePeer`, `UltraRtc_ClosePeer`, `UltraRtc_SetPeerEventCallback`
+- `UltraRtc_CreateOffer`, `UltraRtc_CreateAnswer`,
+  `UltraRtc_SetLocalDescription`, `UltraRtc_SetRemoteDescription`,
+  `UltraRtc_AddIceCandidate`, `UltraRtc_GetConnectionState`
+- `UltraRtc_CreateDataChannel`, `UltraRtc_DataChannelClose`, `UltraRtc_GetDataChannelState`
+
+Also: `UltraRtc_IsAvailable`, `UltraRtc_GetLocalDescription`,
+`UltraRtc_GetRemoteDescription`, `UltraRtc_GetIceGatheringState`,
+`UltraRtc_GetSignalingState`, `UltraRtc_DataChannelSendText` /
+`UltraRtc_DataChannelSendBinary`, `UltraRtc_GetDataChannelLabel`,
+`UltraRtc_GetDataChannelPeer`, `UltraRtc_GetDataChannelBufferedAmount`.
+
+**Phase 2 — audio:** `UltraRtc_AddAudioTrack`, `UltraRtc_SendAudioFrame`,
+`UltraRtc_SetAudioFrameCallback`, `UltraRtc_SetTrackEnabled`,
+`UltraRtc_IsTrackOpen`, `UltraRtc_StartMicrophone` / `UltraRtc_StopMicrophone`,
+`UltraRtc_StartPlayback` / `UltraRtc_StopPlayback`.
+
+**Phase 3 — video:** `UltraRtc_AddVideoTrack`, `UltraRtc_SendVideoFrame`,
+`UltraRtc_SetVideoFrameCallback`, `UltraRtc_RequestKeyFrame`,
+`UltraRtc_StartCamera` / `UltraRtc_StopCamera`; pictures shown with the
+`UltraCanvasVideoTile` element.
+
+**Implementation status:** Phases 1 to 3 implemented — target `UltraRTC`
+(`UltraCanvas/{include,core}/UltraRTC/`, umbrella `<UltraRTC/UltraRTC.h>`):
+peers, ICE configuration, events through an injectable dispatcher, data
+channels with text and binary messages; Opus audio tracks (48 kHz mono,
+in-band FEC, loss concealment) with the microphone and speaker through
+`UltraCanvasAudioRecorder` (live mode) and `UltraCanvasAudioPlayer` (push
+sink); VP8 video tracks (libvpx through FFmpeg's libavcodec, our own RFC 7741
+payload handlers, key-frame recovery by PLI) with the camera through
+`UltraCanvasVideoRecorder`'s live preview. Opus needs libopus (pkg-config
+`opus`), VP8 FFmpeg; without them `caps.audio` / `caps.video` are false.
+Tests in `Tests/UltraRTC`. See `Docs/Modules/UltraRTC/README.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -3480,6 +3605,7 @@ their *License* is likewise marked **—** (OS component).
 | Leptonica | [leptonica.org](http://www.leptonica.org/) | [github.com/DanBloomberg/leptonica](https://github.com/DanBloomberg/leptonica) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | libarchive | [libarchive.org](https://www.libarchive.org/) | [github.com/libarchive/libarchive](https://github.com/libarchive/libarchive) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | libcdr | [wiki.documentfoundation.org](https://wiki.documentfoundation.org/DLP/Libraries/libcdr) | [github.com/LibreOffice/libcdr](https://github.com/LibreOffice/libcdr) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
+| libdatachannel (+ libjuice, usrsctp, libsrtp, plog) | [libdatachannel.org](https://libdatachannel.org/) | [github.com/paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libcurl | [curl.se/libcurl](https://curl.se/libcurl/) | [github.com/curl/curl](https://github.com/curl/curl) | [curl](https://spdx.org/licenses/curl.html) |
 | libheif | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libjpeg-turbo | [libjpeg-turbo.org](https://libjpeg-turbo.org/) | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -3526,6 +3652,7 @@ their *License* is likewise marked **—** (OS component).
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
 | V4L2 (Video4Linux2) | [docs.kernel.org](https://docs.kernel.org/userspace-api/media/v4l/v4l2.html) | [git.linuxtv.org/v4l-utils.git](https://git.linuxtv.org/v4l-utils.git) | — |
 | visioncortex | [visioncortex.org](https://www.visioncortex.org/) | [github.com/visioncortex/visioncortex](https://github.com/visioncortex/visioncortex) | [MIT](https://spdx.org/licenses/MIT.html) |
+| vodozemac (+ dalek, RustCrypto, prost crates) | [docs.rs/vodozemac](https://docs.rs/vodozemac) | [github.com/matrix-org/vodozemac](https://github.com/matrix-org/vodozemac) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | VTracer | [visioncortex.org/vtracer-docs](https://www.visioncortex.org/vtracer-docs) | [github.com/visioncortex/vtracer](https://github.com/visioncortex/vtracer) | [MIT](https://spdx.org/licenses/MIT.html) |
 | WASAPI | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi) | — | — |
 | wasmtime | [wasmtime.dev](https://wasmtime.dev/) | [github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) | [Apache 2 with LLVM exception](https://spdx.org/licenses/LLVM-exception.html) |
@@ -3542,7 +3669,7 @@ their *License* is likewise marked **—** (OS component).
 | zlib | [zlib.net](https://zlib.net/) | [github.com/madler/zlib](https://github.com/madler/zlib) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | zstd | [facebook.github.io/zstd](https://facebook.github.io/zstd/) | [github.com/facebook/zstd](https://github.com/facebook/zstd) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 
-> qrcodegen, miniz, KissFFT, miniaudio and OpenCV's frontal-face Haar cascade
+> qrcodegen, miniz, KissFFT, miniaudio, libdatachannel and OpenCV's frontal-face Haar cascade
 > (data only, for VideoFX) are **bundled** (vendored in-tree); the
 > links above point to their upstream projects for reference and updates.
 
@@ -5315,13 +5442,19 @@ The stopgap this replaces, still worth knowing for a build that predates it:
 
 ## 6. CI
 
-**Do not add an emulator job yet.** The `android-check` job in
+**Written before there was an APK** (the job now exists - see the status
+below): do not add an emulator job yet. The `android-check` job in
 `.github/workflows/build.yml` is deliberately a *compile* gate, and adding a
 runtime job that can only ever be skipped would undo the discipline it encodes.
 The moment an APK is reproducible, the job below becomes worth its minutes.
-**Status:** it is now - `android-build.yml` packages `UltraCanvasDemo-x86_64.apk`
-on every run (`scripts/android-package-apk.sh`) - so the emulator job below is
-the next step, installing that artifact.
+**Status:** done. The `emulator` job in `.github/workflows/android-build.yml`
+installs the `UltraCanvasDemo-x86_64` artifact on an API 30 emulator and runs
+`scripts/android-emulator-smoke.sh`, which passes only on the window backend's
+`first frame presented: WxH, with content` logcat line (written once per
+process, straight to logcat), and uploads the screenshot and logcat as
+`android-emulator-smoke` whatever happens. Its first run earned its keep: the
+APK could not load at all (`libc++_shared.so` was not packaged), which no
+compile-time gate could have seen.
 
 GitHub-hosted `ubuntu-latest` x86_64 runners do expose `/dev/kvm`; they need
 the group-permission fix, which is the standard first step of every emulator
@@ -11990,6 +12123,7 @@ window->AddChild(chartRow);
 | `SetBackgroundColor(color)`, `SetPlotAreaColor(color)` | the whole element (white by default; the element's own background, so `UltraCanvasUIElement::SetBackgroundColor` sets the same colour), and the plot rectangle |
 | `SetEmptyMessage(text, detail)`, `SetEmptyMessageColor(color)` | what the chart says, centred on its background, while it has no points — "No data to display" unless set; `detail` is an optional smaller line under it, and an empty `text` and `detail` leave the background alone |
 | `SetEmptyIcon(path, iconColor, badgeColor)` | an icon over that message: 32 px, or 28 px on a 54 px rounded badge when `badgeColor` is not transparent; `iconColor` paints a single-colour icon in that colour, transparent draws it as it is; an empty `path` takes it away |
+| `SetMinimumValueSpan(span)` | the value axis covers at least `span`, centred on the data — a steady reading stays a flat line instead of a sawtooth filling the plot (line, area and scatter; 0, the default, fits the data) |
 | `SetShowValueLabels(bool)` | the y value printed at each point — on by default; drawn by the line and area charts |
 | `SetPointRadius(radius)` | the dot radius of the line and area charts (4 and 3 by default) and the offset of value labels |
 | `SetEnableZoom(bool)`, `SetEnablePan(bool)` | wheel zoom and drag pan of the x axis — off by default; see *Zoom and pan* |
@@ -38317,7 +38451,7 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 
 ## Overview
 
-The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
+The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, JPEG XL, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
 
 1. **Encoded file size** — bytes on disk after `UCImage::Save()`
 2. **Encode time** — milliseconds spent in `UCImage::Save()`
@@ -38467,9 +38601,15 @@ const CodecEntry kAllCodecs[] = {
     { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
     { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
     { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
+    { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
     { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
 };
 ```
+
+JPEG XL is charted only where libvips can both save and load `.jxl`
+(`VipsCanSave(".jxl") && VipsCanLoad(".jxl")`): it needs a libvips built with
+libjxl, which Ubuntu 22.04's is not. Elsewhere the JXL column is left out
+rather than shown as a failure.
 
 ### CodecResult (per-codec output row)
 
@@ -48478,6 +48618,7 @@ FILE: Docs/UltraCanvas/UltraCanvasNodeDiagramExamples.md
   - [Right-click-to-create with auto-sized nodes](#right-click-to-create-with-auto-sized-nodes)
   - [Hierarchical org chart layout](#hierarchical-org-chart-layout)
   - [Cluster containers, sizing and legend](#cluster-containers-sizing-and-legend)
+  - [Card nodes with icons, without overlaps (2.3.0)](#card-nodes-with-icons-without-overlaps-230)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 - [See Also](#see-also)
 
@@ -48629,8 +48770,20 @@ struct NodeDiagramNode {
     bool   deletable  = true;
     std::vector<NodeHandle> handles;
     int    zIndex = 0;
+    double value = 1.0;                   // 2.2.0: drives NodeSizeMode::ByValue
+
+    // 2.3.0: a card look
+    std::string iconPath;                 // drawn in a disc at the leading edge
+    Color  iconBackground = Color(0, 0, 0, 0);    // the disc; transparent = icon alone
+    std::string sublabel;                 // a smaller second line under the label
+    Color  sublabelColor = Color(117, 117, 117, 255);
+    double cornerRadius = -1.0;           // Rectangle / RoundedSquare; < 0 = 15%
+    bool   shadow = false;                // a soft drop shadow
 };
 ```
+
+With an icon or a sublabel the label is left-aligned beside the icon, and a
+label or sublabel that does not fit is shortened with an ellipsis.
 
 ### NodeDiagramLink
 
@@ -48829,7 +48982,23 @@ void ApplyGridLayout();
 void ApplyHierarchicalLayout(const std::string& rootId);
 
 void SetAutoFitOnLayout(bool autoFit);
+
+// 2.3.0: move overlapping nodes apart (their rectangles plus `margin`),
+// until none overlap. Returns the passes it took; refit the view after.
+int  ResolveOverlaps(double margin = 8.0, int maxPasses = 400);
+
+// 2.3.0: level of detail - below `zoom`, a node with an icon draws as its
+// icon disc alone, named while hovered or selected. 0 (default) = off.
+void   SetDetailZoom(double zoom);
+double GetDetailZoom() const;
+bool   IsShowingIconsOnly() const;
 ```
+
+The force-directed layout ends with `ResolveOverlaps`, so its result has no
+overlapping nodes however wide they are; it no longer clamps the nodes into
+the element's bounds (the view fits the content). A host that places nodes
+itself - a radial or a tree arrangement of its own - calls `ResolveOverlaps`
+and then `FitView()`.
 
 ### Data-driven node sizing (2.2.0)
 
@@ -48928,6 +49097,7 @@ void SetGridVisible(bool visible, double spacing = 25.0);
 void SetFontFamily(const std::string& fontFamily);
 void SetFontSize(double size);
 void SetLinkDistance(double distance);
+void SetChargeStrength(double strength);   // 2.3.0: repulsion, default -300; wide nodes want more
 ```
 
 ### Selection
@@ -49292,6 +49462,48 @@ Switching `sizing.mode` to `NodeSizeMode::ByValue` sizes each node from its
 `value` field instead — headcount, budget, revenue, whatever the graph is about.
 `NodeSizeMode::Fixed` restores the authored sizes exactly.
 
+
+### Card nodes with icons, without overlaps (2.3.0)
+
+A network map in the style of the Smart Home topology: each node a white card
+with the device's icon on a coloured disc, its name, and its room under it.
+The nodes are placed by hand - a router with its devices in a column under
+it - and `ResolveOverlaps` makes sure nothing touches.
+
+```cpp
+auto diagram = CreateNodeDiagram("network", 0, 0, 900, 560);
+diagram->SetBackgroundColor(Color(243, 245, 248, 255));
+diagram->SetNodesConnectable(false);
+
+auto card = [&](const std::string& id, const std::string& name, const std::string& room,
+                const std::string& icon, const Color& color, double x, double y) {
+    NodeDiagramNode n(id, name);
+    n.shape          = NodeShape::Rectangle;
+    n.cornerRadius   = 10.0;
+    n.shadow         = true;
+    n.width          = 150.0;
+    n.height         = 40.0;
+    n.x              = x;
+    n.y              = y;
+    n.fillColor      = Color(255, 255, 255, 255);
+    n.borderColor    = Color(221, 227, 234, 255);
+    n.borderWidth    = 1.0;
+    n.textColor      = Color(33, 33, 33, 255);
+    n.iconPath       = GetResourcesDir() + "media/icons/smarthome/" + icon + ".svg";
+    n.iconBackground = color;
+    n.sublabel       = room;
+    diagram->AddNode(n);
+};
+card("router", "Kitchen plug", "Router", "plug", Color(79, 109, 138, 255), 0, 0);
+card("fridge", "Fridge", "Kitchen", "fridge", Color(79, 109, 138, 255), 0, 70);
+card("smoke", "Smoke alarm", "Kitchen", "smoke", Color(59, 130, 246, 255), 0, 70);   // same spot
+diagram->AddLink("l1", "router", "fridge");
+diagram->AddLink("l2", "router", "smoke");
+
+diagram->ResolveOverlaps(10.0);   // the smoke alarm moves off the fridge
+diagram->FitView();
+diagram->SetDetailZoom(0.7);      // zoomed out further: icons only, named on hover
+```
 
 ## Keyboard Shortcuts
 
@@ -74279,6 +74491,7 @@ from an external "Show password" checkbox. See
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
+| Live pictures pushed frame by frame from any thread - a call's video, a self view (mirrored), a decoded stream; the newest frame shown, fitted (contain / cover), a caption without one | `UltraCanvasVideoTile` | `UltraCanvasVideoTile.h` |
 | Audio waveform, input level | `UltraCanvasWaveformElement`, `UltraCanvasLevelMeter` | `UltraCanvasWaveformElement.h`, `UltraCanvasAudioRecorderElement.h` |
 | A media timeline to edit: clips on tracks under a time ruler, trim, reorder, split, transitions, markers, beat marks, a playhead; every edit reported to the app, never applied | `UltraCanvasVideoTimeline` | `UltraCanvasVideoTimeline.h` (model and operations: `UltraCanvasVideoTimelineModel.h`) |
 | A timecode `HH:MM:SS:FF` to enter or show: segments stepped by the arrow keys, digits filling from the right, `+`/`-` offsets, a large read-only readout for a transport bar | `UltraCanvasTimecodeField` | `UltraCanvasTimecodeField.h` |
@@ -76328,6 +76541,30 @@ rec->OpenCamera();
 rec->ShowSaveDialog();   // pick a path, then records to it
 ```
 
+`UltraCanvasVideoTile` (`UltraCanvasVideoTile.h`) — a picture fed frame by
+frame from **any thread**: a call's video (UltraRTC, ChatCube), a self view,
+frames a program decodes itself. `PushFrame` copies the pixels (RGBA or BGRA,
+any stride) into a one-frame inbox; the newest frame wins, and one upload to
+the UI thread is in flight at a time, so a fast producer never queues up
+work. `ClearFrame` (any thread) goes back to the caption. On the UI thread:
+`SetCaption` (shown without a frame - "Connecting…", "Camera off"),
+`SetFit` (`VideoTileFit::Contain`, whole and letterboxed, or `Cover`,
+filling and cropped), `SetMirrored` (a self view, from the next frame) and
+`SetStyle` (`VideoTileStyle`: background, caption colour and size, corner
+radius - it clips the picture too - and border). Without an application
+loop the next `Render` picks the pending frame up.
+
+```cpp
+auto tile = std::make_shared<UltraCanvasVideoTile>("remote", 0, 0, 640, 360);
+tile->SetFit(VideoTileFit::Cover);
+tile->SetCaption("Connecting...");
+
+// From a decoder or capture thread, for every picture:
+std::vector<uint8_t> rgba(640 * 360 * 4, 128);
+tile->PushFrame(rgba.data(), 640, 360);                     // RGBA, rows packed
+tile->PushFrame(rgba.data(), 640, 360, 640 * 4, VideoTilePixelFormat::BGRA32);
+```
+
 ### Devices — `UltraCanvasVideoDevices.h`
 
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
@@ -76444,7 +76681,7 @@ child elements of its own)
 **Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.2.0
+**Version:** 1.3.0
 **Last Modified:** 2026-10-14
 **Author:** UltraCanvas Framework
 
@@ -76581,6 +76818,13 @@ std::string trackId;
 std::string clipId = timeline->ClipAt(400.0f, 120.0f, &trackId);
 timeline->SetDropTargetClip(clipId);         // a dashed focus ring: where a drop the app carries lands
 timeline->SetDropTargetClip("");             // ... cleared
+UltraCanvasVideoTimeline::DropFeedback feedback;   // what a drop the app carries would do, one call a move
+feedback.trackId = "T1";                           // the insertion marker on this lane ...
+feedback.seconds = 2.8;                            // ... at this time, snapped as a file drop is
+feedback.label = "Lower third";                    // the readout: "Lower third at 00:00:03:00"
+feedback.clipId = "";                              // or the clip to ring instead
+double at = timeline->SetDropFeedback(feedback);   // the time it would land at
+timeline->ClearDropFeedback();                     // a DragLeave event does the same
 ```
 
 ### Providers
@@ -86327,9 +86571,9 @@ FILE: Docs/Modules/UltraCrypt/README.md
 # UltraCrypt — Cryptographic Services for ULTRA OS
 
 **Status:** Stages 1–2 implemented and under test; Stage 3 in progress (§8).
-**Version:** 0.3.0
+**Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-10-17
+**Last Modified:** 2026-10-21
 
 UltraCrypt is the cryptographic module of the ULTRA OS / UltraCanvas
 framework: the single place where hashing, message authentication,
@@ -86352,8 +86596,10 @@ libsodium, covered by `Tests/UltraCryptTests.cpp`:
 `UltraCrypt_ConstantTimeEquals`, the random family, SHA-1 (legacy-gated) and
 SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 (XChaCha20-Poly1305 plus the hardware-gated AES-256-GCM interop path),
-Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8) and
-AES-128/192/256-CBC for foreign formats (§5.9).
+Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
+X25519 key agreement (§5.8.1),
+AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
+formats (§5.9, §5.10).
 (The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
@@ -87225,6 +87471,38 @@ a file with a byte appended.
 
 *Serves:* UltraStore's signed catalog, and any signed manifest or update.
 
+#### 5.8.1 Key agreement (X25519)
+
+Two parties who know each other's public key derive the same secret without
+sending it. An Ed25519 identity converts to an X25519 pair, so one key pair
+both signs and agrees on keys.
+
+```cpp
+size_t UltraCrypt_GetKeyExchangeKeySize();          // 32
+size_t UltraCrypt_GetKeyExchangeSecretSize();       // 32
+UltraCryptResult UltraCrypt_GenerateKeyExchangeKeyPair(std::vector<uint8_t>& outPublicKey,
+                                                       UltraCryptSecureBuffer& outSecretKey);
+UltraCryptResult UltraCrypt_SignaturePublicKeyToKeyExchange(UltraCryptSignatureAlgorithm,
+                                                            const std::vector<uint8_t>& signaturePublicKey,
+                                                            std::vector<uint8_t>& outKeyExchangePublicKey);
+UltraCryptResult UltraCrypt_SignatureSecretKeyToKeyExchange(UltraCryptSignatureAlgorithm,
+                                                            const UltraCryptSecureBuffer& signatureSecretKey,
+                                                            UltraCryptSecureBuffer& outKeyExchangeSecretKey);
+UltraCryptResult UltraCrypt_KeyExchange(const UltraCryptSecureBuffer& mySecretKey,
+                                        const std::vector<uint8_t>& theirPublicKey,
+                                        UltraCryptSecureBuffer& outSharedSecret);
+```
+
+Rules: the raw shared secret is not a key — derive one with
+`UltraCrypt_DeriveKeyHkdf` and an `info` naming its purpose, then use it
+with `UltraCrypt_AeadSeal`. A public key that is a low-order point (it would
+give an all-zero secret) is refused with `InvalidArgument`; wrong lengths
+with `InvalidKeySize`. Covered by the RFC 7748 §6.1 vector, the low-order
+refusal, and converted Ed25519 identities and an ephemeral pair agreeing.
+
+*Serves:* ChatCube Direct's end-to-end message encryption
+(`Docs/Research/ChatCubeDirectPlan.md` §4).
+
 ---
 
 ### 5.9 AES-CBC — interop only
@@ -87301,6 +87579,62 @@ of password-protected `.xlsx` and `.docx` files
 (`UltraCanvas/core/UltraCanvasOfficeEncryption.cpp`, ECMA-376 agile
 encryption), which checks the files' `dataIntegrity` HMAC before it decrypts a
 byte — the rule above, applied. See `Docs/UltraCanvas/UltraCanvasOfficeEncryption.md`.
+
+### 5.10 AES-CTR and PBKDF2 — interop only
+
+For the formats defined elsewhere that are built on them: Matrix's room-key
+export files (PBKDF2-HMAC-SHA-512, AES-256-CTR, HMAC-SHA-256 - the format
+Element and every other Matrix client read and write), its encrypted
+attachments and secret-storage passphrases, WebCrypto's AES-CTR.
+
+```cpp
+struct UltraCryptCtrParams {
+    // Encrypt: if empty, a fresh random IV is generated and written back.
+    // A format that wants its own shape of IV (Matrix: random with bit 63
+    // clear) supplies it. Decrypt: the IV used at encryption.
+    std::vector<uint8_t> iv;
+};
+
+// The ciphertext is exactly as long as the plaintext.
+UltraCryptResult UltraCrypt_AesCtrEncrypt(const UltraCryptSecureBuffer& key,
+                                          UltraCryptCtrParams& params,
+                                          const void* plaintext, size_t size,
+                                          std::vector<uint8_t>& outCiphertext);
+UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptCtrParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
+
+// SHA256 or SHA512 (SHA1 is refused); iterations >= 1; salt may be empty.
+UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(UltraCryptHashAlgorithm algorithm,
+                                            const UltraCryptSecureBuffer& password,
+                                            const std::vector<uint8_t>& salt,
+                                            uint32_t iterations,
+                                            size_t outputLength,
+                                            UltraCryptSecureBuffer& outKey);
+```
+
+The IV is the first counter block, and each next block adds one to it as a
+128-bit big-endian number (NIST SP 800-38A) — the same bytes as WebCrypto's
+`length: 64` counter for as long as that does not wrap, which Matrix rules
+out by clearing bit 63 of its IVs. CTR runs on the same bitsliced,
+constant-time AES as CBC, four blocks a pass. PBKDF2 keys the password's HMAC
+state once and copies it for every iteration, so a format's 500 000 rounds
+cost what they should and no more.
+
+**Using them safely.** CTR has no integrity either, and needs no padding, so
+there is no padding oracle — but one counter block used twice under one key
+gives away the XOR of two plaintexts, so every message needs its own IV. The
+rule of §5.9 holds: check the format's MAC (or the hash Matrix attachments
+carry) before decrypting. PBKDF2 is not memory-hard; it is here to read and
+write what others defined, never for anything UltraCanvas defines itself —
+that is Argon2id (§5.5).
+
+*Serves:* the Matrix provider's room-key export and import
+(`UltraCanvas/Plugins/UltraIM/matrix/MatrixCrypto.cpp`), which checks the
+file's HMAC before it decrypts a byte. Tested against SP 800-38A F.5 (CTR),
+RFC 7914 §11 (PBKDF2-SHA-256) and SHA-512 values, plus the 128-bit counter
+carry, any message length and the refusals.
 
 ## 6. Usage sketches
 
@@ -87916,6 +88250,279 @@ FILE: Docs/Modules/UltraDatabase/intro.md
 # UltraDatabase
 
 The unified data-access layer for every platform. One API covers every database an app touches: embedded SQLite out of the box, plus PostgreSQL, MySQL/MariaDB and more as plug-in drivers, without touching the core. Connections are defined once by name and pooled centrally; the same parameterized query, transaction and streaming-cursor API works across every engine, so an app can prototype on SQLite and deploy on Postgres without a rewrite. Injection-safe by default, TLS for networked engines, and credentials pulled from UltraVault — never embedded in code. Blocking calls run sync; async variants keep the UI responsive.
+
+==============================================================================
+FILE: Docs/Modules/UltraIM/README.md
+==============================================================================
+
+# UltraIM — instant messaging
+
+One UI-free API through which an application signs in to messengers, lists
+conversations, sends and receives messages and places calls, whatever the
+network. Every network is a **provider**: ChatCube Direct (the ULTRA OS
+peer-to-peer messenger) first, then Matrix, Telegram, XMPP and other
+services with an open API. The first application on it is ChatCube.
+Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Research/ChatCubeDirectPlan.md).
+
+| | |
+|---|---|
+| Headers | `<UltraIM/UltraIM.h>` (umbrella), `UltraIMTypes.h`, `UltraIMPlugins.h`, `UltraIMCore.h` |
+| Sources | `UltraCanvas/core/UltraIM/` |
+| Target | `UltraIM` (archive `uc-im`, absorbed into the shared core) |
+| Option | `ULTRACANVAS_ENABLE_ULTRAIM` (ON) |
+| Tests | `Tests/UltraIM` (`-DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON`, binary `UltraIMTests`) |
+| Depends on | UltraCrypt (client message ids); providers bring UltraNet / UltraRTC |
+
+## Rules
+
+- No UltraCanvas UI type in the module or in a provider: no element, window,
+  list model or render context. The application turns events into UI.
+- Networking only through UltraNet and UltraRTC.
+- A returned `UltraIMResult` is a synchronous rejection only (not connected,
+  capability missing, bad argument). What the network does arrives later as
+  an `UltraIMEvent` or through the call's callback.
+- **Threading:** every event and every callback goes through the dispatcher
+  the application installs. A UI application installs one that posts to its
+  UI thread, and then never needs a lock:
+
+  ```cpp
+  UltraIM_Initialize(config);
+  UltraIM_SetEventDispatcher([](std::function<void()> task) {
+      UltraCanvas::UltraCanvasApplication::GetCurrent()->PostToUIThread(std::move(task));
+  });
+  ```
+
+  Without a dispatcher, callbacks run on whatever thread the provider
+  finished on (tests, command-line tools). A task queued before
+  `UltraIM_Shutdown` is dropped, never delivered after it.
+- The manager never calls a provider while holding its lock, so a provider
+  may raise events from inside any call.
+
+## Using it
+
+```cpp
+UltraIMConfig config;
+config.pluginDirectory = "<exe dir>/Plugins/UltraIM";
+config.dataDirectory   = "<user data dir>/ChatCube";
+UltraIM_Initialize(config);
+UltraIM_RefreshProviders();                 // load the provider modules
+
+UltraIM_Subscribe([](const UltraIMEvent& e) {
+    if (e.type == UltraIMEventType::MessageReceive) { /* append e.message */ }
+    if (e.type == UltraIMEventType::MessageDelivered) { /* match e.message.clientMessageId */ }
+});
+
+UltraIM_SignIn("direct", credentials, [](const UltraIMResult& r) { /* ... */ });
+UltraIM_FetchConversations([](const UltraIMResult& r, const std::vector<UltraIMConversation>& list) {});
+
+// Optimistic send: show the row at once with this id, Sending; the
+// MessageDelivered event and the provider's echo carry the same id.
+UltraIMSendOptions options;
+options.clientMessageId = UltraIM_NewClientMessageId();
+UltraIMResult r = UltraIM_SendText("direct", conversationId, text, options);
+if (!r) { /* mark the row Failed */ }
+```
+
+Calls: ask `UltraIM_CanCall(provider, conversation, video)` before offering
+the buttons — ChatCube Direct offers 1:1 voice and video calls while its
+relay socket or a local connection to the contact is up, not group calls yet. `UltraIM_StartCall` gives the call id;
+the other side gets `CallReceive` and answers with `UltraIM_AcceptCall` or
+declines with `UltraIM_EndCall`. Both then follow `CallStateChange`:
+`Ringing` → `Connecting` → `Active` → `Ended` (or `Failed`), the final
+state's `errorText` saying why: `declined`, `busy`, `no answer`, `missed`,
+`offline`, `crossed` (both called at once - the other call replaces it, and
+its `CallReceive` follows), empty for a plain hang-up.
+`UltraIM_SetCallMuted` mutes the microphone. One call at a time:
+`StartCall` during another answers `InvalidState`.
+
+A video call (`StartCall(..., true, ...)`; `CallReceive` with `isVideo`)
+hands its pictures to the sinks `UltraIM_SetCallVideoSinks` installs - the
+other side's and the self view - as RGBA on a media thread, not through the
+dispatcher: push them into an `UltraCanvasVideoTile`, which takes frames from
+any thread. Once the call returns, the sinks it replaced are not running, so
+clear them (`nullptr`) before the tiles go. `UltraIM_AcceptCall(..., video)`
+says whether our camera goes on; `UltraIM_SetCallCamera` turns it off and on
+during the call, and the other side gets `CallMediaChange` (`isVideo` = the
+camera is on), so it can show a caption instead of a frozen picture.
+
+End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
+Their keys travel as a passphrase-protected text:
+`UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
+save through `UltraCanvasFileLoader::SaveFileDialog`, and
+`UltraIM_ImportEncryptionKeys(provider, text, passphrase, cb)` takes one in
+(the count of keys new to it in the callback). A provider without
+encryption answers `CapabilityMissing`; the one with it lists
+`UltraIMCapabilityFlags::E2EEncryption`.
+
+## Writing a provider
+
+Implement `IUltraIMProviderPlugin` (`UltraIMPlugins.h`). Identity, the
+session, `FetchConversations`, `FetchMessages` and `SendText` are required;
+everything else has a default that answers `CapabilityMissing`. Raise events
+through the sink `Initialize` hands you; every method must return at once.
+
+A provider ships as a module that links the core and exports one function:
+
+```cpp
+extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost* host) {
+    if (!host || host->abiVersion < 1 || !host->RegisterProvider) return;
+    host->RegisterProvider(std::make_shared<MyProvider>());
+}
+```
+
+`UltraIM_RefreshProviders` loads each module in `pluginDirectory` once and
+never unloads it (queued callbacks may still point into it). A provider
+compiled into the application uses `UltraIM_RegisterProvider` instead.
+
+## Provider: ChatCube Direct
+
+The ULTRA OS native messenger, provider id `direct`, module
+`<build>/Plugins/UltraIM/ultraim_direct.{so,dll,dylib}`, sources
+`UltraCanvas/Plugins/UltraIM/direct/`. Plan and protocol:
+[`Docs/Research/ChatCubeDirectPlan.md`](../../Research/ChatCubeDirectPlan.md);
+server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
+
+- **Identity:** `UltraIMLoginType::KeyPair`. `SignIn` with
+  `createAccount = true` and a `displayName` makes an Ed25519 key pair on the
+  device, kept in the provider's `DeviceKeyVault` under
+  `<dataDirectory>/direct/`; later sign-ins reuse it (`server` may then be
+  empty: the relay URL is remembered). The user id is 32 hex characters,
+  derived from the public key - it is what a contact types into
+  `UltraIM_AddContact`.
+- **Messages** are end-to-end encrypted envelopes (X25519 + HKDF +
+  XChaCha20-Poly1305, header authenticated). Between two online contacts
+  they go over a WebRTC data channel (UltraRTC) whose set-up is signed with
+  the identity keys; otherwise, and for groups, through the relay's queue.
+  Every message keeps its client id on every path, so one that arrived twice
+  is shown once.
+- **Delivery ticks:** `Sending` → `Sent` (in the relay's queue) →
+  `Delivered` (the peer's device has it: data-channel ack or receipt) →
+  `Read` (`UltraIM_MarkRead` on the other side). Groups stop at `Sent`.
+- **Local record:** contacts and their keys, conversations, history and the
+  outbox in `<dataDirectory>/direct/direct.sqlite3` (UltraDatabase).
+  `FetchMessages` answers from it; nothing waits for the network.
+- **Calls** (1:1, voice and video): the invite, accept, reject, camera
+  update and hang-up are signalling messages signed like the data channel's
+  set-up and carried by the relay socket (session `call:<uuid>`); the media
+  is a separate UltraRTC peer per call with an Opus track and, for video, a
+  VP8 track (640 x 480, 24 fps, 700 kbit/s - `SetCallVideoConfig`), the
+  microphone, the speaker and the camera (`SetCallUseDevices(false)` leaves
+  them closed - tests feed the tracks, `GetCallAudioTrack` /
+  `GetCallVideoTrack`). An unanswered call ends after 45 s, one that does
+  not connect fails after 20 s (`SetCallTimings`). A media connection that
+  drops waits 1.5 s for the hang-up that may explain it (the hang-up comes
+  through the relay, the close directly) before the call counts as lost.
+- **The local network, with or without a relay.** `SignIn` with no relay
+  at all (none given, none remembered) works on the local network only;
+  `credentials.localNetwork` adds it next to a relay (both remembered). The
+  provider listens on a free TCP port and announces itself over mDNS
+  (`_chatcube._tcp`, TXT `id=` and `name=`; UltraNet's mDNS plug-in), browses
+  for the others, and keeps a connection to every contact it sees there.
+  Both ends of a connection prove their identity - each signs the other's
+  fresh nonce, and the id must be the hash of the key - and it then carries
+  the same signed signalling as the relay socket, so chat links and calls are
+  set up over it unchanged (preferred over the relay when both are there).
+  `UltraIM_FetchNearbyContacts` lists the ChatCubes nearby that are not
+  contacts yet (`NearbyChange` when that changes); `AddContact` on one
+  connects and finishes once the handshake has proven its key. A contact is
+  online while the relay says so or its local connection is up. Without a
+  relay a message waits in the outbox until the other side is back, and
+  groups (which the relay keeps) are refused. `AddLanAddress(host, port)`
+  reaches a ChatCube by address where multicast does not get through.
+- **Not yet:** group calls, files and images, several devices per identity,
+  groups without a relay.
+
+Tests: `Tests/UltraIM/DirectProviderTests.cpp` - the envelope and the store,
+then two providers against a relay started from `Server/ChatCubeRelay` (P2P
+delivery, read receipt, offline queue, sign-in again with the stored
+identity, a group, a video call - pictures across, the camera turned off,
+hung up - and voice calls: declined, answered with audio both ways, muted,
+hung up, and a call to a contact who is offline). It needs a `python3` with the relay's packages on `PATH`
+and skips without one, unless `ULTRAIM_TEST_RELAY_REQUIRED` is set (CI).
+Then two providers with no relay at all: reached by address, the nearby
+list, adding each other, a message peer to peer, a call, groups refused, one
+side away and back (the waiting message arrives) - and two that find each
+other over mDNS alone, which skips without a responder unless
+`ULTRAIM_TEST_MDNS_REQUIRED` is set (CI starts Avahi).
+
+## Provider: Matrix
+
+`UltraCanvas/Plugins/UltraIM/matrix/` (module `ultraim_matrix`, provider id
+`matrix`) speaks the Matrix client-server API (v3) to any homeserver.
+
+- **Sign-in:** `UltraIMLoginType::UsernamePassword` - `server` is a server
+  name (`matrix.org`, found through `/.well-known/matrix/client`) or a URL,
+  or empty with a full `@name:server` user; or `accessToken` instead of a
+  password. The session (homeserver, user, device, access token) is kept in
+  the provider's `DeviceKeyVault`; a later `SignIn` with no credentials
+  resumes it, and a token the server no longer accepts raises `AuthRequire`.
+  `SignOut` disconnects and keeps the session.
+- **Rooms:** `/sync` as a long poll (30 s) on the provider's thread. A
+  direct chat is a room in `m.direct` (or a nameless room of two); the rest
+  are groups, titled by `m.room.name`, the alias, or their members. An
+  invitation is a conversation whose snippet says so; sending into it
+  accepts it. `AddContact("@name:server")` opens a direct chat (or returns
+  the one there is); `CreateGroup` makes a private room and invites.
+- **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
+  emotes, images and files as their names (attachments are not downloaded
+  yet), edits (`m.replace` - `MessageUpdate`), redactions (`MessageDelete`),
+  joins and leaves as system lines. Our own message is sent under the client
+  message id as its transaction id, so its echo matches the optimistic row;
+  `Sent` when the server took it, `Read` when someone's read receipt covers
+  it. Typing, presence of the other person in a direct chat, unread counts.
+  `FetchMessages` pages older history back with `/messages`.
+- **End-to-end encryption** (`m.olm.v1.curve25519-aes-sha2`,
+  `m.megolm.v1.aes-sha2`): the cryptography is
+  [vodozemac](https://github.com/matrix-org/vodozemac), Matrix's audited
+  Rust implementation, behind a C ABI shim (`matrix/olm-c`, built with
+  Corrosion; `ULTRAIM_MATRIX_E2EE`, on, needs cargo). `MatrixCrypto` does
+  the bookkeeping around it:
+  - this device's identity and one-time keys signed (canonical JSON) and
+    published, topped up as the sync's count runs low, with a fallback key;
+  - other users' device lists (`/keys/query`), their signatures checked and
+    each device's keys **trusted on first use** - a device whose keys change
+    gets no more room keys, and what it sends is not believed;
+  - an Olm session per device (claimed one-time keys, signature checked), the
+    room key going to every device of the room's joined and invited members
+    as an `m.room_key` to-device message;
+  - a Megolm session per room, replaced after the room's
+    `rotation_period_msgs` (100) or `rotation_period_ms` (a week), and when
+    someone or a device is gone from the room;
+  - decryption with a replay guard (one event per message index), the room
+    and the key's sender checked; a message whose key has not come is shown
+    as *waiting for the key* and becomes the message (`MessageUpdate`) when it
+    does - by to-device message or by an import.
+  New direct chats and groups are created encrypted. Signing in again with
+  the password reuses the device while its keys are here, so its rooms stay
+  readable. Everything is kept in one internal file per account and device,
+  `crypto-<hash>.store` next to the vault, sealed (XChaCha20-Poly1305) with
+  a key the vault holds. The key export is the format Element and other
+  clients read and write (PBKDF2-HMAC-SHA-512 with 500 000 rounds,
+  AES-256-CTR, HMAC-SHA-256 - UltraCrypt's). Built without cargo, encrypted
+  rooms say they cannot be read and new rooms are not encrypted.
+- **Not yet:** cross-signing and device verification (emoji / QR), key
+  backup on the server, key requests between our own devices; media up-
+  and download; calls; SSO sign-in.
+
+Tests: `Tests/UltraIM/MatrixCryptoTests.cpp` without a server (canonical
+JSON against the spec's examples, vodozemac through the shim, the store,
+replay and room checks, export files); `Tests/UltraIM/MatrixProviderTests.cpp`
+against a real Synapse, which `Tests/UltraIM/matrix_test_server.py` sets up
+(config, open registration, the test users) with the python in
+`ULTRAIM_MATRIX_PYTHON` - one with `matrix-synapse` installed; it skips
+without one unless `ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI). Its
+encryption part checks the server holds only ciphertext, a second device
+(keys from then on, earlier ones by import), signing in again on the same
+device, and an encrypted room with
+[matrix-nio](https://github.com/matrix-nio/matrix-nio)
+(`matrix_nio_peer.py`), key export files read both ways - with
+`matrix-nio[e2e]` in that python (`ULTRAIM_TEST_MATRIX_NIO_REQUIRED` in CI).
+
+## Status
+
+Implemented: the registry, the module loader, the event bus and dispatcher,
+the merged conversation fetch and every forwarding call; the ChatCube
+Direct provider and the Matrix provider (above). Next: Telegram.
 
 ==============================================================================
 FILE: Docs/Modules/UltraMessage/README.md
@@ -89334,19 +89941,25 @@ closes them when it falls idle: before libcurl 8.10 the QUIT of a connection
 whose network has since gone away waits up to two minutes for its reply.
 (One pool per thread: libcurl does not support sharing connections between
 threads that transfer at the same time.) A change - delete, rename, create or
-remove a folder - is the exception on FTP: it always logs in on a connection
-of its own and closes it, because libcurl sends those commands before it
-changes folder, and they name the entry from the folder a login lands in; on
-a kept connection that a listing left in a subfolder they would name another
-file. A server that takes one connection per address or user (vsftpd's
-`max_per_ip`, ProFTPD's `MaxClientsPerHost`) turns that second connection
-away - *421 There are too many connections from your internet address.*,
-or a 530 saying the maximum number of clients is reached - while the
-thread's kept one is open. Turned away so before any of its commands was
-sent, the change closes the kept connection and is sent again: at once, and
-after 0.3 s and 1 s more if the server is still counting the closed one
-(the waits end early when the call is called off). The log says *The server
-takes one connection at a time: closing the one kept open and trying again*.
+remove a folder - takes up the kept connection too. Its commands (`DELE`,
+`RNFR` / `RNTO`, `MKD`, `RMD`) go once libcurl has changed into the entry's
+folder (`CURLOPT_POSTQUOTE`) and name the entry within it; libcurl goes back
+to the folder that connection's login landed in first, so it does not matter
+where the last listing left it. (Sent before the change of folder, as they
+once were, they ran wherever the connection was, and a change needed a
+connection of its own: a second login each time.)
+
+A server that takes one connection per address (vsftpd's `max_per_ip`,
+ProFTPD's `MaxClientsPerHost`) still turns away a call that needs a new one
+while the thread keeps another open - one as another account on that server,
+which libcurl does not take up for this one: *421 There are too many
+connections from your internet address.*, or a 530 saying the maximum number
+of clients is reached. Turned away so at the greeting or the login, before
+anything was asked and with no byte moved, any FTP call closes the thread's
+kept connection and is made again: at once, and after 0.3 s and 1 s more if
+the server is still counting the closed one (the waits end early when the
+call is called off). The log says *The server takes one connection at a
+time: closing the one kept open and trying again*.
 
 `Tests/UltraNet/test_ftp_log.cpp` drives all of it against a scripted FTP
 server on loopback.
@@ -89457,6 +90070,169 @@ FILE: Docs/Modules/UltraNet/intro.md
 # UltraNet
 
 The unified, secure networking layer for every platform. One API covers HTTP, HTTPS, WebSocket, FTP, FTPS, SFTP, raw TCP and UDP, TLS, and DNS, complete with reusable sessions, proxy support, certificate validation, and async requests for responsive UIs. Additional protocols such as SMTP, IMAP, MQTT, and SSH load as plug-ins without touching the core. Built on libcurl and OpenSSL for proven performance and security.
+
+==============================================================================
+FILE: Docs/Modules/UltraRTC/README.md
+==============================================================================
+
+# UltraRTC — real-time communication
+
+WebRTC behind an UltraCanvas-owned API: peer connections, data channels,
+audio and video calls, as `UltraRtc_*` free functions with opaque
+`UltraRtcHandle`s and an `UltraRtcResult` from every call. First user:
+ChatCube Direct, for peer-to-peer chat and calls. Design:
+[`Docs/Research/UltraRTCDesignProposal.md`](../../Research/UltraRTCDesignProposal.md);
+engine choice and phases: [`Docs/Research/ChatCubeDirectPlan.md`](../../Research/ChatCubeDirectPlan.md).
+
+| | |
+|---|---|
+| Headers | `<UltraRTC/UltraRTC.h>` (umbrella), `UltraRTCTypes.h`, `UltraRTCCore.h` |
+| Sources | `UltraCanvas/core/UltraRTC/` (`UltraRTCEngine.cpp`; `UltraRTCStub.cpp` without an engine) |
+| Target | `UltraRTC` (archive `uc-rtc`, absorbed into the shared core) |
+| Option | `ULTRACANVAS_ENABLE_ULTRARTC` (ON) |
+| Engine | libdatachannel 0.24.6 + libjuice, usrsctp, libsrtp, plog — vendored, `UltraCanvas/third_party/libdatachannel/` |
+| Needs | OpenSSL (the engine's DTLS). Without it the module builds and every call answers `Unsupported`. Audio also needs libopus (pkg-config `opus`); without it `caps.audio` is false and `UltraRtc_AddAudioTrack` answers `Unsupported`. Video needs FFmpeg's libavcodec and libswscale (VideoFX's dependency) with a VP8 encoder (libvpx); without them `caps.video` is false |
+| Tests | `Tests/UltraRTC` (`-DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON`, binary `UltraRTCTests`) |
+
+## Rules
+
+- **SDP and candidates pass through untouched.** Send the `sdp` of a
+  `LocalDescription` event and the `candidate` / `sdpMid` of an
+  `IceCandidate` event to the other side over your signalling channel as
+  they are; hand what arrives to `UltraRtc_SetRemoteDescription` and
+  `UltraRtc_AddIceCandidate` as it is.
+- **DTLS is always on.** The remote certificate is checked against the
+  fingerprint in the remote SDP, so a signalling channel that authenticates
+  the SDP (ChatCube signs it with the user's identity key) authenticates the
+  link end to end; a relay in the middle cannot substitute itself.
+- **No engine type in a public header.** The engine can be replaced (the
+  proposal's Rust tier) without touching a caller.
+- **Threading:** the engine runs its own threads. Events go through the
+  dispatcher installed with `UltraRtc_SetEventDispatcher`; without one they
+  run on an engine thread and must not block. Every function may be called
+  from any thread, also from inside an event callback (closing a peer from
+  its own callback included). Events queued for a peer that was closed are
+  dropped.
+
+## Connecting two peers
+
+```cpp
+UltraRtc_Initialize();
+
+UltraRtcPeerConfig config;
+config.iceServers = {{"stun:stun.example.org:3478"},
+                     {"turn:turn.example.org:3478", "user", "secret"}};
+
+UltraRtcHandle peer;
+UltraRtc_CreatePeer(config, [&](const UltraRtcPeerEvent& e) {
+    switch (e.type) {
+        case UltraRtcPeerEventType::LocalDescription: Signal("sdp", e.sdpType, e.sdp); break;
+        case UltraRtcPeerEventType::IceCandidate:     Signal("ice", e.candidate, e.sdpMid); break;
+        case UltraRtcPeerEventType::DataChannel:      remoteChannel = e.channel; break;   // the other side opened one
+        case UltraRtcPeerEventType::DataChannelOpen:  /* ready */ break;
+        case UltraRtcPeerEventType::DataChannelMessage: Show(e.isBinary ? Decode(e.binary) : e.text); break;
+        default: break;
+    }
+}, peer);
+
+// The caller opens a channel; with autoNegotiation (the default) that
+// produces the offer as a LocalDescription event.
+UltraRtcHandle channel;
+UltraRtc_CreateDataChannel(peer, "chat", UltraRtcDataChannelInit(), channel);
+
+// What the signalling channel delivers from the other side:
+UltraRtc_SetRemoteDescription(peer, type, sdp);   // a remote offer produces our answer
+UltraRtc_AddIceCandidate(peer, candidate, sdpMid);
+
+UltraRtc_DataChannelSendText(channel, "hello");
+UltraRtc_ClosePeer(peer);
+UltraRtc_Shutdown();
+```
+
+With `autoNegotiation = false` call `UltraRtc_SetLocalDescription(peer)`
+yourself once the channels are added and after each remote offer.
+
+## Audio
+
+An audio track is Opus at 48 kHz, mono, 20 ms frames, with in-band FEC: a
+lost packet is rebuilt from the next one where it can be, and concealed
+otherwise. Both sides add the track, with the same mid, before the offer is
+made (and before the remote offer is applied), so the two share one
+send-and-receive m-line. Media alone does not trigger auto-negotiation: the
+caller asks with `UltraRtc_SetLocalDescription(peer, Offer)`; the answer
+follows by itself.
+
+```cpp
+UltraRtcHandle track = UltraRtcInvalidHandle;
+UltraRtc_AddAudioTrack(peer, "audio", UltraRtcDirection::SendRecv, track);
+UltraRtc_SetLocalDescription(peer, UltraRtcSdpType::Offer);   // the caller only
+
+// On the TrackOpen event for `track`: the microphone and the speaker.
+UltraRtc_StartMicrophone(track);       // "" = the default device
+UltraRtc_StartPlayback(track);
+UltraRtc_SetTrackEnabled(track, false);   // mute
+```
+
+`UltraRtc_SendAudioFrame` / `UltraRtc_SetAudioFrameCallback` feed and read
+the track directly (tests, an application with its own audio): PCM of any
+length goes in, decoded 20 ms frames come out on a media thread. The devices
+are the framework's audio backend - `UltraCanvasAudioRecorder` in live mode
+for the microphone, `UltraCanvasAudioPlayer`'s push sink for the speaker,
+which drops the oldest audio when more than 120 ms piles up, keeping the
+delay of a call short. A device that cannot be opened makes the Start call
+fail; the track still carries the other direction. Closing the peer stops
+both devices.
+
+## Video
+
+A video track is VP8: libvpx through FFmpeg's libavcodec in its real-time
+mode (no frame lag, no B-frames, a key frame at least every 3 s), decoded by
+FFmpeg's own VP8 decoder, pictures scaled and converted by libswscale. The
+RTP payload format (RFC 7741) is UltraRTC's own - libdatachannel has
+packetizers for H.264, H.265 and AV1 only. Pictures go in and come out as
+RGBA. `UltraRtcVideoConfig` sets what is sent: the size (pictures of
+another size are scaled to it), the frame rate (faster pictures are
+dropped) and the bit rate. As with audio, both sides add the track with the
+same mid before the offer.
+
+```cpp
+UltraRtcVideoConfig video;          // 640 x 480, 24 fps, 700 kbit/s
+UltraRtcHandle track = UltraRtcInvalidHandle;
+UltraRtc_AddVideoTrack(peer, "video", UltraRtcDirection::SendRecv, video, track);
+
+// What arrives, decoded, on a media thread - into a tile, which takes
+// pictures from any thread (UltraCanvasVideoTile):
+UltraRtc_SetVideoFrameCallback(track, [](const UltraRtcVideoFrame& frame) {
+    (void)frame;    // remoteTile->PushFrame(frame.rgba.data(), frame.width, frame.height);
+});
+// On TrackOpen: the camera, with its pictures for the self view.
+UltraRtc_StartCamera(track, "", [](const UltraRtcVideoFrame& frame) {
+    (void)frame;    // selfTile->PushFrame(frame.rgba.data(), frame.width, frame.height);
+});
+UltraRtc_SetTrackEnabled(track, false);    // camera off: nothing is sent
+```
+
+Loss: a frame with a packet missing is dropped by the depacketizer, and the
+receiver shows nothing more until a key frame arrives - it asks for one with
+an RTCP PLI (at most every 300 ms), which the sender answers with its next
+picture. Re-enabling a track starts it with a key frame too.
+`UltraRtc_SendVideoFrame` feeds a track directly (tests, an application with
+its own pictures). The camera is the framework's video capture -
+`UltraCanvasVideoRecorder`'s live preview with nothing recorded (GStreamer
+on Linux, Media Foundation, AVFoundation, Android); a camera that cannot be
+opened makes `UltraRtc_StartCamera` fail, and the track still receives.
+
+## Status
+
+Phase 1 implemented: peers, ICE servers (STUN / TURN / TURNS), transport
+policy, port range, the W3C state machines as events, data channels (ordered
+or not, reliable or partially reliable, negotiated ids), text and binary
+messages. Phase 2 implemented: Opus audio tracks, the microphone and the
+speaker. Phase 3 implemented: VP8 video tracks, the camera, key-frame
+recovery after loss; pictures shown with `UltraCanvasVideoTile`. Not yet:
+bandwidth estimation (the bit rate is fixed), NACK retransmission requests
+from the receiving side, simulcast. Known limit: the miniaudio backend
+opens the default devices whatever `deviceId` says.
 
 ==============================================================================
 FILE: Docs/Modules/UltraVault/README.md
@@ -89612,6 +90388,7 @@ vault.Lock();                                       // wipes the derived key
 
 | Group | Members |
 |---|---|
+| Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under a lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) must each `Use()` theirs: one opened directly stays open until another opens, and reads the other's secrets after that |
 | Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
@@ -91093,9 +91870,11 @@ A **video clip** keeps its people the same way when the export's `fitMode`
 is `Fill` (a portrait phone clip filling a 16:9 frame loses its sides, a
 landscape clip in a portrait frame its top and bottom): `keepInView` on a
 file segment places the crop window around the regions instead of the
-picture's centre, and `keepFacesInView` finds them itself in one frame from
-the middle of the clip's used range (found once per clip, whatever the
-preview asks later). A clip with no face found keeps the centred crop. The
+picture's centre, and `keepFacesInView` finds them itself in three frames
+of the clip's used range - a quarter, half and three quarters of the way
+through, every face of the three kept, since people move across a picture
+and one frame can miss them (found once per clip, whatever the preview
+asks later). A clip with no face in any of them keeps the centred crop. The
 regions are fractions of the picture as the file shows it, before the
 segment's effects. Under `Letterbox` and `Stretch` nothing is cropped and
 both are ignored.
@@ -96041,6 +96820,7 @@ cascade. The rules, with their weights:
 | `romance-scam` | 22 / 35 / 50 | A stranger's love letter — see *Romance scams* below. 50 with five signs or more, 35 with four, 22 with three |
 | `crypto-wallet-secret` | 50 | A sentence asking for a wallet's recovery (seed) phrase or private key — "verify your 12-word recovery phrase" — and not one warning never to give it |
 | `advance-fee-fraud` | 25 / 50 | A sum in the millions ("US$ 15,500,000", "10.5 million dollars") plus a dead relative / estate / money nobody claimed ("abandoned baggage"), taxes or fees to pay first, or the 419 setting (barrister, Nigeria, "strictly confidential", "your own share", "God fearing", an "ATM card" from the FBI) — 50 when two of those appear |
+| `loan-offer-fraud` | 50 / 30 / 25 | A loan, credit or project funding offered ("loan facilities", "LOAN FUNDING / FINANCING OFFER", "fund viable projects") by anyone but a bank whose own domain is proven (a registry bank with DKIM/DMARC passing): 50 with a rate, a repayment, a return or a sum ("3% yearly repayment", "USD/EURO 10M - 500M"), 30 for the bare offer; 25 when the sender proved its own (not free-mailbox) domain, or writes from a registry bank's domain nothing proved, and names terms; nothing for a proven domain's bulk mail |
 | `crypto-payment-demand` | 40 | A crypto wallet address in the text (Bitcoin `bc1…`/`1…`/`3…`, Ethereum `0x…`, TRON `T…`) — blackmail and fake invoices; not from a proven exchange, not a token inside a link |
 | `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
@@ -96187,6 +96967,7 @@ from a domain of its own. Where the brand table already reported the claim
 | Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
 | Romance scams | `romance-scam` |
 | Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
+| Loan and credit offers | `loan-offer-fraud` |
 | Letters in an agency's name | `government-impersonation` |
 | Cryptocurrency scams | `crypto-wallet-secret`, `crypto-payment-demand`, `crypto-investment-lure` |
 | Any mail about cryptocurrency | `crypto-content` (the caution strip) |
@@ -96363,7 +97144,8 @@ field filters the bin by name. The *Music* tab lists the songs, each with
 lane at the playhead. The
 *Titles* tab holds the title styles - *Opening title*, *Lower third*,
 *Caption*, *Closing card* - and a click puts one on the title lane at the
-playhead. The *Effects* tab holds the presets for the clips on the main
+playhead, or drag one onto the title lane at a time (the lane shows the
+insertion marker with the style's name; `Esc` lets go). The *Effects* tab holds the presets for the clips on the main
 track and the overlay lane (an overlay clip's effects change its own
 picture only) - a click puts one on the selected clip, or drag one onto a
 clip (the clip under the pointer shows a dashed ring and the status line
@@ -96499,7 +97281,7 @@ the engine's beats; a dropdown names the clips' own sound so the music
 dips under it the right way. **3 Style**: the transition between pictures
 and its length, *Keep faces in shot* while the camera pans over photos
 and when a clip of another shape fills the frame (the engine finds them
-in a frame from the clip's middle and crops around them),
+in three frames of the clip and crops around them),
 photos and clips of another shape whole on a blurred background (clips:
 whole, with bars), filling the frame, or whole with bars, *Captions from
 the file names*, a fade in and out. *Make video* asks the engine for the

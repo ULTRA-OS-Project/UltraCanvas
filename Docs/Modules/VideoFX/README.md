@@ -435,9 +435,11 @@ A **video clip** keeps its people the same way when the export's `fitMode`
 is `Fill` (a portrait phone clip filling a 16:9 frame loses its sides, a
 landscape clip in a portrait frame its top and bottom): `keepInView` on a
 file segment places the crop window around the regions instead of the
-picture's centre, and `keepFacesInView` finds them itself in one frame from
-the middle of the clip's used range (found once per clip, whatever the
-preview asks later). A clip with no face found keeps the centred crop. The
+picture's centre, and `keepFacesInView` finds them itself in three frames
+of the clip's used range - a quarter, half and three quarters of the way
+through, every face of the three kept, since people move across a picture
+and one frame can miss them (found once per clip, whatever the preview
+asks later). A clip with no face in any of them keeps the centred crop. The
 regions are fractions of the picture as the file shows it, before the
 segment's effects. Under `Letterbox` and `Stretch` nothing is cropped and
 both are ignored.

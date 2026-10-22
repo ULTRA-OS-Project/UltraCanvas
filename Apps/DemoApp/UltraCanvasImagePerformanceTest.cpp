@@ -1,9 +1,18 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Bitmap codec comparison benchmark: file size / encode time / decode time per format
-// Version: 2.6.0 - Choose Image offers FileLoader's picture types, through its dialog
-// Version: 2.5.9
-// Last Modified: 2026-10-13
+// Version: 2.6.1 - JPEG XL is benchmarked again wherever libvips can write it
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
+//
+// ================================================================================
+// VERSION 2.6.1 - JPEG XL BACK IN THE CODEC LIST
+// ================================================================================
+// JXL was taken out in 0.1.35 because the libvips of the day had no JPEG XL
+// support, so its column always read as failed. It is back, between TIFF and
+// BMP, and is left out of the active set (CodecAvailable) where libvips
+// cannot both save and load .jxl - Ubuntu 22.04's libvips has no libjxl,
+// 24.04's has. Tests/ImageJxlTest checks the same UCImage::Save /
+// UCImage::Load round trip this page times.
 //
 // ================================================================================
 // VERSION 2.5.7 - LEGEND ROW CENTRED HORIZONTALLY
@@ -374,11 +383,23 @@ namespace UltraCanvas {
                 { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
                 { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
                 { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
-                //{ UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
+                { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
                 { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
         };
         constexpr int kAllCodecCount =
                 sizeof(kAllCodecs) / sizeof(kAllCodecs[0]);
+
+        // Whether this build can run a codec at all. JPEG XL needs a libvips
+        // built with libjxl (Ubuntu 22.04's is not); without one its column
+        // would only ever show a failure, so it is left out of the chart.
+        bool CodecAvailable(const CodecEntry& e) {
+            if (e.format != UCImageSaveFormat::JXL || e.backend != EncoderBackend::Libvips) return true;
+#ifdef HAS_LIBVIPS
+            return VipsCanSave(".jxl") && VipsCanLoad(".jxl");
+#else
+            return false;
+#endif
+        }
 
         // ============ QOI ENCODE/DECODE VIA BUNDLED qoi.h ============
         // Encodes a libvips VImage as QOI using the bundled reference encoder.
@@ -1365,6 +1386,7 @@ namespace UltraCanvas {
             state->activeCodecIndices.reserve(kAllCodecCount);
             for (int i = 0; i < kAllCodecCount; ++i) {
                 const CodecEntry& e = kAllCodecs[i];
+                if (!CodecAvailable(e)) continue;
                 if (e.isOptional) {
                     // Currently only BMP is optional. Extend here if more
                     // optional codecs are added.

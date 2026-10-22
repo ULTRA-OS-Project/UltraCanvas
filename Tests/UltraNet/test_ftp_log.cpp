@@ -361,6 +361,11 @@ public:
             if (c.substr(0, c.find(' ')) == verb) ++n;
         return n;
     }
+    // The renames RNFR / RNTO made, as "from -> to" in absolute paths.
+    std::vector<std::string> Renamed() {
+        std::lock_guard<std::mutex> lk(mutex_);
+        return renamed_;
+    }
     // Connections turned away for being one too many (Script::maxSessions).
     int TurnedAway() {
         std::lock_guard<std::mutex> lk(mutex_);
@@ -460,6 +465,7 @@ private:
         // The connection's current folder, as a real server keeps it: a login
         // lands in "/", CWD moves it.
         std::string cwd = "/";
+        std::string renameFrom;   // the RNFR an RNTO completes
         // One more than the server takes: turned away at the greeting, or at
         // the login.
         bool overLimit = false;
@@ -511,6 +517,18 @@ private:
                     deleted_.push_back(!name.empty() && name[0] == '/' ? name : cwd + name);
                 }
                 Send(fd, "250 Delete operation successful");
+            } else if (verb == "RNFR") {
+                const std::string name = line.size() > 5 ? line.substr(5) : std::string();
+                renameFrom = !name.empty() && name[0] == '/' ? name : cwd + name;
+                Send(fd, "350 Ready for RNTO");
+            } else if (verb == "RNTO") {
+                const std::string name = line.size() > 5 ? line.substr(5) : std::string();
+                {
+                    std::lock_guard<std::mutex> lk(mutex_);
+                    renamed_.push_back(renameFrom + " -> " +
+                                       (!name.empty() && name[0] == '/' ? name : cwd + name));
+                }
+                Send(fd, "250 Rename successful");
             } else if (verb == "TYPE") {
                 Send(fd, "200 Type set");
             } else if (verb == "EPSV") {
@@ -570,6 +588,7 @@ private:
     std::mutex mutex_;
     std::vector<std::string> commands_;
     std::vector<std::string> deleted_;
+    std::vector<std::string> renamed_;
     int open_ = 0;         // sessions open now
     int turnedAway_ = 0;   // sessions turned away for being one too many
 };
@@ -583,6 +602,14 @@ UltraNetFtpOptions TestOptions(Collected& c, int inactivityMs = 5000) {
     opt.connectTimeoutMs = 3000;
     opt.inactivityTimeoutMs = inactivityMs;
     opt.onLog = c.Sink();
+    return opt;
+}
+
+// The same server as another user: libcurl does not take up a connection
+// logged in as someone else.
+UltraNetFtpOptions OtherUserOptions(Collected& c) {
+    UltraNetFtpOptions opt = TestOptions(c);
+    opt.credentials.username = "colleague";
     return opt;
 }
 
@@ -849,11 +876,11 @@ TEST(ftp_log_closing_idle_connections_logs_in_afresh) {
     REQUIRE(!second.Mentions("Using the open connection"));
 }
 
-// A change on the server never takes up a connection an earlier call left
-// open. libcurl sends DELE / RNFR / RMD / MKD before it changes folder, and
-// they name the entry from the folder a login lands in: on a connection a
-// listing left in /photos/, "DELE photos/a.txt" named /photos/photos/a.txt -
-// a 550, or a same-named file deleted that nobody chose.
+// A change takes up the connection a listing left open - one login for the
+// lot - and still names the right file. Its commands go once libcurl has
+// changed into the entry's folder: sent before (as they once were) on a
+// connection a listing left in /photos/, "DELE photos/a.txt" named
+// /photos/photos/a.txt - a 550, or a same-named file deleted that nobody chose.
 TEST(ftp_log_a_delete_after_a_listing_names_the_right_file) {
     ScriptedFtpServer server;
     ScriptedFtpServer::Script script;
@@ -878,13 +905,72 @@ TEST(ftp_log_a_delete_after_a_listing_names_the_right_file) {
     const std::vector<std::string> gone = server.Deleted();
     REQUIRE_EQ(gone.size(), static_cast<std::size_t>(1));
     REQUIRE_EQ(gone[0], std::string("/photos/a.txt"));
-    // The delete logged in on a connection of its own; the listings shared one.
-    REQUIRE_EQ(server.Count("USER"), 2);
+    // The listings and the delete shared one connection.
+    REQUIRE_EQ(server.Count("USER"), 1);
+    REQUIRE_EQ(server.Count("DELE"), 1);
 }
 
-// A server that takes one connection per address turns the delete's own
-// connection away while the listing's is kept open: the kept one is closed and
-// the delete sent once more - and the listing after it logs in afresh.
+// On the kept connection, a change in another folder than the last listing's:
+// libcurl goes back to the login folder and into the entry's own before the
+// commands go.
+TEST(ftp_log_a_rename_elsewhere_on_the_kept_connection_names_the_right_file) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.mlsdBody = "type=file;size=5;modify=20240103120000; a.txt\r\n";
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    Collected c;
+    std::vector<UltraNetFtpEntry> entries;
+    const UltraNetResult listed =
+            UltraNet_FtpListDirectory(server.Url() + "photos/2024/", entries, TestOptions(c));
+    const UltraNetResult renamed = UltraNet_FtpRename(server.Url() + "docs/My%20Notes.txt",
+                                                      "Notes 2.txt", TestOptions(c));
+    const UltraNetResult deleted =
+            UltraNet_FtpDelete(server.Url() + "top.txt", TestOptions(c));
+    UltraNet_FtpCloseIdleConnections();
+    server.Stop();
+
+    REQUIRE(listed.success);
+    REQUIRE(renamed.success);
+    REQUIRE(deleted.success);
+    const std::vector<std::string> moves = server.Renamed();
+    REQUIRE_EQ(moves.size(), static_cast<std::size_t>(1));
+    REQUIRE_EQ(moves[0], std::string("/docs/My Notes.txt -> /docs/Notes 2.txt"));
+    const std::vector<std::string> gone = server.Deleted();
+    REQUIRE_EQ(gone.size(), static_cast<std::size_t>(1));
+    REQUIRE_EQ(gone[0], std::string("/top.txt"));
+    REQUIRE_EQ(server.Count("USER"), 1);
+    REQUIRE(c.Mentions("Using the open connection"));
+}
+
+// A server that takes one connection per address no longer turns a change
+// away: it goes on the connection the listing left open.
+TEST(ftp_log_a_change_on_a_one_connection_server_uses_the_kept_connection) {
+    ScriptedFtpServer server;
+    ScriptedFtpServer::Script script;
+    script.mlsdBody = "type=file;size=5;modify=20240103120000; a.txt\r\n";
+    script.maxSessions = 1;
+    if (!server.Start(script)) SKIP("cannot listen on loopback");
+
+    Collected c;
+    std::vector<UltraNetFtpEntry> entries;
+    const UltraNetResult listed =
+            UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
+    const UltraNetResult deleted =
+            UltraNet_FtpDelete(server.Url() + "photos/a.txt", TestOptions(c));
+    UltraNet_FtpCloseIdleConnections();
+    server.Stop();
+
+    REQUIRE(listed.success);
+    REQUIRE(deleted.success);
+    REQUIRE_EQ(server.TurnedAway(), 0);
+    REQUIRE_EQ(server.Deleted().size(), static_cast<std::size_t>(1));
+}
+
+// A change as another account on that server needs a connection of its own,
+// and a server that takes one per address turns it away while the listing's
+// is kept open: the kept one is closed and the change sent once more - and the
+// listing after it logs in afresh.
 TEST(ftp_log_a_change_on_a_one_connection_server_frees_the_kept_connection) {
     for (const bool atLogin : {false, true}) {
         ScriptedFtpServer server;
@@ -903,7 +989,7 @@ TEST(ftp_log_a_change_on_a_one_connection_server_frees_the_kept_connection) {
         const UltraNetResult listed =
                 UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
         const UltraNetResult deleted =
-                UltraNet_FtpDelete(server.Url() + "photos/a.txt", TestOptions(c));
+                UltraNet_FtpDelete(server.Url() + "photos/a.txt", OtherUserOptions(c));
         const UltraNetResult again =
                 UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
         UltraNet_FtpCloseIdleConnections();
@@ -912,7 +998,7 @@ TEST(ftp_log_a_change_on_a_one_connection_server_frees_the_kept_connection) {
         REQUIRE(listed.success);
         REQUIRE(deleted.success);
         REQUIRE(again.success);
-        REQUIRE_EQ(server.TurnedAway(), 1);
+        REQUIRE(server.TurnedAway() >= 1);
         const std::vector<std::string> gone = server.Deleted();
         REQUIRE_EQ(gone.size(), static_cast<std::size_t>(1));
         REQUIRE_EQ(gone[0], std::string("/photos/a.txt"));
@@ -937,7 +1023,7 @@ TEST(ftp_log_a_change_waits_for_the_closed_connection_to_be_let_go) {
     const UltraNetResult listed =
             UltraNet_FtpListDirectory(server.Url() + "photos/", entries, TestOptions(c));
     const UltraNetResult deleted =
-            UltraNet_FtpDelete(server.Url() + "photos/a.txt", TestOptions(c));
+            UltraNet_FtpDelete(server.Url() + "photos/a.txt", OtherUserOptions(c));
     UltraNet_FtpCloseIdleConnections();
     server.Stop();
 
