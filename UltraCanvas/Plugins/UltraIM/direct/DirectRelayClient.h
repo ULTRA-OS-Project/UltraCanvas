@@ -1,7 +1,7 @@
 // Plugins/UltraIM/direct/DirectRelayClient.h
 // ChatCube Direct - the relay's REST API and its WebSocket, over UltraNet
-// Version: 0.1.0
-// Last Modified: 2026-10-21
+// Version: 0.1.1 - an address without a scheme is https://; a redirect is followed with its body
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,13 +36,18 @@ public:
     RelayClient();
     ~RelayClient();
 
-    // "https://relay.example.org" (or "http://127.0.0.1:8790" for a local test relay).
+    // "https://relay.example.org" (or "http://127.0.0.1:8790" for a local test
+    // relay). An address without a scheme ("relay.example.org") is https://.
     void SetBaseUrl(const std::string& url);
     std::string GetBaseUrl() const;
     void SetToken(const std::string& token);
     // "sha256//<base64>" for a self-hosted relay trusted by key.
     void SetPinnedPublicKey(const std::string& pin);
 
+    // A relay that redirects (http:// to https://, or a new host) is followed
+    // by this client, body and all, and its new address kept: GetBaseUrl()
+    // says where it settled. libcurl's own following would drop a POST's body
+    // and keep its method, and the relay would answer 422.
     void Request(const std::string& method, const std::string& path,
                  const UltraCanvas::JSONValue* body, RelayCallback onDone);
 
@@ -63,6 +68,9 @@ public:
     struct Shared;
 
 private:
+    void Send(const std::string& method, const std::string& path,
+              std::shared_ptr<const UltraCanvas::JSONValue> body, RelayCallback onDone,
+              int redirectsLeft);
     void SocketLoop();
 
     std::shared_ptr<Shared> shared_;

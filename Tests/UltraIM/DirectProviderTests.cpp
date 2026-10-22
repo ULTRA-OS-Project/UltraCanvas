@@ -2,12 +2,13 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
-// Version: 0.1.0
-// Last Modified: 2026-10-21
+// Version: 0.1.1 - TestRelayRedirect: the relay behind a redirector
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "DirectCrypto.h"
 #include "DirectProvider.h"
+#include "DirectRelayClient.h"
 #include "DirectStore.h"
 
 #include "UltraCanvasPathUtf8.h"
@@ -257,6 +258,93 @@ struct Relay {
         }
     }
 };
+
+// Answers every request with a 301 to the same path on the relay, as an
+// nginx in front of it does from http:// to https://.
+struct Redirector {
+    pid_t pid = -1;
+    std::string url;
+
+    bool Start(const std::string& target) {
+        const int port = 40000 + static_cast<int>(::getpid() % 20000);
+        url = "http://127.0.0.1:" + std::to_string(port);
+        const std::string script =
+            "import sys\n"
+            "from http.server import BaseHTTPRequestHandler, HTTPServer\n"
+            "class H(BaseHTTPRequestHandler):\n"
+            "    def go(self):\n"
+            "        n = int(self.headers.get('Content-Length') or 0)\n"
+            "        if n: self.rfile.read(n)\n"
+            "        self.send_response(301)\n"
+            "        self.send_header('Location', sys.argv[2] + self.path)\n"
+            "        self.send_header('Content-Length', '0')\n"
+            "        self.end_headers()\n"
+            "    do_GET = do_POST = go\n"
+            "    def log_message(self, *a): pass\n"
+            "HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()\n";
+        pid = fork();
+        if (pid == 0) {
+            execlp("python3", "python3", "-c", script.c_str(), std::to_string(port).c_str(), target.c_str(),
+                   static_cast<char*>(nullptr));
+            _exit(127);
+        }
+        for (int i = 0; i < 100; ++i) {
+            UltraNetResponse response;
+            UltraNetHttpOptions options;
+            options.timeoutMs = 1000;
+            options.followRedirects = false;
+            if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 301) return true;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        Stop();
+        return false;
+    }
+    void Stop() {
+        if (pid > 0) {
+            kill(pid, SIGTERM);
+            waitpid(pid, nullptr, 0);
+            pid = -1;
+        }
+    }
+};
+
+// A relay behind a redirect: the client follows it with the body (libcurl
+// would drop a POST's body, and the relay answer 422) and keeps the new
+// address; a bare host is https://.
+void TestRelayRedirect(const std::string& relayUrl) {
+    RelayClient bare;
+    bare.SetBaseUrl("relay.example.org/");
+    CHECK(bare.GetBaseUrl() == "https://relay.example.org");
+
+    Redirector redirector;
+    CHECK(redirector.Start(relayUrl));
+    RelayClient client;
+    client.SetBaseUrl(redirector.url);
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false;
+    RelayResponse answer;
+    UltraCanvas::JSONValue body = UltraCanvas::JSONValue::MakeObject();
+    body.Set("public_key", UltraCanvas::JSONValue("not base64!"));
+    body.Set("display_name", UltraCanvas::JSONValue("Carol"));
+    body.Set("signature", UltraCanvas::JSONValue("not base64!"));
+    client.Request("POST", "/v1/register", &body, [&](const RelayResponse& r) {
+        std::lock_guard<std::mutex> lock(mutex);
+        answer = r;
+        done = true;
+        cv.notify_all();
+    });
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        CHECK(cv.wait_for(lock, std::chrono::seconds(30), [&]() { return done; }));
+    }
+    // The relay read the body: it refuses the key (400), not the request (422).
+    CHECK(answer.status == 400);
+    CHECK(answer.body["error"].GetString() == "invalid_request");
+    CHECK(client.GetBaseUrl() == relayUrl);
+    client.Stop();
+    redirector.Stop();
+}
 #endif
 
 bool IsDelivered(const UltraIMEvent& e, const std::string& clientId, UltraIMDeliveryStatus status) {
@@ -642,6 +730,7 @@ void TestEndToEnd() {
         return;
     }
     CHECK(UltraRtc_Initialize());
+    TestRelayRedirect(relay.url);
 
     ProviderTimings fast;
     fast.relayFallbackMs = 4000;
