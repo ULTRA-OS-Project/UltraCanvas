@@ -3953,6 +3953,9 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.canOAuth        = !provider.empty();
         fields.providerName    = provider.empty() ? std::string()
                                                    : OAuthProviderDisplayName(provider);
+        // A password account must retype its password when the protocol
+        // changes; one on OAuth2 tokens keeps signing in with them.
+        fields.signedInWithOAuth = vault_.HasOAuthTokens(accountId);
         // The red "Delete account" button in the settings dialog's bottom row.
         // It closes the page, then HandleDeleteAccount runs the confirm-and-remove.
         fields.onDelete = [this, accountId]() { HandleDeleteAccount(accountId); };

@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.8.2 - switching a password account between IMAP and JMAP asks
+//                  for the password again: a warning on the switch, and Save /
+//                  "Save anyway" wait for it
 // Version: 0.8.1 - the outgoing server is optional for a JMAP account (it
 //                  sends through JMAP); the port's security nudge leaves a
 //                  disabled security dropdown alone
@@ -436,13 +439,52 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     content->AddChild(note);
     note->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+    // Validation feedback, in place. It grows into the column's spare vertical
+    // space so a long sign-in error wraps across as many lines as it needs
+    // instead of being clipped to one line. (Added below the note; made here
+    // for the protocol switch's password warning.)
+    auto status = Theme::MakeText("srvStatus", "", Theme::kSizeBody, Theme::kWaitingText);
+    status->SetWrap(TextWrap::WrapWord);
+    status->SetAlignment(TextAlignment::Left);
+
+    // A password account switched to the other protocol needs its password
+    // typed again: the stored one was the old server's, and a JMAP server
+    // often takes its own app password or API token - kept, the switched
+    // account cannot sign in. An account signed in with OAuth2 keeps its
+    // tokens. The page says so on the switch and Save asks for it.
+    const MailProtocol savedProtocol = prefill.imap.protocol;
+    const bool passwordAccount = passInput && !account.signedInWithOAuth;
+    auto passwordWarning = std::make_shared<std::string>();
+    auto needsPassword = [passwordAccount, savedProtocol](MailProtocol chosen) {
+        return passwordAccount && chosen != savedProtocol;
+    };
+    auto showPasswordNeeded = [passInput, status, passwordWarning, savedProtocol](
+            MailProtocol chosen, bool needed) {
+        if (needed) {
+            passInput->SetPlaceholder("Required: the password for the " + ProtocolName(chosen)
+                                      + " server");
+            *passwordWarning = "The protocol changes from " + ProtocolName(savedProtocol)
+                + " to " + ProtocolName(chosen) + ": enter the password again. The "
+                "stored password is not used for the new protocol (a JMAP server often "
+                "wants its own app password or API token), so without it the account "
+                "cannot connect.";
+            status->SetTextColor(Theme::kWaitingText);
+            status->SetText(*passwordWarning);
+        } else if (passInput) {
+            passInput->SetPlaceholder("Leave blank to keep the current password");
+            if (!passwordWarning->empty() && status->GetText() == *passwordWarning)
+                status->SetText("");
+            passwordWarning->clear();
+        }
+    };
+
     // Switching the protocol: the incoming rows say which one, a port that
     // was the other protocol's usual one becomes this one's (a typed
     // unusual port stays), the security is fixed to HTTPS for JMAP, and the
     // sign-in methods are the ones the protocol has. Siblings, not the
     // dropdown itself, are captured - no cycle.
-    protocol->onSelectionChanged = [imap, imapAuth, note, smtpPlaceholder](int index,
-                                                                           const DropdownItem&) {
+    protocol->onSelectionChanged = [imap, imapAuth, note, smtpPlaceholder, needsPassword,
+                                    showPasswordNeeded](int index, const DropdownItem&) {
         const MailProtocol chosen = ProtocolAt(index);
         smtpPlaceholder(chosen);
         const MailProtocol other  = chosen == MailProtocol::Jmap ? MailProtocol::Imap
@@ -465,14 +507,9 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                 DefaultPort(chosen, SecurityAt(imap.security->GetSelectedIndex()))));
         FillAuthChoices(*imapAuth.method, chosen, false, SelectedAuth(*imapAuth.method));
         note->SetText(NoteFor(chosen));
+        showPasswordNeeded(chosen, needsPassword(chosen));
     };
 
-    // Validation feedback, in place. It grows into the column's spare vertical
-    // space so a long sign-in error wraps across as many lines as it needs
-    // instead of being clipped to one line.
-    auto status = Theme::MakeText("srvStatus", "", Theme::kSizeBody, Theme::kWaitingText);
-    status->SetWrap(TextWrap::WrapWord);
-    status->SetAlignment(TextAlignment::Left);
     content->AddChild(status);
     status->layoutItem.SetFlexGrow(1);
     status->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -604,9 +641,19 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     Theme::FitToLabel(anywayBtn, 130);
     Theme::StyleSecondary(anywayBtn);
     anywayBtn->SetVisible(false);
-    anywayBtn->onClick = [dlg, collect, result]() {
+    // Save and "Save anyway" both need the password a protocol switch asks
+    // for: saved without it, the account could not connect. (The OAuth
+    // button signs in through the browser instead.)
+    auto passwordMissing = [needsPassword, showPasswordNeeded, passInput](const Result& r) {
+        if (!needsPassword(r.settings.imap.protocol) || !r.newPassword.empty()) return false;
+        showPasswordNeeded(r.settings.imap.protocol, true);
+        passInput->SetFocus(true);
+        return true;
+    };
+    anywayBtn->onClick = [dlg, collect, result, passwordMissing]() {
         Result r;
         if (!collect(r)) return;
+        if (passwordMissing(r)) return;
         *result = r;
         dlg->CloseDialog(DialogResult::OK);
     };
@@ -624,9 +671,11 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     UltraCanvasButton* save   = saveBtn.get();
     UltraCanvasButton* anyway = anywayBtn.get();
     UltraCanvasButton* details = detailsBtn.get();
-    saveBtn->onClick = [weak, collect, result, verify, status, save, anyway, details, diagnostics]() {
+    saveBtn->onClick = [weak, collect, result, verify, status, save, anyway, details, diagnostics,
+                        passwordMissing]() {
         Result r;
         if (!collect(r)) return;
+        if (passwordMissing(r)) return;
         auto dlg = weak.lock();
         if (!dlg) return;
         if (!verify) {

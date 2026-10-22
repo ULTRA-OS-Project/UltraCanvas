@@ -11,6 +11,9 @@
 // display-name row above the servers, and - for a password account - a
 // password row, or - for an OAuth account - a "Sign in again" button - and a
 // Signature row whose "Edit signature…" button opens the signature editor.
+// Version: 0.6.1 - a password account switched between IMAP and JMAP must
+//                  enter its password again (AccountFields::signedInWithOAuth
+//                  exempts an OAuth2 account)
 // Version: 0.6.0 - the Protocol row: IMAP or JMAP for the incoming server
 // Version: 0.5.0 - the Signature row (account settings page)
 // Version: 0.4.0 - an authentication method per server
@@ -40,6 +43,9 @@ public:
         bool        acceptsPassword = true;// show the password field
         bool        canOAuth = false;      // show the "Sign in with <provider>" button
         std::string providerName;          // OAuth button label, e.g. "Google"
+        // The account signs in with stored OAuth2 tokens, not its password:
+        // a protocol switch then does not ask for the password again.
+        bool        signedInWithOAuth = false;
         // When set (account settings only), a red "Delete account" button is
         // shown in the bottom row; clicking it closes this page and runs the
         // callback, which owns the confirm-and-remove flow.
