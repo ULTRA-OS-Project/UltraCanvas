@@ -26,7 +26,7 @@
 #include <map>
 #include <variant>
 #include "UltraCanvasPathUtf8.h"
-#include "UltraCanvasFileError.h"   // FileWriteFailureReason
+#include "UltraCanvasFileError.h"   // WriteFileAtomically, FileWriteFailureReason
 #include <cerrno>
 
 namespace UltraCanvas {
@@ -2506,17 +2506,23 @@ inline double XarFloat(const std::string& text, double fallback = 0.0) {
             auto data = ExportToMemory(document, options, xarOptions);
             if (data.empty()) return false;
 
-            errno = 0;
-            std::ofstream file(UltraCanvas::PathFromUtf8(filename), std::ios::binary);
-            if (!file.is_open()) {
-                LogWarning("Failed to create XAR file: " + UltraCanvas::FileWriteFailureReason(filename, errno));
-                return false;
-            }
-            file.write(reinterpret_cast<const char*>(data.data()),
-                       static_cast<std::streamsize>(data.size()));
-            file.close();
-            if (!file) {
-                LogWarning("Failed to write XAR file: " + UltraCanvas::FileWriteFailureReason(filename, errno));
+            // Staged: the drawing goes to a temporary file beside the target and
+            // replaces it only once complete, so a write that fails partway (a
+            // full disk, a dropped network share) leaves the file that was there.
+            const std::string failure = UltraCanvas::WriteFileAtomically(
+                    filename, [&data](const std::string& staged) -> std::string {
+                errno = 0;
+                std::ofstream file(UltraCanvas::PathFromUtf8(staged), std::ios::binary);
+                if (!file.is_open())
+                    return "Failed to create XAR file: " + UltraCanvas::FileWriteFailureReason(staged, errno);
+                file.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
+                file.close();
+                if (!file)
+                    return "Failed to write XAR file: " + UltraCanvas::FileWriteFailureReason(staged, errno);
+                return std::string();
+            });
+            if (!failure.empty()) {
+                LogWarning(failure);
                 return false;
             }
             return true;
