@@ -291,6 +291,7 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
             PlaceText(x, y, r);
         };
         ShowDialog(dlg);
+        dlg->FocusText();
     };
     toolContext.selectTool = [this](ArtToolId id) { SelectTool(id); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };

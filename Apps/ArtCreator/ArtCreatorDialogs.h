@@ -3,6 +3,7 @@
 // orientation), the Text tool's entry, and Document Setup. Each is an
 // UltraCanvasWindow built out of framework elements on an
 // UltraCanvasFormLayout grid and reports through callbacks.
+// Version: 1.1.1 - ArtCreatorTextDialog::FocusText: the text field takes the keyboard on opening
 // Version: 1.1.0 - each dialog's fields on a white SectionCard over the section page, as the
 //                 right panel's; unit and orientation are segmented switches, New Drawing opens
 //                 on the preset its page matches, and the Text dialog previews the text
@@ -69,6 +70,9 @@ struct ArtCreatorTextResult {
 class ArtCreatorTextDialog : public UltraCanvasWindow {
 public:
     explicit ArtCreatorTextDialog(const ArtCreatorTextResult& initial);
+    // Puts the keyboard in the text field; call once the dialog is shown,
+    // so the text can be typed straight away.
+    void FocusText();
     std::function<void(const ArtCreatorTextResult&)> onAccept;
 private:
     void UpdatePreview();

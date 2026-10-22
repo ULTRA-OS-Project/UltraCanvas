@@ -1,5 +1,6 @@
 // Apps/ArtCreator/ArtCreatorDialogs.cpp
 // New Drawing / Document Setup and Text windows.
+// Version: 1.1.1 - the Text dialog opens with its text field focused
 // Version: 1.1.0 - cards on the section page, segmented unit and orientation, the matching
 //                 preset on open, Bold / Italic side by side and a preview of the text
 // Version: 1.0.0
@@ -310,6 +311,12 @@ ArtCreatorTextDialog::ArtCreatorTextDialog(const ArtCreatorTextResult& initial) 
         r.italic = italicBox->IsChecked();
         if (onAccept) onAccept(r);
     }, "Place"));
+}
+
+void ArtCreatorTextDialog::FocusText() {
+    if (!textInput) return;
+    SetFocusedElement(textInput.get());
+    textInput->SelectAll();
 }
 
 void ArtCreatorTextDialog::UpdatePreview() {

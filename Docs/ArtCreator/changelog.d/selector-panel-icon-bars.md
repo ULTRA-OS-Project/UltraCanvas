@@ -19,3 +19,6 @@
   orientation segmented switches, and opens on the preset the page matches
   (an A4 page used to show *Custom*). The Text dialog puts Bold and Italic
   side by side and previews the text in the chosen font, weight and slant.
+- **The Text dialog opens ready to type**: its text field has the keyboard
+  (and the previous text, if any, selected), where it used to need a click
+  first.
