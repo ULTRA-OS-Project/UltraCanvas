@@ -1,9 +1,3 @@
-#### 2026-10-22 *0.4.10*
-- **The UltraNet plug-in folder comes from UltraNet.** EmailCleaner looked for
-  `Plugins/UltraNet` beside its executable itself, with the same code as
-  UltraMail. UltraNet now does that by default, so EmailCleaner keeps only its
-  `EMAILCLEANER_PLUGIN_DIR` override, which it now reads as UTF-8.
-
 #### 2026-10-21 *0.4.9*
 - **Loan and credit offers count as financial scams.** The built-in rules
   know the loan-offer letters' wording - "loan facilities", "loan funding",
