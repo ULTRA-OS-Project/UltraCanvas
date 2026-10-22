@@ -28970,6 +28970,15 @@ rule:
   weighs above the family - otherwise an installed colour font would still
   win.
 
+Noto Color Emoji is a bitmap font: its glyphs are 109 px pictures that
+fontconfig has to scale to the size of the text. A system `fonts.conf` does
+that through its `conf.d/10-scale-bitmap-fonts.conf`; the `fonts.conf` the
+framework writes where there is none (the packaged Windows and Android
+builds) carries the same rules, and `GenerateBitmapScalingConfig()`
+(`UltraCanvasApplication.h`) hands them to a configuration made another way.
+Without them every colour emoji is drawn 109 px high, whatever the size of
+the text around it.
+
 A change applies to the applications started after it. Where the text engine
 is not fontconfig the call does nothing: macOS draws Apple Color Emoji (its
 bundles leave `media/emoji/` out), and the WebAssembly pages do not preload
@@ -98060,7 +98069,12 @@ account's own identity; the server files the sent message in Sent); an
 SMTP server entered next to it is used to send instead. Switching an
 existing account between the protocols drops the mail held for it and
 fetches it anew: the same mailbox read over the other protocol numbers its
-messages differently. The choice is stored with the other server settings
+messages differently. Switching a password account also asks for its
+password again: the page warns as soon as the other protocol is chosen, the
+password field turns *Required*, and *Save* (and *Save anyway*) wait for it -
+the stored password belonged to the old server, and a JMAP server often wants
+its own app password or API token. An account signed in with OAuth2 keeps its
+tokens and is not asked. The choice is stored with the other server settings
 of the account and shown again on its Settings page.
 
 **JMAP is found by itself.** Before the autoconfig documents (which only
@@ -99217,6 +99231,32 @@ clean, and each of those is a test in
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/list-tooltip-only-when-cut-off.md
+==============================================================================
+
+- **The message list shows a tooltip only where a cell cuts its text off.**
+  Resting the pointer on any row showed "sender <address> - unread" with the
+  date on a second line, wherever the pointer was and however much of the row
+  was readable, in a box two lines high. Now only a cell whose text did not
+  fit gets one, on one line and holding what the cell lacked: the sender's
+  name and address in *From*, the whole subject in *Subject*, the full date
+  in *Date*. A sender, subject or date shown in full gets none. The badge
+  column keeps its own tooltip (what the sender is, and why).
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/protocol-switch-asks-password.md
+==============================================================================
+
+- **Switching an account between IMAP and JMAP asks for the password again.**
+  The account settings page kept the stored password when the *Protocol*
+  changed, so an account switched to JMAP - whose server often wants its own
+  app password or API token - could be saved but not connect. Choosing the
+  other protocol on a password account now shows a warning under the fields
+  and makes the password field *Required*; *Save* and *Save anyway* wait for
+  it and put the cursor there. Switching back to the saved protocol lifts the
+  demand; an account signed in with OAuth2 keeps its tokens and is not asked.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
