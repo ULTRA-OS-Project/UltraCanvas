@@ -1877,7 +1877,8 @@ turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md
 so no icon assets are required; Rename is a serif *T* beside a text caret, as
 it edits the name rather than the file. Each button's tooltip says what it does
 and gives its shortcut - *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
-(Ctrl+X)*, *Rename (F2)*, *Delete (Del)*.
+(Ctrl+X)*, *Rename (F2)*, *Delete (Del)*. On a drive Cut is greyed out and does nothing,
+as it is in the context menu - its tooltip says to copy, then delete.
 
 A button acts on the hovered entry — or on the **whole selection** when the
 hovered entry is part of it — and, like a drag, **never changes the selection**:

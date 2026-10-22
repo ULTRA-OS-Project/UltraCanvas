@@ -13564,20 +13564,30 @@ namespace UltraCanvas {
             Rect2Di button(x, y, sz, sz);
             ctx->SetFillPaint(style.iconMenuBackground);
             ctx->FillRoundedRectangle(Rect2Dd(button), 4);
-            DrawIconMenuGlyph(ctx, a, button);
+            DrawIconMenuGlyph(ctx, a, button, IconMenuActionEnabled(a));
+            // A greyed button keeps its hit rect, so pressing it is swallowed
+            // rather than falling through to the item, and its tooltip can
+            // say why it is off.
             iconMenuHits.push_back({button, item.entryIndex, a});
             x += sz + gap;
         }
     }
 
+    bool UltraCanvasFilerWidget::IconMenuActionEnabled(IconMenuAction action) const {
+        return !(action == IconMenuAction::Cut && ShowingRemoteFolder());
+    }
+
     void UltraCanvasFilerWidget::DrawIconMenuGlyph(IRenderContext* ctx,
                                                    IconMenuAction action,
-                                                   const Rect2Di& button) {
+                                                   const Rect2Di& button,
+                                                   bool enabled) {
         // Small vector glyphs so no icon assets are required.
         double cx = button.x + button.width / 2.0;
         double cy = button.y + button.height / 2.0;
         double r = button.width * 0.26;
-        ctx->SetStrokePaint(style.iconMenuGlyphColor);
+        Color glyph = style.iconMenuGlyphColor;
+        if (!enabled) glyph.a = static_cast<uint8_t>(glyph.a * 0.35);
+        ctx->SetStrokePaint(glyph);
         ctx->SetStrokeWidth(1.4f);
         switch (action) {
             case IconMenuAction::Copy: {
@@ -14958,6 +14968,8 @@ namespace UltraCanvas {
             entry  = iconEntry;
             action = iconAction;
             text   = kIconMenuTips[iconAction];
+            if (!IconMenuActionEnabled(static_cast<IconMenuAction>(iconAction)))
+                text = "Cut is not available on a drive - copy, then delete";
         } else if (renamingIndex < 0 && !IsInInfoBar(localPoint) &&
                    hoveredSplitter < 0) {
             Point2Di content = ToContentPoint(localPoint);
@@ -16115,6 +16127,10 @@ namespace UltraCanvas {
                     size_t entryIdx = 0;
                     int action = IconMenuActionAt(local, entryIdx);
                     if (action >= 0) {
+                        // A greyed button (Cut on a drive) swallows the press
+                        // and does nothing, like a greyed menu item.
+                        if (!IconMenuActionEnabled(static_cast<IconMenuAction>(action)))
+                            return true;
                         // The buttons act on the hovered entry — or on the
                         // whole selection when that entry is part of it — and
                         // never change the selection themselves: pressing one
