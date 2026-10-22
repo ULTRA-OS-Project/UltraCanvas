@@ -1,7 +1,8 @@
 // Apps/DemoApp/UltraCanvasDemoExamples.cpp
 // Implementation of all component example creators
+// Version: 1.2.0 - the multi-selection tree shows the arrow expanders (TreeExpanderStyle::Chevron)
 // Version: 1.1.0
-// Last Modified: 2026-09-26
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -165,12 +166,15 @@ namespace UltraCanvas {
         };
         fileBox->AddChild(autoSelectFirstChildCheckbox);
 
-        // Multi-Selection Tree
-        auto multiBox = TreeDemoGroupBox("MultiTreeBox", 340, 50, 272, "Multi-Selection TreeView (Ctrl+Click)");
+        // Multi-Selection Tree, with the arrow expanders: an arrow pointing
+        // right on a closed row and down on an open one, instead of the +/- box.
+        auto multiBox = TreeDemoGroupBox("MultiTreeBox", 340, 50, 300, "Multi-Selection TreeView (Ctrl+Click), arrows");
         container->AddChild(multiBox);
         auto multiTree = std::make_shared<UltraCanvasTreeView>("MultiTree", 300, 200);
         multiTree->SetRowHeight(20);
         multiTree->SetSelectionMode(TreeSelectionMode::Multiple);
+        multiTree->SetExpanderStyle(TreeExpanderStyle::Chevron);
+        multiTree->SetLineStyle(TreeLineStyle::NoLine);
 
         TreeNodeData multiRoot("multi_root", "Categories");
         multiTree->SetRootNode(multiRoot);
@@ -198,6 +202,17 @@ namespace UltraCanvas {
 
         multiTree->ExpandAll();
         multiBox->AddChild(multiTree);
+
+        // The expander's look: the arrows (on), or the classic +/- box with
+        // the dotted connecting lines it is drawn with elsewhere on this page.
+        auto arrowCheckbox = TreeDemoOption("ArrowExpanderCheckbox", "Arrow expanders (SetExpanderStyle)", true);
+        arrowCheckbox->onStateChanged = [multiTree](CheckedState, CheckedState newState) {
+            const bool arrows = newState == CheckedState::Checked;
+            multiTree->SetExpanderStyle(arrows ? TreeExpanderStyle::Chevron : TreeExpanderStyle::Box);
+            multiTree->SetLineStyle(arrows ? TreeLineStyle::NoLine : TreeLineStyle::Dotted);
+            multiTree->RequestRedraw();
+        };
+        multiBox->AddChild(arrowCheckbox);
 
         // Scroll-to-top button toggle (the feature is on by default).
         auto scrollTopCheckbox = TreeDemoOption(
@@ -309,7 +324,7 @@ namespace UltraCanvas {
         // A forest (hidden root, so the sections are the top level) is the case the
         // connectors were made for: without them the rows of three open sections are
         // just indentation. The segmented control switches TreeLineStyle live.
-        auto linesBox = TreeDemoGroupBox("LinesTreeBox", 340, 338, 296, "Connecting lines (SetLineStyle)");
+        auto linesBox = TreeDemoGroupBox("LinesTreeBox", 340, 366, 296, "Connecting lines (SetLineStyle)");
         container->AddChild(linesBox);
         auto linesTree = std::make_shared<UltraCanvasTreeView>("LinesTree", 300, 190);
         linesTree->SetRowHeight(22);

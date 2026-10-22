@@ -4,4 +4,6 @@
   `SetExpanderArrowColor`, instead of the `+` / `-` in a grey square that
   every tree had. It takes the same place and the same click, so a tree
   switches without any row moving; `TreeExpanderStyle::Box` stays the
-  default. UltraDBAdmin's connection tree is the first to use it.
+  default. The demo app's TreeView page shows it on the multi-selection
+  tree, with a switch back to the box and its dotted lines; UltraDBAdmin's
+  connection tree is the first application to use it.
