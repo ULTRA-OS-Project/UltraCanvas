@@ -1580,7 +1580,11 @@ through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 engine and a model on demand and supervises the engine as a loopback
 process shared between applications; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
-chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
+chat and embeddings through it; the module's one library that draws,
+`UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
+`UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
+dialog an application shows when a service needs a model that is not on
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 
@@ -4802,7 +4806,7 @@ python3 scripts/check_ui_reuse.py --strict    # no hand-painted controls
 python3 scripts/check_callback_cycles.py      # no shared_ptr cycles in callbacks
 python3 scripts/check_path_string.py          # UTF-8 paths only
 python3 scripts/check_locale_numbers.py       # dot-decimal in file formats
-python3 scripts/check_win32_names.py          # no A/W macro collisions
+python3 scripts/check_platform_names.py       # no Win32 A/W, X11 or Objective-C name collisions
 python3 scripts/check_element_catalogue.py    # every element is on the catalogue page
 git fetch origin main && python3 scripts/check_changelog.py --base origin/main
 ```
@@ -11148,14 +11152,14 @@ UltraCanvasUIElement
 
 ```cpp
 enum class ArcEdgeType {
-    Above,     // Arc curves above the baseline (forward, default)
-    Below,     // Arc curves below the baseline (back/secondary)
+    AboveBaseline, // Arc curves above the baseline (forward, default)
+    BelowBaseline, // Arc curves below the baseline (back/secondary)
     Auto       // Above when source < target index, else below
 };
 
 enum class ArcLabelSide {
-    Below,         // Default
-    Above,
+    BelowBaseline, // Default
+    AboveBaseline,
     Alternating,   // Alternates by node index
     Vertical       // Rotated 90° descending below baseline
 };
@@ -11178,7 +11182,7 @@ enum class ArcNodeSizeMode {
 };
 
 enum class ArcValueDisplay {
-    None,          // No auto-generated apex label (default)
+    NoLabel,          // No auto-generated apex label (default)
     Value,         // Show edge weight as numeric value at apex
     Percentage     // Show edge weight as percentage of total at apex
 };
@@ -11238,7 +11242,7 @@ struct ArcDiagramStyle {
     // Labels
     float        labelFontSize = 11.0f;
     Color        labelColor    = Color(40, 40, 40, 255);
-    ArcLabelSide labelSide     = ArcLabelSide::Below;
+    ArcLabelSide labelSide     = ArcLabelSide::BelowBaseline;
 
     // Arcs
     float          arcMinWidth     = 0.5f;
@@ -11281,7 +11285,7 @@ struct ArcDiagramStyle {
     bool  emphasizeActiveLabel = true;   // bold weight on active node label
 
     // Auto value/percentage label drawn at arc apex (zenit)
-    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
+    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::NoLabel;
     int             arcValueDecimals = 1;
     float           arcValueFontSize = 10.0f;
     Color           arcValueLabelColor  = Color(40, 40, 40, 230);
@@ -11399,7 +11403,7 @@ for (const auto& e : edges) {
     ae.targetId = e.b;
     ae.weight   = e.w;
     ae.color    = Color(160, 160, 160, static_cast<uint8_t>(60 + e.w * 15));
-    ae.side     = ArcEdgeType::Above;
+    ae.side     = ArcEdgeType::AboveBaseline;
     diagram->AddEdge(ae);
 }
 
@@ -11453,7 +11457,7 @@ for (const auto& e : catEdges) {
     ArcEdge ae;
     ae.sourceId = e.a; ae.targetId = e.b;
     ae.weight   = e.w; ae.color    = e.col;
-    ae.side     = ArcEdgeType::Above;
+    ae.side     = ArcEdgeType::AboveBaseline;
     diagram->AddEdge(ae);
 }
 
@@ -11461,7 +11465,7 @@ ArcDiagramStyle s;
 s.arcHeightMode = ArcHeightMode::Semicircle;
 s.arcMinWidth   = 1.0f;
 s.arcMaxWidth   = 6.0f;
-s.labelSide     = ArcLabelSide::Below;
+s.labelSide     = ArcLabelSide::BelowBaseline;
 s.labelFontSize = 13.0f;
 s.nodeBaseSize  = 10.0f;
 s.nodePadding   = 90.0f;
@@ -11512,16 +11516,16 @@ Color green (80, 180, 80, 200);
 Color gray  (150, 150, 150, 180);
 Color violet(160, 80, 200, 180);
 
-diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true, ArcEdgeType::Above, "10"));
-diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true, ArcEdgeType::Above, "13"));
-diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true, ArcEdgeType::Above, "10"));
-diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true, ArcEdgeType::Above, "5"));
-diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true, ArcEdgeType::Above, "5"));
-diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true, ArcEdgeType::Above, "5"));
+diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true, ArcEdgeType::AboveBaseline, "10"));
+diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true, ArcEdgeType::AboveBaseline, "13"));
+diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true, ArcEdgeType::AboveBaseline, "10"));
+diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
+diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
+diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
 
 // Self-loop drawn below the baseline
 ArcEdge selfLoop = makeEdge("special","special", 3.0f, violet, true,
-                             ArcEdgeType::Below, "3");
+                             ArcEdgeType::BelowBaseline, "3");
 diagram->AddEdge(selfLoop);
 
 ArcDiagramStyle s;
@@ -11532,7 +11536,7 @@ s.arcMaxWidth      = 7.0f;
 s.showArrows       = true;
 s.arrowPosition    = ArcArrowPosition::AtMidArc;   // Arrow at apex, not at target
 s.arrowSize        = 9.0f;
-s.labelSide        = ArcLabelSide::Below;
+s.labelSide        = ArcLabelSide::BelowBaseline;
 s.labelFontSize    = 11.0f;
 s.arcLabelFontSize = 11.0f;
 s.nodeSizeMode     = ArcNodeSizeMode::Fixed;
@@ -11575,7 +11579,7 @@ for (const auto& p : knownPairs) {
     ArcEdge e;
     e.sourceId = idA; e.targetId = idB;
     e.weight = 1.0f;  e.color    = p.c;
-    e.side  = ArcEdgeType::Above;    // Known pairs above
+    e.side  = ArcEdgeType::AboveBaseline;    // Known pairs above
     diagram->AddEdge(e);
 }
 
@@ -11590,7 +11594,7 @@ for (const auto& p : novelPairs) {
     ArcEdge e;
     e.sourceId = idA; e.targetId = idB;
     e.weight = 1.0f;  e.color    = p.c;
-    e.side  = ArcEdgeType::Below;    // Novel pairs below
+    e.side  = ArcEdgeType::BelowBaseline;    // Novel pairs below
     diagram->AddEdge(e);
 }
 
@@ -11600,7 +11604,7 @@ s.arcMinWidth      = 0.8f;
 s.arcMaxWidth      = 2.0f;
 s.bundleHeightStep = 6.0f;    // Stack parallel arcs by this delta
 s.sortBySpan       = true;
-s.labelSide        = ArcLabelSide::Below;
+s.labelSide        = ArcLabelSide::BelowBaseline;
 s.labelFontSize    = 10.0f;
 s.nodeBaseSize     = 5.0f;
 s.nodePadding      = 30.0f;
@@ -19062,7 +19066,7 @@ void SetValueFormatter(std::function<std::string(double)> f);
 
 ```cpp
 enum class ChordLabelPlacement {
-    None,        // No labels
+    NoLabels,        // No labels
     Outside,     // Horizontal text just beyond the ring
     Radial       // Text runs along the radius, flipped on the left half
 };
@@ -19073,7 +19077,7 @@ enum class ChordLabelPlacement {
 - `Radial` — names run along the radius and are flipped on the left half so
   they read outward. Suits many categories or long names; the chart reserves
   the full label room above and below the ring for them.
-- `SetShowLabels(true/false)` is shorthand for `Outside` / `None`.
+- `SetShowLabels(true/false)` is shorthand for `Outside` / `NoLabels`.
 
 `SetLabelDistance` is the gap between the ring and the text (default 12 px).
 `SetLabelFont` defaults to Arial 11 normal; `SetLabelColor` to dark grey
@@ -19296,8 +19300,8 @@ chart->SetRibbonBorder(Color(255, 255, 255, 140), 1.0f);
 - `ChordFlow::isVisible` is honoured when drawing and hit testing, but the
   chart builds its flow list itself, so there is no public way to hide one
   ribbon; filter by value with `SetMinFlowValue` or set the cell to 0.
-- The X11 headers define a `None` macro; the chord chart header undefines it
-  so `ChordLabelPlacement::None` compiles.
+- No enumerator is named `None`: the X11 headers define a `None` macro, so
+  the placement that shows no label is `ChordLabelPlacement::NoLabels`.
 
 ## See also
 
@@ -19702,9 +19706,9 @@ struct CircularConnection {
 
 ```cpp
 enum class CircularTextStyle      { Horizontal, Circular, Radial, StarStyle };
-enum class ValueVisualizationType { None, Bars, CircularLine, CircularBar };
-enum class DecorativeRingType     { None, ColorHighlight, Graphics, Pattern, Gradient };
-enum class ConnectionLineType     { None, InsideCenter, OutsideRing, DirectCurve };
+enum class ValueVisualizationType { NoVisualization, Bars, CircularLine, CircularBar };
+enum class DecorativeRingType     { NoRing, ColorHighlight, Graphics, Pattern, Gradient };
+enum class ConnectionLineType     { NoLine, InsideCenter, OutsideRing, DirectCurve };
 ```
 
 ## Public API
@@ -19740,7 +19744,7 @@ enum class ConnectionLineType     { None, InsideCenter, OutsideRing, DirectCurve
 ### Connections
 | Method | Description |
 |---|---|
-| `SetConnectionLineType(type)` | Routing: `InsideCenter`, `OutsideRing`, `DirectCurve`, `None` |
+| `SetConnectionLineType(type)` | Routing: `InsideCenter`, `OutsideRing`, `DirectCurve`, `NoLine` |
 | `AddConnection(fromRing, fromCell, toRing, toCell, value)` | Add a link |
 | `SetConnectionStyle(i, style)` / `SetDefaultConnectionStyle(style)` | Styling |
 | `ClearConnections()` / `GetConnectionCount()` | Management |
@@ -24412,7 +24416,7 @@ struct DendrogramStyle {
     double defaultBranchWidth        = 1.5f;
     DendrogramLinkStyle linkStyle   = DendrogramLinkStyle::Rectangular;
 
-    ConfidenceDisplayMode confidenceMode = ConfidenceDisplayMode::None;
+    ConfidenceDisplayMode confidenceMode = ConfidenceDisplayMode::Hidden;
     double confidenceHighThreshold       = 0.80f;
     double confidenceLowThreshold        = 0.40f;
     double branchWidthMin = 0.5f, branchWidthMax = 3.5f;
@@ -24499,15 +24503,15 @@ enum class BranchColorMode {
 };
 
 enum class GroupLabelPlacement {
-    None, SidebarBracket, FloatingBadge, ArcText, LeaderCallout
+    NoLabels, SidebarBracket, FloatingBadge, ArcText, LeaderCallout
 };
 
 enum class GroupFillMode {
-    None, BandFill, SectorFill, ConvexHull
+    NoFill, BandFill, SectorFill, ConvexHull
 };
 
 enum class ConfidenceDisplayMode {
-    None, LineThickness, LineDash, NodeDot, LineThicknessAndDot
+    Hidden, LineThickness, LineDash, NodeDot, LineThicknessAndDot
 };
 
 // NEW in 1.5.0 - how a node dot's radius is derived
@@ -33999,7 +34003,7 @@ UltraCanvasUIElement
 
 - **Rich shape vocabulary:** Rectangle, RoundedRectangle, Diamond, Oval, Circle, Parallelogram, Hexagon, Triangle, Star, Ellipse, Process, Decision, ManualInput, Document, Database, Cloud, StickyNote, Actor.
 - **Connection styles:** `Straight`, `Orthogonal` (A* obstacle-aware), `Curved`.
-- **Arrow heads:** `None`, `Arrow`, `ArrowFilled`, `Diamond`.
+- **Arrow heads:** `NoArrow`, `Arrow`, `ArrowFilled`, `Diamond`.
 - **Line styles:** `Solid`, `Dashed`, `Dotted`, `DashDot`.
 - **Themes:** `Default`, `Professional`, `Colorful`, `Minimal`, `Dark`.
 - **Edit modes:** Select / move / connect / create / pan with built-in mode switching.
@@ -34215,7 +34219,7 @@ enum class FlowChartShape {
 };
 
 enum class FlowChartConnectionStyle { Straight, Orthogonal, Curved };
-enum class FlowChartArrowStyle      { None, Arrow, ArrowFilled, Diamond };
+enum class FlowChartArrowStyle      { NoArrow, Arrow, ArrowFilled, Diamond };
 enum class FlowChartLineStyle       { Solid, Dashed, Dotted, DashDot };
 enum class FlowChartTheme           { Default, Professional, Colorful, Minimal, Dark };
 ```
@@ -34272,7 +34276,7 @@ chart->SetConnectionColor("c5", Color(220, 120, 80, 255));
 
 chart->AddConnection("c6", "process3", "note1",
                      FlowChartConnectionStyle::Straight,
-                     FlowChartArrowStyle::None);
+                     FlowChartArrowStyle::NoArrow);
 chart->SetConnectionLineStyle("c6", FlowChartLineStyle::Dotted);
 chart->SetConnectionColor("c6", Color(180, 180, 180, 255));
 chart->SetConnectionWidth("c6", 1.5f);
@@ -50151,7 +50155,7 @@ enum class NestedAreaLabelPosition {
     Inside,         // Label inside the shape (default)
     Outside,        // Label outside the shape
     Tooltip,        // Label shown on hover only
-    None            // No labels
+    NoLabels            // No labels
 };
 
 enum class NestedAreaColorTheme {
@@ -54649,7 +54653,7 @@ Controls where slice labels are drawn.
 
 ```cpp
 enum class LabelPosition {
-    None,
+    NoLabels,
     Inside,
     Outside,
     Edge,
@@ -55010,7 +55014,7 @@ labelPosDropdown->onSelectionChanged = [pieChart1, pieChart2](int index, const D
         case 1: pos = LabelPosition::Inside; break;
         case 2: pos = LabelPosition::Outside; break;
         case 3: pos = LabelPosition::Edge; break;
-        case 4: pos = LabelPosition::None; break;
+        case 4: pos = LabelPosition::NoLabels; break;
         default: pos = LabelPosition::Auto;
     }
     pieChart1->SetLabelPosition(pos);
@@ -56771,9 +56775,9 @@ enum class QRPointStyle {
 
 enum class QRFinderStyle { Standard = 0, Rounded, Circle, RoundedCircle, Diamond };
 
-enum class QRLogoStyle { None = 0, Center, CenterWithBorder, CenterRounded, CenterCircle };
+enum class QRLogoStyle { NoLogo = 0, Center, CenterWithBorder, CenterRounded, CenterCircle };
 
-enum class QRGradientType { None = 0, Linear, Radial, Diagonal };
+enum class QRGradientType { NoGradient = 0, Linear, Radial, Diagonal };
 
 enum class QRImageFormat { PNG = 0, JPEG, QOI, WebP, AVIF };
 ```
@@ -56791,11 +56795,11 @@ struct QRStyleConfig {
     Color backgroundColor = Colors::White;
     Color finderColor     = Color(0, 0, 0, 0);   // transparent => use foreground
 
-    QRGradientType gradientType       = QRGradientType::None;
+    QRGradientType gradientType       = QRGradientType::NoGradient;
     Color          gradientStartColor = Colors::Black;
     Color          gradientEndColor   = Color(0, 102, 204);
 
-    QRLogoStyle              logoStyle        = QRLogoStyle::None;
+    QRLogoStyle              logoStyle        = QRLogoStyle::NoLogo;
     std::shared_ptr<UCImage> logoImage;
     float                    logoScale        = 0.20f;
     float                    logoBorderWidth  = 4.0f;
@@ -68398,7 +68402,7 @@ The root node itself is not drawn — its children form the innermost ring.
 ### SunburstLabelContent
 ```cpp
 enum class SunburstLabelContent {
-    None, Name, Value, Percentage, NameValue, NamePercentage
+    NoLabel, Name, Value, Percentage, NameValue, NamePercentage
 };
 ```
 
@@ -68414,7 +68418,7 @@ enum class SunburstLabelOrientation {
 ### SunburstShadeMode
 ```cpp
 enum class SunburstShadeMode {
-    None, LightenByDepth, DarkenByDepth
+    NoShade, LightenByDepth, DarkenByDepth
 };
 ```
 
@@ -76558,6 +76562,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | The page an application shows with nothing open yet - title, why this page, the entries opened last as buttons, the open action, a section of the app's own fields for a new thing, a status line; `PreferredHeight()` sizes the window ([doc](UltraCanvasStartPage.md)) | `UltraCanvasStartPage` | `UltraCanvasStartPage.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
+| A service needs an AI model that is not on this computer: offer the local runtime's models that fit, download the chosen one with its engine, progress, then carry on (the UltraAI module's dialog; link `UltraAI_UI`) | `UltraAI::UltraAILocalModelDialog` (`Show`, `NeedsInstall`) | `UltraAI/ui/include/UltraAILocalModelDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar, a pulsing circle or a ring of circling dots (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
@@ -85465,7 +85470,7 @@ for (const auto& app : NetworkMonitor_SummarizeByProcess(connections)) { /* … 
 
 | Type | Holds |
 |---|---|
-| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `None` until a source has named the peer) |
+| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `NoSource` until a source has named the peer) |
 | `ProcessIdentity` | `pid`, `executablePath`, `displayName` (the kernel's comm), `userName` |
 | `NetworkConnectionState` | the TCP state machine, plus `Unconnected` for a UDP socket without a fixed peer |
 | `NetworkMonitorCapabilities` | `socketTable`, `processAttribution`, `allUsers`, `connectionEvents`, `perConnectionBytes`, `dnsWithProcess`, `backendName`, `notes` |
@@ -87774,9 +87779,11 @@ against that hash only. `requires` drives the fit; without it, 1.2 x the
 files' size stands in. `tags` holding `recommended` puts a model first in
 `Recommend()` for its capability.
 
-The built-in catalogue (2026-10-20): Qwen3 4B, 1.7B and 8B for chat,
+The built-in catalogue (2026-10-21): Qwen3 4B, 1.7B and 8B for chat,
 Gemma 3 4B with vision, Qwen3 Embedding 0.6B and Nomic Embed Text v1.5 for
-embeddings.
+embeddings. Its file names and sizes were checked against the Hugging Face
+repositories on that date; the hashes are still read from the tree API at
+install time.
 
 ---
 
@@ -87876,12 +87883,17 @@ LocalRuntime::Instance().SetSettings(s);
   upstream archives are built for 13.3 and later, and a downloaded
   executable runs as it is (UltraNet sets no quarantine attribute).
 - The catalogue's hashes are taken from Hugging Face at install time until
-  they are pinned; sizes are approximate until then.
+  they are pinned; the file names and sizes were checked against the
+  repositories on 2026-10-21.
 - The gallery index is not yet signed; it is fetched over TLS from a URL
   the settings control.
-- No framework dialog and no dashboard page yet (phase 2 of the plan): an
-  application reads `"needs-install"` and asks with its own UI, or sets
-  `allow_download` after asking once.
+- The *Get a local model* dialog is the module's (`UltraAI/ui/`,
+  `UltraAILocalModelDialog.h`, library `UltraAI_UI`): an application links
+  `UltraAI_UI` beside `UltraAI_Core`, tests an error with
+  `UltraAILocalModelDialog::NeedsInstall(error)` and calls `Show(window,
+  serviceName, capability, preferredModelId, onReady)`; the dashboard's Chat
+  and Texter's Translate Selection do. The *Local models* settings page is
+  the dashboard's (`Apps/UltraAIApp/UltraAILocalModelsPage`).
 
 ==============================================================================
 FILE: Docs/Modules/UltraAI/README.md
@@ -87998,6 +88010,7 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -89127,7 +89140,7 @@ so calls stay readable and extensible; **nothing throws**.
 
 ```cpp
 enum class UltraCryptResultCode : uint8_t {
-    Success,
+    Ok,
     NotSupported,          // algorithm not available in this build
     InvalidArgument,
     InvalidKeySize,
@@ -94983,7 +94996,7 @@ provides.
 
 VirtualFSRamDisk disk;
 if (VirtualFS_CreateRamDisk("scratch", 256 * 1024 * 1024, disk)
-        == VirtualFSResult::Success) {
+        == VirtualFSResult::Ok) {
 
     // A real path: any process, any API, not just VirtualFS_*
     std::ofstream out(disk.mountPath + "/frame.raw", std::ios::binary);
@@ -99231,32 +99244,6 @@ clean, and each of those is a test in
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/list-tooltip-only-when-cut-off.md
-==============================================================================
-
-- **The message list shows a tooltip only where a cell cuts its text off.**
-  Resting the pointer on any row showed "sender <address> - unread" with the
-  date on a second line, wherever the pointer was and however much of the row
-  was readable, in a box two lines high. Now only a cell whose text did not
-  fit gets one, on one line and holding what the cell lacked: the sender's
-  name and address in *From*, the whole subject in *Subject*, the full date
-  in *Date*. A sender, subject or date shown in full gets none. The badge
-  column keeps its own tooltip (what the sender is, and why).
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/protocol-switch-asks-password.md
-==============================================================================
-
-- **Switching an account between IMAP and JMAP asks for the password again.**
-  The account settings page kept the stored password when the *Protocol*
-  changed, so an account switched to JMAP - whose server often wants its own
-  app password or API token - could be saved but not connect. Choosing the
-  other protocol on a password account now shows a warning under the fields
-  and makes the password field *Required*; *Save* and *Save anyway* wait for
-  it and put the cursor there. Switching back to the saved protocol lifts the
-  demand; an account signed in with OAuth2 keeps its tokens and is not asked.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
