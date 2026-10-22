@@ -1,7 +1,8 @@
 // OS/Android/UltraCanvasAndroidWindow.cpp
 // Android window implementation for UltraCanvas Framework.
+// Version: 1.1.0 - logs the first frame it presents, for the emulator smoke test
 // Version: 1.0.0
-// Last Modified: 2026-08-10
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -13,12 +14,14 @@
 #include "UltraCanvasDebug.h"
 
 #include <android/configuration.h>
+#include <android/log.h>
 #include <android/native_window.h>
 #include <android_native_app_glue.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <string>
 
 namespace UltraCanvas {
 
@@ -165,6 +168,14 @@ namespace UltraCanvas {
         const int copyH = std::min(srcH, buffer.height);
         auto* dstBase = static_cast<uint32_t*>(buffer.bits);
 
+        // The first frame of the process is also checked for content: a frame
+        // of one colour everywhere means nothing was drawn into it.
+        static bool firstFramePresented = false;
+        const bool firstFrame = !firstFramePresented;
+        const uint32_t firstPixel = copyW > 0 && copyH > 0
+                ? reinterpret_cast<const uint32_t*>(srcData)[0] & 0x00FFFFFFu : 0;
+        bool uniform = true;
+
         for (int y = 0; y < copyH; ++y) {
             const auto* srcRow = reinterpret_cast<const uint32_t*>(srcData + y * srcStride);
             uint32_t* dstRow = dstBase + y * buffer.stride;   // stride is in pixels
@@ -172,6 +183,7 @@ namespace UltraCanvas {
                 // Cairo xRGB words (B,G,R,X bytes on little-endian) -> the
                 // buffer's RGBX byte order: swap the R and B channels.
                 const uint32_t px = srcRow[x];
+                if (firstFrame && uniform && (px & 0x00FFFFFFu) != firstPixel) uniform = false;
                 dstRow[x] = (px & 0xFF00FF00u)
                           | ((px & 0x00FF0000u) >> 16)
                           | ((px & 0x000000FFu) << 16);
@@ -179,6 +191,18 @@ namespace UltraCanvas {
         }
 
         ANativeWindow_unlockAndPost(nativeWindow);
+
+        if (firstFrame) {
+            firstFramePresented = true;
+            // Straight to logcat, like the JNI bridge check: the emulator
+            // smoke test in android-build.yml waits for this line, and
+            // debugOutput can be switched off (debug.ultracanvas.log).
+            const std::string line = "first frame presented: " + std::to_string(copyW) +
+                    "x" + std::to_string(copyH) +
+                    (uniform ? ", one colour everywhere (nothing drawn)" : ", with content");
+            __android_log_write(uniform ? ANDROID_LOG_WARN : ANDROID_LOG_INFO,
+                                "UltraCanvas", line.c_str());
+        }
     }
 
     // ===== SURFACE LIFECYCLE (activity commands) =====
