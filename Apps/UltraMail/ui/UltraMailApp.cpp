@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.38 - a recipient suggestion's menu: Edit contact, Delete address,
+//                  Set as SPAM; blocked senders are not suggested
 // Version: 0.9.37 - the new-mail notification carries where its click leads
 //                   (launch), and UltraMail is the activator of its Windows
 //                   toasts, so a click opens the mail after the broker host
@@ -1142,11 +1144,87 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     if (contacts_.IsOpen()) contacts_.ListAll(*book);
     auto written = std::make_shared<std::map<std::string, double>>();
     store_.WeighSentRecipients(*written, static_cast<int64_t>(std::time(nullptr)));
+    // A blocked sender ("Set as SPAM", "Block this sender") is not offered:
+    // the lists as they are at each keystroke.
     view->suggestRecipients = [book, written](const std::string& query,
                                               const std::string& fieldText) {
-        return SuggestRecipients(*book, query, fieldText, 8, written.get());
+        const SenderLists lists = GetSenderLists();
+        return SuggestRecipients(*book, query, fieldText, 8, written.get(),
+                                 [&lists](const std::string& address) {
+                                     return !lists.BlockedBy(address).empty();
+                                 });
     };
     UltraCanvasWindow* raw = win.get();
+    // A suggestion's right-click menu. Each change re-reads the address book
+    // into `book`, so the field's next suggestions follow it.
+    view->editRecipientContact = [this, raw, book](const std::string& address,
+                                                   std::function<void()> done) {
+        Contact contact;
+        bool found = false;
+        if (!contacts_.IsOpen() || !contacts_.FindByEmail(address, contact, found) || !found)
+            return;
+        contactsView_.SetStore(&contacts_);
+        contactsView_.EditContact(contact, /*isNew=*/false, raw,
+            [this, book, done](const Contact&) {
+                book->clear();
+                contacts_.ListAll(*book);
+                RefreshContactIndex();
+                Refresh();   // badges
+                done();
+            });
+    };
+    view->deleteRecipientAddress = [this, raw, book](const std::string& address,
+                                                     std::function<void()> done) {
+        Contact contact;
+        bool found = false;
+        if (!contacts_.IsOpen() || !contacts_.FindByEmail(address, contact, found) || !found)
+            return;
+        // Only this address: a contact with others keeps them, one without is
+        // deleted.
+        const std::string lower = ToLowerCase(address);
+        const bool others = std::any_of(contact.emails.begin(), contact.emails.end(),
+            [&lower](const ContactEmail& e) { return ToLowerCase(e.address) != lower; });
+        const std::string name = contact.displayName.empty() ? address : contact.displayName;
+        const std::string question = others
+            ? "Delete " + address + " from the contact \"" + name + "\"?"
+            : "Delete \"" + name + "\" <" + address + "> from the address book?";
+        UltraCanvasAlert::Confirm(question, "Delete address",
+            [this, raw, book, contact, lower, others, done](bool yes) mutable {
+                if (!yes) return;
+                UltraDbResult r;
+                if (others) {
+                    auto& emails = contact.emails;
+                    emails.erase(std::remove_if(emails.begin(), emails.end(),
+                        [&lower](const ContactEmail& e) { return ToLowerCase(e.address) == lower; }),
+                        emails.end());
+                    if (std::none_of(emails.begin(), emails.end(),
+                                     [](const ContactEmail& e) { return e.primary; }))
+                        emails.front().primary = true;
+                    r = contacts_.Save(contact);
+                } else {
+                    r = contacts_.Remove(contact.id);
+                }
+                if (!r) {
+                    AlertError(raw, "The address could not be deleted.", DetailLine(r));
+                    return;
+                }
+                book->clear();
+                contacts_.ListAll(*book);
+                RefreshContactIndex();
+                contactsView_.Refresh();   // no-op unless the Contacts window is open
+                Refresh();                 // badges
+                done();
+            },
+            raw);
+    };
+    // Spam: the sender goes on the blocked list, as the sender menu's "Block
+    // this sender" does - its mail is judged again, and it is not suggested.
+    view->markRecipientSpam = [this](const std::string& address, std::function<void()> done) {
+        const std::string entry = SenderLists::Entry(address, /*blockList=*/true);
+        if (entry.empty()) return;
+        HandleSenderListChange(entry, /*blockList=*/true, /*add=*/true);
+        done();
+    };
     // Sent, or safely queued in the outbox: the window has done its job. It
     // stays open when the message was not queued (no recipient, no outbox),
     // so nothing typed is lost. The send's own result (sent / waiting in the

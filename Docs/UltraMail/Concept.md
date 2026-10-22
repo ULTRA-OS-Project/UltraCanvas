@@ -246,7 +246,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 
 - **To/Cc/Bcc** rows using `CreateEmailInput` with autocomplete fed by
   the collected-addresses book (3.2); recipients render as removable
-  chips; Cc/Bcc rows hidden until requested.
+  chips; Cc/Bcc rows hidden until requested. No-reply and blocked
+  addresses are never offered; a suggestion's right-click menu edits its
+  contact, deletes the address or sets the sender as spam (blocked).
 - **Body** — `UltraCanvasTextArea` in `MarkdownHybrid` mode: the user
   writes comfortable rich text (bold, lists, links, quoting) and
   UltraMail sends `multipart/alternative` with a generated HTML part

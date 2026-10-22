@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.11.0 - a recipient suggestion's right-click menu: Edit contact,
+//                   Delete address, Set as SPAM
 // Version: 0.10.1 - the cloud link picker gets the shared cloud service
 // Version: 0.10.0 - To / Cc / Bcc complete names and addresses from the address book
 // Version: 0.9.0 - a Bcc toggle beside Cc shows the Bcc row; a draft with blind
@@ -124,6 +126,12 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
             for (const auto& s : suggestRecipients(query, text))
                 items.emplace_back(s.recipient, CompleteRecipient(text, s.recipient));
             return items;
+        };
+        // A right click on a suggestion: what to do with that address, without
+        // writing to it.
+        field->onItemContextMenu = [this, weak](int, const AutoCompleteItem& item,
+                                                const UCEvent& event) {
+            if (auto f = weak.lock()) ShowRecipientMenu(f, RecipientAddress(item.text), event);
         };
         field->onItemSelected = [weak](int, const AutoCompleteItem& item) {
             auto f = weak.lock();
@@ -401,6 +409,42 @@ void ComposeView::ChooseCloudLink() {
         [weak = weak_from_this()](const UltraCloud::CloudLinkPick& pick) {
             if (auto self = weak.lock()) self->InsertLink(pick.entry.name, pick.link.url);
         });
+}
+
+void ComposeView::ShowRecipientMenu(const std::shared_ptr<UltraCanvasAutoComplete>& field,
+                                    const std::string& address, const UCEvent& event) {
+    if (!parent_ || address.empty()) return;
+    if (!editRecipientContact && !deleteRecipientAddress && !markRecipientSpam) return;
+    // Once the address book or the blocked list changed: the field takes the
+    // keyboard back and shows what it now suggests. Weak: the answer can come
+    // after the window closed.
+    std::weak_ptr<UltraCanvasAutoComplete> weakField = field;
+    auto done = [weakField]() {
+        if (auto f = weakField.lock()) {
+            f->SetFocus(true);
+            f->RefreshSuggestions();
+        }
+    };
+    recipientMenu_ = std::make_shared<UltraCanvasMenu>("cRecipientMenu", 0, 0, 190, 0);
+    recipientMenu_->SetMenuType(MenuType::PopupMenu);
+    if (editRecipientContact) {
+        recipientMenu_->AddItem(MenuItemData::Action("Edit contact…", [this, address, done]() {
+            editRecipientContact(address, done);
+        }));
+    }
+    if (deleteRecipientAddress) {
+        recipientMenu_->AddItem(MenuItemData::Action("Delete address", [this, address, done]() {
+            deleteRecipientAddress(address, done);
+        }));
+    }
+    if (markRecipientSpam) {
+        recipientMenu_->AddItem(MenuItemData::Separator());
+        recipientMenu_->AddItem(MenuItemData::Action("Set as SPAM", [this, address, done]() {
+            markRecipientSpam(address, done);
+        }));
+    }
+    PopupElementSettings settings;
+    recipientMenu_->OpenMenu(event.pointerWindow, *parent_, settings);
 }
 
 Draft ComposeView::CollectDraft() const {

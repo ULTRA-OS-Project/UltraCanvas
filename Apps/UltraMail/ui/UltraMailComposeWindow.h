@@ -16,6 +16,9 @@
 // held by a shared_ptr: the answers that can come after its window closed -
 // the file and cloud pickers, the plain-text question, a Link… or Picture…
 // dialog - hold it weakly and find nothing to change.
+// Version: 0.9.0 - a right click on a recipient suggestion: Edit contact,
+//                  Delete address, Set as SPAM (editRecipientContact,
+//                  deleteRecipientAddress, markRecipientSpam)
 // Version: 0.8.1 - the cloud service is shared, and handed to the cloud link
 //                  picker as it is, so its uploads and sign-ins can hold it
 // Version: 0.8.0 - To / Cc / Bcc complete from the address book (suggestRecipients);
@@ -36,6 +39,7 @@
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasAutoComplete.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasTextArea.h"
 
 #include "UltraMailAttachmentStrip.h"
@@ -84,6 +88,16 @@ public:
     std::function<std::vector<RecipientSuggestion>(const std::string& query,
                                                    const std::string& fieldText)>
         suggestRecipients;
+    // The right-click menu of a recipient suggestion, each entry shown only
+    // when its callback is set (before Build()). Given the suggestion's bare
+    // address, and `done` to call once the address book or the blocked list
+    // changed (it may be never, when the user cancels): the field then shows
+    // its suggestions again, as they now are.
+    using RecipientAction = std::function<void(const std::string& address,
+                                               std::function<void()> done)>;
+    RecipientAction editRecipientContact;     // "Edit contact…"
+    RecipientAction deleteRecipientAddress;   // "Delete address"
+    RecipientAction markRecipientSpam;        // "Set as SPAM"
 
 private:
     Draft CollectDraft() const;
@@ -99,6 +113,9 @@ private:
     void ShowMode();
     // Formatted -> plain text, without asking.
     void SwitchToPlain();
+    // The menu of the suggestion `address` in `field`, at the pointer.
+    void ShowRecipientMenu(const std::shared_ptr<UltraCanvas::UltraCanvasAutoComplete>& field,
+                           const std::string& address, const UltraCanvas::UCEvent& event);
 
     Draft draft_;
     UltraCanvas::UltraCanvasWindowBase* parent_ = nullptr;
@@ -118,6 +135,7 @@ private:
     bool switchingMode_ = false;    // SetSelectedIndex from code, not a click
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachWrap_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu> recipientMenu_;   // a suggestion's right-click menu
 };
 
 } // namespace UltraMail
