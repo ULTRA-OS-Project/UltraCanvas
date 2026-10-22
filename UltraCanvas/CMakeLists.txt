@@ -1153,9 +1153,21 @@ if(ULTRACANVAS_ENABLE_CHARTS)
     endforeach()
     message(STATUS "Charts: compiled in [${UC_CHART_SELECTED_KEYS}], modules [${UC_CHART_MODULE_KEYS}]")
 else()
-    # Chart-free core: drop every chart source, engine included.
+    # Chart-free core: drop every chart, engine included - but not the part
+    # of Plugins/Charts that code outside it is built on. Every diagram
+    # derives from UltraCanvasChartElementBase (the Matrix and Packet
+    # diagrams draw UltraCanvasChartLegend too), the progress dialog
+    # (UltraCanvasFileLoader's, among others) shows a
+    # UltraCanvasCircularProgressChart, and those use UltraCanvasColormap.
+    # Dropped with the rest, the library still built and anything using a
+    # diagram or the progress dialog failed to link.
     list(FILTER ULTRACANVAS_CORE_SOURCES EXCLUDE REGEX "Plugins/Charts/")
-    message(STATUS "Charts: DISABLED - core contains no chart code")
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElementBase.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasCircularProgressChart.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasColormap.cpp)
+    message(STATUS "Charts: DISABLED - core keeps only the chart base the diagrams and the progress dialog use")
 endif()
 
 # Generated registration TU: always present (possibly an empty body) so apps
