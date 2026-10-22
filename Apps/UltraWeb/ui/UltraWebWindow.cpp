@@ -377,7 +377,7 @@ void UltraWebWindow::SaveDownload(const HTML::LoadedPage& page) {
             SetStatus("Downloading " + savedName + " ...");
             // The site's cookies go with it, as with the page: a file
             // behind a login is the logged-in user's.
-            const std::string cookie = SharedCookieJar()->HeaderFor(url, CookieRequest::Navigation, CookieJar::Now());
+            const std::string cookie = SharedCookieJar()->HeaderFor(url, UltraNetCookieRequest::Navigation, UltraNetCookieJar::Now());
             std::shared_ptr<Download> download = StartDownload(url, path, PostToUi,
                 [this, alive, id](int64_t received, int64_t total) {
                     if (alive.expired()) return;

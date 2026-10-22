@@ -114,7 +114,7 @@ int RunPage(const std::string& typed) {
         wake.notify_one();
     };
     // Cookies for this load only: a login wall's redirects keep theirs.
-    HTML::PageLoader loader(UltraWeb::MakePageServices(post, std::make_shared<UltraWeb::CookieJar>()));
+    HTML::PageLoader loader(UltraWeb::MakePageServices(post, std::make_shared<UltraNetCookieJar>()));
     bool done = false;
     HTML::LoadedPage result;
     loader.Load(UltraWeb::ToPageUrl(UltraWeb::UltraWebLoader::Normalise(typed)), [&](HTML::LoadedPage page) {

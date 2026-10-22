@@ -233,11 +233,9 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
 endif()
 
 # ===== ULTRAWEB COOKIES TEST =====
-# UltraWeb's cookie jar (Apps/UltraWeb/host/UltraWebCookies): Set-Cookie
-# parsing, the domain / path / Secure / SameSite / prefix rules, expiry, no
-# third-party cookies, the file kept across runs; then the page services
-# against a loopback server - a login's redirect sets a cookie and the next
-# hop sends it (POSIX only for that part).
+# UltraWeb's page services with a cookie jar (UltraNetCookieJar, whose rules
+# Tests/UltraNet tests) against a loopback server - a login's redirect sets
+# a cookie and the next hop sends it (POSIX only).
 if(TARGET UltraCanvas AND TARGET UltraNet)
     set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
     add_executable(UltraWebCookiesTest

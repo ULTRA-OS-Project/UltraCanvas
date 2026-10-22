@@ -26,9 +26,9 @@
 #include <string>
 #include <vector>
 
-namespace UltraWeb {
+class UltraNetCookieJar;
 
-class CookieJar;
+namespace UltraWeb {
 
 // Pages larger than this are refused (HTML, style sheets and pictures).
 constexpr int64_t kMaxPageBytes = 16ll * 1024 * 1024;
@@ -38,7 +38,7 @@ constexpr int kMaxRedirects = 20;
 
 // `cookies` null: no cookies are sent or kept (the headless --page).
 UltraCanvas::HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void()>)> post,
-                                                      std::shared_ptr<CookieJar> cookies = nullptr);
+                                                      std::shared_ptr<UltraNetCookieJar> cookies = nullptr);
 
 // True for an address that names a WebAssembly app rather than a page:
 // about: addresses, and paths and URLs ending in .wasm or .wat.

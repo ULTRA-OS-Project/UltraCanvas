@@ -111,7 +111,7 @@ namespace {
 // POST - turns the request into a GET without a body, as browsers do.
 struct Exchange : std::enable_shared_from_this<Exchange> {
     std::function<void(std::function<void()>)> post;
-    std::shared_ptr<CookieJar> cookies;
+    std::shared_ptr<UltraNetCookieJar> cookies;
     std::string pageUrl;          // the page a subresource is for; "" for the page itself
     std::string url;              // the address asked now
     UltraNetHttpMethod method = UltraNetHttpMethod::Get;
@@ -134,7 +134,7 @@ struct Exchange : std::enable_shared_from_this<Exchange> {
             request.headers.Set("Content-Type", contentType);
         if (cookies) {
             const std::string header =
-                cookies->HeaderFor(url, CookieJar::Classify(url, pageUrl), CookieJar::Now());
+                cookies->HeaderFor(url, UltraNetCookieJar::Classify(url, pageUrl), UltraNetCookieJar::Now());
             if (!header.empty()) request.headers.Set("Cookie", header);
         }
         auto self = shared_from_this();
@@ -146,12 +146,12 @@ struct Exchange : std::enable_shared_from_this<Exchange> {
 
     void Answered(const UltraNetResponse& response) {
         if (cookies && response.statusCode != 0) {
-            const CookieRequest kind = CookieJar::Classify(url, pageUrl);
-            const int64_t now = CookieJar::Now();
+            const UltraNetCookieRequest kind = UltraNetCookieJar::Classify(url, pageUrl);
+            const int64_t now = UltraNetCookieJar::Now();
             for (const std::string& setCookie : response.headers.GetAll("Set-Cookie"))
                 cookies->Store(url, setCookie, kind, now);
             if (cookies->TakeFlushRequest()) {
-                std::shared_ptr<CookieJar> jar = cookies;
+                std::shared_ptr<UltraNetCookieJar> jar = cookies;
                 post([jar]() { jar->Flush(); });
             }
         }
@@ -215,7 +215,7 @@ HTML::FetchResult PageAnswer(const UltraNetResponse& response, const std::string
 } // namespace
 
 HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void()>)> post,
-                                          std::shared_ptr<CookieJar> cookies) {
+                                          std::shared_ptr<UltraNetCookieJar> cookies) {
     HTML::PageLoaderServices services;
     // A page, or one of its style sheets or pictures (`pageUrl` set).
     auto get = [post, cookies](const std::string& url, const std::string& pageUrl,

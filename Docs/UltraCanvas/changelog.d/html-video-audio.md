@@ -17,6 +17,18 @@
   the loader's scheme rules (mixed content, local files) to an address the
   page loads outside the loader, and `PageUrl()` returns the address of the
   page on show.
-- **Cloud sessions install GStreamer's base and good plugins**
-  (`.claude/hooks/session-start.sh`). Without `playbin` every video player
-  opened nothing, so `HTMLMediaTest` could only check the fallback content.
+- **`UltraNetCookieJar`, a browser's cookie jar in UltraNet**
+  (`UltraNet/UltraNetCookieJar.h`). Unlike a session's libcurl cookies, the
+  caller sees every cookie and decides when they go. `Store` applies a
+  `Set-Cookie` header, and `HeaderFor` returns the `Cookie` header for a
+  request, by RFC 6265bis: expiry (at most 400 days), `Domain` and `Path`,
+  `Secure`, `SameSite` and the `__Secure-` / `__Host-` prefixes. A request
+  for another site's page (`Classify`, `SiteOf`) neither sends nor sets one.
+  The cookies with an expiry are kept in a tab-separated text file (UltraNet
+  pulls in no JSON engine). UltraWeb is its first user; its tests are in
+  `Tests/UltraNet/test_cookie_jar.cpp`.
+- **GStreamer's base and good plugins are installed on the Linux CI row and
+  in cloud sessions** (`.github/workflows/build.yml`,
+  `.claude/hooks/session-start.sh`). Without `playbin` every video player
+  opened nothing, so `HTMLMediaTest` could only check the fallback content;
+  now it plays its WAV there.

@@ -2913,6 +2913,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpEasy.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpAsync.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCookies.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCookieJar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetDns.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetUrl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetMime.cpp

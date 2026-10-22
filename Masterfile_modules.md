@@ -1561,7 +1561,10 @@ worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
-on libcurl. Remaining gaps are per-function and environment-dependent —
+on libcurl. `UltraNetCookieJar` (`UltraNet/UltraNetCookieJar.h`) is a
+browser's cookie jar with the rules in the open (RFC 6265bis: `Store`,
+`HeaderFor`, `Classify`, `SiteOf`, `ParseCookieDate`, kept in a text file),
+for a client that follows redirects itself; UltraWeb uses it. Remaining gaps are per-function and environment-dependent —
 build and run the `UltraNetApiStatus` probe tool for ground truth on a
 given machine. See `Docs/Modules/UltraNet/README.md`.
 

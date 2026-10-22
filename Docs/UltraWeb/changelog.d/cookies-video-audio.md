@@ -7,9 +7,10 @@
   prefixes). There are **no third-party cookies**: a picture from another
   site neither sends nor sets one. Redirects are followed one hop at a time,
   so the cookie a login's redirect sets goes with the next request. Cookies
-  with an expiry are kept in `<settings folder>/UltraWeb/cookies.json`, and
+  with an expiry are kept in `<settings folder>/UltraWeb/cookies.txt`, and
   session cookies end when UltraWeb quits. **Ctrl+Shift+Delete** clears them
-  all (`host/UltraWebCookies.cpp`).
+  all. The rules are UltraNet's `UltraNetCookieJar` (framework changelog:
+  `html-video-audio`).
 - **Video and audio play on pages.** `<video>` and `<audio>` show the
   framework's video player, with play / pause, seeking and volume. It plays
   http(s) streams (an https page plays no http stream), and local files on
