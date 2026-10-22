@@ -106,6 +106,9 @@ Apps/EmailCleaner/
     EmailCleanerAttachments.{h,cpp}  reads one attachment back out of the cached
                                      .eml — and refuses executables, scripts and
                                      macro-bearing documents outright
+    EmailCleanerContacts.{h,cpp}     the contacts review: UltraMail's address book
+                                     against the mail sent and received, tagged
+                                     Keep / Delete / Review, ordered by mail sent
     EmailCleanerAccounts.{h,cpp}     EmailCleaner's own accounts: their list (an
                                      UltraMail LocalStore of its own), the "add
                                      account" validation, and the inbox + junk
@@ -128,12 +131,38 @@ Apps/EmailCleaner/
                                      selected block: the live plan preview, the
                                      confirmation, the blocklist — and "this is
                                      fine" / "this is spam" with its undo list
+    EmailCleanerContactsView.{h,cpp} the Contacts page: one row per contact with
+                                     its tag, sent and received counts; the
+                                     selected rows marked red, deleted on confirm
     EmailCleanerRulesDialog.{h,cpp}  the keyword rule editor: the user's rules
                                      listed, added and removed, then saved and
                                      re-analysed in one step
   main.cpp                           entry point
   CMakeLists.txt                     EmailCleanerEngine + the EmailCleaner app
 ```
+
+## Cleaning the contact list
+
+The **Contacts** tab lists UltraMail's address book - which UltraMail fills
+with every sender it syncs - with two numbers per contact: **Sent**, the
+messages you wrote to it (the To and Cc lines of your sent mail, over every
+account), and **Received**, the messages it sent you. The list is ordered by
+Sent. Each row carries a tag:
+
+- **Keep** - you wrote to it.
+- **Delete** - you never did, and UltraMail only collected it (section Other
+  or Services). These rows start **selected and marked red**.
+- **Review** - you never wrote to it, but you filed it yourself (Family,
+  Friends, Work, Leisure or a group of your own), or it has no address. Not
+  selected.
+
+Tick or untick any row; **Delete selected…** names the contacts and asks
+before it removes them from the address book. The mail is not touched.
+
+The Sent counts need your sent mail loaded: UltraMail's accounts count what
+UltraMail has synced of the Sent folder, and an account added here downloads
+its Sent folder with **Load mail**. Sent mail is read for its recipients only;
+it is not analysed and does not appear on the map.
 
 ## How a message is judged
 
