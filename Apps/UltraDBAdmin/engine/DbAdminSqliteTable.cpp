@@ -225,6 +225,22 @@ bool TokenizeSql(const std::string& sql, std::vector<SqlToken>& out, std::string
             i = j + 2;
             continue;
         }
+        // PostgreSQL's dollar quoting, $$...$$ or $tag$...$tag$: a function
+        // body, whose ';' and BEGIN are its own. SQLite's $name parameter
+        // has no closing '$', so it stays a word.
+        if (c == '$') {
+            size_t j = i + 1;
+            while (j < n && (WordChar(static_cast<unsigned char>(sql[j])) && sql[j] != '$')) ++j;
+            const bool tagged = j < n && sql[j] == '$' && (j == i + 1 || !Digit(sql[i + 1]));
+            if (tagged) {
+                const std::string tag = sql.substr(i, j + 1 - i);
+                const size_t close = sql.find(tag, j + 1);
+                if (close == std::string::npos) { error = "a " + tag + " quote opened and never closed"; return false; }
+                out.push_back({SqlToken::Kind::String, i, close + tag.size(), sql.substr(i, close + tag.size() - i)});
+                i = close + tag.size();
+                continue;
+            }
+        }
         if (c == '"')  { if (!quoted('"', true, SqlToken::Kind::QuotedName, i)) return false; continue; }
         if (c == '`')  { if (!quoted('`', true, SqlToken::Kind::QuotedName, i)) return false; continue; }
         if (c == '[')  { if (!quoted(']', false, SqlToken::Kind::QuotedName, i)) return false; continue; }

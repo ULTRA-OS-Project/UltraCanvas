@@ -16,19 +16,44 @@ SqlRunner::~SqlRunner() {
     if (worker_.joinable()) worker_.join();
 }
 
-bool SqlRunner::Start(const std::string& script, std::function<void(const RunOutcome&)> done) {
+bool SqlRunner::Start(const std::string& script, std::function<void(const RunOutcome&)> done,
+                      const RunOptions& options) {
     bool expected = false;
     if (!running_.compare_exchange_strong(expected, true)) return false;
     // The previous run has finished (running_ was false), so its thread only
     // has to be collected.
     if (worker_.joinable()) worker_.join();
     cancelRequested_ = false;
-    Remember(script);
-    worker_ = std::thread([this, script, done = std::move(done)] {
+    if (options.remember) Remember(script);
+    worker_ = std::thread([this, script, options, done = std::move(done)] {
         RunOutcome outcome;
         outcome.script = script;
+        outcome.label = options.label;
+        outcome.transaction = options.oneTransaction;
         const auto start = std::chrono::steady_clock::now();
-        outcome.result = UltraDb_ExecBatch(connection_, script, outcome.statements);
+        if (options.oneTransaction) {
+            // Outside the batch, so the batch's statements are the file's own
+            // and "statement 12 failed" means the file's twelfth.
+            outcome.result = UltraDb_Exec(connection_, "BEGIN");
+            if (outcome.result) outcome.result = UltraDb_ExecBatch(connection_, script, outcome.statements);
+            if (outcome.result && !cancelRequested_) {
+                outcome.result = UltraDb_Exec(connection_, "COMMIT");
+                if (!outcome.result) {
+                    UltraDb_Exec(connection_, "ROLLBACK");
+                    outcome.rolledBack = true;
+                }
+            } else {
+                // SQLite may have rolled back already (an interrupt does);
+                // then this ROLLBACK finds nothing to do, which is fine.
+                UltraDb_Exec(connection_, "ROLLBACK");
+                outcome.rolledBack = true;
+                if (outcome.result) {
+                    outcome.result = UltraDbResult::Error(UltraDbResultCode::Cancelled, "stopped");
+                }
+            }
+        } else {
+            outcome.result = UltraDb_ExecBatch(connection_, script, outcome.statements);
+        }
         outcome.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
         outcome.cancelled = outcome.result.code == UltraDbResultCode::Cancelled ||
                             (cancelRequested_ && !outcome.result.success);

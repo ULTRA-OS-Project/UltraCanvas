@@ -38,8 +38,9 @@ struct SqlToken {
 
 // The tokens of SQL text, whitespace dropped, comments kept (Kind::Comment).
 // Quoting follows SQLite, which PostgreSQL shares for everything a form
-// sends: "name", `name`, [name], 'text' with doubled quotes. False, with
-// `error`, for an unterminated quote or comment.
+// sends: "name", `name`, [name], 'text' with doubled quotes - and
+// PostgreSQL's dollar quotes, $$...$$ and $tag$...$tag$, read as one string.
+// False, with `error`, for an unterminated quote or comment.
 bool TokenizeSql(const std::string& sql, std::vector<SqlToken>& out, std::string& error);
 
 // A type name or default expression typed into a form, checked to be one

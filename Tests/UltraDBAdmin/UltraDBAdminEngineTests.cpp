@@ -9,14 +9,18 @@
 // triggers, foreign keys and AUTOINCREMENT. SQLite in temporary folders; the
 // structure edits also on PostgreSQL where the tests of UltraDatabase find
 // one (ULTRAFIBU_TEST_PG_*, as CI sets them; REQUIRED makes a missing server
-// a failure, not a skip).
+// a failure, not a skip). And importing: a SQL file read and summarised and
+// run as one transaction, rows from a CSV file mapped onto a table and
+// inserted all or none.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnections.h"
 #include "DbAdminEditBuffer.h"
 #include "DbAdminFormat.h"
+#include "DbAdminImport.h"
 #include "DbAdminJobQueue.h"
 #include "DbAdminSqlRunner.h"
+#include "DbAdminSqlScript.h"
 #include "DbAdminSqliteTable.h"
 #include "DbAdminStructureEdit.h"
 #include "DbAdminTablePager.h"
@@ -68,6 +72,9 @@ struct TempDir {
     ~TempDir() { std::error_code ec; fs::remove_all(path, ec); }
     std::string Utf8() const { return UltraCanvas::PathToUtf8(path); }
 };
+
+UltraDbResultSet Rows(const std::string& c, const std::string& sql);
+bool Has(const std::string& text, const std::string& part);
 
 std::string ReadFile(const fs::path& file) {
     std::ifstream in(file, std::ios::binary);
@@ -284,6 +291,147 @@ void TestSqlRunner() {
     const std::vector<std::string> history = runner.History();
     Check(history.size() == 3, "history keeps each script once in a row (" + std::to_string(history.size()) + ")");
     Check(history.front() == "SELECT 1", "newest first");
+
+    // An imported file, as one transaction: all of it, or none of it.
+    RunOptions imported;
+    imported.oneTransaction = true;
+    imported.remember = false;
+    imported.label = "fix.sql";
+    finished = false;
+    runner.Start("UPDATE items SET label = 'imported' WHERE id = 2; INSERT INTO items(id) VALUES (2)", done, imported);
+    wait();
+    Check(!last.result.success && last.rolledBack && last.statements.size() == 2 && last.label == "fix.sql",
+          "a file whose second statement fails is rolled back, the failure being its own statement 2");
+    Check(Rows(c, "SELECT label FROM items WHERE id = 2").Row(0)["label"].AsString() == "item 2",
+          "so its first statement left nothing");
+    finished = false;
+    runner.Start("UPDATE items SET label = 'imported' WHERE id = 2; DELETE FROM items WHERE id = 3", done, imported);
+    wait();
+    Check(last.result.success && !last.rolledBack && last.transaction, "a file that runs is committed");
+    Check(Rows(c, "SELECT label FROM items WHERE id = 2").Row(0)["label"].AsString() == "imported" &&
+              Rows(c, "SELECT count(*) AS n FROM items WHERE id = 3").Row(0)["n"].AsInt64() == 0,
+          "with every statement");
+    Check(runner.History().size() == 3, "and an imported file is not in the history");
+    UltraDb_CloseConnection(c);
+}
+
+void TestSqlScript() {
+    Section("Reading a SQL file");
+    std::string script, error;
+    Check(ScriptFromBytes({0xEF, 0xBB, 0xBF, 'S', 'E', 'L', 'E', 'C', 'T', ' ', '1'}, script, error) &&
+              script == "SELECT 1",
+          "a byte-order mark is dropped");
+    Check(!ScriptFromBytes({'a', 0, 'b'}, script, error), "a file with a NUL byte is not a script");
+
+    ScriptSummary summary = SummarizeScript(
+        "-- a comment; with a semicolon\n"
+        "CREATE TABLE t(a TEXT DEFAULT ';');\n"
+        "CREATE TRIGGER tr AFTER INSERT ON t BEGIN UPDATE t SET a = 'x'; DELETE FROM t WHERE 0; END;\n"
+        "INSERT INTO t VALUES ('a;b'); DROP TABLE old; drop view v; DELETE FROM t;");
+    Check(summary.unsupported.empty() && summary.statements == 6,
+          "statements are counted past quotes, comments and a trigger's body (" +
+              std::to_string(summary.statements) + ")");
+    Check(!summary.ownTransactions, "a trigger's BEGIN is not a transaction");
+    Check(RiskyText(summary) == "2 DROP, 1 DELETE", "the risky ones, by their first word: " + RiskyText(summary));
+
+    summary = SummarizeScript("PRAGMA foreign_keys=OFF;\nBEGIN TRANSACTION;\nCREATE TABLE t(a);\nCOMMIT;\n");
+    Check(summary.ownTransactions && summary.statements == 4, "a SQLite .dump manages its own transaction");
+    summary = SummarizeScript("CREATE FUNCTION f() RETURNS int AS $body$ BEGIN RETURN 1; END; $body$ LANGUAGE plpgsql;\n"
+                              "DO $$ BEGIN PERFORM 1; END $$;");
+    Check(summary.unsupported.empty() && summary.statements == 2 && !summary.ownTransactions,
+          "a dollar-quoted body is one string: its ';' and BEGIN are its own");
+    summary = SummarizeScript("SET client_encoding = 'UTF8';\nCOPY public.t (a) FROM stdin;\n1\n\\.\n");
+    Check(!summary.unsupported.empty(), "pg_dump's COPY ... FROM stdin needs psql, and says so");
+    summary = SummarizeScript("\\connect shop\nSELECT 1;");
+    Check(!summary.unsupported.empty(), "so does a backslash command");
+    summary = SummarizeScript("SELECT 'open");
+    Check(!summary.unsupported.empty(), "and a quote never closed");
+}
+
+void TestImport() {
+    Section("Importing rows");
+    Check(NormalizeNumber("1.234,56", ',', '.') == "1234.56", "a German number is read");
+    Check(NormalizeNumber(" -1,234,567.5 ", '.', ',') == "-1234567.5", "a grouped one with a sign");
+    Check(NormalizeNumber("1,5", '.', ',').empty(), "\"1,5\" is not 15: a group has three digits");
+    Check(NormalizeNumber("12 kg", '.', ',').empty() && NormalizeNumber("2026-10-21", '.', ',').empty() &&
+              NormalizeNumber("1e", '.', ',').empty() && NormalizeNumber("", '.', ',').empty(),
+          "nor is a quantity, a date or half an exponent");
+    Check(NormalizeNumber("01067", '.', ',') == "01067" && NormalizeNumber("2.5E-3", '.', ',') == "2.5e-3",
+          "leading zeros and exponents are numbers");
+
+    CSVImportOptions options;
+    options.SetSingleSeparator(';');
+    options.decimalSeparator = ',';
+    options.thousandsSeparator = '.';
+    const std::string csv = "Name;Weight;Zip;Note\n"
+                            "apple;1.234,5;01067;\"red; sweet\"\n"
+                            "\n"
+                            "pear;0,75;10115;\n";
+    ImportGrid grid = GridFromCsv(csv, options, "fruit.csv");
+    Check(grid.rows.size() == 3 && grid.Width() == 4, "three rows, the empty line left out");
+    Check(grid.rowNumbers == std::vector<size_t>({1, 2, 4}), "each row keeps its line in the file");
+    Check(grid.rows[1][1].number == "1234.5" && grid.rows[1][3].text == "red; sweet", "numbers and quoted text");
+
+    TempDir dir;
+    ConnectionStore store;
+    store.OpenInMemory();
+    const std::string c = MakeSqlite(store, dir, 0);
+    UltraDb_Exec(c, "CREATE TABLE fruit(id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, weight REAL, "
+                    "zip TEXT, note TEXT DEFAULT 'none')");
+    UltraDbTableSchema fruit;
+    UltraDb_DescribeTable(c, "main", "fruit", fruit);
+
+    Check(GuessHeader(fruit, grid), "a first row of column names is taken for a header");
+    ImportMapping mapping = AutoMapping(fruit, grid, true);
+    Check(mapping.source == std::vector<int>({-1, 0, 1, 2, 3}), "columns are matched by name, in any case");
+    Check(FileColumnNames(grid, true)[1] == "Weight" && FileColumnNames(grid, false)[1] == "Column 2",
+          "the file's columns by their names, or by number");
+    Check(CheckMapping(fruit, grid, mapping).empty() && DataRows(grid, mapping) == 2, "two rows to import");
+    const UltraDbResultSet preview = ImportPreview(fruit, grid, mapping, 10);
+    Check(preview.Size() == 2 && preview.Columns().size() == 4 && preview.Row(0)["weight"].AsString() == "1234.5" &&
+              preview.Row(0)["zip"].AsString() == "01067" && preview.Row(1)["note"].IsNull(),
+          "the preview: a number for REAL, the text as written for TEXT, an empty cell NULL");
+
+    size_t imported = 0, failed = 0;
+    UltraDbResult result = ImportRows(c, fruit, grid, mapping, imported, failed);
+    Check(result.success && imported == 2, "the rows are imported (" + result.message + ")");
+    const UltraDbResultSet rows = Rows(c, "SELECT name, weight, typeof(weight) AS t, zip, note FROM fruit ORDER BY id");
+    Check(rows.Size() == 2 && rows.Row(0)["t"].AsString() == "real" && rows.Row(0)["weight"].AsDouble() == 1234.5 &&
+              rows.Row(0)["zip"].AsString() == "01067" && rows.Row(1)["note"].IsNull(),
+          "stored as the columns want them");
+
+    // All or none: the same file again breaks UNIQUE on its first row.
+    const std::string more = "Name;Weight\nplum;1\napple;2\n";
+    grid = GridFromCsv(more, options, "more.csv");
+    mapping = AutoMapping(fruit, grid, true);
+    result = ImportRows(c, fruit, grid, mapping, imported, failed);
+    Check(!result.success && failed == 3 && imported == 0, "a row the table refuses fails, by its line in the file");
+    Check(Rows(c, "SELECT count(*) AS n FROM fruit").Row(0)["n"].AsInt64() == 2, "and nothing of the file stays");
+
+    // No header: the file's columns in order, the numbered key left to the database.
+    grid = GridFromCsv("kiwi;0,1;;green\n", options, "kiwi.csv");
+    Check(!GuessHeader(fruit, grid), "a first row of data is not a header");
+    mapping = AutoMapping(fruit, grid, false);
+    Check(mapping.source == std::vector<int>({-1, 0, 1, 2, 3}), "a file one column short skips the numbered key");
+    mapping.emptyIsNull = false;
+    result = ImportRows(c, fruit, grid, mapping, imported, failed);
+    Check(result.success && Rows(c, "SELECT zip FROM fruit WHERE name = 'kiwi'").Row(0)["zip"].AsString().empty(),
+          "an empty cell can be empty text instead of NULL");
+
+    // An exact numeric comes back as text; its declared type says it takes numbers.
+    UltraDbColumnSchema exact;
+    exact.declaredType = "numeric(10,2)";
+    exact.valueType = UltraDbType::Text;
+    UltraDbColumnSchema text;
+    text.declaredType = "text";
+    const ImportCell german = GridFromCsv("1.234,50\n", options, "x").rows[0][0];
+    Check(ImportValue(german, exact, true).AsString() == "1234.50" && ImportValue(german, text, true).AsString() == "1.234,50",
+          "numeric(10,2) gets the number, text the text as written");
+
+    mapping.source = {-1, -1, 1, -1, -1};
+    Check(Has(CheckMapping(fruit, grid, mapping), "name"), "a NOT NULL column without a default needs a column");
+    mapping.source.assign(5, -1);
+    Check(!CheckMapping(fruit, grid, mapping).empty(), "and so does an import of nothing");
     UltraDb_CloseConnection(c);
 }
 
@@ -808,6 +956,8 @@ int main() {
     TestSqliteTable();
     TestStructureEditSqlite();
     TestStructureEditPostgres();
+    TestSqlScript();
+    TestImport();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }
