@@ -392,11 +392,17 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
         glUniform3f(glRes->uLightDirB, -0.6f, 0.3f, -0.5f);
         glUniform3f(glRes->uCameraPos, eye.x, eye.y, eye.z);
 
+        // OpenGL ES has no polygon mode, so on Android the model is drawn
+        // filled whatever the Wireframe toggle says.
+#ifndef __ANDROID__
         glPolygonMode(GL_FRONT_AND_BACK, state->wireframe ? GL_LINE : GL_FILL);
+#endif
         glBindVertexArray(glRes->vao);
         glDrawElements(GL_TRIANGLES, glRes->indexCount, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
+#ifndef __ANDROID__
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+#endif
         glUseProgram(0);
     });
 

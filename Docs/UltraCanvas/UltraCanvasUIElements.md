@@ -90,6 +90,7 @@ from an external "Show password" checkbox. See
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
+| Live pictures pushed frame by frame from any thread - a call's video, a self view (mirrored), a decoded stream; the newest frame shown, fitted (contain / cover), a caption without one | `UltraCanvasVideoTile` | `UltraCanvasVideoTile.h` |
 | Audio waveform, input level | `UltraCanvasWaveformElement`, `UltraCanvasLevelMeter` | `UltraCanvasWaveformElement.h`, `UltraCanvasAudioRecorderElement.h` |
 | A media timeline to edit: clips on tracks under a time ruler, trim, reorder, split, transitions, markers, beat marks, a playhead; every edit reported to the app, never applied | `UltraCanvasVideoTimeline` | `UltraCanvasVideoTimeline.h` (model and operations: `UltraCanvasVideoTimelineModel.h`) |
 | A timecode `HH:MM:SS:FF` to enter or show: segments stepped by the arrow keys, digits filling from the right, `+`/`-` offsets, a large read-only readout for a transport bar | `UltraCanvasTimecodeField` | `UltraCanvasTimecodeField.h` |
@@ -149,6 +150,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog — message + Markdown details, role-styled footer buttons, `AddDialogElement` / `AddFooterElement` for elements of your own; the window fits its height to the text and widens to a footer row (a checkbox and four labelled buttons) that needs more than the configured width; `ModalDialogStyle` carries the message, details and button font sizes so a host at one UI size gets dialogs at that size; `SetFollowTheme(true)` colours the dialog from the framework theme (`UltraCanvasTheme`) | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| The page an application shows with nothing open yet - title, why this page, the entries opened last as buttons, the open action, a section of the app's own fields for a new thing, a status line; `PreferredHeight()` sizes the window ([doc](UltraCanvasStartPage.md)) | `UltraCanvasStartPage` | `UltraCanvasStartPage.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | A service needs an AI model that is not on this computer: offer the local runtime's models that fit, download the chosen one with its engine, progress, then carry on (the UltraAI module's dialog; link `UltraAI_UI`) | `UltraAI::UltraAILocalModelDialog` (`Show`, `NeedsInstall`) | `UltraAI/ui/include/UltraAILocalModelDialog.h` |
@@ -256,6 +258,32 @@ are what an application reaches for. An SVG has no element of its own either:
 `UltraCanvasImageElement` shows it (through librsvg, or the Vector plugin's
 reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
+
+## Module widgets — Smart Home
+
+The Smart Home module's widgets (`SmartHome/ui`, library `SmartHomeUI`) are
+not framework elements - they are built **out of** the elements above, and
+are listed here so nobody writes a second light switch or thermostat panel.
+Each drives its device through `SmartHomeAPI` and reports through its own
+callback; each has getters for the elements inside it. More
+in [the module's overview](../Modules/Smarthome/README.md).
+
+| You need | Widget | Built from | Header |
+|---|---|---|---|
+| A dashboard of the home's devices: grid, rooms, list, scenes, automations, network | `SmartHomePanel` | segmented control, text input, button, the cards below, list view, `SmartHomeNetworkTopology` | `UltraCanvasSmartHomePanel.h` |
+| One device or scene as a press target | `SmartHomeDeviceCard`, `SmartHomeSceneCard` | drawn tiles | `UltraCanvasSmartHomePanel.h` |
+| A light's on/off, brightness, colour temperature, colour and presets | `SmartHomeLightControl` | switch, sliders, colour picker, colour swatch bar | `UltraCanvasSmartHomeDeviceControl.h` |
+| A thermostat's target and mode | `SmartHomeThermostatControl` | ring gauge, spinner, segmented control | same |
+| A lock with its battery and activity | `SmartHomeLockControl` | button, gauge bar, list view | same |
+| A blind's position, tilt and presets | `SmartHomeBlindControl` | buttons, sliders, a drawn preview | same |
+| A sensor's reading and its recent history | `SmartHomeSensorDisplay` | labels, line chart (`SensorHistoryMinimumSpan` floors its axis) | same |
+| A device's details with its control | `SmartHomeDeviceDialog` | labels, buttons, the control above | same |
+| Adding a device | `SmartHomePairingWizard` | buttons, gauge bar | same |
+| Editing a scene or an automation | `SmartHomeSceneEditor`, `SmartHomeAutomationEditor` | text input, list views, dropdown, switch, buttons | `UltraCanvasSmartHomeAdvancedWidgets.h` |
+| The radio network as a graph | `SmartHomeNetworkTopology` | `UltraCanvasNodeDiagram`, segmented control, dropdown | same |
+| Power and energy use | `SmartHomeEnergyMonitor` | line chart, segmented control, labels | same |
+| Timed events by day, week or as a list | `SmartHomeScheduler` | segmented controls, list view, buttons, a drawn week grid | same |
+| A group of devices switched together | `SmartHomeGroupControl` | buttons, sliders, list view, dropdown | same |
 
 ## Creating them
 

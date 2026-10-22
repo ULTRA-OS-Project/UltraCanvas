@@ -8,6 +8,7 @@
 // change to its model and feeds it back. With ULTRACANVAS_SCREENSHOT_DIR set
 // it also writes the window as video-timeline.ppm. Needs a display; skips
 // itself without one (runs under Xvfb).
+// Version: 1.0.2 - the carried drop's feedback
 // Version: 1.0.1
 // Last Modified: 2026-10-16
 // Author: UltraCanvas Framework
@@ -275,6 +276,25 @@ int main() {
     TEST("a drop-target clip is kept until cleared", timeline->GetDropTargetClip() == "b");
     timeline->SetDropTargetClip("");
     TEST("and cleared with an empty id", timeline->GetDropTargetClip().empty());
+    UltraCanvasVideoTimeline::DropFeedback feedback;
+    feedback.trackId = "V2"; feedback.seconds = 4.4; feedback.label = "Lower third";
+    const double marked = timeline->SetDropFeedback(feedback);
+    DisplayTest::Frame(window, {timeline});
+    TEST("a carried drop's marker lands near where it was asked for", timeline->HasDropFeedback() && marked >= 4.1 && marked <= 4.7);
+    feedback.trackId = "V1"; feedback.seconds = 2.8;
+    TEST("the magnetic track puts it on the nearest cut", Near(timeline->SetDropFeedback(feedback), 3.0, 1e-6));
+    feedback.trackId = "T9";
+    TEST("an unknown track shows no marker", timeline->SetDropFeedback(feedback) < 0.0 && !timeline->HasDropFeedback());
+    feedback.trackId.clear(); feedback.clipId = "b";
+    TEST("the clip alone is ringed, with no marker", timeline->SetDropFeedback(feedback) < 0.0 && timeline->GetDropTargetClip() == "b" && timeline->HasDropFeedback());
+    UCEvent leave;
+    leave.type = UCEventType::DragLeave;
+    timeline->OnEvent(leave);
+    TEST("and a DragLeave takes it all away", !timeline->HasDropFeedback() && timeline->GetDropTargetClip().empty());
+    feedback.trackId = "V2"; feedback.seconds = 1.0;
+    timeline->SetDropFeedback(feedback);
+    timeline->ClearDropFeedback();
+    TEST("as ClearDropFeedback does", !timeline->HasDropFeedback());
 
     std::cerr << "\n--- Selection ---" << std::endl;
     timeline->OnEvent(MouseEvent(UCEventType::MouseDown, headerW + 80.0f * 4.0f, mainY));

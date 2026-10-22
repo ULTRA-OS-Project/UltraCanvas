@@ -22,6 +22,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -182,6 +183,18 @@ UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
 
     MigrateLegacy();
     return lastStatus_ = UnlockStatus::Ok;
+}
+
+bool DeviceKeyVault::Use(const std::function<void(DeviceKeyVault& vault)>& use) {
+    // One per process (the core library), whichever module the vault is in.
+    static std::mutex turns;
+    std::lock_guard<std::mutex> lock(turns);
+    // Another vault may have opened its own file since: open ours again.
+    if (unlocked_) Lock();
+    if (!TryAutoUnlock()) return false;
+    if (use) use(*this);
+    Lock();
+    return true;
 }
 
 void DeviceKeyVault::Lock() {

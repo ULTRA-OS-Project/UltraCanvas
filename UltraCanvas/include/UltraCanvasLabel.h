@@ -4,6 +4,7 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.14.0 - the layout is an UltraCanvasTextLayoutCache: rebuilt when its inputs change, not reset by every setter
 // Version: 2.13.0 - LabelVariant (Body, Muted, Faint, Heading): FromTheme maps the theme's
 //                  ink onto a label's part; SetThemeVariant on the element
 // Version: 2.12.0 - LabelStyle::FromTheme, ApplyTheme
@@ -29,6 +30,7 @@
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasTextLayoutCache.h"
 #include "UltraCanvasEvent.h"
 #include <chrono>
 #include <string>
@@ -214,7 +216,11 @@ namespace UltraCanvas {
 
         // ===== COMPUTED LAYOUT =====
         Rect2Di textArea;
-        std::unique_ptr<ITextLayout> textLayout = nullptr;
+        // The text's layout, kept while the text, the font, the wrap, the
+        // alignment and the line height are the ones it was built with
+        // (UltraCanvasTextLayoutCache); the inline images are not in the key,
+        // and their setter resets it.
+        UltraCanvasTextLayoutCache textLayout;
         bool isMarkup = false;
 
         bool internalLayoutValid = false;

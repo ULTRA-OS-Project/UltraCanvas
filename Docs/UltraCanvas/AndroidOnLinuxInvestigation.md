@@ -75,9 +75,10 @@ It is the only option that is simultaneously official, scriptable, headless,
 version-selectable and installable from a package manager. It matters here for
 three specific reasons:
 
-- **API level shopping.** The backend's floor is API 26
-  (`ClipDescription.getTimestamp` for clipboard change detection,
-  `minSdk 26` in the Gradle template) and its ceiling assumptions are
+- **API level shopping.** The floor is API 28 (`minSdk 28` in the Gradle
+  template), set by the dependency sysroot, which vcpkg builds for 28; the
+  backend alone would need 26 (`ClipDescription.getTimestamp` for clipboard
+  change detection). Its ceiling assumptions are
   `targetSdk 34`. Only the emulator lets you install *both* ends and see where
   behaviour diverges — Android 10's clipboard-read-requires-focus rule, scoped
   storage, and SAF changes all landed between those two.
@@ -117,7 +118,7 @@ headless by default, `adb`-driven, with an optional WebRTC screen.
 
 It is better than the emulator when you need many devices per host or you are
 tracking AOSP itself. It is worse as a first step: heavier setup, and the
-version matrix (API 26 ↔ 34) that this backend actually needs is easier to get
+version matrix (API 28 ↔ 34) that this backend actually needs is easier to get
 from the SDK's image repository. Keep it on the list for later; do not start
 here.
 
@@ -181,7 +182,7 @@ Mapping the emulator/Waydroid to the features
 | SAF open (`ACTION_OPEN_DOCUMENT`) + copy-to-cache | Yes — DocumentsUI ships in the images | Yes | Also the only way to observe the documented "callers read a snapshot" consequence. |
 | `SaveContent` (`ACTION_CREATE_DOCUMENT`) | Yes | Yes | |
 | `AlertDialog` message dialogs through the nested-loop bridge | Yes | Yes | The sync-over-async pump is the riskiest concurrency code in the backend; a deadlock shows up here or nowhere. |
-| Clipboard via `ClipboardManager` | Yes | Yes, plus host clipboard integration | Test on API 26 *and* 29+ — the focus restriction on reads only exists on the latter. |
+| Clipboard via `ClipboardManager` | Yes | Yes, plus host clipboard integration | Test on API 28 *and* 29+ — the focus restriction on reads only exists on the latter. |
 | Lifecycle: background/foreground, `TERM_WINDOW`/`INIT_WINDOW` | Yes — `adb shell input keyevent HOME`, then relaunch | Yes | |
 | Rotation with `configChanges` set, and (deliberately) without | Yes — emulator rotation is one keystroke or `adb emu rotate` | Awkward | Emulator only, effectively. |
 | Back button → `WindowCloseRequest` | Yes — `adb shell input keyevent BACK` | Yes | |
@@ -205,7 +206,7 @@ README).
 
 ```sh
 # SDK command-line tools; API 30 x86_64 is a good middle target between the
-# backend's floor (26) and the Gradle template's targetSdk (34).
+# floor (28) and the Gradle template's targetSdk (34).
 sdkmanager "platform-tools" "emulator" "system-images;android-30;default;x86_64"
 avdmanager create avd -n uc-x86_64 -k "system-images;android-30;default;x86_64"
 
@@ -267,10 +268,19 @@ The stopgap this replaces, still worth knowing for a build that predates it:
 
 ## 6. CI
 
-**Do not add an emulator job yet.** The `android-check` job in
+**Written before there was an APK** (the job now exists - see the status
+below): do not add an emulator job yet. The `android-check` job in
 `.github/workflows/build.yml` is deliberately a *compile* gate, and adding a
 runtime job that can only ever be skipped would undo the discipline it encodes.
 The moment an APK is reproducible, the job below becomes worth its minutes.
+**Status:** done. The `emulator` job in `.github/workflows/android-build.yml`
+installs the `UltraCanvasDemo-x86_64` artifact on an API 30 emulator and runs
+`scripts/android-emulator-smoke.sh`, which passes only on the window backend's
+`first frame presented: WxH, with content` logcat line (written once per
+process, straight to logcat), and uploads the screenshot and logcat as
+`android-emulator-smoke` whatever happens. Its first run earned its keep: the
+APK could not load at all (`libc++_shared.so` was not packaged), which no
+compile-time gate could have seen.
 
 GitHub-hosted `ubuntu-latest` x86_64 runners do expose `/dev/kvm`; they need
 the group-permission fix, which is the standard first step of every emulator
@@ -388,7 +398,7 @@ compile gate rather than a test.
 3. **`abiFilters 'x86_64'` for the first APK**, adding `'arm64-v8a'` once the
    pipeline works end to end.
 4. **First run on an x86_64 AVD at API 30**, headless, `screencap` as the
-   evidence. Then API 26 and 34 for the clipboard/SAF divergences (§4).
+   evidence. Then API 28 and 34 for the clipboard/SAF divergences (§4).
 5. **Then Waydroid**, for the real-Mesa GLES pass and as the ULTRA OS
    experiment.
 6. **Then a physical arm64 device**, for gestures, drivers and the things no

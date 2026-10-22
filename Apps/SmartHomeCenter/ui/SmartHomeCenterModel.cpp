@@ -1,7 +1,9 @@
 // Apps/SmartHomeCenter/ui/SmartHomeCenterModel.cpp
-// Version: 0.1.0
+// Version: 0.2.0 - rooms in the home model's order
 // Author: UltraCanvas Framework / ULTRA OS
 #include "SmartHomeCenterModel.h"
+// The module's icon choice, so a device looks the same here as in its widgets.
+#include "UltraCanvasSmartHomeIcons.h"
 
 #include <algorithm>
 #include <cctype>
@@ -42,20 +44,6 @@ bool NaturalLess(const std::string& a, const std::string& b) {
         ++j;
     }
     return a.size() - i < b.size() - j;
-}
-
-std::string SensorIcon(SmartHomeSensorType type) {
-    switch (type) {
-        case SmartHomeSensorType::Temperature: return "temperature";
-        case SmartHomeSensorType::Humidity: return "humidity";
-        case SmartHomeSensorType::Motion:
-        case SmartHomeSensorType::Occupancy: return "motion";
-        case SmartHomeSensorType::Contact: return "door";
-        case SmartHomeSensorType::Water: return "water";
-        case SmartHomeSensorType::Smoke:
-        case SmartHomeSensorType::CarbonMonoxide: return "smoke";
-        default: return "sensor";
-    }
 }
 
 std::string SensorTypeName(SmartHomeSensorType type) {
@@ -150,11 +138,11 @@ DeviceView DescribeDevice(const SmartHomeDeviceInfo& info) {
     view.online = info.Reachable && info.State != SmartHomeDeviceState::Offline;
     view.battery = api.GetBatteryLevel(info.DeviceId);
     const std::string& id = info.DeviceId;
+    SmartHomeSensorType sensorKind = SmartHomeSensorType::Unknown;
 
     switch (info.Category) {
         case SmartHomeDeviceCategory::Light: {
             view.kind = DeviceKind::Light;
-            view.icon = "light";
             view.typeName = HasTag(info, "colour") ? "Colour light"
                           : HasTag(info, "colourTemperature") ? "Tunable white light"
                           : HasTag(info, "dimmer") ? "Dimmable light" : "Light";
@@ -171,7 +159,6 @@ DeviceView DescribeDevice(const SmartHomeDeviceInfo& info) {
         case SmartHomeDeviceCategory::Switch:
         case SmartHomeDeviceCategory::Plug: {
             view.kind = DeviceKind::Switch;
-            view.icon = info.Category == SmartHomeDeviceCategory::Plug ? "plug" : "switch";
             view.typeName = info.Category == SmartHomeDeviceCategory::Plug ? "Smart plug" : "Switch";
             view.canToggle = true;
             view.on = api.GetSwitchState(id);
@@ -186,7 +173,6 @@ DeviceView DescribeDevice(const SmartHomeDeviceInfo& info) {
         }
         case SmartHomeDeviceCategory::Thermostat: {
             view.kind = DeviceKind::Thermostat;
-            view.icon = "thermostat";
             view.typeName = "Thermostat";
             const SmartHomeThermostatState t = api.GetThermostatState(id);
             view.value = FormatTemperature(t.CurrentTemperature);
@@ -200,7 +186,7 @@ DeviceView DescribeDevice(const SmartHomeDeviceInfo& info) {
         case SmartHomeDeviceCategory::Lock: {
             view.kind = DeviceKind::Lock;
             const SmartHomeLockState lock = api.GetLockState(id);
-            view.icon = lock.Locked ? "lock" : "unlock";
+            view.icon = lock.Locked ? "" : "unlock";   // an open lock shows open
             view.typeName = "Door lock";
             view.state = lock.Jammed ? "Jammed" : lock.Locked ? "Locked" : "Unlocked";
             view.active = !lock.Locked;
@@ -210,7 +196,6 @@ DeviceView DescribeDevice(const SmartHomeDeviceInfo& info) {
         }
         case SmartHomeDeviceCategory::Blind: {
             view.kind = DeviceKind::Blind;
-            view.icon = "blind";
             view.typeName = "Blind";
             const int position = api.GetBlindPosition(id);
             view.state = position >= 99 ? "Open" : position <= 1 ? "Closed" : "Partly open";
@@ -221,7 +206,7 @@ DeviceView DescribeDevice(const SmartHomeDeviceInfo& info) {
         }
         case SmartHomeDeviceCategory::Sensor: {
             const SmartHomeSensorReading reading = api.GetSensorReading(id);
-            view.icon = SensorIcon(reading.Type);
+            sensorKind = reading.Type;
             view.typeName = SensorTypeName(reading.Type);
             if (reading.Type == SmartHomeSensorType::Temperature || reading.Type == SmartHomeSensorType::Humidity) {
                 view.kind = DeviceKind::ClimateSensor;
@@ -242,12 +227,16 @@ DeviceView DescribeDevice(const SmartHomeDeviceInfo& info) {
             break;
         }
         default:
-            view.icon = "sensor";
             view.typeName = DeviceCategoryToString(info.Category);
             view.state = view.online ? "Online" : "Offline";
             view.eventKey = view.state;
             break;
     }
+
+    // The module's icon (a plug called "Kettle" gets the kettle), except an
+    // unlocked door lock, which shows open.
+    const std::string moduleIcon = SmartHomeDeviceIconName(info, sensorKind);
+    view.icon = view.icon == "unlock" && moduleIcon == "lock" ? "unlock" : moduleIcon;
 
     if (!view.online) {
         view.state = "Offline";
@@ -300,11 +289,20 @@ HomeSummary SummarizeHome(const std::vector<DeviceView>& devices) {
 }
 
 std::vector<std::string> RoomsOf(const std::vector<DeviceView>& devices) {
-    std::vector<std::string> rooms;
+    // The home's own order (SmartHomeAPI::GetRooms), then any name a device
+    // carries that the home does not know, then the devices in no room.
+    std::vector<std::string> named;
     bool unplaced = false;
     for (const DeviceView& d : devices) {
-        if (d.info.Room.empty()) { unplaced = true; continue; }
-        if (std::find(rooms.begin(), rooms.end(), d.info.Room) == rooms.end()) rooms.push_back(d.info.Room);
+        if (d.info.Room.empty()) unplaced = true;
+        else if (std::find(named.begin(), named.end(), d.info.Room) == named.end()) named.push_back(d.info.Room);
+    }
+    std::vector<std::string> rooms;
+    for (const SmartHomeRoom& room : SmartHomeAPI::Instance().GetRooms()) {
+        if (std::find(named.begin(), named.end(), room.Name) != named.end()) rooms.push_back(room.Name);
+    }
+    for (const std::string& name : named) {
+        if (std::find(rooms.begin(), rooms.end(), name) == rooms.end()) rooms.push_back(name);
     }
     if (unplaced) rooms.push_back(kNoRoom);
     return rooms;

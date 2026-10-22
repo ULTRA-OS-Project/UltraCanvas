@@ -48,8 +48,8 @@ struct UltraDbResult {
     std::string       message;          // human-readable diagnostic
     std::string       driver;           // driver id that produced the result
     std::string       sqlState;         // SQLSTATE where the driver provides it
-    int64_t           affectedRows = 0; // rows changed by INSERT/UPDATE/DELETE
-    int64_t           lastInsertId = 0; // last auto-increment row id, if any
+    int64_t           affectedRows = 0; // rows this INSERT/UPDATE/DELETE changed (not its triggers'); 0 for any other statement
+    int64_t           lastInsertId = 0; // the row id this INSERT gave, if any; 0 when the statement inserted nothing
     double            processingTimeMs = 0.0;
 
     explicit operator bool() const { return success; }

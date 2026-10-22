@@ -2,6 +2,7 @@
 // The built-in SQLite driver: opens file / in-memory databases and executes
 // parameterized statements on top of libsqlite3. Registered automatically the
 // first time the manager resolves a driver.
+// Version: 0.3.2 - a statement that changes no rows reports none, not the last INSERT's
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabaseInternal.h"
@@ -160,6 +161,11 @@ std::vector<UltraDbValue> ReadRow(sqlite3_stmt* stmt) {
 UltraDbResult RunStatement(sqlite3* db, sqlite3_stmt* stmt, UltraDbResultSet& out) {
     out.Clear();
     SetColumns(stmt, out);
+    // sqlite3_changes() and sqlite3_last_insert_rowid() keep the last INSERT,
+    // UPDATE or DELETE's figures until the next one, so a CREATE TRIGGER or a
+    // SELECT after an INSERT would report the INSERT's. The connection's
+    // running total says whether this statement changed rows at all.
+    const unsigned before = static_cast<unsigned>(sqlite3_total_changes(db));
 
     int rc;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
@@ -169,8 +175,10 @@ UltraDbResult RunStatement(sqlite3* db, sqlite3_stmt* stmt, UltraDbResultSet& ou
     if (rc != SQLITE_DONE)
         return SqliteError(db, rc, "step");
 
-    result.affectedRows = sqlite3_changes(db);
-    result.lastInsertId = sqlite3_last_insert_rowid(db);
+    if (static_cast<unsigned>(sqlite3_total_changes(db)) != before) {
+        result.affectedRows = sqlite3_changes(db);   // its own rows, not its triggers'
+        result.lastInsertId = sqlite3_last_insert_rowid(db);
+    }
     return result;
 }
 

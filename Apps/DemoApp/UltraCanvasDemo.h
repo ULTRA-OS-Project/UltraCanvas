@@ -445,6 +445,11 @@ namespace UltraCanvas {
         // diagram is skipped gracefully, so the screen degrades to a plain README
         // view until those assets are added.
         std::shared_ptr<UltraCanvasUIElement> CreateModuleDocScreen(const std::string& moduleDir);
+#ifdef ULTRACANVAS_DEMO_HAS_SMARTHOME
+        // The Smart Home module's panel on its simulated home
+        // (UltraCanvasSmartHomeExamples.cpp); built when SmartHomeUI is.
+        std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeExamples();
+#endif
         // Overview page for the "ULTRA OS modules" category node itself: the ULTRA OS
         // diagram (media/diagrams/ULTRA-OS.svg) plus the descriptive overview text.
         std::shared_ptr<UltraCanvasUIElement> CreateUltraOSInfoScreen();

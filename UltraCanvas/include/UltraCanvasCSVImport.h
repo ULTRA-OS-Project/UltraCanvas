@@ -3,6 +3,8 @@
 // Shared by the spreadsheet loader, the file-manager preview and the manual
 // "Text Import" options dialog. Header-only and dependency-free (std only) so
 // it can be reused by any module without pulling in the spreadsheet stack.
+// Version: 1.1.0 - CSVFormatRecord: one record of CSV/TSV text, quoted as the
+//                  export options say, for a writer that streams its rows
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -300,6 +302,35 @@ inline std::string CSVEncodeFromUtf8(const std::string& utf8,
             break;
         }
     }
+    return out;
+}
+
+// One record of CSV/TSV text - UTF-8, before CSVEncodeFromUtf8 - ending in the
+// options' line ending. A field is quoted when quoteAllFields says so, or when
+// it holds the separator, the quote character or a line break, and a quote
+// inside it is doubled. The spreadsheet's CSV export writes its rows with it;
+// a writer that streams rows it never holds at once (a database export) uses
+// it too, so both quote alike.
+inline std::string CSVFormatRecord(const std::vector<std::string>& fields, const CSVExportOptions& opt) {
+    std::string out;
+    const char delimiter = opt.fieldSeparator;
+    const char quote = opt.textDelimiter;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i > 0) out += delimiter;
+        const std::string& value = fields[i];
+        const bool needsQuote = quote != 0 &&
+            (opt.quoteAllFields || value.find(delimiter) != std::string::npos ||
+             value.find(quote) != std::string::npos || value.find('\n') != std::string::npos ||
+             value.find('\r') != std::string::npos);
+        if (!needsQuote) { out += value; continue; }
+        out += quote;
+        for (char c : value) {
+            if (c == quote) out += quote;   // doubled: the escape
+            out += c;
+        }
+        out += quote;
+    }
+    out += opt.lineEnding == CSVExportOptions::LineEnding::CRLF ? "\r\n" : "\n";
     return out;
 }
 

@@ -45,12 +45,14 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.6.0 - GetSystemDesktopSwitchUnavailableReason (no switch from an
+//                  MSIX package)
 // Version: 1.5.0 - ListScreens; Microsoft Store applications on Windows;
 //                  "Super" alone, a tap of the Win key
 // Version: 1.4.0 - instead of the system's desktop (DesktopReplacement::Instead),
 //                  the notification area (UltraCanvasTrayHost), EndSession
 // Version: 1.3.0 - in place of the system's desktop (ReplaceSystemDesktop)
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -309,6 +311,12 @@ namespace UltraCanvas {
         // Restoring removes either, and gives the taskbar back the state it
         // had before the first switch - that state, not a default.
         static bool CanReplaceSystemDesktop(DesktopReplacement how = DesktopReplacement::Beside);
+        // Why CanReplaceSystemDesktop() is false on a platform that has the
+        // switch, in a sentence to show the user: on Windows, a copy running
+        // from its MSIX package (the Microsoft Store), whose registry changes
+        // sign-in never sees. "" when the switch can be used, and where the
+        // platform has none - there is nothing to explain there.
+        static std::string GetSystemDesktopSwitchUnavailableReason();
         static DesktopReplacement GetSystemDesktopReplacement();
         // Any replacement, Beside or Instead (not Off).
         static bool IsSystemDesktopReplaced();

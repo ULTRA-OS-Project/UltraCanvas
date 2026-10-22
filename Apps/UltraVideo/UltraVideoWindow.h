@@ -8,6 +8,7 @@
 // Edit(), which snapshots the document, applies the change, records it and
 // shows the document again everywhere (the timeline model, the preview, the
 // inspector, the app bar).
+// Version: 0.8.0 - one carried drag for files, effect presets and title styles; a title dragged onto its lane
 // Version: 0.7.0 - presets on overlay clips; Edit's merge key for a slider's drag
 // Version: 0.6.0 - an effect preset dragged from its bin button onto a clip
 // Version: 0.5.0 - OpenFiles: files handed over by a second start
@@ -107,17 +108,19 @@ private:
     void MakeStory();                  // the wizard, then the plan on the worker, then a new project
     void ImportFiles(const std::vector<std::string>& files, double at = -1.0);
     void AddMediaToTimeline(const std::string& path, double at = -1.0);
-    // A bin tile dragged onto the timeline: the window carries the file
-    // from the album to the element's own drop path (insertion marker,
-    // the lane and time under the pointer)
+    // A drag the window carries from the bin to the timeline, one at a
+    // time: a file from a tile (handed to the element's own drop path, so
+    // its insertion marker, lane and time are the element's), an effect
+    // preset from its button (onto a clip, ringed as the target) or a title
+    // style from its button (onto the title lane, the element's marker
+    // showing where). A button's press arms its drag and the pointer moving
+    // away starts it; the album starts a file's itself (BeginBinDrag)
+    enum class DragKind { Nothing, File, Effect, Title };
     void BeginBinDrag(const std::string& path);
-    void DragToTimeline(const UltraCanvas::UCEvent& event, bool drop);
-    // An effect preset dragged from its bin button onto a clip: the press
-    // arms it, the pointer leaving the button starts it, the timeline rings
-    // the main-track clip under the pointer, the drop applies the preset
-    void BeginEffectDrag(std::string presetKey);
-    void DragEffect(const UltraCanvas::UCEvent& event, bool drop);
-    void CancelEffectDrag();
+    void ArmDrag(DragKind kind, const std::string& key);
+    void StartDrag(DragKind kind, std::string key);
+    void CarryDrag(const UltraCanvas::UCEvent& event, bool drop);
+    void CancelDrag();
     void ConfirmThen(std::function<void()> then);   // asks to save first when dirty
 
     // playback and the playhead
@@ -149,6 +152,7 @@ private:
     // Whose effects a clip id names - a main-track segment or an overlay clip - and its name
     EffectTarget EffectTargetOf(const std::string& clipId) const;
     std::string EffectClipName(EffectTarget target) const;
+    std::string TitleLabel(const std::string& styleKey) const;   // a style's label, its key when unknown
     void AddOverlay(const std::string& path, double at);     // a file over the picture, on V2
     void ChooseOverlay(double at);                           // ... from a file dialog
     void AddSound(const std::string& path, double at, bool voiceOver);   // a file's sound on A2
@@ -224,12 +228,13 @@ private:
     void SweepOldDrafts();             // drafts of earlier runs left in the temp folder
     int messageTicks_ = 0;
     std::string selectedClip_;
-    std::string binDrag_;              // the file being dragged from the bin, "" when none
+    DragKind dragKind_ = DragKind::Nothing;   // the drag in flight
+    std::string dragKey_;              // its file, preset key or style key
+    std::string dragHover_;            // what it is over, so the status line changes only with it
     bool pointerDown_ = false;         // the mouse button is held (a keyboard press arms no drag)
-    std::string effectPress_;          // the preset whose button is held down, "" when none
-    UltraCanvas::Point2Di effectPressAt_;   // where the button was pressed, window coordinates
-    std::string effectDrag_;           // the preset being dragged, "" when none
-    std::string effectHover_;          // what the drag is over: "clip:<id>", "other" (a clip off the main track) or ""
+    DragKind armedKind_ = DragKind::Nothing;   // the button held down, until the pointer moves away
+    std::string armedKey_;
+    UltraCanvas::Point2Di armedAt_;    // where it was pressed, window coordinates
     bool snapping_ = true;
     bool showBeats_ = false;
     std::map<std::string, std::vector<double>> songBeats_;   // per song path; empty = none found

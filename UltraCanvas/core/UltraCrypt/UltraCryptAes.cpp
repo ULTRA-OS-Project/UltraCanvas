@@ -1,6 +1,6 @@
 // core/UltraCrypt/UltraCryptAes.cpp
-// AES (FIPS 197) and the CBC mode (NIST SP 800-38A), for reading and writing
-// formats defined elsewhere that use them.
+// AES (FIPS 197) and the CBC and CTR modes (NIST SP 800-38A), for reading and
+// writing formats defined elsewhere that use them.
 //
 // libsodium has no AES block cipher at all (its AES-256-GCM is AES-NI only
 // and does not expose the block function), so this one is ours, like SHA-1.
@@ -12,10 +12,10 @@
 //
 // Layout: eight 64-bit planes, plane i holding bit i of every byte. Lane
 // 16*b + 4*c + r is byte (row r, column c) of block b, so four blocks travel
-// together - CBC decryption uses all four, CBC encryption (a serial chain)
-// only the first.
+// together - CBC decryption and CTR use all four, CBC encryption (a serial
+// chain) only the first.
 //
-// Version: 0.3.0
+// Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
 
@@ -486,6 +486,85 @@ UltraCryptResult UltraCrypt_AesCbcDecrypt(const UltraCryptSecureBuffer& key,
         }
         plain.Resize(size - padLen);
     }
+    outPlaintext = std::move(plain);
+    return UltraCryptResult::Ok();
+}
+
+// ============================================================================
+// CTR
+// ============================================================================
+namespace {
+
+// Adds one to a 16-byte big-endian counter block.
+void IncrementCounter(uint8_t counter[kAesBlock]) {
+    for (size_t i = kAesBlock; i-- > 0;) {
+        if (++counter[i] != 0) break;
+    }
+}
+
+// XORs the key stream from `iv` on into `data` (in place), four blocks a pass.
+void CtrXor(const UltraCryptSecureBuffer& key, const std::vector<uint8_t>& iv, uint8_t* data, size_t size) {
+    AesKeySchedule ks;
+    ExpandKey(key.Data(), key.GetSize(), ks);
+    uint8_t counter[kAesBlock];
+    std::memcpy(counter, iv.data(), kAesBlock);
+    uint8_t stream[kLanesPerPass * kAesBlock];
+    const size_t step = sizeof(stream);
+    for (size_t off = 0; off < size; off += step) {
+        const size_t bytes = (size - off < step) ? size - off : step;
+        const size_t blocks = (bytes + kAesBlock - 1) / kAesBlock;
+        for (size_t b = 0; b < blocks; ++b) {
+            std::memcpy(stream + b * kAesBlock, counter, kAesBlock);
+            IncrementCounter(counter);
+        }
+        EncryptBlocks(ks, stream, blocks);
+        for (size_t i = 0; i < bytes; ++i) data[off + i] ^= stream[i];
+    }
+    UltraCrypt_SecureZero(stream, sizeof(stream));
+    UltraCrypt_SecureZero(counter, sizeof(counter));
+    WipeSchedule(ks);
+}
+
+} // namespace
+
+UltraCryptResult UltraCrypt_AesCtrEncrypt(const UltraCryptSecureBuffer& key,
+                                          UltraCryptCtrParams& params,
+                                          const void* plaintext, size_t size,
+                                          std::vector<uint8_t>& outCiphertext) {
+    outCiphertext.clear();
+    auto check = CheckCommon(key, plaintext, size);
+    if (!check) return check;
+    if (params.iv.empty()) {
+        params.iv.assign(kAesBlock, 0);
+        auto rr = UltraCrypt_RandomBytes(params.iv.data(), kAesBlock);
+        if (!rr) { params.iv.clear(); return rr; }
+    } else if (params.iv.size() != kAesBlock) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidNonceSize,
+                                       "the CTR IV must be 16 bytes");
+    }
+    outCiphertext.resize(size);
+    if (size > 0) std::memcpy(outCiphertext.data(), plaintext, size);
+    CtrXor(key, params.iv, outCiphertext.data(), size);
+    return UltraCryptResult::Ok();
+}
+
+UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptCtrParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext) {
+    outPlaintext.Clear();
+    auto check = CheckCommon(key, ciphertext, size);
+    if (!check) return check;
+    if (params.iv.size() != kAesBlock) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InvalidNonceSize,
+                                       "the CTR IV must be 16 bytes");
+    }
+    UltraCryptSecureBuffer plain(ciphertext, size);
+    if (plain.GetSize() != size) {
+        return UltraCryptResult::Error(UltraCryptResultCode::InternalError,
+                                       "could not allocate plaintext buffer");
+    }
+    CtrXor(key, params.iv, plain.Data(), size);
     outPlaintext = std::move(plain);
     return UltraCryptResult::Ok();
 }

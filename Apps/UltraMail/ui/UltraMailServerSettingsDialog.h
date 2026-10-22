@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.h
-// The manual server settings page: incoming (IMAP) and outgoing (SMTP) host,
-// port, security and authentication method, plus the username — shown when neither the provider
+// The manual server settings page: the protocol of the incoming server (IMAP
+// or JMAP), the incoming and outgoing (SMTP) host, port, security and
+// authentication method, plus the username — shown when neither the provider
 // table nor the autoconfig lookup knew the address, prefilled with whatever
 // was found or guessed, and reachable again for an account whose servers are
 // unknown. Save validates in place and — when a verifier is given — checks the
@@ -10,6 +11,7 @@
 // display-name row above the servers, and - for a password account - a
 // password row, or - for an OAuth account - a "Sign in again" button - and a
 // Signature row whose "Edit signature…" button opens the signature editor.
+// Version: 0.6.0 - the Protocol row: IMAP or JMAP for the incoming server
 // Version: 0.5.0 - the Signature row (account settings page)
 // Version: 0.4.0 - an authentication method per server
 // Author: UltraCanvas Framework / ULTRA OS

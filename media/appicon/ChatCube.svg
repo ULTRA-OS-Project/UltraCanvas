@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ChatCube: a cube whose front face is a speech bubble. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect x="8" y="8" width="240" height="240" rx="44" fill="#ffffff" stroke="#d0d6dc" stroke-width="4"/>
+  <polygon points="60,92 128,58 196,92 128,126" fill="#7fd08f"/>
+  <polygon points="196,92 196,170 128,204 128,126" fill="#1f7a37"/>
+  <polygon points="60,92 128,126 128,204 60,170" fill="#2e9646"/>
+  <path d="M78 122 h40 a10 10 0 0 1 10 10 v24 a10 10 0 0 1 -10 10 h-22 l-12 12 v-12 h-6 a10 10 0 0 1 -10 -10 v-24 a10 10 0 0 1 10 -10 z"
+        fill="#ffffff" transform="translate(-6,-2)"/>
+  <circle cx="86" cy="142" r="4" fill="#2e9646"/>
+  <circle cx="98" cy="142" r="4" fill="#2e9646"/>
+  <circle cx="110" cy="142" r="4" fill="#2e9646"/>
+</svg>

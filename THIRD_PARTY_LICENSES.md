@@ -243,6 +243,33 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 
 ---
 
+## libdatachannel (WebRTC engine) with libjuice, usrsctp, libsrtp and plog
+
+- **Used by:** the UltraRTC module (`UltraCanvas/core/UltraRTC/`), which wraps
+  it completely — no libdatachannel type appears in a public UltraCanvas
+  header — and through it ChatCube's peer-to-peer chat and calls.
+- **Upstream:** https://github.com/paullouisageneau/libdatachannel (v0.24.6),
+  https://github.com/paullouisageneau/libjuice, https://github.com/sctplab/usrsctp,
+  https://github.com/cisco/libsrtp, https://github.com/SergiusTheBest/plog.
+- **Vendored at:** `UltraCanvas/third_party/libdatachannel` (submodules under
+  `deps/`); versions and the directories removed are in `VENDORED.md` there.
+  Sources are unmodified.
+- **Licenses:**
+  - libdatachannel — Mozilla Public License 2.0, Copyright (c) 2019 Paul-Louis
+    Ageneau and contributors. Full text: `UltraCanvas/third_party/libdatachannel/LICENSE`.
+  - libjuice — Mozilla Public License 2.0, Copyright (c) 2020 Paul-Louis
+    Ageneau. Full text: `.../deps/libjuice/LICENSE`.
+  - usrsctp — BSD 3-Clause. Full text: `.../deps/usrsctp/LICENSE.md`.
+  - libsrtp — BSD 3-Clause, Copyright (c) 2001-2017 Cisco Systems, Inc.
+    Full text: `.../deps/libsrtp/LICENSE`.
+  - plog — MIT License, Copyright (c) 2022 Sergey Podobry. Full text:
+    `.../deps/plog/LICENSE`.
+
+MPL-2.0 is file-level copyleft: the vendored files stay under MPL-2.0 and
+their source is published here; UltraCanvas's own files are unaffected.
+
+---
+
 ## OpenCV frontal-face Haar cascade (face model data)
 
 - **Used by:** VideoFX's built-in face detector (`VideoFX/core/VideoFXFaces.*`,

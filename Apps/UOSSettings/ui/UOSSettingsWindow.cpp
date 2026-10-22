@@ -1,11 +1,13 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.5.1 - Desktop: from an MSIX package, why "At sign-in" is missing
+// Version: 0.5.0 - Notifications > Registrations: listed, and removed with one button
 // Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -17,6 +19,7 @@
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasEmojiSettings.h"
+#include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasFileDialogSettings.h"
@@ -68,8 +71,14 @@ namespace {
     constexpr const char* kPageLastFolder     = "file-dialogs/last-folder";
     constexpr const char* kSectionAppearance  = "appearance";
     constexpr const char* kPageEmoji          = "appearance/emoji";
+    constexpr const char* kSectionNotifications = "notifications";
+    constexpr const char* kPageRegistrations  = "notifications/registrations";
     constexpr const char* kSectionDevices     = "devices";
     constexpr const char* kPageCertificates   = "devices/certificates";
+
+    // Notification registrations table: the application column is fixed, the
+    // click handler takes the rest.
+    constexpr int kRegistrationAppColumnWidth = 230;
 
     // Trusted certificates table: the name, address and button columns are
     // fixed, the key takes the rest.
@@ -266,6 +275,8 @@ bool UOSSettingsWindow::Create() {
     tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, "Last used folder"));
     tree_->AddNode("settings", TreeNodeData(kSectionAppearance, "Appearance"));
     tree_->AddNode(kSectionAppearance, TreeNodeData(kPageEmoji, "Emoji"));
+    tree_->AddNode("settings", TreeNodeData(kSectionNotifications, "Notifications"));
+    tree_->AddNode(kSectionNotifications, TreeNodeData(kPageRegistrations, "Registrations"));
     tree_->AddNode("settings", TreeNodeData(kSectionDevices, "Devices"));
     tree_->AddNode(kSectionDevices, TreeNodeData(kPageCertificates, "Trusted certificates"));
     tree_->SetRootVisible(false);
@@ -281,6 +292,7 @@ bool UOSSettingsWindow::Create() {
     BuildDesktopPage();
     BuildLastFolderPage();
     BuildEmojiPage();
+    BuildNotificationsPage();
     BuildCertificatesPage();
     window_->AddChild(content);
 
@@ -341,6 +353,7 @@ void UOSSettingsWindow::ShowPage(const std::string& pageId) {
     if (pageId == kPageDesktop) RefreshDesktopPage();
     if (pageId == kPageCertificates) RefreshCertificatesPage();
     if (pageId == kPageEmoji) RefreshEmojiPage();
+    if (pageId == kPageRegistrations) RefreshNotificationsPage();
 }
 
 // ===== DESKTOP =====
@@ -449,6 +462,16 @@ void UOSSettingsWindow::BuildDesktopPage() {
         addRow("uos-dt-replace-row", "At sign-in", systemDesktop_);
     }
     page->AddChild(body);
+
+    // Windows, but a copy that cannot switch (the Microsoft Store one, whose
+    // registry changes sign-in never sees): say why the choice is missing.
+    if (const std::string why = UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason();
+        !why.empty()) {
+        auto note = MakeText("uos-dt-replace-note", "At sign-in: " + why, kTextWidth, kTextFontSize,
+                             kMutedTextColor);
+        note->SetMargin(10, 0, 0, 0);
+        page->AddChild(note);
+    }
 
     desktopStatus_ = MakeLabel("uos-dt-status", "", kTextFontSize, kMutedTextColor);
     desktopStatus_->SetMargin(10, 0, 0, 0);
@@ -846,6 +869,110 @@ void UOSSettingsWindow::RefreshEmojiPage() {
                                 : style == EmojiStyle::System     ? kSegmentEmojiSystem
                                                                   : kSegmentEmojiColour);
     refreshing_ = false;
+}
+
+// ===== NOTIFICATIONS > REGISTRATIONS =====
+
+void UOSSettingsWindow::BuildNotificationsPage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-registrations");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto title = MakeLabel("uos-nr-title", "Notification registrations", kTitleFontSize);
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-nr-caption",
+            "What Windows keeps for each application whose notifications were shown: "
+            "its name and icon, and the program a click on one of its notifications "
+            "starts. The uninstaller removes it; a folder unpacked from the ZIP "
+            "package has no uninstaller, so remove it here before deleting the folder.");
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    registrationNote_ = MakeText("uos-nr-table-note", "", kTextWidth, kTextFontSize, kNoteTextColor);
+    registrationNote_->SetMargin(14, 0, 6, 0);
+    page->AddChild(registrationNote_);
+
+    page->AddChild(MakeTable("uos-nr-table",
+                             {{"app", "Application", kRegistrationAppColumnWidth},
+                              {"activator", "Click starts", 0}},
+                             registrationRows_));
+
+    auto actions = std::make_shared<UltraCanvasContainer>("uos-nr-actions");
+    actions->layout.SetFlexRow().SetFlexGap(12)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    actions->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    actions->size.height = CSSLayout::Dimension::Px(36);
+    actions->SetMargin(10, 0, 0, 0);
+    removeRegistrations_ = std::make_shared<UltraCanvasButton>("uos-nr-remove", 0, 0, 120, 28, "Remove all");
+    removeRegistrations_->SetFontSize(kTextFontSize);
+    removeRegistrations_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    removeRegistrations_->SetOnClick([this]() { RemoveNotificationRegistrations(); });
+    actions->AddChild(removeRegistrations_);
+    registrationStatus_ = MakeLabel("uos-nr-status", "", kTextFontSize, kMutedTextColor);
+    actions->AddChild(registrationStatus_);
+    page->AddChild(actions);
+
+    auto notes = MakeNotes("uos-nr-note", {
+            "An application registers again the next time it starts or shows a "
+            "notification, so removing does no harm to one you keep.",
+            "From a command prompt or a script: UOS-Settings "
+            "--remove-notification-registrations - which the ZIP package's "
+            "uc-remove-registrations.cmd runs."});
+    notes->SetMargin(14, 0, 0, 0);
+    page->AddChild(notes);
+
+    pages_[kPageRegistrations] = page;
+    pageArea_->AddChild(page);
+}
+
+void UOSSettingsWindow::RefreshNotificationsPage() {
+    if (!registrationRows_) return;
+    const std::vector<NotificationRegistration> listed = ListNotificationRegistrations();
+    registrationRows_->ClearChildren();
+    for (size_t i = 0; i < listed.size(); ++i) {
+        const std::string id = "uos-nr-row-" + std::to_string(i);
+        auto row = MakeTableRow(id);
+        auto app = MakeLabel(id + "-app", listed[i].appId);
+        app->size.width = CSSLayout::Dimension::Px(kRegistrationAppColumnWidth);
+        app->SetTooltip(listed[i].appId);
+        row->AddChild(app);
+        auto activator = MakeLabel(id + "-activator",
+                listed[i].activatorClassId.empty() ? "(nothing: a click reaches it only while the bus runs)"
+                                                   : "the application itself, " + listed[i].activatorClassId,
+                kTextFontSize, listed[i].activatorClassId.empty() ? kMutedTextColor : kTextColor);
+        activator->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        activator->size.width = CSSLayout::Dimension::Px(0);
+        activator->SetTooltip(listed[i].activatorClassId);
+        row->AddChild(activator);
+        registrationRows_->AddChild(row);
+    }
+#if defined(_WIN32) || defined(_WIN64)
+    const bool windows = true;
+#else
+    const bool windows = false;
+#endif
+    if (registrationNote_) {
+        registrationNote_->SetText(!windows ? "Only Windows keeps notification registrations; there is nothing here to remove."
+                                   : listed.empty() ? "Nothing is registered: no application has shown a notification yet, "
+                                                      "or the registrations were removed."
+                                                    : "Registered for this Windows account:");
+    }
+    if (removeRegistrations_) removeRegistrations_->SetDisabled(listed.empty());
+    if (pageArea_) pageArea_->InvalidateLayout();
+}
+
+void UOSSettingsWindow::RemoveNotificationRegistrations() {
+    const size_t removed = UltraCanvas::RemoveNotificationRegistrations();
+    RefreshNotificationsPage();
+    if (registrationStatus_) {
+        registrationStatus_->SetText(removed == 0 ? "Nothing to remove."
+                                     : removed == 1 ? "Removed 1 registration."
+                                                    : "Removed " + std::to_string(removed) + " registrations.");
+    }
 }
 
 // ===== DEVICES > TRUSTED CERTIFICATES =====

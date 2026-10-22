@@ -85,6 +85,38 @@ TEST(sqlite_exec_batch_reports_every_statement) {
     UltraDb_CloseConnection(c);
 }
 
+// sqlite3_changes() keeps the count of the last INSERT, UPDATE or DELETE
+// until the next one, so a statement that changes no rows - DDL, a SELECT, an
+// UPDATE that matched nothing - must not report the count of the one before.
+TEST(sqlite_exec_batch_counts_only_what_each_statement_changed) {
+    const std::string c = SqliteConn("changes");
+    std::vector<UltraDbStatementResult> out;
+    UltraDbResult r = UltraDb_ExecBatch(c,
+        "CREATE TABLE t(a INTEGER);\n"
+        "CREATE TABLE log(a INTEGER);\n"
+        "CREATE TRIGGER tr AFTER INSERT ON t BEGIN INSERT INTO log VALUES (new.a); END;\n"
+        "INSERT INTO t VALUES(1), (2);\n"
+        "CREATE VIEW v AS SELECT a FROM t;\n"
+        "SELECT a FROM t;\n"
+        "UPDATE t SET a = 5 WHERE a > 10;\n"
+        "DROP VIEW v;\n"
+        "DELETE FROM t WHERE a = 1;\n", out);
+    REQUIRE(r.success);
+    REQUIRE_EQ(out.size(), (size_t)9);
+    REQUIRE_EQ(out[3].result.affectedRows, (int64_t)2);   // its own rows, not the trigger's
+    REQUIRE_EQ(out[3].result.lastInsertId, (int64_t)2);
+    REQUIRE_EQ(out[4].result.affectedRows, (int64_t)0);   // CREATE VIEW
+    REQUIRE_EQ(out[4].result.lastInsertId, (int64_t)0);
+    REQUIRE_EQ(out[5].result.affectedRows, (int64_t)0);   // SELECT
+    REQUIRE_EQ(out[6].result.affectedRows, (int64_t)0);   // an UPDATE that matched nothing
+    REQUIRE_EQ(out[7].result.affectedRows, (int64_t)0);   // DROP VIEW
+    REQUIRE_EQ(out[8].result.affectedRows, (int64_t)1);
+    // UltraDb_Exec reports the same way.
+    REQUIRE(UltraDb_Exec(c, "INSERT INTO t VALUES (7)").affectedRows == 1);
+    REQUIRE(UltraDb_Exec(c, "CREATE INDEX t_a ON t(a)").affectedRows == 0);
+    UltraDb_CloseConnection(c);
+}
+
 TEST(sqlite_exec_batch_stops_at_the_first_failure) {
     const std::string c = SqliteConn("stop");
     REQUIRE(UltraDb_Exec(c, "CREATE TABLE t(a INTEGER)").success);

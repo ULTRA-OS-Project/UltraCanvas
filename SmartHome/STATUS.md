@@ -204,9 +204,48 @@ scene activation goes to the event log (`GetEventLog`, `SetOnEvent`).
 `tests/AutomationTest.cpp` covers both on the simulated home with a clock of
 its own, and passed 40 runs in a row and under ThreadSanitizer.
 
-Still open: the home model's own room list (rooms are whatever devices name),
-`location` triggers, the safety opt-in for automations that unlock, and the
-hub service that keeps automations running with no window open.
+Still open: `location` triggers, the safety opt-in for automations that
+unlock, and the hub service that keeps automations running with no window
+open.
+
+### The home's rooms (2026-10-21)
+
+Rooms belong to the module now (proposal §4.3): `SmartHomeRoom` (id, name,
+icon, floor, sort order) and `GetRooms`, `GetRoom`, `CreateRoom`,
+`UpdateRoom`, `DeleteRoom`, `AssignDeviceToRoom`, `GetDeviceRoom` and
+`SetOnHomeChange` on the facade. A room name a backend reports becomes a
+room the first time a device brings it; `SmartHomeDeviceInfo::Room` is the
+name of the home's room the device is in and `RoomId` its id. The person's
+choice is kept by id, so a renamed room keeps its devices and the backend's
+old name does not bring the old room back; a deleted room leaves its
+devices in no room. smarthome.db migration 2 adds the `room` table and the
+id column, and turns a version-1 store's room names into rooms on its first
+open. `tests/HomeModelTest.cpp` covers it with and without the store.
+
+`WaitForCommands(timeoutMs)` waits until every queued command has been sent
+- for a command-line tool that exits right after one (SmartHome Center's
+`--set` and `--scene`), and for tests.
+
+`SmartHomePanel` drew every card at its own origin, so the grid showed one
+card on top of the others; it now draws each where it is laid out, and its
+room view groups by the home's rooms when the panel was given none of its
+own. The demo application's Smart Home entry opens the panel on the
+simulated home.
+
+### Several listeners per notification (2026-10-21)
+
+Each `SetOn*` setter held one callback, so a `SmartHomePanel` and the
+application hosting it took the slot from each other. `SmartHomeListener`
+holds any of the twelve callbacks; `AddListener` adds one and returns the id
+`RemoveListener` takes. A notification calls the `SetOn*` slot first, then
+every listener with that member set, in the order they were added, with no
+module lock held. Once `RemoveListener` returns, its listener is not running
+and is not called again - except when it is called from inside a
+notification on the same thread, which may be the listener's own call; it
+stops all later calls. `SmartHomePanel` and SmartHome Center now listen
+this way and leave the slots to whoever else hosts them.
+`tests/ListenerTest.cpp` covers it, with removal raced against a
+notifying thread.
 
 ### Known latent bug
 
@@ -244,8 +283,20 @@ Mouse and touch share a path, because `UCEvent` carries both in the same
 
 Every widget drives its device through `SmartHomeAPI` and also reports through
 its own callback, so a host can let the widget talk to the module or intercept
-the change. Layout is computed from each element's local bounds rather than
-fixed pixel positions.
+the change.
+
+**They are built from framework elements** (2026-10-21, proposal §4.8): each
+is an `UltraCanvasContainer` laid out by flex, holding switches, sliders,
+buttons, spinners, segmented controls, list views, a colour picker, gauges,
+line charts and a node diagram. The first port had kept them painting their
+own controls and hit-testing fixed positions, and the panel and the device
+dialog drew their children by hand and passed them events themselves - the
+bug class behind the panel drawing every card at its origin. Now the window
+dispatches to every element. Two pictures stay drawn by the module (a
+blind in its window, the scheduler's week grid); the device and scene cards
+are drawn tiles, real children of the panel. `scripts/check_ui_reuse.py`
+scans `SmartHome/ui`. The panel applies what the module reports from its
+threads on the UI thread, from an application timer.
 
 `SmartHomeAutomation` stores its trigger as a type string plus a
 `TriggerConfig` the public header documents as JSON, while the editor works in
@@ -255,7 +306,11 @@ backslash survives the round trip; the test asserts it by saving, reopening,
 saving again and comparing the two configs.
 
 `tests/WidgetTest.cpp` builds them all against `libUltraCanvas` and drives them
-with synthetic `UCEvent`s — 36 assertions.
+(48 checks). The controls, dialog, wizard (a simulated device pairs through
+it), editors, topology, energy monitor, scheduler, group control and panel
+are pressed at window coordinates through the application's dispatch, on the
+elements their getters return; that part opens a window, so it runs under
+Xvfb (CI's Linux row has a step for it) and skips without a display.
 
 ### 2. Third-party dependencies — decided, not yet installed
 

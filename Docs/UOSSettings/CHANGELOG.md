@@ -1,3 +1,19 @@
+#### 2026-10-22 *0.8.0*
+- **Desktop: a packaged copy says why *At sign-in* is missing.** Run from the
+  Microsoft Store (MSIX) package, the Desktop page cannot offer UltraDesktop in
+  place of the Windows desktop, because the package's registry changes never
+  reach sign-in. It now says so, and points to the UltraCanvas installer,
+  instead of leaving the choice out without a word.
+
+#### 2026-10-21 *0.7.0*
+- **Notifications → Registrations lists and removes what Windows keeps for
+  the applications' notifications** - each application's name and icon and
+  the program a click on its toast starts. **Remove all** does what the
+  installer's uninstaller does, for a folder unpacked from the ZIP package,
+  which has none. `UOS-Settings --remove-notification-registrations` does it
+  with no window; the ZIP's `uc-remove-registrations.cmd` runs that (framework
+  changelog: `notification-registrations-cleanup`).
+
 #### 2026-10-20 *0.6.0*
 - **Appearance → Emoji: colour, black and white, or the system's.** A new
   page chooses how every application draws emoji: *Colour* (Noto Color Emoji,

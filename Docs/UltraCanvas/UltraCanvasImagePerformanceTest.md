@@ -48,7 +48,7 @@ std::shared_ptr<UltraCanvasImageElement> imageElement;
 
 ## Overview
 
-The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
+The **Image Performance Test** is a built-in DemoApp benchmark that compares every bitmap codec UltraCanvas can drive (PNG, JPG, JPEG2000, WebP, AVIF, HEIF, GIF, TIFF, JPEG XL, QOI, and optionally BMP) on the **same source image**. For each codec it measures three numbers:
 
 1. **Encoded file size** — bytes on disk after `UCImage::Save()`
 2. **Encode time** — milliseconds spent in `UCImage::Save()`
@@ -198,9 +198,15 @@ const CodecEntry kAllCodecs[] = {
     { UCImageSaveFormat::HEIF,     "HEIF", "heif", EncoderBackend::Libvips, false },
     { UCImageSaveFormat::GIF,      "GIF",  "gif",  EncoderBackend::Libvips, false },
     { UCImageSaveFormat::TIFF,     "TIFF", "tiff", EncoderBackend::Libvips, false },
+    { UCImageSaveFormat::JXL,      "JXL",  "jxl",  EncoderBackend::Libvips, false },
     { UCImageSaveFormat::BMP,      "BMP",  "bmp",  EncoderBackend::BMP,     true  },
 };
 ```
+
+JPEG XL is charted only where libvips can both save and load `.jxl`
+(`VipsCanSave(".jxl") && VipsCanLoad(".jxl")`): it needs a libvips built with
+libjxl, which Ubuntu 22.04's is not. Elsewhere the JXL column is left out
+rather than shown as a failure.
 
 ### CodecResult (per-codec output row)
 

@@ -7,10 +7,16 @@ EGL/GLES context manager, clipboard, soft keyboard and full IME, multi-touch
 with pinch/rotate gestures, message dialogs, SAF file opening and saving, and
 APK asset extraction.
 
-**Still open, and it gates everything: APK packaging.** The cross-compiled
-dependency sysroot builds in CI, and the core library compiles against it
-(`.github/workflows/android-build.yml`), but no APK has been built, so none of
-this has run on a device — it is compiled continuously in CI, not observed. See
+**Still open, and it gates everything: running it.** The cross-compiled
+dependency sysroot builds in CI for `arm64-v8a` and `x86_64`, the core library
+compiles against it, DemoApp links against that into `libUltraCanvasDemo.so`,
+and `scripts/android-package-apk.sh` packages that into a debug-signed APK,
+uploaded by every run of `.github/workflows/android-build.yml`, whose emulator
+job installs the x86_64 one and requires a first frame with something drawn
+in it (`scripts/android-emulator-smoke.sh`). That is the whole of what is
+observed so far: the first frame on an emulator. Input, dialogs, the IME,
+rotation and everything past start-up are still designed and reviewed, not
+seen working. See
 [`packaging/`](packaging/README.md), and
 [`AndroidOnLinuxInvestigation.md`](../../../Docs/UltraCanvas/AndroidOnLinuxInvestigation.md)
 for how to run the first APK on a Linux box rather than a phone (and what to
@@ -25,7 +31,7 @@ Android).
 | `UltraCanvasAndroidJni.{h,cpp}` | Shared JNI plumbing: lazy `AttachCurrentThread` for the glue thread (detached once at shutdown), activity handle, exception clear+log, UTF-8 ↔ jstring both ways (`ToStdString` / `ToJString`: real UTF-8, not JNI's modified UTF-8, so emoji survive and malformed bytes become U+FFFD instead of aborting under CheckJNI). Never use `NewStringUTF` for anything but a literal. |
 | `UltraCanvasAndroidClipboard.{h,cpp}` | `UltraCanvasClipboardBackend` over JNI `ClipboardManager`. Text both ways; images and files can be **pasted** (the clip's `content://` items are copied into the app cache through `UltraCanvasActivity`, as the file picker does) but not **copied** — see Clipboard below. `GetAvailableFormats` reports what the clip actually advertises, in the same MIME spelling the Linux backend uses. Change detection via `ClipDescription.getTimestamp()` (API 26+). Android 10+ denies reads while the app lacks input focus; callers just see "nothing there" then. |
 | `UltraCanvasAndroidWindow.{h,cpp}` | All `UltraCanvasWindowBase` pure virtuals. Cairo **image** surface at physical px (the Windows backend's model), presented via `ANativeWindow_lock` → xRGB→RGBX row copy → `unlockAndPost`. `QueryNativeDeviceScale()` = `AConfiguration_getDensity`/160. Handles `APP_CMD_INIT_WINDOW`/`TERM_WINDOW`/`WINDOW_RESIZED` surface lifecycle (see Lifecycle below); desktop window-management calls are no-ops. |
-| `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name. |
+| `UltraCanvasAndroidMain.cpp` | `android_main()` on top of `android_native_app_glue` (compiled from the NDK by CMake). Exports `HOME`/`TMPDIR`/`XDG_CACHE_HOME` into the app sandbox, unpacks the APK's assets (below), waits for the first surface, then calls the app-provided `extern "C" int ultracanvas_app_main(int argc, char** argv)` — an app's existing `main()` under a different name (`Apps/DemoApp/main.cpp` is the worked example; [`packaging/`](packaging/README.md#the-app-library) has the CMake side). |
 | `UltraCanvasAndroidLog.{h,cpp}` | stdout/stderr → logcat pump, installed by `android_main` before anything can log. A native app's stdio goes to `/dev/null`, so without it every warning from cairo/Pango/fontconfig and every `std::cout`/`std::cerr` call site in shared framework code is discarded. The framework's own `debugOutput` does **not** come through here — it reaches logcat directly (see Diagnostics below). |
 | `UltraCanvasAndroidNativeDialogs.cpp` | All `UltraCanvasNativeDialogs` statics. Message dialogs, input dialogs and file *opening* are real (AlertDialog / SAF through the bridge below); `SaveFile` and `SelectFolder` stay logged "Cancel" stubs — **Dialogs** below explains why those two are blocked on an API decision rather than unfinished. |
 | `UltraCanvasAndroidDialogBridge.{h,cpp}` | Sync-over-async bridge to the Java dialogs: shows the dialog, then pumps activity commands on the glue thread until the Java UI thread delivers the answer. Falls back cleanly when the app runs a plain `NativeActivity`. |
@@ -326,7 +332,7 @@ Java here is compiled against `android.jar` alone.
 The video backend lives with the other platforms' in
 `libspecific/Video/VideoBackendAndroid*.cpp` and is **on by default**: it uses
 only the NDK's own libraries (`mediandk`, `camera2ndk`, `aaudio`, all present
-at minSdk 26), so unlike most of the stack it does not wait on the
+at minSdk 28), so unlike most of the stack it does not wait on the
 cross-compiled sysroot.
 
 - **Playback.** `AMediaExtractor` demuxes; `AMediaCodec` decodes the video
@@ -445,7 +451,7 @@ vcpkg and prints the configure line (investigation §4):
 PKG_CONFIG_LIBDIR=$SYSROOT/lib/pkgconfig:$SYSROOT/share/pkgconfig \
 cmake -G Ninja -B build-android \
   -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
-  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 \
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
   -DCMAKE_FIND_ROOT_PATH=$SYSROOT -DPKG_CONFIG_ARGN=--static
 ```
 
@@ -458,8 +464,9 @@ from the NDK sysroot itself (no pkg-config probing), wired through
 `GLContextManagerEGL_Android.cpp`.
 
 `.github/workflows/android-build.yml` builds that sysroot for `arm64-v8a` and
-compiles the core library against it with exactly that configure line. **No
-APK has been built yet, so none of this has run on a device.** Everything here
+compiles the core library against it with exactly that configure line, for
+`x86_64` as well, then packages the demo into an APK. **No APK has been run
+yet, so none of this has run on a device.** Everything here
 is compiled in CI against the real NDK, and the Java against `android.jar`, so
 the code is type-checked continuously — but treat the runtime behaviour
 described in this file as designed and reviewed, not as observed. `packaging/`

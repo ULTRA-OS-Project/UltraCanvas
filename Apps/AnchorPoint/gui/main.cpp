@@ -2,13 +2,14 @@
 // AnchorPoint - GUI application entry point. It opens no files from the
 // command line: when AnchorPoint is already running, a second start brings
 // the running window forward and quits (UltraCanvasSingleInstance.h). The
-// headless `anchorpoint` (cli/main.cpp) is not limited to one copy.
+// headless `anchorpoint-cli` (cli/main.cpp) is not limited to one copy.
 // Version: 0.3.0 - one copy per user: a second start brings the running
 //                  window forward
 // Version: 0.2.0
 // Author: AnchorPoint
 #include "AnchorPointApp.h"
 
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasSingleInstance.h"
 
 #include <cstdlib>
@@ -38,8 +39,13 @@ int main() {
     }
     if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
         return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "AnchorPoint");
+    // One icon, everywhere the app is drawn: the window and its taskbar entry
+    // read this file; the .ico in the Windows binary and the desktop entry's
+    // theme icon come from the same media/appicon/AnchorPoint.svg
+    // (CMakeLists.txt).
+    app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/AnchorPoint.png"));
 
-    AnchorPoint::AnchorPointGui gui(app);
+    AnchorPointApp::AnchorPointGui gui(app);
     if (!gui.Build()) {
         std::cerr << "Failed to build AnchorPoint window.\n";
         return 1;

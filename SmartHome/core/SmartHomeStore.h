@@ -1,8 +1,8 @@
 // core/SmartHomeStore.h
 // smarthome.db: the home's own database, over UltraDatabase (SQLite).
 //
-// What it keeps: settings (the home's location), the names and rooms a
-// person gave devices, scenes and automations with their actions, the event
+// What it keeps: settings (the home's location), the rooms of the home,
+// the names and rooms a person gave devices, scenes and automations with their actions, the event
 // log, and sensor history. Protocol state the SDKs keep themselves (network
 // keys, Matter fabrics) stays where each backend puts it.
 //
@@ -12,7 +12,7 @@
 // manager calls in from the UI thread, the command worker and the backends.
 //
 // Internal to the engine. Applications use SmartHomeAPI::OpenStore.
-// Version: 0.1.0
+// Version: 0.2.0 - rooms (migration 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -29,9 +29,14 @@ namespace UltraCanvas {
 namespace SmartHome {
 
 struct SmartHomeDeviceOverride {
-    std::string Name;   // empty: the backend's
-    std::string Room;   // empty: the backend's
+    std::string Name;     // empty: the backend's
+    std::string Room;     // a room name, as version 1 kept it; read once and turned into RoomId
+    std::string RoomId;   // empty: the backend's room; kNoRoomOverride: in no room
 };
+
+// A device the person took out of every room (so the backend's room no
+// longer applies either).
+inline constexpr const char* kNoRoomOverride = "-";
 
 class SmartHomeStore {
 public:
@@ -51,7 +56,13 @@ public:
     // ===== DEVICES =====
     bool SetDeviceName(const std::string& deviceId, const std::string& name);
     bool SetDeviceRoom(const std::string& deviceId, const std::string& room);
+    bool SetDeviceRoomId(const std::string& deviceId, const std::string& roomId);
     std::map<std::string, SmartHomeDeviceOverride> LoadDeviceOverrides();
+
+    // ===== ROOMS =====
+    bool SaveRoom(const SmartHomeRoom& room);
+    bool DeleteRoom(const std::string& roomId);
+    std::vector<SmartHomeRoom> LoadRooms();
 
     // ===== SCENES AND AUTOMATIONS =====
     bool SaveScene(const SmartHomeScene& scene);

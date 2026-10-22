@@ -337,7 +337,8 @@ add_library(SmartHomeUI STATIC
     ui/UltraCanvasSmartHomeDeviceControl.cpp
     ui/UltraCanvasSmartHomeDialogs.cpp
     ui/UltraCanvasSmartHomeEditors.cpp
-    ui/UltraCanvasSmartHomeAdvanced.cpp)
+    ui/UltraCanvasSmartHomeAdvanced.cpp
+    ui/UltraCanvasSmartHomeIcons.cpp)
 set_target_properties(SmartHomeUI PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     OUTPUT_NAME "smarthome_ui")
@@ -356,6 +357,11 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     add_executable(SmartHomeFacadeTest tests/FacadeTest.cpp)
     target_link_libraries(SmartHomeFacadeTest PRIVATE SmartHome)
 
+    # Several listeners per notification, and safe removal.
+    add_executable(SmartHomeListenerTest tests/ListenerTest.cpp)
+    target_link_libraries(SmartHomeListenerTest PRIVATE SmartHome)
+    add_test(NAME SmartHomeListener COMMAND SmartHomeListenerTest)
+
     # The demo home, on a clock the test drives, through the facade.
     add_executable(SmartHomeSimulatedTest tests/SimulatedTest.cpp)
     target_link_libraries(SmartHomeSimulatedTest PRIVATE SmartHome)
@@ -373,6 +379,17 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
         target_compile_definitions(SmartHomeAutomationTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
     endif()
     add_test(NAME SmartHomeAutomation COMMAND SmartHomeAutomationTest)
+
+    # The home's rooms, with and without smarthome.db.
+    add_executable(SmartHomeHomeModelTest tests/HomeModelTest.cpp)
+    target_link_libraries(SmartHomeHomeModelTest PRIVATE SmartHome)
+    target_include_directories(SmartHomeHomeModelTest PRIVATE
+                               ${CMAKE_CURRENT_SOURCE_DIR}/core
+                               ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
+    if(TARGET uc-database)
+        target_compile_definitions(SmartHomeHomeModelTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
+    endif()
+    add_test(NAME SmartHomeHomeModel COMMAND SmartHomeHomeModelTest)
 
     # Pure framing, so it builds whether or not the Zigbee backend is on.
     add_executable(SmartHomeAshCodecTest tests/AshCodecTest.cpp

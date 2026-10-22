@@ -115,6 +115,7 @@ their *License* is likewise marked **—** (OS component).
 | Leptonica | [leptonica.org](http://www.leptonica.org/) | [github.com/DanBloomberg/leptonica](https://github.com/DanBloomberg/leptonica) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | libarchive | [libarchive.org](https://www.libarchive.org/) | [github.com/libarchive/libarchive](https://github.com/libarchive/libarchive) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | libcdr | [wiki.documentfoundation.org](https://wiki.documentfoundation.org/DLP/Libraries/libcdr) | [github.com/LibreOffice/libcdr](https://github.com/LibreOffice/libcdr) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
+| libdatachannel (+ libjuice, usrsctp, libsrtp, plog) | [libdatachannel.org](https://libdatachannel.org/) | [github.com/paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libcurl | [curl.se/libcurl](https://curl.se/libcurl/) | [github.com/curl/curl](https://github.com/curl/curl) | [curl](https://spdx.org/licenses/curl.html) |
 | libheif | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libjpeg-turbo | [libjpeg-turbo.org](https://libjpeg-turbo.org/) | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -157,10 +158,12 @@ their *License* is likewise marked **—** (OS component).
 | SANE | [sane-project.org](http://www.sane-project.org/) | [gitlab.com/sane-project/backends](https://gitlab.com/sane-project/backends) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | SQLite | [sqlite.org](https://www.sqlite.org/) | [github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) | [public domain](https://spdx.org/licenses/blessing.html) |
 | Tesseract | [tesseract-ocr.github.io](https://tesseract-ocr.github.io/) | [github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
+| TDLib (runtime, not linked) | [core.telegram.org/tdlib](https://core.telegram.org/tdlib) | [github.com/tdlib/td](https://github.com/tdlib/td) | [BSL 1.0](https://spdx.org/licenses/BSL-1.0.html) |
 | TinyXML2 | [leethomason.github.io/tinyxml2](https://leethomason.github.io/tinyxml2/) | [github.com/leethomason/tinyxml2](https://github.com/leethomason/tinyxml2) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
 | V4L2 (Video4Linux2) | [docs.kernel.org](https://docs.kernel.org/userspace-api/media/v4l/v4l2.html) | [git.linuxtv.org/v4l-utils.git](https://git.linuxtv.org/v4l-utils.git) | — |
 | visioncortex | [visioncortex.org](https://www.visioncortex.org/) | [github.com/visioncortex/visioncortex](https://github.com/visioncortex/visioncortex) | [MIT](https://spdx.org/licenses/MIT.html) |
+| vodozemac (+ dalek, RustCrypto, prost crates) | [docs.rs/vodozemac](https://docs.rs/vodozemac) | [github.com/matrix-org/vodozemac](https://github.com/matrix-org/vodozemac) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | VTracer | [visioncortex.org/vtracer-docs](https://www.visioncortex.org/vtracer-docs) | [github.com/visioncortex/vtracer](https://github.com/visioncortex/vtracer) | [MIT](https://spdx.org/licenses/MIT.html) |
 | WASAPI | [learn.microsoft.com](https://learn.microsoft.com/en-us/windows/win32/coreaudio/wasapi) | — | — |
 | wasmtime | [wasmtime.dev](https://wasmtime.dev/) | [github.com/bytecodealliance/wasmtime](https://github.com/bytecodealliance/wasmtime) | [Apache 2 with LLVM exception](https://spdx.org/licenses/LLVM-exception.html) |
@@ -177,7 +180,7 @@ their *License* is likewise marked **—** (OS component).
 | zlib | [zlib.net](https://zlib.net/) | [github.com/madler/zlib](https://github.com/madler/zlib) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | zstd | [facebook.github.io/zstd](https://facebook.github.io/zstd/) | [github.com/facebook/zstd](https://github.com/facebook/zstd) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 
-> qrcodegen, miniz, KissFFT, miniaudio and OpenCV's frontal-face Haar cascade
+> qrcodegen, miniz, KissFFT, miniaudio, libdatachannel and OpenCV's frontal-face Haar cascade
 > (data only, for VideoFX) are **bundled** (vendored in-tree); the
 > links above point to their upstream projects for reference and updates.
 

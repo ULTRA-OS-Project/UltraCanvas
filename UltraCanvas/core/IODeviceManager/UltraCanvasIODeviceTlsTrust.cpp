@@ -1,6 +1,7 @@
 // core/IODeviceManager/UltraCanvasIODeviceTlsTrust.cpp
 // Trust on first use for network devices' self-signed certificates. See
 // UltraCanvasIODeviceTlsTrust.h.
+// Version: 1.0.1 - a verification that times out goes on to first-use learning
 // Version: 1.0.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -333,8 +334,15 @@ UltraNetResult DeviceHttpRequest(UltraNetHttpRequest request, UltraNetResponse& 
         // Ordinary verification first: a device with a certificate someone
         // vouches for needs nothing remembered, and pinning it would break
         // the day it renews.
+        // A verification that times out is no vouching either: Windows' chain
+        // building can stall for its whole budget on a certificate nobody
+        // vouches for (the eSCL live test's self-signed scanner on 127.0.0.1
+        // timed out at 10 s twice in CI, with no request reaching it), so the
+        // key is learned the way it would have been had the chain been
+        // refused. A device that is simply away times out again below.
         UltraNetResult verified = UltraNet_HttpRequest(request, response);
-        if (verified.success || verified.code != UltraNetResultCode::TlsCertificateInvalid) {
+        if (verified.success || (verified.code != UltraNetResultCode::TlsCertificateInvalid &&
+                                 verified.code != UltraNetResultCode::Timeout)) {
             return verified;
         }
         if (!LearningAllowed()) {

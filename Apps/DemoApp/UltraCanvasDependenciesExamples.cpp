@@ -68,6 +68,7 @@ namespace UltraCanvas {
         {"GPL 3",       "GNU General Public License v3.0",           "https://spdx.org/licenses/GPL-3.0-or-later.html"},
         {"AGPL 3",      "GNU Affero General Public License v3.0",    "https://spdx.org/licenses/AGPL-3.0-or-later.html"},
         {"MPL 2.0",     "Mozilla Public License 2.0",                 "https://spdx.org/licenses/MPL-2.0.html"},
+        {"BSL 1.0",     "Boost Software License 1.0",                 "https://spdx.org/licenses/BSL-1.0.html"},
         {"FTL",         "FreeType Project License",                   "https://spdx.org/licenses/FTL.html"},
         {"libpng 2",    "PNG Reference Library License v2",           "https://spdx.org/licenses/libpng-2.0.html"},
         {"libtiff",     "libtiff License",                            "https://spdx.org/licenses/libtiff.html"},
@@ -153,11 +154,13 @@ namespace UltraCanvas {
         // --- Vector formats plugin (DWG writing only; reading and every other converter are in-tree) ---
         {"LibreDWG",          "https://www.gnu.org/software/libredwg/",                            "https://github.com/LibreDWG/libredwg",                          "GPL 3"},
         // --- OCR plugin ---
+        {"TDLib (runtime, not linked)", "https://core.telegram.org/tdlib",                        "https://github.com/tdlib/td",                                   "BSL 1.0"},
         {"Tesseract",         "https://tesseract-ocr.github.io/",                                  "https://github.com/tesseract-ocr/tesseract",                    "Apache 2"},
         {"Leptonica",         "http://www.leptonica.org/",                                         "https://github.com/DanBloomberg/leptonica",                     "BSD 2"},
         // --- Vectorizer plugin ---
         {"VTracer",           "https://www.visioncortex.org/vtracer-docs",                         "https://github.com/visioncortex/vtracer",                       "MIT"},
         {"visioncortex",      "https://www.visioncortex.org/",                                     "https://github.com/visioncortex/visioncortex",                  "MIT"},
+        {"vodozemac",         "https://docs.rs/vodozemac",                                         "https://github.com/matrix-org/vodozemac",                       "Apache 2"},
         {"cargo",             "https://doc.rust-lang.org/cargo/",                                  "https://github.com/rust-lang/cargo",                            ""},
         {"rustc",             "https://www.rust-lang.org/",                                        "https://github.com/rust-lang/rust",                             ""},
         {"corrosion-rs",      "https://corrosion-rs.github.io/corrosion/",                         "https://github.com/corrosion-rs/corrosion",                     "MIT"},

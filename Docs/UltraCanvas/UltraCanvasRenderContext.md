@@ -314,6 +314,40 @@ transparent pixels alone at every step). A window puts its popups on with
 `CompositeToSurfaceWithOpacity`, so a popup with rounded corners - a menu -
 shows the window behind its corners while it fades in and after.
 
+## The layouts the context keeps
+
+Two caches hold shaped text, and they are keyed differently.
+
+**The context's own cache** serves `DrawText`, `DrawTextInRect`,
+`GetTextLineDimensions` and the other measures that take a string: a
+process-wide store (20 MB, shared by every context) looked up by a key the
+backend builds from the call and the render state. The key holds:
+
+- the text (its first 300 bytes) and whether it is markup;
+- the size asked for (`DrawTextInRect`'s rectangle, 0 x 0 for `DrawText`),
+  which also decides the end-ellipsis a rectangle gets;
+- the font: family, size, weight and slant;
+- the text style: alignment, vertical alignment, indent, wrap, line height;
+- the pinned Pango resolution, so a layout made at one point-to-pixel ratio
+  is never reused at another.
+
+Left out on purpose: the device scale (a layout's extents are in logical
+units and, with hint metrics off, the same at any scale - only the paint
+differs), and the process-wide font options (antialias, hint style, hint
+metrics - changing one clears the whole cache, so no entry survives them).
+The same word in two fonts is therefore two entries, and
+`TextLayoutCacheTest` checks that it measures differently in each.
+
+**An element's own layout** (`CreateTextLayout`) is not in that store: it
+belongs to the element, which keeps it between draws through
+`UltraCanvasTextLayoutCache` (`UltraCanvasTextLayoutCache.h`) keyed on what
+it was built from - the text, the font, the wrap, the alignment, the
+shortening, the width - and rebuilds it only when one of those changed.
+The label, the button, the text input, the dropdown and the menu keep
+theirs this way. `TextLayoutsCreated()` counts the layouts
+`CreateTextLayout` made on a context, which is how a test tells "ten draws,
+one layout" from "a layout per draw".
+
 ## Tests
 
 `Tests/RenderContextTest.cpp` (CTest `RenderContextTest`) exercises every

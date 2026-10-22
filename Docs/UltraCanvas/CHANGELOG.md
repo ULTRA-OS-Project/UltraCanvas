@@ -1,4 +1,4 @@
-#### 2026-10-21 *0.9.363*
+#### 2026-10-22 *0.9.379*
 - **No framework enumerator is named `None` any more.** X11's `None` macro
   rewrote such an enumerator in any file that included a window header
   first, so 28 headers and sources carried an `#undef None` and others
@@ -23,7 +23,9 @@
   `VirtualFSRamDiskBacking::NotCreated`, `UCVFSCompressionType::Uncompressed`;
   printers `IODuplexMode::OneSided`, `IOSupplyColor::NoColor`; network
   monitor `LoopbackRole::NotLoopback`, `NameSource::NoSource`; video timeline
-  `Drag::NoDrag`; LaTeX `MathAtomClass::NoClass`. The strings the file
+  `Drag::NoDrag`; LaTeX `MathAtomClass::NoClass`; and in the modules that
+  arrived meanwhile, `UltraIMCapabilityFlags::NoCapabilities`,
+  `UltraIMResultCode::Ok` and `UltraRtcResultCode::Ok`. The strings the file
   formats write are unchanged. (`NoValue` is also an X11 macro, hence
   `NoVisualization`.)
 - **Nor is any named `Success`.** X11's `Success` macro (0) did the same to
@@ -42,7 +44,7 @@
   and `Bool` guards in UltraNet, UltraWin, UltraDatabase, IODevice, EBook,
   Spreadsheet and RequirementModel headers are gone with the identifiers
   they covered: `RequirementField::Status` is `State` (the ReqIF field
-  names are unchanged), `UltraDbType::Bool` and `ZWaveValueType::Bool` are
+  names are unchanged), `UltraDbType::Boolean` and `ZWaveValueType::Bool` are
   `Boolean`, `AiStatus::Status()` is `StatusOf()` and the IMAP response's
   `Status()` is `StatusWord()`. Nothing was named `Always` any more.
 - **CI keeps it that way.** `scripts/check_x11_names.py` (`x11-names.yml`)
@@ -85,6 +87,942 @@
   macro form of `StrLength` are left out: a C++ translation unit never sees
   them. The tree is clean; the Objective-C rules now skip the Windows, Linux,
   BSD, WASM and Android glue, which no `.mm` file reaches.
+#### 2026-10-22 *0.9.378*
+- **A core built with `ULTRACANVAS_ENABLE_CHARTS=OFF` links again.** The
+  option dropped every source under `Plugins/Charts/`, but code outside it is
+  built on four of them: every diagram derives from
+  `UltraCanvasChartElementBase` (the Matrix and Packet diagrams draw
+  `UltraCanvasChartLegend` too), and the progress dialog - which
+  `UltraCanvasFileLoader` reaches - shows an
+  `UltraCanvasCircularProgressChart`; those use `UltraCanvasColormap`. The
+  library compiled, and then a program using a diagram or the file loader
+  failed to link with undefined chart symbols. With charts off the core now
+  keeps those four files and drops the rest.
+- **CI tests JPEG XL for real.** `build.yml`'s Linux rows run on Ubuntu
+  22.04, whose libvips has no libjxl, so `ImageJxlTest` only ever reported
+  SKIP there. A new workflow, `Image codecs` (`image-codecs.yml`), builds the
+  core and the headless image tests (`ImageJxlTest`, `ImageIcoQoiTest`,
+  `ImageGifSaverTest`) on Ubuntu 24.04, whose libvips 8.15 reads and writes
+  JPEG XL, and fails when `ImageJxlTest` skips instead of passing. It
+  configures the core with charts and every app and optional module off -
+  the chart-free core no other job builds - and links `ImageJxlTest` (which
+  reaches the progress dialog) and `MatrixDiagramRenderTest` (a diagram)
+  against it, so that configuration cannot stop linking unnoticed again.
+
+#### 2026-10-22 *0.9.377*
+- **`CSVFormatRecord` writes one CSV/TSV record** (`UltraCanvasCSVImport.h`):
+  the fields quoted as `CSVExportOptions` says - all of them, or those
+  holding the separator, the quote character or a line break, a quote inside
+  doubled - and the options' line ending. The spreadsheet's CSV export now
+  writes its rows with it, so a writer that streams rows it never holds at
+  once - UltraDBAdmin's table export - quotes exactly as the spreadsheet
+  does. With *quote all fields*, an empty cell the sheet never set is now
+  written `""` like every other field, where it used to be left out between
+  two separators.
+- **UltraDatabase: a SQLite statement that changes no rows reports none.**
+  `sqlite3_changes()` and `sqlite3_last_insert_rowid()` keep the last INSERT,
+  UPDATE or DELETE's figures until the next one, and the SQLite driver handed
+  them on for every statement - so in a script, a `CREATE TRIGGER`, a
+  `CREATE VIEW` or a `SELECT` after an INSERT reported the INSERT's "2 rows
+  affected" (UltraDBAdmin's SQL console showed it so), and `lastInsertId`
+  the INSERT's row id. The driver now reports a statement's counts only when
+  it changed rows itself, as the connection's running total shows; an
+  INSERT's own count still leaves out what its triggers changed.
+  PostgreSQL was right already: each result carries its own count.
+
+#### 2026-10-22 *0.9.376*
+- **UltraIM: a Telegram provider, and sign-in in steps.**
+  `UltraCanvas/Plugins/UltraIM/telegram/` (module `ultraim_telegram`,
+  provider `telegram`) is a client of TDLib through its JSON interface,
+  **loaded at run time** (`TdJson.h`: `tdlib/` next to the modules,
+  `ULTRAIM_TDJSON_PATH`, or the system's libtdjson) - nothing of TDLib is
+  linked, so it builds everywhere. Phone-number sign-in with the code and the
+  two-step password, registering a new number, TDLib's database encrypted
+  with a key the vault keeps, the session resumed; the main chat list,
+  private chats and groups, text with replies, edits, deletion, read marks,
+  typing, presence, history, people found by username or phone number, new
+  groups. The application's API ID and hash come from the user, the build
+  (`ULTRAIM_TELEGRAM_API_ID` / `ULTRAIM_TELEGRAM_API_HASH`) or the
+  environment. For it UltraIM gains `UltraIMAuthStep`, the result code
+  `NeedsInput`, `UltraIMProviderInfo::authStep` / `authHint`, the
+  `AuthStepChange` event and the plugin calls `GetAuthStep` / `GetAuthHint`.
+  Tests: `Tests/UltraIM/TelegramProviderTests.cpp` against `FakeTdJson` (a
+  libtdjson stand-in with a small Telegram in memory) and
+  `Tests/UltraIM/TelegramTdlibTests.cpp`, every request handed to the real
+  TDLib offline (CI fetches it from the `tdjson` wheel).
+
+#### 2026-10-22 *0.9.375*
+- **The applications now work when Windows starts them from the MSIX
+  package.** A packaged application starts with System32 as its working
+  folder, its registry writes stay inside the package, it may start an
+  elevated process only with a capability the Store grants on request, and
+  its toasts belong to the package's own applications. Six things assumed
+  otherwise:
+  - **UltraNet's plug-in folder** defaulted to the relative path
+    `Plugins/UltraNet`, which is relative to the working folder. Unless an
+    application set its own folder, as UltraMail and EmailCleaner did, no
+    plug-in was found when it started anywhere but its own folder. That
+    covered DeviceExplorer's network printer and scanner discovery (the mDNS
+    plug-in) from the package, a shortcut or another program. The default is
+    now `Plugins/UltraNet` beside the executable, or one or two folders above
+    it, whichever holds a plug-in (`UltraNetPlugins.cpp`).
+  - **The file dialog**, with no folder remembered, opened in the working
+    folder. That is System32 for a packaged application, and `/` for a macOS
+    application started from Finder. It now opens in the home folder when the
+    working folder is the Windows folder or the root of the drive. It treats a
+    relative folder (UltraMail passes `.` when it finds no home) the same way.
+  - **UltraDesktop's desktop switch** writes `HKEY_CURRENT_USER` values, which
+    sign-in never sees from a package. The switch reported success and did
+    nothing. On Windows, `CanReplaceSystemDesktop()` is now false when running
+    from a package. The new
+    `UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason()` says
+    why, for UltraDesktop and UOS-Settings to show. `ReplaceSystemDesktop` and
+    `RestoreSystemDesktop` refuse with that sentence.
+  - **Texter** embeds the UTF-8 code-page manifest, so a file with a Thai or
+    CJK name opened through the package's file types arrives intact. The
+    package's minimum Windows is now 10 1903 (`--min-version 10.0.18362.0`),
+    the first that honours that manifest.
+
+  - **UltraFiler's *Delete as administrator*** restarts the program
+    elevated, which Windows allows a packaged program only when its package
+    declares the restricted capability `allowElevation`. The Store grants that
+    capability only on request. `ElevatedFileOperations::IsAvailable()` is now
+    false in a package without it, so the command is not offered there only to
+    fail. `package-win-msix.sh` declares it with `MSIX_ALLOW_ELEVATION=1`, for
+    sideloaded and enterprise packages. The new
+    `OS/MSWindows/UltraCanvasWindowsPackage.h` holds the package check
+    both of these use: whether the process has a package identity, and what
+    the installed `AppxManifest.xml` declares. It is header-only, so the
+    UltraMessage library uses it as well.
+  - **Toast notifications** registered their AppUserModelID and COM activator
+    under `HKEY_CURRENT_USER\Software\Classes`, which Windows does not see
+    from a package. From a package:
+    - The manifest now declares each activator: `windows.comServer` with
+      `-ToastActivated`, and `windows.toastNotificationActivation`. The rows
+      come from `NOTIFICATION_ACTIVATORS` in `make_msix_layout.py` (UltraMail
+      today), each CLSID derived as `NotificationActivatorClassId` derives it.
+    - `RegisterNotificationActivator` writes nothing and only serves the class.
+    - The presenter shows each toast under the posting process's own package
+      AppUserModelID, which it asks Windows for with the process the broker
+      verified. It now carries that process in `PresentedContent::senderProcessId`.
+    - `check_notification_activators.py` fails CI when an application
+      registers an activator without a row there. It also fails when a row
+      names an ID the application's sources lack, or when the Python
+      derivation stops matching the CLSID the C++ test pins.
+
+    Not yet run on Windows.
+
+  With the switch explaining itself, the MSIX package gives UltraDesktop a
+  Start menu entry again, as the installer does. Texter, UltraDesktop and
+  UOS-Settings carry the application side in their own pending entries.
+  UltraMail and EmailCleaner drop their own copies of the plug-in folder
+  lookup, and UltraMail's save dialog finds the Downloads folder on Windows.
+
+#### 2026-10-22 *0.9.374*
+- **An application's preferences in one file: `UltraCanvasAppSettings`.**
+  `<settings folder>/<App>/settings.json`, read with `Load()` and written
+  whole with `Save()`; typed values (`GetString`, `GetInt`, `GetBool`,
+  `GetNumber`, `GetList`, `Set`, `Remove`) with a fallback each, dotted
+  keys as nested objects (`"window.width"`), and a recent list on any key
+  (`Remember` puts an entry first, once, and keeps the newest eight;
+  `Forget` drops one). A missing or broken file is the defaults. UltraPress's
+  settings file is one; UltraFIBU's list of the bookkeepings opened last
+  moved into one. `AppSettingsTest` covers it
+  ([doc](UltraCanvasAppSettings.md)).
+- **A start-up and shut-down test can end the program:
+  `ULTRACANVAS_CLOSE_AFTER_MS`.** With the variable set, `Run()` asks every
+  window to close after that many milliseconds, the way the window
+  manager's close button would (`UltraCanvasApplication::CloseAllWindows()`,
+  which an application or a test calls itself too): the window's
+  `onWindowClosing` may refuse, `onWindowClosed` runs, the settings are
+  written, and `Run()` returns. `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run
+  ./ultrapress` opens, runs two seconds and ends, with no X client to send
+  the close.
+- **The start page has a headless test of its own: `StartPageTest`.** The
+  parts laid out top to bottom, the preferred height growing by what each
+  takes, the recent entries as buttons that hand back the whole entry, the
+  action as wide as the column, a section at the margin and the rows put
+  in it, the status line in the error colour. It and `AppSettingsTest`
+  run on the macOS and Windows CI rows too (`ULTRACANVAS_BUILD_STARTPAGE_TESTS`,
+  `Tests/StartPageTests.cmake`), with the UltraPress suites and the
+  UltraFIBU start window test, on each platform's own path rules.
+- **The date picker's hint is the one the application set.**
+  `UltraCanvasDatePicker::SetPlaceholder` now reaches the field after it
+  was built; until now the field kept "Select a date" whatever was set
+  later, which is what UltraFIBU's start window showed for its
+  *TT.MM.JJJJ*. `GetPlaceholder` reads it back.
+- **A button's text can lose its middle instead of its end:
+  `ButtonStyle::ellipsize`, `SetEllipsize`.** `EllipsizeMiddle` keeps the
+  first and the last part of a path readable, `EllipsizeStart` the end;
+  the default is unchanged; the layout the text is shaped with is kept
+  from draw to draw, as the label keeps its own, and rebuilt only when the
+  text, the width, the font, the alignment or the mode changes. The start
+  page's recent entries use it, so a long folder keeps its drive and its
+  name on the button.
+- **SmartHome: several listeners per notification.** `SmartHomeListener`
+  holds any of the module's twelve callbacks; `SmartHomeAPI::AddListener`
+  adds one and returns the id `RemoveListener` takes. Each notification calls
+  the `SetOn*` slot, as before, and then every listener with that member set,
+  with no module lock held. Once `RemoveListener` returns the listener is not
+  running and is not called again (from inside a notification it stops every
+  later call). `SmartHomePanel` listens this way, so the application hosting
+  it keeps its own callbacks - before, the two took the single slot from
+  each other.
+  - `SmartHomeListenerTest` covers it, removal raced against a notifying
+    thread included.
+- **SmartHome: the dashboard panel drew every device card on top of the
+  first.** `SmartHomePanel` laid its cards out in a grid but drew each at its
+  own origin, so 30 devices showed as one card. Each is drawn where it is
+  laid out now (grid, list, rooms and scenes), and the room view groups the
+  cards by the home's rooms (`SmartHomeAPI::GetRooms`) when the panel was
+  given none of its own.
+- **Demo application: the Smart Home entry shows the module.** With the
+  `SmartHomeUI` widgets in the build it starts the simulated home and opens
+  the dashboard panel on it, with buttons for its device, room, list and
+  scene views; without them it shows the module's documentation as before.
+- **SmartHome: the home has rooms of its own.** `SmartHomeRoom` (id, name,
+  icon, floor, sort order) and, on `SmartHomeAPI`, `GetRooms`, `GetRoom`,
+  `CreateRoom`, `UpdateRoom`, `DeleteRoom`, `AssignDeviceToRoom`,
+  `GetDeviceRoom` and `SetOnHomeChange`. A room name a backend reports
+  becomes a room the first time a device brings it; `SmartHomeDeviceInfo`
+  gains `RoomId` beside `Room`, which is now the name of the home's room the
+  device is in - the person's choice over the backend's. Renaming a room
+  renames it on its devices, and the backend's old name does not bring the
+  old room back; deleting one leaves its devices in no room. `SetDeviceRoom`
+  by name still works and makes the room when there is none.
+  - smarthome.db migration 2 adds the `room` table and keeps a device's room
+    by id; a version-1 store's room names become rooms the first time it
+    opens. Rooms and choices made before the store opened are saved to it.
+  - `SmartHomeHomeModelTest` covers it, with and without the store.
+- **SmartHome: `SmartHomeAPI::WaitForCommands(timeoutMs)`** waits until every
+  command queued so far has been sent - for a command-line tool that exits
+  right after a command, and for tests.
+- **SmartHome: the device controls are built from framework elements.**
+  `SmartHomeLightControl`, `SmartHomeThermostatControl`,
+  `SmartHomeLockControl`, `SmartHomeBlindControl` and
+  `SmartHomeSensorDisplay` are now `UltraCanvasContainer`s laid out by flex,
+  where they used to paint every control and hit-test the pointer against
+  fixed positions. The light has a switch, brightness and colour-temperature
+  sliders, a colour picker (hue and intensity bars) and a swatch bar for its
+  presets; the thermostat a ring gauge for the target, a spinner and a
+  segmented control for the mode (the mouse wheel still steps it half a
+  degree); the lock a button, a battery bar and its activity in a list view;
+  the blind Open / Stop / Close buttons, position and tilt sliders and a
+  button per preset. Focus, keyboard, hover and theming are the elements'.
+  - The public API is kept. `SetBrightnessEnabled`, `SetColorTempEnabled`,
+    `SetColorEnabled`, `SetTiltEnabled`, `SetCelsius` and `SetGraphRange` are
+    out-of-line now and show or hide their rows; getters such as
+    `GetPowerSwitch()`, `GetBrightnessSlider()`, `GetLockButton()` and
+    `GetOpenButton()` reach the elements.
+  - `SetState`, `SetPosition` and `SetTilt` put a state into the elements
+    without echoing it back to the device as a command.
+  - A sensor's history is a line chart with a floor under its value axis,
+    `SensorHistoryMinimumSpan` (2 °C, 10 %, 20 W, 50 lx): a room steady at
+    20.6-20.7 °C draws a flat line, not a sawtooth across the whole graph.
+- **SmartHome: the device dialog, the pairing wizard and the scene and
+  automation editors are built from framework elements too.** The dialog
+  holds the device's control as a real child - before, it painted the
+  control itself and passed it events by hand, so a container-based control
+  in it got none. The editors take the name in a text input, list their
+  actions, triggers and conditions in list views, pick a device from a
+  dropdown, and enable an automation with a switch. Getters reach the
+  elements (`GetCloseButton()`, `GetSaveButton()`, `GetNameInput()`, ...).
+  - The pairing wizard is protocol buttons, then a search with a progress
+    bar and Cancel, then "Added ..." or what went wrong. It used to wait on a
+    "choose a found device" step nothing ever filled; it now watches for the
+    device that joins the home, on an application timer (`Poll()` for a host
+    without an event loop), and leaves SmartHomeAPI's callbacks to the host.
+    `SetSearchTimeout`, `IsSearching` and `GetErrorMessage` are new.
+- **SmartHome: the dashboard panel and the topology, energy, scheduler and
+  group widgets are built from framework elements.** `SmartHomePanel` is a
+  container: a toolbar (a segmented control for its six views, a search
+  field, "Add device"), a pairing banner, and a scrolling body whose
+  children are the device and scene cards themselves, in rows that wrap.
+  It used to lay the cards out and draw them by hand and pass them events
+  itself. The module's callbacks, which arrive on its threads, now only note
+  the change; `Poll()` applies it on the UI thread from an application
+  timer. Its automations are a list view (double-click turns one on or off)
+  and its network view is a `SmartHomeNetworkTopology`.
+  - `SmartHomeNetworkTopology` is an `UltraCanvasNodeDiagram` under a
+    layout switch and a radio filter; `SetAutoRefresh` uses an application
+    timer instead of refreshing from `Render`.
+  - `SmartHomeEnergyMonitor` plots power, energy or cost as a line chart
+    with a segmented control; `SmartHomeGroupControl` has buttons, sliders, a
+    list view and a dropdown to add a device; `SmartHomeScheduler` has a
+    segmented control for day / week / list, a list view, Turn off / Remove,
+    and draws only its week grid.
+  - New getters reach the elements; `GetNodes()`, `GetLinks()`,
+    `GetEvents()`, `GetViewMode()`, `GetSelectedEvent()`, `GetGroup()`,
+    `GetDeviceCard()`, `GetSceneCard()` and `IsPairing()` are new.
+  - The demo application's Smart Home entry drops its own view buttons: the
+    panel's toolbar has them.
+  - `scripts/check_ui_reuse.py` scans `SmartHome/ui`; the element catalogue
+    lists the Smart Home widgets and what each is built from.
+  - `SmartHomeWidgetTest` drives the controls, the dialog, the wizard (a
+    simulated device pairs through it), the editors, the advanced widgets and
+    the panel through a real window
+    and the application's dispatch; CI's Linux row now builds the Smart Home suite
+    (`BUILD_TESTS` turns it on) and runs that test on a virtual display.
+- **SmartHome: device icons, and a network map that reads.**
+  - Sixteen new line icons in `media/icons/smarthome/` beside the existing
+    ones (TV, fridge, kettle, computer, heater, gate, camera, speaker, fan,
+    appliance, gateway, CO, air quality, light level, pressure, vibration),
+    and `UltraCanvasSmartHomeIcons.h`: `SmartHomeDeviceIconName` picks a
+    device's icon by category, by its kind of reading for a sensor, and by
+    its name for a plug or switch (a plug called "Kettle" gets the kettle);
+    `SmartHomeCategoryColor` gives the disc colour.
+  - `SmartHomeNetworkTopology` draws each device as a white card with its
+    icon, name and room (routers larger, bordered in their radio's colour)
+    on a light canvas, and no two cards overlap in any layout. A device is
+    linked to a router of its radio in its own room when there is one (the
+    rest are shared out evenly) instead of every device to the first
+    router; radial puts each router inside the arc of its own devices, and
+    tree puts each router over a column of its devices.
+  - The dashboard's device cards show the icon on their colour disc, and a
+    list row now shows the device's name and state.
+  - The radial map is drawn tighter, and zoomed out past 70 % the topology
+    shows its devices as icons, named on hover (`SetDetailZoom`); a
+    double-click on a device reports through the new `SetOnNodeActivated`.
+- **The start page every application shows with nothing open:
+  `UltraCanvasStartPage`.** A container that lays out, top to bottom, a
+  title, the reason this page and not the thing itself, the entries opened
+  last as buttons (their whole path in a tooltip), the one action that
+  opens an existing thing, a section of the application's own fields for
+  a new one - laid out row by row by the page (`AddField` puts a caption
+  and an input on a row, `AddNote` a line of text, `AddButton` a button)
+  - and a status line in the theme's error colour when something could
+  not be done; `PreferredHeight()` is what the window should be.
+  UltraPress's start window (a site folder) and UltraFIBU's (a bookkeeping
+  file) are both this page with their own words and fields
+  ([doc](UltraCanvasStartPage.md)).
+- **One way to keep a text layout between draws:
+  `UltraCanvasTextLayoutCache`.** The inputs a layout is built from - the
+  text, the font, the wrap, the alignment, the shortening, the width - are a
+  key (`TextLayoutKey`), and `Get(ctx, key)` hands back the layout held
+  while the key is the one it was built with, else a new one with the key
+  applied. The label keeps its layout this way now, so no setter of its
+  resets it (only the inline images, which are not in the key), and the
+  button's middle-shortened text does too, and so do the text input (its
+  text and its placeholder), the dropdown (the closed button's text and
+  each row of its list) and the menu (each entry's label and header),
+  which shaped their text on every draw before; the next element copies
+  the pattern instead of choosing one. `IRenderContext::CreateTextLayout` counts
+  the layouts it made (`TextLayoutsCreated`; the backend implements
+  `MakeTextLayout`), and `TextLayoutCacheTest` draws a label, a button, a
+  text input, a dropdown and a menu bar ten times each and finds one
+  layout per text.
+- **`scripts/check_version_history.py` lists the headers under
+  `UltraCanvas/include` that carry no `Version:` line**, so the history a
+  reader expects in a header's head is added where it is missing;
+  `--strict` makes it a check.
+- **A menu entry's width is measured once.** `CalculateItemWidth` keeps
+  each entry's width with what it was measured from (the label, the
+  shortcut, the font, the icon, the submenu, the orientation, the style's
+  spacings) and measures again only when one changed; every layout pass
+  asked for every width before, and each ask shaped the label. A menu
+  drawn without a window (a test's offscreen surface) estimates its widths
+  instead of dereferencing a context it does not have. The kept layout and
+  the kept width are one slot per entry, moved with the entries by
+  `InsertItem` and `RemoveItem`, so the entries that only shifted rebuild
+  nothing.
+- **The render context doc explains the context's own text cache**: what
+  its key holds (the text, the size, the font, the text style, the
+  resolution) and leaves out (the device scale, the font options), and how
+  an element's own layout differs from it.
+- **The dropdown, the tree view and the timer headers carry a version
+  history**, reconstructed from the framework changelog.
+
+#### 2026-10-22 *0.9.373*
+- **ChatCube Direct: the ULTRA OS native messenger, as an UltraIM provider.**
+  A provider module (`UltraCanvas/Plugins/UltraIM/direct/`, loaded as
+  `Plugins/UltraIM/ultraim_direct`) with a key-pair identity made on the
+  device and kept in its `DeviceKeyVault`, end-to-end encrypted messages
+  (X25519 key agreement, HKDF, XChaCha20-Poly1305, authenticated header)
+  sent peer to peer over an UltraRTC data channel whose set-up is signed
+  with the identity keys, the ChatCube relay for sign-in, presence,
+  signalling, the offline queue and groups, delivery and read receipts, and
+  a local SQLite record of contacts, conversations, history and the outbox,
+  and 1:1 voice and video calls (signed invite / accept / reject / camera /
+  hang-up over the relay, an UltraRTC peer per call with Opus and VP8, mute,
+  camera off; a dropped media connection waits briefly for the hang-up
+  that explains it), and the local network with or without a relay: an
+  mDNS announcement (`_chatcube._tcp`) and discovery, a TCP connection both
+  ends authenticate with their identity keys carrying the same signed
+  signalling, the nearby list, and the outbox waiting for the link when
+  there is no relay.
+  `Tests/UltraIM/DirectProviderTests.cpp` runs two providers against a local
+  relay end to end; CI installs the relay for it.
+- **UltraNet: WebSockets failed on every Linux machine whose libcurl was
+  built without them, Ubuntu 24.04's included.** The configure check looked
+  only for the `curl_ws_send` symbol, which libcurl exports either way, so it
+  kept the system library, and every `UltraNet_WebSocketConnect` then failed
+  ("not built in"). It now asks the library which protocols it was built
+  with (`curl_version_info`), and without `ws` builds the vendored curl in
+  `third_party/curl`, as it already did for a curl without versioned symbols.
+  Found by ChatCube Direct's relay socket.
+- **Device TLS trust: a verification that times out goes on to first-use
+  learning.** The ordinary verified request a device gets first, to spare a
+  device with a vouched-for certificate any pinning, returned its result
+  whenever it was not a certificate refusal - a timeout included. On the
+  Windows runners that first request to the eSCL live test's self-signed
+  scanner on 127.0.0.1 timed out at its 10 s twice (CI runs 3938 and 4091),
+  with no request ever reaching the scanner, the way a chain build that
+  stalls on an unknown root does. A timeout now goes on to the first-use
+  probe and the pinned request, as a refused chain does; a device that is
+  simply away still times out, once more.
+- **`package-macos.sh`: the staple and the validate each get their own
+  retry budget, and a longer one.** Apple's CloudKit ticket lookup still
+  drops the connection on the Intel runner (stapler exit 68) for minutes
+  at a time: the 0.9.307 release build got `UltraFiler.app` stapled on its
+  fifth and last try and then had no try left for the validate, and
+  0.9.348 lost all five tries on the demo image inside two minutes - both
+  red on main after a notarization Apple had accepted. Each of the two now
+  has `STAPLE_ATTEMPTS` tries of its own (default 8, was 5 shared) with a
+  pause growing from 20 s to 60 s, about six minutes each, before the run
+  is given up.
+- **UltraCanvasVideoTile: live pictures pushed from any thread.** A new
+  element (`UltraCanvasVideoTile.h`) for a call's video, a self view or
+  frames a program decodes itself: `PushFrame` copies RGBA or BGRA pixels
+  into a one-frame inbox from any thread, the newest frame wins and one
+  upload to the UI thread is in flight at a time; `Contain` or `Cover`
+  fitting, mirroring for a self view, a caption without a picture, corner
+  radius and border. Catalogued under *Text, images and media*; documented
+  in `Docs/UltraCanvas/UltraCanvasVideo.md`.
+- **UltraCrypt: AES-CTR and PBKDF2, for formats defined elsewhere.**
+  `UltraCrypt_AesCtrEncrypt` / `UltraCrypt_AesCtrDecrypt` (AES-128/192/256,
+  a 128-bit big-endian counter from the IV, any length, on the bitsliced
+  constant-time AES the CBC mode uses) and `UltraCrypt_DeriveKeyPbkdf2`
+  (PBKDF2-HMAC-SHA-256/512, the password's HMAC state keyed once). Like
+  AES-CBC they are interop only - nothing UltraCanvas defines uses them -
+  and are here for Matrix's room-key export files and attachments. Tested
+  against SP 800-38A F.5, RFC 7914 and SHA-512 values.
+- **UltraCrypt: X25519 key agreement.** `UltraCrypt_KeyExchange` derives the
+  secret two parties share from one's secret and the other's public key,
+  refusing a low-order public key; `UltraCrypt_SignaturePublicKeyToKeyExchange`
+  and `UltraCrypt_SignatureSecretKeyToKeyExchange` turn an Ed25519 identity
+  into its X25519 form, so one key pair signs and encrypts;
+  `UltraCrypt_GenerateKeyExchangeKeyPair` makes an ephemeral pair. The
+  module had signatures and AEAD but nothing between them, which end-to-end
+  encryption needs (ChatCube Direct). Tested against the RFC 7748 vector.
+- **UltraIM: a Matrix provider.** `UltraCanvas/Plugins/UltraIM/matrix/`
+  (module `ultraim_matrix`, provider `matrix`) speaks the Matrix
+  client-server API to any homeserver: password or token sign-in with
+  `.well-known` discovery, the session kept in a `DeviceKeyVault`, `/sync`
+  as a long poll, direct chats (`m.direct`) and groups, invitations accepted
+  by answering, replies, edits, redactions, read receipts, typing, presence
+  and history paged back with `/messages`; our own messages go out under the
+  client message id as the transaction id, so their echo meets the
+  optimistic row. `Tests/UltraIM/MatrixProviderTests.cpp` runs against a
+  real Synapse (`Tests/UltraIM/matrix_test_server.py`); CI installs it.
+- **Matrix: end-to-end encryption (Olm and Megolm).** The cryptography is
+  vodozemac, Matrix's audited Rust implementation, behind a C ABI shim
+  (`Plugins/UltraIM/matrix/olm-c`, built with Corrosion; option
+  `ULTRAIM_MATRIX_E2EE`, on, needs cargo - without it the provider builds and
+  encrypted rooms say they cannot be read). `MatrixCrypto` keeps the rest:
+  this device's keys signed and published with one-time and fallback keys
+  topped up, other users' device lists with their keys trusted on first use,
+  an Olm session per device carrying each room's key to every device of its
+  members, a Megolm session per room rotated by the room's settings and when
+  someone leaves, decryption with a replay guard and room and sender checks,
+  and messages whose key is late shown as waiting and replaced when it comes.
+  New direct chats and groups are encrypted; signing in again reuses the
+  device while its keys are here. Everything is in one internal file per
+  device, sealed with a key the vault holds. `UltraIM_ExportEncryptionKeys` /
+  `UltraIM_ImportEncryptionKeys` (new provider calls) write and read the
+  room-key export file Element uses; `UltraIMConversation::isEncrypted` marks
+  encrypted conversations. `cmake/UltraCanvasRust.cmake` now holds the
+  Windows Rust toolchain pick and the Corrosion fetch the Vectorizer plugin
+  had to itself. Tests: `Tests/UltraIM/MatrixCryptoTests.cpp` (no server),
+  and in `MatrixProviderTests` only ciphertext on the server, a second
+  device, a key import, the same device after signing in again, and an
+  encrypted room with matrix-nio (`matrix_nio_peer.py`), key exports read
+  both ways; CI installs `matrix-nio[e2e]`.
+- **UltraIM: an instant-messaging framework, the base of the ChatCube
+  messenger.** A new UI-free module (`UltraCanvas/{include,core}/UltraIM/`,
+  target `UltraIM`) with one `UltraIM_*` API for every messenger network:
+  providers implement `IUltraIMProviderPlugin` and ship as modules loaded by
+  `UltraIM_RefreshProviders` (checked against
+  `ULTRAIM_PLUGIN_HOST_ABI_VERSION`) or are registered in-process; every
+  event and callback reaches the application through the dispatcher it
+  installs, so a UI subscribes on its UI thread and needs no lock; a
+  conversation fetch merges every connected provider; sends carry a client
+  message id for optimistic display; calls are started, answered, muted and
+  ended through the same API (`UltraIM_SetCallMuted`, result code
+  `InvalidState`); a video call's pictures reach the application through
+  sinks (`UltraIM_SetCallVideoSinks`, RGBA on a media thread), its camera
+  is switched with `UltraIM_SetCallCamera`, and the other side's camera
+  arrives as `CallMediaChange`; `UltraIM_FetchNearbyContacts` and the
+  `NearbyChange` event list the people on the local network, and
+  `UltraIMCredentials::localNetwork` asks a provider to look there. Plan:
+  `Docs/Research/ChatCubeDirectPlan.md`; doc: `Docs/Modules/UltraIM/README.md`;
+  tests: `Tests/UltraIM` (`ULTRACANVAS_BUILD_ULTRAIM_TESTS`).
+- **UltraNet mDNS: announcing services, not only finding them.** The mDNS
+  plug-in gains `IServiceDiscoveryPlugin` (`UltraNet/UltraNetPlugins.h`):
+  `Advertise(UltraNetServiceAdvertisement{serviceType, instanceName, port,
+  txt}, handle)` announces a service of the program's own until
+  `StopAdvertising` - an Avahi entry group on a threaded poll (renamed on a
+  name clash, re-announced when the daemon restarts), Bonjour's
+  `DNSServiceRegister`, or Windows' `DnsServiceRegister` (1703+, bound at
+  run time like the browse calls). Browsing is unchanged. ChatCube's local
+  network is its first user.
+- **UltraRTC: WebRTC peer connections and data channels.** A new UI-free
+  module (`UltraCanvas/{include,core}/UltraRTC/`, target `UltraRTC`) wraps
+  libdatachannel 0.24.6 - vendored with libjuice, usrsctp, libsrtp and plog
+  under `UltraCanvas/third_party/libdatachannel/` - behind `UltraRtc_*`
+  functions and opaque handles: peers with STUN / TURN servers, SDP and
+  candidates passed through untouched, DTLS always on, the W3C state
+  machines as events through an injectable dispatcher, and data channels
+  carrying text and binary messages. Built where OpenSSL is found; without
+  it every call answers `Unsupported`. Audio tracks: Opus (48 kHz
+  mono, in-band FEC, loss concealment) with the microphone and the speaker
+  through `UltraCanvasAudioRecorder` (live mode) and `UltraCanvasAudioPlayer`
+  (push sink), or fed and read by the application; needs libopus.
+  Video tracks: VP8 (libvpx through FFmpeg's libavcodec, an RFC 7741 payload
+  format of UltraRTC's own, key-frame recovery by RTCP PLI after a loss)
+  with the camera through `UltraCanvasVideoRecorder`'s live preview, or fed
+  and read by the application as RGBA. The RTCP handlers that answer the
+  receiver (NACK, PLI) now sit where its reports reach them. ChatCube's
+  peer-to-peer chat, voice and video calls run on it. Doc: `Docs/Modules/UltraRTC/README.md`;
+  tests: `Tests/UltraRTC` (two peers in one process).
+- **UltraVault: `DeviceKeyVault::Use` lets several vaults share the process.**
+  The process holds one open UltraVault store, so a vault opened directly
+  stayed open until another one opened - after which the first read the
+  second's secrets. `Use(function)` opens the vault's own file, runs the
+  function and closes it again, under a lock every `DeviceKeyVault` in the
+  process shares. ChatCube Direct and the Matrix provider, which sit in one
+  program, now reach their vaults only this way.
+- **`UltraCanvasVideoTimeline` 1.3.0: `SetDropFeedback`.** An application that
+  carries a drop of its own onto the timeline (UltraVideo drags an effect
+  preset onto a clip and a title style onto the title lane) tells the
+  element in one call per pointer move what it would do: the clip to ring
+  (as `SetDropTargetClip` rings it) and the lane and time of the insertion
+  marker, with its own label in the readout, the time snapped as a file
+  drop is and returned. `ClearDropFeedback` takes both away, and so does a
+  `DragLeave` event now, so a carried drag ends the way a system drag does.
+- **VideoFX 0.16.1: a clip's faces are looked for in three frames, not one.**
+  `keepFacesInView` on a video segment under `Fill` read one frame from the
+  middle of the clip's used range, so a person who walks into shot late, or
+  is on one side at that moment, was missed or half-kept. The engine now
+  reads frames a quarter, half and three quarters of the way through and
+  keeps every face of the three, so the crop stays around all the places
+  they were; still found once per clip and range. `VideoFXTest` renders a
+  clip whose face appears only in its last third and reads the face back
+  from the filled frame.
+- **VideoFX: a frame scaled to RGBA no longer overruns its buffer.** The
+  three places that hand libswscale a plain pixel vector as its destination
+  (`VideoFX_ExtractFrame` and the thumbnails, `FitFrame`, the photo scaler
+  of the export) sized it to the pixels exactly, and the scaler's
+  vectorised paths write a few words past the last pixel they fill, as they
+  may into FFmpeg's own padded frame buffers: a 200 x 600 frame overran by
+  16 bytes and corrupted the heap (`free(): corrupted unsorted chunks` in
+  `sws_freeContext`), found by valgrind under the new three-frame face
+  test. Each buffer now carries `kSwsSlack` (64 bytes) and is trimmed back
+  afterwards.
+
+#### 2026-10-22 *0.9.372*
+- **CI runs the Android demo on an emulator.** A new job in
+  `android-build.yml` installs the `UltraCanvasDemo-x86_64` APK on an API 30
+  x86_64 emulator (KVM on the runner), starts it, and passes only when the app
+  presents a first frame with something drawn in it -
+  `scripts/android-emulator-smoke.sh`, which also runs against a local
+  emulator. It fails when the app dies first, draws a frame of one colour
+  everywhere, or shows nothing in four minutes, and uploads the screenshot and
+  logcat as `android-emulator-smoke` whatever the outcome. The window backend
+  logs `first frame presented: WxH, with content` once per process, straight
+  to logcat, for it to wait on.
+- **Android APKs now carry `libc++_shared.so`; before, the app could not
+  start.** The emulator's first run stopped in `UltraCanvasActivity.onCreate`
+  with `dlopen failed: library "libc++_shared.so" not found`: the demo links
+  the NDK's shared C++ runtime, which no device provides. The APKs CI built
+  since the packaging landed are all affected. `android-package-apk.sh` now
+  reads the library's `NEEDED` entries, ships what the NDK provides, leaves
+  API 28 system libraries to the device, and stops on anything else.
+- **Android: `Run()` now runs.** The Android backend's `InitializeNative`
+  never set `initialized`, which every other backend sets there, so `Run()`
+  stopped at "Cannot run - application not initialized" and the app showed
+  nothing. The emulator's second run found it: the demo loaded, initialised
+  all its pages, and quit before its first frame.
+
+#### 2026-10-22 *0.9.371*
+- **`SetMinimumValueSpan(span)` on the chart base**: the value axis covers
+  at least `span`, centred on the data, so a reading that holds steady
+  (20.6-20.7 °C) is a flat line on a sensible axis instead of a sawtooth
+  across the whole plot. Line, area and scatter charts; 0 (the default)
+  fits the axis to the data as before.
+- **UltraCanvasContainer: children are laid out clear of the vertical
+  scrollbar.** A scrolling container laid its children out across its full
+  width and then clipped them a scrollbar's width short, so the right edge
+  of every row sat under the bar - a right-aligned value lost its unit, a
+  slider its end, a card its border (SmartHome Center's Home cards, the
+  Smart Home light control in its dialog) - and with both bars allowed the
+  bar's width made up a horizontal overflow. Once the vertical bar shows,
+  the container lays its children out again a track narrower; narrower
+  content is only taller, so the bar stays and the second pass is the last.
+  `ScrollContainerGutterTest` covers it. The Smart Home light control's own
+  workaround is gone.
+- **CSS layout: a wrapping flex row inside a column is as tall as all its
+  lines.** A column measures its children at "at most" its width, and the
+  flex layout wrapped a row only at an exact width - so a `FlexWrap::Wrap`
+  row of cards measured one line high, the column gave it that height, and
+  every line after the first was clipped (or the row reported all its cards
+  side by side as its width and widened the page). An at-most width is a
+  wrap budget now, as the code's own note already said it was.
+  `CSSLayoutTests` covers it (`test_flex_wrap_row_height_in_column`).
+- **UltraNet: an FTP change uses the connection kept open.**
+  `UltraNet_FtpDelete`, `UltraNet_FtpRename`, `UltraNet_FtpCreateDirectory`
+  and `UltraNet_FtpRemoveDirectory` sent their commands before libcurl changed
+  folder (`CURLOPT_QUOTE`), naming the entry from the folder a login lands in,
+  so each needed a connection of its own: a second login per change, and on a
+  server that takes one connection per address a refusal that the previous
+  release had to work around by closing the kept connection. Now on FTP the
+  commands go once libcurl has changed into the entry's folder
+  (`CURLOPT_POSTQUOTE`, `ftpquote::Plan::afterFolderChange`) and name the
+  entry within it; on a kept connection libcurl goes back to that
+  connection's login folder first (it records it per connection), so the
+  change takes the kept connection up like any transfer - one login for a
+  listing and the changes after it, and no second connection asked of a
+  one-connection server. SFTP's commands, with full paths, are as they were.
+  - The "too many connections" recovery moves from the changes into every FTP
+    call: a call that needs a new connection all the same - another account
+    on the same server, which libcurl does not take up for this one - and is
+    turned away at the greeting or the login (`ftplog::TooManyConnectionsReply`),
+    before anything was asked and with no byte moved, closes the thread's kept
+    connection (`ThreadConnections::UsedBefore`: one an earlier call used) and
+    is made again, at once and after 0.3 s and 1 s. Listings and transfers too,
+    so two accounts on such a server can take turns on one thread.
+  - `test_ftp_log.cpp`: a delete and a rename elsewhere on the kept connection
+    name the right files on one login; a one-connection server is not asked
+    for a second; another account's change and the listing after it get in.
+    The scripted server does RNFR / RNTO; `UltraNetFtpQuoteTest` checks the
+    bare names.
+- **DemoApp's image performance page benchmarks JPEG XL again.** JXL was
+  taken out of the codec list in 0.1.35 because the libvips of the day could
+  not write it, so its column only ever showed a failure. It is back, between
+  TIFF and BMP, and is charted only where libvips can both save and load
+  `.jxl` (a libvips built with libjxl - Ubuntu 24.04's, not 22.04's); on any
+  other build the column is left out instead of failing.
+- **`ImageJxlTest`: JPEG XL is now under test.** The framework claims `.jxl`
+  for loading and saving (the format inventory, the export encoder, the Save
+  dialog's JPEG XL settings), but nothing checked that a file it writes reads
+  back. The new headless test writes a lossless and a lossy `.jxl` with
+  `ExportVImage`, reads each back through `UCImageRaster` and compares the
+  pixels (lossless exact, the transparent area kept), checks that the quality
+  option reaches the encoder, and saves a loaded PNG as `.jxl` with
+  `UCImageRaster::Save` - the calls the demo app's image performance page
+  makes. It reports SKIP on a libvips built without libjxl, which includes
+  Ubuntu 22.04's (CI's Linux runner); Ubuntu 24.04's passes it.
+- **UltraCanvasNodeDiagram 2.3.0: card nodes, and no overlapping nodes.**
+  - A node can carry an icon (`iconPath`, drawn in a disc of
+    `iconBackground` at its leading edge), a second, smaller line
+    (`sublabel`), rounded corners (`cornerRadius`) and a drop shadow
+    (`shadow`). With an icon the label sits beside it, left-aligned; a label
+    that does not fit ends in an ellipsis instead of running out of the
+    node. The fields round-trip through `ToJson` / `FromJson`.
+  - `ResolveOverlaps(margin)` moves overlapping nodes apart by their
+    rectangles until none overlap; should its passes not settle, it places
+    the nodes one by one at the nearest free spot. Pinned nodes stay put. A host that places
+    nodes itself calls it before `FitView()`.
+  - The force-directed layout ends with it. Its old overlap pass treated a
+    wide node as a circle of its half-width, stopped after eight passes and
+    clamped the nodes back into the element's bounds - so wide nodes in a
+    small element came out on top of each other. It no longer clamps; the
+    view fits the content.
+  - `SetChargeStrength()` sets the force layout's repulsion.
+  - `SetDetailZoom(zoom)`: below that zoom, nodes with an icon draw as their
+    icon disc alone - a name too small to read is left out - and show their
+    name in a pill while hovered or selected (`IsShowingIconsOnly()`).
+  - `NodeDiagramOverlapTest` covers the overlap removal (and its fallback), the force layout
+    with thirty wide nodes in a 300 x 200 element, and the JSON fields.
+
+#### 2026-10-21 *0.9.370*
+- **CI builds an installable Android APK of the demo, for phones and for an
+  emulator.** `scripts/android-package-apk.sh` packages an app library with
+  the SDK's build tools alone - `UltraCanvasActivity` compiled to dex, the
+  launcher icon made from `media/appicon/Demo.png` at all five screen
+  densities, the manifest, icon and assets linked by aapt2, the library stripped and stored,
+  zipaligned and signed with a debug key made for the run - so it needs
+  nothing a GitHub runner lacks, and no Gradle. The assets are the set the
+  demo's WebAssembly page preloads, laid out as `$HOME/share` expects.
+  `android-build.yml` now builds `arm64-v8a` (phones) and `x86_64` (an
+  emulator on a Linux host or runner, at full speed) side by side and uploads
+  `UltraCanvasDemo-arm64-v8a` and `UltraCanvasDemo-x86_64` as run artifacts.
+  Nothing has installed one yet; that is the next step.
+
+#### 2026-10-21 *0.9.369*
+- **The session-start "Code needs to be PRed" count no longer counts main's
+  own commits.** A cloud clone can arrive with its branch cut from a newer
+  main than its `origin/main` ref; `.claude/hooks/check-delivery.sh --brief`
+  measured against that stale ref, so every commit main had gained in between
+  counted as the session's work - one chat opened on "128418 lines" with 0
+  lines to PR, and the `Stop` form repeated the figure until something
+  fetched. The session-start form now fetches the default branch first
+  (no prompt, 12-second limit), which puts the `Stop` form on the real base
+  too; when the fetch cannot run, the brief says the count may be stale.
+  AGENTS.md, *The closing line*, describes it.
+
+#### 2026-10-21 *0.9.368*
+- **Application changelogs take pending entries too, so app version numbers
+  stop colliding between pull requests.** A change to an application now drops
+  its bullets in `Docs/<App>/changelog.d/<change-name>.md` — no header, no
+  number — exactly as framework changes already did in
+  `Docs/UltraCanvas/changelog.d/`. On 2026-10-21 one pull request had to be
+  renumbered five times (UltraFiler 1.77.1 → 1.83.0 → 1.87.0, UltraPaint
+  0.2.26 → 0.2.27), because every other merge took the next app version and
+  conflicted with it on line 1 of the changelog and of UltraFiler's `.rc` and
+  `.manifest`; two files never conflict.
+  - `scripts/fold_changelog.py` folds every product's pending entries on
+    `main`, each into its own `CHANGELOG.md` under its own next version. The
+    step follows each file's habit — the component that changed between its
+    two latest releases (UltraFiler 1.88.0 → 1.89.0, UltraPaint 0.2.28 →
+    0.2.29, Texter 1.69 → 1.70, the framework 0.9.x → 0.9.x+1) — and never
+    goes below the highest version in the file. `--version UltraFiler=2.0.0`
+    overrides one app; a bare `--version` is still the framework's.
+  - Folding UltraFiler or UltraTexter runs `./set-version.sh`, and the fold
+    commit carries their `.rc` and `.manifest`; a branch no longer touches
+    them. The commit names every version folded
+    (`Changelog: 0.9.365, UltraFiler 1.89.0`).
+  - The release build skips a merge commit with any product's entry pending,
+    not only the framework's, and builds the fold commit instead — once — so
+    no app ships under its previous number.
+  - `scripts/check_changelog.py` applies the framework's rules to every
+    product's `changelog.d/` (no `####` header, not empty) and refuses entries
+    in a `changelog.d/` that belongs to no declared changelog. A hand-written
+    top entry for a hotfix is still accepted and checked as before.
+- **No exception leaves any UltraNet plug-in.** The guard the JMAP plug-in
+  got (an exception inside an entry point becomes a `PluginError` result
+  naming the call and the reason, instead of reaching a caller's worker
+  thread with no handler and ending the process) now lives in
+  `Plugins/UltraNet/common/UltraNetPluginGuard.h` (`ultranet_plugin::Guarded`,
+  `GuardedHandle`, `GuardedVoid`) and wraps every entry point of every
+  plug-in: the mail four (IMAP, SMTP, POP3, JMAP - sending, the bulk fetch,
+  folders, status, envelopes, messages, flags, moves, appends, expunge, the
+  folder reconcile, creating and deleting folders), the messaging ones
+  (MQTT, AMQP, CoAP: Connect, Publish, Subscribe), gRPC, the directories
+  (LDAP, mDNS, SNMP: Search), the streams (RTSP, RTMP, RTP: OpenStream,
+  ReadFrame), the remote shells (SSH, Telnet, SIP: OpenShell,
+  ExecuteCommand), WebDAV's file operations, and every Initialize and
+  Shutdown. A connect or open that throws reads as `UltraNetInvalidHandle`,
+  as every failure of those calls does.
+
+#### 2026-10-21 *0.9.367*
+- **UltraDatabase 0.3.1: re-registering or closing a connection no longer
+  frees it under a running call.** `UltraDb_RegisterConnection` and
+  `UltraDb_CloseConnection` dropped the registry's entry, and with it the
+  physical connection. Every query, script, schema and quoting call held
+  only a raw pointer to it, so the call running at that moment on another
+  thread ran on freed memory. AddressSanitizer reports a heap-use-after-free
+  in the SQLite driver; without a sanitizer the call hung, or failed when it
+  next touched the connection. A PostgreSQL call lost its socket.
+  - Each call now holds the connection until it returns. The old connection
+    closes after its last call and its last open handle; calls that start
+    later use the new registration.
+  - Handles get the same treatment. A prepared statement or cursor closed
+    with `UltraDb_Finalize` / `UltraDb_CloseCursor` while another thread
+    runs it now finishes that call first. A transaction keeps its connection
+    for the call even when `UltraDb_Commit` runs on another thread.
+  - `UltraDb_CancelQuery(name)` also reaches a statement that began on the
+    name before it was re-registered or closed. Without that, the old
+    connection's statement ran on out of reach: a Stop button did nothing
+    after a settings change, and a program that cancels and then waits
+    for the statement before exiting hung.
+  - `Tests/UltraDatabase/test_lifetime.cpp`: eight tests (SQLite, and
+    PostgreSQL where a server is configured) that replace or close a name
+    or a handle while a call on it runs, and cancel one by name after its
+    name changed hands. On the old code they report the use-after-free
+    under ASan and hang without it.
+
+#### 2026-10-21 *0.9.366*
+- **CI's Linux row and a cloud session build the MQTT, AMQP, CoAP, SNMP and
+  SSH plug-ins.** Neither installed paho-mqtt-c, rabbitmq-c, libcoap3,
+  net-snmp or libssh, so those five UltraNet plug-ins were built on no
+  Linux at all and a change to them - the entry-point guard of 2026-10, for
+  one - was compiled nowhere before it merged. `.github/workflows/build.yml`'s
+  Linux rows and `.claude/hooks/session-start.sh` now install the five
+  Ubuntu packages, and a step after configure fails the Linux row when one
+  of the plug-ins was left out, as the Hunspell check does.
+
+#### 2026-10-21 *0.9.365*
+- **A click on a Windows toast reaches its application after the broker host
+  quit.** The windows-presenter shows an application's notification as a
+  toast under the application's own AppUserModelID, and its click came back
+  over the bus only while the program hosting the broker ran. After that the
+  toast waited in the Action Center, and a click on it did nothing.
+  - New `UltraCanvasNotificationActivation.h` (doc
+    `UltraCanvasNotificationActivation.md`): `RegisterNotificationActivator(appId,
+    handler)` makes the program the COM activator of its AppUserModelID
+    (`Software\Classes\CLSID\<clsid>\LocalServer32` names it with
+    `-ToastActivated`, the AppUserModelID's `CustomActivator` names the class,
+    a CLSID derived from the ID). Windows hands it the click, starting the
+    program when it is not running; the handler runs on the UI thread.
+    Windows backend `OS/MSWindows/UltraCanvasWindowsNotificationActivation.cpp`;
+    a no-op elsewhere.
+  - `SystemNotification` has an optional `launch`, the application's own note
+    of what the notification is about (in the `system.notification` schema).
+    The toast's activation arguments now carry the action, the notification's
+    id and its `launch` (`FormatNotificationArguments`), so the activator
+    needs nothing from the bus. UltraMail uses it: its toast opens the mail
+    it announced (UltraMail 0.10.65).
+  - Every identity is listed under `HKCU\Software\UltraCanvas\Notifications`.
+    The installer's uninstaller walks the list and removes each
+    AppUserModelID key and activator class, then the list;
+    `RemoveNotificationRegistrations()` does the same from code.
+  - Windows CI runs the UltraMessage suite (`UltraMessageTests`), which it
+    built and never ran: the Windows presenter and listener against the
+    runner's desktop.
+  - Tested: the arguments, the CLSID and the `launch` round trip in
+    `test_adapters.cpp`, UltraMail's launch string in `test_newmail.cpp`.
+- **The notification registrations can be removed without the uninstaller.**
+  Windows keeps, for each application whose notifications were shown, its
+  name, icon and the program a click starts. The installer's uninstaller
+  removes them; a folder unpacked from the ZIP package had no way to.
+  - `ListNotificationRegistrations()` (`UltraCanvasNotificationActivation.h`)
+    lists them; `RemoveNotificationRegistrations()` now returns how many it
+    removed.
+  - UOS-Settings 0.7.0: *Notifications > Registrations* lists them with a
+    *Remove all* button, and `UOS-Settings --remove-notification-registrations`
+    removes them with no window.
+  - `package-win.sh` puts `uc-remove-registrations.cmd` in the ZIP beside the
+    programs: it runs that command, to run before deleting the folder.
+- **Every application that posts a notification registers its activator.**
+  New `scripts/check_notification_activators.py`, run by CI
+  (`notification-activators.yml`), reports an application under `Apps/` that
+  posts a `system.notification` and never calls
+  `RegisterNotificationActivator` - its Windows toast would do nothing once the
+  broker host quit. UltraMail is the only application whose notifications
+  reach the presenter today, and registers; the DemoApp's message-centre
+  samples are posted Silent and say so (`notification-activator-exempt`). The
+  DemoApp's toast page and the UltraMessage README (§3.9) show the call with
+  the notification.
+
+#### 2026-10-21 *0.9.364*
+- **DemoApp builds for Android, as the library an APK carries.** On Android
+  the demo is `libUltraCanvasDemo.so` (`add_library(... SHARED)` where the
+  desktop has an executable), and its `main()` is `ultracanvas_app_main()`,
+  which the framework's `android_main()` calls once the sandbox, the unpacked
+  assets and the first surface are ready. The X11 and signal setup in
+  `Apps/DemoApp/main.cpp` now say `!defined(__ANDROID__)` too, since bionic
+  defines `__linux__`. The packaging template's manifest names the library
+  and its Gradle file builds that target alone. No APK has been built yet, so
+  it has still not run on a device.
+- **Android: an app's library now carries the entry points called into it by
+  name.** The core is a static archive, and `ANativeActivity_onCreate` and the
+  `Java_*` functions behind `UltraCanvasActivity`'s native methods are
+  referenced by nothing in an app, so a plain link left them out. Without
+  `ANativeActivity_onCreate` the activity cannot start the app, and
+  `UltraCanvasAndroidTextInput.cpp` holds only JNI functions, so the first
+  keystroke from the IME would have thrown `UnsatisfiedLinkError`. The core's
+  link interface now passes `-u` for each, read from `OS/Android/*.cpp` at
+  configure time, so a new native method needs nothing added.
+- **The Android build workflow links the demo and checks what it exports.**
+  `android-build.yml` builds `UltraCanvasDemo` after the core (the NDK links a
+  shared library with `--no-undefined`, so a dependency missing from the
+  sysroot's link lists shows here and not in the static core), then fails if
+  `libUltraCanvasDemo.so` does not export `ANativeActivity_onCreate` and every
+  `Java_*` function. It also runs when `Apps/DemoApp/` changes now.
+- **The demo's OpenGL pages build for OpenGL ES on Android.** The 3D models,
+  shader and Zarch tabs and the 3D bubble chart included desktop `GL/gl.h`;
+  on Android they include `GLES3/gl3.h`, and their GLSL 3.30 shaders are
+  compiled as GLSL ES 3.00 (`#version 300 es` plus default precision; all 27
+  validate with glslangValidator). OpenGL ES has no `glPolygonMode`,
+  `glPointSize` or `GL_PROGRAM_POINT_SIZE`: the shader tab's point shader now
+  sets `gl_PointSize` itself, and on Android the models tab's Wireframe
+  toggle draws the model filled.
+- **Android builds for API 28 (Android 9), the level its libraries need.**
+  vcpkg's Android triplets build the dependency sysroot for API 28, so glib,
+  fontconfig and libintl call libc functions bionic has only from 28 on
+  (`iconv`, `posix_spawn`, `pthread_attr_setinheritsched`,
+  `fgets_unlocked`) - the first link of an app said so. The framework built
+  for 26, which those libraries never supported; the build, the bootstrap
+  script, the syntax check and the Gradle template's `minSdk` now say 28.
+- **Android no longer calls two desktop backends it does not compile.** File
+  associations take the "not available" backend WebAssembly uses (handing a
+  file to another app is an Intent, still to be written), and the V4L2
+  camera backend registers on desktop Linux only. Video formats are listed
+  as Android's MediaCodec plays them, with MP4 the one the recorder writes,
+  instead of as GStreamer's.
+- **The UltraNet JMAP plug-in no longer aborts on a null field.** Fastmail
+  answers `Email/get` with `"subject": null`, `"to": null`, `"cc": null`
+  and `"name": null` for a draft without a subject or recipients, and
+  nlohmann's `value()` throws on a null where the key exists (its default
+  is for a missing key only); the uncaught `type_error` took UltraMail
+  down with SIGABRT in the sync thread. Every string and number the core
+  reads from a server now goes through null-safe helpers (`Str`, `Uint`
+  in `JmapCore.h`): a null, a wrong type or a missing key reads as empty
+  or zero, and an out-of-range number is clamped. The crash report's
+  response is a test.
+- **And no exception leaves the JMAP plug-in at all.** Every entry point
+  (the folder, status, envelope, message, flag, move, append, expunge, send
+  and watch calls, and the watch's worker-thread callbacks) runs inside a
+  guard (`Guarded` / `GuardedVoid` in `JmapCore.h`): whatever is thrown -
+  a JSON type the parser did not expect, a `bad_alloc` - comes back as a
+  `PluginError` result naming the call and the reason, instead of reaching
+  a caller's worker thread with no handler and ending the process.
+- **Pull requests stop colliding over generated files and each other.**
+  - `llms.txt` / `llms-full.txt` are written on `main`: the new
+    `llms-regenerate.yml` regenerates them after every docs change lands and
+    commits the result, and `llms-txt.yml` refuses a pull request that changes
+    them (it still checks the `## Contents` inventories and the README
+    mirrors, which branches keep committing). They are the whole docs corpus,
+    so any two docs pull requests open at once conflicted there, and the
+    second to merge had to merge `main`, regenerate and run the whole CI
+    matrix again - the changelog's line-1 collision, cured the same way.
+  - `scripts/check_pr_overlap.py` predicts a branch's conflicts with the other
+    open pull requests before they reach GitHub: for each one it simulates
+    the merge order GitHub will see (that branch into `main` first, this one
+    on top) with `git merge-tree`, and reports real conflicts, two branches
+    giving one application changelog the same top version (which git can
+    merge with no conflict at all), generated files, and shared files that
+    merge cleanly. It reads the open pull requests from `gh`, from
+    `--branches`, or falls back to recently active branches. `AGENTS.md`
+    rule 4 of the branch rules: run it before opening a pull request and
+    before every push.
+  - The Windows install-and-uninstall step gives the uninstaller ten seconds
+    to remove the Start-menu folder before calling it left behind, and names
+    what is still in it when it is; it failed a pull request that changes no
+    packaging while `main` at the same base passed.
+
+#### 2026-10-21 *0.9.363*
+- **The UltraNet JMAP plug-in pushes (phase 3), and the mail plug-ins share
+  one message builder.** `IMailboxProtocolPlugin::WatchMailbox` opens a
+  watch on an account and returns its handle; the plug-in then reports a
+  change (`UltraNetMailChange`: which folders when known, and whether the
+  folder list changed) on its own thread each time the server announces
+  one, and `onEnd` once the watch is over - the stream closed, the
+  connection dropped, or `StopWatching` ended it (Cancelled); the caller
+  opens the next watch when it wants one. The JMAP plug-in holds the
+  session's event source open (`UltraNet_SseStreamAsync`, `Email,Mailbox`,
+  a ping every five minutes, a stall limit of two missed pings) and reports
+  a `StateChange` whose Email or Mailbox state it has not seen - the first
+  event only records where the account stands. The defaults report "not
+  implemented", so the IMAP plug-in and test fakes are simply polled.
+  `UltraNet_MimeBuildMailMessage` (UltraNetMime.h) builds the raw RFC 5322
+  message of a `UltraNetMailMessage` - media type and charset from
+  `contentType`, the text alternative and inline pictures of an HTML body,
+  the attachments, the extra headers - and the SMTP and JMAP plug-ins both
+  send through it instead of a copy each. The plug-in host table is ABI 3:
+  `MimeBuildMailMessage`, `SseStreamAsync`, `CancelRequest` and
+  `IsRequestActive` appended; the shim refuses an older host, since every
+  plug-in in the tree calls them.
+- **The UltraNet JMAP plug-in writes as well as reads (phase 2).**
+  `StoreFlags` patches the message's keywords (`$seen`, `$answered`,
+  `$flagged`, `$draft`); `\Deleted`, which JMAP has not, moves the message
+  to the Trash mailbox, or destroys it when it is there already or the
+  account has none, and clearing it is a no-op. `MoveMessage` replaces the
+  message's `mailboxIds`, `ExpungeMessage` destroys it, `AppendMessage`
+  uploads the raw message to the session's `uploadUrl` and imports it into
+  the folder with its keywords (`Email/import`), and `FetchAllFlags` walks
+  the folder and reads every message's keywords, so a client's reconcile
+  step sees reads and deletions made elsewhere. `SendMail` sends through
+  JMAP: the raw message (built with `UltraNet_MimeBuild`, as the SMTP
+  plug-in does) is uploaded, imported into Drafts and handed to
+  `EmailSubmission/set` with the `Identity` whose address is the From (a
+  domain wildcard identity, else the account's first); on success the
+  server files it in Sent with `$draft` cleared, or destroys it when there
+  is no Sent mailbox. The `jmap://` server URL comes in
+  `UltraNetMailOptions::serverUrl`, as for SMTP. The wire shapes live in
+  `JmapCore.h` and are tested without a server
+  (`Tests/UltraNet/test_jmap_plugin.cpp`); push over the session's event
+  source (phase 3) remains.
 
 #### 2026-10-21 *0.9.362*
 - **Chart engine: fifteen legacy charts ported, and a demo page that shows

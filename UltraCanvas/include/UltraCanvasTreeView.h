@@ -1,16 +1,26 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
-// Last Modified: 2026-10-19 - TreeNodeData::loading: a row whose children are being
-//                fetched slides a thin bar along its foot (SetLoadingBarColor)
-//                (2026-10-19: onDropFolderOfNode: the folder a node stands for, for a
-//                Save dialog's file icon dropped on it from another window or program)
-//                (2026-10-15: SetFilterText: show only the rows matching a text, expanded
-//                to them, and put the tree back when the filter ends (TreeNode::IsShown))
-//                (2026-10-13: the tree takes the keyboard focus; arrows, Page Up/Down,
-//                Home, End, Enter and Space act on the focused tree (UCKeys, every platform))
-//                (2026-10-12: GetDropTargetNode, the row a drag would drop on)
-//                (2026-10-08: default bodies mark unused parameters (void))
-//                (2026-10-02: GetRequiredWidth, the width the widest row on show needs)
+// Version: 1.7.0 - 2026-10-19 - TreeNodeData::loading: a row whose children are being fetched
+//                  slides a thin bar along its foot (SetLoadingBarColor); onDropFolderOfNode:
+//                  the folder a node stands for, for a Save dialog's file icon dropped on it
+//                  from another window or program
+// Version: 1.6.0 - 2026-10-15 - SetFilterText: only the rows matching a text, expanded to them,
+//                  and the tree put back when the filter ends (TreeNode::IsShown)
+// Version: 1.5.0 - 2026-10-13 - the tree takes the keyboard focus; arrows, Page Up/Down, Home,
+//                  End, Enter and Space act on the focused tree (UCKeys, every platform); a
+//                  dashed focus ring on the focused row
+// Version: 1.4.0 - 2026-10-12 - GetDropTargetNode, the row a drag would drop on
+// Version: 1.3.1 - 2026-10-08 - describes itself to screen readers; default bodies mark
+//                  unused parameters (void)
+// Version: 1.3.0 - 2026-10-02 - GetRequiredWidth, the width the widest row on show needs
+// Version: 1.2.1 - 2026-09-08 - "jump to first entry" also answers a click on an open parent
+// Version: 1.2.0 - 2026-09-04 - the connecting lines are drawn (TreeLineStyle, SetLineColor);
+//                  showRootLines has a setter and is read
+// Version: 1.1.1 - 2026-09-01 - RemoveNode drops the selection, hover and focus pointers
+//                  into the removed subtree
+// Version: 1.0.0 - the tree view: rows with icons and text, expanders, check flags, lines
+//                  (the numbers before 1.6.0 were given afterwards, from the framework changelog)
+// Last Modified: 2026-10-19
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"

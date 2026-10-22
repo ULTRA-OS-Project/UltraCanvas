@@ -94,6 +94,11 @@ void SmartHomeManager::Shutdown() {
         std::lock_guard<std::mutex> lock(deviceMutex);
         devices.clear();
         discoveredDevices.clear();
+        overrides.clear();
+        std::lock_guard<std::mutex> home(homeMutex);
+        rooms.clear();
+        roomsChosen.clear();
+        homeChanged = false;
     }
     
     // Clear scenes and automations
@@ -464,6 +469,7 @@ void SmartHomeManager::RefreshDeviceInfo(const std::string& deviceId) {
     ApplyOverrides(info);
     const SmartHomeDeviceInfo before = GetDeviceInfo(deviceId);
     UpdateDeviceInfo(deviceId, info);
+    NotifyHomeChange();
     if (!before.DeviceId.empty() && before.Reachable != info.Reachable) {
         RecordEvent({Now(), "device", deviceId, "", info.Name + (info.Reachable ? " is back online" : " stopped answering")});
     }
@@ -472,12 +478,95 @@ void SmartHomeManager::RefreshDeviceInfo(const std::string& deviceId) {
     WakeAutomations();
 }
 
-void SmartHomeManager::ApplyOverrides(SmartHomeDeviceInfo& info) const {
+void SmartHomeManager::ApplyOverrides(SmartHomeDeviceInfo& info) {
     std::lock_guard<std::mutex> lock(deviceMutex);
-    auto it = overrides.find(info.DeviceId);
-    if (it == overrides.end()) return;
-    if (!it->second.Name.empty()) info.Name = it->second.Name;
-    if (!it->second.Room.empty()) info.Room = it->second.Room;
+    std::string chosen;   // the person's room id, kNoRoomOverride, or "" for the backend's
+    if (auto it = overrides.find(info.DeviceId); it != overrides.end()) {
+        if (!it->second.Name.empty()) info.Name = it->second.Name;
+        chosen = it->second.RoomId;
+    }
+    std::lock_guard<std::mutex> home(homeMutex);
+    auto byId = [this](const std::string& id) -> const SmartHomeRoom* {
+        for (const SmartHomeRoom& room : rooms)
+            if (room.RoomId == id) return &room;
+        return nullptr;
+    };
+    const SmartHomeRoom* room = nullptr;
+    if (chosen == kNoRoomOverride) {
+        room = nullptr;
+    } else if (!chosen.empty() && (room = byId(chosen))) {
+        // the person's room
+    } else if (!info.RoomId.empty() && (room = byId(info.RoomId))) {
+        // already resolved (a backend that keeps no device objects hands
+        // back what the registry stored)
+    } else if (!info.Room.empty()) {
+        room = byId(RoomForNameLocked(info.Room));
+    }
+    info.RoomId = room ? room->RoomId : std::string();
+    info.Room = room ? room->Name : std::string();
+}
+
+void SmartHomeManager::ReapplyDevice(const std::string& deviceId) {
+    std::shared_ptr<ISmartHomeDevice> device = GetDevice(deviceId);
+    SmartHomeDeviceInfo info = device ? device->GetDeviceInfo() : GetDeviceInfo(deviceId);
+    if (info.DeviceId.empty()) return;
+    // A fresh read carries the backend's room name only; drop what the
+    // registry resolved before, so the override decides again.
+    if (device) info.RoomId.clear();
+    ApplyOverrides(info);
+    UpdateDeviceInfo(deviceId, info);
+}
+
+namespace {
+
+std::string LowerAscii(std::string text) {
+    for (char& c : text)
+        if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+    return text;
+}
+
+} // namespace
+
+std::string SmartHomeManager::NewRoomIdLocked(const std::string& name) const {
+    // "Living room" -> "living-room"; bytes outside ASCII letters and
+    // digits (accents, other scripts) become dashes, collapsed.
+    std::string slug;
+    for (char c : LowerAscii(name)) {
+        const bool keep = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+        if (keep) slug += c;
+        else if (!slug.empty() && slug.back() != '-') slug += '-';
+    }
+    while (!slug.empty() && slug.back() == '-') slug.pop_back();
+    if (slug.empty()) slug = "room";
+    auto taken = [this](const std::string& id) {
+        for (const SmartHomeRoom& room : rooms)
+            if (room.RoomId == id) return true;
+        return id == kNoRoomOverride;
+    };
+    std::string id = slug;
+    for (int n = 2; taken(id); ++n) id = slug + "-" + std::to_string(n);
+    return id;
+}
+
+std::string SmartHomeManager::RoomForNameLocked(const std::string& name) {
+    const std::string key = LowerAscii(name);
+    for (const SmartHomeRoom& room : rooms)
+        if (LowerAscii(room.Name) == key) return room.RoomId;
+    SmartHomeRoom room;
+    room.RoomId = NewRoomIdLocked(name);
+    room.Name = name;
+    int last = 0;
+    for (const SmartHomeRoom& r : rooms) last = std::max(last, r.SortOrder);
+    room.SortOrder = last + 1;
+    rooms.push_back(room);
+    if (store) store->SaveRoom(room);
+    homeChanged = true;
+    return room.RoomId;
+}
+
+void SmartHomeManager::NotifyHomeChange() {
+    if (!homeChanged.exchange(false)) return;
+    Notify(&SmartHomeListener::HomeChange);
 }
 
 void SmartHomeManager::AdoptDevice(ISmartHomeProtocol* protocol, const SmartHomeDeviceInfo& info) {
@@ -488,6 +577,7 @@ void SmartHomeManager::AdoptDevice(ISmartHomeProtocol* protocol, const SmartHome
     SmartHomeDeviceInfo current = device ? device->GetDeviceInfo() : info;
     ApplyOverrides(current);
     RegisterDevice(info.DeviceId, device, current, info.Protocol);
+    NotifyHomeChange();
 }
 
 // ===== DISCOVERY =====
@@ -612,6 +702,7 @@ void SmartHomeManager::ProcessCommandQueue() {
     while (!commandQueue.empty()) {
         PendingCommand pending = commandQueue.front();
         commandQueue.pop();
+        ++commandsRunning;
         lock.unlock();
         
         bool success = ExecuteCommand(pending.Command);
@@ -621,7 +712,15 @@ void SmartHomeManager::ProcessCommandQueue() {
         }
         
         lock.lock();
+        --commandsRunning;
     }
+    commandsIdle.notify_all();
+}
+
+bool SmartHomeManager::WaitForCommands(int timeoutMs) {
+    std::unique_lock<std::mutex> lock(commandMutex);
+    return commandsIdle.wait_for(lock, std::chrono::milliseconds(timeoutMs),
+                                 [this] { return commandQueue.empty() && commandsRunning == 0; });
 }
 
 int SmartHomeManager::GetPendingCommandCount() const {
@@ -829,12 +928,7 @@ void SmartHomeManager::EnsureAutomationEngine() {
     host.activateScene = [this](const std::string& sceneId) { ActivateScene(sceneId); };
     host.notify = [this](const std::string& automationId, const std::string& message) {
         RecordEvent({Now(), "automation", "", automationId, "Notice: " + message});
-        OnAutomationNotify callback;
-        {
-            std::lock_guard<std::mutex> lock(callbackMutex);
-            callback = onAutomationNotify;
-        }
-        if (callback) callback(automationId, message);
+        Notify(&SmartHomeListener::AutomationNotify, automationId, message);
     };
     host.disable = [this](const std::string& automationId) {
         SetAutomationEnabled(automationId, false);
@@ -898,59 +992,101 @@ void SmartHomeManager::DispatchDeviceDiscover(const SmartHomeDeviceInfo& info) {
         discoveredDevices.push_back(info);
     }
     
-    if (onDeviceDiscover) {
-        onDeviceDiscover(info);
-    }
+    Notify(&SmartHomeListener::DeviceDiscover, info);
 }
 
 void SmartHomeManager::DispatchDeviceStateChange(const std::string& deviceId, SmartHomeDeviceState state) {
-    if (onDeviceStateChange) {
-        onDeviceStateChange(deviceId, state);
-    }
+    Notify(&SmartHomeListener::DeviceStateChange, deviceId, state);
 }
 
 void SmartHomeManager::DispatchDeviceUpdate(const std::string& deviceId) {
-    if (onDeviceUpdate) {
-        onDeviceUpdate(deviceId);
-    }
+    Notify(&SmartHomeListener::DeviceUpdate, deviceId);
 }
 
 void SmartHomeManager::DispatchNetworkChange(const SmartHomeNetworkInfo& info) {
-    if (onNetworkChange) {
-        onNetworkChange(info);
-    }
+    Notify(&SmartHomeListener::NetworkChange, info);
 }
 
 void SmartHomeManager::DispatchPairingProgress(int progress, const std::string& status) {
-    if (onPairingProgress) {
-        onPairingProgress(progress, status);
-    }
+    Notify(&SmartHomeListener::PairingProgress, progress, status);
 }
 
 void SmartHomeManager::DispatchPairingComplete(bool success, const SmartHomeDeviceInfo& device) {
     pairing = false;
-    
-    if (onPairingComplete) {
-        onPairingComplete(success, device);
-    }
+    Notify(&SmartHomeListener::PairingComplete, success, device);
 }
 
 void SmartHomeManager::DispatchSensorRead(const std::string& deviceId, const SmartHomeSensorReading& reading) {
-    if (onSensorRead) {
-        onSensorRead(deviceId, reading);
-    }
+    Notify(&SmartHomeListener::SensorRead, deviceId, reading);
 }
 
 void SmartHomeManager::DispatchAutomationTrigger(const std::string& automationId) {
-    if (onAutomationTrigger) {
-        onAutomationTrigger(automationId);
-    }
+    Notify(&SmartHomeListener::AutomationTrigger, automationId);
 }
 
 void SmartHomeManager::DispatchError(int code, const std::string& message) {
-    if (onSmartHomeError) {
-        onSmartHomeError(code, message);
+    Notify(&SmartHomeListener::Error, code, message);
+}
+
+// ===== LISTENERS =====
+
+namespace {
+// How deep this thread is inside notifications: RemoveListener from inside
+// one must not wait for calls in flight - it may be one of them.
+thread_local int tlsNotifyDepth = 0;
+}
+
+template <typename Fn, typename... Args>
+void SmartHomeManager::Notify(Fn SmartHomeListener::* member, const Args&... args) {
+    Fn slot;
+    std::vector<std::shared_ptr<ListenerEntry>> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        slot = primary.*member;
+        for (const auto& [id, entry] : listeners) {
+            if (entry->fns.*member) snapshot.push_back(entry);
+        }
     }
+    struct Depth {
+        Depth() { ++tlsNotifyDepth; }
+        ~Depth() { --tlsNotifyDepth; }
+    } depth;
+    if (slot) slot(args...);
+    for (const auto& entry : snapshot) {
+        // Counted before the check: a RemoveListener that marks it after
+        // this point waits for the call; one that marked it before is seen.
+        struct Active {
+            std::atomic<int>& n;
+            explicit Active(std::atomic<int>& c) : n(c) { ++n; }
+            ~Active() { --n; }
+        } active(entry->active);
+        if (entry->removed) continue;
+        (entry->fns.*member)(args...);
+    }
+}
+
+SmartHomeListenerId SmartHomeManager::AddListener(SmartHomeListener listener) {
+    auto entry = std::make_shared<ListenerEntry>();
+    entry->fns = std::move(listener);
+    std::lock_guard<std::mutex> lock(callbackMutex);
+    const SmartHomeListenerId id = nextListenerId++;
+    listeners.emplace_back(id, std::move(entry));
+    return id;
+}
+
+void SmartHomeManager::RemoveListener(SmartHomeListenerId id) {
+    std::shared_ptr<ListenerEntry> entry;
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        auto it = std::find_if(listeners.begin(), listeners.end(),
+                               [id](const auto& l) { return l.first == id; });
+        if (it == listeners.end()) return;
+        entry = it->second;
+        listeners.erase(it);
+    }
+    entry->removed = true;
+    if (tlsNotifyDepth > 0) return;   // inside a notification: later calls stop, this one may be ours
+    while (entry->active > 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 }
 
 // ===== PERSISTENCE =====
@@ -1009,20 +1145,78 @@ bool SmartHomeManager::OpenStore(const std::string& path) {
         }
     }
 
+    // The rooms: the store's, and the ones met before it opened (devices
+    // brought them, or the person made them) that it does not have yet. A
+    // room met keeps its id unless the store's rooms use it already; `moved`
+    // says where the ids that had to change went.
+    std::map<std::string, std::string> moved;
+    std::set<std::string> pointedTo;   // rooms a choice made before the store opened names
+    {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+        for (const auto& [id, o] : overrides) pointedTo.insert(o.RoomId);
+    }
+    {
+        std::lock_guard<std::mutex> lock(homeMutex);
+        std::vector<SmartHomeRoom> met = std::move(rooms);
+        rooms = store->LoadRooms();
+        for (SmartHomeRoom& room : met) {
+            // A room only a backend's name made comes back from that name
+            // below, if a device still has it after the stored choices.
+            if (!roomsChosen.count(room.RoomId) && !pointedTo.count(room.RoomId)) continue;
+            const SmartHomeRoom* same = nullptr;
+            bool idTaken = false;
+            for (const SmartHomeRoom& r : rooms) {
+                if (LowerAscii(r.Name) == LowerAscii(room.Name)) same = &r;
+                idTaken = idTaken || r.RoomId == room.RoomId;
+            }
+            if (same) {
+                if (same->RoomId != room.RoomId) moved[room.RoomId] = same->RoomId;
+                continue;
+            }
+            if (idTaken) {
+                const std::string id = NewRoomIdLocked(room.Name);
+                moved[room.RoomId] = id;
+                room.RoomId = id;
+            }
+            int last = 0;
+            for (const SmartHomeRoom& r : rooms) last = std::max(last, r.SortOrder);
+            room.SortOrder = last + 1;
+            rooms.push_back(room);
+            store->SaveRoom(room);
+        }
+        roomsChosen.clear();   // in the store now
+        homeChanged = true;
+    }
+
     // The names and rooms the person gave devices, over every device
-    // already registered.
+    // already registered: the store's, and the ones given before it opened
+    // that it does not have yet. A room kept by name (version 1 of the
+    // store) becomes a room of the home here.
     std::vector<std::string> ids;
     {
         std::lock_guard<std::mutex> lock(deviceMutex);
+        std::map<std::string, SmartHomeDeviceOverride> given = std::move(overrides);
         overrides = store->LoadDeviceOverrides();
+        for (auto& [id, o] : given) {
+            if (overrides.count(id)) continue;
+            if (auto m = moved.find(o.RoomId); m != moved.end()) o.RoomId = m->second;
+            if (!o.Name.empty()) store->SetDeviceName(id, o.Name);
+            if (!o.RoomId.empty()) store->SetDeviceRoomId(id, o.RoomId);
+            overrides[id] = o;
+        }
+        for (auto& [id, o] : overrides) {
+            if (o.Room.empty() || !o.RoomId.empty()) continue;
+            {
+                std::lock_guard<std::mutex> home(homeMutex);
+                o.RoomId = RoomForNameLocked(o.Room);
+            }
+            o.Room.clear();
+            store->SetDeviceRoomId(id, o.RoomId);
+        }
         for (const auto& [id, reg] : devices) ids.push_back(id);
     }
-    for (const std::string& id : ids) {
-        SmartHomeDeviceInfo info = GetDeviceInfo(id);
-        if (auto device = GetDevice(id)) info = device->GetDeviceInfo();
-        ApplyOverrides(info);
-        UpdateDeviceInfo(id, info);
-    }
+    for (const std::string& id : ids) ReapplyDevice(id);
+    NotifyHomeChange();
     WakeAutomations();
     return true;
 }
@@ -1063,21 +1257,168 @@ bool SmartHomeManager::SetDeviceName(const std::string& deviceId, const std::str
 }
 
 bool SmartHomeManager::SetDeviceRoom(const std::string& deviceId, const std::string& room) {
-    std::shared_ptr<ISmartHomeDevice> device;
+    if (room.empty()) {
+        // Back to the backend's room.
+        {
+            std::lock_guard<std::mutex> lock(deviceMutex);
+            if (!devices.count(deviceId)) return false;
+            overrides[deviceId].Room.clear();
+            overrides[deviceId].RoomId.clear();
+        }
+        if (store) store->SetDeviceRoomId(deviceId, "");
+        std::shared_ptr<ISmartHomeDevice> device = GetDevice(deviceId);
+        SmartHomeDeviceInfo info = device ? device->GetDeviceInfo() : GetDeviceInfo(deviceId);
+        // Without a device object the backend's room is not known any more.
+        if (!device) info.Room.clear();
+        info.RoomId.clear();
+        ApplyOverrides(info);
+        UpdateDeviceInfo(deviceId, info);
+        NotifyHomeChange();
+        return true;
+    }
+    if (GetDeviceInfo(deviceId).DeviceId.empty()) return false;
+    std::string roomId;
+    {
+        std::lock_guard<std::mutex> lock(homeMutex);
+        roomId = RoomForNameLocked(room);
+        if (!IsStoreOpen()) roomsChosen.insert(roomId);
+    }
+    const bool ok = AssignDeviceToRoom(deviceId, roomId);
+    NotifyHomeChange();
+    return ok;
+}
+
+std::vector<SmartHomeRoom> SmartHomeManager::GetRooms() const {
+    std::vector<SmartHomeRoom> sorted;
+    {
+        std::lock_guard<std::mutex> lock(homeMutex);
+        sorted = rooms;
+    }
+    std::stable_sort(sorted.begin(), sorted.end(),
+                     [](const SmartHomeRoom& a, const SmartHomeRoom& b) { return a.SortOrder < b.SortOrder; });
+    return sorted;
+}
+
+SmartHomeRoom SmartHomeManager::GetRoom(const std::string& roomId) const {
+    std::lock_guard<std::mutex> lock(homeMutex);
+    for (const SmartHomeRoom& room : rooms)
+        if (room.RoomId == roomId) return room;
+    return {};
+}
+
+bool SmartHomeManager::CreateRoom(const SmartHomeRoom& room, std::string* createdId) {
+    if (room.Name.empty()) return false;
+    {
+        std::lock_guard<std::mutex> lock(homeMutex);
+        const std::string key = LowerAscii(room.Name);
+        for (const SmartHomeRoom& r : rooms) {
+            if (LowerAscii(r.Name) == key) return false;
+            if (!room.RoomId.empty() && r.RoomId == room.RoomId) return false;
+        }
+        SmartHomeRoom added = room;
+        if (added.RoomId.empty() || added.RoomId == kNoRoomOverride) added.RoomId = NewRoomIdLocked(room.Name);
+        if (added.SortOrder == 0) {
+            int last = 0;
+            for (const SmartHomeRoom& r : rooms) last = std::max(last, r.SortOrder);
+            added.SortOrder = last + 1;
+        }
+        rooms.push_back(added);
+        if (store) store->SaveRoom(added);
+        if (!IsStoreOpen()) roomsChosen.insert(added.RoomId);
+        if (createdId) *createdId = added.RoomId;
+        homeChanged = true;
+    }
+    NotifyHomeChange();
+    return true;
+}
+
+bool SmartHomeManager::UpdateRoom(const SmartHomeRoom& room) {
+    if (room.Name.empty()) return false;
+    bool renamed = false;
+    {
+        std::lock_guard<std::mutex> lock(homeMutex);
+        SmartHomeRoom* target = nullptr;
+        const std::string key = LowerAscii(room.Name);
+        for (SmartHomeRoom& r : rooms) {
+            if (r.RoomId == room.RoomId) target = &r;
+            else if (LowerAscii(r.Name) == key) return false;
+        }
+        if (!target) return false;
+        renamed = target->Name != room.Name;
+        *target = room;
+        if (store) store->SaveRoom(room);
+        if (!IsStoreOpen()) roomsChosen.insert(room.RoomId);
+        homeChanged = true;
+    }
+    // The devices in it show the new name. Their backends still say the old
+    // one, so their place is kept by id from now on - otherwise the old
+    // name would bring the old room back.
+    std::vector<std::string> members;
     {
         std::lock_guard<std::mutex> lock(deviceMutex);
-        auto it = devices.find(deviceId);
-        if (it == devices.end()) return false;
-        overrides[deviceId].Room = room;
-        device = it->second.Device;
+        for (const auto& [id, reg] : devices) {
+            if (reg.Info.RoomId != room.RoomId) continue;
+            members.push_back(id);
+            if (renamed && overrides[id].RoomId.empty()) {
+                overrides[id].RoomId = room.RoomId;
+                if (store) store->SetDeviceRoomId(id, room.RoomId);
+            }
+        }
     }
-    if (store) store->SetDeviceRoom(deviceId, room);
-    // Re-read so the registry shows it now: the override, or the backend's
-    // room again when the person cleared theirs.
-    SmartHomeDeviceInfo info = device ? device->GetDeviceInfo() : GetDeviceInfo(deviceId);
-    if (!device && room.empty()) info.Room.clear();
-    ApplyOverrides(info);
-    return UpdateDeviceInfo(deviceId, info);
+    for (const std::string& id : members) ReapplyDevice(id);
+    NotifyHomeChange();
+    return true;
+}
+
+bool SmartHomeManager::DeleteRoom(const std::string& roomId) {
+    // Its devices go to no room, and stay there: the backend's name for
+    // the room must not make it again.
+    std::vector<std::string> members;
+    {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+        {
+            std::lock_guard<std::mutex> home(homeMutex);
+            auto it = std::find_if(rooms.begin(), rooms.end(),
+                                   [&](const SmartHomeRoom& r) { return r.RoomId == roomId; });
+            if (it == rooms.end()) return false;
+            rooms.erase(it);
+            if (store) store->DeleteRoom(roomId);
+            homeChanged = true;
+        }
+        for (const auto& [id, reg] : devices) {
+            const bool inIt = reg.Info.RoomId == roomId || (overrides.count(id) && overrides[id].RoomId == roomId);
+            if (!inIt) continue;
+            members.push_back(id);
+            overrides[id].RoomId = kNoRoomOverride;
+            if (store) store->SetDeviceRoomId(id, kNoRoomOverride);
+        }
+    }
+    for (const std::string& id : members) ReapplyDevice(id);
+    NotifyHomeChange();
+    return true;
+}
+
+bool SmartHomeManager::AssignDeviceToRoom(const std::string& deviceId, const std::string& roomId) {
+    if (!roomId.empty() && GetRoom(roomId).RoomId.empty()) return false;
+    const std::string chosen = roomId.empty() ? std::string(kNoRoomOverride) : roomId;
+    {
+        std::lock_guard<std::mutex> lock(deviceMutex);
+        if (!devices.count(deviceId)) return false;
+        overrides[deviceId].Room.clear();
+        overrides[deviceId].RoomId = chosen;
+    }
+    if (store) store->SetDeviceRoomId(deviceId, chosen);
+    ReapplyDevice(deviceId);
+    NotifyHomeChange();
+    return true;
+}
+
+std::string SmartHomeManager::GetDeviceRoom(const std::string& deviceId) const {
+    return GetDeviceInfo(deviceId).RoomId;
+}
+
+void SmartHomeManager::SetOnHomeChange(OnHomeChange callback) {
+    SetPrimary(&SmartHomeListener::HomeChange, std::move(callback));
 }
 
 bool SmartHomeManager::SetHomeLocation(double latitude, double longitude) {
@@ -1238,12 +1579,7 @@ void SmartHomeManager::RecordEvent(const SmartHomeEvent& event) {
         if (recentEvents.size() > 1000) recentEvents.pop_back();
     }
     if (store) store->AppendEvent(event);
-    OnSmartHomeEvent callback;
-    {
-        std::lock_guard<std::mutex> lock(callbackMutex);
-        callback = onEvent;
-    }
-    if (callback) callback(event);
+    Notify(&SmartHomeListener::Event, event);
 }
 
 std::vector<SmartHomeEvent> SmartHomeManager::GetEventLog(int64_t since, size_t limit) const {
@@ -1258,13 +1594,11 @@ std::vector<SmartHomeEvent> SmartHomeManager::GetEventLog(int64_t since, size_t 
 }
 
 void SmartHomeManager::SetOnAutomationNotify(OnAutomationNotify callback) {
-    std::lock_guard<std::mutex> lock(callbackMutex);
-    onAutomationNotify = std::move(callback);
+    SetPrimary(&SmartHomeListener::AutomationNotify, std::move(callback));
 }
 
 void SmartHomeManager::SetOnEvent(OnSmartHomeEvent callback) {
-    std::lock_guard<std::mutex> lock(callbackMutex);
-    onEvent = std::move(callback);
+    SetPrimary(&SmartHomeListener::Event, std::move(callback));
 }
 
 // ===== STATISTICS =====
@@ -1432,6 +1766,7 @@ bool SmartHomeAPI::IsPairing() const { return SmartHomeManager::Instance().IsPai
 bool SmartHomeAPI::CommissionDevice(const std::string& setupCode) { return SmartHomeManager::Instance().CommissionDevice(setupCode); }
 
 bool SmartHomeAPI::SendCommand(const SmartHomeCommand& command) { return SmartHomeManager::Instance().QueueCommand(command); }
+bool SmartHomeAPI::WaitForCommands(int timeoutMs) { return SmartHomeManager::Instance().WaitForCommands(timeoutMs); }
 
 bool SmartHomeAPI::SetLightState(const std::string& deviceId, const SmartHomeLightState& state) {
     SmartHomeCommand cmd;
@@ -1557,6 +1892,14 @@ bool SmartHomeAPI::IsStoreOpen() const { return SmartHomeManager::Instance().IsS
 std::string SmartHomeAPI::GetStoreError() const { return SmartHomeManager::Instance().GetStoreError(); }
 bool SmartHomeAPI::ExportStore(const std::string& path) const { return SmartHomeManager::Instance().ExportStore(path); }
 bool SmartHomeAPI::SetDeviceRoom(const std::string& deviceId, const std::string& room) { return SmartHomeManager::Instance().SetDeviceRoom(deviceId, room); }
+std::vector<SmartHomeRoom> SmartHomeAPI::GetRooms() const { return SmartHomeManager::Instance().GetRooms(); }
+SmartHomeRoom SmartHomeAPI::GetRoom(const std::string& roomId) const { return SmartHomeManager::Instance().GetRoom(roomId); }
+bool SmartHomeAPI::CreateRoom(const SmartHomeRoom& room, std::string* createdId) { return SmartHomeManager::Instance().CreateRoom(room, createdId); }
+bool SmartHomeAPI::UpdateRoom(const SmartHomeRoom& room) { return SmartHomeManager::Instance().UpdateRoom(room); }
+bool SmartHomeAPI::DeleteRoom(const std::string& roomId) { return SmartHomeManager::Instance().DeleteRoom(roomId); }
+bool SmartHomeAPI::AssignDeviceToRoom(const std::string& deviceId, const std::string& roomId) { return SmartHomeManager::Instance().AssignDeviceToRoom(deviceId, roomId); }
+std::string SmartHomeAPI::GetDeviceRoom(const std::string& deviceId) const { return SmartHomeManager::Instance().GetDeviceRoom(deviceId); }
+void SmartHomeAPI::SetOnHomeChange(OnHomeChange callback) { SmartHomeManager::Instance().SetOnHomeChange(std::move(callback)); }
 bool SmartHomeAPI::SetHomeLocation(double latitude, double longitude) { return SmartHomeManager::Instance().SetHomeLocation(latitude, longitude); }
 bool SmartHomeAPI::GetHomeLocation(double& latitude, double& longitude) const { return SmartHomeManager::Instance().GetHomeLocation(latitude, longitude); }
 bool SmartHomeAPI::GetSunTimes(int64_t& sunrise, int64_t& sunset) const { return SmartHomeManager::Instance().GetSunTimes(sunrise, sunset); }
@@ -1594,6 +1937,8 @@ void SmartHomeAPI::SetOnPairingComplete(OnPairingComplete callback) { SmartHomeM
 void SmartHomeAPI::SetOnSensorRead(OnSensorRead callback) { SmartHomeManager::Instance().SetOnSensorRead(callback); }
 void SmartHomeAPI::SetOnAutomationTrigger(OnAutomationTrigger callback) { SmartHomeManager::Instance().SetOnAutomationTrigger(callback); }
 void SmartHomeAPI::SetOnSmartHomeError(OnSmartHomeError callback) { SmartHomeManager::Instance().SetOnSmartHomeError(callback); }
+SmartHomeListenerId SmartHomeAPI::AddListener(SmartHomeListener listener) { return SmartHomeManager::Instance().AddListener(std::move(listener)); }
+void SmartHomeAPI::RemoveListener(SmartHomeListenerId id) { SmartHomeManager::Instance().RemoveListener(id); }
 
 // ===== UTILITY FUNCTIONS =====
 

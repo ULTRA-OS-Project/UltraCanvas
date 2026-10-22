@@ -73,6 +73,10 @@ namespace DesktopShellBackend {
                               DesktopReplacement how, std::string& error);
     bool RestoreSystemDesktop(std::string& error);
     bool IsSystemDesktopRunning();
+    // Why a platform that has the switch cannot use it from this copy of the
+    // program, in a sentence for the user; "" when it can, or when the
+    // platform has no such switch at all.
+    std::string SystemDesktopSwitchUnavailableReason();
 
     // The end of the session.
     bool CanEndSession();

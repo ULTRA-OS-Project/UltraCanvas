@@ -1,5 +1,8 @@
 // UltraCanvasMenu.cpp
 // Interactive menu component with styling options and submenu support
+// Version: 1.17.1 - the kept layout and width are one slot per entry, moved with the entries
+// Version: 1.17.0 - an entry's width is measured once and kept (CalculateItemWidth over MeasureItemWidth)
+// Version: 1.16.0 - the labels are shaped once and kept
 // Version: 1.15.1 - an item is measured in its own font, not the one the context was
 //                  left in (a menu bar's first label was ellipsized to "...")
 // Version: 1.15.0 - MenuStyle::FromTheme
@@ -681,7 +684,7 @@ namespace UltraCanvas {
 
         // Handle header
         if (item.type == MenuItemType::Header) {
-            RenderHeader(item, itemBounds, ctx);
+            RenderHeader(index, item, itemBounds, ctx);
             return;
         }
 
@@ -746,13 +749,17 @@ namespace UltraCanvas {
             }
             int labelMaxWidth = std::max(0, labelRightX - currentX);
 
-            auto labelLayout = ctx->CreateTextLayout(item.label, false);
-            labelLayout->SetFontStyle(item.font.value_or(style.font));
-            labelLayout->SetWrap(TextWrap::WrapNone);
-            labelLayout->SetEllipsize(item.ellipsize);
-            labelLayout->SetExplicitWidth(labelMaxWidth);
+            // Shaped once and kept while the label, the font, the room and
+            // the shortening stay: the menu is repainted on every hover.
+            TextLayoutKey key;
+            key.text = item.label;
+            key.font = item.font.value_or(style.font);
+            key.wrap = TextWrap::WrapNone;
+            key.ellipsize = item.ellipsize;
+            key.width = labelMaxWidth;
             ctx->SetTextPaint(textColor);
-            ctx->DrawTextLayout(*labelLayout, Point2Di(currentX, textY));
+            if (ITextLayout* labelLayout = CacheFor(index).label.Get(ctx, key))
+                ctx->DrawTextLayout(*labelLayout, Point2Di(currentX, textY));
         }
 
         // Render shortcut (for vertical menus)
@@ -825,7 +832,39 @@ namespace UltraCanvas {
     }
 
     int UltraCanvasMenu::CalculateItemWidth(const MenuItemData &item) const {
+        // Measured once per entry and kept with what it was measured from;
+        // a layout pass asks for every width, and shaping the label for
+        // each ask is what made a menubar's layout dear.
+        ItemWidth measured;
+        measured.label = item.label;
+        measured.shortcut = item.shortcut;
+        measured.font = item.font.value_or(style.font);
+        measured.icon = !item.iconPath.empty() || item.iconImage != nullptr;
+        measured.submenu = item.HasSubmenu();
+        measured.check = item.type == MenuItemType::Checkbox || item.type == MenuItemType::Radio;
+        measured.vertical = orientation == MenuOrientation::Vertical;
+        measured.iconSize = style.iconSize;
+        measured.iconSpacing = style.iconSpacing;
+        measured.shortcutSpacing = style.shortcutSpacing;
+        // The entry's slot, when `item` is one of ours (every caller's is).
+        const bool ours = !items.empty() && &item >= items.data() && &item < items.data() + items.size();
+        const size_t slot = ours ? static_cast<size_t>(&item - items.data()) : 0;
+        if (ours) {
+            const ItemWidth& kept = CacheFor(static_cast<int>(slot)).width;
+            measured.width = kept.width;
+            if (kept == measured && kept.width >= 0) return kept.width;
+        }
+        const int width = MeasureItemWidth(item);
+        if (ours) {
+            measured.width = width;
+            CacheFor(static_cast<int>(slot)).width = measured;
+        }
+        return width;
+    }
+
+    int UltraCanvasMenu::MeasureItemWidth(const MenuItemData &item) const {
         int width = 0;
+        auto ctx = GetRenderContext();
         // Icon space
         if (!item.iconPath.empty() || item.iconImage) {
             width += style.iconSize + style.iconSpacing;
@@ -836,19 +875,27 @@ namespace UltraCanvas {
         // GetItemX run before RenderItem sets it, and a menu bar's first item
         // took the font of the text drawn or measured last - a colour
         // picker's smaller one - and had its label ellipsized into that
-        // width ("File" drawn as "...").
-        if (auto ctx = GetRenderContext()) {
+        // width ("File" drawn as "..."). Without a window there is no context
+        // to measure with (a menu drawn into an offscreen surface by a test):
+        // a rough width per character keeps the entries apart instead of a
+        // null dereference.
+        const FontStyle font = item.font.value_or(style.font);
+        auto textWidth = [&](const std::string& text) -> int {
+            if (ctx) return ctx->GetTextLineWidth(text);
+            return static_cast<int>(text.size() * font.fontSize * 0.6);
+        };
+        if (ctx) {
             ctx->PushState();
-            ctx->SetFontStyle(item.font.value_or(style.font));
-            if (!item.label.empty()) {
-                width += ctx->GetTextLineWidth(item.label.c_str());
-            }
-            // A shortcut is only shown in a vertical menu.
-            if (orientation == MenuOrientation::Vertical && !item.shortcut.empty()) {
-                width += style.shortcutSpacing + ctx->GetTextLineWidth(GetDisplayShortcut(item.shortcut));
-            }
-            ctx->PopState();
+            ctx->SetFontStyle(font);
         }
+        if (!item.label.empty()) {
+            width += textWidth(item.label);
+        }
+        // A shortcut is only shown in a vertical menu.
+        if (orientation == MenuOrientation::Vertical && !item.shortcut.empty()) {
+            width += style.shortcutSpacing + textWidth(GetDisplayShortcut(item.shortcut));
+        }
+        if (ctx) ctx->PopState();
 
         // The following elements are only rendered in vertical menus
         // (dropdowns/popups/submenus), never in the horizontal menubar
@@ -926,7 +973,7 @@ namespace UltraCanvas {
                                  style.separatorColor, 0, Colors::Transparent);
     }
 
-    void UltraCanvasMenu::RenderHeader(const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
+    void UltraCanvasMenu::RenderHeader(int index, const MenuItemData &item, const Rect2Di &bounds, IRenderContext *ctx) {
         FontStyle headerFont = item.font.value_or(style.font);
         headerFont.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(headerFont);
@@ -935,7 +982,11 @@ namespace UltraCanvas {
         int textY = ctx->TextTopCentredOnCaps(bounds, headerFont);
 
         ctx->SetTextPaint(style.headerTextColor);
-        ctx->DrawText(item.label, Point2Di(textX, textY));
+        TextLayoutKey key;
+        key.text = item.label;
+        key.font = headerFont;
+        if (ITextLayout* layout = CacheFor(index).label.Get(ctx, key))
+            ctx->DrawTextLayout(*layout, Point2Di(textX, textY));
     }
 
     void UltraCanvasMenu::RenderCheckbox(const MenuItemData &item, const Point2Di &position, IRenderContext *ctx) {
@@ -1629,9 +1680,12 @@ namespace UltraCanvas {
         InvalidateLayout();
     }
 
+    // The kept layouts and widths move with the entries, so an insertion or
+    // a removal rebuilds nothing for the entries that only shifted.
     void UltraCanvasMenu::InsertItem(int index, const MenuItemData &item) {
         if (index >= 0 && index <= static_cast<int>(items.size())) {
             items.insert(items.begin() + index, item);
+            if (index < static_cast<int>(entryCaches.size())) entryCaches.emplace(entryCaches.begin() + index);
             InvalidateLayout();
         }
     }
@@ -1639,6 +1693,7 @@ namespace UltraCanvas {
     void UltraCanvasMenu::RemoveItem(int index) {
         if (index >= 0 && index < static_cast<int>(items.size())) {
             items.erase(items.begin() + index);
+            if (index < static_cast<int>(entryCaches.size())) entryCaches.erase(entryCaches.begin() + index);
             InvalidateLayout();
         }
     }
@@ -1652,6 +1707,7 @@ namespace UltraCanvas {
 
     void UltraCanvasMenu::Clear() {
         items.clear();
+        entryCaches.clear();
         CloseAllSubmenus();
         InvalidateLayout();
     }

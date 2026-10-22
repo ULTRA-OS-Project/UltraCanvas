@@ -76,15 +76,20 @@ modified, so the check can be run in the middle of an uncommitted merge of
 Pending entries
 ---------------
 Because line 1 is contended, the routine case no longer writes it: a branch
-drops its bullets in `Docs/UltraCanvas/changelog.d/<name>.md` with no header
-and no number, and `.github/workflows/changelog-fold.yml` assigns the number
-once, on main, after the merge. Two branches adding two files never collide,
-so neither shape above can happen.
+drops its bullets in `changelog.d/<name>.md` next to the product's
+CHANGELOG.md (`Docs/UltraCanvas/changelog.d/` for the framework,
+`Docs/<App>/changelog.d/` for an application) with no header and no number,
+and `.github/workflows/changelog-fold.yml` assigns the numbers once, on main,
+after the merge. Two branches adding two files never collide, so neither
+shape above can happen.
 
 This script refuses a `####` header inside those files. A number chosen on a
 branch is exactly the collision the directory exists to end, and one that
 slipped through would be folded into the changelog verbatim, giving the entry
-two headers.
+two headers. It also refuses an empty one, and a `changelog.d/` that is not
+next to a declared product's changelog - the fold would never pick it up.
+A branch that only adds an entry leaves the Windows resource files alone:
+they still match line 1, which the fold moves together with them.
 
 A top entry written straight into the changelog is still accepted - a hotfix
 that has to carry a chosen number is a real case - and is still held to the
@@ -298,28 +303,39 @@ def check(prefix, relative, base):
     return problems
 
 
-def check_pending():
+def check_pending(products):
     """Pending entries must not carry a version - the fold assigns it."""
     problems = []
-    directory = REPO / "Docs" / "UltraCanvas" / "changelog.d"
-    if not directory.is_dir():
-        return problems
-    for path in sorted(directory.glob("*.md")):
-        if path.name == "README.md":
+    homes = {(REPO / relative).parent / "changelog.d" for _, relative in products}
+    # Every changelog.d under Docs, so one next to no declared product - which
+    # the fold would silently never read - is reported rather than lost.
+    directories = sorted(set(REPO.joinpath("Docs").glob("**/changelog.d")) | homes)
+    for directory in directories:
+        if not directory.is_dir():
             continue
-        relative = path.relative_to(REPO).as_posix()
-        text = path.read_text(encoding="utf-8")
-        if not text.strip():
-            problems.append(f"{relative}: empty - write the bullets, or delete the file")
-            continue
-        for number, line in enumerate(text.splitlines(), start=1):
-            if line.startswith("#### "):
+        entries = sorted(p for p in directory.glob("*.md") if p.name != "README.md")
+        if directory not in homes:
+            if entries:
                 problems.append(
-                    f"{relative}:{number}: a pending entry must not carry a version "
-                    f"header - changelog-fold.yml assigns the number on main, which is "
-                    f"what keeps two branches from choosing the same one. Leave the "
-                    f"bullets; drop the header.")
-                break
+                    f"{directory.relative_to(REPO).as_posix()}: pending entries next to "
+                    f"no changelog cmake/UltraCanvasVersion.cmake declares - "
+                    f"fold_changelog.py would never fold them. Put them in the "
+                    f"changelog.d/ beside the product's CHANGELOG.md.")
+            continue
+        for path in entries:
+            relative = path.relative_to(REPO).as_posix()
+            text = path.read_text(encoding="utf-8")
+            if not text.strip():
+                problems.append(f"{relative}: empty - write the bullets, or delete the file")
+                continue
+            for number, line in enumerate(text.splitlines(), start=1):
+                if line.startswith("#### "):
+                    problems.append(
+                        f"{relative}:{number}: a pending entry must not carry a version "
+                        f"header - changelog-fold.yml assigns the number on main, which is "
+                        f"what keeps two branches from choosing the same one. Leave the "
+                        f"bullets; drop the header.")
+                    break
     return problems
 
 
@@ -381,7 +397,7 @@ def main():
     products = changelogs()
     for prefix, relative in products:
         problems.extend(check(prefix, relative, args.base))
-    problems.extend(check_pending())
+    problems.extend(check_pending(products))
     problems.extend(check_windows_resources(products))
 
     if problems:

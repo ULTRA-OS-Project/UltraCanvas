@@ -196,7 +196,7 @@ own under a vendor prefix (`com.example.myapp.*`). Their names are in
 |---|---|---|
 | `messaging.message` | yes | `service`, `conversation{id,title,isGroup}`, `sender{id,name}`, `text`, `direction`, `read`, `attachments[]` |
 | `mail.message` | yes | `account`, `folder`, `from{name,address}`, `to[]`, `subject`, `snippet`, `read`, `flagged` |
-| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]`; optional `desktopEntry`; `displayed` names what already shows it. One an application posts goes on screen (§3.6, *Presenters*; §3.8 where no presenter can) unless it is `Silent` |
+| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]`; optional `desktopEntry`, and `launch` - the posting application's own note of what the notification is about, handed back to it with a click that reaches it outside the bus (`UltraCanvasNotificationActivation.h`); `displayed` names what already shows it. One an application posts goes on screen (§3.6, *Presenters*; §3.8 where no presenter can) unless it is `Silent` |
 | `system.notification.action` / `.dismissed`, `feed.read` / `feed.dismissed` | no | feed ↔ adapter signalling |
 | `app.lifecycle.started` / `.stopping` | no | published by the broker for every endpoint |
 | `app.open.request` | no | `paths[]` / `urls[]`, `activate` — single-instance hand-off |
@@ -326,7 +326,20 @@ UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSy
   respected (an application turned off shows nothing, not a balloon). A click
   is the `"default"` action, a button its action, a dismissal
   `system.notification.dismissed`, while the broker runs; an update
-  (`UltraMsgFlag_Replace`) changes the toast in place. Where toasts are not
+  (`UltraMsgFlag_Replace`) changes the toast in place. Every activation's
+  arguments carry the action, the notification's id and its `launch`
+  (`UltraCanvas::FormatNotificationArguments`), so once the broker host has
+  quit, a click in the Action Center goes to the application's own activator
+  (`UltraCanvas::RegisterNotificationActivator`) - Windows starts the
+  application when it is not running - which has everything it needs. Each
+  AppUserModelID is listed under `HKCU\Software\UltraCanvas\Notifications`
+  for the uninstaller, which removes it with its activator. A presenter running
+  from the MSIX package writes nothing there, because its registry writes stay
+  in the package. It shows the toast under the posting process's own package
+  AppUserModelID (`<family>!<Application Id>`, asked of Windows with the
+  process the broker saw on the connection). The package manifest declares
+  that application's name, icon and activator (*From the MSIX package* in
+  `Docs/UltraCanvas/UltraCanvasNotificationActivation.md`). Where toasts are not
   available, or one cannot be shown, it is a notification-area balloon
   (`Shell_NotifyIconW`, `NIF_INFO`, mode `balloon`), which needs no
   registration: Windows heads it with the name of the process hosting the
@@ -424,6 +437,36 @@ anywhere on the bus; a replacement updates it. The ULTRA OS desktop hosts one
 (`Apps/UltraDesktop`, top right beside its right bar). On a desktop with its
 own notification server every notification carries `displayed` and the host
 draws nothing.
+
+### 3.9 Posting a notification from an application
+
+What an application gives a `system.notification` it wants on screen, and the
+one call that makes its clicks reach it however the notification was shown:
+
+```cpp
+// Once, at the start (UltraCanvasNotificationActivation.h): on Windows, a click
+// on the toast after the broker host quit - or with the application closed,
+// which Windows then starts - comes here, on the UI thread. Elsewhere a no-op.
+UltraCanvas::RegisterNotificationActivator("org.example.myapp",
+    [](const UltraCanvas::NotificationActivation& click) { Open(click.launch); });
+
+// Each notification.
+UltraMessage::SystemNotification n;
+n.appId   = "org.example.myapp";   // the AppUserModelID its Windows toast shows under
+n.appName = "MyApp";               // what Windows heads the toast with
+n.icon    = iconPngPath;           // its logo
+n.summary = "Export finished";
+n.actions = {{"default", "Open"}};
+n.launch  = UltraCanvas::EncodeNotificationQuery({{"file", exportedPath}});   // what the click opens
+UltraMsg_Post(endpoint, UltraMsgTopics::SystemNotification, UltraMessage::MakeSystemNotification(n));
+```
+
+While the broker runs, the click also comes back over the bus as
+`system.notification.action`; an application that acts on both opens the
+thing once. `scripts/check_notification_activators.py` (CI) reports an
+application under `Apps/` that posts a notification without registering an
+activator; sample traffic posted `Silent` says so with
+`// notification-activator-exempt: <why>`.
 
 ## 4. The C++ layer
 

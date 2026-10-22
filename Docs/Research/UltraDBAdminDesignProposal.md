@@ -512,7 +512,26 @@ G3 `UltraDb_OpenCursor` / `UltraDb_FetchRows` / `UltraDb_CloseCursor`
 (server-side cursors on PostgreSQL), G4 `UltraDb_CancelQuery(connection)`
 (`sqlite3_interrupt`, `PQcancel`), G6 `UltraDb_ExecBatch` (every statement of
 a script with its own result, split as psql splits on PostgreSQL). The
-application itself is next.
+application followed (UltraDBAdmin 0.1, `Apps/UltraDBAdmin`): connections
+with their vault, the tree, Browse, Structure and the SQL console with Stop.
+
+**Stage 2 has begun with row editing** (UltraDBAdmin 0.2): Browse stages
+edits, new rows and deletions by primary key, previews them as SQL and
+commits them in one transaction (§5.3), with the destructive guard for
+deletions and production connections. **Structure editing followed**:
+columns added, changed, renamed and dropped, indexes
+added and dropped and the table renamed, staged, previewed as DDL and
+applied in one transaction - `ALTER TABLE` on PostgreSQL, and on SQLite its
+own `ALTER TABLE` plus the documented 12-step rebuild, working from the
+table's own `CREATE TABLE` so nothing introspection cannot see (CHECK, table
+options) is lost. **Import followed**: rows from CSV files
+and workbooks through FileLoader's spreadsheet formats and the framework's
+Text Import dialog, mapped onto a table and inserted all or none; SQL files
+(`.sql`, `.sql.gz`) summarised and run on the console as one transaction.
+Stage 2 is complete apart from editing in the grid cell itself and blobs.
+**Export, stage 1's last item, followed**: a table through a cursor, or a
+query's rows, to CSV / TSV (the framework's Text Export dialog and writer),
+JSON, SQL INSERTs (with a SQLite table's own CREATE TABLE) or a workbook.
 
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for

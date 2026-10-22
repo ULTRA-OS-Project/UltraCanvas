@@ -496,7 +496,19 @@ int main(int argc, char** argv) {
     Check(IODeviceTrustedCertificates().empty(), "  with no device key kept yet");
 
     // --- First contact: the key is learned --------------------------------------
-    const IODeviceResult connected = device->Connect();
+    IODeviceResult connected = device->Connect();
+    // Once, on a Windows runner, the first connection timed out with the
+    // scanner listening and nothing in its request log: the runner, not the
+    // trust, was too slow to answer. So a first try the scanner never saw -
+    // no request logged, no key kept - is made once more. One that reached
+    // it is not, so a slow or wrong answer still fails here, and the checks
+    // below still see exactly what the scanner was sent.
+    if (!connected.success && ReadLines(firstRequests).empty() &&
+        IODeviceTrustedCertificates().empty()) {
+        std::cout << "  (the first try never reached the scanner - " << connected.message
+                  << " - so it is made once more)\n";
+        connected = device->Connect();
+    }
     Check(connected.success,
           "it connects over https, its self-signed certificate trusted on first use: " +
               connected.message);

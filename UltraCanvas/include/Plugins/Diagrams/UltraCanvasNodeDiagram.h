@@ -1,8 +1,29 @@
 // include/Plugins/Diagrams/UltraCanvasNodeDiagram.h
 // Interactive Node Diagram component for graph/network visualization & flow editing
-// Version: 2.2.0
-// Last Modified: 2026-07-31
+// Version: 2.3.0
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
+//
+// CHANGELOG 2.3.0 (minor - card nodes, no overlaps):
+//  - NEW: A node can carry an icon (iconPath, drawn in a disc of
+//         iconBackground at its leading edge), a second, smaller line
+//         (sublabel), rounded corners (cornerRadius) and a drop shadow
+//         (shadow). With an icon the label is left-aligned beside it; a label
+//         that does not fit is shortened with an ellipsis instead of running
+//         out of the node.
+//  - NEW: ResolveOverlaps(margin) separates every pair of overlapping nodes
+//         by their rectangles, until none overlap (and, should the passes not
+//         settle, places the nodes one by one at the nearest free spot). The
+//         force-directed layout ends with it; a host that places nodes itself
+//         calls it.
+//  - FIXED: The force-directed layout's overlap pass treated a wide node as a
+//         circle of its half-width, stopped after eight passes and clamped
+//         the nodes back into the element's bounds, so a graph of wide nodes
+//         in a small element came out overlapping. It separates by
+//         rectangles now and does not clamp (the view fits the content).
+//  - NEW: SetChargeStrength() for the force layout's repulsion.
+//  - NEW: SetDetailZoom(zoom): below that zoom, icon nodes draw as their
+//         icon disc alone and show their name when hovered or selected.
 //
 // CHANGELOG 2.2.0 (minor - organizational network analysis features):
 //  - NEW: Data-driven node sizing. NodeSizeMode (Fixed / ByDegree / ByValue)
@@ -123,6 +144,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include <algorithm>
 #include "Plugins/Diagrams/UltraCanvasDiagramViewport.h"
 #include <vector>
 #include <map>
@@ -296,6 +318,16 @@ struct NodeDiagramNode {
     // the node was created with instead of whatever the last mode computed.
     double baseWidth = 0.0;
     double baseHeight = 0.0;
+
+    // NEW in 2.3.0: a card look. An icon in a disc at the leading edge (the
+    // label then sits beside it, left-aligned), a second line under the
+    // label, corner rounding and a drop shadow.
+    std::string iconPath;                        // any image UCImage loads; SVG scales cleanly
+    Color iconBackground = Color(0, 0, 0, 0);    // the disc; transparent draws the icon alone
+    std::string sublabel;
+    Color sublabelColor = Color(117, 117, 117, 255);
+    double cornerRadius = -1.0;                  // Rectangle / RoundedSquare; < 0 = 15% of the smaller side
+    bool shadow = false;
 
     NodeDiagramNode() = default;
     NodeDiagramNode(const std::string& nodeId, const std::string& nodeLabel)
@@ -620,6 +652,26 @@ public:
     void SetFontFamily(const std::string& fontFamily);
     void SetFontSize(double size);
     void SetLinkDistance(double distance);
+    // NEW in 2.3.0: the force layout's repulsion (negative pushes apart;
+    // default -300). Wide nodes want more.
+    void SetChargeStrength(double strength);
+
+    // NEW in 2.3.0: separate every pair of overlapping nodes (their
+    // rectangles plus `margin`): the later node of a pair moves along the
+    // axis it overlaps least, pass after pass. If maxPasses runs out first,
+    // the nodes are placed one by one, each at the nearest free spot beside
+    // what it touches - so none overlap afterwards. Pinned nodes stay.
+    // Returns the passes it took (0 = there was nothing to do). The view is
+    // not refitted: call FitView() after.
+    int ResolveOverlaps(double margin = 8.0, int maxPasses = 400);
+
+    // NEW in 2.3.0: level of detail. Below `zoom` a node with an icon draws
+    // as its icon disc alone - its name would be too small to read - and
+    // shows its name only while hovered or selected; zoom in past it and the
+    // cards come back. 0 (the default) always draws the full nodes.
+    void SetDetailZoom(double zoom) { detailZoom = std::max(0.0, zoom); RequestRedraw(); }
+    double GetDetailZoom() const { return detailZoom; }
+    bool IsShowingIconsOnly() const;
     
     // =============================================================================
     // SELECTION & INTERACTION
@@ -788,6 +840,7 @@ private:
     void RenderNodes(IRenderContext* ctx);
     void RenderNodeShape(IRenderContext* ctx, const NodeDiagramNode& node);
     void RenderNodeLabel(IRenderContext* ctx, const NodeDiagramNode& node);
+    void RenderNodeIconOnly(IRenderContext* ctx, const NodeDiagramNode& node, bool withLabel);   // 2.3.0
     void RenderNodeHandles(IRenderContext* ctx, const NodeDiagramNode& node);  // NEW
     void RenderLink(IRenderContext* ctx, const NodeDiagramLink& link);          // NEW
     void RenderLinkLabel(IRenderContext* ctx, const NodeDiagramLink& link);
@@ -928,6 +981,7 @@ private:
 
     // NEW in 2.0.1
     bool autoFitOnLayout = true;
+    double detailZoom = 0.0;   // 2.3.0: below this zoom, icon nodes draw as their icon alone
 };
 
 // =============================================================================

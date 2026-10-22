@@ -3,6 +3,9 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.5.1 - IServiceDiscoveryPlugin (mDNS / DNS-SD advertising)
+// Version: 0.5.0 - IMailboxProtocolPlugin::WatchMailbox / StopWatching (push);
+//                  host ABI 3: SSE streaming, request cancel, the mail-message builder
 // Version: 0.4.2 - IMailboxProtocolPlugin::CreateFolder / DeleteFolder
 // Version: 0.4.1 - IMailboxProtocolPlugin::ExpungeMessage
 // Version: 0.4.0 (Stage 3)
@@ -108,6 +111,15 @@ struct UltraNetDirectoryQuery {
 struct UltraNetDirectoryEntry {
     std::string dn;
     std::map<std::string, std::vector<std::string>> attributes;
+};
+
+// A service this program offers, announced on the local network (mDNS /
+// DNS-SD) until it is withdrawn.
+struct UltraNetServiceAdvertisement {
+    std::string              serviceType;    // "_chatcube._tcp"
+    std::string              instanceName;   // shown to people; a clash is renamed ("Alice #2")
+    int                      port = 0;
+    std::vector<std::string> txt;            // "key=value" records, each at most 255 bytes
 };
 
 struct UltraNetStreamOptions {
@@ -216,8 +228,16 @@ struct UltraNetMailEnvelope {
     uint32_t size = 0;                    // RFC822.SIZE, if known
 };
 
-// STATUS output — the basis for poll-based change detection (a push IDLE
-// optimisation can layer on top later).
+// What a watched account reports (IMailboxProtocolPlugin::WatchMailbox): the
+// server says something changed. Which folders is given when the protocol
+// says (IMAP IDLE watches one); empty means not known - check them all.
+struct UltraNetMailChange {
+    std::vector<std::string> folders;
+    bool mailboxesChanged = false;   // the folder list itself (made, renamed, removed)
+};
+
+// STATUS output — the basis for poll-based change detection; WatchMailbox
+// is the push alternative where the protocol offers one.
 struct UltraNetMailboxStatus {
     uint32_t messages    = 0;
     uint32_t recent      = 0;
@@ -413,6 +433,34 @@ public:
         return UltraNetResult::Error(UltraNetResultCode::PluginError,
                                      "DeleteFolder not implemented");
     }
+
+    // Push: have the server announce changes instead of being asked (JMAP's
+    // event source; IMAP IDLE could serve it too). The call opens the watch
+    // and returns at once with its handle; `onChange` then fires on the
+    // plug-in's own thread each time the server reports a change (do not
+    // block in it - hand the work to your own loop), and `onEnd` fires once
+    // when the watch is over: the server closed the stream, the connection
+    // dropped, or StopWatching was called (Cancelled). After `onEnd` the
+    // caller opens another watch when it wants one; the plug-in does not
+    // reconnect by itself. A watch is a safety net's companion, not its
+    // replacement: a change the stream missed is still found by the next
+    // poll. The defaults report "not implemented" (test fakes, backends
+    // without push), so callers simply keep polling. Added last, like
+    // FetchAllFlags, so the existing vtable is undisturbed.
+    virtual UltraNetResult WatchMailbox(
+        const std::string& serverUrl,
+        const UltraNetMailOptions& options,
+        std::function<void(const UltraNetMailChange&)> onChange,
+        std::function<void(const UltraNetResult&)> onEnd,
+        UltraNetHandle& outWatch) {
+        (void)serverUrl; (void)options; (void)onChange; (void)onEnd;
+        outWatch = UltraNetInvalidHandle;
+        return UltraNetResult::Error(UltraNetResultCode::PluginError,
+                                     "WatchMailbox not implemented");
+    }
+    // End a watch; its `onEnd` fires with Cancelled. A handle already ended
+    // is ignored.
+    virtual void StopWatching(UltraNetHandle watch) { (void)watch; }
 };
 
 // MQTT / AMQP.
@@ -455,6 +503,18 @@ public:
         const std::string& url,
         const UltraNetDirectoryQuery& query,
         std::vector<UltraNetDirectoryEntry>& outEntries) = 0;
+};
+
+// mDNS / DNS-SD: browsing is the directory Search above (baseDn = the
+// service type); this adds announcing a service of our own. Reach it by
+// dynamic_cast from the "mdns" plug-in. An advertisement stays up -
+// renamed on a name clash, re-announced when the system's responder
+// restarts - until StopAdvertising or the plug-in shuts down.
+class IServiceDiscoveryPlugin : public IDirectoryProtocolPlugin {
+public:
+    virtual UltraNetResult Advertise(const UltraNetServiceAdvertisement& advertisement,
+                                     UltraNetHandle& outHandle) = 0;
+    virtual UltraNetResult StopAdvertising(UltraNetHandle handle) = 0;
 };
 
 // RTSP / RTMP / RTP.
@@ -560,6 +620,10 @@ std::vector<std::shared_ptr<IUltraNetPlugin>> UltraNet_GetAllPlugins();
 // Loads plug-in DSOs from UltraNet_GetPluginDirectory(). Idempotent.
 void UltraNet_RefreshPlugins();
 
+// The folder plug-ins are loaded from (UTF-8). Until it is set, it is
+// Plugins/UltraNet beside the executable, or one or two folders above it,
+// whichever holds a plug-in - never the working directory, unless the
+// executable's own path is unknown.
 std::string UltraNet_GetPluginDirectory();
 void        UltraNet_SetPluginDirectory(const std::string& path);
 
@@ -578,7 +642,8 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 //
 // The host passes a function table, and everything a plug-in needs from the
 // core goes through it: registering itself, and (ABI 2) the core functions a
-// plug-in calls — URL parsing, the CA bundle, MIME building, HTTP. So a
+// plug-in calls — URL parsing, the CA bundle, MIME building, HTTP — and (ABI
+// 3) the mail-message builder, SSE streaming and request cancellation. So a
 // plug-in DSO has no undefined core symbols at all: it loads whatever the
 // host was linked against (a static core carries only the objects the app
 // itself uses) and a Windows DLL links without the core's import library,
@@ -599,10 +664,15 @@ std::vector<std::string> UltraNet_GetSupportedSchemes();
 // ABI 1: abiVersion + RegisterPlugin.
 // ABI 2: + the core functions below. Fields are only ever appended, so an
 //        ABI-1 plug-in reads a newer host's table correctly.
-constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 2;
+// ABI 3: + UltraNet_MimeBuildMailMessage (the mail plug-ins' one wire
+//        format), UltraNet_SseStreamAsync / CancelRequest / IsRequestActive
+//        (the JMAP plug-in's push). The shim refuses an older host: a plug-in
+//        built from this tree calls them.
+constexpr int ULTRANET_PLUGIN_HOST_ABI_VERSION = 3;
 
 struct UltraNetUrlComponents;
 struct UltraNetMimeBuildInput;
+struct UltraNetSseEvent;
 
 struct UltraNetPluginHost {
     int abiVersion;            // == ULTRANET_PLUGIN_HOST_ABI_VERSION of the host
@@ -622,6 +692,14 @@ struct UltraNetPluginHost {
                                   UltraNetResponse& out);
     void           (*HttpHeadersSet)(UltraNetHttpHeaders& headers,
                                      const std::string& name, const std::string& value);
+
+    // ---- ABI 3 ----------------------------------------------------------
+    std::string    (*MimeBuildMailMessage)(const UltraNetMailMessage& message);
+    UltraNetHandle (*SseStreamAsync)(const UltraNetHttpRequest& request,
+                                     std::function<void(const UltraNetSseEvent&)> onEvent,
+                                     std::function<void(const UltraNetResult&)> onComplete);
+    UltraNetResult (*CancelRequest)(UltraNetHandle handle);
+    bool           (*IsRequestActive)(UltraNetHandle handle);
 };
 
 // The table this host hands to every plug-in it loads - for tests, and for a

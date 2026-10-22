@@ -10,6 +10,7 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.16.1 - a face only in a clip's last third still places the Fill crop
 // Version: 0.16.0 - overlay effects (filter text, the export, the preview, project files);
 //                  blur radii scaled on proxies
 // Version: 0.15.0 - the Fill crop around a video segment's keepInView
@@ -1330,6 +1331,43 @@ static void TestEngine() {
         CHECK_OK(VideoFX_ExtractFrame(TempPath("bars.mkv"), 0.5, f), "frame of the letterboxed clip");
         CentreColour(f, r, g, b);
         CHECK(g > 200 && r < 60, "the whole clip is shown: green in the middle");
+
+        // The faces are looked for in three frames of the clip, not one: a
+        // tall clip that is green for two seconds and then shows the test
+        // photo in its top third for one. Its middle frame has no face; the
+        // frame three quarters through has, and the crop follows it.
+        VideoFXFrame photo;
+        if (ReadPpm(kAstronaut, photo)) {
+            VideoFXFrame tall;
+            tall.width = photo.width; tall.height = photo.height * 3;
+            tall.pixels.assign(static_cast<size_t>(tall.width) * tall.height * 4, 255);
+            for (size_t i = 0; i < static_cast<size_t>(tall.width) * tall.height; ++i) { tall.pixels[i * 4] = 0; tall.pixels[i * 4 + 2] = 0; }
+            std::copy(photo.pixels.begin(), photo.pixels.end(), tall.pixels.begin());   // the photo on top, green below
+            VideoFXFrame greenTall = tall;
+            for (size_t i = 0; i < static_cast<size_t>(tall.width) * tall.height; ++i) { greenTall.pixels[i * 4] = 0; greenTall.pixels[i * 4 + 1] = 255; greenTall.pixels[i * 4 + 2] = 0; }
+            const VideoFXImageMotion stillMotion = VideoFXImageMotion::Make(VideoFXMotionStyle::Still);
+            const std::string lateFace = TempPath("late-face.mkv");
+            VideoFXExportSettings tallOut = base;
+            tallOut.width = tall.width; tallOut.height = tall.height;
+            CHECK_OK(VideoFX_Export({VideoFXSegment::FromImageFrame(greenTall, 2.0, stillMotion),
+                                     VideoFXSegment::FromImageFrame(tall, 1.0, stillMotion)}, lateFace, tallOut),
+                     "a tall clip, green for two seconds, the photo on top for one");
+            VideoFXExportSettings wideFill = base;
+            wideFill.width = tall.width * 2; wideFill.height = tall.width; wideFill.fitMode = VideoFXFitMode::Fill;
+            VideoFXSegment late = VideoFXSegment::FromFile(lateFace);
+            const std::string centred = TempPath("late-face-centred.mkv"), kept = TempPath("late-face-kept.mkv");
+            CHECK_OK(VideoFX_Export({late}, centred, wideFill), "filled without looking for faces");
+            CHECK_OK(VideoFX_ExtractFrame(centred, 2.5, f), "its frame in the last third");
+            CentreColour(f, r, g, b);
+            CHECK(g > 200 && r < 60, "the centred crop shows the green below the photo");
+            late.keepFacesInView = true;
+            CHECK_OK(VideoFX_Export({late}, kept, wideFill), "filled keeping the faces");
+            CHECK_OK(VideoFX_ExtractFrame(kept, 2.5, f), "its frame in the last third");
+            CentreColour(f, r, g, b);
+            CHECK(r > 60 && !(g > 200 && r < 60), "the face seen three quarters through moves the crop up onto the photo");
+        } else {
+            CHECK(false, "the test photo could not be read");
+        }
     }
 
     // ---- trim ----

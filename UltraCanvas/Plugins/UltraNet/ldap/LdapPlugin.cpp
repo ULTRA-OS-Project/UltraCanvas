@@ -9,12 +9,16 @@
 //
 // scope is one of: base (default), one, sub
 // Example: ldap://ldap.example.com/dc=example,dc=com??sub?(uid=alice)
+// Version: 0.1.2 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result or an invalid
+//                  handle, never ends the process
 // Version: 0.1.1
 // Last Modified: 2026-07-05
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraCanvasUtils.h>
 
@@ -119,60 +123,64 @@ public:
         return {"ldap", "ldaps"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {}
 
     UltraNetResult Search(const std::string& url,
                           const UltraNetDirectoryQuery& q,
                           std::vector<UltraNetDirectoryEntry>& out) override {
-        out.clear();
+        return ultranet_plugin::Guarded("Search", [&]() -> UltraNetResult {
+            out.clear();
 
-        // Build an LDAP URL by appending baseDN ? attrs ? scope ? filter
-        // when the caller's URL is bare (e.g. "ldap://server/"). Otherwise
-        // trust whatever they provided.
-        std::string full = url;
-        if (full.find('?') == std::string::npos) {
-            if (!full.empty() && full.back() != '/') full.push_back('/');
-            full += q.baseDn;
-            full += '?';
-            for (std::size_t i = 0; i < q.attributes.size(); ++i) {
-                if (i) full += ',';
-                full += q.attributes[i];
+            // Build an LDAP URL by appending baseDN ? attrs ? scope ? filter
+            // when the caller's URL is bare (e.g. "ldap://server/"). Otherwise
+            // trust whatever they provided.
+            std::string full = url;
+            if (full.find('?') == std::string::npos) {
+                if (!full.empty() && full.back() != '/') full.push_back('/');
+                full += q.baseDn;
+                full += '?';
+                for (std::size_t i = 0; i < q.attributes.size(); ++i) {
+                    if (i) full += ',';
+                    full += q.attributes[i];
+                }
+                full += '?';
+                full += ScopeToken(q.scope);
+                full += '?';
+                full += q.filter.empty() ? "(objectClass=*)" : q.filter;
             }
-            full += '?';
-            full += ScopeToken(q.scope);
-            full += '?';
-            full += q.filter.empty() ? "(objectClass=*)" : q.filter;
-        }
 
-        std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
-            curl_easy_init(), curl_easy_cleanup);
-        if (!h) return UltraNetResult::Error(
-            UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+            std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
+                curl_easy_init(), curl_easy_cleanup);
+            if (!h) return UltraNetResult::Error(
+                UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
 
-        std::string body;
-        curl_easy_setopt(h.get(), CURLOPT_URL, full.c_str());
-        curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
-        curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
-        curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
-        if (q.timeLimitSeconds > 0) {
-            curl_easy_setopt(h.get(), CURLOPT_TIMEOUT,
-                             static_cast<long>(q.timeLimitSeconds));
-        }
-        // libcurl's LDAP backend doesn't really honour Basic auth in URL,
-        // but we set USERNAME/PASSWORD anyway for parity with other plug-ins.
+            std::string body;
+            curl_easy_setopt(h.get(), CURLOPT_URL, full.c_str());
+            curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteString);
+            curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &body);
+            curl_easy_setopt(h.get(), CURLOPT_NOSIGNAL, 1L);
+            if (q.timeLimitSeconds > 0) {
+                curl_easy_setopt(h.get(), CURLOPT_TIMEOUT,
+                                 static_cast<long>(q.timeLimitSeconds));
+            }
+            // libcurl's LDAP backend doesn't really honour Basic auth in URL,
+            // but we set USERNAME/PASSWORD anyway for parity with other plug-ins.
 
-        CURLcode rc = curl_easy_perform(h.get());
-        if (rc != CURLE_OK) {
-            return UltraNetResult::Error(MapCurlError(rc),
-                                         curl_easy_strerror(rc));
-        }
-        ParseLdif(body, out);
-        if (q.sizeLimit > 0 && out.size() > static_cast<std::size_t>(q.sizeLimit)) {
-            out.resize(q.sizeLimit);
-        }
-        return UltraNetResult::Ok();
+            CURLcode rc = curl_easy_perform(h.get());
+            if (rc != CURLE_OK) {
+                return UltraNetResult::Error(MapCurlError(rc),
+                                             curl_easy_strerror(rc));
+            }
+            ParseLdif(body, out);
+            if (q.sizeLimit > 0 && out.size() > static_cast<std::size_t>(q.sizeLimit)) {
+                out.resize(q.sizeLimit);
+            }
+            return UltraNetResult::Ok();
+        });
     }
 };
 

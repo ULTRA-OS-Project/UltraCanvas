@@ -205,3 +205,12 @@ struct UltraNetMimeBuildInput {
 // with both text parts quoted-printable, since HTML lines outgrow the 998
 // characters SMTP allows a line.
 std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& input);
+
+// The raw RFC 5322 message of what a caller hands IMailProtocolPlugin::SendMail
+// (UltraNetMailMessage, UltraNetPlugins.h): its addresses, subject, body with
+// the media type and charset of `contentType`, the text alternative and
+// inline pictures of an HTML body, the attachments and the extra headers,
+// through UltraNet_MimeBuild. One wire format for every mail plug-in that
+// sends (SMTP, JMAP).
+struct UltraNetMailMessage;
+std::string UltraNet_MimeBuildMailMessage(const UltraNetMailMessage& message);

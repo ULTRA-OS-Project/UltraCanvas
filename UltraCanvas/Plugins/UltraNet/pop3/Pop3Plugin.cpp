@@ -19,6 +19,8 @@
 //
 // ULTRANET_CURL_VERBOSE traces a session on stderr like the SMTP and IMAP
 // plug-ins (UltraNet/UltraNetCurlDebug.h); the PASS line is redacted.
+// Version: 0.1.3 - every entry point is guarded (UltraNetPluginGuard.h): an
+//                  exception becomes a PluginError result, never ends the process
 // Version: 0.1.2
 // Last Modified: 2026-10-04
 // Author: UltraCanvas Framework / ULTRA OS
@@ -29,6 +31,7 @@
 #include <UltraNet/UltraNetCurlMailAuth.h>
 #include <UltraNet/UltraNetCurlTls.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include "UltraNetPluginGuard.h"
 #include "UltraNetPluginHostShim.h"
 #include <UltraNet/UltraNetUrl.h>
 
@@ -222,76 +225,82 @@ public:
         return {"pop3", "pop3s"};
     }
     UltraNetResult Initialize(const UltraNetConfig&) override {
-        return UltraNetResult::Ok();
+        return ultranet_plugin::Guarded("Initialize", [&]() -> UltraNetResult {
+            return UltraNetResult::Ok();
+        });
     }
     void Shutdown() override {}
 
     UltraNetResult SendMail(const UltraNetMailMessage&,
                             const UltraNetMailOptions&) override {
-        return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
-            "POP3 plug-in only fetches; use the UltraNet-SMTP plug-in to send");
+        return ultranet_plugin::Guarded("SendMail", [&]() -> UltraNetResult {
+            return UltraNetResult::Error(UltraNetResultCode::UnsupportedScheme,
+                "POP3 plug-in only fetches; use the UltraNet-SMTP plug-in to send");
+        });
     }
 
     UltraNetResult FetchMessages(const std::string& url,
                                  std::vector<UltraNetMailMessage>& outMessages,
                                  const UltraNetMailOptions& options) override {
-        outMessages.clear();
+        return ultranet_plugin::Guarded("FetchMessages", [&]() -> UltraNetResult {
+            outMessages.clear();
 
-        std::string baseUrl;
-        bool implicitTls = false;
-        if (!ParsePop3Url(url, baseUrl, implicitTls)) {
-            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
-                "expected pop3:// or pop3s:// URL");
-        }
-
-        // -------- 1. LIST: discover message count --------
-        int totalMessages = 0;
-        {
-            std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
-                curl_easy_init(), curl_easy_cleanup);
-            if (!h) return UltraNetResult::Error(
-                UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
-
-            std::string listBody;
-            curl_easy_setopt(h.get(), CURLOPT_URL, baseUrl.c_str());
-            curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
-            curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &listBody);
-            if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
-
-            std::string why, diagnostics;
-            CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
-            if (rc != CURLE_OK) {
-                return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
+            std::string baseUrl;
+            bool implicitTls = false;
+            if (!ParsePop3Url(url, baseUrl, implicitTls)) {
+                return UltraNetResult::Error(UltraNetResultCode::InvalidUrl,
+                    "expected pop3:// or pop3s:// URL");
             }
-            totalMessages = CountMessagesInListResponse(listBody);
-        }
-        if (totalMessages <= 0) return UltraNetResult::Ok();
 
-        // -------- 2. RETR the N highest-numbered messages (most recent) --------
-        int take = totalMessages;
-        if (options.maxMessages > 0 && options.maxMessages < take) {
-            take = options.maxMessages;
-        }
-        const int firstIdx = totalMessages - take + 1;
-        for (int i = firstIdx; i <= totalMessages; ++i) {
-            std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
-                curl_easy_init(), curl_easy_cleanup);
-            if (!h) continue;
+            // -------- 1. LIST: discover message count --------
+            int totalMessages = 0;
+            {
+                std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
+                    curl_easy_init(), curl_easy_cleanup);
+                if (!h) return UltraNetResult::Error(
+                    UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
 
-            const std::string retrUrl = baseUrl + std::to_string(i);
-            std::string raw;
-            curl_easy_setopt(h.get(), CURLOPT_URL, retrUrl.c_str());
-            curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
-            curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &raw);
-            if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
+                std::string listBody;
+                curl_easy_setopt(h.get(), CURLOPT_URL, baseUrl.c_str());
+                curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
+                curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &listBody);
+                if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
 
-            if (curl_easy_perform(h.get()) != CURLE_OK || raw.empty()) continue;
+                std::string why, diagnostics;
+                CURLcode rc = ultranet_curlerror::Perform(h.get(), why, &diagnostics);
+                if (rc != CURLE_OK) {
+                    return ultranet_curlerror::Error(MapCurlError(rc), why, diagnostics);
+                }
+                totalMessages = CountMessagesInListResponse(listBody);
+            }
+            if (totalMessages <= 0) return UltraNetResult::Ok();
 
-            UltraNetMailMessage msg;
-            ParseMessage(raw, msg);
-            outMessages.push_back(std::move(msg));
-        }
-        return UltraNetResult::Ok();
+            // -------- 2. RETR the N highest-numbered messages (most recent) --------
+            int take = totalMessages;
+            if (options.maxMessages > 0 && options.maxMessages < take) {
+                take = options.maxMessages;
+            }
+            const int firstIdx = totalMessages - take + 1;
+            for (int i = firstIdx; i <= totalMessages; ++i) {
+                std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> h(
+                    curl_easy_init(), curl_easy_cleanup);
+                if (!h) continue;
+
+                const std::string retrUrl = baseUrl + std::to_string(i);
+                std::string raw;
+                curl_easy_setopt(h.get(), CURLOPT_URL, retrUrl.c_str());
+                curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
+                curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &raw);
+                if (UltraNetResult a = ApplyCommonOptions(h.get(), options, implicitTls); !a) return a;
+
+                if (curl_easy_perform(h.get()) != CURLE_OK || raw.empty()) continue;
+
+                UltraNetMailMessage msg;
+                ParseMessage(raw, msg);
+                outMessages.push_back(std::move(msg));
+            }
+            return UltraNetResult::Ok();
+        });
     }
 };
 

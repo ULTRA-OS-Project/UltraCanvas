@@ -22,9 +22,10 @@
 //
 // One cipher, one KDF: everything UltraCanvas writes uses XChaCha20-Poly1305
 // keyed with Argon2id. AES-256-GCM exists only to read foreign data and is
-// hardware-gated; AES-CBC exists only for foreign formats and is portable.
+// hardware-gated; AES-CBC and AES-CTR (and the PBKDF2 those formats key them
+// with) exist only for foreign formats and are portable.
 //
-// Version: 0.3.0
+// Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef ULTRACRYPTCORE_H
@@ -309,11 +310,53 @@ UltraCryptResult UltraCrypt_AesCbcDecrypt(const UltraCryptSecureBuffer& key,
                                           UltraCryptSecureBuffer& outPlaintext);
 
 // ============================================================================
+// AES-CTR (interop only)
+// ============================================================================
+// AES in counter mode (NIST SP 800-38A), for formats defined elsewhere that
+// are built on it - Matrix's encrypted attachments and room-key export files,
+// WebCrypto's AES-CTR. Like CBC it has no integrity of its own: the formats
+// that use it carry an HMAC or a hash of the ciphertext, and the rule of the
+// CBC section applies - check that BEFORE decrypting. Unlike CBC it needs no
+// padding (the ciphertext is as long as the plaintext), so there is no
+// padding oracle; but a counter block reused under one key gives away the XOR
+// of the two plaintexts, so every message needs its own IV.
+//
+// The 16-byte IV is the first counter block; each next block adds one to it
+// as a 128-bit big-endian number. A format that limits the counter to its low
+// 64 bits (WebCrypto's `length: 64`, which Matrix uses) gets the same bytes
+// as long as the counter does not reach 2^64 blocks - Matrix clears bit 63 of
+// the IV so that it never can.
+struct UltraCryptCtrParams {
+    // Encrypt: if empty, a fresh random IV is generated and written back here
+    // - the caller must store it. A format that wants a particular shape of
+    // IV (Matrix: random with bit 63 clear) supplies its own.
+    // Decrypt: must be the IV used at encryption.
+    std::vector<uint8_t> iv;
+};
+
+// The ciphertext is exactly as long as the plaintext. InvalidKeySize for a
+// key that is not 16, 24 or 32 bytes, InvalidNonceSize for an IV that is not
+// 16 bytes.
+UltraCryptResult UltraCrypt_AesCtrEncrypt(const UltraCryptSecureBuffer& key,
+                                          UltraCryptCtrParams& params,
+                                          const void* plaintext, size_t size,
+                                          std::vector<uint8_t>& outCiphertext);
+
+// Never fails on a wrong key or altered data - CTR cannot tell; check the
+// format's MAC or hash first. The output is empty on every failure.
+UltraCryptResult UltraCrypt_AesCtrDecrypt(const UltraCryptSecureBuffer& key,
+                                          const UltraCryptCtrParams& params,
+                                          const void* ciphertext, size_t size,
+                                          UltraCryptSecureBuffer& outPlaintext);
+
+// ============================================================================
 // Key derivation
 // ============================================================================
 // One KDF. Argon2id is memory-hard, is the current standard (RFC 9106) and is
-// what every UltraCanvas format and store uses. No alternative is offered: a
-// second KDF would be a second code path in every reader for no benefit.
+// what every UltraCanvas format and store uses. No alternative is offered for
+// what UltraCanvas writes itself: a second KDF would be a second code path in
+// every reader for no benefit. (PBKDF2, below, exists only to read and write
+// formats defined elsewhere, as AES-CBC and AES-CTR do.)
 enum class UltraCryptKdfAlgorithm : uint8_t {
     Argon2id
 };
@@ -360,6 +403,21 @@ UltraCryptResult UltraCrypt_DeriveKeyHkdf(
         const UltraCryptSecureBuffer& inputKeyMaterial,
         const std::vector<uint8_t>& salt,
         const std::vector<uint8_t>& info,
+        size_t outputLength,
+        UltraCryptSecureBuffer& outKey);
+
+// PBKDF2 (RFC 8018) - INTEROP ONLY, for formats defined elsewhere that
+// derive their key with it: Matrix's room-key export files and secret
+// storage passphrases (PBKDF2-HMAC-SHA-512), and the like. It is not
+// memory-hard, so a GPU tries passwords against it far faster than against
+// Argon2id: never use it for anything UltraCanvas defines - that is
+// UltraCrypt_DeriveKeyFromPassword. SHA1 is rejected; SHA256 and SHA512 are
+// offered. `iterations` is the format's (at least 1); `salt` may be empty.
+UltraCryptResult UltraCrypt_DeriveKeyPbkdf2(
+        UltraCryptHashAlgorithm algorithm,
+        const UltraCryptSecureBuffer& password,
+        const std::vector<uint8_t>& salt,
+        uint32_t iterations,
         size_t outputLength,
         UltraCryptSecureBuffer& outKey);
 
@@ -452,6 +510,46 @@ UltraCryptResult UltraCrypt_VerifyFile(UltraCryptSignatureAlgorithm algorithm,
                                        const std::vector<uint8_t>& publicKey,
                                        const std::string& filePath,
                                        const std::vector<uint8_t>& signature);
+
+// ============================================================================
+// Key agreement (X25519)
+// ============================================================================
+// Two parties who know each other's public key derive the same secret without
+// sending it: UltraCrypt_KeyExchange(mySecret, theirPublic) on one side equals
+// UltraCrypt_KeyExchange(theirSecret, myPublic) on the other. The raw X25519
+// output is not a key: feed it to UltraCrypt_DeriveKeyHkdf (with an `info`
+// naming the purpose) and use what comes out with UltraCrypt_AeadSeal.
+//
+// An Ed25519 signature key pair converts to an X25519 pair, so one identity
+// key both signs and agrees on keys (ChatCube Direct: one key pair per user).
+// Public keys and secrets are 32 bytes.
+
+size_t UltraCrypt_GetKeyExchangeKeySize();          // 32
+size_t UltraCrypt_GetKeyExchangeSecretSize();       // 32
+
+// A fresh X25519 pair (an ephemeral key, or an identity that never signs).
+UltraCryptResult UltraCrypt_GenerateKeyExchangeKeyPair(std::vector<uint8_t>& outPublicKey,
+                                                       UltraCryptSecureBuffer& outSecretKey);
+
+// The X25519 form of an Ed25519 public key. InvalidArgument when the bytes
+// are not a valid Ed25519 point.
+UltraCryptResult UltraCrypt_SignaturePublicKeyToKeyExchange(
+        UltraCryptSignatureAlgorithm algorithm,
+        const std::vector<uint8_t>& signaturePublicKey,
+        std::vector<uint8_t>& outKeyExchangePublicKey);
+
+// The X25519 form of an Ed25519 secret key (the 64-byte form the signature
+// functions use).
+UltraCryptResult UltraCrypt_SignatureSecretKeyToKeyExchange(
+        UltraCryptSignatureAlgorithm algorithm,
+        const UltraCryptSecureBuffer& signatureSecretKey,
+        UltraCryptSecureBuffer& outKeyExchangeSecretKey);
+
+// The shared secret. Fails with InvalidArgument for a public key that would
+// make it all zeros (a low-order point an attacker can send).
+UltraCryptResult UltraCrypt_KeyExchange(const UltraCryptSecureBuffer& mySecretKey,
+                                        const std::vector<uint8_t>& theirPublicKey,
+                                        UltraCryptSecureBuffer& outSharedSecret);
 
 // ============================================================================
 // Base32 into a secure buffer
