@@ -1550,6 +1550,19 @@ jobs:
           xvfb-run -a -s "-screen 0 1600x900x24 +extension RANDR"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^DesktopShellTest$"
 
+      # The Smart Home widget test drives the device controls through a real
+      # window - a press on the switch, the slider, the lock button, at window
+      # coordinates through the application's dispatch. "Run unit tests" has
+      # no display, so there that part skips; here it has to run.
+      - name: Run the Smart Home widget test on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        env:
+          ULTRACANVAS_TEST_DISPLAY_REQUIRED: 1
+        run: >-
+          xvfb-run -a -s "-screen 0 1280x800x24"
+          ctest --output-on-failure --no-tests=error --timeout 300 -R "^SmartHomeWidgets$"
+
       # ULTRAFIBU_TEST_PG_REQUIRED above turns a skip into a failure, so ctest
       # already covers "it ran". What it cannot cover is the test not existing
       # at all, which is what happens when libpq is missing at configure time.

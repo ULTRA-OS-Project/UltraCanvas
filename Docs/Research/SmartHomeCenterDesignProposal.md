@@ -1,12 +1,20 @@
 # SmartHome Center — the home control application for ULTRA OS (Proposal)
 
 **Date:** 2026-10-20
-**Status:** Phase 0 largely done (2026-10-20): the simulated backend
-(§4.7), smarthome.db (§4.4), sensor history (§4.5) and the automation engine
-(§4.6) are in `SmartHome/`; still open from phase 0 is the home model's own
-room list (§4.3 - rooms are per device for now). A first
-`Apps/SmartHomeCenter` runs on it. The window is assembled from framework elements directly rather than
-from the `SmartHomeUI` widgets, which still paint their own controls (§4.8).
+**Status:** Phases 0 and 1 done (2026-10-21). Phase 0: the simulated
+backend (§4.7), smarthome.db (§4.4), sensor history (§4.5), the automation
+engine (§4.6) and the home model's rooms (§4.3) are in `SmartHome/`.
+Phase 1: `Apps/SmartHomeCenter` 0.2.0 has Home, Rooms, Devices, a page per
+device, Scenes, Energy, Activity, Settings and the first-run guide;
+`--list`, `--set`, `--scene`, `--history` and `--log`, checked in CI by
+`SmartHomeCenterCliTest`; the demo application's Smart Home entry opens
+the panel on the simulator. Phase 2 has begun: the §4.8 widget port is
+done - every `SmartHomeUI` widget is a container of framework elements,
+`check_ui_reuse` scans `SmartHome/ui`, the widgets have rows in the element
+catalogue, and `SmartHomeWidgetTest` drives them through a real window in
+CI. SmartHome Center 0.3.0 has the phase's Network page (the module's
+topology widget) and draws its devices with the module's icons. Automations,
+backup and restore, notifications and kiosk mode are still to come.
 **Scope:** a new application, `Apps/SmartHomeCenter`, on top of the existing
 `SmartHome` engine and `SmartHomeUI` widget library. This document also
 covers what those two libraries still need before an application can stand
@@ -491,7 +499,7 @@ Phases 0 and 1 need no hardware and no new third-party code.
 | Automations that run | storage + empty evaluator | §4.6 |
 | History, energy | `GetSensorHistory` returns `{}` | §4.5 |
 | Something to show without hardware | none | §4.7 |
-| Accessible, themed controls inside the widgets | painted | §4.8 |
+| Accessible, themed controls inside the widgets | framework elements (done 2026-10-21) | §4.8 |
 | Background operation | in-process only | §4.2, phase 3 |
 | Matter over IPv6 discovery | mDNS is IPv4 only | Framework: AAAA in `MdnsPlugin` (STATUS.md §3) |
 | Matter commissioning over BLE | no BLE transport | Framework gap (STATUS.md §3); until then, only devices already on the network (on-network commissioning) |

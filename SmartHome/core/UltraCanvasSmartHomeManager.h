@@ -9,6 +9,7 @@
 #include "SmartHomeAutomationEngine.h"
 #include "SmartHomeStore.h"
 #include <deque>
+#include <set>
 #include <mutex>
 #include <thread>
 #include <atomic>
@@ -100,6 +101,7 @@ public:
     bool QueueCommand(const SmartHomeCommand& command, 
                       std::function<void(bool success)> callback = nullptr);
     void ProcessCommandQueue();
+    bool WaitForCommands(int timeoutMs);
     int GetPendingCommandCount() const;
     
     // ===== SCENE MANAGEMENT =====
@@ -124,15 +126,20 @@ public:
     SmartHomeNetworkInfo GetNetwork(SmartHomeProtocolType protocol) const;
     
     // ===== EVENT CALLBACKS =====
-    void SetOnDeviceDiscover(OnDeviceDiscover callback) { onDeviceDiscover = callback; }
-    void SetOnDeviceStateChange(OnDeviceStateChange callback) { onDeviceStateChange = callback; }
-    void SetOnDeviceUpdate(OnDeviceUpdate callback) { onDeviceUpdate = callback; }
-    void SetOnNetworkChange(OnNetworkChange callback) { onNetworkChange = callback; }
-    void SetOnPairingProgress(OnPairingProgress callback) { onPairingProgress = callback; }
-    void SetOnPairingComplete(OnPairingComplete callback) { onPairingComplete = callback; }
-    void SetOnSensorRead(OnSensorRead callback) { onSensorRead = callback; }
-    void SetOnAutomationTrigger(OnAutomationTrigger callback) { onAutomationTrigger = callback; }
-    void SetOnSmartHomeError(OnSmartHomeError callback) { onSmartHomeError = callback; }
+    // The SetOn* slot of each notification (under callbackMutex: they are
+    // set on the UI thread and read on the backends').
+    void SetOnDeviceDiscover(OnDeviceDiscover callback) { SetPrimary(&SmartHomeListener::DeviceDiscover, std::move(callback)); }
+    void SetOnDeviceStateChange(OnDeviceStateChange callback) { SetPrimary(&SmartHomeListener::DeviceStateChange, std::move(callback)); }
+    void SetOnDeviceUpdate(OnDeviceUpdate callback) { SetPrimary(&SmartHomeListener::DeviceUpdate, std::move(callback)); }
+    void SetOnNetworkChange(OnNetworkChange callback) { SetPrimary(&SmartHomeListener::NetworkChange, std::move(callback)); }
+    void SetOnPairingProgress(OnPairingProgress callback) { SetPrimary(&SmartHomeListener::PairingProgress, std::move(callback)); }
+    void SetOnPairingComplete(OnPairingComplete callback) { SetPrimary(&SmartHomeListener::PairingComplete, std::move(callback)); }
+    void SetOnSensorRead(OnSensorRead callback) { SetPrimary(&SmartHomeListener::SensorRead, std::move(callback)); }
+    void SetOnAutomationTrigger(OnAutomationTrigger callback) { SetPrimary(&SmartHomeListener::AutomationTrigger, std::move(callback)); }
+    void SetOnSmartHomeError(OnSmartHomeError callback) { SetPrimary(&SmartHomeListener::Error, std::move(callback)); }
+
+    SmartHomeListenerId AddListener(SmartHomeListener listener);
+    void RemoveListener(SmartHomeListenerId id);
     
     // ===== EVENT DISPATCHING (called by protocols/devices) =====
     void DispatchDeviceDiscover(const SmartHomeDeviceInfo& info);
@@ -162,6 +169,14 @@ public:
     // ===== THE HOME =====
     bool SetDeviceName(const std::string& deviceId, const std::string& name);
     bool SetDeviceRoom(const std::string& deviceId, const std::string& room);
+    std::vector<SmartHomeRoom> GetRooms() const;
+    SmartHomeRoom GetRoom(const std::string& roomId) const;
+    bool CreateRoom(const SmartHomeRoom& room, std::string* createdId);
+    bool UpdateRoom(const SmartHomeRoom& room);
+    bool DeleteRoom(const std::string& roomId);
+    bool AssignDeviceToRoom(const std::string& deviceId, const std::string& roomId);
+    std::string GetDeviceRoom(const std::string& deviceId) const;
+    void SetOnHomeChange(OnHomeChange callback);
     bool SetHomeLocation(double latitude, double longitude);
     bool GetHomeLocation(double& latitude, double& longitude) const;
     bool GetSunTimes(int64_t& sunrise, int64_t& sunset) const;
@@ -205,8 +220,19 @@ private:
     // Registers a device a backend reports, with the backend's device
     // object when it keeps one.
     void AdoptDevice(ISmartHomeProtocol* protocol, const SmartHomeDeviceInfo& info);
-    // The person's name and room over the backend's.
-    void ApplyOverrides(SmartHomeDeviceInfo& info) const;
+    // The person's name and room over the backend's, and the room resolved
+    // to one of the home's (a room name seen for the first time becomes a
+    // room). Called with no lock held.
+    void ApplyOverrides(SmartHomeDeviceInfo& info);
+    // Reads a device back from its backend, applies the overrides and
+    // stores the result (after its room or a room changed).
+    void ReapplyDevice(const std::string& deviceId);
+    // Under homeMutex: the room with this name (not minding case), made and
+    // saved when there is none; a new id unlike every other.
+    std::string RoomForNameLocked(const std::string& name);
+    std::string NewRoomIdLocked(const std::string& name) const;
+    // Calls OnHomeChange when the rooms changed since the last call.
+    void NotifyHomeChange();
     // Sensor history: what a device reads now, when it moved past its
     // deadband or 15 minutes have passed (store open only).
     void RecordReadings(const std::string& deviceId);
@@ -232,6 +258,8 @@ private:
     std::queue<PendingCommand> commandQueue;
     mutable std::mutex commandMutex;
     std::condition_variable commandCondition;
+    std::condition_variable commandsIdle;      // the queue ran dry
+    int commandsRunning = 0;                    // under commandMutex
     
     // Scenes and automations
     std::map<std::string, SmartHomeScene> scenes;
@@ -244,16 +272,6 @@ private:
     std::thread discoveryThread;
     std::thread automationThread;
     
-    // Callbacks
-    OnDeviceDiscover onDeviceDiscover;
-    OnDeviceStateChange onDeviceStateChange;
-    OnDeviceUpdate onDeviceUpdate;
-    OnNetworkChange onNetworkChange;
-    OnPairingProgress onPairingProgress;
-    OnPairingComplete onPairingComplete;
-    OnSensorRead onSensorRead;
-    OnAutomationTrigger onAutomationTrigger;
-    OnSmartHomeError onSmartHomeError;
     
     // Pairing state
     std::atomic<SmartHomeProtocolType> pairingProtocol;  // read on backend threads
@@ -262,6 +280,14 @@ private:
     // The store, and what of it lives in memory
     std::unique_ptr<SmartHomeStore> store;
     std::map<std::string, SmartHomeDeviceOverride> overrides;   // under deviceMutex
+    // The home's rooms. Lock order: deviceMutex, then homeMutex - never the
+    // other way round.
+    std::vector<SmartHomeRoom> rooms;                           // under homeMutex
+    // Rooms the person made or changed while no store was open; the others
+    // came from backend names and are made again from them when it opens.
+    std::set<std::string> roomsChosen;                          // under homeMutex
+    mutable std::mutex homeMutex;
+    std::atomic<bool> homeChanged{false};
     mutable std::mutex locationMutex;
     bool hasLocation = false;
     double homeLatitude = 0.0, homeLongitude = 0.0;
@@ -280,9 +306,29 @@ private:
     // The event log in memory (the store keeps the rest)
     std::deque<SmartHomeEvent> recentEvents;                    // newest first
     mutable std::mutex eventMutex;
-    mutable std::mutex callbackMutex;                           // the two below
-    OnAutomationNotify onAutomationNotify;
-    OnSmartHomeEvent onEvent;
+    // Who hears the notifications: the SetOn* slots, and the listeners.
+    // A listener's calls are counted while they run, so RemoveListener can
+    // wait for one in flight on another thread before it returns.
+    struct ListenerEntry {
+        SmartHomeListener fns;
+        std::atomic<int> active{0};
+        std::atomic<bool> removed{false};
+    };
+    mutable std::mutex callbackMutex;                           // the three below
+    SmartHomeListener primary;
+    std::vector<std::pair<SmartHomeListenerId, std::shared_ptr<ListenerEntry>>> listeners;
+    SmartHomeListenerId nextListenerId = 1;
+
+    template <typename Fn>
+    void SetPrimary(Fn SmartHomeListener::* member, Fn callback) {
+        std::lock_guard<std::mutex> lock(callbackMutex);
+        primary.*member = std::move(callback);
+    }
+
+    // Calls `member` of the slot and of every listener that has it, outside
+    // any lock: a copy of the slot and of the listener list is taken first.
+    template <typename Fn, typename... Args>
+    void Notify(Fn SmartHomeListener::* member, const Args&... args);
 };
 
 } // namespace SmartHome

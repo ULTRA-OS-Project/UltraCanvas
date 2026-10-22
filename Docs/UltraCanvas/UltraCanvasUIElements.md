@@ -257,6 +257,32 @@ are what an application reaches for. An SVG has no element of its own either:
 reader where libvips has no SVG loader). Same for
 the LaTeX and STL elements, listed under *Text, images and media* above.
 
+## Module widgets — Smart Home
+
+The Smart Home module's widgets (`SmartHome/ui`, library `SmartHomeUI`) are
+not framework elements - they are built **out of** the elements above, and
+are listed here so nobody writes a second light switch or thermostat panel.
+Each drives its device through `SmartHomeAPI` and reports through its own
+callback; each has getters for the elements inside it. More
+in [the module's overview](../Modules/Smarthome/README.md).
+
+| You need | Widget | Built from | Header |
+|---|---|---|---|
+| A dashboard of the home's devices: grid, rooms, list, scenes, automations, network | `SmartHomePanel` | segmented control, text input, button, the cards below, list view, `SmartHomeNetworkTopology` | `UltraCanvasSmartHomePanel.h` |
+| One device or scene as a press target | `SmartHomeDeviceCard`, `SmartHomeSceneCard` | drawn tiles | `UltraCanvasSmartHomePanel.h` |
+| A light's on/off, brightness, colour temperature, colour and presets | `SmartHomeLightControl` | switch, sliders, colour picker, colour swatch bar | `UltraCanvasSmartHomeDeviceControl.h` |
+| A thermostat's target and mode | `SmartHomeThermostatControl` | ring gauge, spinner, segmented control | same |
+| A lock with its battery and activity | `SmartHomeLockControl` | button, gauge bar, list view | same |
+| A blind's position, tilt and presets | `SmartHomeBlindControl` | buttons, sliders, a drawn preview | same |
+| A sensor's reading and its recent history | `SmartHomeSensorDisplay` | labels, line chart (`SensorHistoryMinimumSpan` floors its axis) | same |
+| A device's details with its control | `SmartHomeDeviceDialog` | labels, buttons, the control above | same |
+| Adding a device | `SmartHomePairingWizard` | buttons, gauge bar | same |
+| Editing a scene or an automation | `SmartHomeSceneEditor`, `SmartHomeAutomationEditor` | text input, list views, dropdown, switch, buttons | `UltraCanvasSmartHomeAdvancedWidgets.h` |
+| The radio network as a graph | `SmartHomeNetworkTopology` | `UltraCanvasNodeDiagram`, segmented control, dropdown | same |
+| Power and energy use | `SmartHomeEnergyMonitor` | line chart, segmented control, labels | same |
+| Timed events by day, week or as a list | `SmartHomeScheduler` | segmented controls, list view, buttons, a drawn week grid | same |
+| A group of devices switched together | `SmartHomeGroupControl` | buttons, sliders, list view, dropdown | same |
+
 ## Creating them
 
 Widgets are `std::shared_ptr`-managed. Use the `Create*` factory where one

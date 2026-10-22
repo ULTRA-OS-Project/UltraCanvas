@@ -1,7 +1,7 @@
 // UltraCanvasSmartHomeDeviceControl.h
 // Smart Home Device Control Widgets
-// Version: 1.0.0
-// Last Modified: 2025-12-08
+// Version: 2.0.0 - the controls are containers of framework elements (proposal §4.8)
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,615 +10,571 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasSmartHome.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasColorPicker.h"
+#include "UltraCanvasColorSwatchBar.h"
+#include "UltraCanvasContainer.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasSlider.h"
+#include "UltraCanvasSpinner.h"
+#include "UltraCanvasSwitch.h"
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
+#include <algorithm>
+#include <cstdint>
 #include <memory>
 #include <functional>
 
 namespace UltraCanvas {
+class UltraCanvasLineChartElement;
+class ChartDataVector;
+
 namespace SmartHome {
+
+// The five device controls are UltraCanvasContainers of framework elements
+// (proposal §4.8): a switch, sliders, buttons, a segmented control, a
+// spinner, a colour picker and swatch bar, a gauge, a list view. Each still
+// drives its device through SmartHomeAPI and reports through its own
+// callback, and keeps the public API it had while it painted its controls.
+// The picture of a blind in its window takes no input and is a small view
+// element inside the layout; a sensor's history is a line chart.
+
+class SmartHomeBlindPreview;
+
+// How far apart the top and bottom of a sensor's history are drawn at least:
+// 2 °C, 10 % humidity, 20 W, 50 lx, 1 for the rest. Without a floor a room
+// steady at 20.6-20.7 °C fills the whole graph and reads as a sawtooth.
+double SensorHistoryMinimumSpan(SmartHomeSensorType type);
 
 /**
  * @brief Light control widget
- * 
- * Provides controls for smart lights including:
- * - On/Off toggle
- * - Brightness slider
- * - Color temperature slider
- * - RGB color picker
- * - Color presets
+ *
+ * A switch for on/off, sliders for brightness and colour temperature, a
+ * colour picker for RGB lights and a row of colour presets.
  */
-class SmartHomeLightControl : public UltraCanvasUIElement {
+class SmartHomeLightControl : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeLightControl(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeLightControl(const std::string& identifier, float w, float h)
         : SmartHomeLightControl(identifier, -1, -1, w, h) {}
     explicit SmartHomeLightControl(const std::string& identifier)
         : SmartHomeLightControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeLightControl();
-    
-    /**
-     * @brief Set device to control
-     * @param deviceId Device ID
-     */
+
     void SetDevice(const std::string& deviceId);
-    
-    /**
-     * @brief Get controlled device ID
-     * @return Device ID
-     */
     std::string GetDevice() const { return deviceId; }
-    
-    /**
-     * @brief Set current light state
-     * @param state Light state
-     */
+
     void SetState(const SmartHomeLightState& state);
-    
-    /**
-     * @brief Get current state
-     * @return Light state
-     */
     SmartHomeLightState GetState() const { return currentState; }
-    
-    /**
-     * @brief Enable/disable brightness control
-     * @param enable Enable flag
-     */
-    void SetBrightnessEnabled(bool enable) { brightnessEnabled = enable; }
-    
-    /**
-     * @brief Enable/disable color temperature control
-     * @param enable Enable flag
-     */
-    void SetColorTempEnabled(bool enable) { colorTempEnabled = enable; }
-    
-    /**
-     * @brief Enable/disable RGB color control
-     * @param enable Enable flag
-     */
-    void SetColorEnabled(bool enable) { colorEnabled = enable; }
-    
+
+    void SetBrightnessEnabled(bool enable);
+    void SetColorTempEnabled(bool enable);
+    void SetColorEnabled(bool enable);
+
     /**
      * @brief Set color temperature range (Kelvin)
      * @param min Minimum (warm, e.g. 2700K)
      * @param max Maximum (cool, e.g. 6500K)
      */
     void SetColorTempRange(uint16_t min, uint16_t max);
-    
+
     /**
-     * @brief Add color preset
-     * @param name Preset name
-     * @param r Red (0-255)
-     * @param g Green (0-255)
-     * @param b Blue (0-255)
+     * @brief Add color preset (a swatch in the preset row)
      */
     void AddColorPreset(const std::string& name, uint8_t r, uint8_t g, uint8_t b);
-    
-    /**
-     * @brief Set callback for state changes
-     * @param callback Callback function
-     */
+
     void SetOnStateChange(std::function<void(const SmartHomeLightState&)> callback) {
         onStateChange = callback;
     }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    // The elements, for a host that styles or drives them (and for tests).
+    UltraCanvasSwitch* GetPowerSwitch() const { return powerSwitch.get(); }
+    UltraCanvasSlider* GetBrightnessSlider() const { return brightness.get(); }
+    UltraCanvasSlider* GetColorTempSlider() const { return colorTemp.get(); }
+    UltraCanvasColorPicker* GetColorPicker() const { return colorPicker.get(); }
+    UltraCanvasColorSwatchBar* GetPresetBar() const { return presetBar.get(); }
 
 private:
-    void RenderPowerButton(IRenderContext* context);
-    void RenderBrightnessSlider(IRenderContext* context);
-    void RenderColorTempSlider(IRenderContext* context);
-    void RenderColorWheel(IRenderContext* context);
-    void RenderColorPresets(IRenderContext* context);
-    
-    void HandlePowerClick();
-    void HandleBrightnessChange(int x);
-    void HandleColorTempChange(int x);
-    void HandleColorWheelClick(int x, int y);
-    void HandlePresetClick(int index);
-    
+    void Sync();          // the state into the elements, without echoes
     void SendState();
-    
+    void PickColor(const Color& c);
+
     struct ColorPreset {
         std::string Name;
         uint8_t R, G, B;
     };
-    
+
     std::string deviceId;
     SmartHomeLightState currentState;
-    
-    bool brightnessEnabled = true;
-    bool colorTempEnabled = true;
-    bool colorEnabled = true;
-    
     uint16_t colorTempMin = 2700;
     uint16_t colorTempMax = 6500;
-    
     std::vector<ColorPreset> colorPresets;
-    
-    // Interaction state
-    int dragging = 0;  // 0=none, 1=brightness, 2=colorTemp, 3=colorWheel
-    
+    bool syncing = false;
+
+    std::shared_ptr<UltraCanvasSwitch> powerSwitch;
+    std::shared_ptr<UltraCanvasLabel> powerLabel;
+    std::shared_ptr<UltraCanvasContainer> brightnessRow;
+    std::shared_ptr<UltraCanvasLabel> brightnessValue;
+    std::shared_ptr<UltraCanvasSlider> brightness;
+    std::shared_ptr<UltraCanvasContainer> colorTempRow;
+    std::shared_ptr<UltraCanvasLabel> colorTempValue;
+    std::shared_ptr<UltraCanvasSlider> colorTemp;
+    std::shared_ptr<UltraCanvasColorPicker> colorPicker;
+    std::shared_ptr<UltraCanvasColorSwatchBar> presetBar;
+
     std::function<void(const SmartHomeLightState&)> onStateChange;
 };
 
 /**
  * @brief Thermostat control widget
- * 
- * Provides controls for smart thermostats including:
- * - Temperature display
- * - Target temperature dial
- * - Mode selection (heat/cool/auto/off)
- * - Schedule preview
+ *
+ * A gauge with the target and the room's temperature, a spinner for the
+ * target, and a segmented control for the mode.
  */
-class SmartHomeThermostatControl : public UltraCanvasUIElement {
+class SmartHomeThermostatControl : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeThermostatControl(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeThermostatControl(const std::string& identifier, float w, float h)
         : SmartHomeThermostatControl(identifier, -1, -1, w, h) {}
     explicit SmartHomeThermostatControl(const std::string& identifier)
         : SmartHomeThermostatControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeThermostatControl();
-    
+
     void SetDevice(const std::string& deviceId);
     std::string GetDevice() const { return deviceId; }
-    
+
     void SetState(const SmartHomeThermostatState& state);
     SmartHomeThermostatState GetState() const { return currentState; }
-    
+
     /**
      * @brief Set temperature unit
      * @param celsius true for Celsius, false for Fahrenheit
      */
-    void SetCelsius(bool celsius) { useCelsius = celsius; }
-    
+    void SetCelsius(bool celsius);
+
     /**
-     * @brief Set temperature range
-     * @param min Minimum setpoint
-     * @param max Maximum setpoint
+     * @brief Set temperature range (°C)
      */
     void SetTemperatureRange(float min, float max);
-    
+
     /**
-     * @brief Set supported modes
-     * @param modes List of mode strings (heat, cool, auto, off, etc.)
+     * @brief Set supported modes (heat, cool, auto, off, ...)
      */
     void SetSupportedModes(const std::vector<std::string>& modes);
-    
+
     void SetOnStateChange(std::function<void(const SmartHomeThermostatState&)> callback) {
         onStateChange = callback;
     }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
+    // The wheel over the control steps the target half a degree a notch.
     bool OnEvent(const UCEvent& event) override;
 
+    UltraCanvasGaugeDiagramElement* GetGauge() const { return gauge.get(); }
+    UltraCanvasSpinner* GetTargetSpinner() const { return target.get(); }
+    UltraCanvasSegmentedControl* GetModeSelector() const { return modes.get(); }
+
 private:
-    void RenderTemperatureDial(IRenderContext* context);
-    void RenderCurrentTemperature(IRenderContext* context);
-    void RenderTargetTemperature(IRenderContext* context);
-    void RenderModeSelector(IRenderContext* context);
-    void RenderHumidity(IRenderContext* context);
-    
-    void HandleDialDrag(int x, int y);
-    void HandleModeSelect(const std::string& mode);
-    void AdjustTarget(float delta);
-    
+    void Sync();
     void SendState();
+    void AdjustTarget(float delta);
     float CelsiusToFahrenheit(float c) const;
     float FahrenheitToCelsius(float f) const;
-    
+
     std::string deviceId;
     SmartHomeThermostatState currentState;
-    
     bool useCelsius = true;
     float tempMin = 10.0f;
     float tempMax = 35.0f;
     std::vector<std::string> supportedModes;
-    
-    bool draggingDial = false;
-    
+    bool syncing = false;
+
+    std::shared_ptr<UltraCanvasGaugeDiagramElement> gauge;
+    std::shared_ptr<UltraCanvasLabel> nowLabel;
+    std::shared_ptr<UltraCanvasSpinner> target;
+    std::shared_ptr<UltraCanvasSegmentedControl> modes;
+
     std::function<void(const SmartHomeThermostatState&)> onStateChange;
 };
 
 /**
  * @brief Lock control widget
- * 
- * Provides controls for smart locks including:
- * - Lock/Unlock button with animation
- * - Status display
- * - Battery level
- * - Recent activity log
+ *
+ * A lock / unlock button, the lock's state and battery, and its recent
+ * activity, newest first.
  */
-class SmartHomeLockControl : public UltraCanvasUIElement {
+class SmartHomeLockControl : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeLockControl(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeLockControl(const std::string& identifier, float w, float h)
         : SmartHomeLockControl(identifier, -1, -1, w, h) {}
     explicit SmartHomeLockControl(const std::string& identifier)
         : SmartHomeLockControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeLockControl();
-    
+
     void SetDevice(const std::string& deviceId);
     std::string GetDevice() const { return deviceId; }
-    
+
     void SetState(const SmartHomeLockState& state);
     SmartHomeLockState GetState() const { return currentState; }
-    
+
     /**
      * @brief Add activity log entry
      * @param timestamp Unix timestamp
      * @param action Action description
      * @param user User name (if known)
      */
-    void AddActivity(uint64_t timestamp, const std::string& action, 
+    void AddActivity(uint64_t timestamp, const std::string& action,
                      const std::string& user = "");
-    
-    /**
-     * @brief Clear activity log
-     */
     void ClearActivity();
-    
+
     void SetOnLock(std::function<void()> callback) { onLock = callback; }
     void SetOnUnlock(std::function<void()> callback) { onUnlock = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasButton* GetLockButton() const { return lockButton.get(); }
+    UltraCanvasListView* GetActivityList() const { return activityList.get(); }
 
 private:
-    void RenderLockButton(IRenderContext* context);
-    void RenderStatus(IRenderContext* context);
-    void RenderBattery(IRenderContext* context);
-    void RenderActivityLog(IRenderContext* context);
-    
+    void Sync();
     void HandleLockToggle();
-    void AnimateLock(bool locking);
-    
+
     struct ActivityEntry {
         uint64_t Timestamp;
         std::string Action;
         std::string User;
     };
-    
+    class ActivityModel;
+
     std::string deviceId;
     SmartHomeLockState currentState;
-    
     std::vector<ActivityEntry> activityLog;
-    
-    bool animating = false;
-    float animationProgress = 0;
-    bool animatingToLocked = false;
-    
+
+    std::shared_ptr<UltraCanvasButton> lockButton;
+    std::shared_ptr<UltraCanvasLabel> statusLabel;
+    std::shared_ptr<UltraCanvasGaugeDiagramElement> battery;
+    std::shared_ptr<UltraCanvasLabel> batteryLabel;
+    std::shared_ptr<ActivityModel> activityModel;
+    std::shared_ptr<UltraCanvasListView> activityList;
+
     std::function<void()> onLock;
     std::function<void()> onUnlock;
 };
 
 /**
  * @brief Blind/shade control widget
- * 
- * Provides controls for smart blinds including:
- * - Position slider
- * - Tilt control
- * - Preset positions
+ *
+ * A picture of the blind in its window, Open / Stop / Close, a position
+ * slider, an optional tilt slider and buttons for the presets.
  */
-class SmartHomeBlindControl : public UltraCanvasUIElement {
+class SmartHomeBlindControl : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeBlindControl(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeBlindControl(const std::string& identifier, float w, float h)
         : SmartHomeBlindControl(identifier, -1, -1, w, h) {}
     explicit SmartHomeBlindControl(const std::string& identifier)
         : SmartHomeBlindControl(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeBlindControl();
-    
+
     void SetDevice(const std::string& deviceId);
     std::string GetDevice() const { return deviceId; }
-    
+
     /**
-     * @brief Set current position
-     * @param position Position 0-100 (0=closed, 100=open)
+     * @brief Set current position, 0 (closed) - 100 (open)
      */
     void SetPosition(uint8_t position);
-    
-    /**
-     * @brief Get current position
-     * @return Position 0-100
-     */
     uint8_t GetPosition() const { return currentPosition; }
-    
+
     /**
-     * @brief Set current tilt
-     * @param tilt Tilt 0-100 (50=horizontal)
+     * @brief Set current tilt, 0-100 (50 = horizontal)
      */
     void SetTilt(uint8_t tilt);
-    
-    /**
-     * @brief Get current tilt
-     * @return Tilt 0-100
-     */
     uint8_t GetTilt() const { return currentTilt; }
-    
+
+    void SetTiltEnabled(bool enable);
+
     /**
-     * @brief Enable tilt control
-     * @param enable Enable flag
-     */
-    void SetTiltEnabled(bool enable) { tiltEnabled = enable; }
-    
-    /**
-     * @brief Add position preset
-     * @param name Preset name
-     * @param position Position 0-100
+     * @brief Add position preset (a button)
      */
     void AddPreset(const std::string& name, uint8_t position);
-    
-    void SetOnPositionChange(std::function<void(uint8_t)> callback) { 
-        onPositionChange = callback; 
+
+    void SetOnPositionChange(std::function<void(uint8_t)> callback) {
+        onPositionChange = callback;
     }
-    void SetOnTiltChange(std::function<void(uint8_t)> callback) { 
-        onTiltChange = callback; 
+    void SetOnTiltChange(std::function<void(uint8_t)> callback) {
+        onTiltChange = callback;
     }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
-    bool OnEvent(const UCEvent& event) override;
+
+    UltraCanvasButton* GetOpenButton() const { return openButton.get(); }
+    UltraCanvasButton* GetStopButton() const { return stopButton.get(); }
+    UltraCanvasButton* GetCloseButton() const { return closeButton.get(); }
+    UltraCanvasSlider* GetPositionSlider() const { return position.get(); }
+    UltraCanvasSlider* GetTiltSlider() const { return tilt.get(); }
 
 private:
-    void RenderBlindPreview(IRenderContext* context);
-    void RenderPositionSlider(IRenderContext* context);
-    void RenderTiltSlider(IRenderContext* context);
-    void RenderPresets(IRenderContext* context);
-    void RenderQuickButtons(IRenderContext* context);
-    
-    void HandlePositionChange(int y);
-    void HandleTiltChange(int x);
-    void HandlePresetClick(int index);
-    void HandleQuickAction(const std::string& action);
-    
-    struct BlindPreset {
-        std::string Name;
-        uint8_t Position;
-    };
-    
+    void Sync();
+    void MoveTo(uint8_t position);   // sets, sends, reports
+
     std::string deviceId;
     uint8_t currentPosition = 0;
     uint8_t currentTilt = 50;
-    bool tiltEnabled = false;
-    
-    std::vector<BlindPreset> presets;
-    
-    int dragging = 0;  // 0=none, 1=position, 2=tilt
-    
+    bool syncing = false;
+
+    std::shared_ptr<SmartHomeBlindPreview> preview;
+    std::shared_ptr<UltraCanvasButton> openButton;
+    std::shared_ptr<UltraCanvasButton> stopButton;
+    std::shared_ptr<UltraCanvasButton> closeButton;
+    std::shared_ptr<UltraCanvasLabel> positionLabel;
+    std::shared_ptr<UltraCanvasSlider> position;
+    std::shared_ptr<UltraCanvasContainer> tiltRow;
+    std::shared_ptr<UltraCanvasSlider> tilt;
+    std::shared_ptr<UltraCanvasContainer> presetRow;
+
     std::function<void(uint8_t)> onPositionChange;
     std::function<void(uint8_t)> onTiltChange;
 };
 
 /**
  * @brief Sensor display widget
- * 
- * Displays sensor readings with:
- * - Current value with unit
- * - Historical graph
- * - Threshold alerts
+ *
+ * The reading with its unit, what kind of sensor it is, its recent history
+ * as a line chart (with SensorHistoryMinimumSpan as the floor of its value
+ * axis), and the alert thresholds. Read only.
  */
-class SmartHomeSensorDisplay : public UltraCanvasUIElement {
+class SmartHomeSensorDisplay : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeSensorDisplay(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeSensorDisplay(const std::string& identifier, float w, float h)
         : SmartHomeSensorDisplay(identifier, -1, -1, w, h) {}
     explicit SmartHomeSensorDisplay(const std::string& identifier)
         : SmartHomeSensorDisplay(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeSensorDisplay();
-    
+
     void SetDevice(const std::string& deviceId);
     std::string GetDevice() const { return deviceId; }
-    
-    /**
-     * @brief Set sensor type
-     * @param type Sensor type
-     */
+
     void SetSensorType(SmartHomeSensorType type);
-    
-    /**
-     * @brief Add reading to history
-     * @param reading Sensor reading
-     */
     void AddReading(const SmartHomeSensorReading& reading);
-    
-    /**
-     * @brief Set current reading
-     * @param reading Current reading
-     */
     void SetCurrentReading(const SmartHomeSensorReading& reading);
-    
+
     /**
      * @brief Set alert thresholds
-     * @param low Low threshold
-     * @param high High threshold
      */
     void SetThresholds(float low, float high);
-    
+
     /**
      * @brief Set display options
      * @param showGraph Show history graph
      * @param showUnit Show unit label
-     * @param showTimestamp Show last update time
+     * @param showTimestamp Show the sensor kind line
      */
     void SetDisplayOptions(bool showGraph, bool showUnit, bool showTimestamp);
-    
+
     /**
-     * @brief Set graph time range
-     * @param hours Hours of history to show
+     * @brief Set graph time range in hours
      */
-    void SetGraphRange(int hours) { graphHours = hours; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+    void SetGraphRange(int hours);
+
+    // A readout has nothing to click: events pass through to what is behind.
     bool OnEvent(const UCEvent& event) override;
 
+    UltraCanvasLineChartElement* GetGraph() const { return graph.get(); }
+
 private:
-    void RenderCurrentValue(IRenderContext* context);
-    void RenderGraph(IRenderContext* context);
-    void RenderThresholds(IRenderContext* context);
-    void RenderStatus(IRenderContext* context);
-    
+    void Sync();
+    void RefreshGraph();
     std::string GetUnitString() const;
     std::string FormatValue(float value) const;
     Color GetValueColor() const;
-    
+
     std::string deviceId;
     SmartHomeSensorType sensorType = SmartHomeSensorType::Unknown;
     SmartHomeSensorReading currentReading;
-    std::vector<SmartHomeSensorReading> history;
-    
     float lowThreshold = 0;
     float highThreshold = 100;
     bool thresholdsSet = false;
-    
-    bool showGraph = true;
     bool showUnit = true;
     bool showTimestamp = true;
+
+    std::shared_ptr<UltraCanvasLabel> valueLabel;
+    std::shared_ptr<UltraCanvasLabel> kindLabel;
+    std::vector<SmartHomeSensorReading> history;
     int graphHours = 24;
+    std::string graphRange;   // "20.6-20.7, 24 h", under the reading
+    std::shared_ptr<ChartDataVector> graphData;
+    std::shared_ptr<UltraCanvasLineChartElement> graph;
+    std::shared_ptr<UltraCanvasLabel> thresholdLabel;
 };
 
 /**
- * @brief Generic device detail dialog
- * 
- * Modal dialog showing detailed device information and controls.
+ * @brief Device detail dialog
+ *
+ * A sheet with the device's name and a close button, what it is (category,
+ * protocol, state, maker, model, firmware), the control that fits it - a
+ * light control for a light, a lock control for a lock - and Rename /
+ * Remove. Starts hidden; Show() fills it for a device.
  */
-class SmartHomeDeviceDialog : public UltraCanvasUIElement {
+class SmartHomeDeviceDialog : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomeDeviceDialog(const std::string& identifier, float x, float y, float w, float h);
     SmartHomeDeviceDialog(const std::string& identifier, float w, float h)
         : SmartHomeDeviceDialog(identifier, -1, -1, w, h) {}
     explicit SmartHomeDeviceDialog(const std::string& identifier)
         : SmartHomeDeviceDialog(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomeDeviceDialog();
-    
-    /**
-     * @brief Show dialog for device
-     * @param deviceId Device ID
-     */
+
     void Show(const std::string& deviceId);
-    
-    /**
-     * @brief Hide dialog
-     */
     void Hide();
-    
+
     // Visibility is the base class's, deliberately. UltraCanvasUIElement::
     // IsVisible() is NOT virtual, so declaring one here would only hide it:
     // the dialog would think it was hidden while the framework's dispatch and
-    // focus handling — which call the base — carried on as if it were not.
+    // focus handling - which call the base - carried on as if it were not.
     // Show() and Hide() drive SetVisible(), so there is one answer.
-    
+
     void SetOnClose(std::function<void()> callback) { onClose = callback; }
     void SetOnRename(std::function<void(const std::string&)> callback) { onRename = callback; }
     void SetOnRemove(std::function<void()> callback) { onRemove = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
+    // Escape closes it; a press on the sheet does not fall through to what
+    // is behind.
     bool OnEvent(const UCEvent& event) override;
 
+    UltraCanvasButton* GetCloseButton() const { return closeButton.get(); }
+    UltraCanvasButton* GetRenameButton() const { return renameButton.get(); }
+    UltraCanvasButton* GetRemoveButton() const { return removeButton.get(); }
+    // The light, thermostat, lock, blind or sensor control; null for a
+    // device that has none (a switch, a plug).
+    UltraCanvasUIElement* GetControlWidget() const { return controlWidget.get(); }
+
 private:
-    void RenderHeader(IRenderContext* context);
-    void RenderDeviceInfo(IRenderContext* context);
-    void RenderControls(IRenderContext* context);
-    void RenderActions(IRenderContext* context);
-    
     void LoadDeviceInfo();
     std::shared_ptr<UltraCanvasUIElement> CreateControlWidget();
-    
+
     std::string deviceId;
     SmartHomeDeviceInfo deviceInfo;
-    
+
+    std::shared_ptr<UltraCanvasLabel> title;
+    std::shared_ptr<UltraCanvasButton> closeButton;
+    std::shared_ptr<UltraCanvasContainer> facts;
+    std::shared_ptr<UltraCanvasContainer> controlHolder;
     std::shared_ptr<UltraCanvasUIElement> controlWidget;
-    
+    std::shared_ptr<UltraCanvasButton> renameButton;
+    std::shared_ptr<UltraCanvasButton> removeButton;
+
     std::function<void()> onClose;
     std::function<void(const std::string&)> onRename;
     std::function<void()> onRemove;
 };
 
 /**
- * @brief Pairing wizard widget
- * 
- * Step-by-step wizard for pairing new devices.
+ * @brief Pairing wizard
+ *
+ * Choose the radio (a button per protocol), then it searches - a progress
+ * bar, what to do, Cancel - until a new device joins the home ("Added ...",
+ * Done) or the time runs out (what went wrong, Back). It watches for the
+ * new device itself, on a timer, so it leaves SmartHomeAPI's callbacks to
+ * the host.
  */
-class SmartHomePairingWizard : public UltraCanvasUIElement {
+class SmartHomePairingWizard : public UltraCanvasContainer {
 public:
-    // UltraCanvasUIElement has no default constructor: every widget is
-    // built with an id and its bounds, like the rest of the framework.
     SmartHomePairingWizard(const std::string& identifier, float x, float y, float w, float h);
     SmartHomePairingWizard(const std::string& identifier, float w, float h)
         : SmartHomePairingWizard(identifier, -1, -1, w, h) {}
     explicit SmartHomePairingWizard(const std::string& identifier)
         : SmartHomePairingWizard(identifier, -1, -1, -1, -1) {}
     virtual ~SmartHomePairingWizard();
-    
+
     /**
-     * @brief Start wizard
+     * @brief Start wizard (at the protocol choice)
      */
     void Start();
-    
+
     /**
-     * @brief Cancel wizard
+     * @brief Cancel wizard: stops pairing, reports through onCancel
      */
     void Cancel();
-    
+
     /**
-     * @brief Set supported protocols
-     * @param protocols List of available protocols
+     * @brief Set supported protocols (default: what the module has)
      */
     void SetSupportedProtocols(const std::vector<SmartHomeProtocolType>& protocols);
-    
+
+    /**
+     * @brief Seconds a search runs before it gives up (default 60)
+     */
+    void SetSearchTimeout(int seconds) { searchTimeout = std::max(5, seconds); }
+
+    /**
+     * @brief Look at the search once: a new device, the time, the progress.
+     * The wizard's own timer calls it twice a second while it searches; a
+     * host without an event loop (a test) calls it itself.
+     */
+    void Poll();
+
     void SetOnComplete(std::function<void(const SmartHomeDeviceInfo&)> callback) {
         onComplete = callback;
     }
     void SetOnCancel(std::function<void()> callback) { onCancel = callback; }
-    
-    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
+
+    // Escape cancels.
     bool OnEvent(const UCEvent& event) override;
+
+    // A button per protocol on the first step, in SetSupportedProtocols order.
+    UltraCanvasButton* GetProtocolButton(size_t index) const {
+        return index < protocolButtons.size() ? protocolButtons[index].get() : nullptr;
+    }
+    UltraCanvasButton* GetCancelButton() const { return cancelButton.get(); }
+    UltraCanvasButton* GetBackButton() const { return backButton.get(); }
+    UltraCanvasButton* GetDoneButton() const { return doneButton.get(); }
+    bool IsSearching() const { return currentStep == WizardStep::Searching; }
+    const std::string& GetErrorMessage() const { return errorMessage; }
 
 private:
     enum class WizardStep {
         SelectProtocol,
         Searching,
-        DeviceFound,
-        Configuring,
         Complete,
         Error
     };
-    
-    void RenderProtocolSelection(IRenderContext* context);
-    void RenderSearching(IRenderContext* context);
-    void RenderDeviceFound(IRenderContext* context);
-    void RenderConfiguring(IRenderContext* context);
-    void RenderComplete(IRenderContext* context);
-    void RenderError(IRenderContext* context);
-    
+
+    void ShowStep(WizardStep step);
+    void RebuildProtocolButtons();
     void SelectProtocol(SmartHomeProtocolType protocol);
     void StartSearch();
     void StopSearch();
-    void ConfigureDevice();
-    void FinishPairing();
-    
+    void Fail(const std::string& message);
+    void StopTimer();
+
     WizardStep currentStep = WizardStep::SelectProtocol;
     std::vector<SmartHomeProtocolType> supportedProtocols;
     SmartHomeProtocolType selectedProtocol = SmartHomeProtocolType::Unknown;
-    
-    std::vector<SmartHomeDeviceInfo> discoveredDevices;
-    std::string selectedDeviceId;
+
+    std::vector<std::string> knownDevices;   // the home's devices when the search began
     SmartHomeDeviceInfo pairedDevice;
-    
     std::string errorMessage;
-    int searchProgress = 0;
-    
+    int searchTimeout = 60;
+    uint64_t searchStartedMs = 0;
+    uint32_t timerId = 0;     // the application timer while searching
+
+    std::shared_ptr<UltraCanvasContainer> protocolStep;
+    std::shared_ptr<UltraCanvasContainer> protocolList;
+    std::vector<std::shared_ptr<UltraCanvasButton>> protocolButtons;
+    std::shared_ptr<UltraCanvasLabel> noProtocols;
+
+    std::shared_ptr<UltraCanvasContainer> searchStep;
+    std::shared_ptr<UltraCanvasLabel> searchTitle;
+    std::shared_ptr<UltraCanvasGaugeDiagramElement> searchProgress;
+    std::shared_ptr<UltraCanvasLabel> searchHint;
+    std::shared_ptr<UltraCanvasButton> cancelButton;
+
+    std::shared_ptr<UltraCanvasContainer> doneStep;
+    std::shared_ptr<UltraCanvasLabel> doneText;
+    std::shared_ptr<UltraCanvasButton> doneButton;
+
+    std::shared_ptr<UltraCanvasContainer> errorStep;
+    std::shared_ptr<UltraCanvasLabel> errorText;
+    std::shared_ptr<UltraCanvasButton> backButton;
+
     std::function<void(const SmartHomeDeviceInfo&)> onComplete;
     std::function<void()> onCancel;
 };

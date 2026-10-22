@@ -1,7 +1,7 @@
 // include/UltraCanvasSmartHome.h
 // Smart Home Integration Module - Main Public API
-// Version: 1.0.0
-// Last Modified: 2025-12-08
+// Version: 1.2.0 - several listeners per notification (SmartHomeListener, AddListener)
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -116,12 +116,26 @@ struct SmartHomeDeviceInfo {
     // so a caller can choose a control from what the device supports rather than
     // guessing from Category alone.
     std::vector<std::string> Capabilities;
-    // The room the backend places the device in, when it knows one: a KNX
-    // project names it, a Matter device may carry a location label, the
-    // simulated home assigns one. Empty when unknown. The user's own choice
-    // will override it once the home model lands (Docs/Research/
-    // SmartHomeCenterDesignProposal.md §4.3).
+    // The name of the device's room, empty when it is in none. A backend
+    // fills it when it knows one (a KNX project names it, a Matter device
+    // may carry a location label, the simulated home assigns one); the
+    // registry answers with the room of the home model the device is in -
+    // the person's choice over the backend's (SmartHomeAPI::GetRooms).
     std::string Room;
+    // That room's SmartHomeRoom::RoomId; empty when in none. Filled by the
+    // registry only.
+    std::string RoomId;
+};
+
+// A room of the home. A room name a backend reports becomes a room the
+// first time a device brings it; the person adds, renames and removes rooms
+// and moves devices between them, and all of it is kept in the store.
+struct SmartHomeRoom {
+    std::string RoomId;         // stable; made from the name when empty at CreateRoom
+    std::string Name;
+    std::string Icon;           // a name the application maps to a picture; "" for its default
+    std::string Floor;          // "Ground floor", "" when the home has one
+    int SortOrder = 0;          // ascending; rooms that tie keep the order they came in
 };
 
 struct SmartHomeNetworkInfo {
@@ -249,6 +263,28 @@ using OnAutomationTrigger = std::function<void(const std::string& automationId)>
 using OnSmartHomeError = std::function<void(int code, const std::string& message)>;
 using OnAutomationNotify = std::function<void(const std::string& automationId, const std::string& message)>;
 using OnSmartHomeEvent = std::function<void(const SmartHomeEvent& event)>;
+using OnHomeChange = std::function<void()>;   // the rooms changed
+
+// Several parts of a program can listen to the module at once - the
+// application's window, a dashboard widget, a pairing wizard - each with a
+// listener of its own: fill in the notifications it wants, leave the rest
+// empty. AddListener returns the id RemoveListener takes. The SetOn*
+// setters below are one more slot of their own, as before.
+struct SmartHomeListener {
+    OnDeviceDiscover DeviceDiscover;
+    OnDeviceStateChange DeviceStateChange;
+    OnDeviceUpdate DeviceUpdate;
+    OnNetworkChange NetworkChange;
+    OnPairingProgress PairingProgress;
+    OnPairingComplete PairingComplete;
+    OnSensorRead SensorRead;
+    OnAutomationTrigger AutomationTrigger;
+    OnSmartHomeError Error;
+    OnAutomationNotify AutomationNotify;
+    OnSmartHomeEvent Event;
+    OnHomeChange HomeChange;
+};
+using SmartHomeListenerId = uint64_t;
 
 // ===== MAIN API CLASS =====
 
@@ -303,7 +339,13 @@ public:
     bool CommissionDevice(const std::string& setupCode);  // Matter QR/numeric code
     
     // ===== DEVICE CONTROL =====
+    // Commands are queued and sent in order on the module's worker thread;
+    // these return once queued.
     bool SendCommand(const SmartHomeCommand& command);
+    // Waits until every command queued so far has been sent (true), or
+    // `timeoutMs` passes (false). For a command-line tool that exits after
+    // a command, and for tests.
+    bool WaitForCommands(int timeoutMs = 5000);
     bool SetLightState(const std::string& deviceId, const SmartHomeLightState& state);
     bool SetThermostatTarget(const std::string& deviceId, float temperature);
     bool SetThermostatMode(const std::string& deviceId, const std::string& mode);
@@ -366,9 +408,24 @@ public:
     bool ExportStore(const std::string& path) const;
 
     // ===== THE HOME =====
-    // The room the person puts a device in, kept in the store and shown in
-    // SmartHomeDeviceInfo::Room over whatever the backend says. Empty puts
-    // it back where the backend has it.
+    // The rooms, by SortOrder. A room's devices are the ones whose
+    // SmartHomeDeviceInfo::RoomId is its id.
+    std::vector<SmartHomeRoom> GetRooms() const;
+    SmartHomeRoom GetRoom(const std::string& roomId) const;   // RoomId empty when there is none
+    // A new room; false when its name is empty or another room has it (not
+    // minding case). `createdId`, when given, receives the id it got.
+    bool CreateRoom(const SmartHomeRoom& room, std::string* createdId = nullptr);
+    // Renames, re-icons or reorders a room; its devices follow a new name.
+    bool UpdateRoom(const SmartHomeRoom& room);
+    // Removes a room. Its devices are then in no room - the backend's room
+    // for them no longer applies either - until they are put in another.
+    bool DeleteRoom(const std::string& roomId);
+    // Puts a device in a room; "" takes it out of every room.
+    bool AssignDeviceToRoom(const std::string& deviceId, const std::string& roomId);
+    std::string GetDeviceRoom(const std::string& deviceId) const;   // its RoomId
+    // The same by name, for callers that have one: the room with that name,
+    // made when there is none yet. Empty puts the device back where the
+    // backend has it.
     bool SetDeviceRoom(const std::string& deviceId, const std::string& room);
     // Where the home is, for sunrise and sunset triggers (degrees, east and
     // north positive). Kept in the store.
@@ -399,6 +456,18 @@ public:
     void SetOnSmartHomeError(OnSmartHomeError callback);
     void SetOnAutomationNotify(OnAutomationNotify callback);
     void SetOnEvent(OnSmartHomeEvent callback);
+    // The rooms changed: one added, renamed, reordered or removed. Called on
+    // whichever thread made the change, with no lock held.
+    void SetOnHomeChange(OnHomeChange callback);
+
+    // Listeners, alongside the SetOn* slot: every notification goes to the
+    // slot and then to each listener that fills it in, on the thread that
+    // caused it, with no module lock held. RemoveListener returns once no
+    // call of that listener is still running on another thread - so a
+    // widget can remove itself in its destructor - except when called from
+    // inside a notification, where it only stops later calls.
+    SmartHomeListenerId AddListener(SmartHomeListener listener);
+    void RemoveListener(SmartHomeListenerId id);
     
 private:
     SmartHomeAPI();

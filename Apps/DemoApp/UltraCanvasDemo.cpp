@@ -2103,10 +2103,19 @@ namespace UltraCanvas {
 #endif
         // The engine, its widgets (SmartHome/ui) and the SmartHome Center app
         // exist and run on the simulated demo home; the radio backends build
-        // but have met no hardware yet (SmartHome/STATUS.md).
+        // but have met no hardware yet (SmartHome/STATUS.md). With the widgets
+        // in the build the entry opens their panel on that home.
+#ifdef ULTRACANVAS_DEMO_HAS_SMARTHOME
+        modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateSmartHomeExamples(); },
+                               "DemoApp/UltraCanvasSmartHomeExamples.cpp",
+                               "Docs/Modules/Smarthome/README.md");
+#else
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });
+#endif
         // The dialogs every application asks the system for: Open / Save /
         // Select folder (UltraCanvasFileLoader), Print (RequestPrintSettings +
         // IODeviceManager) and the message / input dialogs, each shown either

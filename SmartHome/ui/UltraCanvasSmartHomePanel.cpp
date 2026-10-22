@@ -6,19 +6,34 @@
 // the layering in STATUS.md: the facade is the application-facing surface, and
 // a widget is an application like any other.
 //
-// Cards are held in maps rather than added as child elements, because the panel
-// lays them out itself and rebuilds them whenever the filter changes; it
-// forwards events to them and renders them by hand.
+// It is a container of framework elements: a toolbar (title, count, a
+// segmented control for the mode, a search field, "Add device"), a pairing
+// banner, and a scrolling body whose children are the device and scene cards
+// themselves - laid out by flex in rows that wrap, given their events by the
+// window like any element. The automations are a list view; the network is
+// a SmartHomeNetworkTopology.
 //
+// The module calls back on its own threads. The panel only notes the change
+// there and applies it in Poll(), on the UI thread, from an application
+// timer: elements are not to be added or removed from another thread.
+//
+// Version: 2.0.0
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSmartHomePanel.h"
+#include "UltraCanvasSmartHomeAdvancedWidgets.h"
+#include "SmartHomeWidgetKit.h"
+
+#include "UltraCanvasApplication.h"
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 
 #include <algorithm>
 #include <cctype>
 
 namespace UltraCanvas {
 namespace SmartHome {
+
+using namespace Kit;
 
 namespace {
 
@@ -34,15 +49,136 @@ bool ContainsValue(const std::vector<T>& haystack, const T& needle) {
     return std::find(haystack.begin(), haystack.end(), needle) != haystack.end();
 }
 
-constexpr float kToolbarHeight = 40.0f;
+// A row of cards that wraps, in a column of its own: as a direct child of
+// the scrolling body it is measured one line high.
+std::shared_ptr<UltraCanvasContainer> Section(const std::shared_ptr<UltraCanvasContainer>& flow) {
+    auto section = CreateContainer(flow->GetIdentifier() + "Section");
+    AsColumn(*section, 0, 0);
+    section->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    section->layoutItem.SetFlexShrink(0);
+    section->AddChild(flow);
+    return section;
+}
+
+const SmartHomePanelMode kModes[] = {
+    SmartHomePanelMode::DeviceGrid, SmartHomePanelMode::RoomView, SmartHomePanelMode::DeviceList,
+    SmartHomePanelMode::SceneView, SmartHomePanelMode::AutomationView, SmartHomePanelMode::NetworkView,
+};
+
+int ModeIndex(SmartHomePanelMode mode) {
+    for (int i = 0; i < 6; ++i) if (kModes[i] == mode) return i;
+    return 0;
+}
 
 }  // namespace
 
 SmartHomePanel::SmartHomePanel(const std::string& identifier,
                                float x, float y, float w, float h)
-    : UltraCanvasUIElement(identifier, x, y, w, h) {}
+    : UltraCanvasContainer(identifier, x, y, w, h) {
+    layout.SetFlexColumn().SetFlexGap(0).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    Plain(*this);
+    SetBackgroundColor(colorBackground);
 
-SmartHomePanel::~SmartHomePanel() = default;
+    toolbar = Row(identifier + "_Toolbar", 10, 44);
+    toolbar->SetPadding(0, 12);
+    toolbar->SetBackgroundColor(colorCardBackground);
+    countLabel = Label(identifier + "_Count", "", 11, colorTextSecondary);
+    Size(*countLabel, 124, 19);
+    // Six views; the host names the page, so the toolbar spends its width here.
+    modeSelector = CreateSegmentedControl(identifier + "_Mode", 0, 0, 552, 28);
+    SegmentedControlStyle modeStyle;
+    modeStyle.fontSize = 11.0f;
+    modeStyle.selectedColor = colorAccent;
+    modeSelector->SetStyle(modeStyle);
+    for (const char* m : {"Devices", "Rooms", "List", "Scenes", "Automations", "Network"}) modeSelector->AddSegment(m);
+    modeSelector->SetWidthMode(SegmentWidthMode::FitContent);   // "Automations" needs more than "List"
+    Size(*modeSelector, 552, 28);
+    modeSelector->onSegmentSelected = [this](int index) {
+        if (!syncing && index >= 0 && index < 6) SetMode(kModes[index]);
+    };
+    searchInput = CreateTextInput(identifier + "_Search", 0, 0, 160, 28);
+    searchInput->SetPlaceholder("Search devices");
+    Grow(*searchInput);
+    searchInput->onTextChanged = [this](const std::string& text) { SearchDevices(text); };
+    addButton = Kit::Button(identifier + "_Add", "Add device", true);
+    Size(*addButton, 100, 28);
+    addButton->SetOnClick([this]() { ShowAddDeviceWizard(); });
+    toolbar->AddChild(countLabel);
+    toolbar->AddChild(modeSelector);
+    toolbar->AddChild(searchInput);
+    toolbar->AddChild(addButton);
+    AddChild(toolbar);
+
+    pairingBanner = Row(identifier + "_Pairing", 10, 40);
+    pairingBanner->SetPadding(0, 12);
+    pairingBanner->SetBackgroundColor(Color(0xE3, 0xF2, 0xFD));
+    pairingLabel = Label(identifier + "_PairingText", "", 12, colorText);
+    Grow(*pairingLabel);
+    auto bar = CreateGaugeDiagramElement(identifier + "_PairingProgress", 0, 0, 160, 8);
+    bar->SetMode(GaugeMode::LinearBar);
+    bar->SetOrientation(GaugeOrientation::Horizontal);
+    bar->SetMinValue(0);
+    bar->SetMaxValue(100);
+    bar->SetShowLabels(false);
+    bar->SetGaugeColor(colorAccent);
+    bar->SetTrackColor(kTrack);
+    bar->SetBackgroundColor(Color(0xE3, 0xF2, 0xFD));
+    Size(*bar, 160, 8);
+    pairingBar = bar;
+    pairingCancel = Kit::Button(identifier + "_PairingCancel", "Cancel");
+    Size(*pairingCancel, 80, 28);
+    pairingCancel->SetOnClick([this]() { CancelPairing(); });
+    pairingBanner->AddChild(pairingLabel);
+    pairingBanner->AddChild(bar);
+    pairingBanner->AddChild(pairingCancel);
+    pairingBanner->SetVisible(false);
+    AddChild(pairingBanner);
+
+    body = CreateScrollableContainer(identifier + "_Body", 0, 0, 0, 0, false, false);
+    ContainerStyle scroll = body->GetContainerStyle();
+    scroll.autoShowHorizontalScrollbar = false;
+    body->SetContainerStyle(scroll);
+    body->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    body->SetPadding(static_cast<float>(config.GridSpacing));
+    body->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(100));
+    Grow(*body);
+    AddChild(body);
+
+    emptyLabel = Label(identifier + "_Empty", "", 12, colorTextSecondary);
+    emptyLabel->SetAlignment(TextAlignment::Center);
+
+    automationModel = std::make_shared<RowsModel>(std::vector<ListColumnDef>{{"Automation", 300}, {"", 90}});
+    automationList = std::make_shared<UltraCanvasListView>(identifier + "_Automations", 0, 0, 300, 200);
+    automationList->SetModel(automationModel);
+    automationList->SetShowHeader(false);
+    automationList->SetRowHeight(28);
+    automationList->SetAccessibleName("Automations");
+    automationList->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(200));
+    // A double-click turns an automation on or off.
+    automationList->onItemDoubleClicked = [this](int row) {
+        if (row < 0 || row >= static_cast<int>(automations.size())) return;
+        SmartHomeAutomation& a = automations[static_cast<size_t>(row)];
+        a.Enabled = !a.Enabled;
+        SMARTHOME_API.EnableAutomation(a.AutomationId, a.Enabled);
+        if (onAutomationToggle) onAutomationToggle(a.AutomationId, a.Enabled);
+        RefreshAutomations();
+    };
+
+    topology = std::make_shared<SmartHomeNetworkTopology>(identifier + "_Network");
+    topology->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(200));
+    Grow(*topology);
+    topology->SetVisible(false);
+    AddChild(topology);
+
+    UpdateCounts();
+}
+
+SmartHomePanel::~SmartHomePanel() {
+    if (listenerId != 0) SMARTHOME_API.RemoveListener(listenerId);
+    if (pollTimer) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->StopTimer(pollTimer);
+    }
+}
 
 // ===== LIFECYCLE =====
 
@@ -58,30 +194,59 @@ bool SmartHomePanel::Initialize() {
 }
 
 void SmartHomePanel::SetupCallbacks() {
-    // The module pushes; the panel just re-reads. Anything finer would have to
+    // The module pushes, from its own threads; the panel notes what changed
+    // and Poll() re-reads on the UI thread. Anything finer would have to
     // guess which of the six layouts is showing the changed device.
-    SMARTHOME_API.SetOnDeviceUpdate([this](const std::string&) { UpdateCardStates(); });
-    SMARTHOME_API.SetOnDeviceStateChange(
-        [this](const std::string&, SmartHomeDeviceState) { UpdateCardStates(); });
-    SMARTHOME_API.SetOnDeviceDiscover(
-        [this](const SmartHomeDeviceInfo&) { RefreshDevices(); });
-    SMARTHOME_API.SetOnPairingProgress([this](int progress, const std::string& status) {
-        pairingProgress = progress;
-        pairingStatus = status;
-        RequestRedraw();
-    });
-    SMARTHOME_API.SetOnPairingComplete([this](bool, const SmartHomeDeviceInfo&) {
-        pairingMode = false;
+    // A listener, not the SetOn* slots, so the application hosting the
+    // panel keeps its own callbacks.
+    SmartHomeListener l;
+    l.DeviceUpdate = [this](const std::string&) { statesChanged = true; };
+    l.DeviceStateChange = [this](const std::string&, SmartHomeDeviceState) { statesChanged = true; };
+    l.DeviceDiscover = [this](const SmartHomeDeviceInfo&) { devicesChanged = true; };
+    l.PairingProgress = [this](int progress, const std::string& status) {
+        std::lock_guard<std::mutex> lock(pendingMutex);
+        pendingProgress = progress;
+        pendingStatus = status;
+        pairingChanged = true;
+    };
+    l.PairingComplete = [this](bool, const SmartHomeDeviceInfo&) {
+        std::lock_guard<std::mutex> lock(pendingMutex);
+        pendingPairingDone = true;
+        pairingChanged = true;
+        devicesChanged = true;
+    };
+    if (listenerId != 0) SMARTHOME_API.RemoveListener(listenerId);
+    listenerId = SMARTHOME_API.AddListener(std::move(l));
+    if (!pollTimer) {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            pollTimer = app->StartTimer(500, /*periodic=*/true, [this](TimerId) { Poll(); });
+        }
+    }
+}
+
+void SmartHomePanel::Poll() {
+    if (pairingChanged.exchange(false)) {
+        std::lock_guard<std::mutex> lock(pendingMutex);
+        pairingProgress = pendingProgress;
+        pairingStatus = pendingStatus;
+        if (pendingPairingDone) pairingMode = false;
+        pendingPairingDone = false;
+    }
+    if (devicesChanged.exchange(false)) {
+        statesChanged = false;
         RefreshDevices();
-    });
+    } else if (statesChanged.exchange(false)) {
+        UpdateCardStates();
+    }
+    ShowPairing();
 }
 
 void SmartHomePanel::RefreshDevices() {
     allDevices = SMARTHOME_API.GetDevices();
     ApplyFilter();
 
-    // Rebuild the cards for whatever survived the filter, keeping any card that
-    // is still on screen so its animation and pressed state are not reset.
+    // Keep the card of a device still shown, so its animation and pressed
+    // state are not reset; make cards for the rest.
     std::map<std::string, std::shared_ptr<SmartHomeDeviceCard>> kept;
     for (const auto& device : filteredDevices) {
         auto it = deviceCards.find(device.DeviceId);
@@ -93,9 +258,8 @@ void SmartHomePanel::RefreshDevices() {
         }
     }
     deviceCards.swap(kept);
-
-    LayoutCards();
-    RequestRedraw();
+    if (config.Mode == SmartHomePanelMode::NetworkView) topology->RefreshTopology();
+    RebuildBody();
 }
 
 void SmartHomePanel::RefreshScenes() {
@@ -104,22 +268,27 @@ void SmartHomePanel::RefreshScenes() {
     for (const auto& scene : scenes) {
         sceneCards[scene.SceneId] = CreateSceneCard(scene);
     }
-    LayoutCards();
-    RequestRedraw();
+    if (config.Mode == SmartHomePanelMode::SceneView) RebuildBody();
 }
 
 void SmartHomePanel::RefreshAutomations() {
     automations = SMARTHOME_API.GetAutomations();
-    RequestRedraw();
+    std::vector<std::vector<std::string>> rows;
+    for (const auto& a : automations) rows.push_back({a.Name, a.Enabled ? "enabled" : "disabled"});
+    automationModel->Set(std::move(rows));
+    if (config.Mode == SmartHomePanelMode::AutomationView) RebuildBody();
 }
 
 // ===== CONFIGURATION =====
 
 void SmartHomePanel::SetConfig(const SmartHomePanelConfig& c) {
     config = c;
-    ApplyFilter();
-    LayoutCards();
-    RequestRedraw();
+    body->SetPadding(static_cast<float>(config.GridSpacing));
+    for (auto& [id, card] : deviceCards) {
+        card->SetShowName(config.ShowDeviceNames);
+        card->SetShowStatus(config.ShowDeviceStatus);
+    }
+    RefreshDevices();
 }
 
 SmartHomePanelConfig SmartHomePanel::GetConfig() const { return config; }
@@ -127,10 +296,9 @@ SmartHomePanelConfig SmartHomePanel::GetConfig() const { return config; }
 void SmartHomePanel::SetMode(SmartHomePanelMode mode) {
     if (config.Mode == mode) return;
     config.Mode = mode;
-    scrollOffset = 0;
-    LayoutCards();
+    if (mode == SmartHomePanelMode::NetworkView) topology->RefreshTopology();
+    RebuildBody();
     if (onPanelModeChange) onPanelModeChange(mode);
-    RequestRedraw();
 }
 
 SmartHomePanelMode SmartHomePanel::GetMode() const { return config.Mode; }
@@ -150,6 +318,9 @@ void SmartHomePanel::SetTheme(SmartHomePanelTheme theme) {
     }
     // System and Custom leave the current colours alone: System because the
     // host decides, Custom because SetCustomColors already did.
+    SetBackgroundColor(colorBackground);
+    toolbar->SetBackgroundColor(colorCardBackground);
+    countLabel->SetTextColor(colorTextSecondary);
     RequestRedraw();
 }
 
@@ -160,7 +331,7 @@ void SmartHomePanel::SetCustomColors(const Color& background, const Color& cardB
     colorCardBackground = cardBackground;
     colorText           = text;
     colorAccent         = accent;
-    RequestRedraw();
+    SetTheme(SmartHomePanelTheme::Custom);
 }
 
 // ===== FILTERING =====
@@ -236,7 +407,7 @@ void SmartHomePanel::SortDevices() {
 void SmartHomePanel::AddRoom(const std::string& roomName, const std::string& icon) {
     rooms.emplace(roomName, std::vector<std::string>{});
     if (!icon.empty()) roomIcons[roomName] = icon;
-    RequestRedraw();
+    if (config.Mode == SmartHomePanelMode::RoomView) RebuildBody();
 }
 
 void SmartHomePanel::RemoveRoom(const std::string& roomName) {
@@ -245,7 +416,7 @@ void SmartHomePanel::RemoveRoom(const std::string& roomName) {
     for (auto it = deviceRooms.begin(); it != deviceRooms.end();) {
         it = (it->second == roomName) ? deviceRooms.erase(it) : std::next(it);
     }
-    RequestRedraw();
+    if (config.Mode == SmartHomePanelMode::RoomView) RebuildBody();
 }
 
 void SmartHomePanel::AssignDeviceToRoom(const std::string& deviceId,
@@ -259,7 +430,7 @@ void SmartHomePanel::AssignDeviceToRoom(const std::string& deviceId,
     deviceRooms[deviceId] = roomName;
     auto& members = rooms[roomName];
     if (!ContainsValue(members, deviceId)) members.push_back(deviceId);
-    RequestRedraw();
+    if (config.Mode == SmartHomePanelMode::RoomView) RebuildBody();
 }
 
 std::vector<std::string> SmartHomePanel::GetRooms() const {
@@ -313,9 +484,9 @@ void SmartHomePanel::StartPairing(SmartHomeProtocolType protocol) {
     pairingMode = true;
     pairingProtocol = protocol;
     pairingProgress = 0;
-    pairingStatus = "Searching for devices…";
+    pairingStatus = "Searching for devices...";
     SMARTHOME_API.StartPairing(protocol);
-    RequestRedraw();
+    ShowPairing();
 }
 
 void SmartHomePanel::CancelPairing() {
@@ -323,7 +494,15 @@ void SmartHomePanel::CancelPairing() {
     pairingMode = false;
     pairingProgress = 0;
     pairingStatus.clear();
-    RequestRedraw();
+    ShowPairing();
+}
+
+void SmartHomePanel::ShowPairing() {
+    if (pairingBanner->IsVisible() != pairingMode) pairingBanner->SetVisible(pairingMode);
+    if (!pairingMode) return;
+    pairingLabel->SetText("Pairing over " + ProtocolTypeToString(pairingProtocol) +
+                          (pairingStatus.empty() ? std::string() : " - " + pairingStatus));
+    static_cast<UltraCanvasGaugeDiagramElement*>(pairingBar.get())->SetValue(std::clamp(pairingProgress, 0, 100));
 }
 
 // ===== CARDS =====
@@ -331,12 +510,11 @@ void SmartHomePanel::CancelPairing() {
 std::shared_ptr<SmartHomeDeviceCard> SmartHomePanel::CreateDeviceCard(
         const SmartHomeDeviceInfo& device) {
     auto card = std::make_shared<SmartHomeDeviceCard>(
-        GetIdentifier() + ".card." + device.DeviceId,
+        GetIdentifier() + "_Card_" + device.DeviceId,
         0, 0, static_cast<float>(config.CardSize), static_cast<float>(config.CardSize));
     card->SetDevice(device);
     card->SetShowName(config.ShowDeviceNames);
     card->SetShowStatus(config.ShowDeviceStatus);
-    card->SetCompact(config.Mode == SmartHomePanelMode::DeviceList);
 
     const std::string id = device.DeviceId;
     card->SetOnClick([this, id] {
@@ -350,71 +528,150 @@ std::shared_ptr<SmartHomeDeviceCard> SmartHomePanel::CreateDeviceCard(
 std::shared_ptr<SmartHomeSceneCard> SmartHomePanel::CreateSceneCard(
         const SmartHomeScene& scene) {
     auto card = std::make_shared<SmartHomeSceneCard>(
-        GetIdentifier() + ".scene." + scene.SceneId, 0, 0, 140.0f, 48.0f);
+        GetIdentifier() + "_Scene_" + scene.SceneId, 0, 0, 160.0f, 48.0f);
     card->SetScene(scene);
+    Size(*card, 160.0f, 48.0f);
     const std::string id = scene.SceneId;
     card->SetOnActivate([this, id] {
         SMARTHOME_API.ActivateScene(id);
         if (onSceneActivate) onSceneActivate(id);
-        RefreshScenes();
     });
     return card;
 }
 
-void SmartHomePanel::LayoutCards() {
-    const Rect2Df bounds = GetLocalBounds();
-    const float spacing = static_cast<float>(config.GridSpacing);
-    const float top = kToolbarHeight + spacing;
+SmartHomeDeviceCard* SmartHomePanel::GetDeviceCard(const std::string& deviceId) const {
+    auto it = deviceCards.find(deviceId);
+    return it == deviceCards.end() ? nullptr : it->second.get();
+}
 
-    if (config.Mode == SmartHomePanelMode::SceneView) {
-        float y = top;
-        for (const auto& scene : scenes) {
-            auto it = sceneCards.find(scene.SceneId);
-            if (it == sceneCards.end()) continue;
-            it->second->SetBounds(Rect2Df(spacing, y - scrollOffset,
-                                          bounds.width - 2 * spacing, 48.0f));
-            y += 48.0f + spacing;
-        }
-        maxScroll = std::max(0.0f, y - bounds.height);
-        return;
-    }
+SmartHomeSceneCard* SmartHomePanel::GetSceneCard(const std::string& sceneId) const {
+    auto it = sceneCards.find(sceneId);
+    return it == sceneCards.end() ? nullptr : it->second.get();
+}
 
-    if (config.Mode == SmartHomePanelMode::DeviceList) {
-        float y = top;
-        const float rowHeight = 56.0f;
-        for (const auto& device : filteredDevices) {
-            auto it = deviceCards.find(device.DeviceId);
-            if (it == deviceCards.end()) continue;
-            it->second->SetBounds(Rect2Df(spacing, y - scrollOffset,
-                                          bounds.width - 2 * spacing, rowHeight));
-            y += rowHeight + spacing;
-        }
-        maxScroll = std::max(0.0f, y - bounds.height);
-        return;
-    }
+std::shared_ptr<UltraCanvasContainer> SmartHomePanel::CardFlow(const std::string& id) {
+    auto flow = CreateContainer(id);
+    flow->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap)
+        .SetFlexGap(static_cast<float>(config.GridSpacing));
+    flow->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    flow->layoutItem.SetFlexShrink(0);
+    Plain(*flow);
+    flows.push_back(flow);
+    return flow;
+}
 
-    // Grid. Zero columns means "as many as fit", which is what the config's
-    // GridColumns == 0 default asks for.
+// The body for the mode: the cards in rows that wrap, a list of compact
+// cards, a heading and a row of cards per room, the scenes, the
+// automations' list - or, for the network, the topology instead of the body.
+void SmartHomePanel::RebuildBody() {
+    syncing = true;
+    modeSelector->SetSelectedIndex(ModeIndex(config.Mode));
+    syncing = false;
+    UpdateCounts();
+
+    const bool network = config.Mode == SmartHomePanelMode::NetworkView;
+    body->SetVisible(!network);
+    topology->SetVisible(network);
+    for (auto& flow : flows) flow->ClearChildren();
+    flows.clear();
+    body->ClearChildren();
+    if (network) { InvalidateLayout(); RequestRedraw(); return; }
+
     const float cardSize = static_cast<float>(config.CardSize);
-    int columns = config.GridColumns;
-    if (columns <= 0) {
-        columns = std::max(1, static_cast<int>((bounds.width - spacing) /
-                                               (cardSize + spacing)));
-    }
+    auto placeCard = [&](const std::shared_ptr<SmartHomeDeviceCard>& card, bool compact) {
+        card->SetCompact(compact);
+        if (compact) Height(*card, 56.0f);
+        else         Size(*card, cardSize, cardSize);
+    };
+    auto empty = [&](const std::string& text) {
+        emptyLabel->SetText(text);
+        body->AddChild(emptyLabel);
+    };
+    const std::string noDevices = allDevices.empty() ? "No devices yet - pair one to get started"
+                                                     : "No devices match this filter";
 
-    int index = 0;
-    for (const auto& device : filteredDevices) {
-        auto it = deviceCards.find(device.DeviceId);
-        if (it == deviceCards.end()) continue;
-        const int row = index / columns;
-        const int col = index % columns;
-        it->second->SetBounds(Rect2Df(spacing + col * (cardSize + spacing),
-                                      top + row * (cardSize + spacing) - scrollOffset,
-                                      cardSize, cardSize));
-        ++index;
+    switch (config.Mode) {
+        case SmartHomePanelMode::DeviceGrid: {
+            if (filteredDevices.empty()) { empty(noDevices); break; }
+            auto flow = CardFlow(GetIdentifier() + "_Grid");
+            for (const auto& device : filteredDevices) {
+                auto it = deviceCards.find(device.DeviceId);
+                if (it == deviceCards.end()) continue;
+                placeCard(it->second, false);
+                flow->AddChild(it->second);
+            }
+            body->AddChild(Section(flow));
+            break;
+        }
+        case SmartHomePanelMode::DeviceList: {
+            if (filteredDevices.empty()) { empty(noDevices); break; }
+            for (const auto& device : filteredDevices) {
+                auto it = deviceCards.find(device.DeviceId);
+                if (it == deviceCards.end()) continue;
+                placeCard(it->second, true);
+                body->AddChild(it->second);
+            }
+            break;
+        }
+        case SmartHomePanelMode::RoomView: {
+            // The panel's own rooms (AddRoom) when it was given some;
+            // otherwise the home's, from the module.
+            std::vector<std::pair<std::string, std::vector<std::string>>> grouped(rooms.begin(), rooms.end());
+            if (grouped.empty()) {
+                for (const auto& room : SMARTHOME_API.GetRooms()) {
+                    std::vector<std::string> members;
+                    for (const auto& device : filteredDevices)
+                        if (device.RoomId == room.RoomId) members.push_back(device.DeviceId);
+                    if (!members.empty()) grouped.emplace_back(room.Name, std::move(members));
+                }
+                std::vector<std::string> unplaced;
+                for (const auto& device : filteredDevices)
+                    if (device.RoomId.empty()) unplaced.push_back(device.DeviceId);
+                if (!unplaced.empty()) grouped.emplace_back("Not in a room", std::move(unplaced));
+            }
+            int n = 0;
+            for (const auto& [room, members] : grouped) {
+                const std::string key = GetIdentifier() + "_Room" + std::to_string(n++);
+                auto flow = CardFlow(key + "Cards");
+                for (const auto& deviceId : members) {
+                    auto it = deviceCards.find(deviceId);
+                    if (it == deviceCards.end()) continue;   // filtered out
+                    placeCard(it->second, false);
+                    flow->AddChild(it->second);
+                }
+                if (flow->GetChildren().empty()) continue;
+                body->AddChild(Label(key + "Title", room + "  (" + std::to_string(flow->GetChildren().size()) + ")",
+                                     12, colorText, true));
+                body->AddChild(Section(flow));
+            }
+            if (body->GetChildren().empty()) empty(noDevices);
+            break;
+        }
+        case SmartHomePanelMode::SceneView: {
+            if (scenes.empty()) { empty("No scenes yet"); break; }
+            auto flow = CardFlow(GetIdentifier() + "_Scenes");
+            for (const auto& scene : scenes) {
+                auto it = sceneCards.find(scene.SceneId);
+                if (it != sceneCards.end()) flow->AddChild(it->second);
+            }
+            body->AddChild(Section(flow));
+            break;
+        }
+        case SmartHomePanelMode::AutomationView:
+            if (automations.empty()) { empty("No automations yet"); break; }
+            Grow(*automationList);
+            body->AddChild(automationList);
+            break;
+        case SmartHomePanelMode::NetworkView:
+            break;
     }
-    const int rows = (index + columns - 1) / columns;
-    maxScroll = std::max(0.0f, top + rows * (cardSize + spacing) - bounds.height);
+    InvalidateLayout();
+    RequestRedraw();
+}
+
+void SmartHomePanel::UpdateCounts() {
+    countLabel->SetText(std::to_string(filteredDevices.size()) + " of " +
+                        std::to_string(allDevices.size()) + " devices");
 }
 
 void SmartHomePanel::UpdateCardStates() {
@@ -428,269 +685,23 @@ void SmartHomePanel::UpdateCardStates() {
 void SmartHomePanel::AnimateCardTransition(const std::string& deviceId, bool newState) {
     auto it = deviceCards.find(deviceId);
     if (it == deviceCards.end()) return;
-    if (config.AnimateTransitions) {
-        it->second->AnimateState(newState);
-    }
-    cardAnimations[deviceId] = 0.0f;
+    if (config.AnimateTransitions) it->second->AnimateState(newState);
     RequestRedraw();
-}
-
-// These six exist because the header declares them. Layout is driven by
-// LayoutCards() and drawing by the Render* family, so there is nothing for a
-// separate per-mode construction step to do.
-void SmartHomePanel::CreateToolbar()        {}
-void SmartHomePanel::CreateDeviceGrid()     { LayoutCards(); }
-void SmartHomePanel::CreateDeviceList()     { LayoutCards(); }
-void SmartHomePanel::CreateRoomView()       { LayoutCards(); }
-void SmartHomePanel::CreateSceneView()      { LayoutCards(); }
-void SmartHomePanel::CreateAutomationView() {}
-void SmartHomePanel::CreateNetworkView()    {}
-
-// ===== RENDERING =====
-
-void SmartHomePanel::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
-    if (!ctx || !IsVisible()) return;
-
-    const Rect2Df bounds = GetLocalBounds();
-    ctx->SetFillPaint(colorBackground);
-    ctx->FillRectangle(Rect2Dd(bounds));
-
-    RenderToolbar(ctx);
-
-    switch (config.Mode) {
-        case SmartHomePanelMode::DeviceGrid:     RenderDeviceGrid(ctx);     break;
-        case SmartHomePanelMode::DeviceList:     RenderDeviceList(ctx);     break;
-        case SmartHomePanelMode::RoomView:       RenderRoomView(ctx);       break;
-        case SmartHomePanelMode::SceneView:      RenderSceneView(ctx);      break;
-        case SmartHomePanelMode::AutomationView: RenderAutomationView(ctx); break;
-        case SmartHomePanelMode::NetworkView:    RenderNetworkView(ctx);    break;
-    }
-
-    if (pairingMode) RenderPairingOverlay(ctx);
-}
-
-void SmartHomePanel::RenderToolbar(IRenderContext* ctx) {
-    const Rect2Df bounds = GetLocalBounds();
-    ctx->SetFillPaint(colorCardBackground);
-    ctx->FillRectangle(Rect2Dd(0.0, 0.0, bounds.width, kToolbarHeight));
-
-    ctx->SetTextPaint(colorText);
-    ctx->SetFontSize(13.0);
-    ctx->DrawTextInRect("Smart Home",
-                        Rect2Dd(12.0, 12.0, bounds.width * 0.5, 18.0));
-
-    ctx->SetTextPaint(colorTextSecondary);
-    ctx->SetFontSize(11.0);
-    ctx->DrawTextInRect(std::to_string(filteredDevices.size()) + " of " +
-                            std::to_string(allDevices.size()) + " devices",
-                        Rect2Dd(bounds.width * 0.5, 13.0,
-                                bounds.width * 0.5 - 12.0, 16.0));
-}
-
-void SmartHomePanel::RenderDeviceGrid(IRenderContext* ctx) {
-    if (filteredDevices.empty()) { RenderEmptyState(ctx); return; }
-    for (const auto& device : filteredDevices) {
-        auto it = deviceCards.find(device.DeviceId);
-        if (it != deviceCards.end()) it->second->Render(ctx, GetLocalBounds());
-    }
-}
-
-void SmartHomePanel::RenderDeviceList(IRenderContext* ctx) { RenderDeviceGrid(ctx); }
-
-void SmartHomePanel::RenderRoomView(IRenderContext* ctx) {
-    if (rooms.empty()) { RenderEmptyState(ctx); return; }
-
-    const Rect2Df bounds = GetLocalBounds();
-    float y = kToolbarHeight + 8.0f - scrollOffset;
-    for (const auto& [room, members] : rooms) {
-        ctx->SetTextPaint(colorText);
-        ctx->SetFontSize(12.0);
-        ctx->DrawTextInRect(room + "  (" + std::to_string(members.size()) + ")",
-                            Rect2Dd(12.0, y, bounds.width - 24.0, 18.0));
-        y += 22.0f;
-
-        for (const auto& deviceId : members) {
-            auto it = deviceCards.find(deviceId);
-            if (it == deviceCards.end()) continue;   // filtered out
-            it->second->SetBounds(Rect2Df(20.0f, y, bounds.width - 40.0f, 48.0f));
-            it->second->Render(ctx, bounds);
-            y += 52.0f;
-        }
-        y += 10.0f;
-    }
-}
-
-void SmartHomePanel::RenderSceneView(IRenderContext* ctx) {
-    if (scenes.empty()) { RenderEmptyState(ctx); return; }
-    for (const auto& scene : scenes) {
-        auto it = sceneCards.find(scene.SceneId);
-        if (it != sceneCards.end()) it->second->Render(ctx, GetLocalBounds());
-    }
-}
-
-void SmartHomePanel::RenderAutomationView(IRenderContext* ctx) {
-    if (automations.empty()) { RenderEmptyState(ctx); return; }
-
-    const Rect2Df bounds = GetLocalBounds();
-    float y = kToolbarHeight + 8.0f - scrollOffset;
-    for (const auto& automation : automations) {
-        ctx->SetFillPaint(colorCardBackground);
-        ctx->FillRoundedRectangle(Rect2Dd(12.0, y, bounds.width - 24.0, 44.0), 6.0);
-
-        ctx->SetTextPaint(colorText);
-        ctx->SetFontSize(12.0);
-        ctx->DrawTextInRect(automation.Name, Rect2Dd(22.0, y + 8.0, bounds.width - 120.0, 16.0));
-
-        ctx->SetTextPaint(automation.Enabled ? Color(76, 175, 80) : colorTextSecondary);
-        ctx->SetFontSize(11.0);
-        ctx->DrawTextInRect(automation.Enabled ? "enabled" : "disabled",
-                            Rect2Dd(bounds.width - 92.0, y + 9.0, 70.0, 16.0));
-        y += 52.0f;
-    }
-}
-
-void SmartHomePanel::RenderNetworkView(IRenderContext* ctx) {
-    // The topology widget draws this; until it has an implementation the panel
-    // says so rather than showing an empty area that looks like a failure.
-    const Rect2Df bounds = GetLocalBounds();
-    ctx->SetTextPaint(colorTextSecondary);
-    ctx->SetFontSize(12.0);
-    ctx->DrawTextInRect("Network view needs SmartHomeNetworkTopology",
-                        Rect2Dd(0.0, bounds.height / 2.0 - 8.0, bounds.width, 18.0));
-}
-
-void SmartHomePanel::RenderEmptyState(IRenderContext* ctx) {
-    const Rect2Df bounds = GetLocalBounds();
-    const bool filtered = !allDevices.empty();
-
-    ctx->SetTextPaint(colorTextSecondary);
-    ctx->SetFontSize(12.0);
-    ctx->DrawTextInRect(filtered ? "No devices match this filter"
-                                 : "No devices yet — pair one to get started",
-                        Rect2Dd(0.0, bounds.height / 2.0 - 8.0, bounds.width, 18.0));
-}
-
-void SmartHomePanel::RenderPairingOverlay(IRenderContext* ctx) {
-    const Rect2Df bounds = GetLocalBounds();
-
-    ctx->SetFillPaint(Color(0, 0, 0, 140));
-    ctx->FillRectangle(Rect2Dd(bounds));
-
-    const double w = std::min<double>(320.0, bounds.width - 40.0);
-    const double h = 120.0;
-    const double x = (bounds.width - w) / 2.0;
-    const double y = (bounds.height - h) / 2.0;
-
-    ctx->SetFillPaint(colorCardBackground);
-    ctx->FillRoundedRectangle(Rect2Dd(x, y, w, h), 8.0);
-
-    ctx->SetTextPaint(colorText);
-    ctx->SetFontSize(13.0);
-    ctx->DrawTextInRect("Pairing over " + ProtocolTypeToString(pairingProtocol),
-                        Rect2Dd(x + 16.0, y + 16.0, w - 32.0, 18.0));
-
-    ctx->SetTextPaint(colorTextSecondary);
-    ctx->SetFontSize(11.0);
-    ctx->DrawTextInRect(pairingStatus, Rect2Dd(x + 16.0, y + 42.0, w - 32.0, 16.0));
-
-    // Progress bar.
-    const double barW = w - 32.0;
-    ctx->SetFillPaint(Color(0xE0, 0xE0, 0xE0));
-    ctx->FillRoundedRectangle(Rect2Dd(x + 16.0, y + 72.0, barW, 6.0), 3.0);
-    ctx->SetFillPaint(colorAccent);
-    ctx->FillRoundedRectangle(
-        Rect2Dd(x + 16.0, y + 72.0, barW * (std::clamp(pairingProgress, 0, 100) / 100.0), 6.0),
-        3.0);
 }
 
 // ===== EVENTS =====
 
 bool SmartHomePanel::OnEvent(const UCEvent& event) {
     if (!IsVisible() || IsDisabled()) return false;
-    if (UltraCanvasUIElement::OnEvent(event)) return true;
-
-    switch (event.type) {
-        case UCEventType::MouseWheel: {
-            if (maxScroll <= 0.0f) return false;
-            scrollOffset = std::clamp(scrollOffset - event.wheelDelta * 20.0f,
-                                      0.0f, maxScroll);
-            LayoutCards();
-            RequestRedraw();
-            return true;
-        }
-
-        case UCEventType::KeyDown:
-            if (event.virtualKey == UCKeys::Escape && pairingMode) {
-                CancelPairing();
-                return true;
-            }
-            return false;
-
-        default:
-            break;
+    if (event.type == UCEventType::KeyDown && event.virtualKey == UCKeys::Escape && pairingMode) {
+        CancelPairing();
+        return true;
     }
-
-    // While the pairing sheet is up it takes every pointer event, so a click
-    // meant for the sheet cannot reach a card behind it.
-    if (pairingMode) {
-        return event.type == UCEventType::MouseDown ||
-               event.type == UCEventType::MouseUp ||
-               event.type == UCEventType::TouchStart ||
-               event.type == UCEventType::TouchEnd;
-    }
-
-    // Cards are not child elements, so the panel hands events down itself.
-    // Scene cards first: in SceneView they are the only thing on screen.
-    if (config.Mode == SmartHomePanelMode::SceneView) {
-        for (auto& [id, card] : sceneCards) {
-            if (card->OnEvent(TranslatedTo(*card, event))) return true;
-        }
-        return false;
-    }
-    for (auto& [id, card] : deviceCards) {
-        if (card->OnEvent(TranslatedTo(*card, event))) return true;
-    }
-    return false;
-}
-
-// A card hit-tests against its own local bounds, so the pointer has to arrive
-// in the card's coordinates rather than the panel's.
-UCEvent SmartHomePanel::TranslatedTo(const UltraCanvasUIElement& child,
-                                     const UCEvent& event) const {
-    UCEvent local = event;
-    const Rect2Df childBounds = child.GetBounds();
-    local.pointer.x = event.pointer.x - static_cast<int>(childBounds.x);
-    local.pointer.y = event.pointer.y - static_cast<int>(childBounds.y);
-    return local;
-}
-
-void SmartHomePanel::HandleDeviceClick(const std::string& deviceId, int, int) {
-    SelectDevice(deviceId);
+    return UltraCanvasContainer::OnEvent(event);
 }
 
 void SmartHomePanel::HandleDeviceLongPress(const std::string& deviceId) {
     ShowDeviceDetails(deviceId);
-}
-
-void SmartHomePanel::HandleDragStart(const std::string& deviceId, int x, int y) {
-    if (!config.EnableDragDrop) return;
-    draggingDeviceId = deviceId;
-    dragOffsetX = x;
-    dragOffsetY = y;
-}
-
-void SmartHomePanel::HandleDragMove(int x, int y) {
-    if (draggingDeviceId.empty()) return;
-    dragOffsetX = x;
-    dragOffsetY = y;
-    RequestRedraw();
-}
-
-void SmartHomePanel::HandleDragEnd(int, int) {
-    if (draggingDeviceId.empty()) return;
-    draggingDeviceId.clear();
-    LayoutCards();
-    RequestRedraw();
 }
 
 // ===== FACTORY =====
