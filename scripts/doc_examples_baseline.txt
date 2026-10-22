@@ -20,18 +20,18 @@ Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md::prose names `ListEntries(`, which
 Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md::prose names `OpenRead(`, which no header declares
 Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md::prose names `OpenWrite(`, which no header declares
 Docs/UltraCanvas/SVGRenderingOptimizationPlan.md::prose names `RenderRegion(`, which no header declares
-Docs/UltraCanvas/UltraCanvasAdjacencyMatrixViewProposal.md::'AdjacencyPriority::Avoid' does not exist (no member named 'Avoid' in 'UltraCanvas::AdjacencyPriority')
+Docs/UltraCanvas/UltraCanvasAdjacencyMatrixViewProposal.md::'AdjacencyPriority::Avoid' does not exist (no member named 'Avoid' in 'AdjacencyPriority')
 Docs/UltraCanvas/UltraCanvasAdjacencyMatrixViewProposal.md::prose names `AddVariant(`, which no header declares
 Docs/UltraCanvas/UltraCanvasAdjacencyMatrixViewProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
-Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'BezierNodeType::Auto' does not exist (no member named 'Auto' in 'UltraCanvas::BezierNodeType')
+Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'BezierNodeType::Auto' does not exist (no member named 'Auto' in 'BezierNodeType')
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'Evaluate' is not a member of UltraCanvasBezierSubpath
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'FlattenStyleToHandles' is not a member of UltraCanvasBezierPath
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'FromPoints' is not a member of UltraCanvasBezierPath
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'JoinTo' is not a member of UltraCanvasBezierSubpath
-Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'UltraCanvasBezierSubpath::arcs' does not exist (no member named 'arcs' in 'UltraCanvas::UltraCanvasBezierSubpath')
-Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'UltraCanvasBezierSubpath::segmentKinds' does not exist (no member named 'segmentKinds' in 'UltraCanvas::UltraCanvasBezierSubpath')
-Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'UltraCanvasBezierSubpath::style' does not exist (no member named 'style' in 'UltraCanvas::UltraCanvasBezierSubpath')
-Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'UltraCanvasBezierSubpath::tension' does not exist (no member named 'tension' in 'UltraCanvas::UltraCanvasBezierSubpath')
+Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'UltraCanvasBezierSubpath::arcs' does not exist (no member named 'arcs' in 'UltraCanvasBezierSubpath')
+Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'UltraCanvasBezierSubpath::segmentKinds' does not exist (no member named 'segmentKinds' in 'UltraCanvasBezierSubpath')
+Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'UltraCanvasBezierSubpath::style' does not exist (no member named 'style' in 'UltraCanvasBezierSubpath')
+Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::'UltraCanvasBezierSubpath::tension' does not exist (no member named 'tension' in 'UltraCanvasBezierSubpath')
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::prose names `FlattenStyleToHandles(`, which no header declares
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::prose names `FromPoints(`, which no header declares
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::prose names `FromPoints(`, which no header declares
@@ -42,17 +42,17 @@ Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::signature differs: `Rect2Dd
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::signature differs: `bool ContainsPoint(const Point2Dd& p, BezierFillRule rule) const` - the header has: bool ContainsPoint(const Point2Dd& p, bool evenOdd = false) const; | bool ContainsPoint(const Point2Dd& p, bool evenOdd = false) const;
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::signature differs: `std::string ToSVGPathData(int precision = 3, bool relative = false) const` - the header has: std::string ToSVGPathData() const;
 Docs/UltraCanvas/UltraCanvasBezierEditorProposal.md::signature differs: `void Transform(double a, double b, double c, double d, double e, double f)` - the header has: void Transform(const VectorStorage::Matrix3x3& m);
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ChartDirty::Labels' does not exist (no member named 'Labels' in 'UltraCanvas::ChartDirty')
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ChartHighlight::labelFollowsContour' does not exist (no member named 'labelFollowsContour' in 'UltraCanvas::ChartHighlight')
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ChartHighlight::memberIndices' does not exist (no member named 'memberIndices' in 'UltraCanvas::ChartHighlight')
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ChartDirty::Labels' does not exist (no member named 'Labels' in 'ChartDirty')
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ChartHighlight::labelFollowsContour' does not exist (no member named 'labelFollowsContour' in 'ChartHighlight')
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ChartHighlight::memberIndices' does not exist (no member named 'memberIndices' in 'ChartHighlight')
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ChartProjectionKind' does not refer to a value
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ChartScale' does not refer to a value
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'HeatmapColormap' does not refer to a value
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'IsVisible' is not a member of IChartProjection
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'LabelDeclutterPolicy' does not refer to a value
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::color' does not exist (no member named 'color' in 'UltraCanvas::PlacedChartLabel')
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::font' does not exist (no member named 'font' in 'UltraCanvas::PlacedChartLabel')
-Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::fontSize' does not exist (no member named 'fontSize' in 'UltraCanvas::PlacedChartLabel')
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::color' does not exist (no member named 'color' in 'PlacedChartLabel')
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::font' does not exist (no member named 'font' in 'PlacedChartLabel')
+Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'PlacedChartLabel::fontSize' does not exist (no member named 'fontSize' in 'PlacedChartLabel')
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ScreenToValue' is not a member of IChartProjection
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'TickDeclutterPolicy' does not refer to a value
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::'ValueToScreen' is not a member of IChartProjection
@@ -130,29 +130,29 @@ Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'Top'
 Docs/UltraCanvas/UltraCanvasChartEngineProposal.md::use of undeclared identifier 'UltraCanvasChartEngine'
 Docs/UltraCanvas/UltraCanvasCircularChartProposal.md::too few arguments to function call, expected at least 7, have 5
-Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::'UMLMember::isOperation' does not exist (no member named 'isOperation' in 'UltraCanvas::UMLMember')
-Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'AddClassifier' in 'UltraCanvas::UltraCanvasClassDiagram'
-Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'LoadPlantUML' in 'UltraCanvas::UltraCanvasClassDiagram'
-Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'SaveToSVG' in 'UltraCanvas::UltraCanvasClassDiagram'
-Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'ToMermaid' in 'UltraCanvas::UltraCanvasClassDiagram'
+Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::'UMLMember::isOperation' does not exist (no member named 'isOperation' in 'UMLMember')
+Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'AddClassifier' in 'UltraCanvasClassDiagram'
+Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'LoadPlantUML' in 'UltraCanvasClassDiagram'
+Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'SaveToSVG' in 'UltraCanvasClassDiagram'
+Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::no member named 'ToMermaid' in 'UltraCanvasClassDiagram'
 Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::use of undeclared identifier 'ClassDiagramLayout'
 Docs/UltraCanvas/UltraCanvasClassDiagramProposal.md::use of undeclared identifier 'LayoutDirection'
-Docs/UltraCanvas/UltraCanvasContourChartProposal.md::cannot initialize a parameter of type 'SurfaceLegendMode' with an rvalue of type 'UltraCanvas::ContourLegendMode'
+Docs/UltraCanvas/UltraCanvasContourChartProposal.md::cannot initialize a parameter of type 'SurfaceLegendMode' with an rvalue of type 'ContourLegendMode'
 Docs/UltraCanvas/UltraCanvasContourChartProposal.md::prose names `SetLevelMode(`, which no header declares
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no matching member function for call to 'AddAttribute'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ExportImage' in 'UltraCanvas::UltraCanvasERDiagram'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ExportSql' in 'UltraCanvas::UltraCanvasERDiagram'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'Hierarchical' in 'UltraCanvas::ERDiagramLayout'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ImportFromDatabase' in 'UltraCanvas::UltraCanvasERDiagram'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ImportMermaid' in 'UltraCanvas::UltraCanvasERDiagram'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ImportSql' in 'UltraCanvas::UltraCanvasERDiagram'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'Many' in 'UltraCanvas::ERCardinality'
-Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'One' in 'UltraCanvas::ERCardinality'
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ExportImage' in 'UltraCanvasERDiagram'
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ExportSql' in 'UltraCanvasERDiagram'
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'Hierarchical' in 'ERDiagramLayout'
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ImportFromDatabase' in 'UltraCanvasERDiagram'
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ImportMermaid' in 'UltraCanvasERDiagram'
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'ImportSql' in 'UltraCanvasERDiagram'
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'Many' in 'ERCardinality'
+Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::no member named 'One' in 'ERCardinality'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::use of undeclared identifier 'LoadTextFile'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::use of undeclared identifier 'SqlDialect'
 Docs/UltraCanvas/UltraCanvasERDiagramProposal.md::use of undeclared identifier 'SqlDialect'
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::expected unqualified-id
-Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::no member named 'SetLevelStep' in 'UltraCanvas::UltraCanvasUIElement'
+Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::no member named 'SetLevelStep' in 'UltraCanvasUIElement'
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `CreateElement(`, which no header declares
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `GetLastPluginError(`, which no header declares
 Docs/UltraCanvas/UltraCanvasElementPluginSystemProposal.md::prose names `RefreshPlugins(`, which no header declares
@@ -170,9 +170,9 @@ Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::prose names `SHOpenWith
 Docs/UltraCanvas/UltraCanvasFileAssociationsProposal.md::prose names `ShellExecuteExW(`, which no header declares
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GetRowHeight' is not a member of UltraCanvasGitGraph
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GetRowTop' is not a member of UltraCanvasGitGraph
-Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutMode::TimeProportional' does not exist (no member named 'TimeProportional' in 'UltraCanvas::GitGraphLayoutMode')
-Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutResult::laneCount' does not exist (no member named 'laneCount' in 'UltraCanvas::GitGraphLayoutResult')
-Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutResult::passThroughLanes' does not exist (no member named 'passThroughLanes' in 'UltraCanvas::GitGraphLayoutResult')
+Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutMode::TimeProportional' does not exist (no member named 'TimeProportional' in 'GitGraphLayoutMode')
+Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutResult::laneCount' does not exist (no member named 'laneCount' in 'GitGraphLayoutResult')
+Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::'GitGraphLayoutResult::passThroughLanes' does not exist (no member named 'passThroughLanes' in 'GitGraphLayoutResult')
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::prose names `CreateGitGraphExamples(`, which no header declares
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::prose names `PrependCommits(`, which no header declares
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `bool LoadFromGitLog(const std::string& text)` - the header has: size_t LoadFromGitLog(const std::string& text);
@@ -198,7 +198,7 @@ Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::'GetLinkTangentAt' is not 
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::constructor for 'UltraCanvasPacketSwitchingDiagram' must explicitly initialize the base class 'UltraCanvasNodeDiagram' which does not have a default constructor
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::expected ')'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::header "Plugins/Diagrams/UltraCanvasPacketSwitchingDiagram.h" does not exist
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'Alt' in 'UltraCanvas::SequenceFragment'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'Alt' in 'SequenceFragment'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'CreatePacketSwitchingDiagram' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'CreatePacketSwitchingDiagram' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'CreateSequenceDiagram' in namespace 'UltraCanvas'
@@ -219,7 +219,7 @@ Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SequenceP
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SequencePreset' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SequencePreset' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SequenceTimeMode' in namespace 'UltraCanvas'
-Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SetHandlesVisible' in 'UltraCanvas::UltraCanvasNodeDiagram'
+Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'SetHandlesVisible' in 'UltraCanvasNodeDiagram'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no member named 'bytesTransferred' in 'UltraNetResult'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no type named 'TracePacketRef' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::no type named 'TracePacketRef' in namespace 'UltraCanvas'
@@ -251,8 +251,8 @@ Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketN
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::unknown type name 'PacketNodeRole'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::use of undeclared identifier 'SetInteractionLocked'
 Docs/UltraCanvas/UltraCanvasPacketDiagramProposal.md::use of undeclared identifier 'SetShowControls'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::dimensionIndex' does not exist (no member named 'dimensionIndex' in 'UltraCanvas::PCPBrush')
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::inverted' does not exist (no member named 'inverted' in 'UltraCanvas::PCPBrush')
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::dimensionIndex' does not exist (no member named 'dimensionIndex' in 'PCPBrush')
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::'PCPBrush::inverted' does not exist (no member named 'inverted' in 'PCPBrush')
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'FormatNumber' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPAxisTitlePosition' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPCurveType' in namespace 'UltraCanvas'
@@ -261,47 +261,47 @@ Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendMode' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendMode' in namespace 'UltraCanvas'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PCPLegendPosition' in namespace 'UltraCanvas'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PinRecords' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisFormatter' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisGapBands' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisGroupTitles' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisTitlePosition' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetBrushBandColor' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetContextLayer' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetCurveType' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetDimmedStyle' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetEnableAxisReordering' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetHistogramBins' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetHistogramColor' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetHistogramSide' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetLegendPositionPreset' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetOnAxisOrderChanged' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetOnBrushChanged' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetScale' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowAxisHeaderChips' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowAxisHistograms' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowAxisTicks' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
-Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowSharedValueAxis' in 'UltraCanvas::UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'PinRecords' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisFormatter' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisGapBands' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisGroupTitles' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetAxisTitlePosition' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetBrushBandColor' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetContextLayer' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetCurveType' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetDimmedStyle' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetEnableAxisReordering' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetHistogramBins' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetHistogramColor' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetHistogramSide' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetLegendPositionPreset' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetOnAxisOrderChanged' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetOnBrushChanged' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetScale' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowAxisHeaderChips' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowAxisHistograms' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowAxisTicks' in 'UltraCanvasParallelCoordinateChartElement'
+Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 'SetShowSharedValueAxis' in 'UltraCanvasParallelCoordinateChartElement'
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AddComputedDimension(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AutoOrderAxes(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::use of undeclared identifier 'UpdateStatusBar'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::cannot initialize a parameter of type 'RequirementTraceDirection' with an rvalue of type 'int'
-Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetLayout' in 'UltraCanvas::UltraCanvasRequirementDiagram'
+Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetLayout' in 'UltraCanvasRequirementDiagram'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::prose names `SetStrictSemantics(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::use of undeclared identifier 'RequirementLayout'
-Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineEntryKind::Marker' does not exist (no member named 'Marker' in 'UltraCanvas::TimelineEntryKind')
-Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::date' does not exist (no member named 'date' in 'UltraCanvas::TimelineItem')
-Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::iconImage' does not exist (no member named 'iconImage' in 'UltraCanvas::TimelineItem')
-Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineNodeShape::Chevron' does not exist (no member named 'Chevron' in 'UltraCanvas::TimelineNodeShape')
-Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineNodeShape::Flag' does not exist (no member named 'Flag' in 'UltraCanvas::TimelineNodeShape')
+Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineEntryKind::Marker' does not exist (no member named 'Marker' in 'TimelineEntryKind')
+Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::date' does not exist (no member named 'date' in 'TimelineItem')
+Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineItem::iconImage' does not exist (no member named 'iconImage' in 'TimelineItem')
+Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineNodeShape::Chevron' does not exist (no member named 'Chevron' in 'TimelineNodeShape')
+Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineNodeShape::Flag' does not exist (no member named 'Flag' in 'TimelineNodeShape')
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddEra(const std::string& name, GanttDate from, GanttDate to)` - the header has: int AddEra(const std::string& name, double from, double to);
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddMilestone(const std::string& name, GanttDate on)` - the header has: int AddMilestone(const std::string& name, double serial); | int AddMilestone(const std::string& name, int year, int month, int day);
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddSpan(const std::string& name, GanttDate from, GanttDate to)` - the header has: int AddSpan(const std::string& name, double from, double to); | int AddSpan(const std::string& name, int y1, int m1, int d1, int y2, int m2, int d2);
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'GetClipboardData' is not a member of UCRichDocument, UltraCanvasTextArea, UltraCanvasRichTextEdit, ITextLayout, nor a free function
-Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'RichDocPosition::cellIndex' does not exist (no member named 'cellIndex' in 'UltraCanvas::RichDocPosition')
+Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'RichDocPosition::cellIndex' does not exist (no member named 'cellIndex' in 'RichDocPosition')
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'SetClipboardData' is not a member of UCRichDocument, UltraCanvasTextArea, UltraCanvasRichTextEdit, ITextLayout, nor a free function
-Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'UltraCanvasRichTextEdit::BlockLayout::inlineMath' does not exist (no member named 'inlineMath' in 'UltraCanvas::UltraCanvasRichTextEdit::BlockLayout')
-Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'UltraCanvasRichTextEdit::BlockLayout::runByteRanges' does not exist (no member named 'runByteRanges' in 'UltraCanvas::UltraCanvasRichTextEdit::BlockLayout')
+Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'UltraCanvasRichTextEdit::BlockLayout::inlineMath' does not exist (no member named 'inlineMath' in 'UltraCanvasRichTextEdit::BlockLayout')
+Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'UltraCanvasRichTextEdit::BlockLayout::runByteRanges' does not exist (no member named 'runByteRanges' in 'UltraCanvasRichTextEdit::BlockLayout')
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::prose names `GetFormatAtSelection(`, which no header declares
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::prose names `Revert(`, which no header declares
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::prose names `TryCoalesce(`, which no header declares

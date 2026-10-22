@@ -18,9 +18,12 @@ name: Doc examples
 # (--all --update-baseline), so the file stays the list of what the
 # proposals still wait for.
 #
-# Pinned to ubuntu-24.04: the docs pass against clang 18 and that release's
-# library headers; a baseline entry, should one ever be needed, is clang's
-# wording, which another clang words differently.
+# On ubuntu-22.04, the pool the build legs use (the ubuntu-latest / 24.04
+# one held jobs for hours on 2026-10-21): its clang is 14, paired with
+# libstdc++ 12, and the docs pass against them as against clang 18. A
+# baseline entry is clang's wording with the namespace it may or may not
+# write dropped (check_doc_examples.py 1.8.0), so the two clangs read it
+# alike.
 
 # Trigger policy matches path-strings.yml: `pull_request` covers feature
 # branches, so listing them under `push` too would run this check twice per
@@ -52,7 +55,7 @@ concurrency:
 
 jobs:
   check:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
