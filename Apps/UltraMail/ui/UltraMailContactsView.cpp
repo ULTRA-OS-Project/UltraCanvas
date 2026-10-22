@@ -1,5 +1,6 @@
 // Apps/UltraMail/ui/UltraMailContactsView.cpp
-// Version: 0.5.0 - EditContact edits the address it is opened for (a
+// Version: 0.5.0 - a deleted contact's addresses are forgotten (not collected
+//                  again); EditContact edits the address it is opened for (a
 //                  recipient suggestion, a message's sender), not always
 //                  the primary one
 // Version: 0.4.0 - groups of the user's own, a filter, and the contact list
@@ -443,14 +444,18 @@ void ContactsView::ApplyFilter() {
 
 void ContactsView::ConfirmDelete(const Contact& contact) {
     const int64_t id = contact.id;
+    std::vector<std::string> addresses;
+    for (const auto& e : contact.emails) addresses.push_back(e.address);
     const std::string name = contact.displayName.empty() ? contact.PrimaryEmail()
                                                          : contact.displayName;
     UltraCanvasAlert::Confirm("Delete \"" + name + "\" from the address book?",
                               "Delete contact",
-        [this, id, name](bool yes) {
+        [this, id, name, addresses](bool yes) {
             if (!yes || !store_) return;
             if (UltraDbResult r = store_->Remove(id); !r)
                 AlertError(Window(), "\"" + name + "\" could not be deleted.", DetailLine(r));
+            else
+                store_->Forget(addresses);   // incoming mail does not add it back
             Changed();
         },
         Window());

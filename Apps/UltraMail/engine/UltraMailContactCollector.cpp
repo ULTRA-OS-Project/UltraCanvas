@@ -1,10 +1,14 @@
 // Apps/UltraMail/engine/UltraMailContactCollector.cpp
+// Version: 0.4.0 - incoming mail adds only known services, and never a
+//                  blocked or forgotten address; Collect reads "Name <address>"
 // Version: 0.3.0 - CollectSenders: a batch in one read and one transaction
 // Version: 0.2.0 - known services are collected as business contacts
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailContactCollector.h"
 
+#include "UltraMailRecipientComplete.h"   // RecipientAddress
 #include "UltraMailSenderBrands.h"
+#include "UltraMailThreatScan.h"   // GetSenderLists
 
 #include <algorithm>
 #include <cctype>
@@ -39,37 +43,61 @@ bool SaveIfNew(ContactStore& store, const Contact& contact, const std::string& e
     return store.Save(copy).success;
 }
 
-// The contact CollectSender files for one sender: a known service under
-// Services with the service's name as the organization, anything else in
-// Other under the name it sent with (its address when it gave none).
-Contact ContactForSender(const std::string& name, const std::string& email) {
+// The contact CollectSender files for one sender in the known-sender
+// registry: under Services with the service's name as the organization.
+Contact ContactForService(const SenderBrand& brand, const std::string& name,
+                          const std::string& email) {
     Contact c;
-    ContactEmail e; e.address = email; e.primary = true;
-    if (const SenderBrand* brand = BrandForAddress(email)) {
-        // The service's own name is the more useful label for a contact whose
-        // display name is a no-reply robot ("Kickstarter" beats "notifications").
-        c.displayName  = name.empty() ? brand->name : name;
-        c.organization = brand->name;
-        c.section      = ContactSection::Services;
-        c.notes        = DisplayName(brand->category) +
-                         " — collected automatically from mail from " + brand->name + ".";
-        e.label = "work";
-    } else {
-        c.displayName = name.empty() ? email : name;
-        c.section     = ContactSection::Other;
-    }
+    ContactEmail e; e.address = email; e.primary = true; e.label = "work";
+    // The service's own name is the more useful label for a contact whose
+    // display name is a no-reply robot ("Kickstarter" beats "notifications").
+    c.displayName  = name.empty() ? brand.name : name;
+    c.organization = brand.name;
+    c.section      = ContactSection::Services;
+    c.notes        = DisplayName(brand.category) +
+                     " — collected automatically from mail from " + brand.name + ".";
     c.emails.push_back(e);
     return c;
+}
+
+// The registry's entry for a sender incoming mail may add, or null: only a
+// known service, and not one the user blocked. (Forgotten addresses are
+// checked by the callers, who have the list.)
+const SenderBrand* CollectableService(const std::string& email) {
+    if (email.empty()) return nullptr;
+    const SenderBrand* brand = BrandForAddress(email);
+    if (!brand) return nullptr;
+    if (!GetSenderLists().BlockedBy(email).empty()) return nullptr;
+    return brand;
 }
 
 } // namespace
 
 bool ContactCollector::Collect(ContactStore& store, const std::string& name,
-                               const std::string& email, ContactSection section) {
+                               const std::string& recipient, ContactSection section) {
+    // A recipient as the compose fields hold it: "Anna Schmidt <anna@...>"
+    // (what a picked suggestion writes) or the bare address. Stored whole, the
+    // address was "Anna Schmidt <anna@...>" - a second, broken contact.
+    const std::string email = RecipientAddress(recipient);
     if (email.empty()) return false;
+    std::string given = name;
+    if (given.empty()) {
+        const std::size_t lt = recipient.rfind('<');
+        if (lt != std::string::npos) {
+            given = recipient.substr(0, lt);
+            while (!given.empty() && (std::isspace(static_cast<unsigned char>(given.back())) ||
+                                      given.back() == '"'))
+                given.pop_back();
+            std::size_t b = 0;
+            while (b < given.size() && (std::isspace(static_cast<unsigned char>(given[b])) ||
+                                        given[b] == '"'))
+                ++b;
+            given = given.substr(b);
+        }
+    }
 
     Contact c;
-    c.displayName = name.empty() ? email : name;
+    c.displayName = given.empty() ? email : given;
     c.section = section;
     ContactEmail e; e.address = email; e.primary = true;
     c.emails.push_back(e);
@@ -78,9 +106,12 @@ bool ContactCollector::Collect(ContactStore& store, const std::string& name,
 
 bool ContactCollector::CollectSender(ContactStore& store, const std::string& name,
                                      const std::string& email) {
-    if (email.empty()) return false;
-
-    return SaveIfNew(store, ContactForSender(name, email), email);
+    const SenderBrand* brand = CollectableService(email);
+    if (!brand) return false;
+    std::set<std::string> forgotten;
+    store.ForgottenAddresses(forgotten);
+    if (forgotten.count(Lower(email))) return false;
+    return SaveIfNew(store, ContactForService(*brand, name, email), email);
 }
 
 int ContactCollector::CollectSenders(
@@ -88,12 +119,17 @@ int ContactCollector::CollectSenders(
     if (senders.empty()) return 0;
     std::set<std::string> known;
     if (!store.KnownAddresses(known)) return 0;
+    std::set<std::string> forgotten;
+    store.ForgottenAddresses(forgotten);
     std::vector<Contact> fresh;
     for (const auto& [name, email] : senders) {
-        if (email.empty()) continue;
+        const SenderBrand* brand = CollectableService(email);
+        if (!brand) continue;
+        const std::string key = Lower(email);
+        if (forgotten.count(key)) continue;
         // In the address book already, or earlier in this batch.
-        if (!known.insert(Lower(email)).second) continue;
-        fresh.push_back(ContactForSender(name, email));
+        if (!known.insert(key).second) continue;
+        fresh.push_back(ContactForService(*brand, name, email));
     }
     if (fresh.empty()) return 0;
     return store.SaveAll(fresh) ? static_cast<int>(fresh.size()) : 0;

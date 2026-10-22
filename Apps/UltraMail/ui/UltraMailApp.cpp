@@ -1,7 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
 // Version: 0.9.38 - a recipient suggestion's menu: Edit contact, Delete address,
 //                  Set as SPAM; blocked senders are not suggested; Edit contact
-//                  (here and for a message's sender) edits that address
+//                  (here and for a message's sender) edits that address; a
+//                  deleted address is forgotten
 // Version: 0.9.37 - the new-mail notification carries where its click leads
 //                   (launch), and UltraMail is the activator of its Windows
 //                   toasts, so a click opens the mail after the broker host
@@ -1210,6 +1211,7 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
                     AlertError(raw, "The address could not be deleted.", DetailLine(r));
                     return;
                 }
+                contacts_.Forget({lower});   // incoming mail does not add it back
                 book->clear();
                 contacts_.ListAll(*book);
                 RefreshContactIndex();

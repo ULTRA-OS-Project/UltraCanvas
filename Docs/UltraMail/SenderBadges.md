@@ -213,9 +213,14 @@ used twice:
   carrying the service's name as the contact's `organization` and a note
   saying what it is and that UltraMail added it. A robot display name is
   replaced by the service's own name only when the header carries none
-  ("Kickstarter" beats an empty From name). Everything else still lands in
-  Other, exactly as before, and a personal mailbox address never counts as a
-  service however large its provider.
+  ("Kickstarter" beats an empty From name). Any other sender is **not**
+  added: a stranger who writes - and every spammer whose mail reaches the
+  inbox - would otherwise read as someone in the address book and lose the
+  "New sender" badge. People join the address book when the user writes to
+  them (`ContactCollector::Collect`). A personal mailbox address never counts
+  as a service however large its provider, and a blocked sender or an address
+  the user deleted from the address book (`ContactStore::Forget`) is never
+  collected.
 
 One rule guards it: **an existing contact is never modified or reclassified.**
 An address the user has filed under Friends themselves stays there, whatever

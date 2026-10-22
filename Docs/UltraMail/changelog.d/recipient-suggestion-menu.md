@@ -19,3 +19,17 @@
   and changes only it, keeping its label and the contact's other addresses;
   emptied, the address is removed, and changed to another of the contact's
   addresses, the two become one.
+- **Incoming mail no longer fills the address book with strangers.** Every
+  sender of new mail in the inbox was added, spam included - so spammers
+  were offered as recipients, and their next mail read as from someone in
+  the address book instead of a *New sender*. Now only senders in the
+  known-sender registry (shops, platforms, services) are added from incoming
+  mail, under Services; a person joins the address book when you write to
+  them, or add them. Contacts collected before stay until deleted.
+- **A deleted address stays deleted.** Deleting a contact, or an address
+  from the suggestion menu, remembers it, and incoming mail does not add it
+  back; neither is a blocked sender added. Writing to it still adds it.
+- **Writing to a picked suggestion no longer makes a broken contact.** A
+  recipient written as "Anna Schmidt <anna@example.com>" was remembered with
+  that whole text as its address - a second contact beside the real one. Its
+  name and address are now read apart.
