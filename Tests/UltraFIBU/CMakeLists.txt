@@ -79,8 +79,19 @@ endif()
 if(TARGET UltraCrypt)
     target_link_libraries(UltraFIBUEngineTests PRIVATE UltraCrypt)
 endif()
-set_target_properties(UltraFIBUEngineTests PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+# On Windows where the project's DLLs land (CMAKE_RUNTIME_OUTPUT_DIRECTORY,
+# the build root): UltraDatabase is an INTERFACE target that resolves to the
+# shared core there, so the suite needs libUltraCanvas.dll beside it - an
+# executable finds its DLLs in its own directory, build/bin is on no search
+# path, and the suite died at start with STATUS_DLL_NOT_FOUND (0xc0000135)
+# on the Windows CI row. (TARGET_FILE_DIR does not take an INTERFACE target.)
+if(WIN32)
+    set_target_properties(UltraFIBUEngineTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+else()
+    set_target_properties(UltraFIBUEngineTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
 
 include(CTest)
 add_test(NAME UltraFIBUEngine COMMAND UltraFIBUEngineTests
@@ -91,6 +102,41 @@ add_test(NAME UltraFIBUEngine COMMAND UltraFIBUEngineTests
 # and they say SKIP rather than fail if the files are ever missing.
 set_tests_properties(UltraFIBUEngine PROPERTIES
     ENVIRONMENT "ULTRAFIBU_DATA_DIR=${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/data")
+
+# ---------------------------------------------------------------------------
+# The start window's page, without a window. Unlike the engine suite this one
+# needs the UI library (the page is UltraCanvasStartPage), so it is built only
+# where the ultrafibu window is; it opens no window and needs no display.
+# ---------------------------------------------------------------------------
+if(TARGET ultrafibu AND ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_executable(UltraFIBUStartTests
+        UltraFIBUStartTests.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/ui/UltraFIBUStart.cpp
+    )
+    target_compile_features(UltraFIBUStartTests PRIVATE cxx_std_20)
+    target_include_directories(UltraFIBUStartTests PRIVATE
+        ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/ui
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/include)
+    target_link_libraries(UltraFIBUStartTests PRIVATE UltraFIBUEngine ${ULTRACANVAS_LIBRARY})
+    # The window title names the version; the source refuses to build without it.
+    include("${CMAKE_SOURCE_DIR}/cmake/UltraCanvasVersion.cmake")
+    target_compile_definitions(UltraFIBUStartTests PRIVATE
+        ULTRAFIBU_VERSION="${ULTRAFIBU_VERSION}")
+    # On Windows beside the core DLL, where an executable finds it; build/bin
+    # is on no search path there (Tests/VectorFormatsTests.cmake).
+    if(WIN32)
+        set_target_properties(UltraFIBUStartTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "$<TARGET_FILE_DIR:${ULTRACANVAS_LIBRARY}>")
+    else()
+        set_target_properties(UltraFIBUStartTests PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    endif()
+    add_test(NAME UltraFIBUStart COMMAND UltraFIBUStartTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    set_tests_properties(UltraFIBUStart PROPERTIES
+        ENVIRONMENT "ULTRAFIBU_DATA_DIR=${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/data")
+    message(STATUS "  [✓] UltraFIBU start window test - ENABLED (target: UltraFIBUStartTests)")
+endif()
 
 # ---------------------------------------------------------------------------
 # The multi-user acceptance test.

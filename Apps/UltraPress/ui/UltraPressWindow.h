@@ -5,6 +5,9 @@
 // model and re-renders the preview; Save writes the site folder; Publish
 // writes the static site and uploads it onto the site's host (an UltraCloud
 // account, hosting/UltraPressHosting.h) on a worker thread.
+// Version: 0.8.6 - SetDark writes no file: the look is saved with the window's size on close
+// Version: 0.8.3 - the address checked as typed (IsSiteAddress), said under the field
+// Version: 0.8.2 - the site's settings in the property pane: ShowSiteSettings, SetSiteProperty
 // Version: 0.8.0 - the look: SetDark, the theme's colours on the columns and dialogs
 // Version: 0.7.4 - the rich editor's toolbar
 // Version: 0.7.3 - a richtext block edited in place with the RichTextEdit
@@ -92,11 +95,24 @@ public:
     bool CommitTextEdit(const std::string& text); // this text (tests)
     void CancelTextEdit();
 
+    // The site's own settings - name, tagline, address, language, owner -
+    // in the property pane, with no block selected: ShowSiteSettings puts
+    // them there (Site settings... in the side column), SetSiteProperty
+    // writes one ("name", "tagline", "url", "language", "owner"; the
+    // address without its trailing slash, and said under the field when it
+    // is not an address - IsSiteAddress - so a slip is seen before the
+    // first publish writes it into every page) and re-renders; false for a
+    // name it does not know. Selecting a page or a block leaves the settings.
+    void ShowSiteSettings();
+    bool IsShowingSiteSettings() const { return siteSettings; }
+    bool SetSiteProperty(const std::string& name, const std::string& value);
+
     // The look: the light or the dark theme (UltraPressTheme.h) on the
-    // window and its dialogs; the page keeps the site's colours. Remembered
-    // in the settings folder unless `remember` is off (the start-up value,
-    // which came from there, and the tests).
-    void SetDark(bool dark, bool remember = true);
+    // window and its dialogs; the page keeps the site's colours. The choice
+    // is the editor's state (IsDark); the program writes it to the settings
+    // with the window's size when the editor closes (ui/main.cpp), so a
+    // click writes no file.
+    void SetDark(bool dark);
     bool IsDark() const { return dark; }
 
     const Site& CurrentSite() const { return site; }
@@ -120,6 +136,9 @@ private:
     int selected = -1;
     bool dirty = false;
     bool dark = false;
+    bool siteSettings = false;             // the property pane shows the site, not a page or block
+    std::weak_ptr<UltraCanvas::UltraCanvasLabel> urlNote;   // under the address field, while the pane shows it
+    void SayAddress();                     // the note's text and colour for the site's address
 
     Container side, pageArea, properties;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status;

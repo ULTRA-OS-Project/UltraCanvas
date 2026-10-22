@@ -1,11 +1,11 @@
 // core/UltraCanvasDropdown.cpp
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
-// Last Modified: 2026-10-15 - type-ahead (HandleTypeAhead), from the dropdown and from its open list
-// Last Modified: 2026-10-15 - takes the keyboard focus (AcceptsFocus, a click focuses it)
-// Last Modified: 2026-10-15 - Return in the open list chooses the highlighted item (onItemActivated)
-// Last Modified: 2026-10-15 - DropdownItem::tooltip answers the list's ToolTipRole
-// Last Modified: 2026-10-15 - DropdownStyle::buttonShowsText: the icon alone on the button
+// The history is in the header (include/UltraCanvasDropdown.h).
+// Version: 1.1.0 - the button's text and the rows' are shaped once and kept
+// Version: 1.0.4 - type-ahead, the keyboard focus, Return chooses, DropdownItem::tooltip,
+//                  DropdownStyle::buttonShowsText
+// Version: 1.0.3 - DropdownStyle::FromTheme, ApplyTheme
 // Last Modified: 2026-10-12 - DropdownStyle::FromTheme
 #include "UltraCanvasDropdown.h"
 #include <cctype>
@@ -110,9 +110,15 @@ namespace UltraCanvas {
         // Render text
         std::string text = GetStringValue(model->GetData({row, 0}, ListDataRole::DisplayRole));
         if (!text.empty()) {
-            Size2Di textSize = ctx->GetTextLineDimensions(text);
-            int textY = option.rect.y + (option.rect.height - textSize.height) / 2;
-            ctx->DrawText(text, Point2Di(currentX, textY));
+            if (row >= static_cast<int>(rowLayouts.size())) rowLayouts.resize(static_cast<size_t>(row) + 1);
+            TextLayoutKey key;
+            key.text = text;
+            key.font.fontFamily = style->fontFamily;
+            key.font.fontSize = style->fontSize;
+            if (ITextLayout* layout = rowLayouts[static_cast<size_t>(row)].Get(ctx, key)) {
+                int textY = option.rect.y + (option.rect.height - static_cast<int>(layout->GetLayoutHeight())) / 2;
+                ctx->DrawTextLayout(*layout, Point2Di(currentX, textY));
+            }
         }
     }
 
@@ -741,9 +747,15 @@ namespace UltraCanvas {
                 ctx->SetFontFace(style.fontFamily, FontWeight::Normal, FontSlant::Normal);
                 ctx->SetFontSize(style.fontSize);
                 ctx->SetTextPaint(textColor);
-                Size2Di textSize = ctx->GetTextLineDimensions(displayText);
-                int textY = buttonRect.y + (buttonRect.height - textSize.height) / 2;
-                ctx->DrawText(displayText, Point2Di(textX, textY));
+                // Shaped once and kept while the text and the font stay.
+                TextLayoutKey key;
+                key.text = displayText;
+                key.font.fontFamily = style.fontFamily;
+                key.font.fontSize = style.fontSize;
+                if (ITextLayout* layout = displayLayout_.Get(ctx, key)) {
+                    int textY = buttonRect.y + (buttonRect.height - static_cast<int>(layout->GetLayoutHeight())) / 2;
+                    ctx->DrawTextLayout(*layout, Point2Di(textX, textY));
+                }
             }
             ctx->PopState();
         }

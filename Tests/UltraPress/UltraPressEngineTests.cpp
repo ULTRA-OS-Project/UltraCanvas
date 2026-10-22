@@ -693,6 +693,33 @@ static void TestDeploy() {
     fs::remove_all(out, ec);
 }
 
+static void TestAddress() {
+    std::printf("The site's address\n");
+    Check(IsSiteAddress("https://example.org") && IsSiteAddress("http://localhost:8080") &&
+              IsSiteAddress("https://shop.example.org/de") && IsSiteAddress("https://www.ultraos.eu"),
+          "https:// and a host, with a port or a path, is an address");
+    Check(!IsSiteAddress("example.org") && !IsSiteAddress("https://example.org/") && !IsSiteAddress("https://") &&
+              !IsSiteAddress("https://nodot") && !IsSiteAddress("ftp://example.org") && !IsSiteAddress("https://exa mple.org") &&
+              !IsSiteAddress(""),
+          "no scheme, a trailing slash, no host, no dot, another scheme, a space are not");
+    Site site = CreateStarterSite("Addressed", "https://addressed.example");
+    Check(ValidateSite(site).empty(), "the starter site's address validates");
+    Site imported;
+    ImportReport report;
+    const std::string wxr = "<rss><channel><title>Old blog</title><link>oldblog.example/</link><wp:wxr_version>1.2</wp:wxr_version>"
+                            "<item><title>Hello</title><wp:post_type>page</wp:post_type><wp:post_name>hello</wp:post_name>"
+                            "<wp:status>publish</wp:status><content:encoded>Hi</content:encoded></item></channel></rss>";
+    const bool importedOk = ImportWordPress(wxr, {}, imported, report);
+    bool said = false;
+    for (const std::string& warning : report.warnings) said = said || Contains(warning, "not an address");
+    Check(importedOk && imported.url == "oldblog.example" && said,
+          "the importer takes the export's address as it is and says it is not an address");
+    site.url = "addressed.example";
+    const std::vector<ValidationIssue> issues = ValidateSite(site);
+    Check(issues.size() == 1 && issues[0].path == "site" && Contains(issues[0].message, "not an address"),
+          "an address without its scheme is one issue: " + (issues.empty() ? std::string() : issues[0].message));
+}
+
 static void TestMedia() {
     std::printf("The media library\n");
     Check(MediaKind("Launch.PNG") == "image" && MediaKind("a.pdf") == "document" && MediaKind("clip.mp4") == "video" &&
@@ -957,6 +984,7 @@ int main() {
     TestPublishAndExample();
     TestWordPressImport();
     TestDeploy();
+    TestAddress();
     TestMedia();
     TestTextInBlocks();
     TestShadowImageSizes();

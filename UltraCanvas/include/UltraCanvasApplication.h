@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS for a test that must end
 // Version: 1.10.0 - GenerateFontAliasConfig: the generic family aliases as a fontconfig document
 // Version: 1.9.0 - ClosingEndsApplication: whether a window's close ends Run()
 // Version: 1.8.1 - IsKeyPressed checks the key code against the table (KeyStateCount)
@@ -358,6 +359,16 @@ namespace UltraCanvas {
         UltraCanvasWindow* GetFocusedWindow();  // downcast from weak_ptr, defined in .cpp
         // All windows registered with the application (main windows and dialogs).
         const std::vector<std::shared_ptr<UltraCanvasWindowBase>>& GetWindows() const { return windows; }
+        // Asks every window to close, as the window manager's close button
+        // would (UltraCanvasWindow::Close: a window's onWindowClosing may
+        // refuse, and one that refuses stays); the application ends when
+        // none is left. Run() calls it itself after the milliseconds the
+        // environment variable ULTRACANVAS_CLOSE_AFTER_MS names, so a
+        // start-up and shut-down test under Xvfb needs no client to send
+        // the close: `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run ./ultrapress`
+        // opens, runs two seconds, closes through the application's own
+        // onWindowClosed and ends. Unset, or 0, it does nothing.
+        void CloseAllWindows();
         UltraCanvasUIElement* GetFocusedElement();
         UltraCanvasUIElement* GetHoveredElement() { return hoveredElement; }
         UltraCanvasUIElement* GetCapturedElement() { return capturedElement; }

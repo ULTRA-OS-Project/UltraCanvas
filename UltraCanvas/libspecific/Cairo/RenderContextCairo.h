@@ -292,7 +292,7 @@ namespace UltraCanvas {
         void Stroke() override;
 
         // Text rendering
-        std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup) override;
+        std::unique_ptr<ITextLayout> MakeTextLayout(const std::string& text, bool isMarkup) override;
         std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) override;
 
         void DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) override;

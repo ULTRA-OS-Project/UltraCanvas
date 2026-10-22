@@ -4008,6 +4008,25 @@ add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonIconPixelTest")
 
+# ===== TEXT LAYOUT CACHE TEST =====
+# The text layout an element draws with is built once and kept: ten draws
+# of a label, or of a button shortened in the middle, make one layout on
+# the render context (TextLayoutsCreated); a changed text, font or width
+# makes one more, a changed colour none. Offscreen; needs no display.
+message(STATUS "  Building TextLayoutCacheTest...")
+add_executable(TextLayoutCacheTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TextLayoutCacheTest.cpp
+)
+target_include_directories(TextLayoutCacheTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(TextLayoutCacheTest PRIVATE cxx_std_20)
+target_link_libraries(TextLayoutCacheTest PRIVATE UltraCanvas)
+set_target_properties(TextLayoutCacheTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TextLayoutCacheTest COMMAND TextLayoutCacheTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TextLayoutCacheTest")
+
 message(STATUS "  Building ButtonGrowToFitTest...")
 add_executable(ButtonGrowToFitTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ButtonGrowToFitTest.cpp
@@ -6214,3 +6233,8 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  TreeViewFilterTest skipped (UltraCanvas target not present)")
 endif()
+
+# StartPageTest and AppSettingsTest: defined in StartPageTests.cmake, which
+# the top level also includes on its own under
+# ULTRACANVAS_BUILD_STARTPAGE_TESTS (the macOS and Windows CI rows).
+include(${CMAKE_CURRENT_SOURCE_DIR}/StartPageTests.cmake)

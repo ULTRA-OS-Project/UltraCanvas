@@ -1,5 +1,8 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.12.2 - that layout is an UltraCanvasTextLayoutCache
+// Version: 2.12.1 - that layout is kept from draw to draw and rebuilt only when its inputs change
+// Version: 2.12.0 - ButtonStyle::ellipsize: a text shortened in the middle or at the start goes through a layout
 // Version: 2.11.1 - OnEvent's switch says the events it ignores (default; -Wswitch)
 // Version: 2.11.0 - FromTheme by ButtonVariant
 // Version: 2.10.0 - ButtonStyle::FromTheme
@@ -320,6 +323,11 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::SetTextAlign(TextAlignment align) {
         style.textAlign = align;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetEllipsize(EllipsizeMode mode) {
+        style.ellipsize = mode;
         RequestRedraw();
     }
 
@@ -926,6 +934,33 @@ namespace UltraCanvas {
         ctx->SetTextAlignment(style.textAlign);
 
         const std::string drawnText = useMarkup ? BuildMnemonicMarkup() : text;
+        const double nudge = GetPrimaryState() == ElementState::Pressed ? 1.0 : 0.0;
+        const Rect2Dd rect(textRect.x + nudge, textRect.y + nudge, textRect.width, textRect.height);
+
+        // Shortened anywhere but at the end: DrawTextInRect cuts from the
+        // right only, so the text goes through a layout of the rectangle's
+        // width that cuts where the style says, placed as the alignment says.
+        if (style.ellipsize != EllipsizeMode::EllipsizeEnd && style.ellipsize != EllipsizeMode::EllipsizeNone) {
+            // The layout is kept between draws: a list of such buttons is
+            // repainted on every hover, and shaping the text each time is
+            // what would make that slow. Rebuilt when any input changed.
+            TextLayoutKey key;
+            key.text = drawnText;
+            key.markup = useMarkup;
+            key.font.fontFamily = style.fontFamily;
+            key.font.fontSize = style.fontSize;
+            key.font.fontWeight = style.fontWeight;
+            key.wrap = TextWrap::WrapNone;
+            key.align = style.textAlign;
+            key.ellipsize = style.ellipsize;
+            key.width = rect.width;
+            ITextLayout* layout = shortenedLayout.Get(ctx, key);
+            if (!layout) return;
+            const double height = layout->GetLayoutHeight();
+            ctx->DrawTextLayout(*layout, Point2Dd(rect.x, rect.y + (rect.height - height) / 2));
+            return;
+        }
+        shortenedLayout.Reset();   // shortened at the end again: nothing to keep
 
         //debugOutput << "btn draw text=" << text << " rect=" << textRect.x << "," << textRect.y << " " << textRect.width << "x" << textRect.height << std::endl;
         if (GetPrimaryState() == ElementState::Pressed) {

@@ -21,6 +21,10 @@
 // only lets one pick a first of a month. Refusing the 15th after it was typed
 // would be the same rule, told later.
 //
+// Version: 0.3.2 - the form's rows laid out by the page
+// Version: 0.3.1 - SeiteBauen builds the page without a window, for a headless test
+// Version: 0.3.0 - on the framework's UltraCanvasStartPage, which UltraPress's start window shares
+// Version: 0.2.0 - the bookkeepings opened last, offered first
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -30,6 +34,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasStartPage.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasDatePicker.h"
@@ -39,6 +44,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraFIBU {
 
@@ -53,17 +59,36 @@ public:
     // window already exists by then: the application ends the moment it has
     // no window left, and closing this one first would end it.
     std::function<std::string(const std::string&)> onDateiGewaehlt;
+    // Called with a file of the recent list that is gone, or holds no
+    // bookkeeping any more, so the caller drops it from the list.
+    std::function<void(const std::string&)> onDateiVergessen;
 
     // `hinweis` says why this window is showing instead of a bookkeeping, so
     // the user is not left guessing what went wrong. `vorschlag` is a path to
     // offer when setting up - the one that was given and did not exist.
+    // `zuletzt` are the files opened last, the last one first; the five
+    // newest become buttons above the open button.
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> Bauen(const std::string& hinweis,
-                                                          const std::string& vorschlag);
+                                                          const std::string& vorschlag,
+                                                          const std::vector<std::string>& zuletzt = {});
+    // The page alone, without a window - what Bauen puts into one. A test
+    // builds it without a display and reads it back: the hint, the recent
+    // entries, the form, PreferredHeight().
+    std::shared_ptr<UltraCanvas::UltraCanvasStartPage> SeiteBauen(const std::string& hinweis,
+                                                                  const std::string& vorschlag,
+                                                                  const std::vector<std::string>& zuletzt = {});
 
     void Schliessen();
+    // The setup form as it stands, and why it cannot be submitted yet
+    // (empty when it can): what the greyed button's reason label says.
+    EinrichtungsDaten Daten() const;
+    std::string Grund() const;
+    // The form's fields, for a test that fills them.
+    const std::shared_ptr<UltraCanvas::UltraCanvasTextInput>& Firma() const { return firma_; }
+    const std::shared_ptr<UltraCanvas::UltraCanvasDatePicker>& Beginn() const { return beginn_; }
+    const std::shared_ptr<UltraCanvas::UltraCanvasButton>& AnlegenKnopf() const { return anlegenKnopf_; }
 
 private:
-    EinrichtungsDaten Daten() const;
     void Pruefen();      // live: enable "Anlegen" or say why not
     void Anlegen();
     void Oeffnen();
@@ -71,14 +96,13 @@ private:
     void Melden(const std::string& text, bool fehler);
 
     std::string vorschlag_;
-
     std::shared_ptr<UltraCanvas::UltraCanvasWindow>     fenster_;
+    std::shared_ptr<UltraCanvas::UltraCanvasStartPage>  seite_;   // the page: title, hint, recent, open, the form, status
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput>  firma_;
     std::shared_ptr<UltraCanvas::UltraCanvasDatePicker> beginn_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>   skr_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>      grund_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>     anlegenKnopf_;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel>      status_;
 };
 
 } // namespace UltraFIBU

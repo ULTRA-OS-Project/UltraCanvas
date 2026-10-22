@@ -307,6 +307,7 @@ jobs:
             ${{ matrix.msys_prefix }}-libheif
             ${{ matrix.msys_prefix }}-zbar
             ${{ matrix.msys_prefix }}-libsodium
+            ${{ matrix.msys_prefix }}-sqlite3
             ${{ matrix.msys_prefix }}-mupdf
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
@@ -859,6 +860,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_EMOJI_TESTS=ON \
             -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
@@ -897,6 +899,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
@@ -926,15 +929,23 @@ jobs:
       # reasonable for a contributor and neither is acceptable here, because a
       # skipped module takes its tests with it - which is how the multi-user
       # bug below could have shipped. So configure has to say it got both.
+      # SQLite on every row: the UltraFIBU engine suite runs on all three
+      # below, and a row without the library would drop it without a word.
+      - name: Verify UltraDatabase built with SQLite
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "UltraDatabase - ENABLED" configure.log; then
+            echo "::error::UltraDatabase was disabled during configure (libsqlite3 missing - libsqlite3-dev, the sqlite3 MSYS2 package, or vcpkg's sqlite3?)"
+            exit 1
+          fi
+          echo "UltraDatabase verified: SQLite"
+
       - name: Verify UltraDatabase built with PostgreSQL (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -eu
-          if ! grep -q "UltraDatabase - ENABLED" configure.log; then
-            echo "::error::UltraDatabase was disabled during configure (libsqlite3-dev missing?)"
-            exit 1
-          fi
           if ! grep -q "UltraDatabase - ENABLED.*PostgreSQL" configure.log; then
             echo "::error::UltraDatabase configured without PostgreSQL (libpq-dev missing?) - the multi-user tests would silently not run"
             exit 1
@@ -1333,6 +1344,20 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCloud$"
+
+      # The UltraPress engine and renderer, the UltraFIBU engine (the SQLite
+      # store, the invoice PDF, the DATEV and CAMT files) and start window,
+      # and the framework's start page and settings file all handle paths
+      # and the per-user settings folder, which each platform spells its own
+      # way (%APPDATA% and UTF-16 on Windows, Application Support on macOS).
+      # Linux runs them in the full pass below; here they run on the other
+      # two, so a path or locale difference is caught where it lives. Every
+      # one is headless. The multi-user UltraFIBU tests stay on Linux, where
+      # the PostgreSQL server is.
+      - name: Run UltraPress, UltraFIBU and start page tests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^(UltraPressEngine|UltraPressRender|UltraFIBUEngine|UltraFIBUStart|StartPageTest|AppSettingsTest)$"
 
       # Trusting a device's self-signed certificate on first use rests on
       # libcurl pinning a public key and handing back the server's

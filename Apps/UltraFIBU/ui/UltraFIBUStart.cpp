@@ -1,6 +1,10 @@
 // Apps/UltraFIBU/ui/UltraFIBUStart.cpp
 // The start window. See the header for why it asks so little.
 //
+// Version: 0.3.2 - the form's rows laid out by the page (AddField, AddNote, AddButton)
+// Version: 0.3.1 - SeiteBauen builds the page without a window
+// Version: 0.3.0 - on the framework's UltraCanvasStartPage
+// Version: 0.2.0 - the bookkeepings opened last, offered first
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUStart.h"
@@ -9,6 +13,9 @@
 #include "UltraCanvasModalDialog.h"   // FileFilter
 
 #include "UltraFIBUStore.h"   // DateiExistiert
+#include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
+
+#include <algorithm>
 
 // ULTRAFIBU_VERSION comes from the build alone: CMake reads the first line of
 // Docs/UltraFIBU/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it as a
@@ -28,9 +35,8 @@ constexpr int   kBreite = 560;
 // Tall enough that the calendar under the date field opens downward and
 // leaves the rest of the form visible.
 constexpr int   kHoehe  = 640;
-constexpr float kRand   = 24.0f;
-constexpr float kZeile  = 28.0f;
-constexpr float kLabelB = 190.0f;
+constexpr int   kZeile  = 28;    // a date picker's and a dropdown's own height
+constexpr int   kLabelB = 210;   // the captions' width: "Geschäftsjahr beginnt am" fits
 
 std::vector<FileFilter> BuchhaltungsFilter() {
     // The type spelled out: FileFilter also takes a single pattern string, and
@@ -42,55 +48,51 @@ std::vector<FileFilter> BuchhaltungsFilter() {
 } // namespace
 
 std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinweis,
-                                                       const std::string& vorschlag) {
-    vorschlag_ = vorschlag;
+                                                       const std::string& vorschlag,
+                                                       const std::vector<std::string>& zuletzt) {
+    SeiteBauen(hinweis, vorschlag, zuletzt);
 
     WindowConfig config;
     config.title  = "UltraFIBU " ULTRAFIBU_VERSION;
-    config.width  = kBreite;
-    config.height = kHoehe;
+    config.width  = seite_->Width();
+    // At least kHoehe: the calendar under the date field opens downward and
+    // needs the room under the form.
+    config.height = std::max(seite_->PreferredHeight(), kHoehe);
     fenster_ = CreateWindow(config);
+    fenster_->AddChild(seite_);
+    return fenster_;
+}
 
-    float y = kRand;
-    auto titel = CreateLabel("startTitel", kRand, y, kBreite - 2 * kRand, 30,
-                             "UltraFIBU - Buchhaltung");
-    titel->SetFontSize(18);
-    fenster_->AddChild(titel);
-    y += 36;
+std::shared_ptr<UltraCanvasStartPage> StartFenster::SeiteBauen(const std::string& hinweis,
+                                                               const std::string& vorschlag,
+                                                               const std::vector<std::string>& zuletzt) {
+    vorschlag_ = vorschlag;
 
-    // Why this window instead of a bookkeeping. Without it, a user who typed a
-    // path would not know whether it was wrong or simply new.
-    auto grundText = CreateLabel("startHinweis", kRand, y, kBreite - 2 * kRand, 40, hinweis);
-    grundText->SetWrap(TextWrap::WrapWord);
-    fenster_->AddChild(grundText);
-    y += 50;
+    // The framework's start page, with UltraFIBU's words: the title, why
+    // this window, the files opened last, the open button, then the setup
+    // form in a section of its own.
+    seite_ = std::make_shared<UltraCanvasStartPage>("start", kBreite);
+    seite_->SetTitle("UltraFIBU - Buchhaltung");
+    seite_->SetHint(hinweis);
+    seite_->SetRecent("Zuletzt geöffnet", zuletzt, [this](const std::string& pfad) {
+        if (DateiExistiert(pfad) && EnthaeltBuchhaltung(pfad)) {
+            Uebergeben(pfad);
+            return;
+        }
+        // Gone since, or emptied: said here, and dropped from the list.
+        Melden("\"" + pfad + "\" gibt es nicht mehr, oder es ist keine Buchhaltung mehr darin.", true);
+        if (onDateiVergessen) onDateiVergessen(pfad);
+    });
+    seite_->AddAction("Bestehende Buchhaltung öffnen ...", [this]() { Oeffnen(); });
 
-    // ---- open an existing one ----
-    auto oeffnenKnopf = CreateButton("startOeffnen", kRand, y, 300, kZeile,
-                                     "Bestehende Buchhaltung öffnen ...");
-    oeffnenKnopf->SetOnClick([this]() { Oeffnen(); });
-    fenster_->AddChild(oeffnenKnopf);
-    y += kZeile + 26;
-
-    // ---- set up a new one ----
-    auto neuTitel = CreateLabel("startNeuTitel", kRand, y, kBreite - 2 * kRand, 24,
-                                "Neue Buchhaltung anlegen");
-    neuTitel->SetFontSize(14);
-    fenster_->AddChild(neuTitel);
-    y += 32;
-
-    fenster_->AddChild(CreateLabel("startFirmaL", kRand, y, kLabelB, kZeile, "Firma"));
-    firma_ = CreateTextInput("startFirma", static_cast<int>(kRand + kLabelB), static_cast<int>(y),
-                             static_cast<int>(kBreite - 2 * kRand - kLabelB),
-                             static_cast<int>(kZeile));
+    // ---- set up a new one: the page lays the rows out ----
+    seite_->AddSection("Neue Buchhaltung anlegen");
+    firma_ = CreateTextInput("startFirma", 0, 0, 0, 0);
     firma_->SetPlaceholder("Name, wie er auf Rechnungen steht");
     firma_->onTextChanged = [this](const std::string&) { Pruefen(); };
-    fenster_->AddChild(firma_);
-    y += kZeile + 10;
+    seite_->AddField("Firma", firma_, kLabelB);
 
-    fenster_->AddChild(CreateLabel("startBeginnL", kRand, y, kLabelB, kZeile,
-                                   "Geschäftsjahr beginnt am"));
-    beginn_ = CreateDatePicker("startBeginn", kRand + kLabelB, y, 160, kZeile);
+    beginn_ = CreateDatePicker("startBeginn", 0, 0, 160, kZeile);
     beginn_->SetDateFormat("dd.MM.yyyy");
     beginn_->SetPlaceholder("TT.MM.JJJJ");
     beginn_->SetFirstDayOfWeek(1);   // the German week begins on Monday
@@ -102,45 +104,25 @@ std::shared_ptr<UltraCanvasWindow> StartFenster::Bauen(const std::string& hinwei
     // the wrong place, which cannot be put right once documents are booked.
     // The form says the date is missing until one is chosen.
     beginn_->onDateChanged = [this](const UCDate&) { Pruefen(); };
-    fenster_->AddChild(beginn_);
-    y += kZeile + 10;
+    seite_->AddField("Geschäftsjahr beginnt am", beginn_, kLabelB);
 
-    fenster_->AddChild(CreateLabel("startSkrL", kRand, y, kLabelB, kZeile, "Kontenrahmen"));
-    skr_ = CreateDropdown("startSkr", kRand + kLabelB, y, 260, kZeile);
+    skr_ = CreateDropdown("startSkr", 0, 0, 260, kZeile);
     skr_->AddItem("SKR03 - Prozessgliederung", "SKR03");
     skr_->AddItem("SKR04 - Abschlussgliederung", "SKR04");
     skr_->SetSelectedIndex(0, false);
     skr_->onSelectionChanged = [this](int, const DropdownItem&) { Pruefen(); };
-    fenster_->AddChild(skr_);
-    y += kZeile + 10;
+    seite_->AddField("Kontenrahmen", skr_, kLabelB);
 
-    auto spaeter = CreateLabel("startSpaeter", kRand, y, kBreite - 2 * kRand, 36,
-        "Anschrift, Steuernummer und Bankverbindung lassen sich später ergänzen - "
-        "sie werden erst für die erste gedruckte Rechnung gebraucht.");
-    spaeter->SetWrap(TextWrap::WrapWord);
-    spaeter->SetFontSize(11);
-    fenster_->AddChild(spaeter);
-    y += 44;
-
+    seite_->AddNote("Anschrift, Steuernummer und Bankverbindung lassen sich später ergänzen - "
+                    "sie werden erst für die erste gedruckte Rechnung gebraucht.", 52);   // three lines
     // The reason the button is greyed, next to it - never a greyed button with
     // no explanation.
-    grund_ = CreateLabel("startGrund", kRand, y, kBreite - 2 * kRand, 22, "");
-    grund_->SetFontSize(11);
-    fenster_->AddChild(grund_);
-    y += 26;
-
-    anlegenKnopf_ = CreateButton("startAnlegen", kRand, y, 300, kZeile,
-                                 "Anlegen und speichern unter ...");
-    anlegenKnopf_->SetOnClick([this]() { Anlegen(); });
-    fenster_->AddChild(anlegenKnopf_);
-    y += kZeile + 12;
-
-    status_ = CreateLabel("startStatus", kRand, y, kBreite - 2 * kRand, 40, "");
-    status_->SetWrap(TextWrap::WrapWord);
-    fenster_->AddChild(status_);
+    grund_ = seite_->AddNote("", 22);
+    anlegenKnopf_ = seite_->AddButton("Anlegen und speichern unter ...", [this]() { Anlegen(); }, 300);
+    seite_->AddStatusLine();
 
     Pruefen();
-    return fenster_;
+    return seite_;
 }
 
 void StartFenster::Schliessen() {
@@ -161,19 +143,21 @@ EinrichtungsDaten StartFenster::Daten() const {
     return daten;
 }
 
-void StartFenster::Pruefen() {
-    if (!anlegenKnopf_ || !grund_) return;
+std::string StartFenster::Grund() const {
     // The same check the setup runs, so the form can never allow what the
     // engine then refuses - and never refuse what it would allow.
-    const std::string grund = PruefeEinrichtung(Daten());
+    return PruefeEinrichtung(Daten());
+}
+
+void StartFenster::Pruefen() {
+    if (!anlegenKnopf_ || !grund_) return;
+    const std::string grund = Grund();
     anlegenKnopf_->SetDisabled(!grund.empty());
     grund_->SetText(grund);
 }
 
 void StartFenster::Melden(const std::string& text, bool fehler) {
-    if (!status_) return;
-    status_->SetText(text);
-    status_->SetTextColor(fehler ? Color(176, 32, 32) : Color(40, 40, 40));
+    if (seite_) seite_->Say(text, fehler);
 }
 
 void StartFenster::Anlegen() {

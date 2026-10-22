@@ -1,6 +1,10 @@
 // include/UltraCanvasTimer.h
 // Cross-platform timer system for UltraCanvas Framework
 // Supports one-shot and periodic timers with callback or event-based firing
+// Version: 1.0.0 - the timer record UltraCanvasApplication::StartTimer keeps: one-shot or
+//                  periodic, fired on the main thread to a callback or as a Timer event
+//                  (UCEvent, userDataInt = the id); StopTimer ends it. The behaviour is the
+//                  application's (UltraCanvasApplication.h carries that history).
 #pragma once
 
 #ifndef ULTRACANVAS_TIMER_H

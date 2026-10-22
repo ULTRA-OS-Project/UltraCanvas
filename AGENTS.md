@@ -393,6 +393,13 @@ about a window under Xvfb catch people out:
   claimed. A text input shows its caret only while nothing is selected, so
   measure the caret before making a selection.
 
+A program's start-up and shut-down under Xvfb need no X client to send the
+close: `ULTRACANVAS_CLOSE_AFTER_MS=2000 xvfb-run -a ./build/bin/ultrapress`
+opens the window, runs two seconds, closes it the way the window manager's
+close button would (`onWindowClosing` may refuse, `onWindowClosed` runs, the
+settings are written) and ends. `UltraCanvasApplication::CloseAllWindows()`
+is the same from inside a test.
+
 `TextMetricsScreenshotTest` doubles as the screenshot fixture for the
 text-metrics and crisp-border rules: with `ULTRACANVAS_SCREENSHOT_DIR=<dir>` it
 writes the window as PPM files (the caret, a selection, the popup menu) that
@@ -549,6 +556,11 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraVideo/CHANGELOG.md` | UltraVideo — the video editor |
 | `Docs/UltraWeb/CHANGELOG.md` | UltraWeb — the browser for WebAssembly apps |
 | `Docs/UltraPress/CHANGELOG.md` | UltraPress — the website and shop builder that publishes WebAssembly |
+
+A framework header carries its own history in its head - `// Version: x.y.z -
+what changed` lines, newest first - so a reader sees what moved without the
+changelog; `scripts/check_version_history.py` lists the headers under
+`UltraCanvas/include` that have none.
 
 Format: `#### YYYY-MM-DD *x.y.z*`. **You do not write that line at all, for
 the framework or for an application**: drop your bullets in a new file in the

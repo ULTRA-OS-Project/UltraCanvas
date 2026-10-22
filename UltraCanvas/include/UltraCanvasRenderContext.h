@@ -1,5 +1,7 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.10.0 - CreateTextLayout counts the layouts it made (TextLayoutsCreated) and calls the
+//                   backend's MakeTextLayout; FontStyle compares equal
 // Version: 2.9.0 - CompositeToSurfaceWithOpacity: an alpha-blended composite at an
 //                  opacity (popups with rounded corners and a drop shadow fade in with it)
 // Version: 2.8.1 - default bodies mark unused parameters (void): no -Wunused-parameter
@@ -167,6 +169,7 @@ namespace UltraCanvas {
         FontSlant fontSlant = FontSlant::Normal;
 
         std::string ToFontDesc();
+        bool operator==(const FontStyle&) const = default;
     };
 
     struct TextStyle {
@@ -496,11 +499,17 @@ namespace UltraCanvas {
         virtual void SetLineDash(const UCDashPattern& pattern) = 0;
 
         // === Text Methods ===
-        virtual std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup) = 0;
-        // Defined out-of-line below, after ITextLayout is a complete type. An
-        // inline body here instantiates ~unique_ptr<ITextLayout> against the
-        // still-incomplete forward declaration, which Clang (unlike GCC) rejects.
+        // A new layout for `text`, counted (TextLayoutsCreated) - the backend
+        // makes it in MakeTextLayout. Defined out-of-line below, after
+        // ITextLayout is a complete type. An inline body here instantiates
+        // ~unique_ptr<ITextLayout> against the still-incomplete forward
+        // declaration, which Clang (unlike GCC) rejects.
+        std::unique_ptr<ITextLayout> CreateTextLayout(const std::string& text, bool isMarkup);
         std::unique_ptr<ITextLayout> CreateTextLayout();
+        // How many layouts CreateTextLayout made on this context: a test's
+        // measure of an element's layout cache (UltraCanvasTextLayoutCache) -
+        // "ten draws, one layout".
+        unsigned long TextLayoutsCreated() const { return textLayoutsCreated; }
         virtual std::shared_ptr<ITextLayout> GetOrCreateTextLayout(const std::string& text, const Size2Di& sz, bool isMarkup) = 0;
 
         virtual void DrawTextLayout(ITextLayout &layout, const Point2Dd &pos) = 0;
@@ -662,7 +671,12 @@ namespace UltraCanvas {
         // lands exactly on the rectangle's edge, on whole pixels, and the
         // outline stays inside the bounds it was given. The centre does not
         // move, so anything centred in the rectangle stays centred.
+    protected:
+        // The backend's layout for `text`; CreateTextLayout counts and calls it.
+        virtual std::unique_ptr<ITextLayout> MakeTextLayout(const std::string& text, bool isMarkup) = 0;
+
     private:
+        unsigned long textLayoutsCreated = 0;
         // GetCapCentreOffset's per-font results for this context. Per context,
         // not process-wide: two contexts can measure the same font differently
         // (device scale, font options), and InvalidateFontMetricsCache clears
@@ -1119,6 +1133,12 @@ namespace UltraCanvas {
     };
 
     // Out-of-line so ~unique_ptr<ITextLayout> is instantiated against the now-complete type.
+    inline std::unique_ptr<ITextLayout> IRenderContext::CreateTextLayout(const std::string& text, bool isMarkup)
+    {
+        ++textLayoutsCreated;
+        return MakeTextLayout(text, isMarkup);
+    }
+
     inline std::unique_ptr<ITextLayout> IRenderContext::CreateTextLayout()
     {
         return CreateTextLayout("", false);

@@ -896,7 +896,7 @@ namespace UltraCanvas {
     }
 
     // ===== TEXT RENDERING =====
-    std::unique_ptr<ITextLayout> RenderContextCairo::CreateTextLayout(const std::string& text, bool isMarkup) {
+    std::unique_ptr<ITextLayout> RenderContextCairo::MakeTextLayout(const std::string& text, bool isMarkup) {
         auto ctx = std::make_unique<UCTextLayout>(pangoContext);
         if (!text.empty()) {
             if (isMarkup) {

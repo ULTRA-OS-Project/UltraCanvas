@@ -1,5 +1,6 @@
 // Apps/UltraPress/engine/UltraPressBlocks.cpp
 // The built-in block types and the site validator.
+// Version: 0.8.0 - ValidateSite: the site's url has to be an address (IsSiteAddress)
 // Version: 0.1.0
 // Last Modified: 2026-10-13
 // Author: UltraCanvas Framework / ULTRA OS
@@ -212,6 +213,7 @@ const BlockRegistry& BlockRegistry::BuiltIn() {
 std::vector<ValidationIssue> ValidateSite(const Site& site, const BlockRegistry& registry) {
     std::vector<ValidationIssue> issues;
     if (site.url.empty()) issues.push_back({"", "site", "no url"});
+    else if (!IsSiteAddress(site.url)) issues.push_back({"", "site", "url is not an address (https://host, no trailing slash): " + site.url});
     std::set<std::string> slugs;
     for (const Page& page : site.pages) {
         if (page.slug.empty()) issues.push_back({page.slug, "page", "a page without a slug"});

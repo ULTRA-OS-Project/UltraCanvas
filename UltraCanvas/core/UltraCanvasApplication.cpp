@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.13.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS closes every window after that long
 // Version: 1.12.0 - GenerateFontAliasConfig: the generic family aliases alone, for a
 //                  config the generated fonts.conf did not make (Windows' inline one)
 // Version: 1.11.1 - the generated fonts.conf aliases "emoji" (Pango's family for an emoji
@@ -1037,6 +1038,14 @@ namespace UltraCanvas {
         RunInEventLoop();
     }
 
+    void UltraCanvasApplicationBase::CloseAllWindows() {
+        // A copy: a window that closes takes itself out of `windows`.
+        const std::vector<std::shared_ptr<UltraCanvasWindowBase>> open = windows;
+        for (const auto& window : open) {
+            if (window) window->Close();
+        }
+    }
+
     void UltraCanvasApplicationBase::Run() {
         debugOutput << "UltraCanvasBaseApplication::Run Starting app" << std::endl;
         if (!initialized) {
@@ -1048,6 +1057,19 @@ namespace UltraCanvas {
 
         // Start the event processing thread
         RunBeforeMainLoop();
+
+        // A test that starts the program and must see it end: after this
+        // many milliseconds every window is asked to close, the way the
+        // window manager would ask, so the application's own close path
+        // runs (the size saved, the settings written) and Run returns.
+        if (const char* closeAfter = std::getenv("ULTRACANVAS_CLOSE_AFTER_MS")) {
+            const long ms = std::strtol(closeAfter, nullptr, 10);   // locale-ok: digits only
+            if (ms > 0) {
+                debugOutput << "UltraCanvas: ULTRACANVAS_CLOSE_AFTER_MS=" << ms
+                            << " - every window closes after that" << std::endl;
+                StartTimer(static_cast<unsigned int>(ms), false, [this](TimerId) { CloseAllWindows(); });
+            }
+        }
 
         debugOutput << "UltraCanvas: Starting main loop..." << std::endl;
         try {
