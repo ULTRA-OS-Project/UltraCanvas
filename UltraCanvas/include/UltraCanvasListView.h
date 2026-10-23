@@ -1,5 +1,9 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Version: 1.7.0 - a horizontal scrollbar when the columns are wider than the
+//                  view: the header and the rows scroll sideways together,
+//                  Shift+wheel and the Left / Right keys move them,
+//                  ScrollToColumn / EnsureColumnVisible from code
 // Version: 1.6.0 - onCellDoubleClicked: the cell a double-click hit; GetCellRect: where a
 //                  cell is, for an editor laid over it
 // Version: 1.5.0 - onKeyDown: a key reaches the owner first (a dropdown's
@@ -14,7 +18,7 @@
 //                  subclasses, instead of wrapping those callbacks
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth: what fitting a
 //                  column to its title and its rows' text takes
-// Last Modified: 2026-10-22
+// Last Modified: 2026-10-23
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -161,20 +165,30 @@ namespace UltraCanvas {
         // a row from a decoded thumbnail).
         void InvalidateRowHeights();
 
-        // What the vertical scrollbar is computed from, as of now: the rows
-        // and their total height, the viewport the rows get, the resulting
-        // range, and where the scrollbar sits (element-local) and whether it
-        // shows. For diagnostics and tests; every value is what UpdateScrollbar
+        // What the scrollbars are computed from, as of now: the rows and
+        // their total height, the columns and their total width, the viewport
+        // the rows get (less whichever scrollbar shows), the resulting ranges,
+        // and where each scrollbar sits (element-local) and whether it shows.
+        // For diagnostics and tests; every value is what UpdateScrollbar
         // would use if it ran at this moment.
         struct ScrollMetrics {
             int     rows = 0;
             int     rowHeight = 0;         // uniform rows; 0 when the delegate sizes them
             int     contentHeight = 0;     // every row
-            int     viewportHeight = 0;    // the rows area, header excluded
+            int     viewportHeight = 0;    // the rows area: header and horizontal scrollbar excluded
             int     maxScroll = 0;         // contentHeight - viewportHeight, floored at 0
             int     scrollOffset = 0;
             bool    scrollbarVisible = false;
             Rect2Di scrollbarBounds;
+            // Sideways: the columns' total width (0 in single-column mode,
+            // where the row is as wide as the view), the width the rows get
+            // beside the vertical scrollbar, and the horizontal scrollbar.
+            int     contentWidth = 0;
+            int     viewportWidth = 0;
+            int     maxScrollX = 0;        // contentWidth - viewportWidth, floored at 0
+            int     scrollOffsetX = 0;
+            bool    horizontalScrollbarVisible = false;
+            Rect2Di horizontalScrollbarBounds;
             float   width = 0;             // the element's bounds
             float   height = 0;
         };
@@ -238,6 +252,18 @@ namespace UltraCanvas {
         // it into view, as the arrow keys do; Return then activates it.
         void SetFocusedRow(int row);
 
+        // Sideways (multi-column). The columns scroll under the header and the
+        // rows together when they are wider than the view: a horizontal
+        // scrollbar below the rows, Shift+wheel, and the Left / Right keys
+        // (a step each; the view consumes them, so a focused table never
+        // switches the tab around it). ScrollToColumn puts `column`'s left
+        // edge at the view's left; EnsureColumnVisible scrolls only as far as
+        // it takes to show the whole column, or its left edge when it is wider
+        // than the view. GetHorizontalScrollOffset is the pixels scrolled.
+        void ScrollToColumn(int column);
+        void EnsureColumnVisible(int column);
+        int  GetHorizontalScrollOffset() const { return scrollOffsetX; }
+
         // === Hit testing ===
         // Column under an element-local x coordinate (-1 if outside the rows
         // viewport). columnStartX receives the column's element-local left edge.
@@ -299,10 +325,31 @@ namespace UltraCanvas {
         ListViewStyle viewStyle;
         bool acceptsFocus = true;
 
-        // Scrollbar
+        // Scrollbars. The vertical one takes the right edge of the rows area,
+        // the horizontal one its bottom edge; each is shown only while there
+        // is something to scroll in its direction, and when both show, each
+        // stops short of the other's track.
         std::shared_ptr<UltraCanvasScrollbar> verticalScrollbar;
+        std::shared_ptr<UltraCanvasScrollbar> horizontalScrollbar;
         int scrollOffsetY = 0;
         int maxScrollY = 0;
+        int scrollOffsetX = 0;
+        int maxScrollX = 0;
+
+        // The scrollbars' geometry, worked out together from the rows, the
+        // columns and the bounds: whether each shows, its range, its bounds
+        // (element-local) and the viewport the rows keep beside them.
+        struct ScrollLayout {
+            bool    showVertical = false;
+            bool    showHorizontal = false;
+            int     maxY = 0;
+            int     maxX = 0;
+            int     viewportWidth = 0;
+            int     viewportHeight = 0;
+            Rect2Di verticalBounds;
+            Rect2Di horizontalBounds;
+        };
+        ScrollLayout ComputeScrollLayout() const;
 
         // Variable row heights. When useVariableRowHeights is set the per-row
         // height is taken from the delegate; otherwise every row is
@@ -367,12 +414,25 @@ namespace UltraCanvas {
         void CreateScrollbar();
         void UpdateScrollbar();
         void SyncScrollbarBeforePaint();
-        void HideScrollbar();
+        void HideScrollbar(UltraCanvasScrollbar& scrollbar);
         void ClampScrollOffset();
+        // The scrollbar under `event.pointer`, or the one being dragged, takes
+        // the event; true when it did.
+        bool DispatchToScrollbar(UltraCanvasScrollbar& scrollbar, const UCEvent& event);
+        // A scrollbar moved to `position`: `offset` (scrollOffsetY or
+        // scrollOffsetX) follows it, and so does the hover, when the rows or
+        // the columns moved under a still pointer.
+        void HandleScrollbarMoved(int& offset, int position);
 
         // Geometry
         int GetTotalContentHeight() const;
         int GetHeaderOffset() const;
+        // The columns' total width (multi-column); 0 in single-column mode,
+        // where the one column is as wide as the viewport.
+        int ColumnsContentWidth() const;
+        // Where column 0 starts, element-local, as scrolled now: the viewport's
+        // left edge less the horizontal scroll.
+        int ColumnsStartX() const;
         Rect2Di GetViewportRect() const;
         int GetRowAtY(int y) const;
         Rect2Di GetRowRect(int row) const;
@@ -416,6 +476,8 @@ namespace UltraCanvas {
         void NavigatePageDown();
         void NavigateHome();
         void NavigateEnd();
+        // The Left / Right keys: the columns move by this many pixels.
+        void ScrollHorizontallyBy(int delta);
 
         // Model connection. The callbacks put on the model hold a weak handle
         // to signalToken and do nothing once it is gone: the model can outlive

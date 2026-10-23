@@ -3,11 +3,12 @@
 // machine as a tree on the left - the computer at the root, one branch per
 // group (category, connection or backend, as the toolbar chooses), a row per
 // device - and everything known about the selected row on the right, in
-// titled sections.
+// titled sections. While a scan runs, a sliding bar under the tree says so.
 //
 // Nothing is painted by hand: an UltraCanvasTreeView for the tree, an
 // UltraCanvasColumnsTreeView with section bars for the details, both in an
-// UltraCanvasSplitPane, and a toolbar of framework elements above them.
+// UltraCanvasSplitPane, an UltraCanvasBusyIndicator (Bar) under the tree while
+// a scan runs, and a toolbar of framework elements above them.
 //
 // A scan enumerates every backend, and SANE or CUPS can take seconds to
 // answer, so it runs on a worker thread and parks its result in one slot a
@@ -27,6 +28,7 @@
 #include "DeviceExplorerModel.h"
 #include "DeviceExplorerPrinterQuery.h"
 
+#include "UltraCanvasBusyIndicator.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasColumnsTreeView.h"
 #include "UltraCanvasContainer.h"
@@ -63,6 +65,7 @@ private:
     void LayoutForSize(float width, float height);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolbar();
     std::shared_ptr<UltraCanvas::UltraCanvasTreeView> BuildDeviceTree();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildScanRow();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildDetailsPane();
 
     // ===== DATA FLOW =====
@@ -70,6 +73,7 @@ private:
     void JoinScan();
     void OnTimer();                     // UI thread
     void ApplyInventory(DeviceInventory inventory);
+    void ShowScanning(bool scanning);   // the bar under the tree
 
     // ===== PRINTER STATUS =====
     void RequestPrinterStatus(const std::string& deviceId);   // UI thread
@@ -99,6 +103,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasSplitPane> split_;
     std::shared_ptr<UltraCanvas::UltraCanvasTreeView> deviceTree_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> scanRow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasBusyIndicator> scanBar_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> detailTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> detailSubtitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasColumnsTreeView> detailView_;

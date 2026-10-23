@@ -1,5 +1,7 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
+// Version: 1.5.0 - style.iconAsMask tints the icon with the text colour; an icon and a
+//                 centred caption are centred as one
 // Version: 1.4.0 - SetSegmentTextColor: a segment's own text colour while unselected
 // Version: 1.3.1 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.3.0
@@ -352,12 +354,30 @@ namespace UltraCanvas {
         // Render icon if present. Alone in its segment it sits in the middle:
         // the segment is seldom exactly icon + padding wide (equal widths share
         // out the control), so the left padding would push it off centre.
+        // Beside a centred caption the two are centred as one, rather than the
+        // icon at the left edge and the text in the middle of what remains.
+        ITextLayout* centredText = nullptr;
+        if (segment.HasIcon() && segment.HasText() && segment.alignment == TextAlignment::Center) {
+            centredText = GetOrCreateTextLayout(ctx, segment);
+            if (centredText->GetExplicitWidth() >= 0) centredText->SetExplicitWidth(-1);
+            const double textW = centredText->GetLayoutSize().width;
+            const double groupW = style.iconSize + style.iconSpacing + textW;
+            contentX = static_cast<int>(std::round(rect.x + std::max(0.0, (rect.width - groupW) / 2.0)));
+        }
         if (segment.HasIcon()) {
             int iconX = segment.HasText() ? contentX
                                           : rect.x + (rect.width - style.iconSize) / 2;
             int iconY = contentY - style.iconSize / 2;
-            ctx->DrawImage(segment.iconPath, Rect2Dd(iconX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
+            const Rect2Dd iconRect(iconX, iconY, style.iconSize, style.iconSize);
+            if (style.iconAsMask) ctx->DrawMask(textColor, segment.iconPath, iconRect, ImageFitMode::Contain);
+            else ctx->DrawImage(segment.iconPath, iconRect, ImageFitMode::Contain);
             contentX += style.iconSize + style.iconSpacing;
+        }
+        if (centredText) {
+            centredText->ChangeAttribute(TextAttributeFactory::CreateForeground(textColor));
+            const auto textSize = centredText->GetLayoutSize();
+            ctx->DrawTextLayout(*centredText, Point2Dd(contentX, contentY - textSize.height / 2));
+            return;
         }
 
         // Render text

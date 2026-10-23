@@ -1,3 +1,41 @@
+#### 2026-10-23 *0.9.389*
+- **List view: a horizontal scrollbar when the columns are wider than the
+  view.** A multi-column `UltraCanvasListView` whose columns did not fit cut
+  the rightmost ones off with no way to reach them (UltraDBAdmin's browse
+  grid on a wide table). Now a horizontal scrollbar shows along the bottom,
+  the header and the cells scroll sideways together, Shift+wheel moves them,
+  and when both scrollbars show each stops short of the other's track.
+  `ScrollToColumn` / `EnsureColumnVisible` / `GetHorizontalScrollOffset` do
+  it from code; `GetCellRect`, `GetColumnAt` and `GetHeaderColumnAt` account
+  for the scroll; `ScrollMetrics` gains the sideways figures.
+  - **The Left / Right keys scroll the columns, and stay with the view.**
+    They bubbled up unhandled, so in a table inside a tabbed container they
+    switched the tab instead of moving the table. The view now takes them,
+    whether or not the columns fit.
+
+#### 2026-10-23 *0.9.388*
+- **`UltraCanvasSegmentedControl` tints line icons and centres an icon with
+  its caption.** `SegmentedControlStyle::iconAsMask` draws each segment's
+  icon as a mask in that segment's text colour, so a one-colour icon turns
+  white on the selected segment with its caption instead of staying dark on
+  the blue. An icon beside a centred caption is centred together with it;
+  it used to sit at the segment's left edge with the text centred in what
+  was left. ArtCreator's Scale / Rotate switch is the first user.
+
+#### 2026-10-23 *0.9.387*
+- **Converting a CorelDRAW file to SVG no longer risks the SVG already
+  there.** `UltraCanvasCDRPlugin::ExportToSVG` truncated each target page
+  file before writing it, so a conversion that failed partway - a full disk,
+  a network share that went away - left an empty or cut-short file in place
+  of the one it replaced. Each page is now written through
+  `WriteFileAtomically`: beside the target first, moved over it only once
+  complete; a failure leaves the old file and no temporary one behind. The
+  error says why (`FileWriteFailureReason`: the folder does not exist, the
+  file is read-only, access is denied, the disk is full, or the system's
+  error) instead of only "Cannot write file: <path>". `CDRPluginRenderTest`
+  covers exporting over a file and into a missing folder. The EPS plugin was
+  checked too: it only reads, so it has nothing to change.
+
 #### 2026-10-22 *0.9.386*
 - **List view: which cell a double-click hit, and where a cell is.**
   `onCellDoubleClicked(row, column, posInCell)` follows `onItemDoubleClicked`
