@@ -119,7 +119,8 @@ UltraNetMailOptions SessionOptionsFor(const UltraMail::Account& account,
                                       const std::string& password);
 
 // Download what EmailCleaner analyses for one account into its own cache: the
-// folder list, then the inbox and — when the server has one — the junk folder,
+// folder list, then the inbox and — when the server has them — the junk and
+// the sent folder,
 // envelopes and bodies, incrementally (only UIDs above the highest stored).
 // Blocking on the network; run it off the UI thread.
 UltraMail::SyncOutcome FetchMailbox(UltraMail::LocalStore& store,

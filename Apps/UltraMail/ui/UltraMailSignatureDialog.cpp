@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailSignatureDialog.cpp
+// Version: 0.2.1 - the editor shows no missing-fonts notice, as in the composer
 // Version: 0.2.0 - the formatting tools moved to UltraMailFormatBar (shared with
 //                  the compose window)
 // Version: 0.1.0
@@ -233,6 +234,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
         style.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the composer
         rich->SetStyle(style);
     }
+    rich->SetShowFontNotice(false);   // as the composer
     rich->SetDocument(SignatureDocument(current.html));
     htmlPane->AddChild(rich);
     rich->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);

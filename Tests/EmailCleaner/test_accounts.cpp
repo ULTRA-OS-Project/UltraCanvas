@@ -308,7 +308,7 @@ TEST(Accounts_SaveListAndRemove) {
     REQUIRE(!accounts.Find(account.accountId, found));
 }
 
-TEST(Accounts_FetchMailboxCachesInboxAndJunkForTheIngest) {
+TEST(Accounts_FetchMailboxCachesInboxJunkAndSentForTheIngest) {
     TempDir dir;
     OwnAccounts accounts;
     REQUIRE(accounts.Open(dir.path, "ec_own_" + std::to_string(NextId())));
@@ -321,14 +321,18 @@ TEST(Accounts_FetchMailboxCachesInboxAndJunkForTheIngest) {
     mailbox.messages["INBOX"][1] = RawMessage("one");
     mailbox.messages["INBOX"][2] = RawMessage("two");
     mailbox.messages["Spam"][7]  = RawMessage("seven");
-    mailbox.messages["Sent"][3]  = RawMessage("not-fetched");
+    mailbox.messages["Sent"][3]  = RawMessage("sent");
+    mailbox.folders.push_back(MailFolder("Archive", "archive"));
+    mailbox.messages["Archive"][4] = RawMessage("not-fetched");
 
     const UltraNetMailOptions options = SessionOptionsFor(account, "app-password");
     UltraMail::SyncOutcome outcome = FetchMailbox(accounts.Store(), mailbox,
                                                   accounts.MailCacheDir(), account, options);
     REQUIRE(outcome.ok);
-    REQUIRE_EQ(outcome.stats.messages, 3);
-    REQUIRE_EQ(outcome.stats.bodies, 3);
+    // The inbox, the junk folder and - for the contacts review - the Sent
+    // folder; nothing else.
+    REQUIRE_EQ(outcome.stats.messages, 4);
+    REQUIRE_EQ(outcome.stats.bodies, 4);
     REQUIRE_EQ(mailbox.lastUsername, std::string("erika@example.com"));
     REQUIRE_EQ(mailbox.lastPassword, std::string("app-password"));
 
@@ -338,9 +342,11 @@ TEST(Accounts_FetchMailboxCachesInboxAndJunkForTheIngest) {
     Ingestor ingestor(store);
     IngestOptions ingest;
     ingest.ownerAddress = account.email;
+    ingest.sentByName   = true;
     const IngestStats stats =
         ingestor.IngestMailCache(accounts.MailCacheDir(), account.accountId, ingest);
     REQUIRE_EQ(stats.analysed, 3);
+    REQUIRE_EQ(stats.sent, 1);
 
     // A second fetch is incremental: nothing new, nothing re-downloaded.
     outcome = FetchMailbox(accounts.Store(), mailbox, accounts.MailCacheDir(), account, options);
