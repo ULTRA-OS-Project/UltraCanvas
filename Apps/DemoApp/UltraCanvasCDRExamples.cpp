@@ -1,13 +1,17 @@
 // Apps/DemoApp/UltraCanvasCDRExamples.cpp
 // CDR vector graphics demo examples for UltraCanvas Framework
+// Version: 1.4.0 - the shared page look (UltraCanvasDemoPageKit): each drawing
+//                  in a card with its controls in a row, the two panels as
+//                  cards, the status line at the bottom sized to its text
 // Version: 1.3.0 - Save as XAR works: the Vector plugin's CDRConverter reads
 //                  the drawing into its document model and XARConverter
 //                  writes that (the CDR plugin alone cannot reach either)
 // Version: 1.2.1
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -119,41 +123,25 @@ namespace UltraCanvas {
 
 // ===== CDR VECTOR EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateCDRVectorExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("CDRExamples", 0, 0, 1000, 780);
-        container->SetBackgroundColor(Color(245, 245, 245, 255));
+        auto page = DemoKit::CreatePage("CDRExamples",
+                "CorelDRAW CDR Graphics Demo - Click to Open in the Media Viewer",
+                "Click on CDR images to open them in the media viewer. Use navigation buttons for multi-page files.\n\"Save as\" exports the shown page to SVG (XAR listed, writer not finished yet). Supports CDR, CMX, CCX, CDT.");
 
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("CDRTitle", 10, 10, 600, 30);
-        title->SetText("CorelDRAW CDR Graphics Demo - Click to Open in the Media Viewer");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        // Description
-        auto description = std::make_shared<UltraCanvasLabel>("CDRDescription", 10, 45, 700, 40);
-        description->SetText("Click on CDR images to open them in the media viewer. Use navigation buttons for multi-page files.\n\"Save as\" exports the shown page to SVG (XAR listed, writer not finished yet). Supports CDR, CMX, CCX, CDT.");
-        description->SetFontSize(12);
-        description->SetTextColor(Color(80, 80, 80, 255));
-        container->AddChild(description);
-
-        // Status label for feedback
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("CDRStatus", 10, 700, 980, 60);
-        statusLabel->SetText("Ready. Click on a CDR file to view.");
+        // Status label for feedback; the tiles write to it while they load,
+        // and it goes in at the bottom of the page.
+        auto statusLabel = DemoKit::CreateText("CDRStatus", "Ready. Click on a CDR file to view.");
         statusLabel->SetFontSize(11);
-        statusLabel->SetTextColor(Color(60, 60, 60, 255));
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
-        container->AddChild(statusLabel);
+        statusLabel->SetPadding(6);
 
         // One tile per sample drawing in media/vector/CDR/. Each carries the
         // controls the element exposes: page navigation for multi-page
         // documents, zoom / fit, and "Save as" for the shown page.
-        auto makeTile = [&](const std::string& id, int x, int y,
-                            const std::string& fileName) {
-            auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 300, 300);
-            tile->SetBackgroundColor(Colors::White);
-            tile->SetBorders(2, Color(180, 180, 180, 255));
+        auto tiles = DemoKit::AddRow(page, "CDRTiles");
+        auto makeTile = [&](const std::string& id, const std::string& fileName) {
+            auto tile = DemoKit::AddCard(tiles, id);
 
-            auto element = std::make_shared<UltraCanvasCDRElement>(id + "El", 10, 10, 280, 220);
+            auto element = std::make_shared<UltraCanvasCDRElement>(id + "El", 0, 0, 280, 220);
             element->SetFitMode(CDRFitMode::FitPage);
 
             std::string path = NormalizePath(GetResourcesDir() + "media/vector/CDR/" + fileName);
@@ -163,30 +151,28 @@ namespace UltraCanvas {
             } else {
                 statusLabel->SetText("Failed to load " + path);
             }
+            DemoKit::AddFixed(tile, element);
 
-            auto nameLabel = std::make_shared<UltraCanvasLabel>(id + "Name", 10, 234, 280, 22);
-            nameLabel->SetText(fileName);
-            nameLabel->SetAlignment(TextAlignment::Center);
+            auto nameLabel = DemoKit::AddText(tile, id + "Name", fileName);
             nameLabel->SetFontSize(11);
-            tile->AddChild(nameLabel);
 
-            auto makeButton = [&](const std::string& suffix, int bx, int bw,
+            auto controls = DemoKit::AddRow(tile, id + "Controls", 4);
+            auto makeButton = [&](const std::string& suffix, int bw,
                                   const std::string& text, std::function<void()> action) -> UltraCanvasButton& {
-                auto btn = std::make_shared<UltraCanvasButton>(id + suffix, bx, 260, bw, 26);
+                auto btn = std::make_shared<UltraCanvasButton>(id + suffix, 0, 0, bw, 26);
                 btn->SetText(text);
                 btn->SetFontSize(9);
                 btn->onClick = std::move(action);
-                tile->AddChild(btn);
+                DemoKit::Add(controls, btn);
                 return *btn;
             };
 
             // Page navigation. The label doubles as the page indicator.
-            auto pageLabel = std::make_shared<UltraCanvasLabel>(id + "Page", 40, 260, 58, 26);
-            pageLabel->SetAlignment(TextAlignment::Center);
-            pageLabel->SetFontSize(10);
-            pageLabel->SetText(element->IsLoaded()
+            auto pageLabel = DemoKit::CreateCaption(id + "Page", element->IsLoaded()
                                        ? "1/" + std::to_string(element->GetPageCount())
                                        : "-/-");
+            pageLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+            pageLabel->SetTextColor(DemoKit::BodyText());
             element->onPageChanged = [pageLabel, element = element.get()](int page) {
                 pageLabel->SetText(std::to_string(page + 1) + "/" +
                                    std::to_string(element->GetPageCount()));
@@ -194,15 +180,15 @@ namespace UltraCanvas {
 
             // The page arrows are icons, not "◀" / "▶" glyphs, which the
             // bundled UI font does not have.
-            UltraCanvasButton& prev = makeButton("Prev", 10, 26, "", [element]() {
+            UltraCanvasButton& prev = makeButton("Prev", 26, "", [element]() {
                 if (element->IsLoaded() && element->GetCurrentPage() > 0) {
                     element->SetCurrentPage(element->GetCurrentPage() - 1);
                 }
             });
             SetFlatButtonIcon(prev, "menu/chevron-left.svg", ButtonIconPosition::Center, 14);
             prev.SetTooltip("Previous page");
-            tile->AddChild(pageLabel);
-            UltraCanvasButton& next = makeButton("Next", 102, 26, "", [element]() {
+            DemoKit::Add(controls, pageLabel);
+            UltraCanvasButton& next = makeButton("Next", 26, "", [element]() {
                 if (element->IsLoaded() &&
                     element->GetCurrentPage() < element->GetPageCount() - 1) {
                     element->SetCurrentPage(element->GetCurrentPage() + 1);
@@ -212,21 +198,23 @@ namespace UltraCanvas {
             next.SetTooltip("Next page");
 
             // Zoom / fit.
-            makeButton("ZoomOut", 134, 26, "\xE2\x88\x92", [element]() {  // U+2212
+            makeButton("ZoomOut", 26, "\xE2\x88\x92", [element]() {  // U+2212
                 element->SetFitMode(CDRFitMode::FitNone);
                 element->SetZoom(element->GetZoom() / 1.25f);
             });
-            makeButton("ZoomIn", 164, 26, "+", [element]() {
+            makeButton("ZoomIn", 26, "+", [element]() {
                 element->SetFitMode(CDRFitMode::FitNone);
                 element->SetZoom(element->GetZoom() * 1.25f);
             });
-            makeButton("Fit", 194, 34, "Fit", [element]() {
+            makeButton("Fit", 34, "Fit", [element]() {
                 element->SetFitMode(CDRFitMode::FitPage);
             });
 
-            tile->AddChild(MakeCDRSaveAsButton(id + "Save", 232, 260, 58, 26,
-                                               element, path, statusLabel));
+            DemoKit::Add(controls, MakeCDRSaveAsButton(id + "Save", 0, 0, 58, 26,
+                                                       element, path, statusLabel));
 
+            // Hovering the drawing highlights its card; leaving gives the
+            // card its own border back.
             element->SetMouseCursor(UCMouseCursor::Hand);
             element->SetEventCallback([tile = tile.get(), statusLabel, path](const UCEvent& event) {
                 switch (event.type) {
@@ -238,88 +226,56 @@ namespace UltraCanvas {
                         tile->SetBordersColor(Color(0, 122, 204, 255));
                         return true;
                     case UCEventType::MouseLeave:
-                        tile->SetBordersColor(Color(180, 180, 180, 255));
+                        tile->SetBordersColor(DemoKit::CardBorder());
                         return true;
                     default:
                         return false;
                 }
             });
-
-            tile->AddChild(element);
-            container->AddChild(tile);
         };
 
         // Every .cdr file shipped under media/vector/CDR. No .cmx / .ccx / .cdt
         // sample ships yet, though the plugin reads those too.
-        makeTile("CDRContainer1", 20, 95, "detailed.cdr");
-        makeTile("CDRContainer2", 340, 95, "door-panel.cdr");
-        makeTile("CDRContainer3", 660, 95, "dubai-atlantis.cdr");
+        makeTile("CDRContainer1", "detailed.cdr");
+        makeTile("CDRContainer2", "door-panel.cdr");
+        makeTile("CDRContainer3", "dubai-atlantis.cdr");
+
+        auto panels = DemoKit::AddRow(page, "CDRPanels");
 
         // ===== INFO PANEL =====
-        auto infoContainer = std::make_shared<UltraCanvasContainer>("InfoPanel", 20, 410, 470, 280);
-        infoContainer->SetBackgroundColor(Color(240, 248, 255, 255));
-        infoContainer->SetBorders(2, Color(100, 149, 237, 255));
-
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 10, 10, 450, 25);
-        infoTitle->SetText("CDR Plugin Features");
-        infoTitle->SetFontWeight(FontWeight::Bold);
-        infoTitle->SetFontSize(13);
-        infoContainer->AddChild(infoTitle);
-
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 42, 450, 230);
-        infoText->SetText(
-                "\xE2\x80\xA2 CorelDRAW CDR format\n"
-                "\xE2\x80\xA2 Corel Presentation Exchange CMX\n"
-                "\xE2\x80\xA2 Multi-page document support\n"
-                "\xE2\x80\xA2 Vector paths and shapes\n"
-                "\xE2\x80\xA2 Text with styling\n"
-                "\xE2\x80\xA2 Transformations (rotate, scale)\n"
-                "\xE2\x80\xA2 Groups and layers\n"
-                "\xE2\x80\xA2 Stroke and fill styles\n"
-                "\xE2\x80\xA2 Zoom and pan controls\n"
-                "\xE2\x80\xA2 Fit modes (page, width, height)\n"
-                "\xE2\x80\xA2 Save as SVG (XAR planned)\n"
-                "\n"
-                "Uses libcdr for parsing."
-        );
-        infoText->SetFontSize(11);
-        infoText->SetTextColor(Color(50, 50, 50, 255));
-        infoContainer->AddChild(infoText);
-
-        container->AddChild(infoContainer);
+        auto infoContainer = DemoKit::AddCard(panels, "InfoPanel", "CDR Plugin Features");
+        DemoKit::Add(infoContainer, DemoKit::CreateBullets("InfoText", {
+                "CorelDRAW CDR format",
+                "Corel Presentation Exchange CMX",
+                "Multi-page document support",
+                "Vector paths and shapes",
+                "Text with styling",
+                "Transformations (rotate, scale)",
+                "Groups and layers",
+                "Stroke and fill styles",
+                "Zoom and pan controls",
+                "Fit modes (page, width, height)",
+                "Save as SVG (XAR planned)"}));
+        DemoKit::AddCaption(infoContainer, "InfoLib", "Uses libcdr for parsing.");
 
         // ===== THE BUNDLED DRAWINGS =====
-        auto howContainer = std::make_shared<UltraCanvasContainer>("HowPanel", 510, 410, 470, 280);
-        howContainer->SetBackgroundColor(Color(255, 250, 240, 255));
-        howContainer->SetBorders(2, Color(222, 184, 135, 255));
-
-        auto howTitle = std::make_shared<UltraCanvasLabel>("HowTitle", 10, 10, 450, 25);
-        howTitle->SetText("The bundled drawings");
-        howTitle->SetFontWeight(FontWeight::Bold);
-        howTitle->SetFontSize(13);
-        howContainer->AddChild(howTitle);
-
-        auto howText = std::make_shared<UltraCanvasLabel>("HowText", 10, 42, 450, 230);
-        howText->SetText(
-                "detailed.cdr - 3.3 MB, one 614 x 384 pt page: 67 draw calls,\n"
-                "but 10 gradients and 6 embedded bitmaps - the fill and image\n"
+        auto howContainer = DemoKit::AddCard(panels, "HowPanel", "The bundled drawings");
+        DemoKit::AddText(howContainer, "HowText",
+                "detailed.cdr - 3.3 MB, one 614 x 384 pt page: 67 draw calls, "
+                "but 10 gradients and 6 embedded bitmaps - the fill and image "
                 "paths, and the one worth zooming into.\n\n"
-                "door-panel.cdr - 237 KB, one Letter page, 400 draw calls of\n"
+                "door-panel.cdr - 237 KB, one Letter page, 400 draw calls of "
                 "flat-filled line work: no gradients, no bitmaps.\n\n"
-                "dubai-atlantis.cdr - 97 KB, one Letter page and the busiest\n"
+                "dubai-atlantis.cdr - 97 KB, one Letter page and the busiest "
                 "of the three at 725 draw calls.\n\n"
-                "All three are single-page, so the page arrows stay inert here;\n"
-                "zoom and fit work in place, a click opens the drawing\n"
-                "in the media viewer, and \"Save as\" writes the shown page out\n"
-                "through the plugin's SVG exporter."
-        );
-        howText->SetFontSize(11);
-        howText->SetTextColor(Color(50, 50, 50, 255));
-        howContainer->AddChild(howText);
+                "All three are single-page, so the page arrows stay inert here; "
+                "zoom and fit work in place, a click opens the drawing "
+                "in the media viewer, and \"Save as\" writes the shown page out "
+                "through the plugin's SVG exporter.");
 
-        container->AddChild(howContainer);
+        DemoKit::Add(page, statusLabel);
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas
