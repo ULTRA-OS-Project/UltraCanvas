@@ -13,6 +13,7 @@
 //   SearchHitModel    - where a search across the tables found its text.
 // A cell is CellText (engine/DbAdminFormat.h): NULL is not an empty string, a
 // blob says how big it is. Its tooltip is the longer text.
+// Version: 0.3.0 - staged new rows shown after the rows read
 // Version: 0.2.0 - LogModel, SearchHitModel
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -51,13 +52,22 @@ public:
     const UltraDbResultSet& Rows() const { return rows_; }
 
     // Browse's staged edits, shown over the rows: a changed cell reads its
-    // new value followed by " *", a row to be deleted starts with "DEL ".
+    // new value followed by " *", a row to be deleted starts with "DEL ",
+    // and the new rows follow the rows read, the first cell starting with
+    // "NEW " (a row past Rows().Size() is the new row StagedIndex names).
     // Null: none. The buffer belongs to the window; call
     // Refresh() after it changes.
     void SetPending(const EditBuffer* pending) { pending_ = pending; }
     void Refresh() { NotifyDataChanged(); }
+    // The staged new row a grid row is, or -1 for a row read.
+    int StagedIndex(int row) const {
+        return row >= static_cast<int>(rows_.Size()) && row < GetRowCount() ? row - static_cast<int>(rows_.Size()) : -1;
+    }
 
 private:
+    size_t StagedRows() const;
+    UltraCanvas::ListDataValue StagedData(size_t insert, int column, UltraCanvas::ListDataRole role) const;
+
     const EditBuffer* pending_ = nullptr;
     UltraDbResultSet rows_;
     std::vector<std::string> columns_;

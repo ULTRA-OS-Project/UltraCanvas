@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminModels.cpp
+// Version: 0.5.0 - staged new rows shown after the rows read
 // Version: 0.4.0 - LogModel, SearchHitModel
 // Version: 0.3.0 - a column's width is the view's to measure (SetColumnFitting);
 //                  the model gives the header's estimate only
@@ -57,12 +58,50 @@ std::string TooltipText(const UltraDbValue& value) {
 
 // ===== ResultSetModel =====
 
-int ResultSetModel::GetRowCount() const { return static_cast<int>(rows_.Size()); }
+int ResultSetModel::GetRowCount() const { return static_cast<int>(rows_.Size() + StagedRows()); }
 int ResultSetModel::GetColumnCount() const { return static_cast<int>(columns_.size()); }
+
+size_t ResultSetModel::StagedRows() const {
+    if (!pending_ || columns_.empty()) return 0;
+    size_t n = 0;
+    while (pending_->InsertAt(n)) ++n;
+    return n;
+}
+
+ListDataValue ResultSetModel::StagedData(size_t insert, int column, ListDataRole role) const {
+    const RowChange* change = pending_ ? pending_->InsertAt(insert) : nullptr;
+    if (!change) return {};
+    const std::string& name = columns_[static_cast<size_t>(column)];
+    const auto it = change->values.find(name);
+    std::string text;
+    if (it == change->values.end()) {
+        text = "(default)";              // left to the column's default, or computed
+    } else {
+        switch (it->second.kind) {
+            case CellValue::Kind::Null:     text = NullText(); break;
+            case CellValue::Kind::Blob:     text = CellText(UltraDbValue::Blob(it->second.bytes)); break;
+            case CellValue::Kind::Default:  text = "(default)"; break;
+            case CellValue::Kind::Function: text = it->second.text; break;
+            case CellValue::Kind::Text:     text = CellText(UltraDbValue(it->second.text)); break;
+        }
+    }
+    switch (role) {
+        case ListDataRole::DisplayRole:
+            return column == 0 ? "NEW " + text : text;
+        case ListDataRole::ToolTipRole:
+            return std::string("A new row, not written yet: Commit inserts it, Revert drops it. Double-click to "
+                               "change it.");
+        default:
+            return {};
+    }
+}
 
 ListDataValue ResultSetModel::GetData(const ListIndex& index, ListDataRole role) const {
     if (index.row < 0 || index.row >= GetRowCount() || index.column < 0 || index.column >= GetColumnCount())
         return {};
+    // The rows read first; after them, the new rows staged for the table.
+    if (static_cast<size_t>(index.row) >= rows_.Size())
+        return StagedData(static_cast<size_t>(index.row) - rows_.Size(), index.column, role);
     const UltraDbRow& row = rows_.Row(static_cast<size_t>(index.row));
     if (static_cast<size_t>(index.column) >= row.Size()) return {};
     const UltraDbValue& value = row[static_cast<size_t>(index.column)];

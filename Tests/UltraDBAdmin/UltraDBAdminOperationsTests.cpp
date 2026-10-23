@@ -774,6 +774,21 @@ void TestValueTypes() {
     const UltraDbResultSet rows = Rows(c, "SELECT at FROM stamps");
     Check(rows.Size() == 1 && rows.Row(0)[0].AsString().size() == 19, "the database's time: " +
                                                                            (rows.Size() ? rows.Row(0)[0].AsString() : ""));
+    // New rows staged are found, changed and dropped by their index among the new rows.
+    {
+        EditBuffer staged(Describe(c, "main", "stamps"));
+        Check(staged.InsertRow({{"note", CellValue::Of("first")}}, error) &&
+                  staged.InsertRow({{"note", CellValue::Of("second")}}, error),
+              "two new rows staged");
+        Check(staged.InsertAt(1) && staged.InsertAt(1)->values.at("note").text == "second" && !staged.InsertAt(2),
+              "the second found by its index, none past the last");
+        Check(staged.UpdateInsert(0, {{"note", CellValue::Of("changed")}, {"at", CellValue::DefaultValue()}}, error) &&
+                  staged.InsertAt(0)->values.at("note").text == "changed" && staged.InsertAt(0)->values.count("at") == 0,
+              "the first changed; a DEFAULT column left out");
+        Check(!staged.UpdateInsert(5, {{"note", CellValue::Of("x")}}, error), "a new row that is not there refused");
+        staged.RemoveInsert(0);
+        Check(staged.Count() == 1 && staged.InsertAt(0)->values.at("note").text == "second", "the first dropped");
+    }
     EditBuffer update(Describe(c, "main", "stamps"));
     Check(update.UpdateRow(rows.Size() ? Rows(c, "SELECT * FROM stamps").Row(0) : UltraDbRow(),
                            {{"note", CellValue::FunctionValue("CURRENT_DATE")}}, error) &&

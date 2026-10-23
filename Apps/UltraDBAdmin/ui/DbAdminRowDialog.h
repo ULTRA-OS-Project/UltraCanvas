@@ -12,6 +12,7 @@
 // is shown by its size and is not edited here. Values are typed as text and
 // converted by the database (see DbAdminEditBuffer.h). The form stays open on
 // a mistake: Save asks the caller, and closes only when it reports no error.
+// Version: 0.3.0 - a staged new row opened again
 // Version: 0.2.0 - a field per type; NULL / Default / a value function per column
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -35,9 +36,12 @@ namespace UltraDBAdmin {
 using SaveRowFn = std::function<std::string(const std::map<std::string, CellValue>& values)>;
 
 // `row` null: a new row. `pending` (may be null) gives the values already
-// staged for the row, which the form starts from. Non-blocking.
+// staged for the row, which the form starts from; `stagedNew`, for a new row
+// staged earlier and opened again, the values it was staged with (a column
+// it leaves out is at its default). Non-blocking.
 void ShowRowDialog(UltraCanvas::UltraCanvasWindowBase* parent, const UltraDbTableSchema& table, SqlEngine engine,
-                   const UltraDbRow* row, const EditBuffer* pending, SaveRowFn onSave);
+                   const UltraDbRow* row, const EditBuffer* pending, SaveRowFn onSave,
+                   const std::map<std::string, CellValue>* stagedNew = nullptr);
 
 // SQL to read, not run: `intro` above a read-only, highlighted SQL view of
 // `sql`, and an OK button. The Commit preview.

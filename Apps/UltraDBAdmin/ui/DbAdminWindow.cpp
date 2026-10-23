@@ -1397,6 +1397,8 @@ bool DbAdminWindow::IsBlobColumn(int column) const {
 
 void DbAdminWindow::BeginCellEdit(int row, int column) {
     FinishCellEdit(true);
+    // A staged new row is changed in its form: it has no key to address a cell by.
+    if (browseModel_->StagedIndex(row) >= 0) { EditRow(row); return; }
     const UltraDbResultSet& rows = browseModel_->Rows();
     if (row < 0 || static_cast<size_t>(row) >= rows.Size()) return;
     const UltraDbColumnSchema* schema = BrowseColumn(column);
@@ -1603,7 +1605,11 @@ void DbAdminWindow::ShowBrowseMenu(int row, const UCEvent& event) {
     const UltraDbColumnSchema* schema = BrowseColumn(column);
     const bool onRow = row >= 0 && static_cast<size_t>(row) < browseModel_->Rows().Size();
     const bool editable = EditBlockReason().empty();
-    const size_t selected = browseView_->GetSelection() ? browseView_->GetSelection()->GetSelectedRows().size() : 0;
+    // The rows read that are selected: a staged new row has nothing to copy yet.
+    size_t selected = 0;
+    if (IListSelection* selection = browseView_->GetSelection())
+        for (const int picked : selection->GetSelectedRows())
+            if (picked >= 0 && static_cast<size_t>(picked) < browseModel_->Rows().Size()) ++selected;
     menu_ = std::make_shared<UltraCanvasMenu>("dbaBrowseMenu", 0, 0, 260, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
     if (onRow && schema) {
@@ -1640,6 +1646,13 @@ void DbAdminWindow::ShowBrowseMenu(int row, const UCEvent& event) {
         menu_->AddItem(MenuItemData::Separator());
         menu_->AddItem(MenuItemData::Action("Edit row", [this, row]() { EditRow(row); }));
         menu_->AddItem(MenuItemData::Action("Delete row", [this]() { DeleteSelectedRow(); }));
+    }
+    if (browseModel_->StagedIndex(row) >= 0 && editable) {
+        menu_->AddItem(MenuItemData::Action("Edit the new row", [this, row]() { EditRow(row); }));
+        menu_->AddItem(MenuItemData::Action("Remove the new row", [this, row]() {
+            if (IListSelection* selection = browseView_->GetSelection()) selection->Select(row, false);
+            DeleteSelectedRow();
+        }));
     }
     PopupElementSettings settings;
     menu_->OpenMenu(event.pointerWindow, *window_, settings);
@@ -1763,6 +1776,8 @@ void DbAdminWindow::AddRow() {
                       std::string error;
                       if (!edits_.InsertRow(values, error)) return error;
                       AfterStage();
+                      // New rows follow the rows read: the grid shows the one just staged.
+                      if (!edits_.Empty()) browseView_->ScrollToRow(browseModel_->GetRowCount() - 1);
                       return std::string();
                   });
 }
@@ -1770,6 +1785,27 @@ void DbAdminWindow::AddRow() {
 void DbAdminWindow::EditRow(int row) {
     const std::string blocked = EditBlockReason();
     if (!blocked.empty()) { SetStatus(blocked); return; }
+    const int stagedIndex = browseModel_->StagedIndex(row);
+    if (stagedIndex >= 0) {
+        // A new row not written yet: its form again, with what was staged.
+        const RowChange* change = edits_.InsertAt(static_cast<size_t>(stagedIndex));
+        if (!change) return;
+        const std::map<std::string, CellValue> staged = change->values;
+        const uint64_t generation = objectGen_;
+        const size_t at = static_cast<size_t>(stagedIndex);
+        const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+        const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+        ShowRowDialog(window_.get(), edits_.Table(), engine, nullptr, nullptr,
+                      [this, generation, at](const std::map<std::string, CellValue>& values) -> std::string {
+                          if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
+                          std::string error;
+                          if (!edits_.UpdateInsert(at, values, error)) return error;
+                          AfterStage();
+                          return std::string();
+                      },
+                      &staged);
+        return;
+    }
     if (row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) {
         SetStatus("Select a row to edit (or double-click it).");
         return;
@@ -1796,6 +1832,14 @@ void DbAdminWindow::DeleteSelectedRow() {
     const std::string blocked = EditBlockReason();
     if (!blocked.empty()) { SetStatus(blocked); return; }
     const int row = SelectedBrowseRow();
+    const int stagedIndex = browseModel_->StagedIndex(row);
+    if (stagedIndex >= 0) {
+        // A new row not written yet is simply no longer staged.
+        edits_.RemoveInsert(static_cast<size_t>(stagedIndex));
+        AfterEdit();
+        SetStatus("The new row is no longer staged.");
+        return;
+    }
     if (row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) {
         SetStatus("Select the row to delete.");
         return;

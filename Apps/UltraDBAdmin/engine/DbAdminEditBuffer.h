@@ -21,6 +21,7 @@
 // function - CURRENT_TIMESTAMP, gen_random_uuid() - is the one value written
 // into the statement rather than bound: only one of the functions
 // ValueFunctions lists (DbAdminValueTypes.h), checked when it is staged.
+// Version: 0.4.0 - the staged new rows by index: InsertAt, UpdateInsert, RemoveInsert
 // Version: 0.3.0 - a value function (CURRENT_TIMESTAMP, gen_random_uuid()) for a cell
 // Version: 0.2.0 - a blob value: a file's bytes for a cell
 // Version: 0.1.0
@@ -94,6 +95,13 @@ public:
     bool DeleteRow(const UltraDbRow& row, std::string& error);
     void Revert() { changes_.clear(); }
 
+    // The staged new rows, in the order they were staged: the grid shows
+    // them after the rows read, and they are changed or dropped there.
+    // `index` counts new rows only. InsertAt: null past the last.
+    const RowChange* InsertAt(size_t index) const;
+    bool UpdateInsert(size_t index, const std::map<std::string, CellValue>& values, std::string& error);
+    void RemoveInsert(size_t index);
+
     bool Empty() const { return changes_.empty(); }
     size_t Count() const { return changes_.size(); }
     size_t Count(RowChange::Kind kind) const;
@@ -118,6 +126,10 @@ public:
     UltraDbResult Commit(const std::string& connection, size_t& failed) const;
 
 private:
+    // The values a new row is staged with: generated columns and DEFAULT
+    // left out, a function checked to be one offered.
+    bool InsertValues(const std::map<std::string, CellValue>& values, std::map<std::string, CellValue>& given,
+                      std::string& error) const;
     RowChange* Find(RowChange::Kind kind, const std::vector<UltraDbValue>& key);
     const RowChange* Find(const std::vector<UltraDbValue>& key) const;
 

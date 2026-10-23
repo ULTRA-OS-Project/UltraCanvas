@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminEditBuffer.cpp
+// Version: 0.4.0 - InsertAt, UpdateInsert, RemoveInsert: staged new rows, shown and changed in the grid
 // Version: 0.3.0 - CellValue::Kind::Function: a listed value function, written in
 // Version: 0.2.0 - CellValue::Kind::Blob
 // Version: 0.1.0
@@ -192,10 +193,11 @@ bool EditBuffer::UpdateRow(const UltraDbRow& row, const std::map<std::string, Ce
     return true;
 }
 
-bool EditBuffer::InsertRow(const std::map<std::string, CellValue>& values, std::string& error) {
+bool EditBuffer::InsertValues(const std::map<std::string, CellValue>& values, std::map<std::string, CellValue>& given,
+                              std::string& error) const {
     error = ReadOnlyReason();
     if (!error.empty()) return false;
-    std::map<std::string, CellValue> given;
+    given.clear();
     for (const auto& [column, value] : values) {
         const UltraDbColumnSchema* schema = ColumnNamed(table_, column);
         if (!schema) { error = "No column named " + column + "."; return false; }
@@ -207,8 +209,46 @@ bool EditBuffer::InsertRow(const std::map<std::string, CellValue>& values, std::
         }
         given[column] = value;
     }
+    return true;
+}
+
+bool EditBuffer::InsertRow(const std::map<std::string, CellValue>& values, std::string& error) {
+    std::map<std::string, CellValue> given;
+    if (!InsertValues(values, given, error)) return false;
     changes_.push_back(RowChange{RowChange::Kind::Insert, {}, std::move(given)});
     return true;
+}
+
+const RowChange* EditBuffer::InsertAt(size_t index) const {
+    for (const auto& change : changes_) {
+        if (change.kind != RowChange::Kind::Insert) continue;
+        if (index-- == 0) return &change;
+    }
+    return nullptr;
+}
+
+bool EditBuffer::UpdateInsert(size_t index, const std::map<std::string, CellValue>& values, std::string& error) {
+    std::map<std::string, CellValue> given;
+    if (!InsertValues(values, given, error)) return false;
+    for (auto& change : changes_) {
+        if (change.kind != RowChange::Kind::Insert) continue;
+        if (index-- == 0) {
+            change.values = std::move(given);
+            return true;
+        }
+    }
+    error = "That new row is no longer staged.";
+    return false;
+}
+
+void EditBuffer::RemoveInsert(size_t index) {
+    for (auto it = changes_.begin(); it != changes_.end(); ++it) {
+        if (it->kind != RowChange::Kind::Insert) continue;
+        if (index-- == 0) {
+            changes_.erase(it);
+            return;
+        }
+    }
 }
 
 bool EditBuffer::DeleteRow(const UltraDbRow& row, std::string& error) {

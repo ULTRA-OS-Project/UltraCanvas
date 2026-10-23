@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminRowDialog.cpp
+// Version: 0.3.0 - a staged new row opened again with its values
 // Version: 0.2.0 - a field per type, NULL / Default / a value function per column, checked before staging
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -108,7 +109,8 @@ std::string TypeText(const UltraDbColumnSchema& column) {
 } // namespace
 
 void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& table, SqlEngine engine,
-                   const UltraDbRow* row, const EditBuffer* pending, SaveRowFn onSave) {
+                   const UltraDbRow* row, const EditBuffer* pending, SaveRowFn onSave,
+                   const std::map<std::string, CellValue>* stagedNew) {
     auto form = std::make_shared<Form>();
     form->onSave = std::move(onSave);
     const bool adding = row == nullptr;
@@ -226,6 +228,12 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
             if (original.IsNull()) SelectMode(field, kNull);
             else setText(original.Type() == UltraDbType::Boolean ? (original.AsBool() ? "true" : "false")
                                                                  : original.AsString());
+        } else if (stagedNew) {
+            const auto it = stagedNew->find(column.name);
+            if (it == stagedNew->end()) SelectMode(field, kDefault);
+            else if (it->second.kind == CellValue::Kind::Null) SelectMode(field, kNull);
+            else if (it->second.kind == CellValue::Kind::Function) SelectMode(field, it->second.text);
+            else setText(it->second.text);
         } else if (column.hasDefault || column.autoIncrement) {
             SelectMode(field, kDefault);
         }
@@ -253,7 +261,8 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
     auto cancel = MakeDialogButton("dbrCancel", "Cancel", 90);
     cancel->SetOnClick([form]() { form->dialog->CloseDialog(DialogResult::Cancel); });
     buttons->AddChild(cancel);
-    auto save = MakeDialogButton("dbrSave", adding ? "Add row" : "Stage edit", 110, ButtonRole::Primary);
+    auto save = MakeDialogButton("dbrSave", stagedNew ? "Stage edit" : adding ? "Add row" : "Stage edit", 110,
+                                 ButtonRole::Primary);
     save->SetOnClick([form]() { Save(*form); });
     buttons->AddChild(save);
     dialog->AddChild(buttons);

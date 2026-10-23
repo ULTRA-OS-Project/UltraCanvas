@@ -30,3 +30,8 @@
   was typed, when its cell scrolls out of view.
 - An export of a PostgreSQL table as SQL now begins with the table's own
   definition, read from the catalog, so the file rebuilds the table there too.
+- **New rows show in Browse before Commit.** A staged new row follows the rows
+  read, marked `NEW`, with `(default)` for a column left to the database; the
+  grid scrolls to it. A double-click opens its form again with what was
+  staged, and Delete row (or the right-click menu) drops it - as edited cells
+  show `*` and deleted rows `DEL`.
