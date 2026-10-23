@@ -1453,6 +1453,9 @@ void DbAdminWindow::BeginCellEdit(int row, int column) {
     } else if (!original[schema->name].IsNull()) {
         text = original[schema->name].AsString();
     }
+    // The whole cell in view first: a double-click reaches a cell half off
+    // the grid's edge, and the editor laid over it would hang off it too.
+    browseView_->EnsureColumnVisible(column);
     const Rect2Di cell = browseView_->GetCellRect(row, column);
     if (cell.height <= 0) return;
     const Point2Df view = browseView_->GetPositionInWindow();
