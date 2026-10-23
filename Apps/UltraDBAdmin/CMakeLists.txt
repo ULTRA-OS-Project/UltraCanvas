@@ -55,6 +55,7 @@ add_executable(UltraDBAdmin
     ui/DbAdminTheme.cpp
     ui/DbAdminWindow.cpp
     ui/DbAdminWindowObjects.cpp
+    ui/DbAdminWindowSchema.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).
 ultracanvas_single_instance(UltraDBAdmin)

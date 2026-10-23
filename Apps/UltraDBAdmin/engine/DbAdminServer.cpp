@@ -112,7 +112,7 @@ UltraDbResult ReadServerView(const std::string& connection, SqlEngine engine, Se
             return UltraDb_Query(
                 connection,
                 "SELECT 'database' AS kind, datname AS name, pg_size_pretty(pg_database_size(oid)) AS total,"
-                "       NULL AS data, NULL AS indexes, pg_database_size(oid) AS bytes"
+                "       '' AS data, '' AS indexes, pg_database_size(oid) AS bytes"
                 "  FROM pg_catalog.pg_database WHERE datallowconn"
                 " UNION ALL "
                 "SELECT 'table', n.nspname || '.' || c.relname, pg_size_pretty(pg_total_relation_size(c.oid)),"
@@ -128,20 +128,14 @@ UltraDbResult ReadServerView(const std::string& connection, SqlEngine engine, Se
     return UltraDbResult::Ok();
 }
 
-std::string StopSessionSql(int64_t pid, bool terminate) {
-    return std::string("SELECT ") + (terminate ? "pg_terminate_backend(" : "pg_cancel_backend(") +
-           std::to_string(pid) + ")";
-}
-
-UltraDbResult StopSession(const std::string& connection, int64_t pid, bool terminate, bool& stopped) {
-    stopped = false;
-    UltraDbResultSet rows;
-    const UltraDbResult result =
-        UltraDb_Query(connection, terminate ? "SELECT pg_terminate_backend(?)" : "SELECT pg_cancel_backend(?)",
-                      {UltraDbValue(pid)}, rows);
-    if (!result) return result;
-    stopped = rows.Size() == 1 && rows.Row(0)[0].AsBool();
-    return UltraDbResult::Ok();
+OperationPlan StopSessionPlan(int64_t pid, bool terminate) {
+    OperationPlan plan;
+    plan.transaction = false;
+    plan.statements.push_back(std::string("SELECT ") + (terminate ? "pg_terminate_backend(" : "pg_cancel_backend(") +
+                              std::to_string(pid) + ")");
+    plan.notes.push_back(terminate ? "The session ends: what it had not committed is rolled back."
+                                   : "The query stops with an error; the session stays.");
+    return plan;
 }
 
 } // namespace UltraDBAdmin

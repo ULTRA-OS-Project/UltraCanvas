@@ -3,8 +3,9 @@
 // right-click menu and the operations it starts (DbAdminOperations: a new
 // table, a copy, a rename, emptying, dropping, maintenance, a schema dumped
 // as SQL), the Search tab and the SQL log under the tabs, and the console's
-// saved snippets. DbAdminWindow.cpp has the rest; DbAdminWindow.h says what
+// saved snippets; DbAdminWindowSchema.cpp has Relations, Routines and Server. DbAdminWindow.cpp has the rest; DbAdminWindow.h says what
 // the window is.
+// Version: 0.2.0 - the tree menu leads to Relations, Routines and Server
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminWindow.h"
@@ -348,6 +349,16 @@ void DbAdminWindow::ShowTreeMenu(TreeNode* node, const UCEvent& event) {
             }));
             menu_->AddItem(MenuItemData::Action("Export the " + what + " as SQL", IconPath("export"),
                                                 [this, target]() { DumpSchema(target); }));
+            menu_->AddItem(MenuItemData::Action("Relations", IconPath("tab-relations"), [this, select]() {
+                select();
+                tabs_->SetActiveTab(kRelationsTab);
+                OnPageShown(kRelationsTab);
+            }));
+            menu_->AddItem(MenuItemData::Action("Routines", IconPath("tab-routines"), [this, select]() {
+                select();
+                tabs_->SetActiveTab(kRoutinesTab);
+                OnPageShown(kRoutinesTab);
+            }));
             const std::vector<MenuItemData> maintenance = MaintenanceItems(target, target.schema, "");
             if (!maintenance.empty()) menu_->AddItem(MenuItemData::Submenu("Maintenance", IconPath("maintenance"), maintenance));
         } else {
@@ -355,6 +366,12 @@ void DbAdminWindow::ShowTreeMenu(TreeNode* node, const UCEvent& event) {
             const std::vector<MenuItemData> maintenance = MaintenanceItems(ref, "", "");
             if (!maintenance.empty()) menu_->AddItem(MenuItemData::Submenu("Maintenance", IconPath("maintenance"), maintenance));
         }
+        if (ref.kind == NodeRef::Kind::Connection)
+            menu_->AddItem(MenuItemData::Action(sqlite ? "The file" : "Server", IconPath("tab-server"), [this, select]() {
+                select();
+                tabs_->SetActiveTab(kServerTab);
+                OnPageShown(kServerTab);
+            }));
         menu_->AddItem(MenuItemData::Separator());
         menu_->AddItem(MenuItemData::Action("Refresh", IconPath("refresh"), [this, select]() { select(); RefreshSelected(); }));
         if (ref.kind == NodeRef::Kind::Connection) {
@@ -861,7 +878,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSearchPage() {
     return page;
 }
 
-bool DbAdminWindow::SearchScope(std::string& connectionId, std::string& schema) const {
+bool DbAdminWindow::SchemaScope(std::string& connectionId, std::string& schema) const {
     const NodeRef* ref = RefOf(selectedNode_);
     if (!ref || ref->kind == NodeRef::Kind::Placeholder) return false;
     const ConnectionSpec* spec = store_.Find(ref->connectionId);
@@ -879,7 +896,7 @@ bool DbAdminWindow::SearchScope(std::string& connectionId, std::string& schema) 
 void DbAdminWindow::UpdateSearchBar() {
     if (!searchButton_) return;
     std::string connectionId, schema;
-    const bool scoped = SearchScope(connectionId, schema);
+    const bool scoped = SchemaScope(connectionId, schema);
     searchButton_->SetDisabled(searching_ || !scoped);
     searchStopButton_->SetDisabled(!searching_);
     if (searching_) return;                 // the search says where it is
@@ -897,7 +914,7 @@ void DbAdminWindow::StartSearch() {
     const std::string text = searchInput_->GetText();
     if (text.empty()) { searchInfo_->SetText("Type the text to find."); return; }
     std::string connectionId, schema;
-    if (!SearchScope(connectionId, schema)) { UpdateSearchBar(); return; }
+    if (!SchemaScope(connectionId, schema)) { UpdateSearchBar(); return; }
     const ConnectionSpec* spec = store_.Find(connectionId);
     if (!spec) return;
     searching_ = true;

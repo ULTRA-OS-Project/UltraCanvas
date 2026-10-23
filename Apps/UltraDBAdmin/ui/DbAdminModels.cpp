@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminModels.cpp
+// Version: 0.6.0 - RoutineModel
 // Version: 0.5.0 - staged new rows shown after the rows read
 // Version: 0.4.0 - LogModel, SearchHitModel
 // Version: 0.3.0 - a column's width is the view's to measure (SetColumnFitting);
@@ -532,6 +533,47 @@ void SearchHitModel::Clear() {
 const SearchHit* SearchHitModel::At(int row) const {
     if (row < 0 || row >= GetRowCount()) return nullptr;
     return &hits_[static_cast<size_t>(row)];
+}
+
+// ===== RoutineModel =====
+
+ListDataValue RoutineModel::GetData(const ListIndex& index, ListDataRole role) const {
+    const RoutineInfo* routine = At(index.row);
+    if (!routine) return {};
+    const bool trigger = routine->kind == RoutineInfo::Kind::Trigger;
+    if (role == ListDataRole::ToolTipRole)
+        return routine->definition.empty() ? std::string("The server shows no statement for an aggregate")
+                                           : std::string("Double-click: edit it in the SQL tab");
+    if (role != ListDataRole::DisplayRole) return {};
+    switch (index.column) {
+        case KindField:     return std::string(RoutineKindText(routine->kind));
+        case NameField:     return routine->name;
+        case OnField:       return trigger ? routine->table : "(" + routine->arguments + ")";
+        case ReturnsField:  return routine->returns;
+        case LanguageField: return routine->language;
+        default:            return {};
+    }
+}
+
+ListColumnDef RoutineModel::GetColumnDef(int column) const {
+    switch (column) {
+        case KindField:     return ListColumnDef("Kind", 110);
+        case NameField:     return ListColumnDef("Name", 180);
+        case OnField:       return ListColumnDef("Table / arguments", 200);
+        case ReturnsField:  return ListColumnDef("Returns", 110);
+        case LanguageField: return ListColumnDef("Language", 80);
+        default:            return ListColumnDef("", 80);
+    }
+}
+
+void RoutineModel::Replace(std::vector<RoutineInfo> routines) {
+    routines_ = std::move(routines);
+    NotifyDataChanged();
+}
+
+const RoutineInfo* RoutineModel::At(int row) const {
+    if (row < 0 || row >= GetRowCount()) return nullptr;
+    return &routines_[static_cast<size_t>(row)];
 }
 
 } // namespace UltraDBAdmin

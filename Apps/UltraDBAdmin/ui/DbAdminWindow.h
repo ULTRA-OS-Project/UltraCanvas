@@ -5,8 +5,8 @@
 // its name, export, copy the table, rename, empty, drop, a new table, a
 // schema dumped as SQL, a search of every table, SQLite's maintenance - and
 // on the right a row of the objects open, one tab each (each keeps its page,
-// sort, filters and staged changes while another is shown), four tabs for
-// the one shown, and the SQL log under them: every statement the app ran.
+// sort, filters and staged changes while another is shown), the tabs below,
+// and the SQL log under them: every statement the app ran.
 //   Browse    - the selected table a page at a time (TablePager), sorted on
 //               the server by a click on a column header, Previous / Next,
 //               narrowed by filters (a column, a comparison, a value: bound,
@@ -29,7 +29,18 @@
 //               the caret), Explain, Stop, the history and saved snippets,
 //               what each statement did, and the rows of the one selected;
 //   Search    - a text in every table and view of a schema, a count per
-//               column; a hit opens the table filtered on that column.
+//               column; a hit opens the table filtered on that column;
+//   Relations - the schema's tables and the foreign keys between them as an
+//               ER diagram (crow's foot or Chen); a table double-clicked
+//               opens it;
+//   Routines  - its triggers, and on PostgreSQL its functions, procedures
+//               and aggregates, each with its statement: edited in the SQL
+//               tab and run again, dropped, or a new one from a template;
+//   Server    - PostgreSQL's sessions (a query cancelled, a session ended),
+//               its settings and the sizes of its databases and tables;
+//               SQLite's file: its pages, journal mode, encoding, versions.
+// Search, Relations and Routines work on the schema the tree's selection is
+// in, Server on its connection; the last three read it when they are shown.
 // And imports: Browse's Import... puts the rows of a CSV file or a workbook
 // into the table shown, mapped column by column, all or none; the SQL tab's
 // Import SQL... runs a SQL file on the console's session, as one transaction
@@ -46,6 +57,7 @@
 // PostToUIThread, guarded by a token that dies with the window. A result for
 // something no longer shown - another table was picked meanwhile - is
 // recognised by its generation number and dropped.
+// Version: 0.4.0 - the Relations, Routines and Server tabs
 // Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log,
 //                 Run statement, Explain, snippets, auto-commit, the typed row form
 // Version: 0.2.0 - filters, editing in the cell, blobs, rows copied as text
@@ -61,7 +73,10 @@
 #include "DbAdminJobQueue.h"
 #include "DbAdminModels.h"
 #include "DbAdminOperations.h"
+#include "DbAdminRelations.h"
+#include "DbAdminRoutines.h"
 #include "DbAdminSearch.h"
+#include "DbAdminServer.h"
 #include "DbAdminSnippets.h"
 #include "DbAdminSqlLog.h"
 #include "DbAdminSqlRunner.h"
@@ -94,6 +109,10 @@
 #include <string>
 #include <vector>
 
+namespace UltraCanvas {
+class UltraCanvasERDiagram;
+}
+
 namespace UltraDBAdmin {
 
 class DbAdminWindow {
@@ -124,6 +143,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSqlPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSearchPage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildLogPanel();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRelationsPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRoutinesPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildServerPage();
 
     // ===== BACKGROUND =====
     // Runs `work` on the job queue; the function it returns runs on the UI
@@ -332,8 +354,34 @@ private:
     void StopSearch(const std::string& why);
     void OpenSearchHit(int row);
     void UpdateSearchBar();
-    // The schema a search goes through: the tree's selection, or "".
-    bool SearchScope(std::string& connectionId, std::string& schema) const;
+    // The schema the tree's selection is in - SQLite's connection is its
+    // "main" - which Search, Relations and Routines work on. False: none
+    // (nothing picked, or a server's connection without a schema).
+    bool SchemaScope(std::string& connectionId, std::string& schema) const;
+
+    // ===== RELATIONS, ROUTINES, SERVER (DbAdminWindowSchema.cpp) =====
+    // A tab was shown, or the tree's selection changed under it: Relations,
+    // Routines and Server read theirs again when it is for elsewhere now.
+    void OnPageShown(int tab);
+    // Server's connection: the tree's selection, whatever is picked; the
+    // schema its sizes list, when one is (SQLite: "main").
+    bool ServerScope(std::string& connectionId, std::string& schema) const;
+    void ReadRelations();
+    void DrawRelations();                   // what was read, in the notation chosen
+    void OpenRelationTable(const std::string& table);
+    void UpdateRelationsBar();
+    void ReadRoutines();
+    void ShowRoutine(int row);              // its statement, under the list
+    void EditRoutine(int row);              // its statement in the SQL tab, to change and run
+    void ShowNewRoutineMenu();
+    void NewRoutine(RoutineInfo::Kind kind);
+    void DropRoutine();
+    void UpdateRoutinesBar();
+    int SelectedRoutine() const;            // -1: none
+    void ReadServer();
+    void StopServerSession(bool terminate); // the selected session's query, or the session
+    void UpdateServerBar();
+    ServerView ChosenServerView() const;
 
     // ===== SQL LOG =====
     void RefreshLog();                      // what is new, from log_ (a timer calls it)
@@ -514,6 +562,51 @@ private:
     size_t searchIndex_ = 0;
     std::vector<std::string> searchFailures_;
     std::string searchSummary_;          // how the last search ended
+
+    // Relations: the tables read and their links, and what they are of.
+    std::shared_ptr<UltraCanvas::UltraCanvasERDiagram> relationsDiagram_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> relationsReadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> relationsFitButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> relationsNotation_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> relationsTypes_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> relationsInfo_;
+    std::vector<UltraDbTableSchema> relationsTables_;
+    std::vector<RelationLink> relationsLinks_;
+    std::string relationsConnectionId_, relationsSchema_;   // asked for last; "": nothing
+    std::string relationsSummary_;
+    bool relationsLoading_ = false;
+    uint64_t relationsGen_ = 0;
+
+    // Routines
+    std::shared_ptr<RoutineModel> routineModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> routineView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextArea> routineText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> routinesReadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> routineNewButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> routineEditButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> routineDropButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> routinesInfo_;
+    std::string routinesConnectionId_, routinesSchema_;     // asked for last; "": nothing
+    std::string routinesSummary_;
+    bool routinesLoading_ = false;
+    uint64_t routinesGen_ = 0;
+
+    // Server
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> serverViewPick_;
+    std::vector<ServerView> serverViews_;    // the dropdown's, in its order
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> serverFilter_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> serverReadButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> serverCancelButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> serverEndButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> serverInfo_;
+    std::shared_ptr<ResultSetModel> serverModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> serverProxy_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> serverGrid_;
+    std::string serverConnectionId_, serverSchema_;         // asked for last; "": nothing
+    ServerView serverShown_ = ServerView::FileInfo;
+    std::string serverSummary_;
+    bool serverLoading_ = false;
+    uint64_t serverGen_ = 0;
 
     // SQL log
     std::shared_ptr<SqlLog> log_ = std::make_shared<SqlLog>(2000);

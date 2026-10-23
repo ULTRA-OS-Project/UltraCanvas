@@ -120,6 +120,14 @@ bool Run(const std::string& c, const OperationPlan& plan) {
     return result.success;
 }
 
+// What a stop plan answers: 1 stopped, 0 not, -1 failed.
+int Stop(const std::string& c, int64_t pid, bool terminate) {
+    UltraDbResultSet rows;
+    size_t failed = 0;
+    if (!RunPlan(c, StopSessionPlan(pid, terminate), &rows, failed) || rows.Size() != 1) return -1;
+    return rows.Row(0)[size_t(0)].AsBool() ? 1 : 0;
+}
+
 bool RunScript(const std::string& c, const std::string& script) {
     std::vector<UltraDbStatementResult> results;
     const UltraDbResult result = UltraDb_ExecBatch(c, script, results);
@@ -207,6 +215,18 @@ void TestRelationsSqlite() {
               std::to_string(outside) + ")");
     CheckRelations(links, "SQLite");
 
+    // customers above orders, profiles and codes; notes (its key to no
+    // table read) and employees (a key to itself) on their own below.
+    const auto layers = RelationLayers(tables, links);
+    Check(layers.size() == 3, "layers: the parents, their children, the rest (" + std::to_string(layers.size()) + ")");
+    if (layers.size() == 3) {
+        Check(layers[0] == std::vector<std::string>{"customers"}, "customers on top");
+        Check(layers[1].size() == 3 && std::count(layers[1].begin(), layers[1].end(), "orders") == 1,
+              "orders, profiles and codes under it");
+        Check(layers[2] == std::vector<std::string>{"employees", "notes"},
+              "a table linked only to itself or to no table read: the last layer");
+    }
+
     Check(ReadSchemaTables(c, "main", 2, tables, truncated, failed).success && tables.size() == 2 && truncated,
           "a limit: two tables, and more said to be there");
     Check(!ReadSchemaTables(c, "nowhere", 10, tables, truncated, failed).success || tables.empty(),
@@ -246,6 +266,11 @@ void TestRelationsPostgres() {
           "shipments: a two-column key that is its whole primary key, one-to-one");
     const RelationLink* order = LinkOf(links, "orders", "customers");
     Check(order && order->name == "orders_customer_id_fkey", "a PostgreSQL link is named after its constraint");
+    const auto layers = RelationLayers(tables, links);
+    Check(layers.size() == 5 && layers[2] == std::vector<std::string>{"lines"} &&
+              layers[3] == std::vector<std::string>{"shipments"} &&
+              layers[4] == std::vector<std::string>{"employees"},
+          "each table a layer below the one it refers to: customers, orders, lines, shipments; employees last");
     UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(schema) + " CASCADE");
     UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(other) + " CASCADE");
     UltraDb_CloseConnection(c);
@@ -448,8 +473,9 @@ void TestServerPostgres() {
     }
     Check(databases >= 1 && big, "the databases, then the schema's table with its size");
 
-    Check(StopSessionSql(42, false) == "SELECT pg_cancel_backend(42)" &&
-              StopSessionSql(42, true) == "SELECT pg_terminate_backend(42)",
+    Check(StopSessionPlan(42, false).statements == std::vector<std::string>{"SELECT pg_cancel_backend(42)"} &&
+              StopSessionPlan(42, true).statements == std::vector<std::string>{"SELECT pg_terminate_backend(42)"} &&
+              !StopSessionPlan(42, true).transaction,
           "what the confirmation shows");
     // A query that runs until it is cancelled, from a session of its own.
     const std::string sleeper = PostgresConnection("dbadmin-server-sleeper");
@@ -472,8 +498,7 @@ void TestServerPostgres() {
                     pid = row[SessionPidColumn()].AsInt64();
         }
         Check(pid > 0, "the running query is among the sessions, active");
-        bool stopped = false;
-        Check(pid > 0 && StopSession(c, pid, false, stopped).success && stopped, "its query cancelled");
+        Check(pid > 0 && Stop(c, pid, false) == 1, "its query cancelled");
         if (pid == 0) UltraDb_Exec(c, "SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE application_name = 'dbadmin-sleeper'");
         worker.join();
         const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
@@ -481,8 +506,7 @@ void TestServerPostgres() {
         Check(Count(sleeper, "SELECT 1") == 1, "the session itself is still there");
         UltraDb_CloseConnection(sleeper);
     }
-    bool stopped = true;
-    Check(StopSession(c, 1, true, stopped).success && !stopped, "no such session: nothing stopped");
+    Check(Stop(c, 1, true) == 0, "no such session: nothing stopped");
     UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(schema) + " CASCADE");
     UltraDb_CloseConnection(c);
 }

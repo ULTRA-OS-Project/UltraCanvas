@@ -4,6 +4,7 @@
 #include "DbAdminRelations.h"
 
 #include <algorithm>
+#include <map>
 #include <set>
 
 namespace UltraDBAdmin {
@@ -74,6 +75,64 @@ std::vector<RelationLink> RelationLinks(const std::vector<UltraDbTableSchema>& t
         }
     }
     return links;
+}
+
+std::vector<std::vector<std::string>> RelationLayers(const std::vector<UltraDbTableSchema>& tables,
+                                                     const std::vector<RelationLink>& links) {
+    std::map<std::string, size_t> level;
+    std::set<std::string> linked;
+    for (const auto& table : tables) level[table.name] = 0;
+    for (const auto& link : links) {
+        if (link.selfReference || !level.count(link.child) || !level.count(link.parent)) continue;
+        linked.insert(link.child);
+        linked.insert(link.parent);
+    }
+    // Longest path from a table with no parent; a cycle stops rising after
+    // as many rounds as there are tables.
+    for (size_t round = 0; round < tables.size(); ++round) {
+        bool changed = false;
+        for (const auto& link : links) {
+            if (link.selfReference || !level.count(link.child) || !level.count(link.parent)) continue;
+            if (level[link.child] < level[link.parent] + 1) {
+                level[link.child] = level[link.parent] + 1;
+                changed = true;
+            }
+        }
+        if (!changed) break;
+    }
+    std::map<size_t, std::vector<std::string>> byLevel;
+    std::vector<std::string> alone;
+    for (const auto& table : tables) {
+        if (linked.count(table.name)) byLevel[level[table.name]].push_back(table.name);
+        else alone.push_back(table.name);
+    }
+    std::vector<std::vector<std::string>> layers;
+    for (auto& entry : byLevel) layers.push_back(std::move(entry.second));   // no empty layer between
+    // Under its parents: a table's place is the mean of its parents' places
+    // in the layers above.
+    std::map<std::string, double> place;
+    for (size_t i = 0; i < layers.size(); ++i) {
+        auto& layer = layers[i];
+        if (i > 0) {
+            std::map<std::string, double> key;
+            for (size_t j = 0; j < layer.size(); ++j) {
+                double sum = 0.0;
+                size_t parents = 0;
+                for (const auto& link : links)
+                    if (link.child == layer[j] && !link.selfReference && place.count(link.parent)) {
+                        sum += place[link.parent];
+                        ++parents;
+                    }
+                key[layer[j]] = parents > 0 ? sum / static_cast<double>(parents) : 1.0 + static_cast<double>(j);
+            }
+            std::stable_sort(layer.begin(), layer.end(),
+                             [&key](const std::string& a, const std::string& b) { return key[a] < key[b]; });
+        }
+        for (size_t j = 0; j < layer.size(); ++j)
+            place[layer[j]] = (static_cast<double>(j) + 0.5) / static_cast<double>(layer.size());
+    }
+    if (!alone.empty()) layers.push_back(std::move(alone));
+    return layers;
 }
 
 } // namespace UltraDBAdmin

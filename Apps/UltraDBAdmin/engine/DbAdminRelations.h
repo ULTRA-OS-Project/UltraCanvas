@@ -47,6 +47,13 @@ UltraDbResult ReadSchemaTables(const std::string& connection, const std::string&
 // keys to a table not among them (another schema, or one not read).
 std::vector<RelationLink> RelationLinks(const std::vector<UltraDbTableSchema>& tables, size_t& outside);
 
+// The tables in layers, for a diagram read from the top: each table below
+// every table it refers to (a key to itself, and the way round a cycle,
+// aside), a layer ordered so a table sits under its parents, and the tables
+// with no link at all in a last layer of their own.
+std::vector<std::vector<std::string>> RelationLayers(const std::vector<UltraDbTableSchema>& tables,
+                                                     const std::vector<RelationLink>& links);
+
 // Whether `columns` are the table's whole primary key or a unique index, in
 // any order.
 bool ColumnsAreUnique(const UltraDbTableSchema& table, const std::vector<std::string>& columns);

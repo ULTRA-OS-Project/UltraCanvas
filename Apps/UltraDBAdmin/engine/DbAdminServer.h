@@ -16,6 +16,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "DbAdminOperations.h"      // OperationPlan
 #include "DbAdminStructureEdit.h"   // SqlEngine
 
 #include <UltraDatabase/UltraDatabase.h>
@@ -41,11 +42,9 @@ UltraDbResult ReadServerView(const std::string& connection, SqlEngine engine, Se
 const char* SessionPidColumn();
 
 // pg_cancel_backend (stop the running query) or pg_terminate_backend (end
-// the session), as the confirmation shows it.
-std::string StopSessionSql(int64_t pid, bool terminate);
-
-// Runs it, the process id bound; `stopped` is what PostgreSQL answers -
-// false when there was no such session, or it was not this user's to stop.
-UltraDbResult StopSession(const std::string& connection, int64_t pid, bool terminate, bool& stopped);
+// the session) of the session `pid`, as the confirmation shows it and
+// RunPlan runs it: its one row says whether PostgreSQL did - false when
+// there was no such session, or it was not this user's to stop.
+OperationPlan StopSessionPlan(int64_t pid, bool terminate);
 
 } // namespace UltraDBAdmin
