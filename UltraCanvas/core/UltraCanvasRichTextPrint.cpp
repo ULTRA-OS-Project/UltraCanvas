@@ -1,5 +1,6 @@
 // core/UltraCanvasRichTextPrint.cpp
 // A rich document's pages, drawn for a printer that cannot take its PDF.
+// Version: 1.0.1 - the pages are laid out without the editor's font notice
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 
@@ -38,6 +39,7 @@ RichDocumentPrintPages::RichDocumentPrintPages(const UCRichDocument& document,
                                                const RichTextEditStyle& style) {
     layout = std::make_shared<UltraCanvasRichTextEdit>("RichDocumentPrintPages", 0, 0, 1, 1);
     layout->SetStyle(style);
+    layout->SetShowFontNotice(false);   // paper gets the text, not the editor's notice
     layout->SetDocument(std::make_shared<UCRichDocument>(document));
 }
 

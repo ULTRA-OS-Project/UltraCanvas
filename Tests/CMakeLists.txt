@@ -734,6 +734,27 @@ else()
     message(STATUS "  FontChangeRepaintTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FONT COVERAGE TEST =====
+# CountCharactersWithoutFont(): the characters of a text no font covers,
+# headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontCoverageTest...")
+    add_executable(FontCoverageTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FontCoverageTest.cpp
+    )
+    target_include_directories(FontCoverageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FontCoverageTest PRIVATE cxx_std_20)
+    target_link_libraries(FontCoverageTest PRIVATE UltraCanvas)
+    set_target_properties(FontCoverageTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FontCoverageTest COMMAND FontCoverageTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontCoverageTest")
+else()
+    message(STATUS "  FontCoverageTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== EMOJI SETTINGS TEST =====
 # Defined in EmojiTests.cmake, which the top level also includes on its own
 # (ULTRACANVAS_BUILD_EMOJI_TESTS) where BUILD_TESTS is off - the Windows row.

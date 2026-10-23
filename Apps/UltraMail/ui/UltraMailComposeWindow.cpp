@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.11.1 - the body editor shows no missing-fonts notice
 // Version: 0.11.0 - a recipient suggestion's right-click menu: Edit contact,
 //                   Delete address, Set as SPAM
 // Version: 0.10.1 - the cloud link picker gets the shared cloud service
@@ -224,6 +225,9 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     richStyle.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the plain body
     richStyle.drawBorder = false;
     rich_->SetStyle(richStyle);
+    // A mail names fonts the sender has (Calibri, Arial ...) and draws fine
+    // in a substitute: no notice over the text being written.
+    rich_->SetShowFontNotice(false);
     rich_->SetDocument(draft_.richBody ? draft_.richBody : PlainBodyToRichDocument(""));
     rich_->GetEditor().SetCaret(RichDocPosition(0, 0));  // the empty line above the quote
     root_->AddChild(rich_);
