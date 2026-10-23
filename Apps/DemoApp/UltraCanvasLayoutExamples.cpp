@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasLayoutExamples.cpp
 // Layout system demonstration examples for UltraCanvas Demo Application
+// Version: 2.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  layout, every text and button sized to fit, the demo
+//                  containers keep their own layouts
 // Version: 2.0.1 - layouts ask for their stretch; the grid form's inputs have no width of their own
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
@@ -16,81 +20,69 @@
 
 namespace UltraCanvas {
 
-// Helper function to create section title
-    std::shared_ptr<UltraCanvasLabel> CreateLayoutSectionTitle(float x, float y, const std::string& text) {
-        auto title = std::make_shared<UltraCanvasLabel>("LayoutSecTitle" + std::to_string(x), x, y, 600, 25);
-        title->SetText(text);
-        title->SetFontSize(14);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        return title;
-    }
+namespace {
+        // A button as wide as its text, at least the width it was drawn at
+        // before, so a longer caption widens it instead of being cut.
+        std::shared_ptr<UltraCanvasButton> MakeLayoutButton(const std::string& id, const std::string& text,
+                                                            float minWidth, float height) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, height, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+            button->boxConstraints = limits;
+            return button;
+        }
 
-// Helper function to create description label
-    std::shared_ptr<UltraCanvasLabel> CreateLayoutDescription(float x, float y, float width, const std::string& text) {
-        auto desc = std::make_shared<UltraCanvasLabel>("LayoutDesc" + std::to_string(x), x, y, width, 0);
-        desc->SetText(text);
-        desc->SetTextColor(Color(80, 80, 80, 255));
-        desc->SetFontSize(12);
-        desc->SetWrap(TextWrap::WrapWord);
-        return desc;
-    }
+        // A container that demonstrates a layout keeps its height as a floor,
+        // so its content can grow taller with its text.
+        void SetMinimumHeight(const std::shared_ptr<UltraCanvasUIElement>& element, float h) {
+            CSSLayout::BoxConstraints limits = element->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+            limits.minHeight = CSSLayout::Dimension::Px(h);
+            element->boxConstraints = limits;
+        }
+
+        // The code sample beside a demo: shares the row's spare width and
+        // moves under the demo when the row is narrower than both.
+        void AddCodeBeside(const std::shared_ptr<UltraCanvasContainer>& row, const std::string& id,
+                           const std::string& text) {
+            auto code = DemoKit::CreateText(id, text);
+            DemoKit::Add(row, code, 1);
+            code->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(DemoKit::kCardMinWidth));
+        }
+    } // namespace
 
     // Provided by UltraCanvasLabelPlacementExamples.cpp
     std::shared_ptr<UltraCanvasUIElement> CreateLabelPlacementLayoutTab();
 
     static std::shared_ptr<UltraCanvasUIElement> CreateBoxGridFlexLayoutTab() {
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("LayoutExamples", 0, 0, 1020, 1670);
-        mainContainer->SetBackgroundColor(Colors::White);
-        mainContainer->SetPadding(0,0,10,0);
-
-        long currentY = 10;
-
-        // ===== MAIN TITLE =====
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("LayoutMainTitle", 20, currentY, 900, 30);
-        mainTitle->SetText("UltraCanvas Layout System Examples");
-        mainTitle->SetFontSize(18);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(mainTitle);
-
-        currentY += 40;
-
-        // Description
-        auto description = CreateLayoutDescription(20, currentY, 960,
-                                                   "Comprehensive examples of Box, Grid, and Flex layouts with various configurations and use cases.");
-        mainContainer->AddChild(description);
-
-        currentY += 70;
+        // The tab's content: the page look, scrolled inside the tab (the
+        // tabbed container sizes it to its content area).
+        auto mainContainer = std::make_shared<UltraCanvasContainer>("LayoutExamples");
+        mainContainer->SetBackgroundColor(DemoKit::PageBackground());
+        mainContainer->SetPadding(DemoKit::kPagePadding);
+        mainContainer->layout.SetFlexColumn().SetFlexGap(DemoKit::kPageGap)
+                             .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         // ===== SECTION 1: VERTICAL BOX LAYOUT =====
-        mainContainer->AddChild(CreateLayoutSectionTitle(20, currentY, "1. Vertical Box Layout"));
-        currentY += 30;
-
-        auto vboxDesc = CreateLayoutDescription(20, currentY, 960,
-                                                "Vertical arrangement with spacing, padding, and stretch. Buttons respond to clicks.");
-        mainContainer->AddChild(vboxDesc);
-        currentY += 60;
+        auto vboxCard = DemoKit::AddCard(mainContainer, "LayoutVBoxCard", "1. Vertical Box Layout",
+                "Vertical arrangement with spacing, padding, and stretch. Buttons respond to clicks.");
+        auto vboxRow = DemoKit::AddRow(vboxCard, "LayoutVBoxRow", 20);
 
         // Create demo container for vertical layout
-        auto vboxDemo = std::make_shared<UltraCanvasContainer>("VBoxDemo", 20, currentY, 300, 200);
+        auto vboxDemo = std::make_shared<UltraCanvasContainer>("VBoxDemo", 0, 0, 300, 0);
+        SetMinimumHeight(vboxDemo, 200);
         vboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         vboxDemo->SetPadding(15);
 
         vboxDemo->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        auto vboxBtn1 = std::make_shared<UltraCanvasButton>("VBtn1", 0, 0, 150, 35);
-        vboxBtn1->SetText("Button 1");
+        auto vboxBtn1 = MakeLayoutButton("VBtn1", "Button 1", 150, 35);
+        auto vboxBtn2 = MakeLayoutButton("VBtn2", "Button 2", 150, 35);
+        auto vboxBtn3 = MakeLayoutButton("VBtn3", "Button 3", 150, 35);
 
-        auto vboxBtn2 = std::make_shared<UltraCanvasButton>("VBtn2", 0, 0, 150, 35);
-        vboxBtn2->SetText("Button 2");
-
-        auto vboxBtn3 = std::make_shared<UltraCanvasButton>("VBtn3", 0, 0, 150, 35);
-        vboxBtn3->SetText("Button 3");
-
-        auto vboxStatus = std::make_shared<UltraCanvasLabel>("VStatus", 0, 0, 150, 25);
-        vboxStatus->SetText("Click any button");
+        auto vboxStatus = std::make_shared<UltraCanvasLabel>("VStatus", "Click any button");
         vboxStatus->SetTextColor(Color(0, 100, 200, 255));
         vboxStatus->SetFontSize(11);
+        vboxStatus->SetWrap(TextWrap::WrapWord);
 
         vboxBtn1->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 1 clicked!"); });
         vboxBtn2->SetOnClick([vboxStatus]() { vboxStatus->SetText("Button 2 clicked!"); });
@@ -106,41 +98,28 @@ namespace UltraCanvas {
         vboxDemo->AddChild(vboxStatus);
         vboxStatus->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
-        mainContainer->AddChild(vboxDemo);
+        DemoKit::AddFixed(vboxRow, vboxDemo);
 
         // Code explanation
-        auto vboxCode = CreateLayoutDescription(340, currentY, 640,
-                                                "Code: container->layout.SetFlexColumn().SetFlexGap(10);\ncontainer->AddChild(button1); container->AddStretchSpacer(1);");
-        mainContainer->AddChild(vboxCode);
-
-        currentY += 250;
+        AddCodeBeside(vboxRow, "LayoutVBoxCode",
+                "Code: container->layout.SetFlexColumn().SetFlexGap(10);\ncontainer->AddChild(button1); container->AddStretchSpacer(1);");
 
         // ===== SECTION 2: HORIZONTAL BOX LAYOUT =====
-        mainContainer->AddChild(CreateLayoutSectionTitle(20, currentY, "2. Horizontal Box Layout (Toolbar Style)"));
-        currentY += 30;
-
-        auto hboxDesc = CreateLayoutDescription(20, currentY, 960,
-                                                "Horizontal toolbar with left-aligned actions and right-aligned utilities using AddStretch.");
-        mainContainer->AddChild(hboxDesc);
-        currentY += 30;
+        auto hboxCard = DemoKit::AddCard(mainContainer, "LayoutHBoxCard", "2. Horizontal Box Layout (Toolbar Style)",
+                "Horizontal toolbar with left-aligned actions and right-aligned utilities using AddStretch.");
 
         // Create demo container for horizontal layout
-        auto hboxDemo = std::make_shared<UltraCanvasContainer>("HBoxDemo", 20, currentY, 960, 50);
+        auto hboxDemo = std::make_shared<UltraCanvasContainer>("HBoxDemo", 0, 0, 960, 50);
         hboxDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         hboxDemo->SetPadding(10);
 
         hboxDemo->layout.SetFlexRow().SetFlexGap(5).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-        auto newBtn = std::make_shared<UltraCanvasButton>("NewBtn", 0, 0, 60, 30);
-        newBtn->SetText("New");
-        auto openBtn = std::make_shared<UltraCanvasButton>("OpenBtn", 0, 0, 65, 30);
-        openBtn->SetText("Open");
-        auto saveBtn = std::make_shared<UltraCanvasButton>("SaveBtn", 0, 0, 60, 30);
-        saveBtn->SetText("Save");
-        auto settingsBtn = std::make_shared<UltraCanvasButton>("SettingsBtn", 0, 0, 80, 30);
-        settingsBtn->SetText("Settings");
-        auto helpBtn = std::make_shared<UltraCanvasButton>("HelpBtn", 0, 0, 60, 30);
-        helpBtn->SetText("Help");
+        auto newBtn = MakeLayoutButton("NewBtn", "New", 60, 30);
+        auto openBtn = MakeLayoutButton("OpenBtn", "Open", 65, 30);
+        auto saveBtn = MakeLayoutButton("SaveBtn", "Save", 60, 30);
+        auto settingsBtn = MakeLayoutButton("SettingsBtn", "Settings", 80, 30);
+        auto helpBtn = MakeLayoutButton("HelpBtn", "Help", 60, 30);
 
         hboxDemo->AddChild(newBtn);
         newBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
@@ -155,27 +134,20 @@ namespace UltraCanvas {
         hboxDemo->AddChild(helpBtn);
         helpBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
-        mainContainer->AddChild(hboxDemo);
+        // As wide as the card, so the stretch spacer has room to show.
+        DemoKit::AddStretched(hboxCard, hboxDemo);
 
-        currentY += 60;
-
-        auto hboxCode = CreateLayoutDescription(20, currentY, 960,
-                                                "Code: container->layout.SetFlexRow().SetFlexGap(5);\ncontainer->AddChild(leftBtn);\ncontainer->AddSpacer(15);\ncontainer->AddStretchSpacer(1);\ncontainer->AddChild(rightBtn);");
-        mainContainer->AddChild(hboxCode);
-
-        currentY += 130;
+        DemoKit::AddText(hboxCard, "LayoutHBoxCode",
+                "Code: container->layout.SetFlexRow().SetFlexGap(5);\ncontainer->AddChild(leftBtn);\ncontainer->AddSpacer(15);\ncontainer->AddStretchSpacer(1);\ncontainer->AddChild(rightBtn);");
 
         // ===== SECTION 3: GRID LAYOUT (FORM) =====
-        mainContainer->AddChild(CreateLayoutSectionTitle(20, currentY, "3. Grid Layout (Form Design)"));
-        currentY += 30;
-
-        auto gridDesc = CreateLayoutDescription(20, currentY, 960,
-                                                "Grid-based form with auto-sized labels and star-sized inputs. Submit button spans both columns.");
-        mainContainer->AddChild(gridDesc);
-        currentY += 60;
+        auto gridCard = DemoKit::AddCard(mainContainer, "LayoutGridCard", "3. Grid Layout (Form Design)",
+                "Grid-based form with auto-sized labels and star-sized inputs. Submit button spans both columns.");
+        auto gridRow = DemoKit::AddRow(gridCard, "LayoutGridRow", 20);
 
         // Create demo container for grid layout
-        auto gridDemo = std::make_shared<UltraCanvasContainer>("GridDemo", 20, currentY, 450, 200);
+        auto gridDemo = std::make_shared<UltraCanvasContainer>("GridDemo", 0, 0, 450, 0);
+        SetMinimumHeight(gridDemo, 200);
         gridDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         gridDemo->SetPadding(10);
 
@@ -192,11 +164,17 @@ namespace UltraCanvas {
 
         int row = 0;
 
-        // The inputs and the button have no width of their own: the grid
-        // stretches them across the fr column (and the button across both).
-        auto nameLabel = std::make_shared<UltraCanvasLabel>("NameLbl", 0, 0, 70, 25);
-        nameLabel->SetText("Name:");
-        nameLabel->SetTextColor(Colors::Black);
+        // The labels, the inputs and the button have no width of their own:
+        // the auto column is as wide as the widest label, and the grid
+        // stretches the inputs across the fr column (and the button across both).
+        auto makeFormLabel = [](const std::string& id, const std::string& text) {
+            auto label = std::make_shared<UltraCanvasLabel>(id, text);
+            label->SetTextColor(Colors::Black);
+            label->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            return label;
+        };
+
+        auto nameLabel = makeFormLabel("NameLbl", "Name:");
         auto nameInput = std::make_shared<UltraCanvasTextInput>("NameIn", 0, 0, 0, 25);
         nameInput->SetShowValidationState(false);
         gridDemo->AddChild(nameLabel);
@@ -204,18 +182,14 @@ namespace UltraCanvas {
         gridDemo->AddChild(nameInput);
         nameInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
-        auto emailLabel = std::make_shared<UltraCanvasLabel>("EmailLbl", 0, 0, 70, 25);
-        emailLabel->SetText("Email:");
-        emailLabel->SetTextColor(Colors::Black);
+        auto emailLabel = makeFormLabel("EmailLbl", "Email:");
         auto emailInput = std::make_shared<UltraCanvasTextInput>("EmailIn", 0, 0, 0, 25);
         gridDemo->AddChild(emailLabel);
         emailLabel->layoutItem.SetGridRowColSimplified(row, 0);
         gridDemo->AddChild(emailInput);
         emailInput->layoutItem.SetGridRowColSimplified(row++, 1);
 
-        auto phoneLabel = std::make_shared<UltraCanvasLabel>("PhoneLbl", 0, 0, 70, 25);
-        phoneLabel->SetText("Phone:");
-        phoneLabel->SetTextColor(Colors::Black);
+        auto phoneLabel = makeFormLabel("PhoneLbl", "Phone:");
         auto phoneInput = std::make_shared<UltraCanvasTextInput>("PhoneIn", 0, 0, 0, 25);
         gridDemo->AddChild(phoneLabel);
         phoneLabel->layoutItem.SetGridRowColSimplified(row, 0);
@@ -227,25 +201,18 @@ namespace UltraCanvas {
         gridDemo->AddChild(submitBtn);
         submitBtn->layoutItem.SetGridRowColSimplified(row, 0, 1, 2);  // Span 2 columns
 
-        mainContainer->AddChild(gridDemo);
+        DemoKit::AddFixed(gridRow, gridDemo);
 
-        auto gridCode = CreateLayoutDescription(490, currentY, 490,
-                                                "Code: container->layout.SetGrid();\ncontainer->layout.SetGridColumns({autoTrack, frTrack});\ncontainer->layout.SetGridRows(std::vector<GridTrackSize>(rows));\ncontainer->AddChild(label); label->layoutItem.SetGridRowColSimplified(row, column);\ncontainer->AddChild(input); input->layoutItem.SetGridRowColSimplified(row, column);");
-        mainContainer->AddChild(gridCode);
-
-        currentY += 220;
+        AddCodeBeside(gridRow, "LayoutGridCode",
+                "Code: container->layout.SetGrid();\ncontainer->layout.SetGridColumns({autoTrack, frTrack});\ncontainer->layout.SetGridRows(std::vector<GridTrackSize>(rows));\ncontainer->AddChild(label); label->layoutItem.SetGridRowColSimplified(row, column);\ncontainer->AddChild(input); input->layoutItem.SetGridRowColSimplified(row, column);");
 
         // ===== SECTION 4: FLEX LAYOUT (CARDS) =====
-        mainContainer->AddChild(CreateLayoutSectionTitle(20, currentY, "4. Flex Layout (Responsive Cards)"));
-        currentY += 30;
+        auto flexCard = DemoKit::AddCard(mainContainer, "LayoutFlexCard", "4. Flex Layout (Responsive Cards)",
+                "Flexible card layout with wrapping. Cards automatically adjust to available space.");
 
-        auto flexDesc = CreateLayoutDescription(20, currentY, 960,
-                                                "Flexible card layout with wrapping. Cards automatically adjust to available space.");
-        mainContainer->AddChild(flexDesc);
-        currentY += 60;
-
-        // Create demo container for flex layout
-        auto flexDemo = std::make_shared<UltraCanvasContainer>("FlexDemo", 20, currentY, 960, 260);
+        // Create demo container for flex layout. As wide as the card and as
+        // tall as its wrapped lines of cards.
+        auto flexDemo = std::make_shared<UltraCanvasContainer>("FlexDemo", 0, 0, 0, 0);
         flexDemo->SetBackgroundColor(Color(245, 245, 250, 255));
         flexDemo->SetPadding(15);
 
@@ -264,77 +231,78 @@ namespace UltraCanvas {
         };
 
         for (int i = 0; i < 4; i++) {
+            // 220 wide (the flex basis); at least 110 tall, taller when the
+            // text wraps.
             auto card = std::make_shared<UltraCanvasContainer>(
                     std::string("Card") + std::to_string(i),
-                    0, 0, 220, 110
+                    0, 0, 220, 0
             );
+            SetMinimumHeight(card, 110);
             card->SetBackgroundColor(Color(255, 255, 255, 255));
             card->SetPadding(15);
 
             card->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
             auto cardTitle = std::make_shared<UltraCanvasLabel>(
-                    std::string("CardTitle") + std::to_string(i),
-                    0, 0, 190, 20
-            );
-            cardTitle->SetText(cardTitles[i]);
+                    std::string("CardTitle") + std::to_string(i), cardTitles[i]);
             cardTitle->SetTextColor(Colors::Black);
             cardTitle->SetFontSize(14);
             cardTitle->SetFontWeight(FontWeight::Bold);
+            cardTitle->SetWrap(TextWrap::WrapWord);
 
             auto cardText = std::make_shared<UltraCanvasLabel>(
-                    std::string("CardText") + std::to_string(i),
-                    0, 0, 190, 35
-            );
-            cardText->SetText(cardTexts[i]);
+                    std::string("CardText") + std::to_string(i), cardTexts[i]);
             cardText->SetTextColor(Color(80, 80, 80, 255));
             cardText->SetFontSize(11);
+            cardText->SetWrap(TextWrap::WrapWord);
 
-            auto cardBtn = std::make_shared<UltraCanvasButton>(
-                    std::string("CardBtn") + std::to_string(i),
-                    0, 0, 80, 25
-            );
-            cardBtn->SetText("Action");
+            auto cardBtn = MakeLayoutButton(std::string("CardBtn") + std::to_string(i), "Action", 80, 25);
 
             card->AddChild(cardTitle);
             card->AddChild(cardText);
             card->AddStretchSpacer(1);
             card->AddChild(cardBtn);
+            // At the start, as wide as its text - not stretched across the card.
+            cardBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
 
             flexDemo->AddChild(card);
             card->layoutItem.SetFlexGrow(0).SetFlexShrink(1)
                     .SetFlexBasis(CSSLayout::Dimension::Px(220));  // flexBasis = 220
         }
 
-        mainContainer->AddChild(flexDemo);
+        DemoKit::Add(flexCard, flexDemo);
 
-        currentY += 270;
-
-        auto flexCode = CreateLayoutDescription(20, currentY, 960,
-                                                "Code: float flexGrow=0, flexShrink=1, flexBasis=220\ncontainer->layout.SetFlexDirection(FlexDirection::Row);\ncontainer->layout.SetFlexWrap(FlexWrap::Wrap).SetFlexGap(15, 15);\ncontainer->AddChild(card); card->layoutItem.SetFlexGrow(0).SetFlexShrink(1).SetFlexBasis(Dimension::Px(220));");
-        mainContainer->AddChild(flexCode);
-
-        currentY += 130;
+        DemoKit::AddText(flexCard, "LayoutFlexCode",
+                "Code: float flexGrow=0, flexShrink=1, flexBasis=220\ncontainer->layout.SetFlexDirection(FlexDirection::Row);\ncontainer->layout.SetFlexWrap(FlexWrap::Wrap).SetFlexGap(15, 15);\ncontainer->AddChild(card); card->layoutItem.SetFlexGrow(0).SetFlexShrink(1).SetFlexBasis(Dimension::Px(220));");
 
         // ===== SUMMARY =====
-        auto summaryTitle = CreateLayoutSectionTitle(20, currentY, "Summary");
-        mainContainer->AddChild(summaryTitle);
-        currentY += 30;
-
-        auto summaryText = CreateLayoutDescription(20, currentY, 960,
-                                                   "• VBox/HBox: Best for simple linear arrangements (buttons, toolbars, lists)\n• Grid: Perfect for forms, tables, and structured layouts\n• Flex: Ideal for responsive designs, card grids, and adaptive layouts\n• All layouts support: spacing, padding, margins, alignment, and size constraints");
-        mainContainer->AddChild(summaryText);
+        DemoKit::AddNotes(mainContainer, "LayoutSummary", "Summary", {
+                "VBox/HBox: Best for simple linear arrangements (buttons, toolbars, lists)",
+                "Grid: Perfect for forms, tables, and structured layouts",
+                "Flex: Ideal for responsive designs, card grids, and adaptive layouts",
+                "All layouts support: spacing, padding, margins, alignment, and size constraints"});
 
         return mainContainer;
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLayoutExamples() {
+        // The page fills the area; each tab scrolls its own content.
+        auto page = DemoKit::CreatePage("LayoutExamplesPage", "UltraCanvas Layout System Examples",
+                "Comprehensive examples of Box, Grid, and Flex layouts with various configurations and use cases.");
+        page->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("LayoutTabsCard");
+        card->SetPadding(4);
+        DemoKit::Add(page, card, 1);
+
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("LayoutExamplesTabs");
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->AddTab("Box / Grid / Flex", CreateBoxGridFlexLayoutTab());
         tabs->AddTab("Label placement", CreateLabelPlacementLayoutTab());
-        return tabs;
+        DemoKit::Add(card, tabs, 1);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        return page;
     }
 
 } // namespace UltraCanvas
