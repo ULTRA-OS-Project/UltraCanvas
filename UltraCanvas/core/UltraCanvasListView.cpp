@@ -1,10 +1,11 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.5.0 - a horizontal scrollbar when the columns are wider than the view
 // Version: 1.4.0 - onCellDoubleClicked, GetCellRect
 // Version: 1.3.0 - the hover follows the rows when they scroll under a still pointer
 // Version: 1.2.0 - model callbacks inert once the view is destroyed; OnModelChanged
 // Version: 1.1.0 - MeasureHeaderWidth / MeasureColumnTextWidth
-// Last Modified: 2026-10-22
+// Last Modified: 2026-10-23
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
@@ -21,6 +22,9 @@ namespace UltraCanvas {
         // (RenderHeader draws them, MeasureHeaderWidth counts them).
         constexpr int kHeaderInset   = 4;
         constexpr int kSortStripGap  = 6;
+        // How far the columns move for one Left / Right key, and for one
+        // line of a Shift+wheel notch (wheelScrollLines of them per notch).
+        constexpr int kHorizontalStep = 40;
 
         // `text` on one line in `font`, in whole pixels rounded up, so a
         // column that width shows all of it.
@@ -50,6 +54,8 @@ namespace UltraCanvas {
         // Scrolling defaults
         scrollOffsetY = 0;
         maxScrollY = 0;
+        scrollOffsetX = 0;
+        maxScrollX = 0;
         CreateScrollbar();
 
         SetBackgroundColor(Colors::White);
@@ -65,6 +71,7 @@ namespace UltraCanvas {
             ConnectModelSignals();
         }
         scrollOffsetY = 0;
+        scrollOffsetX = 0;
         hoveredRow = -1;
         focusedRow = -1;
         // A new model means new columns; drop any per-view width overrides so a
@@ -102,10 +109,9 @@ namespace UltraCanvas {
         if (!model || !viewStyle.showHeader || !columnsResizable) return -1;
         int colCount = model->GetColumnCount();
         if (colCount < 2) return -1;
-        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
         int localContentY = GetBorderTopWidth() + GetPaddingTop();
         if (y < localContentY || y >= localContentY + viewStyle.headerHeight) return -1;
-        int colX = localContentX;
+        int colX = ColumnsStartX();
         for (int col = 0; col + 1 < colCount; ++col) {
             colX += GetColumnWidth(col);
             if (x >= colX - 4 && x <= colX + 4) return col;   // ~4px hot zone
@@ -167,9 +173,8 @@ namespace UltraCanvas {
     void UltraCanvasListView::SetStyle(const ListViewStyle& style) {
         viewStyle = style;
         SetBackgroundColor(viewStyle.backgroundColor);
-        if (verticalScrollbar) {
-            verticalScrollbar->SetStyle(viewStyle.scrollbarStyle);
-        }
+        if (verticalScrollbar) verticalScrollbar->SetStyle(viewStyle.scrollbarStyle);
+        if (horizontalScrollbar) horizontalScrollbar->SetStyle(viewStyle.scrollbarStyle);
         InvalidateRowGeometry();
         UpdateScrollbar();
         RequestRedraw();
@@ -269,6 +274,42 @@ namespace UltraCanvas {
         ClampScrollOffset();
     }
 
+    void UltraCanvasListView::ScrollToColumn(int column) {
+        if (!model || column < 0 || column >= model->GetColumnCount() || model->GetColumnCount() <= 1) return;
+        int left = 0;
+        for (int col = 0; col < column; ++col) left += GetColumnWidth(col);
+        scrollOffsetX = left;
+        ClampScrollOffset();
+        RequestRedraw();
+    }
+
+    void UltraCanvasListView::EnsureColumnVisible(int column) {
+        if (!model || column < 0 || column >= model->GetColumnCount() || model->GetColumnCount() <= 1) return;
+        const auto viewport = GetViewportRect();
+        if (viewport.width <= 0) return;
+        int left = 0;
+        for (int col = 0; col < column; ++col) left += GetColumnWidth(col);
+        const int right = left + GetColumnWidth(column);
+        if (left < scrollOffsetX) {
+            scrollOffsetX = left;
+        } else if (right > scrollOffsetX + viewport.width) {
+            // Just far enough to show the whole column - or, when the column
+            // is wider than the view, its left edge.
+            scrollOffsetX = std::min(left, right - viewport.width);
+        } else {
+            return;
+        }
+        ClampScrollOffset();
+        RequestRedraw();
+    }
+
+    void UltraCanvasListView::ScrollHorizontallyBy(int delta) {
+        if (maxScrollX <= 0) return;
+        scrollOffsetX += delta;
+        ClampScrollOffset();
+        RequestRedraw();
+    }
+
     // ===== SCROLLBAR INTERNALS =====
 
     void UltraCanvasListView::CreateScrollbar() {
@@ -276,56 +317,97 @@ namespace UltraCanvas {
             GetIdentifier() + "_vscroll", 0, 0,
             viewStyle.scrollbarStyle.trackSize, 100,
             ScrollbarOrientation::Vertical);
-
-        verticalScrollbar->onScrollChange = [this](int pos) {
-            if (pos != scrollOffsetY && pointerOver) {
-                // The rows moved under a still pointer: the hover - and
-                // whatever a host hangs on onCellHovered, such as a preview
-                // of the row's thumbnail - follows the row now under it.
-                scrollOffsetY = pos;
-                UpdateHover(lastPointer, lastPointerWindow, false);
-                hoverTooltipStale = true;
-            }
-            scrollOffsetY = pos;
-            RequestRedraw();
-        };
+        verticalScrollbar->onScrollChange = [this](int pos) { HandleScrollbarMoved(scrollOffsetY, pos); };
         verticalScrollbar->SetStyle(viewStyle.scrollbarStyle);
         verticalScrollbar->SetVisible(false);
+
+        horizontalScrollbar = std::make_shared<UltraCanvasScrollbar>(
+            GetIdentifier() + "_hscroll", 0, 0,
+            100, viewStyle.scrollbarStyle.trackSize,
+            ScrollbarOrientation::Horizontal);
+        horizontalScrollbar->onScrollChange = [this](int pos) { HandleScrollbarMoved(scrollOffsetX, pos); };
+        horizontalScrollbar->SetStyle(viewStyle.scrollbarStyle);
+        horizontalScrollbar->SetVisible(false);
+    }
+
+    void UltraCanvasListView::HandleScrollbarMoved(int& offset, int position) {
+        if (position != offset && pointerOver) {
+            // The rows (or the columns) moved under a still pointer: the
+            // hover - and whatever a host hangs on onCellHovered, such as a
+            // preview of the row's thumbnail - follows the cell now under it.
+            offset = position;
+            UpdateHover(lastPointer, lastPointerWindow, false);
+            hoverTooltipStale = true;
+        }
+        offset = position;
+        RequestRedraw();
+    }
+
+    UltraCanvasListView::ScrollLayout UltraCanvasListView::ComputeScrollLayout() const {
+        ScrollLayout layout;
+        const int rows = model ? model->GetRowCount() : 0;
+        const int headerOff = GetHeaderOffset();
+        const int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
+        const int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
+        const int rowsHeight = rows > 0 ? RowsContentHeight() : 0;
+        const int columnsWidth = ColumnsContentWidth();
+        const int vTrack = verticalScrollbar->GetStyle().trackSize;
+        const int hTrack = horizontalScrollbar->GetStyle().trackSize;
+
+        // Each scrollbar takes a track off the other's viewport, so one
+        // that is needed only because the other shows is decided second.
+        layout.viewportWidth = crWidth;
+        layout.viewportHeight = crHeight - headerOff;
+        layout.showVertical = rowsHeight > layout.viewportHeight;
+        layout.showHorizontal = columnsWidth > layout.viewportWidth;
+        if (layout.showVertical && !layout.showHorizontal) {
+            layout.showHorizontal = columnsWidth > layout.viewportWidth - vTrack;
+        } else if (layout.showHorizontal && !layout.showVertical) {
+            layout.showVertical = rowsHeight > layout.viewportHeight - hTrack;
+        }
+        if (layout.showVertical) layout.viewportWidth -= vTrack;
+        if (layout.showHorizontal) layout.viewportHeight -= hTrack;
+        layout.maxY = std::max(0, rowsHeight - layout.viewportHeight);
+        layout.maxX = std::max(0, columnsWidth - layout.viewportWidth);
+
+        // Scrollbar bounds in element-local space (within the padding box):
+        // the vertical one beside the rows, below the header; the horizontal
+        // one along the bottom; each stops short of the other's track.
+        const int localPaddingX = GetBorderLeftWidth();
+        const int localPaddingY = GetBorderTopWidth();
+        const int paddingW = GetWidth() - GetTotalBorderHorizontal();
+        const int paddingH = GetHeight() - GetTotalBorderVertical();
+        if (layout.showVertical) {
+            layout.verticalBounds = Rect2Di(localPaddingX + paddingW - vTrack, localPaddingY + headerOff, vTrack,
+                                            paddingH - headerOff - (layout.showHorizontal ? hTrack : 0));
+        }
+        if (layout.showHorizontal) {
+            layout.horizontalBounds = Rect2Di(localPaddingX, localPaddingY + paddingH - hTrack,
+                                              paddingW - (layout.showVertical ? vTrack : 0), hTrack);
+        }
+        return layout;
     }
 
     void UltraCanvasListView::UpdateScrollbar() {
-        if (!model || model->GetRowCount() == 0) {
-            maxScrollY = 0;
-            HideScrollbar();
-            return;
-        }
+        const ScrollLayout layout = ComputeScrollLayout();
+        maxScrollY = layout.maxY;
+        maxScrollX = layout.maxX;
 
-        int headerOff = GetHeaderOffset();
-        int rowsContentHeight = RowsContentHeight();
-        int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
-        int rowsViewportHeight = crHeight - headerOff;
-
-        maxScrollY = std::max(0, rowsContentHeight - rowsViewportHeight);
-        bool hasVerticalScrollbar = maxScrollY > 0;
-
-        if (!hasVerticalScrollbar) {
-            HideScrollbar();
+        if (!layout.showVertical) {
+            HideScrollbar(*verticalScrollbar);
         } else {
             verticalScrollbar->SetVisible(true);
-            // Scrollbar bounds in element-local space (within listview padding rect)
-            int localPaddingX = GetBorderLeftWidth();
-            int localPaddingY = GetBorderTopWidth();
-            int paddingW = GetWidth() - GetTotalBorderHorizontal();
-            int paddingH = GetHeight() - GetTotalBorderVertical();
-            int scrollbarWidth = verticalScrollbar->GetStyle().trackSize;
-            int sbX = localPaddingX + paddingW - scrollbarWidth;
-            int sbY = localPaddingY + headerOff;
-            int sbHeight = paddingH - headerOff;
-
-            verticalScrollbar->SetPosition(sbX, sbY);
-            verticalScrollbar->SetSize(scrollbarWidth, sbHeight);
-            verticalScrollbar->SetViewportSize(rowsViewportHeight);
-            verticalScrollbar->SetContentSize(rowsContentHeight);
+            verticalScrollbar->SetBounds(Rect2Df(layout.verticalBounds));
+            verticalScrollbar->SetViewportSize(layout.viewportHeight);
+            verticalScrollbar->SetContentSize(RowsContentHeight());
+        }
+        if (!layout.showHorizontal) {
+            HideScrollbar(*horizontalScrollbar);
+        } else {
+            horizontalScrollbar->SetVisible(true);
+            horizontalScrollbar->SetBounds(Rect2Df(layout.horizontalBounds));
+            horizontalScrollbar->SetViewportSize(layout.viewportWidth);
+            horizontalScrollbar->SetContentSize(ColumnsContentWidth());
         }
         ClampScrollOffset();
     }
@@ -335,52 +417,48 @@ namespace UltraCanvas {
     // the split pane sized it), and a rectangle outside the list must never
     // survive to be painted or hit-tested once the bar shows again without a
     // fresh UpdateScrollbar.
-    void UltraCanvasListView::HideScrollbar() {
-        verticalScrollbar->SetVisible(false);
-        verticalScrollbar->SetBounds(Rect2Df(0, 0, 0, 0));
+    void UltraCanvasListView::HideScrollbar(UltraCanvasScrollbar& scrollbar) {
+        scrollbar.SetVisible(false);
+        scrollbar.SetBounds(Rect2Df(0, 0, 0, 0));
     }
 
     void UltraCanvasListView::SyncScrollbarBeforePaint() {
-        const int rows = model ? model->GetRowCount() : 0;
-        const int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
-        const int rowsViewportHeight = crHeight - GetHeaderOffset();
-        const int expectedMax = rows > 0 ? std::max(0, RowsContentHeight() - rowsViewportHeight) : 0;
-        const bool expectedVisible = expectedMax > 0;
-        int expectedX = 0, expectedY = 0, expectedHeight = 0;
-        if (expectedVisible) {
-            expectedX = GetBorderLeftWidth() + (GetWidth() - GetTotalBorderHorizontal()) -
-                        verticalScrollbar->GetStyle().trackSize;
-            expectedY = GetBorderTopWidth() + GetHeaderOffset();
-            expectedHeight = (GetHeight() - GetTotalBorderVertical()) - GetHeaderOffset();
-        }
-        const Rect2Df sb = verticalScrollbar->GetBounds();
-        const bool stale = expectedMax != maxScrollY || expectedVisible != verticalScrollbar->IsVisible() ||
-                           (expectedVisible && (static_cast<int>(sb.x) != expectedX ||
-                                                static_cast<int>(sb.y) != expectedY ||
-                                                static_cast<int>(sb.height) != expectedHeight));
+        const ScrollLayout layout = ComputeScrollLayout();
+        const Rect2Di vertical(verticalScrollbar->GetBounds());
+        const Rect2Di horizontal(horizontalScrollbar->GetBounds());
+        const bool stale = layout.maxY != maxScrollY || layout.maxX != maxScrollX ||
+                           layout.showVertical != verticalScrollbar->IsVisible() ||
+                           layout.showHorizontal != horizontalScrollbar->IsVisible() ||
+                           (layout.showVertical && vertical != layout.verticalBounds) ||
+                           (layout.showHorizontal && horizontal != layout.horizontalBounds);
         if (!stale) return;
         debugOutput << "UltraCanvasListView " << GetIdentifier() << ": scrollbar was stale at paint (rows "
-                    << rows << ", content " << RowsContentHeight() << ", viewport " << rowsViewportHeight
-                    << ", range " << maxScrollY << " -> " << expectedMax << ", shown "
-                    << verticalScrollbar->IsVisible() << " -> " << expectedVisible << ")" << std::endl;
+                    << (model ? model->GetRowCount() : 0) << ", content " << RowsContentHeight() << "x"
+                    << ColumnsContentWidth() << ", viewport " << layout.viewportWidth << "x" << layout.viewportHeight
+                    << ", range " << maxScrollY << " -> " << layout.maxY << " / " << maxScrollX << " -> "
+                    << layout.maxX << ", shown " << verticalScrollbar->IsVisible() << " -> " << layout.showVertical
+                    << " / " << horizontalScrollbar->IsVisible() << " -> " << layout.showHorizontal << ")"
+                    << std::endl;
         UpdateScrollbar();
     }
 
     UltraCanvasListView::ScrollMetrics UltraCanvasListView::GetScrollMetrics() const {
+        const ScrollLayout layout = ComputeScrollLayout();
         ScrollMetrics m;
         m.rows = model ? model->GetRowCount() : 0;
         m.rowHeight = (useVariableRowHeights && delegate) ? 0 : viewStyle.rowHeight;
         m.contentHeight = RowsContentHeight();
-        const int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
-        m.viewportHeight = crHeight - GetHeaderOffset();
-        m.maxScroll = m.rows > 0 ? std::max(0, m.contentHeight - m.viewportHeight) : 0;
+        m.viewportHeight = layout.viewportHeight;
+        m.maxScroll = layout.maxY;
         m.scrollOffset = scrollOffsetY;
-        m.scrollbarVisible = verticalScrollbar && verticalScrollbar->IsVisible();
-        if (verticalScrollbar) {
-            const Rect2Df b = verticalScrollbar->GetBounds();
-            m.scrollbarBounds = Rect2Di(static_cast<int>(b.x), static_cast<int>(b.y),
-                                        static_cast<int>(b.width), static_cast<int>(b.height));
-        }
+        m.scrollbarVisible = verticalScrollbar->IsVisible();
+        m.scrollbarBounds = Rect2Di(verticalScrollbar->GetBounds());
+        m.contentWidth = ColumnsContentWidth();
+        m.viewportWidth = layout.viewportWidth;
+        m.maxScrollX = layout.maxX;
+        m.scrollOffsetX = scrollOffsetX;
+        m.horizontalScrollbarVisible = horizontalScrollbar->IsVisible();
+        m.horizontalScrollbarBounds = Rect2Di(horizontalScrollbar->GetBounds());
         m.width = GetWidth();
         m.height = GetHeight();
         return m;
@@ -390,6 +468,10 @@ namespace UltraCanvas {
         scrollOffsetY = std::max(0, std::min(scrollOffsetY, maxScrollY));
         if (verticalScrollbar->IsVisible()) {
             verticalScrollbar->SetScrollPosition(scrollOffsetY);
+        }
+        scrollOffsetX = std::max(0, std::min(scrollOffsetX, maxScrollX));
+        if (horizontalScrollbar->IsVisible()) {
+            horizontalScrollbar->SetScrollPosition(scrollOffsetX);
         }
     }
 
@@ -483,6 +565,19 @@ namespace UltraCanvas {
         return 0;
     }
 
+    int UltraCanvasListView::ColumnsContentWidth() const {
+        if (!model) return 0;
+        const int colCount = model->GetColumnCount();
+        if (colCount <= 1) return 0;
+        int width = 0;
+        for (int col = 0; col < colCount; ++col) width += GetColumnWidth(col);
+        return width;
+    }
+
+    int UltraCanvasListView::ColumnsStartX() const {
+        return GetBorderLeftWidth() + GetPaddingLeft() - scrollOffsetX;
+    }
+
     Rect2Di UltraCanvasListView::GetViewportRect() const {
         // Returns element-local coordinates (ctx is translated to element origin)
         int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
@@ -490,8 +585,9 @@ namespace UltraCanvas {
         int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
         int crHeight = GetHeight() - GetTotalBorderVertical() - GetTotalPaddingVertical();
         int sbWidth = verticalScrollbar->IsVisible() ? verticalScrollbar->GetStyle().trackSize : 0;
+        int sbHeight = horizontalScrollbar->IsVisible() ? horizontalScrollbar->GetStyle().trackSize : 0;
         int headerOff = GetHeaderOffset();
-        return Rect2Di(localContentX, localContentY + headerOff, crWidth - sbWidth, crHeight - headerOff);
+        return Rect2Di(localContentX, localContentY + headerOff, crWidth - sbWidth, crHeight - headerOff - sbHeight);
     }
 
     int UltraCanvasListView::GetColumnAt(int x, int* columnStartX) const {
@@ -504,7 +600,7 @@ namespace UltraCanvas {
             if (columnStartX) *columnStartX = viewport.x;
             return 0;
         }
-        int colX = viewport.x;
+        int colX = ColumnsStartX();
         for (int col = 0; col < colCount; col++) {
             int colW = GetColumnWidth(col);
             if (x < colX + colW) {
@@ -522,7 +618,7 @@ namespace UltraCanvas {
         if (column >= std::max(colCount, 1)) return Rect2Di();
         const Rect2Di rowRect = GetRowRect(row);
         if (colCount <= 1) return rowRect;
-        int colX = rowRect.x;
+        int colX = ColumnsStartX();
         for (int col = 0; col < column; ++col) colX += GetColumnWidth(col);
         return Rect2Di(colX, rowRect.y, GetColumnWidth(column), rowRect.height);
     }
@@ -538,7 +634,7 @@ namespace UltraCanvas {
         if (y < localContentY || y >= localContentY + viewStyle.headerHeight) return -1;
         if (x < localContentX || x >= localContentX + crWidth) return -1;
 
-        int colX = localContentX;
+        int colX = ColumnsStartX();
         int colCount = model->GetColumnCount();
         for (int col = 0; col < colCount; col++) {
             int colW = GetColumnWidth(col);
@@ -618,14 +714,22 @@ namespace UltraCanvas {
         // Draw visible rows
         RenderRows(ctx, contentRect);
 
-        // Draw scrollbar on top (bounds are stored in element-local space;
-        // translate ctx so scrollbar can draw from (0,0))
-        if (verticalScrollbar->IsVisible()) {
+        // Draw the scrollbars on top (bounds are stored in element-local
+        // space; translate ctx so a scrollbar can draw from (0,0))
+        for (UltraCanvasScrollbar* scrollbar : { verticalScrollbar.get(), horizontalScrollbar.get() }) {
+            if (!scrollbar->IsVisible()) continue;
             ctx->PushState();
-            auto sbB = verticalScrollbar->GetBounds();
+            auto sbB = scrollbar->GetBounds();
             ctx->Translate(Point2Di(sbB.x, sbB.y));
-            verticalScrollbar->Render(ctx, dirtyRect);
+            scrollbar->Render(ctx, dirtyRect);
             ctx->PopState();
+        }
+        // The square where the two tracks would meet, in the track's colour.
+        if (verticalScrollbar->IsVisible() && horizontalScrollbar->IsVisible()) {
+            const Rect2Df v = verticalScrollbar->GetBounds();
+            const Rect2Df h = horizontalScrollbar->GetBounds();
+            ctx->SetFillPaint(viewStyle.scrollbarStyle.trackColor);
+            ctx->FillRectangle(Rect2Dd(v.x, h.y, v.width, h.height));
         }
     }
 
@@ -647,11 +751,14 @@ namespace UltraCanvas {
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextWrap(TextWrap::WrapNone);
 
-        int colX = headerRect.x;
+        // The header cells scroll sideways with the columns under them.
+        int colX = headerRect.x - scrollOffsetX;
         int colCount = model->GetColumnCount();
         for (int col = 0; col < colCount; col++) {
             auto colDef = model->GetColumnDef(col);
             int colW = GetColumnWidth(col);
+            if (colX >= headerRect.Right()) break;
+            if (colX + colW <= headerRect.x) { colX += colW; continue; }
             ctx->SetTextAlignment(colDef.alignment);
             ctx->SetTextPaint(viewStyle.headerTextColor);
 
@@ -811,11 +918,14 @@ namespace UltraCanvas {
 
                 delegate->RenderItem(ctx, model.get(), row, 0, opt);
             } else {
-                // Multi-column mode: iterate columns
-                int colX = viewport.x;
+                // Multi-column mode: iterate the columns, scrolled sideways,
+                // painting only those that reach into the viewport.
+                int colX = viewport.x - scrollOffsetX;
                 for (int col = 0; col < colCount; col++) {
                     auto colDef = model->GetColumnDef(col);
                     int colW = GetColumnWidth(col);
+                    if (colX >= viewport.Right()) break;
+                    if (colX + colW <= viewport.x) { colX += colW; continue; }
 
                     ListItemStyleOption opt;
                     opt.rect = Rect2Di(viewport.x, rowY, viewport.width, rowH);
@@ -855,23 +965,9 @@ namespace UltraCanvas {
     bool UltraCanvasListView::OnEvent(const UCEvent& event) {
         if (IsDisabled() || !IsVisible()) return false;
 
-        // Scrollbar gets events first (translate pointer from listview-local to scrollbar-local)
-        if (verticalScrollbar->IsVisible()) {
-            auto sbB = verticalScrollbar->GetBounds();
-            if (sbB.Contains(event.pointer) || verticalScrollbar->IsDragging()) {
-                UCEvent localEvent = event;
-                localEvent.pointer = event.pointer - sbB.TopLeft();
-                if (verticalScrollbar->OnEvent(localEvent)) {
-                    if (event.type == UCEventType::MouseMove) {
-                        // The pointer is on the scrollbar, not on a cell, and a
-                        // drag moves the rows under it.
-                        HideHoverTooltip();
-                        hoveredColumn = -1;
-                        hoveredHeaderColumn = -1;
-                    }
-                    return true;
-                }
-            }
+        // The scrollbars get mouse events first
+        if (DispatchToScrollbar(*verticalScrollbar, event) || DispatchToScrollbar(*horizontalScrollbar, event)) {
+            return true;
         }
 
         // Interactive column resize (multi-column header). Handled before row
@@ -992,6 +1088,24 @@ namespace UltraCanvas {
                 break;
         }
         return false;
+    }
+
+    bool UltraCanvasListView::DispatchToScrollbar(UltraCanvasScrollbar& scrollbar, const UCEvent& event) {
+        if (!scrollbar.IsVisible() || !event.IsMouseEvent()) return false;
+        const Rect2Df sbB = scrollbar.GetBounds();
+        if (!sbB.Contains(event.pointer) && !scrollbar.IsDragging()) return false;
+        // Translate the pointer from listview-local to scrollbar-local.
+        UCEvent localEvent = event;
+        localEvent.pointer = event.pointer - sbB.TopLeft();
+        if (!scrollbar.OnEvent(localEvent)) return false;
+        if (event.type == UCEventType::MouseMove) {
+            // The pointer is on the scrollbar, not on a cell, and a drag
+            // moves the rows (or the columns) under it.
+            HideHoverTooltip();
+            hoveredColumn = -1;
+            hoveredHeaderColumn = -1;
+        }
+        return true;
     }
 
     bool UltraCanvasListView::HandleMouseDown(const UCEvent& event) {
@@ -1137,6 +1251,12 @@ namespace UltraCanvas {
         HideHoverTooltip();
         hoveredColumn = -1;
         hoveredHeaderColumn = -1;
+        if (event.shift && horizontalScrollbar->IsVisible()) {
+            // Shift+wheel moves the columns, as it does in every desktop's
+            // tables; one line step = kHorizontalStep px.
+            horizontalScrollbar->GetStyleRef().scrollSpeed = kHorizontalStep;
+            return horizontalScrollbar->ScrollByWheel(event.wheelDelta);
+        }
         if (verticalScrollbar->IsVisible()) {
             // Route through the scrollbar so wheel scrolling is smoothly
             // animated; one line step = one row, wheelScrollLines rows/notch.
@@ -1148,7 +1268,17 @@ namespace UltraCanvas {
 
     bool UltraCanvasListView::HandleKeyDown(const UCEvent& event) {
         if (onKeyDown && onKeyDown(event)) return true;
-        if (!model || model->GetRowCount() == 0) return false;
+        if (!model) return false;
+
+        // The columns move under the view - with or without rows, since the
+        // header scrolls too. Consumed even when they fit: a key pressed in
+        // a focused table belongs to the table, and bubbling it on switched
+        // the tab the table sat in.
+        if (event.virtualKey == UCKeys::Left || event.virtualKey == UCKeys::Right) {
+            ScrollHorizontallyBy(event.virtualKey == UCKeys::Left ? -kHorizontalStep : kHorizontalStep);
+            return true;
+        }
+        if (model->GetRowCount() == 0) return false;
 
         switch (event.virtualKey) {
             case UCKeys::Up:       NavigateUp(); return true;
@@ -1338,9 +1468,8 @@ namespace UltraCanvas {
 
     void UltraCanvasListView::SetWindow(UltraCanvasWindowBase* win) {
         UltraCanvasUIElement::SetWindow(win);
-        if (verticalScrollbar) {
-            verticalScrollbar->SetWindow(win);
-        }
+        if (verticalScrollbar) verticalScrollbar->SetWindow(win);
+        if (horizontalScrollbar) horizontalScrollbar->SetWindow(win);
     }
 
 } // namespace UltraCanvas

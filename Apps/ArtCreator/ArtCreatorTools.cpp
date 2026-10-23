@@ -3,6 +3,9 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.5.0 - the Selector's sections each in a rounded framed group box, captioned
+//                 small at the right of its top line; Scale / Rotate with icons; 1 px
+//                 above and below the icon bars
 // Version: 1.4.0 - the Selector's panel: a Scale / Rotate switch that follows the handles,
 //                 Arrange, Align and Distribute as flat icon bars greyed until the
 //                 selection is large enough; quieter captions with air above them, and
@@ -162,6 +165,9 @@ std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer&
     app.hoverBackgroundColor = Colors::ListRowHover;
     app.activeBackgroundColor = Colors::ListRowSelected;
     bar->SetAppearance(app);
+    // 1 px above and below the buttons rather than the toolbar's 3: the
+    // section around the bar already gives it room.
+    bar->SetPadding(1, 5);
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     std::vector<std::shared_ptr<UltraCanvasButton>> buttons;
     int i = 0;
@@ -190,17 +196,49 @@ std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer&
     return buttons;
 }
 
+std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, const std::string& id,
+                                                 const std::string& title) {
+    auto box = CreateGroupBox(id, 0, 0, 0, 0, title);
+    GroupBoxVisualStyle st = GroupBoxVisualStyle::SectionCard();
+    // Small, regular-weight grey: the caption names the section, the
+    // buttons in it are what reads first.
+    st.titleFont.fontSize = 9.5f;
+    st.titleFont.fontWeight = FontWeight::Normal;
+    st.titleColor = Colors::SectionCardCaption;
+    st.contentPadding = 6.0f;
+    // A rounded frame on a light fill, the caption in the top line at the
+    // right.
+    box->SetFrameStyle(GroupBoxFrameStyle::Framed);
+    box->SetTitleAlignment(GroupBoxTitleAlignment::Right);
+    st.cornerRadius = 10.0f;
+    st.backgroundColor = Colors::SectionPage;
+    st.titleIndent = 10.0f;
+    st.titleGap = 3.0f;
+    st.titleVerticalPadding = 0.0f;
+    box->SetVisualStyle(st);
+    box->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    box->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    panel.AddChild(box);
+    return box;
+}
+
 std::shared_ptr<UltraCanvasSegmentedControl> AddSwitch(UltraCanvasContainer& panel, const std::string& id,
                                                        const std::vector<std::string>& items, int selected,
-                                                       const std::function<void(int)>& onChange) {
+                                                       const std::function<void(int)>& onChange,
+                                                       const std::vector<std::string>& icons) {
     auto sw = CreateSegmentedControl(id, 0, 0, 0, kButtonH);
     SegmentedControlStyle st = sw->GetStyle();
     st.fontSize = 11.0f;
     st.cornerRadius = 5.0f;
     st.paddingVertical = 3;
+    st.iconAsMask = true;
+    st.iconSpacing = 5;
     sw->SetStyle(st);
     sw->SetWidthMode(SegmentWidthMode::Equal);
-    for (const auto& item : items) sw->AddSegment(item);
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i < icons.size() && !icons[i].empty()) sw->AddSegment(items[i], icons[i]);
+        else sw->AddSegment(items[i]);
+    }
     sw->SetSelectedIndex(std::clamp(selected, 0, static_cast<int>(items.size()) - 1));
     sw->onSegmentSelected = [onChange](int index) { if (onChange) onChange(index); };
     sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -557,21 +595,24 @@ public:
 
     void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         const auto icon = [&ctx](const char* file) { return ctx.iconPath ? ctx.iconPath(file) : std::string(file); };
+        const auto menuIcon = [&icon](const char* file) { return icon((std::string("16/") + file).c_str()); };
         // Which handles a click on the selection shows; a second click on it
         // switches them too, and the switch follows (SyncModeSwitch).
-        AddCaption(panel, "ac-sel-cap", "Handles");
-        modeSwitch = AddSwitch(panel, "ac-sel-mode", { "Scale", "Rotate / skew" },
+        auto handles = AddSection(panel, "ac-sel-handles", "Handles");
+        // Rotate mode's edge handles skew; the switch only names the corners'.
+        modeSwitch = AddSwitch(*handles, "ac-sel-mode", { "Scale", "Rotate" },
                                ctx.canvas->GetHandleMode() == VectorHandleMode::Rotate ? 1 : 0,
-                               [&ctx](int i) { ctx.canvas->SetHandleMode(i == 1 ? VectorHandleMode::Rotate : VectorHandleMode::Scale); });
-        AddCaption(panel, "ac-sel-cap2", "Arrange");
-        arrangeButtons = AddIconBar(panel, "ac-sel-z", {
+                               [&ctx](int i) { ctx.canvas->SetHandleMode(i == 1 ? VectorHandleMode::Rotate : VectorHandleMode::Scale); },
+                               { menuIcon("scale.svg"), menuIcon("rotate.svg") });
+        auto arrange = AddSection(panel, "ac-sel-arrange", "Arrange");
+        arrangeButtons = AddIconBar(*arrange, "ac-sel-z", {
             { icon("to-front.svg"), "Bring to front", [&ctx]() { Reorder(ctx, ZOrderMove::ToFront, "Bring to Front"); } },
             { icon("forward.svg"), "Bring forward", [&ctx]() { Reorder(ctx, ZOrderMove::Forward, "Bring Forward"); } },
             { icon("backward.svg"), "Send backward", [&ctx]() { Reorder(ctx, ZOrderMove::Backward, "Send Backward"); } },
             { icon("to-back.svg"), "Send to back", [&ctx]() { Reorder(ctx, ZOrderMove::ToBack, "Send to Back"); } },
         });
-        AddCaption(panel, "ac-sel-cap3", "Align");
-        auto align = AddIconBar(panel, "ac-sel-al", {
+        auto alignBox = AddSection(panel, "ac-sel-align", "Align");
+        auto align = AddIconBar(*alignBox, "ac-sel-al", {
             { icon("align-left.svg"), "Align left edges", [&ctx]() { Align(ctx, AlignMode::Left); } },
             { icon("align-hcentre.svg"), "Align horizontal centres", [&ctx]() { Align(ctx, AlignMode::HorizontalCenter); } },
             { icon("align-right.svg"), "Align right edges", [&ctx]() { Align(ctx, AlignMode::Right); } },
@@ -586,8 +627,8 @@ public:
         pageButton = align.back();
         align.pop_back();
         alignButtons = align;
-        AddCaption(panel, "ac-sel-cap4", "Distribute");
-        distributeButtons = AddIconBar(panel, "ac-sel-di", {
+        auto distribute = AddSection(panel, "ac-sel-distribute", "Distribute");
+        distributeButtons = AddIconBar(*distribute, "ac-sel-di", {
             { icon("distribute-h.svg"), "Horizontal centres evenly", [&ctx]() { Distribute(ctx, DistributeMode::HorizontalCenters); } },
             { icon("distribute-v.svg"), "Vertical centres evenly", [&ctx]() { Distribute(ctx, DistributeMode::VerticalCenters); } },
             { "", "", nullptr },

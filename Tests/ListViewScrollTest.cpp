@@ -23,6 +23,12 @@
 //    freed memory. They now do nothing once the view is gone - without being
 //    taken off the model, which would cut off a sort/filter proxy chained on
 //    after the view. OnModelChanged tells a subclass of every change instead.
+//  - Columns wider than the view. There was no way to reach the rightmost
+//    columns of a wide table (UltraDBAdmin's browse grid): a horizontal
+//    scrollbar now shows below the rows, the header and the cells scroll
+//    sideways together, ScrollToColumn / EnsureColumnVisible move them from
+//    code, and the Left / Right keys step them - and are consumed by the
+//    view, where before they bubbled up and switched the tab around it.
 // No window and no display: the view is sized with SetBounds, and text is
 // measured on an offscreen render context.
 #include "UltraCanvasListView.h"
@@ -288,7 +294,166 @@ static void TestModelOutlivesView() {
     CHECK_EQ(proxy->GetRowCount(), 1);   // and the proxy still follows its source
 }
 
+// A view 400 x 300 with four columns 900 px wide in all: the columns scroll
+// sideways under the header, the rows area keeps its width beside the
+// vertical scrollbar, and the keys and the code paths agree on the offset.
+static std::shared_ptr<UltraCanvasListView> MakeWideView(int rows) {
+    auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
+    model->SetColumns({ ListColumnDef("A", 150), ListColumnDef("B", 200),
+                        ListColumnDef("C", 250), ListColumnDef("D", 300) });
+    auto view = std::make_shared<UltraCanvasListView>("wide");
+    ListViewStyle style;
+    style.showHeader = true;
+    style.headerHeight = 22;
+    style.rowHeight = 22;
+    view->SetStyle(style);
+    view->SetModel(model);
+    std::vector<MultiColumnListItem> items;
+    for (int i = 0; i < rows; ++i)
+        items.push_back(MultiColumnListItem({ "a", "b", "c", "d" }));
+    model->SetItems(std::move(items));
+    view->SetBounds(Rect2Df(0, 0, 400, 300));
+    return view;
+}
+
+static void TestHorizontalScroll() {
+    auto view = MakeWideView(5);          // 110 px of rows: no vertical scrollbar
+    const int track = view->GetStyle().scrollbarStyle.trackSize;
+    auto m = view->GetScrollMetrics();
+    CHECK_EQ(m.contentWidth, 900);
+    CHECK_EQ(m.viewportWidth, 398);       // 400 less the 1 px border each side
+    CHECK_EQ(m.maxScrollX, 502);
+    CHECK_EQ(m.horizontalScrollbarVisible, true);
+    CHECK_EQ(m.scrollbarVisible, false);
+    CHECK_EQ(m.viewportHeight, 298 - 22 - track);   // the header and the horizontal track
+    CHECK_EQ(m.horizontalScrollbarBounds.x, 1);
+    CHECK_EQ(m.horizontalScrollbarBounds.y, 299 - track);
+    CHECK_EQ(m.horizontalScrollbarBounds.width, 398);
+    CHECK_EQ(m.horizontalScrollbarBounds.height, track);
+    CHECK_EQ(m.scrollOffsetX, 0);
+
+    // The keys step the columns, and the view keeps them.
+    CHECK_EQ(view->OnEvent(Key(UCKeys::Right)), true);
+    const int step = view->GetHorizontalScrollOffset();
+    CHECK_EQ(step > 0, true);
+    CHECK_EQ(view->OnEvent(Key(UCKeys::Right)), true);
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 2 * step);
+    CHECK_EQ(view->OnEvent(Key(UCKeys::Left)), true);
+    CHECK_EQ(view->OnEvent(Key(UCKeys::Left)), true);
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 0);
+    CHECK_EQ(view->OnEvent(Key(UCKeys::Left)), true);   // at the start: still the view's
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 0);
+
+    // The cells, the columns under a point and the header follow the scroll.
+    CHECK_EQ(view->GetCellRect(0, 1).x, 1 + 150);
+    view->ScrollToColumn(2);
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 350);
+    CHECK_EQ(view->GetCellRect(0, 2).x, 1);
+    CHECK_EQ(view->GetCellRect(0, 2).width, 250);
+    CHECK_EQ(view->GetCellRect(0, 0).x, 1 - 350);
+    int columnStart = -1;
+    CHECK_EQ(view->GetColumnAt(1, &columnStart), 2);
+    CHECK_EQ(columnStart, 1);
+    CHECK_EQ(view->GetColumnAt(1 + 250, &columnStart), 3);
+    CHECK_EQ(columnStart, 251);
+    CHECK_EQ(view->GetHeaderColumnAt(1, 5, &columnStart), 2);
+    CHECK_EQ(columnStart, 1);
+    CHECK_EQ(view->ColumnBoundaryAt(251, 5), 2);          // the border after column C
+
+    // EnsureColumnVisible scrolls just far enough, either way.
+    view->EnsureColumnVisible(0);
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 0);
+    view->EnsureColumnVisible(3);                          // [600, 900) into 398 px
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 502);
+    view->EnsureColumnVisible(3);                          // already in view
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 502);
+    view->EnsureColumnVisible(2);                          // [350, 600): cut off on the left
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 350);
+    view->EnsureColumnVisible(3);                          // [600, 900): cut off on the right again
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 502);
+    view->EnsureColumnVisible(2);                          // [350, 600): its left edge hidden at 502
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 350);
+    view->EnsureColumnVisible(1);                          // [150, 350): its left edge
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 150);
+    // A column wider than the view is shown from its left edge.
+    view->SetColumnWidth(1, 500);
+    CHECK_EQ(view->GetScrollMetrics().contentWidth, 1200);
+    view->ScrollToColumn(0);
+    view->EnsureColumnVisible(1);
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 150);
+    // Scrolling to a column near the end stops at the end.
+    view->ScrollToColumn(3);
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 1200 - 398);
+    // Narrower columns bring the offset back into range.
+    view->SetColumnWidth(1, 10);
+    view->SetColumnWidth(2, 10);
+    view->SetColumnWidth(3, 10);
+    CHECK_EQ(view->GetScrollMetrics().horizontalScrollbarVisible, false);
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 0);
+    CHECK_EQ(view->GetScrollMetrics().viewportHeight, 298 - 22);
+}
+
+// Both scrollbars at once: each stops short of the other's track, and the
+// rows area loses a track in each direction.
+static void TestBothScrollbars() {
+    auto view = MakeWideView(500);
+    const int track = view->GetStyle().scrollbarStyle.trackSize;
+    const auto m = view->GetScrollMetrics();
+    CHECK_EQ(m.scrollbarVisible, true);
+    CHECK_EQ(m.horizontalScrollbarVisible, true);
+    CHECK_EQ(m.viewportWidth, 398 - track);
+    CHECK_EQ(m.viewportHeight, 298 - 22 - track);
+    CHECK_EQ(m.maxScrollX, 900 - (398 - track));
+    CHECK_EQ(m.maxScroll, 500 * 22 - (298 - 22 - track));
+    CHECK_EQ(m.scrollbarBounds.x, 399 - track);
+    CHECK_EQ(m.scrollbarBounds.y, 1 + 22);
+    CHECK_EQ(m.scrollbarBounds.height, 298 - 22 - track);
+    CHECK_EQ(m.horizontalScrollbarBounds.y, 299 - track);
+    CHECK_EQ(m.horizontalScrollbarBounds.width, 398 - track);
+
+    // Columns that fit exactly need the horizontal scrollbar once the
+    // vertical one takes its track off their width.
+    auto fits = MakeWideView(500);
+    fits->SetColumnWidth(0, 98);
+    fits->SetColumnWidth(1, 100);
+    fits->SetColumnWidth(2, 100);
+    fits->SetColumnWidth(3, 100);
+    const auto f = fits->GetScrollMetrics();
+    CHECK_EQ(f.contentWidth, 398);
+    CHECK_EQ(f.scrollbarVisible, true);
+    CHECK_EQ(f.horizontalScrollbarVisible, true);
+    CHECK_EQ(f.maxScrollX, track);
+
+    // The end of the rows is still reachable with the horizontal track
+    // taken off the rows area.
+    view->EnsureRowVisible(499);
+    CHECK_EQ(view->GetScrollMetrics().scrollOffset, m.maxScroll);
+}
+
+// A table whose columns fit keeps the Left / Right keys too, so a focused
+// table never switches the tab around it; and the rows' Up / Down are as
+// they were.
+static void TestKeysStayWithTheTable() {
+    auto view = MakeView(5);                               // 320 px of columns in 398
+    view->SetBounds(Rect2Df(0, 0, 400, 300));
+    CHECK_EQ(view->GetScrollMetrics().horizontalScrollbarVisible, false);
+    CHECK_EQ(view->OnEvent(Key(UCKeys::Right)), true);
+    CHECK_EQ(view->GetHorizontalScrollOffset(), 0);
+    CHECK_EQ(view->OnEvent(Key(UCKeys::Left)), true);
+    CHECK_EQ(view->OnEvent(Key(UCKeys::Down)), true);
+    CHECK_EQ(view->GetSelection()->GetCurrentRow(), 0);
+    // An empty table has nothing for the row keys, but keeps the column keys.
+    auto empty = MakeWideView(0);
+    CHECK_EQ(empty->GetScrollMetrics().horizontalScrollbarVisible, true);   // the header scrolls
+    CHECK_EQ(empty->OnEvent(Key(UCKeys::Down)), false);
+    CHECK_EQ(empty->OnEvent(Key(UCKeys::Right)), true);
+    CHECK_EQ(empty->GetHorizontalScrollOffset() > 0, true);
+}
+
 int main() {
+    TestHorizontalScroll();
+    TestBothScrollbars();
+    TestKeysStayWithTheTable();
     TestFirstRowBeforeLayout();
     TestLaterRowBeforeLayout();
     TestAfterLayout();
