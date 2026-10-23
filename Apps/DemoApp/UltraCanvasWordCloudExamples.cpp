@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasWordCloudExamples.cpp
 // Word Cloud diagram examples: frequency clouds, shape masks, raw-text
 // tokenization and a center image with words flowing around it.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): controls, tabs and
+//                  statistics as cards in a wrapping row, every label and panel
+//                  sized to its text, the button as wide as its text
 // Version: 1.0.0
-// Last Modified: 2026-07-22
+// Last Modified: 2026-10-23
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasWordCloudDiagram.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasButton.h"
@@ -50,59 +54,83 @@ namespace {
         "words render large while rare words render small. The layout engine "
         "places words on a spiral and avoids collisions with an occupancy "
         "grid. Masks, shapes and center images make every word cloud unique.";
+
+    // One tab's page: its title centred over the cloud. The tabbed container
+    // gives it its size; it scrolls when a longer title wraps and the cloud
+    // no longer fits under it.
+    std::shared_ptr<UltraCanvasContainer> MakeWordCloudTabPage(const std::string& id,
+                                                               const std::string& titleId,
+                                                               const std::string& title) {
+        auto tab = std::make_shared<UltraCanvasContainer>(id);
+        tab->SetBackgroundColor(Color(255, 255, 255, 255));
+        tab->SetPadding(15, 10, 6, 10);
+        tab->layout.SetFlexColumn().SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        ContainerStyle style;
+        style.autoShowScrollbars = true;
+        tab->SetContainerStyle(style);
+
+        auto titleLabel = DemoKit::CreateText(titleId, title);
+        titleLabel->SetFontSize(18);
+        titleLabel->SetFontWeight(FontWeight::Bold);
+        titleLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
+        DemoKit::Add(tab, titleLabel);
+        return tab;
+    }
+
+    // A cloud keeps the size it was built with, centred in its tab.
+    void AddWordCloud(const std::shared_ptr<UltraCanvasContainer>& tab,
+                      const std::shared_ptr<UltraCanvasWordCloudElement>& cloud) {
+        DemoKit::AddFixed(tab, cloud);
+        cloud->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+    }
+
+    // A sidebar section label: small and bold above its control.
+    void AddWordCloudControlLabel(const std::shared_ptr<UltraCanvasContainer>& parent,
+                                  const std::string& id, const std::string& text) {
+        auto label = DemoKit::AddText(parent, id, text);
+        label->SetFontSize(10);
+        label->SetFontWeight(FontWeight::Bold);
+        label->SetMargin(6, 0, 0, 0);
+    }
+
+    // A sidebar heading in the sidebars' small capitals style.
+    std::shared_ptr<UltraCanvasLabel> AddWordCloudSidebarHeading(const std::shared_ptr<UltraCanvasContainer>& parent,
+                                                                 const std::string& id, const std::string& text) {
+        auto heading = DemoKit::AddText(parent, id, text);
+        heading->SetFontSize(11);
+        heading->SetFontWeight(FontWeight::Bold);
+        heading->SetTextColor(Color(73, 80, 87, 255));
+        return heading;
+    }
+
+    // A grey or tinted text panel in a sidebar: wraps and grows with its text.
+    std::shared_ptr<UltraCanvasLabel> AddWordCloudPanelText(const std::shared_ptr<UltraCanvasContainer>& parent,
+                                                            const std::string& id, const std::string& text,
+                                                            float fontSize, const Color& background,
+                                                            int padding) {
+        auto panel = DemoKit::AddText(parent, id, text);
+        panel->SetFontSize(fontSize);
+        panel->SetBackgroundColor(background);
+        panel->SetPadding(padding);
+        return panel;
+    }
 }
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordCloudExamples() {
-    const int PAD = 15;
+    auto mainContainer = DemoKit::CreatePage("wordCloudMainContainer", "Word Cloud / Word Map Suite",
+            "Frequency-sized word layouts with shapes, rotation schemes, raw-text analysis and a center image");
 
-    auto mainContainer = std::make_shared<UltraCanvasContainer>("wordCloudMainContainer", 0, 0, 1140, 800);
-    mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
-
-    // ===== HEADER =====
-    auto headerContainer = std::make_shared<UltraCanvasContainer>("wcHeaderContainer", 0, 0, 1140, 90);
-    headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
-    mainContainer->AddChild(headerContainer);
-
-    auto mainTitle = std::make_shared<UltraCanvasLabel>("wcMainTitle", 30, 15, 1080, 35);
-    mainTitle->SetText("Word Cloud / Word Map Suite");
-    mainTitle->SetFontSize(22);
-    mainTitle->SetFontWeight(FontWeight::Bold);
-    mainTitle->SetAlignment(TextAlignment::Left);
-    mainTitle->SetTextColor(Color(33, 37, 41, 255));
-    headerContainer->AddChild(mainTitle);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>("wcSubtitle", 30, 52, 1000, 30);
-    subtitle->SetText("Frequency-sized word layouts with shapes, rotation schemes, raw-text analysis and a center image");
-    subtitle->SetFontSize(13);
-    subtitle->SetAlignment(TextAlignment::Left);
-    subtitle->SetTextColor(Color(108, 117, 125, 255));
-    headerContainer->AddChild(subtitle);
-
-    auto contentContainer = std::make_shared<UltraCanvasContainer>("wcContentContainer", 0, 90, 1140, 710);
-    mainContainer->AddChild(contentContainer);
+    // Controls, the tabs and the statistics side by side; a narrow window
+    // puts the sidebars under the tabs.
+    auto contentContainer = DemoKit::AddRow(mainContainer, "wcContentContainer");
 
     // ===== LEFT SIDEBAR (controls) =====
-    auto leftSidebar = std::make_shared<UltraCanvasContainer>("wcLeftSidebar", 20, 20, 200, 670);
-    leftSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-    contentContainer->AddChild(leftSidebar);
+    auto leftSidebar = DemoKit::AddCard(contentContainer, "wcLeftSidebar", "", "", 200);
+    AddWordCloudSidebarHeading(leftSidebar, "wcControlsTitle", "CONTROLS");
 
-    const int SIDEBAR_W = 170;
-
-    auto controlsTitle = std::make_shared<UltraCanvasLabel>("wcControlsTitle", PAD, PAD, SIDEBAR_W, 22);
-    controlsTitle->SetText("CONTROLS");
-    controlsTitle->SetFontSize(11);
-    controlsTitle->SetFontWeight(FontWeight::Bold);
-    controlsTitle->SetTextColor(Color(73, 80, 87, 255));
-    controlsTitle->SetAlignment(TextAlignment::Left);
-    leftSidebar->AddChild(controlsTitle);
-
-    auto shapeLabel = std::make_shared<UltraCanvasLabel>("wcShapeLabel", PAD, 48, SIDEBAR_W, 20);
-    shapeLabel->SetText("Cloud Shape");
-    shapeLabel->SetFontSize(10);
-    shapeLabel->SetFontWeight(FontWeight::Bold);
-    leftSidebar->AddChild(shapeLabel);
-
-    auto shapeSelector = std::make_shared<UltraCanvasDropdown>("wcShapeSelector", PAD, 70, SIDEBAR_W, 28);
+    AddWordCloudControlLabel(leftSidebar, "wcShapeLabel", "Cloud Shape");
+    auto shapeSelector = std::make_shared<UltraCanvasDropdown>("wcShapeSelector", 0, 0, 170, 28);
     shapeSelector->AddItem("Ellipse", "ellipse");
     shapeSelector->AddItem("Circle", "circle");
     shapeSelector->AddItem("Rectangle", "rectangle");
@@ -112,120 +140,90 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordClou
     shapeSelector->AddItem("Pentagon", "pentagon");
     shapeSelector->AddItem("Star", "star");
     shapeSelector->SetSelectedIndex(0);
-    leftSidebar->AddChild(shapeSelector);
+    DemoKit::AddStretched(leftSidebar, shapeSelector);
 
-    auto colorLabel = std::make_shared<UltraCanvasLabel>("wcColorLabel", PAD, 108, SIDEBAR_W, 20);
-    colorLabel->SetText("Color Mode");
-    colorLabel->SetFontSize(10);
-    colorLabel->SetFontWeight(FontWeight::Bold);
-    leftSidebar->AddChild(colorLabel);
-
-    auto colorSelector = std::make_shared<UltraCanvasDropdown>("wcColorSelector", PAD, 130, SIDEBAR_W, 28);
+    AddWordCloudControlLabel(leftSidebar, "wcColorLabel", "Color Mode");
+    auto colorSelector = std::make_shared<UltraCanvasDropdown>("wcColorSelector", 0, 0, 170, 28);
     colorSelector->AddItem("Palette", "palette");
     colorSelector->AddItem("Random palette", "random");
     colorSelector->AddItem("Weight gradient", "gradient");
     colorSelector->AddItem("Single color", "single");
     colorSelector->SetSelectedIndex(0);
-    leftSidebar->AddChild(colorSelector);
+    DemoKit::AddStretched(leftSidebar, colorSelector);
 
-    auto rotationLabel = std::make_shared<UltraCanvasLabel>("wcRotationLabel", PAD, 168, SIDEBAR_W, 20);
-    rotationLabel->SetText("Rotation");
-    rotationLabel->SetFontSize(10);
-    rotationLabel->SetFontWeight(FontWeight::Bold);
-    leftSidebar->AddChild(rotationLabel);
-
-    auto rotationSelector = std::make_shared<UltraCanvasDropdown>("wcRotationSelector", PAD, 190, SIDEBAR_W, 28);
+    AddWordCloudControlLabel(leftSidebar, "wcRotationLabel", "Rotation");
+    auto rotationSelector = std::make_shared<UltraCanvasDropdown>("wcRotationSelector", 0, 0, 170, 28);
     rotationSelector->AddItem("Mixed -90..90 (3)", "steps3");
     rotationSelector->AddItem("Horizontal only", "none");
     rotationSelector->AddItem("Horizontal + vertical", "hv");
     rotationSelector->AddItem("Random -60..60", "random");
     rotationSelector->SetSelectedIndex(0);
-    leftSidebar->AddChild(rotationSelector);
+    DemoKit::AddStretched(leftSidebar, rotationSelector);
 
-    auto scalingLabel = std::make_shared<UltraCanvasLabel>("wcScalingLabel", PAD, 228, SIDEBAR_W, 20);
-    scalingLabel->SetText("Size Scaling");
-    scalingLabel->SetFontSize(10);
-    scalingLabel->SetFontWeight(FontWeight::Bold);
-    leftSidebar->AddChild(scalingLabel);
-
-    auto scalingSelector = std::make_shared<UltraCanvasDropdown>("wcScalingSelector", PAD, 250, SIDEBAR_W, 28);
+    AddWordCloudControlLabel(leftSidebar, "wcScalingLabel", "Size Scaling");
+    auto scalingSelector = std::make_shared<UltraCanvasDropdown>("wcScalingSelector", 0, 0, 170, 28);
     scalingSelector->AddItem("Square root", "sqrt");
     scalingSelector->AddItem("Linear", "linear");
     scalingSelector->AddItem("Logarithmic", "log");
     scalingSelector->AddItem("By rank", "rank");
     scalingSelector->SetSelectedIndex(0);
-    leftSidebar->AddChild(scalingSelector);
+    DemoKit::AddStretched(leftSidebar, scalingSelector);
 
-    auto centerBlockLabel = std::make_shared<UltraCanvasLabel>("wcCenterBlockLabel", PAD, 288, SIDEBAR_W, 20);
-    centerBlockLabel->SetText("Center Image Cutout");
-    centerBlockLabel->SetFontSize(10);
-    centerBlockLabel->SetFontWeight(FontWeight::Bold);
-    leftSidebar->AddChild(centerBlockLabel);
-
-    auto centerBlockSelector = std::make_shared<UltraCanvasDropdown>("wcCenterBlockSelector", PAD, 310, SIDEBAR_W, 28);
+    AddWordCloudControlLabel(leftSidebar, "wcCenterBlockLabel", "Center Image Cutout");
+    auto centerBlockSelector = std::make_shared<UltraCanvasDropdown>("wcCenterBlockSelector", 0, 0, 170, 28);
     centerBlockSelector->AddItem("Bounding box", "box");
     centerBlockSelector->AddItem("Ellipse", "ellipse");
     centerBlockSelector->AddItem("Opaque pixels", "alpha");
     centerBlockSelector->SetSelectedIndex(0);
-    leftSidebar->AddChild(centerBlockSelector);
+    DemoKit::AddStretched(leftSidebar, centerBlockSelector);
 
-    auto btnSeed = std::make_shared<UltraCanvasButton>("wcBtnSeed", PAD, 352, SIDEBAR_W, 32);
-    btnSeed->SetText("Shuffle Layout Seed");
+    // As wide as its text, at least the width it had.
+    auto btnSeed = std::make_shared<UltraCanvasButton>("wcBtnSeed", 0, 0, 0, 32, "Shuffle Layout Seed");
     btnSeed->SetBackgroundColor(Color(13, 110, 253, 255));
-    leftSidebar->AddChild(btnSeed);
+    {
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(170);
+        btnSeed->boxConstraints = limits;
+    }
+    btnSeed->SetMargin(12, 0, 0, 0);
+    DemoKit::Add(leftSidebar, btnSeed);
 
-    auto helpBox = std::make_shared<UltraCanvasLabel>("wcHelpBox", PAD, 400, SIDEBAR_W, 150);
-    helpBox->SetText("INTERACTION TIPS\n\n"
-                     "- Hover a word for its\n"
-                     "  weight tooltip\n"
-                     "- Click words (see the\n"
-                     "  status bar)\n"
-                     "- Controls apply to the\n"
-                     "  active tab too\n"
-                     "- Center Image tab puts\n"
-                     "  a logo in the middle");
-    helpBox->SetFontSize(9);
-    helpBox->SetAlignment(TextAlignment::Left);
-    helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
-    helpBox->SetPadding(10);
-    leftSidebar->AddChild(helpBox);
+    auto helpBox = AddWordCloudPanelText(leftSidebar, "wcHelpBox",
+            "INTERACTION TIPS\n\n"
+            "- Hover a word for its weight tooltip\n"
+            "- Click words (see the status bar)\n"
+            "- Controls apply to the active tab too\n"
+            "- Center Image tab puts a logo in the middle",
+            9, Color(255, 243, 205, 255), 10);
+    helpBox->SetMargin(12, 0, 0, 0);
 
     // ===== TABS =====
-    auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("wcTabs", 240, 20, 660, 580);
+    auto tabsCard = DemoKit::AddCard(contentContainer, "wcTabsCard", "", "", 690);
+    auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("wcTabs", 0, 0, 660, 580);
     tabbedContainer->SetTabPosition(TabPosition::Top);
-    contentContainer->AddChild(tabbedContainer);
+    // As wide as the card, never narrower than the clouds need.
+    DemoKit::AddStretched(tabsCard, tabbedContainer);
+    {
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(660);
+        tabbedContainer->boxConstraints = limits;
+    }
 
-    const int CLOUD_X = 10, CLOUD_Y = 60, CLOUD_W = 640, CLOUD_H = 470;
+    const int CLOUD_W = 640, CLOUD_H = 470;
 
     // ----- TAB 1: FREQUENCY CLOUD -----
-    auto frequencyTab = std::make_shared<UltraCanvasContainer>("wcFrequencyTab", 0, 0, 660, 542);
-    frequencyTab->SetBackgroundColor(Color(255, 255, 255, 255));
+    auto frequencyTab = MakeWordCloudTabPage("wcFrequencyTab", "wcFrequencyTitle", "Programming Language Popularity");
 
-    auto frequencyTitle = std::make_shared<UltraCanvasLabel>("wcFrequencyTitle", 20, 15, 620, 30);
-    frequencyTitle->SetText("Programming Language Popularity");
-    frequencyTitle->SetFontSize(18);
-    frequencyTitle->SetFontWeight(FontWeight::Bold);
-    frequencyTitle->SetAlignment(TextAlignment::Center);
-    frequencyTab->AddChild(frequencyTitle);
-
-    auto frequencyCloud = CreateWordCloud("wcFrequencyCloud", CLOUD_X, CLOUD_Y, CLOUD_W, CLOUD_H);
+    auto frequencyCloud = CreateWordCloud("wcFrequencyCloud", 0, 0, CLOUD_W, CLOUD_H);
     frequencyCloud->SetWords(LanguageDataset());
     frequencyCloud->SetFontSizeRange(11, 64);
     frequencyCloud->SetShape(WordCloudShape::Ellipse);
-    frequencyTab->AddChild(frequencyCloud);
+    AddWordCloud(frequencyTab, frequencyCloud);
 
     // ----- TAB 2: CENTER IMAGE -----
-    auto centerTab = std::make_shared<UltraCanvasContainer>("wcCenterTab", 0, 0, 660, 542);
-    centerTab->SetBackgroundColor(Color(255, 255, 255, 255));
+    auto centerTab = MakeWordCloudTabPage("wcCenterTab", "wcCenterTitle", "Words Around a Center Image");
 
-    auto centerTitle = std::make_shared<UltraCanvasLabel>("wcCenterTitle", 20, 15, 620, 30);
-    centerTitle->SetText("Words Around a Center Image");
-    centerTitle->SetFontSize(18);
-    centerTitle->SetFontWeight(FontWeight::Bold);
-    centerTitle->SetAlignment(TextAlignment::Center);
-    centerTab->AddChild(centerTitle);
-
-    auto centerCloud = CreateWordCloud("wcCenterCloud", CLOUD_X, CLOUD_Y, CLOUD_W, CLOUD_H);
+    auto centerCloud = CreateWordCloud("wcCenterCloud", 0, 0, CLOUD_W, CLOUD_H);
     centerCloud->SetWords(LanguageDataset());
     centerCloud->SetFontSizeRange(10, 48);
     centerCloud->SetShape(WordCloudShape::Ellipse);
@@ -237,20 +235,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordClou
     logo.padding = 12.0f;
     logo.blockMode = WordCloudCenterBlock::BoundingBox;
     centerCloud->SetCenterImage(logo);
-    centerTab->AddChild(centerCloud);
+    AddWordCloud(centerTab, centerCloud);
 
     // ----- TAB 3: FROM RAW TEXT -----
-    auto textTab = std::make_shared<UltraCanvasContainer>("wcTextTab", 0, 0, 660, 542);
-    textTab->SetBackgroundColor(Color(255, 255, 255, 255));
+    auto textTab = MakeWordCloudTabPage("wcTextTab", "wcTextTitle", "Built From Raw Text (stopwords + bigrams)");
 
-    auto textTitle = std::make_shared<UltraCanvasLabel>("wcTextTitle", 20, 15, 620, 30);
-    textTitle->SetText("Built From Raw Text (stopwords + bigrams)");
-    textTitle->SetFontSize(18);
-    textTitle->SetFontWeight(FontWeight::Bold);
-    textTitle->SetAlignment(TextAlignment::Center);
-    textTab->AddChild(textTitle);
-
-    auto textCloud = CreateWordCloud("wcTextCloud", CLOUD_X, CLOUD_Y, CLOUD_W, CLOUD_H);
+    auto textCloud = CreateWordCloud("wcTextCloud", 0, 0, CLOUD_W, CLOUD_H);
     WordCloudTextOptions textOptions;
     textOptions.maxWords = 80;
     textOptions.minWordLength = 3;
@@ -259,20 +249,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordClou
     textCloud->SetWordsFromText(kSampleText, textOptions);
     textCloud->SetFontSizeRange(10, 52);
     textCloud->SetColorMode(WordCloudColorMode::Palette);
-    textTab->AddChild(textCloud);
+    AddWordCloud(textTab, textCloud);
 
     // ----- TAB 4: SHAPED CLOUD -----
-    auto shapedTab = std::make_shared<UltraCanvasContainer>("wcShapedTab", 0, 0, 660, 542);
-    shapedTab->SetBackgroundColor(Color(255, 255, 255, 255));
+    auto shapedTab = MakeWordCloudTabPage("wcShapedTab", "wcShapedTitle", "Shaped Cloud: Star with Repeat Fill");
 
-    auto shapedTitle = std::make_shared<UltraCanvasLabel>("wcShapedTitle", 20, 15, 620, 30);
-    shapedTitle->SetText("Shaped Cloud: Star with Repeat Fill");
-    shapedTitle->SetFontSize(18);
-    shapedTitle->SetFontWeight(FontWeight::Bold);
-    shapedTitle->SetAlignment(TextAlignment::Center);
-    shapedTab->AddChild(shapedTitle);
-
-    auto shapedCloud = CreateWordCloud("wcShapedCloud", CLOUD_X, CLOUD_Y, CLOUD_W, CLOUD_H);
+    auto shapedCloud = CreateWordCloud("wcShapedCloud", 0, 0, CLOUD_W, CLOUD_H);
     shapedCloud->SetWords(LanguageDataset());
     shapedCloud->SetShape(WordCloudShape::Star);
     shapedCloud->SetFontSizeRange(9, 40);
@@ -280,7 +262,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordClou
     shapedCloud->SetMaxWords(160);
     shapedCloud->SetColorMode(WordCloudColorMode::RandomFromPalette);
     shapedCloud->SetRotateRatio(0.2f);
-    shapedTab->AddChild(shapedCloud);
+    AddWordCloud(shapedTab, shapedCloud);
 
     tabbedContainer->AddTab("Frequency Cloud", frequencyTab);
     tabbedContainer->AddTab("Center Image", centerTab);
@@ -288,55 +270,26 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWordClou
     tabbedContainer->AddTab("Shaped Cloud", shapedTab);
     tabbedContainer->SetActiveTab(0);
 
-    // ===== RIGHT SIDEBAR (info) =====
-    auto rightSidebar = std::make_shared<UltraCanvasContainer>("wcRightSidebar", 920, 20, 200, 580);
-    rightSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-    contentContainer->AddChild(rightSidebar);
-
-    auto statsTitle = std::make_shared<UltraCanvasLabel>("wcStatsTitle", PAD, PAD, SIDEBAR_W, 24);
-    statsTitle->SetText("LAYOUT STATISTICS");
-    statsTitle->SetFontSize(11);
-    statsTitle->SetFontWeight(FontWeight::Bold);
-    statsTitle->SetTextColor(Color(73, 80, 87, 255));
-    statsTitle->SetAlignment(TextAlignment::Left);
-    rightSidebar->AddChild(statsTitle);
-
-    auto statsPanel = std::make_shared<UltraCanvasLabel>("wcStatsPanel", PAD, 48, SIDEBAR_W, 130);
-    statsPanel->SetText("Words placed: -\nWords skipped: -");
-    statsPanel->SetFontSize(10);
-    statsPanel->SetAlignment(TextAlignment::Left);
-    statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-    statsPanel->SetPadding(12);
-    rightSidebar->AddChild(statsPanel);
-
-    auto featureTitle = std::make_shared<UltraCanvasLabel>("wcFeatureTitle", PAD, 196, SIDEBAR_W, 24);
-    featureTitle->SetText("FEATURE NOTES");
-    featureTitle->SetFontSize(11);
-    featureTitle->SetFontWeight(FontWeight::Bold);
-    featureTitle->SetTextColor(Color(73, 80, 87, 255));
-    featureTitle->SetAlignment(TextAlignment::Left);
-    rightSidebar->AddChild(featureTitle);
-
-    auto featurePanel = std::make_shared<UltraCanvasLabel>("wcFeaturePanel", PAD, 228, SIDEBAR_W, 250);
-    featurePanel->SetText("Greedy spiral layout on\nan occupancy grid.\n\n"
-                          "Sizes map frequency to\nfont size (sqrt, linear,\nlog or rank).\n\n"
-                          "The center image blocks\nits region so words\nflow around it.\n\n"
-                          "Mask images shape the\ncloud like the Python\nwordcloud package.");
-    featurePanel->SetFontSize(9);
-    featurePanel->SetAlignment(TextAlignment::Left);
-    featurePanel->SetBackgroundColor(Color(248, 249, 250, 255));
-    featurePanel->SetPadding(12);
-    rightSidebar->AddChild(featurePanel);
-
     // ===== STATUS BAR =====
-    auto statusBar = std::make_shared<UltraCanvasLabel>("wcStatusBar", 240, 610, 660, 60);
-    statusBar->SetText("Ready - hover words for tooltips, click a word to inspect it");
-    statusBar->SetFontSize(11);
-    statusBar->SetAlignment(TextAlignment::Left);
-    statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
-    statusBar->SetPadding(15);
+    auto statusBar = AddWordCloudPanelText(tabsCard, "wcStatusBar",
+            "Ready - hover words for tooltips, click a word to inspect it",
+            11, Color(233, 236, 239, 255), 15);
     statusBar->SetTextColor(Color(73, 80, 87, 255));
-    contentContainer->AddChild(statusBar);
+
+    // ===== RIGHT SIDEBAR (info) =====
+    auto rightSidebar = DemoKit::AddCard(contentContainer, "wcRightSidebar", "", "", 200);
+    AddWordCloudSidebarHeading(rightSidebar, "wcStatsTitle", "LAYOUT STATISTICS");
+    auto statsPanel = AddWordCloudPanelText(rightSidebar, "wcStatsPanel",
+            "Words placed: -\nWords skipped: -",
+            10, Color(248, 249, 250, 255), 12);
+
+    AddWordCloudSidebarHeading(rightSidebar, "wcFeatureTitle", "FEATURE NOTES")->SetMargin(12, 0, 0, 0);
+    AddWordCloudPanelText(rightSidebar, "wcFeaturePanel",
+            "Greedy spiral layout on an occupancy grid.\n\n"
+            "Sizes map frequency to font size (sqrt, linear, log or rank).\n\n"
+            "The center image blocks its region so words flow around it.\n\n"
+            "Mask images shape the cloud like the Python wordcloud package.",
+            9, Color(248, 249, 250, 255), 12);
 
     // ===== WIRING =====
     std::vector<std::shared_ptr<UltraCanvasWordCloudElement>> allClouds = {
