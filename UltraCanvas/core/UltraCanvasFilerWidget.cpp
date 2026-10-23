@@ -3012,17 +3012,20 @@ namespace UltraCanvas {
             hiddenNoticeButton = CreateButton(
                     GetIdentifier() + "-hidden-notice", 0, 0, 140, 24,
                     "Show hidden files");
+            // Plain link text, not a filled button: the notice is a line in
+            // the folder display, and a coloured button there read as one
+            // more status bar.
             ButtonStyle bs;
-            bs.normalColor  = Color(66, 133, 244, 255);
-            bs.hoverColor   = Color(90, 150, 250, 255);
-            bs.pressedColor = Color(52, 112, 214, 255);
-            bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
-                    Colors::White;
+            bs.normalColor = bs.hoverColor = bs.pressedColor =
+                    Colors::Transparent;
+            bs.normalTextColor  = Color(29, 78, 216, 255);
+            bs.hoverTextColor   = Color(30, 58, 138, 255);
+            bs.pressedTextColor = Color(30, 58, 138, 255);
             bs.borderWidth = 0.0f;
-            bs.cornerRadius = 4.0f;
+            bs.cornerRadius = 0.0f;
             bs.fontFamily = style.fontFamily;
             bs.fontSize = style.smallFontSize;
-            bs.fontWeight = FontWeight::Bold;
+            bs.fontWeight = FontWeight::Normal;
             hiddenNoticeButton->SetStyle(bs);
             // The strip is a notice, not a stop on the way through the
             // window: Tab must not land on it.
@@ -3044,13 +3047,17 @@ namespace UltraCanvas {
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
         fsty.fontSize = style.smallFontSize;
-        fsty.fontWeight = FontWeight::Bold;
+        fsty.fontWeight = FontWeight::Normal;
         ctx->SetFontStyle(fsty);
-        Size2Di ts = ctx->GetTextLineDimensions(hiddenNoticeButton->GetText());
+        // The count and the link make one centred line of text: the link
+        // sits right after the count, and the pair is centred in the bar.
+        const int linkW = ctx->GetTextLineDimensions(hiddenNoticeButton->GetText()).width + 4;
+        const int countW = ctx->GetTextLineDimensions(HiddenNoticeText() + "  ·  ").width;
+        const int w = std::min(linkW, std::max(60, bar.width - 16));
+        const int lineW = std::min(countW + w, bar.width - 16);
         const int h = std::max(18, bar.height - 6);
-        const int w = std::min(std::max(60, bar.width / 2), ts.width + 24);
         PlaceChildAt(hiddenNoticeButton,
-                     Rect2Df(static_cast<float>(bar.x + bar.width - w - 8),
+                     Rect2Df(static_cast<float>(bar.x + (bar.width - lineW) / 2 + lineW - w),
                              static_cast<float>(bar.y + (bar.height - h) / 2),
                              static_cast<float>(w), static_cast<float>(h)));
     }
@@ -3058,12 +3065,10 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::DrawHiddenItemsNotice(IRenderContext* ctx) {
         const Rect2Di bar = HiddenNoticeBar();
         if (bar.height <= 0 || bar.width <= 0) return;
-        ctx->SetFillPaint(style.infoBarBackground);
+        // Part of the folder display, not a strip of its own: the display's
+        // background, no rule above it.
+        ctx->SetFillPaint(style.backgroundColor);
         ctx->FillRectangle(Rect2Dd(bar));
-        ctx->SetStrokePaint(style.gridLineColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Dd(bar.x, bar.y),
-                      Point2Dd(bar.x + bar.width, bar.y));
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
@@ -3071,17 +3076,21 @@ namespace UltraCanvas {
         fsty.fontWeight = FontWeight::Normal;
         ctx->SetFontStyle(fsty);
         const int pad = 8;
-        // Whatever the button leaves: the count is the less important half of
-        // the strip, and is ellipsized rather than drawn under the button.
-        int avail = bar.width - 2 * pad;
-        if (hiddenNoticeButton && hiddenNoticeButton->IsVisible())
-            avail = static_cast<int>(hiddenNoticeButton->GetBounds().x)
-                    - bar.x - 2 * pad;
+        // The count ends where the link starts; it is the less important
+        // half of the line, and is ellipsized rather than drawn under it.
+        const bool link = hiddenNoticeButton && hiddenNoticeButton->IsVisible();
+        const std::string text = HiddenNoticeText() + (link ? "  ·  " : "");
+        int right = bar.x + bar.width - pad;
+        if (link) right = static_cast<int>(hiddenNoticeButton->GetBounds().x);
+        Size2Di full = ctx->GetTextLineDimensions(text);
+        int avail = right - bar.x - pad;
         if (avail <= 12) return;
-        std::string shown = EllipsizeText(ctx, HiddenNoticeText(), avail);
+        std::string shown = EllipsizeText(ctx, text, avail);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
+        const int x = link ? right - ts.width
+                           : bar.x + (bar.width - full.width) / 2;
         ctx->SetTextPaint(style.secondaryTextColor);
-        ctx->DrawText(shown, Point2Dd(bar.x + pad,
+        ctx->DrawText(shown, Point2Dd(std::max(bar.x + pad, x),
                                       bar.y + (bar.height - ts.height) / 2.0));
     }
 
@@ -10528,8 +10537,8 @@ namespace UltraCanvas {
             ctx->PopState();
         }
 
-        // The hidden-items strip along the foot: its own chrome, drawn like
-        // the info bar, plus a real button child placed and drawn here.
+        // The hidden-items line along the foot of the file area: the count as
+        // text, plus a real (link-styled) button child placed and drawn here.
         if (HiddenNoticeVisible()) {
             PositionHiddenNoticeButton(ctx);
             DrawHiddenItemsNotice(ctx);

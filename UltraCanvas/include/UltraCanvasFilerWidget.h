@@ -103,6 +103,10 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.42.0 - FormatSizeText: the display's own size formatting for a
+//                  host's status bar; the hidden-items notice is one line of
+//                  plain text with a "Show hidden files" link on the file
+//                  area's background, no longer a grey strip with a button.
 // Version: 1.41.0 - a remote folder being fetched or updated: a thin blue bar
 //                  at the foot of the file area (FilerStyle::loadingBarColor)
 //                  in place of the "Loading folder" notice over it; the status
@@ -817,11 +821,11 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
-        // Hidden-items notice: a strip along the foot of the display naming
-        // how many entries the listing leaves out - the hidden ones, plus
-        // what a curated home folder (SetCuratedHomeFolder) keeps back - with
-        // a "Show hidden files" button that switches this display to showing
-        // everything. It only appears while something IS left out, and takes
+        // Hidden-items notice: a line of plain text at the foot of the file
+        // area naming how many entries the listing leaves out - the hidden
+        // ones, plus what a curated home folder (SetCuratedHomeFolder) keeps
+        // back - with a "Show hidden files" link that switches this display
+        // to showing everything. It only appears while something IS left out, and takes
         // its height out of the file area, so no entry is drawn under it.
         // NoNotice by default: hosts choose the folders where the display holds
         // something back the user never asked to hide (UltraFiler: WhenAnyHidden
