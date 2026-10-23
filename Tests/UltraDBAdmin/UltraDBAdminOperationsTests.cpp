@@ -316,6 +316,19 @@ void TestOperationsSqlite() {
     Check(!JournalModePlan("main", "wal; DROP TABLE orders", plan, error), "a mode not on the list refused");
     Check(MaintenanceTasks(SqlEngine::Postgres).size() == 2, "PostgreSQL offers analyze and vacuum");
 
+    // Rename.
+    Check(!RenameObjectPlan(SqlEngine::Sqlite, "main", "orders_shape", UltraDbObjectKind::Table, "orders_shape", plan, error),
+          "the same name refused");
+    Check(!RenameObjectPlan(SqlEngine::Sqlite, "main", "v", UltraDbObjectKind::View, "w", plan, error),
+          "SQLite renames no view");
+    Check(RenameObjectPlan(SqlEngine::Sqlite, "main", "orders_shape", UltraDbObjectKind::Table, "orders_form", plan,
+                           error) && Run(c, plan) &&
+              Count(c, "SELECT count(*) FROM sqlite_master WHERE name = 'orders_form'") == 1,
+          "renamed");
+    Check(RenameObjectPlan(SqlEngine::Sqlite, "main", "orders_form", UltraDbObjectKind::Table, "orders_shape", plan,
+                           error) && Run(c, plan),
+          "and back");
+
     // Drop.
     Check(Run(c, DropObjectPlan(SqlEngine::Sqlite, "main", "orders_shape", UltraDbObjectKind::Table)), "dropped");
     Check(Count(c, "SELECT count(*) FROM sqlite_master WHERE name = 'orders_shape'") == 0, "it is gone");
@@ -363,6 +376,11 @@ void TestOperationsPostgres() {
     UltraDb_Exec(c, "INSERT INTO " + copy + " (label) VALUES ('e')");
     Check(Count(c, "SELECT id FROM " + copy) == 1, "RESTART IDENTITY numbers from 1 again");
     Check(Run(c, MaintenancePlan(SqlEngine::Postgres, Maintenance::Analyze, schema, "items")), "analyzed");
+    UltraDb_Exec(c, "CREATE VIEW " + QualifiedName(schema, "few") + " AS SELECT * FROM " + items);
+    Check(RenameObjectPlan(SqlEngine::Postgres, schema, "few", UltraDbObjectKind::View, "some", plan, error) &&
+              Run(c, plan) && Count(c, "SELECT count(*) FROM " + QualifiedName(schema, "some")) == 3 &&
+              Run(c, DropObjectPlan(SqlEngine::Postgres, schema, "some", UltraDbObjectKind::View)),
+          "a view renamed, and dropped");
     Check(Run(c, MaintenancePlan(SqlEngine::Postgres, Maintenance::Vacuum, schema, "items")), "vacuumed");
 
     // A referenced table cannot be truncated without CASCADE, which is never written.
@@ -566,6 +584,33 @@ void TestDumpPostgres() {
     Check(ddl.comments.size() == 2, "the table's comment and the column's");
     Check(std::find(ddl.insertColumns.begin(), ddl.insertColumns.end(), "net") == ddl.insertColumns.end(),
           "the generated column is not written to");
+    // A table's export as SQL: its definition first, its counter after the rows.
+    {
+        TempDir out;
+        UltraDb_Exec(c, "CREATE TABLE " + s + ".tags (id serial PRIMARY KEY, tag text UNIQUE)");
+        UltraDb_Exec(c, "INSERT INTO " + s + ".tags (tag) VALUES ('a'), ('b')");
+        PostgresDdl tags;
+        PostgresTableDdl(c, Describe(c, schema, "tags"), tags);
+        ExportOptions options;
+        options.format = ExportFormat::Sql;
+        options.engine = SqlEngine::Postgres;
+        options.table = QualifiedName(schema, "tags");
+        options.preamble = tags.create + ";\n";
+        for (const auto& counter : tags.counters) options.postamble += counter + ";\n";
+        size_t written = 0;
+        const std::string file = out.File("tags.sql");
+        Check(ExportQuery(c, "SELECT * FROM " + s + ".tags ORDER BY id", file, options, written).success && written == 2,
+              "the table's rows exported");
+        const std::string text = ReadFile(file);
+        Check(text.find("CREATE TABLE") < text.find("INSERT INTO") && text.find("setval") > text.find("INSERT INTO") &&
+                  text.find("setval") < text.find("COMMIT;"),
+              "its definition first, its counter after the rows, before COMMIT");
+        UltraDb_Exec(c, "DROP TABLE " + s + ".tags");
+        Check(RunScript(c, text), "the file rebuilds it");
+        UltraDb_Exec(c, "INSERT INTO " + s + ".tags (tag) VALUES ('c')");
+        Check(Count(c, "SELECT max(id) FROM " + s + ".tags") == 3, "and numbering goes on after its rows");
+        UltraDb_Exec(c, "DROP TABLE " + s + ".tags");
+    }
     PostgresDdl customers;
     PostgresTableDdl(c, Describe(c, schema, "customers"), customers);
     Check(customers.overridingSystemValue && Has(customers.create, "GENERATED ALWAYS AS IDENTITY") &&
@@ -755,6 +800,11 @@ void TestAutoCommitKept() {
     }
     ConnectionStore again;
     Check(again.Open(UltraCanvas::PathToUtf8(dir.path), error) && again.Find(id) && again.Find(id)->autoCommit, "read back: auto-commit on");
+    if (const ConnectionSpec* spec = again.Find(id)) {
+        Check(ConnectionIdOf(RegisteredName(*spec)) == id && ConnectionIdOf(ConsoleName(*spec)) == id,
+              "both sessions' names lead back to the connection");
+    }
+    Check(ConnectionIdOf("someone.else").empty(), "another program's connection is not the app's");
 }
 
 } // namespace

@@ -1,14 +1,16 @@
 // Apps/UltraDBAdmin/ui/DbAdminRowDialog.cpp
+// Version: 0.2.0 - a field per type, NULL / Default / a value function per column, checked before staging
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminRowDialog.h"
 
 #include "DbAdminFormat.h"
 #include "DbAdminTheme.h"
+#include "DbAdminValueTypes.h"
 
 #include "UltraCanvasButton.h"
-#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
@@ -34,9 +36,11 @@ constexpr float kRowHeight = 28.0f;
 // so no callback stored on a widget owns the widget or the dialog.
 struct Field {
     std::string column;
-    UltraCanvasTextInput* input = nullptr;
-    UltraCanvasCheckbox* null = nullptr;
-    UltraCanvasCheckbox* useDefault = nullptr;
+    ValueKind kind = ValueKind::Any;
+    UltraCanvasTextInput* input = nullptr;      // the value, typed
+    UltraCanvasDropdown* truth = nullptr;       // a boolean's value: true / false
+    UltraCanvasDropdown* mode = nullptr;        // what the column is set to
+    std::vector<std::string> modes;             // per mode item: "value", "null", "default", or a function's SQL
 };
 
 struct Form {
@@ -46,19 +50,44 @@ struct Form {
     SaveRowFn onSave;
 };
 
-// The input takes text only while neither box is ticked.
+const char* const kValue   = "value";
+const char* const kNull    = "null";
+const char* const kDefault = "default";
+
+std::string ModeOf(const Field& field) {
+    const int at = field.mode ? field.mode->GetSelectedIndex() : 0;
+    return at >= 0 && static_cast<size_t>(at) < field.modes.size() ? field.modes[static_cast<size_t>(at)] : kValue;
+}
+
+void SelectMode(const Field& field, const std::string& mode) {
+    for (size_t i = 0; i < field.modes.size(); ++i)
+        if (field.modes[i] == mode) field.mode->SetSelectedIndex(static_cast<int>(i), false);
+}
+
+// The value takes input only while the column is set to a value.
 void SyncField(const Field& field) {
-    const bool locked = (field.null && field.null->IsChecked()) ||
-                        (field.useDefault && field.useDefault->IsChecked());
-    field.input->SetDisabled(locked);
+    const bool typed = ModeOf(field) == kValue;
+    if (field.input) field.input->SetDisabled(!typed);
+    if (field.truth) field.truth->SetDisabled(!typed);
 }
 
 void Save(Form& form) {
     std::map<std::string, CellValue> values;
     for (const auto& field : form.fields) {
-        if (field.useDefault && field.useDefault->IsChecked()) values[field.column] = CellValue::DefaultValue();
-        else if (field.null && field.null->IsChecked()) values[field.column] = CellValue::NullValue();
-        else values[field.column] = CellValue::Of(field.input->GetText());
+        const std::string mode = ModeOf(field);
+        if (mode == kDefault) { values[field.column] = CellValue::DefaultValue(); continue; }
+        if (mode == kNull) { values[field.column] = CellValue::NullValue(); continue; }
+        if (mode != kValue) { values[field.column] = CellValue::FunctionValue(mode); continue; }
+        std::string text = field.truth ? (field.truth->GetSelectedIndex() == 0 ? "true" : "false")
+                                       : field.input->GetText();
+        // What the column cannot take is said here, before Commit does.
+        std::string error;
+        if (!(text.empty() && (field.kind == ValueKind::Text || field.kind == ValueKind::Any)) &&
+            !CheckValue(field.kind, field.column, text, error)) {
+            form.error->SetText(error + (text.empty() ? " Set it to NULL, or to its default, for no value." : ""));
+            return;
+        }
+        values[field.column] = CellValue::Of(text);
     }
     const std::string error = form.onSave ? form.onSave(values) : std::string();
     if (!error.empty()) {
@@ -78,8 +107,8 @@ std::string TypeText(const UltraDbColumnSchema& column) {
 
 } // namespace
 
-void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& table, const UltraDbRow* row,
-                   const EditBuffer* pending, SaveRowFn onSave) {
+void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& table, SqlEngine engine,
+                   const UltraDbRow* row, const EditBuffer* pending, SaveRowFn onSave) {
     auto form = std::make_shared<Form>();
     form->onSave = std::move(onSave);
     const bool adding = row == nullptr;
@@ -99,8 +128,8 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
     dialog->SetPadding(16);
 
     auto intro = CreateLabel("dbrIntro", 0, 0, 0, 36,
-                             adding ? "Empty fields are empty text. Tick NULL for no value, or Default to "
-                                      "leave the column to the database."
+                             adding ? "Each column takes a value, NULL, its default or one of the database's "
+                                      "functions. An empty field is empty text."
                                     : "The change is staged: Commit in Browse writes it, Revert drops it.");
     intro->SetWrap(TextWrap::WrapWord);
     dialog->AddChild(intro);
@@ -118,66 +147,91 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
         const UltraDbValue original = row && row->Has(column.name) ? (*row)[column.name] : UltraDbValue();
         auto caption = CreateFormCaption(id + "-caption", column.name);
         caption->SetTooltip(TypeText(column));
+        const ValueKind kind = KindOfColumn(column);
 
         auto line = CreateFormCellRow(id + "-line", 8.0f, static_cast<int>(kRowHeight));
-        auto input = CreateTextInput(id + "-input", 0, 0, 0, kRowHeight);
-        input->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-        input->SetTooltip(TypeText(column));
-        line->AddChild(input);
-
         // What the database decides alone is shown, not set.
-        const bool blob = column.valueType == UltraDbType::Blob || original.Type() == UltraDbType::Blob;
+        const bool blob = kind == ValueKind::Blob || original.Type() == UltraDbType::Blob;
         const bool multiline = !original.IsNull() && original.Type() == UltraDbType::Text &&
                                original.AsString().find('\n') != std::string::npos;
         if (column.generated || blob || multiline) {
-            input->SetText(column.generated ? (adding ? std::string("(computed by the database)") : CellText(original))
+            auto shown = CreateTextInput(id + "-input", 0, 0, 0, kRowHeight);
+            shown->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            shown->SetText(column.generated ? (adding ? std::string("(computed by the database)") : CellText(original))
                                             : CellText(original));
-            input->SetReadOnly(true);
-            input->SetDisabled(true);
-            input->SetTooltip(column.generated ? "Computed by the database; it cannot be set."
-                              : blob ? "Binary data is not edited here."
+            shown->SetReadOnly(true);
+            shown->SetDisabled(true);
+            shown->SetTooltip(column.generated ? "Computed by the database; it cannot be set."
+                              : blob ? "Binary data: load a file into the cell in Browse (double-click it)."
                                      : "Text of several lines: change it with UPDATE in the SQL tab.");
+            line->AddChild(shown);
             AddFormRow(grid, caption, line);
             continue;
         }
 
         Field field;
         field.column = column.name;
-        field.input = input.get();
-        auto null = UltraCanvasCheckbox::CreateCheckbox(id + "-null", 0, 0, 70, 24, "NULL", false);
-        null->layoutItem.SetFlexShrink(0);
-        null->SetDisabled(!column.nullable);
-        if (!column.nullable) null->SetTooltip("This column must have a value.");
-        line->AddChild(null);
-        field.null = null.get();
-        if (adding) {
-            const bool defaulted = column.hasDefault || column.autoIncrement;
-            auto useDefault = UltraCanvasCheckbox::CreateCheckbox(id + "-default", 0, 0, 86, 24, "Default", defaulted);
-            useDefault->layoutItem.SetFlexShrink(0);
-            useDefault->SetTooltip(column.autoIncrement ? "Numbered by the database."
-                                   : column.hasDefault ? "Default: " + column.defaultExpression
-                                                       : "No default: the column is NULL, or refuses to be.");
-            line->AddChild(useDefault);
-            field.useDefault = useDefault.get();
+        field.kind = kind;
+        if (kind == ValueKind::Boolean) {
+            auto truth = CreateDropdown(id + "-truth", 0, 0, 120, kRowHeight);
+            truth->AddItem("true");
+            truth->AddItem("false");
+            truth->SetSelectedIndex(0, false);
+            truth->layoutItem.SetFlexShrink(0);
+            field.truth = truth.get();
+            line->AddChild(truth);
+            line->AddStretchSpacer(1);
+        } else {
+            auto input = CreateTextInput(id + "-input", 0, 0, 0, kRowHeight);
+            input->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            input->SetTooltip(TypeText(column));
+            input->SetPlaceholder(KindHint(kind));
+            field.input = input.get();
+            line->AddChild(input);
         }
+
+        // What the column is set to: a value, NULL, its default (a new row),
+        // or one of the database's functions for its kind.
+        auto mode = CreateDropdown(id + "-mode", 0, 0, 170, kRowHeight);
+        mode->layoutItem.SetFlexShrink(0);
+        mode->SetTooltip("What the column is set to");
+        auto addMode = [&](const std::string& label, const std::string& key) {
+            mode->AddItem(label);
+            field.modes.push_back(key);
+        };
+        addMode("Value", kValue);
+        if (column.nullable) addMode("NULL", kNull);
+        if (adding && (column.hasDefault || column.autoIncrement || column.nullable))
+            addMode(column.autoIncrement ? "Numbered (default)" : column.hasDefault ? "Default" : "Default (NULL)",
+                    kDefault);
+        for (const auto& function : ValueFunctions(engine, kind)) addMode(function.label, function.sql);
+        mode->SetSelectedIndex(0, false);
+        field.mode = mode.get();
+        line->AddChild(mode);
 
         // Start from what the row holds, or from what is already staged for it.
         const CellValue* staged = row && pending ? pending->PendingCell(*row, column.name) : nullptr;
+        auto setText = [&](const std::string& text) {
+            if (field.input) field.input->SetText(text);
+            if (field.truth) {
+                const std::string v = text.empty() ? std::string() : std::string(1, static_cast<char>(text[0]));
+                field.truth->SetSelectedIndex(v == "f" || v == "F" || v == "0" || v == "n" || v == "N" ? 1 : 0, false);
+            }
+        };
         if (staged) {
-            if (staged->kind == CellValue::Kind::Null) null->SetChecked(true);
-            else input->SetText(staged->text);
+            if (staged->kind == CellValue::Kind::Null) SelectMode(field, kNull);
+            else if (staged->kind == CellValue::Kind::Function) SelectMode(field, staged->text);
+            else setText(staged->text);
         } else if (row) {
-            if (original.IsNull()) null->SetChecked(true);
-            else input->SetText(original.AsString());
+            if (original.IsNull()) SelectMode(field, kNull);
+            else setText(original.Type() == UltraDbType::Boolean ? (original.AsBool() ? "true" : "false")
+                                                                 : original.AsString());
+        } else if (column.hasDefault || column.autoIncrement) {
+            SelectMode(field, kDefault);
         }
 
         const size_t at = form->fields.size();
-        null->onChecked   = [form, at]() { SyncField(form->fields[at]); };
-        null->onUnchecked = [form, at]() { SyncField(form->fields[at]); };
-        if (field.useDefault) {
-            field.useDefault->onChecked   = [form, at]() { SyncField(form->fields[at]); };
-            field.useDefault->onUnchecked = [form, at]() { SyncField(form->fields[at]); };
-        }
+        mode->onSelectionChanged = [form, at](int, const DropdownItem&) { SyncField(form->fields[at]); };
         form->fields.push_back(field);
         SyncField(field);
         AddFormRow(grid, caption, line);

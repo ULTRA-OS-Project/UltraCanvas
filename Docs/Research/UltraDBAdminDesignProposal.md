@@ -535,6 +535,18 @@ complete.
 **Export, stage 1's last item, followed**: a table through a cursor, or a
 query's rows, to CSV / TSV (the framework's Text Export dialog and writer),
 JSON, SQL INSERTs (with a SQLite table's own CREATE TABLE) or a workbook.
+**The rest of stages 1 and 2 followed** (UltraDBAdmin 0.3): a tab per open
+object, each keeping its page, filters and staged changes; the SQL log of
+every statement the app runs (UltraDatabase 0.4.0's statement observers,
+`UltraDb_AddStatementObserver`); the tree's context menu with the
+Operations of 5.2 - create, copy (structure, or structure and rows), rename,
+empty and drop a table, SQLite's VACUUM, ANALYZE, integrity and quick check,
+optimize and journal mode, PostgreSQL's VACUUM (ANALYZE) and ANALYZE - each
+shown as SQL first; Search across every table of a schema; a schema exported
+as one SQL file (structure, data, DROP IF EXISTS), a PostgreSQL table's
+definition read from its catalog; the console's Run statement, Explain and
+saved snippets; the row form's field per type and its value functions; and
+auto-commit per connection.
 
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for

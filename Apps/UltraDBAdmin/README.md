@@ -7,7 +7,9 @@ The design, the roadmap and the decisions behind it are in
 
 This is **stage 1, a browser with a SQL console, and stage 2: editing rows
 in Browse and the table's structure in Structure, importing rows and SQL
-files, and exporting tables and query results.** The console runs
+files, exporting tables, query results and whole schemas, and the
+operations on a whole object - create, copy, rename, empty, drop - with
+SQLite's maintenance.** The console runs
 whatever SQL it is given, so a connection marked *read only* (the database
 refuses every change, and neither Browse nor Structure offers editing) is
 the way to make it safe.
@@ -15,6 +17,8 @@ the way to make it safe.
 | | |
 |---|---|
 | **Connections** | SQLite files and PostgreSQL servers (host or socket directory, port, database, user, password, TLS posture), added and edited in a dialog, kept in `connections.json` in the data folder. A password is stored in the app's own encrypted vault (`vault/`, UltraVault's device-key vault) and never written to the list; the connection hands UltraDatabase only the vault key. *Production* draws a connection in red; *read only* makes the database refuse changes. |
+| **Tabs** | Each table or view picked in the tree opens in a tab of its own, in a row above Browse, Structure, SQL and Search; a click shows it again as it was left - its page, its order, its filters and the changes staged to it, which a tab marks with `*` and keeps until they are committed, reverted or the tab is closed (which asks first). Up to ten are open; the eleventh takes the place of the oldest with nothing staged. |
+| **Tree menu** | A right-click on a connection, a schema or an object offers what can be done to it. A table: open it, its structure, export its rows, copy its name (quoted), **Copy table** (a new name, with or without its rows: SQLite from the table's own CREATE TABLE and its indexes, renamed; PostgreSQL `LIKE ... INCLUDING ALL`, the identity moved past the rows), **Rename**, **Empty table** (DELETE or TRUNCATE, the counter reset if asked), **Drop**, and its maintenance. A schema - and a SQLite connection, whose schema is `main` - : **New table** (a line per column: name, type, NOT NULL, key, numbered, default - checked as one SQL fragment each), **Search every table**, **Export as SQL**, and maintenance: SQLite's *Check integrity*, *Quick check*, *Analyze*, *Optimize*, *Vacuum* and journal mode; PostgreSQL's *Analyze* and *Vacuum* on a connection or a table. Each operation shows its SQL before it runs (`engine/DbAdminOperations`); none writes CASCADE; a read-only connection offers only what reads; the ones that remove something are red and ask. |
 | **Tree** | Each connection's schemas, and in each its tables, views, materialized views, foreign tables and sequences (`UltraDb_ListSchemas`, `UltraDb_ListObjects`), read when the node is expanded. A server that cannot be reached says why in the tree; collapsing and expanding tries again, **Refresh** reconnects. |
 | **Look** | White cards on a grey ground - the header with the connection buttons, the tree, the tabs - in the framework theme the app sets at start-up, its accent the blue of the app icon (`ui/DbAdminTheme`). Every button carries an icon from the app's own set (`media/icons/dbadmin`) and says by its look what it does: the one action a bar is for (**Commit**, **Apply**, **Run**, **Add connection**, a dialog's OK) in the accent, one that removes something in red. A label is the action itself, never followed by `…`; the tooltip says it in full. The tree shows a connection (red for production), a schema, a table, a view, a materialized view, a foreign table and a sequence each by its icon, an arrow to open a node (`TreeExpanderStyle::Chevron`), and a node being read by a bar along its foot. Errors, in the window and the dialogs, are the theme's red. |
 | **Browse** | A table's rows 200 at a time, never the whole table: one bound `LIMIT ? OFFSET ?` query per page, in primary-key order or sorted on the server by a click on a column header (then the key), with the exact row count beside the previous and next page buttons. Every name in it is quoted by `UltraDb_QuoteIdentifier`. A table without a key says its order is not stable. A sequence shows its one row of state. **Filters** under the grid narrow the rows: a column, a comparison (contains, starts with, =, ≠, <, ≤, >, ≥, is NULL, is not NULL) and a value, one filter per column, all of them true - each a bound parameter, the value converted by the database to the column's type, so `100` compares as a number and `2026-01-31` as a date; "contains" matches the column's text in any case (`LIKE`, PostgreSQL's `ILIKE`, `%` and `_` in the value matched literally). The count, the pages and an export of the table follow them (`engine/DbAdminTablePager`). A table wider than the window scrolls sideways - the grid's horizontal scrollbar, Shift+wheel, or the Left / Right keys, which move the grid rather than the tabs while it has the focus. |
@@ -26,7 +30,10 @@ the way to make it safe.
 | **Blobs** | A blob cell - double-clicked, or **View** in the right-click menu, in Browse and in the console's rows - opens a viewer that shows what the bytes are (read from their signature: PNG, JPEG, GIF, BMP, WebP, TIFF, SVG, PDF, ZIP, gzip, SQLite, text): a picture as a picture, text as text, anything else as a hex dump (`engine/DbAdminBlob`). **Save to file** writes the bytes as they are, under an extension that fits them, through `UltraCanvasFileLoader::SaveFile`; **Load from file** (Browse, where the row can be edited) stages a file's bytes for the cell, bound as a blob - SQLite's BLOB, PostgreSQL's bytea - and Commit writes them. A staged blob reads as its size followed by `*`. |
 | **Copy rows** | Rows selected in Browse or in the console's result (Ctrl+click, Shift+click) are copied from the right-click menu as CSV (a header line, quotes where needed), JSON (an array of objects) or SQL `INSERT` statements - into Browse's table, or into the table the console's `SELECT` read; Ctrl+C copies CSV (`RowsText` in `engine/DbAdminExport`). |
 | **Export** | Browse's **Export** writes every row of the table or view shown - every row its filters let through, in its order (`SELECT *`, every name quoted, the filters' values bound), read through a cursor 1 000 rows at a time (`UltraDb_OpenCursor`), so a table of millions of rows is never held; the status counts them as they go. The SQL tab's **Export rows** writes the rows shown below the console. The Save dialog offers FileLoader's spreadsheet writers (`AddSaveTypes` with `Spreadsheet`: ODS, XLSX, CSV, TSV) and the two this app writes itself, JSON and SQL; the extension chosen picks the format (`engine/DbAdminExport`). **CSV / TSV**: the framework's Text Export dialog (`ShowCSVExportDialog`: separator, quote, quoting, line ending, charset, BOM) previewed on the rows at hand, and its writer's quoting (`CSVFormatRecord`, `CSVEncodeFromUtf8`); NULL is an empty field, a blob `\x` hex. **JSON**: an array of objects, one per row and line; numbers as numbers, NULL as null. **SQL**: `INSERT` statements in the engine's dialect (SQLite `X'..'`, PostgreSQL `decode('..', 'hex')` for a blob) between `BEGIN` and `COMMIT`, after a SQLite table's own `CREATE TABLE` and `CREATE INDEX` statements, so running the file rebuilds the table; a PostgreSQL table's definition is pg_dump's to write, and the file says so. **Workbook**: written by the framework's spreadsheet - column names in bold, numbers as numbers (an exact numeric too, by its declared type; `01067` stays text), TRUE / FALSE, everything else as text and never as a formula - up to a sheet's 1 048 575 rows, and the status says when a table had more. A file is written beside its name and moved there when complete, so an export that fails, or is stopped by the window closing, leaves the file that was there. |
-| **SQL** | A console that runs the selection, or the whole script (**Run** or Ctrl+Enter), on the connection picked in the tree, and lists what every statement did (`UltraDb_ExecBatch`); a click on one shows its rows, sortable. **Stop** cancels the running statement (`UltraDb_CancelQuery`). The history dropdown puts an earlier script back. |
+| **SQL** | A console that runs the selection, or the whole script (**Run** or Ctrl+Enter), or the statement under the caret alone (the button beside it, or Ctrl+Shift+Enter: it is selected as it runs), on the connection picked in the tree, and lists what every statement did (`UltraDb_ExecBatch`); a click on one shows its rows, sortable. **Explain** shows how the database would run the selection or the statement under the caret - `EXPLAIN QUERY PLAN` on SQLite, `EXPLAIN` on PostgreSQL, never `EXPLAIN ANALYZE`, which runs it. **Stop** cancels the running statement (`UltraDb_CancelQuery`). The history dropdown puts an earlier script back; **Snippets** keeps the editor's SQL under a name (`snippets.json` in the data folder) and puts one back. |
+| **Search** | The Search tab looks for a text in every table and view of the schema picked in the tree: *contains* (anywhere in a value, in any case: `LIKE`, PostgreSQL's `ILIKE`, `%` and `_` matched as themselves) or *is exactly*. One query per table counts the rows that hold it in each column, the text bound once per column; blobs are not searched. The tables are searched one by one on the window's worker, so **Stop** acts between tables and a Browse page waits for one table at most (`engine/DbAdminSearch`). A hit, double-clicked, opens the table filtered on that column. |
+| **SQL log** | Under the tabs, every statement the app ran - a Browse page, a count, a commit, an import, an export's cursor, an operation, the console's statements - with its time, its connection (the console's marked *SQL*), how long it took, its rows or what it changed, and its error. Filled by UltraDatabase's statement observer (`UltraDb_AddStatementObserver`, `engine/DbAdminSqlLog`); bound values are never logged, only how many there were. *Schema reads* adds the tree's and Structure's catalog reads. **Copy** gives the selected statements - or all - as SQL, each under a comment line; a double-click puts one in the SQL tab. The newest 2 000 are kept. |
+| **Auto-commit** | A connection can be set to write a row change as soon as it is made, as phpMyAdmin does, instead of staging it for **Commit**. A deletion, and any change on a production connection, still ask first. |
 
 ## Threads and sessions
 
@@ -43,8 +50,8 @@ even while a page loads or a script runs: UltraDatabase keeps a connection
 until the last call on it returns, so what is running finishes on the old
 settings and the next query uses the new.
 
-Editing in the grid cell itself, the ER view and server administration are
-the later stages of the proposal.
+The ER view, triggers and routines, server administration, SSH tunnels and
+MySQL are the later stages of the proposal.
 
 ## Data folder
 
@@ -53,6 +60,7 @@ the later stages of the proposal.
 readable by its owner alone:
 
 - `connections.json` - the connection list, no secrets;
+- `snippets.json` - the console's saved snippets;
 - `vault/` - the passwords, encrypted (`dbadmin.vault`, unlocked by the
   device key beside it, as UltraMail's and UltraPress's vaults are).
 
@@ -64,22 +72,31 @@ Apps/UltraDBAdmin/
 ├── engine/                       no UI - compiled headless by Tests/UltraDBAdmin
 │   ├── DbAdminBlob               what a blob is, by its bytes; its hex dump
 │   ├── DbAdminConnections        the connection list and its vault
+│   ├── DbAdminDump               a whole schema as one SQL file; a PostgreSQL table's definition
 │   ├── DbAdminEditBuffer         staged row edits, their SQL, the commit
 │   ├── DbAdminExport             rows to CSV, JSON, SQL through a cursor; a workbook's cells
 │   ├── DbAdminFormat             a value as one line of a grid cell
 │   ├── DbAdminImport             a file's rows mapped onto a table, inserted all or none
 │   ├── DbAdminJobQueue           the worker the window's queries run on
+│   ├── DbAdminOperations         create, copy, rename, empty, drop; maintenance; the journal mode
 │   ├── DbAdminPaths              the data folder
+│   ├── DbAdminSearch             a text in every table: a count per column
+│   ├── DbAdminSnippets           the saved snippets
+│   ├── DbAdminSqlLog             every statement the app ran
 │   ├── DbAdminSqlRunner          a script on a worker thread, Stop, history, one transaction
 │   ├── DbAdminSqlScript          a SQL file read before it runs: statements, risks, psql-only parts
 │   ├── DbAdminSqliteTable        a SQLite CREATE TABLE read and rewritten, for the rebuild
 │   ├── DbAdminStructureEdit      staged structure edits, their DDL per engine, Apply
-│   └── DbAdminTablePager         the Browse view's pages and filters
+│   ├── DbAdminTablePager         the Browse view's pages and filters
+│   └── DbAdminValueTypes         what a column takes; the value functions it can be set to
 └── ui/
-    ├── DbAdminWindow             tree, tabs, status line
+    ├── DbAdminWindow             tree, tabs, status line, Browse, Structure, SQL
+    ├── DbAdminWindowObjects      the tabs of open objects, the tree's menu and operations, Search, the SQL log
+    ├── DbAdminWindowParts        what the window's two sources share: sizes, layout helpers
+    ├── DbAdminOperationDialogs   an operation's SQL first; the copy, rename, empty and dump forms; a new table
     ├── DbAdminTheme              the theme, the icons, the buttons, cards and bars every page uses
     ├── DbAdminModels             list models over result sets
-    ├── DbAdminRowDialog          the row form, the SQL preview
+    ├── DbAdminRowDialog          the row form (a field per type, NULL, default, a function), the SQL preview
     ├── DbAdminStructureDialog    the column and index forms
     ├── DbAdminImportDialog       the SQL import, the row import's mapping, workbook reading and writing
     ├── DbAdminBlobDialog         a blob: the picture, the text or a hex dump; save, load
@@ -113,3 +130,19 @@ and Browse's filters (counts on SQLite and PostgreSQL, `%` and `_` matched
 literally, ILIKE, a number and a date compared by type), a blob staged,
 written and read back on both engines, rows copied as CSV, JSON and
 INSERTs, a blob's kind and hex dump, and the table a SELECT reads.
+
+A second program, `UltraDBAdminOperationsTests`, has the rest: the SQL log
+(every statement, the app's connections only, no bound value in it), the
+operations on SQLite and PostgreSQL (a table created, copied with its indexes,
+generated columns and rows and its counter going on, renamed, emptied with
+its counter reset, a referenced table neither truncated nor dropped, dropped;
+the integrity check, analyze, optimize, vacuum, the journal mode set to WAL;
+a failing plan leaving nothing), the search (counts per column, `%` and `_`
+literal, a blob left out, ILIKE, a date and a boolean read as text), both
+schema dumps read back into an empty database exactly - rows with quotes,
+`;`, `--`, line breaks and blobs, counters, CHECK, UNIQUE, foreign keys,
+identity, serial and generated columns, jsonb, bytea, comments, views,
+indexes, triggers - and again with DROP first, structure only, data only, a
+stopped dump leaving the file that was there; the snippets, the statement
+under the caret, EXPLAIN, the row form's checks and value functions, and
+auto-commit kept with a connection.

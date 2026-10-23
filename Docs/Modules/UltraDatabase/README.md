@@ -252,9 +252,9 @@ outcome. An admin tool's SQL log is one observer (UltraDBAdmin's); a debug
 trace another. With no observer added nothing is timed or copied.
 
 ```cpp
-const int id = UltraDb_AddStatementObserver([log](const UltraDbStatementEvent& e) {
-    // on the thread that ran it, outside every lock of the module: quick, thread-safe
-    log->Add(e.connection, e.sql, e.seconds, e.rows, e.result);
+const int id = UltraDb_AddStatementObserver([](const UltraDbStatementEvent& e) {
+    // On the thread that ran it, outside every lock of the module: quick and thread-safe.
+    std::fprintf(stderr, "%s: %zu rows, %s\n", e.connection.c_str(), e.rows, e.sql.c_str());
 });
 UltraDb_RemoveStatementObserver(id);
 ```

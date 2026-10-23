@@ -20,6 +20,7 @@
 //
 // The same three formats copy rows to the clipboard (RowsText): the rows
 // selected in Browse or in the console's result.
+// Version: 0.3.0 - ExportOptions::postamble
 // Version: 0.2.0 - RowsText, QuotedName: rows as text for the clipboard
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -51,6 +52,7 @@ struct ExportOptions {
     SqlEngine engine = SqlEngine::Sqlite;   // Sql: the literals' dialect
     std::string table;             // Sql: the INSERTs' target, quoted ("main"."orders")
     std::string preamble;          // Sql: written first - a CREATE TABLE and its indexes, or a comment
+    std::string postamble;         // Sql: written after the rows, before COMMIT - a counter moved past them
 };
 
 // A value as each format writes it.

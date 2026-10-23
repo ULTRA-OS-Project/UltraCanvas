@@ -8,20 +8,26 @@
 //   ConstraintModel   - its key, unique constraints, indexes, foreign keys
 //                       and triggers, one row each, for Structure, with the
 //                       indexes to be added and dropped;
-//   StatementModel    - what each statement of a console script did.
+//   StatementModel    - what each statement of a console script did;
+//   LogModel          - the SQL log: every statement the app ran, newest last;
+//   SearchHitModel    - where a search across the tables found its text.
 // A cell is CellText (engine/DbAdminFormat.h): NULL is not an empty string, a
 // blob says how big it is. Its tooltip is the longer text.
+// Version: 0.2.0 - LogModel, SearchHitModel
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "DbAdminEditBuffer.h"
+#include "DbAdminSearch.h"
+#include "DbAdminSqlLog.h"
 #include "DbAdminStructureEdit.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 
 #include "UltraCanvasListModel.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -139,6 +145,51 @@ public:
 
 private:
     std::vector<UltraDbStatementResult> statements_;
+};
+
+class LogModel : public UltraCanvas::IListModel {
+public:
+    enum Column { Time = 0, Where, Took, Result, Statement, ColumnCount };
+
+    int GetRowCount() const override { return static_cast<int>(entries_.size()); }
+    int GetColumnCount() const override { return ColumnCount; }
+    UltraCanvas::ListDataValue GetData(const UltraCanvas::ListIndex& index,
+                                       UltraCanvas::ListDataRole role) const override;
+    bool SetData(const UltraCanvas::ListIndex&, UltraCanvas::ListDataRole,
+                 const UltraCanvas::ListDataValue&) override { return false; }
+    UltraCanvas::ListColumnDef GetColumnDef(int column) const override;
+
+    // `where` names a connection by its registered name: the tree's name.
+    void SetConnectionNames(std::function<std::string(const std::string&)> where) { where_ = std::move(where); }
+    void Append(const std::vector<LogEntry>& entries);   // newer ones, at the end
+    void Clear();
+    void Trim(size_t keep);                              // drop the oldest beyond `keep`
+    const LogEntry* At(int row) const;
+    const std::vector<LogEntry>& Entries() const { return entries_; }
+
+private:
+    std::vector<LogEntry> entries_;
+    std::function<std::string(const std::string&)> where_;
+};
+
+class SearchHitModel : public UltraCanvas::IListModel {
+public:
+    enum Field { TableField = 0, ColumnField, RowsField, ColumnCount };
+
+    int GetRowCount() const override { return static_cast<int>(hits_.size()); }
+    int GetColumnCount() const override { return ColumnCount; }
+    UltraCanvas::ListDataValue GetData(const UltraCanvas::ListIndex& index,
+                                       UltraCanvas::ListDataRole role) const override;
+    bool SetData(const UltraCanvas::ListIndex&, UltraCanvas::ListDataRole,
+                 const UltraCanvas::ListDataValue&) override { return false; }
+    UltraCanvas::ListColumnDef GetColumnDef(int column) const override;
+
+    void Append(const std::vector<SearchHit>& hits);
+    void Clear();
+    const SearchHit* At(int row) const;
+
+private:
+    std::vector<SearchHit> hits_;
 };
 
 // What one statement did, in a few words: "12 rows", "3 rows affected",

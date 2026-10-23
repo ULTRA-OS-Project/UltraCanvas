@@ -49,6 +49,10 @@ std::string RegisteredName(const ConnectionSpec& spec);
 // Browse page - and Stop cancels exactly the console's statement.
 std::string ConsoleName(const ConnectionSpec& spec);
 
+// The connection id a registered name - RegisteredName's or ConsoleName's -
+// is for; "" for a name that is not the app's. The SQL log's filter.
+std::string ConnectionIdOf(const std::string& registeredName);
+
 // A one-line description for the tree's tooltip and the window title:
 // "notes.db" or "alice@db.example.com:5432/crm".
 std::string Describe(const ConnectionSpec& spec);

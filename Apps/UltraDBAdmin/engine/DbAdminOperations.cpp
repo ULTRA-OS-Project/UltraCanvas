@@ -157,6 +157,30 @@ OperationPlan DropObjectPlan(SqlEngine engine, const std::string& schema, const 
     return plan;
 }
 
+bool RenameObjectPlan(SqlEngine engine, const std::string& schema, const std::string& name, UltraDbObjectKind kind,
+                      const std::string& newName, OperationPlan& out, std::string& error) {
+    out = OperationPlan();
+    if (newName.empty()) { error = "The new name is empty."; return false; }
+    if (newName == name) { error = "That is its name already."; return false; }
+    const char* what = "TABLE";
+    switch (kind) {
+        case UltraDbObjectKind::Table:            what = "TABLE"; break;
+        case UltraDbObjectKind::View:             what = "VIEW"; break;
+        case UltraDbObjectKind::MaterializedView: what = "MATERIALIZED VIEW"; break;
+        case UltraDbObjectKind::ForeignTable:     what = "FOREIGN TABLE"; break;
+        case UltraDbObjectKind::Sequence:         what = "SEQUENCE"; break;
+    }
+    if (engine == SqlEngine::Sqlite && kind != UltraDbObjectKind::Table) {
+        error = "SQLite renames only a table; drop the view and create it again under the new name.";
+        return false;
+    }
+    out.statements.push_back(std::string("ALTER ") + what + " " + QualifiedName(schema, name) + " RENAME TO " +
+                             QuotedName(newName));
+    if (engine == SqlEngine::Sqlite)
+        out.notes.push_back("SQLite rewrites the views, triggers and foreign keys that name the table.");
+    return true;
+}
+
 // ===== Copy =====
 
 bool RewriteCreateIndex(const std::string& sql, const std::string& newIndex, const std::string& newTable,

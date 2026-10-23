@@ -46,10 +46,12 @@ add_executable(UltraDBAdmin
     ui/DbAdminConnectionDialog.cpp
     ui/DbAdminImportDialog.cpp
     ui/DbAdminModels.cpp
+    ui/DbAdminOperationDialogs.cpp
     ui/DbAdminRowDialog.cpp
     ui/DbAdminStructureDialog.cpp
     ui/DbAdminTheme.cpp
     ui/DbAdminWindow.cpp
+    ui/DbAdminWindowObjects.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).
 ultracanvas_single_instance(UltraDBAdmin)

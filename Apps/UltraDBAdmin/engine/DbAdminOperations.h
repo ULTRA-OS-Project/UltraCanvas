@@ -68,6 +68,12 @@ OperationPlan EmptyTablePlan(SqlEngine engine, const std::string& schema, const 
 OperationPlan DropObjectPlan(SqlEngine engine, const std::string& schema, const std::string& name,
                              UltraDbObjectKind kind);
 
+// ALTER ... RENAME TO: a table on SQLite (which renames nothing else), any
+// object on PostgreSQL. False, with `error`, for an empty or unchanged name
+// or a SQLite view.
+bool RenameObjectPlan(SqlEngine engine, const std::string& schema, const std::string& name, UltraDbObjectKind kind,
+                      const std::string& newName, OperationPlan& out, std::string& error);
+
 // ===== Copy =====
 
 // A copy of `table` as `newName` in the same schema, with its rows when

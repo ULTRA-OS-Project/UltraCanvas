@@ -88,6 +88,16 @@ std::string ConsoleName(const ConnectionSpec& spec) {
     return RegisteredName(spec) + ".console";
 }
 
+std::string ConnectionIdOf(const std::string& registeredName) {
+    static const std::string prefix = "ultradbadmin.";
+    static const std::string console = ".console";
+    if (registeredName.rfind(prefix, 0) != 0) return std::string();
+    std::string id = registeredName.substr(prefix.size());
+    if (id.size() > console.size() && id.compare(id.size() - console.size(), console.size(), console) == 0)
+        id.resize(id.size() - console.size());
+    return id;
+}
+
 std::string Describe(const ConnectionSpec& spec) {
     if (spec.IsSqlite()) {
         const std::string file = PathToUtf8(PathFromUtf8(spec.database).filename());
