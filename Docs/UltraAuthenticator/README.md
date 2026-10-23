@@ -37,7 +37,9 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
   key* — and, to the right, what acts on the whole vault: *Password…*
   (change the master password), *Back up…* and *Restore…*.
 - **One card per account**: a coloured circle with the service's first
-  letter (the colour follows the name, so a service keeps its colour), the
+  letter — in the service's own brand colour for about eighty well-known
+  services (the colour only: their logos are trademarks and are not shown),
+  otherwise a colour picked from the name, so a service keeps its colour — the
   service and account name, and the current code in large digits. A ring
   beside it empties as the code's 30 seconds run out, with the seconds left
   in its centre; it turns amber at 10 and red at 5. A counter-based (HOTP)

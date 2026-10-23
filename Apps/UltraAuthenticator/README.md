@@ -37,6 +37,7 @@ Changelog and version:
 | `RevealSecretDialog.*` | Shows one account's setup key, so it can be enrolled elsewhere |
 | `ChangePasswordDialog.*` | Re-derives the vault key from a new master password |
 | `BackupDialog.*` | Both directions of the encrypted backup — export and restore |
+| `BrandColors.h` | The brand colour of about eighty well-known services, for the monogram on their cards — the colour only, never a logo (a trademark) — and whether its letter is white or dark. Header-only; `Tests/UltraAuthenticatorBrandColorTests.cpp` |
 | `BrandHeader.h` | The centred logo and small app name at the top of the new-vault and lock screens |
 | `PasswordAdvice.h` | The optional "safe password" checklist under a new master password; never a gate |
 | `Theme.h` | One place for the colours, type sizes, metrics and the button / input / card styles, so the window and the dialogs cannot drift apart. The icons it names are in `media/icons/authenticator/` |

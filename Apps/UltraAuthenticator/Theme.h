@@ -13,12 +13,15 @@
 // UltraPassword's (Apps/UltraPassword/ui/Theme.h), so the two vault apps read
 // as one family.
 //
+// Version: 0.3.0 - a known service's monogram takes its brand colour
 // Version: 0.2.0 - button, input and card helpers; icons; monogram colours
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 #ifndef AUTHENTICATOR_THEME_H
 #define AUTHENTICATOR_THEME_H
+
+#include "BrandColors.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCommonTypes.h"
@@ -81,11 +84,12 @@ inline Color CountdownColor(uint32_t secondsRemaining) {
     return kCountdownCalm;
 }
 
-// The round monogram at the left of a card. The colour is picked from the
-// issuer's name, so one service keeps one colour across launches and two
-// services next to each other are told apart at a glance - before the name is
-// read. Mid-tone hues, all dark enough for white text on them.
-inline Color MonogramColor(const std::string& name) {
+// The round monogram at the left of a card. A well-known service gets its
+// own brand colour (BrandColors.h - the colour, never the logo, which is a
+// trademark); any other service a colour picked from its name, so one
+// service keeps one colour across launches and two services next to each
+// other are told apart at a glance - before the name is read.
+inline Color NameColor(const std::string& name) {
     static const Color kPalette[] = {
         { 37,  99, 235},   // blue
         {124,  58, 237},   // violet
@@ -105,6 +109,12 @@ inline Color MonogramColor(const std::string& name) {
         hash *= 16777619u;
     }
     return kPalette[hash % (sizeof(kPalette) / sizeof(kPalette[0]))];
+}
+
+inline Color MonogramColor(const std::string& name) {
+    Color brand;
+    if (FindBrandColor(name, brand)) return brand;
+    return NameColor(name);
 }
 
 // ---------------------------------------------------------------------------
