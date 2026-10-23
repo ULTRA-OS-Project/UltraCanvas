@@ -776,7 +776,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is
-  no unregister.
+  no unregister. `UltraCanvasFontCoverage.h` (`core/UltraCanvasFontCoverage.cpp`):
+  `CountCharactersWithoutFont` / `FindScriptsWithoutFont` - the characters of
+  a text no font covers (drawn as hex boxes), by script, each with a free Noto
+  font and its download page - plus `FontDownloadUrl` and
+  `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
+  notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
   Emoji come from a bundled font the emoji setting picks
