@@ -314,7 +314,7 @@ std::shared_ptr<UltraCanvasContainer> DeviceExplorerWindow::BuildScanRow() {
     plainRow.autoShowScrollbars = false;
     row->SetContainerStyle(plainRow);
 
-    auto label = CreateLabel("deScanLabel", 0, 0, 160, 20, "Scanning for devices…");
+    auto label = CreateLabel("deScanLabel", 0, 0, 180, 20, "Scanning for devices…");
     label->SetTextColor(Color(96, 96, 104));
     label->layoutItem.SetFlexShrink(0);
     row->AddChild(label);
