@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasRequirementDiagramExamples.cpp
 // Demo examples for UltraCanvasRequirementDiagram — SysML requirement diagram
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs fill
+//                  the page area beside the status card, every text sized to fit,
+//                  buttons as wide as their text
 // Version: 1.0.0
-// Last Modified: 2026-07-31
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // The four tabs reproduce the four reference images from
@@ -12,6 +15,7 @@
 //   4. Smart Home     - heterogeneous kinds, dashed «stereotype» relationships
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasRequirementDiagram.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -67,21 +71,55 @@ namespace UltraCanvas {
     }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Shared helpers — a tab page: its description, an optional button row, then
+// the diagram, which takes the height the text leaves and pans/zooms itself
+// ─────────────────────────────────────────────────────────────────────────────
+    static std::shared_ptr<UltraCanvasContainer> MakeReqTab(const std::string& id,
+                                                            const std::string& descId,
+                                                            const std::string& description) {
+        // The tabs size the page to their content area.
+        auto tab = std::make_shared<UltraCanvasContainer>(id, 0, 0, 1020, 700);
+        tab->SetPadding(10);
+        tab->layout.SetFlexColumn().SetFlexGap(8)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        // A short tab with a long (translated) description scrolls rather
+        // than cutting the text.
+        ContainerStyle style;
+        style.autoShowScrollbars = true;
+        tab->SetContainerStyle(style);
+        DemoKit::AddText(tab, descId, description)->SetFontSize(11);
+        return tab;
+    }
+
+    static void AddReqDiagram(const std::shared_ptr<UltraCanvasContainer>& tab,
+                              const std::shared_ptr<UltraCanvasRequirementDiagram>& diagram) {
+        DemoKit::AddStretched(tab, diagram);
+        diagram->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                           .SetFlexBasis(CSSLayout::Dimension::Px(0));
+    }
+
+    // An edit/action button: as wide as its text, at least the old 150 px.
+    static std::shared_ptr<UltraCanvasButton> MakeReqButton(const std::string& id,
+                                                            const std::string& text) {
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 26, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(150);
+        button->boxConstraints = limits;
+        return button;
+    }
+
+// ─────────────────────────────────────────────────────────────────────────────
 // TAB 1 — HybridSUV  (reference image 1)
 // Colour-by-category containment tree with full extendedRequirement
 // compartments: id, source, text, verifyMethod, risk.
 // ─────────────────────────────────────────────────────────────────────────────
     static std::shared_ptr<UltraCanvasContainer> MakeHybridSuvTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
-        auto tab = std::make_shared<UltraCanvasContainer>("ReqHybridTab", 0, 0, 1020, 700);
+        auto tab = MakeReqTab("ReqHybridTab", "ReqHybridDesc",
+                "Containment tree with crosshair circles, «stereotype» headers and "
+                "id/source/text/verifyMethod/risk compartments. Colour comes from the category.");
 
-        auto desc = std::make_shared<UltraCanvasLabel>("ReqHybridDesc", 10, 8, 990, 22);
-        desc->SetText("Containment tree with crosshair circles, «stereotype» headers and "
-                      "id/source/text/verifyMethod/risk compartments. Colour comes from the category.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
-
-        auto diagram = CreateRequirementDiagram("ReqHybrid", 10, 34, 990, 654);
+        auto diagram = CreateRequirementDiagram("ReqHybrid", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Pastel);
         diagram->SetColorSource(RequirementColorSource::ByCategory);
         diagram->SetNodeTemplate(RequirementNodeTemplate::Extended());
@@ -190,7 +228,7 @@ namespace UltraCanvas {
         diagram->RunLayout();
 
         WireStatus(diagram, statusLabel);
-        tab->AddChild(diagram);
+        AddReqDiagram(tab, diagram);
         return tab;
     }
 
@@ -201,15 +239,11 @@ namespace UltraCanvas {
 // ─────────────────────────────────────────────────────────────────────────────
     static std::shared_ptr<UltraCanvasContainer> MakeSpecificationTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
-        auto tab = std::make_shared<UltraCanvasContainer>("ReqSpecTab", 0, 0, 1020, 700);
+        auto tab = MakeReqTab("ReqSpecTab", "ReqSpecDesc",
+                "Structural overview: a «block» root owns collapsed requirement boxes. "
+                "Detail lives in a draggable callout anchored to Emissions.");
 
-        auto desc = std::make_shared<UltraCanvasLabel>("ReqSpecDesc", 10, 8, 990, 22);
-        desc->SetText("Structural overview: a «block» root owns collapsed requirement boxes. "
-                      "Detail lives in a draggable callout anchored to Emissions.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
-
-        auto diagram = CreateRequirementDiagram("ReqSpec", 10, 34, 990, 654);
+        auto diagram = CreateRequirementDiagram("ReqSpec", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Pastel);
         diagram->SetDefaultDetailLevel(RequirementDetailLevel::Collapsed);
         diagram->SetNodeWidthRange(110.0, 190.0);
@@ -268,7 +302,7 @@ namespace UltraCanvas {
                             -140.0, 320.0);
 
         WireStatus(diagram, statusLabel);
-        tab->AddChild(diagram);
+        AddReqDiagram(tab, diagram);
         return tab;
     }
 
@@ -278,15 +312,11 @@ namespace UltraCanvas {
 // ─────────────────────────────────────────────────────────────────────────────
     static std::shared_ptr<UltraCanvasContainer> MakeTaxonomyTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
-        auto tab = std::make_shared<UltraCanvasContainer>("ReqTaxonomyTab", 0, 0, 1020, 700);
+        auto tab = MakeReqTab("ReqTaxonomyTab", "ReqTaxonomyDesc",
+                "The SysML diagram taxonomy: generalisation (solid line, hollow triangle) "
+                "over a category-coloured tree, with an auto-generated legend.");
 
-        auto desc = std::make_shared<UltraCanvasLabel>("ReqTaxonomyDesc", 10, 8, 990, 22);
-        desc->SetText("The SysML diagram taxonomy: generalisation (solid line, hollow triangle) "
-                      "over a category-coloured tree, with an auto-generated legend.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
-
-        auto diagram = CreateRequirementDiagram("ReqTaxonomy", 10, 34, 990, 654);
+        auto diagram = CreateRequirementDiagram("ReqTaxonomy", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Classic);
         diagram->SetColorSource(RequirementColorSource::ByCategory);
         diagram->SetDefaultDetailLevel(RequirementDetailLevel::Collapsed);
@@ -339,7 +369,7 @@ namespace UltraCanvas {
         diagram->RunLayout();
 
         WireStatus(diagram, statusLabel);
-        tab->AddChild(diagram);
+        AddReqDiagram(tab, diagram);
         return tab;
     }
 
@@ -350,15 +380,11 @@ namespace UltraCanvas {
 // ─────────────────────────────────────────────────────────────────────────────
     static std::shared_ptr<UltraCanvasContainer> MakeSmartHomeTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
-        auto tab = std::make_shared<UltraCanvasContainer>("ReqSmartHomeTab", 0, 0, 1020, 700);
+        auto tab = MakeReqTab("ReqSmartHomeTab", "ReqSmartHomeDesc",
+                "Traceability web: «testCase» verifies, «block» satisfies, requirements "
+                "derive from each other. Drag boxes; the dashed routes follow.");
 
-        auto desc = std::make_shared<UltraCanvasLabel>("ReqSmartHomeDesc", 10, 8, 990, 22);
-        desc->SetText("Traceability web: «testCase» verifies, «block» satisfies, requirements "
-                      "derive from each other. Drag boxes; the dashed routes follow.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
-
-        auto diagram = CreateRequirementDiagram("ReqSmartHome", 10, 34, 990, 654);
+        auto diagram = CreateRequirementDiagram("ReqSmartHome", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Vibrant);
         diagram->SetColorSource(RequirementColorSource::ByKind);
         diagram->SetNodeTemplate(RequirementNodeTemplate::Standard());
@@ -440,7 +466,7 @@ namespace UltraCanvas {
         diagram->FitView();
 
         WireStatus(diagram, statusLabel);
-        tab->AddChild(diagram);
+        AddReqDiagram(tab, diagram);
         return tab;
     }
 
@@ -452,15 +478,11 @@ namespace UltraCanvas {
 // ─────────────────────────────────────────────────────────────────────────────
     static std::shared_ptr<UltraCanvasContainer> MakeCoverageTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
-        auto tab = std::make_shared<UltraCanvasContainer>("ReqCoverageTab", 0, 0, 1020, 700);
+        auto tab = MakeReqTab("ReqCoverageTab", "ReqCoverageDesc",
+                "Compartment notation + coverage badges. Click a requirement to trace it; "
+                "Escape clears. Red = nothing satisfies it, amber = no test case.");
 
-        auto desc = std::make_shared<UltraCanvasLabel>("ReqCoverageDesc", 10, 8, 990, 22);
-        desc->SetText("Compartment notation + coverage badges. Click a requirement to trace it; "
-                      "Escape clears. Red = nothing satisfies it, amber = no test case.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
-
-        auto diagram = CreateRequirementDiagram("ReqCoverage", 10, 34, 990, 654);
+        auto diagram = CreateRequirementDiagram("ReqCoverage", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Professional);
         diagram->SetFrame("Package", "VehicleControl", "Requirements Diagram");
         diagram->SetNodeWidthRange(150.0, 215.0);
@@ -541,7 +563,7 @@ namespace UltraCanvas {
             status->SetText(out.str());
         };
 
-        tab->AddChild(diagram);
+        AddReqDiagram(tab, diagram);
         return tab;
     }
 
@@ -552,15 +574,11 @@ namespace UltraCanvas {
 // ─────────────────────────────────────────────────────────────────────────────
     static std::shared_ptr<UltraCanvasContainer> MakeMermaidTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
-        auto tab = std::make_shared<UltraCanvasContainer>("ReqMermaidTab", 0, 0, 1020, 700);
+        auto tab = MakeReqTab("ReqMermaidTab", "ReqMermaidDesc",
+                "Parsed from Mermaid requirementDiagram text. Use the minus toggles to collapse "
+                "a sub-tree; the buttons switch edit mode. F2 renames, Delete removes.");
 
-        auto desc = std::make_shared<UltraCanvasLabel>("ReqMermaidDesc", 10, 8, 990, 22);
-        desc->SetText("Parsed from Mermaid requirementDiagram text. Use the minus toggles to collapse "
-                      "a sub-tree; the buttons switch edit mode. F2 renames, Delete removes.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
-
-        auto diagram = CreateRequirementDiagram("ReqMermaid", 10, 66, 990, 622);
+        auto diagram = CreateRequirementDiagram("ReqMermaid", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Pastel);
         diagram->SetNodeWidthRange(140.0, 220.0);
         diagram->SetDoubleClickAction(RequirementDoubleClickAction::ToggleDetail);
@@ -658,10 +676,9 @@ refunds - derives -> card_payments
             {"ReqModeNode",    "+ Requirement", RequirementEditMode::CreateNode},
             {"ReqModeConnect", "Connect (satisfy)", RequirementEditMode::CreateRelation}
         };
-        int buttonX = 10;
+        auto buttonRow = DemoKit::AddRow(tab, "ReqMermaidButtons", 8);
         for (const auto& button : buttons) {
-            auto widget = std::make_shared<UltraCanvasButton>(button.id, buttonX, 34, 150, 26,
-                                                              button.label);
+            auto widget = MakeReqButton(button.id, button.label);
             const RequirementEditMode mode = button.mode;
             widget->SetOnClick([weakDiagram, weakStatus, mode]() {
                 auto req = weakDiagram.lock();
@@ -675,12 +692,10 @@ refunds - derives -> card_payments
                             : "Select mode: drag boxes, rubber-band select, F2 to rename.");
                 }
             });
-            tab->AddChild(widget);
-            buttonX += 158;
+            DemoKit::Add(buttonRow, widget);
         }
 
-        auto exportButton = std::make_shared<UltraCanvasButton>(
-            "ReqExportMermaid", buttonX, 34, 150, 26, "Export Mermaid");
+        auto exportButton = MakeReqButton("ReqExportMermaid", "Export Mermaid");
         exportButton->SetOnClick([weakDiagram, weakStatus]() {
             auto req = weakDiagram.lock();
             auto status = weakStatus.lock();
@@ -692,9 +707,9 @@ refunds - derives -> card_payments
             status->SetText("ToMermaid() — " + std::to_string(text.size()) +
                             " chars:\n\n" + preview);
         });
-        tab->AddChild(exportButton);
+        DemoKit::Add(buttonRow, exportButton);
 
-        tab->AddChild(diagram);
+        AddReqDiagram(tab, diagram);
         return tab;
     }
 
@@ -707,15 +722,11 @@ refunds - derives -> card_payments
 // ─────────────────────────────────────────────────────────────────────────────
     static std::shared_ptr<UltraCanvasContainer> MakeReqIfTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel) {
-        auto tab = std::make_shared<UltraCanvasContainer>("ReqIfTab", 0, 0, 1020, 700);
+        auto tab = MakeReqTab("ReqIfTab", "ReqIfDesc",
+                "Imported from ReqIF XML, then annotated: package region, «copy» with a "
+                "suspect badge, relationship rationale, status chips, block ports.");
 
-        auto desc = std::make_shared<UltraCanvasLabel>("ReqIfDesc", 10, 8, 990, 22);
-        desc->SetText("Imported from ReqIF XML, then annotated: package region, «copy» with a "
-                      "suspect badge, relationship rationale, status chips, block ports.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
-
-        auto diagram = CreateRequirementDiagram("ReqIfDiagram", 10, 66, 990, 622);
+        auto diagram = CreateRequirementDiagram("ReqIfDiagram", 0, 0, 990, 654);
         diagram->SetPalette(RequirementPaletteKind::Professional);
         diagram->SetNodeWidthRange(150.0, 220.0);
 
@@ -858,10 +869,9 @@ refunds - derives -> card_payments
             {"ReqIfMatrix", "Trace matrix CSV", 2},
             {"ReqIfForce",  "Force layout",     3}
         };
-        int buttonX = 10;
+        auto buttonRow = DemoKit::AddRow(tab, "ReqIfButtons", 8);
         for (const auto& button : buttons) {
-            auto widget = std::make_shared<UltraCanvasButton>(button.id, buttonX, 34, 150, 26,
-                                                              button.label);
+            auto widget = MakeReqButton(button.id, button.label);
             const int action = button.action;
             widget->SetOnClick([weakDiagram, weakStatus, action]() {
                 auto req = weakDiagram.lock();
@@ -889,11 +899,10 @@ refunds - derives -> card_payments
                                     "Every visible relation acts as a spring.");
                 }
             });
-            tab->AddChild(widget);
-            buttonX += 158;
+            DemoKit::Add(buttonRow, widget);
         }
 
-        tab->AddChild(diagram);
+        AddReqDiagram(tab, diagram);
         return tab;
     }
 
@@ -901,52 +910,37 @@ refunds - derives -> card_payments
 // SCENE
 // ─────────────────────────────────────────────────────────────────────────────
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRequirementDiagramExamples() {
-        auto main = std::make_shared<UltraCanvasContainer>("ReqDiagramMain", 0, 0, 1040, 780);
+        auto main = DemoKit::CreatePage("ReqDiagramMain", "Requirement Diagram",
+                "SysML requirement diagram: compartmented requirement boxes, "
+                "containment with crosshair circles, and dashed deriveReqt / satisfy / "
+                "verify / refine / trace relationships.");
+        // The diagrams pan and zoom themselves: the page is the area's height
+        // and the tabs take what the title and description leave.
+        main->SetFillsArea(true);
 
-        main->layout.SetGrid()
-                .SetGridColumns({
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                                 .value = CSSLayout::Dimension::Fr(1)},
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(350)}})
-                .SetGridRows({
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(34)},
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(44)},
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                                 .value = CSSLayout::Dimension::Fr(1)}})
-                .SetGridGap(6)
-                .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
-                .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
+        // Tabs | status. The status card keeps its width; its text wraps and
+        // the card is as tall as the tabs, room for an export preview.
+        auto content = DemoKit::CreateRow("ReqContent", DemoKit::kRowGap, false);
+        DemoKit::Add(main, content, 1);
+        content->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        auto title = std::make_shared<UltraCanvasLabel>("ReqTitle");
-        title->SetText("Requirement Diagram");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(40, 100, 80));
-        main->AddChild(title);
-        title->layoutItem.SetGridRowColSimplified(0, 0);
+        auto tabsCard = DemoKit::CreateCard("ReqTabsCard");
+        tabsCard->SetPadding(4);
+        DemoKit::Add(content, tabsCard, 1);
+        tabsCard->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("ReqSub");
-        subtitle->SetText("SysML requirement diagram: compartmented requirement boxes, "
-                          "containment with crosshair circles, and dashed deriveReqt / satisfy / "
-                          "verify / refine / trace relationships.");
-        subtitle->SetFontSize(11);
-        subtitle->SetWrap(TextWrap::WrapWord);
-        subtitle->SetTextColor(Color(90, 90, 90));
-        main->AddChild(subtitle);
-        subtitle->layoutItem.SetGridRowColSimplified(1, 0);
+        auto statusCard = DemoKit::CreateCard("ReqStatusCard");
+        DemoKit::Add(content, statusCard);
+        statusCard->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(350));
+        // The page does not scroll (it fills the area): a long export
+        // preview in a short window scrolls inside the card instead.
+        ContainerStyle statusStyle = statusCard->GetContainerStyle();
+        statusStyle.autoShowScrollbars = true;
+        statusCard->SetContainerStyle(statusStyle);
 
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("ReqStatus");
-        statusLabel->SetText("Click a requirement or a relationship to inspect it.");
+        auto statusLabel = DemoKit::AddText(statusCard, "ReqStatus",
+                "Click a requirement or a relationship to inspect it.");
         statusLabel->SetFontSize(10);
-        statusLabel->SetWrap(TextWrap::WrapWord);
-        statusLabel->SetBackgroundColor(Color(245, 245, 245));
-        statusLabel->SetBorders(1.0f);
-        statusLabel->SetPadding(6.0f);
-        main->AddChild(statusLabel);
-        statusLabel->layoutItem.SetGridRowColSimplified(0, 1, 2, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ReqTabs");
         tabs->SetTabPosition(TabPosition::Top);
@@ -961,8 +955,8 @@ refunds - derives -> card_payments
         tabs->AddTab("Mermaid import + editing",   MakeMermaidTab(statusLabel));
         tabs->AddTab("ReqIF + overlays",           MakeReqIfTab(statusLabel));
 
-        main->AddChild(tabs);
-        tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);
+        DemoKit::Add(tabsCard, tabs, 1);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
         return main;
     }
 
