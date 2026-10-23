@@ -33,6 +33,16 @@
 // RefreshCodes skips the row — so the option reduces decryptions as well as
 // what is on screen.
 //
+// Copying: the copy button beside a code puts that code on the clipboard,
+// marked secret (ClipboardHint::Secret) so clipboard histories that honour
+// the platform's marker do not record it, and takes it off again 30 seconds
+// later — only if the clipboard still holds that code, so whatever the user
+// copied since is left alone. Locking and closing the window clear it at
+// once, under the same condition. The copy works in hidden-codes mode too
+// (the code goes to the clipboard without being shown), and an HOTP card
+// copies the code its last "Next code" produced, never spending a new one.
+// The setup key is never offered for copying; see RevealSecretDialog.
+//
 // Look: a white header band (logo, name, how many accounts) with Settings and
 // Lock at its right; one row of actions under it — the two ways to add an
 // account first, the vault's own actions to the right; then the cards, and a
@@ -44,6 +54,7 @@
 // tooltips, so a list of twenty accounts is not a wall of "Edit Show key
 // Remove".
 //
+// Version: 0.5.0 - copy button on every card, clipboard cleared after 30 s
 // Version: 0.4.0 - header band, monogram, countdown ring, icon actions, status bar
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -95,6 +106,8 @@ private:
         Otp::Parameters                       params;
         bool                                  isHotp = false;
         int64_t                               revealedUntil = 0;   // hidden-codes mode
+        int64_t                               copiedUntil = 0;     // the copy button's tick
+        std::string                           hotpCode;            // the last "Next code"
         std::shared_ptr<UltraCanvasContainer>  card;
         std::shared_ptr<UltraCanvasBadge>      monogram;
         std::shared_ptr<UltraCanvasLabel>      issuerLabel;
@@ -103,6 +116,7 @@ private:
         std::shared_ptr<UltraCanvasLabel>      countdownLabel;   // "click to show", "used once"
         std::shared_ptr<UltraCanvasGaugeDiagramElement> countdownRing;   // TOTP only
         std::shared_ptr<UltraCanvasButton>     actionButton;   // Next (HOTP)
+        std::shared_ptr<UltraCanvasButton>     copyButton;
         std::shared_ptr<UltraCanvasButton>     editButton;
         std::shared_ptr<UltraCanvasButton>     revealButton;
         std::shared_ptr<UltraCanvasButton>     removeButton;
@@ -123,6 +137,11 @@ private:
     void RemoveAccount(const std::string& key);
     void AdvanceHotpRow(const std::string& key);
     void RevealRow(const std::string& key);
+    void CopyCode(const std::string& key);
+    // Empties the clipboard if it still holds the code this window put there,
+    // and forgets that code either way.
+    void ClearClipboardIfOurs();
+    void RefreshCopyButtons(int64_t now);
     void SetStatus(const std::string& text, bool isError = false);
     // The line under the app name: how many accounts, or that it is locked.
     void SetSummary(const std::string& text);
@@ -168,6 +187,9 @@ private:
     std::string                        lockMessage_;   // what the lock screen says
     std::shared_ptr<LockScreenDialog>  lockDialog_;
     int64_t                            lastActivity_ = 0;
+
+    std::string                        clipboardCode_;   // what we copied, to clear only that
+    int64_t                            clipboardClearAt_ = 0;
     int                                modalDepth_ = 0;
     int                                ticksSinceRestore_ = 0;   // see Tick()
 
@@ -183,6 +205,11 @@ private:
     // into another window, short enough that a card left revealed does not
     // stay so.
     static constexpr int64_t kRevealSeconds = 15;
+    // How long a copied code stays on the clipboard: one TOTP step, after
+    // which the code is no longer valid anyway.
+    static constexpr int64_t kClipboardSeconds = 30;
+    // How long the copy button shows its tick after a copy.
+    static constexpr int64_t kCopiedSeconds = 2;
 };
 
 } // namespace Authenticator

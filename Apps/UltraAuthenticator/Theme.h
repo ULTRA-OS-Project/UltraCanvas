@@ -174,6 +174,10 @@ constexpr float kButtonRadius  = 6.0f;
 constexpr long  kIconButton    = 30;   // square, icon-only (a card's actions)
 constexpr int   kIconSize      = 16;
 constexpr long  kMonogramSize  = 40;
+// The advance of one character of the code at kSizeCode in kCodeFont, a
+// little over what DejaVu Sans Mono measures (Menlo is the same, Consolas
+// narrower), so the copy button placed after the digits never covers them.
+constexpr long  kCodeCharWidth = 22;
 // The countdown ring. The gauge keeps its ring at least 40 px across and pads
 // it, so the element is larger than the ring it draws.
 constexpr long  kRingBox       = 64;

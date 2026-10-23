@@ -12,10 +12,12 @@
 #include "SettingsDialog.h"
 #include "Theme.h"
 
+#include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCrypt/UltraCryptCore.h"
 
 #include <ctime>
 #include <string>
@@ -60,6 +62,13 @@ std::string CodeMask(uint32_t digits) {
         out += bullet;
     }
     return out;
+}
+
+// A code is short-lived, but a copy of it is still wiped rather than left in
+// freed memory, like every other secret-adjacent string in the app.
+void WipeString(std::string& s) {
+    if (!s.empty()) UltraCrypt_SecureZero(&s[0], s.size());
+    s.clear();
 }
 
 int64_t NowUnix() {
@@ -110,6 +119,11 @@ std::string MonogramText(const std::string& name) {
     return letter;
 }
 
+std::string CopyTooltip(bool isHotp) {
+    return isHotp ? "Copy the last code made with \"Next code\""
+                  : "Copy the code (cleared from the clipboard after 30 seconds)";
+}
+
 std::string DisplayName(const Otp::Parameters& params) {
     if (params.issuer.empty()) return params.accountName;
     return params.issuer + " — " + params.accountName;
@@ -128,6 +142,10 @@ AuthenticatorWindow::~AuthenticatorWindow() {
         app_.StopTimer(refreshTimer_);
         timerRunning_ = false;
     }
+    // Usually a no-op (closing the window already did it). No status line to
+    // report on by now: the window may be gone.
+    statusLabel_.reset();
+    ClearClipboardIfOurs();
 }
 
 template <class Dialog>
@@ -166,6 +184,8 @@ bool AuthenticatorWindow::Create() {
             app_.StopTimer(refreshTimer_);
             timerRunning_ = false;
         }
+        // A code copied a moment ago does not outlive the app either.
+        ClearClipboardIfOurs();
         store_.Close();
         app_.RequestExit();
         return true;
@@ -396,6 +416,10 @@ void AuthenticatorWindow::NoteActivity() {
 void AuthenticatorWindow::Tick() {
     const int64_t now = NowUnix();
 
+    // Before anything else, locked or not: the clipboard's 30 seconds run on
+    // wall time, whatever the window is doing.
+    if (clipboardClearAt_ != 0 && now >= clipboardClearAt_) ClearClipboardIfOurs();
+
     if (locked_) {
         if (lockDialog_) {
             lockDialog_->Tick();
@@ -429,6 +453,7 @@ void AuthenticatorWindow::Tick() {
     }
 
     RefreshCodes();
+    RefreshCopyButtons(now);
 }
 
 // ---------------------------------------------------------------------------
@@ -443,6 +468,7 @@ void AuthenticatorWindow::Lock(const std::string& reason) {
     // Order: take the codes off the screen, then drop the vault. Nothing on a
     // card survives the first step, and nothing in memory survives the second.
     ClearRows();
+    ClearClipboardIfOurs();
     ShowEmptyState(false);
     SetSummary("Locked");
     SetStatus("Locked.");
@@ -468,6 +494,7 @@ void AuthenticatorWindow::ShowLockScreen() {
         return std::string();
     };
     dialog->onQuit = [this]() {
+        ClearClipboardIfOurs();
         store_.Close();
         app_.RequestExit();
     };
@@ -495,6 +522,7 @@ void AuthenticatorWindow::ClearRows() {
         // Removing the card takes its children with it; the card is the only
         // thing the container knows about.
         if (row.card) listContainer_->RemoveChild(row.card);
+        WipeString(row.hotpCode);
     }
     rows_.clear();
 }
@@ -604,10 +632,24 @@ void AuthenticatorWindow::RebuildRows() {
         }
         row.card->AddChild(row.codeLabel);
 
+        // Copy, right after the digits: the code's own width (grouped, so
+        // one more character than digits) at the monospaced face's advance.
+        const long copyX = textX +
+            static_cast<long>(account.params.digits + 1) * Theme::kCodeCharWidth + 8;
+        row.copyButton = std::make_shared<UltraCanvasButton>(
+            id + "-copy", copyX, 54 + (36 - Theme::kIconButton) / 2,
+            Theme::kIconButton, Theme::kIconButton);
+        Theme::StyleIconButton(row.copyButton, "copy", CopyTooltip(row.isHotp));
+        {
+            const std::string key = account.key;
+            row.copyButton->onClick = [this, key]() { CopyCode(key); };
+        }
+        row.card->AddChild(row.copyButton);
+
         // Wide enough for "click to show" in bold; at 110 it clipped to
         // "click to sh…", which reads as a cut-off menu entry.
         row.countdownLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-left", textX + 236, 63, 130, 20, "");
+            id + "-left", copyX + Theme::kIconButton + 6, 63, 130, 20, "");
         row.countdownLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary,
                                     FontWeight::Bold);
         row.countdownLabel->SetTextColor(Theme::kTextMuted);
@@ -779,6 +821,10 @@ void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
     for (Row& row : rows_) {
         if (row.key != key) continue;
         if (row.codeLabel) row.codeLabel->SetText(GroupCode(code));
+        // Kept so the copy button can copy this code - even once hidden mode
+        // has masked it again - without spending another counter.
+        WipeString(row.hotpCode);
+        row.hotpCode = code;
         if (row.countdownLabel) {
             row.countdownLabel->SetText("used once");
             row.countdownLabel->SetTextColor(Theme::kTextMuted);
@@ -793,6 +839,93 @@ void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
         row.revealedUntil = prefs_.hideCodes ? now + kRevealSeconds : 0;
     }
     SetStatus("");
+}
+
+// ---------------------------------------------------------------------------
+// Copying
+// ---------------------------------------------------------------------------
+
+void AuthenticatorWindow::CopyCode(const std::string& key) {
+    Row* row = nullptr;
+    for (Row& r : rows_) {
+        if (r.key == key) { row = &r; break; }
+    }
+    if (!row || !store_.IsOpen()) return;
+
+    std::string code;
+    std::string validity;
+    if (row->isHotp) {
+        // Copying never spends a counter: it copies the code "Next code"
+        // produced, and there is nothing to copy until it has been pressed.
+        if (row->hotpCode.empty()) {
+            SetStatus("Press \"Next code\" first: a counter-based code is only "
+                      "made when it is needed.", true);
+            return;
+        }
+        code = row->hotpCode;
+    } else {
+        // Generated now, not read off the card, so the copy is current even
+        // in hidden-codes mode, where the card shows only dots.
+        uint32_t remaining = 0;
+        StoreResult generated = store_.GenerateTotp(row->key, NowUnix(), code, remaining);
+        if (!generated) {
+            SetStatus(generated.message, true);
+            return;
+        }
+        validity = ", valid " + std::to_string(remaining) + " s more";
+    }
+
+    // Marked secret, so a clipboard history that honours the platform's
+    // marker (KDE's Klipper, Windows' Win+V, macOS' managers, UltraClipboard)
+    // does not keep it. The timed clear below only empties the clipboard; it
+    // cannot reach into a history that ignored the marker.
+    if (!SetClipboardText(code, ClipboardHint::Secret)) {
+        WipeString(code);
+        SetStatus("The clipboard is not available.", true);
+        return;
+    }
+    WipeString(clipboardCode_);
+    clipboardCode_   = code;
+    clipboardClearAt_ = NowUnix() + kClipboardSeconds;
+    WipeString(code);
+
+    const std::string name = row->params.issuer.empty() ? row->params.accountName
+                                                        : row->params.issuer;
+    // Short enough for the status line with a long service name.
+    SetStatus(name + " code copied" + validity + "; clipboard clears in " +
+              std::to_string(kClipboardSeconds) + " s.");
+
+    // The button says it worked: a tick for a moment, then the copy icon.
+    for (Row& r : rows_) {
+        if (!r.copyButton) continue;
+        const bool thisOne = (&r == row);
+        r.copiedUntil = thisOne ? NowUnix() + kCopiedSeconds : 0;
+        r.copyButton->SetIcon(Theme::IconPath(thisOne ? "copied" : "copy"));
+        r.copyButton->SetTooltip(thisOne ? "Copied" : CopyTooltip(r.isHotp));
+    }
+}
+
+void AuthenticatorWindow::RefreshCopyButtons(int64_t now) {
+    for (Row& row : rows_) {
+        if (row.copiedUntil == 0 || now < row.copiedUntil || !row.copyButton) continue;
+        row.copiedUntil = 0;
+        row.copyButton->SetIcon(Theme::IconPath("copy"));
+        row.copyButton->SetTooltip(CopyTooltip(row.isHotp));
+    }
+}
+
+void AuthenticatorWindow::ClearClipboardIfOurs() {
+    if (clipboardCode_.empty()) { clipboardClearAt_ = 0; return; }
+    // Only our own code is taken back. Anything copied since - a password,
+    // a paragraph - belongs to the user and stays.
+    std::string current;
+    if (GetClipboardText(current) && current == clipboardCode_) {
+        SetClipboardText("");
+        if (!locked_) SetStatus("Clipboard cleared.");
+    }
+    WipeString(current);
+    WipeString(clipboardCode_);
+    clipboardClearAt_ = 0;
 }
 
 // ---------------------------------------------------------------------------

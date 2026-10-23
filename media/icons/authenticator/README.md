@@ -8,7 +8,7 @@ matter.
 
 - **Main window**: `scan` (Scan QR code), `key` (Enter key), `password`
   (Master password), `backup`, `restore`, `settings`, `lock`.
-- **A card's actions**: `edit`, `show` (the setup key), `delete`, `next`
-  (the next HOTP code).
+- **A card's actions**: `copy` (the code; `copied` for a moment after),
+  `edit`, `show` (the setup key), `delete`, `next` (the next HOTP code).
 
 The packaged app icon is `media/appicon/UltraAuthenticator.{png,svg}`, not here.

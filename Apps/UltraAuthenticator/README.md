@@ -27,7 +27,7 @@ Changelog and version:
 | `AccountExport.*` | The encrypted backup file: every account in one portable blob under its own passphrase |
 | `LockPolicy.*` | `UnlockThrottle`: the exponential back-off between unlock attempts, time-injected so it is tested without sleeping |
 | `Preferences.*` | The three user settings and the `settings.ini` file beside the vault they live in; every value clamped on load |
-| `AuthenticatorWindow.*` | The main window: the scrolling card list, the 1 Hz refresh timer that also drives the auto-lock, the header band and its row of actions, the status line |
+| `AuthenticatorWindow.*` | The main window: the scrolling card list, the 1 Hz refresh timer that also drives the auto-lock, the header band and its row of actions, the status line, copying a code (marked secret, cleared from the clipboard after 30 s, on lock and on close) |
 | `LockScreenDialog.*` | What covers the window once the vault is locked: master password or Quit, nothing else |
 | `NewVaultDialog.*` | First launch: the master password typed twice, with a strength meter; Create or Quit |
 | `SettingsDialog.*` | Idle timeout, lock on minimise, hide codes |
