@@ -111,10 +111,32 @@ inline Color NameColor(const std::string& name) {
     return kPalette[hash % (sizeof(kPalette) / sizeof(kPalette[0]))];
 }
 
-inline Color MonogramColor(const std::string& name) {
-    Color brand;
-    if (FindBrandColor(name, brand)) return brand;
-    return NameColor(name);
+// How a card's monogram is drawn: the circle, the letter on it, and the
+// hairline round a white circle (which would otherwise vanish into the card).
+struct MonogramLook {
+    Color fill;
+    Color ink;
+    Color border       = Color(0, 0, 0, 0);
+    float borderWidth  = 0.0f;
+};
+
+inline MonogramLook MonogramLookFor(const std::string& name) {
+    MonogramLook look;
+    if (const BrandColor* brand = FindBrand(name)) {
+        if (brand->letterOnWhite) {
+            look.fill        = kCardBackground;
+            look.ink         = BrandRgb(*brand);
+            look.border      = kCardBorder;
+            look.borderWidth = 1.0f;
+            return look;
+        }
+        look.fill = BrandRgb(*brand);
+    } else {
+        look.fill = NameColor(name);
+    }
+    // Several brand colours are light; their letter is dark.
+    look.ink = MonogramInkFor(look.fill);
+    return look;
 }
 
 // ---------------------------------------------------------------------------

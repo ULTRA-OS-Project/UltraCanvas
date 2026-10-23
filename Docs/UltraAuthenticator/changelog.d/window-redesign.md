@@ -17,7 +17,8 @@
   near-black, Dropbox's blue, AWS's orange, and about eighty more
   (`BrandColors.h`). Only the colour and the first letter, never the logo,
   which is a trademark. The letter turns dark on a light brand colour
-  (Snapchat's yellow, AWS's orange) so it stays readable. Any other service
+  (Snapchat's yellow, AWS's orange) so it stays readable. Google is the
+  one shown the other way round, as its own blue G on a white circle. Any other service
   gets a colour picked from its name, the same one at every launch.
 - **The dialogs match.** Every dialog's main button is the accent colour and
   the other is plain; text fields and drop-downs have rounded corners and

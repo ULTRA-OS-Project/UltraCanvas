@@ -12,7 +12,7 @@
 //
 // The table holds the primary colour each company publishes in its brand
 // guidelines. A service that is not in it falls back to a colour picked from
-// its name (Theme::MonogramColor), which is stable but not the brand's.
+// its name (Theme::NameColor), which is stable but not the brand's.
 //
 // Matching ignores case and everything but letters and digits, so "Amazon Web
 // Services", "amazon-web-services" and "AmazonWebServices" are one name. A
@@ -22,6 +22,7 @@
 // "zoom") match only exactly, or "x" would claim every name beginning with x
 // and "meta" would paint MetaMask in Facebook's blue.
 //
+// Version: 0.2.0 - letterOnWhite: Google's blue G on a white circle
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -41,6 +42,11 @@ namespace Authenticator {
 struct BrandColor {
     const char* key;      // normalised: lower-case letters and digits only
     uint32_t    rgb;      // 0xRRGGBB
+    // The brand is known by a coloured letter on white rather than a white
+    // letter on its colour - Google's "G" is blue on white, and a white G
+    // on a blue disc reads as some other company. The circle is then white
+    // with a hairline, and the letter takes the colour.
+    bool        letterOnWhite = false;
 };
 
 // Grouped loosely by kind; order does not matter (the longest match wins).
@@ -80,7 +86,7 @@ inline constexpr BrandColor kBrandColors[] = {
     {"namecheap",         0xDE3723},
     {"nextcloud",         0x0082C9},
     // --- accounts, mail and storage ---
-    {"google",            0x4285F4},
+    {"google",            0x4285F4, true},
     {"gmail",             0xEA4335},
     {"microsoft",         0x00A4EF},
     {"outlook",           0x0078D4},
@@ -152,10 +158,10 @@ inline std::string NormaliseBrandName(const std::string& name) {
     return out;
 }
 
-// The brand colour for `name`, or false when it is not a known service.
-inline bool FindBrandColor(const std::string& name, Color& out) {
+// The table entry for `name`, or nullptr when it is not a known service.
+inline const BrandColor* FindBrand(const std::string& name) {
     const std::string normalised = NormaliseBrandName(name);
-    if (normalised.empty()) return false;
+    if (normalised.empty()) return nullptr;
     const BrandColor* best = nullptr;
     size_t bestLength = 0;
     for (const BrandColor& brand : kBrandColors) {
@@ -168,10 +174,20 @@ inline bool FindBrandColor(const std::string& name, Color& out) {
             bestLength = key.size();
         }
     }
-    if (!best) return false;
-    out = Color(static_cast<uint8_t>((best->rgb >> 16) & 0xFF),
-                static_cast<uint8_t>((best->rgb >> 8) & 0xFF),
-                static_cast<uint8_t>(best->rgb & 0xFF), 255);
+    return best;
+}
+
+inline Color BrandRgb(const BrandColor& brand) {
+    return Color(static_cast<uint8_t>((brand.rgb >> 16) & 0xFF),
+                 static_cast<uint8_t>((brand.rgb >> 8) & 0xFF),
+                 static_cast<uint8_t>(brand.rgb & 0xFF), 255);
+}
+
+// The brand colour for `name`, or false when it is not a known service.
+inline bool FindBrandColor(const std::string& name, Color& out) {
+    const BrandColor* brand = FindBrand(name);
+    if (!brand) return false;
+    out = BrandRgb(*brand);
     return true;
 }
 

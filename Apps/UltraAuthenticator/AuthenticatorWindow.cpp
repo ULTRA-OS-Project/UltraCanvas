@@ -548,7 +548,7 @@ void AuthenticatorWindow::RebuildRows() {
         const std::string issuerText = account.params.issuer.empty()
                                            ? account.params.accountName
                                            : account.params.issuer;
-        const Color monogramColor = Theme::MonogramColor(issuerText);
+        const Theme::MonogramLook look = Theme::MonogramLookFor(issuerText);
         row.monogram = std::make_shared<UltraCanvasBadge>(
             id + "-mono", pad, (Theme::kCardHeight - Theme::kMonogramSize) / 2,
             Theme::kMonogramSize, Theme::kMonogramSize);
@@ -559,12 +559,13 @@ void AuthenticatorWindow::RebuildRows() {
             style.paddingH   = 0.0f;
             style.fontSize   = 16.0f;
             style.fontFamily = Theme::kUiFont;
-            // Several brand colours are light; their letter is dark.
-            style.textColor  = MonogramInkFor(monogramColor);
+            style.textColor   = look.ink;
+            style.borderColor = look.border;
+            style.borderWidth = look.borderWidth;
             row.monogram->SetStyle(style);
         }
         row.monogram->SetText(MonogramText(issuerText));
-        row.monogram->SetColor(monogramColor);
+        row.monogram->SetColor(look.fill);
         row.card->AddChild(row.monogram);
 
         // The labels stop short of the action buttons, which share their

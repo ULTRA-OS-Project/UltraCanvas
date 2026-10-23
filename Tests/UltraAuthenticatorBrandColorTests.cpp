@@ -79,6 +79,19 @@ static double Contrast(const Color& a, const Color& b) {
     return (la + 0.05) / (lb + 0.05);
 }
 
+static void TestLetterOnWhite() {
+    std::printf("Google is a blue letter on white; other brands are a filled circle\n");
+    const BrandColor* google = FindBrand("Google");
+    Check(google && google->letterOnWhite, "Google: letter on white");
+    Check(google && google->rgb == 0x4285F4, "Google: the letter is Google blue");
+    const BrandColor* workspace = FindBrand("Google Workspace");
+    Check(workspace && workspace->letterOnWhite, "Google Workspace follows Google");
+    const BrandColor* github = FindBrand("GitHub");
+    Check(github && !github->letterOnWhite, "GitHub: filled circle");
+    const BrandColor* gmail = FindBrand("Gmail");
+    Check(gmail && !gmail->letterOnWhite, "Gmail: filled circle");
+}
+
 static void TestInk() {
     std::printf("The letter is white on dark brands and dark on light ones\n");
     const Color white(255, 255, 255, 255);
@@ -91,8 +104,14 @@ static void TestInk() {
         const Color bg(static_cast<uint8_t>(brand.rgb >> 16),
                        static_cast<uint8_t>(brand.rgb >> 8),
                        static_cast<uint8_t>(brand.rgb), 255);
-        Check(Contrast(bg, MonogramInkFor(bg)) >= 3.0,
-              std::string("readable letter on ") + brand.key);
+        if (brand.letterOnWhite) {
+            // The colour is the letter, on a white circle.
+            Check(Contrast(bg, Color(255, 255, 255, 255)) >= 3.0,
+                  std::string("readable coloured letter on white: ") + brand.key);
+        } else {
+            Check(Contrast(bg, MonogramInkFor(bg)) >= 3.0,
+                  std::string("readable letter on ") + brand.key);
+        }
         Check(NormaliseBrandName(brand.key) == brand.key,
               std::string("key is normalised: ") + brand.key);
     }
@@ -102,6 +121,7 @@ int main() {
     std::printf("UltraAuthenticator brand colour tests\n\n");
 
     TestMatching();
+    TestLetterOnWhite();
     TestInk();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);

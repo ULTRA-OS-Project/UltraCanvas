@@ -38,7 +38,8 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
   (change the master password), *Back up…* and *Restore…*.
 - **One card per account**: a coloured circle with the service's first
   letter — in the service's own brand colour for about eighty well-known
-  services (the colour only: their logos are trademarks and are not shown),
+  services (the colour only: their logos are trademarks and are not shown;
+  Google's is a blue G on white, as Google shows it),
   otherwise a colour picked from the name, so a service keeps its colour — the
   service and account name, and the current code in large digits. A ring
   beside it empties as the code's 30 seconds run out, with the seconds left
