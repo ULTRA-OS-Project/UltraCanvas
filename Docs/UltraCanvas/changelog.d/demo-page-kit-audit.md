@@ -17,3 +17,6 @@
 - **UltraCanvasToolbar: a label is as wide as its text** (it was 80 px, which
   cut a longer translation), **and `AddDropdownButton` shows its initial
   text** - the item reading so is selected; the dropdown opened empty.
+- **DemoApp: slim gray scrollbars.** The demo-wide scrollbar style is an 8 px
+  light gray track with a mid-gray round-ended thumb that darkens on hover and
+  while dragged (it was a 12 px blue one).

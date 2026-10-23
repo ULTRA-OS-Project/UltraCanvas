@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.13 - gray, 8 px scrollbars; the status legend as rows sized to their text
 // Version: 1.0.12 - no status bar; a fixed-width page keeps its width (min-width), so the
 //                  page area scrolls sideways when the window is narrower
 // Version: 1.0.11 - Widgets > Colour Palettes (UltraCanvasColorPaletteManager)
@@ -33,10 +34,11 @@
 #include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
-    // Demo-wide scrollbar look: a light-blue track carrying a blue, round-ended
-    // ("pill") thumb. Registered as the application-wide default scrollbar style in
-    // Initialize() so every element's scrollbars (the content area, the navigation
-    // tree, list/tree/menu examples, …) share this one blue style.
+    // Demo-wide scrollbar look: a slim, quiet gray bar - a light gray track
+    // carrying a mid-gray, round-ended ("pill") thumb that darkens under the
+    // pointer and while dragged. Registered as the application-wide default
+    // scrollbar style in Initialize() so every element's scrollbars (the content
+    // area, the navigation tree, list/tree/menu examples, …) share it.
     //
     // The thumb is a solid rounded rectangle (no grip image): its length tracks the
     // visible fraction of the content (UpdateThumbRect scales it by
@@ -46,11 +48,11 @@ namespace UltraCanvas {
     // capsule that hides the proportional length and can't change color on hover.)
     static ScrollbarStyle DemoScrollbarStyle() {
         ScrollbarStyle s;
-        s.trackSize         = 12;                       // was 8; widened by 4px
-        s.trackColor        = Color(225, 232, 245, 255);
-        s.thumbColor        = Color(90, 140, 220, 255);
-        s.thumbHoverColor   = Color(70, 120, 200, 255); // lightens/darkens on hover
-        s.thumbPressedColor = Color(50, 100, 180, 255); // darkens while dragging
+        s.trackSize         = 8;
+        s.trackColor        = Color(238, 238, 238, 255);
+        s.thumbColor        = Color(176, 176, 176, 255);
+        s.thumbHoverColor   = Color(150, 150, 150, 255);
+        s.thumbPressedColor = Color(128, 128, 128, 255);
         s.thumbCornerRadius = s.trackSize / 2;          // fully rounded ends
         s.trackCornerRadius = s.trackSize / 2;
         return s;
