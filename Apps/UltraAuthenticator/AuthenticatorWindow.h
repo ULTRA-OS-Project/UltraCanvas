@@ -54,6 +54,7 @@
 // tooltips, so a list of twenty accounts is not a wall of "Edit Show key
 // Remove".
 //
+// Version: 0.5.1 - the copy button follows the code label's measured text
 // Version: 0.5.0 - copy button on every card, clipboard cleared after 30 s
 // Version: 0.4.0 - header band, monogram, countdown ring, icon actions, status bar
 // Version: 0.3.0
@@ -142,6 +143,9 @@ private:
     // and forgets that code either way.
     void ClearClipboardIfOurs();
     void RefreshCopyButtons(int64_t now);
+    // Puts the copy button (and the status words after it) right after the
+    // text the code label shows, from the label's own measurement.
+    void PlaceAfterCode(Row& row);
     void SetStatus(const std::string& text, bool isError = false);
     // The line under the app name: how many accounts, or that it is locked.
     void SetSummary(const std::string& text);

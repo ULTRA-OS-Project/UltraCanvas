@@ -493,6 +493,16 @@ namespace UltraCanvas {
         internalLayoutValid = false;
     }
 
+    float UltraCanvasLabel::GetNaturalTextWidth() {
+        if (text.empty()) return 0.f;
+        FitInlineImages(-1.f);
+        if (!EnsureTextLayout()) return 0.f;
+        // NaturalTextWidth leaves the shared layout at max-content; the next
+        // Render re-syncs it to the box, as after a MeasureOwnContent pass.
+        internalLayoutValid = false;
+        return NaturalTextWidth();
+    }
+
     Size2Df UltraCanvasLabel::MeasureOwnContent(std::optional<float> definiteContentWidth,
                                                 const CSSLayout::LayoutContext& /*ctx*/) {
         FitInlineImages(definiteContentWidth ? *definiteContentWidth : -1.f);

@@ -4,6 +4,8 @@
 // MeasureOwnContent (constraint-aware content sizing) and ComputeIntrinsicSizes
 // (constraint-free max/min-content) so the engine can place the label
 // without the widget mutating finalBounds itself.
+// Version: 2.15.0 - GetNaturalTextWidth: the width the text takes, for placing
+//                  something right after it
 // Version: 2.14.0 - the layout is an UltraCanvasTextLayoutCache: rebuilt when its inputs change, not reset by every setter
 // Version: 2.13.0 - LabelVariant (Body, Muted, Faint, Heading): FromTheme maps the theme's
 //                  ink onto a label's part; SetThemeVariant on the element
@@ -24,7 +26,7 @@
 //                 background, rounded corners (LabelInlineImageFrame)
 // Version: 2.1.0 - an inline image has a fit mode and position (object-fit /
 //                 object-position)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -359,6 +361,15 @@ namespace UltraCanvas {
         void ComputeIntrinsicSizes(const CSSLayout::LayoutContext& ctx) override;
 
         void InvalidateLayout() override;
+
+        // The width the text takes on its own lines - its natural (max-content)
+        // width, line breaks kept - in pixels, without padding or border. For
+        // putting something right after the text rather than after the box,
+        // which is usually wider: a copy button after a code, a badge after a
+        // name. The text starts at GetBorderLeftWidth() + GetPaddingLeft() in a
+        // left-aligned label. 0 for empty text, and before the label can reach
+        // a render context (not yet in a window).
+        float GetNaturalTextWidth();
 
         // Re-sync the cached text layout when the engine re-arranges us to a
         // new size (e.g. a window resize growing a grid/flex cell); otherwise
