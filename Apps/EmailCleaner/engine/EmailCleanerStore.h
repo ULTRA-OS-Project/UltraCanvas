@@ -11,6 +11,7 @@
 //
 // Every query goes through bound parameters; no caller-supplied string is ever
 // concatenated into SQL.
+// Version: 0.2.0 - sent mail and the correspondence counts (schema 6)
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -20,6 +21,7 @@
 #include <UltraDatabase/UltraDatabaseCore.h>
 #include <UltraDatabase/UltraDatabaseValue.h>
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -92,7 +94,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert the database matches the code
     // without a literal that has to be chased each time.
-    static constexpr int kSchemaVersion = 5;
+    static constexpr int kSchemaVersion = 6;
 
     // Register the connection and bring the schema up to date. `databasePath`
     // is a file path (created if absent) or ":memory:". Calling it again with
@@ -159,6 +161,20 @@ public:
     // Delete everything analysed for one folder of an account - for a folder
     // the analysis leaves out (Trash), whose rows an earlier scan stored.
     UltraDbResult ClearFolder(const std::string& accountId, const std::string& folder);
+
+    // ---- Mail the owner sent ------------------------------------------------
+    // Outgoing messages (AnalyzedMessage::outgoing) are not analysed: only
+    // whom each went to is kept, one row per recipient, for the contacts
+    // review. A messages row an earlier scan stored under the same key (before
+    // the message was known to be outgoing) is deleted. One transaction.
+    UltraDbResult RecordSentMessages(const std::vector<AnalyzedMessage>& messages);
+    // True when this account/folder/uid is recorded as sent mail.
+    bool HasSentMessage(const std::string& accountId, const std::string& folder,
+                        int64_t uid) const;
+
+    // Sent and received counts for every address the owner corresponded with,
+    // over every account, keyed by the lowercased address.
+    UltraDbResult GetCorrespondence(std::map<std::string, Correspondence>& out) const;
 
     // ---- Aggregates: the map view -----------------------------------------
     // One block per sender address matching the filter, largest first by the
