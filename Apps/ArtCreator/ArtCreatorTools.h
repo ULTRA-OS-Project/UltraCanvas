@@ -200,6 +200,11 @@ namespace ArtOptionWidgets {
     // tooltip; returns the buttons in the order given (no dividers).
     std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer& panel, const std::string& id,
                                                                const std::vector<IconAction>& items);
+    // A section of a tool's options in a group box of its own, captioned
+    // `title` in small grey text; its content is a column. Add the
+    // section's rows to the returned box.
+    std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, const std::string& id,
+                                                     const std::string& title);
     // A segmented switch between a few modes, `selected` lit.
     std::shared_ptr<UltraCanvasSegmentedControl> AddSwitch(UltraCanvasContainer& panel, const std::string& id,
                                                            const std::vector<std::string>& items, int selected,
