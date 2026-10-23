@@ -232,7 +232,7 @@ VirtualFSResult PlatformCreate(const std::string& name,
                 outDisk.capacityBytes = sizeBytes;
                 outDisk.backing = VirtualFSRamDiskBacking::ImDisk;
                 outDisk.deviceId = drive;
-                return VirtualFSResult::Success;
+                return VirtualFSResult::Ok;
             }
             // Falls through: imdisk.exe exists but the call failed, which is
             // usually a non-elevated process. The fallback still works.
@@ -255,7 +255,7 @@ VirtualFSResult PlatformCreate(const std::string& name,
     outDisk.capacityBytes = sizeBytes;  // advisory: not actually enforced
     outDisk.backing = VirtualFSRamDiskBacking::DiskFallback;
     outDisk.deviceId.clear();
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk) {
@@ -266,15 +266,15 @@ VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk) {
         // -D forces removal even while handles are open; the disc is being
         // torn down either way and a leaked RAM disc is worse.
         const int status = RunCommand("imdisk -D -m " + disk.deviceId);
-        return status == 0 ? VirtualFSResult::Success : VirtualFSResult::Error;
+        return status == 0 ? VirtualFSResult::Ok : VirtualFSResult::Error;
     }
 
     std::error_code ec;
     if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(disk.mountPath), ec)) {
-        return VirtualFSResult::Success;  // already gone
+        return VirtualFSResult::Ok;  // already gone
     }
     // The fallback wrote to real storage, so overwrite before unlinking.
-    return SecureWipeDirectory(disk.mountPath) ? VirtualFSResult::Success
+    return SecureWipeDirectory(disk.mountPath) ? VirtualFSResult::Ok
                                                : VirtualFSResult::Error;
 }
 

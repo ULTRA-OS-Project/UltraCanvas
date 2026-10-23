@@ -6367,7 +6367,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
                 id + "-pie", 0, 0, kComputerPieSize, kComputerPieSize);
         pie->SetDonutMode(true);
         pie->SetInnerRadius(0.52f);
-        pie->SetLabelPosition(LabelPosition::None);
+        pie->SetLabelPosition(LabelPosition::NoLabels);
         pie->SetBorderColor(Colors::White);
         pie->SetBorderWidth(2.0f);
         pie->SetCenterFont("Arial", 15.0f, FontWeight::Bold);

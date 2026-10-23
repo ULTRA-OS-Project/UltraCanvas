@@ -255,7 +255,7 @@ void NetworkMonitor_DecodeLoopback(std::vector<NetworkConnection>& connections) 
     std::set<std::string> listening;
     for (std::size_t i = 0; i < connections.size(); ++i) {
         NetworkConnection& c = connections[i];
-        c.loopbackRole = LoopbackRole::None;
+        c.loopbackRole = LoopbackRole::NotLoopback;
         c.localPeer.reset();
         c.forProcesses.clear();
         if (c.IsListening()) {
@@ -304,7 +304,7 @@ void NetworkMonitor_DecodeLoopback(std::vector<NetworkConnection>& connections) 
     }
     if (clientsOf.empty()) return;
     for (auto& c : connections) {
-        if (!c.process || c.loopbackRole != LoopbackRole::None || c.IsListening() ||
+        if (!c.process || c.loopbackRole != LoopbackRole::NotLoopback || c.IsListening() ||
             c.state == NetworkConnectionState::Unconnected || IsWildcard(c.remoteAddress) ||
             LoopbackAddress(c.remoteAddress)) {
             continue;

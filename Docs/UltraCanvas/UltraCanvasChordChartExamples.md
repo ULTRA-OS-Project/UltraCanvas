@@ -260,7 +260,7 @@ void SetValueFormatter(std::function<std::string(double)> f);
 
 ```cpp
 enum class ChordLabelPlacement {
-    None,        // No labels
+    NoLabels,        // No labels
     Outside,     // Horizontal text just beyond the ring
     Radial       // Text runs along the radius, flipped on the left half
 };
@@ -271,7 +271,7 @@ enum class ChordLabelPlacement {
 - `Radial` — names run along the radius and are flipped on the left half so
   they read outward. Suits many categories or long names; the chart reserves
   the full label room above and below the ring for them.
-- `SetShowLabels(true/false)` is shorthand for `Outside` / `None`.
+- `SetShowLabels(true/false)` is shorthand for `Outside` / `NoLabels`.
 
 `SetLabelDistance` is the gap between the ring and the text (default 12 px).
 `SetLabelFont` defaults to Arial 11 normal; `SetLabelColor` to dark grey
@@ -494,8 +494,8 @@ chart->SetRibbonBorder(Color(255, 255, 255, 140), 1.0f);
 - `ChordFlow::isVisible` is honoured when drawing and hit testing, but the
   chart builds its flow list itself, so there is no public way to hide one
   ribbon; filter by value with `SetMinFlowValue` or set the cell to 0.
-- The X11 headers define a `None` macro; the chord chart header undefines it
-  so `ChordLabelPlacement::None` compiles.
+- No enumerator is named `None`: the X11 headers define a `None` macro, so
+  the placement that shows no label is `ChordLabelPlacement::NoLabels`.
 
 ## See also
 

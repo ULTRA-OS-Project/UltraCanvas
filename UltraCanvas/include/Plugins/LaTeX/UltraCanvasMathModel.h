@@ -87,7 +87,7 @@ constexpr MathColor kMathColorNone  = 0x00000000u;   // "no color" / inherit
 // Atoms
 // =============================================================================
 
-enum class MathAtomClass : uint8_t { Ord = 0, Op, Bin, Rel, Open, Close, Punct, Inner, None };
+enum class MathAtomClass : uint8_t { Ord = 0, Op, Bin, Rel, Open, Close, Punct, Inner, NoClass };
 
 enum class MathAtomKind : uint8_t {
     Char,        // one character: codepoint + font style

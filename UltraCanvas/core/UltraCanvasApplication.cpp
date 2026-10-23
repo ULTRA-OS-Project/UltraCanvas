@@ -1,5 +1,9 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.13.1 - the generated fonts.conf (Windows, Android) scales bitmap fonts to the
+//                  size asked for, as fontconfig's 10-scale-bitmap-fonts.conf does: the
+//                  bundled Noto Color Emoji (109 px bitmaps) was drawn eight times too big;
+//                  GenerateBitmapScalingConfig hands the rules to a config made another way
 // Version: 1.13.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS closes every window after that long
 // Version: 1.12.0 - GenerateFontAliasConfig: the generic family aliases alone, for a
 //                  config the generated fonts.conf did not make (Windows' inline one)
@@ -434,9 +438,55 @@ namespace UltraCanvas {
             }
         }
 
+        // fontconfig's 10-scale-bitmap-fonts.conf: a bitmap font (outline
+        // false - a colour emoji font such as Noto Color Emoji, whose glyphs
+        // are 109 px bitmaps, as well as a plain bitmap one) is scaled to the
+        // pixel size asked for. A system fonts.conf includes it from conf.d;
+        // without it cairo draws every emoji at its bitmap's 109 px.
+        void AppendBitmapScaling(std::ostringstream& conf) {
+            conf << "  <match target=\"font\">\n"
+                    "    <test name=\"outline\" compare=\"eq\"><bool>false</bool></test>\n"
+                    "    <edit name=\"pixelsizefixupfactor\" mode=\"assign\">\n"
+                    "      <divide><name target=\"pattern\">pixelsize</name>"
+                    "<name target=\"font\">pixelsize</name></divide>\n"
+                    "    </edit>\n"
+                    "  </match>\n"
+                    // A plain (non-colour) bitmap font is left at its size when
+                    // that is close and hinting is on.
+                    "  <match target=\"font\">\n"
+                    "    <test name=\"outline\" compare=\"eq\"><bool>false</bool></test>\n"
+                    "    <test name=\"scalable\" compare=\"eq\"><bool>false</bool></test>\n"
+                    "    <test name=\"hinting\" compare=\"eq\"><bool>true</bool></test>\n"
+                    "    <edit name=\"scalingnotneeded\" mode=\"assign\">\n"
+                    "      <and><less><name>pixelsizefixupfactor</name><double>1.2</double></less>"
+                    "<more><name>pixelsizefixupfactor</name><double>0.8</double></more></and>\n"
+                    "    </edit>\n"
+                    "  </match>\n"
+                    "  <match target=\"font\">\n"
+                    "    <test name=\"scalingnotneeded\" compare=\"eq\"><bool>true</bool></test>\n"
+                    "    <edit name=\"pixelsizefixupfactor\" mode=\"assign\"><double>1.0</double></edit>\n"
+                    "  </match>\n"
+                    "  <match target=\"font\">\n"
+                    "    <test name=\"outline\" compare=\"eq\"><bool>false</bool></test>\n"
+                    "    <test name=\"pixelsizefixupfactor\" compare=\"not_eq\"><double>1.0</double></test>\n"
+                    "    <edit name=\"matrix\" mode=\"assign\">\n"
+                    "      <times><name>matrix</name><matrix>"
+                    "<name>pixelsizefixupfactor</name><double>0</double>"
+                    "<double>0</double><name>pixelsizefixupfactor</name></matrix></times>\n"
+                    "    </edit>\n"
+                    "    <edit name=\"size\" mode=\"assign\">\n"
+                    "      <divide><name>size</name><name>pixelsizefixupfactor</name></divide>\n"
+                    "    </edit>\n"
+                    "  </match>\n";
+        }
+
         // Deliberately free of rendering rules (antialias/hinting/lcdfilter):
         // this config only replaces a *missing* one, so it must not change how
         // text looks compared to a system that has its own fonts.conf.
+        // The bitmap scaling is the exception that proves it: every system
+        // fonts.conf has it, so the config without it is the one that looks
+        // different. Not on Linux, where /etc/fonts/conf.d brings it in (twice
+        // would scale twice).
         // `withSystemFonts` false (Windows only): the bundled fonts alone, for
         // the start while the system fonts are scanned in the background.
         std::string GenerateFontsConf(bool withSystemFonts = true) {
@@ -482,6 +532,9 @@ namespace UltraCanvas {
                     "  <cachedir>~/.fontconfig</cachedir>\n"
                     "  <include ignore_missing=\"yes\">/etc/fonts/conf.d</include>\n";
 #endif
+#if defined(_WIN32) || defined(_WIN64) || defined(__ANDROID__)
+            AppendBitmapScaling(conf);
+#endif
             AppendFontAliases(conf);
             conf << "</fontconfig>\n";
             return conf.str();
@@ -494,6 +547,16 @@ namespace UltraCanvas {
                 "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
                 "<fontconfig>\n";
         AppendFontAliases(conf);
+        conf << "</fontconfig>\n";
+        return conf.str();
+    }
+
+    std::string GenerateBitmapScalingConfig() {
+        std::ostringstream conf;
+        conf << "<?xml version=\"1.0\"?>\n"
+                "<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">\n"
+                "<fontconfig>\n";
+        AppendBitmapScaling(conf);
         conf << "</fontconfig>\n";
         return conf.str();
     }

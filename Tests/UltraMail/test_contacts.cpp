@@ -2,6 +2,11 @@
 // Exercises the contact store: sectioned storage (Friends/Work/Leisure/
 // Services), emails/phones round-trip, section counts, search, update and
 // remove. Each test uses its own in-memory database.
+// Version: 0.5.0 - a service is collected only with its domain proven;
+//                  NeverWrittenTo; RemoveAll
+// Version: 0.4.0 - the collector's rules: incoming mail adds known services
+//                  only, never blocked or forgotten addresses; Collect reads
+//                  "Name <address>"; EditableEmailIndex, ReplaceContactEmail
 // Version: 0.2.0 - CollectSenders, SaveAll, KnownAddresses; the file store in WAL mode
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -9,12 +14,14 @@
 
 #include "UltraMailContactCollector.h"
 #include "UltraMailContactStore.h"
+#include "UltraMailThreatScan.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 
 #include <cstdio>
 #include <filesystem>
+#include <map>
 #include <set>
 #include <string>
 #include <utility>
@@ -165,7 +172,7 @@ TEST(collect_sender_files_a_known_service_as_a_business_contact) {
     // A crowdfunding platform the user backed a project on: the registry knows
     // the domain, so the contact is filed under Services with the service as
     // its organization rather than as a loose address in Other.
-    REQUIRE(ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com"));
+    REQUIRE(ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com", "kickstarter.com"));
 
     std::vector<Contact> services;
     REQUIRE(s.ListBySection(ContactSection::Services, services).success);
@@ -176,7 +183,7 @@ TEST(collect_sender_files_a_known_service_as_a_business_contact) {
 
     // A robot display name is replaced by the service's own name only when it
     // is missing; a real one is kept.
-    REQUIRE(ContactCollector::CollectSender(s, "", "hello@buymeacoffee.com"));
+    REQUIRE(ContactCollector::CollectSender(s, "", "hello@buymeacoffee.com", "buymeacoffee.com"));
     REQUIRE(s.ListBySection(ContactSection::Services, services).success);
     bool named = false;
     for (const auto& c : services)
@@ -185,24 +192,49 @@ TEST(collect_sender_files_a_known_service_as_a_business_contact) {
     REQUIRE(named);
 }
 
-TEST(collect_sender_leaves_ordinary_addresses_in_other) {
+TEST(collect_sender_does_not_add_ordinary_senders) {
     ContactStore s = FreshStore("collect-other");
-    REQUIRE(ContactCollector::CollectSender(s, "Anna Schmidt", "anna@example.com"));
+    // A stranger who writes is no contact: not suggested, still a "New sender".
+    REQUIRE(!ContactCollector::CollectSender(s, "Anna Schmidt", "anna@example.com", "example.com"));
+    REQUIRE(!ContactCollector::CollectSender(s, "BILLHANEY", "billhaney.55@outlook.com", "outlook.com"));
+    {
+        std::vector<Contact> other;
+        REQUIRE(s.ListBySection(ContactSection::Other, other).success);
+        REQUIRE(other.empty());
+    }
+    REQUIRE_EQ(CountFor(s, ContactSection::Services), 0);
+}
 
+TEST(collect_sender_skips_blocked_and_forgotten_services) {
+    ContactStore s = FreshStore("collect-skips");
+    SenderLists lists;
+    lists.blocked.insert("@kickstarter.com");
+    SetSenderLists(lists);
+    REQUIRE(!ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com", "kickstarter.com"));
+    SetSenderLists(SenderLists{});
+
+    REQUIRE(s.Forget({"Hello@BuyMeACoffee.com"}).success);
+    REQUIRE(!ContactCollector::CollectSender(s, "", "hello@buymeacoffee.com", "buymeacoffee.com"));
+    REQUIRE_EQ(ContactCollector::CollectSenders(s, {{"", "hello@buymeacoffee.com", "buymeacoffee.com"}}), 0);
+    REQUIRE_EQ(CountFor(s, ContactSection::Services), 0);
+
+    // Writing to a forgotten address is the user's own act: it is added.
+    REQUIRE(ContactCollector::Collect(s, "", "hello@buymeacoffee.com"));
+}
+
+TEST(collect_reads_a_recipient_with_its_name) {
+    ContactStore s = FreshStore("collect-recipient");
+    REQUIRE(ContactCollector::Collect(s, "", "Anna Schmidt <anna@example.com>"));
+    REQUIRE(ContactCollector::Collect(s, "", "\"Bob\" <bob@example.org>"));
     std::vector<Contact> other;
     REQUIRE(s.ListBySection(ContactSection::Other, other).success);
-    REQUIRE_EQ(other.size(), (size_t)1);
-    REQUIRE_EQ(other.front().displayName, std::string("Anna Schmidt"));
-    REQUIRE(other.front().organization.empty());
-
-    // A personal mailbox is not a service, however big the provider is.
-    REQUIRE(ContactCollector::CollectSender(s, "Uncle Bob", "bob@gmail.com"));
-    REQUIRE(s.ListBySection(ContactSection::Other, other).success);
     REQUIRE_EQ(other.size(), (size_t)2);
-
-    std::vector<Contact> services;
-    REQUIRE(s.ListBySection(ContactSection::Services, services).success);
-    REQUIRE(services.empty());
+    REQUIRE_EQ(other[0].displayName, std::string("Anna Schmidt"));
+    REQUIRE_EQ(other[0].PrimaryEmail(), std::string("anna@example.com"));
+    REQUIRE_EQ(other[1].displayName, std::string("Bob"));
+    REQUIRE_EQ(other[1].PrimaryEmail(), std::string("bob@example.org"));
+    // The bare address is the same person: nothing new.
+    REQUIRE(!ContactCollector::Collect(s, "", "ANNA@example.com"));
 }
 
 TEST(collect_sender_never_reclassifies_an_existing_contact) {
@@ -213,7 +245,7 @@ TEST(collect_sender_never_reclassifies_an_existing_contact) {
                                "no-reply@kickstarter.com");
     REQUIRE(s.Save(mine).success);
 
-    REQUIRE(!ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com"));
+    REQUIRE(!ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com", "kickstarter.com"));
     REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);
     REQUIRE_EQ(CountFor(s, ContactSection::Services), 0);
 }
@@ -320,35 +352,33 @@ TEST(open_repairs_names_stored_as_raw_bytes) {
 #endif
 
 // After a sync the senders of all its new mail are collected at once: one
-// contact per new address however often it came, none for an address the
-// address book holds already, each filed as CollectSender files one.
-TEST(collect_senders_adds_each_new_address_once) {
+// contact per new known service however often it came, none for an address
+// the address book holds already, and none for an ordinary sender.
+TEST(collect_senders_adds_each_new_service_once) {
     ContactStore s = FreshStore("collect-batch");
-    Contact mine = MakeContact("Anna (mine)", ContactSection::Friends, "anna@example.com");
+    Contact mine = MakeContact("Kickstarter (mine)", ContactSection::Friends,
+                               "no-reply@kickstarter.com");
     REQUIRE(s.Save(mine).success);
 
-    const std::vector<std::pair<std::string, std::string>> senders = {
-        {"Anna Schmidt", "Anna@Example.com"},          // in the book, in other letters
-        {"Bob", "bob@example.org"},
-        {"Robert", "BOB@example.org"},                 // Bob again: the first name stays
-        {"Kickstarter", "no-reply@kickstarter.com"},   // a known service
-        {"Nobody", ""},                                // no address: nothing to keep
-        {"", "carol@example.net"},                     // no name: the address stands in
+    const std::vector<SenderSeen> senders = {
+        {"Kickstarter", "No-Reply@Kickstarter.com", "kickstarter.com"},   // in the book, in other letters
+        {"Bob", "bob@example.org", "example.org"},                        // a person: not added
+        {"", "hello@buymeacoffee.com", "buymeacoffee.com"},               // a known service
+        {"BMC", "HELLO@buymeacoffee.com", "buymeacoffee.com"},            // again: the first name stays
+        {"Nobody", "", ""},                                               // no address: nothing to keep
     };
-    REQUIRE_EQ(ContactCollector::CollectSenders(s, senders), 3);
-    REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);   // Anna untouched
+    REQUIRE_EQ(ContactCollector::CollectSenders(s, senders), 1);
+    REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);   // untouched
+    {
+        std::vector<Contact> other;
+        REQUIRE(s.ListBySection(ContactSection::Other, other).success);
+        REQUIRE(other.empty());
+    }
 
     std::vector<Contact> services;
     REQUIRE(s.ListBySection(ContactSection::Services, services).success);
     REQUIRE_EQ(services.size(), (size_t)1);
-    REQUIRE_EQ(services.front().organization, std::string("Kickstarter"));
-
-    std::vector<Contact> other;
-    REQUIRE(s.ListBySection(ContactSection::Other, other).success);
-    REQUIRE_EQ(other.size(), (size_t)2);
-    REQUIRE_EQ(other[0].displayName, std::string("Bob"));   // sorted by name
-    REQUIRE_EQ(other[0].PrimaryEmail(), std::string("bob@example.org"));
-    REQUIRE_EQ(other[1].displayName, std::string("carol@example.net"));
+    REQUIRE_EQ(services.front().displayName, std::string("Buy Me a Coffee"));
 
     // The same batch again finds every address known; an empty one is nothing.
     REQUIRE_EQ(ContactCollector::CollectSenders(s, senders), 0);
@@ -454,4 +484,130 @@ TEST(file_contact_store_uses_wal) {
     }
     UltraDb_CloseConnection("contacts-wal");
     fs::remove_all(dir, ec);
+}
+
+namespace {
+
+std::vector<ContactEmail> ThreeEmails() {
+    std::vector<ContactEmail> v(3);
+    v[0].address = "anna@home.example";  v[0].label = "home"; v[0].primary = true;
+    v[1].address = "anna@work.example";  v[1].label = "work";
+    v[2].address = "anna@club.example";
+    return v;
+}
+
+} // namespace
+
+TEST(editable_email_is_the_one_named_else_the_primary) {
+    const auto v = ThreeEmails();
+    REQUIRE(EditableEmailIndex(v, "ANNA@work.example") == 1);
+    REQUIRE(EditableEmailIndex(v, "") == 0);
+    REQUIRE(EditableEmailIndex(v, "someone@else.example") == 0);
+    REQUIRE(EditableEmailIndex({}, "anna@work.example") == std::string::npos);
+}
+
+TEST(replace_contact_email_edits_only_that_address) {
+    auto v = ThreeEmails();
+    ReplaceContactEmail(v, 1, "anna@job.example");
+    REQUIRE(v.size() == 3);
+    REQUIRE_EQ(v[0].address, std::string("anna@home.example"));
+    REQUIRE(v[0].primary);
+    REQUIRE_EQ(v[1].address, std::string("anna@job.example"));
+    REQUIRE_EQ(v[1].label, std::string("work"));   // kept
+    REQUIRE(!v[1].primary);
+    REQUIRE_EQ(v[2].address, std::string("anna@club.example"));
+}
+
+TEST(replace_contact_email_removes_an_emptied_address) {
+    auto v = ThreeEmails();
+    ReplaceContactEmail(v, 0, "");   // the primary goes
+    REQUIRE(v.size() == 2);
+    REQUIRE_EQ(v[0].address, std::string("anna@work.example"));
+    REQUIRE(v[0].primary);           // another one takes the mark
+}
+
+TEST(replace_contact_email_merges_with_a_duplicate) {
+    auto v = ThreeEmails();
+    ReplaceContactEmail(v, 2, "Anna@Home.example");   // the club one becomes the home one
+    REQUIRE(v.size() == 2);
+    REQUIRE_EQ(v[0].address, std::string("anna@work.example"));
+    REQUIRE_EQ(v[1].address, std::string("Anna@Home.example"));
+    REQUIRE(v[1].primary);           // the merged one was primary
+    REQUIRE(!v[0].primary);
+}
+
+TEST(replace_contact_email_adds_to_a_contact_without_one) {
+    std::vector<ContactEmail> v;
+    ReplaceContactEmail(v, std::string::npos, "new@example.com");
+    REQUIRE(v.size() == 1);
+    REQUIRE(v[0].primary);
+    ReplaceContactEmail(v, std::string::npos, "");
+    REQUIRE(v.size() == 1);
+}
+
+TEST(domain_proven_takes_the_domain_its_subdomains_and_its_parent) {
+    REQUIRE(DomainProven("no-reply@kickstarter.com", "kickstarter.com"));
+    REQUIRE(DomainProven("a@Mail.Kickstarter.com", "kickstarter.com"));   // subdomain
+    REQUIRE(DomainProven("a@kickstarter.com", "email.kickstarter.com"));  // parent
+    REQUIRE(!DomainProven("a@kickstarter.com", ""));                      // nothing proved
+    REQUIRE(!DomainProven("a@kickstarter.com", "kickstarter-mail.com"));
+    REQUIRE(!DomainProven("a@evilkickstarter.com", "kickstarter.com"));
+    REQUIRE(!DomainProven("a@kickstarter.com", "com"));                   // no top level
+}
+
+TEST(collect_sender_needs_the_service_domain_proven) {
+    ContactStore s = FreshStore("collect-proven");
+    // Anyone can write no-reply@kickstarter.com in a From line.
+    REQUIRE(!ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com", ""));
+    REQUIRE(!ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com",
+                                             "scam.example"));
+    REQUIRE_EQ(ContactCollector::CollectSenders(s, {{"Kickstarter", "no-reply@kickstarter.com", ""}}), 0);
+    REQUIRE_EQ(CountFor(s, ContactSection::Services), 0);
+    REQUIRE(ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com",
+                                            "kickstarter.com"));
+}
+
+TEST(never_written_to_finds_bare_collected_contacts) {
+    std::vector<Contact> v;
+    v.push_back(MakeContact("BILLHANEY", ContactSection::Other, "BILLHANEY.55@outlook.com"));
+    v.push_back(MakeContact("Bio pharm", ContactSection::Other, "lua.hol@uzbecair.com"));
+    v.push_back(MakeContact("Written to", ContactSection::Other, "Friend@Example.com"));
+    Contact phone = MakeContact("Has a phone", ContactSection::Other, "p@example.com");
+    ContactPhone ph; ph.number = "123"; phone.phones.push_back(ph);
+    v.push_back(phone);
+    Contact org = MakeContact("Has an org", ContactSection::Other, "o@example.com");
+    org.organization = "ACME";
+    v.push_back(org);
+    Contact two = MakeContact("Two addresses", ContactSection::Other, "t1@example.com");
+    ContactEmail e2; e2.address = "t2@example.com"; two.emails.push_back(e2);
+    v.push_back(two);
+    v.push_back(MakeContact("A friend", ContactSection::Friends, "f@example.com"));
+    Contact grouped = MakeContact("In a group", ContactSection::Other, "g@example.com");
+    grouped.group = "Club";
+    v.push_back(grouped);
+
+    const std::map<std::string, double> written = {{"friend@example.com", 1.0}};
+    const auto found = ContactCollector::NeverWrittenTo(v, written);
+    REQUIRE_EQ(found.size(), (size_t)2);
+    REQUIRE_EQ(found[0].displayName, std::string("BILLHANEY"));
+    REQUIRE_EQ(found[1].displayName, std::string("Bio pharm"));
+}
+
+TEST(remove_all_removes_the_given_contacts_at_once) {
+    ContactStore s = FreshStore("remove-all");
+    Contact a = MakeContact("A", ContactSection::Other, "a@example.com");
+    Contact b = MakeContact("B", ContactSection::Other, "b@example.com");
+    Contact c = MakeContact("C", ContactSection::Other, "c@example.com");
+    REQUIRE(s.Save(a).success);
+    REQUIRE(s.Save(b).success);
+    REQUIRE(s.Save(c).success);
+    REQUIRE(s.RemoveAll({a.id, c.id}).success);
+    std::vector<Contact> other;
+    REQUIRE(s.ListBySection(ContactSection::Other, other).success);
+    REQUIRE_EQ(other.size(), (size_t)1);
+    REQUIRE_EQ(other[0].displayName, std::string("B"));
+    std::set<std::string> known;
+    REQUIRE(s.KnownAddresses(known).success);
+    REQUIRE(known.count("a@example.com") == 0);
+    REQUIRE(s.RemoveAll({}).success);
 }

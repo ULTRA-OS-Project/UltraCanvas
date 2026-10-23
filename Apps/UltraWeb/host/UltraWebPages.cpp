@@ -1,14 +1,16 @@
 // Apps/UltraWeb/host/UltraWebPages.cpp
 // The page services and the app-or-page decision (UltraWebPages.h).
+// Version: 0.9.0 - cookies (UltraWebCookies.h), redirects followed hop by hop
 // Version: 0.8.3 - ToPageUrl turns '\' into '/' only on Windows
 // Version: 0.5.0 - downloads: Content-Disposition and the size limit reported
 // Version: 0.4.1 - AcceptExtensions for file uploads
 // Version: 0.4.0 - forms: POST through UltraNet
 // Version: 0.3.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebPages.h"
+#include "UltraWebCookies.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include "UltraNet/UltraNetHttp.h"
@@ -101,9 +103,123 @@ HTML::FetchResult ReadFile(const std::string& url) {
 
 } // namespace
 
-HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void()>)> post) {
+namespace {
+
+// One fetch through UltraNet, its redirects followed hop by hop: every
+// answer's Set-Cookie headers go into the jar, and each request carries the
+// cookies of the address it goes to. A 303 - and a 301 or 302 answering a
+// POST - turns the request into a GET without a body, as browsers do.
+struct Exchange : std::enable_shared_from_this<Exchange> {
+    std::function<void(std::function<void()>)> post;
+    std::shared_ptr<UltraNetCookieJar> cookies;
+    std::string pageUrl;          // the page a subresource is for; "" for the page itself
+    std::string url;              // the address asked now
+    UltraNetHttpMethod method = UltraNetHttpMethod::Get;
+    std::string contentType;
+    std::vector<uint8_t> body;
+    std::string accept;
+    int redirects = 0;
+    std::function<void(const UltraNetResponse& response, const std::string& finalUrl)> onDone;
+
+    void Start() {
+        UltraNetHttpRequest request;
+        request.url = url;
+        request.method = method;
+        request.body = body;
+        request.options.maxReceiveSize = kMaxPageBytes;
+        request.options.timeoutMs = 30000;
+        request.options.followRedirects = false;
+        request.headers.Set("Accept", accept);
+        if (method == UltraNetHttpMethod::Post && !contentType.empty())
+            request.headers.Set("Content-Type", contentType);
+        if (cookies) {
+            const std::string header =
+                cookies->HeaderFor(url, UltraNetCookieJar::Classify(url, pageUrl), UltraNetCookieJar::Now());
+            if (!header.empty()) request.headers.Set("Cookie", header);
+        }
+        auto self = shared_from_this();
+        UltraNet_HttpRequestAsync(request, [self](const UltraNetResponse& response) {
+            // On to the UI thread: the jar and the next hop are its.
+            self->post([self, response]() { self->Answered(response); });
+        });
+    }
+
+    void Answered(const UltraNetResponse& response) {
+        if (cookies && response.statusCode != 0) {
+            const UltraNetCookieRequest kind = UltraNetCookieJar::Classify(url, pageUrl);
+            const int64_t now = UltraNetCookieJar::Now();
+            for (const std::string& setCookie : response.headers.GetAll("Set-Cookie"))
+                cookies->Store(url, setCookie, kind, now);
+            if (cookies->TakeFlushRequest()) {
+                std::shared_ptr<UltraNetCookieJar> jar = cookies;
+                post([jar]() { jar->Flush(); });
+            }
+        }
+        const int status = response.statusCode;
+        const std::string location = response.headers.Get("Location");
+        const bool redirect = (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) &&
+                              !location.empty();
+        if (!redirect) {
+            onDone(response, url);
+            return;
+        }
+        std::string next;
+        if (!UltraNet_ResolveUrl(url, location, next) ||
+            (!StartsWithLower(next, "http://") && !StartsWithLower(next, "https://"))) {
+            UltraNetResponse refused;
+            refused.transferError = "it redirected to " + location + ", which UltraWeb does not follow";
+            refused.statusCode = status;
+            onDone(refused, url);
+            return;
+        }
+        if (++redirects > kMaxRedirects) {
+            UltraNetResponse refused;
+            refused.transferError = "more than " + std::to_string(kMaxRedirects) + " redirects";
+            refused.statusCode = status;
+            onDone(refused, url);
+            return;
+        }
+        if (status == 303 || ((status == 301 || status == 302) && method == UltraNetHttpMethod::Post)) {
+            method = UltraNetHttpMethod::Get;
+            body.clear();
+            contentType.clear();
+        }
+        url = next.substr(0, next.find('#'));
+        Start();
+    }
+};
+
+HTML::FetchResult PageAnswer(const UltraNetResponse& response, const std::string& url, const std::string& finalUrl) {
+    HTML::FetchResult result;
+    result.status = response.statusCode;
+    result.finalUrl = finalUrl;
+    result.contentType = response.contentType;
+    result.contentDisposition = response.headers.Get("Content-Disposition");
+    if (response.statusCode == 0) {
+        result.error = "Could not load " + url +
+                       (response.statusMessage.empty() ? std::string(" (no answer).") : ": " + response.statusMessage);
+    } else if (response.exceededReceiveLimit) {
+        // A file to download, perhaps: the loader decides, and the
+        // window fetches it again, streaming, to disk.
+        result.tooLarge = true;
+        result.error = url + " is larger than " + std::to_string(kMaxPageBytes / (1024 * 1024)) + " MB.";
+    } else if (!response.IsComplete()) {
+        result.error = "Could not load " + url + ": " + response.transferError;
+    } else {
+        result.ok = true;
+        result.body = response.body;
+    }
+    return result;
+}
+
+} // namespace
+
+HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void()>)> post,
+                                          std::shared_ptr<UltraNetCookieJar> cookies) {
     HTML::PageLoaderServices services;
-    services.fetch = [post](const std::string& url, std::function<void(HTML::FetchResult)> done) {
+    // A page, or one of its style sheets or pictures (`pageUrl` set).
+    auto get = [post, cookies](const std::string& url, const std::string& pageUrl,
+                               std::function<void(HTML::FetchResult)> done) {
         auto answer = [post, done](HTML::FetchResult result) {
             post([done, result = std::move(result)]() mutable { done(std::move(result)); });
         };
@@ -117,58 +233,43 @@ HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void(
             answer(std::move(refused));
             return;
         }
-        UltraNetHttpRequest request;
-        request.url = url;
-        request.options.maxReceiveSize = kMaxPageBytes;
-        request.options.timeoutMs = 30000;
-        request.headers.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,image/*;q=0.8,*/*;q=0.5");
-        UltraNet_HttpRequestAsync(request, [answer, url](const UltraNetResponse& response) {
-            HTML::FetchResult result;
-            result.status = response.statusCode;
-            result.finalUrl = response.finalUrl;
-            result.contentType = response.contentType;
-            result.contentDisposition = response.headers.Get("Content-Disposition");
-            if (response.statusCode == 0) {
-                result.error = "Could not load " + url +
-                               (response.statusMessage.empty() ? std::string(" (no answer).") : ": " + response.statusMessage);
-            } else if (response.exceededReceiveLimit) {
-                // A file to download, perhaps: the loader decides, and the
-                // window fetches it again, streaming, to disk.
-                result.tooLarge = true;
-                result.error = url + " is larger than " + std::to_string(kMaxPageBytes / (1024 * 1024)) + " MB.";
-            } else if (!response.IsComplete()) {
-                result.error = "Could not load " + url + ": " + response.transferError;
-            } else {
-                result.ok = true;
-                result.body = response.body;
-            }
-            answer(std::move(result));
-        });
-    };
-    // A form's POST: http(s) only, the answer read as a page.
-    services.post = [post](const std::string& url, const std::string& contentType, const std::string& body,
-                           std::function<void(HTML::FetchResult)> done) {
-        auto answer = [post, done](HTML::FetchResult result) {
-            post([done, result = std::move(result)]() mutable { done(std::move(result)); });
+        auto exchange = std::make_shared<Exchange>();
+        exchange->post = post;
+        exchange->cookies = cookies;
+        exchange->pageUrl = pageUrl;
+        exchange->url = url;
+        exchange->accept = "text/html,application/xhtml+xml,text/plain;q=0.9,image/*;q=0.8,*/*;q=0.5";
+        // Already on the UI thread: `done` is called directly.
+        exchange->onDone = [done, url](const UltraNetResponse& response, const std::string& finalUrl) {
+            done(PageAnswer(response, url, finalUrl));
         };
+        exchange->Start();
+    };
+    services.fetch = [get](const std::string& url, std::function<void(HTML::FetchResult)> done) {
+        get(url, std::string(), std::move(done));
+    };
+    services.fetchResource = get;
+    // A form's POST: http(s) only, the answer read as a page.
+    services.post = [post, cookies](const std::string& url, const std::string& contentType, const std::string& body,
+                                    std::function<void(HTML::FetchResult)> done) {
         if (!StartsWithLower(url, "http://") && !StartsWithLower(url, "https://")) {
             HTML::FetchResult refused;
             refused.error = "UltraWeb sends forms only to http and https addresses.";
-            answer(std::move(refused));
+            post([done, refused]() { done(refused); });
             return;
         }
-        UltraNetHttpRequest request;
-        request.url = url;
-        request.method = UltraNetHttpMethod::Post;
-        request.body.assign(body.begin(), body.end());
-        request.options.maxReceiveSize = kMaxPageBytes;
-        request.options.timeoutMs = 30000;
-        request.headers.Set("Content-Type", contentType);
-        request.headers.Set("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5");
-        UltraNet_HttpRequestAsync(request, [answer, url](const UltraNetResponse& response) {
+        auto exchange = std::make_shared<Exchange>();
+        exchange->post = post;
+        exchange->cookies = cookies;
+        exchange->url = url;
+        exchange->method = UltraNetHttpMethod::Post;
+        exchange->contentType = contentType;
+        exchange->body.assign(body.begin(), body.end());
+        exchange->accept = "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5";
+        exchange->onDone = [done, url](const UltraNetResponse& response, const std::string& finalUrl) {
             HTML::FetchResult result;
             result.status = response.statusCode;
-            result.finalUrl = response.finalUrl;
+            result.finalUrl = finalUrl;
             result.contentType = response.contentType;
             if (response.statusCode == 0) {
                 result.error = "Could not send the form to " + url +
@@ -181,8 +282,9 @@ HTML::PageLoaderServices MakePageServices(std::function<void(std::function<void(
                 result.ok = true;
                 result.body = response.body;
             }
-            answer(std::move(result));
-        });
+            done(std::move(result));
+        };
+        exchange->Start();
     };
     services.resolve = [](const std::string& base, const std::string& reference, std::string& absolute) {
         return static_cast<bool>(UltraNet_ResolveUrl(base, reference, absolute));

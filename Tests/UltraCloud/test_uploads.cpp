@@ -68,7 +68,7 @@ std::string NameOf(const std::string& path) {
 
 UltraNetResult Ok() {
     UltraNetResult r;
-    r.code = UltraNetResultCode::Success;
+    r.code = UltraNetResultCode::Ok;
     r.success = true;
     return r;
 }

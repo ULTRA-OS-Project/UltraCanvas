@@ -42,7 +42,7 @@ constexpr int kCassetteVersion = 1;
 
 struct CodeName { ErrorCode code; const char* name; };
 constexpr CodeName kCodeNames[] = {
-    {ErrorCode::None,                 "None"},
+    {ErrorCode::Ok,                 "None"},
     {ErrorCode::InvalidRequest,       "InvalidRequest"},
     {ErrorCode::AuthenticationFailed, "AuthenticationFailed"},
     {ErrorCode::RateLimited,          "RateLimited"},

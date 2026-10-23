@@ -18,7 +18,7 @@ namespace SmartHome {
 // ===== DEVICE CAPABILITY FLAGS =====
 
 enum class DeviceCapability : uint32_t {
-    None            = 0,
+    NoCapabilities            = 0,
     OnOff           = 1 << 0,
     Brightness      = 1 << 1,
     ColorTemp       = 1 << 2,
@@ -73,7 +73,7 @@ struct DeviceEndpoint {
     int EndpointId = 0;
     std::string Name;
     SmartHomeDeviceCategory Category = SmartHomeDeviceCategory::Unknown;
-    DeviceCapability Capabilities = DeviceCapability::None;
+    DeviceCapability Capabilities = DeviceCapability::NoCapabilities;
     std::map<std::string, DeviceAttribute> Attributes;
 };
 

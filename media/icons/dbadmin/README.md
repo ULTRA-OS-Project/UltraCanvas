@@ -6,7 +6,7 @@ The interface icons of `Apps/UltraDBAdmin`, loaded by name through
 
 - **Buttons** (`add`, `edit`, `delete`, `refresh`, `previous`, `next`,
   `import`, `export`, `preview`, `revert`, `apply`, `run`, `stop`,
-  `rename`, `key`): one colour, a 1.5 px stroke with round caps and joins.
+  `rename`, `key`, `filter`, `clear`, `copy`): one colour, a 1.5 px stroke with round caps and joins.
   A button draws them as a mask in its text colour, so the colour in the
   file does not matter.
 - **Tree** (`node-connection`, `node-connection-production`, `node-schema`,

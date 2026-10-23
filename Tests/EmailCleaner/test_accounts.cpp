@@ -58,7 +58,7 @@ public:
     bool failListFolders = false;
     std::vector<std::string> fetchedFolders;
     std::string lastUsername, lastPassword, lastToken;
-    UltraNetAuthType lastAuthType = UltraNetAuthType::None;
+    UltraNetAuthType lastAuthType = UltraNetAuthType::NoAuth;
     int listFolderCalls = 0;
     int moveCalls = 0;
 

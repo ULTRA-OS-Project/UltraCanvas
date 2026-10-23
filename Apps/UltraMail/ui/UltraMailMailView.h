@@ -4,6 +4,7 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.17.1 - CellTooltip: a list cell's tooltip only when it cut its text off
 // Version: 0.17.0 - the folder tree's right-click menu (onAddFolder,
 //                  onDeleteFolder) and SetTreeCurrentAccountOnly
 // Version: 0.16.0 - trusted and blocked senders in both menus (SenderListItems,
@@ -299,6 +300,9 @@ private:
     // Re-draw one row's cell-0 text (sender + ●/↩ glyphs) from its current state.
     void RefreshRowText(int row);
     // The row `m` belongs at in the list as it is sorted (sort_).
+    // The whole text of a list cell that cut it off - the sender's name and
+    // address, the subject or the date - for its tooltip; empty for others.
+    std::string CellTooltip(int row, int column) const;
     int SortedInsertPos(const MessageEnvelope& m) const;
     // What the order is worked out from: the sender and subject as the row
     // shows them, the badge's kind.

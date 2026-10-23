@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminEditBuffer.cpp
+// Version: 0.2.0 - CellValue::Kind::Blob
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminEditBuffer.h"
@@ -25,6 +26,18 @@ bool SameKey(const std::vector<UltraDbValue>& a, const std::vector<UltraDbValue>
     return true;
 }
 
+// X'0a1b...', the first 32 bytes and "…" for the rest.
+std::string HexLiteral(const std::vector<uint8_t>& bytes) {
+    std::string hex = "X'";
+    char pair[3];
+    for (size_t i = 0; i < bytes.size() && i < 32; ++i) {
+        std::snprintf(pair, sizeof pair, "%02x", bytes[i]);
+        hex += pair;
+    }
+    if (bytes.size() > 32) hex += "…";
+    return hex + "'";
+}
+
 std::string QuotedText(const std::string& text) {
     std::string out = "'";
     for (const char c : text) {
@@ -46,6 +59,7 @@ bool Bound(const CellValue& value, UltraDbValue& out) {
     switch (value.kind) {
         case CellValue::Kind::Text:    out = UltraDbValue(value.text); return true;
         case CellValue::Kind::Null:    out = UltraDbValue::Null();     return true;
+        case CellValue::Kind::Blob:    out = UltraDbValue::Blob(value.bytes); return true;
         case CellValue::Kind::Default: return false;
     }
     return false;
@@ -56,21 +70,11 @@ bool Bound(const CellValue& value, UltraDbValue& out) {
 std::string PreviewLiteral(const UltraDbValue& value) {
     switch (value.Type()) {
         case UltraDbType::Null:   return "NULL";
-        case UltraDbType::Bool:   return value.AsBool() ? "TRUE" : "FALSE";
+        case UltraDbType::Boolean:   return value.AsBool() ? "TRUE" : "FALSE";
         case UltraDbType::Int:
         case UltraDbType::Double: return value.AsString();
         case UltraDbType::Text:   return QuotedText(value.AsString());
-        case UltraDbType::Blob: {
-            const std::vector<uint8_t> bytes = value.AsBlob();
-            std::string hex = "X'";
-            char pair[3];
-            for (size_t i = 0; i < bytes.size() && i < 32; ++i) {
-                std::snprintf(pair, sizeof pair, "%02x", bytes[i]);
-                hex += pair;
-            }
-            if (bytes.size() > 32) hex += "…";
-            return hex + "'";
-        }
+        case UltraDbType::Blob:   return HexLiteral(value.AsBlob());
     }
     return "NULL";
 }
@@ -80,6 +84,7 @@ std::string PreviewLiteral(const CellValue& value) {
         case CellValue::Kind::Text:    return QuotedText(value.text);
         case CellValue::Kind::Null:    return "NULL";
         case CellValue::Kind::Default: return "DEFAULT";
+        case CellValue::Kind::Blob:    return HexLiteral(value.bytes);
     }
     return "NULL";
 }
@@ -150,10 +155,17 @@ bool EditBuffer::UpdateRow(const UltraDbRow& row, const std::map<std::string, Ce
     for (const auto& [column, value] : values) {
         // Back to what was read: no longer a change.
         const UltraDbValue& original = row[column];
-        const bool unchanged = value.kind == CellValue::Kind::Null
-                                   ? original.IsNull()
-                                   : !original.IsNull() && original.Type() != UltraDbType::Blob &&
-                                         original.AsString() == value.text;
+        bool unchanged = false;
+        switch (value.kind) {
+            case CellValue::Kind::Null: unchanged = original.IsNull(); break;
+            case CellValue::Kind::Blob:
+                unchanged = original.Type() == UltraDbType::Blob && original.AsBlob() == value.bytes;
+                break;
+            default:
+                unchanged = !original.IsNull() && original.Type() != UltraDbType::Blob &&
+                            original.AsString() == value.text;
+                break;
+        }
         if (unchanged) change->values.erase(column);
         else change->values[column] = value;
     }

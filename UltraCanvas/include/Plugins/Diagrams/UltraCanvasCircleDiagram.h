@@ -17,10 +17,6 @@
 #include <string>
 #include <vector>
 
-// X11 defines `None` as a macro that clobbers our enumerators.
-#ifdef None
-#undef None
-#endif
 
 namespace UltraCanvas {
 

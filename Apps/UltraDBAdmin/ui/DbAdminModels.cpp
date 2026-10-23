@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminModels.cpp
+// Version: 0.2.0 - a staged blob shows as its size
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminModels.h"
@@ -72,8 +73,11 @@ ListDataValue ResultSetModel::GetData(const ListIndex& index, ListDataRole role)
         case ListDataRole::DisplayRole:
             if (deleted && index.column == 0) return "DEL " + CellText(value);
             if (staged) {
-                return (staged->kind == CellValue::Kind::Null ? std::string(NullText())
-                                                              : CellText(UltraDbValue(staged->text))) + " *";
+                switch (staged->kind) {
+                    case CellValue::Kind::Null: return std::string(NullText()) + " *";
+                    case CellValue::Kind::Blob: return CellText(UltraDbValue::Blob(staged->bytes)) + " *";
+                    default:                    return CellText(UltraDbValue(staged->text)) + " *";
+                }
             }
             return CellText(value);
         case ListDataRole::ToolTipRole:

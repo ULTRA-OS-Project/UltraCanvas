@@ -836,7 +836,7 @@ namespace UltraCanvas {
                 case GTK_PRINT_DUPLEX_HORIZONTAL: return IODuplexMode::LongEdge;
                 case GTK_PRINT_DUPLEX_VERTICAL:   return IODuplexMode::ShortEdge;
                 case GTK_PRINT_DUPLEX_SIMPLEX:
-                default:                          return IODuplexMode::None;
+                default:                          return IODuplexMode::OneSided;
             }
         }
 

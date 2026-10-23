@@ -213,7 +213,7 @@ std::string RequirementModel::ResolveField(const RequirementNode& node,
         case RequirementField::Risk:     return RequirementRiskToString(node.risk);
         case RequirementField::VerifyMethod:
             return RequirementVerifyMethodToString(node.verifyMethod);
-        case RequirementField::Status:   return node.status;
+        case RequirementField::State:   return node.status;
         case RequirementField::Owner:    return node.owner;
         case RequirementField::Priority: return node.priority;
         case RequirementField::DocRef:   return node.docRef;
@@ -1906,7 +1906,7 @@ private:
 
 // Which model field a ReqIF attribute definition maps onto, by its LONG-NAME.
 enum class ReqIfField { Ignore, ExternalId, Name, Text, Risk, VerifyMethod,
-                        Source, Status, Owner, Priority, Custom };
+                        Source, State, Owner, Priority, Custom };
 
 ReqIfField ReqIfFieldForLongName(const std::string& longName) {
     const std::string n = ToLowerCopy(longName);
@@ -1920,7 +1920,7 @@ ReqIfField ReqIfFieldForLongName(const std::string& longName) {
     if (n == "verifymethod" || n == "verification method" ||
         n == "verification_method") return ReqIfField::VerifyMethod;
     if (n == "source") return ReqIfField::Source;
-    if (n == "status" || n == "reqif.foreignstate") return ReqIfField::Status;
+    if (n == "status" || n == "reqif.foreignstate") return ReqIfField::State;
     if (n == "owner" || n == "responsible") return ReqIfField::Owner;
     if (n == "priority") return ReqIfField::Priority;
     return ReqIfField::Custom;
@@ -2046,7 +2046,7 @@ bool RequirementModel::FromReqIf(const std::string& xml, std::string* outError) 
                         node.verifyMethod = RequirementVerifyMethodFromString(content);
                         break;
                     case ReqIfField::Source:   node.source = content; break;
-                    case ReqIfField::Status:   node.status = content; break;
+                    case ReqIfField::State:   node.status = content; break;
                     case ReqIfField::Owner:    node.owner = content; break;
                     case ReqIfField::Priority: node.priority = content; break;
                     case ReqIfField::Custom:

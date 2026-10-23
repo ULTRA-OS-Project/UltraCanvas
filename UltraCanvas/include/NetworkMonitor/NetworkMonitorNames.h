@@ -102,7 +102,7 @@ std::string NetworkMonitor_SystemResolver();
 // source that fails to start is not kept; the result says why.
 struct NameSourceStatus {
     std::string name;
-    NameSource  kind = NameSource::None;
+    NameSource  kind = NameSource::NoSource;
     bool        running = false;
     bool        reportsProcess = false;
     std::string lastError;
@@ -130,7 +130,7 @@ void           NetworkMonitor_RemoveNameListener(NameListenerId id);
 struct NameRecord {
     std::string address;
     std::string name;
-    NameSource  source = NameSource::None;
+    NameSource  source = NameSource::NoSource;
     int64_t     observedAt = 0;   // Unix seconds
     int64_t     expiresAt = 0;
     std::optional<ProcessIdentity> process;   // the asking process, where the source knew it

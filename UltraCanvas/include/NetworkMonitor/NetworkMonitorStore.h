@@ -81,11 +81,11 @@ struct RecordedFlow {
     std::optional<uint64_t> bytesSent;         // latest counters, if any
     std::optional<uint64_t> bytesReceived;
     std::string            remoteName;         // the best name seen for the peer, or empty
-    NameSource             nameSource = NameSource::None;
+    NameSource             nameSource = NameSource::NoSource;
     // The loopback chain as last decoded (NetworkConnection's loopbackRole,
     // localPeer and forProcesses): a sighting that carries a chain
     // replaces the recorded one, a sighting without one keeps it.
-    LoopbackRole             loopbackRole = LoopbackRole::None;
+    LoopbackRole             loopbackRole = LoopbackRole::NotLoopback;
     std::string              localPeer;        // "AvastSvc (4720)", or empty
     std::vector<std::string> forProcesses;     // "thunderbird (4120)", distinct
 
@@ -128,7 +128,7 @@ struct RecordedDnsObservation {
     int64_t     observedAt = 0;
     std::string queryName;
     std::string address;
-    NameSource  source = NameSource::None;
+    NameSource  source = NameSource::NoSource;
     std::optional<ProcessIdentity> process;   // the asking process, where the source knew it
 };
 

@@ -11,24 +11,6 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Success`, `None`, `Bool` and `Status` as
-// macros, which would turn the enum-class members below into literal
-// integers. UltraCanvas's Linux platform glue pulls X11 in transitively, so
-// any TU including both an UltraCanvas header and this one would otherwise
-// fail to compile. Same guard as UltraNetCore.h.
-#ifdef Success
-#undef Success
-#endif
-#ifdef None
-#undef None
-#endif
-#ifdef Bool
-#undef Bool
-#endif
-#ifdef Status
-#undef Status
-#endif
-
 namespace UltraCanvas {
 
 // ============================================================================
@@ -105,7 +87,7 @@ enum class IODeviceState {
 // ============================================================================
 
 enum class IODeviceResultCode {
-    Success,
+    Ok,
     Unknown,
     NotImplemented,
     NotSupported,           // valid request, this device/backend cannot do it
@@ -146,7 +128,7 @@ struct IODeviceResult {
 
     static IODeviceResult Ok(const IODeviceId& id = {}) {
         IODeviceResult r;
-        r.code = IODeviceResultCode::Success;
+        r.code = IODeviceResultCode::Ok;
         r.success = true;
         r.deviceId = id;
         return r;

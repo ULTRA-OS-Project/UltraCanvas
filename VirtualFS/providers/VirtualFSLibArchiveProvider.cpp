@@ -554,7 +554,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::FinishOpen(
                     static_cast<float>(pImpl->archiveInfo.uncompressedSize));
     }
     
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 void VirtualFSLibArchiveProvider::Close() {
@@ -841,11 +841,11 @@ VirtualFSResult VirtualFSLibArchiveProvider::ReadFile(
                     result = VirtualFSResult::ReadError;
                 } else {
                     outData.resize(static_cast<size_t>(bytesRead));
-                    result = VirtualFSResult::Success;
+                    result = VirtualFSResult::Ok;
                 }
             } else {
                 outData.clear();
-                result = VirtualFSResult::Success;
+                result = VirtualFSResult::Ok;
             }
             break;
         }
@@ -866,11 +866,11 @@ VirtualFSResult VirtualFSLibArchiveProvider::ReadFilePartial(
     std::vector<uint8_t> fullData;
     auto result = ReadFile(virtualPath, fullData);
     
-    if (result != VirtualFSResult::Success) return result;
+    if (result != VirtualFSResult::Ok) return result;
     
     if (offset >= fullData.size()) {
         outData.clear();
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     }
     
     uint64_t actualLength = std::min(length, fullData.size() - offset);
@@ -879,7 +879,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ReadFilePartial(
         fullData.begin() + static_cast<ptrdiff_t>(offset + actualLength)
     );
     
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 // ============================================================================
@@ -894,7 +894,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractFile(
     std::vector<uint8_t> data;
     auto result = ReadFile(virtualPath, data);
     
-    if (result != VirtualFSResult::Success) return result;
+    if (result != VirtualFSResult::Ok) return result;
     
     if (options.createDirectories) {
         std::filesystem::path dest(UltraCanvas::PathFromUtf8(destPath));
@@ -922,7 +922,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractFile(
         return VirtualFSResult::WriteError;
     }
     
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
@@ -972,7 +972,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     progress.grandTotalBytes = pImpl->archiveInfo.uncompressedSize;
     
     struct archive_entry* entry;
-    VirtualFSResult result = VirtualFSResult::Success;
+    VirtualFSResult result = VirtualFSResult::Ok;
     // Entries held back - refused as unsafe here, or refused by libarchive
     // (a write through a symbolic link, a permission it lacks): skipped, the
     // rest still extracted, and named in lastError once the walk is through.
@@ -1059,7 +1059,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
         }
         
         archive_write_finish_entry(ext);
-        if (result != VirtualFSResult::Success) break;
+        if (result != VirtualFSResult::Ok) break;
     }
     
     archive_read_free(a);
@@ -1069,7 +1069,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::ExtractAll(
     // was not, all of it, and which entries were held back. One heading line
     // per kind, ending in ':', then one entry per line - a file manager shows
     // it as a list, a log reads it as it is.
-    if (result == VirtualFSResult::Success && (!refused.empty() || !failed.empty())) {
+    if (result == VirtualFSResult::Ok && (!refused.empty() || !failed.empty())) {
         auto listOf = [](const std::vector<std::string>& names) {
             std::string list;
             const size_t shown = std::min<size_t>(names.size(), 20);
@@ -1135,7 +1135,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::CreateArchive(
     }
     
     pImpl->isOpen = true;
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult VirtualFSLibArchiveProvider::AddFile(
@@ -1198,7 +1198,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddFromMemory(
     }
     
     archive_entry_free(entry);
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
@@ -1256,19 +1256,19 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
             return AddFile(PathToUtf8(dirEntry.path()), destPath, options);
         }
         
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     };
     
     try {
         if (recursive) {
             for (const auto& entry : std::filesystem::recursive_directory_iterator(srcPath)) {
                 auto result = addEntry(entry);
-                if (result != VirtualFSResult::Success) return result;
+                if (result != VirtualFSResult::Ok) return result;
             }
         } else {
             for (const auto& entry : std::filesystem::directory_iterator(srcPath)) {
                 auto result = addEntry(entry);
-                if (result != VirtualFSResult::Success) return result;
+                if (result != VirtualFSResult::Ok) return result;
             }
         }
     } catch (const std::exception& e) {
@@ -1276,7 +1276,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
         return VirtualFSResult::ReadError;
     }
     
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult VirtualFSLibArchiveProvider::Finalize() {
@@ -1289,7 +1289,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::Finalize() {
     pImpl->isOpen = false;
     pImpl->isWriteMode = false;
 
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 // ============================================================================
@@ -1379,7 +1379,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntries(
         }
         targets.push_back(std::move(normalized));
     }
-    if (targets.empty()) return VirtualFSResult::Success;
+    if (targets.empty()) return VirtualFSResult::Ok;
 
     // Every requested path must match at least one cached entry. The cache is
     // sorted, so a subtree check is a lower_bound + prefix test.
@@ -1402,7 +1402,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntries(
         result = DeleteEntriesGeneric(targets, tempPath, progressCallback);
     }
 
-    if (result != VirtualFSResult::Success) {
+    if (result != VirtualFSResult::Ok) {
         std::filesystem::remove(UltraCanvas::PathFromUtf8(tempPath), ec);
         return result;
     }
@@ -1476,7 +1476,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesZipFast(
     }
 
     handled = true;
-    VirtualFSResult result = VirtualFSResult::Success;
+    VirtualFSResult result = VirtualFSResult::Ok;
 
     VirtualFSProgress progress;
     mz_uint fileCount = mz_zip_reader_get_num_files(&src);
@@ -1513,7 +1513,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesZipFast(
         }
     }
 
-    if (result == VirtualFSResult::Success &&
+    if (result == VirtualFSResult::Ok &&
         !mz_zip_writer_finalize_archive(&dst)) {
         pImpl->lastError = mz_zip_get_error_string(mz_zip_get_last_error(&dst));
         result = VirtualFSResult::WriteError;
@@ -1524,7 +1524,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesZipFast(
     // Closing flushes what is still buffered. A disk that fills up here must
     // fail the rewrite: miniz closed its own file and ignored the answer, so
     // a cut-off archive could be renamed over the original.
-    if (std::fclose(dstFile) != 0 && result == VirtualFSResult::Success) {
+    if (std::fclose(dstFile) != 0 && result == VirtualFSResult::Ok) {
         pImpl->lastError = "Failed to write " + tempPath;
         result = VirtualFSResult::WriteError;
     }
@@ -1580,7 +1580,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
     progress.grandTotalBytes = pImpl->archiveInfo.uncompressedSize;
 
     struct archive_entry* entry;
-    VirtualFSResult result = VirtualFSResult::Success;
+    VirtualFSResult result = VirtualFSResult::Ok;
 
     while (NextHeader(in, &entry)) {
         std::string entryPath = NormalizeInternalPath(EntryPathUtf8(in, entry));
@@ -1628,7 +1628,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
                     }
                     gap -= static_cast<la_int64_t>(chunk);
                 }
-                if (result != VirtualFSResult::Success) break;
+                if (result != VirtualFSResult::Ok) break;
                 written = offset;
             }
             if (size > 0 && archive_write_data(out, buff, size) < 0) {
@@ -1640,14 +1640,14 @@ VirtualFSResult VirtualFSLibArchiveProvider::DeleteEntriesGeneric(
             progress.totalBytes += size;
         }
 
-        if (result == VirtualFSResult::Success && r != ARCHIVE_EOF && r != ARCHIVE_OK) {
+        if (result == VirtualFSResult::Ok && r != ARCHIVE_EOF && r != ARCHIVE_OK) {
             pImpl->lastError = archive_error_string(in);
             result = VirtualFSResult::ReadError;
         }
-        if (result != VirtualFSResult::Success) break;
+        if (result != VirtualFSResult::Ok) break;
     }
 
-    if (archive_write_close(out) != ARCHIVE_OK && result == VirtualFSResult::Success) {
+    if (archive_write_close(out) != ARCHIVE_OK && result == VirtualFSResult::Ok) {
         pImpl->lastError = archive_error_string(out);
         result = VirtualFSResult::WriteError;
     }
@@ -1697,7 +1697,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::Test(VirtualFSProgressCallback prog
     progress.totalFiles = pImpl->entryCache.size();
     
     struct archive_entry* entry;
-    VirtualFSResult result = VirtualFSResult::Success;
+    VirtualFSResult result = VirtualFSResult::Ok;
     
     while (NextHeader(a, &entry)) {
         if (progressCallback) {
@@ -1750,7 +1750,7 @@ void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
     size_t dotPos = ext.rfind('.');
     if (dotPos != std::string::npos) ext = ext.substr(dotPos + 1);
 
-    enum class WriteFilter { None, Gzip, BZip2, XZ, Zstd, LZ4 };
+    enum class WriteFilter { NoFilter, Gzip, BZip2, XZ, Zstd, LZ4 };
     int format;
     WriteFilter filter;
 
@@ -1773,7 +1773,7 @@ void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
         else if (ext == "xz")                   filter = WriteFilter::XZ;
         else if (ext == "zst" || ext == "zstd") filter = WriteFilter::Zstd;
         else if (ext == "lz4")                  filter = WriteFilter::LZ4;
-        else                                    filter = WriteFilter::None;
+        else                                    filter = WriteFilter::NoFilter;
     }
 
     archive_write_set_format(writeArchive, format);
@@ -1783,7 +1783,7 @@ void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
         case WriteFilter::XZ:    archive_write_add_filter_xz(writeArchive);    break;
         case WriteFilter::Zstd:  archive_write_add_filter_zstd(writeArchive);  break;
         case WriteFilter::LZ4:   archive_write_add_filter_lz4(writeArchive);   break;
-        case WriteFilter::None:  break;
+        case WriteFilter::NoFilter:  break;
     }
 }
 

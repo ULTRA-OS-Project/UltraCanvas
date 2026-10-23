@@ -134,7 +134,7 @@ enum class IOPrinterColorMode {
 };
 
 enum class IODuplexMode {
-    None,
+    OneSided,
     LongEdge,       // book binding
     ShortEdge       // notepad binding
 };
@@ -233,7 +233,7 @@ struct IOPrintOptions {
     IOPageSetup page;
     IOPrintQuality quality = IOPrintQuality::Normal;
     IOPrinterColorMode colorMode = IOPrinterColorMode::Auto;
-    IODuplexMode duplex = IODuplexMode::None;
+    IODuplexMode duplex = IODuplexMode::OneSided;
     int copies = 1;
     bool collate = true;
 
@@ -445,7 +445,7 @@ enum class IOSupplyType {
 };
 
 enum class IOSupplyColor {
-    None,
+    NoColor,
     Black,
     Cyan,
     Magenta,
@@ -462,7 +462,7 @@ enum class IOSupplyColor {
 
 struct IOSupplyLevel {
     IOSupplyType type = IOSupplyType::Unknown;
-    IOSupplyColor color = IOSupplyColor::None;
+    IOSupplyColor color = IOSupplyColor::NoColor;
     std::string description;
 
     // 0-100, or -1 when the printer does not report a level. A printer that

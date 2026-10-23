@@ -10,7 +10,7 @@
 // Author: UltraCanvas Framework
 
 // The module's headers first: the demo's own pull in X11, whose `None`
-// macro would eat SmartHomeSecurityLevel::None.
+// macro would eat SmartHomeSecurityLevel::NoSecurity.
 #include "UltraCanvasSmartHome.h"
 #include "UltraCanvasSmartHomePanel.h"
 

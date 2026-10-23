@@ -2,6 +2,7 @@
 // The UltraDatabase manager: driver registry, named-connection registry with
 // lazy opening, and the public UltraDb_* entrypoints for queries, prepared
 // statements, transactions and migrations.
+// Version: 0.3.3 - Retired() is never destroyed: a close from an atexit handler wrote into it after its teardown
 // Version: 0.3.2 - the SQLite driver reports a statement's own changes only
 // Version: 0.3.1
 // Author: UltraCanvas Framework / ULTRA OS
@@ -60,9 +61,15 @@ std::map<std::string, std::shared_ptr<ConnEntry>>& Registry() {
 // connection closes with its last call, as before. Kept so a cancel by name
 // (UltraDb_CancelQuery) still reaches a statement that began under the name
 // before it changed hands. Guarded by RegistryMutex.
+//
+// Never destroyed, like the handle tables below: it is first built by the
+// first close, and UltraMessage's atexit handler - registered before that -
+// closes its journal after the static would already be gone. Destroyed, the
+// close then wrote into freed memory, and the process aborted in free() as
+// it exited (ChatCube, on every quit after its store had closed).
 std::map<std::string, std::vector<std::weak_ptr<ConnEntry>>>& Retired() {
-    static std::map<std::string, std::vector<std::weak_ptr<ConnEntry>>> r;
-    return r;
+    static auto* r = new std::map<std::string, std::vector<std::weak_ptr<ConnEntry>>>;
+    return *r;
 }
 
 // Under RegistryMutex: remember `entry` as retired under `name`, forgetting

@@ -9,6 +9,8 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
+// Version: 1.5.0 - ArtOptionWidgets::AddSection; AddSwitch takes icons
+// Version: 1.4.0 - ArtToolContext::iconPath; ArtOptionWidgets::AddIconBar and AddSwitch
 // Version: 1.3.0 - ArtToolContext::lockAspectRatio
 // Version: 1.2.0 - ArtToolContext::iconPixel
 // Version: 1.1.0
@@ -20,6 +22,9 @@
 #include "UltraCanvasBezierPath.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasButton.h"
+#include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasToolbar.h"
 
 #include <functional>
 #include <memory>
@@ -111,6 +116,8 @@ struct ArtToolContext {
     // The transform bar's ratio lock: the selector's handles scale width and
     // height alike (shift frees a corner handle for the drag).
     bool lockAspectRatio = false;
+    // A panel icon's full path from its name in media/icons/artcreator/.
+    std::function<std::string(const std::string&)> iconPath;
 };
 
 class ArtTool {
@@ -180,8 +187,32 @@ namespace ArtOptionWidgets {
                      const std::vector<std::string>& items, int selected,
                      const std::function<void(int)>& onChange);
     void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text);
+    // A row of text buttons sharing the width equally.
     void AddButtonRow(UltraCanvasContainer& panel, const std::string& id,
                       const std::vector<std::pair<std::string, std::function<void()>>>& buttons);
+    // One flat 24 px icon button of an icon bar; an empty `icon` puts a
+    // divider between two groups instead.
+    struct IconAction {
+        std::string icon;          // full path
+        std::string tooltip;
+        std::function<void()> action;
+    };
+    // A row of flat icon buttons, as the Layers card's, each with its
+    // tooltip; returns the buttons in the order given (no dividers).
+    std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer& panel, const std::string& id,
+                                                               const std::vector<IconAction>& items);
+    // A section of a tool's options in a group box of its own, captioned
+    // `title` in small grey text; its content is a column. Add the
+    // section's rows to the returned box.
+    std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, const std::string& id,
+                                                     const std::string& title);
+    // A segmented switch between a few modes, `selected` lit; `icons`
+    // (full paths, one per item, or none) go before the captions, in the
+    // caption's colour.
+    std::shared_ptr<UltraCanvasSegmentedControl> AddSwitch(UltraCanvasContainer& panel, const std::string& id,
+                                                           const std::vector<std::string>& items, int selected,
+                                                           const std::function<void(int)>& onChange,
+                                                           const std::vector<std::string>& icons = {});
 }
 
 } // namespace UltraCanvas

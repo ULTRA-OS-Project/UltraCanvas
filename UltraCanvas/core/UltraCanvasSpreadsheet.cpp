@@ -514,7 +514,7 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
     // Cell background
     if (cell && cell->HasCustomStyle()) {
         const auto& style = cell->GetStyle();
-        if (style.fill.pattern != FillPattern::None) {
+        if (style.fill.pattern != FillPattern::NoFill) {
             ctx->SetFillPaint(style.fill.foregroundColor);
             ctx->FillRectangle(Rect2Df(bounds.x, bounds.y, bounds.width, bounds.height));
         }
@@ -573,23 +573,23 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
     if (cell && cell->HasCustomStyle()) {
         const auto& borders = cell->GetStyle().borders;
 
-        if (borders.left.style != BorderStyle::None) {
+        if (borders.left.style != BorderStyle::NoBorder) {
             ctx->SetStrokePaint(borders.left.color);
             ctx->SetStrokeWidth(borders.left.width);
             ctx->DrawLine(Point2Df(bounds.x, bounds.y), Point2Df(bounds.x, bounds.y + bounds.height));
         }
-        if (borders.right.style != BorderStyle::None) {
+        if (borders.right.style != BorderStyle::NoBorder) {
             ctx->SetStrokePaint(borders.right.color);
             ctx->SetStrokeWidth(borders.right.width);
             ctx->DrawLine(Point2Df(bounds.x + bounds.width, bounds.y),
                           Point2Df(bounds.x + bounds.width, bounds.y + bounds.height));
         }
-        if (borders.top.style != BorderStyle::None) {
+        if (borders.top.style != BorderStyle::NoBorder) {
             ctx->SetStrokePaint(borders.top.color);
             ctx->SetStrokeWidth(borders.top.width);
             ctx->DrawLine(Point2Df(bounds.x, bounds.y), Point2Df(bounds.x + bounds.width, bounds.y));
         }
-        if (borders.bottom.style != BorderStyle::None) {
+        if (borders.bottom.style != BorderStyle::NoBorder) {
             ctx->SetStrokePaint(borders.bottom.color);
             ctx->SetStrokeWidth(borders.bottom.width);
             ctx->DrawLine(Point2Df(bounds.x, bounds.y + bounds.height),
@@ -1634,8 +1634,8 @@ void UltraCanvasSpreadsheet::HandleKeyDown(const UCEvent& event) {
                 SetSelectionItalic(!GetActiveCellFont().italic);
                 break;
             case UCKeys::U:
-                SetSelectionUnderline(GetActiveCellFont().underline == UnderlineStyle::None
-                                       ? UnderlineStyle::Single : UnderlineStyle::None);
+                SetSelectionUnderline(GetActiveCellFont().underline == UnderlineStyle::NoUnderline
+                                       ? UnderlineStyle::Single : UnderlineStyle::NoUnderline);
                 break;
             default:
                 break;
@@ -2535,7 +2535,7 @@ void UltraCanvasSpreadsheet::PasteSpecial(const PasteOptions& options) {
 }
 
 void UltraCanvasSpreadsheet::ClearClipboard() {
-    clipboardOp_ = ClipboardOperation::None;
+    clipboardOp_ = ClipboardOperation::NoOperation;
     clipboardData_.clear();
     Invalidate();
 }

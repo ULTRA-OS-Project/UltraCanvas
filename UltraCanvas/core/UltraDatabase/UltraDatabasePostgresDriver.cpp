@@ -132,7 +132,7 @@ struct GebundeneParameter {
                     laengen.push_back(0);
                     formate.push_back(0);
                     break;
-                case UltraDbType::Bool:
+                case UltraDbType::Boolean:
                     speicher.emplace_back(v.AsBool() ? "t" : "f");
                     werte.push_back(speicher.back().c_str());
                     laengen.push_back(0);

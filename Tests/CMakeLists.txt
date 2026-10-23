@@ -216,6 +216,7 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
         ${_uw_dir}/host/UltraWebFetch.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
         ${_uw_dir}/host/UltraWebLoader.cpp
+        ${_uw_dir}/host/UltraWebCookies.cpp
         ${_uw_dir}/host/UltraWebPages.cpp
         ${_uw_dir}/host/UltraWebStorage.cpp
         ${_uw_dir}/ui/UltraWebTab.cpp)
@@ -229,6 +230,27 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     add_test(NAME UltraWebTabTest COMMAND UltraWebTabTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraWebTabTest")
+endif()
+
+# ===== ULTRAWEB COOKIES TEST =====
+# UltraWeb's page services with a cookie jar (UltraNetCookieJar, whose rules
+# Tests/UltraNet tests) against a loopback server - a login's redirect sets
+# a cookie and the next hop sends it (POSIX only).
+if(TARGET UltraCanvas AND TARGET UltraNet)
+    set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
+    add_executable(UltraWebCookiesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebCookiesTest.cpp
+        ${_uw_dir}/host/UltraWebCookies.cpp
+        ${_uw_dir}/host/UltraWebPages.cpp)
+    target_include_directories(UltraWebCookiesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir})
+    target_compile_features(UltraWebCookiesTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraWebCookiesTest PRIVATE UltraNet UltraCanvas)
+    set_target_properties(UltraWebCookiesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraWebCookiesTest COMMAND UltraWebCookiesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraWebCookiesTest")
 endif()
 
 # ===== ULTRAWEB DOWNLOADS TEST =====
@@ -839,7 +861,7 @@ endif()
 # -Wunused-parameter. One file includes them all, in sorted order: the
 # library's own sources include them in every order already, and the
 # Win32 names <windows.h> would rename are kept out of our APIs by
-# scripts/check_win32_names.py, so the order needs no care.
+# scripts/check_platform_names.py, so the order needs no care.
 if(TARGET UltraCanvas AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
     set(_ucHeaderGlobs
         ${ULTRACANVAS_INCLUDE_DIR}/*.h
@@ -2105,8 +2127,10 @@ message(STATUS "    Test registered: ListViewTooltipTest")
 # ===== LISTVIEW SCROLL TEST =====
 # EnsureRowVisible before the view's first layout (the row is revealed once it
 # has a size, instead of scrolling it below the top), the multi-column model's
-# SetItems (one notification for every row) and the selection following rows
-# inserted or removed above it. No window, no display.
+# SetItems (one notification for every row), the selection following rows
+# inserted or removed above it, and columns wider than the view (the
+# horizontal scrollbar, the sideways scroll and the Left / Right keys). No
+# window, no display.
 if(TARGET UltraCanvas)
     message(STATUS "  Building ListViewScrollTest...")
     add_executable(ListViewScrollTest

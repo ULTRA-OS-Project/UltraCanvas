@@ -54,7 +54,7 @@ namespace UltraCanvas {
             const char* label; QRGradientType type; Color start; Color end;
         };
         const GradientChoice kGradients[] = {
-            { "None",     QRGradientType::None,     Colors::Black,    Colors::Black },
+            { "None",     QRGradientType::NoGradient,     Colors::Black,    Colors::Black },
             { "Linear",   QRGradientType::Linear,   Color(0,102,204), Color(102,204,255) },
             { "Radial",   QRGradientType::Radial,   Color(139,0,139), Color(255,0,128) },
             { "Diagonal", QRGradientType::Diagonal, Color(204,0,0),   Color(255,140,0) },
@@ -358,7 +358,7 @@ namespace UltraCanvas {
                 dd->onSelectionChanged = [qrPtr, setActivePoint](int idx, const DropdownItem&) {
                     if (idx < 0 || idx >= static_cast<int>(std::size(kGradients))) return;
                     const auto& g = kGradients[idx];
-                    if (g.type == QRGradientType::None) {
+                    if (g.type == QRGradientType::NoGradient) {
                         // Revert to a solid black module colour and reflect that
                         // in the point-colour swatches (Black is the first one).
                         qrPtr->ClearGradient();

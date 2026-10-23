@@ -13,10 +13,6 @@
 #include <string>
 #include <vector>
 
-// X11 defines `None` as a macro that clobbers our enumerators.
-#ifdef None
-#undef None
-#endif
 
 namespace UltraCanvas {
 
@@ -32,14 +28,14 @@ namespace UltraCanvas {
     };
 
     enum class ValueVisualizationType {
-        None,
+        NoVisualization,   // (not NoValue: X11's Xutil.h defines that too)
         Bars,           // Radial bar filling the cell from its inner edge
         CircularLine,   // Polyline across the ring linking each cell's value
         CircularBar     // Angular progress arc drawn across the cell
     };
 
     enum class DecorativeRingType {
-        None,
+        NoRing,
         ColorHighlight, // Solid ring stroked at the band's mid radius
         Graphics,       // Repeated image marks around the band
         Pattern,        // Repeating tick pattern
@@ -47,7 +43,7 @@ namespace UltraCanvas {
     };
 
     enum class ConnectionLineType {
-        None,
+        NoLine,
         InsideCenter,   // Routed through the middle of the chart
         OutsideRing,    // Routed around the outside of the outermost ring
         DirectCurve     // Gently bowed curve straight between the two cells
@@ -97,8 +93,8 @@ namespace UltraCanvas {
         std::vector<CircularCell> cells;
 
         CircularTextStyle textStyle          = CircularTextStyle::Horizontal;
-        ValueVisualizationType valueType     = ValueVisualizationType::None;
-        DecorativeRingType decorativeType    = DecorativeRingType::None;
+        ValueVisualizationType valueType     = ValueVisualizationType::NoVisualization;
+        DecorativeRingType decorativeType    = DecorativeRingType::NoRing;
 
         Color decorativeColor = Color(128, 128, 128, 255);
         std::string decorativeGraphic;
@@ -262,7 +258,7 @@ namespace UltraCanvas {
         bool showGroupOutlines = false;
 
         // ----- Connections -----
-        ConnectionLineType connectionType = ConnectionLineType::None;
+        ConnectionLineType connectionType = ConnectionLineType::NoLine;
         ConnectionStyle defaultConnectionStyle;
 
         // ----- Interaction -----

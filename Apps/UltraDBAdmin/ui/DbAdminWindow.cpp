@@ -1,8 +1,11 @@
 // Apps/UltraDBAdmin/ui/DbAdminWindow.cpp
+// Version: 0.2.0 - filters, editing in the cell, blobs, rows copied as text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminWindow.h"
 
+#include "DbAdminBlob.h"
+#include "DbAdminBlobDialog.h"
 #include "DbAdminConnectionDialog.h"
 #include "DbAdminFormat.h"
 #include "DbAdminImportDialog.h"
@@ -12,6 +15,8 @@
 #include "DbAdminTheme.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasClipboard.h"
+#include "UltraCanvasListSelection.h"
 #include "UltraCanvasCSVExportDialog.h"
 #include "UltraCanvasCSVImportDialog.h"
 #include "UltraCanvasFileLoader.h"
@@ -419,16 +424,94 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildBrowsePage() {
     auto editBar = BuildEditBar();
     page->AddChild(editBar);
     PinToolbar(editBar);
+    auto filterBar = BuildFilterBar();
+    page->AddChild(filterBar);
+    PinToolbar(filterBar);
 
     browseModel_ = std::make_shared<ResultSetModel>();
     browseModel_->SetPending(&edits_);
     browseView_ = MakeList("dbaBrowseGrid", browseModel_);
+    browseView_->SetSelection(std::make_shared<UltraCanvasMultiSelection>());
     // The order is the server's: a click on a header asks for the page again,
     // ORDER BY that column (then the key) - never a sort of the 200 rows shown.
     browseView_->onHeaderClicked = [this](int column) { SortBrowse(column); };
-    browseView_->onItemDoubleClicked = [this](int row) { EditRow(row); };
+    browseView_->onCellDoubleClicked = [this](int row, int column, const Point2Di&) { BeginCellEdit(row, column); };
+    browseView_->onContextMenu = [this](int row, const UCEvent& event) { ShowBrowseMenu(row, event); };
+    browseView_->onKeyDown = [this](const UCEvent& event) {
+        if (event.ctrl && event.virtualKey == UCKeys::C) { CopyRows(RowsSource::Browse, ExportFormat::Csv); return true; }
+        return false;
+    };
     FillWith(page, browseView_);
+
+    // The cell editor: a text field laid over the cell being edited, out of
+    // the page's flow, hidden until a double-click places it.
+    cellEditor_ = CreateTextInput("dbaCellEditor", 0, 0, 100, 24);
+    TextInputStyle editorStyle = TextInputStyle::FromTheme(UltraCanvasTheme::Current(), cellEditor_->GetStyle());
+    editorStyle.borderColor = editorStyle.focusBorderColor = UltraCanvasTheme::Current().roles.accent;
+    editorStyle.borderWidth = 2;
+    editorStyle.borderRadius = 2;
+    editorStyle.paddingLeft = editorStyle.paddingRight = 4;
+    editorStyle.paddingTop = editorStyle.paddingBottom = 1;
+    cellEditor_->SetStyle(editorStyle);
+    cellEditor_->SetShowValidationState(false);
+    cellEditor_->onEnterPressed = [this](const std::string&) { FinishCellEdit(true); return true; };
+    cellEditor_->onEscapePressed = [this]() { FinishCellEdit(false); return true; };
+    cellEditor_->onFocusLost = [this]() { FinishCellEdit(true); };
+    if (!cellEditor_->layoutItem.position) cellEditor_->layoutItem.position = CSSLayout::Position();
+    cellEditor_->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+    cellEditor_->SetVisible(false);
+    page->AddChild(cellEditor_);
+    browsePage_ = page;
     return page;
+}
+
+std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildFilterBar() {
+    auto bar = MakeToolbar("dbaFilterBar");
+    auto label = CreateLabel("dbaFilterLabel", 0, 0, 0, 24, "Filter");
+    label->SetTextColor(StatusColor());
+    label->layoutItem.SetFlexShrink(0);
+    bar->AddChild(label);
+
+    filterColumn_ = CreateDropdown("dbaFilterColumn", 0, 0, 150, kControlHeight);
+    filterColumn_->layoutItem.SetFlexShrink(0);
+    filterColumn_->SetFollowTheme(true);
+    filterColumn_->SetTooltip("The column to filter on: one filter per column, all of them must hold");
+    filterColumn_->onSelectionChanged = [this](int index, const DropdownItem&) { ShowFilterOf(index); };
+    bar->AddChild(filterColumn_);
+
+    filterOp_ = CreateDropdown("dbaFilterOp", 0, 0, 112, kControlHeight);
+    filterOp_->layoutItem.SetFlexShrink(0);
+    filterOp_->SetFollowTheme(true);
+    for (const FilterOp op : FilterOps()) filterOp_->AddItem(FilterOpText(op));
+    filterOp_->SetSelectedIndex(0, false);
+    filterOp_->onSelectionChanged = [this](int, const DropdownItem&) { UpdateFilterBar(); };
+    bar->AddChild(filterOp_);
+
+    filterValue_ = CreateTextInput("dbaFilterValue", 0, 0, 150, kControlHeight);
+    filterValue_->layoutItem.SetFlexShrink(0);
+    filterValue_->SetFollowTheme(true);
+    filterValue_->SetShowValidationState(false);
+    filterValue_->SetPlaceholder("value");
+    filterValue_->SetTooltip("Compared as the column's type: 100 with a number, 2026-01-31 with a date");
+    filterValue_->onEnterPressed = [this](const std::string&) { ApplyFilter(); return true; };
+    bar->AddChild(filterValue_);
+
+    filterApplyButton_ = MakeActionButton("dbaFilterApply", "Filter", "filter",
+                                          "Show only the rows this comparison holds for (Enter)");
+    filterApplyButton_->SetOnClick([this]() { ApplyFilter(); });
+    bar->AddChild(filterApplyButton_);
+
+    filterRemoveButton_ = MakeActionButton("dbaFilterRemove", "", "clear", "Drop the chosen column's filter");
+    filterRemoveButton_->SetOnClick([this]() { RemoveFilter(); });
+    bar->AddChild(filterRemoveButton_);
+
+    filterClearButton_ = MakeActionButton("dbaFilterClear", "Clear", "", "Drop every filter: all rows again");
+    filterClearButton_->SetOnClick([this]() { ClearFilters(); });
+    bar->AddChild(filterClearButton_);
+
+    filterSummary_ = MakeBarStatus("dbaFilterSummary");
+    bar->AddChild(filterSummary_);
+    return bar;
 }
 
 std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildEditBar() {
@@ -656,6 +739,19 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
     sqlResultModel_ = std::make_shared<ResultSetModel>();
     sqlResultProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(sqlResultModel_);
     sqlResultView_ = MakeList("dbaSqlRows", sqlResultProxy_);
+    sqlResultView_->SetSelection(std::make_shared<UltraCanvasMultiSelection>());
+    sqlResultView_->onContextMenu = [this](int row, const UCEvent& event) { ShowResultMenu(row, event); };
+    sqlResultView_->onCellDoubleClicked = [this](int row, int column, const Point2Di&) {
+        const UltraDbResultSet& rows = sqlResultModel_->Rows();
+        const int source = sqlResultProxy_->MapToSource(row);
+        if (source >= 0 && static_cast<size_t>(source) < rows.Size() &&
+            rows.Row(static_cast<size_t>(source))[static_cast<size_t>(column)].Type() == UltraDbType::Blob)
+            ViewBlob(row, column, true);
+    };
+    sqlResultView_->onKeyDown = [this](const UCEvent& event) {
+        if (event.ctrl && event.virtualKey == UCKeys::C) { CopyRows(RowsSource::Console, ExportFormat::Csv); return true; }
+        return false;
+    };
     UltraCanvasListView* rawView = sqlResultView_.get();
     UltraCanvasListSortFilterProxy* rawProxy = sqlResultProxy_.get();
     sqlResultView_->onHeaderClicked = [rawView, rawProxy](int column) {
@@ -978,6 +1074,7 @@ void DbAdminWindow::RefreshSelected() {
 // ===== BROWSE AND STRUCTURE =====
 
 void DbAdminWindow::ClearObject(const std::string& message) {
+    FinishCellEdit(false);
     ++objectGen_;
     ++viewGen_;
     objectConnectionId_.clear();
@@ -998,6 +1095,7 @@ void DbAdminWindow::ClearObject(const std::string& message) {
     browseNote_->SetText(message);
     browseNote_->SetTextColor(StatusColor());
     edits_ = EditBuffer();
+    FillFilterColumns();
     UpdateBrowseBar();
     UpdateEditBar();
     UpdateStructureBar();
@@ -1067,8 +1165,10 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
     if (!table.comment.empty()) info += " - " + table.comment;
     structureInfo_->SetText(info);
 
-    pager_ = std::make_shared<TablePager>(RegisteredName(*store_.Find(objectConnectionId_)), table, kPageSize);
+    pager_ = std::make_shared<TablePager>(RegisteredName(*store_.Find(objectConnectionId_)), table, kPageSize,
+                                          spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres);
     edits_ = EditBuffer(table);
+    FillFilterColumns();
     UpdateEditBar();
     UpdateStructureBar();
     LoadPage(0);
@@ -1092,6 +1192,7 @@ void DbAdminWindow::ApplySequence(uint64_t generation, const UltraDbResult& resu
 
 void DbAdminWindow::LoadPage(size_t page) {
     if (!pager_) return;
+    FinishCellEdit(true);          // the edit is the row's, by its key: it survives the page
     pageIndex_ = page;
     pageLoading_ = true;
     UpdateBrowseBar();
@@ -1141,7 +1242,7 @@ void DbAdminWindow::CountRows() {
     if (!pager_) return;
     rowCount_ = -1;
     UpdateBrowseBar();
-    const uint64_t generation = objectGen_;
+    const uint64_t generation = ++countGen_;
     std::shared_ptr<const TablePager> pager = pager_;
     Background([this, pager, generation]() -> std::function<void()> {
         int64_t rows = 0;
@@ -1151,7 +1252,7 @@ void DbAdminWindow::CountRows() {
 }
 
 void DbAdminWindow::ApplyCount(uint64_t generation, const UltraDbResult& result, int64_t rows) {
-    if (generation != objectGen_) return;
+    if (generation != countGen_ || !pager_) return;
     rowCount_ = result ? rows : -1;
     if (!result) SetStatus("Rows not counted: " + result.message, true);
     UpdateBrowseBar();
@@ -1186,6 +1287,7 @@ void DbAdminWindow::UpdateBrowseBar() {
         const int64_t last = first + static_cast<int64_t>(pageRows_) - 1;
         info = "Rows " + Grouped(first) + "–" + Grouped(last) + " of " +
                (rowCount_ >= 0 ? Grouped(rowCount_) : std::string("…"));
+        if (!pager_->Filters().empty()) info += " matching";
     }
     browseInfo_->SetText(info);
     prevButton_->SetDisabled(!open || pageLoading_ || pageIndex_ == 0);
@@ -1198,6 +1300,423 @@ void DbAdminWindow::UpdateBrowseBar() {
     importButton_->SetTooltip(ImportBlockReason().empty()
                                   ? std::string("Put the rows of a CSV file or a workbook into this table, all or none")
                                   : ImportBlockReason());
+    UpdateFilterBar();
+}
+
+// ===== FILTERS =====
+
+void DbAdminWindow::FillFilterColumns() {
+    if (!filterColumn_) return;
+    filterColumn_->ClearItems();
+    if (pager_) {
+        for (const auto& column : pager_->Table().columns) filterColumn_->AddItem(column.name);
+        if (!pager_->Table().columns.empty()) filterColumn_->SetSelectedIndex(0, false);
+    }
+    filterValue_->SetText("");
+    UpdateFilterBar();
+}
+
+void DbAdminWindow::ShowFilterOf(int column) {
+    if (!pager_ || column < 0 || static_cast<size_t>(column) >= pager_->Table().columns.size()) return;
+    // The column's filter to change, or an empty value to type one for it.
+    const std::string& name = pager_->Table().columns[static_cast<size_t>(column)].name;
+    filterValue_->SetText("");
+    for (const auto& filter : pager_->Filters()) {
+        if (filter.column != name) continue;
+        const auto& ops = FilterOps();
+        const auto at = std::find(ops.begin(), ops.end(), filter.op);
+        filterOp_->SetSelectedIndex(static_cast<int>(at - ops.begin()), false);
+        filterValue_->SetText(filter.value);
+        break;
+    }
+    UpdateFilterBar();
+}
+
+void DbAdminWindow::ApplyFilter() {
+    if (!pager_) return;
+    const int column = filterColumn_->GetSelectedIndex();
+    const int op = filterOp_->GetSelectedIndex();
+    if (column < 0 || static_cast<size_t>(column) >= pager_->Table().columns.size() || op < 0 ||
+        static_cast<size_t>(op) >= FilterOps().size())
+        return;
+    ColumnFilter filter;
+    filter.column = pager_->Table().columns[static_cast<size_t>(column)].name;
+    filter.op = FilterOps()[static_cast<size_t>(op)];
+    if (FilterTakesValue(filter.op)) filter.value = filterValue_->GetText();
+    auto filtered = std::make_shared<TablePager>(*pager_);
+    std::string error;
+    if (!filtered->SetFilter(filter, error)) { SetStatus(error, true); return; }
+    ReplacePager(filtered);
+    SetStatus("Filtered: " + FilterText(filter) + ".");
+}
+
+void DbAdminWindow::RemoveFilter() {
+    if (!pager_) return;
+    const int column = filterColumn_->GetSelectedIndex();
+    if (column < 0 || static_cast<size_t>(column) >= pager_->Table().columns.size()) return;
+    auto filtered = std::make_shared<TablePager>(*pager_);
+    filtered->RemoveFilter(pager_->Table().columns[static_cast<size_t>(column)].name);
+    filterValue_->SetText("");
+    ReplacePager(filtered);
+}
+
+void DbAdminWindow::ClearFilters() {
+    if (!pager_ || pager_->Filters().empty()) return;
+    auto all = std::make_shared<TablePager>(*pager_);
+    all->ClearFilters();
+    filterValue_->SetText("");
+    ReplacePager(all);
+    SetStatus("Every row again: no filter.");
+}
+
+void DbAdminWindow::ReplacePager(std::shared_ptr<TablePager> pager) {
+    pager_ = std::move(pager);
+    ++viewGen_;
+    LoadPage(0);
+    CountRows();
+    UpdateFilterBar();
+}
+
+void DbAdminWindow::UpdateFilterBar() {
+    if (!filterSummary_) return;
+    const bool table = pager_ != nullptr;
+    const int column = filterColumn_->GetSelectedIndex();
+    const int op = filterOp_->GetSelectedIndex();
+    const bool takesValue = op < 0 || static_cast<size_t>(op) >= FilterOps().size() ||
+                            FilterTakesValue(FilterOps()[static_cast<size_t>(op)]);
+    bool columnFiltered = false;
+    std::string summary;
+    if (table) {
+        const std::string name = column >= 0 && static_cast<size_t>(column) < pager_->Table().columns.size()
+                                     ? pager_->Table().columns[static_cast<size_t>(column)].name
+                                     : std::string();
+        for (const auto& filter : pager_->Filters()) {
+            if (filter.column == name) columnFiltered = true;
+            summary += (summary.empty() ? "" : "  and  ") + FilterText(filter);
+        }
+    }
+    filterColumn_->SetDisabled(!table);
+    filterOp_->SetDisabled(!table);
+    filterValue_->SetDisabled(!table || !takesValue);
+    filterApplyButton_->SetDisabled(!table);
+    filterRemoveButton_->SetDisabled(!columnFiltered);
+    filterClearButton_->SetDisabled(!table || pager_->Filters().empty());
+    filterSummary_->SetText(summary.empty() ? (table ? "All rows" : "") : summary);
+    filterSummary_->SetTooltip(summary);
+    filterSummary_->SetTextColor(summary.empty() ? StatusColor() : UltraCanvasTheme::Current().roles.accentHover);
+}
+
+// ===== IN THE CELL =====
+
+const UltraDbColumnSchema* DbAdminWindow::BrowseColumn(int column) const {
+    const auto& columns = browseModel_->Rows().Columns();
+    if (!pager_ || column < 0 || static_cast<size_t>(column) >= columns.size()) return nullptr;
+    for (const auto& c : pager_->Table().columns)
+        if (c.name == columns[static_cast<size_t>(column)]) return &c;
+    return nullptr;
+}
+
+// A blob column by its declared type (BLOB, bytea) - an empty cell of one
+// still takes a file - or a cell that holds bytes.
+bool DbAdminWindow::IsBlobColumn(int column) const {
+    if (const UltraDbColumnSchema* schema = BrowseColumn(column)) {
+        std::string type = schema->declaredType;
+        for (auto& c : type)
+            if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
+        if (type.find("blob") != std::string::npos || type == "bytea") return true;
+    }
+    const UltraDbResultSet& rows = browseModel_->Rows();
+    for (size_t r = 0; r < rows.Size(); ++r)
+        if (static_cast<size_t>(column) < rows.Row(r).Size() &&
+            rows.Row(r)[static_cast<size_t>(column)].Type() == UltraDbType::Blob)
+            return true;
+    return false;
+}
+
+void DbAdminWindow::BeginCellEdit(int row, int column) {
+    FinishCellEdit(true);
+    const UltraDbResultSet& rows = browseModel_->Rows();
+    if (row < 0 || static_cast<size_t>(row) >= rows.Size()) return;
+    const UltraDbColumnSchema* schema = BrowseColumn(column);
+    if (!schema) return;
+    if (IsBlobColumn(column)) { ViewBlob(row, column, false); return; }   // bytes are not typed
+    const std::string blocked = EditBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    if (schema->generated) { SetStatus(schema->name + " is computed by the database and cannot be set."); return; }
+    const UltraDbRow& original = rows.Row(static_cast<size_t>(row));
+    if (edits_.PendingDelete(original)) { SetStatus("This row is to be deleted; Revert to keep it."); return; }
+
+    // What the cell holds now: a staged value first, else the value as read.
+    std::string text;
+    if (const CellValue* staged = edits_.PendingCell(original, schema->name)) {
+        if (staged->kind == CellValue::Kind::Text) text = staged->text;
+    } else if (!original[schema->name].IsNull()) {
+        text = original[schema->name].AsString();
+    }
+    // The whole cell in view first: a double-click reaches a cell half off
+    // the grid's edge, and the editor laid over it would hang off it too.
+    browseView_->EnsureColumnVisible(column);
+    const Rect2Di cell = browseView_->GetCellRect(row, column);
+    if (cell.height <= 0) return;
+    const Point2Df view = browseView_->GetPositionInWindow();
+    const Point2Df page = browsePage_->GetPositionInWindow();
+    cellEditor_->layoutItem.position->left = CSSLayout::Dimension::Px(view.x + cell.x - page.x);
+    cellEditor_->layoutItem.position->top = CSSLayout::Dimension::Px(view.y + cell.y - page.y);
+    cellEditor_->SetElementSize(CSSLayout::Dimension::Px(static_cast<float>(std::max(cell.width, 80))),
+                                CSSLayout::Dimension::Px(static_cast<float>(cell.height)));
+    cellRow_ = original;
+    cellColumn_ = schema->name;
+    cellGen_ = objectGen_;
+    cellEditing_ = true;
+    cellEditor_->SetText(text);
+    cellEditor_->SetVisible(true);
+    browsePage_->InvalidateLayout();
+    cellEditor_->SetFocus(true);
+    cellEditor_->SelectAll();
+    SetStatus("Editing " + schema->name + ": Enter stages the value, Escape leaves the cell as it was.");
+}
+
+void DbAdminWindow::FinishCellEdit(bool keep) {
+    if (!cellEditing_) return;
+    cellEditing_ = false;          // first: moving the focus calls here again
+    const std::string text = cellEditor_->GetText();
+    // Ended by a key, the grid takes the keyboard back; ended by a click
+    // elsewhere, the focus stays where it went.
+    if (cellEditor_->IsFocused() && browseView_) browseView_->SetFocus(true);
+    cellEditor_->SetVisible(false);
+    browsePage_->InvalidateLayout();
+    if (!keep || cellGen_ != objectGen_) return;
+    // An empty field over a NULL that nothing staged leaves it NULL: "Set to
+    // NULL" is the way to empty a cell, and an empty text is typed only where
+    // one was.
+    if (text.empty() && cellRow_[cellColumn_].IsNull() && !edits_.PendingCell(cellRow_, cellColumn_)) return;
+    std::string error;
+    if (!edits_.UpdateRow(cellRow_, {{cellColumn_, CellValue::Of(text)}}, error)) {
+        SetStatus(error, true);
+        return;
+    }
+    AfterEdit();
+    SetStatus(cellColumn_ + " staged. Commit writes it, Revert drops it.");
+}
+
+void DbAdminWindow::SetCellNull(int row, int column) {
+    const std::string blocked = EditBlockReason();
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const UltraDbColumnSchema* schema = BrowseColumn(column);
+    if (!schema || row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) return;
+    if (!schema->nullable) { SetStatus(schema->name + " is NOT NULL: it must hold a value.", true); return; }
+    std::string error;
+    if (!edits_.UpdateRow(browseModel_->Rows().Row(static_cast<size_t>(row)), {{schema->name, CellValue::NullValue()}},
+                          error)) {
+        SetStatus(error, true);
+        return;
+    }
+    AfterEdit();
+}
+
+// ===== BLOBS =====
+
+void DbAdminWindow::ViewBlob(int row, int column, bool console) {
+    std::vector<uint8_t> bytes;
+    std::string title;
+    if (console) {
+        const int source = sqlResultProxy_->MapToSource(row);
+        const UltraDbResultSet& rows = sqlResultModel_->Rows();
+        if (source < 0 || static_cast<size_t>(source) >= rows.Size()) return;
+        const UltraDbValue& value = rows.Row(static_cast<size_t>(source))[static_cast<size_t>(column)];
+        if (value.Type() != UltraDbType::Blob) return;
+        bytes = value.AsBlob();
+        title = rows.Columns()[static_cast<size_t>(column)] + " of result row " + std::to_string(row + 1);
+        ShowBlobDialog(window_.get(), title, bytes, [this, bytes, title]() { SaveBlob(bytes, title); }, nullptr);
+        return;
+    }
+    const UltraDbColumnSchema* schema = BrowseColumn(column);
+    if (!schema || row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) return;
+    const UltraDbRow& original = browseModel_->Rows().Row(static_cast<size_t>(row));
+    const CellValue* staged = edits_.PendingCell(original, schema->name);
+    if (staged && staged->kind == CellValue::Kind::Blob) {
+        bytes = staged->bytes;
+    } else if (!staged && original[schema->name].Type() == UltraDbType::Blob) {
+        bytes = original[schema->name].AsBlob();
+    }
+    const bool editable = EditBlockReason().empty() && !schema->generated && !edits_.PendingDelete(original);
+    std::function<void()> load;
+    if (editable) load = [this, row, column]() { LoadBlob(row, column); };
+    if (bytes.empty() && (staged ? staged->kind == CellValue::Kind::Null : original[schema->name].IsNull())) {
+        // Nothing to look at: straight to choosing a file, where one may go.
+        if (load) load();
+        else SetStatus(schema->name + " is NULL here.");
+        return;
+    }
+    title = schema->name + " of row " + std::to_string(pageIndex_ * kPageSize + static_cast<size_t>(row) + 1);
+    const std::string name = schema->name;
+    ShowBlobDialog(window_.get(), title, bytes, [this, bytes, name]() { SaveBlob(bytes, name); }, load);
+}
+
+void DbAdminWindow::SaveBlob(const std::vector<uint8_t>& bytes, const std::string& name) {
+    // The bytes as they are, under the extension their kind has.
+    const BlobKind kind = SniffBlob(bytes);
+    std::string base;
+    for (const char c : name) base += (c == '/' || c == '\\' || c == ':' || c == ' ') ? '_' : c;
+    FileDialogOptions options;
+    options.SetTitle("Save " + name).SetDefaultFileName(base + "." + kind.extension).SetParentWindow(window_.get());
+    options.AddFilter(kind.name + " (." + kind.extension + ")", std::vector<std::string>{kind.extension});
+    options.AddFilter("All files", std::vector<std::string>{"*"});
+    UltraCanvasFileLoader::SaveFileDialog(options, [this, bytes](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty()) return;
+        std::string error;
+        if (!UltraCanvasFileLoader::SaveFile(path, bytes, error)) {
+            SetStatus("Not saved: " + error, true);
+            return;
+        }
+        SetStatus(PathToUtf8(PathFromUtf8(path).filename()) + " saved, " +
+                  HumanSize(static_cast<int64_t>(bytes.size())) + ".");
+    });
+}
+
+void DbAdminWindow::LoadBlob(int row, int column) {
+    const UltraDbColumnSchema* schema = BrowseColumn(column);
+    if (!schema || row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) return;
+    const UltraDbRow original = browseModel_->Rows().Row(static_cast<size_t>(row));
+    const std::string name = schema->name;
+    const uint64_t generation = objectGen_;
+    FileDialogOptions options;
+    options.SetTitle("Load a file into " + name).SetParentWindow(window_.get());
+    options.AddFilter("All files", std::vector<std::string>{"*"});
+    UltraCanvasFileLoader::OpenFileDialog(options, [this, original, name, generation](DialogResult result,
+                                                                                      const std::string& path) {
+        if (result != DialogResult::OK || path.empty() || generation != objectGen_) return;
+        // The file as it is on disk: a .gz is a blob's content too, not a
+        // wrapper to unpack.
+        const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path, false);
+        if (!file.success) { SetStatus("Not loaded: " + file.error, true); return; }
+        std::string error;
+        if (!edits_.UpdateRow(original, {{name, CellValue::BlobValue(file.bytes)}}, error)) {
+            SetStatus(error, true);
+            return;
+        }
+        AfterEdit();
+        SetStatus(PathToUtf8(PathFromUtf8(path).filename()) + " (" + HumanSize(static_cast<int64_t>(file.bytes.size())) +
+                  ") staged for " + name + ". Commit writes it.");
+    });
+}
+
+// ===== COPY =====
+
+void DbAdminWindow::ShowBrowseMenu(int row, const UCEvent& event) {
+    if (!window_ || browseModel_->Rows().Columns().empty()) return;
+    const int column = browseView_->GetColumnAt(event.pointer.x);
+    const UltraDbColumnSchema* schema = BrowseColumn(column);
+    const bool onRow = row >= 0 && static_cast<size_t>(row) < browseModel_->Rows().Size();
+    const bool editable = EditBlockReason().empty();
+    const size_t selected = browseView_->GetSelection() ? browseView_->GetSelection()->GetSelectedRows().size() : 0;
+    menu_ = std::make_shared<UltraCanvasMenu>("dbaBrowseMenu", 0, 0, 260, 0);
+    menu_->SetMenuType(MenuType::PopupMenu);
+    if (onRow && schema) {
+        if (IsBlobColumn(column)) {
+            menu_->AddItem(MenuItemData::Action("View " + schema->name, [this, row, column]() { ViewBlob(row, column, false); }));
+            const UltraDbValue& value = browseModel_->Rows().Row(static_cast<size_t>(row))[schema->name];
+            if (value.Type() == UltraDbType::Blob) {
+                const std::vector<uint8_t> bytes = value.AsBlob();
+                const std::string name = schema->name;
+                menu_->AddItem(MenuItemData::Action("Save " + name + " to a file", [this, bytes, name]() { SaveBlob(bytes, name); }));
+            }
+            if (editable && !schema->generated)
+                menu_->AddItem(MenuItemData::Action("Load a file into " + schema->name,
+                                                    [this, row, column]() { LoadBlob(row, column); }));
+        } else if (editable && !schema->generated) {
+            menu_->AddItem(MenuItemData::ActionWithShortcut("Edit " + schema->name, "Double-click",
+                                                            [this, row, column]() { BeginCellEdit(row, column); }));
+        }
+        if (editable && !schema->generated && schema->nullable)
+            menu_->AddItem(MenuItemData::Action("Set " + schema->name + " to NULL",
+                                                [this, row, column]() { SetCellNull(row, column); }));
+        menu_->AddItem(MenuItemData::Separator());
+    }
+    const std::string rows = selected == 1 ? std::string("the row") : std::to_string(selected) + " rows";
+    if (selected > 0) {
+        menu_->AddItem(MenuItemData::ActionWithShortcut("Copy " + rows + " as CSV", "Ctrl+C",
+                                                        [this]() { CopyRows(RowsSource::Browse, ExportFormat::Csv); }));
+        menu_->AddItem(MenuItemData::Action("Copy " + rows + " as JSON",
+                                            [this]() { CopyRows(RowsSource::Browse, ExportFormat::Json); }));
+        menu_->AddItem(MenuItemData::Action("Copy " + rows + " as SQL INSERT",
+                                            [this]() { CopyRows(RowsSource::Browse, ExportFormat::Sql); }));
+    }
+    if (onRow && editable) {
+        menu_->AddItem(MenuItemData::Separator());
+        menu_->AddItem(MenuItemData::Action("Edit row", [this, row]() { EditRow(row); }));
+        menu_->AddItem(MenuItemData::Action("Delete row", [this]() { DeleteSelectedRow(); }));
+    }
+    PopupElementSettings settings;
+    menu_->OpenMenu(event.pointerWindow, *window_, settings);
+}
+
+void DbAdminWindow::ShowResultMenu(int row, const UCEvent& event) {
+    if (!window_ || sqlResultModel_->Rows().Columns().empty()) return;
+    const int column = sqlResultView_->GetColumnAt(event.pointer.x);
+    const size_t selected = sqlResultView_->GetSelection() ? sqlResultView_->GetSelection()->GetSelectedRows().size() : 0;
+    menu_ = std::make_shared<UltraCanvasMenu>("dbaResultMenu", 0, 0, 260, 0);
+    menu_->SetMenuType(MenuType::PopupMenu);
+    const int source = row >= 0 ? sqlResultProxy_->MapToSource(row) : -1;
+    const UltraDbResultSet& rows = sqlResultModel_->Rows();
+    if (source >= 0 && static_cast<size_t>(source) < rows.Size() && column >= 0 &&
+        rows.Row(static_cast<size_t>(source))[static_cast<size_t>(column)].Type() == UltraDbType::Blob) {
+        const std::string name = rows.Columns()[static_cast<size_t>(column)];
+        const std::vector<uint8_t> bytes = rows.Row(static_cast<size_t>(source))[static_cast<size_t>(column)].AsBlob();
+        menu_->AddItem(MenuItemData::Action("View " + name, [this, row, column]() { ViewBlob(row, column, true); }));
+        menu_->AddItem(MenuItemData::Action("Save " + name + " to a file", [this, bytes, name]() { SaveBlob(bytes, name); }));
+        menu_->AddItem(MenuItemData::Separator());
+    }
+    if (selected == 0) return;
+    const std::string what = selected == 1 ? std::string("the row") : std::to_string(selected) + " rows";
+    menu_->AddItem(MenuItemData::ActionWithShortcut("Copy " + what + " as CSV", "Ctrl+C",
+                                                    [this]() { CopyRows(RowsSource::Console, ExportFormat::Csv); }));
+    menu_->AddItem(MenuItemData::Action("Copy " + what + " as JSON",
+                                        [this]() { CopyRows(RowsSource::Console, ExportFormat::Json); }));
+    menu_->AddItem(MenuItemData::Action("Copy " + what + " as SQL INSERT",
+                                        [this]() { CopyRows(RowsSource::Console, ExportFormat::Sql); }));
+    PopupElementSettings settings;
+    menu_->OpenMenu(event.pointerWindow, *window_, settings);
+}
+
+void DbAdminWindow::CopyRows(RowsSource source, ExportFormat format) {
+    const bool console = source == RowsSource::Console;
+    const UltraDbResultSet& all = console ? sqlResultModel_->Rows() : browseModel_->Rows();
+    UltraCanvasListView* view = console ? sqlResultView_.get() : browseView_.get();
+    IListSelection* selection = view ? view->GetSelection() : nullptr;
+    if (!selection || all.Columns().empty()) return;
+    std::vector<int> picked = selection->GetSelectedRows();
+    std::sort(picked.begin(), picked.end());
+    std::vector<UltraDbRow> rows;
+    for (const int row : picked) {
+        const int index = console ? sqlResultProxy_->MapToSource(row) : row;
+        if (index >= 0 && static_cast<size_t>(index) < all.Size()) rows.push_back(all.Row(static_cast<size_t>(index)));
+    }
+    if (rows.empty()) { SetStatus("Select the rows to copy (Ctrl+click, Shift+click for more)."); return; }
+
+    // The INSERTs go back where the rows came from: Browse's table, or the
+    // table the console's SELECT read; a result of no one table is named
+    // "result", to be changed.
+    const ConnectionSpec* spec = store_.Find(console ? sqlConnectionId_ : objectConnectionId_);
+    const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+    std::string table;
+    if (!console && pager_) {
+        table = QuotedName(pager_->Table().schema) + "." + QuotedName(pager_->Table().name);
+    } else if (console) {
+        const UltraDbStatementResult* statement = statementModel_->At(shownStatement_);
+        if (statement) table = StatementTable(statement->sql);
+        if (table.empty()) table = QuotedName("result");
+    }
+    const std::string text = RowsText(all.Columns(), rows, format, engine, table);
+    if (!SetClipboardText(text)) { SetStatus("The clipboard cannot be reached.", true); return; }
+    const char* as = format == ExportFormat::Csv ? "CSV" : format == ExportFormat::Json ? "JSON" : "SQL INSERT statements";
+    const std::string message = std::to_string(rows.size()) + (rows.size() == 1 ? " row" : " rows") + " copied as " + as + ".";
+    if (console) {
+        sqlInfo_->SetText(message);
+        sqlInfo_->SetTextColor(StatusColor());
+    } else {
+        SetStatus(message);
+    }
 }
 
 // ===== EDITING =====
@@ -1431,7 +1950,7 @@ void DbAdminWindow::UpdateEditBar() {
         for (size_t i = 0; i < parts.size(); ++i) text += (i == 0 ? "" : ", ") + parts[i];
         text += committing_ ? " - committing…" : " - not yet written";
     } else {
-        text = editable ? std::string("Double-click a row to edit it.") : blocked;
+        text = editable ? std::string("Double-click a cell to edit it; right-click for more.") : blocked;
     }
     pendingLabel_->SetText(text);
     pendingLabel_->SetTooltip(text);
@@ -2077,16 +2596,20 @@ void DbAdminWindow::RunExport(ExportSource source, const std::string& path, Expo
     }
 
     const UltraDbTableSchema table = pager_->Table();
+    const std::shared_ptr<const TablePager> pager = pager_;   // its filters and order: what Browse shows
     const std::shared_ptr<std::atomic<bool>> stop = exportStop_;
     const bool sqlite = spec->IsSqlite();
     // One job on the queue, through a cursor: a page at a time, never the whole table.
-    Background([this, connection, table, path, options, workbook, stop, progress, sqlite]() mutable -> std::function<void()> {
+    Background([this, connection, table, pager, path, options, workbook, stop, progress, sqlite]() mutable
+               -> std::function<void()> {
         std::string sql;
-        UltraDbResult result = TableQuery(connection, table, sql);
+        UltraDbParams params;
+        UltraDbResult result = pager->QuerySql(sql, params);
         if (result && workbook) {
             UltraDbResultSet rows;
             bool truncated = false;
-            result = ReadRows(connection, sql, static_cast<size_t>(SpreadsheetLimits::MaxRows - 1), rows, truncated);
+            result = ReadRows(connection, sql, static_cast<size_t>(SpreadsheetLimits::MaxRows - 1), rows, truncated,
+                              params);
             return [this, result, rows, path, truncated, table]() {
                 if (!result) { FinishExport(result, 0, path, false); return; }
                 std::string error;
@@ -2103,7 +2626,7 @@ void DbAdminWindow::RunExport(ExportSource source, const std::string& path, Expo
                                    " only: its definition is pg_dump --schema-only's to write.\n";
         }
         size_t written = 0;
-        if (result) result = ExportQuery(connection, sql, path, options, written, stop.get(), progress);
+        if (result) result = ExportQuery(connection, sql, path, options, written, stop.get(), progress, params);
         return [this, result, written, path]() { FinishExport(result, written, path, false); };
     });
 }
@@ -2218,6 +2741,7 @@ void DbAdminWindow::ApplyOutcome(const std::string& connectionId, const RunOutco
 }
 
 void DbAdminWindow::ShowStatementRows(int row) {
+    shownStatement_ = row;
     sqlResultProxy_->ClearSort();
     sqlResultView_->ClearSortIndicator();
     const UltraDbStatementResult* statement = statementModel_->At(row);

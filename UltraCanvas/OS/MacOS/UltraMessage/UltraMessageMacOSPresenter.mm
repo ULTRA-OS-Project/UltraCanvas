@@ -269,7 +269,7 @@ public:
                 delegate = delegate_;
                 delegate_ = nil;
             }
-            mode_.store(Mode::None);
+            mode_.store(Mode::Off);
             if (sink) sink->Detach();
             // Whatever the queue was doing is done; what is queued after this
             // finds the sink detached and does nothing.
@@ -286,7 +286,7 @@ public:
     }
 
     bool Present(const UltraMsgMessage& notification) override {
-        if (mode_.load() == Mode::None) return false;
+        if (mode_.load() == Mode::Off) return false;
         PresentedContent content;
         if (!ReadPresentedContent(notification, CurrentProcessId(), content)) return false;
         dispatch_queue_t queue = nil;
@@ -328,7 +328,7 @@ public:
     }
 
 private:
-    enum class Mode { None, NotificationCenter, Script };
+    enum class Mode { Off, NotificationCenter, Script };
     enum class Permission { Unknown, Asking, Granted, Denied };
 
     // Runs `work` on the queue unless the adapter stopped in the meantime.
@@ -480,7 +480,7 @@ private:
     void Denied() {
         permission_ = Permission::Denied;
         waiting_.clear();
-        mode_.store(Mode::None);
+        mode_.store(Mode::Off);
         const std::string app = ApplicationName();
         SetState(UltraMsgAdapterStatus::NeedsPermission,
                  "notifications are not allowed for " + app + ": applications' notifications reach the feed only",
@@ -491,7 +491,7 @@ private:
 
     void StartScript(const std::string& why) {
         if (access(kOsascript, X_OK) != 0) {
-            mode_.store(Mode::None);
+            mode_.store(Mode::Off);
             waiting_.clear();
             SetState(UltraMsgAdapterStatus::Unavailable,
                      why + ", and there is no " + kOsascript + " to show notifications with",
@@ -524,7 +524,7 @@ private:
                     while (waiting_.size() > kMaxWaiting) waiting_.pop_front();
                 }
                 break;
-            case Mode::None:
+            case Mode::Off:
                 break;
         }
     }
@@ -675,7 +675,7 @@ private:
     }
 
     IAdapterHost* host_ = nullptr;
-    std::atomic<Mode> mode_{Mode::None};
+    std::atomic<Mode> mode_{Mode::Off};
 
     mutable std::mutex stateMutex_;
     UltraMsgAdapterState state_;

@@ -1,3 +1,11 @@
+#### 2026-10-22 *0.7.2*
+- **The bin's notes read whole.** The sentence at the top of the *Titles*
+  and *Effects* tabs and each title style's hint wrap to the bin's width,
+  as tall as their text, instead of ending in an ellipsis.
+- A tile's drag from the bin goes the way an effect's and a title's do: the
+  press arms it, moving away starts it, `Esc` lets go (`UltraCanvasAlbum`
+  1.11.0, `onItemPressed`).
+
 #### 2026-10-21 *0.7.1*
 - **Titles dragged onto their lane.** A title style in the bin's *Titles*
   tab is dragged from its button onto the title lane at a time: the lane

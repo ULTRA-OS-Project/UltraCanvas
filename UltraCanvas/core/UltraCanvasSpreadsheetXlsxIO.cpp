@@ -135,7 +135,7 @@ BorderStyle BorderStyleFromName(const std::string& name) {
     if (name == "dashDot") return BorderStyle::DashDot;
     if (name == "mediumDashDot") return BorderStyle::MediumDashDot;
     if (name == "dashDotDot") return BorderStyle::DashDotDot;
-    if (name.empty() || name == "none") return BorderStyle::None;
+    if (name.empty() || name == "none") return BorderStyle::NoBorder;
     return BorderStyle::Thin;
 }
 
@@ -891,7 +891,7 @@ private:
             if (font.italic) fonts << "<i/>";
             if (font.strikethrough) fonts << "<strike/>";
             if (font.underline == UnderlineStyle::Double) fonts << "<u val=\"double\"/>";
-            else if (font.underline != UnderlineStyle::None) fonts << "<u/>";
+            else if (font.underline != UnderlineStyle::NoUnderline) fonts << "<u/>";
             fonts << "<sz val=\"" << font.size << "\"/>"
                   << "<color rgb=\"" << ColorToArgb(font.color) << "\"/>"
                   << "<name val=\"" << XmlEscape(font.family) << "\"/></font>";

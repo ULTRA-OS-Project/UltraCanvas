@@ -75,6 +75,7 @@ planned (see the status table below).
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
+| Cookies | A browser's cookie jar with the rules in the open (RFC 6265bis): what `Set-Cookie` stores and the `Cookie` header a request carries, `Domain` / `Path` / `Secure` / `SameSite` / prefixes, expiry, no third-party cookies, kept in a text file - for a client that follows redirects itself and must apply each hop's cookies (UltraWeb) | `UltraNet/UltraNetCookieJar.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
@@ -322,6 +323,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetTls.h
 │   ├── UltraNetDns.h
 │   ├── UltraNetCookies.h
+│   ├── UltraNetCookieJar.h
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
 │   ├── UltraNetOAuth2Service.h

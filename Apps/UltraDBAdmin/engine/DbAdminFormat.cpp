@@ -21,7 +21,7 @@ std::string HumanSize(int64_t bytes) {
 std::string CellText(const UltraDbValue& value, size_t maxChars) {
     switch (value.Type()) {
         case UltraDbType::Null: return NullText();
-        case UltraDbType::Bool: return value.AsBool() ? "true" : "false";
+        case UltraDbType::Boolean: return value.AsBool() ? "true" : "false";
         case UltraDbType::Blob:
             return "<blob, " + HumanSize(static_cast<int64_t>(value.AsBlob().size())) + ">";
         case UltraDbType::Int:

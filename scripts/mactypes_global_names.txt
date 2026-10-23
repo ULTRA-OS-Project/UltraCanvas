@@ -1,0 +1,144 @@
+# Names <MacTypes.h> (CoreServices, reached by every Foundation import) puts at
+# global scope, so a .mm file sees them in whatever C++ header it includes.
+# `global Name` is a typedef, a struct, a Str255-style array type, an inline
+# function or an anonymous-enum constant (Rect, Point, Boolean, Byte, Size,
+# Handle, Ptr, Fixed, Style, OSErr, UInt8, noErr, bold, italic, ...): a
+# FILE-SCOPE declaration of ours with that name redefines it - inside a
+# namespace, a class or an enum class it is free. `macro Name` is an
+# object-like macro (kInvalidID) that rewrites the name in every scope.
+# Read by scripts/check_platform_names.py (objc), together with the
+# Objective-C runtime's own id / Class / SEL / IMP / BOOL / Protocol and
+# YES / NO / nil / Nil. Generated from the macOS SDK's usr/include/MacTypes.h
+# (byte-identical in the 10.15 and 11.3 SDKs; `Length`, `Debugger68k` and
+# `StrLength` as a macro are left out because a C++ translation unit never
+# sees them). Regenerate with:
+#     python3 scripts/check_platform_names.py --platform objc --generate-names <SDK>/usr/include/MacTypes.h
+macro kInvalidID
+global AbsoluteTime
+global Boolean
+global Byte
+global ByteCount
+global ByteOffset
+global BytePtr
+global CharParameter
+global CompTimeValue
+global ConstLogicalAddress
+global ConstStr15Param
+global ConstStr255Param
+global ConstStr27Param
+global ConstStr31Param
+global ConstStr32Param
+global ConstStr63Param
+global ConstStrFileNameParam
+global ConstStringPtr
+global Duration
+global Fixed
+global FixedPoint
+global FixedPtr
+global FixedRect
+global Float32
+global Float32Point
+global Float64
+global Float80
+global Float96
+global FourCharCode
+global Fract
+global FractPtr
+global Handle
+global ItemCount
+global LangCode
+global LogicalAddress
+global NumVersion
+global NumVersionVariant
+global NumVersionVariantHandle
+global NumVersionVariantPtr
+global OSErr
+global OSStatus
+global OSType
+global OSTypePtr
+global OptionBits
+global PBVersion
+global PRefCon
+global PhysicalAddress
+global Point
+global PointPtr
+global ProcHandle
+global ProcessSerialNumber
+global ProcessSerialNumberPtr
+global Ptr
+global Rect
+global RectPtr
+global RegionCode
+global ResType
+global ResTypePtr
+global SInt16
+global SInt32
+global SInt64
+global SInt8
+global SRefCon
+global ScriptCode
+global ShortFixed
+global ShortFixedPtr
+global SignedByte
+global Size
+global Str15
+global Str255
+global Str27
+global Str31
+global Str32
+global Str32Field
+global Str63
+global StrFileName
+global StrLength
+global StringHandle
+global StringPtr
+global Style
+global StyleField
+global StyleParameter
+global TimeBase
+global TimeRecord
+global TimeScale
+global TimeValue
+global TimeValue64
+global UInt16
+global UInt32
+global UInt64
+global UInt8
+global URefCon
+global UTF16Char
+global UTF32Char
+global UTF8Char
+global UniChar
+global UniCharCount
+global UniCharCountPtr
+global UniCharPtr
+global UnicodeScalarValue
+global UniversalProcHandle
+global UniversalProcPtr
+global UnsignedFixed
+global UnsignedFixedPtr
+global UnsignedWide
+global UnsignedWidePtr
+global VHSelect
+global VersRec
+global VersRecHndl
+global VersRecPtr
+global WidePtr
+global alphaStage
+global betaStage
+global bold
+global condense
+global developStage
+global extend
+global extended80
+global extended96
+global finalStage
+global italic
+global kNilOptions
+global kUnknownType
+global noErr
+global normal
+global outline
+global shadow
+global underline
+global wide
