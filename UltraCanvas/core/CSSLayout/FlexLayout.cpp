@@ -4,7 +4,8 @@
 // justify-content, align-items, align-self, align-content (no Baseline).
 // Version: 1.6.2 - a line wider than an AtMost main extent is shrunk to it when
 //                 measured, as it is when arranged (a row of a column came out
-//                 a wrapped line too short)
+//                 a wrapped line too short) - no item below its min-content
+//                 width, so a row of counters still overflows whole
 // Version: 1.6.1 - a wrapping row breaks its lines at an AtMost main extent
 //                 too, so a column measuring it gets every line's height.
 // Version: 1.6.0 - widthSetByParent: an Exact width is the container's used width
@@ -599,8 +600,23 @@ namespace UltraCanvas {
                             float lineMain = s.mainGap * (float)(line.items.size() - 1);
                             for (auto* it : line.items)
                                 lineMain += it->hypoMain + it->marginMainStart + it->marginMainEnd;
-                            if (lineMain > s.availableMain + 0.001f)
+                            if (lineMain > s.availableMain + 0.001f) {
+                                // No item below its min-content width (CSS's
+                                // automatic minimum): text that wraps shrinks
+                                // to its longest word, a counter or a button
+                                // keeps its width and the line overflows, as
+                                // before, rather than cutting its text.
+                                std::vector<float> ownMin;
+                                ownMin.reserve(line.items.size());
+                                for (auto* it : line.items) {
+                                    ownMin.push_back(it->minMain);
+                                    if (s.axis.isRow && it->el->intrinsic.valid)
+                                        it->minMain = std::max(it->minMain,
+                                            std::min(it->hypoMain, it->el->intrinsic.minContentWidth));
+                                }
                                 resolveFlexibleLengths(line.items, s.availableMain, s.mainGap);
+                                for (size_t i = 0; i < line.items.size(); ++i) line.items[i]->minMain = ownMin[i];
+                            }
                         }
                     }
 

@@ -6,3 +6,7 @@
   laid out at that height, cut the last line off when it was arranged at the
   real width. The line is shrunk to the width as it is when arranged
   (fit-content). `CSSLayoutTests` covers it.
+  No item is shrunk below its min-content width there (CSS's automatic
+  minimum): wrapping text shrinks to its longest word, while a counter or a
+  button keeps its width and a row too wide for its card still overflows
+  whole (`CSSLayoutAutoExpandTest`).
