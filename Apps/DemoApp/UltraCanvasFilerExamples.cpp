@@ -3,12 +3,17 @@
 // view types (details / list / thumbnails / bar size / treemap), sortable
 // columns, a file type filter that hides or greys out the other types, the
 // hover icon menu and the full file context menu (right-click).
+// Version: 1.3.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description above a card holding the control rows, the filer
+//                  and the status line; the rows wrap, their labels and the
+//                  view buttons are as wide as their text
 // Version: 1.2.0 - the type buttons hold FileLoader's lists
 // Version: 1.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
@@ -25,25 +30,22 @@
 namespace UltraCanvas {
 
     namespace {
-        // A plain flex wrapper that must never scroll itself — the filer is the
-        // single scroll region of the page.
-        std::shared_ptr<UltraCanvasContainer> MakeFilerLayoutBox(const std::string& id) {
-            auto c = std::make_shared<UltraCanvasContainer>(id);
-            ContainerStyle st;
-            st.autoShowScrollbars           = false;
-            st.forceShowVerticalScrollbar   = false;
-            st.forceShowHorizontalScrollbar = false;
-            c->SetContainerStyle(st);
-            return c;
+        // A control row of the card: wraps onto further lines when the page
+        // is narrower than its buttons (or their text is longer).
+        std::shared_ptr<UltraCanvasContainer> AddFilerRow(const std::shared_ptr<UltraCanvasContainer>& card,
+                                                          const std::string& id) {
+            auto row = DemoKit::AddRow(card, id, 6);
+            row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            return row;
         }
 
-        std::shared_ptr<UltraCanvasContainer> MakeFilerRow(const std::string& id) {
-            auto row = MakeFilerLayoutBox(id);
-            row->layout.SetFlexRow().SetFlexGap(6)
-                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            return row;
+        // The bold "View" / "Sort" / "Types" label at the start of a row.
+        void AddFilerRowLabel(const std::shared_ptr<UltraCanvasContainer>& row,
+                              const std::string& id, const std::string& text) {
+            auto lbl = DemoKit::CreateText(id, text);
+            lbl->SetFontWeight(FontWeight::Bold);
+            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            DemoKit::Add(row, lbl);
         }
 
         // Rebuilds the breadcrumb from the filer's current path through the
@@ -88,41 +90,32 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFilerExamples() {
-        auto root = MakeFilerLayoutBox("FilerExamples");
-        root->layout.SetFlexColumn().SetFlexGap(8)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        root->SetPadding(10, 12, 10, 12);
+        auto root = DemoKit::CreatePage("FilerExamples",
+                "UltraCanvas Filer — folder content with selectable view types",
+                "Double-click a folder to enter it. Right-click for the file menu "
+                "(Copy / Cut / Delete / Duplicate / Rename / New / Display / Compress / "
+                "Extras). Hovering an item shows its quick icon menu; the info bar at "
+                "the bottom describes the selection (size, dates, image dimensions, "
+                "media duration and codec, folder contents). In the Details, List and "
+                "Bar size views the columns are resizable — drag the splitters between "
+                "them — and a name too long for its column shows in full as a tooltip.");
+        // The filer is the single scroll region of the page: the page is the
+        // area's height and the filer takes what the rows above it leave.
+        root->SetFillsArea(true);
 
-        // ===== Header (pinned) =====
-        auto title = std::make_shared<UltraCanvasLabel>("FilerTitle", 0, 0, 0, 28);
-        title->SetText("UltraCanvas Filer — folder content with selectable view types");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("FilerSubtitle", 0, 0, 0, 20);
-        subtitle->SetText("Double-click a folder to enter it. Right-click for the file menu "
-                          "(Copy / Cut / Delete / Duplicate / Rename / New / Display / Compress / "
-                          "Extras). Hovering an item shows its quick icon menu; the info bar at "
-                          "the bottom describes the selection (size, dates, image dimensions, "
-                          "media duration and codec, folder contents). In the Details, List and "
-                          "Bar size views the columns are resizable — drag the splitters between "
-                          "them — and a name too long for its column shows in full as a tooltip.");
-        subtitle->SetFontSize(11);
-        subtitle->SetTextColor(Color(110, 110, 110, 255));
-        subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(subtitle);
+        auto card = DemoKit::CreateCard("FilerCard");
+        card->SetPadding(8);
+        DemoKit::Add(root, card, 1);
 
         // ===== The filer itself (created before the control rows so their
         // callbacks can capture it; added to the layout after them) =====
         auto filer = CreateFilerWidget("demo-filer", 0, 0, 0, 0);
-        filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // ===== Path row: Up button + breadcrumb =====
-        auto pathRow = MakeFilerRow("FilerPathRow");
+        // Does not wrap: the breadcrumb collapses its middle nodes instead.
+        auto pathRow = DemoKit::CreateRow("FilerPathRow", 6, false);
+        pathRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::Add(card, pathRow);
         // Width 0 lets the button auto-size to its icon + label (intrinsic
         // sizing) so the up-arrow and text always fit.
         auto upButton = std::make_shared<UltraCanvasButton>("FilerUp", 0, 0, 0, 24, "Up");
@@ -135,18 +128,15 @@ namespace UltraCanvas {
         upButton->SetUseIconAsMask(true);
         upButton->SetIconMaskColor(Color(40, 40, 40, 255));
         StyleFilerOptionButton(upButton.get(), false);
-        upButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        pathRow->AddChild(upButton);
+        DemoKit::Add(pathRow, upButton);
 
         // Breadcrumb replaces the plain path label: it shows the current folder
         // as interlocking "arrow steps" and lets the user jump directly to any
         // parent folder (or, via the leading "Computer" node, another drive).
         auto breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("FilerBreadcrumb", 0, 0, 0, 26);
         breadcrumb->SetStyle(MakeFilerBreadcrumbStyle());
-        breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                              .SetAlignSelf(CSSLayout::AlignSelf::Center);
-        pathRow->AddChild(breadcrumb);
-        root->AddChild(pathRow);
+        DemoKit::Add(pathRow, breadcrumb, 1);
+        breadcrumb->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
         {
             auto filerPtr = filer.get();
@@ -160,33 +150,29 @@ namespace UltraCanvas {
 
         // ===== View-type row =====
         {
-            auto row = MakeFilerRow("FilerViewRow");
-            auto lbl = std::make_shared<UltraCanvasLabel>("FilerViewLbl", 0, 0, 46, 24);
-            lbl->SetText("View");
-            lbl->SetFontSize(12);
-            lbl->SetFontWeight(FontWeight::Bold);
-            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-            lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            row->AddChild(lbl);
+            auto row = AddFilerRow(card, "FilerViewRow");
+            AddFilerRowLabel(row, "FilerViewLbl", "View");
 
-            struct ViewSeed { const char* label; FilerViewType type; int width; };
+            struct ViewSeed { const char* label; FilerViewType type; };
             const ViewSeed views[] = {
-                {"Details",   FilerViewType::Details,             74},
-                {"List",      FilerViewType::List,                56},
-                {"Thumbs S",  FilerViewType::ThumbnailsSmall,     84},
-                {"Thumbs M",  FilerViewType::ThumbnailsMedium,    86},
-                {"Thumbs B",  FilerViewType::ThumbnailsBig,       84},
-                {"Thumbs XL", FilerViewType::ThumbnailsMaximized, 90},
-                {"Bar size",  FilerViewType::BarSize,             76},
-                {"Treemap",   FilerViewType::TreeMap,             78},
-                {"Gource",    FilerViewType::GourceTree,          70},
-                {"3D",        FilerViewType::View3D,              44},
+                {"Details",   FilerViewType::Details},
+                {"List",      FilerViewType::List},
+                {"Thumbs S",  FilerViewType::ThumbnailsSmall},
+                {"Thumbs M",  FilerViewType::ThumbnailsMedium},
+                {"Thumbs B",  FilerViewType::ThumbnailsBig},
+                {"Thumbs XL", FilerViewType::ThumbnailsMaximized},
+                {"Bar size",  FilerViewType::BarSize},
+                {"Treemap",   FilerViewType::TreeMap},
+                {"Gource",    FilerViewType::GourceTree},
+                {"3D",        FilerViewType::View3D},
             };
             auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
             auto filerPtr = filer.get();
             for (const ViewSeed& v : views) {
+                // Width 0 => the button auto-sizes to its label, as the
+                // sort buttons do, so a longer label is never clipped.
                 auto b = std::make_shared<UltraCanvasButton>(
-                        std::string("FilerView_") + v.label, 0, 0, v.width, 24, v.label);
+                        std::string("FilerView_") + v.label, 0, 0, 0, 24, v.label);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
                 StyleFilerOptionButton(b.get(), v.type == FilerViewType::Details);
@@ -196,8 +182,7 @@ namespace UltraCanvas {
                     for (auto* gb : *group) StyleFilerOptionButton(gb, gb == raw);
                     filerPtr->SetViewType(type);
                 });
-                b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                row->AddChild(b);
+                DemoKit::Add(row, b);
                 group->push_back(raw);
             }
             // Keep the buttons in sync when the view is switched through the
@@ -221,21 +206,13 @@ namespace UltraCanvas {
                 filerPtr->SetBarSizeNameColumnWidth(220);
                 filerPtr->SetBarSizeValueColumnWidth(0);   // auto
             });
-            reset->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            row->AddChild(reset);
-            root->AddChild(row);
+            DemoKit::Add(row, reset);
         }
 
         // ===== Sort row =====
         {
-            auto row = MakeFilerRow("FilerSortRow");
-            auto lbl = std::make_shared<UltraCanvasLabel>("FilerSortLbl", 0, 0, 46, 24);
-            lbl->SetText("Sort");
-            lbl->SetFontSize(12);
-            lbl->SetFontWeight(FontWeight::Bold);
-            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-            lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            row->AddChild(lbl);
+            auto row = AddFilerRow(card, "FilerSortRow");
+            AddFilerRowLabel(row, "FilerSortLbl", "Sort");
 
             struct SortSeed { const char* label; FilerSortField field; };
             const SortSeed sorts[] = {
@@ -261,8 +238,7 @@ namespace UltraCanvas {
                     for (auto* gb : *fieldGroup) StyleFilerOptionButton(gb, gb == raw);
                     filerPtr->SetSortField(field);
                 });
-                b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                row->AddChild(b);
+                DemoKit::Add(row, b);
                 fieldGroup->push_back(raw);
             }
 
@@ -281,8 +257,7 @@ namespace UltraCanvas {
                     for (auto* gb : *orderGroup) StyleFilerOptionButton(gb, gb == raw);
                     filerPtr->SetSortAscending(ascending);
                 });
-                b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                row->AddChild(b);
+                DemoKit::Add(row, b);
                 orderGroup->push_back(raw);
             }
 
@@ -309,23 +284,14 @@ namespace UltraCanvas {
             compressCb->onUnchecked = [filerPtr]() {
                 filerPtr->SetCompressedThumbnails(false);
             };
-            compressCb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            row->AddChild(compressCb);
-
-            root->AddChild(row);
+            DemoKit::AddFixed(row, compressCb);
         }
 
         // ===== File type filter row: what a load / save dialog does with the
         // files it was not asked for =====
         {
-            auto row = MakeFilerRow("FilerTypeFilterRow");
-            auto lbl = std::make_shared<UltraCanvasLabel>("FilerTypeFilterLbl", 0, 0, 46, 24);
-            lbl->SetText("Types");
-            lbl->SetFontSize(12);
-            lbl->SetFontWeight(FontWeight::Bold);
-            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-            lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            row->AddChild(lbl);
+            auto row = AddFilerRow(card, "FilerTypeFilterRow");
+            AddFilerRowLabel(row, "FilerTypeFilterLbl", "Types");
 
             struct TypeSeed { const char* label; std::vector<std::string> extensions; };
             // FileLoader's lists - the types this build reads, as a file
@@ -361,8 +327,7 @@ namespace UltraCanvas {
                     filerPtr->SetFileTypeFilter(extensions,
                                                 filerPtr->GetFileTypeFilterMode());
                 });
-                b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                row->AddChild(b);
+                DemoKit::Add(row, b);
                 group->push_back(raw);
             }
 
@@ -379,20 +344,18 @@ namespace UltraCanvas {
             dimCb->onUnchecked = [filerPtr]() {
                 filerPtr->SetFileTypeFilterMode(FilerTypeFilterMode::Hide);
             };
-            dimCb->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            row->AddChild(dimCb);
-            root->AddChild(row);
+            DemoKit::AddFixed(row, dimCb);
         }
 
-        root->AddChild(filer);
+        // From a zero basis the filer takes exactly the height the rows and
+        // the status line leave.
+        DemoKit::Add(card, filer, 1);
+        filer->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
         // ===== Status line (pinned, below the filer) =====
-        auto status = std::make_shared<UltraCanvasLabel>("FilerStatus", 0, 0, 0, 20);
+        auto status = DemoKit::AddText(card, "FilerStatus", "");
         status->SetFontSize(11);
         status->SetTextColor(Color(110, 110, 110, 255));
-        status->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-        status->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(status);
 
         // ===== Wire the filer to the page =====
         {

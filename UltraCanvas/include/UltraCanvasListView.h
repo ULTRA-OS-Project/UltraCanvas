@@ -1,5 +1,8 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
+// Version: 1.8.0 - SetColumnFitting: every column as wide as its widest text
+//                  and its header, measured at the next paint after the rows
+//                  change, until the user drags a border
 // Version: 1.7.0 - a horizontal scrollbar when the columns are wider than the
 //                  view: the header and the rows scroll sideways together,
 //                  Shift+wheel and the Left / Right keys move them,
@@ -229,6 +232,27 @@ namespace UltraCanvas {
         int MeasureHeaderWidth(IRenderContext* ctx, int column) const;
         int MeasureColumnTextWidth(IRenderContext* ctx, int column, const FontStyle& font) const;
 
+        // Every column fitted to its content (multi-column), with those two
+        // measurements, at the next paint after the model's rows or columns
+        // change - the one moment a render context is at hand: each column
+        // becomes as wide as its widest DisplayRole text in `font` plus
+        // `padding` (what the delegate leaves beside the text; the default
+        // delegate's is 6 px each side), never narrower than its header's
+        // title and sort triangle, and within [minWidth, maxWidth] (maxWidth
+        // 0: no cap) - so one long text does not take the whole grid. The
+        // fit stops once the user drags a border (ColumnsUserAdjusted), and
+        // a SetColumnWidth of the caller's holds until the next fit. Off by
+        // default: the model's ListColumnDef::width is the width.
+        struct ColumnFitting {
+            bool      enabled = false;
+            FontStyle font;
+            int       padding = 12;
+            int       minWidth = 40;
+            int       maxWidth = 0;
+        };
+        void SetColumnFitting(const ColumnFitting& fitting);
+        const ColumnFitting& GetColumnFitting() const { return columnFitting; }
+
         // Interactive column resizing by dragging the header column borders
         // (on by default; needs the header shown and >= 2 columns).
         void SetColumnsResizable(bool resizable) { columnsResizable = resizable; }
@@ -394,6 +418,12 @@ namespace UltraCanvas {
         // names.
         mutable std::unordered_map<std::string, int> textWidths;
         mutable std::string textWidthFont;
+
+        // SetColumnFitting's settings, and whether the columns are to be
+        // fitted at the next paint (the rows or the columns changed).
+        ColumnFitting columnFitting;
+        bool columnFitStale = false;
+        void FitColumnsToContent(IRenderContext* ctx);
 
         // Sort indicator (SetSortIndicator); sortColumn == -1 shows none.
         int  sortColumn = -1;

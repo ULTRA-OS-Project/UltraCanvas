@@ -2,8 +2,11 @@
 // Kanban board demo. One tab per design preset plus an interactive editor tab
 // (drag & drop, add/edit/delete cards, column rename) and a tab whose board is
 // built from a Mermaid `kanban` text definition.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description of the kit, the tabs in a card as wide as the
+//                  page, tab descriptions as tall as their text
 // Version: 1.0.0
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasKanbanBoard.h"
@@ -12,6 +15,7 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 
 #include <memory>
 #include <string>
@@ -275,8 +279,8 @@ namespace {
 
     std::shared_ptr<UltraCanvasLabel> MakeTabDescription(const std::string& id,
                                                          const std::string& text) {
-        auto lbl = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 44);
-        lbl->SetText(text);
+        // No height of its own: as tall as its wrapped lines.
+        auto lbl = std::make_shared<UltraCanvasLabel>(id, text);
         lbl->SetFontSize(11);
         lbl->SetWrap(TextWrap::WrapWord);
         lbl->SetTextColor(Color(70, 70, 80, 255));
@@ -304,39 +308,23 @@ namespace {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateKanbanBoardExamples() {
-    const int CONTAINER_W = 1180;
-    const int CONTAINER_H = 800;
-    const int PAD = 16;
     const int INNER_W = 1000;
     const int INNER_H = 640;
 
-    auto root = std::make_shared<UltraCanvasContainer>("KanbanRoot", 0, 0,
-                                                       CONTAINER_W, CONTAINER_H);
-    root->SetBackgroundColor(Color(250, 250, 252, 255));
-    root->SetPadding(PAD);
-    root->layout.SetFlexColumn().SetFlexGap(8)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto root = DemoKit::CreatePage("KanbanRoot",
+            "Kanban Board - Editor, Designs & Text Definitions",
+            "Drag cards between columns, watch the WIP badges, and on the "
+            "editable tabs double-click a card to edit it, use the dashed "
+            "'+ Add card' buttons, and double-click a column header to "
+            "rename it.");
 
-    auto title = std::make_shared<UltraCanvasLabel>("KanbanTitle", 0, 0, 0, 28);
-    title->SetText("Kanban Board - Editor, Designs & Text Definitions");
-    title->SetFontSize(18);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(40, 50, 120, 255));
-    AddFlexChild(root, title, 0);
-
-    auto desc = std::make_shared<UltraCanvasLabel>("KanbanDesc", 0, 0, 0, 20);
-    desc->SetText("Drag cards between columns, watch the WIP badges, and on the "
-                  "editable tabs double-click a card to edit it, use the dashed "
-                  "'+ Add card' buttons, and double-click a column header to "
-                  "rename it.");
-    desc->SetFontSize(11);
-    desc->SetWrap(TextWrap::WrapWord);
-    desc->SetTextColor(Color(90, 90, 100, 255));
-    AddFlexChild(root, desc, 0);
+    // The tabs in a card, as wide as the page and as tall as the boards
+    // need; each tab arranges its own content.
+    auto tabsCard = DemoKit::AddCard(root, "KanbanTabsCard");
+    tabsCard->SetPadding(4);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("KanbanTabs", 0, 0,
-                                                             CONTAINER_W - 2 * PAD,
-                                                             INNER_H + 40);
+                                                             INNER_W, INNER_H + 40);
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(30);
     tabs->SetTabCornerRadius(8.0f);
@@ -495,7 +483,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateKanbanBo
         tabs->AddTab("Cumulative Flow", tab);
     }
 
-    AddFlexChild(root, tabs, 1);
+    DemoKit::AddStretched(tabsCard, tabs);
     return root;
 }
 

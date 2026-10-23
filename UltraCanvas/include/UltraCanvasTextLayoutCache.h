@@ -24,6 +24,8 @@
 //   UltraCanvas::UltraCanvasTextLayoutCache cache;
 //   if (UltraCanvas::ITextLayout* layout = cache.Get(nullptr, key)) ctx->DrawTextLayout(*layout, UltraCanvas::Point2Dd(0, 0));
 //
+// Version: 1.1.1 - a key that names no ellipsize leaves the wrap mode's: a WrapNone label
+//                  stays one line cut at the end, not wrapped at a narrow width
 // Version: 1.1.0 - an explicit height in the key; the text input, the dropdown and the menu on the cache
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -32,6 +34,7 @@
 #include "UltraCanvasRenderContext.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace UltraCanvas {
@@ -45,7 +48,10 @@ namespace UltraCanvas {
         TextWrap wrap = TextWrap::WrapNone;
         TextAlignment align = TextAlignment::Left;
         VerticalAlignment valign = VerticalAlignment::Top;
-        EllipsizeMode ellipsize = EllipsizeMode::EllipsizeNone;
+        // Unset: what SetWrap left - WrapNone cuts the line at the end, which
+        // is what keeps it one line at any width. Setting EllipsizeNone on a
+        // WrapNone layout with a width lets Pango wrap it instead.
+        std::optional<EllipsizeMode> ellipsize;
         double width = -1;        // the explicit width; -1: none, the caller sets it
         double height = -1;       // the explicit height, for a vertical alignment inside it; -1: none
         float lineHeightPx = 0;   // noted in the key; the element applies it
@@ -70,7 +76,7 @@ namespace UltraCanvas {
             layout_->SetWrap(key.wrap);
             layout_->SetAlignment(key.align);
             layout_->SetVerticalAlignment(key.valign);
-            layout_->SetEllipsize(key.ellipsize);
+            if (key.ellipsize) layout_->SetEllipsize(*key.ellipsize);
             if (key.width >= 0) layout_->SetExplicitWidth(key.width);
             if (key.height >= 0) layout_->SetExplicitHeight(key.height);
             key_ = key;

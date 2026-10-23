@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasClassDiagramExamples.cpp
 // UML class diagram demo - five scenarios reproducing the reference notation
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card with
+//                  wrapping button rows, the diagram as wide as the page, the
+//                  status line sized to its text
 // Version: 1.0.0
-// Last Modified: 2026-08-02
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // Scenarios:
@@ -22,6 +25,7 @@
 // Every scenario shares one diagram element; the buttons repopulate it.
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasClassDiagram.h"
 #include "Plugins/Diagrams/UltraCanvasCppReverseEngineer.h"
 #include "UltraCanvasButton.h"
@@ -429,34 +433,27 @@ void BuildReverseEngineered(UltraCanvasClassDiagram& diagram,
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDiagramExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("ClassDiagramPage", 0, 0, 980, 760);
-    container->SetBackgroundColor(Color(245, 247, 250, 255));
+    auto page = DemoKit::CreatePage("ClassDiagramPage", "UML Class Diagram",
+        "Compartment boxes sized from their members; seven UML relationship "
+        "kinds with correct line styles and end decorations.");
 
-    // ---- title -----------------------------------------------------------
-    auto title = std::make_shared<UltraCanvasLabel>("cdTitle", 40, 16, 900, 32);
-    title->SetText("UML Class Diagram");
-    title->SetFont("Arial", 22.0f, FontWeight::Bold);
-    title->SetTextColor(Color(30, 30, 30, 255));
-    container->AddChild(title);
-
-    auto description = std::make_shared<UltraCanvasLabel>("cdDesc", 40, 50, 900, 20);
-    description->SetText("Compartment boxes sized from their members; seven UML relationship "
-                         "kinds with correct line styles and end decorations.");
-    description->SetFontSize(13);
-    description->SetTextColor(Color(100, 100, 100, 255));
-    container->AddChild(description);
+    // One card, top to bottom: the scenario buttons, the diagram, the status
+    // line and the view controls. The rows wrap; a button widens to its text.
+    auto card = DemoKit::AddCard(page, "cdCard");
+    auto scenarioRow = DemoKit::AddRow(card, "cdScenarios", 8);
 
     // ---- the diagram -----------------------------------------------------
-    auto diagram = CreateClassDiagram("classDiagram", 40, 116, 900, 560);
-    container->AddChild(diagram);
+    // It pans and zooms itself, so it takes the card's width at a fixed height.
+    auto diagram = CreateClassDiagram("classDiagram", 0, 0, 900, 560);
+    DemoKit::AddStretched(card, diagram);
 
     // ---- status line -----------------------------------------------------
-    auto status = std::make_shared<UltraCanvasLabel>("cdStatus", 40, 684, 900, 20);
-    status->SetText("Click a class to select it; click a member row to report it. "
-                    "Wheel zooms, drag pans, drag a box to move it, double-click collapses it.");
-    status->SetFontSize(11);
-    status->SetTextColor(Color(90, 95, 110, 255));
-    container->AddChild(status);
+    auto status = DemoKit::AddText(card, "cdStatus",
+        "Click a class to select it; click a member row to report it. "
+        "Wheel zooms, drag pans, drag a box to move it, double-click collapses it.");
+    status->SetTextColor(DemoKit::SubtitleText());
+
+    auto controlRow = DemoKit::AddRow(card, "cdControls", 6);
 
     // Report what the user clicked, which is what makes per-row hit testing
     // visible in the demo.
@@ -488,15 +485,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
     };
 
     // ---- scenario buttons ------------------------------------------------
-    int buttonY = 78;
-    int buttonX = 40;
     auto addScenarioButton = [&](const std::string& id, const std::string& text, int width,
                                  std::function<void()> action) {
-        auto button = std::make_shared<UltraCanvasButton>(id, buttonX, buttonY, width, 30);
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 30);
         button->SetText(text);
         button->SetOnClick(action);
-        container->AddChild(button);
-        buttonX += width + 8;
+        DemoKit::Add(scenarioRow, button);
     };
 
     addScenarioButton("cdBank", "Banking System", 130, [diagram, status]() {
@@ -524,15 +518,12 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
     });
 
     // ---- view controls ---------------------------------------------------
-    int controlY = 712;
-    int controlX = 40;
     auto addControlButton = [&](const std::string& id, const std::string& text, int width,
                                 std::function<void()> action) {
-        auto button = std::make_shared<UltraCanvasButton>(id, controlX, controlY, width, 28);
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28);
         button->SetText(text);
         button->SetOnClick(action);
-        container->AddChild(button);
-        controlX += width + 6;
+        DemoKit::Add(controlRow, button);
     };
 
     addControlButton("cdLayered", "Layered", 80, [diagram]() {
@@ -574,18 +565,20 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateClassDia
         diagram->RunLayout();
     });
 
-    auto gridToggle = std::make_shared<UltraCanvasCheckbox>("cdGridToggle", controlX + 8, controlY + 3, 110, 22);
+    auto gridToggle = std::make_shared<UltraCanvasCheckbox>("cdGridToggle", 0, 0, 110, 22);
     gridToggle->SetText("Show Grid");
     gridToggle->SetChecked(true);
     gridToggle->onStateChanged = [diagram](CheckedState, CheckedState newState) {
         diagram->SetGridVisible(newState == CheckedState::Checked, 20.0);
     };
-    container->AddChild(gridToggle);
+    // Centred on the row like the buttons beside it.
+    gridToggle->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
+    DemoKit::Add(controlRow, gridToggle);
 
     // Open on the canonical example.
     BuildBankingSystem(*diagram);
 
-    return container;
+    return page;
 }
 
 } // namespace UltraCanvas

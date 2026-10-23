@@ -1,10 +1,16 @@
 // Apps/DemoApp/UltraCanvasGourceTreeExamples.cpp
 // Interactive Gource Tree diagram demonstration page
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a card
+//                  that fills the area, each tree fills its tab, the toolbars wrap
+//                  and every label and button is as wide as its text
 // Version: 1.0.2
-// Last Modified: 2026-06-05
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   v1.1.0 (2026-10-23):
+//     - The page is a DemoKit page whose flex layout follows the window, so
+//       the ResponsiveGourceDemoContainer and its relayout lambda are gone.
 //   v1.0.2 (2026-06-05):
 //     - Fixed collapsed Project/Storage toolbar rows. Converted projectControls
 //       and depthControls to flex-row layout (SetFlexRow + Center align-items)
@@ -32,6 +38,7 @@
 //       down to a sensible minimum of kMinWidth = 940.
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasGourceTree.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -51,35 +58,59 @@
 
 namespace UltraCanvas {
 
-// ============================================================================
-// PRIVATE: Responsive container that forwards WindowResize events
-// ============================================================================
 namespace {
 
-class ResponsiveGourceDemoContainer : public UltraCanvasContainer {
-public:
-    using UltraCanvasContainer::UltraCanvasContainer;
+// A toolbar label: as wide as its text.
+std::shared_ptr<UltraCanvasLabel> MakeToolLabel(const std::string& id, const std::string& text) {
+    auto label = DemoKit::CreateText(id, text);
+    label->SetFontSize(11);
+    return label;
+}
 
-    // Fires whenever a WindowResize event reaches this container.
-    // Receives (newWidth, newHeight) from event.width/event.height.
-    std::function<void(int, int)> onResize;
+// A button as wide as its text, at least `minWidth` (the width it had) so a
+// one-character "+" stays an easy target.
+std::shared_ptr<UltraCanvasButton> MakeToolButton(const std::string& id, const std::string& text,
+                                                  float minWidth) {
+    auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 28, text);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+    button->boxConstraints = limits;
+    return button;
+}
 
-    bool OnEvent(const UCEvent& event) override {
-        // Always let the base container process the event first so children
-        // still receive it (clicks, hovers, etc.).
-        bool handled = UltraCanvasContainer::OnEvent(event);
-        if (event.type == UCEventType::WindowResize) {
-            if (onResize) {
-                onResize(event.width, event.height);
-            }
-        }
-        return handled;
-    }
-};
+// A bar of controls that wraps onto a second line when the tab is narrow.
+std::shared_ptr<UltraCanvasContainer> MakeToolBar(const std::string& id) {
+    auto bar = DemoKit::CreateRow(id, 8, true);
+    bar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    bar->SetBackgroundColor(Color(248, 248, 252));
+    bar->SetPadding(6);
+    return bar;
+}
 
-constexpr int kMinWidth = 940;
-constexpr int kDefaultWidth = 1030;
-constexpr int kDefaultHeight = 800;
+// A tab's page: its description, wrapped, above the toolbar and the tree,
+// which takes the rest of the tab's height.
+std::shared_ptr<UltraCanvasContainer> MakeTabPage(const std::string& id, const std::string& descId,
+                                                  const std::string& text) {
+    auto tab = std::make_shared<UltraCanvasContainer>(id);
+    tab->SetPadding(8, 10, 8, 10);
+    tab->layout.SetFlexColumn().SetFlexGap(6)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    DemoKit::AddText(tab, descId, text)->SetFontSize(11);
+    return tab;
+}
+
+// The tree pans and zooms itself, so it fills what the tab leaves, never
+// squeezed below 300 px. It is built at its old 980 x 540 so the first
+// ZoomToFit has a size to fit into.
+void AddTree(const std::shared_ptr<UltraCanvasContainer>& tab,
+             const std::shared_ptr<UltraCanvasGourceTree>& tree) {
+    tree->size.width  = CSSLayout::Dimension::Auto();
+    tree->size.height = CSSLayout::Dimension::Auto();
+    CSSLayout::BoxConstraints limits;
+    limits.minHeight = CSSLayout::Dimension::Px(300);
+    tree->boxConstraints = limits;
+    DemoKit::Add(tab, tree, 1);
+}
 
 } // anonymous namespace
 
@@ -293,74 +324,37 @@ void GenerateStorageDeviceData(UltraCanvasGourceTree* tree) {
 
 // ===== MAIN DEMO IMPLEMENTATION =====
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTreeExamples() {
-    // Main container — responsive, forwards WindowResize via onResize callback.
-    auto mainContainer = std::make_shared<ResponsiveGourceDemoContainer>(
-        "GourceTreeExamples", 0, 0, kDefaultWidth, kDefaultHeight
-    );
+    auto page = DemoKit::CreatePage("GourceTreeExamples", "Gource Tree Visualization",
+        "Radial tree visualization for file systems and storage devices - inspired by Gource");
+    // The trees pan and zoom themselves: the tabs fill the area.
+    page->SetFillsArea(true);
 
-    // ===== PAGE HEADER =====
-    auto title = std::make_shared<UltraCanvasLabel>(
-        "GourceTitle", 20, 10, 500, 35
-    );
-    title->SetText("Gource Tree Visualization");
-    title->SetFontSize(18);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 150));
-    mainContainer->AddChild(title);
+    auto card = DemoKit::CreateCard("GourceCard");
+    DemoKit::Add(page, card, 1);
 
-    auto subtitle = std::make_shared<UltraCanvasLabel>(
-        "GourceSubtitle", 20, 45, kDefaultWidth - 70, 25
-    );
-    subtitle->SetText("Radial tree visualization for file systems and storage devices - inspired by Gource");
-    subtitle->SetFontSize(12);
-    subtitle->SetTextColor(Color(100, 100, 100));
-    mainContainer->AddChild(subtitle);
+    // ===== TABBED CONTAINER =====
+    auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("GourceTabs");
+    tabbedContainer->SetTabPosition(TabPosition::Top);
+    DemoKit::Add(card, tabbedContainer, 1);
 
     // Status label for interaction feedback
-    auto statusLabel = std::make_shared<UltraCanvasLabel>(
-        "GourceStatus", 20, 760, kDefaultWidth - 40, 25
-    );
-    statusLabel->SetText("Ready - Click on nodes to select, double-click to expand/collapse directories");
+    auto statusLabel = DemoKit::AddText(card, "GourceStatus",
+        "Ready - Click on nodes to select, double-click to expand/collapse directories");
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(60, 60, 60));
     statusLabel->SetBackgroundColor(Color(240, 240, 245));
     statusLabel->SetPadding(5);
-    mainContainer->AddChild(statusLabel);
-
-    // ===== TABBED CONTAINER =====
-    auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>(
-        "GourceTabs", 10, 75, kDefaultWidth - 20, 680
-    );
-    tabbedContainer->SetTabPosition(TabPosition::Top);
-    mainContainer->AddChild(tabbedContainer);
 
     // ========================================
     // TAB 1: PROJECT STRUCTURE EXAMPLE
     // ========================================
-    auto projectContainer = std::make_shared<UltraCanvasContainer>(
-        "ProjectTab", 0, 0, kDefaultWidth - 30, 640
-    );
-
-    auto projectDesc = std::make_shared<UltraCanvasLabel>(
-        "ProjectDesc", 10, 10, kDefaultWidth - 50, 25
-    );
-    projectDesc->SetText("Project Structure: Visualize a software project with source files, docs, and tests");
-    projectDesc->SetFontSize(11);
-    projectContainer->AddChild(projectDesc);
+    auto projectContainer = MakeTabPage("ProjectTab", "ProjectDesc",
+        "Project Structure: Visualize a software project with source files, docs, and tests");
 
     // Control panel
-    auto projectControls = std::make_shared<UltraCanvasContainer>(
-        "ProjectControls", 10, 40, kDefaultWidth - 50, 45
-    );
-    projectControls->SetBackgroundColor(Color(248, 248, 252));
-    projectControls->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto projectControls = MakeToolBar("ProjectControls");
 
-    auto themeLabel = std::make_shared<UltraCanvasLabel>(
-        "ThemeLabel", 0, 0, 50, 20
-    );
-    themeLabel->SetText("Theme:");
-    themeLabel->SetFontSize(11);
-    projectControls->AddChild(themeLabel);
+    DemoKit::Add(projectControls, MakeToolLabel("ThemeLabel", "Theme:"));
 
     auto themeDropdown = std::make_shared<UltraCanvasDropdown>(
         "ThemeDropdown", 0, 0, 110, 28
@@ -370,14 +364,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     themeDropdown->AddItem("Colorful");
     themeDropdown->AddItem("Mono");
     themeDropdown->SetSelectedIndex(0);
-    projectControls->AddChild(themeDropdown);
+    DemoKit::Add(projectControls, themeDropdown);
 
-    auto layoutLabel = std::make_shared<UltraCanvasLabel>(
-        "LayoutLabel", 0, 0, 50, 20
-    );
-    layoutLabel->SetText("Layout:");
-    layoutLabel->SetFontSize(11);
-    projectControls->AddChild(layoutLabel);
+    DemoKit::Add(projectControls, MakeToolLabel("LayoutLabel", "Layout:"));
 
     auto layoutDropdown = std::make_shared<UltraCanvasDropdown>(
         "LayoutDropdown", 0, 0, 110, 28
@@ -386,21 +375,15 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     layoutDropdown->AddItem("Animated");
     layoutDropdown->AddItem("Hybrid");
     layoutDropdown->SetSelectedIndex(2);
-    projectControls->AddChild(layoutDropdown);
+    DemoKit::Add(projectControls, layoutDropdown);
 
     auto fileSizeCheck = std::make_shared<UltraCanvasCheckbox>(
-        "FileSizeCheck", 0, 0, 130, 20
+        "FileSizeCheck", 0, 0, 0, 20, "Show File Size"
     );
-    fileSizeCheck->SetText("Show File Size");
     fileSizeCheck->SetChecked(true);
-    //projectControls->AddChild(fileSizeCheck);
+    //DemoKit::Add(projectControls, fileSizeCheck);
 
-    auto highlightLabel = std::make_shared<UltraCanvasLabel>(
-        "HighlightLabel", 0, 0, 65, 20
-    );
-    highlightLabel->SetText("Highlight:");
-    highlightLabel->SetFontSize(11);
-    projectControls->AddChild(highlightLabel);
+    DemoKit::Add(projectControls, MakeToolLabel("HighlightLabel", "Highlight:"));
 
     auto highlightDropdown = std::make_shared<UltraCanvasDropdown>(
         "HighlightDropdown", 0, 0, 150, 28
@@ -411,46 +394,31 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     highlightDropdown->AddItem("Invert Access");
     highlightDropdown->AddItem("Invert Creation");
     highlightDropdown->SetSelectedIndex(0);
-    projectControls->AddChild(highlightDropdown);
+    DemoKit::Add(projectControls, highlightDropdown);
 
     // Stretch spacer pushes the zoom / Fit / Expand / Collapse group flush right.
     projectControls->AddStretchSpacer(1.0f);
 
-    auto zoomInBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomInBtn", 0, 0, 36, 28
-    );
-    zoomInBtn->SetText("+");
-    projectControls->AddChild(zoomInBtn);
+    auto zoomInBtn = MakeToolButton("ZoomInBtn", "+", 36);
+    DemoKit::Add(projectControls, zoomInBtn);
 
-    auto zoomOutBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomOutBtn", 0, 0, 36, 28
-    );
-    zoomOutBtn->SetText("-");
-    projectControls->AddChild(zoomOutBtn);
+    auto zoomOutBtn = MakeToolButton("ZoomOutBtn", "-", 36);
+    DemoKit::Add(projectControls, zoomOutBtn);
 
-    auto zoomFitBtn = std::make_shared<UltraCanvasButton>(
-        "ZoomFitBtn", 0, 0, 50, 28
-    );
-    zoomFitBtn->SetText("Fit");
-    projectControls->AddChild(zoomFitBtn);
+    auto zoomFitBtn = MakeToolButton("ZoomFitBtn", "Fit", 50);
+    DemoKit::Add(projectControls, zoomFitBtn);
 
-    auto expandAllBtn = std::make_shared<UltraCanvasButton>(
-        "ExpandAllBtn", 0, 0, 80, 28
-    );
-    expandAllBtn->SetText("Expand");
-    projectControls->AddChild(expandAllBtn);
+    auto expandAllBtn = MakeToolButton("ExpandAllBtn", "Expand", 80);
+    DemoKit::Add(projectControls, expandAllBtn);
 
-    auto collapseAllBtn = std::make_shared<UltraCanvasButton>(
-        "CollapseAllBtn", 0, 0, 90, 28
-    );
-    collapseAllBtn->SetText("Collapse");
-    projectControls->AddChild(collapseAllBtn);
+    auto collapseAllBtn = MakeToolButton("CollapseAllBtn", "Collapse", 90);
+    DemoKit::Add(projectControls, collapseAllBtn);
 
-    projectContainer->AddChild(projectControls);
+    DemoKit::Add(projectContainer, projectControls);
 
     // Project Gource Tree
     auto projectTree = std::make_shared<UltraCanvasGourceTree>(
-        "ProjectTree", 10, 90, kDefaultWidth - 50, 540
+        "ProjectTree", 0, 0, 980, 540
     );
 
     GenerateSampleFileSystem(projectTree.get());
@@ -506,34 +474,17 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     expandAllBtn->onClick = [projectTree]() { projectTree->ExpandAll(); };
     collapseAllBtn->onClick = [projectTree]() { projectTree->CollapseAll(); };
 
-    projectContainer->AddChild(projectTree);
+    AddTree(projectContainer, projectTree);
 
     // ========================================
     // TAB 2: STORAGE DEVICE VISUALIZATION
     // ========================================
-    auto storageContainer = std::make_shared<UltraCanvasContainer>(
-        "StorageTab", 0, 0, kDefaultWidth - 30, 640
-    );
+    auto storageContainer = MakeTabPage("StorageTab", "StorageDesc",
+        "Storage Device: Visualize disk contents with file sizes and access patterns");
 
-    auto storageDesc = std::make_shared<UltraCanvasLabel>(
-        "StorageDesc", 10, 10, kDefaultWidth - 50, 25
-    );
-    storageDesc->SetText("Storage Device: Visualize disk contents with file sizes and access patterns");
-    storageDesc->SetFontSize(11);
-    storageContainer->AddChild(storageDesc);
+    auto depthControls = MakeToolBar("DepthControls");
 
-    auto depthControls = std::make_shared<UltraCanvasContainer>(
-        "DepthControls", 10, 40, kDefaultWidth - 50, 45
-    );
-    depthControls->SetBackgroundColor(Color(248, 248, 252));
-    depthControls->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-
-    auto depthLabel = std::make_shared<UltraCanvasLabel>(
-        "DepthLabel", 0, 0, 80, 20
-    );
-    depthLabel->SetText("Max Depth:");
-    depthLabel->SetFontSize(11);
-    depthControls->AddChild(depthLabel);
+    DemoKit::Add(depthControls, MakeToolLabel("DepthLabel", "Max Depth:"));
 
     auto depthSlider = std::make_shared<UltraCanvasSlider>(
         "DepthSlider", 0, 0, 150, 25
@@ -541,53 +492,41 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
     depthSlider->SetRange(1, 10);
     depthSlider->SetValue(5);
     depthSlider->SetStep(1);
-    depthControls->AddChild(depthSlider);
+    DemoKit::Add(depthControls, depthSlider);
 
-    auto depthValueLabel = std::make_shared<UltraCanvasLabel>(
-        "DepthValue", 0, 0, 30, 20
-    );
-    depthValueLabel->SetText("5");
-    depthValueLabel->SetFontSize(11);
-    depthControls->AddChild(depthValueLabel);
+    // The value readout keeps its old 30 px as a least width, so "5" -> "10"
+    // does not shift the controls after it.
+    auto depthValueLabel = MakeToolLabel("DepthValue", "5");
+    CSSLayout::BoxConstraints valueLimits;
+    valueLimits.minWidth = CSSLayout::Dimension::Px(30);
+    depthValueLabel->boxConstraints = valueLimits;
+    DemoKit::Add(depthControls, depthValueLabel);
 
     auto unlimitedCheck = std::make_shared<UltraCanvasCheckbox>(
-        "UnlimitedCheck", 0, 0, 100, 20
+        "UnlimitedCheck", 0, 0, 0, 20, "Unlimited"
     );
-    unlimitedCheck->SetText("Unlimited");
     unlimitedCheck->SetChecked(false);
-    depthControls->AddChild(unlimitedCheck);
+    DemoKit::Add(depthControls, unlimitedCheck);
 
     // Stretch spacer pushes the highlight / Reset / Export group flush right.
     depthControls->AddStretchSpacer(1.0f);
 
-    auto showOldBtn = std::make_shared<UltraCanvasButton>(
-        "ShowOldBtn", 0, 0, 170, 28
-    );
-    showOldBtn->SetText("Highlight Old Files");
-    depthControls->AddChild(showOldBtn);
+    auto showOldBtn = MakeToolButton("ShowOldBtn", "Highlight Old Files", 170);
+    DemoKit::Add(depthControls, showOldBtn);
 
-    auto showRecentBtn = std::make_shared<UltraCanvasButton>(
-        "ShowRecentBtn", 0, 0, 165, 28
-    );
-    showRecentBtn->SetText("Highlight Recent");
-    depthControls->AddChild(showRecentBtn);
+    auto showRecentBtn = MakeToolButton("ShowRecentBtn", "Highlight Recent", 165);
+    DemoKit::Add(depthControls, showRecentBtn);
 
-    auto resetStorageBtn = std::make_shared<UltraCanvasButton>(
-        "ResetStorageBtn", 0, 0, 80, 28
-    );
-    resetStorageBtn->SetText("Reset");
-    depthControls->AddChild(resetStorageBtn);
+    auto resetStorageBtn = MakeToolButton("ResetStorageBtn", "Reset", 80);
+    DemoKit::Add(depthControls, resetStorageBtn);
 
-    auto exportBtn = std::make_shared<UltraCanvasButton>(
-        "ExportBtn", 0, 0, 110, 28
-    );
-    exportBtn->SetText("Export SVG");
-    depthControls->AddChild(exportBtn);
+    auto exportBtn = MakeToolButton("ExportBtn", "Export SVG", 110);
+    DemoKit::Add(depthControls, exportBtn);
 
-    storageContainer->AddChild(depthControls);
+    DemoKit::Add(storageContainer, depthControls);
 
     auto storageTree = std::make_shared<UltraCanvasGourceTree>(
-        "StorageTree", 10, 90, kDefaultWidth - 50, 540
+        "StorageTree", 0, 0, 980, 540
     );
 
     GenerateStorageDeviceData(storageTree.get());
@@ -642,7 +581,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
         }
     };
 
-    storageContainer->AddChild(storageTree);
+    AddTree(storageContainer, storageTree);
 
 //    // ========================================
 //    // TAB 3: PERFORMANCE TEST
@@ -927,63 +866,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGourceTr
 //    tabbedContainer->AddTab("Performance", perfContainer);
 //    tabbedContainer->AddTab("Custom", customContainer);
 
-    // ========================================
-    // RESPONSIVE RELAYOUT
-    // ========================================
-    // Captures every child by shared_ptr and reflows the entire layout for any
-    // given parent width. Called once at construction and again on every
-    // WindowResize event delivered to mainContainer.
-    auto relayout = [=](int W, int H) {
-        if (W < kMinWidth) W = kMinWidth;
-        (void)H; // height stays at kDefaultHeight; only width adapts
-
-        const int innerW = W - 20;        // tabbed container width
-        const int tabW   = W - 30;        // child container width inside tabs
-        const int barW   = W - 50;        // toolbar / tree width inside tab
-        const int statusW = W - 40;
-        const int subtitleW = W - 70;
-
-        mainContainer->SetSize(W, kDefaultHeight);
-        subtitle->SetWidth(subtitleW);
-        statusLabel->SetWidth(statusW);
-        tabbedContainer->SetSize(innerW, 680);
-
-        // --- Per-tab containers and trees ---
-        projectContainer->SetSize(tabW, 640);
-        projectDesc->SetWidth(barW);
-        projectControls->SetSize(barW, 45);
-        projectTree->SetSize(barW, 540);
-
-        storageContainer->SetSize(tabW, 640);
-        storageDesc->SetWidth(barW);
-        depthControls->SetSize(barW, 45);
-        storageTree->SetSize(barW, 540);
-
-//        perfContainer->SetSize(tabW, 640);
-//        perfDesc->SetWidth(barW);
-//        perfControls->SetSize(barW, 45);
-//        perfTree->SetSize(barW, 540);
-//
-//        customContainer->SetSize(tabW, 640);
-//        customDesc->SetWidth(barW);
-//        customControls->SetSize(barW, 80);
-//        customTree->SetSize(barW, 505);
-
-        // Toolbar children are laid out automatically by each control
-        // container's flex-row layout (configured at construction). Resizing
-        // the containers above re-runs that flex pass, so the stretch spacer
-        // re-absorbs the slack and the right-hand button group stays flush right.
-    };
-
-    // Initial layout
-    relayout(kDefaultWidth, kDefaultHeight);
-
-    // Subscribe to WindowResize
-    mainContainer->onResize = [relayout](int w, int h) {
-        relayout(w, h);
-    };
-
-    return mainContainer;
+    return page;
 }
 
 } // namespace UltraCanvas

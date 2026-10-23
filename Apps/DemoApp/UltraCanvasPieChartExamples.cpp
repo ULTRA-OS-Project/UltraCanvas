@@ -1,10 +1,14 @@
-    // Apps/DemoApp/UltraCanvasPieChartExamples.cpp
+// Apps/DemoApp/UltraCanvasPieChartExamples.cpp
 // Comprehensive pie chart demonstration with all features
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the controls
+//                  in a card beside the four charts, each chart in its own
+//                  card, every label and checkbox sized to its text
 // Version: 1.0.0
-// Last Modified: 2025-01-16
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasSpecificChartElements.h"
 #include "Plugins/Charts/UltraCanvasPieChart.h"
 #include "UltraCanvasLabel.h"
@@ -70,40 +74,31 @@ namespace UltraCanvas {
             std::shared_ptr<UltraCanvasContainer> container,
             std::vector<std::shared_ptr<UltraCanvasPieChartElement>> charts,
             std::shared_ptr<UltraCanvasPieChartElement> pieChart1,
-            std::shared_ptr<UltraCanvasPieChartElement> pieChart2,
-            int x, int y) {
+            std::shared_ptr<UltraCanvasPieChartElement> pieChart2) {
 
-        int yOffset = y;
         int controlHeight = 25;
-        int spacing = 8;
+
+        // A bold group heading of the panel
+        auto addGroupLabel = [&container](const std::string& id, const std::string& text) {
+            DemoKit::AddText(container, id, text)->SetFontWeight(FontWeight::Bold);
+        };
 
         // === CHART TYPE CONTROLS ===
-        auto typeLabel = std::make_shared<UltraCanvasLabel>("TypeLabel", x, yOffset, 200, 20);
-        typeLabel->SetText("Chart Type:");
-        typeLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(typeLabel);
-        yOffset += 25;
+        addGroupLabel("TypeLabel", "Chart Type:");
 
-        auto donutCheckbox = std::make_shared<UltraCanvasCheckbox>("DonutMode", x, yOffset, 150, controlHeight);
-        donutCheckbox->SetText("Donut Mode");
+        auto donutCheckbox = std::make_shared<UltraCanvasCheckbox>("DonutMode", 0, 0, 0, controlHeight, "Donut Mode");
         donutCheckbox->SetChecked(pieChartControls.donutMode);
         donutCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.donutMode = newState == CheckedState::Checked;
             pieChart1->SetDonutMode(newState == CheckedState::Checked);
             pieChart2->SetDonutMode(newState == CheckedState::Checked);
         };
-        container->AddChild(donutCheckbox);
-        yOffset += controlHeight + spacing;
+        DemoKit::Add(container, donutCheckbox);
 
         // === 3D EFFECTS ===
-        auto effectsLabel = std::make_shared<UltraCanvasLabel>("EffectsLabel", x, yOffset, 200, 20);
-        effectsLabel->SetText("Visual Effects:");
-        effectsLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(effectsLabel);
-        yOffset += 25;
+        addGroupLabel("EffectsLabel", "Visual Effects:");
 
-        auto enable3DCheckbox = std::make_shared<UltraCanvasCheckbox>("3DEffects", x, yOffset, 150, controlHeight);
-        enable3DCheckbox->SetText("3D Effects");
+        auto enable3DCheckbox = std::make_shared<UltraCanvasCheckbox>("3DEffects", 0, 0, 0, controlHeight, "3D Effects");
         enable3DCheckbox->SetChecked(pieChartControls.enable3DEffects);
         enable3DCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.enable3DEffects = newState == CheckedState::Checked;
@@ -115,11 +110,9 @@ namespace UltraCanvas {
                 pieChart2->Disable3DMode();
             }
         };
-        container->AddChild(enable3DCheckbox);
-        yOffset += controlHeight + spacing;
+        DemoKit::Add(container, enable3DCheckbox);
 
-        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("GradientFills", x, yOffset, 180, controlHeight);
-        gradientCheckbox->SetText("Radial Gradients");
+        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("GradientFills", 0, 0, 0, controlHeight, "Radial Gradients");
         gradientCheckbox->SetChecked(pieChartControls.gradientFills);
         gradientCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.gradientFills = newState == CheckedState::Checked;
@@ -131,17 +124,12 @@ namespace UltraCanvas {
                 pieChart2->ClearSliceGradients();
             }
         };
-        container->AddChild(gradientCheckbox);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::Add(container, gradientCheckbox);
 
         // === EXPLOSION CONTROLS ===
-        auto explosionLabel = std::make_shared<UltraCanvasLabel>("ExplosionLabel", x, yOffset, 200, 20);
-        explosionLabel->SetText("Slice Explosion:");
-        explosionLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(explosionLabel);
-        yOffset += 25;
+        addGroupLabel("ExplosionLabel", "Slice Explosion:");
 
-        auto explosionSlider = std::make_shared<UltraCanvasSlider>("ExplosionSlider", x, yOffset, 180, controlHeight);
+        auto explosionSlider = std::make_shared<UltraCanvasSlider>("ExplosionSlider", 0, 0, 180, controlHeight);
         explosionSlider->SetRange(0.0, 0.5);
         explosionSlider->SetStep(0.01);
         explosionSlider->SetValue(pieChartControls.globalExplosion);
@@ -150,17 +138,12 @@ namespace UltraCanvas {
             pieChart1->SetGlobalExplosion(pieChartControls.globalExplosion);
             pieChart2->SetGlobalExplosion(pieChartControls.globalExplosion);
         };
-        container->AddChild(explosionSlider);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::AddFixed(container, explosionSlider);
 
         // === PERSPECTIVE ANGLE (3D) ===
-        auto perspectiveLabel = std::make_shared<UltraCanvasLabel>("PerspectiveLabel", x, yOffset, 300, 20);
-        perspectiveLabel->SetText("Perspective Angle (3D):");
-        perspectiveLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(perspectiveLabel);
-        yOffset += 25;
+        addGroupLabel("PerspectiveLabel", "Perspective Angle (3D):");
 
-        auto perspectiveSlider = std::make_shared<UltraCanvasSlider>("PerspectiveSlider", x, yOffset, 180, controlHeight);
+        auto perspectiveSlider = std::make_shared<UltraCanvasSlider>("PerspectiveSlider", 0, 0, 180, controlHeight);
         perspectiveSlider->SetRange(5.0, 70.0);
         perspectiveSlider->SetStep(1.0);
         perspectiveSlider->SetValue(pieChartControls.perspectiveAngle);
@@ -168,17 +151,12 @@ namespace UltraCanvas {
             pieChartControls.perspectiveAngle = static_cast<float>(value);
             for (auto& c : charts) c->SetPerspectiveAngle(pieChartControls.perspectiveAngle);
         };
-        container->AddChild(perspectiveSlider);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::AddFixed(container, perspectiveSlider);
 
         // === LABEL CONTROLS ===
-        auto labelLabel = std::make_shared<UltraCanvasLabel>("LabelLabel", x, yOffset, 200, 20);
-        labelLabel->SetText("Labels:");
-        labelLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(labelLabel);
-        yOffset += 25;
+        addGroupLabel("LabelLabel", "Labels:");
 
-        auto labelPosDropdown = std::make_shared<UltraCanvasDropdown>("LabelPosition", x, yOffset, 180, controlHeight);
+        auto labelPosDropdown = std::make_shared<UltraCanvasDropdown>("LabelPosition", 0, 0, 180, controlHeight);
         labelPosDropdown->AddItem("Auto");
         labelPosDropdown->AddItem("Inside");
         labelPosDropdown->AddItem("Outside");
@@ -199,51 +177,44 @@ namespace UltraCanvas {
             pieChart1->SetLabelPosition(pos);
             pieChart2->SetLabelPosition(pos);
         };
-        container->AddChild(labelPosDropdown);
-        yOffset += controlHeight + spacing;
+        DemoKit::AddFixed(container, labelPosDropdown);
 
-        auto leaderLinesCheckbox = std::make_shared<UltraCanvasCheckbox>("LeaderLines", x, yOffset, 180, controlHeight);
-        leaderLinesCheckbox->SetText("Leader Lines");
+        auto leaderLinesCheckbox = std::make_shared<UltraCanvasCheckbox>("LeaderLines", 0, 0, 0, controlHeight, "Leader Lines");
         leaderLinesCheckbox->SetChecked(pieChartControls.leaderLines);
         leaderLinesCheckbox->onStateChanged = [pieChart1, pieChart2](CheckedState oldState, CheckedState newState) {
             pieChartControls.leaderLines = newState == CheckedState::Checked;
             pieChart1->SetLeaderLinesEnabled(newState == CheckedState::Checked);
             pieChart2->SetLeaderLinesEnabled(newState == CheckedState::Checked);
         };
-        container->AddChild(leaderLinesCheckbox);
+        DemoKit::Add(container, leaderLinesCheckbox);
     }
 
 // ===== MAIN PIE CHART EXAMPLES CREATOR =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePieChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("PieChartContainer", 0, 0, 1200, 810);
+        auto container = DemoKit::CreatePage("PieChartContainer",
+                "Pie Chart Examples - Enhanced with 3D & Gradients",
+                "Comprehensive pie chart visualization with donut mode, exploded slices, radial gradients, "
+                "3D visual effects, and advanced labeling. Features intelligent label positioning and "
+                "interactive tooltips.");
 
-        // === TITLE ===
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("TitleLabel", 20, 10, 1160, 35);
-        titleLabel->SetText("Pie Chart Examples - Enhanced with 3D & Gradients");
-        titleLabel->SetFontSize(18);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        titleLabel->SetAlignment(TextAlignment::Center);
-        titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-        container->AddChild(titleLabel);
+        // The controls beside the charts; the charts two by two while they
+        // fit, one under the other when not.
+        auto mainRow = DemoKit::AddRow(container, "PieMainRow");
+        auto controlsCard = DemoKit::AddCard(mainRow, "PieControlsCard", "", "",
+                                             180 + 2 * DemoKit::kCardPadding + 2);
+        controlsCard->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        // === DESCRIPTION ===
-        auto descLabel = std::make_shared<UltraCanvasLabel>("DescLabel", 20, 55, 760, 60);
-        descLabel->SetText(
-                "Comprehensive pie chart visualization with donut mode, exploded slices, radial gradients,\n"
-                "3D visual effects, and advanced labeling. Features intelligent label positioning and interactive tooltips."
-        );
-        descLabel->SetFontSize(11);
-        descLabel->SetWrap(TextWrap::WrapWord);
-        container->AddChild(descLabel);
+        // Each chart card is at least as wide as its 460 px chart.
+        const float chartCardW = 460 + 2 * DemoKit::kCardPadding + 2;
+        auto chartGrid = DemoKit::CreateRow("PieChartGrid");
+        DemoKit::Add(mainRow, chartGrid, 1);
+        chartGrid->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(chartCardW));
 
         // ===== EXAMPLE 1: MARKET SHARE ANALYSIS =====
-        auto marketLabel = std::make_shared<UltraCanvasLabel>("MarketLabel", 240, 130, 460, 25);
-        marketLabel->SetText("Market Share Distribution");
-        marketLabel->SetFontSize(13);
-        marketLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(marketLabel);
+        auto marketCard = DemoKit::AddCard(chartGrid, "PieMarketCard", "", "", chartCardW);
+        DemoKit::AddHeading(marketCard, "MarketLabel", "Market Share Distribution");
 
-        auto marketChart = CreatePieChartElement("MarketPieChart", 240, 160, 460, 290);
+        auto marketChart = CreatePieChartElement("MarketPieChart", 0, 0, 460, 290);
         marketChart->SetDataSource(GenerateMarketShareData());
         marketChart->SetColorPalette({
                                              Color(54, 162, 235, 255),   // Blue
@@ -257,16 +228,13 @@ namespace UltraCanvas {
         marketChart->SetLabelContent(LabelContent::NamePercentage);
         marketChart->SetLabelPosition(LabelPosition::Auto);
         marketChart->SetTooltipsEnabled(true);
-        container->AddChild(marketChart);
+        DemoKit::AddFixed(marketCard, marketChart);
 
         // ===== EXAMPLE 2: BUDGET ALLOCATION =====
-        auto budgetLabel = std::make_shared<UltraCanvasLabel>("BudgetLabel", 720, 130, 460, 25);
-        budgetLabel->SetText("Annual Budget Allocation");
-        budgetLabel->SetFontSize(13);
-        budgetLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(budgetLabel);
+        auto budgetCard = DemoKit::AddCard(chartGrid, "PieBudgetCard", "", "", chartCardW);
+        DemoKit::AddHeading(budgetCard, "BudgetLabel", "Annual Budget Allocation");
 
-        auto budgetChart = CreatePieChartElement("BudgetPieChart", 720, 160, 460, 290);
+        auto budgetChart = CreatePieChartElement("BudgetPieChart", 0, 0, 460, 290);
         budgetChart->SetDataSource(GenerateBudgetData());
         budgetChart->SetColorPalette({
                                              Color(255, 159, 64, 255),   // Orange
@@ -282,16 +250,13 @@ namespace UltraCanvas {
         budgetChart->SetLabelPosition(LabelPosition::Outside);
         budgetChart->SetLeaderLinesEnabled(true);
         budgetChart->SetTooltipsEnabled(true);
-        container->AddChild(budgetChart);
+        DemoKit::AddFixed(budgetCard, budgetChart);
 
         // ===== EXAMPLE 3: 3D DONUT WITH GRADIENTS =====
-        auto donutLabel = std::make_shared<UltraCanvasLabel>("DonutLabel", 240, 470, 460, 25);
-        donutLabel->SetText("3D Pie with Highlighted Slice");
-        donutLabel->SetFontSize(13);
-        donutLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(donutLabel);
+        auto donutCard = DemoKit::AddCard(chartGrid, "PieDonutCard", "", "", chartCardW);
+        DemoKit::AddHeading(donutCard, "DonutLabel", "3D Pie with Highlighted Slice");
 
-        auto donutChart = CreatePieChartElement("DonutChart", 240, 500, 460, 290);
+        auto donutChart = CreatePieChartElement("DonutChart", 0, 0, 460, 290);
         donutChart->SetDataSource(GenerateMarketShareData());
         donutChart->SetColorPalette({
                                             Color(255, 99, 132, 255),
@@ -330,16 +295,13 @@ namespace UltraCanvas {
         donutChart->SetBorderWidth(2.5f);
         donutChart->SetTooltipsEnabled(true);
 
-        container->AddChild(donutChart);
+        DemoKit::AddFixed(donutCard, donutChart);
 
         // ===== EXAMPLE 4: STYLIZED SHOWCASE =====
-        auto styledLabel = std::make_shared<UltraCanvasLabel>("StyledLabel", 720, 470, 460, 25);
-        styledLabel->SetText("Stylized Pie Chart");
-        styledLabel->SetFontSize(13);
-        styledLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(styledLabel);
+        auto styledCard = DemoKit::AddCard(chartGrid, "PieStyledCard", "", "", chartCardW);
+        DemoKit::AddHeading(styledCard, "StyledLabel", "Stylized Pie Chart");
 
-        auto styledChart = CreatePieChartElement("StyledChart", 720, 500, 460, 290);
+        auto styledChart = CreatePieChartElement("StyledChart", 0, 0, 460, 290);
         styledChart->SetDataSource(GenerateBudgetData());
         styledChart->SetColorPalette({
                                              Color(255, 159, 64, 255),
@@ -359,12 +321,12 @@ namespace UltraCanvas {
         styledChart->SetBorderWidth(3.0f);
         styledChart->SetTooltipsEnabled(true);
 
-        container->AddChild(styledChart);
+        DemoKit::AddFixed(styledCard, styledChart);
 
         // === CONTROL PANEL (left column) ===
-        CreatePieChartControlPanel(container,
+        CreatePieChartControlPanel(controlsCard,
                                    {marketChart, budgetChart, donutChart, styledChart},
-                                   marketChart, budgetChart, 20, 130);
+                                   marketChart, budgetChart);
 
         return container;
     }

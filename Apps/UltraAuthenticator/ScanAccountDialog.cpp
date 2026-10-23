@@ -123,18 +123,21 @@ void ScanAccountDialog::CreateScanAccountDialog() {
     imageBtn_ = std::make_shared<UltraCanvasButton>(
         "scan-from-image", margin, buttonY, 130, 32);
     imageBtn_->SetText("From image…");
+    Theme::StyleSecondary(imageBtn_);
     imageBtn_->onClick = [this]() { ScanImageFile(); };
     AddChild(imageBtn_);
 
     screenBtn_ = std::make_shared<UltraCanvasButton>(
         "scan-from-screen", margin + 140, buttonY, 130, 32);
     screenBtn_->SetText("From screen");
+    Theme::StyleSecondary(screenBtn_);
     screenBtn_->onClick = [this]() { ScanScreen(); };
     AddChild(screenBtn_);
 
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "scan-cancel", kDialogWidth - margin - 100, buttonY, 100, 32);
     cancelBtn->SetText("Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() {
         StopScanning();
         CloseDialog(DialogResult::Cancel);

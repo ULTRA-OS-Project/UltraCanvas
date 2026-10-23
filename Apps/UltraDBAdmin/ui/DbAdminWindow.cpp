@@ -330,6 +330,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildBrowsePage() {
     browseModel_ = std::make_shared<ResultSetModel>();
     browseModel_->SetPending(&edits_);
     browseView_ = MakeList("dbaBrowseGrid", browseModel_);
+    FitResultColumns(*browseView_);
     browseView_->SetSelection(std::make_shared<UltraCanvasMultiSelection>());
     // The order is the server's: a click on a header asks for the page again,
     // ORDER BY that column (then the key) - never a sort of the 200 rows shown.
@@ -654,6 +655,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
     sqlResultModel_ = std::make_shared<ResultSetModel>();
     sqlResultProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(sqlResultModel_);
     sqlResultView_ = MakeList("dbaSqlRows", sqlResultProxy_);
+    FitResultColumns(*sqlResultView_);
     sqlResultView_->SetSelection(std::make_shared<UltraCanvasMultiSelection>());
     sqlResultView_->onContextMenu = [this](int row, const UCEvent& event) { ShowResultMenu(row, event); };
     sqlResultView_->onCellDoubleClicked = [this](int row, int column, const Point2Di&) {

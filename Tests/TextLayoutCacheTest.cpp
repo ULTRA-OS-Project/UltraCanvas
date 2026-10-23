@@ -5,6 +5,7 @@
 // (IRenderContext::TextLayoutsCreated); a changed text, font or width makes
 // one more, a changed colour none. Drawn into an offscreen surface; needs
 // no display.
+// Version: 1.3.0 - a WrapNone key with no ellipsize stays one line at a narrow width
 // Version: 1.2.0 - the context's key respects the font; the dropdown's reordered rows
 // Version: 1.1.0 - the text input, the dropdown and the menu
 // Version: 1.0.0
@@ -91,6 +92,24 @@ int main() {
               "a changed mode rebuilds it with the mode applied");
         cache.Reset();
         Check(!cache && cache.Get(ctx.get(), key) != nullptr && cache.Builds() == 4, "Reset drops it, the next Get builds again");
+    }
+
+    std::printf("No wrap stays one line\n");
+    {
+        // A key that names no ellipsize keeps what WrapNone set - cut at the
+        // end - so a label measured against a narrow width stays one line.
+        // Setting EllipsizeNone over it let Pango wrap the text a character
+        // a line: the demo's status legend measured 413 px tall that way.
+        UltraCanvasTextLayoutCache wide;
+        TextLayoutKey key;
+        key.text = "Component Status Legend";
+        ITextLayout* line = wide.Get(ctx.get(), key);
+        UltraCanvasTextLayoutCache narrow;
+        key.width = 0;
+        ITextLayout* cut = narrow.Get(ctx.get(), key);
+        Check(line && cut && cut->GetEllipsize() == EllipsizeMode::EllipsizeEnd, "WrapNone without a mode is cut at the end");
+        Check(line && cut && cut->GetLayoutHeight() == line->GetLayoutHeight(),
+              "and at width 0 is as tall as its one line: " + std::to_string(cut ? cut->GetLayoutHeight() : 0.0));
     }
 
     std::printf("A label\n");

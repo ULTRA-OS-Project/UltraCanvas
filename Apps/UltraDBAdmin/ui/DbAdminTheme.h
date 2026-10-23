@@ -67,6 +67,12 @@ UltraCanvas::Color StatusColor();
 
 // The lists' and the tree's colours, rows and header from the theme.
 void StyleList(UltraCanvas::UltraCanvasListView& view);
+// A grid of query results (a ResultSetModel): every column as wide as its
+// widest text and its title, measured by the view at the first paint after
+// the rows change - not estimated from a character count - and at most
+// kResultColumnMaxWidth, so one long text does not take the whole grid.
+// The user's drag of a border ends the fitting.
+void FitResultColumns(UltraCanvas::UltraCanvasListView& view);
 void StyleTree(UltraCanvas::UltraCanvasTreeView& tree);
 
 } // namespace UltraDBAdmin

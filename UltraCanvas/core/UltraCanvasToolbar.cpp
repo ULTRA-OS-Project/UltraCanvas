@@ -1,5 +1,7 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.8.1 - a label is as wide as its text; a dropdown button shows its
+//                  initial text (it opened empty)
 // Version: 1.8.0 - ToolbarAppearance::FromTheme
 // Version: 1.7.1 - buttons draw their icons at the size ToolbarAppearance::iconSize
 //                  names (IconPixelSize), not at 20 px whatever it said
@@ -437,6 +439,12 @@ namespace UltraCanvas {
         for (const auto& s : items) {
             dropdown->AddItem(s);
         }
+        // `text` is what the dropdown shows to begin with: the item that
+        // reads so. It used to be ignored, and the dropdown opened empty.
+        const auto shown = std::find(items.begin(), items.end(), text);
+        if (shown != items.end()) {
+            dropdown->SetSelectedIndex(static_cast<int>(shown - items.begin()), false);
+        }
         if (onSelect) {
             // Map the selected index back to its string for the public callback.
             auto captured = items;
@@ -485,7 +493,9 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasLabel> UltraCanvasToolbar::AddLabel(
             const std::string& id, const std::string& text) {
-        auto label = std::make_shared<UltraCanvasLabel>(id, 0, 0, 80, 24, text);
+        // As wide as its text, which a translation makes longer: a fixed
+        // width cut "Clipboard" in German.
+        auto label = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 24, text);
         label->SetAlignment(TextAlignment::Left);
         RegisterWidget(id, label);
         return label;

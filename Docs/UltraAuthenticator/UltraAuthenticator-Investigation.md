@@ -458,10 +458,16 @@ things the app does do.
 
 ### 3.7 Clipboard and UI leakage (medium)
 
-- Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
+- ~~Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
   readable by every app, and clipboard managers persist history. Auto-clear
   the clipboard ~30 s after copy (only if it still holds our value), and
-  never offer copy for the *secret*.
+  never offer copy for the *secret*.~~ — **DONE** (`AuthenticatorWindow::
+  CopyCode` / `ClearClipboardIfOurs`). A copy button on every card copies
+  the code with `ClipboardHint::Secret` (the platforms' clipboard-history
+  markers) and clears the clipboard 30 s later, and at once on lock and on
+  close, each time only if it still holds that code. An HOTP card copies
+  the code its last "Next code" produced, never advancing the counter. The
+  secret is still never offered for copying.
 - ~~App lock (PIN or the master password) with exponential back-off, and
   auto-lock on minimize/idle.~~ — **DONE** (`LockScreenDialog`,
   `AccountStore::Lock`/`Unlock`, `LockPolicy.h`). The vault locks on the

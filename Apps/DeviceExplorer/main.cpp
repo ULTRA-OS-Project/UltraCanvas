@@ -82,24 +82,6 @@ void PrintUsage(const char* programName) {
         programName);
 }
 
-// The computer node's description. Only the System category is probed:
-// it is a few file reads, where the full capture walks every bus.
-DeviceExplorer::MachineSummary DescribeMachine() {
-    DeviceExplorer::MachineSummary machine;
-    const HardwareSnapshot snapshot = UltraCanvasHardwareInfo::Capture(HardwareQuery::System);
-    machine.hostName = snapshot.system.hostName;
-    machine.operatingSystem = snapshot.system.osName;
-    if (!snapshot.system.osVersion.empty() &&
-        machine.operatingSystem.find(snapshot.system.osVersion) == std::string::npos) {
-        if (!machine.operatingSystem.empty()) machine.operatingSystem += " ";
-        machine.operatingSystem += snapshot.system.osVersion;
-    }
-    machine.kernel = snapshot.system.kernelVersion;
-    machine.manufacturer = snapshot.system.manufacturer;
-    machine.model = snapshot.system.productName;
-    return machine;
-}
-
 int RunList(DeviceExplorer::DeviceGrouping grouping, bool details, bool showSerials) {
     auto& manager = IODeviceManager::GetInstance();
     const DeviceExplorer::DeviceInventory inventory = DeviceExplorer::ScanInventory(manager);
@@ -111,7 +93,7 @@ int RunList(DeviceExplorer::DeviceGrouping grouping, bool details, bool showSeri
     DeviceExplorer::PrinterStatusMap printerStatus;
     if (details) printerStatus = DeviceExplorer::QueryAllPrinterStatus(manager);
     const std::string text = DeviceExplorer::FormatInventoryText(
-        inventory, grouping, DescribeMachine(), details, mask,
+        inventory, grouping, DeviceExplorer::DeviceExplorerPanel::DescribeThisMachine(), details, mask,
         details ? &printerStatus : nullptr);
     std::fputs(text.c_str(), stdout);
     manager.Shutdown();
@@ -191,7 +173,7 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         DeviceExplorer::DeviceExplorerWindow window;
-        if (!window.Initialize(DescribeMachine(), grouping)) {
+        if (!window.Initialize(DeviceExplorer::DeviceExplorerPanel::DescribeThisMachine(), grouping)) {
             debugOutput << "Failed to create the DeviceExplorer window" << std::endl;
             exitCode = EXIT_FAILURE;
         } else {

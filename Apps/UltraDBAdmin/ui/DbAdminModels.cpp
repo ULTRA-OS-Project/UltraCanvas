@@ -1,5 +1,7 @@
 // Apps/UltraDBAdmin/ui/DbAdminModels.cpp
-// Version: 0.3.0 - LogModel, SearchHitModel
+// Version: 0.4.0 - LogModel, SearchHitModel
+// Version: 0.3.0 - a column's width is the view's to measure (SetColumnFitting);
+//                  the model gives the header's estimate only
 // Version: 0.2.0 - a staged blob shows as its size
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -36,9 +38,9 @@ size_t Utf8Length(const std::string& text) {
     return n;
 }
 
-// A column as wide as its widest text, within reason; the user drags it
-// wider. An estimate from the character count: measuring every cell would
-// need a render context, and the first rows say enough.
+// A column's width before the view has measured it (FitResultColumns in
+// DbAdminTheme fits every column to its text at the first paint): wide
+// enough for the title, from the character count.
 int TextWidth(size_t characters) {
     return std::clamp(static_cast<int>(characters) * 9 + 24, 60, 360);
 }
@@ -103,28 +105,13 @@ ListColumnDef ResultSetModel::GetColumnDef(int column) const {
     if (static_cast<size_t>(column) < columnTypes_.size()) tip = columnTypes_[static_cast<size_t>(column)];
     const auto& info = rows_.ColumnInfo();
     if (tip.empty() && static_cast<size_t>(column) < info.size()) tip = info[static_cast<size_t>(column)].declaredType;
-    const int width = static_cast<size_t>(column) < widths_.size() ? widths_[static_cast<size_t>(column)]
-                                                                     : TextWidth(Utf8Length(title));
-    return ListColumnDef(title, width, TextAlignment::Left, tip);
+    return ListColumnDef(title, TextWidth(Utf8Length(title) + 2), TextAlignment::Left, tip);   // + the sort mark
 }
 
 void ResultSetModel::Replace(UltraDbResultSet rows, std::vector<std::string> columnTypes) {
     rows_ = std::move(rows);
     columns_ = rows_.Columns();
     columnTypes_ = std::move(columnTypes);
-    // Widths from the header and the first rows; a cell is cut at 60
-    // characters for this, so one long text does not take the whole grid.
-    constexpr size_t kSampleRows = 200;
-    constexpr size_t kCellChars = 60;
-    widths_.assign(columns_.size(), 0);
-    for (size_t c = 0; c < columns_.size(); ++c) {
-        size_t widest = Utf8Length(columns_[c]) + 2;   // room for the sort mark
-        for (size_t r = 0; r < rows_.Size() && r < kSampleRows; ++r) {
-            const UltraDbRow& row = rows_.Row(r);
-            if (c < row.Size()) widest = std::max(widest, Utf8Length(CellText(row[c], kCellChars)));
-        }
-        widths_[c] = TextWidth(widest);
-    }
     NotifyDataChanged();
 }
 

@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasToolbarExamples.cpp
 // Comprehensive demonstration of toolbar component functionality
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  example, every text sized to fit, toolbars as wide as the page
 // Version: 1.0.2
-// Last Modified: 2026-07-21
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -18,59 +21,18 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateToolbarExamples() {
         debugOutput << "Creating Toolbar Examples..." << std::endl;
 
-        // Main container for all toolbar examples
-        auto mainContainer = std::make_shared<UltraCanvasContainer>(
-                "ToolbarExamples", 0, 0, 1000, 1000
-        );
-        mainContainer->SetBackgroundColor(Color(252, 252, 252, 255));
-        mainContainer->SetPadding(0,0,10,0);
-
-        int currentY = 10;
-
-        // ===== PAGE HEADER =====
-        auto title = std::make_shared<UltraCanvasLabel>(
-                "ToolbarTitle", 20, currentY, 500, 35
-        );
-        title->SetText("Toolbar Element Examples");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150));
-        mainContainer->AddChild(title);
-        currentY += 40;
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>(
-                "ToolbarSubtitle", 20, currentY, 960, 25
-        );
-        subtitle->SetText("Flexible toolbar system with buttons, dropdowns, separators, and various styles");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(subtitle);
-        currentY += 40;
+        auto page = DemoKit::CreatePage("ToolbarExamples", "Toolbar",
+                "Flexible toolbar system with buttons, dropdowns, separators, and various styles");
 
         // ===== EXAMPLE 1: STANDARD HORIZONTAL TOOLBAR =====
-        auto section1Label = std::make_shared<UltraCanvasLabel>(
-                "Section1Label", 20, currentY, 400, 25
-        );
-        section1Label->SetText("1. Standard Horizontal Toolbar");
-        section1Label->SetFontSize(14);
-        section1Label->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(section1Label);
-        currentY += 30;
-
-        auto desc1 = std::make_shared<UltraCanvasLabel>(
-                "Desc1", 20, currentY, 960, 20
-        );
-        desc1->SetText("Classic toolbar with buttons, separators, and flexible spacing");
-        desc1->SetFontSize(11);
-        desc1->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(desc1);
-        currentY += 25;
+        auto card1 = DemoKit::AddCard(page, "ToolbarCard1", "1. Standard Horizontal Toolbar",
+                "Classic toolbar with buttons, separators, and flexible spacing");
 
         // Create standard toolbar using builder
         auto standardToolbar = UltraCanvasToolbarBuilder("StandardToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Default())
-                .SetDimensions(20, currentY, 960, 48)
+                .SetDimensions(0, 0, 960, 48)
                 .AddButton("new", "", NormalizePath(GetResourcesDir() + "media/icons/add-document.svg"), []() {
                     debugOutput << "New button clicked" << std::endl;
                 })
@@ -95,30 +57,14 @@ namespace UltraCanvas {
                 .AddLabel("status", "Ready")
                 .Build();
 
-        mainContainer->AddChild(standardToolbar);
-        currentY += 65;
+        DemoKit::AddStretched(card1, standardToolbar);
 
         // ===== EXAMPLE 2: TOOLBAR WITH DROPDOWNS =====
-        auto section2Label = std::make_shared<UltraCanvasLabel>(
-                "Section2Label", 20, currentY, 400, 25
-        );
-        section2Label->SetText("2. Toolbar with Dropdown Menus");
-        section2Label->SetFontSize(14);
-        section2Label->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(section2Label);
-        currentY += 30;
-
-        auto desc2 = std::make_shared<UltraCanvasLabel>(
-                "Desc2", 20, currentY, 960, 20
-        );
-        desc2->SetText("Toolbar combining buttons and dropdown selectors");
-        desc2->SetFontSize(11);
-        desc2->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(desc2);
-        currentY += 25;
+        auto card2 = DemoKit::AddCard(page, "ToolbarCard2", "2. Toolbar with Dropdown Menus",
+                "Toolbar combining buttons and dropdown selectors");
 
         auto dropdownToolbar = std::make_shared<UltraCanvasToolbar>(
-                "DropdownToolbar", 20, currentY, 960, 48
+                "DropdownToolbar", 0, 0, 960, 48
         );
         dropdownToolbar->SetOrientation(ToolbarOrientation::Horizontal);
         dropdownToolbar->SetAppearance(ToolbarAppearance::Default());
@@ -158,33 +104,16 @@ namespace UltraCanvas {
             debugOutput << "Underline: " << (checked ? "ON" : "OFF") << std::endl;
         });
 
-        mainContainer->AddChild(dropdownToolbar);
-        currentY += 55;
+        DemoKit::AddStretched(card2, dropdownToolbar);
 
         // ===== EXAMPLE 3: FLAT STYLE TOOLBAR =====
-        auto section3Label = std::make_shared<UltraCanvasLabel>(
-                "Section3Label", 20, currentY, 400, 25
-        );
-        section3Label->SetText("3. Flat Style Toolbar");
-        section3Label->SetFontSize(14);
-        section3Label->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(section3Label);
-        currentY += 30;
-
-        auto desc3 = std::make_shared<UltraCanvasLabel>(
-                "Desc3", 20, currentY, 960, 20
-        );
-        desc3->SetText("Modern flat design without borders");
-        desc3->SetFontSize(11);
-        desc3->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(desc3);
-        currentY += 25;
+        auto card3 = DemoKit::AddCard(page, "ToolbarCard3", "3. Flat Style Toolbar",
+                "Modern flat design without borders");
 
         auto flatToolbar = UltraCanvasToolbarBuilder("FlatToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Flat())
-                .SetAppearance(ToolbarAppearance::Flat())
-                .SetDimensions(20, currentY, 960, 48)
+                .SetDimensions(0, 0, 960, 48)
                 .AddButton("home", "", NormalizePath(GetResourcesDir() + "media/icons/house.chimney.svg"), []() {
                     debugOutput << "Home clicked" << std::endl;
                 })
@@ -203,34 +132,19 @@ namespace UltraCanvas {
                 })
                 .Build();
 
-        mainContainer->AddChild(flatToolbar);
-        currentY += 55;
+        DemoKit::AddStretched(card3, flatToolbar);
 
         // ===== EXAMPLE 4: VERTICAL SIDEBAR TOOLBAR =====
-        auto section4Label = std::make_shared<UltraCanvasLabel>(
-                "Section4Label", 20, currentY, 400, 25
-        );
-        section4Label->SetText("4. Vertical Sidebar Toolbar");
-        section4Label->SetFontSize(14);
-        section4Label->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(section4Label);
-        currentY += 30;
+        auto card4 = DemoKit::AddCard(page, "ToolbarCard4", "4. Vertical Sidebar Toolbar",
+                "Vertical orientation for sidebar navigation");
 
-        auto desc4 = std::make_shared<UltraCanvasLabel>(
-                "Desc4", 20, currentY, 960, 20
-        );
-        desc4->SetText("Vertical orientation for sidebar navigation");
-        desc4->SetFontSize(11);
-        desc4->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(desc4);
-        currentY += 25;
-
-        // Container to demonstrate vertical toolbar
-        auto sidebarContainer = std::make_shared<UltraCanvasContainer>(
-                "SidebarDemo", 20, currentY, 960, 240
-        );
+        // The sidebar beside a content column, which takes the rest of the
+        // width and is as tall as its text.
+        auto sidebarContainer = DemoKit::CreateRow("SidebarDemo", 16, false);
         sidebarContainer->SetBackgroundColor(Color(245, 245, 245, 255));
         sidebarContainer->SetBorders(1, Color(220, 220, 220, 255));
+        sidebarContainer->SetPadding(10);
+        DemoKit::Add(card4, sidebarContainer);
 
         // Toolbar height is sized to its content so no free space is left below
         // the last icon: 5 buttons x 32 + separator 1 + 5 gaps x 4 = 181, plus
@@ -239,7 +153,7 @@ namespace UltraCanvas {
         auto verticalToolbar = UltraCanvasToolbarBuilder("VerticalToolbar")
                 .SetOrientation(ToolbarOrientation::Vertical)
                 .SetAppearance(ToolbarAppearance::Sidebar())
-                .SetDimensions(10, 10, 44, 189)
+                .SetDimensions(0, 0, 44, 189)
                 .AddButton("dashboard", "", DemoIconPath("menu/view-type.svg"), []() {
                     debugOutput << "Dashboard clicked" << std::endl;
                 })
@@ -267,55 +181,26 @@ namespace UltraCanvas {
                 widget->SetElementSize({32.0f, 32.0f});
             }
         }
-        sidebarContainer->AddChild(verticalToolbar);
+        DemoKit::AddFixed(sidebarContainer, verticalToolbar);
 
-        // Content area label
-        auto contentLabel = std::make_shared<UltraCanvasLabel>(
-                "ContentLabel", 80, 10, 860, 30
-        );
-        contentLabel->SetText("Main Content Area");
-        contentLabel->SetFontSize(16);
-        contentLabel->SetFontWeight(FontWeight::Bold);
-        contentLabel->SetTextColor(Color(100, 100, 100));
-        sidebarContainer->AddChild(contentLabel);
-
-        auto contentDesc = std::make_shared<UltraCanvasLabel>(
-                "ContentDesc", 80, 45, 860, 140
-        );
-        contentDesc->SetText("The vertical toolbar on the left provides navigation controls.\n\n"
-                             "This is a common pattern in modern applications where the sidebar "
-                             "contains primary navigation options while the main content area "
-                             "displays the selected content.");
-        contentDesc->SetFontSize(11);
-        contentDesc->SetTextColor(Color(120, 120, 120));
-        sidebarContainer->AddChild(contentDesc);
-
-        mainContainer->AddChild(sidebarContainer);
-        currentY += 255;
+        auto contentColumn = DemoKit::CreateColumn("SidebarContent", 8);
+        auto contentLabel = DemoKit::CreateHeading("ContentLabel", "Main Content Area");
+        DemoKit::Add(contentColumn, contentLabel);
+        DemoKit::AddText(contentColumn, "ContentDesc",
+                "The vertical toolbar on the left provides navigation controls.\n\n"
+                "This is a common pattern in modern applications where the sidebar "
+                "contains primary navigation options while the main content area "
+                "displays the selected content.");
+        DemoKit::Add(sidebarContainer, contentColumn, 1);
 
         // ===== EXAMPLE 5: RIBBON STYLE TOOLBAR =====
-        auto section5Label = std::make_shared<UltraCanvasLabel>(
-                "Section5Label", 20, currentY, 400, 25
-        );
-        section5Label->SetText("5. Ribbon Style Toolbar");
-        section5Label->SetFontSize(14);
-        section5Label->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(section5Label);
-        currentY += 30;
-
-        auto desc5 = std::make_shared<UltraCanvasLabel>(
-                "Desc5", 20, currentY, 960, 20
-        );
-        desc5->SetText("Office-style ribbon with grouped controls");
-        desc5->SetFontSize(11);
-        desc5->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(desc5);
-        currentY += 25;
+        auto card5 = DemoKit::AddCard(page, "ToolbarCard5", "5. Ribbon Style Toolbar",
+                "Office-style ribbon with grouped controls");
 
         auto ribbonToolbar = UltraCanvasToolbarBuilder("RibbonToolbar")
                 .SetOrientation(ToolbarOrientation::Horizontal)
                 .SetAppearance(ToolbarAppearance::Ribbon())
-                .SetDimensions(20, currentY, 960, 58)
+                .SetDimensions(0, 0, 960, 58)
                 .AddButton("clipboardIcon", "", NormalizePath(GetResourcesDir() + "media/icons/clipboard-list.svg"), []() {})
                 .AddLabel("clipboard", "Clipboard")
                 .AddSpacer(5)
@@ -336,35 +221,18 @@ namespace UltraCanvas {
                 .AddButton("chart", "", NormalizePath(GetResourcesDir() + "media/icons/chart.svg"), []() {})
                 .Build();
 
-        mainContainer->AddChild(ribbonToolbar);
-        currentY += 65;
+        DemoKit::AddStretched(card5, ribbonToolbar);
 
         // ===== USAGE NOTES =====
-        auto notesLabel = std::make_shared<UltraCanvasLabel>(
-                "NotesLabel", 20, currentY, 960, 25
-        );
-        notesLabel->SetText("Implementation Notes:");
-        notesLabel->SetFontSize(12);
-        notesLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(notesLabel);
-        currentY += 25;
+        DemoKit::AddNotes(page, "ToolbarNotes", "Implementation Notes", {
+                "Use UltraCanvasToolbarBuilder for fluent construction",
+                "AddSpacer(size) creates fixed spacing between items",
+                "AddFlexSpacer(stretch) creates flexible space that grows",
+                "AddSeparator() adds visual dividers",
+                "Supports both horizontal and vertical orientations",
+                "Multiple built-in styles: Standard, Flat, Docked, Ribbon, Sidebar"});
 
-        auto notes = std::make_shared<UltraCanvasLabel>(
-                "Notes", 20, currentY, 960, 80
-        );
-        notes->SetText(
-                "• Use UltraCanvasToolbarBuilder for fluent construction\n"
-                "• AddSpacer(size) creates fixed spacing between items\n"
-                "• AddFlexSpacer(stretch) creates flexible space that grows\n"
-                "• AddSeparator() adds visual dividers\n"
-                "• Supports both horizontal and vertical orientations\n"
-                "• Multiple built-in styles: Standard, Flat, Docked, Ribbon, Sidebar"
-        );
-        notes->SetFontSize(11);
-        notes->SetTextColor(Color(80, 80, 80));
-        mainContainer->AddChild(notes);
-
-        return mainContainer;
+        return page;
     }
 
 } // namespace UltraCanvas

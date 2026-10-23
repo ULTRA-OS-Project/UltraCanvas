@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
 // Fishbone (Ishikawa) diagram examples: eight design presets with live controls
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): controls,
+//                  diagram tabs and statistics as three cards in a row that
+//                  wraps, every label and panel sized to its text
 // Version: 1.0.0
-// Last Modified: 2026-08-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasFishboneDiagram.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasButton.h"
@@ -30,72 +34,63 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateFishboneDiagramExamples() {
-        // Children placed directly inside a sidebar/panel container are inset
-        // explicitly instead of using SetPadding() - the same pattern the
-        // SWOT/Quadrant/Venn demos use - so absolutely-positioned children are
-        // not clipped by the container's content area.
-        const int PAD = 15;
         const int SIDEBAR_W = 170;
+        // The sidebars' card width before they wrap under the diagram: room
+        // for the 170 px controls and the card's padding.
+        const float SIDEBAR_CARD_W = SIDEBAR_W + 2 * DemoKit::kCardPadding + 2;
 
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("fishboneMain", 0, 0, 1140, 800);
-        mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
+        auto mainContainer = DemoKit::CreatePage("fishboneMain", "Fishbone (Ishikawa) Diagram",
+                "Cause-and-effect root cause analysis with eight design presets, "
+                "category checklists (6M / 8P / 4S) and Mermaid ishikawa-beta export");
 
-        auto headerContainer = std::make_shared<UltraCanvasContainer>("fishboneHeader", 0, 0, 1140, 90);
-        headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
-        mainContainer->AddChild(headerContainer);
+        // Controls | diagram tabs | statistics. The sidebars keep their width;
+        // the middle card takes the rest, and on a narrow window the cards
+        // wrap under each other.
+        auto contentContainer = DemoKit::AddRow(mainContainer, "fishboneContent");
 
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("fishboneTitle", 30, 15, 1080, 35);
-        mainTitle->SetText("Fishbone (Ishikawa) Diagram");
-        mainTitle->SetFontSize(22);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetAlignment(TextAlignment::Left);
-        mainTitle->SetTextColor(Color(33, 37, 41, 255));
-        headerContainer->AddChild(mainTitle);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("fishboneSubtitle", 30, 52, 1000, 30);
-        subtitle->SetText("Cause-and-effect root cause analysis with eight design presets, "
-                          "category checklists (6M / 8P / 4S) and Mermaid ishikawa-beta export");
-        subtitle->SetFontSize(13);
-        subtitle->SetAlignment(TextAlignment::Left);
-        subtitle->SetTextColor(Color(108, 117, 125, 255));
-        headerContainer->AddChild(subtitle);
-
-        auto contentContainer = std::make_shared<UltraCanvasContainer>("fishboneContent", 0, 90, 1140, 710);
-        mainContainer->AddChild(contentContainer);
+        // The small upper-case heading of a sidebar section.
+        auto makeSectionTitle = [](const std::string& id, const std::string& text) {
+            auto title = DemoKit::CreateText(id, text);
+            title->SetFontSize(11);
+            title->SetFontWeight(FontWeight::Bold);
+            title->SetTextColor(Color(73, 80, 87, 255));
+            return title;
+        };
+        // A grey info panel of a sidebar, as tall as its text.
+        auto makeInfoPanel = [](const std::string& id, float fontSize, const Color& background) {
+            auto panel = DemoKit::CreateText(id, "");
+            panel->SetFontSize(fontSize);
+            panel->SetTextColor(Color(33, 37, 41, 255));
+            panel->SetBackgroundColor(background);
+            panel->SetPadding(10);
+            return panel;
+        };
 
         // ===== LEFT SIDEBAR (controls) =====
-        auto leftSidebar = std::make_shared<UltraCanvasContainer>("fishboneLeft", 20, 20, 200, 670);
-        leftSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(leftSidebar);
+        auto leftSidebar = DemoKit::AddCard(contentContainer, "fishboneLeft", "", "", SIDEBAR_CARD_W);
+        leftSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        auto controlsTitle = std::make_shared<UltraCanvasLabel>("fishboneControlsTitle", PAD, PAD, SIDEBAR_W, 22);
-        controlsTitle->SetText("CONTROLS");
-        controlsTitle->SetFontSize(11);
-        controlsTitle->SetFontWeight(FontWeight::Bold);
-        controlsTitle->SetTextColor(Color(73, 80, 87, 255));
-        controlsTitle->SetAlignment(TextAlignment::Left);
-        leftSidebar->AddChild(controlsTitle);
+        auto controlsTitle = makeSectionTitle("fishboneControlsTitle", "CONTROLS");
+        DemoKit::Add(leftSidebar, controlsTitle);
 
-        // Builds a "label + dropdown" pair at y and returns the dropdown
-        auto addDropdown = [&](const std::string& id, const std::string& caption, int y) {
-            auto label = std::make_shared<UltraCanvasLabel>(id + "Label", PAD, y, SIDEBAR_W, 18);
-            label->SetText(caption);
+        // Builds a "label + dropdown" pair and returns the dropdown
+        auto addDropdown = [&](const std::string& id, const std::string& caption) {
+            auto label = DemoKit::CreateText(id + "Label", caption);
             label->SetFontSize(10);
             label->SetFontWeight(FontWeight::Bold);
-            label->SetAlignment(TextAlignment::Left);
-            leftSidebar->AddChild(label);
+            DemoKit::Add(leftSidebar, label);
 
-            auto dropdown = std::make_shared<UltraCanvasDropdown>(id, PAD, y + 19, SIDEBAR_W, 26);
-            leftSidebar->AddChild(dropdown);
+            auto dropdown = std::make_shared<UltraCanvasDropdown>(id, 0, 0, SIDEBAR_W, 26);
+            DemoKit::AddStretched(leftSidebar, dropdown);
             return dropdown;
         };
 
-        auto themeSelector = addDropdown("fishboneTheme", "Theme", 44);
+        auto themeSelector = addDropdown("fishboneTheme", "Theme");
         themeSelector->AddItem("Light", "light");
         themeSelector->AddItem("Dark", "dark");
         themeSelector->SetSelectedIndex(0);
 
-        auto paletteSelector = addDropdown("fishbonePalette", "Palette", 96);
+        auto paletteSelector = addDropdown("fishbonePalette", "Palette");
         paletteSelector->AddItem("Vibrant", "vibrant");
         paletteSelector->AddItem("Corporate Blue", "corporate");
         paletteSelector->AddItem("Pastel", "pastel");
@@ -106,21 +101,21 @@ namespace UltraCanvas {
         paletteSelector->AddItem("Mono", "mono");
         paletteSelector->SetSelectedIndex(0);
 
-        auto sideSelector = addDropdown("fishboneSides", "Rib Sides", 148);
+        auto sideSelector = addDropdown("fishboneSides", "Rib Sides");
         sideSelector->AddItem("Alternate", "alternate");
         sideSelector->AddItem("All Above", "above");
         sideSelector->AddItem("All Below", "below");
         sideSelector->AddItem("Per Category", "per");
         sideSelector->SetSelectedIndex(0);
 
-        auto markerSelector = addDropdown("fishboneMarker", "Cause Marker", 200);
+        auto markerSelector = addDropdown("fishboneMarker", "Cause Marker");
         markerSelector->AddItem("Dot", "dot");
         markerSelector->AddItem("Bullet", "bullet");
         markerSelector->AddItem("Numbered", "numbered");
         markerSelector->AddItem("Hidden", "hidden");
         markerSelector->SetSelectedIndex(0);
 
-        auto headSelector = addDropdown("fishboneHead", "Head Shape", 252);
+        auto headSelector = addDropdown("fishboneHead", "Head Shape");
         headSelector->AddItem("Triangle", "triangle");
         headSelector->AddItem("Arrow", "arrow");
         headSelector->AddItem("Fish Head", "fish");
@@ -128,7 +123,7 @@ namespace UltraCanvas {
         headSelector->AddItem("Hidden", "hidden");
         headSelector->SetSelectedIndex(0);
 
-        auto presetSelector = addDropdown("fishbonePreset", "Category Checklist", 304);
+        auto presetSelector = addDropdown("fishbonePreset", "Category Checklist");
         presetSelector->AddItem("(keep current)", "keep");
         presetSelector->AddItem("6M - manufacturing", "6m");
         presetSelector->AddItem("8P - marketing", "8p");
@@ -137,99 +132,80 @@ namespace UltraCanvas {
         presetSelector->AddItem("Software delivery", "software");
         presetSelector->SetSelectedIndex(0);
 
-        auto swIcons = UltraCanvasSwitch::Create("fishboneSwIcons", PAD, 360, "Icons", true);
-        leftSidebar->AddChild(swIcons);
+        // The switches size themselves to track + label.
+        auto swIcons = UltraCanvasSwitch::Create("fishboneSwIcons", 0, 0, "Icons", true);
+        DemoKit::AddFixed(leftSidebar, swIcons);
 
-        auto swSubCauses = UltraCanvasSwitch::Create("fishboneSwSubs", PAD, 390, "Sub-causes", true);
-        leftSidebar->AddChild(swSubCauses);
+        auto swSubCauses = UltraCanvasSwitch::Create("fishboneSwSubs", 0, 0, "Sub-causes", true);
+        DemoKit::AddFixed(leftSidebar, swSubCauses);
 
-        auto swWeights = UltraCanvasSwitch::Create("fishboneSwWeights", PAD, 420, "Weights", false);
-        leftSidebar->AddChild(swWeights);
+        auto swWeights = UltraCanvasSwitch::Create("fishboneSwWeights", 0, 0, "Weights", false);
+        DemoKit::AddFixed(leftSidebar, swWeights);
 
-        auto swCaption = UltraCanvasSwitch::Create("fishboneSwCaption", PAD, 450, "Spine caption", false);
-        leftSidebar->AddChild(swCaption);
+        auto swCaption = UltraCanvasSwitch::Create("fishboneSwCaption", 0, 0, "Spine caption", false);
+        DemoKit::AddFixed(leftSidebar, swCaption);
 
-        auto btnAddCause = std::make_shared<UltraCanvasButton>("fishboneBtnAdd", PAD, 486, SIDEBAR_W, 30);
+        auto btnAddCause = std::make_shared<UltraCanvasButton>("fishboneBtnAdd", 0, 0, SIDEBAR_W, 30);
         btnAddCause->SetText("Add Random Cause");
         btnAddCause->SetBackgroundColor(Color(13, 110, 253, 255));
-        leftSidebar->AddChild(btnAddCause);
+        DemoKit::AddStretched(leftSidebar, btnAddCause);
 
-        auto btnRemove = std::make_shared<UltraCanvasButton>("fishboneBtnRemove", PAD, 521, SIDEBAR_W, 30);
+        auto btnRemove = std::make_shared<UltraCanvasButton>("fishboneBtnRemove", 0, 0, SIDEBAR_W, 30);
         btnRemove->SetText("Remove Selected");
         btnRemove->SetBackgroundColor(Color(220, 53, 69, 255));
-        leftSidebar->AddChild(btnRemove);
+        DemoKit::AddStretched(leftSidebar, btnRemove);
 
-        auto btnMermaid = std::make_shared<UltraCanvasButton>("fishboneBtnMermaid", PAD, 556, SIDEBAR_W, 30);
+        auto btnMermaid = std::make_shared<UltraCanvasButton>("fishboneBtnMermaid", 0, 0, SIDEBAR_W, 30);
         btnMermaid->SetText("Show Mermaid Export");
         btnMermaid->SetBackgroundColor(Color(25, 135, 84, 255));
-        leftSidebar->AddChild(btnMermaid);
+        DemoKit::AddStretched(leftSidebar, btnMermaid);
 
-        auto btnReset = std::make_shared<UltraCanvasButton>("fishboneBtnReset", PAD, 591, SIDEBAR_W, 30);
+        auto btnReset = std::make_shared<UltraCanvasButton>("fishboneBtnReset", 0, 0, SIDEBAR_W, 30);
         btnReset->SetText("Reset View");
         btnReset->SetBackgroundColor(Color(108, 117, 125, 255));
-        leftSidebar->AddChild(btnReset);
+        DemoKit::AddStretched(leftSidebar, btnReset);
 
         // ===== TABS =====
-        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("fishboneTabs", 240, 20, 660, 580);
+        // The diagrams have a fixed canvas size; the card is at least as wide
+        // as the tabs and takes the width the sidebars leave.
+        auto centerCard = DemoKit::AddCard(contentContainer, "fishboneCenter", "", "",
+                                           660 + 2 * DemoKit::kCardPadding + 2);
+        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("fishboneTabs", 0, 0, 660, 580);
         tabbedContainer->SetTabPosition(TabPosition::Top);
-        contentContainer->AddChild(tabbedContainer);
+        DemoKit::AddFixed(centerCard, tabbedContainer);
+
+        auto statusBar = DemoKit::CreateText("fishboneStatus",
+                "Ready - click a cause to select it, hover for tooltips");
+        statusBar->SetFontSize(11);
+        statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
+        statusBar->SetPadding(15);
+        statusBar->SetTextColor(Color(73, 80, 87, 255));
+        DemoKit::Add(centerCard, statusBar);
 
         // ===== RIGHT SIDEBAR =====
-        auto rightSidebar = std::make_shared<UltraCanvasContainer>("fishboneRight", 920, 20, 200, 580);
-        rightSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(rightSidebar);
+        auto rightSidebar = DemoKit::AddCard(contentContainer, "fishboneRight", "", "", SIDEBAR_CARD_W);
+        rightSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        auto statsTitle = std::make_shared<UltraCanvasLabel>("fishboneStatsTitle", PAD, PAD, SIDEBAR_W, 22);
-        statsTitle->SetText("STATISTICS");
-        statsTitle->SetFontSize(11);
-        statsTitle->SetFontWeight(FontWeight::Bold);
-        statsTitle->SetTextColor(Color(73, 80, 87, 255));
-        statsTitle->SetAlignment(TextAlignment::Left);
-        rightSidebar->AddChild(statsTitle);
+        auto statsTitle = makeSectionTitle("fishboneStatsTitle", "STATISTICS");
+        DemoKit::Add(rightSidebar, statsTitle);
 
-        auto statsPanel = std::make_shared<UltraCanvasLabel>("fishboneStats", PAD, 44, SIDEBAR_W, 150);
-        statsPanel->SetFontSize(10);
-        statsPanel->SetAlignment(TextAlignment::Left);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-        statsPanel->SetPadding(10);
-        rightSidebar->AddChild(statsPanel);
+        auto statsPanel = makeInfoPanel("fishboneStats", 10, Color(248, 249, 250, 255));
+        DemoKit::Add(rightSidebar, statsPanel);
 
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("fishboneAboutTitle", PAD, 206, SIDEBAR_W, 22);
-        aboutTitle->SetText("ABOUT THIS DESIGN");
-        aboutTitle->SetFontSize(11);
-        aboutTitle->SetFontWeight(FontWeight::Bold);
-        aboutTitle->SetTextColor(Color(73, 80, 87, 255));
-        aboutTitle->SetAlignment(TextAlignment::Left);
-        rightSidebar->AddChild(aboutTitle);
+        auto aboutTitle = makeSectionTitle("fishboneAboutTitle", "ABOUT THIS DESIGN");
+        DemoKit::Add(rightSidebar, aboutTitle);
 
-        auto aboutPanel = std::make_shared<UltraCanvasLabel>("fishboneAbout", PAD, 234, SIDEBAR_W, 220);
-        aboutPanel->SetFontSize(9);
-        aboutPanel->SetAlignment(TextAlignment::Left);
-        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-        aboutPanel->SetPadding(10);
-        rightSidebar->AddChild(aboutPanel);
+        auto aboutPanel = makeInfoPanel("fishboneAbout", 9, Color(248, 249, 250, 255));
+        DemoKit::Add(rightSidebar, aboutPanel);
 
-        auto tipsPanel = std::make_shared<UltraCanvasLabel>("fishboneTips", PAD, 466, SIDEBAR_W, 98);
+        auto tipsPanel = makeInfoPanel("fishboneTips", 9, Color(255, 243, 205, 255));
         tipsPanel->SetText("INTERACTION TIPS\n\n"
                            "- Click a cause to select\n"
                            "- Click a category chip\n"
                            "- Double-click a chip to\n"
                            "  collapse its causes\n"
                            "- Hover for tooltips");
-        tipsPanel->SetFontSize(9);
-        tipsPanel->SetAlignment(TextAlignment::Left);
-        tipsPanel->SetBackgroundColor(Color(255, 243, 205, 255));
-        tipsPanel->SetPadding(10);
-        rightSidebar->AddChild(tipsPanel);
-
-        auto statusBar = std::make_shared<UltraCanvasLabel>("fishboneStatus", 240, 610, 660, 60);
-        statusBar->SetText("Ready - click a cause to select it, hover for tooltips");
-        statusBar->SetFontSize(11);
-        statusBar->SetAlignment(TextAlignment::Left);
-        statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
-        statusBar->SetPadding(15);
-        statusBar->SetTextColor(Color(73, 80, 87, 255));
-        contentContainer->AddChild(statusBar);
+        DemoKit::Add(rightSidebar, tipsPanel);
 
         // ===== TABS: ONE PER DESIGN =====
         const int DIAG_X = 15, DIAG_Y = 10, DIAG_W = 630, DIAG_H = 520;

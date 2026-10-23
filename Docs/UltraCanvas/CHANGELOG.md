@@ -1,3 +1,84 @@
+#### 2026-10-23 *0.9.392*
+- **DemoApp: one page look, and an audit that finds cut text.**
+  - `UltraCanvasDemoPageKit.h` is the Level Meter page's look for every page:
+    a title and a description, the examples in white rounded cards, captions
+    and notes in grey - and every label sized to its text (it wraps and is as
+    tall as its lines), rows that wrap, the page as tall as its content and
+    scrolled by the page area. The Toolbar page is on it.
+  - `UltraCanvasDemo --audit-layout` opens every page, lays it out and lists
+    each label or button whose text does not fit and each element a parent
+    cuts off with no scrollbar to reach it; `--pseudo-loc` first makes every
+    text ~40% longer, as a translation is (and with `--component` shows the
+    page that way); `--audit-page <id>` audits one page.
+  - The *IODeviceManager* entry is DeviceExplorer's own panel
+    (`Apps/DeviceExplorer/ui`) and reads *Partially implemented*: printers,
+    scanners and cameras are found and shown, other categories and platform
+    backends are planned. *VideoFX* reads *Fully implemented*: every stage of
+    its roadmap but keyframes is done and UltraVideo is built on it.
+- **UltraCanvasToolbar: a label is as wide as its text** (it was 80 px, which
+  cut a longer translation), **and `AddDropdownButton` shows its initial
+  text** - the item reading so is selected; the dropdown opened empty.
+- **DemoApp: slim gray scrollbars.** The demo-wide scrollbar style is an 8 px
+  light gray track with a mid-gray round-ended thumb that darkens on hover and
+  while dragged (it was a 12 px blue one).
+- **UltraCanvasButton: a new text fits the width at once.** `SetText` widens
+  (or narrows back) a button to its text when it can measure, instead of at
+  its next measure: the parent reads that width to break a wrapping row into
+  lines first, and laid the row out a line short with the old one, so the
+  button's new text ("Resume" for "Pause", a longer translation) was cut.
+- **Longer translations in two framework panels.** SmartHomePanel's device
+  count ("30 of 30 devices") is as wide as its text, 124 px at least, instead
+  of cut at 124; the menu configurator's action buttons, each as wide as its
+  text, make their pane scroll sideways when they outgrow it.
+- **DemoApp: a page is never narrower than its fixed-size content.** The page
+  kit gives the page, and every card and row on the way to a chart, diagram
+  or text button, that content's width as its minimum; a card sharing a row
+  wraps under its neighbour instead of cutting the chart, and a window
+  narrower than a 1000 px chart scrolls the page sideways. Labels break inside
+  a word only when the word is longer than the line (a code sample).
+  `--audit-layout` reports no finding on any of the 166 pages.
+- **UltraCanvasTextLayoutCache: a no-wrap text stays one line again.** A
+  `TextLayoutKey` that named no ellipsize applied `EllipsizeNone` over the
+  end-cut `SetWrap(WrapNone)` had chosen, so a `WrapNone` label measured
+  against a narrow width wrapped a character a line instead of being cut.
+  `TextLayoutKey::ellipsize` is a `std::optional` now: unset leaves the wrap
+  mode's choice; the button and the menu still name their own.
+  `TextLayoutCacheTest` covers it.
+- **DemoApp: the tree fills the sidebar, the status bar is gone, and the
+  page area scrolls both ways.** The status legend under the tree was
+  measured with its title wrapped a character a line (the cache fix above)
+  and took ~420 px of a medium-size window from the tree. The status line at
+  the bottom of the window has been removed with all its code. A page built
+  at a fixed width (the SVG gallery's 1000 px) was cut down to the area and
+  its right-hand column cut off; it keeps its width as its min-width now, and
+  the area shows a horizontal scrollbar when the window is narrower than the
+  page.
+- **CSS layout: a wrapped line wider than an "at most" row is measured shrunk
+  to it.** A column measures its children at "at most" its width; a wrapping
+  row measured that way broke its lines there but kept each item at its full
+  natural width, so a growing text item alone on its line (a note that moves
+  under the field beside it) was measured one wrapped line short, and the row,
+  laid out at that height, cut the last line off when it was arranged at the
+  real width. The line is shrunk to the width as it is when arranged
+  (fit-content). `CSSLayoutTests` covers it.
+  No item is shrunk below its min-content width there (CSS's automatic
+  minimum): wrapping text shrinks to its longest word, while a counter or a
+  button keeps its width and a row too wide for its card still overflows
+  whole (`CSSLayoutAutoExpandTest`).
+
+#### 2026-10-23 *0.9.391*
+- **List view: every column fitted to its text.** `SetColumnFitting` makes
+  each column as wide as its widest `DisplayRole` text plus the delegate's
+  padding, never narrower than its header, within a minimum and a cap -
+  measured at the first paint after the rows change, and no longer once the
+  user drags a border. UltraMail's Date column did this with a subclass;
+  UltraDBAdmin's grids estimated widths from a character count, so a column
+  of narrow glyphs was wider than it needed to be and a wide one still cut
+  its text.
+- **Container: the corner between two scrollbars is painted.** With both
+  scrollbars showing, the square where their tracks meet was left to
+  whatever lay beneath; it is the track's colour now.
+
 #### 2026-10-23 *0.9.390*
 - **A menu on an autocomplete suggestion.** `UltraCanvasAutoComplete` has
   `onItemContextMenu(index, item, event)`: a right press on a row of the

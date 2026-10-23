@@ -1,11 +1,15 @@
 // Apps/DemoApp/UltraCanvasNestedAreaChartExamples.cpp
 // Nested Proportional Area Chart examples for the UltraCanvas Demo App
 // Programmer's guide: Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the controls,
+//                  each chart and the features in cards that wrap, every
+//                  label sized to its text
 // Version: 1.0.0
-// Last Modified: 2026-07-25
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
@@ -15,24 +19,37 @@
 
 namespace UltraCanvas {
 
+namespace {
+
+    // A chart card in a row asks for the chart's width plus its own padding
+    // and border before it wraps under its neighbour.
+    constexpr float kNestedChartCardWidth = 480 + 2 * DemoKit::kCardPadding + 2;
+
+    // "Theme:" and its dropdown, kept together when the controls wrap.
+    void AddLabelledControl(const std::shared_ptr<UltraCanvasContainer>& row, const std::string& id,
+                            const std::string& text, const std::shared_ptr<UltraCanvasUIElement>& control) {
+        auto pair = DemoKit::CreateRow(id + "Pair", 6, false);
+        pair->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::AddText(pair, id, text)->SetFontSize(11);
+        DemoKit::Add(pair, control);
+        DemoKit::Add(row, pair);
+    }
+
+} // namespace
+
 // =============================================================================
 // NESTED AREA CHART EXAMPLES PAGE
 // =============================================================================
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNestedAreaChartExamples() {
-        // Main container
-        auto container = std::make_shared<UltraCanvasContainer>(
-                "NestedAreaChartDemo", 0, 0, 1000, 780
-        );
+        auto container = DemoKit::CreatePage("NestedAreaChartDemo", "Nested Proportional Area Chart Examples", "");
 
-        // Title label
-        auto titleLabel = std::make_shared<UltraCanvasLabel>(
-                "NestedAreaTitle", 20, 10, 960, 30
-        );
-        titleLabel->SetText("Nested Proportional Area Chart Examples");
-        titleLabel->SetFontSize(16);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(titleLabel);
+        auto controlsCard = DemoKit::AddCard(container, "NestedControlsCard", "Interactive controls");
+        auto controlsRow = DemoKit::AddRow(controlsCard, "NestedControlsRow", 20);
+        controlsRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+        auto topRow = DemoKit::AddRow(container, "NestedTopRow");
+        auto bottomRow = DemoKit::AddRow(container, "NestedBottomRow");
 
         // =============================================================================
         // SAMPLE DATA
@@ -73,8 +90,10 @@ namespace UltraCanvas {
         // EXAMPLE 1: RECTANGLE MODE - COUNTRY LAND AREAS
         // =============================================================================
 
+        auto rectangleCard = DemoKit::AddCard(topRow, "nestedRectCard", "Rectangle mode",
+                "Country land areas, aligned bottom-left", kNestedChartCardWidth);
         auto rectangleChart = CreateNestedAreaChartElement(
-                "nestedRectChart", 10, 90, 480, 320);
+                "nestedRectChart", 0, 0, 480, 320);
         rectangleChart->SetChartTitle("Country Land Area (M km²)");
         rectangleChart->SetShapeMode(NestedAreaShapeMode::Rectangle);
         rectangleChart->SetAlignmentMode(NestedAreaAlignmentMode::BottomLeft);
@@ -85,14 +104,16 @@ namespace UltraCanvas {
         rectangleChart->SetShowBorders(true);
         rectangleChart->SetBorderColor(Color(100, 100, 100, 200));
         rectangleChart->SetDataPoints(countrySizeData);
-        container->AddChild(rectangleChart);
+        DemoKit::AddFixed(rectangleCard, rectangleChart);
 
         // =============================================================================
         // EXAMPLE 2: CIRCLE MODE - MARKET CAPITALIZATION
         // =============================================================================
 
+        auto circleCard = DemoKit::AddCard(topRow, "nestedCircleCard", "Circle mode",
+                "Market capitalization as concentric circles", kNestedChartCardWidth);
         auto circleChart = CreateNestedAreaChartElement(
-                "nestedCircleChart", 510, 90, 480, 320);
+                "nestedCircleChart", 0, 0, 480, 320);
         circleChart->SetChartTitle("Market Capitalization (T$)");
         circleChart->SetShapeMode(NestedAreaShapeMode::Circle);
         circleChart->SetAlignmentMode(NestedAreaAlignmentMode::Center);
@@ -103,14 +124,16 @@ namespace UltraCanvas {
         circleChart->SetShowBorders(true);
         circleChart->SetBorderColor(Color(60, 60, 60, 200));
         circleChart->SetDataPoints(marketCapData);
-        container->AddChild(circleChart);
+        DemoKit::AddFixed(circleCard, circleChart);
 
         // =============================================================================
         // EXAMPLE 3: THEME SHOWCASE - ROUNDED RECTANGLES, POPULATION DATA
         // =============================================================================
 
+        auto themeCard = DemoKit::AddCard(bottomRow, "nestedThemeCard", "Theme showcase",
+                "Rounded rectangles over population data", kNestedChartCardWidth);
         auto themeChart = CreateNestedAreaChartElement(
-                "nestedThemeChart", 10, 425, 480, 330);
+                "nestedThemeChart", 0, 0, 480, 330);
         themeChart->SetChartTitle("World Population (B)");
         themeChart->SetShapeMode(NestedAreaShapeMode::RoundedRect);
         themeChart->SetAlignmentMode(NestedAreaAlignmentMode::BottomLeft);
@@ -121,20 +144,14 @@ namespace UltraCanvas {
         themeChart->SetCornerRadius(8.0f);
         themeChart->SetShowGridLines(true);
         themeChart->SetDataPoints(populationData);
-        container->AddChild(themeChart);
+        DemoKit::AddFixed(themeCard, themeChart);
 
         // =============================================================================
         // INTERACTIVE CONTROLS
         // =============================================================================
 
-        auto themeLabelCtrl = std::make_shared<UltraCanvasLabel>(
-                "nestedThemeLabel", 20, 52, 50, 22);
-        themeLabelCtrl->SetText("Theme:");
-        themeLabelCtrl->SetFontSize(11);
-        container->AddChild(themeLabelCtrl);
-
         auto themeDropdown = std::make_shared<UltraCanvasDropdown>(
-                "nestedThemeDropdown", 72, 48, 160, 28);
+                "nestedThemeDropdown", 0, 0, 160, 28);
         themeDropdown->AddItem("Default (Blue)");
         themeDropdown->AddItem("Categorical");
         themeDropdown->AddItem("Sequential");
@@ -150,52 +167,34 @@ namespace UltraCanvas {
         themeDropdown->AddItem("Corporate");
         themeDropdown->AddItem("Colorblind");
         themeDropdown->SetSelectedIndex(10);  // Sunset - matches the showcase chart
-        container->AddChild(themeDropdown);
-
-        auto shapeLabelCtrl = std::make_shared<UltraCanvasLabel>(
-                "nestedShapeLabel", 252, 52, 45, 22);
-        shapeLabelCtrl->SetText("Shape:");
-        shapeLabelCtrl->SetFontSize(11);
-        container->AddChild(shapeLabelCtrl);
+        AddLabelledControl(controlsRow, "nestedThemeLabel", "Theme:", themeDropdown);
 
         auto shapeDropdown = std::make_shared<UltraCanvasDropdown>(
-                "nestedShapeDropdown", 300, 48, 120, 28);
+                "nestedShapeDropdown", 0, 0, 120, 28);
         shapeDropdown->AddItem("Rectangle");
         shapeDropdown->AddItem("Circle");
         shapeDropdown->AddItem("Rounded");
         shapeDropdown->SetSelectedIndex(2);  // RoundedRect - matches the showcase chart
-        container->AddChild(shapeDropdown);
-
-        auto alignLabelCtrl = std::make_shared<UltraCanvasLabel>(
-                "nestedAlignLabel", 440, 52, 40, 22);
-        alignLabelCtrl->SetText("Align:");
-        alignLabelCtrl->SetFontSize(11);
-        container->AddChild(alignLabelCtrl);
+        AddLabelledControl(controlsRow, "nestedShapeLabel", "Shape:", shapeDropdown);
 
         auto alignmentDropdown = std::make_shared<UltraCanvasDropdown>(
-                "nestedAlignDropdown", 482, 48, 130, 28);
+                "nestedAlignDropdown", 0, 0, 130, 28);
         alignmentDropdown->AddItem("Bottom Left");
         alignmentDropdown->AddItem("Bottom Right");
         alignmentDropdown->AddItem("Top Left");
         alignmentDropdown->AddItem("Top Right");
         alignmentDropdown->AddItem("Center");
         alignmentDropdown->SetSelectedIndex(0);
-        container->AddChild(alignmentDropdown);
+        AddLabelledControl(controlsRow, "nestedAlignLabel", "Align:", alignmentDropdown);
 
-        auto hintLabel = std::make_shared<UltraCanvasLabel>(
-                "nestedHintLabel", 630, 52, 360, 22);
-        hintLabel->SetText("Theme/Shape apply to the population chart. Hover & click shapes!");
-        hintLabel->SetFontSize(10);
-        hintLabel->SetTextColor(Color(120, 120, 120, 255));
-        container->AddChild(hintLabel);
+        DemoKit::AddCaption(controlsCard, "nestedHintLabel",
+                "Theme/Shape apply to the population chart. Hover & click shapes!");
 
         // Status label - shows hover/click feedback from the charts
-        auto statusLabel = std::make_shared<UltraCanvasLabel>(
-                "nestedStatusLabel", 510, 730, 480, 22);
-        statusLabel->SetText("Click a shape to select it, hover for tooltips.");
+        auto statusLabel = DemoKit::AddText(controlsCard, "nestedStatusLabel",
+                "Click a shape to select it, hover for tooltips.");
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        container->AddChild(statusLabel);
 
         // =============================================================================
         // EVENT HANDLERS
@@ -269,31 +268,21 @@ namespace UltraCanvas {
         // INFO PANEL
         // =============================================================================
 
-        auto infoLabel = std::make_shared<UltraCanvasLabel>(
-                "NestedAreaInfo", 510, 425, 480, 295
-        );
-        infoLabel->SetText(
-                "Nested Area Chart Features:\n\n"
-                "• Shape area is PROPORTIONAL to value\n"
-                "  (side/radius = sqrt(value/max) - mathematically correct)\n"
-                "• Shape modes: Rectangle, Circle, RoundedRect\n"
-                "• 7 alignment modes (corners, centers, concentric)\n"
-                "• 14 predefined color themes + custom colors\n"
-                "• Inside/outside labels with automatic contrast\n"
-                "• Legend with values, optional reference grid\n"
-                "• Hover highlighting and tooltips\n"
-                "• Click selection with callbacks:\n"
-                "  onShapeHover, onShapeClick, onShapeSelect\n"
-                "• Fluent NestedAreaChartBuilder for quick setup\n\n"
-                "See the Programmer's Guide (doc icon above) and the\n"
-                "example source (C++ icon above) for API details."
-        );
-        infoLabel->SetFontSize(11);
-        infoLabel->SetTextColor(Color(60, 60, 60, 255));
-        infoLabel->SetBackgroundColor(Color(245, 245, 245, 255));
-        infoLabel->SetBorders(1.0f, Color(200, 200, 200, 255));
-        infoLabel->SetPadding(10.0f);
-        container->AddChild(infoLabel);
+        auto infoCard = DemoKit::AddNotes(bottomRow, "NestedAreaInfo", "Nested Area Chart Features:", {
+                "Shape area is PROPORTIONAL to value "
+                "(side/radius = sqrt(value/max) - mathematically correct)",
+                "Shape modes: Rectangle, Circle, RoundedRect",
+                "7 alignment modes (corners, centers, concentric)",
+                "14 predefined color themes + custom colors",
+                "Inside/outside labels with automatic contrast",
+                "Legend with values, optional reference grid",
+                "Hover highlighting and tooltips",
+                "Click selection with callbacks: "
+                "onShapeHover, onShapeClick, onShapeSelect",
+                "Fluent NestedAreaChartBuilder for quick setup"});
+        DemoKit::AddCaption(infoCard, "NestedAreaInfoSee",
+                "See the Programmer's Guide (doc icon above) and the "
+                "example source (C++ icon above) for API details.");
 
         return container;
     }
