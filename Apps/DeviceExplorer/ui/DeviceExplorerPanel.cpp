@@ -131,6 +131,9 @@ DeviceExplorerPanel::DeviceExplorerPanel(const std::string& identifier, const Ma
     MakePlainColumn(treePane);
     MakePlainColumn(detailsPane);
     FillWith(treePane, BuildDeviceTree());
+    scanRow_ = BuildScanRow();
+    treePane->AddChild(scanRow_);
+    PinRow(scanRow_);
     FillWith(detailsPane, BuildDetailsPane());
     AddChild(split_);
     split_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
@@ -303,6 +306,33 @@ std::shared_ptr<UltraCanvasTreeView> DeviceExplorerPanel::BuildDeviceTree() {
     return deviceTree_;
 }
 
+// "Scanning for devices" and a segment sliding along a track, under the tree
+// where the devices will appear. Hidden, and its timer stopped, between scans.
+std::shared_ptr<UltraCanvasContainer> DeviceExplorerPanel::BuildScanRow() {
+    auto row = CreateContainer("deScanRow", 0, 0, 0, 0);
+    row->layout.SetFlexRow()
+               .SetFlexGap(8)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    ContainerStyle plainRow;
+    plainRow.autoShowScrollbars = false;
+    row->SetContainerStyle(plainRow);
+
+    // As wide as its text, in whatever language.
+    auto label = CreateLabel("deScanLabel", 0, 0, 0, 0, "Scanning for devices…");
+    label->SetTextColor(Color(96, 96, 104));
+    label->layoutItem.SetFlexShrink(0);
+    row->AddChild(label);
+
+    scanBar_ = CreateBusyIndicator("deScanBar", 0, 0, 120, 4, BusyIndicatorKind::Bar);
+    scanBar_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    scanBar_->layoutItem.SetFlexGrow(1);
+    scanBar_->layoutItem.SetFlexShrink(1);
+    row->AddChild(scanBar_);
+
+    row->SetVisible(false);
+    return row;
+}
+
 std::shared_ptr<UltraCanvasContainer> DeviceExplorerPanel::BuildDetailsPane() {
     auto details = CreateContainer("deDetails", 0, 0, 0, 0);
     MakePlainColumn(details);
@@ -352,6 +382,7 @@ void DeviceExplorerPanel::StartScan() {
     if (scanning_.exchange(true)) return;
     JoinScan();
     if (rescanButton_) rescanButton_->SetDisabled(true);
+    ShowScanning(true);
     RefreshStatus();
     scanThread_ = std::thread([this]() {
         auto& manager = IODeviceManager::GetInstance();
@@ -382,6 +413,7 @@ void DeviceExplorerPanel::OnTimer() {
     if (ready) {
         JoinScan();
         if (rescanButton_) rescanButton_->SetDisabled(false);
+        ShowScanning(false);
         monitoring_ = IODeviceManager::GetInstance().IsMonitoring();
         hotplugChanged_ = false;
         ApplyInventory(std::move(*ready));
@@ -403,6 +435,11 @@ void DeviceExplorerPanel::ApplyInventory(DeviceInventory inventory) {
     statusCache_.clear();
     inventory_ = std::move(inventory);
     RebuildTree();
+}
+
+void DeviceExplorerPanel::ShowScanning(bool scanning) {
+    if (scanBar_) scanBar_->SetRunning(scanning);
+    if (scanRow_) scanRow_->SetVisible(scanning);
 }
 
 // ===== PRINTER STATUS =====
@@ -623,10 +660,10 @@ void DeviceExplorerPanel::ShowSections(const std::string& title, const std::stri
 
 void DeviceExplorerPanel::RefreshStatus() {
     std::string status;
-    if (scanning_) {
-        status = "Scanning for devices…";
-    } else if (!inventory_.enumerated) {
-        status = "Not scanned yet";
+    // A running scan is shown by the bar under the tree, not here: the first
+    // one leaves this empty, a rescan keeps the last count until it ends.
+    if (!inventory_.enumerated) {
+        if (!scanning_) status = "Not scanned yet";
     } else {
         status = CountText(inventory_.devices.size(), "device", "devices");
         if (!filter_.empty()) {
