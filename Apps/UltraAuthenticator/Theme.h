@@ -151,9 +151,9 @@ constexpr long  kRingBox       = 64;
 // renders as "Show ...", which reads as a menu that opens something.
 constexpr long kButtonScan     = 146;
 constexpr long kButtonEnterKey = 116;
-constexpr long kButtonBackup   = 104;
-constexpr long kButtonRestore  = 104;
-constexpr long kButtonPassword = 166;
+constexpr long kButtonBackup   = 110;
+constexpr long kButtonRestore  = 110;
+constexpr long kButtonPassword = 118;
 constexpr long kButtonLock     = 84;
 constexpr long kButtonNext     = 122;
 constexpr long kButtonDialog   = 100;   // OK / Cancel at the foot of a dialog

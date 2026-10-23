@@ -275,7 +275,7 @@ bool AuthenticatorWindow::Create() {
     restoreBtn->onClick = [this]() { OpenRestoreDialog(); };
     window_->AddChild(restoreBtn);
 
-    vx -= Theme::kButtonBackup + 4;
+    vx -= Theme::kButtonBackup + Theme::kButtonGap;
     auto backupBtn = std::make_shared<UltraCanvasButton>(
         "auth-backup", vx, actionY, Theme::kButtonBackup, Theme::kButtonHeight);
     backupBtn->SetText("Back up…");
@@ -284,10 +284,10 @@ bool AuthenticatorWindow::Create() {
     backupBtn->onClick = [this]() { OpenBackupDialog(); };
     window_->AddChild(backupBtn);
 
-    vx -= Theme::kButtonPassword + 4;
+    vx -= Theme::kButtonPassword + Theme::kButtonGap;
     auto pwBtn = std::make_shared<UltraCanvasButton>(
         "auth-pw", vx, actionY, Theme::kButtonPassword, Theme::kButtonHeight);
-    pwBtn->SetText("Master password…");
+    pwBtn->SetText("Password…");
     Theme::StyleButton(pwBtn, Theme::GhostButton(), "password");
     pwBtn->SetTooltip("Change the master password");
     pwBtn->onClick = [this]() { OpenChangePasswordDialog(); };
@@ -311,6 +311,13 @@ bool AuthenticatorWindow::Create() {
     listContainer_ = CreateScrollableContainer(
         "auth-list", margin, kHeaderHeight, width,
         kWindowHeight - kHeaderHeight - kFooterHeight - 8);
+    {
+        // The cards are laid out to the list's width less the vertical bar;
+        // a horizontal bar would only ever be a pixel of rounding.
+        ContainerStyle style = listContainer_->GetContainerStyle();
+        style.autoShowHorizontalScrollbar = false;
+        listContainer_->SetContainerStyle(style);
+    }
     window_->AddChild(listContainer_);
 
     // The empty state: a heading and one line on how to begin, centred in
@@ -509,15 +516,16 @@ void AuthenticatorWindow::RebuildRows() {
                : accounts.size() == 1 ? "1 account"
                                       : std::to_string(accounts.size()) + " accounts");
 
-    const long cardWidth = kWindowWidth - 2 * Theme::kMargin - 18;  // scrollbar
+    const long cardWidth = kWindowWidth - 2 * Theme::kMargin - 22;  // scrollbar
     const long pad       = Theme::kCardPadding;
     // Identity and code share one column to the right of the monogram.
     const long textX     = pad + Theme::kMonogramSize + 14;
     // The ring's box is wider than the ring it draws (see Theme::kRingBox);
     // this puts the visible ring a card padding in from the right edge.
-    const long ringX     = cardWidth - Theme::kRingBox + 6;
+    const long ringX     = cardWidth - Theme::kRingBox - 6;
     // The icon buttons end where the ring (or the HOTP button) begins.
-    const long actionsRight = cardWidth - pad - Theme::kButtonNext - Theme::kButtonGap;
+    const long ringActionsRight = ringX + 6;
+    const long hotpActionsRight = cardWidth - pad - Theme::kButtonNext - Theme::kButtonGap;
     const long actionsY  = (Theme::kCardHeight - Theme::kIconButton) / 2;
 
     for (size_t i = 0; i < accounts.size(); ++i) {
@@ -558,6 +566,7 @@ void AuthenticatorWindow::RebuildRows() {
 
         // The labels stop short of the action buttons, which share their
         // height at the right of the card.
+        const long actionsRight = row.isHotp ? hotpActionsRight : ringActionsRight;
         const long textWidth = actionsRight - 3 * (Theme::kIconButton + 4) - textX;
         row.issuerLabel = std::make_shared<UltraCanvasLabel>(
             id + "-issuer", textX, 12, textWidth, 20, issuerText);
@@ -624,7 +633,7 @@ void AuthenticatorWindow::RebuildRows() {
                 Theme::kRingBox, Theme::kRingBox);
             row.countdownRing->SetMode(GaugeMode::CircularRing);
             row.countdownRing->SetMinValue(0.0);
-            row.countdownRing->SetMaxValue(static_cast<double>(account.params.period));
+            row.countdownRing->SetMaxValue(static_cast<double>(account.params.periodSeconds));
             row.countdownRing->SetValue(0.0);
             row.countdownRing->SetDecimalPlaces(0);
             row.countdownRing->SetRingThickness(4.0f);

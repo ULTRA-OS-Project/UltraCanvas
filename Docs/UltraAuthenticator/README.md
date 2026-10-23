@@ -34,8 +34,8 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
 - **The band at the top** names the app and how many accounts it holds, with
   *Settings* (the sliders) and **Lock** at its right.
 - **Under it**, the ways to add an account — **Scan QR code**, then *Enter
-  key* — and, to the right, what acts on the whole vault: *Master
-  password…*, *Back up…* and *Restore…*.
+  key* — and, to the right, what acts on the whole vault: *Password…*
+  (change the master password), *Back up…* and *Restore…*.
 - **One card per account**: a coloured circle with the service's first
   letter (the colour follows the name, so a service keeps its colour), the
   service and account name, and the current code in large digits. A ring

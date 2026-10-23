@@ -1,10 +1,10 @@
 - **A redesigned main window.** A white band at the top carries the logo,
   the app's name and how many accounts it holds, with Settings and Lock at
   its right; under it, *Scan QR code* (the main action, in the accent
-  colour) and *Enter key*, and to the right, quieter, *Master password…*,
-  *Back up…* and *Restore…* - each with an icon. What the last action did
-  is reported in a status line at the foot of the window instead of between
-  the buttons and the list.
+  colour) and *Enter key*, and to the right, quieter, *Password…* (change
+  the master password), *Back up…* and *Restore…* - each with an icon.
+  What the last action did is reported in a status line at the foot of the
+  window instead of between the buttons and the list.
 - **Cards are easier to read at a glance.** Each is a rounded panel with a
   coloured monogram for the service (the colour follows its name), the code
   in large digits, and a ring that empties as the code's time step runs out,
