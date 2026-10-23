@@ -1,3 +1,11 @@
+#### 2026-10-23 *0.9.390*
+- **A menu on an autocomplete suggestion.** `UltraCanvasAutoComplete` has
+  `onItemContextMenu(index, item, event)`: a right press on a row of the
+  suggestion popup hands that row's item to the handler, which opens a popup
+  menu acting on it, instead of picking it. Unset, a right press still picks
+  the row as before. UltraMail's recipient fields use it for *Edit contact*
+  and *Delete address*.
+
 #### 2026-10-23 *0.9.389*
 - **List view: a horizontal scrollbar when the columns are wider than the
   view.** A multi-column `UltraCanvasListView` whose columns did not fit cut
