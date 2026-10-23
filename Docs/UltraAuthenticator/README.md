@@ -29,6 +29,24 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
   moves that folder into place, whole). `--vault PATH` uses another vault
   file; its settings live beside it.
 
+## The window
+
+- **The band at the top** names the app and how many accounts it holds, with
+  *Settings* (the sliders) and **Lock** at its right.
+- **Under it**, the ways to add an account — **Scan QR code**, then *Enter
+  key* — and, to the right, what acts on the whole vault: *Master
+  password…*, *Back up…* and *Restore…*.
+- **One card per account**: a coloured circle with the service's first
+  letter (the colour follows the name, so a service keeps its colour), the
+  service and account name, and the current code in large digits. A ring
+  beside it empties as the code's 30 seconds run out, with the seconds left
+  in its centre; it turns amber at 10 and red at 5. A counter-based (HOTP)
+  card has a *Next code* button instead. The pencil (*Edit*), the eye
+  (*Show key*) and the bin (*Remove*) are the card's actions; hover over one
+  for its name.
+- **The line at the foot** reports what the last action did, or what went
+  wrong.
+
 ## What the secret is
 
 When a service shows you a QR code to enrol, the QR contains a **seed**: a
@@ -86,7 +104,7 @@ someone may be looking over your shoulder.
 **Getting a seed back out.** Moving to a new phone means reading the seed
 again, and an app that could never do that would push people into keeping
 the original QR code in a photo album — far worse than this vault. So *Show
-key* exists, and it is fenced: it asks for the master password again even
+key* (the eye on a card) exists, and it is fenced: it asks for the master password again even
 though the vault is open, shows the key and the `otpauth://` URI as text on
 screen only, renders no QR code and writes nothing to disk, and wipes its
 own widgets when closed.

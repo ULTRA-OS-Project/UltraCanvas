@@ -82,6 +82,7 @@ void SettingsDialog::CreateSettingsDialog(const Preferences& current) {
     }
     idleDropdown_->SetSelectedIndex(IdleChoiceIndexFor(current.idleLockSeconds),
                                     /*runNotifications=*/false);
+    Theme::StyleDropdown(idleDropdown_);
     AddChild(idleDropdown_);
     y += 42;
 
@@ -119,12 +120,14 @@ void SettingsDialog::CreateSettingsDialog(const Preferences& current) {
     auto saveBtn = std::make_shared<UltraCanvasButton>(
         "set-save", kDialogWidth - margin - 210, kDialogHeight - 54, 100, 32);
     saveBtn->SetText("Save");
+    Theme::StylePrimary(saveBtn);
     saveBtn->onClick = [this]() { Save(); };
     AddChild(saveBtn);
 
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "set-cancel", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
     cancelBtn->SetText("Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     AddChild(cancelBtn);
 }

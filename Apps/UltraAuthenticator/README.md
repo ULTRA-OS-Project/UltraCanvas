@@ -27,7 +27,7 @@ Changelog and version:
 | `AccountExport.*` | The encrypted backup file: every account in one portable blob under its own passphrase |
 | `LockPolicy.*` | `UnlockThrottle`: the exponential back-off between unlock attempts, time-injected so it is tested without sleeping |
 | `Preferences.*` | The three user settings and the `settings.ini` file beside the vault they live in; every value clamped on load |
-| `AuthenticatorWindow.*` | The main window: the scrolling card list, the 1 Hz refresh timer that also drives the auto-lock, the two button rows |
+| `AuthenticatorWindow.*` | The main window: the scrolling card list, the 1 Hz refresh timer that also drives the auto-lock, the header band and its row of actions, the status line |
 | `LockScreenDialog.*` | What covers the window once the vault is locked: master password or Quit, nothing else |
 | `NewVaultDialog.*` | First launch: the master password typed twice, with a strength meter; Create or Quit |
 | `SettingsDialog.*` | Idle timeout, lock on minimise, hide codes |
@@ -39,7 +39,7 @@ Changelog and version:
 | `BackupDialog.*` | Both directions of the encrypted backup — export and restore |
 | `BrandHeader.h` | The centred logo and small app name at the top of the new-vault and lock screens |
 | `PasswordAdvice.h` | The optional "safe password" checklist under a new master password; never a gate |
-| `Theme.h` | One place for the colours, type sizes and metrics, so the window and the dialogs cannot drift apart |
+| `Theme.h` | One place for the colours, type sizes, metrics and the button / input / card styles, so the window and the dialogs cannot drift apart. The icons it names are in `media/icons/authenticator/` |
 | `main.cpp` | The unlock gate, the vault path, and the `--vault` / `--help` / `--version` command line |
 | `UltraAuthenticator.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/UltraAuthenticator.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is how the application menu and UltraFiler find the app and its icon |
 

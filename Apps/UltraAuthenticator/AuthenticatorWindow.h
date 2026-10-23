@@ -33,6 +33,18 @@
 // RefreshCodes skips the row — so the option reduces decryptions as well as
 // what is on screen.
 //
+// Look: a white header band (logo, name, how many accounts) with Settings and
+// Lock at its right; one row of actions under it — the two ways to add an
+// account first, the vault's own actions to the right; then the cards, and a
+// status line at the foot. A card is a rounded white panel: a coloured
+// monogram for the service, its name and account, the code in large
+// monospaced digits, and a ring (UltraCanvasGaugeDiagramElement,
+// CircularRing) that empties as the code's time step runs out, with the
+// seconds left in its centre. The per-account actions are icon buttons with
+// tooltips, so a list of twenty accounts is not a wall of "Edit Show key
+// Remove".
+//
+// Version: 0.4.0 - header band, monogram, countdown ring, icon actions, status bar
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -44,11 +56,13 @@
 #include "Preferences.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasBadge.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasWindow.h"
+#include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 
 #include <cstdint>
 #include <memory>
@@ -82,10 +96,12 @@ private:
         bool                                  isHotp = false;
         int64_t                               revealedUntil = 0;   // hidden-codes mode
         std::shared_ptr<UltraCanvasContainer>  card;
+        std::shared_ptr<UltraCanvasBadge>      monogram;
         std::shared_ptr<UltraCanvasLabel>      issuerLabel;
         std::shared_ptr<UltraCanvasLabel>      accountLabel;
         std::shared_ptr<UltraCanvasLabel>      codeLabel;
-        std::shared_ptr<UltraCanvasLabel>      countdownLabel;
+        std::shared_ptr<UltraCanvasLabel>      countdownLabel;   // "click to show", "used once"
+        std::shared_ptr<UltraCanvasGaugeDiagramElement> countdownRing;   // TOTP only
         std::shared_ptr<UltraCanvasButton>     actionButton;   // Next (HOTP)
         std::shared_ptr<UltraCanvasButton>     editButton;
         std::shared_ptr<UltraCanvasButton>     revealButton;
@@ -108,6 +124,9 @@ private:
     void AdvanceHotpRow(const std::string& key);
     void RevealRow(const std::string& key);
     void SetStatus(const std::string& text, bool isError = false);
+    // The line under the app name: how many accounts, or that it is locked.
+    void SetSummary(const std::string& text);
+    void ShowEmptyState(bool show);
 
     // --- locking ----------------------------------------------------------
     // Lock() is idempotent and safe to call from any of its triggers. The lock
@@ -136,8 +155,10 @@ private:
 
     std::shared_ptr<UltraCanvasWindow>    window_;
     std::shared_ptr<UltraCanvasContainer> listContainer_;
+    std::shared_ptr<UltraCanvasLabel>     summaryLabel_;
     std::shared_ptr<UltraCanvasLabel>     statusLabel_;
     std::shared_ptr<UltraCanvasLabel>     emptyLabel_;
+    std::shared_ptr<UltraCanvasLabel>     emptyHint_;
     std::vector<Row>                      rows_;
 
     TimerId refreshTimer_ = 0;
@@ -151,9 +172,13 @@ private:
     int                                ticksSinceRestore_ = 0;   // see Tick()
 
     static constexpr long kWindowWidth  = 720;
-    static constexpr long kWindowHeight = 620;
-    // Two button rows: account actions, then vault actions.
-    static constexpr long kHeaderHeight = 148;
+    static constexpr long kWindowHeight = 640;
+    // The white band with the logo, name, Settings and Lock.
+    static constexpr long kBandHeight   = 76;
+    // The band plus the row of actions under it: where the list starts.
+    static constexpr long kHeaderHeight = 144;
+    // The status line at the foot of the window.
+    static constexpr long kFooterHeight = 32;
     // How long a click keeps a hidden code visible. Long enough to type it
     // into another window, short enough that a card left revealed does not
     // stay so.
