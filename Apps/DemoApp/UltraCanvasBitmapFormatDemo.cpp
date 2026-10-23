@@ -1,10 +1,15 @@
-// UltraCanvasBitmapFormatInfo.h
+// Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
 // Comprehensive bitmap format specifications and capabilities
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): a title and
+//                  description, About / Format Specification / image /
+//                  properties as kit cards, the spec and property grids as
+//                  wrapping tiles, every text sized to fit
 // Version: 1.0.1
-// Last Modified: 2026-09-29
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -768,43 +773,32 @@ namespace UltraCanvas {
             return nullptr;
         }
 
-        // Main container
-        auto container = std::make_shared<UltraCanvasContainer>(
-                info.formatName + "DemoPage", 0, 0, 950, 750
-        );
-        container->SetBackgroundColor(Color(255, 251, 235, 255));
-
-        // Layout constants
-        // Row order (top to bottom): About (full width), Format Specification (full width),
-        // then Image preview + Image Properties side-by-side at the bottom.
-        const int leftColX = 20;
-        const int rightColX = 310;
-        const int leftColWidth = 270;
-        const int rightColWidth = 640;
-        const int fullWidth = 910;
-        const int row1Y = 20;   // About card, full width (h=160, ends at 180)
-        const int row2Y = 200;  // Format Specification grid, full width (h=170, ends at 370)
-        const int row3Y = 390;  // Image preview + Image properties (h=300, ends at 690)
+        // Top to bottom: About, Format Specification, then the image preview
+        // beside the image's properties (they wrap under each other when the
+        // window is narrow). The cards are made here in that order and filled
+        // in below.
+        auto page = DemoKit::CreatePage(info.formatName + "DemoPage", info.formatName + " Images",
+                                        info.fullName + " (" + info.extensions + ")");
+        auto aboutCard = DemoKit::AddCard(page, "AboutCard");
+        auto specCard = DemoKit::AddCard(page, "SpecCard", "Format Specification");
+        auto bottomRow = DemoKit::AddRow(page, "ImageRow");
 
         int id = baseId + 1;
 
-        // ===== ROW 3 LEFT: IMAGE PREVIEW CARD =====
-        auto imageCard = std::make_shared<UltraCanvasContainer>("ImageCard", leftColX, row3Y, leftColWidth, 300);
-        imageCard->SetBackgroundColor(Color(255, 255, 255, 255));
-        imageCard->SetBorders(1, Color(230, 230, 230, 255));
-        container->AddChild(imageCard);
+        // ===== IMAGE PREVIEW CARD (bottom row, left) =====
+        // As wide as the image frame needs; the properties take the rest.
+        auto imageCard = DemoKit::AddCard(bottomRow, "ImageCard", "Demo " + info.formatName + " Image", "", 270);
+        imageCard->layoutItem.SetFlexGrow(0);
 
-        auto imageTitle = std::make_shared<UltraCanvasLabel>("ImageTitle", 20, 16, 200, 24);
-        imageTitle->SetText("Demo " + info.formatName + " Image");
-        imageTitle->SetFontSize(14);
-        imageTitle->SetFontWeight(FontWeight::Bold);
-        imageTitle->SetTextColor(Color(30, 41, 59, 255));
-        imageCard->AddChild(imageTitle);
-
-        auto imageFrame = std::make_shared<UltraCanvasContainer>("ImageFrame", 20, 48, 230, 170);
+        auto imageFrame = std::make_shared<UltraCanvasContainer>("ImageFrame", 0, 0, 230, 170);
         imageFrame->SetBackgroundColor(Color(241, 245, 249, 255));
         imageFrame->SetBorders(1, Color(200, 200, 200, 255));
-        imageCard->AddChild(imageFrame);
+        // The frame keeps its size; the image sits in it at (4, 4). A notice
+        // that replaces the image is centred in it by the frame's column.
+        imageFrame->layout.SetFlexColumn()
+                          .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        DemoKit::AddFixed(imageCard, imageFrame);
 
         auto image = std::make_shared<UltraCanvasImageElement>("Image", 4, 4, 222, 162);
         // A build whose libvips lacks this format's codec (the WebAssembly
@@ -829,16 +823,12 @@ namespace UltraCanvas {
         imageFrame->AddChild(image);
         if (!readable) {
             image->SetVisible(false);
-            auto noticeCont = std::make_shared<UltraCanvasContainer>("UnreadableCont", 12, 48, 206, 74);
-            auto notice = std::make_shared<UltraCanvasLabel>("Unreadable");
-            notice->SetText(unreadableNotice);
+            auto notice = DemoKit::AddText(imageFrame, "Unreadable", unreadableNotice);
             notice->SetFontSize(11);
             notice->SetFontWeight(FontWeight::Bold);
             notice->SetTextColor(Color(234, 88, 12, 255));
-            notice->SetWrap(TextWrap::WrapWord);
-            notice->SetAlignment(TextAlignment::Center);
-            noticeCont->AddChild(notice);
-            imageFrame->AddChild(noticeCont);
+            notice->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
+            notice->SetPadding(0, 12, 0, 12);
         }
 
         // Extract filename
@@ -848,14 +838,13 @@ namespace UltraCanvas {
             filename = sampleImagePath.substr(lastSlash + 1);
         }
 
-        auto filenameLabel = std::make_shared<UltraCanvasLabel>("Filename", 20, 224, 230, 20);
-        filenameLabel->SetText(filename);
-        filenameLabel->SetFontSize(10);
+        auto filenameLabel = DemoKit::AddCaption(imageCard, "Filename", filename);
         filenameLabel->SetTextColor(Color(100, 116, 139, 255));
-        filenameLabel->SetAlignment(TextAlignment::Center);
-        imageCard->AddChild(filenameLabel);
+        filenameLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
-        auto viewBtn = std::make_shared<UltraCanvasButton>("ViewBtn", 20, 250, 108, 32);
+        // The buttons are as wide as their icon and text.
+        auto buttonRow = DemoKit::AddRow(imageCard, "ImageButtons", 10);
+        auto viewBtn = std::make_shared<UltraCanvasButton>("ViewBtn", 0, 0, 0, 32);
         viewBtn->SetText("Full Size");
         SetFlatButtonIcon(*viewBtn, "menu/zoom-in.svg");
         viewBtn->SetFontSize(10);
@@ -867,9 +856,9 @@ namespace UltraCanvas {
             ShowInMediaViewer(sampleImagePath);
         };
         viewBtn->SetVisible(readable);
-        imageCard->AddChild(viewBtn);
+        DemoKit::Add(buttonRow, viewBtn);
 
-        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 138, 250, 108, 32);
+        auto exportBtn = std::make_shared<UltraCanvasButton>("ExportBtn", 0, 0, 0, 32);
         exportBtn->SetText("Export");
         SetFlatButtonIcon(*exportBtn, "menu/extract.svg");
         exportBtn->SetFontSize(10);
@@ -891,20 +880,10 @@ namespace UltraCanvas {
             }
         };
         exportBtn->SetVisible(readable);
-        imageCard->AddChild(exportBtn);
+        DemoKit::Add(buttonRow, exportBtn);
 
-        // ===== ROW 3 RIGHT: IMAGE PROPERTIES (populated from actual image) =====
-        auto propertiesCard = std::make_shared<UltraCanvasContainer>("PropertiesCard", rightColX, row3Y, rightColWidth, 300);
-        propertiesCard->SetBackgroundColor(Color(255, 255, 255, 255));
-        propertiesCard->SetBorders(1, Color(230, 230, 230, 255));
-        container->AddChild(propertiesCard);
-
-        auto propHeader = std::make_shared<UltraCanvasLabel>("PropHeader", 20, 16, 300, 24);
-        propHeader->SetText("Image Properties");
-        propHeader->SetFontSize(14);
-        propHeader->SetFontWeight(FontWeight::Bold);
-        propHeader->SetTextColor(Color(30, 41, 59, 255));
-        propertiesCard->AddChild(propHeader);
+        // ===== IMAGE PROPERTIES (bottom row, right; populated from actual image) =====
+        auto propertiesCard = DemoKit::AddCard(bottomRow, "PropertiesCard", "Image Properties");
 
         // ExtractImageInfo throws when libvips cannot open the file; before
         // the try below, that throw left the page without a single card.
@@ -920,17 +899,11 @@ namespace UltraCanvas {
             }
         }
         if (!haveInfo) {
-            auto noPropsCont = std::make_shared<UltraCanvasContainer>("NoPropsCont", 20, 56, 600, 120);
-            auto noProps = std::make_shared<UltraCanvasLabel>("NoProps");
-            noProps->SetText(unreadableNotice +
-                             (unreadableReason.empty() ? std::string()
-                                                       : " The reader said: " + unreadableReason));
+            auto noProps = DemoKit::AddText(propertiesCard, "NoProps",
+                    unreadableNotice + (unreadableReason.empty() ? std::string()
+                                                                  : " The reader said: " + unreadableReason));
             noProps->SetFontSize(11);
             noProps->SetTextColor(Color(71, 85, 105, 255));
-            noProps->SetWrap(TextWrap::WrapWord);
-            noProps->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
-            noPropsCont->AddChild(noProps);
-            propertiesCard->AddChild(noPropsCont);
         }
 
         // Property placeholders (would be populated from actual image metadata)
@@ -946,44 +919,38 @@ namespace UltraCanvas {
                 {"DPI", fmt::format("{}", round(imgInfo.dpiX))}
             } : std::vector<std::pair<std::string, std::string>>{};
 
-        int propY = 56;
+        // Two tiles a line while they fit; a tile is as tall as its wrapped
+        // label and value.
+        auto propGrid = DemoKit::AddRow(propertiesCard, "PropGrid", 8);
         for (size_t i = 0; i < defaultProps.size(); ++i) {
-            int col = i % 2;
-            int row = i / 2;
-
-            auto propContainer = std::make_shared<UltraCanvasContainer>(
-                    "Prop" + std::to_string(i),
-                    20 + col * 306, propY + row * 60,
-                    290, 52
-            );
+            auto propContainer = DemoKit::CreateColumn("Prop" + std::to_string(i), 4);
             propContainer->SetBackgroundColor(Color(248, 250, 252, 255));
             propContainer->SetBorders(1, Color(226, 232, 240, 255));
-            propertiesCard->AddChild(propContainer);
+            propContainer->SetPadding(8, 16, 8, 16);
+            DemoKit::Add(propGrid, propContainer, 1);
+            propContainer->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(220));
 
-            auto propLabel = std::make_shared<UltraCanvasLabel>("PropLabel" + std::to_string(i),  16, 8, 150, 16);
-            propLabel->SetText(defaultProps[i].first);
+            auto propLabel = DemoKit::AddCaption(propContainer, "PropLabel" + std::to_string(i),
+                                                 defaultProps[i].first);
             propLabel->SetFontSize(9);
-            propLabel->SetFontWeight(FontWeight::Normal);
             propLabel->SetTextColor(Color(100, 116, 139, 255));
-            propContainer->AddChild(propLabel);
 
-            auto propValue = std::make_shared<UltraCanvasLabel>("PropValue" + std::to_string(i),  16, 28, 260, 18);
-            propValue->SetText(defaultProps[i].second);
+            auto propValue = DemoKit::AddText(propContainer, "PropValue" + std::to_string(i),
+                                              defaultProps[i].second);
             propValue->SetFontSize(13);
             propValue->SetFontWeight(FontWeight::Bold);
             propValue->SetTextColor(Color(30, 41, 59, 255));
-            propContainer->AddChild(propValue);
         }
 
-        // ===== ROW 2 LEFT: ABOUT SECTION =====
-        auto aboutCard = std::make_shared<UltraCanvasContainer>("AboutCard", leftColX, row1Y, fullWidth, 160);
-        aboutCard->SetBackgroundColor(Color(255, 255, 255, 255));
-        aboutCard->SetBorders(1, Color(230, 230, 230, 255));
-        container->AddChild(aboutCard);
+        // ===== ABOUT SECTION =====
+        // The icon beside the title, the description under both.
+        auto aboutHeader = DemoKit::CreateRow("AboutHeader", 12, false);
+        aboutHeader->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::Add(aboutCard, aboutHeader);
 
         // A flat document icon on a tile of the format's colour (an image,
         // not a "📄" glyph the bundled UI font does not have).
-        auto aboutIcon = std::make_shared<UltraCanvasImageElement>("AboutIcon", 16, 12, 36, 36);
+        auto aboutIcon = std::make_shared<UltraCanvasImageElement>("AboutIcon", 0, 0, 36, 36);
         aboutIcon->LoadFromFile(DemoIconPath("menu/file-icons.svg"));
         aboutIcon->SetFitMode(ImageFitMode::Contain);
         aboutIcon->SetBackgroundColor(Color(
@@ -993,44 +960,22 @@ namespace UltraCanvas {
                 255
         ));
         aboutIcon->SetPadding(8);
-        aboutCard->AddChild(aboutIcon);
+        DemoKit::AddFixed(aboutHeader, aboutIcon);
+        aboutIcon->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("AboutTitle", 64, 18, 800, 22);
-        aboutTitle->SetText(info.aboutTitle);
+        auto aboutTitle = DemoKit::CreateHeading("AboutTitle", info.aboutTitle);
         aboutTitle->SetFontSize(14);
-        aboutTitle->SetFontWeight(FontWeight::Bold);
         aboutTitle->SetTextColor(Color(30, 41, 59, 255));
-        aboutCard->AddChild(aboutTitle);
+        DemoKit::Add(aboutHeader, aboutTitle, 1);
 
-        // Description spans the full width below the icon/title bar; word-wraps across
-        // ~870px so 5 sentences typically render in 3-4 lines without scrolling.
-        auto aboutDescCont = std::make_shared<UltraCanvasContainer>("AboutDescCont", 20, 56, 870, 96);
-        aboutDescCont->SetPadding(0, 16, 8, 0);
-
-        auto aboutDesc = std::make_shared<UltraCanvasLabel>("AboutDesc");
-        aboutDesc->SetText(info.aboutDescription);
+        auto aboutDesc = DemoKit::AddText(aboutCard, "AboutDesc", info.aboutDescription);
         aboutDesc->SetFontSize(11);
         aboutDesc->SetTextColor(Color(71, 85, 105, 255));
-        aboutDesc->SetWrap(TextWrap::WrapWord);
-        aboutDesc->SetAlignment(TextAlignment::Left);
-        aboutDescCont->AddChild(aboutDesc);
-        aboutCard->AddChild(aboutDescCont);
 
-        // ===== ROW 2: FORMAT SPECIFICATION (3x3 grid, single-line cells) =====
-        auto specCard = std::make_shared<UltraCanvasContainer>("SpecCard", leftColX, row2Y, fullWidth, 170);
-        specCard->SetBackgroundColor(Color(255, 255, 255, 255));
-        specCard->SetBorders(1, Color(230, 230, 230, 255));
-        container->AddChild(specCard);
-
-        auto specTitle = std::make_shared<UltraCanvasLabel>("SpecTitle", 20, 14, 400, 22);
-        specTitle->SetText("Format Specification");
-        specTitle->SetFontSize(14);
-        specTitle->SetFontWeight(FontWeight::Bold);
-        specTitle->SetTextColor(Color(30, 41, 59, 255));
-        specCard->AddChild(specTitle);
-
-        // 9 properties laid out in a 3x3 grid (label and value side-by-side on one line).
-        // Cells whose value starts with "No" get a muted orange tint to flag missing
+        // ===== FORMAT SPECIFICATION =====
+        // 9 properties in a grid of tiles, three a line while they fit (label
+        // and value side by side, the value wrapping under the label when the
+        // tile is too narrow for both). Cells whose value starts with "No" get a muted orange tint to flag missing
         // features; the rest use a neutral slate background.
         struct SpecCell { std::string label; std::string value; };
         const std::vector<SpecCell> cells = {
@@ -1045,13 +990,7 @@ namespace UltraCanvas {
                 {"METADATA",         info.specification.metadata},
         };
 
-        const int gridX = 20;
-        const int gridY = 50;
-        const int cellW = 286;
-        const int cellH = 32;
-        const int colGap = 8;
-        const int rowGap = 6;
-        const int labelW = 130;  // wide enough for "BITS PER CHANNEL"
+        auto specGrid = DemoKit::AddRow(specCard, "SpecGrid", 8);
 
         auto isUnsupportedValue = [](const std::string& v) {
             if (v.empty()) return true;
@@ -1061,15 +1000,11 @@ namespace UltraCanvas {
         };
 
         for (size_t i = 0; i < cells.size(); ++i) {
-            int col = static_cast<int>(i % 3);
-            int row = static_cast<int>(i / 3);
-            int x = gridX + col * (cellW + colGap);
-            int y = gridY + row * (cellH + rowGap);
-
             bool unsupported = isUnsupportedValue(cells[i].value);
 
-            auto cell = std::make_shared<UltraCanvasContainer>(
-                    "Spec" + std::to_string(i), x, y, cellW, cellH);
+            auto cell = DemoKit::CreateRow("Spec" + std::to_string(i), 6);
+            cell->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            cell->SetPadding(7, 10, 7, 10);
             if (unsupported) {
                 cell->SetBackgroundColor(Color(255, 247, 237, 255));
                 cell->SetBorders(1, Color(254, 215, 170, 255));
@@ -1077,27 +1012,24 @@ namespace UltraCanvas {
                 cell->SetBackgroundColor(Color(248, 250, 252, 255));
                 cell->SetBorders(1, Color(226, 232, 240, 255));
             }
-            specCard->AddChild(cell);
+            DemoKit::Add(specGrid, cell, 1);
+            cell->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(250));
 
             // Single-line layout: label on the left (muted, normal weight),
             // value immediately to its right (bold, dark or orange when unsupported).
-            auto lbl = std::make_shared<UltraCanvasLabel>(
-                    "SpecLbl" + std::to_string(i), 10, 8, labelW, 18);
-            lbl->SetText(cells[i].label);
+            auto lbl = DemoKit::CreateCaption("SpecLbl" + std::to_string(i), cells[i].label);
             lbl->SetFontSize(9);
             lbl->SetTextColor(Color(100, 116, 139, 255));
-            cell->AddChild(lbl);
+            DemoKit::Add(cell, lbl);
 
-            auto val = std::make_shared<UltraCanvasLabel>(
-                    "SpecVal" + std::to_string(i), 10 + labelW + 6, 7, cellW - labelW - 26, 18);
-            val->SetText(cells[i].value);
+            auto val = DemoKit::CreateText("SpecVal" + std::to_string(i), cells[i].value);
             val->SetFontSize(11);
             val->SetFontWeight(FontWeight::Bold);
             val->SetTextColor(unsupported ? Color(234, 88, 12, 255) : Color(30, 41, 59, 255));
-            cell->AddChild(val);
+            DemoKit::Add(cell, val, 1);
         }
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

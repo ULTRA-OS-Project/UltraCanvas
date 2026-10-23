@@ -8,12 +8,17 @@
 //                one either as the ULTRA OS dialog (the framework's own) or as
 //                the host platform's, and every answer is written to the log.
 //   * Details  - Docs/UltraCanvas/UltraCanvasSystemDialogs.md.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description on the page, the tabs in a card that fills the
+//                  area, buttons and checkboxes sized to their text, the
+//                  Examples tab scrolls when it is taller than the tab
 // Version: 1.1.0 - the file dialogs offer FileLoader's types
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
@@ -92,31 +97,26 @@ namespace {
         "paper, orientation, duplex and page range - were carried to\n"
         "the printer by IODeviceManager.\n";
 
-    std::shared_ptr<UltraCanvasLabel> SectionLabel(const std::string& id, const std::string& text) {
-        auto label = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 22);
-        label->SetText(text);
-        label->SetFontSize(13);
-        label->SetFontWeight(FontWeight::Bold);
-        label->SetTextColor(Color(60, 60, 60, 255));
-        label->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return label;
+    // A wrapping row of controls, centred on one line.
+    std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id) {
+        auto row = DemoKit::CreateRow(id, 8);
+        row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        return row;
     }
 
-    std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id) {
-        auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, 0, 34);
-        row->layout.SetFlexRow().SetFlexGap(8)
-                   .SetFlexWrap(CSSLayout::FlexWrap::Wrap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return row;
+    // The width it was given is a floor: a longer text widens the element.
+    void SetMinWidth(const std::shared_ptr<UltraCanvasUIElement>& element, float width) {
+        CSSLayout::BoxConstraints limits = element->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(width);
+        element->boxConstraints = limits;
     }
 
     std::shared_ptr<UltraCanvasButton> AddButton(const std::shared_ptr<UltraCanvasContainer>& row,
                                                  const std::string& id, const std::string& text,
                                                  float width) {
-        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 30, text);
-        button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->AddChild(button);
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 30, text);
+        SetMinWidth(button, width);
+        DemoKit::Add(row, button);
         return button;
     }
 
@@ -127,94 +127,80 @@ namespace {
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
-
-        auto title = std::make_shared<UltraCanvasLabel>("SysDlgTitle", 0, 0, 0, 26);
-        title->SetText("ULTRA OS system dialogs");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
-
-        auto intro = std::make_shared<UltraCanvasLabel>("SysDlgIntro", 0, 0, 0, 36);
-        intro->SetText("The dialogs an application asks the system for. \"ULTRA OS\" shows the "
-                       "framework's own dialogs, the same on every platform; \"Native\" shows the "
-                       "host platform's. The print dialog is always the platform's.");
-        intro->SetFontSize(12);
-        intro->SetTextColor(Color(90, 90, 90, 255));
-        intro->SetWrap(TextWrap::WrapWord);
-        intro->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(intro);
+        // Taller than the tab (a short window, a longer translation): it
+        // scrolls instead of cutting the log off.
+        {
+            ContainerStyle style;
+            style.autoShowScrollbars = true;
+            style.autoShowHorizontalScrollbar = false;
+            root->SetContainerStyle(style);
+        }
 
         // ----- Dialog style + options -----
         auto styleRow = ButtonRow("SysDlgStyleRow");
-        auto styleLabel = std::make_shared<UltraCanvasLabel>("SysDlgStyleLabel", 0, 0, 90, 30);
-        styleLabel->SetText("Dialog style:");
-        styleLabel->SetFontSize(12);
-        styleLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-        styleLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        styleRow->AddChild(styleLabel);
+        DemoKit::Add(root, styleRow);
+        DemoKit::AddText(styleRow, "SysDlgStyleLabel", "Dialog style:");
 
         auto styleSelector = CreateSegmentedControl("SysDlgStyle", 0, 0, 220, 30);
         styleSelector->AddSegment("ULTRA OS");
         styleSelector->AddSegment("Native");
         styleSelector->SetSelectedIndex(static_cast<int>(DialogStyle::UltraOS));
-        styleSelector->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        styleRow->AddChild(styleSelector);
+        DemoKit::AddFixed(styleRow, styleSelector);
 
-        auto hiddenCheck = UltraCanvasCheckbox::CreateCheckbox("SysDlgHidden", 0, 0, 160, 30,
-                                                               "Show hidden files", false);
-        hiddenCheck->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        styleRow->AddChild(hiddenCheck);
+        auto hiddenCheck = std::make_shared<UltraCanvasCheckbox>("SysDlgHidden", "Show hidden files");
+        hiddenCheck->SetChecked(false);
+        DemoKit::Add(styleRow, hiddenCheck);
 
-        auto togglesCheck = UltraCanvasCheckbox::CreateCheckbox("SysDlgToggles", 0, 0, 200, 30,
-                                                                "Filters as toggle buttons", false);
-        togglesCheck->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        styleRow->AddChild(togglesCheck);
-        root->AddChild(styleRow);
+        auto togglesCheck = std::make_shared<UltraCanvasCheckbox>("SysDlgToggles", "Filters as toggle buttons");
+        togglesCheck->SetChecked(false);
+        DemoKit::Add(styleRow, togglesCheck);
 
         // ----- Files -----
-        root->AddChild(SectionLabel("SysDlgFilesLabel", "Files"));
+        DemoKit::AddHeading(root, "SysDlgFilesLabel", "Files");
         auto fileRow = ButtonRow("SysDlgFileRow");
+        DemoKit::Add(root, fileRow);
         auto openBtn     = AddButton(fileRow, "SysDlgOpen",     "Open file",        120);
         auto openManyBtn = AddButton(fileRow, "SysDlgOpenMany", "Open multiple",    140);
         auto saveBtn     = AddButton(fileRow, "SysDlgSave",     "Save file",        120);
         auto folderBtn   = AddButton(fileRow, "SysDlgFolder",   "Select folder",    140);
-        root->AddChild(fileRow);
 
         // ----- Printing -----
-        root->AddChild(SectionLabel("SysDlgPrintLabel", "Printing"));
+        DemoKit::AddHeading(root, "SysDlgPrintLabel", "Printing");
         auto printRow = ButtonRow("SysDlgPrintRow");
+        DemoKit::Add(root, printRow);
         auto printSettingsBtn = AddButton(printRow, "SysDlgPrintSettings", "Print settings",   150);
         auto printTestBtn     = AddButton(printRow, "SysDlgPrintTest",     "Print test page",  150);
-        root->AddChild(printRow);
 
         // ----- Messages and input -----
-        root->AddChild(SectionLabel("SysDlgMsgLabel", "Messages and input"));
+        DemoKit::AddHeading(root, "SysDlgMsgLabel", "Messages and input");
         auto msgRow = ButtonRow("SysDlgMsgRow");
+        DemoKit::Add(root, msgRow);
         auto infoBtn     = AddButton(msgRow, "SysDlgInfo",     "Information", 110);
         auto questionBtn = AddButton(msgRow, "SysDlgQuestion", "Question",    100);
         auto warningBtn  = AddButton(msgRow, "SysDlgWarning",  "Warning",     100);
         auto errorBtn    = AddButton(msgRow, "SysDlgError",    "Error",       90);
         auto inputBtn    = AddButton(msgRow, "SysDlgInput",    "Text input",  110);
         auto passwordBtn = AddButton(msgRow, "SysDlgPassword", "Password",    100);
-        root->AddChild(msgRow);
 
         // ----- Result log -----
         auto logHeader = ButtonRow("SysDlgLogHeader");
-        auto logLabel = SectionLabel("SysDlgLogLabel", "What the dialogs answered");
-        logLabel->size.width = CSSLayout::Dimension::Px(220);
-        logHeader->AddChild(logLabel);
+        DemoKit::Add(root, logHeader);
+        DemoKit::Add(logHeader, DemoKit::CreateHeading("SysDlgLogLabel", "What the dialogs answered"));
         auto clearBtn = AddButton(logHeader, "SysDlgClear", "Clear", 70);
-        root->AddChild(logHeader);
 
         auto log = std::make_shared<UltraCanvasTextArea>("SysDlgLog");
         log->SetReadOnly(true);
         log->SetWordWrap(true);
         log->SetText("");
-        log->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        root->AddChild(log);
+        // The rest of the tab, but never so little that the tab scrolls a
+        // log too short to read.
+        DemoKit::Add(root, log, 1);
+        log->layoutItem.SetFlexShrink(1);
+        {
+            CSSLayout::BoxConstraints limits;
+            limits.minHeight = CSSLayout::Dimension::Px(140);
+            log->boxConstraints = limits;
+        }
 
         // Appends one entry, prefixed with the style the dialog was shown in,
         // and keeps the newest entry in view.
@@ -414,25 +400,32 @@ namespace {
 
 // ===== ULTRA OS SYSTEM DIALOGS DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSystemDialogsExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("SystemDialogsExamples", 0, 0, 1000, 720);
-        root->size.width  = CSSLayout::Dimension::Pct(100);
-        root->size.height = CSSLayout::Dimension::Pct(100);
-        root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        auto page = DemoKit::CreatePage("SystemDialogsExamples", "ULTRA OS system dialogs",
+                "The dialogs an application asks the system for. \"ULTRA OS\" shows the "
+                "framework's own dialogs, the same on every platform; \"Native\" shows the "
+                "host platform's. The print dialog is always the platform's.");
+        // The log and the documentation scroll themselves: the page is the
+        // area's height and the tabs take what the title and description leave.
+        page->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("SystemDialogsCard");
+        card->SetPadding(4);
+        DemoKit::Add(page, card, 1);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("SystemDialogsTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
-        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         tabs->AddTab("Examples", BuildExamplesTab());
         tabs->AddTab("Details",  BuildDetailsTab());
         tabs->SetActiveTab(0);
 
-        root->AddChild(tabs);
-        return root;
+        DemoKit::Add(card, tabs, 1);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
+        return page;
     }
 
 } // namespace UltraCanvas

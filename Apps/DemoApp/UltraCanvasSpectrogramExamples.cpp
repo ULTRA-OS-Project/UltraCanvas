@@ -4,11 +4,15 @@
 // window function, magnitude mode, dynamic range, frequency cap) plus the
 // inherited heatmap display options (colour map, reverse, colour bar, log scale),
 // with a live "frames x bins" readout of the most recent transform.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the panel and
+//                  the chart in cards, the panel a column whose labels, controls
+//                  and checkboxes size to their text
 // Version: 1.0.0
-// Last Modified: 2026-07-24
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasSpectrogram.h"
 #include "UltraCanvasAudio.h"
 #include "UltraCanvasLabel.h"
@@ -180,40 +184,13 @@ namespace UltraCanvas {
 // =============================================================================
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateSpectrogramExamples() {
-        const int CONTAINER_W = 1180;
-        const int CONTAINER_H = 800;
-        const int PAD = 16;
         const int PANEL_W = 300;
 
-        auto root = std::make_shared<UltraCanvasContainer>("SpecRoot", 0, 0, CONTAINER_W, CONTAINER_H);
-        root->SetBackgroundColor(Color(248, 249, 252, 255));
-        root->SetPadding(PAD);
-        root->layout.SetFlexColumn().SetFlexGap(8)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-        auto addFlex = [](const std::shared_ptr<UltraCanvasContainer>& parent,
-                          const std::shared_ptr<UltraCanvasUIElement>& child, float grow) {
-            child->layoutItem.SetFlexGrow(grow).SetFlexShrink(grow > 0 ? 1.f : 0.f)
-                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            parent->AddChild(child);
-        };
-
-        auto title = std::make_shared<UltraCanvasLabel>("SpecTitle", 0, 0, 0, 30);
-        title->SetText("Spectrogram - Time x Frequency Analysis");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(30, 41, 59, 255));
-        addFlex(root, title, 0);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("SpecSubtitle", 0, 0, 0, 34);
-        subtitle->SetText("Short-Time Fourier Transform of an audio signal rendered through the "
-                          "heatmap engine. Every STFT parameter and display option is live: pick a "
-                          "signal, then experiment with FFT size, overlap, window, magnitude mode, "
-                          "dynamic range, frequency cap and colour maps.");
-        subtitle->SetFontSize(11);
-        subtitle->SetWrap(TextWrap::WrapWord);
-        subtitle->SetTextColor(Color(100, 110, 125, 255));
-        addFlex(root, subtitle, 0);
+        auto root = DemoKit::CreatePage("SpecRoot", "Spectrogram - Time x Frequency Analysis",
+                "Short-Time Fourier Transform of an audio signal rendered through the "
+                "heatmap engine. Every STFT parameter and display option is live: pick a "
+                "signal, then experiment with FFT size, overlap, window, magnitude mode, "
+                "dynamic range, frequency cap and colour maps.");
 
         // ----- State + spectrogram element -----
         auto st = std::make_shared<SpectrogramDemoState>();
@@ -242,58 +219,49 @@ namespace UltraCanvas {
         ApplySignalPreset(st, st->trackMono.empty() ? 1 : 0);
 
         // ----- Main row: control panel (card) + spectrogram -----
-        auto row = std::make_shared<UltraCanvasContainer>("SpecRow", 0, 0, CONTAINER_W - 2 * PAD, 640);
-        row->layout.SetFlexRow().SetFlexGap(12)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        // The chart goes under the panel when the window is too narrow.
+        auto row = DemoKit::AddRow(root, "SpecRow");
 
-        auto panel = std::make_shared<UltraCanvasContainer>("SpecPanel", 0, 0, PANEL_W, 640);
-        panel->SetBackgroundColor(Color(255, 255, 255, 255));
-        panel->SetBorders(1.0f, Color(224, 227, 235, 255), 10.0f);
-        panel->size.width = CSSLayout::Dimension::Px(PANEL_W);
+        // The panel is as wide as its widest text, at least PANEL_W, so a
+        // longer caption or checkbox widens it instead of being cut.
+        auto panel = DemoKit::AddCard(row, "SpecPanel");
+        panel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetFlexBasis(CSSLayout::Dimension::Auto());
+        CSSLayout::BoxConstraints panelLimits;
+        panelLimits.minWidth = CSSLayout::Dimension::Px(PANEL_W);
+        panel->boxConstraints = panelLimits;
 
-        // --- Panel controls (absolute layout inside the card) ---
-        const int px = 16, pw = PANEL_W - 2 * 16;
+        // --- Panel controls: a column, each control as wide as the panel ---
+        const int pw = PANEL_W - 2 * 16;
         const int ctrlH = 26;
-        int y = 14;
 
         auto addHeading = [&](const std::string& id, const std::string& text) {
-            auto l = std::make_shared<UltraCanvasLabel>(id, px, y, pw, 20);
-            l->SetText(text);
-            l->SetFontSize(13);
-            l->SetFontWeight(FontWeight::Bold);
-            l->SetTextColor(Color(30, 41, 59, 255));
-            panel->AddChild(l);
-            y += 26;
+            auto l = DemoKit::AddHeading(panel, id, text);
+            l->SetMargin(4, 0, 0, 0);
         };
         auto addLabel = [&](const std::string& id, const std::string& text) {
-            auto l = std::make_shared<UltraCanvasLabel>(id, px, y, pw, 16);
-            l->SetText(text);
+            auto l = DemoKit::AddText(panel, id, text);
             l->SetFontSize(11);
             l->SetTextColor(Color(100, 110, 125, 255));
-            panel->AddChild(l);
-            y += 17;
         };
         auto addDropdown = [&](const std::string& id,
                                const std::vector<std::string>& items, int selected,
                                std::function<void(int)> apply) {
-            auto dd = std::make_shared<UltraCanvasDropdown>(id, px, y, pw, ctrlH);
+            auto dd = std::make_shared<UltraCanvasDropdown>(id, 0, 0, pw, ctrlH);
             for (const auto& it : items) dd->AddItem(it);
             dd->SetSelectedIndex(selected);
             dd->onSelectionChanged = [apply](int index, const DropdownItem&) { apply(index); };
-            panel->AddChild(dd);
-            y += ctrlH + 8;
+            DemoKit::AddStretched(panel, dd);
             return dd;
         };
+        // A checkbox as wide as its text.
         auto addCheck = [&](const std::string& id, const std::string& text, bool initial,
                             std::function<void(bool)> apply) {
-            auto cb = std::make_shared<UltraCanvasCheckbox>(id, px, y, pw, 22);
-            cb->SetText(text);
+            auto cb = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 0, 22, text);
             cb->SetChecked(initial);
             cb->onStateChanged = [apply](CheckedState, CheckedState ns) {
                 apply(ns == CheckedState::Checked);
             };
-            panel->AddChild(cb);
-            y += 24;
+            DemoKit::Add(panel, cb);
         };
 
         addHeading("SpecSigHead", "Signal");
@@ -308,7 +276,6 @@ namespace UltraCanvas {
                         [st](int index) { ApplySignalPreset(st, index); RefreshInfo(st); });
         }
 
-        y += 4;
         addHeading("SpecStftHead", "STFT parameters");
 
         addLabel("SpecFftLbl", "FFT size (frequency resolution):");
@@ -348,7 +315,7 @@ namespace UltraCanvas {
 
         addLabel("SpecDynLbl", "Dynamic range (dB mode):  30 - 120 dB");
         {
-            auto slider = std::make_shared<UltraCanvasSlider>("SpecDyn", px, y, pw, ctrlH);
+            auto slider = std::make_shared<UltraCanvasSlider>("SpecDyn", 0, 0, pw, ctrlH);
             slider->SetRange(30.0f, 120.0f);
             slider->SetStep(5.0f);
             slider->SetValue(80.0f);
@@ -356,8 +323,7 @@ namespace UltraCanvas {
                 st->spec->SetDynamicRangeDb(v);
                 RefreshInfo(st);
             };
-            panel->AddChild(slider);
-            y += ctrlH + 8;
+            DemoKit::AddStretched(panel, slider);
         }
 
         addLabel("SpecMaxFLbl", "Displayed frequency range:");
@@ -373,7 +339,6 @@ namespace UltraCanvas {
             RefreshInfo(st);
         });
 
-        y += 4;
         addHeading("SpecDispHead", "Display");
 
         addLabel("SpecCmapLbl", "Colour map:");
@@ -396,15 +361,14 @@ namespace UltraCanvas {
                      st->spec->SetScale(on ? HeatmapScale::Logarithmic : HeatmapScale::Linear);
                  });
 
-        addFlex(row, panel, 0);
-        addFlex(row, st->spec, 1);
-        addFlex(root, row, 1);
+        // The chart takes the width the panel leaves; its height stays.
+        auto chartCard = DemoKit::AddCard(row, "SpecChartCard", "", "", 420);
+        DemoKit::AddStretched(chartCard, st->spec);
 
         // ----- Info line: live readout of the most recent transform -----
-        st->info = std::make_shared<UltraCanvasLabel>("SpecInfo", 0, 0, 0, 20);
+        st->info = DemoKit::AddText(root, "SpecInfo", "");
         st->info->SetFontSize(11);
         st->info->SetTextColor(Color(100, 110, 125, 255));
-        addFlex(root, st->info, 0);
         RefreshInfo(st);
 
         return root;

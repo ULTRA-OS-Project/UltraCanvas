@@ -22,6 +22,7 @@ endif()
 add_executable(DeviceExplorer
     main.cpp
     ui/DeviceExplorerModel.cpp
+    ui/DeviceExplorerPanel.cpp
     ui/DeviceExplorerPrinterQuery.cpp
     ui/DeviceExplorerWindow.cpp
 )

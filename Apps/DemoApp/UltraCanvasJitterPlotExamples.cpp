@@ -1,10 +1,16 @@
 // Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp
 // Enhanced jitter plot examples with professional styling
+// Version: 2.2.0 - the shared page look (UltraCanvasDemoPageKit): the Brazil tabs in a
+//                  card that fills the page area, controls in wrapping rows, every
+//                  label sized to its text, buttons as wide as their text
 // Version: 2.1.4
-// Last Modified: 2026-08-06
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   2.2.0 - Shared page look (UltraCanvasDemoPageKit). The tabs fill the page
+//           area; each tab is a column (description, chart as wide as the tab,
+//           control rows that wrap, legend), so no layout constant is left.
 //   2.1.4 - Reduced Brazil example width 1500px -> 1030px so it fits the demo
 //           app's standard 1400px window (350px nav tree + border leave ~1049px
 //           of content area) without a horizontal scrollbar.
@@ -28,6 +34,7 @@
 //           market cap, box plot overlay, scientific cross means, raincloud.
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasJitterPlotElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -43,24 +50,53 @@
 namespace UltraCanvas {
 
 // =============================================================================
-// LAYOUT CONSTANTS FOR BRAZIL EXAMPLE
+// LAYOUT FOR BRAZIL EXAMPLE
 // =============================================================================
-// Centralised so it's easy to tweak the whole example's footprint.
 
 namespace {
 
-constexpr int kOuterWidth      = 1030;   // Fits the demo's standard 1400px window:
-                                         // 1400 - 350 (nav tree) - 1 (border) leaves
-                                         // ~1049px; keep a margin for the 12px
-                                         // scrollbar so no horizontal scroll appears
-constexpr int kOuterHeight     = 760;    // Fits in a typical viewport without scroll
-constexpr int kTabContentW     = kOuterWidth;
-constexpr int kTabContentH     = 700;    // Tabs strip uses ~32-40px, content gets the rest
-constexpr int kChartLeftMargin = 50;
-constexpr int kChartRightMargin = 50;
-constexpr int kChartWidth      = kTabContentW - kChartLeftMargin - kChartRightMargin; // = 930
-constexpr int kChartTopY       = 45;     // below the description label
-constexpr int kChartHeight     = 480;
+// The Brazil charts are as wide as their tab and this tall.
+constexpr int kChartHeight = 480;
+
+// A tab of the Brazil example: a column (description, chart, controls,
+// legend) inset from the tab's edge. The tab gives it its size; content
+// taller than that scrolls.
+std::shared_ptr<UltraCanvasContainer> MakeBrazilTab(const std::string& id) {
+    auto tab = std::make_shared<UltraCanvasContainer>(id);
+    tab->SetPadding(10, 14, 10, 14);
+    tab->layout.SetFlexColumn().SetFlexGap(10)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    return tab;
+}
+
+// A row of controls that wraps when the tab is narrow, every item centred
+// on the 32 px controls.
+std::shared_ptr<UltraCanvasContainer> AddControlRow(const std::shared_ptr<UltraCanvasContainer>& parent,
+                                                    const std::string& id) {
+    auto row = DemoKit::AddRow(parent, id, 8);
+    row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    return row;
+}
+
+// The label in front of a control.
+void AddControlLabel(const std::shared_ptr<UltraCanvasContainer>& row,
+                     const std::string& id, const std::string& text) {
+    auto label = DemoKit::CreateText(id, text);
+    label->SetTextColor(Color(60, 60, 60, 255));
+    DemoKit::Add(row, label);
+}
+
+// A button as wide as its text, at least the width it had.
+std::shared_ptr<UltraCanvasButton> MakeControlButton(const std::string& id, const std::string& text,
+                                                     float minWidth) {
+    auto button = std::make_shared<UltraCanvasButton>(id, text);
+    button->SetFontSize(11);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+    limits.minHeight = CSSLayout::Dimension::Px(32);
+    button->boxConstraints = limits;
+    return button;
+}
 
 } // anonymous namespace
 
@@ -146,18 +182,12 @@ BrazilDataset BuildBrazilDataset() {
 // Each tab gets its own filter strip wired to its own chart pointer.
 void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
                           std::shared_ptr<UltraCanvasJitterPlotElement> jitter,
-                          int baseY,
                           long uidBase) {
-    auto filterLabel = std::make_shared<UltraCanvasLabel>(
-        "FilterLabel" + std::to_string(uidBase),  50, baseY, 60, 32);
-    filterLabel->SetText("Filter:");
-    filterLabel->SetFontSize(12);
-    filterLabel->SetTextColor(Color(60, 60, 60, 255));
-    filterLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    container->AddChild(filterLabel);
+    auto row = AddControlRow(container, "FilterRow" + std::to_string(uidBase));
+    AddControlLabel(row, "FilterLabel" + std::to_string(uidBase), "Filter:");
     
     auto regionDropdown = std::make_shared<UltraCanvasDropdown>(
-        "RegionFilter" + std::to_string(uidBase),  110, baseY, 140, 32);
+        "RegionFilter" + std::to_string(uidBase), 140, 32);
     regionDropdown->AddItem("All Regions");
     regionDropdown->AddItem("NorthEast");
     regionDropdown->AddItem("North");
@@ -174,26 +204,17 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
         else if (index == 5) region = "South";
         jitter->SetRegionFilter(region);
     };
-    container->AddChild(regionDropdown);
+    DemoKit::AddFixed(row, regionDropdown);
     
-    auto scoreLabel = std::make_shared<UltraCanvasLabel>(
-        "ScoreLabel" + std::to_string(uidBase),  270, baseY, 80, 32);
-    scoreLabel->SetText("Min Score:");
-    scoreLabel->SetFontSize(12);
-    scoreLabel->SetTextColor(Color(60, 60, 60, 255));
-    scoreLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    container->AddChild(scoreLabel);
+    AddControlLabel(row, "ScoreLabel" + std::to_string(uidBase), "Min Score:");
     
     auto scoreInput = std::make_shared<UltraCanvasTextInput>(
-        "MinScoreFilter" + std::to_string(uidBase),  350, baseY, 60, 32);
+        "MinScoreFilter" + std::to_string(uidBase), 60, 32);
     scoreInput->SetPlaceholder("0.0");
     scoreInput->SetText("0.0");
-    container->AddChild(scoreInput);
+    DemoKit::AddFixed(row, scoreInput);
     
-    auto applyBtn = std::make_shared<UltraCanvasButton>(
-        "ApplyFilter" + std::to_string(uidBase),  420, baseY, 70, 32);
-    applyBtn->SetText("Apply");
-    applyBtn->SetFontSize(11);
+    auto applyBtn = MakeControlButton("ApplyFilter" + std::to_string(uidBase), "Apply", 70);
     applyBtn->SetOnClick([jitter, scoreInput]() {
         std::string text = scoreInput->GetText();
         try {
@@ -203,48 +224,30 @@ void AddBrazilFilterStrip(std::shared_ptr<UltraCanvasContainer> container,
             jitter->SetMinScoreFilter(0.0);
         }
     });
-    container->AddChild(applyBtn);
+    DemoKit::Add(row, applyBtn);
     
-    auto quickLabel = std::make_shared<UltraCanvasLabel>(
-        "QuickLabel" + std::to_string(uidBase),  510, baseY, 50, 32);
-    quickLabel->SetText("Quick:");
-    quickLabel->SetFontSize(12);
-    quickLabel->SetTextColor(Color(60, 60, 60, 255));
-    quickLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    container->AddChild(quickLabel);
+    AddControlLabel(row, "QuickLabel" + std::to_string(uidBase), "Quick:");
     
-    auto btnMin3 = std::make_shared<UltraCanvasButton>(
-        "btnMin3_" + std::to_string(uidBase),  560, baseY, 40, 32);
-    btnMin3->SetText("3+");
-    btnMin3->SetFontSize(11);
+    auto btnMin3 = MakeControlButton("btnMin3_" + std::to_string(uidBase), "3+", 40);
     btnMin3->SetOnClick([jitter]() { jitter->SetMinScoreFilter(3.0); });
-    container->AddChild(btnMin3);
+    DemoKit::Add(row, btnMin3);
     
-    auto btnMin4 = std::make_shared<UltraCanvasButton>(
-        "btnMin4_" + std::to_string(uidBase),  605, baseY, 40, 32);
-    btnMin4->SetText("4+");
-    btnMin4->SetFontSize(11);
+    auto btnMin4 = MakeControlButton("btnMin4_" + std::to_string(uidBase), "4+", 40);
     btnMin4->SetOnClick([jitter]() { jitter->SetMinScoreFilter(4.0); });
-    container->AddChild(btnMin4);
+    DemoKit::Add(row, btnMin4);
     
-    auto btnMin5 = std::make_shared<UltraCanvasButton>(
-        "btnMin5_" + std::to_string(uidBase),  650, baseY, 40, 32);
-    btnMin5->SetText("5+");
-    btnMin5->SetFontSize(11);
+    auto btnMin5 = MakeControlButton("btnMin5_" + std::to_string(uidBase), "5+", 40);
     btnMin5->SetOnClick([jitter]() { jitter->SetMinScoreFilter(5.0); });
-    container->AddChild(btnMin5);
+    DemoKit::Add(row, btnMin5);
     
-    auto btnClear = std::make_shared<UltraCanvasButton>(
-        "btnClear_" + std::to_string(uidBase),  695, baseY, 70, 32);
-    btnClear->SetText("Clear");
-    btnClear->SetFontSize(11);
+    auto btnClear = MakeControlButton("btnClear_" + std::to_string(uidBase), "Clear", 70);
     btnClear->SetOnClick([jitter, scoreInput, regionDropdown]() {
         jitter->SetMinScoreFilter(0.0);
         jitter->SetRegionFilter("");
         scoreInput->SetText("0.0");
         regionDropdown->SetSelectedIndex(0);
     });
-    container->AddChild(btnClear);
+    DemoKit::Add(row, btnClear);
 }
 
 // Loads dataset into a chart in the right order (by region, matching states list)
@@ -275,20 +278,13 @@ void LoadBrazilDataIntoChart(std::shared_ptr<UltraCanvasJitterPlotElement> jitte
 
 static std::shared_ptr<UltraCanvasContainer> BuildBrazilClassicJitterTab(
         const BrazilDataset& ds) {
-    auto tab = std::make_shared<UltraCanvasContainer>("BrazilClassicTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto tab = MakeBrazilTab("BrazilClassicTab");
     
-    auto descLabel = std::make_shared<UltraCanvasLabel>(
-        "BrazilDescClassic", 50, 10, kChartWidth, 25);
-    descLabel->SetText("Educational performance scores grouped by Brazilian states and colored by region. "
-                       "Random Gaussian jitter — black horizontal lines indicate median score per state.");
-    descLabel->SetFontSize(11);
-    descLabel->SetTextColor(Color(90, 90, 90, 255));
-    tab->AddChild(descLabel);
+    DemoKit::AddCaption(tab, "BrazilDescClassic",
+                        "Educational performance scores grouped by Brazilian states and colored by region. "
+                        "Random Gaussian jitter — black horizontal lines indicate median score per state.");
     
-    auto jitter = CreateJitterPlotElement("brazilScoresClassic",
-                                          kChartLeftMargin, kChartTopY,
-                                          kChartWidth, kChartHeight);
+    auto jitter = CreateJitterPlotElement("brazilScoresClassic", 0, 0, 930, kChartHeight);
     LoadBrazilDataIntoChart(jitter, ds);
     
     // Core jitter settings (same as original example)
@@ -314,22 +310,15 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilClassicJitterTab(
     jitter->SetChartTitle("Score");
     jitter->SetEnableTooltips(true);
     
-    tab->AddChild(jitter);
+    DemoKit::AddStretched(tab, jitter);
     
     // Filter strip just below the chart
-    int filterY = kChartTopY + kChartHeight + 25;  // = 550
-    AddBrazilFilterStrip(tab, jitter, filterY, 2110);
+    AddBrazilFilterStrip(tab, jitter, 2110);
     
-    auto legendLabel = std::make_shared<UltraCanvasLabel>(
-        "BrazilLegendClassic", 50, filterY + 50, kChartWidth, 60);
-    legendLabel->SetText(
+    DemoKit::AddCaption(tab, "BrazilLegendClassic",
         "Regions: NorthEast (Emerald) | North (Teal) | Central-West (Orange) | SouthEast (Red/Pink) | South (Blue)\n"
         "Black horizontal lines indicate median score per state.\n"
-        "Total: 27 states with ~700 schools represented."
-    );
-    legendLabel->SetFontSize(10);
-    legendLabel->SetTextColor(Color(100, 100, 100, 255));
-    tab->AddChild(legendLabel);
+        "Total: 27 states with ~700 schools represented.");
     
     return tab;
 }
@@ -344,20 +333,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilClassicJitterTab(
 
 static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
         const BrazilDataset& ds) {
-    auto tab = std::make_shared<UltraCanvasContainer>("BrazilBeeswarmTab", 0, 0,
-                                                      kTabContentW, kTabContentH);
+    auto tab = MakeBrazilTab("BrazilBeeswarmTab");
     
-    auto descLabel = std::make_shared<UltraCanvasLabel>(
-        "BrazilDescBee", 50, 10, kChartWidth, 25);
-    descLabel->SetText("Beeswarm packing — points are placed with no overlap, revealing exact "
-                       "density of each state's score distribution. Switch method/priority/corral/side below.");
-    descLabel->SetFontSize(11);
-    descLabel->SetTextColor(Color(90, 90, 90, 255));
-    tab->AddChild(descLabel);
+    DemoKit::AddCaption(tab, "BrazilDescBee",
+                        "Beeswarm packing — points are placed with no overlap, revealing exact "
+                        "density of each state's score distribution. Switch method/priority/corral/side below.");
     
-    auto jitter = CreateJitterPlotElement("brazilScoresBee",
-                                          kChartLeftMargin, kChartTopY,
-                                          kChartWidth, kChartHeight);
+    auto jitter = CreateJitterPlotElement("brazilScoresBee", 0, 0, 930, kChartHeight);
     LoadBrazilDataIntoChart(jitter, ds);
     
     // Beeswarm settings
@@ -385,19 +367,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
     jitter->SetChartTitle("Score");
     jitter->SetEnableTooltips(true);
     
-    tab->AddChild(jitter);
+    DemoKit::AddStretched(tab, jitter);
     
     // ===== BEESWARM-SPECIFIC INTERACTIVE CONTROLS (row 1) =====
-    int ctrlY = kChartTopY + kChartHeight + 25;  // = 550
+    auto ctrlRow = AddControlRow(tab, "BeeControlRow");
+    AddControlLabel(ctrlRow, "BeeMethodLabel", "Method:");
     
-    auto methodLabel = std::make_shared<UltraCanvasLabel>("BeeMethodLabel", 50, ctrlY, 60, 32);
-    methodLabel->SetText("Method:");
-    methodLabel->SetFontSize(12);
-    methodLabel->SetTextColor(Color(60, 60, 60, 255));
-    methodLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    tab->AddChild(methodLabel);
-    
-    auto methodDropdown = std::make_shared<UltraCanvasDropdown>("BeeMethodDD", 110, ctrlY, 110, 32);
+    auto methodDropdown = std::make_shared<UltraCanvasDropdown>("BeeMethodDD", 110, 32);
     methodDropdown->AddItem("Swarm");
     methodDropdown->AddItem("Center");
     methodDropdown->AddItem("Hex");
@@ -410,16 +386,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
         else if (index == 3) m = BeeswarmMethod::Square;
         jitter->SetBeeswarmMethod(m);
     };
-    tab->AddChild(methodDropdown);
+    DemoKit::AddFixed(ctrlRow, methodDropdown);
     
-    auto prioLabel = std::make_shared<UltraCanvasLabel>("BeePrioLabel", 240, ctrlY, 60, 32);
-    prioLabel->SetText("Priority:");
-    prioLabel->SetFontSize(12);
-    prioLabel->SetTextColor(Color(60, 60, 60, 255));
-    prioLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    tab->AddChild(prioLabel);
+    AddControlLabel(ctrlRow, "BeePrioLabel", "Priority:");
     
-    auto prioDropdown = std::make_shared<UltraCanvasDropdown>("BeePrioDD", 300, ctrlY, 120, 32);
+    auto prioDropdown = std::make_shared<UltraCanvasDropdown>("BeePrioDD", 120, 32);
     prioDropdown->AddItem("Ascending");
     prioDropdown->AddItem("Descending");
     prioDropdown->AddItem("Random");
@@ -434,16 +405,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
         else if (index == 4) p = BeeswarmPriority::Dense;
         jitter->SetBeeswarmPriority(p);
     };
-    tab->AddChild(prioDropdown);
+    DemoKit::AddFixed(ctrlRow, prioDropdown);
     
-    auto corralLabel = std::make_shared<UltraCanvasLabel>("BeeCorralLabel", 440, ctrlY, 55, 32);
-    corralLabel->SetText("Corral:");
-    corralLabel->SetFontSize(12);
-    corralLabel->SetTextColor(Color(60, 60, 60, 255));
-    corralLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    tab->AddChild(corralLabel);
+    AddControlLabel(ctrlRow, "BeeCorralLabel", "Corral:");
     
-    auto corralDropdown = std::make_shared<UltraCanvasDropdown>("BeeCorralDD", 495, ctrlY, 100, 32);
+    auto corralDropdown = std::make_shared<UltraCanvasDropdown>("BeeCorralDD", 100, 32);
     corralDropdown->AddItem("None");
     corralDropdown->AddItem("Open");
     corralDropdown->AddItem("Wrap");
@@ -456,16 +422,11 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
         else if (index == 3) c = BeeswarmCorral::Clamp;
         jitter->SetBeeswarmCorral(c);
     };
-    tab->AddChild(corralDropdown);
+    DemoKit::AddFixed(ctrlRow, corralDropdown);
     
-    auto sideLabel = std::make_shared<UltraCanvasLabel>("BeeSideLabel", 615, ctrlY, 40, 32);
-    sideLabel->SetText("Side:");
-    sideLabel->SetFontSize(12);
-    sideLabel->SetTextColor(Color(60, 60, 60, 255));
-    sideLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    tab->AddChild(sideLabel);
+    AddControlLabel(ctrlRow, "BeeSideLabel", "Side:");
     
-    auto sideDropdown = std::make_shared<UltraCanvasDropdown>("BeeSideDD", 655, ctrlY, 90, 32);
+    auto sideDropdown = std::make_shared<UltraCanvasDropdown>("BeeSideDD", 90, 32);
     sideDropdown->AddItem("Both");
     sideDropdown->AddItem("Left");
     sideDropdown->AddItem("Right");
@@ -476,20 +437,14 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
         else if (index == 2) s = BeeswarmSide::Right;
         jitter->SetBeeswarmSide(s);
     };
-    tab->AddChild(sideDropdown);
+    DemoKit::AddFixed(ctrlRow, sideDropdown);
     
     // Filter strip on second control row
-    AddBrazilFilterStrip(tab, jitter, ctrlY + 40, 2220);
+    AddBrazilFilterStrip(tab, jitter, 2220);
     
-    auto legendLabel = std::make_shared<UltraCanvasLabel>(
-        "BrazilLegendBee", 50, ctrlY + 80, kChartWidth, 30);
-    legendLabel->SetText(
+    DemoKit::AddCaption(tab, "BrazilLegendBee",
         "Beeswarm methods: Swarm (greedy, organic) | Center (symmetric grid) | Hex (hexagonal grid) | Square (square grid). "
-        "Priority controls placement order — try Compact for tightest fit, Dense to fill busy regions first."
-    );
-    legendLabel->SetFontSize(10);
-    legendLabel->SetTextColor(Color(100, 100, 100, 255));
-    tab->AddChild(legendLabel);
+        "Priority controls placement order — try Compact for tightest fit, Dense to fill busy regions first.");
     
     return tab;
 }
@@ -499,23 +454,21 @@ static std::shared_ptr<UltraCanvasContainer> BuildBrazilBeeswarmTab(
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBrazilSchoolScoresExample() {
-    auto container = std::make_shared<UltraCanvasContainer>(
-        "BrazilExample", 0, 0, kOuterWidth, kOuterHeight);
-    
-    auto titleLabel = std::make_shared<UltraCanvasLabel>(
-        "BrazilTitle", 50, 15, kOuterWidth - 100, 35);
-    titleLabel->SetText("2009 Ideb Score of Schools in Brazil");
-    titleLabel->SetFontSize(20.0f);
-    titleLabel->SetTextColor(Color(30, 30, 30, 255));
-    titleLabel->SetFontWeight(FontWeight::Bold);
-    container->AddChild(titleLabel);
+    auto page = DemoKit::CreatePage("BrazilExample", "2009 Ideb Score of Schools in Brazil", "");
+    // The page is the display area's height and the tabs take the rest of
+    // it; a tab whose content is taller scrolls.
+    page->SetFillsArea(true);
+
+    auto card = DemoKit::CreateCard("BrazilTabsCard");
+    card->SetPadding(4);
+    DemoKit::Add(page, card, 1);
     
     // Build the dataset ONCE so both tabs render identical data
     BrazilDataset ds = BuildBrazilDataset();
     
     // Tabbed container — Classic on left, Beeswarm on right
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-        "BrazilTabs", 0, 55, kOuterWidth, kOuterHeight - 55);
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("BrazilTabs", 0, 0, 0, 0);
+    tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
     
@@ -523,9 +476,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBrazilSc
     tabs->AddTab("Beeswarm Packing", BuildBrazilBeeswarmTab(ds));
     tabs->SetActiveTab(0);
     
-    container->AddChild(tabs);
+    DemoKit::Add(card, tabs, 1);
     
-    return container;
+    return page;
 }
 
 // =============================================================================
@@ -533,15 +486,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBrazilSc
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateContinentsPopulationExample() {
-    auto container = std::make_shared<UltraCanvasContainer>("ContinentsExample", 0, 0, 900, 700);
+    auto page = DemoKit::CreatePage("ContinentsExample", "Continental Population Distribution", "");
+    auto card = DemoKit::AddCard(page, "ContinentsCard");
     
-    auto titleLabel = std::make_shared<UltraCanvasLabel>("ContTitle", 50, 20, 800, 30);
-    titleLabel->SetText("Continental Population Distribution");
-    titleLabel->SetFontSize(18.0f);
-    titleLabel->SetTextColor(Color(40, 40, 40, 255));
-    container->AddChild(titleLabel);
-    
-    auto jitter = CreateJitterPlotElement("continents", 50, 70, 700, 500);
+    auto jitter = CreateJitterPlotElement("continents", 0, 0, 700, 500);
     
     std::vector<std::string> continents = {"Africa", "Americas", "Asia", "Europe", "Oceania"};
     jitter->SetCategories(continents);
@@ -583,9 +531,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateContinen
     jitter->SetChartTitle("Population (millions)");
     jitter->SetEnableTooltips(true);
     
-    container->AddChild(jitter);
+    DemoKit::AddFixed(card, jitter);
     
-    return container;
+    return page;
 }
 
 // =============================================================================
@@ -593,15 +541,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateContinen
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarketCapitalizationExample() {
-    auto container = std::make_shared<UltraCanvasContainer>("MarketCapExample", 0, 0, 1000, 750);
+    auto page = DemoKit::CreatePage("MarketCapExample", "Market Capitalization Jitter Chart", "");
+    auto card = DemoKit::AddCard(page, "MarketCapCard");
     
-    auto titleLabel = std::make_shared<UltraCanvasLabel>("MarketTitle", 50, 20, 900, 30);
-    titleLabel->SetText("Market Capitalization Jitter Chart");
-    titleLabel->SetFontSize(20.0f);
-    titleLabel->SetTextColor(Color(220, 220, 220, 255));
-    container->AddChild(titleLabel);
-    
-    auto jitter = CreateJitterPlotElement("marketCap", 50, 70, 900, 550);
+    auto jitter = CreateJitterPlotElement("marketCap", 0, 0, 900, 550);
     
     std::vector<std::string> marketTiers = {
         "1-Nano", "2-Micro", "3-Small", "4-Mid", "5-Large", "6-Mega"
@@ -650,18 +593,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarketCa
     jitter->SetChartTitle("Market Cap ($");
     jitter->SetEnableTooltips(true);
     
-    container->AddChild(jitter);
+    DemoKit::AddFixed(card, jitter);
     
-    auto infoLabel = std::make_shared<UltraCanvasLabel>("MarketInfo", 50, 640, 900, 80);
-    infoLabel->SetText(
+    DemoKit::AddCaption(card, "MarketInfo",
         "Logarithmic Y-axis scale displays data spanning 6 orders of magnitude.\n"
-        "Total: ~900 companies across all market capitalizations."
-    );
-    infoLabel->SetFontSize(10);
-    infoLabel->SetTextColor(Color(180, 180, 180, 255));
-    container->AddChild(infoLabel);
+        "Total: ~900 companies across all market capitalizations.");
     
-    return container;
+    return page;
 }
 
 // =============================================================================
@@ -669,15 +607,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMarketCa
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotOverlayExample() {
-    auto container = std::make_shared<UltraCanvasContainer>("BoxPlotExample", 0, 0, 900, 750);
+    auto page = DemoKit::CreatePage("BoxPlotExample", "Jittered Box Plot - Statistical Distribution", "");
+    auto card = DemoKit::AddCard(page, "BoxPlotCard");
     
-    auto titleLabel = std::make_shared<UltraCanvasLabel>("BoxTitle", 50, 20, 800, 30);
-    titleLabel->SetText("Jittered Box Plot - Statistical Distribution");
-    titleLabel->SetFontSize(18.0f);
-    titleLabel->SetTextColor(Color(40, 40, 40, 255));
-    container->AddChild(titleLabel);
-    
-    auto jitter = CreateJitterPlotElement("boxPlotJitter", 50, 70, 800, 500);
+    auto jitter = CreateJitterPlotElement("boxPlotJitter", 0, 0, 800, 500);
     
     std::vector<std::string> groups = {"Group A", "Group B", "Group C", "Group D"};
     jitter->SetCategories(groups);
@@ -734,39 +667,33 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotO
     jitter->SetChartTitle("Data Value");
     jitter->SetEnableTooltips(true);
     
-    container->AddChild(jitter);
+    DemoKit::AddFixed(card, jitter);
     
-    int btnY = 590;
-    int btnX = 50;
+    auto switchRow = DemoKit::AddRow(card, "BoxPlotSwitches", 24);
     
     // Shared state so the two switches don't clobber each other's setting.
     struct BoxPlotToggles { bool whiskers = true; bool outliers = true; };
     auto boxToggles = std::make_shared<BoxPlotToggles>();
 
-    auto swWhiskers = UltraCanvasSwitch::Create("swWhiskers", btnX, btnY + 7, "Whiskers", boxToggles->whiskers);
+    auto swWhiskers = UltraCanvasSwitch::Create("swWhiskers", 0, 0, "Whiskers", boxToggles->whiskers);
     swWhiskers->onStateChanged = [jitter, boxToggles](CheckedState, CheckedState newState) {
         boxToggles->whiskers = (newState == CheckedState::Checked);
         jitter->SetBoxPlotSettings(boxToggles->whiskers, boxToggles->outliers, 0.6f);
     };
-    container->AddChild(swWhiskers);
+    DemoKit::Add(switchRow, swWhiskers);
 
-    auto swOutliers = UltraCanvasSwitch::Create("swOutliers", btnX + 160, btnY + 7, "Outliers", boxToggles->outliers);
+    auto swOutliers = UltraCanvasSwitch::Create("swOutliers", 0, 0, "Outliers", boxToggles->outliers);
     swOutliers->onStateChanged = [jitter, boxToggles](CheckedState, CheckedState newState) {
         boxToggles->outliers = (newState == CheckedState::Checked);
         jitter->SetBoxPlotSettings(boxToggles->whiskers, boxToggles->outliers, 0.6f);
     };
-    container->AddChild(swOutliers);
+    DemoKit::Add(switchRow, swOutliers);
     
-    auto infoLabel = std::make_shared<UltraCanvasLabel>("BoxInfo", 50, 645, 800, 80);
-    infoLabel->SetText(
+    DemoKit::AddCaption(card, "BoxInfo",
         "Box plot components: IQR box (Q1-Q3), thick median line, whiskers (1.5xIQR), outlier circles.\n"
-        "Jittered points show individual data distribution."
-    );
-    infoLabel->SetFontSize(10);
-    infoLabel->SetTextColor(Color(100, 100, 100, 255));
-    container->AddChild(infoLabel);
+        "Jittered points show individual data distribution.");
     
-    return container;
+    return page;
 }
 
 // =============================================================================
@@ -774,15 +701,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBoxPlotO
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScientificCrossMeansExample() {
-    auto container = std::make_shared<UltraCanvasContainer>("ScientificExample", 0, 0, 900, 750);
+    auto page = DemoKit::CreatePage("ScientificExample", "Muscle Contraction Mechanics (Publication Style)", "");
+    auto card = DemoKit::AddCard(page, "ScientificCard");
     
-    auto titleLabel = std::make_shared<UltraCanvasLabel>("SciTitle", 50, 20, 800, 30);
-    titleLabel->SetText("Muscle Contraction Mechanics (Publication Style)");
-    titleLabel->SetFontSize(18.0f);
-    titleLabel->SetTextColor(Color(40, 40, 40, 255));
-    container->AddChild(titleLabel);
-    
-    auto jitter = CreateJitterPlotElement("muscleData", 50, 70, 700, 500);
+    auto jitter = CreateJitterPlotElement("muscleData", 0, 0, 700, 500);
     
     std::vector<std::string> species = {"Cheetah", "Impala", "Lion", "Zebra"};
     jitter->SetCategories(species);
@@ -827,18 +749,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScientif
     jitter->SetChartTitle("Peak Power (W/kg)");
     jitter->SetEnableTooltips(true);
     
-    container->AddChild(jitter);
+    DemoKit::AddFixed(card, jitter);
     
-    auto legendLabel = std::make_shared<UltraCanvasLabel>("SciLegend", 50, 590, 800, 100);
-    legendLabel->SetText(
+    DemoKit::AddCaption(card, "SciLegend",
         "Mean marker: Black cross (+) symbol indicates mean value per species.\n"
-        "Box plot: Light gray IQR box, dark borders, whiskers at 1.5xIQR."
-    );
-    legendLabel->SetFontSize(9);
-    legendLabel->SetTextColor(Color(100, 100, 100, 255));
-    container->AddChild(legendLabel);
+        "Box plot: Light gray IQR box, dark borders, whiskers at 1.5xIQR.");
     
-    return container;
+    return page;
 }
 
 // =============================================================================
@@ -846,15 +763,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateScientif
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRaincloudPlotExample() {
-    auto container = std::make_shared<UltraCanvasContainer>("RaincloudExample", 0, 0, 900, 700);
+    auto page = DemoKit::CreatePage("RaincloudExample", "Raincloud Plot - Half-Violin + Jitter", "");
+    auto card = DemoKit::AddCard(page, "RaincloudCard");
     
-    auto titleLabel = std::make_shared<UltraCanvasLabel>("RaincloudTitle", 50, 20, 800, 30);
-    titleLabel->SetText("Raincloud Plot - Half-Violin + Jitter");
-    titleLabel->SetFontSize(18.0f);
-    titleLabel->SetTextColor(Color(40, 40, 40, 255));
-    container->AddChild(titleLabel);
-    
-    auto jitter = CreateJitterPlotElement("raincloud", 50, 70, 800, 500);
+    auto jitter = CreateJitterPlotElement("raincloud", 0, 0, 800, 500);
     
     std::vector<std::string> groups = {"Control", "Treatment A", "Treatment B"};
     jitter->SetCategories(groups);
@@ -890,18 +802,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRainclou
     jitter->SetChartTitle("Response Value");
     jitter->SetEnableTooltips(true);
     
-    container->AddChild(jitter);
+    DemoKit::AddFixed(card, jitter);
     
-    auto infoLabel = std::make_shared<UltraCanvasLabel>("RaincloudInfo", 50, 590, 800, 80);
-    infoLabel->SetText(
+    DemoKit::AddCaption(card, "RaincloudInfo",
         "Raincloud plot combines half-violin (density) on left with jittered points on right.\n"
-        "Provides both distribution shape and individual data points in one visualization."
-    );
-    infoLabel->SetFontSize(10);
-    infoLabel->SetTextColor(Color(100, 100, 100, 255));
-    container->AddChild(infoLabel);
+        "Provides both distribution shape and individual data points in one visualization.");
     
-    return container;
+    return page;
 }
 
 // =============================================================================
