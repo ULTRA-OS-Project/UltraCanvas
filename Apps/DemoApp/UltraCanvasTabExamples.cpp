@@ -1,11 +1,15 @@
-// Apps/DemoApp/UltraCanvasComprehensiveTabDemo.cpp
+// Apps/DemoApp/UltraCanvasTabExamples.cpp
 // Comprehensive demonstration of all tabbed container features
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  section, the tabbed containers as wide as the card, every
+//                  text sized to fit, tab pages scroll when their text is taller
 // Version: 1.1.0 - the five Pill colourways
 // Version: 1.0.1
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -23,66 +27,49 @@ namespace UltraCanvas {
         auto content = std::make_shared<UltraCanvasContainer>(id, 0, 0, w, h);
         content->SetBackgroundColor(bgColor);
         content->SetPadding(15);
+        content->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        // A text taller than the tab (a longer translation) scrolls.
+        ContainerStyle style;
+        style.autoShowScrollbars = true;
+        style.autoShowHorizontalScrollbar = false;
+        content->SetContainerStyle(style);
 
-        auto label = std::make_shared<UltraCanvasLabel>(id + "_label", 0, 0, w - 30, h - 30);
-        label->SetText(text);
-        label->SetFontSize(12);
-        //label->SetAlignment(TextAlignment::TopLeft);
+        // The first child: the Pill examples recolour it.
+        auto label = DemoKit::CreateText(id + "_label", text);
         label->SetTextColor(Colors::Black);
-        content->AddChild(label);
+        DemoKit::Add(content, label);
 
         return content;
     }
 
 // ===== MAIN COMPREHENSIVE TAB DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTabExamples() {
-        // The page root. Its height is provisional: the real one is set from
-        // yOffset once every example has been placed, so an added example
-        // cannot run off the bottom of the page.
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("ComprehensiveTabDemo", 0, 0, 1020, 1000);
-        //mainContainer->EnableVerticalScrolling(true);
-//        mainContainer->SetBackgroundColor(Color(245, 245, 245));
+        auto mainContainer = DemoKit::CreatePage("ComprehensiveTabDemo",
+                "UltraCanvas Tabbed Container - Comprehensive Demo",
+                "Showcasing all tab styles, features, and configurations");
 
-        int yOffset = 10;
-
-        // ========================================
-        // TITLE
-        // ========================================
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("MainTitle", 20, yOffset, 960, 35);
-        mainTitle->SetText("UltraCanvas Tabbed Container - Comprehensive Demo");
-        mainTitle->SetFontSize(18);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetTextColor(Color(40, 40, 40));
-        mainContainer->AddChild(mainTitle);
-        yOffset += 45;
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("Subtitle", 20, yOffset, 960, 25);
-        subtitle->SetText("Showcasing all tab styles, features, and configurations");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100));
-        mainContainer->AddChild(subtitle);
-        yOffset += 40;
+        // One example: its bold caption over the tabbed container, which
+        // keeps its height and takes the card's width.
+        auto addExample = [](const std::shared_ptr<UltraCanvasContainer>& card,
+                             const std::string& labelId, const std::string& text) {
+            auto group = DemoKit::CreateColumn(labelId + "Group", 4);
+            DemoKit::Add(card, group);
+            auto label = DemoKit::AddText(group, labelId, text);
+            label->SetFontSize(11);
+            label->SetFontWeight(FontWeight::Bold);
+            return group;
+        };
 
         // ========================================
         // SECTION 1: TAB STYLES (Classic, Modern, Flat, Rounded)
         // ========================================
-        auto section1Title = std::make_shared<UltraCanvasLabel>("Section1Title", 20, yOffset, 960, 30);
-        section1Title->SetText("1. TAB VISUAL STYLES");
-        section1Title->SetFontSize(14);
-        section1Title->SetFontWeight(FontWeight::Bold);
-        section1Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section1Title);
-        yOffset += 35;
+        auto card1 = DemoKit::AddCard(mainContainer, "Section1", "1. TAB VISUAL STYLES");
+        card1->layout.SetFlexGap(14);
 
         // --- Classic Style ---
-        auto classicLabel = std::make_shared<UltraCanvasLabel>("ClassicLabel", 40, yOffset, 400, 20);
-        classicLabel->SetText("Classic Style (Windows 7 look with 3D borders)");
-        classicLabel->SetFontSize(11);
-        classicLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(classicLabel);
-        yOffset += 25;
+        auto classicGroup = addExample(card1, "ClassicLabel", "Classic Style (Windows 7 look with 3D borders)");
 
-        auto classicTabs = std::make_shared<UltraCanvasTabbedContainer>("ClassicTabs", 40, yOffset, 800, 220);
+        auto classicTabs = std::make_shared<UltraCanvasTabbedContainer>("ClassicTabs", 0, 0, 800, 220);
         classicTabs->SetTabStyle(TabStyle::Classic);
         classicTabs->SetTabHeight(30);
 //        classicTabs->SetCornerRadius(4.0f);
@@ -109,18 +96,12 @@ namespace UltraCanvas {
 
         classicTabs->SetActiveTab(0);
         classicTabs->SetCloseMode(TabCloseMode::NoClose);
-        mainContainer->AddChild(classicTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(classicGroup, classicTabs);
 
         // --- Modern Style ---
-        auto modernLabel = std::make_shared<UltraCanvasLabel>("ModernLabel", 40, yOffset, 400, 20);
-        modernLabel->SetText("Modern Style (Material Design with bottom indicator)");
-        modernLabel->SetFontSize(11);
-        modernLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(modernLabel);
-        yOffset += 25;
+        auto modernGroup = addExample(card1, "ModernLabel", "Modern Style (Material Design with bottom indicator)");
 
-        auto modernTabs = std::make_shared<UltraCanvasTabbedContainer>("ModernTabs", 40, yOffset, 800, 220);
+        auto modernTabs = std::make_shared<UltraCanvasTabbedContainer>("ModernTabs", 0, 0, 800, 220);
         modernTabs->SetTabStyle(TabStyle::Modern);
         modernTabs->SetTabHeight(32);
 //        modernTabs->SetActiveTabIndicatorHeight(3.0f);
@@ -151,18 +132,12 @@ namespace UltraCanvas {
 
         modernTabs->SetActiveTab(0);
         modernTabs->SetCloseMode(TabCloseMode::NoClose);
-        mainContainer->AddChild(modernTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(modernGroup, modernTabs);
 
         // --- Flat Style ---
-        auto flatLabel = std::make_shared<UltraCanvasLabel>("FlatLabel", 40, yOffset, 400, 20);
-        flatLabel->SetText("Flat Style (Minimal text-only design)");
-        flatLabel->SetFontSize(11);
-        flatLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(flatLabel);
-        yOffset += 25;
+        auto flatGroup = addExample(card1, "FlatLabel", "Flat Style (Minimal text-only design)");
 
-        auto flatTabs = std::make_shared<UltraCanvasTabbedContainer>("FlatTabs", 40, yOffset, 800, 220);
+        auto flatTabs = std::make_shared<UltraCanvasTabbedContainer>("FlatTabs", 0, 0, 800, 220);
         flatTabs->SetTabStyle(TabStyle::Flat);
         flatTabs->SetTabHeight(28);
 
@@ -187,18 +162,12 @@ namespace UltraCanvas {
 
         flatTabs->SetActiveTab(0);
         flatTabs->SetCloseMode(TabCloseMode::NoClose);
-        mainContainer->AddChild(flatTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(flatGroup, flatTabs);
 
         // --- Rounded Style ---
-        auto roundedLabel = std::make_shared<UltraCanvasLabel>("RoundedLabel", 40, yOffset, 400, 20);
-        roundedLabel->SetText("Rounded Style (Chrome/Firefox browser-style)");
-        roundedLabel->SetFontSize(11);
-        roundedLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(roundedLabel);
-        yOffset += 25;
+        auto roundedGroup = addExample(card1, "RoundedLabel", "Rounded Style (Chrome/Firefox browser-style)");
 
-        auto roundedTabs = std::make_shared<UltraCanvasTabbedContainer>("RoundedTabs", 40, yOffset, 800, 220);
+        auto roundedTabs = std::make_shared<UltraCanvasTabbedContainer>("RoundedTabs", 0, 0, 800, 220);
         roundedTabs->SetTabStyle(TabStyle::Rounded);
         roundedTabs->SetTabHeight(30);
         roundedTabs->SetTabCornerRadius(8.0f);
@@ -224,8 +193,7 @@ namespace UltraCanvas {
                                                              Color(240, 240, 255)));
 
         roundedTabs->SetActiveTab(0);
-        mainContainer->AddChild(roundedTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(roundedGroup, roundedTabs);
 
         // --- Pill Style: five colourways ---
         // The same style throughout; only colours and insets differ. They
@@ -280,17 +248,12 @@ namespace UltraCanvas {
             const std::string suffix = std::to_string(++pillIndex);
             const bool first = (pillIndex == 1);
 
-            auto pillLabel = std::make_shared<UltraCanvasLabel>("PillLabel" + suffix, 40, yOffset, 700, 20);
-            pillLabel->SetText(cw.name);
-            pillLabel->SetFontSize(11);
-            pillLabel->SetFontWeight(FontWeight::Bold);
-            mainContainer->AddChild(pillLabel);
-            yOffset += 25;
+            auto pillGroup = addExample(card1, "PillLabel" + suffix, cw.name);
 
             // The first colourway gets a full page; the others only need
             // their tab bar and a line of content.
             const int height = first ? 220 : 110;
-            auto pillTabs = std::make_shared<UltraCanvasTabbedContainer>("PillTabs" + suffix, 40, yOffset, 800, height);
+            auto pillTabs = std::make_shared<UltraCanvasTabbedContainer>("PillTabs" + suffix, 0, 0, 800, height);
             pillTabs->SetTabStyle(TabStyle::Pill);
             pillTabs->SetTabHeight(36);
             pillTabs->SetPillInset(2, 4);
@@ -339,30 +302,19 @@ namespace UltraCanvas {
             pillTabs->SetTabIcon(1, NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
             pillTabs->SetTabIcon(2, NormalizePath(GetResourcesDir() + "media/icons/document.png"));
             pillTabs->SetActiveTab(first ? 0 : 1);
-            mainContainer->AddChild(pillTabs);
-            yOffset += height + 10;
+            DemoKit::AddStretched(pillGroup, pillTabs);
         }
 
         // ========================================
         // SECTION 2: TAB FEATURES (Icons, Badges, Close Buttons)
         // ========================================
-        auto section2Title = std::make_shared<UltraCanvasLabel>("Section2Title", 20, yOffset, 960, 30);
-        section2Title->SetText("2. TAB FEATURES (Icons, Badges, Close Buttons)");
-        section2Title->SetFontSize(14);
-        section2Title->SetFontWeight(FontWeight::Bold);
-        section2Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section2Title);
-        yOffset += 35;
+        auto card2 = DemoKit::AddCard(mainContainer, "Section2", "2. TAB FEATURES (Icons, Badges, Close Buttons)");
+        card2->layout.SetFlexGap(14);
 
         // --- Tabs with Icons and Badges ---
-        auto featuresLabel = std::make_shared<UltraCanvasLabel>("FeaturesLabel", 40, yOffset, 600, 20);
-        featuresLabel->SetText("Tabs with Icons, Notification Badges, and Close Buttons");
-        featuresLabel->SetFontSize(11);
-        featuresLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(featuresLabel);
-        yOffset += 25;
+        auto featuresGroup = addExample(card2, "FeaturesLabel", "Tabs with Icons, Notification Badges, and Close Buttons");
 
-        auto featureTabs = std::make_shared<UltraCanvasTabbedContainer>("FeatureTabs", 40, yOffset, 800, 220);
+        auto featureTabs = std::make_shared<UltraCanvasTabbedContainer>("FeatureTabs", 0, 0, 800, 220);
         featureTabs->SetTabStyle(TabStyle::Rounded);
         featureTabs->SetTabHeight(32);
         featureTabs->SetCloseMode(TabCloseMode::Closable);
@@ -394,29 +346,18 @@ namespace UltraCanvas {
         featureTabs->SetTabIcon(tabIndex3, NormalizePath(GetResourcesDir() + "media/icons/settings.png"));
 
         featureTabs->SetActiveTab(0);
-        mainContainer->AddChild(featureTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(featuresGroup, featureTabs);
 
         // ========================================
         // SECTION 3: TAB OVERFLOW & SCROLLING
         // ========================================
-        auto section3Title = std::make_shared<UltraCanvasLabel>("Section3Title", 20, yOffset, 960, 30);
-        section3Title->SetText("3. TAB OVERFLOW HANDLING (Dropdown & Search)");
-        section3Title->SetFontSize(14);
-        section3Title->SetFontWeight(FontWeight::Bold);
-        section3Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section3Title);
-        yOffset += 35;
+        auto card3 = DemoKit::AddCard(mainContainer, "Section3", "3. TAB OVERFLOW HANDLING (Dropdown & Search)");
+        card3->layout.SetFlexGap(14);
 
         // --- Many Tabs with Overflow Dropdown ---
-        auto overflowLabel = std::make_shared<UltraCanvasLabel>("OverflowLabel", 40, yOffset, 700, 20);
-        overflowLabel->SetText("20 Tabs with Overflow Dropdown + Search (when scrollbar appears)");
-        overflowLabel->SetFontSize(11);
-        overflowLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(overflowLabel);
-        yOffset += 25;
+        auto overflowGroup = addExample(card3, "OverflowLabel", "20 Tabs with Overflow Dropdown + Search (when scrollbar appears)");
 
-        auto overflowTabs = std::make_shared<UltraCanvasTabbedContainer>("OverflowTabs", 40, yOffset, 800, 220);
+        auto overflowTabs = std::make_shared<UltraCanvasTabbedContainer>("OverflowTabs", 0, 0, 800, 220);
         overflowTabs->SetTabStyle(TabStyle::Modern);
         overflowTabs->SetTabHeight(30);
         overflowTabs->SetOverflowDropdownPosition(OverflowDropdownPosition::Left);
@@ -446,28 +387,17 @@ namespace UltraCanvas {
         }
 
         overflowTabs->SetActiveTab(0);
-        mainContainer->AddChild(overflowTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(overflowGroup, overflowTabs);
 
         // ========================================
         // SECTION 4: NEW TAB BUTTON - STYLE A (Fixed Tab)
         // ========================================
-        auto section4Title = std::make_shared<UltraCanvasLabel>("Section4Title", 20, yOffset, 960, 30);
-        section4Title->SetText("4. NEW TAB BUTTON - STYLE A (Browser-Style Fixed Tab)");
-        section4Title->SetFontSize(14);
-        section4Title->SetFontWeight(FontWeight::Bold);
-        section4Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section4Title);
-        yOffset += 35;
+        auto card4 = DemoKit::AddCard(mainContainer, "Section4", "4. NEW TAB BUTTON - STYLE A (Browser-Style Fixed Tab)");
+        card4->layout.SetFlexGap(14);
 
-        auto newTabALabel = std::make_shared<UltraCanvasLabel>("NewTabALabel", 40, yOffset, 700, 20);
-        newTabALabel->SetText("Click the '+' tab to create new tabs (Browser behavior)");
-        newTabALabel->SetFontSize(11);
-        newTabALabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(newTabALabel);
-        yOffset += 25;
+        auto newTabAGroup = addExample(card4, "NewTabALabel", "Click the '+' tab to create new tabs (Browser behavior)");
 
-        auto newTabATabs = std::make_shared<UltraCanvasTabbedContainer>("NewTabATabs", 40, yOffset, 800, 220);
+        auto newTabATabs = std::make_shared<UltraCanvasTabbedContainer>("NewTabATabs", 0, 0, 800, 220);
         newTabATabs->SetTabStyle(TabStyle::Rounded);
         newTabATabs->SetTabHeight(30);
         newTabATabs->SetTabCornerRadius(8.0f);
@@ -522,28 +452,17 @@ namespace UltraCanvas {
                                                             Color(245, 250, 255)));
 
         newTabATabs->SetActiveTab(0);
-        mainContainer->AddChild(newTabATabs);
-        yOffset += 230;
+        DemoKit::AddStretched(newTabAGroup, newTabATabs);
 
         // ========================================
         // SECTION 5: NEW TAB BUTTON - STYLE B (Icon Button)
         // ========================================
-        auto section5Title = std::make_shared<UltraCanvasLabel>("Section5Title", 20, yOffset, 960, 30);
-        section5Title->SetText("5. NEW TAB BUTTON - STYLE B (VS Code-Style Icon Button)");
-        section5Title->SetFontSize(14);
-        section5Title->SetFontWeight(FontWeight::Bold);
-        section5Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section5Title);
-        yOffset += 35;
+        auto card5 = DemoKit::AddCard(mainContainer, "Section5", "5. NEW TAB BUTTON - STYLE B (VS Code-Style Icon Button)");
+        card5->layout.SetFlexGap(14);
 
-        auto newTabBLabel = std::make_shared<UltraCanvasLabel>("NewTabBLabel", 40, yOffset, 700, 20);
-        newTabBLabel->SetText("Click the '+' icon button to create new tabs (Code editor behavior)");
-        newTabBLabel->SetFontSize(11);
-        newTabBLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(newTabBLabel);
-        yOffset += 25;
+        auto newTabBGroup = addExample(card5, "NewTabBLabel", "Click the '+' icon button to create new tabs (Code editor behavior)");
 
-        auto newTabBTabs = std::make_shared<UltraCanvasTabbedContainer>("NewTabBTabs", 40, yOffset, 800, 220);
+        auto newTabBTabs = std::make_shared<UltraCanvasTabbedContainer>("NewTabBTabs", 0, 0, 800, 220);
         newTabBTabs->SetTabStyle(TabStyle::Flat);
         newTabBTabs->SetTabHeight(28);
         newTabBTabs->SetCloseMode(TabCloseMode::Closable);
@@ -605,26 +524,22 @@ namespace UltraCanvas {
 
         newTabBTabs->SetActiveTab(0);
         newTabBTabs->SetCloseMode(TabCloseMode::Closable);
-        mainContainer->AddChild(newTabBTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(newTabBGroup, newTabBTabs);
 
         // ========================================
         // SECTION 6: TAB POSITIONS (Top, Bottom, Left, Right)
         // ========================================
-        auto section6Title = std::make_shared<UltraCanvasLabel>("Section6Title", 20, yOffset, 960, 30);
-        section6Title->SetText("6. TAB POSITIONS (Top, Bottom, Left, Right)");
-        section6Title->SetFontSize(14);
-        section6Title->SetFontWeight(FontWeight::Bold);
-        section6Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section6Title);
-        yOffset += 35;
+        auto card6 = DemoKit::AddCard(mainContainer, "Section6", "6. TAB POSITIONS (Top, Bottom, Left, Right)");
+        card6->layout.SetFlexGap(14);
 
-        // Create a container for side-by-side position demos
-        auto positionContainer = std::make_shared<UltraCanvasContainer>("PositionContainer", 40, yOffset, 800, 480);
-        positionContainer->SetBackgroundColor(Colors::Transparent);
+        // Bottom and left side by side (under each other when narrow), right below
+        auto positionContainer = DemoKit::CreateColumn("PositionContainer", 12);
+        DemoKit::Add(card6, positionContainer);
+        auto positionRow = DemoKit::CreateRow("PositionRow", 30);
+        DemoKit::Add(positionContainer, positionRow);
 
         // Bottom Position Tabs
-        auto bottomTabs = std::make_shared<UltraCanvasTabbedContainer>("BottomTabs", 10, 10, 370, 190);
+        auto bottomTabs = std::make_shared<UltraCanvasTabbedContainer>("BottomTabs", 0, 0, 370, 190);
         bottomTabs->SetTabPosition(TabPosition::Bottom);
         bottomTabs->SetTabStyle(TabStyle::Classic);
         bottomTabs->AddTab("Bottom 1", CreateSampleTabContent("Bottom1",
@@ -632,10 +547,10 @@ namespace UltraCanvas {
         bottomTabs->AddTab("Bottom 2", CreateSampleTabContent("Bottom2",
                                                               "Useful for tool windows", Color(245, 250, 255), 340, 150));
         bottomTabs->SetActiveTab(0);
-        positionContainer->AddChild(bottomTabs);
+        DemoKit::AddFixed(positionRow, bottomTabs);
 
         // Left Position Tabs
-        auto leftTabs = std::make_shared<UltraCanvasTabbedContainer>("LeftTabs", 410, 10, 370, 190);
+        auto leftTabs = std::make_shared<UltraCanvasTabbedContainer>("LeftTabs", 0, 0, 370, 190);
         leftTabs->SetTabPosition(TabPosition::Left);
         leftTabs->SetTabStyle(TabStyle::Flat);
         leftTabs->AddTab("Left 1", CreateSampleTabContent("Left1",
@@ -643,10 +558,10 @@ namespace UltraCanvas {
         leftTabs->AddTab("Left Panel 2", CreateSampleTabContent("Left2",
                                                           "Sidebar navigation style", Color(245, 250, 255), 240, 150));
         leftTabs->SetActiveTab(0);
-        positionContainer->AddChild(leftTabs);
+        DemoKit::AddFixed(positionRow, leftTabs);
 
         // Right Position Tabs
-        auto rightTabs = std::make_shared<UltraCanvasTabbedContainer>("RightTabs", 10, 260, 780, 200);
+        auto rightTabs = std::make_shared<UltraCanvasTabbedContainer>("RightTabs", 0, 0, 780, 200);
         rightTabs->SetTabPosition(TabPosition::Right);
         rightTabs->SetTabStyle(TabStyle::Modern);
         rightTabs->AddTab("Right 1", CreateSampleTabContent("Right1",
@@ -654,31 +569,18 @@ namespace UltraCanvas {
         rightTabs->AddTab("Right Panel 2", CreateSampleTabContent("Right2",
                                                                   "Common in design tools and IDEs for tool palettes", Color(245, 250, 255)));
         rightTabs->SetActiveTab(0);
-        positionContainer->AddChild(rightTabs);
-
-        mainContainer->AddChild(positionContainer);
-        yOffset += 510;
+        DemoKit::AddStretched(positionContainer, rightTabs);
 
         // ========================================
         // SECTION 7: ADVANCED FEATURES
         // ========================================
         /*
-        auto section7Title = std::make_shared<UltraCanvasLabel>("Section7Title", 20, yOffset, 960, 30);
-        section7Title->SetText("7. ADVANCED FEATURES (Drag & Drop, Callbacks, Custom Colors)");
-        section7Title->SetFontSize(14);
-        section7Title->SetFontWeight(FontWeight::Bold);
-        section7Title->SetTextColor(Color(0, 100, 200));
-        mainContainer->AddChild(section7Title);
-        yOffset += 35;
+        auto card7 = DemoKit::AddCard(mainContainer, "Section7", "7. ADVANCED FEATURES (Drag & Drop, Callbacks, Custom Colors)");
+        card7->layout.SetFlexGap(14);
 
-        auto advancedLabel = std::make_shared<UltraCanvasLabel>("AdvancedLabel", 40, yOffset, 700, 20);
-        advancedLabel->SetText("Custom styled tabs with per-tab colors and event callbacks");
-        advancedLabel->SetFontSize(11);
-        advancedLabel->SetFontWeight(FontWeight::Bold);
-        mainContainer->AddChild(advancedLabel);
-        yOffset += 25;
+        auto advancedGroup = addExample(card7, "AdvancedLabel", "Custom styled tabs with per-tab colors and event callbacks");
 
-        auto advancedTabs = std::make_shared<UltraCanvasTabbedContainer>("AdvancedTabs", 40, yOffset, 800, 220);
+        auto advancedTabs = std::make_shared<UltraCanvasTabbedContainer>("AdvancedTabs", 0, 0, 800, 220);
         advancedTabs->SetTabStyle(TabStyle::Rounded);
         advancedTabs->SetTabHeight(32);
         advancedTabs->SetShowTabSeparators(true);
@@ -716,25 +618,15 @@ namespace UltraCanvas {
         };
 
         advancedTabs->SetActiveTab(0);
-        mainContainer->AddChild(advancedTabs);
-        yOffset += 230;
+        DemoKit::AddStretched(advancedGroup, advancedTabs);
         */
         // ========================================
         // FOOTER
         // ========================================
-        auto footer = std::make_shared<UltraCanvasLabel>("Footer", 20, yOffset, 960, 40);
-        footer->SetText("UltraCanvas Tabbed Container Demo\n"
-                        "All features demonstrated above are production-ready and fully functional.");
-        footer->SetFontSize(10);
-        footer->SetTextColor(Color(120, 120, 120));
-        footer->SetAlignment(TextAlignment::Center);
-        mainContainer->AddChild(footer);
-        yOffset += 50;
-
-        // The page is as tall as what was placed on it. SetElementSize sets
-        // the CSS pixel height the layout reads back; SetHeight would only
-        // move finalBounds, which the next Arrange overwrites.
-        mainContainer->SetElementSize(Size2Df(1020.0f, static_cast<float>(yOffset)));
+        auto footer = DemoKit::AddCaption(mainContainer, "Footer",
+                "UltraCanvas Tabbed Container Demo\n"
+                "All features demonstrated above are production-ready and fully functional.");
+        footer->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
 
         return mainContainer;
     }

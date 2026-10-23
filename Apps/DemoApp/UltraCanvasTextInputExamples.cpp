@@ -1,12 +1,16 @@
 // Apps/DemoApp/UltraCanvasTextInputExamples.cpp
 // Implementation of all component example creators
+// Version: 1.4.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  example in a wrapping row, inputs as wide as their card,
+//                  every text and checkbox sized to fit
 // Version: 1.3.0 - In-field buttons: the clear cross, and the same button as "Reset";
 //                 the text areas get a frame, and no title is cut off
 // Version: 1.2.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasPasswordStrengthMeter.h"
 #include "UltraCanvasPasswordRuleLegend.h"
@@ -21,79 +25,63 @@ namespace UltraCanvas {
 // ===== BASIC UI ELEMENTS =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTextInputExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("TextInputExamples", 0, 0, 900, 1000);
-        container->SetPadding(0,0,10,0);
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("TextInputTitle", 10, 10, 300, 30);
-        title->SetText("Text Input Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
+        auto container = DemoKit::CreatePage("TextInputExamples", "Text Input Examples",
+                "Single- and multi-line inputs, password fields with strength meters and rule "
+                "legends, and buttons inside the field");
+
+        // The examples share the width and wrap under each other when narrow.
+        auto examples = DemoKit::AddRow(container, "TextInputCards");
 
         // ===== COLUMN 1: BASIC INPUTS =====
+        auto basicCard = DemoKit::AddCard(examples, "TextInputBasicCard", "Basic Inputs");
 
-        auto singleLineLabel = std::make_shared<UltraCanvasLabel>("SingleLineLabel", 20, 45, 200, 20);
-        singleLineLabel->SetText("Single Line Input");
-        singleLineLabel->SetFontSize(12);
-        container->AddChild(singleLineLabel);
+        DemoKit::AddText(basicCard, "SingleLineLabel", "Single Line Input");
 
         // Single Line Input
-        auto singleLineInput = std::make_shared<UltraCanvasTextInput>("SingleLineInput", 20, 70, 300, 30);
+        auto singleLineInput = std::make_shared<UltraCanvasTextInput>("SingleLineInput", 0, 0, 300, 30);
         singleLineInput->SetPlaceholder("Enter single line text...");
         singleLineInput->SetMaxLength(100);
-        container->AddChild(singleLineInput);
+        DemoKit::AddStretched(basicCard, singleLineInput);
 
 
         // Multi-line Text Area
-        auto multiLineLabel = std::make_shared<UltraCanvasLabel>("MultiLineLabel", 20, 130, 200, 20);
-        multiLineLabel->SetText("Multi-line Text Input");
-        multiLineLabel->SetFontSize(12);
-        container->AddChild(multiLineLabel);
+        DemoKit::AddText(basicCard, "MultiLineLabel", "Multi-line Text Input");
 
         // A text area has no frame of its own - it is also the editor that
         // fills a window - so these two get the text inputs' border.
-        auto multiLineInput = std::make_shared<UltraCanvasTextArea>("MultiLineInput", 20, 155, 300, 100);
+        auto multiLineInput = std::make_shared<UltraCanvasTextArea>("MultiLineInput", 0, 0, 300, 100);
         multiLineInput->SetBorders(1.0f, Color(200, 200, 200, 255), 4.0f);
         multiLineInput->SetWordWrap(true);
         multiLineInput->SetPlaceholder("Enter multi-line text...\nSupports line breaks.");
-        container->AddChild(multiLineInput);
+        DemoKit::AddStretched(basicCard, multiLineInput);
 
 
-        auto passwordLabel = std::make_shared<UltraCanvasLabel>("PasswordLabel", 20, 280, 300, 20);
-        passwordLabel->SetText("Basic Password Field (eye reveals text)");
-        passwordLabel->SetFontSize(12);
-        container->AddChild(passwordLabel);
+        DemoKit::AddText(basicCard, "PasswordLabel", "Basic Password Field (eye reveals text)");
 
         // Password Field (Basic) - the in-field eye button shows the typed text
-        auto passwordInput = std::make_shared<UltraCanvasTextInput>("PasswordInput", 20, 305, 300, 30);
+        auto passwordInput = std::make_shared<UltraCanvasTextInput>("PasswordInput", 0, 0, 300, 30);
         passwordInput->SetInputType(TextInputType::Password);
         passwordInput->SetPlaceholder("Enter password...");
         passwordInput->SetShowPasswordToggle(true);
-        container->AddChild(passwordInput);
+        DemoKit::AddStretched(basicCard, passwordInput);
 
 
-        auto numericLabel = std::make_shared<UltraCanvasLabel>("NumericLabel", 20, 360, 200, 20);
-        numericLabel->SetText("Numeric Input (0-1000)");
-        numericLabel->SetFontSize(12);
-        container->AddChild(numericLabel);
+        DemoKit::AddText(basicCard, "NumericLabel", "Numeric Input (0-1000)");
 
         // Numeric Input
-        auto numericInput = std::make_shared<UltraCanvasTextInput>("NumericInput", 20, 385, 300, 30);
+        auto numericInput = std::make_shared<UltraCanvasTextInput>("NumericInput", 0, 0, 300, 30);
         numericInput->SetInputType(TextInputType::Number);
         numericInput->SetPlaceholder("0.00");
-        container->AddChild(numericInput);
+        DemoKit::AddStretched(basicCard, numericInput);
 
 
-        auto textAreaLabel = std::make_shared<UltraCanvasLabel>("TextAreaLabel", 20, 440, 200, 20);
-        textAreaLabel->SetText("Text Area Component");
-        textAreaLabel->SetFontSize(12);
-        container->AddChild(textAreaLabel);
+        DemoKit::AddText(basicCard, "TextAreaLabel", "Text Area Component");
 
         // Text Area Component
-        auto textAreaInput = std::make_shared<UltraCanvasTextArea>("TextArea", 20, 465, 300, 100);
+        auto textAreaInput = std::make_shared<UltraCanvasTextArea>("TextArea", 0, 0, 300, 100);
         textAreaInput->SetBorders(1.0f, Color(200, 200, 200, 255), 4.0f);
         textAreaInput->SetPlaceholder("A plain text area: type, paste, undo...");
-        container->AddChild(textAreaInput);
+        DemoKit::AddStretched(basicCard, textAreaInput);
 
         // ===== IN-FIELD BUTTONS: CLEAR AND "RESET" =====
         // The button inside the field is UltraCanvasTextInput's own:
@@ -102,30 +90,25 @@ namespace UltraCanvas {
         // the demo's tree filter uses "Reset". A click empties the field and
         // calls onTextChanged, then onCleared. Both start filled, so the
         // buttons are on show.
-        auto clearLabel = std::make_shared<UltraCanvasLabel>("ClearButtonLabel", 20, 590, 300, 20);
-        clearLabel->SetText("Buttons inside the field: clear and \"Reset\"");
-        clearLabel->SetFontSize(12);
-        container->AddChild(clearLabel);
+        auto clearCard = DemoKit::AddCard(examples, "ClearButtonLabel",
+                "Buttons inside the field: clear and \"Reset\"");
 
-        auto clearInput = std::make_shared<UltraCanvasTextInput>("ClearButtonInput", 20, 615, 300, 30);
+        auto clearInput = std::make_shared<UltraCanvasTextInput>("ClearButtonInput", 0, 0, 300, 30);
         clearInput->SetPlaceholder("Type, then click the cross...");
         clearInput->SetShowClearButton(true);
         clearInput->SetText("Click the cross to clear me");
-        container->AddChild(clearInput);
+        DemoKit::AddStretched(clearCard, clearInput);
 
-        auto resetInput = std::make_shared<UltraCanvasTextInput>("ResetButtonInput", 20, 655, 300, 30);
+        auto resetInput = std::make_shared<UltraCanvasTextInput>("ResetButtonInput", 0, 0, 300, 30);
         resetInput->SetPlaceholder("Filter components");
         resetInput->SetShowClearButton(true);
         resetInput->SetClearButtonText("Reset");
         resetInput->SetText("chart");
-        container->AddChild(resetInput);
+        DemoKit::AddStretched(clearCard, resetInput);
 
-        auto clearStatus = std::make_shared<UltraCanvasLabel>("ClearButtonStatus", 20, 692, 300, 36);
-        clearStatus->SetText("SetShowClearButton(true) shows the button,\n"
-                             "SetClearButtonText(\"Reset\") gives it a word");
-        clearStatus->SetFontSize(11);
-        clearStatus->SetTextColor(Color(100, 100, 100));
-        container->AddChild(clearStatus);
+        auto clearStatus = DemoKit::AddCaption(clearCard, "ClearButtonStatus",
+                "SetShowClearButton(true) shows the button,\n"
+                "SetClearButtonText(\"Reset\") gives it a word");
 
         clearInput->onCleared = [clearStatus]() {
             clearStatus->SetText("The cross emptied the field\n(onTextChanged, then onCleared)");
@@ -136,16 +119,11 @@ namespace UltraCanvas {
 
 
         // ===== PASSWORD WITH BAR STRENGTH METER =====
-
-        auto passwordTitle1 = std::make_shared<UltraCanvasLabel>("PasswordTitle1", 350, 45, 350, 20);
-        passwordTitle1->SetText("Password with Bar Strength Meter");
-        passwordTitle1->SetFontSize(12);
-        //passwordTitle1->SetFontWeight(FontWeight::Bold);
-        container->AddChild(passwordTitle1);
+        auto barCard = DemoKit::AddCard(examples, "PasswordTitle1", "Password with Bar Strength Meter");
 
         // Reveal ("eye") button on the right of the field: click it to read back the
         // password in clear text, click again to mask it.
-        auto passwordInput1 = CreateRevealablePasswordInput("Password1", 350, 70, 350, 30);
+        auto passwordInput1 = CreateRevealablePasswordInput("Password1", 0, 0, 350, 30);
         passwordInput1->SetPlaceholder("Enter password...");
 
         // Add validation rules
@@ -155,23 +133,19 @@ namespace UltraCanvas {
         passwordInput1->AddValidationRule(ValidationRule::RequireDigit());
         passwordInput1->AddValidationRule(ValidationRule::RequireSpecialChar());
 
-        container->AddChild(passwordInput1);
+        DemoKit::AddStretched(barCard, passwordInput1);
 
         // Bar Strength Meter
-        auto strengthBar = CreateBarStrengthMeter("StrengthBar", 350, 100, 350, 20);
+        auto strengthBar = CreateBarStrengthMeter("StrengthBar", 0, 0, 350, 20);
         strengthBar->LinkToInput(passwordInput1.get());
         strengthBar->SetShowLabel(true);
         strengthBar->SetShowPercentage(true);
-        container->AddChild(strengthBar);
+        DemoKit::AddStretched(barCard, strengthBar);
 
         // Description
-        auto barDescription = std::make_shared<UltraCanvasLabel>("BarDesc", 350, 130, 350, 58);
-        barDescription->SetText("Real-time strength indicator with animated\n"
-                                "color transitions (red, then yellow, then green).\n"
-                                "Click the eye icon in the field to show the password.");
-        barDescription->SetFontSize(11);
-        barDescription->SetTextColor(Color(100, 100, 100));
-        container->AddChild(barDescription);
+        DemoKit::AddCaption(barCard, "BarDesc",
+                "Real-time strength indicator with animated color transitions (red, then "
+                "yellow, then green). Click the eye icon in the field to show the password.");
 
         // ===== PASSWORD WITH SEGMENTED METER =====
 
@@ -204,29 +178,24 @@ namespace UltraCanvas {
 //        container->AddChild(segmentDescription);
 
         // ===== PASSWORD WITH CHECKLIST =====
+        auto checklistCard = DemoKit::AddCard(examples, "PasswordTitle3", "Password with Requirements Checklist");
 
-        auto passwordTitle3 = std::make_shared<UltraCanvasLabel>("PasswordTitle3", 350, 195, 350, 20);
-        passwordTitle3->SetText("Password with Requirements Checklist");
-//        passwordTitle3->SetFontSize(14);
-//        passwordTitle3->SetFontWeight(FontWeight::Bold);
-        container->AddChild(passwordTitle3);
-
-        auto passwordInput3 = CreatePasswordInput("Password3", 350, 220, 350, 30);
+        auto passwordInput3 = CreatePasswordInput("Password3", 0, 0, 350, 30);
         passwordInput3->SetPlaceholder("Meet all requirements...");
-        container->AddChild(passwordInput3);
+        DemoKit::AddStretched(checklistCard, passwordInput3);
 
         // Explicit "Show password" flag instead of the in-field eye icon: an
         // external control driving the same SetPasswordRevealed() state.
-        auto showPassword3 = UltraCanvasCheckbox::CreateCheckbox(
-                "ShowPassword3", 350, 253, 160, 20, "Show password", false);
+        auto showPassword3 = std::make_shared<UltraCanvasCheckbox>("ShowPassword3", "Show password");
+        showPassword3->SetChecked(false);
         auto* password3 = passwordInput3.get();
         showPassword3->onStateChanged = [password3](CheckedState, CheckedState newState) {
             password3->SetPasswordRevealed(newState == CheckedState::Checked);
         };
-        container->AddChild(showPassword3);
+        DemoKit::Add(checklistCard, showPassword3);
 
         // Checklist Legend
-        auto ruleLegend = CreateChecklistLegend("RuleLegend", 350, 278, 350, 140);
+        auto ruleLegend = CreateChecklistLegend("RuleLegend", 0, 0, 350, 140);
         ruleLegend->LinkToInput(passwordInput3.get());
         ruleLegend->SetShowMetRules(true);
         // Size the box to what the rule list actually paints so it cannot spill
@@ -245,35 +214,32 @@ namespace UltraCanvas {
             debugOutput << "Password rules: " << met << "/" << total << " met" << std::endl;
         };
 
-        container->AddChild(ruleLegend);
+        DemoKit::AddFixed(checklistCard, ruleLegend);
 
         // Description
-        auto checklistDescription = std::make_shared<UltraCanvasLabel>("ChecklistDesc", 350, 415, 350, 58);
-        checklistDescription->SetText("Interactive checklist with met / unmet indicators\n"
-                                      "showing real-time validation status.\n"
-                                      "\"Show password\" flag unmasks the field.");
-        checklistDescription->SetFontSize(11);
-        checklistDescription->SetTextColor(Color(100, 100, 100));
-        container->AddChild(checklistDescription);
+        DemoKit::AddCaption(checklistCard, "ChecklistDesc",
+                "Interactive checklist with met / unmet indicators showing real-time "
+                "validation status. \"Show password\" flag unmasks the field.");
 
         // ===== COMPLETE PASSWORD SETUP =====
+        // Wide enough for the 435 px legend before it wraps.
+        auto completeCard = DemoKit::AddCard(examples, "PasswordTitle4", "Complete Setup: Meter + Detailed Legend",
+                                             "", 435 + 2 * DemoKit::kCardPadding + 2);
 
-        // Width kept clear of the circular meter's column (x >= 710).
-        auto passwordTitle4 = std::make_shared<UltraCanvasLabel>("PasswordTitle4", 350, 480, 355, 25);
-        // Short enough to end before the circular meter at x = 710.
-        passwordTitle4->SetText("Complete Setup: Meter + Detailed Legend");
-//        passwordTitle4->SetFontSize(14);
-        //passwordTitle4->SetFontWeight(FontWeight::Bold);
-        container->AddChild(passwordTitle4);
+        // The field and its flag beside the circular meter.
+        auto completeRow = DemoKit::CreateRow("CompleteSetupRow", 10, false);
+        DemoKit::Add(completeCard, completeRow);
+        auto completeFields = DemoKit::CreateColumn("CompleteSetupFields", 8);
+        DemoKit::Add(completeRow, completeFields, 1);
 
         // Both reveal controls on one field: the in-field eye icon and the explicit
         // "Show password" flag below stay in sync.
-        auto passwordInput4 = CreateRevealablePasswordInput("Password4", 350, 510, 350, 30);
+        auto passwordInput4 = CreateRevealablePasswordInput("Password4", 0, 0, 350, 30);
         passwordInput4->SetPlaceholder("Create strong password...");
-        container->AddChild(passwordInput4);
+        DemoKit::AddStretched(completeFields, passwordInput4);
 
-        auto showPassword4 = UltraCanvasCheckbox::CreateCheckbox(
-                "ShowPassword4", 350, 548, 160, 20, "Show password", false);
+        auto showPassword4 = std::make_shared<UltraCanvasCheckbox>("ShowPassword4", "Show password");
+        showPassword4->SetChecked(false);
         auto* password4 = passwordInput4.get();
         auto* showPassword4Ptr = showPassword4.get();
         showPassword4->onStateChanged = [password4](CheckedState, CheckedState newState) {
@@ -284,10 +250,10 @@ namespace UltraCanvas {
         passwordInput4->onPasswordVisibilityChanged = [showPassword4Ptr](bool revealed) {
             showPassword4Ptr->SetChecked(revealed);
         };
-        container->AddChild(showPassword4);
+        DemoKit::Add(completeFields, showPassword4);
 
         // Circular Strength Meter
-        auto circularMeter = CreateCircularStrengthMeter("CircularMeter", 710, 490, 70);
+        auto circularMeter = CreateCircularStrengthMeter("CircularMeter", 0, 0, 70);
         circularMeter->LinkToInput(passwordInput4.get());
 
         StrengthMeterConfig circularConfig;
@@ -295,12 +261,11 @@ namespace UltraCanvas {
         circularConfig.showPercentage = true;
         circularMeter->SetConfig(circularConfig);
 
-        container->AddChild(circularMeter);
+        DemoKit::AddFixed(completeRow, circularMeter);
 
         // Detailed Legend with Strict Rules
-        const float detailedLegendY = 580;
         auto detailedLegend = CreatePasswordRuleLegend("DetailedLegend",
-                                                       350, detailedLegendY, 435, 280,
+                                                       0, 0, 435, 280,
                                                        LegendStyle::Detailed);
         detailedLegend->LinkToInput(passwordInput4.get());
         detailedLegend->SetupStrictRules();  // Use strict validation rules
@@ -313,8 +278,7 @@ namespace UltraCanvas {
 
         // The 7 strict rules paint taller than the 280px the box used to be given,
         // and the legend does not clip - the overflowing rows used to land on top of
-        // the description text below. Size the box to its content and place the
-        // description underneath it.
+        // the description text below. Size the box to its content.
         const float detailedLegendHeight = detailedLegend->GetContentHeight();
         detailedLegend->SetElementSize(Size2Df(435, detailedLegendHeight));
 
@@ -327,19 +291,15 @@ namespace UltraCanvas {
             debugOutput << "Strength level: " << level << std::endl;
         };
 
-        container->AddChild(detailedLegend);
+        DemoKit::AddFixed(completeCard, detailedLegend);
 
         // Description
-        auto completeDescription = std::make_shared<UltraCanvasLabel>(
-                "CompleteDesc", 350, detailedLegendY + detailedLegendHeight + 12, 435, 80);
-        completeDescription->SetText("Professional registration form setup with:\n"
-                                     "• Eye icon and \"Show password\" flag (kept in sync)\n"
-                                     "• Circular strength meter with percentage\n"
-                                     "• Detailed rule legend with backgrounds\n"
-                                     "• Strict validation (12+ chars, no patterns)");
-        completeDescription->SetFontSize(11);
-        completeDescription->SetTextColor(Color(100, 100, 100));
-        container->AddChild(completeDescription);
+        DemoKit::AddCaption(completeCard, "CompleteDesc",
+                "Professional registration form setup with:\n"
+                "• Eye icon and \"Show password\" flag (kept in sync)\n"
+                "• Circular strength meter with percentage\n"
+                "• Detailed rule legend with backgrounds\n"
+                "• Strict validation (12+ chars, no patterns)");
 
 //        // ===== COMPACT LEGEND EXAMPLE =====
 //
