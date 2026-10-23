@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -252,9 +253,17 @@ TEST(Contacts_RemoveDeletesFromTheAddressBook) {
     REQUIRE(book.Save(keep));
     REQUIRE(book.Save(drop));
 
+    ContactReview review;
+    review.contactId = drop.id;
+    review.addresses = { "shop@shop.example" };
     int removed = 0;
-    REQUIRE(RemoveContacts(book, { drop.id }, removed));
+    REQUIRE(RemoveContacts(book, { review }, removed));
     REQUIRE_EQ(removed, 1);
+
+    // Forgotten too, so UltraMail does not collect the address again.
+    std::set<std::string> forgotten;
+    REQUIRE(book.ForgottenAddresses(forgotten));
+    REQUIRE(forgotten.count("shop@shop.example") == 1);
 
     std::vector<UltraMail::Contact> left;
     REQUIRE(book.ListAll(left));

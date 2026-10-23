@@ -290,8 +290,9 @@ filename can get one through.
 
 ## The contacts review
 
-UltraMail fills its address book by itself: every sender it syncs is collected
-unless a contact already has the address. After a few years the address book
+UltraMail used to fill its address book by itself: every sender it synced was
+collected unless a contact already had the address. It now adds only known
+services, but what it collected stays - an address book kept for a few years
 holds every shop, newsletter and stranger that ever wrote, and the handful of
 people the user actually corresponds with are lost among them. The one fact
 that tells the two apart is whether the user ever **wrote back** - and the Sent
@@ -328,10 +329,12 @@ ticked row turns red.
 reads of UltraMail's (the account list, the vault, the body cache) it only
 reads. The address book is the exception, because cleaning it is the point:
 **Delete selected…** names the contacts in a confirmation, says how many of them
-were written to, and removes only the address-book entries. The mail stays
-where it is, and UltraMail collects a sender again the next time it writes -
-which for the senders worth deleting is the block and unsubscribe actions'
-job, not this page's.
+were written to, and removes only the address-book entries, all in one
+transaction (`ContactStore::RemoveAll`). Their addresses are then *forgotten*
+(`ContactStore::Forget`), so UltraMail does not add them again from the next
+message they send; writing to one still does, since that is the user's own
+act. The mail stays where it is - stopping it is the block and unsubscribe
+actions' job, not this page's.
 
 ## What Phase 3 leaves out
 

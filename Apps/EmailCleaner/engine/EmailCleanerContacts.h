@@ -2,9 +2,11 @@
 // The contacts review: UltraMail's address book held against the mail the
 // owner actually exchanged with each contact.
 //
-// UltraMail fills its address book by itself - every sender it syncs is
-// collected unless a contact already has the address - so after a few years
-// it holds every shop, newsletter and stranger that ever wrote. The one fact
+// UltraMail used to fill its address book by itself - every sender it synced
+// was collected unless a contact already had the address - so an address book
+// kept for a few years holds every shop, newsletter and stranger that ever
+// wrote. (UltraMail now adds only known services, but what it collected
+// stays.) The one fact
 // that tells a real contact from a collected one is whether the owner ever
 // wrote back. So every contact gets the number of messages the owner sent to
 // it (the Sent folder's To and Cc lines) and the number it sent the owner,
@@ -85,10 +87,12 @@ ContactReviewSummary Summarize(const std::vector<ContactReview>& reviews);
 // to (marked for deletion), 13 to review."
 std::string DescribeReview(const ContactReviewSummary& summary);
 
-// Delete the contacts `ids` from the address book in one transaction
-// (ContactStore::RemoveAll): all of them, or none. `removed` is how many were
-// deleted - every id on success, 0 on failure.
+// Delete `contacts` from the address book in one transaction
+// (ContactStore::RemoveAll): all of them, or none - `removed` is how many
+// went. Then their addresses are forgotten (ContactStore::Forget), so
+// UltraMail does not collect them again from the next message they send;
+// writing to one still adds it back.
 UltraDbResult RemoveContacts(UltraMail::ContactStore& store,
-                             const std::vector<int64_t>& ids, int& removed);
+                             const std::vector<ContactReview>& contacts, int& removed);
 
 } // namespace EmailCleaner

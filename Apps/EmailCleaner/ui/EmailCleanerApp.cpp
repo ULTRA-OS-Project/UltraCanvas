@@ -712,27 +712,26 @@ void EmailCleanerApp::DeleteContacts(const std::vector<ContactReview>& selected)
         "Delete " + std::to_string(selected.size()) +
         (selected.size() == 1 ? " contact" : " contacts") +
         " from UltraMail's address book?" + names + warning +
-        "\n\nThe mail stays where it is; only the address book entries go. "
-        "UltraMail collects a sender again the next time it writes.",
+        "\n\nThe mail stays where it is; only the address book entries go, and "
+        "UltraMail does not add these addresses again unless you write to one.",
         "Delete contacts",
         [this, selected](bool confirmed) {
             if (!confirmed) return;
-            std::vector<int64_t> ids;
-            for (const ContactReview& review : selected) ids.push_back(review.contactId);
-
             int removed = 0;
             UltraDbResult result;
             {
                 UltraMail::ContactStore book;
                 result = book.Open("emailcleaner-contacts", AddressBookPath());
-                if (result) result = RemoveContacts(book, ids, removed);
+                if (result) result = RemoveContacts(book, selected, removed);
             }
             UltraDb_CloseConnection("emailcleaner-contacts");
 
-            accountBar_.SetStatus(result
-                ? "Deleted " + std::to_string(removed) +
-                  (removed == 1 ? " contact" : " contacts") + " from the address book."
-                : "No contacts were deleted: " + result.message);
+            const std::string deleted = "Deleted " + std::to_string(removed) +
+                (removed == 1 ? " contact" : " contacts") + " from the address book";
+            accountBar_.SetStatus(result  ? deleted + "."
+                : removed > 0 ? deleted + ", but UltraMail may add them again: " +
+                                result.message
+                              : "No contacts were deleted: " + result.message);
             RefreshContacts();
         });
 }

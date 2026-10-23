@@ -143,8 +143,8 @@ Apps/EmailCleaner/
 
 ## Cleaning the contact list
 
-The **Contacts** tab lists UltraMail's address book - which UltraMail fills
-with every sender it syncs - with two numbers per contact: **Sent**, the
+The **Contacts** tab lists UltraMail's address book - which UltraMail used to
+fill with every sender it synced - with two numbers per contact: **Sent**, the
 messages you wrote to it (the To and Cc lines of your sent mail, over every
 account), and **Received**, the messages it sent you. The list is ordered by
 Sent. Each row carries a tag:
@@ -157,7 +157,8 @@ Sent. Each row carries a tag:
   selected.
 
 Tick or untick any row; **Delete selected…** names the contacts and asks
-before it removes them from the address book. The mail is not touched.
+before it removes them from the address book, and UltraMail does not collect
+those addresses again unless you write to one. The mail is not touched.
 
 The Sent counts need your sent mail loaded: UltraMail's accounts count what
 UltraMail has synced of the Sent folder, and an account added here downloads

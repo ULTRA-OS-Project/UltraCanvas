@@ -130,11 +130,19 @@ std::string DescribeReview(const ContactReviewSummary& summary) {
 }
 
 UltraDbResult RemoveContacts(UltraMail::ContactStore& store,
-                             const std::vector<int64_t>& ids, int& removed) {
+                             const std::vector<ContactReview>& contacts, int& removed) {
     removed = 0;
+    std::vector<int64_t>     ids;
+    std::vector<std::string> addresses;
+    for (const ContactReview& contact : contacts) {
+        ids.push_back(contact.contactId);
+        addresses.insert(addresses.end(), contact.addresses.begin(), contact.addresses.end());
+    }
     UltraDbResult r = store.RemoveAll(ids);
-    if (r) removed = static_cast<int>(ids.size());
-    return r;
+    if (!r) return r;
+    removed = static_cast<int>(ids.size());
+    // Without this UltraMail would collect the next message's sender again.
+    return store.Forget(addresses);
 }
 
 } // namespace EmailCleaner

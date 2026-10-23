@@ -55,13 +55,6 @@ public:
     // Remove every contact in `ids` as Remove does, in ONE transaction.
     UltraDbResult RemoveAll(const std::vector<int64_t>& ids);
 
-    // Delete every contact in `ids`, with its emails and phones, in ONE
-    // transaction: all of them, or none. Removed one by one, each contact was
-    // a commit of its own, which for a cleanup of thousands of collected
-    // senders (EmailCleaner's Contacts page) held the window on Windows. An id
-    // that names no contact is not an error.
-    UltraDbResult RemoveAll(const std::vector<int64_t>& ids);
-
     // Contacts filed in a section (not in a group of the user's own), ordered
     // by display name.
     UltraDbResult ListBySection(ContactSection section,
