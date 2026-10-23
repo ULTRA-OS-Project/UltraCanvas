@@ -9,6 +9,7 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
+// Version: 1.5.0 - ArtOptionWidgets::AddSection; AddSwitch takes icons
 // Version: 1.4.0 - ArtToolContext::iconPath; ArtOptionWidgets::AddIconBar and AddSwitch
 // Version: 1.3.0 - ArtToolContext::lockAspectRatio
 // Version: 1.2.0 - ArtToolContext::iconPixel

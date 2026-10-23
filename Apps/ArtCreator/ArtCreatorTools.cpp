@@ -3,6 +3,9 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.5.0 - the Selector's sections each in a rounded framed group box, captioned
+//                 small at the right of its top line; Scale / Rotate with icons; 1 px
+//                 above and below the icon bars
 // Version: 1.4.0 - the Selector's panel: a Scale / Rotate switch that follows the handles,
 //                 Arrange, Align and Distribute as flat icon bars greyed until the
 //                 selection is large enough; quieter captions with air above them, and
@@ -28,7 +31,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include <cstdlib>
 
 namespace UltraCanvas {
 
@@ -204,25 +206,15 @@ std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, co
     st.titleFont.fontWeight = FontWeight::Normal;
     st.titleColor = Colors::SectionCardCaption;
     st.contentPadding = 6.0f;
-    const char* variant = std::getenv("ARTCREATOR_SECTION_STYLE");   // path-string-ok: trial switch, ASCII
-    if (variant && std::string(variant) == "header") {
-        // The caption in a light strip over the content, a hairline under it.
-        box->SetFrameStyle(GroupBoxFrameStyle::Header);
-        st.cornerRadius = 6.0f;
-        st.headerBackgroundColor = Colors::SectionPage;
-        st.showHeaderSeparator = true;
-        st.titleVerticalPadding = 2.0f;
-    } else {
-        // A rounded frame on a light fill, the caption in the top line at
-        // the right.
-        box->SetFrameStyle(GroupBoxFrameStyle::Framed);
-        box->SetTitleAlignment(GroupBoxTitleAlignment::Right);
-        st.cornerRadius = 10.0f;
-        st.backgroundColor = Colors::SectionPage;
-        st.titleIndent = 10.0f;
-        st.titleGap = 3.0f;
-        st.titleVerticalPadding = 0.0f;
-    }
+    // A rounded frame on a light fill, the caption in the top line at the
+    // right.
+    box->SetFrameStyle(GroupBoxFrameStyle::Framed);
+    box->SetTitleAlignment(GroupBoxTitleAlignment::Right);
+    st.cornerRadius = 10.0f;
+    st.backgroundColor = Colors::SectionPage;
+    st.titleIndent = 10.0f;
+    st.titleGap = 3.0f;
+    st.titleVerticalPadding = 0.0f;
     box->SetVisualStyle(st);
     box->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     box->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
