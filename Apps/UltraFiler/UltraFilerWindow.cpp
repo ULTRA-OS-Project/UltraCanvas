@@ -899,7 +899,10 @@ namespace {
                 if (!e.isDirectory) bytes += e.size;
             text += "    |    " + std::to_string(sel.size())
                   + (sel.size() == 1 ? " item selected" : " items selected");
-            if (bytes > 0) text += " (" + FormatFileSize(bytes) + ")";
+            // The widget's own formatting, so the status bar and the info bar
+            // under the files never round one selection two ways.
+            if (bytes > 0)
+                text += " (" + UltraCanvasFilerWidget::FormatSizeText(bytes) + ")";
         }
         return text;
     }

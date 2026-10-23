@@ -1267,6 +1267,10 @@ namespace UltraCanvas {
         // The extension a tile tag would show for `e` (lowercase, no dot),
         // empty for folders and for names whose tail is not a file type.
         static std::string ExtensionTagOf(const FilerEntry& e);
+        // A byte count the way the display writes it ("103.6 KB", "2.41 GB")
+        // in its info bar and tooltips. A host that describes the same
+        // entries elsewhere (a status bar) uses this so both say one number.
+        static std::string FormatSizeText(uint64_t bytes);
 
         // ===== FILE TYPE COLOURS =====
         // The colour the display gives an entry: the band across the foot of

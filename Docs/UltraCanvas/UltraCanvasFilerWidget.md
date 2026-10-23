@@ -1114,6 +1114,18 @@ also toggled by Display > Info-Bar) describes the current selection:
   (folders counted recursively).
 - **No selection** — a summary of the displayed folder (entry counts + size).
 
+Sizes are written with one decimal below a gigabyte and two from there on
+(`103.6 KB`, `2.41 GB`). A host that describes the same entries elsewhere - a
+status bar, a tooltip of its own - formats them with the static
+`UltraCanvasFilerWidget::FormatSizeText(bytes)`, so the two never round one
+selection two ways:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; uint64_t bytes = 0; -->
+```cpp
+statusLabel->SetText("1 item selected (" +
+                     UltraCanvasFilerWidget::FormatSizeText(bytes) + ")");
+```
+
 Recursive folder statistics are computed **asynchronously** on a background
 worker: selecting a folder shows `…` (or a `≥` lower bound for multi
 selections) immediately and the exact counts fill in when the subtree walk

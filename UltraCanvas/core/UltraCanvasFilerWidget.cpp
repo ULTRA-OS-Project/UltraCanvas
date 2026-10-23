@@ -4450,6 +4450,10 @@ namespace UltraCanvas {
         RequestRedraw();
     }
 
+    std::string UltraCanvasFilerWidget::FormatSizeText(uint64_t bytes) {
+        return FormatSize(bytes);
+    }
+
     std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
         if (e.isDirectory) return "";
         return LooksLikeFileExtension(e.extension) ? e.extension : std::string();
