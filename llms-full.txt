@@ -95390,6 +95390,28 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
   moves that folder into place, whole). `--vault PATH` uses another vault
   file; its settings live beside it.
 
+## The window
+
+- **The band at the top** names the app and how many accounts it holds, with
+  *Settings* (the sliders) and **Lock** at its right.
+- **Under it**, the ways to add an account — **Scan QR code**, then *Enter
+  key* — and, to the right, what acts on the whole vault: *Password…*
+  (change the master password), *Back up…* and *Restore…*.
+- **One card per account**: a coloured circle with the service's first
+  letter — in the service's own brand colour for about eighty well-known
+  services (the colour only: their logos are trademarks and are not shown;
+  Google's is a blue G on white, as Google shows it),
+  otherwise a colour picked from the name, so a service keeps its colour — the
+  service and account name, and the current code in large digits. A ring
+  beside it empties as the code's 30 seconds run out, with the seconds left
+  in its centre; it turns amber at 10 and red at 5. A counter-based (HOTP)
+  card has a *Next code* button instead. The copy button right after the
+  code puts it on the clipboard (see *Copying a code* below). The pencil
+  (*Edit*), the eye (*Show key*) and the bin (*Remove*) are the card's
+  actions; hover over one for its name.
+- **The line at the foot** reports what the last action did, or what went
+  wrong.
+
 ## What the secret is
 
 When a service shows you a QR code to enrol, the QR contains a **seed**: a
@@ -95444,10 +95466,22 @@ clicked* replaces every code with dots; clicking a card shows its code for
 15 seconds. Hidden cards are not even computed. This is for working where
 someone may be looking over your shoulder.
 
+**Copying a code.** The copy button beside a code puts that code on the
+clipboard, and the button shows a tick for a moment. The app takes it off
+the clipboard again **30 seconds later** — one time step, after which the
+code is no longer valid anyway — and at once when the app locks or closes;
+in each case only if the clipboard still holds that code, so something you
+copied since is never touched. The copy is marked as a secret (the marker
+KDE, Windows and macOS clipboard histories honour, as does UltraClipboard),
+so those histories do not keep it. With *Hide codes* on, copying works
+without showing the code. On a counter-based (HOTP) card it copies the code
+*Next code* last produced and never spends a new one. The setup key is never
+offered for copying.
+
 **Getting a seed back out.** Moving to a new phone means reading the seed
 again, and an app that could never do that would push people into keeping
 the original QR code in a photo album — far worse than this vault. So *Show
-key* exists, and it is fenced: it asks for the master password again even
+key* (the eye on a card) exists, and it is fenced: it asks for the master password again even
 though the vault is open, shows the key and the `otpauth://` URI as text on
 screen only, renders no QR code and writes nothing to disk, and wipes its
 own widgets when closed.
@@ -95481,6 +95515,12 @@ own; each is stated here so the app is not credited with more than it does.
   in the same session see what you see. Prefer Wayland or a native ULTRA OS
   build, keep *Show key* open only as long as the other device needs, and
   use *Hide codes* on a shared screen.
+- **Programs reading the clipboard.** For the 30 seconds a copied code is
+  on the clipboard, any program in your session can read it, and a
+  clipboard history that ignores the secret marker keeps it after the app
+  has cleared the clipboard. A code is only good for its 30 seconds and
+  only together with your password, which is why copying it is offered at
+  all; the setup key never is.
 - **Other programs running as you.** On a standard Linux host, a process
   running under your user account can read your files and, unless the
   kernel restricts `ptrace`, your programs' memory. The encryption defends
@@ -95994,10 +96034,16 @@ things the app does do.
 
 ### 3.7 Clipboard and UI leakage (medium)
 
-- Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
+- ~~Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
   readable by every app, and clipboard managers persist history. Auto-clear
   the clipboard ~30 s after copy (only if it still holds our value), and
-  never offer copy for the *secret*.
+  never offer copy for the *secret*.~~ — **DONE** (`AuthenticatorWindow::
+  CopyCode` / `ClearClipboardIfOurs`). A copy button on every card copies
+  the code with `ClipboardHint::Secret` (the platforms' clipboard-history
+  markers) and clears the clipboard 30 s later, and at once on lock and on
+  close, each time only if it still holds that code. An HOTP card copies
+  the code its last "Next code" produced, never advancing the counter. The
+  secret is still never offered for copying.
 - ~~App lock (PIN or the master password) with exponential back-off, and
   auto-lock on minimize/idle.~~ — **DONE** (`LockScreenDialog`,
   `AccountStore::Lock`/`Unlock`, `LockPolicy.h`). The vault locks on the
@@ -96129,6 +96175,59 @@ The hardest *unfixable-in-app*
 issues are X11 screen/clipboard/ptrace exposure — they need to be documented
 honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
+
+==============================================================================
+FILE: Docs/UltraAuthenticator/changelog.d/copy-code.md
+==============================================================================
+
+- **Copy a code with one click, and it leaves the clipboard by itself.** A
+  copy button right after each card's code puts it on the clipboard; the
+  button shows a tick for a moment and the status line says how long the
+  code stays valid. The app clears the clipboard again 30 seconds later
+  (one time step) and at once when it locks or closes - each time only if
+  the clipboard still holds that code, so anything copied since is left
+  alone. The copy is marked secret (`ClipboardHint::Secret`: KDE's
+  password-manager hint, Windows' clipboard-history exclusion, macOS'
+  concealed type), so clipboard histories that honour the marker never
+  record it.
+  - With *Hide codes* on, the copy works without showing the code.
+  - A counter-based (HOTP) card copies the code *Next code* last made and
+    never spends a new one; before the first *Next code* it says so instead.
+  - The setup key is still never offered for copying.
+
+==============================================================================
+FILE: Docs/UltraAuthenticator/changelog.d/window-redesign.md
+==============================================================================
+
+- **A redesigned main window.** A white band at the top carries the logo,
+  the app's name and how many accounts it holds, with Settings and Lock at
+  its right; under it, *Scan QR code* (the main action, in the accent
+  colour) and *Enter key*, and to the right, quieter, *Password…* (change
+  the master password), *Back up…* and *Restore…* - each with an icon.
+  What the last action did is reported in a status line at the foot of the
+  window instead of between the buttons and the list.
+- **Cards are easier to read at a glance.** Each is a rounded panel with a
+  coloured monogram for the service, the code
+  in large digits, and a ring that empties as the code's time step runs out,
+  with the seconds left in its centre and the same green / amber / red as
+  before (`UltraCanvasGaugeDiagramElement`, `CircularRing`). *Edit*, *Show
+  key* and *Remove* are icon buttons with tooltips, so twenty accounts are
+  no longer a wall of buttons; *Remove* turns red under the pointer. The
+  empty list says how to add the first account.
+- **A well-known service's monogram is in its own brand colour** - GitHub's
+  near-black, Dropbox's blue, AWS's orange, and about eighty more
+  (`BrandColors.h`). Only the colour and the first letter, never the logo,
+  which is a trademark. The letter turns dark on a light brand colour
+  (Snapchat's yellow, AWS's orange) so it stays readable. Google is the
+  one shown the other way round, as its own blue G on a white circle. Any other service
+  gets a colour picked from its name, the same one at every launch.
+- **The dialogs match.** Every dialog's main button is the accent colour and
+  the other is plain; text fields and drop-downs have rounded corners and
+  the accent border while focused; the switches in Settings are the accent
+  blue when on instead of the framework's green. *Add account* had kept the framework's
+  default look, and is styled like the rest now.
+- The icons are new, in `media/icons/authenticator/`; the colours, sizes and
+  button styles stay in one place, `Theme.h`.
 
 ==============================================================================
 FILE: Docs/UltraPassword/README.md
