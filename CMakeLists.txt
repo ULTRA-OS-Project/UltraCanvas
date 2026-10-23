@@ -2471,6 +2471,23 @@ if (BUILD_TESTS)
              COMMAND UltraAuthenticatorLockTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # Authenticator brand colours: the name of a known service matched to the
+    # colour of its card's monogram, and a readable letter on every colour in
+    # the table. Header-only, no crypto, no UI.
+    add_executable(UltraAuthenticatorBrandColorTests
+        Tests/UltraAuthenticatorBrandColorTests.cpp
+    )
+    target_include_directories(UltraAuthenticatorBrandColorTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
+    target_compile_features(UltraAuthenticatorBrandColorTests PRIVATE cxx_std_20)
+    set_target_properties(UltraAuthenticatorBrandColorTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAuthenticatorBrandColorTests
+             COMMAND UltraAuthenticatorBrandColorTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # UltraVault unit tests (Tests/VaultTests.cmake, shared with
     # ULTRACANVAS_BUILD_VAULT_TESTS below).
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VaultTests.cmake)

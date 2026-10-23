@@ -80,6 +80,7 @@ void RevealSecretDialog::CreateRevealSecretDialog(const std::string& displayName
     y += 20;
 
     passwordInput_ = CreatePasswordInput("rev-pw", margin, y, fieldWidth, 28);
+    Theme::StyleInput(passwordInput_);
     AddChild(passwordInput_);
     y += 38;
 
@@ -93,12 +94,14 @@ void RevealSecretDialog::CreateRevealSecretDialog(const std::string& displayName
     showButton_ = std::make_shared<UltraCanvasButton>(
         "rev-ok", kDialogWidth - margin - 210, kDialogHeight - 54, 100, 32);
     showButton_->SetText("Show");
+    Theme::StylePrimary(showButton_, "show");
     showButton_->onClick = [this]() { Attempt(); };
     AddChild(showButton_);
 
     auto closeBtn = std::make_shared<UltraCanvasButton>(
         "rev-close", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
     closeBtn->SetText("Close");
+    Theme::StyleSecondary(closeBtn);
     closeBtn->onClick = [this]() {
         WipeShownSecret();
         CloseDialog(DialogResult::Cancel);
@@ -178,6 +181,7 @@ void RevealSecretDialog::ShowSecret(const std::string& uri) {
     secretField_ = std::make_shared<UltraCanvasTextInput>(
         "rev-secret", margin, y, fieldWidth, 30);
     secretField_->SetText(secret);
+    Theme::StyleInput(secretField_);
     AddChild(secretField_);
     y += 42;
 
@@ -191,6 +195,7 @@ void RevealSecretDialog::ShowSecret(const std::string& uri) {
     uriField_ = std::make_shared<UltraCanvasTextInput>(
         "rev-uri", margin, y, fieldWidth, 30);
     uriField_->SetText(uri);
+    Theme::StyleInput(uriField_);
     AddChild(uriField_);
     y += 40;
 

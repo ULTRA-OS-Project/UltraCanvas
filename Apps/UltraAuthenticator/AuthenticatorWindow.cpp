@@ -1,5 +1,5 @@
 // Apps/UltraAuthenticator/AuthenticatorWindow.cpp
-// Version: 0.3.0
+// Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "AuthenticatorWindow.h"
@@ -12,8 +12,12 @@
 #include "SettingsDialog.h"
 #include "Theme.h"
 
+#include "UltraCanvasClipboard.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasUtils.h"
+#include "UltraCrypt/UltraCryptCore.h"
 
 #include <ctime>
 #include <string>
@@ -60,6 +64,13 @@ std::string CodeMask(uint32_t digits) {
     return out;
 }
 
+// A code is short-lived, but a copy of it is still wiped rather than left in
+// freed memory, like every other secret-adjacent string in the app.
+void WipeString(std::string& s) {
+    if (!s.empty()) UltraCrypt_SecureZero(&s[0], s.size());
+    s.clear();
+}
+
 int64_t NowUnix() {
     return static_cast<int64_t>(std::time(nullptr));
 }
@@ -89,6 +100,30 @@ std::string SubtitleFor(const Otp::Parameters& params) {
     return text;
 }
 
+// The letter on a card's monogram: the first character of the service's
+// name, upper-cased when it is a Latin letter. Whole UTF-8 sequences, so a
+// name in Thai or Cyrillic shows its own first letter rather than a broken
+// byte.
+std::string MonogramText(const std::string& name) {
+    if (name.empty()) return "?";
+    const unsigned char lead = static_cast<unsigned char>(name[0]);
+    size_t length = 1;
+    if      ((lead & 0xE0) == 0xC0) length = 2;
+    else if ((lead & 0xF0) == 0xE0) length = 3;
+    else if ((lead & 0xF8) == 0xF0) length = 4;
+    if (length > name.size()) return "?";
+    std::string letter = name.substr(0, length);
+    if (length == 1 && lead >= 'a' && lead <= 'z') {
+        letter[0] = static_cast<char>(lead - 'a' + 'A');
+    }
+    return letter;
+}
+
+std::string CopyTooltip(bool isHotp) {
+    return isHotp ? "Copy the last code made with \"Next code\""
+                  : "Copy the code (cleared from the clipboard after 30 seconds)";
+}
+
 std::string DisplayName(const Otp::Parameters& params) {
     if (params.issuer.empty()) return params.accountName;
     return params.issuer + " — " + params.accountName;
@@ -107,6 +142,10 @@ AuthenticatorWindow::~AuthenticatorWindow() {
         app_.StopTimer(refreshTimer_);
         timerRunning_ = false;
     }
+    // Usually a no-op (closing the window already did it). No status line to
+    // report on by now: the window may be gone.
+    statusLabel_.reset();
+    ClearClipboardIfOurs();
 }
 
 template <class Dialog>
@@ -145,6 +184,8 @@ bool AuthenticatorWindow::Create() {
             app_.StopTimer(refreshTimer_);
             timerRunning_ = false;
         }
+        // A code copied a moment ago does not outlive the app either.
+        ClearClipboardIfOurs();
         store_.Close();
         app_.RequestExit();
         return true;
@@ -172,84 +213,150 @@ bool AuthenticatorWindow::Create() {
     const long margin = Theme::kMargin;
     const long width  = kWindowWidth - 2 * margin;
 
+    // --- band: who this is, and the two things findable without reading ----
+    auto band = std::make_shared<UltraCanvasContainer>(
+        "auth-band", 0, 0, kWindowWidth, kBandHeight);
+    band->SetBackgroundColor(Theme::kCardBackground);
+    band->SetBorderBottom(1.0f, Theme::kDivider);
+    window_->AddChild(band);
+
+    constexpr long kLogoSize = 40;
+    auto logo = std::make_shared<UltraCanvasImageElement>(
+        "auth-logo", margin, (kBandHeight - kLogoSize) / 2, kLogoSize, kLogoSize);
+    logo->LoadFromFile(
+        NormalizePath(GetResourcesDir() + "media/appicon/UltraAuthenticator.png"));
+    logo->SetFitMode(ImageFitMode::Contain);
+    band->AddChild(logo);
+
+    const long textX = margin + kLogoSize + 12;
     auto title = std::make_shared<UltraCanvasLabel>(
-        "auth-title", margin, 18, width, 26, "UltraAuthenticator");
+        "auth-title", textX, 14, 320, 26, "UltraAuthenticator");
     title->SetFont(Theme::kUiFont, Theme::kSizeTitle, FontWeight::Bold);
     title->SetTextColor(Theme::kTextPrimary);
-    window_->AddChild(title);
+    band->AddChild(title);
 
-    // Scanning first: it is how an account is normally added, and typing a
-    // 32-character key is the fallback, not the default.
+    summaryLabel_ = std::make_shared<UltraCanvasLabel>(
+        "auth-summary", textX, 40, 320, 18, "");
+    summaryLabel_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
+    summaryLabel_->SetTextColor(Theme::kTextSecondary);
+    band->AddChild(summaryLabel_);
+
+    // Lock sits alone at the far right: it is the one action that should be
+    // findable without reading, when someone is leaving the desk.
+    const long bandButtonY = (kBandHeight - Theme::kButtonHeight) / 2;
+    auto lockBtn = std::make_shared<UltraCanvasButton>(
+        "auth-lock", kWindowWidth - margin - Theme::kButtonLock, bandButtonY,
+        Theme::kButtonLock, Theme::kButtonHeight);
+    lockBtn->SetText("Lock");
+    Theme::StyleSecondary(lockBtn, "lock");
+    lockBtn->SetTooltip("Lock now: the master password is needed to show codes again");
+    lockBtn->onClick = [this]() { Lock("Locked by request."); };
+    band->AddChild(lockBtn);
+
+    auto settingsBtn = std::make_shared<UltraCanvasButton>(
+        "auth-settings",
+        kWindowWidth - margin - Theme::kButtonLock - Theme::kButtonGap - Theme::kIconButton - 4,
+        bandButtonY, Theme::kIconButton + 4, Theme::kButtonHeight);
+    Theme::StyleIconButton(settingsBtn, "settings", "Settings");
+    settingsBtn->onClick = [this]() { OpenSettingsDialog(); };
+    band->AddChild(settingsBtn);
+
+    // --- actions -------------------------------------------------------------
+    // Adding an account at the left, scanning first: it is how an account is
+    // normally added, and typing a 32-character key is the fallback, not the
+    // default. Things that act on the vault rather than on one account sit at
+    // the right, quieter (no frame until the pointer is over them).
+    const long actionY = kBandHeight + 18;
     auto scanBtn = std::make_shared<UltraCanvasButton>(
-        "auth-scan", margin, 54, 130, 32);
+        "auth-scan", margin, actionY, Theme::kButtonScan, Theme::kButtonHeight);
     scanBtn->SetText("Scan QR code");
+    Theme::StylePrimary(scanBtn, "scan");
     scanBtn->onClick = [this]() { OpenScanAccountDialog(); };
     window_->AddChild(scanBtn);
 
     auto addBtn = std::make_shared<UltraCanvasButton>(
-        "auth-add", margin + 140, 54, 130, 32);
+        "auth-add", margin + Theme::kButtonScan + Theme::kButtonGap, actionY,
+        Theme::kButtonEnterKey, Theme::kButtonHeight);
     addBtn->SetText("Enter key");
+    Theme::StyleSecondary(addBtn, "key");
+    addBtn->SetTooltip("Type the setup key a service shows instead of its QR code");
     addBtn->onClick = [this]() { OpenAddAccountDialog(); };
     window_->AddChild(addBtn);
 
-    // Lock sits alone at the right of the first row: it is the one action
-    // that should be findable without reading, when someone is leaving the
-    // desk.
-    auto lockBtn = std::make_shared<UltraCanvasButton>(
-        "auth-lock", kWindowWidth - margin - Theme::kButtonLock, 54,
-        Theme::kButtonLock, 32);
-    lockBtn->SetText("Lock");
-    lockBtn->onClick = [this]() { Lock("Locked by request."); };
-    window_->AddChild(lockBtn);
-
-    // Second row: things that act on the vault rather than on one account.
-    // Wide enough for the whole label — the button clips rather than shrinking
-    // its text, and "Change master p..." reads as a truncated menu item.
-    auto pwBtn = std::make_shared<UltraCanvasButton>(
-        "auth-pw", margin, 94, 250, 32);
-    pwBtn->SetText("Change master password");
-    pwBtn->onClick = [this]() { OpenChangePasswordDialog(); };
-    window_->AddChild(pwBtn);
-
-    auto backupBtn = std::make_shared<UltraCanvasButton>(
-        "auth-backup", margin + 260, 94, 110, 32);
-    backupBtn->SetText("Back up…");
-    backupBtn->onClick = [this]() { OpenBackupDialog(); };
-    window_->AddChild(backupBtn);
-
+    // Laid out from the right edge inwards. Each wide enough for its whole
+    // label — the button clips rather than shrinking its text, and "Change
+    // master p..." reads as a truncated menu item.
+    long vx = kWindowWidth - margin - Theme::kButtonRestore;
     auto restoreBtn = std::make_shared<UltraCanvasButton>(
-        "auth-restore", margin + 380, 94, 110, 32);
+        "auth-restore", vx, actionY, Theme::kButtonRestore, Theme::kButtonHeight);
     restoreBtn->SetText("Restore…");
+    Theme::StyleButton(restoreBtn, Theme::GhostButton(), "restore");
+    restoreBtn->SetTooltip("Add the accounts from a backup file");
     restoreBtn->onClick = [this]() { OpenRestoreDialog(); };
     window_->AddChild(restoreBtn);
 
-    auto settingsBtn = std::make_shared<UltraCanvasButton>(
-        "auth-settings", kWindowWidth - margin - Theme::kButtonSettings, 94,
-        Theme::kButtonSettings, 32);
-    settingsBtn->SetText("Settings…");
-    settingsBtn->onClick = [this]() { OpenSettingsDialog(); };
-    window_->AddChild(settingsBtn);
+    vx -= Theme::kButtonBackup + Theme::kButtonGap;
+    auto backupBtn = std::make_shared<UltraCanvasButton>(
+        "auth-backup", vx, actionY, Theme::kButtonBackup, Theme::kButtonHeight);
+    backupBtn->SetText("Back up…");
+    Theme::StyleButton(backupBtn, Theme::GhostButton(), "backup");
+    backupBtn->SetTooltip("Save every account to an encrypted backup file");
+    backupBtn->onClick = [this]() { OpenBackupDialog(); };
+    window_->AddChild(backupBtn);
+
+    vx -= Theme::kButtonPassword + Theme::kButtonGap;
+    auto pwBtn = std::make_shared<UltraCanvasButton>(
+        "auth-pw", vx, actionY, Theme::kButtonPassword, Theme::kButtonHeight);
+    pwBtn->SetText("Password…");
+    Theme::StyleButton(pwBtn, Theme::GhostButton(), "password");
+    pwBtn->SetTooltip("Change the master password");
+    pwBtn->onClick = [this]() { OpenChangePasswordDialog(); };
+    window_->AddChild(pwBtn);
+
+    // --- status line, at the foot --------------------------------------------
+    auto footer = std::make_shared<UltraCanvasContainer>(
+        "auth-footer", 0, kWindowHeight - kFooterHeight, kWindowWidth, kFooterHeight);
+    footer->SetBackgroundColor(Theme::kCardBackground);
+    footer->SetBorderTop(1.0f, Theme::kDivider);
+    window_->AddChild(footer);
 
     statusLabel_ = std::make_shared<UltraCanvasLabel>(
-        "auth-status", margin, kHeaderHeight - 22, width, 18, "");
+        "auth-status", margin, (kFooterHeight - 18) / 2, width, 18, "");
     statusLabel_->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
     statusLabel_->SetTextColor(Theme::kTextMuted);
-    window_->AddChild(statusLabel_);
+    footer->AddChild(statusLabel_);
 
+    // --- the cards -------------------------------------------------------------
     // The list scrolls, so the account count is not capped by window height.
     listContainer_ = CreateScrollableContainer(
         "auth-list", margin, kHeaderHeight, width,
-        kWindowHeight - kHeaderHeight - margin);
+        kWindowHeight - kHeaderHeight - kFooterHeight - 8);
+    {
+        // The cards are laid out to the list's width less the vertical bar;
+        // a horizontal bar would only ever be a pixel of rounding.
+        ContainerStyle style = listContainer_->GetContainerStyle();
+        style.autoShowHorizontalScrollbar = false;
+        listContainer_->SetContainerStyle(style);
+    }
     window_->AddChild(listContainer_);
 
-    // Short enough to fit the list width at body size: the longer first
-    // wording clipped to "...to typ..." on a 720 px window.
+    // The empty state: a heading and one line on how to begin, centred in
+    // the list where the cards will be.
     emptyLabel_ = std::make_shared<UltraCanvasLabel>(
-        "auth-empty", 0, 8, width, 40,
-        "No accounts yet. Use \"Scan QR code\" or \"Enter key\" to add one.");
-    emptyLabel_->SetFont(Theme::kUiFont, Theme::kSizeBody);
-    emptyLabel_->SetTextColor(Theme::kTextMuted);
+        "auth-empty", 0, 96, width, 24, "");
+    emptyLabel_->SetFont(Theme::kUiFont, Theme::kSizeHeading, FontWeight::Bold);
+    emptyLabel_->SetTextColor(Theme::kTextPrimary);
+    emptyLabel_->SetAlignment(TextAlignment::Center);
     listContainer_->AddChild(emptyLabel_);
+
+    // Short enough to fit the list width at body size: a longer wording
+    // clipped on a 720 px window.
+    emptyHint_ = std::make_shared<UltraCanvasLabel>(
+        "auth-empty-hint", 0, 126, width, 20, "");
+    emptyHint_->SetFont(Theme::kUiFont, Theme::kSizeBody);
+    emptyHint_->SetTextColor(Theme::kTextSecondary);
+    emptyHint_->SetAlignment(TextAlignment::Center);
+    listContainer_->AddChild(emptyHint_);
 
     if (store_.IsLocked()) {
         // Launched over an existing vault that has not been opened yet: the
@@ -258,7 +365,8 @@ bool AuthenticatorWindow::Create() {
         // Nothing about the accounts is rendered before the password.
         locked_ = true;
         lockMessage_ = "Enter your master password to unlock your accounts.";
-        if (emptyLabel_) emptyLabel_->SetText("");
+        ShowEmptyState(false);
+        SetSummary("Locked");
         SetStatus("Locked.");
     } else {
         RebuildRows();
@@ -284,6 +392,19 @@ void AuthenticatorWindow::SetStatus(const std::string& text, bool isError) {
     statusLabel_->SetTextColor(isError ? Theme::kDanger : Theme::kTextMuted);
 }
 
+void AuthenticatorWindow::SetSummary(const std::string& text) {
+    if (summaryLabel_) summaryLabel_->SetText(text);
+}
+
+void AuthenticatorWindow::ShowEmptyState(bool show) {
+    if (emptyLabel_) emptyLabel_->SetText(show ? "No accounts yet" : "");
+    if (emptyHint_) {
+        emptyHint_->SetText(
+            show ? "Use \"Scan QR code\" or \"Enter key\" above to add your first one."
+                 : "");
+    }
+}
+
 void AuthenticatorWindow::NoteActivity() {
     lastActivity_ = NowUnix();
 }
@@ -294,6 +415,10 @@ void AuthenticatorWindow::NoteActivity() {
 
 void AuthenticatorWindow::Tick() {
     const int64_t now = NowUnix();
+
+    // Before anything else, locked or not: the clipboard's 30 seconds run on
+    // wall time, whatever the window is doing.
+    if (clipboardClearAt_ != 0 && now >= clipboardClearAt_) ClearClipboardIfOurs();
 
     if (locked_) {
         if (lockDialog_) {
@@ -328,6 +453,7 @@ void AuthenticatorWindow::Tick() {
     }
 
     RefreshCodes();
+    RefreshCopyButtons(now);
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +468,9 @@ void AuthenticatorWindow::Lock(const std::string& reason) {
     // Order: take the codes off the screen, then drop the vault. Nothing on a
     // card survives the first step, and nothing in memory survives the second.
     ClearRows();
-    if (emptyLabel_) emptyLabel_->SetText("");
+    ClearClipboardIfOurs();
+    ShowEmptyState(false);
+    SetSummary("Locked");
     SetStatus("Locked.");
     store_.Lock();
 
@@ -366,6 +494,7 @@ void AuthenticatorWindow::ShowLockScreen() {
         return std::string();
     };
     dialog->onQuit = [this]() {
+        ClearClipboardIfOurs();
         store_.Close();
         app_.RequestExit();
     };
@@ -393,6 +522,7 @@ void AuthenticatorWindow::ClearRows() {
         // Removing the card takes its children with it; the card is the only
         // thing the container knows about.
         if (row.card) listContainer_->RemoveChild(row.card);
+        WipeString(row.hotpCode);
     }
     rows_.clear();
 }
@@ -405,19 +535,26 @@ void AuthenticatorWindow::RebuildRows() {
     StoreResult listed = store_.List(accounts);
     if (!listed) {
         SetStatus(listed.message, true);
-        if (emptyLabel_) emptyLabel_->SetText("");
+        ShowEmptyState(false);
         return;
     }
 
-    if (emptyLabel_) {
-        emptyLabel_->SetText(
-            accounts.empty()
-                ? "No accounts yet. Use \"Scan QR code\" or \"Enter key\" to add one."
-                : "");
-    }
+    ShowEmptyState(accounts.empty());
+    SetSummary(accounts.empty()       ? "No accounts yet"
+               : accounts.size() == 1 ? "1 account"
+                                      : std::to_string(accounts.size()) + " accounts");
 
-    const long cardWidth = kWindowWidth - 2 * Theme::kMargin - 18;  // scrollbar
+    const long cardWidth = kWindowWidth - 2 * Theme::kMargin - 22;  // scrollbar
     const long pad       = Theme::kCardPadding;
+    // Identity and code share one column to the right of the monogram.
+    const long textX     = pad + Theme::kMonogramSize + 14;
+    // The ring's box is wider than the ring it draws (see Theme::kRingBox);
+    // this puts the visible ring a card padding in from the right edge.
+    const long ringX     = cardWidth - Theme::kRingBox - 6;
+    // The icon buttons end where the ring (or the HOTP button) begins.
+    const long ringActionsRight = ringX + 6;
+    const long hotpActionsRight = cardWidth - pad - Theme::kButtonNext - Theme::kButtonGap;
+    const long actionsY  = (Theme::kCardHeight - Theme::kIconButton) / 2;
 
     for (size_t i = 0; i < accounts.size(); ++i) {
         const Account& account = accounts[i];
@@ -432,70 +569,147 @@ void AuthenticatorWindow::RebuildRows() {
 
         row.card = std::make_shared<UltraCanvasContainer>(
             id + "-card", 0, y, cardWidth, Theme::kCardHeight);
-        row.card->SetBackgroundColor(Theme::kCardBackground);
+        Theme::ApplyCard(row.card);
         listContainer_->AddChild(row.card);
 
         // --- identity -----------------------------------------------------
         const std::string issuerText = account.params.issuer.empty()
                                            ? account.params.accountName
                                            : account.params.issuer;
+        const Theme::MonogramLook look = Theme::MonogramLookFor(issuerText);
+        row.monogram = std::make_shared<UltraCanvasBadge>(
+            id + "-mono", pad, (Theme::kCardHeight - Theme::kMonogramSize) / 2,
+            Theme::kMonogramSize, Theme::kMonogramSize);
+        {
+            BadgeStyle style = row.monogram->GetStyle();
+            style.height     = static_cast<float>(Theme::kMonogramSize);
+            style.minWidth   = static_cast<float>(Theme::kMonogramSize);
+            style.paddingH   = 0.0f;
+            style.fontSize   = 16.0f;
+            style.fontFamily = Theme::kUiFont;
+            style.textColor   = look.ink;
+            style.borderColor = look.border;
+            style.borderWidth = look.borderWidth;
+            row.monogram->SetStyle(style);
+        }
+        row.monogram->SetText(MonogramText(issuerText));
+        row.monogram->SetColor(look.fill);
+        row.card->AddChild(row.monogram);
+
+        // The labels stop short of the action buttons, which share their
+        // height at the right of the card.
+        const long actionsRight = row.isHotp ? hotpActionsRight : ringActionsRight;
+        const long textWidth = actionsRight - 3 * (Theme::kIconButton + 4) - textX;
         row.issuerLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-issuer", pad, pad, cardWidth - 2 * pad - 290, 20, issuerText);
+            id + "-issuer", textX, 12, textWidth, 20, issuerText);
         row.issuerLabel->SetFont(Theme::kUiFont, Theme::kSizeBody,
                                  FontWeight::Bold);
         row.issuerLabel->SetTextColor(Theme::kTextPrimary);
         row.card->AddChild(row.issuerLabel);
 
         row.accountLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-account", pad, pad + 20, cardWidth - 2 * pad - 290, 18,
+            id + "-account", textX, 32, textWidth, 18,
             SubtitleFor(account.params));
         row.accountLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary);
         row.accountLabel->SetTextColor(Theme::kTextSecondary);
         row.card->AddChild(row.accountLabel);
 
         // --- code ---------------------------------------------------------
-        // Bottom band, with a full card padding below it: at the previous
-        // height this label's box ended exactly on the card border.
+        // Bottom band, with room below it: at an earlier height this label's
+        // box ended exactly on the card border.
         row.codeLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-code", pad, pad + 42, 230, 34,
+            id + "-code", textX, 54, 230, 36,
             CodePlaceholder(account.params.digits));
         row.codeLabel->SetFont(Theme::kCodeFont, Theme::kSizeCode,
                                FontWeight::Bold);
-        row.codeLabel->SetTextColor(Theme::kTextPrimary);
+        row.codeLabel->SetTextColor(Theme::kCodeText);
         if (prefs_.hideCodes) {
             // A label with a click handler reports the hand cursor, which is
             // the affordance: the mask is something to click.
             const std::string key = account.key;
             row.codeLabel->onClick = [this, key]() { RevealRow(key); };
+            row.codeLabel->SetTooltip("Click to show the code");
         }
         row.card->AddChild(row.codeLabel);
+
+        // Copy, right after the digits: the code's own width (grouped, so
+        // one more character than digits) at the monospaced face's advance.
+        const long copyX = textX +
+            static_cast<long>(account.params.digits + 1) * Theme::kCodeCharWidth + 8;
+        row.copyButton = std::make_shared<UltraCanvasButton>(
+            id + "-copy", copyX, 54 + (36 - Theme::kIconButton) / 2,
+            Theme::kIconButton, Theme::kIconButton);
+        Theme::StyleIconButton(row.copyButton, "copy", CopyTooltip(row.isHotp));
+        {
+            const std::string key = account.key;
+            row.copyButton->onClick = [this, key]() { CopyCode(key); };
+        }
+        row.card->AddChild(row.copyButton);
 
         // Wide enough for "click to show" in bold; at 110 it clipped to
         // "click to sh…", which reads as a cut-off menu entry.
         row.countdownLabel = std::make_shared<UltraCanvasLabel>(
-            id + "-left", pad + 240, pad + 50, 130, 20, "");
+            id + "-left", copyX + Theme::kIconButton + 6, 63, 130, 20, "");
         row.countdownLabel->SetFont(Theme::kUiFont, Theme::kSizeSecondary,
                                     FontWeight::Bold);
         row.countdownLabel->SetTextColor(Theme::kTextMuted);
         row.card->AddChild(row.countdownLabel);
 
+        if (row.isHotp) {
+            // A counter-based code is only produced on demand: generating one
+            // spends it, so it must be an explicit action, never a timer tick.
+            row.actionButton = std::make_shared<UltraCanvasButton>(
+                id + "-next", cardWidth - pad - Theme::kButtonNext,
+                (Theme::kCardHeight - Theme::kButtonHeight) / 2,
+                Theme::kButtonNext, Theme::kButtonHeight);
+            row.actionButton->SetText("Next code");
+            Theme::StyleSecondary(row.actionButton, "next");
+            row.actionButton->SetTooltip(
+                "Make the next code. Each one counts: the service expects them in order");
+            const std::string key = account.key;
+            row.actionButton->onClick = [this, key]() { AdvanceHotpRow(key); };
+            row.card->AddChild(row.actionButton);
+        } else {
+            // The ring empties as the time step runs out, with the seconds
+            // left in its centre — the number is the real signal, the colour
+            // and the arc the glanceable one. A display, not a control:
+            // disabled, or a click on it would set its value.
+            row.countdownRing = std::make_shared<UltraCanvasGaugeDiagramElement>(
+                id + "-ring", ringX, (Theme::kCardHeight - Theme::kRingBox) / 2 - 5,
+                Theme::kRingBox, Theme::kRingBox);
+            row.countdownRing->SetMode(GaugeMode::CircularRing);
+            row.countdownRing->SetMinValue(0.0);
+            row.countdownRing->SetMaxValue(static_cast<double>(account.params.periodSeconds));
+            row.countdownRing->SetValue(0.0);
+            row.countdownRing->SetDecimalPlaces(0);
+            row.countdownRing->SetRingThickness(4.0f);
+            row.countdownRing->SetTrackColor(Theme::kCountdownTrack);
+            row.countdownRing->SetGaugeColor(Theme::kCountdownCalm);
+            row.countdownRing->SetTextColor(Theme::kTextPrimary);
+            row.countdownRing->SetDisabled(true);
+            row.countdownRing->SetVisible(false);   // until the first code lands
+            row.card->AddChild(row.countdownRing);
+        }
+
         // --- actions ------------------------------------------------------
-        // Right-aligned, laid out from the right edge inwards so the row does
-        // not reflow when the HOTP-only button is absent.
-        long bx = cardWidth - pad - Theme::kButtonRemove;
+        // Icon buttons, laid out from the right inwards so the row does not
+        // reflow between TOTP and HOTP cards. The tooltip names each one.
+        long bx = actionsRight - Theme::kIconButton;
         row.removeButton = std::make_shared<UltraCanvasButton>(
-            id + "-del", bx, pad, Theme::kButtonRemove, 28);
-        row.removeButton->SetText("Remove");
+            id + "-del", bx, actionsY, Theme::kIconButton, Theme::kIconButton);
+        Theme::StyleIconButton(row.removeButton, "delete", "Remove this account",
+                               /*danger=*/true);
         {
             const std::string key = account.key;
             row.removeButton->onClick = [this, key]() { RemoveAccount(key); };
         }
         row.card->AddChild(row.removeButton);
 
-        bx -= Theme::kButtonReveal + Theme::kButtonGap;
+        bx -= Theme::kIconButton + 4;
         row.revealButton = std::make_shared<UltraCanvasButton>(
-            id + "-reveal", bx, pad, Theme::kButtonReveal, 28);
-        row.revealButton->SetText("Show key");
+            id + "-reveal", bx, actionsY, Theme::kIconButton, Theme::kIconButton);
+        Theme::StyleIconButton(row.revealButton, "show",
+                               "Show the setup key, to add this account elsewhere");
         {
             const std::string key = account.key;
             row.revealButton->onClick = [this, key]() {
@@ -504,10 +718,10 @@ void AuthenticatorWindow::RebuildRows() {
         }
         row.card->AddChild(row.revealButton);
 
-        bx -= Theme::kButtonEdit + Theme::kButtonGap;
+        bx -= Theme::kIconButton + 4;
         row.editButton = std::make_shared<UltraCanvasButton>(
-            id + "-edit", bx, pad, Theme::kButtonEdit, 28);
-        row.editButton->SetText("Edit");
+            id + "-edit", bx, actionsY, Theme::kIconButton, Theme::kIconButton);
+        Theme::StyleIconButton(row.editButton, "edit", "Edit name and settings");
         {
             const std::string key = account.key;
             row.editButton->onClick = [this, key]() {
@@ -515,18 +729,6 @@ void AuthenticatorWindow::RebuildRows() {
             };
         }
         row.card->AddChild(row.editButton);
-
-        if (row.isHotp) {
-            // A counter-based code is only produced on demand: generating one
-            // spends it, so it must be an explicit action, never a timer tick.
-            row.actionButton = std::make_shared<UltraCanvasButton>(
-                id + "-next", cardWidth - pad - Theme::kButtonNext, pad + 46,
-                Theme::kButtonNext, 28);
-            row.actionButton->SetText("Next code");
-            const std::string key = account.key;
-            row.actionButton->onClick = [this, key]() { AdvanceHotpRow(key); };
-            row.card->AddChild(row.actionButton);
-        }
 
         rows_.push_back(std::move(row));
     }
@@ -560,6 +762,7 @@ void AuthenticatorWindow::RefreshCodes() {
         if (hidden) {
             // Not even generated: a hidden code costs no decryption.
             if (row.codeLabel) row.codeLabel->SetText(CodeMask(row.params.digits));
+            if (row.countdownRing) row.countdownRing->SetVisible(false);
             if (row.countdownLabel) {
                 row.countdownLabel->SetText("click to show");
                 row.countdownLabel->SetTextColor(Theme::kTextMuted);
@@ -575,13 +778,21 @@ void AuthenticatorWindow::RefreshCodes() {
                 row.codeLabel->SetText(CodePlaceholder(row.params.digits));
             }
             if (row.countdownLabel) row.countdownLabel->SetText("");
+            if (row.countdownRing) row.countdownRing->SetVisible(false);
             SetStatus(generated.message, true);
             continue;
         }
         if (row.codeLabel) row.codeLabel->SetText(GroupCode(code));
-        if (row.countdownLabel) {
-            row.countdownLabel->SetText(std::to_string(remaining) + "s left");
-            row.countdownLabel->SetTextColor(Theme::CountdownColor(remaining));
+        if (row.countdownLabel) row.countdownLabel->SetText("");
+        if (row.countdownRing) {
+            const Color color = Theme::CountdownColor(remaining);
+            row.countdownRing->SetValue(static_cast<double>(remaining));
+            row.countdownRing->SetGaugeColor(color);
+            row.countdownRing->SetTextColor(color);
+            row.countdownRing->SetTooltip(std::to_string(remaining) +
+                                          (remaining == 1 ? " second" : " seconds") +
+                                          " until the next code");
+            row.countdownRing->SetVisible(true);
         }
     }
 }
@@ -610,6 +821,10 @@ void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
     for (Row& row : rows_) {
         if (row.key != key) continue;
         if (row.codeLabel) row.codeLabel->SetText(GroupCode(code));
+        // Kept so the copy button can copy this code - even once hidden mode
+        // has masked it again - without spending another counter.
+        WipeString(row.hotpCode);
+        row.hotpCode = code;
         if (row.countdownLabel) {
             row.countdownLabel->SetText("used once");
             row.countdownLabel->SetTextColor(Theme::kTextMuted);
@@ -624,6 +839,93 @@ void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
         row.revealedUntil = prefs_.hideCodes ? now + kRevealSeconds : 0;
     }
     SetStatus("");
+}
+
+// ---------------------------------------------------------------------------
+// Copying
+// ---------------------------------------------------------------------------
+
+void AuthenticatorWindow::CopyCode(const std::string& key) {
+    Row* row = nullptr;
+    for (Row& r : rows_) {
+        if (r.key == key) { row = &r; break; }
+    }
+    if (!row || !store_.IsOpen()) return;
+
+    std::string code;
+    std::string validity;
+    if (row->isHotp) {
+        // Copying never spends a counter: it copies the code "Next code"
+        // produced, and there is nothing to copy until it has been pressed.
+        if (row->hotpCode.empty()) {
+            SetStatus("Press \"Next code\" first: a counter-based code is only "
+                      "made when it is needed.", true);
+            return;
+        }
+        code = row->hotpCode;
+    } else {
+        // Generated now, not read off the card, so the copy is current even
+        // in hidden-codes mode, where the card shows only dots.
+        uint32_t remaining = 0;
+        StoreResult generated = store_.GenerateTotp(row->key, NowUnix(), code, remaining);
+        if (!generated) {
+            SetStatus(generated.message, true);
+            return;
+        }
+        validity = ", valid " + std::to_string(remaining) + " s more";
+    }
+
+    // Marked secret, so a clipboard history that honours the platform's
+    // marker (KDE's Klipper, Windows' Win+V, macOS' managers, UltraClipboard)
+    // does not keep it. The timed clear below only empties the clipboard; it
+    // cannot reach into a history that ignored the marker.
+    if (!SetClipboardText(code, ClipboardHint::Secret)) {
+        WipeString(code);
+        SetStatus("The clipboard is not available.", true);
+        return;
+    }
+    WipeString(clipboardCode_);
+    clipboardCode_   = code;
+    clipboardClearAt_ = NowUnix() + kClipboardSeconds;
+    WipeString(code);
+
+    const std::string name = row->params.issuer.empty() ? row->params.accountName
+                                                        : row->params.issuer;
+    // Short enough for the status line with a long service name.
+    SetStatus(name + " code copied" + validity + "; clipboard clears in " +
+              std::to_string(kClipboardSeconds) + " s.");
+
+    // The button says it worked: a tick for a moment, then the copy icon.
+    for (Row& r : rows_) {
+        if (!r.copyButton) continue;
+        const bool thisOne = (&r == row);
+        r.copiedUntil = thisOne ? NowUnix() + kCopiedSeconds : 0;
+        r.copyButton->SetIcon(Theme::IconPath(thisOne ? "copied" : "copy"));
+        r.copyButton->SetTooltip(thisOne ? "Copied" : CopyTooltip(r.isHotp));
+    }
+}
+
+void AuthenticatorWindow::RefreshCopyButtons(int64_t now) {
+    for (Row& row : rows_) {
+        if (row.copiedUntil == 0 || now < row.copiedUntil || !row.copyButton) continue;
+        row.copiedUntil = 0;
+        row.copyButton->SetIcon(Theme::IconPath("copy"));
+        row.copyButton->SetTooltip(CopyTooltip(row.isHotp));
+    }
+}
+
+void AuthenticatorWindow::ClearClipboardIfOurs() {
+    if (clipboardCode_.empty()) { clipboardClearAt_ = 0; return; }
+    // Only our own code is taken back. Anything copied since - a password,
+    // a paragraph - belongs to the user and stays.
+    std::string current;
+    if (GetClipboardText(current) && current == clipboardCode_) {
+        SetClipboardText("");
+        if (!locked_) SetStatus("Clipboard cleared.");
+    }
+    WipeString(current);
+    WipeString(clipboardCode_);
+    clipboardClearAt_ = 0;
 }
 
 // ---------------------------------------------------------------------------
