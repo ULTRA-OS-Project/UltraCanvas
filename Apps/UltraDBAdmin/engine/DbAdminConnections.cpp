@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminConnections.cpp
+// Version: 0.2.0 - auto-commit per connection
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnections.h"
@@ -56,6 +57,7 @@ JSONValue ToJson(const ConnectionSpec& s) {
     o.Set("tls", TlsName(s.tls));
     o.Set("readOnly", s.readOnly);
     o.Set("production", s.production);
+    o.Set("autoCommit", s.autoCommit);
     return o;
 }
 
@@ -72,6 +74,7 @@ ConnectionSpec FromJson(const JSONValue& o) {
     s.tls         = TlsFromName(o["tls"].GetString("verify-full"));
     s.readOnly    = o["readOnly"].GetBoolean(false);
     s.production  = o["production"].GetBoolean(false);
+    s.autoCommit  = o["autoCommit"].GetBoolean(false);
     return s;
 }
 

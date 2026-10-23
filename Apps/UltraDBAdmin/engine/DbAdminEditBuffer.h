@@ -17,7 +17,11 @@
 // a copy to the worker that builds or commits the statements.
 //
 // A blob is the one value not typed: a file's bytes, loaded into the cell,
-// are bound as a blob (SQLite's BLOB, PostgreSQL's bytea).
+// are bound as a blob (SQLite's BLOB, PostgreSQL's bytea). And a value
+// function - CURRENT_TIMESTAMP, gen_random_uuid() - is the one value written
+// into the statement rather than bound: only one of the functions
+// ValueFunctions lists (DbAdminValueTypes.h), checked when it is staged.
+// Version: 0.3.0 - a value function (CURRENT_TIMESTAMP, gen_random_uuid()) for a cell
 // Version: 0.2.0 - a blob value: a file's bytes for a cell
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -35,15 +39,16 @@ namespace UltraDBAdmin {
 
 // What one column of a change is set to.
 struct CellValue {
-    enum class Kind { Text, Null, Default, Blob };
+    enum class Kind { Text, Null, Default, Blob, Function };
     Kind kind = Kind::Text;
-    std::string text;             // Kind::Text: as typed
+    std::string text;             // Kind::Text: as typed; Kind::Function: its SQL
     std::vector<uint8_t> bytes;   // Kind::Blob: the bytes
 
     static CellValue Of(std::string value) { return CellValue{Kind::Text, std::move(value), {}}; }
     static CellValue NullValue() { return CellValue{Kind::Null, {}, {}}; }
     static CellValue DefaultValue() { return CellValue{Kind::Default, {}, {}}; }
     static CellValue BlobValue(std::vector<uint8_t> value) { return CellValue{Kind::Blob, {}, std::move(value)}; }
+    static CellValue FunctionValue(std::string sql) { return CellValue{Kind::Function, std::move(sql), {}}; }
     bool operator==(const CellValue& other) const {
         return kind == other.kind && text == other.text && bytes == other.bytes;
     }
@@ -121,7 +126,8 @@ private:
 };
 
 // A value as it reads in the SQL preview: 'text' (quotes doubled), 42, NULL,
-// DEFAULT, X'0a1b…' (a blob: its first 32 bytes). For showing only.
+// DEFAULT, X'0a1b…' (a blob: its first 32 bytes), CURRENT_TIMESTAMP (a
+// function, as it is). For showing only.
 std::string PreviewLiteral(const UltraDbValue& value);
 std::string PreviewLiteral(const CellValue& value);
 

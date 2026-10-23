@@ -4,6 +4,7 @@
 // vault (UltraVault::DeviceKeyVault, encrypted at rest) under a key made from
 // the connection's id, and the connection hands UltraDatabase only that key -
 // the PostgreSQL driver reads it from the vault when it connects.
+// Version: 0.2.0 - auto-commit per connection
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -30,6 +31,10 @@ struct ConnectionSpec {
     UltraDbTls  tls = UltraDbTls::VerifyFull;
     bool        readOnly = false;
     bool        production = false;    // shown in red, so a slip is visible
+    // Browse writes a row change as soon as it is made, as phpMyAdmin does,
+    // instead of staging it for Commit. A deletion and anything on a
+    // production connection still ask first.
+    bool        autoCommit = false;
 
     bool IsSqlite() const { return driver == "sqlite" || driver == "sqlite3"; }
 };
