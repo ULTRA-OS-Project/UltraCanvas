@@ -41,3 +41,9 @@
   *Other* > *Remove collected contacts…* lists the contacts there that are a
   name and an address and nothing else, never written to (no mail in the
   Sent folders went to them), and removes them all at once after asking.
+- **A service's mail downloaded later still files it.** The proof of a
+  sender's domain comes with the message's body, so a known service whose
+  mail was first held without its body was never collected. It is now, once
+  the body arrives: when the next update fetches the bodies an earlier one
+  missed, when the message is opened, or when its body is fetched to
+  unsubscribe.

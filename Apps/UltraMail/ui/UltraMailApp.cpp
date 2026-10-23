@@ -4,7 +4,8 @@
 //                  (here and for a message's sender) edits that address; a
 //                  deleted address is forgotten; a known service is collected
 //                  only with its domain proven; Contacts > Other > Remove
-//                  collected contacts
+//                  collected contacts; services collected also from bodies
+//                  downloaded later (CollectServices, CollectServiceOf)
 // Version: 0.9.37 - the new-mail notification carries where its click leads
 //                   (launch), and UltraMail is the activator of its Windows
 //                   toasts, so a click opens the mail after the broker host
@@ -1541,6 +1542,7 @@ void UltraMailApp::FetchMissingBody(const MessageEnvelope& env) {
         [this, env, key](const SyncOutcome& outcome) {
             bodyFetchInFlight_.erase(key);
             if (outcome) {
+                CollectServiceOf(env);        // its sender's domain may be proven now
                 mailView_.BodyArrived(env);   // shown, if it is still the one being read
                 return;
             }
@@ -1837,6 +1839,7 @@ void UltraMailApp::HandleUnsubscribe(const MessageEnvelope& env) {
         },
         "Unsubscribe",
         [this, env, path]() {
+            CollectServiceOf(env);   // its sender's domain may be proven now
             auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
             UnsubscribeWith(env, loaded.success
                 ? std::string(loaded.bytes.begin(), loaded.bytes.end()) : std::string());
@@ -2417,17 +2420,34 @@ void UltraMailApp::CollectContacts(const std::string& accountId, const std::stri
     if (!contacts_.IsOpen()) return;
     std::vector<MessageEnvelope> msgs;
     store_.ListMessages(accountId, folder, 0, msgs);
-    // CollectSender, not Collect: a sender in the known-sender registry is
-    // filed under Services as a business contact (with the service's name as
-    // the organization), everything else lands in Other as before.
+    // Only the known services whose domain the scan proved, as after a sync.
+    CollectServices(accountId, folder, msgs);
+}
+
+void UltraMailApp::CollectServices(const std::string& accountId, const std::string& folder,
+                                   const std::vector<MessageEnvelope>& mail) {
+    if (!contacts_.IsOpen() || mail.empty()) return;
+    // A known service is filed only when the server proved its domain: the
+    // verdict stored with the body when it was downloaded and scanned.
     std::map<int64_t, MessageSecurity> verdicts;
     store_.ListSecurity(accountId, folder, verdicts);
-    for (const auto& m : msgs) {
+    std::vector<SenderSeen> senders;
+    senders.reserve(mail.size());
+    for (const MessageEnvelope& m : mail) {
         const auto v = verdicts.find(m.uid);
-        ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr,
-                                        v == verdicts.end() ? std::string()
-                                                            : v->second.verifiedDomain);
+        if (v == verdicts.end() || v->second.verifiedDomain.empty()) continue;
+        senders.push_back({m.fromName, m.fromAddr, v->second.verifiedDomain});
     }
+    ContactCollector::CollectSenders(contacts_, senders);
+}
+
+void UltraMailApp::CollectServiceOf(const MessageEnvelope& m) {
+    if (!contacts_.IsOpen() || m.folder != "INBOX") return;
+    MessageSecurity sec;
+    if (!store_.GetSecurity(m.accountId, m.folder, m.uid, sec) || sec.verifiedDomain.empty())
+        return;
+    if (ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr, sec.verifiedDomain))
+        RefreshContactIndex();
 }
 
 void UltraMailApp::StartBackgroundSync() {
@@ -3065,19 +3085,15 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 if (contacts_.IsOpen()) {
                     Trace::Stage step("Address book: the senders of " +
                                       std::to_string(arrived->size()) + " new message(s)", 0);
-                    // A known service is filed only when the server proved
-                    // its domain: the verdict the sync stored with the body.
-                    std::map<int64_t, MessageSecurity> verdicts;
-                    store_.ListSecurity(aid, "INBOX", verdicts);
-                    std::vector<SenderSeen> senders;
-                    senders.reserve(arrived->size());
-                    for (const MessageEnvelope& m : *arrived) {
-                        const auto v = verdicts.find(m.uid);
-                        senders.push_back({m.fromName, m.fromAddr,
-                                           v == verdicts.end() ? std::string()
-                                                               : v->second.verifiedDomain});
-                    }
-                    ContactCollector::CollectSenders(contacts_, senders);
+                    // With the newest mail held already: a body an earlier
+                    // sync did not get may have come now (the sync fetches
+                    // those for the newest 100), and with it the proof of
+                    // its sender's domain.
+                    std::vector<MessageEnvelope> mail = *arrived;
+                    std::vector<MessageEnvelope> newest;
+                    store_.ListMessages(aid, "INBOX", kCollectNewest, newest);
+                    mail.insert(mail.end(), newest.begin(), newest.end());
+                    CollectServices(aid, "INBOX", mail);
                 }
                 Refresh();   // authoritative, correctly sorted final list
             });
