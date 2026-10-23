@@ -12462,6 +12462,7 @@ FILE: Docs/UltraCanvas/UltraCanvasAutoCompleteExamples.md
 - [Events and Callbacks](#events-and-callbacks)
 - [Usage Examples](#usage-examples)
   - [Basic Static AutoComplete](#basic-static-autocomplete)
+  - [A Menu on a Suggestion](#a-menu-on-a-suggestion)
   - [Display Text vs. Programmatic Value (Country Codes)](#display-text-vs-programmatic-value-country-codes)
   - [Dynamic Suggestion Provider](#dynamic-suggestion-provider)
   - [Large List with Automatic Scrollbar](#large-list-with-automatic-scrollbar)
@@ -12616,6 +12617,10 @@ std::function<void()> onAutocompletePopupClosed;
 // Dynamic suggestion provider: called with current text,
 // should return filtered suggestions for the popup
 std::function<std::vector<AutoCompleteItem>(const std::string&)> onRequestSuggestions;
+
+// A right press on a suggestion: its index, the item and the event.
+// Unset, a right press picks the row like a left one.
+std::function<void(int, const AutoCompleteItem&, const UCEvent&)> onItemContextMenu;
 ```
 
 In addition, callbacks inherited from `UltraCanvasTextInput` (such as `onTextChanged`) remain available.
@@ -12651,6 +12656,33 @@ fruitAC->onItemSelected = [](int index, const AutoCompleteItem& item) {
 };
 
 container->AddChild(fruitAC);
+```
+
+### A Menu on a Suggestion
+
+`onItemContextMenu` lets the user act on a suggestion without picking it -
+UltraMail's recipient fields offer *Edit contact* and *Delete address* this
+way. The popup closes as the press takes the focus; when the handler changes
+what would be suggested, call `RefreshSuggestions()` afterwards.
+
+<!-- doc-check: UltraCanvasWindowBase* MainWindow(); -->
+```cpp
+auto peopleAC = CreateAutoComplete("PeopleAC", 30, 160, 280);
+peopleAC->AddItem("Anna Schmidt", "anna@example.com");
+peopleAC->AddItem("Hans Annaberg", "hans@example.com");
+
+// Held by the handler, so it outlives the call that opens it.
+auto menu = std::make_shared<UltraCanvasMenu>("PeopleMenu", 0, 0, 180, 0);
+menu->SetMenuType(MenuType::PopupMenu);
+peopleAC->onItemContextMenu = [menu](int index, const AutoCompleteItem& item, const UCEvent& event) {
+    menu->Clear();
+    const std::string address = item.value;
+    menu->AddItem(MenuItemData::Action("Forget " + address, [address]() {
+        std::cerr << "Forget " << address << std::endl;
+    }));
+    PopupElementSettings settings;
+    menu->OpenMenu(event.pointerWindow, *MainWindow(), settings);
+};
 ```
 
 ### Display Text vs. Programmatic Value (Country Codes)
@@ -96711,18 +96743,6 @@ asks, one printer after another, and the answer follows its other sections:
 | A printer shows no *Supplies* | It reported none — common for printers that have no level sensors. On Windows it also happens when the driver does not report levels *and* the printer cannot be asked over IPP: it is connected by USB, it does not speak IPP, or a firewall blocks port 631. |
 
 ==============================================================================
-FILE: Docs/DeviceExplorer/changelog.d/scan-progress-bar.md
-==============================================================================
-
-- **A scan shows itself under the device tree.** While DeviceExplorer is
-  scanning - at start-up and after *Rescan* - a row at the bottom of the tree
-  reads *Scanning for devices…* beside a bar with a segment sliding along it
-  (`UltraCanvasBusyIndicator`, `Bar`). It goes away, and its timer stops, as
-  soon as the devices are in. The status text in the toolbar no longer says
-  *Scanning for devices…* as well: it is empty during the first scan and
-  keeps the last count during a rescan.
-
-==============================================================================
 FILE: Docs/UltraDesktop/Manual.md
 ==============================================================================
 
@@ -98542,7 +98562,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 
 - **To/Cc/Bcc** rows using `CreateEmailInput` with autocomplete fed by
   the collected-addresses book (3.2); recipients render as removable
-  chips; Cc/Bcc rows hidden until requested.
+  chips; Cc/Bcc rows hidden until requested. No-reply and blocked
+  addresses are never offered; a suggestion's right-click menu edits its
+  contact, deletes the address or sets the sender as spam (blocked).
 - **Body** — `UltraCanvasTextArea` in `MarkdownHybrid` mode: the user
   writes comfortable rich text (bold, lists, links, quoting) and
   UltraMail sends `multipart/alternative` with a generated HTML part
@@ -98588,8 +98610,11 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 - Mark read/unread, star/flag, move to folder (drag & drop onto tree)
 - Junk folder support; delete-to-Trash with empty-trash command
 - Fast local search (from/subject/body) over the message index
-- Collected address book: every address the user writes to or receives
-  from is remembered for autocomplete (explicit contacts app and
+- Collected address book: every address the user writes to is
+  remembered for autocomplete; from incoming mail only senders in the
+  known-sender registry whose domain the server proved are added (under
+  Services) - never a stranger, a
+  blocked sender or an address the user deleted (explicit contacts app and
   LDAP/CardDAV integration come later, see roadmap)
 - Multiple accounts + unified inbox
 - New-mail notifications (window badge + system notification) and
@@ -99044,14 +99069,22 @@ used twice:
 * **In the badge.** A registry sender that is not (yet) in the address book
   reads as a **business contact** — blue — rather than as an unknown sender,
   with the tooltip naming the service and what kind of service it is.
-* **In the address book.** `ContactCollector::CollectSender()` — which the app
-  runs over each synced folder — files a registry sender under **Services**,
-  carrying the service's name as the contact's `organization` and a note
+* **In the address book.** `ContactCollector::CollectSenders()` — which the
+  app runs over each sync's new inbox mail — files a registry sender under
+  **Services**, but only when the receiving server proved its domain (DKIM or
+  DMARC: the scan's `verifiedDomain`, `DomainProven`): the registry knows a
+  service by its address, and anyone can write that address in a From line.
+  It files it carrying the service's name as the contact's `organization` and a note
   saying what it is and that UltraMail added it. A robot display name is
   replaced by the service's own name only when the header carries none
-  ("Kickstarter" beats an empty From name). Everything else still lands in
-  Other, exactly as before, and a personal mailbox address never counts as a
-  service however large its provider.
+  ("Kickstarter" beats an empty From name). Any other sender is **not**
+  added: a stranger who writes - and every spammer whose mail reaches the
+  inbox - would otherwise read as someone in the address book and lose the
+  "New sender" badge. People join the address book when the user writes to
+  them (`ContactCollector::Collect`). A personal mailbox address never counts
+  as a service however large its provider, and a blocked sender or an address
+  the user deleted from the address book (`ContactStore::Forget`) is never
+  collected.
 
 One rule guards it: **an existing contact is never modified or reclassified.**
 An address the user has filed under Friends themselves stays there, whatever
