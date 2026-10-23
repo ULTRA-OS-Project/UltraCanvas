@@ -108,9 +108,9 @@ std::shared_ptr<UltraCanvasContainer> MakeComparisonTab(
 }
 
 std::shared_ptr<UltraCanvasContainer> MakeControlStrip(const std::string& idPrefix) {
-    // Wraps onto a second row when the window is narrower than the
-    // controls, instead of clipping the last ones.
-    auto strip = std::make_shared<UltraCanvasContainer>(idPrefix + "Controls", 0, 58);
+    // Wraps onto further rows when the window is narrower than the
+    // controls, and is as tall as those rows: a fixed height cut the third.
+    auto strip = std::make_shared<UltraCanvasContainer>(idPrefix + "Controls");
     strip->layout.SetFlexRow().SetFlexGap(10, 4)
                  .SetFlexWrap(CSSLayout::FlexWrap::Wrap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Center);
