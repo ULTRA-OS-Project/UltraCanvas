@@ -3,12 +3,15 @@
 // Loads OCR-demo.png by default and lets the user open an alternative
 // image via the native file dialog. Recognised text is shown in a
 // read-only text area.
+// Version: 0.3.0 - the shared page look (UltraCanvasDemoPageKit): the two
+//                  cards in a wrapping row, labels and buttons sized to their text
 // Version: 0.2.0 - Open offers FileLoader's picture types
 // Version: 0.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 
 #ifdef ULTRACANVAS_HAS_OCR_PLUGIN
 
@@ -51,52 +54,29 @@ std::string BuildResultHeader(const OCRResult& r, const std::string& source) {
 
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateOCRExamples() {
-    // ===== ROOT CONTAINER (matches BitmapFormatDemoPage proportions) =====
-    auto container = std::make_shared<UltraCanvasContainer>(
-        "OCRDemoPage", 0, 0, 950, 750);
-    container->SetBackgroundColor(Color(248, 250, 252, 255));
+    auto container = DemoKit::CreatePage("OCRDemoPage",
+        "Optical Character Recognition (Tesseract backend)",
+        "Load an image, pick a language (any Tesseract language — "
+        "packs download on first use), then press \"Run OCR\".");
 
-    // ===== HEADER =====
-    auto header = std::make_shared<UltraCanvasLabel>(
-        "OCRHeader", 20, 16, 910, 28);
-    header->SetText("Optical Character Recognition (Tesseract backend)");
-    header->SetFontSize(18);
-    header->SetFontWeight(FontWeight::Bold);
-    header->SetTextColor(Color(30, 41, 59, 255));
-    container->AddChild(header);
-
-    auto subhead = std::make_shared<UltraCanvasLabel>(
-        "OCRSub", 20, 46, 910, 22);
-    subhead->SetText("Load an image, pick a language (any Tesseract language — "
-                     "packs download on first use), then press \"Run OCR\".");
-    subhead->SetFontSize(12);
-    subhead->SetTextColor(Color(100, 116, 139, 255));
-    container->AddChild(subhead);
+    // The image and its controls beside the result; the result card moves
+    // under the image card when the window is narrow.
+    auto cardsRow = DemoKit::AddRow(container, "OCRCardsRow");
 
     // ===== LEFT COLUMN: image preview + actions =====
-    const int leftX = 20, topY = 80, leftW = 380, leftH = 650;
-    auto imageCard = std::make_shared<UltraCanvasContainer>(
-        "OCRImageCard", leftX, topY, leftW, leftH);
-    imageCard->SetBackgroundColor(Color(255, 255, 255, 255));
-    imageCard->SetBorders(1, Color(226, 232, 240, 255));
-    container->AddChild(imageCard);
-
-    auto imageTitle = std::make_shared<UltraCanvasLabel>(
-        "OCRImageTitle", 16, 12, leftW - 32, 22);
-    imageTitle->SetText("Input image");
-    imageTitle->SetFontSize(13);
-    imageTitle->SetFontWeight(FontWeight::Bold);
-    imageTitle->SetTextColor(Color(30, 41, 59, 255));
-    imageCard->AddChild(imageTitle);
+    // The frame keeps its size: the image inside fits itself to it.
+    const int frameW = 348, frameH = 420;
+    auto imageCard = DemoKit::AddCard(cardsRow, "OCRImageCard", "Input image", "",
+                                      frameW + 2 * DemoKit::kCardPadding);
 
     auto imageFrame = std::make_shared<UltraCanvasContainer>(
-        "OCRImageFrame", 16, 44, leftW - 32, leftH - 230);
+        "OCRImageFrame", 0, 0, frameW, frameH);
     imageFrame->SetBackgroundColor(Color(241, 245, 249, 255));
     imageFrame->SetBorders(1, Color(203, 213, 225, 255));
-    imageCard->AddChild(imageFrame);
+    DemoKit::AddFixed(imageCard, imageFrame);
 
     auto image = std::make_shared<UltraCanvasImageElement>(
-        "OCRImage", 4, 4, leftW - 40, leftH - 238);
+        "OCRImage", 4, 4, frameW - 8, frameH - 8);
     const std::string defaultPath =
         NormalizePath(GetResourcesDir() + kDefaultOCRImage);
     image->LoadFromFile(defaultPath);
@@ -106,16 +86,14 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     // ===== Language selector =====
     // The full Tesseract catalogue is offered; languages whose traineddata is
     // not installed yet are marked and fetched on demand when OCR is run.
-    auto langLabel = std::make_shared<UltraCanvasLabel>(
-        "OCRLangLabel", 16, leftH - 176, 90, 24);
-    langLabel->SetText("Language:");
-    langLabel->SetFontSize(12);
+    auto langRow = DemoKit::AddRow(imageCard, "OCRLangRow", 8);
+    langRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto langLabel = DemoKit::AddText(langRow, "OCRLangLabel", "Language:");
     langLabel->SetFontWeight(FontWeight::Bold);
-    langLabel->SetTextColor(Color(30, 41, 59, 255));
-    imageCard->AddChild(langLabel);
+    langLabel->SetTextColor(DemoKit::TitleText());
 
     auto langDropdown = std::make_shared<UltraCanvasDropdown>(
-        "OCRLangDropdown", 110, leftH - 178, leftW - 126, 28);
+        "OCRLangDropdown", 0, 0, 220, 28);
     {
         std::vector<std::string> installedVec =
             UltraCanvasOCR::InstalledLanguages();
@@ -133,7 +111,7 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
         }
         langDropdown->SetSelectedIndex(selectIndex, false);
     }
-    imageCard->AddChild(langDropdown);
+    DemoKit::Add(langRow, langDropdown, 1);
 
     auto selectedLang = std::make_shared<std::string>("eng");
     langDropdown->onSelectionChanged =
@@ -141,34 +119,17 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
             *selectedLang = item.value;
         };
 
-    auto pathLabel = std::make_shared<UltraCanvasLabel>(
-        "OCRImagePath", 16, leftH - 140, leftW - 32, 20);
-    pathLabel->SetText(defaultPath);
-    pathLabel->SetFontSize(10);
-    pathLabel->SetTextColor(Color(100, 116, 139, 255));
-    imageCard->AddChild(pathLabel);
+    auto pathLabel = DemoKit::AddCaption(imageCard, "OCRImagePath", defaultPath);
 
     // ===== RIGHT COLUMN: result text area =====
-    const int rightX = 420, rightW = 510, rightH = 650;
-    auto resultCard = std::make_shared<UltraCanvasContainer>(
-        "OCRResultCard", rightX, topY, rightW, rightH);
-    resultCard->SetBackgroundColor(Color(255, 255, 255, 255));
-    resultCard->SetBorders(1, Color(226, 232, 240, 255));
-    container->AddChild(resultCard);
+    auto resultCard = DemoKit::AddCard(cardsRow, "OCRResultCard", "Recognised text");
 
-    auto resultTitle = std::make_shared<UltraCanvasLabel>(
-        "OCRResultTitle", 16, 12, rightW - 32, 22);
-    resultTitle->SetText("Recognised text");
-    resultTitle->SetFontSize(13);
-    resultTitle->SetFontWeight(FontWeight::Bold);
-    resultTitle->SetTextColor(Color(30, 41, 59, 255));
-    resultCard->AddChild(resultTitle);
-
+    // As wide as the card; the text scrolls inside its 586 px.
     auto resultArea = std::make_shared<UltraCanvasTextArea>(
-        "OCRResultArea", 16, 44, rightW - 32, rightH - 64);
+        "OCRResultArea", 0, 0, 478, 586);
     resultArea->SetText("(no result yet — press \"Run OCR\")");
     resultArea->SetReadOnly(true);
-    resultCard->AddChild(resultArea);
+    DemoKit::AddStretched(resultCard, resultArea);
 
     // ===== Shared state for the action buttons =====
     auto currentPath = std::make_shared<std::string>(defaultPath);
@@ -206,10 +167,14 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
     };
 
     // ===== BUTTONS =====
-    const int btnY = leftH - 80;
-    auto openBtn = std::make_shared<UltraCanvasButton>(
-        "OCROpenBtn", 16, btnY, 160, 36);
-    openBtn->SetText("Open image");
+    // Each as wide as its icon and text, at least the 160 x 36 it had.
+    auto buttonRow = DemoKit::AddRow(imageCard, "OCRButtonRow");
+    CSSLayout::BoxConstraints buttonLimits;
+    buttonLimits.minWidth = CSSLayout::Dimension::Px(160);
+    buttonLimits.minHeight = CSSLayout::Dimension::Px(36);
+
+    auto openBtn = std::make_shared<UltraCanvasButton>("OCROpenBtn", "Open image");
+    openBtn->boxConstraints = buttonLimits;
     SetFlatButtonIcon(*openBtn, "menu/folder.svg");
     openBtn->SetFontSize(12);
     openBtn->SetColors(Color(241, 245, 249, 255), Color(226, 232, 240, 255));
@@ -231,18 +196,17 @@ UltraCanvasDemoApplication::CreateOCRExamples() {
                 }
             });
     };
-    imageCard->AddChild(openBtn);
+    DemoKit::Add(buttonRow, openBtn);
 
-    auto runBtn = std::make_shared<UltraCanvasButton>(
-        "OCRRunBtn", 188, btnY, 160, 36);
-    runBtn->SetText("Run OCR");
+    auto runBtn = std::make_shared<UltraCanvasButton>("OCRRunBtn", "Run OCR");
+    runBtn->boxConstraints = buttonLimits;
     SetFlatButtonIcon(*runBtn, "menu/search.svg");
     runBtn->SetFontSize(12);
     runBtn->SetColors(Color(37, 99, 235, 255), Color(29, 78, 216, 255));
     runBtn->SetTextColors(Color(255, 255, 255, 255));
     runBtn->SetCornerRadius(6);
     runBtn->onClick = runOCR;
-    imageCard->AddChild(runBtn);
+    DemoKit::Add(buttonRow, runBtn);
 
     return container;
 }

@@ -8,11 +8,14 @@
 //
 // Each tab's second description line states what the mouse does there.
 //
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
+//                  card that fills the page area, the info lines sized to their text
 // Version: 1.0.0
-// Last Modified: 2026-07-31
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasPacketDiagram.h"
 #include "Plugins/Diagrams/UltraCanvasPacketTemplates.h"
 #include "UltraCanvasLabel.h"
@@ -33,14 +36,10 @@ namespace UltraCanvas {
         parent->AddChild(child);
     }
 
+    // The grey line under a diagram: wraps, as tall as its lines.
     static std::shared_ptr<UltraCanvasLabel> MakePacketInfoLine(const std::string& id,
                                                                 const std::string& text) {
-        auto label = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 46);
-        label->SetText(text);
-        label->SetFontSize(10);
-        label->SetWrap(TextWrap::WrapWord);
-        label->SetTextColor(Color(90, 90, 100, 255));
-        return label;
+        return DemoKit::CreateCaption(id, text);
     }
 
     static std::shared_ptr<UltraCanvasContainer> MakePacketTab(const std::string& id,
@@ -57,41 +56,28 @@ namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreatePacketDiagramExamples() {
-        const int CONTAINER_W = 1180;
-        const int CONTAINER_H = 800;
-        const int PAD = 16;
+        auto root = DemoKit::CreatePage("PacketRoot",
+                "Packet Diagrams - Protocol Header & Frame Structure",
+                "A packet diagram is a bit-accurate map of a protocol data unit: every "
+                "field is a box whose width is proportional to its size in bits, at its "
+                "exact offset. Fields wider than a row wrap and still read as one field. "
+                "Hover any cell for its offset and length; click to select it.");
+        // The page is the display area's height and the tabs take what the
+        // title and description leave; each tab page lays out inside.
+        root->SetFillsArea(true);
 
-        auto root = std::make_shared<UltraCanvasContainer>("PacketRoot", 0, 0,
-                                                           CONTAINER_W, CONTAINER_H);
-        root->SetBackgroundColor(Color(250, 250, 252, 255));
-        root->SetPadding(PAD);
-        root->layout.SetFlexColumn().SetFlexGap(8)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        auto card = DemoKit::CreateCard("PacketCard");
+        card->SetPadding(4);
+        DemoKit::Add(root, card, 1);
 
-        auto title = std::make_shared<UltraCanvasLabel>("PkTitle", 0, 0, 0, 30);
-        title->SetText("Packet Diagrams - Protocol Header & Frame Structure");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(40, 50, 120, 255));
-        AddPacketFlexChild(root, title, 0);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("PkDesc", 0, 0, 0, 34);
-        desc->SetText("A packet diagram is a bit-accurate map of a protocol data unit: every "
-                      "field is a box whose width is proportional to its size in bits, at its "
-                      "exact offset. Fields wider than a row wrap and still read as one field. "
-                      "Hover any cell for its offset and length; click to select it.");
-        desc->SetFontSize(11);
-        desc->SetWrap(TextWrap::WrapWord);
-        desc->SetTextColor(Color(90, 90, 100, 255));
-        AddPacketFlexChild(root, desc, 0);
-
-        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PacketTabs", 0, 0,
-                                                                 CONTAINER_W - 2 * PAD, 690);
+        auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PacketTabs", 0, 0, 0, 0);
         tabs->SetTabStyle(TabStyle::Rounded);
         tabs->SetTabHeight(30);
         tabs->SetTabCornerRadius(8.0f);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        const int INNER_W = CONTAINER_W - 2 * PAD - 8;
+        // The size each tab page and its diagram are built with.
+        const int INNER_W = 1140;
         const int INNER_H = 650;
 
         // =====================================================================
@@ -131,7 +117,7 @@ namespace UltraCanvas {
                     "row. Left brackets label the layers. Mouse: hover for offsets, click to select.");
 
             AddPacketFlexChild(tab, pkt, 1);
-            AddPacketFlexChild(tab, info, 0);
+            DemoKit::Add(tab, info);
             tabs->AddTab("TCP/IP Stack", tab);
         }
 
@@ -160,7 +146,7 @@ namespace UltraCanvas {
                     "Mouse: hover any field for its bit and byte offset.");
 
             AddPacketFlexChild(tab, pkt, 1);
-            AddPacketFlexChild(tab, info, 0);
+            DemoKit::Add(tab, info);
             tabs->AddTab("Rails + Payload", tab);
         }
 
@@ -190,7 +176,7 @@ namespace UltraCanvas {
                     "at once. Mouse: hover for offsets.");
 
             AddPacketFlexChild(tab, pkt, 1);
-            AddPacketFlexChild(tab, info, 0);
+            DemoKit::Add(tab, info);
             tabs->AddTab("RFC Monochrome", tab);
         }
 
@@ -224,7 +210,7 @@ namespace UltraCanvas {
                     "expands Header into its sub-fields is Phase 2.) Mouse: hover for byte offsets.");
 
             AddPacketFlexChild(tab, pkt, 0);
-            AddPacketFlexChild(tab, info, 0);
+            DemoKit::Add(tab, info);
             tabs->AddTab("Proportional Strip", tab);
         }
 
@@ -257,7 +243,7 @@ namespace UltraCanvas {
                     "decodes nothing itself. Mouse: hover to see offset, length and value.");
 
             AddPacketFlexChild(tab, pkt, 1);
-            AddPacketFlexChild(tab, info, 0);
+            DemoKit::Add(tab, info);
             tabs->AddTab("Byte Columns + Values", tab);
         }
 
@@ -291,11 +277,11 @@ title UDP Packet
                     "valid Mermaid diagram.");
 
             AddPacketFlexChild(tab, pkt, 1);
-            AddPacketFlexChild(tab, info, 0);
+            DemoKit::Add(tab, info);
             tabs->AddTab("Text Spec (Mermaid)", tab);
         }
 
-        AddPacketFlexChild(root, tabs, 1);
+        DemoKit::Add(card, tabs, 1);
         return root;
     }
 

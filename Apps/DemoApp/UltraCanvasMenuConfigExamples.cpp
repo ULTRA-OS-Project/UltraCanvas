@@ -8,10 +8,14 @@
 // This example is self-contained: it models the Filer menu without depending on
 // the Filer widget itself, so the configurator can be demonstrated on a real,
 // meaningful menu. "Apply" rebuilds a live preview of the right-click menu.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the preview
+//                  menu, status and configurator in one card that fills the area
 // Version: 1.1.0
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasMenuConfigWidget.h"
 #include "UltraCanvasMenuRegistry.h"
 #include "UltraCanvasMenuLayout.h"
@@ -211,36 +215,29 @@ namespace {
 } // namespace
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConfigExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("MenuConfigExamples", 0, 0, 1000, 640);
-    container->layout.SetFlexColumn().SetFlexGap(8)
-             .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    container->SetPadding(12.0f);
-
-    auto title = std::make_shared<UltraCanvasLabel>("MenuConfigTitle",
-        "Menu Configurator — customise the Filer file menu");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    container->AddChild(title);
-
-    auto desc = std::make_shared<UltraCanvasLabel>("MenuConfigDesc",
+    auto container = DemoKit::CreatePage("MenuConfigExamples",
+        "Menu Configurator — customise the Filer file menu",
         "Left: the Filer's right-click menu (under the Program root). Middle: add / remove / "
         "reorder. Right: every available Filer command by category. Apply rebuilds the preview "
         "menu now (temporary); Save also writes the layout to disk. Open the 'Filer menu' button "
         "above to try the configured menu.");
-    desc->SetWrap(TextWrap::WrapWord);
-    container->AddChild(desc);
+    // The configurator's three lists scroll themselves: the page is the
+    // area's height and the configurator takes what the texts leave.
+    container->SetFillsArea(true);
+
+    auto card = DemoKit::CreateCard("MenuConfigCard");
+    DemoKit::Add(container, card, 1);
+    card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
     // ----- live preview: a menubar whose single entry opens the configured
     // context menu, so Apply is visible and clickable -----
     auto preview = std::make_shared<UltraCanvasMenu>("MenuConfigPreviewBar");
     preview->SetMenuType(MenuType::Menubar);
     preview->size.height = CSSLayout::Dimension::Px(28);
-    preview->layoutItem.SetFlexShrink(0);
-    container->AddChild(preview);
+    DemoKit::Add(card, preview);
 
-    auto status = std::make_shared<UltraCanvasLabel>("MenuConfigStatus", "Ready.");
+    auto status = DemoKit::AddText(card, "MenuConfigStatus", "Ready.");
     status->SetTextColor(Color(90, 90, 90, 255));
-    container->AddChild(status);
 
     // ----- registry + default layout (demo-local so the sample commands don't
     // leak into any real application registry) -----
@@ -262,7 +259,6 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
 
     // ----- the configuration widget -----
     auto widget = std::make_shared<UltraCanvasMenuConfigWidget>("MenuConfigWidget");
-    widget->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     widget->SetRegistry(&filerRegistry);
     widget->SetLayoutSet(defaults);
 
@@ -282,7 +278,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuConf
         status->SetText("Cancelled (no changes applied).");
     };
 
-    container->AddChild(widget);
+    DemoKit::Add(card, widget, 1);
+    widget->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
     // Seed the preview so it isn't empty on first view.
     applyToPreview(defaults);

@@ -1,6 +1,10 @@
 // Apps/Demo/Items/UltraCanvasNodeDiagramExamples.cpp
 // Comprehensive examples for UltraCanvasNodeDiagram v2.2.0
-// Last Modified: 2026-07-31
+// Version: 2.3.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
+//                  card that fills the page area, each diagram filling its tab,
+//                  the Organization sidebar and the edit popup laid out by flex,
+//                  every label and button sized to its text
+// Last Modified: 2026-10-23
 //
 // Demonstrates all features of NodeDiagram 2.x:
 //  - Simple API (graph visualization)
@@ -43,6 +47,7 @@
 
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -59,6 +64,28 @@
 #include <sstream>
 
 namespace UltraCanvas {
+
+// A button as wide as its text, at least the size it had.
+static std::shared_ptr<UltraCanvasButton> MakeNdButton(const std::string& id,
+                                                       const std::string& text,
+                                                       float minW, float minH) {
+    auto button = std::make_shared<UltraCanvasButton>(id, text);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(minW);
+    limits.minHeight = CSSLayout::Dimension::Px(minH);
+    button->boxConstraints = limits;
+    return button;
+}
+
+// A diagram that takes all the room its flex parent has left (the tab page
+// is arranged into the tab's content area, so the diagram follows the tabs).
+static void AddFillingDiagram(const std::shared_ptr<UltraCanvasContainer>& parent,
+                              const std::shared_ptr<UltraCanvasUIElement>& diagram) {
+    diagram->size.width = CSSLayout::Dimension::Auto();
+    diagram->size.height = CSSLayout::Dimension::Auto();
+    DemoKit::Add(parent, diagram, 1);
+    diagram->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
+}
 
 // =============================================================================
 // 1. SIMPLE API - GRAPH VISUALIZATION (compatible with 1.x)
@@ -339,32 +366,38 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
     const int SIDEBAR_W = 176;
     const int PAD = 8;
     const int ROW_H = 26;
-    const int LABEL_H = 15;
 
+    // The control column beside the diagram, which takes the rest.
     auto tab = std::make_shared<UltraCanvasContainer>("ndTabOrg", 0, 0, w, h);
     tab->SetBackgroundColor(Color(255, 255, 255, 255));
+    tab->layout.SetFlexRow().SetFlexGap(PAD).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    tab->SetPadding(PAD);
+
+    // At least the 176 px the controls had; wider when a caption or a
+    // checkbox's text needs it.
+    auto sidebar = DemoKit::CreateColumn("ndOrgSidebar", 0);
+    CSSLayout::BoxConstraints sidebarLimits;
+    sidebarLimits.minWidth = CSSLayout::Dimension::Px(SIDEBAR_W);
+    sidebar->boxConstraints = sidebarLimits;
+    DemoKit::Add(tab, sidebar);
 
     int diagramX = SIDEBAR_W + PAD * 2;
     auto diagram = CreateOrgNetworkDiagram(
         diagramX, PAD, w - diagramX - PAD, h - PAD * 2);
     outDiagram = diagram;
 
-    int cy = PAD;
-
     // Small helper: a bold caption above a control.
     auto addCaption = [&](const std::string& id, const std::string& text) {
-        auto label = std::make_shared<UltraCanvasLabel>(id, PAD, cy, SIDEBAR_W, LABEL_H);
-        label->SetText(text);
+        auto label = DemoKit::CreateCaption(id, text);
         label->SetFontSize(9);
         label->SetFontWeight(FontWeight::Bold);
         label->SetTextColor(Color(90, 90, 105, 255));
-        tab->AddChild(label);
-        cy += LABEL_H;
+        DemoKit::Add(sidebar, label);
     };
 
     auto makeDropdown = [&](const std::string& id) {
-        auto dd = std::make_shared<UltraCanvasDropdown>(id, PAD, cy, SIDEBAR_W, ROW_H);
-        cy += ROW_H + 6;
+        auto dd = std::make_shared<UltraCanvasDropdown>(id, 0, 0, SIDEBAR_W, ROW_H);
+        dd->SetMargin(0, 0, 6, 0);
         return dd;
     };
 
@@ -393,7 +426,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                       "force-directed layout, so the cluster boxes look loosest "
                       "in Grid and Circular.");
         };
-    tab->AddChild(layoutDD);
+    DemoKit::AddStretched(sidebar, layoutDD);
 
     // ---- Node sizing ----
     addCaption("ndOrgSizeCap", "NODE SIZE (2.2.0)");
@@ -423,7 +456,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             }
             diagram->FitView();
         };
-    tab->AddChild(sizeDD);
+    DemoKit::AddStretched(sidebar, sizeDD);
 
     // ---- Degree counting mode ----
     addCaption("ndOrgDegreeCap", "DEGREE COUNTS");
@@ -444,7 +477,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                       "Incoming/Outgoing split each pair by the order it was "
                       "declared in.");
         };
-    tab->AddChild(degreeDD);
+    DemoKit::AddStretched(sidebar, degreeDD);
 
     // ---- Clustering strength ----
     addCaption("ndOrgCohesionCap", "CLUSTER COHESION");
@@ -472,7 +505,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
                           "department centroid during layout.");
             }
         };
-    tab->AddChild(cohesionDD);
+    DemoKit::AddStretched(sidebar, cohesionDD);
 
     // ---- Link routing ----
     addCaption("ndOrgLinkCap", "LINK STYLE");
@@ -494,7 +527,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             diagram->SetDefaultLinkStyle(style);
             setStatus("Link routing changed for all links.");
         };
-    tab->AddChild(linkDD);
+    DemoKit::AddStretched(sidebar, linkDD);
 
     // ---- Node shape ----
     addCaption("ndOrgShapeCap", "NODE SHAPE");
@@ -517,7 +550,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             }
             setStatus("Node shape changed for all nodes.");
         };
-    tab->AddChild(shapeDD);
+    DemoKit::AddStretched(sidebar, shapeDD);
 
     // ---- Theme ----
     addCaption("ndOrgThemeCap", "THEME");
@@ -537,21 +570,20 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
             setStatus("Theme changed - themes set the canvas and grid colors; the "
                       "per-node department colors set by this example stay put.");
         };
-    tab->AddChild(themeDD);
+    DemoKit::AddStretched(sidebar, themeDD);
 
     // ---- Boolean toggles ----
-    cy += 2;
-
+    // Each as wide as its text.
     auto addToggle = [&](const std::string& id, const std::string& text, bool initial,
                          std::function<void(bool)> apply) {
         auto box = UltraCanvasCheckbox::CreateCheckbox(
-            id, PAD, cy, SIDEBAR_W, 20, text, initial);
+            id, 0, 0, 0, 20, text, initial);
         box->SetFontSize(10);
+        box->SetMargin(1, 0, 0, 0);
         box->onStateChanged = [apply](CheckedState, CheckedState newState) {
             apply(newState == CheckedState::Checked);
         };
-        tab->AddChild(box);
-        cy += 21;
+        DemoKit::Add(sidebar, box);
         return box;
     };
 
@@ -584,7 +616,7 @@ static std::shared_ptr<UltraCanvasContainer> CreateOrgShowcaseTab(
     addToggle("ndOrgSnap", "Snap to grid", false,
         [diagram](bool on) { diagram->SetSnapToGrid(on); });
 
-    tab->AddChild(diagram);
+    AddFillingDiagram(tab, diagram);
     return tab;
 }
 
@@ -721,6 +753,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     auto root = std::make_shared<UltraCanvasContainer>(
         "ndCustomRoot", x, y, w, h);
     root->SetBackgroundColor(Color(255, 255, 255, 255));
+    root->layout.SetFlexColumn();
     
     // ---- Diagram fills the whole tab ----
     auto diagram = CreateNodeDiagram("nd_custom", 0, 0, w, h);
@@ -731,7 +764,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     diagram->SetDefaultLinkStyle(LinkStyle::Bezier);
     st->diagram = diagram;
     st->statusRef = statusLabel;  // 2.0.4: store for mode change feedback
-    root->AddChild(diagram);
+    AddFillingDiagram(root, diagram);
     
     // 2.0.4: auto-size helper using the new SuggestNodeSizeForLabel API
     auto sizeForLabel = [&diagram](const std::string& label) -> std::pair<float, float> {
@@ -832,54 +865,56 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
     int popupX = (w - POPUP_W) / 2;
     int popupY = (h - POPUP_H) / 2;
     
+    // The popup itself stays an overlay placed over the diagram; inside it
+    // a column of rows, each text as wide as it needs.
     auto popup = std::make_shared<UltraCanvasContainer>(
         "ndCustomPopup", popupX, popupY, POPUP_W, POPUP_H);
     popup->SetBackgroundColor(Color(252, 252, 254, 255));
+    popup->layout.SetFlexColumn().SetFlexGap(10)
+                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    popup->SetPadding(10, 12, 12, 12);
     popup->SetVisible(false);
     st->popup = popup;
     
     // Popup title
-    auto popupTitle = std::make_shared<UltraCanvasLabel>(
-        "popupTitle", 12, 10, POPUP_W - 24, 22);
-    popupTitle->SetText("Edit Node");
+    auto popupTitle = DemoKit::CreateHeading("popupTitle", "Edit Node");
     popupTitle->SetFontSize(14);
-    popupTitle->SetFontWeight(FontWeight::Bold);
     popupTitle->SetTextColor(Color(40, 50, 110, 255));
-    popup->AddChild(popupTitle);
+    DemoKit::Add(popup, popupTitle);
     
-    // "Label:" caption
-    auto lblCap = std::make_shared<UltraCanvasLabel>(
-        "popupLblCap", 12, 40, 60, 22);
-    lblCap->SetText("Label:");
+    // "Label:" caption and the label TextInput
+    auto labelRow = DemoKit::CreateRow("popupLabelRow", 8, false);
+    labelRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    DemoKit::Add(popup, labelRow);
+
+    auto lblCap = DemoKit::CreateText("popupLblCap", "Label:");
     lblCap->SetFontSize(11);
-    popup->AddChild(lblCap);
+    DemoKit::Add(labelRow, lblCap);
     
-    // Label TextInput
     auto labelInput = std::make_shared<UltraCanvasTextInput>(
-        "popupLabelInput", 70, 40, POPUP_W - 82, 24);
+        "popupLabelInput", 0, 0, POPUP_W - 82, 24);
     labelInput->SetPlaceholder("Type a label...");
     st->labelInput = labelInput;
-    popup->AddChild(labelInput);
+    DemoKit::Add(labelRow, labelInput, 1);
     
-    // "Color:" caption
-    auto colCap = std::make_shared<UltraCanvasLabel>(
-        "popupColCap", 12, 80, 60, 22);
-    colCap->SetText("Color:");
+    // "Color:" caption and the swatches
+    auto colorRow = DemoKit::CreateRow("popupColorRow", 6, true);
+    colorRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    DemoKit::Add(popup, colorRow);
+
+    auto colCap = DemoKit::CreateText("popupColCap", "Color:");
     colCap->SetFontSize(11);
-    popup->AddChild(colCap);
+    colCap->SetMargin(0, 2, 0, 0);
+    DemoKit::Add(colorRow, colCap);
     
     // 6 color swatches - custom widget that paints a colored rounded square
     const int SW_SIZE = 28;
-    const int SW_GAP = 6;
-    int swX = 70;
-    int swY = 80;
     for (size_t i = 0; i < kCustomSwatches.size(); ++i) {
         const Color& c = kCustomSwatches[i];
         std::ostringstream idStream;
         idStream << "popupSwatch" << i;
         auto sw = std::make_shared<ColorSwatch>(
-            idStream.str(),
-            swX + (int)i * (SW_SIZE + SW_GAP), swY, SW_SIZE, c);
+            idStream.str(), 0, 0, SW_SIZE, c);
         // Capture st as weak so the swatch can update sibling swatches' selected
         // state (so only one looks active at a time).
         sw->onClick = [st, c]() {
@@ -892,18 +927,20 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
                 }
             }
         };
-        popup->AddChild(sw);
+        DemoKit::Add(colorRow, sw);
         st->swatchButtons.push_back(sw);
     }
     
-    // OK / Cancel / Delete buttons
+    // OK / Cancel / Delete buttons, at the bottom: Delete left, the others right
     const int BTN_W = 80;
     const int BTN_H = 28;
-    int bY = POPUP_H - 12 - BTN_H;
+    auto popupSpacer = std::make_shared<UltraCanvasContainer>("popupSpacer");
+    DemoKit::Add(popup, popupSpacer, 1);
+
+    auto buttonRow = DemoKit::CreateRow("popupButtonRow", 6, true);
+    DemoKit::Add(popup, buttonRow);
     
-    auto btnDelete = std::make_shared<UltraCanvasButton>(
-        "popupBtnDelete", 12, bY, BTN_W, BTN_H);
-    btnDelete->SetText("Delete");
+    auto btnDelete = MakeNdButton("popupBtnDelete", "Delete", BTN_W, BTN_H);
     btnDelete->SetBackgroundColor(Color(220, 90, 90, 255));
     btnDelete->onClick = [st, statusLabel]() {
         if (!st->diagram || st->editingNodeId.empty()) {
@@ -919,11 +956,12 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
             statusLabel->SetText("Node '" + id + "' deleted.");
         }
     };
-    popup->AddChild(btnDelete);
+    DemoKit::Add(buttonRow, btnDelete);
+
+    auto buttonGap = std::make_shared<UltraCanvasContainer>("popupButtonGap");
+    DemoKit::Add(buttonRow, buttonGap, 1);
     
-    auto btnCancel = std::make_shared<UltraCanvasButton>(
-        "popupBtnCancel", POPUP_W - 12 - BTN_W * 2 - 6, bY, BTN_W, BTN_H);
-    btnCancel->SetText("Cancel");
+    auto btnCancel = MakeNdButton("popupBtnCancel", "Cancel", BTN_W, BTN_H);
     btnCancel->onClick = [st, statusLabel]() {
         // 2.0.5: If this popup was opened for a JUST-CREATED node (right-click
         // or Add Node button), Cancel reverts the creation by deleting the
@@ -945,11 +983,9 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
             }
         }
     };
-    popup->AddChild(btnCancel);
+    DemoKit::Add(buttonRow, btnCancel);
     
-    auto btnOk = std::make_shared<UltraCanvasButton>(
-        "popupBtnOk", POPUP_W - 12 - BTN_W, bY, BTN_W, BTN_H);
-    btnOk->SetText("OK");
+    auto btnOk = MakeNdButton("popupBtnOk", "OK", BTN_W, BTN_H);
     btnOk->SetBackgroundColor(Color(80, 140, 220, 255));
     btnOk->onClick = [st, statusLabel]() {
         if (!st->diagram || st->editingNodeId.empty()) {
@@ -990,7 +1026,7 @@ std::shared_ptr<UltraCanvasContainer> CreateCustomEditor(
             statusLabel->SetText("Node '" + id + "' updated.");
         }
     };
-    popup->AddChild(btnOk);
+    DemoKit::Add(buttonRow, btnOk);
     
     // The popup is added LAST so it draws on top of the diagram
     root->AddChild(popup);
@@ -1478,67 +1514,33 @@ void RegisterNodeDiagramExamples(/* DemoRegistry& registry */) {
 // emulate.
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiagramExamples() {
-    // ---- Layout constants ----
-    const int CONTAINER_W = 960;
-    const int CONTAINER_H = 720;
-    const int PAD = 20;
-    const int TITLE_H = 32;
-    const int SUBTITLE_H = 44;   // 2.0.6: 22->44 to fit 2 lines (text was truncated)
-    const int TABS_H = 470;     // The TabbedContainer panel
-    const int BTNBAR_H = 36;
-    const int STATUS_H = 26;
-    
-    // ---- Root container (light grey background like Gource demo) ----
-    auto root = std::make_shared<UltraCanvasContainer>(
-        "ndDemoRoot", 0, 0, CONTAINER_W, CONTAINER_H);
-    root->SetBackgroundColor(Color(248, 248, 250, 255));
-    
-    int yCursor = PAD;
-    
-    // ---- Title ----
-    auto titleLabel = std::make_shared<UltraCanvasLabel>(
-        "ndTitle", PAD, yCursor, CONTAINER_W - 2 * PAD, TITLE_H);
-    titleLabel->SetText("Node Diagram");
-    titleLabel->SetFontSize(20);
-    titleLabel->SetFontWeight(FontWeight::Bold);
-    titleLabel->SetTextColor(Color(50, 60, 130, 255));
-    root->AddChild(titleLabel);
-    yCursor += TITLE_H + 4;
-    
-    // ---- Subtitle ----
-    auto subtitleLabel = std::make_shared<UltraCanvasLabel>(
-        "ndSubtitle", PAD, yCursor, CONTAINER_W - 2 * PAD, SUBTITLE_H);
-    subtitleLabel->SetText(
+    // ---- Page: the tabs fill the display area, each diagram scrolls and
+    // zooms inside its tab ----
+    auto root = DemoKit::CreatePage("ndDemoRoot", "Node Diagram",
         "Friends: a force-directed network. Organization: cluster containers, "
         "degree-based node sizing and a color legend, with controls for every "
         "option. Custom: click 'Add Node' or right-click the canvas to create "
         "nodes, double-click a node to edit its label and color.");
-    subtitleLabel->SetFontSize(11);
-    subtitleLabel->SetTextColor(Color(110, 110, 120, 255));
-    subtitleLabel->SetWrap(TextWrap::WrapWord);   // 2.0.6: was being truncated to "do..."
-    root->AddChild(subtitleLabel);
-    yCursor += SUBTITLE_H + 8;
+    root->SetFillsArea(true);
+
+    auto card = DemoKit::CreateCard("ndCard");
+    card->SetPadding(4);
+    DemoKit::Add(root, card, 1);
     
-    // ---- Tabbed container with the two diagrams ----
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-        "ndTabs", PAD, yCursor, CONTAINER_W - 2 * PAD, TABS_H);
+    // ---- Tabbed container with the diagrams ----
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("ndTabs", 0, 0, 0, 0);
     tabs->SetTabStyle(TabStyle::Rounded);
+    tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     
-    // Inner area available to each tab content (TabbedContainer reserves ~32px
-    // for the tab bar; the rest is content area).
-    const int INNER_W = CONTAINER_W - 2 * PAD - 8;
-    const int INNER_H = TABS_H - 40;
+    // The size each tab page and its diagram are built with; the tabs then
+    // arrange the page into their content area and the diagram follows.
+    const int INNER_W = 912;
+    const int INNER_H = 430;
     
-    // Pre-compute the final Y for the status label so we can construct it
-    // once at the right place, without later mutation. yCursor here is the
-    // top of the tabs panel; status sits below tabs + button bar.
-    int statusY = yCursor + TABS_H + 8 + BTNBAR_H + 4;
-    
-    auto statusLabel = std::make_shared<UltraCanvasLabel>(
-        "ndStatus", PAD, statusY, CONTAINER_W - 2 * PAD, STATUS_H);
-    statusLabel->SetText("Ready - Click 'Add Node' or right-click on the canvas "
-                         "(Custom tab) to start building. Wheel to zoom, drag to pan.");
-    statusLabel->SetFontSize(10);
+    // The status line under the button bar; every tab reports to it.
+    auto statusLabel = DemoKit::CreateCaption(
+        "ndStatus", "Ready - Click 'Add Node' or right-click on the canvas "
+                    "(Custom tab) to start building. Wheel to zoom, drag to pan.");
     statusLabel->SetTextColor(Color(90, 90, 100, 255));
     
     // ---- Friends tab (read-only example graph) ----
@@ -1546,7 +1548,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     auto friendsTab = std::make_shared<UltraCanvasContainer>(
         "ndTabFriends", 0, 0, INNER_W, INNER_H);
     friendsTab->SetBackgroundColor(Color(255, 255, 255, 255));
-    friendsTab->AddChild(friendsDiag);
+    friendsTab->layout.SetFlexColumn();
+    friendsTab->SetPadding(4);
+    AddFillingDiagram(friendsTab, friendsDiag);
     
     // ---- Organization tab (2.2.0 showcase: clusters, degree sizing, legend) ----
     std::shared_ptr<UltraCanvasNodeDiagram> orgDiag;
@@ -1563,8 +1567,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     tabs->AddTab("Custom", customTab);
     tabs->SetActiveTab(0);
     
-    root->AddChild(tabs);
-    yCursor += TABS_H + 8;
+    DemoKit::Add(card, tabs, 1);
     
     // ---- Active-diagram tracker (for button bar callbacks) ----
     auto activeDiagram = std::make_shared<std::shared_ptr<UltraCanvasNodeDiagram>>(friendsDiag);
@@ -1601,42 +1604,23 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     // ---- Button bar (Select / Connect / Reset / [Add Node | Delete | Clear All]) ----
     // 2.0.4: Add Node, Delete, Clear All are visible only on the Custom tab.
     // We update visibility in onTabChange below.
+    // Each button as wide as its text, at least the width it had.
     const int BTN_W = 90;
     const int BTN_W_ADD = 100;   // "Add Node" needs a hair more
     const int BTN_W_CLEAR = 90;
-    const int BTN_GAP = 8;
-    int btnX = PAD;
+    const int BTN_H = 32;
     
-    auto btnSelect = std::make_shared<UltraCanvasButton>(
-        "ndBtnSelect", btnX, yCursor, BTN_W, BTNBAR_H - 4);
-    btnSelect->SetText("Select");
-    btnX += BTN_W + BTN_GAP;
+    auto btnSelect = MakeNdButton("ndBtnSelect", "Select", BTN_W, BTN_H);
+    auto btnConnect = MakeNdButton("ndBtnConnect", "Connect", BTN_W, BTN_H);
+    auto btnReset = MakeNdButton("ndBtnReset", "Reset", BTN_W, BTN_H);
     
-    auto btnConnect = std::make_shared<UltraCanvasButton>(
-        "ndBtnConnect", btnX, yCursor, BTN_W, BTNBAR_H - 4);
-    btnConnect->SetText("Connect");
-    btnX += BTN_W + BTN_GAP;
-    
-    auto btnReset = std::make_shared<UltraCanvasButton>(
-        "ndBtnReset", btnX, yCursor, BTN_W, BTNBAR_H - 4);
-    btnReset->SetText("Reset");
-    btnX += BTN_W + BTN_GAP;
-    
-    auto btnAddNode = std::make_shared<UltraCanvasButton>(
-        "ndBtnAddNode", btnX, yCursor, BTN_W_ADD, BTNBAR_H - 4);
-    btnAddNode->SetText("Add Node");
+    auto btnAddNode = MakeNdButton("ndBtnAddNode", "Add Node", BTN_W_ADD, BTN_H);
     btnAddNode->SetBackgroundColor(Color(80, 160, 80, 255));
-    btnX += BTN_W_ADD + BTN_GAP;
     
-    auto btnDelete = std::make_shared<UltraCanvasButton>(
-        "ndBtnDelete", btnX, yCursor, BTN_W, BTNBAR_H - 4);
-    btnDelete->SetText("Delete");
+    auto btnDelete = MakeNdButton("ndBtnDelete", "Delete", BTN_W, BTN_H);
     btnDelete->SetBackgroundColor(Color(220, 90, 90, 255));
-    btnX += BTN_W + BTN_GAP;
     
-    auto btnClearAll = std::make_shared<UltraCanvasButton>(
-        "ndBtnClearAll", btnX, yCursor, BTN_W_CLEAR, BTNBAR_H - 4);
-    btnClearAll->SetText("Clear All");
+    auto btnClearAll = MakeNdButton("ndBtnClearAll", "Clear All", BTN_W_CLEAR, BTN_H);
     btnClearAll->SetBackgroundColor(Color(160, 90, 130, 255));
     
     // Custom-only buttons start hidden (Friends is the initial tab)
@@ -1788,13 +1772,15 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
         }
     };
     
-    root->AddChild(btnSelect);
-    root->AddChild(btnConnect);
-    root->AddChild(btnReset);
-    root->AddChild(btnAddNode);
-    root->AddChild(btnDelete);
-    root->AddChild(btnClearAll);
-    yCursor += BTNBAR_H;
+    // The bar wraps onto a second line when the window is narrow.
+    auto buttonBar = DemoKit::AddRow(card, "ndButtonBar", 8);
+    buttonBar->SetPadding(4, 4, 0, 4);
+    DemoKit::Add(buttonBar, btnSelect);
+    DemoKit::Add(buttonBar, btnConnect);
+    DemoKit::Add(buttonBar, btnReset);
+    DemoKit::Add(buttonBar, btnAddNode);
+    DemoKit::Add(buttonBar, btnDelete);
+    DemoKit::Add(buttonBar, btnClearAll);
     
     // 2.0.4: Toggle button visibility per tab. Override the earlier
     // onTabChange that only updated activeDiagram and status.
@@ -1809,7 +1795,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateNodeDiag
     };
     
     // ---- Status bar ----
-    root->AddChild(statusLabel);
+    statusLabel->SetMargin(0, 4, 4, 4);
+    DemoKit::Add(card, statusLabel);
     
     return root;
 }
