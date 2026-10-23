@@ -1,4 +1,11 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.38 - a recipient suggestion's menu: Edit contact, Delete address,
+//                  Set as SPAM; blocked senders are not suggested; Edit contact
+//                  (here and for a message's sender) edits that address; a
+//                  deleted address is forgotten; a known service is collected
+//                  only with its domain proven; Contacts > Other > Remove
+//                  collected contacts; services collected also from bodies
+//                  downloaded later (CollectServices, CollectServiceOf)
 // Version: 0.9.37 - the new-mail notification carries where its click leads
 //                   (launch), and UltraMail is the activator of its Windows
 //                   toasts, so a click opens the mail after the broker host
@@ -1142,11 +1149,89 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     if (contacts_.IsOpen()) contacts_.ListAll(*book);
     auto written = std::make_shared<std::map<std::string, double>>();
     store_.WeighSentRecipients(*written, static_cast<int64_t>(std::time(nullptr)));
+    // A blocked sender ("Set as SPAM", "Block this sender") is not offered:
+    // the lists as they are at each keystroke.
     view->suggestRecipients = [book, written](const std::string& query,
                                               const std::string& fieldText) {
-        return SuggestRecipients(*book, query, fieldText, 8, written.get());
+        const SenderLists lists = GetSenderLists();
+        return SuggestRecipients(*book, query, fieldText, 8, written.get(),
+                                 [&lists](const std::string& address) {
+                                     return !lists.BlockedBy(address).empty();
+                                 });
     };
     UltraCanvasWindow* raw = win.get();
+    // A suggestion's right-click menu. Each change re-reads the address book
+    // into `book`, so the field's next suggestions follow it.
+    view->editRecipientContact = [this, raw, book](const std::string& address,
+                                                   std::function<void()> done) {
+        Contact contact;
+        bool found = false;
+        if (!contacts_.IsOpen() || !contacts_.FindByEmail(address, contact, found) || !found)
+            return;
+        contactsView_.SetStore(&contacts_);
+        contactsView_.EditContact(contact, /*isNew=*/false, raw,
+            [this, book, done](const Contact&) {
+                book->clear();
+                contacts_.ListAll(*book);
+                RefreshContactIndex();
+                Refresh();   // badges
+                done();
+            },
+            address);   // the address right-clicked, whichever of the contact's it is
+    };
+    view->deleteRecipientAddress = [this, raw, book](const std::string& address,
+                                                     std::function<void()> done) {
+        Contact contact;
+        bool found = false;
+        if (!contacts_.IsOpen() || !contacts_.FindByEmail(address, contact, found) || !found)
+            return;
+        // Only this address: a contact with others keeps them, one without is
+        // deleted.
+        const std::string lower = ToLowerCase(address);
+        const bool others = std::any_of(contact.emails.begin(), contact.emails.end(),
+            [&lower](const ContactEmail& e) { return ToLowerCase(e.address) != lower; });
+        const std::string name = contact.displayName.empty() ? address : contact.displayName;
+        const std::string question = others
+            ? "Delete " + address + " from the contact \"" + name + "\"?"
+            : "Delete \"" + name + "\" <" + address + "> from the address book?";
+        UltraCanvasAlert::Confirm(question, "Delete address",
+            [this, raw, book, contact, lower, others, done](bool yes) mutable {
+                if (!yes) return;
+                UltraDbResult r;
+                if (others) {
+                    auto& emails = contact.emails;
+                    emails.erase(std::remove_if(emails.begin(), emails.end(),
+                        [&lower](const ContactEmail& e) { return ToLowerCase(e.address) == lower; }),
+                        emails.end());
+                    if (std::none_of(emails.begin(), emails.end(),
+                                     [](const ContactEmail& e) { return e.primary; }))
+                        emails.front().primary = true;
+                    r = contacts_.Save(contact);
+                } else {
+                    r = contacts_.Remove(contact.id);
+                }
+                if (!r) {
+                    AlertError(raw, "The address could not be deleted.", DetailLine(r));
+                    return;
+                }
+                contacts_.Forget({lower});   // incoming mail does not add it back
+                book->clear();
+                contacts_.ListAll(*book);
+                RefreshContactIndex();
+                contactsView_.Refresh();   // no-op unless the Contacts window is open
+                Refresh();                 // badges
+                done();
+            },
+            raw);
+    };
+    // Spam: the sender goes on the blocked list, as the sender menu's "Block
+    // this sender" does - its mail is judged again, and it is not suggested.
+    view->markRecipientSpam = [this](const std::string& address, std::function<void()> done) {
+        const std::string entry = SenderLists::Entry(address, /*blockList=*/true);
+        if (entry.empty()) return;
+        HandleSenderListChange(entry, /*blockList=*/true, /*add=*/true);
+        done();
+    };
     // Sent, or safely queued in the outbox: the window has done its job. It
     // stays open when the message was not queued (no recipient, no outbox),
     // so nothing typed is lost. The send's own result (sent / waiting in the
@@ -1457,6 +1542,7 @@ void UltraMailApp::FetchMissingBody(const MessageEnvelope& env) {
         [this, env, key](const SyncOutcome& outcome) {
             bodyFetchInFlight_.erase(key);
             if (outcome) {
+                CollectServiceOf(env);        // its sender's domain may be proven now
                 mailView_.BodyArrived(env);   // shown, if it is still the one being read
                 return;
             }
@@ -1753,6 +1839,7 @@ void UltraMailApp::HandleUnsubscribe(const MessageEnvelope& env) {
         },
         "Unsubscribe",
         [this, env, path]() {
+            CollectServiceOf(env);   // its sender's domain may be proven now
             auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
             UnsubscribeWith(env, loaded.success
                 ? std::string(loaded.bytes.begin(), loaded.bytes.end()) : std::string());
@@ -2333,11 +2420,34 @@ void UltraMailApp::CollectContacts(const std::string& accountId, const std::stri
     if (!contacts_.IsOpen()) return;
     std::vector<MessageEnvelope> msgs;
     store_.ListMessages(accountId, folder, 0, msgs);
-    // CollectSender, not Collect: a sender in the known-sender registry is
-    // filed under Services as a business contact (with the service's name as
-    // the organization), everything else lands in Other as before.
-    for (const auto& m : msgs)
-        ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr);
+    // Only the known services whose domain the scan proved, as after a sync.
+    CollectServices(accountId, folder, msgs);
+}
+
+void UltraMailApp::CollectServices(const std::string& accountId, const std::string& folder,
+                                   const std::vector<MessageEnvelope>& mail) {
+    if (!contacts_.IsOpen() || mail.empty()) return;
+    // A known service is filed only when the server proved its domain: the
+    // verdict stored with the body when it was downloaded and scanned.
+    std::map<int64_t, MessageSecurity> verdicts;
+    store_.ListSecurity(accountId, folder, verdicts);
+    std::vector<SenderSeen> senders;
+    senders.reserve(mail.size());
+    for (const MessageEnvelope& m : mail) {
+        const auto v = verdicts.find(m.uid);
+        if (v == verdicts.end() || v->second.verifiedDomain.empty()) continue;
+        senders.push_back({m.fromName, m.fromAddr, v->second.verifiedDomain});
+    }
+    ContactCollector::CollectSenders(contacts_, senders);
+}
+
+void UltraMailApp::CollectServiceOf(const MessageEnvelope& m) {
+    if (!contacts_.IsOpen() || m.folder != "INBOX") return;
+    MessageSecurity sec;
+    if (!store_.GetSecurity(m.accountId, m.folder, m.uid, sec) || sec.verifiedDomain.empty())
+        return;
+    if (ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr, sec.verifiedDomain))
+        RefreshContactIndex();
 }
 
 void UltraMailApp::StartBackgroundSync() {
@@ -2881,7 +2991,9 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The senders of the mail this sync brought, for the address book's
         // collector on the UI thread afterwards. Filled on the worker, read
         // once it has finished (onDone runs after the last progress call).
-        auto arrived = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
+        // Only their identity: what the scan proved of each sender is read from
+        // the store then, once its body has been downloaded and scanned.
+        auto arrived = std::make_shared<std::vector<MessageEnvelope>>();
         // Stash the credential-resolve code so the UI thread can tell an expired
         // OAuth sign-in (offer re-sign-in) from an ordinary sync failure.
         auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Ok);
@@ -2973,7 +3085,15 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 if (contacts_.IsOpen()) {
                     Trace::Stage step("Address book: the senders of " +
                                       std::to_string(arrived->size()) + " new message(s)", 0);
-                    ContactCollector::CollectSenders(contacts_, *arrived);
+                    // With the newest mail held already: a body an earlier
+                    // sync did not get may have come now (the sync fetches
+                    // those for the newest 100), and with it the proof of
+                    // its sender's domain.
+                    std::vector<MessageEnvelope> mail = *arrived;
+                    std::vector<MessageEnvelope> newest;
+                    store_.ListMessages(aid, "INBOX", kCollectNewest, newest);
+                    mail.insert(mail.end(), newest.begin(), newest.end());
+                    CollectServices(aid, "INBOX", mail);
                 }
                 Refresh();   // authoritative, correctly sorted final list
             });
@@ -2985,7 +3105,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             // Sender icons are not fetched here: a download held the sync
             // for its whole round trip. The list asks for the icons of the
             // rows it paints, and the icon cache's own threads fetch them.
-            if (m.folder == "INBOX") arrived->emplace_back(m.fromName, m.fromAddr);
+            if (m.folder == "INBOX") arrived->push_back(m);
             feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             newMail_.Note(m);   // and the notification on screen, when the sync ends
             progressBuf->push_back(m);
@@ -3096,7 +3216,7 @@ void UltraMailApp::EditSenderContact(const MessageEnvelope& m, bool isNew) {
     contactsView_.EditContact(contact, /*isNew=*/!found, parent, [this](const Contact&) {
         RefreshContactIndex();
         Refresh();   // badges: the sender is (still) in the address book
-    });
+    }, m.fromAddr);   // the sender's address, whichever of the contact's it is
 }
 
 void UltraMailApp::AddSenderToContactGroup(const MessageEnvelope& m,
@@ -3155,6 +3275,13 @@ void UltraMailApp::OpenContacts() {
 
     contactsView_.SetStore(&contacts_);
     contactsView_.onChanged = [this]() { RefreshContactIndex(); Refresh(); };
+    // Who the user writes to (the Sent folders), for "Remove collected
+    // contacts…": read when asked, so it is as current as the mail.
+    contactsView_.writtenTo = [this]() {
+        std::map<std::string, double> written;
+        store_.WeighSentRecipients(written, static_cast<int64_t>(std::time(nullptr)));
+        return written;
+    };
     win->AddChild(contactsView_.Build());
     contactsView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
     win->onWindowResize = [this](int cw, int ch) {

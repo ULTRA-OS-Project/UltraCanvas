@@ -2148,8 +2148,10 @@ message(STATUS "    Test registered: ListViewTooltipTest")
 # ===== LISTVIEW SCROLL TEST =====
 # EnsureRowVisible before the view's first layout (the row is revealed once it
 # has a size, instead of scrolling it below the top), the multi-column model's
-# SetItems (one notification for every row) and the selection following rows
-# inserted or removed above it. No window, no display.
+# SetItems (one notification for every row), the selection following rows
+# inserted or removed above it, and columns wider than the view (the
+# horizontal scrollbar, the sideways scroll and the Left / Right keys). No
+# window, no display.
 if(TARGET UltraCanvas)
     message(STATUS "  Building ListViewScrollTest...")
     add_executable(ListViewScrollTest

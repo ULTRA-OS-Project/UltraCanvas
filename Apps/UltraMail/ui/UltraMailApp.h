@@ -3,6 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.9 - CollectServices / CollectServiceOf: a known service collected
+//                  once a later-downloaded body proves its domain
 // Version: 0.12.8 - OpenFromActivation: a notification's click that reaches
 //                   UltraMail outside the bus (a Windows toast clicked after the
 //                   broker host quit, or with UltraMail not running) opens the
@@ -490,6 +492,18 @@ private:
 
     // Auto-collect senders of a folder's messages into the address book.
     void CollectContacts(const std::string& accountId, const std::string& folder);
+    // File the known services among `mail`'s senders whose domain the stored
+    // scan verdict proves (ContactCollector::CollectSenders). Run after each
+    // sync over its new mail and the newest held, whose bodies may have come
+    // only now.
+    void CollectServices(const std::string& accountId, const std::string& folder,
+                         const std::vector<MessageEnvelope>& mail);
+    // The same for one message whose body was just downloaded (opened, or
+    // fetched to unsubscribe).
+    void CollectServiceOf(const MessageEnvelope& m);
+    // How many of the newest inbox messages CollectServices looks at after a
+    // sync: the window SyncEngine::FetchMissingBodies fills.
+    static constexpr int kCollectNewest = 100;
     // Register every account with the scheduler and start the periodic
     // background sync timer (only when the IMAP plug-in is available). Safe to
     // call again after an account was added: accounts already registered keep

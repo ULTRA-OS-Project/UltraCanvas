@@ -9,6 +9,7 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
+// Version: 1.5.0 - ArtOptionWidgets::AddSection; AddSwitch takes icons
 // Version: 1.4.0 - ArtToolContext::iconPath; ArtOptionWidgets::AddIconBar and AddSwitch
 // Version: 1.3.0 - ArtToolContext::lockAspectRatio
 // Version: 1.2.0 - ArtToolContext::iconPixel
@@ -200,10 +201,18 @@ namespace ArtOptionWidgets {
     // tooltip; returns the buttons in the order given (no dividers).
     std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer& panel, const std::string& id,
                                                                const std::vector<IconAction>& items);
-    // A segmented switch between a few modes, `selected` lit.
+    // A section of a tool's options in a group box of its own, captioned
+    // `title` in small grey text; its content is a column. Add the
+    // section's rows to the returned box.
+    std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, const std::string& id,
+                                                     const std::string& title);
+    // A segmented switch between a few modes, `selected` lit; `icons`
+    // (full paths, one per item, or none) go before the captions, in the
+    // caption's colour.
     std::shared_ptr<UltraCanvasSegmentedControl> AddSwitch(UltraCanvasContainer& panel, const std::string& id,
                                                            const std::vector<std::string>& items, int selected,
-                                                           const std::function<void(int)>& onChange);
+                                                           const std::function<void(int)>& onChange,
+                                                           const std::vector<std::string>& icons = {});
 }
 
 } // namespace UltraCanvas
