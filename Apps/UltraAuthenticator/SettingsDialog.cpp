@@ -89,6 +89,7 @@ void SettingsDialog::CreateSettingsDialog(const Preferences& current) {
     minimizeSwitch_ = std::make_shared<UltraCanvasSwitch>(
         "set-minimize", margin, y, fieldWidth, 26, "Lock when the window is minimised");
     minimizeSwitch_->SetChecked(current.lockOnMinimize);
+    Theme::StyleSwitch(minimizeSwitch_);
     AddChild(minimizeSwitch_);
     y += 36;
 
@@ -114,6 +115,7 @@ void SettingsDialog::CreateSettingsDialog(const Preferences& current) {
     hideSwitch_ = std::make_shared<UltraCanvasSwitch>(
         "set-hide", margin, y, fieldWidth, 26, "Hide codes until a card is clicked");
     hideSwitch_->SetChecked(current.hideCodes);
+    Theme::StyleSwitch(hideSwitch_);
     AddChild(hideSwitch_);
     y += 36;
 

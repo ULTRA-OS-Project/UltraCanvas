@@ -22,7 +22,8 @@
   gets a colour picked from its name, the same one at every launch.
 - **The dialogs match.** Every dialog's main button is the accent colour and
   the other is plain; text fields and drop-downs have rounded corners and
-  the accent border while focused. *Add account* had kept the framework's
+  the accent border while focused; the switches in Settings are the accent
+  blue when on instead of the framework's green. *Add account* had kept the framework's
   default look, and is styled like the rest now.
 - The icons are new, in `media/icons/authenticator/`; the colours, sizes and
   button styles stay in one place, `Theme.h`.

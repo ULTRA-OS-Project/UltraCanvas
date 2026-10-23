@@ -13,6 +13,7 @@
 // UltraPassword's (Apps/UltraPassword/ui/Theme.h), so the two vault apps read
 // as one family.
 //
+// Version: 0.4.0 - StyleSwitch: on-off switches in the accent blue
 // Version: 0.3.0 - a known service's monogram takes its brand colour
 // Version: 0.2.0 - button, input and card helpers; icons; monogram colours
 // Version: 0.1.0
@@ -27,6 +28,7 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
 
@@ -338,6 +340,21 @@ inline void StyleDropdown(const std::shared_ptr<UltraCanvasDropdown>& dd) {
     s.itemSelectedColor  = kAccentSoft;
     s.normalTextColor    = kTextPrimary;
     dd->SetStyle(s);
+}
+
+// The framework's switch is green when on; here it is the accent blue, like
+// every other "this is selected" in the app, on a neutral grey when off.
+inline void StyleSwitch(const std::shared_ptr<UltraCanvasSwitch>& sw) {
+    if (!sw) return;
+    SwitchVisualStyle s = sw->GetVisualStyle();
+    s.trackOnColor           = kAccent;
+    s.trackOffColor          = Color(209, 213, 219, 255);
+    s.trackBorderColor       = kCardBorder;
+    s.thumbBorderColor       = kCardBorder;
+    s.thumbIconOnColor       = kAccent;
+    s.sideLabelActiveColor   = kTextPrimary;
+    s.sideLabelInactiveColor = kTextSecondary;
+    sw->SetVisualStyle(s);
 }
 
 // ---------------------------------------------------------------------------
