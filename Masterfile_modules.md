@@ -1606,6 +1606,8 @@ extended or replaced without changing callers.
   a time; server-side cursors on PostgreSQL)
 - `UltraDb_ExecBatch` (every statement of a script with its own result)
 - `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
+- `UltraDb_AddStatementObserver`, `UltraDb_RemoveStatementObserver` (every
+  statement reported as it ends: text, bound-value count, rows, time, outcome)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
 - `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
   `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
