@@ -14,10 +14,9 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
-// Version: 1.3.1 - the international page's note names the editor's font notice
 // Version: 1.3.0 - Open, Save as and Insert image offer FileLoader's types; saves through SaveTextDocument
 // Version: 1.2.2
-// Last Modified: 2026-10-23
+// Last Modified: 2026-10-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -994,14 +993,12 @@ namespace UltraCanvas {
             }), "Save as .odt or .docx");
         root->AddChild(bar);
 
-        auto notes = std::make_shared<UltraCanvasLabel>("wysiwygIntlNotes", 20, 712, 960, 62);
+        auto notes = std::make_shared<UltraCanvasLabel>("wysiwygIntlNotes", 20, 712, 960, 48);
         notes->SetText("Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
                        "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
                        "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar is set in Noto Sans "
-                       "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi. A script "
-                       "the computer has no font for is named at the editor's top, with a link to a free one.");
+                       "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi.");
         notes->SetFontSize(11);
-        notes->SetWrap(TextWrap::WrapWord);
         notes->SetTextColor(Color(120, 120, 120, 255));
         root->AddChild(notes);
 

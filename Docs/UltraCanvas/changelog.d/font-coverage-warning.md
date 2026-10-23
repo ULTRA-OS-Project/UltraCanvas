@@ -15,7 +15,8 @@
   the notice. The report is worked out when a document is set, a second
   after an edit, and when the fonts change. That includes Windows' system
   fonts arriving after a cold start. The demo app's *WYSIWYG — Chinese,
-  Arabic & Myanmar* page mentions the notice.
+  Arabic & Myanmar* page shows the notice on a computer that has no font for
+  Chinese or Arabic.
 - **New `UltraCanvasFontCoverage.h`: is there a font for this text?** It has
   four calls:
   - `CountCharactersWithoutFont` counts the characters of a text that no
