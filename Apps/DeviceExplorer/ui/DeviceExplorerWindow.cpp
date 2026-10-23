@@ -145,6 +145,9 @@ bool DeviceExplorerWindow::Initialize(const MachineSummary& machine, DeviceGroup
     MakePlainColumn(treePane);
     MakePlainColumn(detailsPane);
     FillWith(treePane, BuildDeviceTree());
+    scanRow_ = BuildScanRow();
+    treePane->AddChild(scanRow_);
+    PinRow(scanRow_);
     FillWith(detailsPane, BuildDetailsPane());
     FillWith(page_, split_);
 
@@ -299,6 +302,33 @@ std::shared_ptr<UltraCanvasTreeView> DeviceExplorerWindow::BuildDeviceTree() {
     return deviceTree_;
 }
 
+// "Scanning for devices" and a segment sliding along a track, under the tree
+// where the devices will appear. Hidden, and its timer stopped, between scans.
+std::shared_ptr<UltraCanvasContainer> DeviceExplorerWindow::BuildScanRow() {
+    auto row = CreateContainer("deScanRow", 0, 0, 0, 22);
+    row->layout.SetFlexRow()
+               .SetFlexGap(8)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    row->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(22));
+    ContainerStyle plainRow;
+    plainRow.autoShowScrollbars = false;
+    row->SetContainerStyle(plainRow);
+
+    auto label = CreateLabel("deScanLabel", 0, 0, 160, 20, "Scanning for devices…");
+    label->SetTextColor(Color(96, 96, 104));
+    label->layoutItem.SetFlexShrink(0);
+    row->AddChild(label);
+
+    scanBar_ = CreateBusyIndicator("deScanBar", 0, 0, 120, 4, BusyIndicatorKind::Bar);
+    scanBar_->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    scanBar_->layoutItem.SetFlexGrow(1);
+    scanBar_->layoutItem.SetFlexShrink(1);
+    row->AddChild(scanBar_);
+
+    row->SetVisible(false);
+    return row;
+}
+
 std::shared_ptr<UltraCanvasContainer> DeviceExplorerWindow::BuildDetailsPane() {
     auto details = CreateContainer("deDetails", 0, 0, 0, 0);
     MakePlainColumn(details);
@@ -346,6 +376,7 @@ void DeviceExplorerWindow::StartScan() {
     if (scanning_.exchange(true)) return;
     JoinScan();
     if (rescanButton_) rescanButton_->SetDisabled(true);
+    ShowScanning(true);
     RefreshStatus();
     scanThread_ = std::thread([this]() {
         auto& manager = IODeviceManager::GetInstance();
@@ -376,6 +407,7 @@ void DeviceExplorerWindow::OnTimer() {
     if (ready) {
         JoinScan();
         if (rescanButton_) rescanButton_->SetDisabled(false);
+        ShowScanning(false);
         monitoring_ = IODeviceManager::GetInstance().IsMonitoring();
         hotplugChanged_ = false;
         ApplyInventory(std::move(*ready));
@@ -397,6 +429,11 @@ void DeviceExplorerWindow::ApplyInventory(DeviceInventory inventory) {
     statusCache_.clear();
     inventory_ = std::move(inventory);
     RebuildTree();
+}
+
+void DeviceExplorerWindow::ShowScanning(bool scanning) {
+    if (scanBar_) scanBar_->SetRunning(scanning);
+    if (scanRow_) scanRow_->SetVisible(scanning);
 }
 
 // ===== PRINTER STATUS =====
