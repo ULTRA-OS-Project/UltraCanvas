@@ -654,10 +654,10 @@ void DeviceExplorerWindow::ShowSections(const std::string& title, const std::str
 
 void DeviceExplorerWindow::RefreshStatus() {
     std::string status;
-    if (scanning_) {
-        status = "Scanning for devices…";
-    } else if (!inventory_.enumerated) {
-        status = "Not scanned yet";
+    // A running scan is shown by the bar under the tree, not here: the first
+    // one leaves this empty, a rescan keeps the last count until it ends.
+    if (!inventory_.enumerated) {
+        if (!scanning_) status = "Not scanned yet";
     } else {
         status = CountText(inventory_.devices.size(), "device", "devices");
         if (!filter_.empty()) {
