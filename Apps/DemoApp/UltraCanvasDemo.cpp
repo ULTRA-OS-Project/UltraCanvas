@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.12 - no status bar; a fixed-width page keeps its width (min-width), so the
+//                  page area scrolls sideways when the window is narrower
 // Version: 1.0.11 - Widgets > Colour Palettes (UltraCanvasColorPaletteManager)
 // Version: 1.0.10 - A filter field over the component tree ("Reset" inside it); the List
 //                  View page holds the domain dashboard, which is no page of its own
@@ -7,7 +9,7 @@
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-23
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -426,6 +428,9 @@ namespace UltraCanvas {
         // Create legend container below tree view
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer");
         legendContainer->SetBorderTop(1, Colors::Gray);
+        // Its rows are placed at fixed offsets; this keeps the last one off the
+        // window's bottom edge.
+        legendContainer->SetPadding(0, 0, 8, 0);
         legendContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         SetupLegendContainer();
 
@@ -465,12 +470,6 @@ namespace UltraCanvas {
             dcStyle.scrollbarStyle = DemoScrollbarStyle();
             displayContainer->SetContainerStyle(dcStyle);
         }
-
-        // Create status label (bottom left)
-        statusLabel = std::make_shared<UltraCanvasLabel>("StatusLabel");
-        statusLabel->SetText("Select a component from the tree view to see examples");
-        statusLabel->SetBackgroundColor(Color(240, 240, 240, 255));
-        statusLabel->SetPadding(3, 7, 3, 7);
 
         // Register all demo items
         RegisterAllDemoItems();
@@ -519,11 +518,9 @@ namespace UltraCanvas {
             .SetGrid()
             .SetGridColumns({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(350)},
                              CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr, .value=CSSLayout::Dimension::Fr(1)}})
-             // Row 0 = Fr(1) so it consumes all available vertical space
+             // One Fr(1) row, so it consumes all available vertical space
              // (otherwise Auto would collapse the sidebar to ~4 tree rows).
-             // Row 1 = the 25-pixel status bar at the bottom.
-             .SetGridRows({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr,    .value=CSSLayout::Dimension::Fr(1)},
-                           CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fixed, .value=CSSLayout::Dimension::Px(25)}})
+             .SetGridRows({CSSLayout::GridTrackSize{.kind=CSSLayout::GridTrackSizeKind::Fr, .value=CSSLayout::Dimension::Fr(1)}})
             .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
             .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
 
@@ -532,9 +529,6 @@ namespace UltraCanvas {
 
         mainContainer->layoutItem.SetGridRowColSimplified(0, 1);
         mainWindow->AddChild(mainContainer);
-
-        statusLabel->layoutItem.SetGridRowColSimplified(1, 0, 1, 2);
-        mainWindow->AddChild(statusLabel);
 
         debugOutput << "✓ Demo application initialized successfully" << std::endl;
         return true;
@@ -2463,7 +2457,6 @@ namespace UltraCanvas {
         // Check if this is a demo item (not a category)
         if (demoItems.find(nodeId) != demoItems.end()) {
             DisplayDemoItem(nodeId);
-            UpdateStatusDisplay(nodeId);
             UpdateHeaderDisplay(nodeId);
         } else if (nodeId == modulesNodeId) {
             // "ULTRA OS modules" category: show the ULTRA OS overview page instead of
@@ -2477,7 +2470,6 @@ namespace UltraCanvas {
                     .SetFlexShrink(1)
                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             }
-            statusLabel->SetText("ULTRA OS");
             headerContainer->SetDemoTitle("ULTRA OS");
             headerContainer->SetSourceFile("");
             headerContainer->SetDocFile("");
@@ -2493,7 +2485,6 @@ namespace UltraCanvas {
         } else {
             // Category selected - clear display
             ClearDisplay();
-            statusLabel->SetText("Category: " + node->data.text + " - Select a specific component to view examples");
             headerContainer->SetDemoTitle("Category: " + node->data.text);
             headerContainer->SetSourceFile("");
             headerContainer->SetDocFile("");        }
@@ -2501,23 +2492,7 @@ namespace UltraCanvas {
 
     void UltraCanvasDemoApplication::OnTreeFilterChanged(const std::string& text) {
         if (!categoryTreeView) return;
-        const std::string filter = Trim(text);
-        categoryTreeView->SetFilterText(filter);
-        if (filter.empty()) {
-            // Back to what the status line said about the page on show.
-            if (demoItems.count(currentSelectedId)) {
-                UpdateStatusDisplay(currentSelectedId);
-            } else {
-                statusLabel->SetText("Select a component from the tree view to see examples");
-                statusLabel->SetTextColor(Colors::Black);
-            }
-            return;
-        }
-        const int matches = categoryTreeView->GetFilterMatchCount();
-        statusLabel->SetText(matches == 0 ? "Nothing matches \"" + filter + "\""
-                                          : std::to_string(matches) + (matches == 1 ? " entry matches \"" : " entries match \"") +
-                                            filter + "\"");
-        statusLabel->SetTextColor(matches == 0 ? Color(200, 0, 0, 255) : Colors::Black);
+        categoryTreeView->SetFilterText(Trim(text));
     }
 
     bool UltraCanvasDemoApplication::SelectDemoItem(const std::string& itemId) {
@@ -2543,7 +2518,6 @@ namespace UltraCanvas {
             OnTreeNodeSelected(node);
         } else {
             DisplayDemoItem(itemId);
-            UpdateStatusDisplay(itemId);
             UpdateHeaderDisplay(itemId);
         }
         return true;
@@ -2583,6 +2557,18 @@ namespace UltraCanvas {
                         .SetFlexShrink(fixedHeight ? 0 : 1)
                         .SetAlignSelf(fixedWidth ? CSSLayout::AlignSelf::Start
                                                  : CSSLayout::AlignSelf::Stretch);
+                    // Kept means kept: the column measures the page "at most"
+                    // as wide as the area, which cuts a fixed width down to it,
+                    // so the page never overflowed and the horizontal scrollbar
+                    // never showed - the right-hand drawings were simply cut
+                    // off. As its min-width the page's width outlasts that, and
+                    // displayContainer scrolls it sideways when it is wider.
+                    if (fixedWidth) {
+                        CSSLayout::BoxConstraints limits =
+                            currentDisplayElement->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+                        limits.minWidth = currentDisplayElement->size.width;
+                        currentDisplayElement->boxConstraints = limits;
+                    }
                 }
                 currentSelectedId = itemId;
             } catch (const std::exception& e) {
@@ -2611,38 +2597,6 @@ namespace UltraCanvas {
         currentSelectedId = "";
     }
 
-    void UltraCanvasDemoApplication::UpdateStatusDisplay(const std::string& itemId) {
-        auto it = demoItems.find(itemId);
-        if (it == demoItems.end()) return;
-
-        const auto& item = it->second;
-
-        // Update status label
-        std::ostringstream statusText;
-        statusText << "Status: ";
-
-        switch (item->status) {
-            case ImplementationStatus::FullyImplemented:
-                statusText << "Fully Implemented";
-                break;
-            case ImplementationStatus::PartiallyImplemented:
-                statusText << "Partially Implemented";
-                break;
-            case ImplementationStatus::NotImplemented:
-                statusText << "Not Implemented";
-                break;
-            case ImplementationStatus::Planned:
-                statusText << "Planned";
-                break;
-        }
-
-        if (!item->variants.empty()) {
-            statusText << " | Variants: " << item->variants.size();
-        }
-        statusLabel->SetText(statusText.str());
-        statusLabel->SetTextColor(GetStatusColor(item->status));
-    }
-
     void UltraCanvasDemoApplication::UpdateHeaderDisplay(const std::string& itemId) {
         auto it = demoItems.find(itemId);
         if (it != demoItems.end()) {
@@ -2665,16 +2619,6 @@ namespace UltraCanvas {
             case ImplementationStatus::NotImplemented: return NormalizePath(GetResourcesDir() + "media/icons/x.png");
             case ImplementationStatus::Planned: return NormalizePath(GetResourcesDir() + "media/icons/info.png");
             default: return NormalizePath(GetResourcesDir() + "media/icons/unknown.png");
-        }
-    }
-
-    Color UltraCanvasDemoApplication::GetStatusColor(ImplementationStatus status) const {
-        switch (status) {
-            case ImplementationStatus::FullyImplemented: return Color(0, 150, 0, 255);      // Green
-            case ImplementationStatus::PartiallyImplemented: return Color(200, 150, 0, 255); // Orange
-            case ImplementationStatus::NotImplemented: return Color(200, 0, 0, 255);       // Red
-            case ImplementationStatus::Planned: return Color(0, 100, 200, 255);           // Blue
-            default: return Color(100, 100, 100, 255);                                    // Gray
         }
     }
 
