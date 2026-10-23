@@ -44620,6 +44620,39 @@ and remembered, so a column of thousands of dates costs a few hundred
 measurements. UltraMail fits its Date column this way: the widest date in bold
 plus the 6 px its delegate leaves before the text, and at least the header.
 
+Every column at once, with no subclass:
+
+```cpp
+struct ColumnFitting {
+    bool      enabled = false;
+    FontStyle font;          // the rows' font (the default delegate's is 12 pt)
+    int       padding = 12;  // what the delegate leaves beside the text, both sides
+    int       minWidth = 40;
+    int       maxWidth = 0;  // 0: no cap
+};
+void SetColumnFitting(const ColumnFitting& fitting);
+const ColumnFitting& GetColumnFitting() const;
+```
+
+With `enabled`, every column is fitted at the next paint after the model's
+rows or columns change - the one moment a render context is at hand: its
+widest `DisplayRole` text in `font` plus `padding`, never narrower than its
+header's title and sort triangle, within `[minWidth, maxWidth]`, so one long
+text does not take the whole grid. The fit stops once the user drags a border
+(`ColumnsUserAdjusted`). UltraDBAdmin's result grids use it with a 360 px cap;
+the model gives only an estimate from the title for the paint before the
+first fit.
+
+```cpp
+UltraCanvasListView::ColumnFitting fitting;
+fitting.enabled = true;
+fitting.font.fontSize = 12;
+fitting.maxWidth = 360;
+list->SetColumnFitting(fitting);
+```
+
+One column by hand, where the others are laid out from it:
+
 ```cpp
 // A Date column (column 3) as wide as its widest date plus a 6 px gap, never
 // narrower than its header - measured where a render context is at hand.
@@ -96175,59 +96208,6 @@ The hardest *unfixable-in-app*
 issues are X11 screen/clipboard/ptrace exposure — they need to be documented
 honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
-
-==============================================================================
-FILE: Docs/UltraAuthenticator/changelog.d/copy-code.md
-==============================================================================
-
-- **Copy a code with one click, and it leaves the clipboard by itself.** A
-  copy button right after each card's code puts it on the clipboard; the
-  button shows a tick for a moment and the status line says how long the
-  code stays valid. The app clears the clipboard again 30 seconds later
-  (one time step) and at once when it locks or closes - each time only if
-  the clipboard still holds that code, so anything copied since is left
-  alone. The copy is marked secret (`ClipboardHint::Secret`: KDE's
-  password-manager hint, Windows' clipboard-history exclusion, macOS'
-  concealed type), so clipboard histories that honour the marker never
-  record it.
-  - With *Hide codes* on, the copy works without showing the code.
-  - A counter-based (HOTP) card copies the code *Next code* last made and
-    never spends a new one; before the first *Next code* it says so instead.
-  - The setup key is still never offered for copying.
-
-==============================================================================
-FILE: Docs/UltraAuthenticator/changelog.d/window-redesign.md
-==============================================================================
-
-- **A redesigned main window.** A white band at the top carries the logo,
-  the app's name and how many accounts it holds, with Settings and Lock at
-  its right; under it, *Scan QR code* (the main action, in the accent
-  colour) and *Enter key*, and to the right, quieter, *Password…* (change
-  the master password), *Back up…* and *Restore…* - each with an icon.
-  What the last action did is reported in a status line at the foot of the
-  window instead of between the buttons and the list.
-- **Cards are easier to read at a glance.** Each is a rounded panel with a
-  coloured monogram for the service, the code
-  in large digits, and a ring that empties as the code's time step runs out,
-  with the seconds left in its centre and the same green / amber / red as
-  before (`UltraCanvasGaugeDiagramElement`, `CircularRing`). *Edit*, *Show
-  key* and *Remove* are icon buttons with tooltips, so twenty accounts are
-  no longer a wall of buttons; *Remove* turns red under the pointer. The
-  empty list says how to add the first account.
-- **A well-known service's monogram is in its own brand colour** - GitHub's
-  near-black, Dropbox's blue, AWS's orange, and about eighty more
-  (`BrandColors.h`). Only the colour and the first letter, never the logo,
-  which is a trademark. The letter turns dark on a light brand colour
-  (Snapchat's yellow, AWS's orange) so it stays readable. Google is the
-  one shown the other way round, as its own blue G on a white circle. Any other service
-  gets a colour picked from its name, the same one at every launch.
-- **The dialogs match.** Every dialog's main button is the accent colour and
-  the other is plain; text fields and drop-downs have rounded corners and
-  the accent border while focused; the switches in Settings are the accent
-  blue when on instead of the framework's green. *Add account* had kept the framework's
-  default look, and is styled like the rest now.
-- The icons are new, in `media/icons/authenticator/`; the colours, sizes and
-  button styles stay in one place, `Theme.h`.
 
 ==============================================================================
 FILE: Docs/UltraPassword/README.md
