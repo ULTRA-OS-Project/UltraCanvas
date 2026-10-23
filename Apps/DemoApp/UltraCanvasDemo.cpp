@@ -22,6 +22,7 @@
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextUtils.h"   // Trim - the tree filter ignores surrounding spaces
 #include "UltraCanvasUtils.h"   // OpenURL — open markdown links in the system browser
@@ -2077,13 +2078,25 @@ namespace UltraCanvas {
                                [this]() { return CreateFileLoaderExamples(); },
                                "DemoApp/UltraCanvasFileLoaderExamples.cpp",
                                "Docs/Modules/FileLoader/README.md");
-        // Specification only — no IODeviceManager sources, no build target, and no
-        // application consumes the scanner / camera / printer API described in
-        // Docs/Modules/IODeviceManager/README.md. "Planned", like Smart Home below:
-        // there is nothing partial to show.
+        // Built into the core (core/IODeviceManager + OS backends): printers on
+        // Linux, macOS and Windows plus IPP everywhere, scanners on Linux plus
+        // eSCL, webcams on Linux; the other categories and platform backends are
+        // still planned (Docs/Modules/IODeviceManager/Gaps.md) - partial. The
+        // page is the DeviceExplorer application's own panel, compiled in from
+        // Apps/DeviceExplorer/ui.
+#ifdef ULTRACANVAS_DEMO_HAS_DEVICEEXPLORER
+        modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support",
+                               "IODeviceManager - the printers, scanners and cameras on this "
+                               "computer, shown by the DeviceExplorer application's panel",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateIODeviceManagerExamples(); },
+                               "DemoApp/UltraCanvasIODeviceManagerExamples.cpp",
+                               "Docs/Modules/IODeviceManager/README.md");
+#else
         modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
-                               ImplementationStatus::Planned,
+                               ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/IODeviceManager"); });
+#endif
 #ifdef HAS_LIBVIPS
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
                                ImplementationStatus::FullyImplemented,
@@ -2095,10 +2108,13 @@ namespace UltraCanvas {
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/PixelFX"); });
 #endif
-        // The engine, its widgets (SmartHome/ui) and the SmartHome Center app
-        // exist and run on the simulated demo home; the radio backends build
-        // but have met no hardware yet (SmartHome/STATUS.md). With the widgets
-        // in the build the entry opens their panel on that home.
+        // The engine, the facade, the store, the automation engine, the rooms,
+        // the sixteen widgets (SmartHome/ui) and the SmartHome Center app
+        // (0.1.1: dashboard, rooms, network map) run on the simulated demo
+        // home; the radio backends (KNX and Z-Wave build, Matter, Thread and
+        // Zigbee wait for their SDKs) have met no hardware yet
+        // (SmartHome/STATUS.md) - partial still. With the widgets in the build
+        // the entry opens their panel on that home.
 #ifdef ULTRACANVAS_DEMO_HAS_SMARTHOME
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
                                ImplementationStatus::PartiallyImplemented,
@@ -2194,16 +2210,16 @@ namespace UltraCanvas {
                                "as single native windows (Wine tier)",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraWin"); });
-        // Built module (VideoFX/, target VideoFX, on FFmpeg) through stage 4b
-        // of its roadmap: probe, frames, waveforms, the segment timeline with
-        // effects, speed, transitions and overlays, photos with pan and zoom
-        // keeping faces in shot, slideshows, music with ducking, beats,
-        // project files, the videofx CLI and VideoFXTest. No application calls
-        // it yet (UltraVideo is proposed), and picture-in-picture, keyframes,
-        // free audio tracks and the timeline element are still to come -
-        // partial. Docs/Modules/VideoFX/README.md, *Roadmap*, is the record.
+        // Built module (VideoFX/, target VideoFX, on FFmpeg) with every stage
+        // of its roadmap done but keyframed parameters: probe, frames,
+        // waveforms, the segment timeline with effects, speed, transitions and
+        // overlays (picture-in-picture), photos with pan and zoom keeping faces
+        // in shot, slideshows, music with ducking, beats, voice-overs, project
+        // files, preview, proxies, hardware encoders, the timeline element and
+        // the videofx CLI. The UltraVideo editor (Apps/UltraVideo) is built on
+        // it. Docs/Modules/VideoFX/README.md, *Roadmap*, is the record.
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
         // Built module (VirtualFS/, target VirtualFS) reaching applications through
         // the core: UltraCanvasFilerWidget browses archive interiors via
@@ -2548,8 +2564,13 @@ namespace UltraCanvas {
                     // to the window: stretched, it fills the viewport exactly,
                     // and the vertical scrollbar then narrows the viewport by its
                     // track and fabricates a horizontal overflow of that much.
-                    const bool fixedHeight =
-                        currentDisplayElement->size.height.unit == CSSLayout::DimensionUnit::Pixels;
+                    // A page built with the page kit says how it wants to sit:
+                    // as tall as its content and scrolled by the area (the
+                    // default), or filling the area and scrolling inside.
+                    auto* kitPage = dynamic_cast<DemoKit::DemoPage*>(currentDisplayElement.get());
+                    const bool fixedHeight = kitPage
+                        ? !kitPage->FillsArea()
+                        : currentDisplayElement->size.height.unit == CSSLayout::DimensionUnit::Pixels;
                     const bool fixedWidth =
                         currentDisplayElement->size.width.unit == CSSLayout::DimensionUnit::Pixels;
                     currentDisplayElement->layoutItem

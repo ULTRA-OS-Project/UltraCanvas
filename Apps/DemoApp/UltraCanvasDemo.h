@@ -228,6 +228,13 @@ namespace UltraCanvas {
         // selection and the header title move together.
         // Returns false for an unknown item id.
         bool SelectDemoItem(const std::string& itemId);
+        // --audit-layout: open every page (or only `onlyPage`), lay it out and
+        // list the text that does not fit and what a parent cuts off; with
+        // pseudoLocalize every text first ~40% longer. 0: nothing found.
+        int RunLayoutAudit(bool pseudoLocalize, const std::string& onlyPage);
+        // Every text of the page on show ~40% longer, as a translation is
+        // (--pseudo-loc with --component, to look at the result).
+        void PseudoLocalizeCurrentPage();
         void ClearDisplay();
         void UpdateHeaderDisplay(const std::string& itemId);
 
