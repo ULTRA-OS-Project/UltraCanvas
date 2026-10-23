@@ -297,6 +297,11 @@ namespace UltraCanvas {
         auto panel = std::make_shared<UltraCanvasContainer>(idPrefix + "Panel",
                                                            kCircularPanelWidth, 0);
         panel->SetBackgroundColor(Color(247, 247, 250, 255));
+        // A tab shorter than the controls scrolls them, never cuts the last.
+        ContainerStyle scrolling = panel->GetContainerStyle();
+        scrolling.autoShowScrollbars = true;
+        scrolling.autoShowHorizontalScrollbar = false;
+        panel->SetContainerStyle(scrolling);
         panel->SetPadding(8, 10);
         panel->layout.SetFlexColumn().SetFlexGap(4)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);

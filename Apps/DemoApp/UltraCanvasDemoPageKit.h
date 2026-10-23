@@ -22,6 +22,7 @@
 //                     {"UltraCanvasToolbarBuilder builds it fluently", "..."});
 //   return page;
 //
+// Version: 1.1.0 - ApplyContentMinWidth: nothing narrower than its fixed content
 // Version: 1.0.0
 // Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
@@ -66,8 +67,23 @@ namespace DemoKit {
         explicit DemoPage(const std::string& identifier) : UltraCanvasContainer(identifier) {}
         void SetFillsArea(bool fills) { fillsArea = fills; }
         bool FillsArea() const { return fillsArea; }
+
+        // The min-widths ApplyContentMinWidth gave the page and its cards,
+        // with what each had before, so they can be worked out again.
+        std::vector<std::pair<UltraCanvasUIElement*, CSSLayout::Dimension>> kitMinWidths;
+
+        // A button grows to its text only when it is first measured, after
+        // the min-widths were worked out; the first layouts work them out
+        // again and lay the page out anew when one changed.
+        void Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) override;
+        // The texts changed (another language): work the min-widths out
+        // again on the next layouts.
+        void RecheckMinWidths() { minWidthPasses = 0; InvalidateLayout(); RequestRedraw(); }
     private:
         bool fillsArea = false;
+        int minWidthPasses = 0;
+        // Expires with the page: a re-layout posted for later checks it.
+        std::shared_ptr<bool> alive = std::make_shared<bool>(true);
     };
 
     // ===== PAGE =====
@@ -118,6 +134,15 @@ namespace DemoKit {
                       const std::shared_ptr<UltraCanvasUIElement>& child);
     // Puts an element back in the flow (what every Add does first).
     void MakeInFlow(const std::shared_ptr<UltraCanvasUIElement>& element);
+
+    // Makes the page, and every card, row and column on the way to a
+    // fixed-size element (a set pixel width or min-width), at least as wide
+    // as that element plus the padding and borders around it; returns the
+    // page's. DisplayDemoItem calls it: a card sharing a row then wraps
+    // rather than cutting the chart in it, and a window narrower than a
+    // 1000 px chart scrolls the page sideways. A container that scrolls
+    // sideways itself keeps what it holds.
+    float ApplyContentMinWidth(DemoPage& page);
 
     // Creates and adds in one step; each returns what it added.
     std::shared_ptr<UltraCanvasContainer> AddRow(const std::shared_ptr<UltraCanvasContainer>& parent,

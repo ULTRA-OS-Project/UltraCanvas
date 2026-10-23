@@ -2574,6 +2574,9 @@ namespace UltraCanvas {
                     // never showed - the right-hand drawings were simply cut
                     // off. As its min-width the page's width outlasts that, and
                     // displayContainer scrolls it sideways when it is wider.
+                    // A kit page is stretched to the area, but neither it
+                    // nor a card in it narrower than its fixed-size content.
+                    if (kitPage) DemoKit::ApplyContentMinWidth(*kitPage);
                     if (fixedWidth) {
                         CSSLayout::BoxConstraints limits =
                             currentDisplayElement->boxConstraints.value_or(CSSLayout::BoxConstraints{});

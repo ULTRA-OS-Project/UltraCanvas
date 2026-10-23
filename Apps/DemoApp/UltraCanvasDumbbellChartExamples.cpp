@@ -89,6 +89,10 @@ std::shared_ptr<UltraCanvasContainer> CreateTabPage(const std::string& id,
     tab->layout.SetFlexColumn().SetFlexGap(8)
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     tab->SetPadding(12, 20);
+    // A tab shorter than its chart and notes scrolls rather than cutting them.
+    ContainerStyle scrolling = tab->GetContainerStyle();
+    scrolling.autoShowScrollbars = true;
+    tab->SetContainerStyle(scrolling);
 
     auto titleLabel = DemoKit::CreateTitle(titleId, title);
     titleLabel->SetFontSize(17);

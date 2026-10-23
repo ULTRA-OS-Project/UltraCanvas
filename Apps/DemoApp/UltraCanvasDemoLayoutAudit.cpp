@@ -13,6 +13,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -150,6 +151,7 @@ namespace UltraCanvas {
 
     void UltraCanvasDemoApplication::PseudoLocalizeCurrentPage() {
         if (currentDisplayElement) PseudoLocalizeTree(currentDisplayElement.get());
+        if (auto* page = dynamic_cast<DemoKit::DemoPage*>(currentDisplayElement.get())) page->RecheckMinWidths();
         if (demoItems.count(currentSelectedId))
             headerContainer->SetDemoTitle(PseudoLocalize(demoItems[currentSelectedId]->description));
     }
@@ -164,6 +166,10 @@ namespace UltraCanvas {
         auto pump = [&]() {
             for (int i = 0; i < 3; ++i) {
                 app->ProcessEvents();
+                // A kit page re-lays itself out through a task posted to the
+                // UI thread, which this loop does not run: ask for it here.
+                if (auto* page = dynamic_cast<DemoKit::DemoPage*>(currentDisplayElement.get()))
+                    page->InvalidateLayout();
                 mainWindow->UpdateAndRender();
             }
         };

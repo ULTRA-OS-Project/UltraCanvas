@@ -23,6 +23,11 @@ namespace UltraCanvas {
             const std::string& id, const std::string& descId, const std::string& text)
     {
         auto tab = std::make_shared<UltraCanvasContainer>(id);
+        // The diagram keeps its size; a tab shorter or narrower than it
+        // scrolls rather than cutting the bottom rows off.
+        ContainerStyle scrolling = tab->GetContainerStyle();
+        scrolling.autoShowScrollbars = true;
+        tab->SetContainerStyle(scrolling);
         tab->SetPadding(8, 10, 8, 10);
         tab->layout.SetFlexColumn().SetFlexGap(6)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -460,6 +465,7 @@ namespace UltraCanvas {
 
         auto card = DemoKit::CreateCard("AdjDiagCard");
         DemoKit::Add(page, card, 1);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         auto statusLabel = DemoKit::CreateCaption("AdjDiagStatus",
                 "Click a room to inspect.\nDrag rooms to reposition — pan with empty-space drag.");
@@ -480,6 +486,9 @@ namespace UltraCanvas {
         tabs->AddTab("Design studio",     MakeOfficeTab(statusLabel));
 
         DemoKit::Add(card, tabs, 1);
+        // From nothing, not from the diagrams' height: the tabs take the
+        // card's room and each tab scrolls its diagram.
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
         return page;
     }
 

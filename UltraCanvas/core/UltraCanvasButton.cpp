@@ -1,5 +1,7 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.12.3 - SetText fits the width to the new text at once, so a parent
+//                  breaking a row into lines reads the new width
 // Version: 2.12.2 - that layout is an UltraCanvasTextLayoutCache
 // Version: 2.12.1 - that layout is kept from draw to draw and rebuilt only when its inputs change
 // Version: 2.12.0 - ButtonStyle::ellipsize: a text shortened in the middle or at the start goes through a layout
@@ -167,6 +169,12 @@ namespace UltraCanvas {
         // The old index points into the previous string and would underline an
         // unrelated character; owners re-apply the mnemonic after setting text.
         mnemonicIndex = -1;
+        // Fit the width to the new text now, not when the button is next
+        // measured: its parent reads that width to break a wrapping row into
+        // lines before it measures the button, and with the old width it
+        // laid the row out a line short ("Pause" becoming "Resume", a longer
+        // translation).
+        if (renamed) FitWidthToText(GetRenderContext());
         InvalidateLayout();
         RequestRedraw();
     }

@@ -48,6 +48,10 @@ TabPage MakeTabPage(const std::string& id, const std::string& titleId,
                     const std::string& title, float titleSize) {
     TabPage page;
     page.tab = std::make_shared<UltraCanvasContainer>(id);
+    // A tab shorter than its chart and notes scrolls rather than cutting them.
+    ContainerStyle scrolling = page.tab->GetContainerStyle();
+    scrolling.autoShowScrollbars = true;
+    page.tab->SetContainerStyle(scrolling);
     page.tab->SetPadding(10, 14, 10, 14);
     page.tab->layout.SetFlexColumn().SetFlexGap(8)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);

@@ -57,6 +57,9 @@ namespace {
         // The tab's content: the page look, scrolled inside the tab (the
         // tabbed container sizes it to its content area).
         auto mainContainer = std::make_shared<UltraCanvasContainer>("LayoutExamples");
+        ContainerStyle scrolling = mainContainer->GetContainerStyle();
+        scrolling.autoShowScrollbars = true;
+        mainContainer->SetContainerStyle(scrolling);
         mainContainer->SetBackgroundColor(DemoKit::PageBackground());
         mainContainer->SetPadding(DemoKit::kPagePadding);
         mainContainer->layout.SetFlexColumn().SetFlexGap(DemoKit::kPageGap)

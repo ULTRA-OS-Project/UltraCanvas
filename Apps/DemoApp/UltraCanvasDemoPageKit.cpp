@@ -1,10 +1,16 @@
 // Apps/DemoApp/UltraCanvasDemoPageKit.cpp
 // The shared demo page look (UltraCanvasDemoPageKit.h).
+// Version: 1.1.0 - ApplyContentMinWidth
 // Version: 1.0.0
 // Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemoPageKit.h"
+#include "UltraCanvasApplication.h"
+#include "UltraCanvasButton.h"
+
+#include <algorithm>
+#include <cmath>
 
 namespace UltraCanvas {
 namespace DemoKit {
@@ -23,7 +29,9 @@ namespace DemoKit {
             label->SetFontSize(size);
             label->SetFontWeight(weight);
             label->SetTextColor(color);
-            label->SetWrap(TextWrap::WrapWord);
+            // Between words, and inside one only when it is longer than the
+            // line (a code sample in a caption) - never cut off.
+            label->SetWrap(TextWrap::WrapWordChar);
             label->SetAlignment(TextAlignment::Left, VerticalAlignment::Top);
             return label;
         }
@@ -153,6 +161,126 @@ namespace DemoKit {
         if (!parent || !child) return;
         child->size.width = CSSLayout::Dimension::Auto();
         Add(parent, child, IsRow(parent) ? 1.0f : 0.0f);
+    }
+
+    namespace {
+        // A pixel width, else 0.
+        float PixelWidth(const CSSLayout::Dimension& d) {
+            return d.unit == CSSLayout::DimensionUnit::Pixels ? d.value : 0.0f;
+        }
+
+        // Whether the element shows what is wider than itself by scrolling.
+        bool ScrollsSideways(UltraCanvasUIElement& element) {
+            auto* container = dynamic_cast<UltraCanvasContainer*>(&element);
+            if (!container) return false;
+            const ContainerStyle& style = container->GetContainerStyle();
+            return style.forceShowHorizontalScrollbar ||
+                   (style.autoShowScrollbars && style.autoShowHorizontalScrollbar);
+        }
+
+        // The border-box width `element` needs for its fixed-size content,
+        // 0 for none. A container with no width of its own is given it as
+        // its min-width on the way back up (noted in `given`), so a card
+        // sharing a row never comes out narrower than the chart in it - it
+        // wraps instead.
+        float RequireMinWidth(UltraCanvasUIElement& element,
+                              std::vector<std::pair<UltraCanvasUIElement*, CSSLayout::Dimension>>& given) {
+            if (!element.IsVisible()) return 0.0f;
+            const auto position = element.layoutItem.positionType;
+            if (position != CSSLayout::PositionType::Static &&
+                position != CSSLayout::PositionType::Relative) return 0.0f;
+            float own = PixelWidth(element.size.width);
+            if (element.boxConstraints) own = std::max(own, PixelWidth(element.boxConstraints->minWidth));
+            // A button with text needs at least its text, stretched or not
+            // (known once it can be measured: the page's first draws).
+            if (auto* button = dynamic_cast<UltraCanvasButton*>(&element)) {
+                if (!button->GetText().empty() && button->GetRenderContext()) {
+                    CSSLayout::LayoutContext context;
+                    const float text = button->MeasureOwnContent(std::nullopt, context).width +
+                                       button->GetTotalPaddingHorizontal() + button->GetTotalBorderHorizontal();
+                    own = std::max(own, std::ceil(text));
+                }
+            }
+            // A set width is the element's whole box; what is inside it is
+            // its own business (it clips or scrolls it).
+            if (own > 0.0f) return own;
+            // A row that does not wrap needs its children side by side; any
+            // other container, the widest of them (a wrapping row stacks
+            // them when it has to).
+            bool sideBySide = false;
+            float gap = 0.0f;
+            if (element.layout.display == CSSLayout::DisplayType::Flex &&
+                std::holds_alternative<CSSLayout::FlexLayout>(element.layout.data)) {
+                const auto& flex = std::get<CSSLayout::FlexLayout>(element.layout.data);
+                sideBySide = flex.direction == CSSLayout::FlexDirection::Row &&
+                             flex.wrap == CSSLayout::FlexWrap::NoWrap;
+                gap = PixelWidth(flex.gap.column);
+            }
+            float widest = 0.0f;
+            int counted = 0;
+            for (auto& child : element.Children()) {
+                auto* ui = dynamic_cast<UltraCanvasUIElement*>(child.get());
+                if (!ui) continue;
+                float needed = RequireMinWidth(*ui, given);
+                // Side by side, a child that never shrinks takes at least
+                // its pixel basis.
+                if (sideBySide && std::holds_alternative<CSSLayout::FlexItem>(ui->layoutItem.data)) {
+                    const auto& item = std::get<CSSLayout::FlexItem>(ui->layoutItem.data);
+                    if (item.shrink == 0.0f) needed = std::max(needed, PixelWidth(item.basis));
+                }
+                if (needed <= 0.0f) continue;
+                const float outer = needed + ui->GetTotalMarginHorizontal();
+                widest = sideBySide ? widest + outer + (counted ? gap : 0.0f) : std::max(widest, outer);
+                ++counted;
+            }
+            // What a sideways-scrolling container holds is reached by
+            // scrolling: its children got their widths, it keeps its own.
+            if (widest <= 0.0f || ScrollsSideways(element)) return 0.0f;
+            const float needed = widest + element.GetTotalPaddingHorizontal() + element.GetTotalBorderHorizontal();
+            CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+            given.emplace_back(&element, limits.minWidth);
+            limits.minWidth = CSSLayout::Dimension::Px(needed);
+            element.boxConstraints = limits;
+            return needed;
+        }
+    } // namespace
+
+    float ApplyContentMinWidth(DemoPage& page) {
+        // Back to what the elements had, then worked out afresh: a width the
+        // kit set last time is not a fixed width this time.
+        for (auto& [element, before] : page.kitMinWidths) {
+            if (element->boxConstraints) element->boxConstraints->minWidth = before;
+        }
+        page.kitMinWidths.clear();
+        return RequireMinWidth(page, page.kitMinWidths);
+    }
+
+    void DemoPage::Arrange(const Rect2Df& finalRect, const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+        if (minWidthPasses >= 3) return;
+        ++minWidthPasses;
+        auto widths = [this]() {
+            std::vector<float> values;
+            for (auto& entry : kitMinWidths) values.push_back(entry.first->boxConstraints->minWidth.value);
+            return values;
+        };
+        const auto before = widths();
+        ApplyContentMinWidth(*this);
+        if (widths() != before) {
+            // The rows and cards answer from their cached measurements,
+            // which knew nothing of the new min-widths: forget them all, and
+            // lay the window out again once this pass is over (marked
+            // during it, the window would mark itself laid out at its end).
+            InvalidateSubtree();
+            std::weak_ptr<bool> stillHere = alive;
+            if (auto* app = UltraCanvasApplication::GetInstance()) {
+                app->PostToUIThread([this, stillHere]() {
+                    if (stillHere.expired()) return;
+                    InvalidateLayout();
+                    RequestRedraw();
+                });
+            }
+        }
     }
 
     std::shared_ptr<UltraCanvasContainer> AddRow(const std::shared_ptr<UltraCanvasContainer>& parent,
