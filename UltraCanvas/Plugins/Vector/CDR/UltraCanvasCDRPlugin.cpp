@@ -1,5 +1,7 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.cpp
 // CorelDRAW CDR/CMX file format plugin implementation
+// Version: 1.2.4 - ExportToSVG writes each page staged (WriteFileAtomically),
+//                  so a failed write keeps the file that was there, and says why
 // Version: 1.2.3 - an object's opacity is applied once, by SetAlpha, now that the
 //                  context fades fills and strokes with it: the colours carry only
 //                  their fill / stroke opacity (they carried both and were faded twice)
@@ -21,6 +23,7 @@
 #include <atomic>
 #include <iostream>
 #include <fstream>
+#include <cerrno>
 #include <cmath>
 #include <algorithm>
 #include <sstream>
@@ -2090,17 +2093,24 @@ float CdrFloat(const std::string& text, float fallback = 0.0f) {
                     ? PageOutputPath(svgPath, page + 1)
                     : svgPath;
 
-            std::ofstream out(UltraCanvas::PathFromUtf8(outPath), std::ios::binary | std::ios::trunc);
-            if (!out) {
-                result.error = "Cannot write file: " + outPath;
-                result.writtenFiles.clear();
-                return result;
-            }
-            out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-            out << svgPages[static_cast<unsigned>(page)].cstr();
-            out.close();
-            if (!out) {
-                result.error = "Write failed: " + outPath;
+            // Staged: the page goes to a temporary file beside the target and
+            // replaces it only once complete, so a write that fails partway
+            // (a full disk, a dropped network share) leaves the file that was
+            // there. A failure says why.
+            const char* pageSvg = svgPages[static_cast<unsigned>(page)].cstr();
+            const std::string failure = WriteFileAtomically(
+                    outPath, [pageSvg](const std::string& staged) -> std::string {
+                errno = 0;
+                std::ofstream out(UltraCanvas::PathFromUtf8(staged), std::ios::binary | std::ios::trunc);
+                if (!out) return "Cannot write file. " + FileWriteFailureReason(staged, errno);
+                out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+                out << pageSvg;
+                out.close();
+                if (!out) return "Write failed. " + FileWriteFailureReason(staged, errno);
+                return std::string();
+            });
+            if (!failure.empty()) {
+                result.error = failure;
                 result.writtenFiles.clear();
                 return result;
             }
