@@ -8,12 +8,16 @@
 //                 or upload a custom one, choose a processing function from the
 //                 category tree in the middle, tune its options on the right
 //                 and watch the processed result on the left.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description above the tabs, which fill the rest of the area;
+//                  every playground label and button sized to its text
 // Version: 1.1.0 - the samples and Upload offer FileLoader's picture types
 // Version: 1.0.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasPathUtf8.h"
 
 #ifdef HAS_LIBVIPS
@@ -476,6 +480,16 @@ namespace {
         return names;
     }
 
+    // A button as wide as its text, at least `minWidth` (the width it had).
+    std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, float height,
+                                                  const std::string& text, float minWidth) {
+        auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, height, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+        button->boxConstraints = limits;
+        return button;
+    }
+
     // ---- Overview tab: intro + diagram + playground category summary. ----
     std::shared_ptr<UltraCanvasUIElement> BuildOverviewTab() {
         const std::string base    = NormalizePath(GetResourcesDir() + "Docs/Modules/PixelFX/");
@@ -545,13 +559,7 @@ namespace {
         root->SetPadding(10, 12, 10, 12);
         root->SetBackgroundColor(Colors::White);
 
-        auto title = std::make_shared<UltraCanvasLabel>("PixelFXDemoTitle", 0, 0, 0, 26);
-        title->SetText("PixelFX playground");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
+        DemoKit::AddHeading(root, "PixelFXDemoTitle", "PixelFX playground")->SetFontSize(16);
 
         // ===== Three columns: image | function tree | options =====
         auto columns = std::make_shared<UltraCanvasContainer>("PixelFXColumns", 0, 0, 0, 0);
@@ -569,31 +577,18 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(leftCol);
 
-        auto sourceRow = std::make_shared<UltraCanvasContainer>("PixelFXSourceRow", 0, 0, 0, 34);
-        sourceRow->layout.SetFlexRow().SetFlexGap(8)
-                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        sourceRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        // This is a fixed-height strip holding the sample dropdown and the upload
-        // button; its contents are meant to stay put. Disable scrollbars so a
-        // narrow column never spawns a (horizontal) scrollbar across the block.
-        ContainerStyle sourceRowStyle;
-        sourceRowStyle.autoShowScrollbars = false;
-        sourceRow->SetContainerStyle(sourceRowStyle);
-        leftCol->AddChild(sourceRow);
+        // The sample dropdown and the upload button; they wrap onto a second
+        // line when the column is narrower than they are.
+        auto sourceRow = DemoKit::AddRow(leftCol, "PixelFXSourceRow", 8);
+        sourceRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        auto sourceLabel = std::make_shared<UltraCanvasLabel>("PixelFXSourceLabel", 0, 0, 96, 24);
-        sourceLabel->SetText("Sample image");
-        sourceLabel->SetFontSize(12);
-        sourceLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(sourceLabel);
+        DemoKit::Add(sourceRow, DemoKit::CreateText("PixelFXSourceLabel", "Sample image"));
 
         auto sampleDropdown = std::make_shared<UltraCanvasDropdown>("PixelFXSample", 0, 0, 210, 30);
-        sampleDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(sampleDropdown);
+        DemoKit::AddFixed(sourceRow, sampleDropdown);
 
-        auto uploadBtn = std::make_shared<UltraCanvasButton>("PixelFXUpload", 0, 0, 130, 30, "Upload image");
-        uploadBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        sourceRow->AddChild(uploadBtn);
+        auto uploadBtn = MakeButton("PixelFXUpload", 30, "Upload image", 130);
+        DemoKit::Add(sourceRow, uploadBtn);
 
         auto imageFrame = std::make_shared<UltraCanvasContainer>("PixelFXImageFrame", 0, 0, 0, 0);
         imageFrame->layout.SetFlexColumn()
@@ -611,12 +606,10 @@ namespace {
                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         imageFrame->AddChild(imageView);
 
-        auto status = std::make_shared<UltraCanvasLabel>("PixelFXStatus", 0, 0, 0, 32);
+        // As tall as its wrapped lines
+        auto status = DemoKit::AddText(leftCol, "PixelFXStatus", "");
         status->SetFontSize(11);
         status->SetTextColor(Color(90, 90, 90, 255));
-        status->SetWrap(TextWrap::WrapWord);
-        status->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        leftCol->AddChild(status);
 
         // ----- Middle column: the processing-function tree -----
         auto treeCol = std::make_shared<UltraCanvasContainer>("PixelFXTreeCol", 0, 0, 250, 0);
@@ -626,12 +619,7 @@ namespace {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(treeCol);
 
-        auto treeTitle = std::make_shared<UltraCanvasLabel>("PixelFXTreeTitle", 0, 0, 0, 22);
-        treeTitle->SetText("PixelFX functions");
-        treeTitle->SetFontSize(13);
-        treeTitle->SetFontWeight(FontWeight::Bold);
-        treeTitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        treeCol->AddChild(treeTitle);
+        DemoKit::AddHeading(treeCol, "PixelFXTreeTitle", "PixelFX functions");
 
         auto tree = std::make_shared<UltraCanvasTreeView>("PixelFXTree", 0, 0, 250, 0);
         tree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -666,12 +654,7 @@ namespace {
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         columns->AddChild(optionsCol);
 
-        auto optionsTitle = std::make_shared<UltraCanvasLabel>("PixelFXOptionsTitle", 0, 0, 0, 22);
-        optionsTitle->SetText("Options");
-        optionsTitle->SetFontSize(13);
-        optionsTitle->SetFontWeight(FontWeight::Bold);
-        optionsTitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        optionsCol->AddChild(optionsTitle);
+        DemoKit::AddHeading(optionsCol, "PixelFXOptionsTitle", "Options");
 
         auto optionsBox = std::make_shared<UltraCanvasContainer>("PixelFXOptionsBox", 0, 0, 0, 0);
         optionsBox->layout.SetFlexColumn().SetFlexGap(8)
@@ -877,40 +860,23 @@ namespace {
                                 .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
                 optionsBox->AddChild(info);
             } else if (!state->effect) {
-                auto hint = std::make_shared<UltraCanvasLabel>("PixelFXOptHint", 0, 0, 0, 60);
-                hint->SetText("Select a processing function in the tree to see its options.");
-                hint->SetFontSize(12);
+                auto hint = DemoKit::AddText(optionsBox, "PixelFXOptHint",
+                    "Select a processing function in the tree to see its options.");
                 hint->SetTextColor(Color(120, 120, 120, 255));
-                hint->SetWrap(TextWrap::WrapWord);
-                hint->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(hint);
             } else {
                 const Effect& fx = *state->effect;
 
-                auto name = std::make_shared<UltraCanvasLabel>("PixelFXOptName", 0, 0, 0, 22);
-                name->SetText(fx.name);
-                name->SetFontSize(13);
-                name->SetFontWeight(FontWeight::Bold);
-                name->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(name);
+                DemoKit::AddHeading(optionsBox, "PixelFXOptName", fx.name);
 
-                auto desc = std::make_shared<UltraCanvasLabel>("PixelFXOptDesc", 0, 0, 0, 56);
-                desc->SetText(fx.description);
+                auto desc = DemoKit::AddText(optionsBox, "PixelFXOptDesc", fx.description);
                 desc->SetFontSize(11);
                 desc->SetTextColor(Color(110, 110, 110, 255));
-                desc->SetWrap(TextWrap::WrapWord);
-                desc->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                optionsBox->AddChild(desc);
 
                 for (size_t i = 0; i < fx.params.size(); ++i) {
                     const EffectParam& param = fx.params[i];
 
-                    auto valueLabel = std::make_shared<UltraCanvasLabel>(
-                        "PixelFXOptLabel" + std::to_string(i), 0, 0, 0, 18);
-                    valueLabel->SetText(param.label + ": " + FormatParamValue(state->params[i]));
-                    valueLabel->SetFontSize(12);
-                    valueLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(valueLabel);
+                    auto valueLabel = DemoKit::AddText(optionsBox, "PixelFXOptLabel" + std::to_string(i),
+                        param.label + ": " + FormatParamValue(state->params[i]));
 
                     auto slider = CreateHorizontalSlider(
                         "PixelFXOptSlider" + std::to_string(i), 0, 0, 0, 24,
@@ -931,11 +897,7 @@ namespace {
 
                 // Optional dropdown (blend mode, watermark position, …)
                 if (!fx.choices.empty()) {
-                    auto choiceLabel = std::make_shared<UltraCanvasLabel>("PixelFXOptChoiceLabel", 0, 0, 0, 18);
-                    choiceLabel->SetText(fx.choiceLabel);
-                    choiceLabel->SetFontSize(12);
-                    choiceLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(choiceLabel);
+                    DemoKit::AddText(optionsBox, "PixelFXOptChoiceLabel", fx.choiceLabel);
 
                     auto choiceDropdown = std::make_shared<UltraCanvasDropdown>("PixelFXOptChoice", 0, 0, 0, 30);
                     for (const auto& c : fx.choices) choiceDropdown->AddItem(c);
@@ -951,11 +913,7 @@ namespace {
 
                 // Flood-fill extras: ink colour picker + click-to-set position
                 if (fx.usesFillColor) {
-                    auto colorLabel = std::make_shared<UltraCanvasLabel>("PixelFXOptColorLabel", 0, 0, 0, 18);
-                    colorLabel->SetText("Fill colour");
-                    colorLabel->SetFontSize(12);
-                    colorLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(colorLabel);
+                    DemoKit::AddText(optionsBox, "PixelFXOptColorLabel", "Fill colour");
 
                     auto picker = CreateColorPicker("PixelFXFillColor", state->ctx.fillColor, 0, 0, 286, 400);
                     picker->SetShowAlpha(false);
@@ -967,27 +925,22 @@ namespace {
                     };
                     optionsBox->AddChild(picker);
 
-                    auto pickBtn = std::make_shared<UltraCanvasButton>(
-                        "PixelFXPickPos", 0, 0, 170, 28, "Set fill position");
+                    auto pickBtn = MakeButton("PixelFXPickPos", 28, "Set fill position", 170);
                     pickBtn->SetIcon(iconsDir + "circle-empty.svg");
                     pickBtn->SetIconSize(14, 14);
-                    pickBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
                     pickBtn->onClick = [setPick]() { (*setPick)(true); };
-                    optionsBox->AddChild(pickBtn);
+                    DemoKit::Add(optionsBox, pickBtn);
+                    pickBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
                 }
 
                 if (fx.params.empty() && fx.choices.empty() && !fx.usesFillColor) {
-                    auto none = std::make_shared<UltraCanvasLabel>("PixelFXOptNone", 0, 0, 0, 20);
-                    none->SetText("This function has no adjustable options.");
+                    auto none = DemoKit::AddText(optionsBox, "PixelFXOptNone",
+                        "This function has no adjustable options.");
                     none->SetFontSize(11);
                     none->SetTextColor(Color(120, 120, 120, 255));
-                    none->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                    optionsBox->AddChild(none);
                 }
 
-                auto originalBtn = std::make_shared<UltraCanvasButton>(
-                    "PixelFXShowOriginal", 0, 0, 130, 28, "Show original");
-                originalBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+                auto originalBtn = MakeButton("PixelFXShowOriginal", 28, "Show original", 130);
                 originalBtn->onClick = [state, showImage, setStatus]() {
                     if (!state->originalValid) return;
                     if (showImage(state->original)) {
@@ -995,7 +948,8 @@ namespace {
                                   "slider or re-select it to process again).");
                     }
                 };
-                optionsBox->AddChild(originalBtn);
+                DemoKit::Add(optionsBox, originalBtn);
+                originalBtn->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Start);
             }
 
             optionsBox->InvalidateLayout();
@@ -1080,25 +1034,34 @@ namespace {
 
 // ===== PIXELFX MODULE DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreatePixelFXExamples() {
-        auto root = std::make_shared<UltraCanvasContainer>("PixelFXExamples", 0, 0, 1000, 720);
-        root->size.width  = CSSLayout::Dimension::Pct(100);
-        root->size.height = CSSLayout::Dimension::Pct(100);
-        root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        auto root = DemoKit::CreatePage("PixelFXExamples", "PixelFX",
+                "Image processing on libvips: the module's overview and processing categories, "
+                "its documentation, and a playground that applies each function to a sample "
+                "or uploaded image.");
+        // The tabs' text areas and the playground scroll and size themselves:
+        // the page is the area's height and the tabs' card takes what the
+        // title leaves.
+        root->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("PixelFXCard");
+        card->SetPadding(4);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        DemoKit::Add(root, card, 1);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>("PixelFXTabs", 0, 0, 0, 0);
         tabs->SetTabPosition(TabPosition::Top);
         tabs->SetTabStyle(TabStyle::Modern);
         tabs->SetCloseMode(TabCloseMode::NoClose);
         tabs->SetTabHeight(30);
-        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         tabs->AddTab("Overview", BuildOverviewTab());
         tabs->AddTab("Details",  BuildDetailsTab());
         tabs->AddTab("Examples", BuildExamplesTab());
         tabs->SetActiveTab(0);
 
-        root->AddChild(tabs);
+        DemoKit::Add(card, tabs, 1);
+        tabs->layoutItem.SetFlexShrink(1);
         return root;
     }
 
