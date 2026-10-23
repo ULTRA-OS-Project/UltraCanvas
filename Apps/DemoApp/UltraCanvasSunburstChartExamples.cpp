@@ -150,7 +150,7 @@ namespace UltraCanvas {
                 case 2:  content = SunburstLabelContent::NamePercentage; break;
                 case 3:  content = SunburstLabelContent::Value; break;
                 case 4:  content = SunburstLabelContent::Percentage; break;
-                case 5:  content = SunburstLabelContent::None; break;
+                case 5:  content = SunburstLabelContent::NoLabel; break;
                 default: content = SunburstLabelContent::Name; break;
             }
             for (auto& c : charts) c->SetLabelContent(content);
@@ -190,7 +190,7 @@ namespace UltraCanvas {
             SunburstShadeMode mode;
             switch (index) {
                 case 1:  mode = SunburstShadeMode::DarkenByDepth; break;
-                case 2:  mode = SunburstShadeMode::None; break;
+                case 2:  mode = SunburstShadeMode::NoShade; break;
                 default: mode = SunburstShadeMode::LightenByDepth; break;
             }
             for (auto& c : charts) c->SetShadeMode(mode);

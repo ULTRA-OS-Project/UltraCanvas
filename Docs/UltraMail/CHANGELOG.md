@@ -1,3 +1,21 @@
+#### 2026-10-22 *0.10.68*
+- **The message list shows a tooltip only where a cell cuts its text off.**
+  Resting the pointer on any row showed "sender <address> - unread" with the
+  date on a second line, wherever the pointer was and however much of the row
+  was readable, in a box two lines high. Now only a cell whose text did not
+  fit gets one, on one line and holding what the cell lacked: the sender's
+  name and address in *From*, the whole subject in *Subject*, the full date
+  in *Date*. A sender, subject or date shown in full gets none. The badge
+  column keeps its own tooltip (what the sender is, and why).
+- **Switching an account between IMAP and JMAP asks for the password again.**
+  The account settings page kept the stored password when the *Protocol*
+  changed, so an account switched to JMAP - whose server often wants its own
+  app password or API token - could be saved but not connect. Choosing the
+  other protocol on a password account now shows a warning under the fields
+  and makes the password field *Required*; *Save* and *Save anyway* wait for
+  it and put the cursor there. Switching back to the saved protocol lifts the
+  demand; an account signed in with OAuth2 keeps its tokens and is not asked.
+
 #### 2026-10-22 *0.10.67*
 - **Saving an attachment opens in the Downloads folder on Windows.** The save
   dialog's first folder looked for `Downloads` under `HOME`, which Windows does

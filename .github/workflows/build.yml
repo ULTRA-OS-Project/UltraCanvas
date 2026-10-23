@@ -68,7 +68,7 @@ jobs:
   # Only pushes are gated. A pull request always builds: its entry is pending
   # by design, and nothing it produces is published.
   gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     outputs:
       pending: ${{ steps.check.outputs.pending }}
     steps:
@@ -678,6 +678,10 @@ jobs:
           # packages". Installing it explicitly lets apt resolve the set.
           scripts/ci-apt.sh install libunwind-dev
           scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+          # GStreamer's playbin and decoders: without them every video player
+          # opens nothing, and HTMLMediaTest checks only the fallback content
+          # instead of playing its WAV.
+          scripts/ci-apt.sh install gstreamer1.0-plugins-base gstreamer1.0-plugins-good
           # VideoFX's engine (FFmpeg 4.4 on 22.04). Without it the module builds
           # from its stub and VideoFXTest checks only the filter-text half.
           scripts/ci-apt.sh install libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev
@@ -2076,7 +2080,7 @@ jobs:
     name: Publish the SDKs and UltraCanvasStart as release assets
     needs: build
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     permissions:
       contents: write
     steps:
@@ -2180,7 +2184,7 @@ jobs:
     name: Android backend check
     needs: gate
     if: needs.gate.outputs.pending == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     # The whole job, not only its apt step: without one only GitHub's 6-hour
     # default applied, and on 2026-10-07 a hung apt held PR #720's checks for
     # five hours before it was cancelled by hand. Normally 75 s (5.5 min on a

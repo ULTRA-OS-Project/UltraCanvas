@@ -4,6 +4,7 @@
 #include "DbAdminRowDialog.h"
 
 #include "DbAdminFormat.h"
+#include "DbAdminTheme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -92,6 +93,7 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
     config.position   = DialogPosition::CenterParent;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!dialog) return;
+    dialog->SetFollowTheme(true);
     form->dialog = dialog.get();
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
@@ -184,7 +186,7 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
     dialog->AddChild(scroll);
 
     auto error = CreateLabel("dbrError", 0, 0, 0, 36, "");
-    error->SetTextColor(Color(176, 32, 32));
+    error->SetTextColor(ErrorColor());
     error->SetWrap(TextWrap::WrapWord);
     error->layoutItem.SetFlexShrink(0);
     dialog->AddChild(error);
@@ -194,11 +196,10 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
     buttons->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->layoutItem.SetFlexShrink(0);
     buttons->AddStretchSpacer(1);
-    auto cancel = CreateButton("dbrCancel", 0, 0, 90, kRowHeight, "Cancel");
+    auto cancel = MakeDialogButton("dbrCancel", "Cancel", 90);
     cancel->SetOnClick([form]() { form->dialog->CloseDialog(DialogResult::Cancel); });
     buttons->AddChild(cancel);
-    auto save = CreateButton("dbrSave", 0, 0, 110, kRowHeight, adding ? "Add row" : "Stage edit");
-    save->SetStyle(ButtonStyles::PrimaryStyle());
+    auto save = MakeDialogButton("dbrSave", adding ? "Add row" : "Stage edit", 110, ButtonRole::Primary);
     save->SetOnClick([form]() { Save(*form); });
     buttons->AddChild(save);
     dialog->AddChild(buttons);
@@ -217,6 +218,7 @@ void ShowSqlPreview(UltraCanvasWindowBase* parent, const std::string& title, con
     config.position   = DialogPosition::CenterParent;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!dialog) return;
+    dialog->SetFollowTheme(true);
     UltraCanvasModalDialog* raw = dialog.get();
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
@@ -239,8 +241,7 @@ void ShowSqlPreview(UltraCanvasWindowBase* parent, const std::string& title, con
     buttons->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->layoutItem.SetFlexShrink(0);
     buttons->AddStretchSpacer(1);
-    auto ok = CreateButton("dbpOk", 0, 0, 90, kRowHeight, "OK");
-    ok->SetStyle(ButtonStyles::PrimaryStyle());
+    auto ok = MakeDialogButton("dbpOk", "OK", 90, ButtonRole::Primary);
     ok->SetOnClick([raw]() { raw->CloseDialog(DialogResult::OK); });
     buttons->AddChild(ok);
     dialog->AddChild(buttons);

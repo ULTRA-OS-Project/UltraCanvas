@@ -1,3 +1,47 @@
+#### 2026-10-22 *0.6*
+- **Browse: filters, editing in the cell, blobs, and rows copied as text.**
+  - **Filters.** A bar under the grid filters on a column: contains, starts
+    with, =, ≠, <, ≤, >, ≥, is NULL, is not NULL. There is one filter per
+    column and all of them must hold. Each value is a bound parameter, so a
+    number compares as a number and a date as a date. "Contains" ignores case
+    on PostgreSQL too. The row count, the paging and an export of the table
+    all follow the filters.
+  - **Editing in the cell.** A double-click opens a field over the cell. Enter
+    stages the value, Escape leaves the cell as it was, and clicking
+    elsewhere stages it too. The right-click menu also sets a cell to NULL.
+    The row form stays on Edit row.
+  - **Blobs.** A blob cell opens a viewer, which shows a picture as a picture,
+    text as text, and anything else as a hex dump. The kind of file is read
+    from its bytes, not guessed from a name. Save to file writes the bytes as
+    they are, with an extension that fits their kind. Load from file stages a
+    file's bytes for the cell, and Commit writes them (SQLite BLOB,
+    PostgreSQL bytea). The console's result rows offer View and Save as well.
+  - **Copy rows.** Select rows (Ctrl+click, Shift+click) and copy them from
+    the right-click menu as CSV, JSON or SQL INSERT statements, or press
+    Ctrl+C for CSV. This works in Browse and in the console's result. The
+    INSERTs go into Browse's table, or into the table the console's SELECT
+    read.
+
+#### 2026-10-22 *0.5*
+- **A cleaner look, and buttons that say what they do without "…"**. Every
+  button label is now the action itself - **Add connection**, **Edit row**,
+  **Preview SQL**, **Import**, **Export**, **Choose** - where most ended in
+  "…"; the tooltip still says it in full. The window is white cards on a
+  grey ground (the header with the connection buttons, the tree, the tabs)
+  in a theme whose accent is the blue of the app icon. Each button carries
+  an icon from the app's own set, and its look says what it does: the
+  action a bar is for (**Commit**, **Apply**, **Run**, a dialog's
+  **Save**) is filled in the accent, one that removes something (**Remove**,
+  **Delete row**, **Drop column**, **Drop index**) is red. Browse pages with
+  arrow buttons beside the row range. The tabs carry icons and an accent
+  underline; the lists have a quieter header, alternating rows and a soft
+  selection whose text stays readable. The tree shows a connection
+  (red for production), a schema, a table, a view, a materialized view, a
+  foreign table and a sequence each by its icon, without the "(view)"
+  suffix, opens with an arrow instead of a +/- box, and shows a node being
+  read by a thin bar along its row instead of a "Loading…" line. Error
+  messages, in the window and in every dialog, take the theme's red.
+
 #### 2026-10-22 *0.4*
 - **Exporting: a table, or the rows of a query, to CSV, TSV, JSON, SQL or a
   workbook** (`Docs/Research/UltraDBAdminDesignProposal.md`). Browse's

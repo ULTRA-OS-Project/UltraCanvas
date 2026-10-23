@@ -1389,7 +1389,11 @@ through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 engine and a model on demand and supervises the engine as a loopback
 process shared between applications; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
-chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
+chat and embeddings through it; the module's one library that draws,
+`UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
+`UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
+dialog an application shows when a service needs a model that is not on
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 
@@ -1561,7 +1565,10 @@ worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
-on libcurl. Remaining gaps are per-function and environment-dependent —
+on libcurl. `UltraNetCookieJar` (`UltraNet/UltraNetCookieJar.h`) is a
+browser's cookie jar with the rules in the open (RFC 6265bis: `Store`,
+`HeaderFor`, `Classify`, `SiteOf`, `ParseCookieDate`, kept in a text file),
+for a client that follows redirects itself; UltraWeb uses it. Remaining gaps are per-function and environment-dependent —
 build and run the `UltraNetApiStatus` probe tool for ground truth on a
 given machine. See `Docs/Modules/UltraNet/README.md`.
 

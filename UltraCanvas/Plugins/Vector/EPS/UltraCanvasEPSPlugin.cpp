@@ -52,7 +52,7 @@ namespace {   // ===== INTERPRETER (internal) =====
 // ----- object model -----
 
     enum class PSType {
-        Null, Mark, Bool, Number, Name, LitName, Operator,
+        Null, Mark, Boolean, Number, Name, LitName, Operator,
         String, Array, Proc, Dict, File, Save
     };
 
@@ -70,7 +70,7 @@ namespace {   // ===== INTERPRETER (internal) =====
         std::shared_ptr<PSDict> dict;
 
         static PSObject Number(double v) { PSObject o; o.type = PSType::Number; o.num = v; return o; }
-        static PSObject Boolean(bool v) { PSObject o; o.type = PSType::Bool; o.bval = v; return o; }
+        static PSObject Boolean(bool v) { PSObject o; o.type = PSType::Boolean; o.bval = v; return o; }
         static PSObject Null() { return PSObject(); }
         static PSObject Mark() { PSObject o; o.type = PSType::Mark; return o; }
         static PSObject NameOf(const std::string& n, bool literal) {
@@ -736,7 +736,7 @@ namespace {   // ===== INTERPRETER (internal) =====
                     PSObject chunk = Pop();
                     // readhexstring leaves string+bool; procs usually pop the
                     // bool themselves, but tolerate both shapes.
-                    if (chunk.type == PSType::Bool && opStack.size() > before) chunk = Pop();
+                    if (chunk.type == PSType::Boolean && opStack.size() > before) chunk = Pop();
                     while (opStack.size() > before) Pop();
                     if (chunk.type != PSType::String || chunk.str->empty()) break;
                     data += *chunk.str;
@@ -1074,7 +1074,7 @@ namespace {   // ===== INTERPRETER (internal) =====
                     // top = ncomp; below: multi (bool), then sources
                     ncomp = top.AsInt();
                     PSObject multi = Pop();
-                    if (multi.type == PSType::Bool && multi.bval) {
+                    if (multi.type == PSType::Boolean && multi.bval) {
                         diagnostics.Warn("colorimage with separate data sources: only the first is read");
                         // sources are on the stack: pop ncomp-1 extras below the first
                         std::vector<PSObject> srcs;
@@ -1092,7 +1092,7 @@ namespace {   // ===== INTERPRETER (internal) =====
                     if (isMask) {
                         imgMat = MatrixFrom(Pop());
                         PSObject pol = Pop();
-                        polarity = pol.type == PSType::Bool ? pol.bval : true;
+                        polarity = pol.type == PSType::Boolean ? pol.bval : true;
                         bits = 1;
                         ncomp = 1;
                     } else {
@@ -1271,7 +1271,7 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
         // ----- comparison / boolean -----
         auto equal = [](const PSObject& a, const PSObject& b) -> bool {
             if (a.IsNumber() && b.IsNumber()) return a.num == b.num;
-            if (a.type == PSType::Bool && b.type == PSType::Bool) return a.bval == b.bval;
+            if (a.type == PSType::Boolean && b.type == PSType::Boolean) return a.bval == b.bval;
             auto strOf = [](const PSObject& o) -> const std::string* {
                 if (o.type == PSType::String) return o.str.get();
                 if (o.type == PSType::Name || o.type == PSType::LitName ||
@@ -1309,22 +1309,22 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
         op("le", [cmp](I& i) { cmp(i, 3); });
         op("and", [](I& i) {
             PSObject b = i.Pop(), a = i.Pop();
-            if (a.type == PSType::Bool) i.Push(PSObject::Boolean(a.bval && b.bval));
+            if (a.type == PSType::Boolean) i.Push(PSObject::Boolean(a.bval && b.bval));
             else i.Push(PSObject::Number(static_cast<double>(a.AsInt() & b.AsInt())));
         });
         op("or", [](I& i) {
             PSObject b = i.Pop(), a = i.Pop();
-            if (a.type == PSType::Bool) i.Push(PSObject::Boolean(a.bval || b.bval));
+            if (a.type == PSType::Boolean) i.Push(PSObject::Boolean(a.bval || b.bval));
             else i.Push(PSObject::Number(static_cast<double>(a.AsInt() | b.AsInt())));
         });
         op("xor", [](I& i) {
             PSObject b = i.Pop(), a = i.Pop();
-            if (a.type == PSType::Bool) i.Push(PSObject::Boolean(a.bval != b.bval));
+            if (a.type == PSType::Boolean) i.Push(PSObject::Boolean(a.bval != b.bval));
             else i.Push(PSObject::Number(static_cast<double>(a.AsInt() ^ b.AsInt())));
         });
         op("not", [](I& i) {
             PSObject a = i.Pop();
-            if (a.type == PSType::Bool) i.Push(PSObject::Boolean(!a.bval));
+            if (a.type == PSType::Boolean) i.Push(PSObject::Boolean(!a.bval));
             else i.Push(PSObject::Number(static_cast<double>(~a.AsInt())));
         });
         op("true", [](I& i) { i.Push(PSObject::Boolean(true)); });
@@ -1336,7 +1336,7 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
             PSObject o = i.Pop();
             const char* n = "nulltype";
             switch (o.type) {
-                case PSType::Bool: n = "booleantype"; break;
+                case PSType::Boolean: n = "booleantype"; break;
                 case PSType::Number: n = (o.num == std::floor(o.num)) ? "integertype" : "realtype"; break;
                 case PSType::Name: case PSType::LitName: n = "nametype"; break;
                 case PSType::Operator: n = "operatortype"; break;
@@ -1378,7 +1378,7 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
                     if (o.num == std::floor(o.num)) ss << static_cast<long>(o.num);
                     else ss << o.num;
                     break;
-                case PSType::Bool: ss << (o.bval ? "true" : "false"); break;
+                case PSType::Boolean: ss << (o.bval ? "true" : "false"); break;
                 case PSType::String: ss << *o.str; break;
                 case PSType::Name: case PSType::LitName: case PSType::Operator: ss << o.name; break;
                 default: ss << "--nostringval--";
@@ -1553,12 +1553,12 @@ const std::unordered_map<std::string, PSInterpreter::OpFn>& PSInterpreter::Opera
         op("exec", [](I& i) { PSObject o = i.Pop(); i.Call(o); });
         op("if", [](I& i) {
             PSObject p = i.Pop(), c = i.Pop();
-            if (c.type != PSType::Bool) throw PSError("typecheck: if");
+            if (c.type != PSType::Boolean) throw PSError("typecheck: if");
             if (c.bval) i.Call(p);
         });
         op("ifelse", [](I& i) {
             PSObject p2 = i.Pop(), p1 = i.Pop(), c = i.Pop();
-            if (c.type != PSType::Bool) throw PSError("typecheck: ifelse");
+            if (c.type != PSType::Boolean) throw PSError("typecheck: ifelse");
             i.Call(c.bval ? p1 : p2);
         });
         op("for", [](I& i) {

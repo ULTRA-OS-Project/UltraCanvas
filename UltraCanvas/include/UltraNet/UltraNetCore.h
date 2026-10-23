@@ -17,25 +17,6 @@
 #include <string>
 #include <vector>
 
-// Defensive: X11/Xlib.h defines `Success` and `None` as macros, which would
-// turn our enum-class members into literal integers. UltraCanvas's Linux
-// platform glue pulls X11 in transitively, so any TU that includes both an
-// UltraCanvas header and an UltraNet header would otherwise fail to compile.
-// We can't put X11 headers below UltraNet ones reliably, so just undef the
-// known conflict names here.
-#ifdef Success
-#undef Success
-#endif
-#ifdef None
-#undef None
-#endif
-#ifdef Bool
-#undef Bool
-#endif
-#ifdef Status
-#undef Status
-#endif
-
 // ============================================================================
 // Opaque handle. Zero is reserved for "invalid handle". Returned by
 // connection-oriented or async operations (sockets, sessions, websockets,
@@ -50,7 +31,7 @@ constexpr UltraNetHandle UltraNetInvalidHandle = 0;
 // up front so the surface is stable for downstream callers.
 // ============================================================================
 enum class UltraNetResultCode {
-    Success,
+    Ok,
     InvalidUrl,
     UnsupportedScheme,
     HostNotFound,
@@ -114,7 +95,7 @@ struct UltraNetResult {
 
     static UltraNetResult Ok() {
         UltraNetResult r;
-        r.code = UltraNetResultCode::Success;
+        r.code = UltraNetResultCode::Ok;
         r.success = true;
         return r;
     }
@@ -133,7 +114,7 @@ struct UltraNetResult {
 // surface. Stage 1 honours Basic / Bearer; the rest are reserved.
 // ============================================================================
 enum class UltraNetAuthType {
-    None,
+    NoAuth,
     Basic,
     Digest,
     Bearer,
@@ -145,7 +126,7 @@ enum class UltraNetAuthType {
 };
 
 struct UltraNetCredentials {
-    UltraNetAuthType type = UltraNetAuthType::None;
+    UltraNetAuthType type = UltraNetAuthType::NoAuth;
     std::string username;
     std::string password;
     std::string token;
@@ -159,7 +140,7 @@ struct UltraNetCredentials {
 // OS/<Platform>/UltraNetSupport.{cpp,mm}.
 // ============================================================================
 enum class UltraNetProxyType {
-    None,
+    NoProxy,
     Http,
     Https,
     Socks4,
@@ -168,13 +149,13 @@ enum class UltraNetProxyType {
 };
 
 struct UltraNetProxyConfig {
-    UltraNetProxyType type = UltraNetProxyType::None;
+    UltraNetProxyType type = UltraNetProxyType::NoProxy;
     std::string host;
     int port = 0;
     UltraNetCredentials credentials;
     std::vector<std::string> noProxyHosts;
 
-    bool IsEnabled() const { return type != UltraNetProxyType::None; }
+    bool IsEnabled() const { return type != UltraNetProxyType::NoProxy; }
 };
 
 // ============================================================================

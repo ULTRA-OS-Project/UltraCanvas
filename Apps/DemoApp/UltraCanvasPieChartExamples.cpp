@@ -192,7 +192,7 @@ namespace UltraCanvas {
                 case 1: pos = LabelPosition::Inside; break;
                 case 2: pos = LabelPosition::Outside; break;
                 case 3: pos = LabelPosition::Edge; break;
-                case 4: pos = LabelPosition::None; break;
+                case 4: pos = LabelPosition::NoLabels; break;
                 default: pos = LabelPosition::Auto;
             }
             pieChartControls.labelPosition = pos;

@@ -1,3 +1,271 @@
+#### 2026-10-22 *0.9.386*
+- **List view: which cell a double-click hit, and where a cell is.**
+  `onCellDoubleClicked(row, column, posInCell)` follows `onItemDoubleClicked`
+  with the column, and `GetCellRect(row, column)` gives a cell's box as it is
+  drawn now (element-local, scrolled), so an owner can lay a text field over a
+  cell and edit it in place. The list view's documentation shows how;
+  UltraDBAdmin's Browse grid is the first to do it.
+- **FileLoader: `SaveFile(path, bytes, error)`**, the counterpart of
+  `LoadFile`: bytes written to a local file as they are, for content no format
+  writer stands for (a database blob, a download kept as it came). The file is
+  written beside its name and moved there when complete, so a write that fails
+  never leaves half a file in place of the one that was there.
+
+#### 2026-10-22 *0.9.385*
+- **No framework enumerator is named `None` any more.** X11's `None` macro
+  rewrote such an enumerator in any file that included a window header
+  first, so 28 headers and sources carried an `#undef None` and others
+  worked around it with include order. Every `None` enumerator in the
+  framework's headers is renamed and every `#undef None` is gone:
+  `HardwareQuery::Nothing`; spreadsheet `CellErrorType::NoError`,
+  `BorderStyle::NoBorder`, `UnderlineStyle::NoUnderline`,
+  `FillPattern::NoFill`, `FilterOperator::NoFilter`,
+  `ClipboardOperation::NoOperation`, `PasteOperation::NoOperation`,
+  `HitArea::Nowhere`; `WaveformOverlay::NoOverlay`; QR code
+  `QRLogoStyle::NoLogo`, `QRGradientType::NoGradient`; charts
+  `ConnectionCapStyle::NoCap`, `SunburstLabelContent::NoLabel`,
+  `SunburstShadeMode::NoShade`, `ValueVisualizationType::NoVisualization`,
+  `DecorativeRingType::NoRing`, `ConnectionLineType::NoLine`,
+  `NestedAreaLabelPosition::NoLabels`, `ChordLabelPlacement::NoLabels`, pie
+  `LabelPosition::NoLabels`; diagrams `ArcValueDisplay::NoLabel`,
+  `GroupLabelPlacement::NoLabels`, `GroupFillMode::NoFill`,
+  `ConfidenceDisplayMode::Hidden`, `FlowChartArrowStyle::NoArrow`; UltraNet
+  `UltraNetAuthType::NoAuth`, `UltraNetProxyType::NoProxy`,
+  `UltraNetMailAuth::NoAuth`, `UltraNetMailFlags::NoFlags`; UltraVault
+  `SignInMethod::NoSignIn`; VirtualFS `VirtualFSCapability::NoCapabilities`,
+  `VirtualFSRamDiskBacking::NotCreated`, `UCVFSCompressionType::Uncompressed`;
+  printers `IODuplexMode::OneSided`, `IOSupplyColor::NoColor`; network
+  monitor `LoopbackRole::NotLoopback`, `NameSource::NoSource`; video timeline
+  `Drag::NoDrag`; LaTeX `MathAtomClass::NoClass`; and in the modules that
+  arrived meanwhile, `UltraIMCapabilityFlags::NoCapabilities`,
+  `UltraIMResultCode::Ok` and `UltraRtcResultCode::Ok`. The strings the file
+  formats write are unchanged. (`NoValue` is also an X11 macro, hence
+  `NoVisualization`.)
+- **Nor is any named `Success`.** X11's `Success` macro (0) did the same to
+  the result-code enumerators, guarded by `#undef Success` in UltraNet,
+  UltraWin, UltraMessage, UltraDatabase, UltraCrypt, UltraVault, IODevice,
+  EBook and VirtualFS headers and two core sources. The enumerator is `Ok`
+  in every result code - `VirtualFSResult::Ok`, `UltraNetResultCode::Ok`,
+  `UltraWinResultCode::Ok`, `UltraMsgResultCode::Ok`, `UltraDbResultCode::Ok`,
+  `UltraCryptResultCode::Ok`, `UltraVault::ResultCode::Ok`,
+  `IODeviceResultCode::Ok`, `NetworkMonitorResultCode::Ok`,
+  `StoreResultCode::Ok` - and the factories `WasmStatus::Success()` and
+  `VaultResult::Success()` are `WasmStatus::Ok()` (like `UltraNetResult::Ok()`)
+  and `VaultResult::NoError()` (`VaultResult::Ok()` is its query). Every
+  `#undef Success` is gone.
+- **And no `#undef` of an X11 macro is left at all.** The `Status`, `Always`
+  and `Bool` guards in UltraNet, UltraWin, UltraDatabase, IODevice, EBook,
+  Spreadsheet and RequirementModel headers are gone with the identifiers
+  they covered: `RequirementField::Status` is `State` (the ReqIF field
+  names are unchanged), `UltraDbType::Boolean` and `ZWaveValueType::Bool` are
+  `Boolean`, `AiStatus::Status()` is `StatusOf()` and the IMAP response's
+  `Status()` is `StatusWord()`. Nothing was named `Always` any more.
+- **CI keeps it that way.** `scripts/check_x11_names.py` (`x11-names.yml`)
+  fails on an enumerator, function, method or member named like any of the
+  481 object-like macros `<X11/X.h>`, `Xlib.h` and `Xutil.h` define, and on
+  an `#undef` or `push_macro` of one; the list is generated from the headers
+  into `scripts/x11_macro_names.txt`, the baseline is empty, and a site that
+  is correct as it stands says `// x11-name-ok: <why>`. The names it found
+  on its first run are gone too: `ArcEdgeType` and `ArcLabelSide` say
+  `AboveBaseline` / `BelowBaseline`, the IPP tag is `IppTag::NoValueTag`, the
+  Zigbee frames' `Status` fields are `StatusCode`, and a handful of file-local
+  helpers named `Bool`, `Below` or `CurrentTime` are renamed.
+- **And the Objective-C runtime's names the same way.** In a `.mm` file
+  `YES`, `NO`, `nil` and `Nil` are macros and `id`, `Class`, `SEL`, `IMP`,
+  `BOOL` and `Protocol` are global typedefs. `scripts/check_objc_names.py`
+  (`objc-names.yml`) fails on an enumerator or member named like a macro and
+  on a file-scope declaration named like a type; inside a namespace, a
+  class, an enum or a parameter list the names are free, as clang confirms,
+  so the framework's `int id` members and `const std::string& id` parameters
+  are not findings. Its first run found nothing; the baseline is empty, and
+  a site that is correct as it stands says `// objc-name-ok: <why>`.
+- **One script for the three name checks.** `scripts/check_platform_names.py`
+  replaces `check_win32_names.py`, `check_x11_names.py` and
+  `check_objc_names.py`: the same rules and finding kinds (`win32-name-*`,
+  `x11-*`, `objc-*`), the same `// <platform>-name-ok` markers, one
+  workflow (`platform-names.yml`) and one baseline
+  (`scripts/platform_names_baseline.txt`, carrying the Win32 sites still
+  being worked off). `--platform win32|x11|objc` narrows a run,
+  `--self-test` covers all three, and `--generate-names` takes the platform
+  whose list to rebuild.
+- **`MacTypes.h` is covered too.** Every Foundation import reaches
+  CoreServices' `MacTypes.h`, which puts `Rect`, `Point`, `Boolean`, `Byte`,
+  `Size`, `Handle`, `Ptr`, `Fixed`, `Style`, `OSErr`, `UInt8`, `Str255` and
+  a hundred more typedefs at global scope, the Style constants `normal`,
+  `bold`, `italic`, `underline`, ... as global enumerators, and `kInvalidID`
+  as a macro. `scripts/mactypes_global_names.txt` is generated from the
+  header itself (`--platform objc --generate-names <SDK>/usr/include/MacTypes.h`;
+  the file is byte-identical in the 10.15 and 11.3 SDKs), and the
+  Objective-C file-scope rule reads it. `Length`, `Debugger68k` and the
+  macro form of `StrLength` are left out: a C++ translation unit never sees
+  them. The tree is clean; the Objective-C rules now skip the Windows, Linux,
+  BSD, WASM and Android glue, which no `.mm` file reaches.
+
+#### 2026-10-22 *0.9.384*
+- **Colour emoji were drawn huge on Windows.** The bundled Noto Color Emoji,
+  the default emoji font since the emoji setting, is a bitmap font: 109 px
+  pictures that fontconfig scales to the text's size by the rules of its
+  `10-scale-bitmap-fonts.conf`. A system `fonts.conf` includes them from
+  `conf.d`; the one the framework writes where there is none - every packaged
+  Windows build, and Android - did not, so an emoji stood 128 px high in a
+  line of 14 pt text (UltraMail's message list and reading pane showed a
+  LinkedIn subject's 👤 as a giant silhouette). The generated `fonts.conf`
+  now carries the scaling rules on Windows and Android, Windows' inline
+  configuration for an empty fontconfig loads them too, and
+  `GenerateBitmapScalingConfig()` (`UltraCanvasApplication.h`) hands them to
+  any other configuration. Linux keeps taking them from `/etc/fonts/conf.d`.
+  `EmojiSettingsTest` checks that a 14 pt line with the colour emoji stays
+  under 40 px.
+
+#### 2026-10-22 *0.9.383*
+- **`<video>` and `<audio>` in the HTML reader.** `HTML::BuildOptions::mediaFactory`
+  asks the host for a player with an `HTML::MediaRequest`: the element, its
+  sources in order (`src`, then the `<source>`s with their types), its
+  poster, `controls` / `autoplay` / `loop` / `muted`, and the size a browser
+  gives it (CSS, else the attributes, else 640 x 360 or an audio bar of
+  300 x 40). The player is placed as a picture is. Without a factory, or when
+  it answers null, the fallback content between the tags shows, as before.
+  `UltraCanvasWebView` sets the factory itself (`SetMediaPlayback`, on by
+  default). Each element plays in an `UltraCanvasVideoPlayerElement` on the
+  first address the page may load. The view keeps a player across rebuilds
+  of the same page, so playback goes on, and stops it when the page changes.
+  `autoplay` plays only a muted element (`Tests/HTMLMediaTest.cpp`).
+- **`HTML::PageLoaderServices::fetchResource`** fetches a style sheet or a
+  picture together with the address of the page it is for, when the host
+  sets it; otherwise `fetch` is used as before. UltraWeb uses it to keep
+  cookies from going to third parties. `PageLoader::AllowsResource` applies
+  the loader's scheme rules (mixed content, local files) to an address the
+  page loads outside the loader, and `PageUrl()` returns the address of the
+  page on show.
+- **`UltraNetCookieJar`, a browser's cookie jar in UltraNet**
+  (`UltraNet/UltraNetCookieJar.h`). Unlike a session's libcurl cookies, the
+  caller sees every cookie and decides when they go. `Store` applies a
+  `Set-Cookie` header, and `HeaderFor` returns the `Cookie` header for a
+  request, by RFC 6265bis: expiry (at most 400 days), `Domain` and `Path`,
+  `Secure`, `SameSite` and the `__Secure-` / `__Host-` prefixes. A request
+  for another site's page (`Classify`, `SiteOf`) neither sends nor sets one.
+  The cookies with an expiry are kept in a tab-separated text file (UltraNet
+  pulls in no JSON engine). UltraWeb is its first user; its tests are in
+  `Tests/UltraNet/test_cookie_jar.cpp`.
+- **GStreamer's base and good plugins are installed on the Linux CI row and
+  in cloud sessions** (`.github/workflows/build.yml`,
+  `.claude/hooks/session-start.sh`). Without `playbin` every video player
+  opened nothing, so `HTMLMediaTest` could only check the fallback content;
+  now it plays its WAV there.
+- **A save that fails says why.** The vector writers (SVG, PDF, EPS, AI, CDR,
+  XAR), the layered-image project file and the `.ucd` writer reported only
+  "Failed to create SVG file: <path>", "Could not create <path>" or "Could not
+  write <path>", so ArtCreator and UltraPaint showed that and nothing more.
+  They now give the reason: the folder does not exist, a folder has the
+  file's name, the file is marked read-only, access is denied (locked by
+  another program, or no permission), the location is read-only, the disk is
+  full, or else the system's own error text and code.
+- **Saving a drawing no longer risks the one already there.** The vector
+  writers truncated the target before the first byte of the new drawing
+  existed, so a save that failed partway - a full disk, a network share that
+  went away, a codec error - left the file empty or cut short, and the
+  drawing it held was gone. They now write through `WriteFileAtomically`: the
+  new file is written beside the old one and replaces it only once it is
+  complete, and a save that fails leaves the old file and no temporary one
+  behind. They also check that the write finished; a disk that filled up
+  partway used to pass as saved. `SVGConverterTest` covers saving over a
+  file, a missing folder and a folder in the way.
+  - `UltraCanvasFileError.h` 1.2.0: `FileWriteFailureReason(path, errno)` is
+    `DescribeFileWriteError`'s answer, else the system error the failing call
+    left, for a write that failed although the file still opens;
+    `DescribeFileWriteError` names a file marked read-only.
+  - `UltraCanvasFileLoader::SaveVectorDocument` reports the destination's
+    reason when the writer gave none.
+
+#### 2026-10-22 *0.9.382*
+- **ChatCube Direct: a relay behind a redirect.** `RelayClient` no longer
+  lets libcurl follow redirects - on a 301/302 libcurl sends a POST again
+  without its body, which the relay answered with 422. It follows them
+  itself (up to three), body and all, and keeps the new base address, which
+  `DirectProvider` stores after sign-in. `SetBaseUrl` takes an address
+  without a scheme as `https://`, and a 422's `detail` becomes the error
+  message. DirectProviderTests 0.1.1 checks both against the relay behind
+  a redirector.
+- **The Windows and Linux packages carry the UltraIM provider modules.**
+  `package-win.sh` and `package-linux.sh` copy `Plugins/UltraIM` next to the
+  executables (before the dependency closure, so the modules' own libraries
+  come along), and `package-linux.sh` lists ChatCube. Either script now
+  fails when ChatCube is packaged without `ultraim_direct`, instead of
+  shipping an app that can only say its module was not found.
+- **UltraDatabase: a connection closed at exit wrote into freed memory.**
+  The manager's table of retired connections was a function-local static,
+  first built by the first `UltraDb_CloseConnection`. UltraMessage's atexit
+  handler - registered earlier - closes its journal after that table was
+  already destroyed, and the process aborted in `free()` as it exited
+  (`malloc_consolidate(): unaligned fastbin chunk`). The table is now never
+  destroyed, like the handle tables. `UltraDatabaseExitClose`, a test
+  program of its own, closes a connection from such a handler under glibc's
+  strict heap checks.
+
+#### 2026-10-22 *0.9.381*
+- **`UltraCanvasAlbum` 1.11.0: `onItemPressed` and `ReleaseDrag`.** An
+  application that carries a tile's drag itself - UltraVideo's bin, whose
+  tiles land on the timeline - hears the left button press on a tile in
+  `onItemPressed(index)`, arms its own drag there as it does from a button's
+  press, and calls `ReleaseDrag()` when that drag starts, so the album's
+  reorder (edit modes) does not follow the same press. `onItemDraggedOut`
+  (1.9.0), which needed an edit mode and let the album decide when a tile
+  had left, is gone: it had that one caller. UltraVideo's bin is a
+  `Display` album now - the hover actions, a double-click and the drag.
+- **CI: the gate, the lint checks and the Android backend check run on
+  `ubuntu-22.04`.** They ran on `ubuntu-latest`, a separate pool from the
+  `ubuntu-22.04` one the build legs use, and on 2026-10-21 that pool held
+  them for up to three hours - the gate alone kept one pull request's six
+  builds from starting for ninety minutes - while the build legs ran at once.
+  Every script they run passes under that image's Python 3.10.
+  The Doc examples check moves too: a baseline entry drops the
+  `UltraCanvas::` one clang writes before a type and another leaves out
+  (`check_doc_examples.py` 1.8.0), so its clang 14 and the 24.04 image's
+  clang 18 read the baseline alike.
+- **VideoFX 0.16.2: a clip's faces are looked for afresh when its file
+  changes.** The faces found in a clip (`keepFacesInView` under `Fill`) are
+  remembered per file and range for the preview's sake; the file's size and
+  write time are part of the key now, so a clip re-exported over an old one
+  of the same name no longer frames to the faces of the old one.
+  `VideoFXTest` exports a faceless clip under the name the late-face clip
+  then takes, and the crop follows the new file's face.
+
+#### 2026-10-22 *0.9.380*
+- **Tree view: the expand button can be an arrow.** `SetExpanderStyle`
+  (`TreeExpanderStyle::Chevron`) draws a row's expand button as an arrow -
+  pointing right when the row is closed, down when it is open - in
+  `SetExpanderArrowColor`, instead of the `+` / `-` in a grey square that
+  every tree had. It takes the same place and the same click, so a tree
+  switches without any row moving; `TreeExpanderStyle::Box` stays the
+  default. The demo app's TreeView page shows it on the multi-selection
+  tree, with a switch back to the box and its dotted lines; UltraDBAdmin's
+  connection tree is the first application to use it.
+
+#### 2026-10-22 *0.9.379*
+- **UltraCanvasFilerWidget: the hover icon menu's Rename button shows a "T"
+  and its buttons name their keys.** The Rename button drew a pencil, which
+  reads as "edit the file"; it renames, so it now draws a serif *T* beside a
+  text caret - "type the name". The strip's tooltips say what each button does
+  and give its shortcut: *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
+  (Ctrl+X)*, *Rename (F2)*, *Delete (Del)*.
+- **UltraCanvasFilerWidget: the hover icon menu's Cut is greyed out on a
+  drive.** The context menu greys Cut out there and Ctrl+X refuses it, but
+  the hover button put the files on the clipboard as a cut anyway, ghosting
+  entries whose move off the drive could not be completed. It is now drawn
+  dimmed and a press does nothing; its tooltip says to copy, then delete.
+- **UltraCanvasFilerWidget: Rename and Delete are greyed out on a drive that
+  cannot do them.** On a drive whose host did not wire `remoteRename` /
+  `remoteDelete`, the context menu offered Rename, Delete and Delete
+  Permanently and the hover icon menu offered Rename and Delete, and each
+  refused only once clicked. They are now greyed out in both menus
+  (`CanRenameHere` / `CanDeleteHere`); F2 and Del still say why. UltraFiler
+  wires both, so its menus do not change.
+- **UltraCanvasFilerWidget: the hover icon menu's Copy and Cut buttons show
+  that they worked.** A copy changed nothing on screen, so a press looked
+  like it had missed. The pressed button now flashes green
+  (`FilerStyle::iconMenuDoneColor`) with a checkmark that pops in, then fades
+  back to its glyph within 0.7 s; only the button is repainted.
+
 #### 2026-10-22 *0.9.378*
 - **A core built with `ULTRACANVAS_ENABLE_CHARTS=OFF` links again.** The
   option dropped every source under `Plugins/Charts/`, but code outside it is

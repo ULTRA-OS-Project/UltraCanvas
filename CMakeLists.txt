@@ -1568,6 +1568,7 @@ endif()
 if (BUILD_TEXTER_APP)
     # Create executable
     add_executable(Texter
+            Apps/Texter/UltraCanvasTextEditorTranslate.cpp
             Apps/Texter/UltraCanvasTextEditor.cpp
             Apps/Texter/UltraCanvasTextEditorHelpers.cpp
             Apps/Texter/UltraCanvasTextEditorDialogs.cpp
@@ -1594,6 +1595,13 @@ if (BUILD_TEXTER_APP)
             ${ULTRACANVAS_LIBRARY}
     )
     target_link_libraries(Texter PRIVATE fmt::fmt)
+    # Edit > Translate Selection... translates through UltraAI, local models
+    # first, and offers the download through the module's dialog. Only in a
+    # build that has the module and its UI library.
+    if(TARGET UltraAI_Core AND TARGET UltraAI_UI)
+        target_link_libraries(Texter PRIVATE UltraAI_Core UltraAI_UI)
+        target_compile_definitions(Texter PRIVATE TEXTER_HAS_ULTRAAI=1)
+    endif()
 
     # iconv - on Linux it's part of glibc, on macOS it needs explicit linking
 if(APPLE)
@@ -2011,6 +2019,8 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         Apps/UltraAIApp/UltraAISettingsDialog.cpp
         Apps/UltraAIApp/UltraAIAppSettings.cpp
         Apps/UltraAIApp/UltraAISettingsWindow.cpp
+        Apps/UltraAIApp/UltraAISettingsWidgets.cpp
+        Apps/UltraAIApp/UltraAILocalModelsPage.cpp
         Apps/UltraAIApp/UltraAIChatDialog.cpp
         Apps/UltraAIApp/UltraAITranslatorDialog.cpp
     )
@@ -2026,6 +2036,9 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
         ${ULTRACANVAS_LIBRARY}
         UltraAI_Core
     )
+    if(TARGET UltraAI_UI)
+        target_link_libraries(UltraAIApp PRIVATE UltraAI_UI)
+    endif()
 
     if(TARGET fmt::fmt)
         target_link_libraries(UltraAIApp PRIVATE fmt::fmt)
@@ -2150,6 +2163,19 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME WebViewTest COMMAND WebViewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # <video> and <audio>: the builder's media requests and fallback content,
+    # and the web view's players kept across rebuilds (headless; plays a WAV
+    # when the build has a media backend).
+    add_executable(HTMLMediaTest Tests/HTMLMediaTest.cpp)
+    target_include_directories(HTMLMediaTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(HTMLMediaTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(HTMLMediaTest PRIVATE cxx_std_20)
+    set_target_properties(HTMLMediaTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME HTMLMediaTest COMMAND HTMLMediaTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # HTML forms with real widgets: encodings, the builder's widgets and their

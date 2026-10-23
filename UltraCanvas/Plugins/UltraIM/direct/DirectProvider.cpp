@@ -324,22 +324,24 @@ void DirectProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResult
         SetState(UltraIMConnectionState::Error, result.message);
         finish(result);
     };
-    relay->Request("POST", "/v1/register", &reg, [this, relay, relayUrl, finish, fail](const RelayResponse& r) {
+    relay->Request("POST", "/v1/register", &reg, [this, relay, finish, fail](const RelayResponse& r) {
         if (!r.Ok()) return fail(r);
         JSONValue challenge = JSONValue::MakeObject();
         challenge.Set("user_id", JSONValue(identity_.userId));
         relay->Request("POST", "/v1/login/challenge", &challenge,
-                       [this, relay, relayUrl, finish, fail](const RelayResponse& c) {
+                       [this, relay, finish, fail](const RelayResponse& c) {
             if (!c.Ok()) return fail(c);
             const std::string nonce = c.body["nonce"].GetString();
             JSONValue login = JSONValue::MakeObject();
             login.Set("user_id", JSONValue(identity_.userId));
             login.Set("nonce", JSONValue(nonce));
             login.Set("signature", JSONValue(Sign(identity_, LoginMessage(nonce))));
-            relay->Request("POST", "/v1/login", &login, [this, relay, relayUrl, finish, fail](const RelayResponse& l) {
+            relay->Request("POST", "/v1/login", &login, [this, relay, finish, fail](const RelayResponse& l) {
                 if (!l.Ok()) return fail(l);
                 relay->SetToken(l.body["token"].GetString());
-                store_.SetSetting("relay_url", relayUrl);
+                // Where the relay settled: https:// for a bare host, the
+                // target of a redirect - so the next start goes straight there.
+                store_.SetSetting("relay_url", relay->GetBaseUrl());
                 SetState(UltraIMConnectionState::Connected);
                 finish(UltraIMResult::Ok());
                 AfterLogin();

@@ -38,7 +38,7 @@ int32_t I32(const json& j, const char* key) {
     return it->get<int32_t>();
 }
 
-bool Bool(const json& j, const char* key) {
+bool BoolOf(const json& j, const char* key) {
     auto it = j.find(key);
     return it != j.end() && it->is_boolean() && it->get<bool>();
 }
@@ -101,8 +101,8 @@ bool ParseModel(const json& m, LocalModelInfo& out, std::string& outError) {
     if (feat != m.end() && feat->is_object()) {
         out.contextWindow       = I32(*feat, "contextWindow");
         out.embeddingDimensions = I32(*feat, "embeddingDimensions");
-        out.supportsTools       = Bool(*feat, "tools");
-        out.supportsVision      = Bool(*feat, "vision");
+        out.supportsTools       = BoolOf(*feat, "tools");
+        out.supportsVision      = BoolOf(*feat, "vision");
     }
     out.engineArgs    = Strings(m, "engineArgs");
     out.tags          = Strings(m, "tags");
@@ -203,7 +203,7 @@ bool ParseGallery(const std::string& text, Gallery& out, std::string& outError) 
                 bundle.url         = Str(b, "url");
                 bundle.sha256      = Str(b, "sha256");
                 bundle.sizeBytes   = U64(b, "size");
-                bundle.optional    = Bool(b, "optional");
+                bundle.optional    = BoolOf(b, "optional");
                 bundle.minOs       = Str(b, "minOs");
                 if (bundle.platform.empty() || bundle.url.empty()) {
                     outError = "engine \"" + engine.id + "\" has a bundle without platform or url";

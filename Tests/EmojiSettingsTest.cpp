@@ -10,6 +10,10 @@
 // the black-and-white setting, and no glyph may be missing.
 // The generic aliases (GenerateFontAliasConfig) are checked the same way: in a
 // configuration of the bundled fonts alone, "monospace" is Ubuntu Mono.
+// The bitmap scaling (GenerateBitmapScalingConfig): with it the colour emoji
+// is as tall as the text around it; without it - Windows' generated fonts.conf
+// until 2026-10-22 - a line of "👤 Someone" stood 128 px high in UltraMail.
+// Version: 1.2.0 - the bitmap scaling
 // Version: 1.1.0 - the generic aliases
 // Version: 1.0.0
 // Last Modified: 2026-10-20
@@ -62,17 +66,23 @@ void SetSettingsRoot(const std::filesystem::path& root) {
 struct EmojiRun {
     std::string family;
     int missing = -1;   // glyphs drawn as a box of hex digits
+    int height = 0;     // the line's height in pixels
 };
 
 // A configuration of the bundled fonts alone, made current, with the emoji
-// setting applied to it; then the emoji run of "👤 Someone" in Ubuntu Bold.
-EmojiRun LayOutWithBundledFonts() {
+// setting applied to it (and the bitmap scaling, `withScaling`); then the
+// emoji run of "👤 Someone" in Ubuntu Bold.
+EmojiRun LayOutWithBundledFonts(bool withScaling = true) {
     FcConfig* config = FcConfigCreate();
     const std::string dir = GetBundledFontsDir();
     for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
         const std::string file = dir + kEmbeddedAllFonts[i];
         if (std::filesystem::exists(PathFromUtf8(file)))
             FcConfigAppFontAddFile(config, reinterpret_cast<const FcChar8*>(file.c_str()));
+    }
+    if (withScaling) {
+        const std::string scaling = GenerateBitmapScalingConfig();
+        FcConfigParseAndLoadFromMemory(config, reinterpret_cast<const FcChar8*>(scaling.c_str()), FcFalse);
     }
     FcConfigSetCurrent(config);
     FcConfigDestroy(config);   // the current-config reference keeps it
@@ -88,6 +98,10 @@ EmojiRun LayOutWithBundledFonts() {
     PangoFontDescription* description = pango_font_description_from_string("Ubuntu Bold 14");
     pango_layout_set_font_description(layout, description);
     pango_font_description_free(description);
+
+    PangoRectangle logical{};
+    pango_layout_get_pixel_extents(layout, nullptr, &logical);
+    result.height = logical.height;
 
     result.missing = 0;
     PangoLayoutIter* it = pango_layout_get_iter(layout);
@@ -221,6 +235,21 @@ int main() {
                   << " missing glyph(s)" << std::endl;
         TEST(name + ": no box of hex digits", run.missing == 0);
         TEST(name + ": drawn in " + c.family, run.family == c.family);
+    }
+
+    // ----- at the text's size (GenerateBitmapScalingConfig) -----
+    {
+        EmojiSettings s;
+        s.style = EmojiStyle::Colour;
+        s.Save();
+        const EmojiRun unscaled = LayOutWithBundledFonts(/*withScaling=*/false);
+        const EmojiRun scaled = LayOutWithBundledFonts(/*withScaling=*/true);
+        std::cerr << "  a line of 14 pt with the colour emoji: " << unscaled.height
+                  << " px without the bitmap scaling, " << scaled.height << " px with it" << std::endl;
+        TEST("the scaling rules scale bitmap fonts",
+             GenerateBitmapScalingConfig().find("pixelsizefixupfactor") != std::string::npos);
+        TEST("the colour emoji is as tall as the text (a 14 pt line under 40 px)",
+             scaled.height > 0 && scaled.height < 40);
     }
 
     std::filesystem::remove_all(root, ec);

@@ -10,6 +10,7 @@
 // Statements are counted as SQLite and psql split them: at ';' outside
 // quotes, comments and PostgreSQL's dollar quotes, and not inside a CREATE
 // TRIGGER body, which ends at END;.
+// Version: 0.2.0 - StatementTable
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -41,5 +42,11 @@ ScriptSummary SummarizeScript(const std::string& script);
 
 // "3 DROP, 1 DELETE" - the risky statements in a few words; "" when none.
 std::string RiskyText(const ScriptSummary& summary);
+
+// The table a SELECT reads, as written after its first FROM - orders,
+// "main"."orders", public.customers - or "" when the statement has none (a
+// SELECT of values, a subquery after FROM). Rows copied as INSERT statements
+// go back into it.
+std::string StatementTable(const std::string& statement);
 
 } // namespace UltraDBAdmin

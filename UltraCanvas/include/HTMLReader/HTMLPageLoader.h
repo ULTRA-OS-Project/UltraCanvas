@@ -18,6 +18,9 @@
 // Rules for subresources: http(s) pages load http(s) and data: resources, an
 // https page no http ones (mixed content), and only a file: page loads file:
 // resources. Anything else is refused and logged in the page's warnings.
+// Version: 1.4.0 - PageLoaderServices::fetchResource: a subresource fetched
+//                  with the page it is for (a browser's cookie rules); media
+//                  addresses checked with AllowsResource
 // Version: 1.3.0 - downloads: LoadedPage keeps an Other answer's bytes and the
 //                  name to save it as (DownloadFileName); Content-Disposition:
 //                  attachment is a download; a non-page over the size limit is
@@ -29,7 +32,7 @@
 //                  within maxStyleSheets), and RewriteCssUrls makes their
 //                  addresses absolute
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -68,6 +71,12 @@ struct PageLoaderServices {
     // Fetch `url` (http, https or file); call `done` exactly once, on the
     // loader's thread.
     std::function<void(const std::string& url, std::function<void(FetchResult)> done)> fetch;
+    // Fetch a subresource - a style sheet, a picture - of the page at
+    // `pageUrl`; call `done` exactly once, on the loader's thread. Optional:
+    // without it subresources go through `fetch`. A browser uses it to send
+    // a page's cookies only to the page's own site.
+    std::function<void(const std::string& url, const std::string& pageUrl,
+                       std::function<void(FetchResult)> done)> fetchResource;
     // POST `body` (with `contentType`) to `url`, for a form; call `done`
     // exactly once, on the loader's thread. Without it a page's forms can
     // only send by GET.
@@ -149,6 +158,12 @@ public:
 
     // `href` resolved against the current page's base; "" when it cannot be.
     std::string Resolve(const std::string& href) const;
+    // Whether the page on show may load the resource at the absolute
+    // address `url` (the rules at the head of this file); `why` says why
+    // not. For what the page loads outside the loader - a <video>'s stream.
+    bool AllowsResource(const std::string& url, std::string& why) const;
+    // The address of the page on show (after redirects), "" before one.
+    const std::string& PageUrl() const { return pageUrl_; }
     const std::string& BaseUrl() const;
 
     // The charset to read a document in: BOM, then the Content-Type
@@ -195,6 +210,8 @@ private:
     std::string ToUtf8(const std::vector<uint8_t>& bytes, const std::string& charset) const;
     bool Allowed(const std::string& absolute, std::string& why) const;
     void Store(const std::string& url, CacheEntry entry);
+    // services_.fetchResource for the page at `pageUrl`, else services_.fetch.
+    void FetchResource(const std::string& url, const std::string& pageUrl, std::function<void(FetchResult)> done);
 
     PageLoaderServices services_;
     PageLoaderLimits limits_;

@@ -113,7 +113,7 @@ enum class NestedAreaLabelPosition {
     Inside,         // Label inside the shape (default)
     Outside,        // Label outside the shape
     Tooltip,        // Label shown on hover only
-    None            // No labels
+    NoLabels            // No labels
 };
 
 enum class NestedAreaColorTheme {

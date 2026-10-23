@@ -487,7 +487,7 @@ UltraNetResult Perform(CURL* h, const std::string& url, const UltraNetFtpOptions
     UltraNetResult r;
     r.url = ultranet_curlerror::RedactUrl(url);
     if (rc == CURLE_OK) {
-        r.code    = UltraNetResultCode::Success;
+        r.code    = UltraNetResultCode::Ok;
         r.success = true;
         return r;
     }

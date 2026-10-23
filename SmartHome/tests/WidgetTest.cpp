@@ -19,7 +19,7 @@
 #include "UltraCanvasSmartHomeAdvancedWidgets.h"
 #include "Plugins/Diagrams/UltraCanvasNodeDiagram.h"
 // After the module's headers: these pull in X11, whose `None` macro would
-// eat SmartHomeSecurityLevel::None.
+// eat SmartHomeSecurityLevel::NoSecurity.
 #include "../../Tests/DisplayTestSupport.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"

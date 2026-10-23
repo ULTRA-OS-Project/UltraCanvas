@@ -371,7 +371,7 @@ private:
     double number_ = 0.0;
     bool boolean_ = false;
     std::string text_;
-    CellErrorType error_ = CellErrorType::None;
+    CellErrorType error_ = CellErrorType::NoError;
 
     bool Compare(int c) const {
         if (op_ == "=") return c == 0;

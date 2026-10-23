@@ -1,3 +1,21 @@
+#### 2026-10-22 *0.1.2*
+- **ChatCube from the Windows package started without its networks.** The
+  package left out `Plugins/UltraIM`, so the sign-in page said "The
+  ChatCube Direct module was not found" and nothing could be done. The
+  provider modules (ChatCube Direct, Matrix, Telegram) ship next to
+  `ChatCube.exe` now, in the zip, the installer and the MSIX, and ChatCube
+  is in the Linux package too, with its modules.
+- **ChatCube crashed as it quit (SIGABRT).** Closing the window ended in an
+  abort inside `free()` after ChatCube had shut down: the framework's
+  database layer wrote into freed memory while the messaging service closed
+  its journal at exit. Fixed in UltraDatabase; ChatCube quits cleanly.
+- **Signing up on a relay behind an HTTPS redirect failed with HTTP 422.**
+  A relay address typed as `http://…` or without a scheme reached a server
+  that redirects to `https://`, and the redirected request arrived without
+  its body. ChatCube now takes a bare host as `https://`, follows the
+  redirect with the request intact, and remembers the address it ended at;
+  a request the relay cannot read says why instead of "HTTP 422".
+
 #### 2026-10-21 *0.1.1*
 - **Telegram.** *Telegram account* in the sidebar signs in with your phone
   number, one step at a time: the code Telegram sends, then your two-step

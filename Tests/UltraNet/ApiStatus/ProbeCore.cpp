@@ -241,7 +241,7 @@ ULTRANET_PROBE(kArea, UltraNet_DisableProxy) {
 
     UltraNet_SetGlobalProxy(saved);
 
-    PROBE_EXPECT(after.type == UltraNetProxyType::None);
+    PROBE_EXPECT(after.type == UltraNetProxyType::NoProxy);
     PROBE_EXPECT(!after.IsEnabled());
     return Working("clears a previously set global proxy");
 }

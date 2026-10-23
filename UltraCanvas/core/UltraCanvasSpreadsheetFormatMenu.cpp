@@ -12,18 +12,6 @@
 #include <cmath>
 #include <sstream>
 
-// UltraCanvasWindow.h reaches <X11/Xlib.h> on Linux/BSD, whose `None` macro
-// collides with UnderlineStyle::None and BorderStyle::None below. Same #undef
-// dance UltraCanvasSpreadsheetTypes.h and the chart plugins do.
-#ifdef None
-#undef None
-#endif
-#ifdef Status
-#undef Status
-#endif
-#ifdef Always
-#undef Always
-#endif
 
 namespace UltraCanvas {
 
@@ -139,10 +127,10 @@ std::vector<MenuItemData> BuildFontItems(UltraCanvasSpreadsheet* sheet) {
                                            [sheet](bool on) { sheet->SetSelectionBold(on); }));
     items.push_back(MenuItemData::Checkbox("Italic", font.italic,
                                            [sheet](bool on) { sheet->SetSelectionItalic(on); }));
-    items.push_back(MenuItemData::Checkbox("Underline", font.underline != UnderlineStyle::None,
+    items.push_back(MenuItemData::Checkbox("Underline", font.underline != UnderlineStyle::NoUnderline,
                                            [sheet](bool on) {
                                                sheet->SetSelectionUnderline(on ? UnderlineStyle::Single
-                                                                               : UnderlineStyle::None);
+                                                                               : UnderlineStyle::NoUnderline);
                                            }));
     items.push_back(MenuItemData::Separator());
     for (float size : { 8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 14.0f, 18.0f, 24.0f }) {

@@ -12,6 +12,7 @@
 // streams ended. A stream that ran short is padded before the next segment -
 // video by holding its last frame, audio with silence - so picture and sound
 // stay in sync across any number of joins.
+// Version: 0.16.2 - the face cache keyed by the file's size and write time too: a clip re-exported under the same name is looked at afresh
 // Version: 0.16.1 - a clip's faces from three frames of its range, the union kept;
 //                  a photo scaled to RGBA no longer overruns its buffer (kSwsSlack)
 // Version: 0.16.0 - an image or video overlay's effects, its alpha kept round them
@@ -703,12 +704,20 @@ private:
 // three quarters of the way through its used range, all kept - people
 // move across a picture, and one frame can miss them or hold them at one
 // side only. Found once per clip and range, since the preview plans the
-// same segments for every frame it shows. A range with no known end gives
-// the one frame at its start.
+// same segments for every frame it shows; the file's size and write time
+// are part of the key, so a clip re-exported under the same name is looked
+// at afresh. A range with no known end gives the one frame at its start.
 std::vector<VideoFXRect> FacesInClip(const std::string& path, double start, double end) {
     static std::mutex mutex;
     static std::map<std::string, std::vector<VideoFXRect>> found;
-    const std::string key = path + "|" + FormatNumber(start) + "|" + FormatNumber(end);
+    std::error_code ec;
+    const std::filesystem::path file = UltraCanvas::PathFromUtf8(path);
+    // The write time's tick count is whatever the file clock's rep is (a
+    // 128-bit integer on libc++, which std::to_string has no overload for)
+    const auto written = static_cast<long long>(std::filesystem::last_write_time(file, ec).time_since_epoch().count());
+    const auto size = static_cast<unsigned long long>(std::filesystem::file_size(file, ec));
+    const std::string key = path + "|" + std::to_string(written) + "|" + std::to_string(size) + "|" +
+                            FormatNumber(start) + "|" + FormatNumber(end);
     {
         std::lock_guard<std::mutex> lock(mutex);
         auto it = found.find(key);

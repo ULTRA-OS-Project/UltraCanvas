@@ -53,7 +53,7 @@ TEST(Unsubscribe_IgnoresUnknownSchemesAndEmptyHeaders) {
 
     const UnsubscribeInfo empty = ParseListUnsubscribe("");
     REQUIRE(!empty.Any());
-    REQUIRE(ChooseMethod(empty) == UnsubscribeMethod::None);
+    REQUIRE(ChooseMethod(empty) == UnsubscribeMethod::NoMethod);
 }
 
 TEST(Unsubscribe_FirstMailtoWins) {
@@ -164,6 +164,6 @@ TEST(Unsubscribe_AdviceStringsRoundTrip) {
     REQUIRE_EQ(ToString(UnsubscribeMethod::OneClickPost), std::string("one-click"));
     REQUIRE_EQ(ToString(UnsubscribeMethod::MailTo), std::string("email"));
     REQUIRE_EQ(ToString(UnsubscribeMethod::HttpLink), std::string("link"));
-    REQUIRE_EQ(ToString(UnsubscribeMethod::None), std::string("none"));
+    REQUIRE_EQ(ToString(UnsubscribeMethod::NoMethod), std::string("none"));
     REQUIRE_EQ(ToString(UnsubscribeAdvice::RefuseSpam), std::string("refuse-spam"));
 }

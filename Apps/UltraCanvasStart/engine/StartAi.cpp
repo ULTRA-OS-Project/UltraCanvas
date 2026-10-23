@@ -9,7 +9,7 @@
 
 namespace UltraCanvasStart {
 
-const AssistantStatus* AiStatus::Status(Assistant assistant) const {
+const AssistantStatus* AiStatus::StatusOf(Assistant assistant) const {
     const auto found = assistants.find(assistant);
     return found == assistants.end() ? nullptr : &found->second;
 }

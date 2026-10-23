@@ -40,10 +40,10 @@ constexpr double kPi = 3.14159265358979323846;
 // 1. Versions and the bit reader
 // ===========================================================================
 
-enum class Ver { None = 0, R13, R14, R2000, R2004, R2007, R2010, R2013, R2018 };
+enum class Ver { Unknown = 0, R13, R14, R2000, R2004, R2007, R2010, R2013, R2018 };
 
 Ver VersionFromMagic(const std::string& head) {
-    if (head.size() < 6 || head.compare(0, 4, "AC10") != 0) return Ver::None;
+    if (head.size() < 6 || head.compare(0, 4, "AC10") != 0) return Ver::Unknown;
     std::string v = head.substr(0, 6);
     if (v == "AC1012" || v == "AC1013") return Ver::R13;
     if (v == "AC1014") return Ver::R14;
@@ -53,7 +53,7 @@ Ver VersionFromMagic(const std::string& head) {
     if (v == "AC1024") return Ver::R2010;
     if (v == "AC1027") return Ver::R2013;
     if (v == "AC1032") return Ver::R2018;
-    return Ver::None;
+    return Ver::Unknown;
 }
 
 struct Handle {
@@ -276,7 +276,7 @@ public:
 private:
     const uint8_t* data = nullptr;
     size_t size = 0;
-    Ver ver = Ver::None;
+    Ver ver = Ver::Unknown;
     size_t pos = 0;
     bool overrun = false;
 };
@@ -624,7 +624,7 @@ std::vector<uint8_t> DecodeRS(const uint8_t* src, size_t srcSize, size_t blockCo
 // ===========================================================================
 
 struct DrawingData {
-    Ver ver = Ver::None;
+    Ver ver = Ver::Unknown;
     uint8_t maintVersion = 0;
     std::vector<uint8_t> objects;                   // object data image
     std::vector<uint8_t> objectMap;                 // "Handles" section bytes
@@ -2465,7 +2465,7 @@ private:
 // ===========================================================================
 
 bool DWGDecoderSupportsVersion(const std::string& head) {
-    return VersionFromMagic(head) != Ver::None;
+    return VersionFromMagic(head) != Ver::Unknown;
 }
 
 DWGDecodeResult DecodeDWG(const std::string& file,
@@ -2473,7 +2473,7 @@ DWGDecodeResult DecodeDWG(const std::string& file,
     DWGDecodeResult res;
     DrawingData d;
     d.ver = VersionFromMagic(file);
-    if (d.ver == Ver::None) {
+    if (d.ver == Ver::Unknown) {
         res.error = file.size() >= 6 && file.compare(0, 2, "AC") == 0
                     ? "unsupported DWG version " + file.substr(0, 6)
                     : "not a DWG file";

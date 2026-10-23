@@ -291,10 +291,12 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
             PlaceText(x, y, r);
         };
         ShowDialog(dlg);
+        dlg->FocusText();
     };
     toolContext.selectTool = [this](ArtToolId id) { SelectTool(id); };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
     toolContext.lockAspectRatio = lockAspectRatio;
+    toolContext.iconPath = [this](const std::string& file) { return IconPath(file); };
 
     // ----- canvas -> tool -----
     // In icon mode the pointer goes to the icon's pixel grid first (IconEvent).
@@ -1113,33 +1115,13 @@ void ArtCreatorWindow::BuildRightPanel() {
     // ----- layers -----
     layersPanel = PanelCard("ac-layers", "Layers");
 
-    auto buttons = std::make_shared<UltraCanvasToolbar>("ac-layer-buttons", 0, 0, 0, 30);
-    ToolbarAppearance app = buttons->GetAppearance();
-    app.showIconLabels = false;
-    app.style = ToolbarStyle::Flat;
-    app.itemSpacing = 4.0f;
-    app.backgroundColor = layersPanel->GetVisualStyle().backgroundColor;
-    app.hoverBackgroundColor = Colors::ListRowHover;
-    app.activeBackgroundColor = Colors::ListRowSelected;
-    buttons->SetAppearance(app);
-    buttons->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    buttons->AddButton("ac-l-add", "", IconPath("layer-add.svg"), [this]() { CmdLayerAdd(); })->SetTooltip("New layer");
-    buttons->AddButton("ac-l-del", "", IconPath("layer-delete.svg"), [this]() { CmdLayerDelete(); })->SetTooltip("Delete layer");
-    buttons->AddButton("ac-l-up", "", IconPath("layer-up.svg"), [this]() { CmdLayerMove(1); })->SetTooltip("Move up");
-    buttons->AddButton("ac-l-down", "", IconPath("layer-down.svg"), [this]() { CmdLayerMove(-1); })->SetTooltip("Move down");
-    // Flat, as UltraPaint's, and just round their 24 px icons.
-    for (auto& c : buttons->Children()) {
-        if (auto b = std::dynamic_pointer_cast<UltraCanvasButton>(c)) {
-            b->SetPadding(3);
-            b->SetElementSize(Size2Df(30, 30));
-            b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            ButtonStyle flat = b->GetStyle();
-            flat.cornerRadius = 6.0f;
-            flat.pressedColor = Colors::ListRowSelected;
-            b->SetStyle(flat);
-        }
-    }
-    layersPanel->AddChild(buttons);
+    // Flat icon buttons, as UltraPaint's and the Selector's Arrange / Align bars.
+    ArtOptionWidgets::AddIconBar(*layersPanel, "ac-layer-buttons", {
+        { IconPath("layer-add.svg"), "New layer", [this]() { CmdLayerAdd(); } },
+        { IconPath("layer-delete.svg"), "Delete layer", [this]() { CmdLayerDelete(); } },
+        { IconPath("layer-up.svg"), "Move up", [this]() { CmdLayerMove(1); } },
+        { IconPath("layer-down.svg"), "Move down", [this]() { CmdLayerMove(-1); } },
+    });
 
     layerRows = std::make_shared<UltraCanvasContainer>("ac-layer-rows", 0, 0, 0, 0);
     layerRows->layout.SetFlexColumn().SetFlexGap(2).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);

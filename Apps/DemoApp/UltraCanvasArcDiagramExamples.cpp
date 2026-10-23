@@ -109,7 +109,7 @@ namespace UltraCanvas {
             ae.targetId = e.b;
             ae.weight   = e.w;
             ae.color    = Color(160,160,160,static_cast<uint8_t>(60 + e.w * 15));
-            ae.side     = ArcEdgeType::Above;
+            ae.side     = ArcEdgeType::AboveBaseline;
             diagram->AddEdge(ae);
         }
 
@@ -190,7 +190,7 @@ namespace UltraCanvas {
             ArcEdge ae;
             ae.sourceId = e.a; ae.targetId = e.b;
             ae.weight   = e.w; ae.color    = e.col;
-            ae.side     = ArcEdgeType::Above;
+            ae.side     = ArcEdgeType::AboveBaseline;
             diagram->AddEdge(ae);
         }
 
@@ -198,7 +198,7 @@ namespace UltraCanvas {
         s.arcHeightMode  = ArcHeightMode::Semicircle;
         s.arcMinWidth    = 1.0f;
         s.arcMaxWidth    = 6.0f;
-        s.labelSide      = ArcLabelSide::Below;
+        s.labelSide      = ArcLabelSide::BelowBaseline;
         s.labelFontSize  = 13.0f;
         s.nodeBaseSize   = 10.0f;
         s.nodePadding    = 90.0f;
@@ -272,15 +272,15 @@ namespace UltraCanvas {
 
         // Labels intentionally omitted — the new arcValueDisplay style auto-renders
         // each arc's share of the total weight as a percentage at the apex (zenit).
-        diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true,  ArcEdgeType::Above));
+        diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true,  ArcEdgeType::AboveBaseline));
 
         // Self-loop (below)
-        ArcEdge selfLoop = makeEdge("special","special",3.0f, violet, true, ArcEdgeType::Below);
+        ArcEdge selfLoop = makeEdge("special","special",3.0f, violet, true, ArcEdgeType::BelowBaseline);
         diagram->AddEdge(selfLoop);
 
         ArcDiagramStyle s;
@@ -291,7 +291,7 @@ namespace UltraCanvas {
         s.showArrows        = true;
         s.arrowPosition     = ArcArrowPosition::AtMidArc;
         s.arrowSize         = 9.0f;
-        s.labelSide         = ArcLabelSide::Below;
+        s.labelSide         = ArcLabelSide::BelowBaseline;
         s.labelFontSize     = 11.0f;
         s.arcLabelFontSize  = 11.0f;
         s.nodeSizeMode      = ArcNodeSizeMode::Fixed;
@@ -372,7 +372,7 @@ namespace UltraCanvas {
             ArcEdge e;
             e.sourceId = idA; e.targetId = idB;
             e.weight = 1.0f; e.color = p.c;
-            e.side = ArcEdgeType::Above;
+            e.side = ArcEdgeType::AboveBaseline;
             diagram->AddEdge(e);
         }
 
@@ -390,7 +390,7 @@ namespace UltraCanvas {
             ArcEdge e;
             e.sourceId = idA; e.targetId = idB;
             e.weight = 1.0f; e.color = p.c;
-            e.side = ArcEdgeType::Below;
+            e.side = ArcEdgeType::BelowBaseline;
             diagram->AddEdge(e);
         }
 
@@ -400,7 +400,7 @@ namespace UltraCanvas {
         s.arcMaxWidth      = 2.0f;
         s.bundleHeightStep = 6.0f;
         s.sortBySpan       = true;
-        s.labelSide        = ArcLabelSide::Below;
+        s.labelSide        = ArcLabelSide::BelowBaseline;
         s.labelFontSize    = 10.0f;
         s.nodeBaseSize     = 5.0f;
         s.nodePadding      = 30.0f;
@@ -418,7 +418,7 @@ namespace UltraCanvas {
         diagram->SetStyle(s);
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
-            std::string side = (e.side == ArcEdgeType::Above) ? "known" : "novel";
+            std::string side = (e.side == ArcEdgeType::AboveBaseline) ? "known" : "novel";
             statusLabel->SetText(e.sourceId + " - " + e.targetId + "  (" + side + " base pair)");
         };
 

@@ -12,11 +12,6 @@
 #include <functional>
 #include <string>
 
-// X11 defines `None` as a macro that clobbers the WaveformOverlay::None
-// enumerator (UltraCanvasCommonTypes.h pulls in <X11/Xlib.h> on Linux).
-#ifdef None
-#undef None
-#endif
 
 // NOTE: This header intentionally does NOT include any AudioFX header.
 // The element is module-agnostic. The optional SetFromAudioFX() adapter is
@@ -37,7 +32,7 @@ namespace UltraCanvas {
     };
 
     enum class WaveformOverlay {
-        None,
+        NoOverlay,
         RMS,                // Draw RMS band inside the peak envelope
         ZeroAxis,           // Draw horizontal zero/silence line
         RMSAndZeroAxis      // Both

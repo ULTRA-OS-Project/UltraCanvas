@@ -1,7 +1,7 @@
 // Plugins/UltraIM/direct/DirectRelayClient.cpp
 // ChatCube Direct - the relay's REST API and its WebSocket, over UltraNet
-// Version: 0.1.0
-// Last Modified: 2026-10-21
+// Version: 0.1.1 - an address without a scheme is https://; a redirect is followed with its body
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 
 #include "DirectRelayClient.h"
@@ -178,7 +178,9 @@ RelayClient::~RelayClient() {
 
 void RelayClient::SetBaseUrl(const std::string& url) {
     std::lock_guard<std::mutex> lock(shared_->mutex);
-    shared_->baseUrl = url;
+    // A host typed alone would be plain http:// to libcurl - and a relay
+    // behind an HTTPS-only proxy answers that with a redirect.
+    shared_->baseUrl = url.empty() || url.find("://") != std::string::npos ? url : "https://" + url;
     while (!shared_->baseUrl.empty() && shared_->baseUrl.back() == '/') shared_->baseUrl.pop_back();
 }
 
@@ -199,6 +201,13 @@ void RelayClient::SetPinnedPublicKey(const std::string& pin) {
 
 void RelayClient::Request(const std::string& method, const std::string& path,
                           const UltraCanvas::JSONValue* body, RelayCallback onDone) {
+    Send(method, path, body ? std::make_shared<const UltraCanvas::JSONValue>(*body) : nullptr,
+         std::move(onDone), 3);
+}
+
+void RelayClient::Send(const std::string& method, const std::string& path,
+                       std::shared_ptr<const UltraCanvas::JSONValue> body, RelayCallback onDone,
+                       int redirectsLeft) {
     UltraNetHttpRequest request;
     {
         std::lock_guard<std::mutex> lock(shared_->mutex);
@@ -210,6 +219,9 @@ void RelayClient::Request(const std::string& method, const std::string& path,
     request.method = MethodFor(method);
     request.headers.Set("Accept", "application/json");
     request.options.timeoutMs = 30000;
+    // Redirects are followed below, not by libcurl: on a 301/302 it would
+    // send the POST again without its body.
+    request.options.followRedirects = false;
     if (body) {
         const std::string text = UltraCanvas::JSON::Serialize(*body);
         request.body.assign(text.begin(), text.end());
@@ -218,7 +230,7 @@ void RelayClient::Request(const std::string& method, const std::string& path,
 
     std::weak_ptr<Shared> weak = shared_;
     auto handleBox = std::make_shared<std::atomic<UltraNetHandle>>(UltraNetInvalidHandle);
-    auto done = [weak, onDone, handleBox](const UltraNetResponse& raw) {
+    auto done = [weak, method, path, body, onDone, redirectsLeft, handleBox](const UltraNetResponse& raw) {
         auto shared = weak.lock();
         if (!shared) return;
         {
@@ -226,6 +238,24 @@ void RelayClient::Request(const std::string& method, const std::string& path,
             shared->requests.erase(handleBox->load());
         }
         if (!shared->Enter()) return;
+        // Moved: the same endpoint at another address (http:// to https://,
+        // a new host). The rest of the path is the relay's new base, kept
+        // for the requests and the socket after this one.
+        const std::string location = raw.headers.Get("Location");
+        if (raw.transferError.empty() && raw.statusCode >= 300 && raw.statusCode < 400 &&
+            redirectsLeft > 0 && location.size() > path.size() &&
+            location.compare(location.size() - path.size(), path.size(), path) == 0 &&
+            location.find("://") != std::string::npos) {
+            RelayClient* owner = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(shared->mutex);
+                shared->baseUrl = location.substr(0, location.size() - path.size());
+                owner = shared->owner;
+            }
+            if (owner) owner->Send(method, path, body, onDone, redirectsLeft - 1);
+            shared->Leave();
+            return;
+        }
         RelayResponse response;
         if (!raw.transferError.empty()) {
             response.error = raw.transferError;
@@ -237,8 +267,12 @@ void RelayClient::Request(const std::string& method, const std::string& path,
                 response.body = UltraCanvas::JSON::Parse(text, &parsed);
             }
             if (!response.Ok()) {
-                response.error = response.body["error_description"].GetString(
-                    "HTTP " + std::to_string(raw.statusCode));
+                // The relay's own errors carry error_description; a request
+                // it could not read (422) says why in detail[0].msg.
+                std::string why = response.body["error_description"].GetString();
+                if (why.empty()) why = response.body["detail"][size_t{0}]["msg"].GetString();
+                if (why.empty() && !location.empty()) why = "the relay redirects to " + location;
+                response.error = why.empty() ? "HTTP " + std::to_string(raw.statusCode) : why;
             }
         }
         if (onDone) onDone(response);

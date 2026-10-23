@@ -428,6 +428,17 @@ namespace UltraCanvas {
         bool LoadWordIntoDocument(int docIndex, const std::string& filePath);
         bool SaveDocument(int docIndex);
         bool SaveDocumentAs(int docIndex, const std::string& filePath);
+        // Why the last SaveDocument / SaveDocumentAs returned false (the
+        // system's reason when the file could not be opened or written);
+        // empty after a save that worked.
+        std::string lastSaveError;
+        // Saves a document that has a file path. When that fails it says why
+        // and offers the Save dialog for the document, again after each
+        // failed attempt; onDone(true) once it is saved, false when the user
+        // cancels.
+        void SaveOrOfferSaveAs(int docIndex, std::function<void(bool)> onDone);
+        void OfferSaveAsAfterFailure(std::shared_ptr<DocumentTab> doc, const std::string& failedPath,
+                                     std::function<void(bool)> onDone);
         bool IsBinaryFile(const std::vector<uint8_t>& rawBytes, const std::string& extension) const;
 
         std::string FormatFullTabTooltip(int docIndex);
@@ -467,6 +478,12 @@ namespace UltraCanvas {
         void OnEditSearch();
         void OnEditReplace();
         void OnEditGoToLine();
+        // Edit > Translate Selection...: through UltraAI, a model on this
+        // computer first (UltraCanvasTextEditorTranslate.cpp).
+        void OnEditTranslateSelection();
+        void TranslateSelection(const std::string& text, const std::string& language);
+        std::string lastTranslateLanguage = "en";
+        bool translating = false;
 
         void OnViewIncreaseFontSize();
         void OnViewDecreaseFontSize();

@@ -886,7 +886,7 @@ namespace UltraCanvas {
                     case DMDUP_VERTICAL:   options.duplex = IODuplexMode::LongEdge; break;
                     case DMDUP_HORIZONTAL: options.duplex = IODuplexMode::ShortEdge; break;
                     case DMDUP_SIMPLEX:
-                    default:               options.duplex = IODuplexMode::None; break;
+                    default:               options.duplex = IODuplexMode::OneSided; break;
                 }
             }
             if (devMode.dmFields & DM_COLOR) {
