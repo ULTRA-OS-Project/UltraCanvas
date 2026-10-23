@@ -643,7 +643,15 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasContainer::RenderCorner(IRenderContext *ctx) {
-        // intentionally empty for now
+        // The scrollbars' bounds are kept in the content box (see
+        // RenderScrollbars): the corner is the vertical track's column
+        // crossed with the horizontal track's row.
+        const int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        const int localContentY = GetBorderTopWidth()  + GetPaddingTop();
+        const Rect2Df v = verticalScrollbar->GetBounds();
+        const Rect2Df h = horizontalScrollbar->GetBounds();
+        ctx->SetFillPaint(style.scrollbarStyle.trackColor);
+        ctx->FillRectangle(Rect2Dd(v.x + localContentX, h.y + localContentY, v.width, h.height));
     }
 
     void UltraCanvasContainer::CreateScrollbars() {

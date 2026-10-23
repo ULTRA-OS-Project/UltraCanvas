@@ -349,6 +349,7 @@ void ShowRowImportDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema
     preview->SetShowHeader(true);
     preview->SetShowItemTooltips(true);
     StyleList(*preview);
+    FitResultColumns(*preview);
     preview->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexGrow(1).SetFlexShrink(1)
         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     dialog->AddChild(preview);

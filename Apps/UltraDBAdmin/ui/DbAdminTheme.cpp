@@ -154,6 +154,18 @@ void StyleList(UltraCanvasListView& view) {
     }
 }
 
+void FitResultColumns(UltraCanvasListView& view) {
+    constexpr int kResultColumnMinWidth = 60;
+    constexpr int kResultColumnMaxWidth = 360;
+    UltraCanvasListView::ColumnFitting fitting;
+    fitting.enabled = true;
+    fitting.font.fontSize = 12;        // the default delegate's
+    fitting.padding = 12;              // its 6 px each side of the text
+    fitting.minWidth = kResultColumnMinWidth;
+    fitting.maxWidth = kResultColumnMaxWidth;
+    view.SetColumnFitting(fitting);
+}
+
 void StyleTree(UltraCanvasTreeView& tree) {
     const ThemeRoles& r = UltraCanvasTheme::Current().roles;
     tree.SetRowHeight(26);

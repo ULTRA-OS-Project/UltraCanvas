@@ -29,6 +29,11 @@
 //    sideways together, ScrollToColumn / EnsureColumnVisible move them from
 //    code, and the Left / Right keys step them - and are consumed by the
 //    view, where before they bubbled up and switched the tab around it.
+//  - SetColumnFitting: every column as wide as its widest text and its
+//    header, measured at the first paint after the rows change, within the
+//    caller's bounds, until the user drags a border. UltraDBAdmin's grids
+//    estimated widths from a character count: a column of narrow glyphs
+//    was wider than it needed to be, a wide one still cut its text.
 // No window and no display: the view is sized with SetBounds, and text is
 // measured on an offscreen render context.
 #include "UltraCanvasListView.h"
@@ -262,6 +267,73 @@ static void TestColumnFitMeasurements() {
     CHECK_EQ(view->MeasureColumnTextWidth(ctx.get(), 1, body), 0);
 }
 
+// Every column fitted to its content at the paint, within the bounds given,
+// and no longer once the user has dragged a border.
+static void TestColumnFitting() {
+    auto ctx = CreateRenderContext(Size2Di(400, 300), nullptr);
+    CHECK_EQ(ctx != nullptr, true);
+    if (!ctx) return;
+    auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
+    model->SetColumns({ ListColumnDef("Subject", 200), ListColumnDef("Date", 88), ListColumnDef("Notes", 100) });
+    auto view = std::make_shared<UltraCanvasListView>("list");
+    ListViewStyle style;
+    style.showHeader = true;
+    style.headerFontSize = 9;
+    view->SetStyle(style);
+    view->SetModel(model);
+    model->SetItems({ MultiColumnListItem({ "a", "Oct 07", "" }),
+                      MultiColumnListItem({ "b", "Jan 14, 2025", "" }) });
+    UltraCanvasListView::ColumnFitting fitting;
+    fitting.enabled = true;
+    fitting.font.fontSize = 12;
+    fitting.padding = 12;
+    fitting.minWidth = 40;
+    fitting.maxWidth = 0;
+    view->SetColumnFitting(fitting);
+    view->SetBounds(Rect2Df(0, 0, 400, 300));
+    // Nothing is measured before a paint: the model's widths stand.
+    CHECK_EQ(view->GetColumnWidth(1), 88);
+    view->Render(ctx.get(), Rect2Df(0, 0, 400, 300));
+    FontStyle body;
+    body.fontSize = 12;
+    const int dates = TextWidth(ctx.get(), "Jan 14, 2025", body) + 12;
+    CHECK_EQ(view->GetColumnWidth(1), std::max(dates, view->MeasureHeaderWidth(ctx.get(), 1)));
+    CHECK_EQ(view->GetColumnWidth(0), std::max(TextWidth(ctx.get(), "b", body) + 12,
+                                               view->MeasureHeaderWidth(ctx.get(), 0)));
+    // An empty column is its header's width, and never narrower than minWidth.
+    CHECK_EQ(view->GetColumnWidth(2), std::max(40, view->MeasureHeaderWidth(ctx.get(), 2)));
+    // A longer text widens the column at the next paint; a cap holds it.
+    model->SetItems({ MultiColumnListItem({ "a very much longer subject line than before", "Oct 07", "" }) });
+    view->Render(ctx.get(), Rect2Df(0, 0, 400, 300));
+    const int longer = TextWidth(ctx.get(), "a very much longer subject line than before", body) + 12;
+    CHECK_EQ(view->GetColumnWidth(0), longer);
+    fitting.maxWidth = 120;
+    view->SetColumnFitting(fitting);
+    view->Render(ctx.get(), Rect2Df(0, 0, 400, 300));
+    CHECK_EQ(view->GetColumnWidth(0), 120);
+    CHECK_EQ(longer > 120, true);
+    // The user drags the first border: the widths are theirs from then on.
+    const int headerY = view->GetStyle().headerHeight / 2;
+    const int border = 1 + view->GetColumnWidth(0);
+    UCEvent press;
+    press.type = UCEventType::MouseDown;
+    press.button = UCMouseButton::Left;
+    press.pointer = Point2Di(border, headerY);
+    UCEvent drag = press;
+    drag.type = UCEventType::MouseMove;
+    drag.pointer = Point2Di(border + 50, headerY);
+    UCEvent release = drag;
+    release.type = UCEventType::MouseUp;
+    CHECK_EQ(view->OnEvent(press), true);
+    CHECK_EQ(view->OnEvent(drag), true);
+    CHECK_EQ(view->OnEvent(release), true);
+    CHECK_EQ(view->ColumnsUserAdjusted(), true);
+    CHECK_EQ(view->GetColumnWidth(0), 170);
+    model->SetItems({ MultiColumnListItem({ "a", "Oct 07", "" }) });
+    view->Render(ctx.get(), Rect2Df(0, 0, 400, 300));
+    CHECK_EQ(view->GetColumnWidth(0), 170);
+}
+
 // A view that counts the changes it is told of, in a counter it does not own.
 class CountingView : public UltraCanvasListView {
 public:
@@ -462,6 +534,7 @@ int main() {
     TestMultiSelectionShift();
     TestKeyboardFollowsSelectionSetInCode();
     TestColumnFitMeasurements();
+    TestColumnFitting();
     TestModelOutlivesView();
     if (failures) {
         std::cerr << "ListViewScrollTest: " << failures << " failure(s)\n";
