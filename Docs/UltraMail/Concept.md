@@ -246,7 +246,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 
 - **To/Cc/Bcc** rows using `CreateEmailInput` with autocomplete fed by
   the collected-addresses book (3.2); recipients render as removable
-  chips; Cc/Bcc rows hidden until requested.
+  chips; Cc/Bcc rows hidden until requested. No-reply and blocked
+  addresses are never offered; a suggestion's right-click menu edits its
+  contact, deletes the address or sets the sender as spam (blocked).
 - **Body** — `UltraCanvasTextArea` in `MarkdownHybrid` mode: the user
   writes comfortable rich text (bold, lists, links, quoting) and
   UltraMail sends `multipart/alternative` with a generated HTML part
@@ -292,8 +294,11 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 - Mark read/unread, star/flag, move to folder (drag & drop onto tree)
 - Junk folder support; delete-to-Trash with empty-trash command
 - Fast local search (from/subject/body) over the message index
-- Collected address book: every address the user writes to or receives
-  from is remembered for autocomplete (explicit contacts app and
+- Collected address book: every address the user writes to is
+  remembered for autocomplete; from incoming mail only senders in the
+  known-sender registry whose domain the server proved are added (under
+  Services) - never a stranger, a
+  blocked sender or an address the user deleted (explicit contacts app and
   LDAP/CardDAV integration come later, see roadmap)
 - Multiple accounts + unified inbox
 - New-mail notifications (window badge + system notification) and
