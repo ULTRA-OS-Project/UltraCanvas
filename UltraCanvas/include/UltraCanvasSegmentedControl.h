@@ -1,5 +1,7 @@
 // include/UltraCanvasSegmentedControl.h
 // Segmented control component for mutually exclusive selection between options
+// Version: 1.4.0 - SegmentedControlStyle::iconAsMask: line icons in the segment's text colour;
+//                 an icon and a centred caption are centred together
 // Version: 1.3.0 - SetSegmentTextColor: one segment's own text colour
 // Version: 1.2.0
 // Last Modified: 2026-10-17
@@ -91,6 +93,10 @@ namespace UltraCanvas {
 
         // Icons
         int iconSize = 16;
+        // Draw each icon as a mask in its segment's text colour (white on the
+        // selected segment, grey when disabled), for one-colour line icons;
+        // false draws the icon's own colours.
+        bool iconAsMask = false;
 
         static SegmentedControlStyle Default() {
             return SegmentedControlStyle();

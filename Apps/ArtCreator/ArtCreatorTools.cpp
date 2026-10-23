@@ -163,6 +163,9 @@ std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer&
     app.hoverBackgroundColor = Colors::ListRowHover;
     app.activeBackgroundColor = Colors::ListRowSelected;
     bar->SetAppearance(app);
+    // 1 px above and below the buttons rather than the toolbar's 3: the
+    // section around the bar already gives it room.
+    bar->SetPadding(1, 5);
     bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     std::vector<std::shared_ptr<UltraCanvasButton>> buttons;
     int i = 0;
@@ -229,15 +232,21 @@ std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, co
 
 std::shared_ptr<UltraCanvasSegmentedControl> AddSwitch(UltraCanvasContainer& panel, const std::string& id,
                                                        const std::vector<std::string>& items, int selected,
-                                                       const std::function<void(int)>& onChange) {
+                                                       const std::function<void(int)>& onChange,
+                                                       const std::vector<std::string>& icons) {
     auto sw = CreateSegmentedControl(id, 0, 0, 0, kButtonH);
     SegmentedControlStyle st = sw->GetStyle();
     st.fontSize = 11.0f;
     st.cornerRadius = 5.0f;
     st.paddingVertical = 3;
+    st.iconAsMask = true;
+    st.iconSpacing = 5;
     sw->SetStyle(st);
     sw->SetWidthMode(SegmentWidthMode::Equal);
-    for (const auto& item : items) sw->AddSegment(item);
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i < icons.size() && !icons[i].empty()) sw->AddSegment(items[i], icons[i]);
+        else sw->AddSegment(items[i]);
+    }
     sw->SetSelectedIndex(std::clamp(selected, 0, static_cast<int>(items.size()) - 1));
     sw->onSegmentSelected = [onChange](int index) { if (onChange) onChange(index); };
     sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -594,12 +603,15 @@ public:
 
     void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         const auto icon = [&ctx](const char* file) { return ctx.iconPath ? ctx.iconPath(file) : std::string(file); };
+        const auto menuIcon = [&icon](const char* file) { return icon((std::string("16/") + file).c_str()); };
         // Which handles a click on the selection shows; a second click on it
         // switches them too, and the switch follows (SyncModeSwitch).
         auto handles = AddSection(panel, "ac-sel-handles", "Handles");
-        modeSwitch = AddSwitch(*handles, "ac-sel-mode", { "Scale", "Rotate / skew" },
+        // Rotate mode's edge handles skew; the switch only names the corners'.
+        modeSwitch = AddSwitch(*handles, "ac-sel-mode", { "Scale", "Rotate" },
                                ctx.canvas->GetHandleMode() == VectorHandleMode::Rotate ? 1 : 0,
-                               [&ctx](int i) { ctx.canvas->SetHandleMode(i == 1 ? VectorHandleMode::Rotate : VectorHandleMode::Scale); });
+                               [&ctx](int i) { ctx.canvas->SetHandleMode(i == 1 ? VectorHandleMode::Rotate : VectorHandleMode::Scale); },
+                               { menuIcon("scale.svg"), menuIcon("rotate.svg") });
         auto arrange = AddSection(panel, "ac-sel-arrange", "Arrange");
         arrangeButtons = AddIconBar(*arrange, "ac-sel-z", {
             { icon("to-front.svg"), "Bring to front", [&ctx]() { Reorder(ctx, ZOrderMove::ToFront, "Bring to Front"); } },

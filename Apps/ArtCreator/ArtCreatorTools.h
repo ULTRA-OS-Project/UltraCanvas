@@ -205,10 +205,13 @@ namespace ArtOptionWidgets {
     // section's rows to the returned box.
     std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, const std::string& id,
                                                      const std::string& title);
-    // A segmented switch between a few modes, `selected` lit.
+    // A segmented switch between a few modes, `selected` lit; `icons`
+    // (full paths, one per item, or none) go before the captions, in the
+    // caption's colour.
     std::shared_ptr<UltraCanvasSegmentedControl> AddSwitch(UltraCanvasContainer& panel, const std::string& id,
                                                            const std::vector<std::string>& items, int selected,
-                                                           const std::function<void(int)>& onChange);
+                                                           const std::function<void(int)>& onChange,
+                                                           const std::vector<std::string>& icons = {});
 }
 
 } // namespace UltraCanvas
