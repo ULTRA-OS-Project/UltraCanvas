@@ -14,6 +14,7 @@
 // search can be stopped between tables and never holds up a Browse page for
 // longer than one table takes. A hit opens the table filtered on that
 // column (Browse's filter: contains, or =).
+// Version: 0.2.0 - LikeEscaped, for any LIKE ... ESCAPE '\' with typed text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -29,6 +30,9 @@
 namespace UltraDBAdmin {
 
 enum class SearchMode { Contains, Exactly };
+
+// `text` for a LIKE pattern with ESCAPE '\': %, _ and \ matched as written.
+std::string LikeEscaped(const std::string& text);
 
 struct SearchHit {
     std::string schema;

@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminSearch.cpp
+// Version: 0.2.0 - LikeEscaped shared with the Server tab
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminSearch.h"
@@ -15,7 +16,8 @@ std::string Lower(std::string text) {
     return text;
 }
 
-// %, _ and the escape itself matched as written.
+} // namespace
+
 std::string LikeEscaped(const std::string& text) {
     std::string out;
     for (const char c : text) {
@@ -24,8 +26,6 @@ std::string LikeEscaped(const std::string& text) {
     }
     return out;
 }
-
-} // namespace
 
 std::vector<std::string> SearchColumns(const UltraDbTableSchema& table) {
     std::vector<std::string> names;
