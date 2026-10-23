@@ -35,7 +35,9 @@ namespace UltraCanvas {
         std::string Excerpt(const std::string& text) {
             std::string out;
             for (char c : text) {
-                if (out.size() >= 48) { out += "..."; break; }
+                // Stop at a character's first byte, never inside one.
+                const bool continuation = (static_cast<unsigned char>(c) & 0xC0) == 0x80;
+                if (out.size() >= 48 && !continuation) { out += "..."; break; }
                 out += (c == '\n' || c == '\t') ? ' ' : c;
             }
             return out;

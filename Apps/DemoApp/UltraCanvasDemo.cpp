@@ -57,50 +57,40 @@ namespace UltraCanvas {
     }
 
     DemoLegendContainer::DemoLegendContainer(const std::string& identifier)
-//            : UltraCanvasContainer(identifier, x, y, width, height) {
         : UltraCanvasContainer(identifier) {
-
-        // Set container style
-//        SetBorders(1, Color(200, 200, 200, 255));
         SetBackgroundColor(Color(245, 245, 245, 255));
+        // A column of rows - the title, then icon and text per status - each as
+        // tall as its text, so a longer translation wraps instead of being cut.
+        layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        SetPadding(6, 10, 8, 10);
 
-        // Create legend title
-        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", 10, 5, 0, 0);
-        legendTitle->SetText("Component Status Legend");
+        legendTitle = std::make_shared<UltraCanvasLabel>("LegendTitle", "Component Status Legend");
         legendTitle->SetFontSize(12);
         legendTitle->SetFontWeight(FontWeight::Bold);
         legendTitle->SetTextColor(Color(80, 80, 80, 255));
+        legendTitle->SetWrap(TextWrap::WrapWord);
         AddChild(legendTitle);
 
-        // Implemented status (row 1)
-        implementedIcon = std::make_shared<UltraCanvasImageElement>("ImplementedIcon", 10, 30, 16, 16);
-        AddChild(implementedIcon);
-
-        implementedLabel = std::make_shared<UltraCanvasLabel>("ImplementedLabel", 32, 28, 0, 0);
-        implementedLabel->SetText("Fully Implemented");
-        implementedLabel->SetFontSize(11);
-        implementedLabel->SetTextColor(Color(0, 150, 0, 255));
-        AddChild(implementedLabel);
-
-        // Partially implemented status (row 2)
-        partialIcon = std::make_shared<UltraCanvasImageElement>("PartialIcon", 10, 50, 16, 16);
-        AddChild(partialIcon);
-
-        partialLabel = std::make_shared<UltraCanvasLabel>("PartialLabel", 32, 48, 0, 0);
-        partialLabel->SetText("Partially Implemented");
-        partialLabel->SetFontSize(11);
-        partialLabel->SetTextColor(Color(0x21, 0x96, 0xf3, 255));
-        AddChild(partialLabel);
-
-        // Not implemented status (row 3)
-        notImplementedIcon = std::make_shared<UltraCanvasImageElement>("NotImplementedIcon", 10, 70, 16, 16);
-        AddChild(notImplementedIcon);
-
-        notImplementedLabel = std::make_shared<UltraCanvasLabel>("NotImplementedLabel", 32, 68, 0, 0);
-        notImplementedLabel->SetText("Not Implemented Yet");
-        notImplementedLabel->SetFontSize(11);
-        notImplementedLabel->SetTextColor(Color(200, 0, 0, 255));
-        AddChild(notImplementedLabel);
+        auto addRow = [this](const std::string& id, std::shared_ptr<UltraCanvasImageElement>& icon,
+                             std::shared_ptr<UltraCanvasLabel>& label, const std::string& text,
+                             const Color& color) {
+            auto row = std::make_shared<UltraCanvasContainer>(id + "Row");
+            row->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            icon = std::make_shared<UltraCanvasImageElement>(id + "Icon", 16, 16);
+            icon->layoutItem.SetFlexShrink(0);
+            row->AddChild(icon);
+            label = std::make_shared<UltraCanvasLabel>(id + "Label", text);
+            label->SetFontSize(11);
+            label->SetTextColor(color);
+            label->SetWrap(TextWrap::WrapWord);
+            label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(label);
+            AddChild(row);
+        };
+        addRow("Implemented", implementedIcon, implementedLabel, "Fully Implemented", Color(0, 150, 0, 255));
+        addRow("Partial", partialIcon, partialLabel, "Partially Implemented", Color(0x21, 0x96, 0xf3, 255));
+        addRow("NotImplemented", notImplementedIcon, notImplementedLabel, "Not Implemented Yet",
+               Color(200, 0, 0, 255));
     }
 
     void DemoLegendContainer::SetupLegend(const std::string& implementedIconPath,
@@ -429,10 +419,8 @@ namespace UltraCanvas {
         // Create legend container below tree view
         legendContainer = std::make_shared<DemoLegendContainer>("LegendContainer");
         legendContainer->SetBorderTop(1, Colors::Gray);
-        // Its rows are placed at fixed offsets; this keeps the last one off the
-        // window's bottom edge.
-        legendContainer->SetPadding(0, 0, 8, 0);
-        legendContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        // As tall as its rows: the tree takes what is left, never the legend.
+        legendContainer->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch).SetFlexShrink(0);
         SetupLegendContainer();
 
         // No-size constructor — let the grid cell decide categoryContainer's
