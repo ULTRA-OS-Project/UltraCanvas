@@ -1,5 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
+// Version: 1.6.0 - SetColumnFitting
 // Version: 1.5.0 - a horizontal scrollbar when the columns are wider than the view
 // Version: 1.4.0 - onCellDoubleClicked, GetCellRect
 // Version: 1.3.0 - the hover follows the rows when they scroll under a still pointer
@@ -78,6 +79,7 @@ namespace UltraCanvas {
         // stale override can't mis-size a different column set.
         columnWidthOverrides.clear();
         userAdjustedColumns = false;
+        columnFitStale = true;
         if (selection) selection->Clear();
         InvalidateRowGeometry();
         UpdateScrollbar();
@@ -182,6 +184,25 @@ namespace UltraCanvas {
 
     const ListViewStyle& UltraCanvasListView::GetStyle() const {
         return viewStyle;
+    }
+
+    void UltraCanvasListView::SetColumnFitting(const ColumnFitting& fitting) {
+        columnFitting = fitting;
+        columnFitStale = fitting.enabled;
+        RequestRedraw();
+    }
+
+    void UltraCanvasListView::FitColumnsToContent(IRenderContext* ctx) {
+        columnFitStale = false;
+        if (!ctx || !model || model->GetColumnCount() <= 1 || userAdjustedColumns) return;
+        const int colCount = model->GetColumnCount();
+        for (int col = 0; col < colCount; ++col) {
+            const int text = MeasureColumnTextWidth(ctx, col, columnFitting.font);
+            int width = std::max(text > 0 ? text + columnFitting.padding : 0, MeasureHeaderWidth(ctx, col));
+            width = std::max(width, columnFitting.minWidth);
+            if (columnFitting.maxWidth > 0) width = std::min(width, columnFitting.maxWidth);
+            SetColumnWidth(col, width);
+        }
     }
 
     void UltraCanvasListView::SetRowHeight(int height) {
@@ -688,6 +709,10 @@ namespace UltraCanvas {
         // Draw background and border
         UltraCanvasUIElement::Render(ctx, dirtyRect);
 
+        // The columns' widths follow their content, where asked: measured
+        // here, on the context they are painted with, once per change.
+        if (columnFitting.enabled && columnFitStale) FitColumnsToContent(ctx);
+
         // The scrollbar is recomputed whenever the model, the style or the
         // bounds change - but only if that change reached this view. A paint
         // is the one moment the rows, the bounds and the scrollbar are all
@@ -819,6 +844,10 @@ namespace UltraCanvas {
             textWidths.clear();
             textWidthFont = fontKey;
         }
+        // A grid paged through a large table sees a new text in every cell
+        // of every page: the memory starts over rather than growing with it.
+        constexpr size_t kRememberedTexts = 20000;
+        if (textWidths.size() > kRememberedTexts) textWidths.clear();
         int widest = 0;
         const int rows = model->GetRowCount();
         for (int row = 0; row < rows; ++row) {
@@ -1389,6 +1418,7 @@ namespace UltraCanvas {
         model->onDataChanged = [this, alive]() {
             if (alive.expired()) return;
             InvalidateRowGeometry();
+            columnFitStale = true;
             UpdateScrollbar();
             RequestRedraw();
             OnModelChanged();
@@ -1397,6 +1427,7 @@ namespace UltraCanvas {
             if (alive.expired()) return;
             // A row's content may change its variable height.
             InvalidateRowGeometry();
+            columnFitStale = true;
             UpdateScrollbar();
             RequestRedraw();
             OnModelChanged();
@@ -1409,6 +1440,7 @@ namespace UltraCanvas {
             if (focusedRow >= row) focusedRow++;
             if (hoveredRow >= row) hoveredRow++;
             InvalidateRowGeometry();
+            columnFitStale = true;
             UpdateScrollbar();
             RequestRedraw();
             OnModelChanged();
@@ -1423,6 +1455,7 @@ namespace UltraCanvas {
             if (hoveredRow == row) hoveredRow = -1;
             else if (hoveredRow > row) hoveredRow--;
             InvalidateRowGeometry();
+            columnFitStale = true;
             UpdateScrollbar();
             RequestRedraw();
             OnModelChanged();

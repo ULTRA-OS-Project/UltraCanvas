@@ -2,12 +2,14 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
+// Version: 4.8.0 - the corner between two showing scrollbars is painted in the
+//                  track's colour, not left to whatever is beneath
 // Version: 4.7.0 - children are laid out clear of a showing vertical scrollbar
 // Version: 4.6.0 - OnThemeChanged reaches every child
 // Version: 4.5.0 - FinishArrange for subclasses that place their own children
 // Version: 4.4.0 - ContainerStyle::clipChildren (false: CSS overflow: visible)
 // Version: 4.3.0
-// Last Modified: 2026-10-04
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -231,6 +233,8 @@ namespace UltraCanvas {
 
         // ===== RENDERING HELPERS =====
         void RenderScrollbars(IRenderContext *ctx, const Rect2Df& dirtyRect);
+        // The square where the two tracks would meet, when both scrollbars
+        // show: painted in the track's colour, so it reads as part of them.
         void RenderCorner(IRenderContext *ctx);
 
         void SortChildrenByZOrder();

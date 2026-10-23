@@ -225,6 +225,39 @@ and remembered, so a column of thousands of dates costs a few hundred
 measurements. UltraMail fits its Date column this way: the widest date in bold
 plus the 6 px its delegate leaves before the text, and at least the header.
 
+Every column at once, with no subclass:
+
+```cpp
+struct ColumnFitting {
+    bool      enabled = false;
+    FontStyle font;          // the rows' font (the default delegate's is 12 pt)
+    int       padding = 12;  // what the delegate leaves beside the text, both sides
+    int       minWidth = 40;
+    int       maxWidth = 0;  // 0: no cap
+};
+void SetColumnFitting(const ColumnFitting& fitting);
+const ColumnFitting& GetColumnFitting() const;
+```
+
+With `enabled`, every column is fitted at the next paint after the model's
+rows or columns change - the one moment a render context is at hand: its
+widest `DisplayRole` text in `font` plus `padding`, never narrower than its
+header's title and sort triangle, within `[minWidth, maxWidth]`, so one long
+text does not take the whole grid. The fit stops once the user drags a border
+(`ColumnsUserAdjusted`). UltraDBAdmin's result grids use it with a 360 px cap;
+the model gives only an estimate from the title for the paint before the
+first fit.
+
+```cpp
+UltraCanvasListView::ColumnFitting fitting;
+fitting.enabled = true;
+fitting.font.fontSize = 12;
+fitting.maxWidth = 360;
+list->SetColumnFitting(fitting);
+```
+
+One column by hand, where the others are laid out from it:
+
 ```cpp
 // A Date column (column 3) as wide as its widest date plus a 6 px gap, never
 // narrower than its header - measured where a render context is at hand.

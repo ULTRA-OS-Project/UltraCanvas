@@ -56,7 +56,6 @@ private:
     UltraDbResultSet rows_;
     std::vector<std::string> columns_;
     std::vector<std::string> columnTypes_;
-    std::vector<int> widths_;            // from the header and the rows' text
 };
 
 class ColumnSchemaModel : public UltraCanvas::IListModel {
