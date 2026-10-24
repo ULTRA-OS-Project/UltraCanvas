@@ -7,6 +7,7 @@
 // running query, the error codes a caller reacts to, a read-only connection,
 // and the schema introspection (columns and their defaults, keys, indexes,
 // foreign keys, triggers, views).
+// Version: 0.1.1 - the generated column over total: MySQL 8 refuses one over AUTO_INCREMENT
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -348,10 +349,12 @@ TEST(mysql_introspection) {
     if (!ultradb_test::OpenMysqlTestConnection(c)) return;
     const std::string db = ultradb_test::MysqlEnv("ULTRADB_TEST_MYSQL_DB", "");
     REQUIRE(UltraDb_Exec(c, "DROP VIEW IF EXISTS ultradb_my_v; DROP TABLE IF EXISTS ultradb_my_line, ultradb_my_order").success);
+    // The generated column is computed from total: MySQL refuses one over an
+    // AUTO_INCREMENT column (error 3109), which MariaDB allows.
     REQUIRE(UltraDb_Exec(c,
         "CREATE TABLE ultradb_my_order(id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT 'the number',"
         " code VARCHAR(20) NOT NULL DEFAULT 'none', placed DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
-        " total DECIMAL(10,2) DEFAULT 0, note TEXT, doubled INT AS (id * 2) VIRTUAL,"
+        " total DECIMAL(10,2) DEFAULT 0, note TEXT, doubled DECIMAL(12,2) AS (total * 2) VIRTUAL,"
         " UNIQUE KEY uq_code (code)) ENGINE=InnoDB COMMENT='orders'").success);
     REQUIRE(UltraDb_Exec(c,
         "CREATE TABLE ultradb_my_line(order_id INT UNSIGNED NOT NULL, n INT NOT NULL, qty INT,"
