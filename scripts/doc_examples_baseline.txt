@@ -180,18 +180,20 @@ Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `std::shared
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `std::string CherryPick(const std::string& sha)` - the header has: std::string CherryPick(const std::string& sha, const std::string& subject = "");
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void SetDataSource(std::shared_ptr<IGitGraphDataSource> source)` - the header has: void   SetDataSource(std::shared_ptr<IGitGraphDataSource> source, size_t chunkSize = 500);
 Docs/UltraCanvas/UltraCanvasGitGraphProposal.md::signature differs: `void ZoomToFit()` - the header has: void  ZoomToFit(double padding = 24.0);
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ChartHighlightShape::Polygon' does not exist (no member named 'Polygon' in 'ChartHighlightShape')
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'DiagonalIsoPriority' is not a member of UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ExportImportancePerformanceJson' is not a member of UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ImportImportancePerformanceFactorsCsv' is not a member of UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ImportImportancePerformanceJson' is not a member of UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'MartillaJames' is not a member of UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'SampleFactors' is not a member of UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, UltraCanvasChartEngineElement, nor a free function
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'SlackZones' is not a member of UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, UltraCanvasChartEngineElement, nor a free function
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'DiagonalIsoPriority' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ExportImportancePerformanceJson' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ImportImportancePerformanceFactorsCsv' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ImportImportancePerformanceJson' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ImportancePerformanceFactor::previousImportance' does not exist (no member named 'previousImportance' in 'ImportancePerformanceFactor')
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'ImportancePerformanceFactor::previousPerformance' does not exist (no member named 'previousPerformance' in 'ImportancePerformanceFactor')
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'MartillaJames' is not a member of UltraCanvasImportancePerformanceChart, UltraCanvasEngineScatterChart, UltraCanvasFileLoader, IRenderContext, nor a free function
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'SetHighlightZone' is not a member of UltraCanvasImportancePerformanceChart
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'SetShowMovement' is not a member of UltraCanvasImportancePerformanceChart
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'SetZoneLegend' is not a member of UltraCanvasImportancePerformanceChart
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'UltraCanvasImportancePerformanceChart::onFactorClick' does not exist (no member named 'onFactorClick' in 'UltraCanvasImportancePerformanceChart')
+Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::'UltraCanvasImportancePerformanceChart::onZoneClick' does not exist (no member named 'onZoneClick' in 'UltraCanvasImportancePerformanceChart')
 Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::prose names `DiagonalIsoPriority(`, which no header declares
 Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::prose names `MartillaJames(`, which no header declares
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::prose names `SlackZones(`, which no header declares
-Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md::prose names `SlackZones(`, which no header declares
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `FitColumns(`, which no header declares
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `GetStageCounts(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::prose names `FT_Load_Glyph(`, which no header declares

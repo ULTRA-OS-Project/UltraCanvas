@@ -16,8 +16,10 @@
 // Axis indices: 0 = y (the value), 1 = x (the projection's domain) - the
 // engine's convention, shared with the highlight and span defaults.
 //
+// Version: 1.1.0 - AddChartHighlights() / RefreshHighlights(): a derived chart's own highlights
+//   survive the rebuild every data, theme and legend change does
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -134,6 +136,15 @@ public:
     void CollectChartLabels(IRenderContext* ctx, ChartLabelBroker& broker) override;
     void OnChartThemeChanged() override;
     void OnLegendEntryToggled(size_t entryIndex, bool enabled) override;
+
+protected:
+    // Every data, theme and legend change clears the highlights and rebuilds
+    // the chart's own (the confidence ellipses). A derived chart adds its
+    // highlights here, so they are rebuilt with them instead of wiped -
+    // drawn first, under the ellipses. RefreshHighlights() reruns the
+    // rebuild when only the derived chart's highlights changed.
+    virtual void AddChartHighlights() {}
+    void RefreshHighlights() { RebuildHighlights(); }
 
 private:
     struct AxisFormat {

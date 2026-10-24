@@ -1,5 +1,6 @@
 // Plugins/Charts/Engine/UltraCanvasChartEngineElement.cpp
 // The chart engine's three-phase render driver
+// Version: 1.3.4 - ChartHighlightShape::Polygon
 // Version: 1.3.3
 // Last Modified: 2026-10-20
 // V1.3.3: Tick labels drawn inside the plot (an in-plot axis, the radial
@@ -1148,6 +1149,41 @@ void UltraCanvasChartEngineElement::RenderEngineHighlights(IRenderContext* ctx,
                 for (const Point2Dd& m : h.members) {
                     const Point2Dd p = MapHighlightPoint(h, m);
                     if (!std::isnan(p.x)) ctx->FillCircle(p, h.padding);
+                }
+                break;
+            }
+            case ChartHighlightShape::Polygon: {
+                if (h.members.size() < 3 || h.xAxisIndex >= engineAxes.Count() ||
+                    h.yAxisIndex >= engineAxes.Count()) break;
+                // Rounded in value space, before the mapping: the shape a
+                // caller classifies against with the same smoothing.
+                const int iterations = std::clamp(
+                    static_cast<int>(std::lround(h.smoothing * 4.0)), 0, 4);
+                const std::vector<Point2Dd> value = SmoothPolygonChaikin(h.members, iterations);
+                const ChartAxis& ax = engineAxes.At(h.xAxisIndex);
+                const ChartAxis& ay = engineAxes.At(h.yAxisIndex);
+                // A straight edge in value space is an arc under Polar, so
+                // each edge is sampled in normalised space there.
+                const int samples = projectionKind == ChartProjectionKind::Polar ? 24 : 1;
+                std::vector<Point2Dd> outline;
+                outline.reserve(value.size() * samples);
+                for (size_t k = 0; k < value.size(); ++k) {
+                    const Point2Dd& a = value[k];
+                    const Point2Dd& b = value[(k + 1) % value.size()];
+                    const double u0 = ax.Normalize(a.x), v0 = ay.Normalize(a.y);
+                    const double u1 = ax.Normalize(b.x), v1 = ay.Normalize(b.y);
+                    for (int t = 0; t < samples; ++t) {
+                        const double f = static_cast<double>(t) / samples;
+                        outline.push_back(engineProjection->ToScreen(
+                            ChartNormalizedPoint(u0 + (u1 - u0) * f, v0 + (v1 - v0) * f)));
+                    }
+                }
+                ctx->SetFillPaint(h.fill);
+                ctx->FillLinePath(outline);
+                if (strokes) {
+                    ctx->SetStrokePaint(h.stroke);
+                    ctx->SetStrokeWidth(h.strokeWidth);
+                    ctx->DrawLinePath(outline, true);
                 }
                 break;
             }

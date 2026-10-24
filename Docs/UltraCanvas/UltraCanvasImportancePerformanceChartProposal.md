@@ -1,6 +1,48 @@
 # UltraCanvasImportancePerformanceChart — Research & Feature Proposal
 
-**Status:** Proposal — nothing is built yet. This chart takes over reference
+**Status:** **Phase 1 is implemented** as `UltraCanvasImportancePerformanceChart`
+and `UltraCanvasImportancePerformanceModel` — see
+[`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)
+for the guide. Phase 1 delivered E1 (`ChartHighlightShape::Polygon`), the
+model with `ZoneOf`, `ClassifyFactors` and `Validate`, Z1–Z3, A1, A3, F1, F2
+and F5, `SlackZones` in both forms with `SampleFactors`, the demo page
+(**Charts → Importance-Performance Chart**), `Tests/ImportancePerformanceModelTest.cpp`
+and `Tests/ImportancePerformanceChartRenderTest.cpp`.
+
+How Phase 1 departs from the plan below, and why:
+
+* **The model has a header of its own**
+  (`UltraCanvasImportancePerformanceModel.h`), not a place in the chart's
+  header. It needs nothing from the UI, so its test builds without the
+  library, as `MatrixModelTest` does. It also holds the UI-free geometry the
+  chart uses: `SmoothPolylineChaikin`, `PolygonContains` and
+  `PoleOfInaccessibility`.
+* **The scatter chart needed a hook.** Every data, theme and legend change made
+  it clear *all* highlights and rebuild its own confidence ellipses, so zones
+  added through the public `AddHighlight` (§4.2) were wiped on the first
+  change. It now calls a protected `AddChartHighlights()` first in that
+  rebuild, and the chart adds its zones there.
+* **The smooth preset is not the staircase with more smoothing** (§7.2).
+  Chaikin smoothing of a unit staircase converges to a wavy line that keeps
+  every step. `SlackZones(true)` smooths a thinned set of the staircase's
+  corners instead. Classification still follows the drawn shape, because both
+  read `ZoneShape`.
+* **The level ranges are tick marks, not arrows** (A1). The engine reserves
+  axis space as a maximum, not a sum, so a chart cannot add a band of its own
+  outside the axis labels. The ranges are therefore explicit ticks: the level
+  name at each centre, an unlabelled tick at each boundary and the captions at
+  the ends, all drawn and decluttered by the engine. **A2 is partial**: end
+  captions work, but axis titles stay on one line, because the engine draws
+  them that way.
+* **Zone tooltips arrived early.** Hovering a bare stretch of a zone shows its
+  title, action and factor count (part of Z5). Emphasising the hovered zone's
+  factors and `onZoneClick` remain Phase 2, and `onFactorClick` comes with
+  them.
+* **Titles are placed in screen space.** The pole of inaccessibility is
+  computed on the mapped zone, with the later zones as holes and the plot as
+  the clip, so a title sits in what is actually visible.
+
+This chart takes over reference
 image 4 of
 [`UltraCanvasPerformanceMatrixProposal.md`](UltraCanvasPerformanceMatrixProposal.md),
 which ceded it in that document's revision 2: the importance–performance
@@ -282,7 +324,7 @@ namespace UltraCanvas {
         ImportancePerformanceModel SlackZones(bool smooth);   // image 4 when smooth
         ImportancePerformanceModel MartillaJames(double importanceSplit, double performanceSplit);
         ImportancePerformanceModel DiagonalIsoPriority();
-        ImportancePerformanceModel SampleFactors();           // invented data for the demo
+        std::vector<ImportancePerformanceFactor> SampleFactors();   // invented data for the demo
     }
 
     // Strings only; files go through UltraCanvasFileLoader.

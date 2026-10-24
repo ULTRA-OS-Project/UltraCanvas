@@ -126,6 +126,14 @@ chart->SetShowTrendLine(true);                   // least squares, with r and r^
 chart->SetShowConfidenceEllipses(true, 0.95);    // engine highlight per group
 ```
 
+Every data, theme and legend change clears the highlights and rebuilds the
+chart's own. A chart derived from the scatter chart adds its own highlights in
+the protected `AddChartHighlights()`, which that rebuild calls first, so
+they are not wiped. It calls `RefreshHighlights()` when only its own
+highlights changed. The importance–performance chart
+([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md))
+draws its zones this way.
+
 A point with a finite `size` turns the chart into a bubble chart: radii are
 area-proportional (`SetSizeScale(EngineBubbleScale::Diameter)` for the other
 convention) and `SetShowSizeLegend(true, "Health")` keys them with the engine

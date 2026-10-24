@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.12 - Charts > Importance-Performance Chart (UltraCanvasImportancePerformanceChart)
 // Version: 1.0.11 - Widgets > Colour Palettes (UltraCanvasColorPaletteManager)
 // Version: 1.0.10 - A filter field over the component tree ("Reset" inside it); the List
 //                  View page holds the domain dashboard, which is no page of its own
@@ -1407,6 +1408,16 @@ namespace UltraCanvas {
                 .AddVariant("bubblecharts", "Hierarchical Packing")
                 .AddVariant("bubblecharts", "Bubble Timeline")
                 .AddVariant("bubblecharts", "3D Bubbles (OpenGL)");
+
+        chartBuilder.AddItem("importanceperformance", "Importance-Performance Chart",
+                             "Slack's importance-performance matrix: service factors over "
+                             "urgent action / improve / appropriate / excess zones",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateImportancePerformanceChartExamples(); },
+                             "DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md")
+                .AddVariant("importanceperformance", "Slack Zones (smooth)")
+                .AddVariant("importanceperformance", "Slack Zones (stepped)");
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);
