@@ -1,3 +1,15 @@
+#### 2026-10-24 *0.9.398*
+- **The rich text editor sets a background colour behind text.**
+  `UltraCanvasRichTextEdit::SetHighlightColor("#RRGGBB")` (and
+  `UCRichDocumentEditor::SetHighlightColor`) colours the background of the
+  selection, or of what is typed next, as a highlighter does; an empty
+  colour removes it. Runs always had `highlightColor`, drawn on screen and
+  written to HTML as `background-color`, but nothing could set it while
+  editing. `RichCharFormatDelta::setHighlight` / `highlightColor` carry it,
+  `RichCharFormatState::highlightColor` / `highlightMixed` report it for a
+  toolbar, and `ClearFormatting` takes it away with the rest. UltraMail's
+  compose window uses it for its Text | Background colour switch.
+
 #### 2026-10-24 *0.9.397*
 - **CI keeps the Linux packages it downloaded.** On 2026-10-23 the Ubuntu
   mirror served the x64 Linux build so slowly that its dependency step ran

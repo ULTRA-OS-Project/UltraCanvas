@@ -1,3 +1,55 @@
+#### 2026-10-24 *0.10.72*
+- **The compose window's toolbar is one row, with Send on top.** The window
+  opens wide enough (1140 px) for every formatting tool in a single row
+  above the text, and the action row - *Send*, *Attach file…*,
+  *Cloud link…* and, apart on the right, *Cancel* - moved from the bottom to
+  the top of the window, above the address fields.
+- **Font and Size name the text at the cursor.** In place of the words
+  "Font" and "Size" they show the font and the size of the text the cursor
+  is in, or of the selected text: *Default* for text without a font or size
+  of its own (the reader's program picks it), and a font or size the lists
+  do not offer - a reply quoting Calibri 10.5 - is added to the list and
+  shown. Over a selection in several fonts they keep what they showed.
+- **Text or background colour.** A switch with two icons in front of the
+  colour swatches picks what a swatch colours: the letters, or the
+  background behind them, like a highlighter, with a palette of light
+  colours (white takes the background away). It is sent as the HTML's
+  `background-color`.
+- **Settings > Reading > Attachments: at the bottom or on the right side.**
+  A message's attachments are shown in a row under it, as before, or in a
+  column at its right, which keeps the message its whole height. The
+  choice is for reading (the reading pane) and for writing: the compose
+  window puts the files attached in the same place, inside the editor's
+  frame under the toolbar. It applies at once, to compose windows already
+  open too.
+- `UltraMailFormatBarTest` checks the formatting bar in a real window: one
+  row, the font and size shown at the cursor, and the two colour targets.
+- **The compose window looks like a mail program's.** The formatting tools
+  are icons now - bold, italic, underline, strikethrough; left, centre,
+  right; bulleted and numbered lists, quote in and out; a line, a link, a
+  picture - flat, in groups with thin separators, each named by its tooltip.
+  They sit on a tinted strip framed together with the message body, so the
+  body is a clear place to write rather than an open white area. *Plain text |
+  Formatted* shows a mark for each. *Send*, *Attach file…* and
+  *Cloud link…* (was *Attach cloud link…*) carry icons. The signature
+  editor has the same toolbar and frame.
+- **Dialogs open with a header**: an icon tile, a title and the line that
+  says what the dialog is for - Add an email account, the master password,
+  the browser sign-in code, the wait while server settings are looked up or
+  a sign-in completes (with a moving busy bar), Account settings and the
+  signature editor. Their action buttons carry icons (Continue, Save,
+  Unlock, Delete account, Edit signature…, Show info, Send now, Edit…,
+  Add contact, Add group), and the settings window's sections (Mail,
+  Reading, Privacy, Display, Warnings) have icons in its tree. The icons
+  are UltraMail's own set, `media/icons/ultramail/`.
+- **The signature editor's Save and Cancel are shown again.** Its button
+  row was sized with a width of 0, which kept the dialog's column from
+  stretching it, so the row - *HTML source*, *Cancel* and *Save* - was laid
+  out zero pixels wide and never drawn.
+- Demo: `ULTRAMAIL_DEMO_DIALOG=<name>` opens one dialog on its own to look
+  at it (`wizard`, `password`, `password-new`, `oauth`, `wait`, `outbox`,
+  `settings`, `account`).
+
 #### 2026-10-23 *0.10.71*
 - **No missing-fonts notice when writing mail.** The new notice in the
   framework's WYSIWYG editor lists the fonts a document names that the
