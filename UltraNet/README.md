@@ -329,6 +329,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetOAuth2Service.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
+│   ├── UltraNetSsh.h             (SSH tunnels, through the ssh plug-in)
 │   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
 │   ├── UltraNetCurlDebug.h       (header-only, opt-in protocol trace)
 │   └── UltraNetPlugins.h
@@ -344,6 +345,53 @@ UltraCanvas/                      (or wherever the build places it)
 CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
 
 ---
+
+## SSH tunnels
+
+`UltraNet_OpenSshTunnel` (`UltraNet/UltraNetSsh.h`) forwards a local port:
+it signs in at an SSH server, listens on a free port of 127.0.0.1, and
+carries every connection made to that port, each on a channel of its own, to
+a host and port the SSH server reaches - a database behind a bastion, the
+case UltraDatabase uses it for (`UltraDatabaseSshTunnel.h`). The `ssh`
+plug-in (libssh) does the work and is loaded on first use; without it the
+call fails with `PluginNotFound`.
+
+```cpp
+#include <UltraNet/UltraNetSsh.h>
+
+UltraNetSshTunnelOptions tunnel;
+tunnel.url = "ssh://deploy@bastion.example.com";
+tunnel.remote.privateKeyPem = key;     // or remote.credentials.password; neither: the agent, the default keys
+tunnel.remote.hostKeyFingerprint = trusted;   // "SHA256:..."
+tunnel.targetHost = "db.internal";
+tunnel.targetPort = 5432;
+UltraNetHandle handle = UltraNetInvalidHandle;
+UltraNetSshTunnelInfo info;
+if (UltraNet_OpenSshTunnel(tunnel, handle, info)) {
+    // connect to 127.0.0.1:info.localPort
+    UltraNet_CloseSshTunnel(handle);
+}
+```
+
+**The host key is checked before anything is sent**, by the shell
+(`OpenShell`) and the tunnel alike: it must be the fingerprint the caller
+trusted, or - when none is given - the key `known_hosts` holds for the host.
+A key nobody knows fails with `SshHostKeyUnknown`, its fingerprint in
+`UltraNetSshTunnelInfo`, for the application to show and, once the user
+agrees, to pass back as `hostKeyFingerprint`; one that differs from the key
+known fails with `SshHostKeyChanged` and is never accepted. Until 0.2.0 the
+plug-in checked no host key at all.
+
+The tunnel's SSH session belongs to one thread, which accepts, opens the
+channels and copies bytes both ways; a channel the SSH server cannot open
+(the far end refuses, forwarding is not allowed) ends that one connection,
+and the tunnel stays up for the next. Closing the tunnel ends every
+connection through it.
+
+Tested against a real sshd (`Tests/UltraNet/test_extra_plugins.cpp`,
+`ULTRANET_TEST_SSH_URL` / `_KEY`, required in CI): an unknown key, a changed
+one and a failed sign-in refused, three connections of half a megabyte each
+way at once, a far end that is not there, and a closed tunnel.
 
 ## Debugging a mail connection
 
