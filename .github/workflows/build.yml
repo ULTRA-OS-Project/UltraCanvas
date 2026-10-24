@@ -897,6 +897,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
@@ -935,6 +936,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
@@ -1268,6 +1270,14 @@ jobs:
           if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
           export ULTRACANVAS_SDK_PREFIX="$sdk"
           (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
+          # UltraStore's core on the same leg: the catalog, the verifier
+          # (libsodium's Ed25519), the resolver and the client, then the
+          # program's own view of the runner.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreCore$")
+          store=build/bin/ultrastore
+          [ "${{ runner.os }}" = "Windows" ] && store="$store.exe"
+          "$store" --version
+          "$store" platform
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
