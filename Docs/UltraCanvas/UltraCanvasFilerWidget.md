@@ -54,6 +54,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [macOS shortcuts and application bundles](#macos-shortcuts-and-application-bundles)
   - [What the host sees](#what-the-host-sees)
 - [Selection info bar](#selection-info-bar)
+  - [Showing the line in the host's status bar](#showing-the-line-in-the-hosts-status-bar)
 - [Files in use](#files-in-use)
 - [Remote folders](#remote-folders)
   - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
@@ -1124,6 +1125,32 @@ selection two ways:
 ```cpp
 statusLabel->SetText("1 item selected (" +
                      UltraCanvasFilerWidget::FormatSizeText(bytes) + ")");
+```
+
+### Showing the line in the host's status bar
+
+A host with a status bar of its own can show the info bar's line there and
+turn the bar off, so the window does not say the same thing twice. The display
+keeps working the line out: `GetSelectionInfo(primary, secondary)` returns it
+whether or not the bar is up - `primary` is the bold lead (the selected
+entry's name, or *"3 items selected"*; empty when nothing is selected),
+`secondary` the details or the folder summary. Folder sizes and media details
+arrive from the background worker after the selection, so the line grows on
+its own; `onSelectionInfoChanged` says when (posted to the UI thread after the
+paint that noticed it, so setting a label from it is safe).
+`SetInfoBarMenuItemVisible(false)` takes the Display > Info-Bar switch out of
+the context menu, where turning the bar back on would only repeat the status
+bar. UltraFiler does this for every file display of the window.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; -->
+```cpp
+filer->SetSelectionInfoVisible(false);
+filer->SetInfoBarMenuItemVisible(false);
+filer->onSelectionInfoChanged = [filer, statusLabel] {
+    std::string primary, secondary;
+    filer->GetSelectionInfo(primary, secondary);
+    statusLabel->SetText(primary.empty() ? secondary : primary + "  ·  " + secondary);
+};
 ```
 
 Recursive folder statistics are computed **asynchronously** on a background

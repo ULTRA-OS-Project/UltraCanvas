@@ -10569,6 +10569,7 @@ namespace UltraCanvas {
                        static_cast<int>(lb.width), static_cast<int>(lb.height));
 
         DrawViewContent(ctx, bounds);
+        ReportSelectionInfoChange();
 
         // The name filter's "no matches" action button is a real child
         // element this self-rendered view must draw itself; placed fresh each
@@ -14892,6 +14893,29 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasFilerWidget::GetSelectionInfo(std::string& primary,
+                                                  std::string& secondary) {
+        BuildSelectionInfoText(primary, secondary);
+    }
+
+    void UltraCanvasFilerWidget::ReportSelectionInfoChange() {
+        if (!onSelectionInfoChanged) return;
+        std::string primary, secondary;
+        BuildSelectionInfoText(primary, secondary);
+        std::string key = primary + '\x1f' + secondary;
+        if (key == reportedSelectionInfo) return;
+        reportedSelectionInfo = std::move(key);
+        // Posted, not called: this runs inside the paint, and a host that
+        // answers by setting a label's text should not do it mid-frame.
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            if (onSelectionInfoChanged) onSelectionInfoChanged();
+        });
+    }
+
     bool UltraCanvasFilerWidget::IsInInfoBar(const Point2Di& localPoint) const {
         int h = InfoBarHeight();
         if (h <= 0) return false;
@@ -15764,8 +15788,12 @@ namespace UltraCanvas {
             // The first pictures inside a folder peeking out of its icon.
             addSwitch("Folder previews", "folder-previews.svg", folderPreviews,
                       [this](bool on) { SetFolderPreviewsEnabled(on); });
-            addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
-                      [this](bool on) { SetSelectionInfoVisible(on); });
+            // Left out where the host shows the same line in its own status
+            // bar (SetInfoBarMenuItemVisible) - switching the bar back on
+            // there would only say it twice.
+            if (showInfoBarMenuItem)
+                addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
+                          [this](bool on) { SetSelectionInfoVisible(on); });
             // "Show me everything": hidden entries, and the full physical
             // listing of a curated home folder (SetCuratedHomeFolder).
             addSwitch("Hidden files", "hidden-files.svg", showHiddenFiles,

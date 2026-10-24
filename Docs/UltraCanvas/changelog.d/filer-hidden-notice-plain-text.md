@@ -8,3 +8,8 @@
 - **Filer widget: `FormatSizeText(bytes)`.** The display's own size
   formatting (`103.6 KB`), public and static, so a host's status bar rounds a
   selection the same way as the info bar under the files.
+- **Filer widget: a host can show the info bar's line in its own status
+  bar.** `GetSelectionInfo(primary, secondary)` returns the line whether or
+  not the bar is up, `onSelectionInfoChanged` fires (posted) when it changes -
+  including when background folder sizes or media details arrive - and
+  `SetInfoBarMenuItemVisible(false)` drops the Display > Info-Bar switch.

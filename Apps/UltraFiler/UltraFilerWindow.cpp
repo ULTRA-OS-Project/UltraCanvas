@@ -887,6 +887,37 @@ namespace {
                folder.back() == '/' || folder.back() == '\\';
     }
 
+    // `text` made safe for a markup label: the five characters Pango reads.
+    std::string EscapeStatusMarkup(const std::string& text) {
+        std::string out;
+        out.reserve(text.size());
+        for (char c : text) {
+            switch (c) {
+                case '&':  out += "&amp;"; break;
+                case '<':  out += "&lt;"; break;
+                case '>':  out += "&gt;"; break;
+                case '"':  out += "&quot;"; break;
+                case '\'': out += "&#39;"; break;
+                default:   out += c;
+            }
+        }
+        return out;
+    }
+
+    // The status bar's left line: `primary` in bold, `secondary` after it in
+    // the quieter grey - the way the file display's info bar drew them.
+    std::string StatusInfoMarkup(const std::string& primary,
+                                 const std::string& secondary) {
+        std::string markup;
+        if (!primary.empty()) markup = "<b>" + EscapeStatusMarkup(primary) + "</b>";
+        if (!secondary.empty()) {
+            markup += "<span foreground=\"#6b6b73\">";
+            if (!primary.empty()) markup += "  ·  ";
+            markup += EscapeStatusMarkup(secondary) + "</span>";
+        }
+        return markup;
+    }
+
     // "12 items    |    1 item selected (3.4 MB)" for a filer's current
     // display — the status bar text of both the folder and the History views.
     std::string DescribeFilerContent(const UltraCanvasFilerWidget* f) {
@@ -1222,11 +1253,35 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     statusRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+    // Left: what the display shows - the file display's own info line
+    // (name, type, size, pixels, date, or the folder summary), which the
+    // display no longer draws under its files. Always there: a message never
+    // takes its place.
+    statusInfoLabel = std::make_shared<UltraCanvasLabel>("ufl-status-info", 0, 0, 0, 16);
+    statusInfoLabel->SetFontSize(kUiFontSize);
+    statusInfoLabel->SetTextColor(Color(70, 70, 76, 255));
+    statusInfoLabel->SetTextIsMarkup(true);
+    statusInfoLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+    statusInfoLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    statusRow->AddChild(statusInfoLabel);
+
+    // "1 of 404 selected": the folder's count, kept in sight while the line
+    // on the left describes the selection.
+    statusSelectionLabel = std::make_shared<UltraCanvasLabel>("ufl-status-selection", 0, 0, 0, 16);
+    statusSelectionLabel->SetFontSize(kUiFontSize);
+    statusSelectionLabel->SetTextColor(Color(107, 107, 115, 255));
+    statusSelectionLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+    statusSelectionLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    statusRow->AddChild(statusSelectionLabel);
+
+    // Right: what is happening - a drive's activity, a copy that ended, a
+    // print or share result, an error. It stays until the next action
+    // (UpdateStatusBar on the next selection, folder or refresh).
     statusLabel = std::make_shared<UltraCanvasLabel>("ufl-status", 0, 0, 0, 16);
     statusLabel->SetFontSize(kUiFontSize);
     statusLabel->SetTextColor(Color(70, 70, 76, 255));
-    statusLabel->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-    statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    statusLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+    statusLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(1);
     statusRow->AddChild(statusLabel);
 
     // The framework's progress bar is the gauge in LinearBar mode. At this
@@ -5301,6 +5356,7 @@ UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     state->filer = CreateFilerWidget("ufl-filer-" + suffix, 0, 0, 0, 0);
+    ShowInfoInStatusBar(*state->filer);
     // Settings > Display > Home folder: when curated (the Windows default),
     // the home folder's display shows its main folders and its files, not the
     // whole profile - like the tree's Home entry. Display > Hidden files
@@ -5804,6 +5860,7 @@ void UltraFilerWindow::BuildHistoryView() {
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         auto histFiler = CreateFilerWidget("ufl-history-filer-" + suffix, 0, 0, 0, 0);
+        ShowInfoInStatusBar(*histFiler);
         FilerStyle filerStyle = histFiler->GetStyle();
         filerStyle.fontSize = kUiFontSize;
         filerStyle.smallFontSize = kUiFontSize;
@@ -6066,6 +6123,7 @@ void UltraFilerWindow::BuildFavoritesView() {
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
         auto favFiler = CreateFilerWidget("ufl-favorites-filer-" + suffix, 0, 0, 0, 0);
+        ShowInfoInStatusBar(*favFiler);
         FilerStyle filerStyle = favFiler->GetStyle();
         filerStyle.fontSize = kUiFontSize;
         filerStyle.smallFontSize = kUiFontSize;
@@ -6208,6 +6266,7 @@ void UltraFilerWindow::BuildComputerPage() {
     // context menu every other folder tile has.
     computerFolders = CreateFilerWidget("ufl-computer-folders", 0, 0, 0,
                                         kComputerFoldersHeight);
+    ShowInfoInStatusBar(*computerFolders);
     FilerStyle filerStyle = computerFolders->GetStyle();
     filerStyle.fontSize = kUiFontSize;
     filerStyle.smallFontSize = kUiFontSize;
@@ -7104,9 +7163,31 @@ void UltraFilerWindow::RefreshConnectionLogWindow() {
     UpdateConnectionLogButton();
 }
 
+void UltraFilerWindow::ShowInfoInStatusBar(UltraCanvasFilerWidget& display) {
+    // The display's info bar says what the status bar says - one of them is
+    // enough, and the window-wide one also carries the messages. The display
+    // keeps working the line out (GetSelectionInfo) and says when it grew.
+    display.SetSelectionInfoVisible(false);
+    display.SetInfoBarMenuItemVisible(false);
+    display.onSelectionInfoChanged = [this]() { UpdateStatusBar(); };
+}
+
 void UltraFilerWindow::UpdateStatusBar() {
-    if (!statusLabel) return;
+    if (!statusLabel || !statusInfoLabel) return;
     UpdateRemoteProgressBar();
+    // Two halves. The left says what the window shows and is always there;
+    // the right says what is happening - a drive at work, a note on what just
+    // ended, an error - and stays until the next update replaces it.
+    std::string info;        // markup
+    std::string selection;   // "1 of 404 selected"
+    std::string note;
+    bool noteIsError = false;
+    auto addNote = [&note](const std::string& part) {
+        if (part.empty()) return;
+        if (!note.empty()) note += "    |    ";
+        note += part;
+    };
+
     // The drive's folder on show being fetched or updated: what it waits for
     // ("Waiting for Studio FTP - 1 request ahead", "Reading /up from Studio
     // FTP - Command: LIST - 3 s"). The display only slides a bar along its
@@ -7114,70 +7195,50 @@ void UltraFilerWindow::UpdateStatusBar() {
     const bool folderShown = filer && !historyShown && !favoritesShown && !computerShown;
     const std::string pending = folderShown ? filer->GetListingPendingStatus() : std::string();
     // A drive is busy whatever the window happens to be showing - the History
-    // view, the Computer page, another tab - so this is said first and in
-    // place of the rest. What a server is doing is the one thing in this
-    // window the user cannot see for themselves. The folder's own wait goes
-    // after it, unless the drive is busy reading a folder - most likely that
-    // one, said already.
+    // view, the Computer page, another tab - so it leads the right half. What
+    // a server is doing is the one thing in this window the user cannot see
+    // for themselves. The folder's own wait goes after it, unless the drive is
+    // busy reading a folder - most likely that one, said already.
     // A drive's folder the user expanded in the tree, still being fetched:
     // what it waits for - said like the drive's activity, since a folder
     // read ahead has none of its own to report.
     const std::string treeWait = TreeFetchStatus();
+    bool pendingSaid = false;
     if (const std::string activity = DescribeRemoteActivity(); !activity.empty()) {
-        std::string text = activity;
+        addNote(activity);
         if (remoteActivity.kind != RemoteActivity::Kind::Listing) {
-            if (!pending.empty()) text += "    |    " + pending;
-            if (!treeWait.empty()) text += "    |    " + treeWait;
+            addNote(pending);
+            addNote(treeWait);
         }
-        statusLabel->SetText(text);
-        return;
+        pendingSaid = true;
+    } else if (!treeWait.empty()) {
+        addNote(treeWait);
+    } else if (!remoteDropNote.empty()) {
+        // What a drop onto a drive could not send. Held until the next drop
+        // or the next folder.
+        addNote(remoteDropNote);
+    } else if (!transferNote.empty()) {
+        // A copy or move that just ended: its refresh would otherwise replace
+        // the confirmation the moment it is written.
+        addNote(transferNote);
+    } else if (!remotePreviewNote.empty()) {
+        addNote(remotePreviewNote);
     }
-    if (!treeWait.empty()) {
-        statusLabel->SetText(treeWait);
-        return;
-    }
-    // What a drop onto a drive could not send. Held until the next drop or the
-    // next folder, because the activity line above owns the strip while the
-    // files that DID go are going.
-    if (!remoteDropNote.empty()) {
-        statusLabel->SetText(remoteDropNote);
-        return;
-    }
-    // A copy or move that just ended: its refresh would otherwise replace the
-    // confirmation with the folder's counts the moment it is written.
-    if (!transferNote.empty()) {
-        statusLabel->SetText(transferNote);
-        return;
-    }
-    if (!remotePreviewNote.empty()) {
-        statusLabel->SetText(remotePreviewNote);
-        return;
-    }
-    if (historyShown) {
-        const int index = historyTabs ? historyTabs->GetActiveTab() : -1;
-        std::string text = "History";
+
+    if (historyShown || favoritesShown) {
+        const UltraCanvasTabbedContainer* tabs = historyShown ? historyTabs.get()
+                                                              : favoritesTabs.get();
+        const int index = tabs ? tabs->GetActiveTab() : -1;
+        std::string title = historyShown ? "History" : "Favorites";
         if (index >= 0 && index < HistoryTabCount)
-            text += " - " + std::string(kHistoryTabTitles[index]);
-        if (const UltraCanvasFilerWidget* hf = ActiveHistoryFiler())
-            text += "    |    " + DescribeFilerContent(hf);
-        statusLabel->SetText(text);
-        return;
-    }
-    if (favoritesShown) {
-        const int index = favoritesTabs ? favoritesTabs->GetActiveTab() : -1;
-        std::string text = "Favorites";
-        if (index >= 0 && index < HistoryTabCount)
-            text += " - " + std::string(kHistoryTabTitles[index]);
-        if (const UltraCanvasFilerWidget* ff = ActiveFavoritesFiler())
-            text += "    |    " + DescribeFilerContent(ff);
-        statusLabel->SetText(text);
-        return;
-    }
-    if (computerShown) {
+            title += " - " + std::string(kHistoryTabTitles[index]);
+        const UltraCanvasFilerWidget* shown = historyShown ? ActiveHistoryFiler()
+                                                           : ActiveFavoritesFiler();
+        info = StatusInfoMarkup(title, shown ? DescribeFilerContent(shown) : std::string());
+    } else if (computerShown) {
         // The drives in one line: how many, and how much is free of how much
         // in total over the ones whose sizes are known.
-        std::string text = "Computer    |    " +
-                std::to_string(computerDriveCards.size()) +
+        std::string text = std::to_string(computerDriveCards.size()) +
                 (computerDriveCards.size() == 1 ? " drive" : " drives");
         VolumeSpace sum;
         for (const ComputerDriveCard& card : computerDriveCards) {
@@ -7189,39 +7250,51 @@ void UltraFilerWindow::UpdateStatusBar() {
         }
         if (sum.known) text += ", " + DescribeVolumeSpace(sum) + " in total";
         if (computerFolders)
-            text += "    |    " + DescribeFilerContent(computerFolders.get());
-        statusLabel->SetText(text);
-        return;
-    }
-    if (!filer) return;
-    // A folder on a drive that could not be listed: the reason stays on the
-    // status line, with where to read the rest, rather than giving way to
-    // "0 items" the moment the drive falls idle.
-    if (remoteDrives && IsRemoteFilerPath(filer->GetPath())) {
-        if (const std::string error = remoteDrives->ListingError(filer->GetPath());
-            !error.empty()) {
-            statusLabel->SetText("Error: " + error +
-                                 "  -  every step and the error codes are in the "
-                                 "connection log (the network button at the bottom left)");
-            return;
+            text += "  ·  " + DescribeFilerContent(computerFolders.get());
+        info = StatusInfoMarkup("Computer", text);
+    } else if (filer) {
+        // A folder on a drive that could not be listed: the reason stays on
+        // the status line, with where to read the rest, rather than giving
+        // way to "0 items" the moment the drive falls idle.
+        if (remoteDrives && IsRemoteFilerPath(filer->GetPath())) {
+            if (const std::string error = remoteDrives->ListingError(filer->GetPath());
+                !error.empty()) {
+                addNote("Error: " + error +
+                        "  -  every step and the error codes are in the "
+                        "connection log (the network button at the bottom left)");
+                noteIsError = true;
+            }
         }
+        // The display's own line: the selected entry in full, the selection's
+        // counts and sizes, or the folder summary.
+        std::string primary, secondary;
+        filer->GetSelectionInfo(primary, secondary);
+        const size_t total = filer->GetEntries().size();
+        const size_t picked = filer->GetSelectionIndices().size();
+        if (picked > 1) {
+            // "3 items selected" says the count; "of 404" keeps the folder's.
+            primary = std::to_string(picked) + " of " + std::to_string(total) + " selected";
+        } else if (picked == 1) {
+            selection = "1 of " + std::to_string(total) + " selected";
+        }
+        // A live filter changes what the counts describe - say so.
+        if (!filer->GetNameFilter().empty())
+            secondary += (secondary.empty() ? "" : "  ·  ") +
+                         std::string("filtered by \"") + filer->GetNameFilter() + "\"";
+        info = StatusInfoMarkup(primary, secondary);
+        // What it shows is being fetched (again).
+        if (!pending.empty() && !pendingSaid)
+            addNote(filer->GetEntries().empty() ? pending : "updating: " + pending);
+        // What the sub-folder scan is doing (or found), so the counts are not
+        // the only thing said about a display the search is still filling.
+        addNote(searchStatus);
     }
-    // Nothing of the folder in yet: the wait is all there is to say, not
-    // "0 items".
-    if (!pending.empty() && filer->GetEntries().empty()) {
-        statusLabel->SetText(pending);
-        return;
-    }
-    std::string text = DescribeFilerContent(filer.get());
-    // What it shows is being fetched again.
-    if (!pending.empty()) text += "    |    updating: " + pending;
-    // A live filter changes what the counts describe — say so.
-    if (!filer->GetNameFilter().empty())
-        text += "    |    filtered by \"" + filer->GetNameFilter() + "\"";
-    // What the sub-folder scan is doing (or found), so the counts are not the
-    // only thing said about a display the search is still filling.
-    if (!searchStatus.empty()) text += "    |    " + searchStatus;
-    statusLabel->SetText(text);
+
+    statusInfoLabel->SetText(info);
+    if (statusSelectionLabel) statusSelectionLabel->SetText(selection);
+    statusLabel->SetTextColor(noteIsError ? Color(180, 35, 24, 255)
+                                          : Color(70, 70, 76, 255));
+    statusLabel->SetText(note);
 }
 
 void UltraFilerWindow::UpdateWindowTitle() {

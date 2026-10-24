@@ -108,6 +108,9 @@
 //                  area's background (no grey strip), its count beside the
 //                  blue "Show hidden files" button, plus a gear for the
 //                  host's settings (onHiddenNoticeSettings).
+//                  GetSelectionInfo / onSelectionInfoChanged /
+//                  SetInfoBarMenuItemVisible: a host can show the info bar's
+//                  line in its own status bar instead.
 // Version: 1.41.0 - a remote folder being fetched or updated: a thin blue bar
 //                  at the foot of the file area (FilerStyle::loadingBarColor)
 //                  in place of the "Loading folder" notice over it; the status
@@ -1183,6 +1186,19 @@ namespace UltraCanvas {
         // the Display > Info-Bar switch, so a host floating something over
         // the display's bottom corner asks this each time it places it.
         int GetBottomStripsHeight() const { return InfoBarHeight(); }
+        // The info bar's line, for a host that shows it in its own status
+        // bar instead (SetSelectionInfoVisible(false)): `primary` is the bold
+        // lead - the selected entry's name, or "3 items selected" - empty when
+        // nothing is selected; `secondary` the details after it ("JPEG Image ·
+        // 103.6 KB · 960 × 1704 px · ..."), or the folder summary. Answers
+        // whether or not the bar is shown. Folder sizes and media details are
+        // worked out in the background, so the line grows after a selection:
+        // onSelectionInfoChanged says when it did.
+        void GetSelectionInfo(std::string& primary, std::string& secondary);
+        // Leave the Display > Info-Bar switch out of the context menu - for a
+        // host that shows the line in its own status bar, where switching
+        // the bar back on would only say it twice.
+        void SetInfoBarMenuItemVisible(bool visible) { showInfoBarMenuItem = visible; }
 
         // ===== THUMBNAIL DATASET =====
         // Which extra facts are drawn under the file name in the thumbnail
@@ -1810,6 +1826,11 @@ namespace UltraCanvas {
         // this - a host opens the settings that decide what the display holds
         // back (UltraFiler: Settings > Display > Home folder). Unset, no gear.
         std::function<void()> onHiddenNoticeSettings;
+        // The info bar's line (GetSelectionInfo) changed: a new selection, a
+        // new listing, or background details (folder sizes, pixel sizes,
+        // play lengths) arriving. Posted to the UI thread after the paint
+        // that noticed it, so the host may set label text from it.
+        std::function<void()> onSelectionInfoChanged;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
         // Host-provided tail of the context menu's Extras submenu, called
         // every time the menu opens (so item flags can follow the host's
@@ -1902,6 +1923,8 @@ namespace UltraCanvas {
         bool showOpenPathItem = false;
         std::string openPathItemLabel = "Open Path";
         bool showSelectionInfo = true;
+        bool showInfoBarMenuItem = true;          // SetInfoBarMenuItemVisible
+        std::string reportedSelectionInfo;        // last line onSelectionInfoChanged saw
         bool shrinkThumbnailRows = true;
         bool flexibleTileWidths = true;
         bool columnResizeEnabled = true;
@@ -3038,6 +3061,9 @@ namespace UltraCanvas {
         // (name / "N items selected"), `secondary` the detail run after it.
         void BuildSelectionInfoText(std::string& primary,
                                     std::string& secondary);
+        // Runs onSelectionInfoChanged (posted) when the line differs from the
+        // one it last reported; called from every paint.
+        void ReportSelectionInfoChange();
         // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
         // "3:45 · H.264" for audio / video. Empty when nothing was probed.
         std::string EntryExtraInfo(const FilerEntry& e);

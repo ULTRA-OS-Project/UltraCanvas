@@ -886,6 +886,9 @@ private:
 
     // ===== SELECTION / PREVIEW / STATUS =====
     void UpdateStatusBar();
+    // Turns `display`'s own info bar off and has its line shown in the status
+    // bar instead (GetSelectionInfo, onSelectionInfoChanged).
+    void ShowInfoInStatusBar(UltraCanvasFilerWidget& display);
     // Window title: app name + version + what is on screen (the active
     // tab's folder path, or the History/Favorites view while shown).
     void UpdateWindowTitle();
@@ -1122,6 +1125,11 @@ private:
     // The status strip: the line of text, and the bar that appears beside it
     // while a transfer to a drive is running.
     std::shared_ptr<UltraCanvasContainer>       statusRow;
+    // The status row: the shown display's info line on the left, its
+    // "1 of 404 selected" beside it, and statusLabel - what is happening,
+    // and every message - on the right.
+    std::shared_ptr<UltraCanvasLabel>           statusInfoLabel;
+    std::shared_ptr<UltraCanvasLabel>           statusSelectionLabel;
     std::shared_ptr<UltraCanvasLabel>           statusLabel;
     // The transfer bar: an UltraCanvasGaugeDiagramElement in LinearBar mode,
     // which is the framework's progress bar. Short enough that the gauge
