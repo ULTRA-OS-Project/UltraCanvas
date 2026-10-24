@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.8.3 - a header (icon tile, title, the intro); Save, Details, Delete account, Edit signature and the
+//                  browser sign-in carry icons
 // Version: 0.8.2 - switching a password account between IMAP and JMAP asks
 //                  for the password again: a warning on the switch, and Save /
 //                  "Save anyway" wait for it
@@ -168,7 +170,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // top of the server rows, plus room for a multi-line sign-in error.
     // A Protocol row sits above the server rows and two authentication rows
     // under them on both. The Signature row adds one more line.
-    config.height     = account.edit ? (account.onSaveSignature ? 628 : 596) : 436;
+    // The header (an icon tile, a title over the intro) is 56 high.
+    config.height     = account.edit ? (account.onSaveSignature ? 656 : 624) : 464;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -186,10 +189,11 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto introLine = Theme::MakeLine("srvIntro", intro, 30, Theme::kSizeBody, Theme::kTextSecondary);
-    introLine->SetWrap(TextWrap::WrapWord);
-    content->AddChild(introLine);
-    introLine->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto header = Theme::MakeDialogHeader("srvHeader", account.edit ? "envelope" : "server",
+                                          account.edit ? "Account settings" : "Server settings",
+                                          intro, 30.0f);
+    header->SetMargin(0, 0, 4, 0);
+    content->AddChild(header);
 
     // Display-name row (account settings page only), above the servers.
     std::shared_ptr<UltraCanvasTextInput> nameInput;
@@ -399,6 +403,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         oauthBtn = CreateButton("srvReauth", 0, 0, 0, Theme::kControlHeight,
                                 "Sign in with " + prov);
         Theme::StyleSecondary(oauthBtn);
+        Theme::SetButtonIcon(oauthBtn, "globe");
         row->AddChild(oauthBtn);
         oauthBtn->layoutItem.SetFlexGrow(1);
     }
@@ -418,6 +423,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                                     "Edit signature\xE2\x80\xA6");
         Theme::FitToLabel(editBtn, 120);
         Theme::StyleSecondary(editBtn);
+        Theme::SetButtonIcon(editBtn, "signature");
         std::function<void(const Signature&)> onSaveSignature = account.onSaveSignature;
         UltraCanvasLabel* summaryLabel = summary.get();   // a sibling in this dialog
         editBtn->onClick = [dlg, email, current, summaryLabel, onSaveSignature]() {
@@ -533,6 +539,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                                       "Delete account");
         Theme::FitToLabel(deleteBtn, 130);
         Theme::StyleDanger(deleteBtn);
+        Theme::SetButtonIcon(deleteBtn, "trash");
         deleteBtn->onClick = [dlg, onDelete]() {
             dlg->CloseDialog(DialogResult::Cancel);
             if (onDelete) onDelete();
@@ -628,6 +635,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     auto detailsBtn = CreateButton("srvDetails", 0, 0, 90, Theme::kControlHeight, "Details");
     Theme::FitToLabel(detailsBtn, 90);
     Theme::StyleSecondary(detailsBtn);
+    Theme::SetButtonIcon(detailsBtn, "info");
     detailsBtn->SetVisible(false);
     detailsBtn->onClick = [diagnostics, status]() {
         AlertWarning(nullptr, "Connection details",
@@ -662,6 +670,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     auto saveBtn = CreateButton("srvSave", 0, 0, 110, Theme::kControlHeight, "Save");
     Theme::FitToLabel(saveBtn, 110);
     Theme::StylePrimary(saveBtn);
+    Theme::SetButtonIcon(saveBtn, "check");
     // The check's answer may arrive after the page was cancelled: hold the
     // dialog weakly and drop the answer when it is gone.
     std::weak_ptr<UltraCanvasModalDialog> weak = dialog;

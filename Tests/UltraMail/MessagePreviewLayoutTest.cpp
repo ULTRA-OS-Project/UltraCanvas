@@ -335,6 +335,36 @@ int main() {
     TEST("back to no attachments: the body reaches the pane's bottom",
          Bottom(*root) - Bottom(*body) < 6.0f);
 
+    // 4. Settings > Reading > Attachments: on the right side, the chip stands
+    // in a column beside the body, which keeps the pane's whole height.
+    preview.SetAttachmentsRight(true);
+    preview.Show(Envelope(2, "The report"));
+    render();
+    shoot("preview-attachments-right.ppm");
+    {
+        const Rect2Df bodyBox = body->GetBoundsInWindow();
+        const Rect2Df stripBox = strip->GetBoundsInWindow();
+        const Rect2Df rootBox = root->GetBoundsInWindow();
+        TEST("right side: the strip is shown", strip->IsVisible());
+        TEST("right side: the strip is beside the body, not under it",
+             stripBox.x >= bodyBox.x + bodyBox.width - 1.0f && stripBox.y < Bottom(*body));
+        TEST("right side: the strip ends at the pane's right edge",
+             rootBox.x + rootBox.width - (stripBox.x + stripBox.width) < 6.0f);
+        TEST("right side: the body reaches the pane's bottom", Bottom(*root) - Bottom(*body) < 6.0f);
+    }
+    preview.Show(Envelope(1, "Weekly digest"));
+    render();
+    TEST("right side, no attachments: the body takes the whole width",
+         root->GetBoundsInWindow().x + root->GetBoundsInWindow().width
+             - (body->GetBoundsInWindow().x + body->GetBoundsInWindow().width) < 6.0f);
+    // And back to the bottom, as it was.
+    preview.SetAttachmentsRight(false);
+    preview.Show(Envelope(2, "The report"));
+    render();
+    TEST("bottom again: the strip sits under the body", strip->GetBoundsInWindow().y >= Bottom(*body));
+    preview.Show(Envelope(1, "Weekly digest"));
+    render();
+
     // HTML mail as plain text (Settings > Reading): the paragraphs stay apart
     // (HTML::ExtractPlainText's Lines layout), not one run of words.
     preview.showHtml = false;

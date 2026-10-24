@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.19.0 - the attachments in a column at the right of the body
+//                  (SetAttachmentsRight), or a row under it as before
 // Version: 0.18.3 - loan scams (loan-offer-fraud) are named in the warning strip
 // Version: 0.18.2 - the More menu is anchored to its button: above it when there is
 //                   no room below
@@ -589,12 +591,34 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
         s.scrollbarStyle = ScrollbarStyle::Modern();   // thin and round, as the list's
         bodyHost_->SetContainerStyle(s);
     }
-    root_->AddChild(bodyHost_);
+    // The body, and the attachments' column beside it when they are shown
+    // at the right.
+    bodyRow_ = CreateContainer("prevBodyRow", 0, 0, 0, 0);
+    bodyRow_->layout.SetFlexRow()
+                    .SetFlexGap(Theme::kInnerGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    if (auto s = bodyRow_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = false;   // the body host scrolls, not the row
+        bodyRow_->SetContainerStyle(s);
+    }
+    root_->AddChild(bodyRow_);
+    bodyRow_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    bodyRow_->AddChild(bodyHost_);
     bodyHost_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    // Attachment chips below the body (fixed height, hidden while empty).
-    auto strip = attachmentStrip_.Build();
-    root_->AddChild(strip);
+    // Attachment chips below the body (fixed height, hidden while empty), or
+    // in a column at its right that scrolls when they do not fit.
+    attachColumn_ = CreateContainer("prevAttachColumn", 0, 0, AttachmentStrip::ColumnWidth(), 0);
+    if (auto s = attachColumn_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = true;
+        s.autoShowHorizontalScrollbar = false;
+        s.scrollbarStyle = ScrollbarStyle::Modern();
+        attachColumn_->SetContainerStyle(s);
+    }
+    attachColumn_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    attachmentStrip_.Build();
+    PlaceAttachments();
     attachmentStrip_.onSaveAs = [this](const Attachment& a) {
         if (onSaveAttachment) onSaveAttachment(a);
     };
@@ -604,6 +628,36 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
 
     Clear();
     return root_;
+}
+
+void MessagePreview::SetAttachmentsRight(bool right) {
+    if (right == attachmentsRight_) return;
+    attachmentsRight_ = right;
+    PlaceAttachments();
+}
+
+void MessagePreview::PlaceAttachments() {
+    auto strip = attachmentStrip_.Container();
+    if (!strip || !root_ || !bodyRow_ || !attachColumn_) return;
+    if (UltraCanvasContainer* holder = strip->GetParentContainer()) holder->RemoveChild(strip);
+    if (UltraCanvasContainer* holder = attachColumn_->GetParentContainer())
+        holder->RemoveChild(attachColumn_);
+    attachmentStrip_.SetVertical(attachmentsRight_);
+    if (attachmentsRight_) {
+        attachColumn_->AddChild(strip);
+        bodyRow_->AddChild(attachColumn_);
+    } else {
+        root_->AddChild(strip);   // under the body row, the last row
+    }
+    SyncAttachmentColumn();
+    root_->InvalidateLayout();
+    root_->RequestRedraw();
+}
+
+void MessagePreview::SyncAttachmentColumn() {
+    // The column goes with the chips: hidden while there are none.
+    auto strip = attachmentStrip_.Container();
+    if (attachColumn_ && strip) attachColumn_->SetVisible(attachmentsRight_ && strip->IsVisible());
 }
 
 void MessagePreview::ReRender() {
@@ -1247,6 +1301,7 @@ void MessagePreview::Clear() {
     codes_.clear();
     if (codeBar_) codeBar_->SetVisible(false);
     attachmentStrip_.SetAttachments({});
+    SyncAttachmentColumn();
 }
 
 void MessagePreview::IconCached(const std::string& key) {
@@ -1324,6 +1379,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     if (bodyMissing_) {
         RenderBody("(message body not downloaded yet)", false);
         attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
@@ -1332,6 +1388,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         RenderBody("(this message's body could not be read)\n\n"
                    + (loaded.error.empty() ? PathToUtf8(path) : loaded.error), false);
         attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
@@ -1344,6 +1401,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         pendingHtml = pm.bodyIsHtml;
         havePending = true;
         attachmentStrip_.SetAttachments(pm.attachments);
+        SyncAttachmentColumn();
         // The text for a plain reply, and the HTML a formatted one is built
         // from (UltraMailRichComposer).
         current_.body = pm.bodyIsHtml ? HTML::ExtractPlainText(pm.body, HTML::PlainTextLayout::Lines)

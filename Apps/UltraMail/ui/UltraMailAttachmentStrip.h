@@ -5,6 +5,8 @@
 // double-click opens the attachment straight away; a right-click raises the
 // same menu at the pointer. The actual viewing is delegated via callbacks so
 // the strip stays presentation-only.
+// Version: 0.4.0 - SetVertical: the chips one under the other, for a column
+//                  at the right of the window (Settings > Reading > Attachments)
 // Version: 0.3.0 - the paperclip instead of a type emoji (fonts without
 //                  colour emoji drew a box); one click opens the menu
 // Version: 0.1.0 (Phase 2)
@@ -45,10 +47,20 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> menu_;
 };
 
-// The horizontal strip of chips.
+// The strip of chips: side by side under a message, or one under the other
+// in a column beside it (SetVertical).
 class AttachmentStrip {
 public:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
+
+    // One chip under the other (true) or side by side (false, the default).
+    // Lays out the chips shown again.
+    void SetVertical(bool vertical);
+    bool IsVertical() const { return vertical_; }
+    // How wide the vertical strip is: a chip and the gaps beside it.
+    static float ColumnWidth();
+    // How tall the horizontal strip is: a chip and the gaps above and below.
+    static float RowHeight();
 
     // Replace the displayed attachments (rebuilds the chips).
     void SetAttachments(std::vector<Attachment> attachments);
@@ -60,6 +72,7 @@ public:
 
 private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> strip_;
+    bool vertical_ = false;
     std::shared_ptr<std::vector<Attachment>> attachments_ =
         std::make_shared<std::vector<Attachment>>();
 };

@@ -4,6 +4,8 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
+// Version: 0.16.0 - attachmentPlacement: a message's attachments under it or at
+//                   the right (Settings > Reading > Attachments)
 // Version: 0.15.0 - switchOnQuietSec: how long alerts about failed mail checks
 //                   wait after the computer was switched on (Settings > Mail >
 //                   Connection)
@@ -68,6 +70,13 @@ enum class LinkDisplay {
     Tooltip      // a tooltip over the hovered link; the status bar stays quiet
 };
 
+// Where a message's attachments are shown, in the reading pane and in the
+// compose window.
+enum class AttachmentPlacement {
+    Bottom,   // a row of chips under the message
+    Right     // a column of chips at the right of the message
+};
+
 // The handful of app-wide view options. Add fields here (with a default) and a
 // matching key in Load/Save; unknown keys and a missing file are ignored so an
 // older/newer file never breaks startup.
@@ -120,6 +129,10 @@ struct Preferences {
     // Settings > Display > Treeview: the folder tree lists every account, or
     // only the one chosen in the account bar.
     FolderTreeContent folderTreeContent = FolderTreeContent::AllAccounts;
+
+    // Settings > Reading > Attachments: under the message, or at its right.
+    AttachmentPlacement attachmentPlacement = AttachmentPlacement::Bottom;
+    bool AttachmentsRight() const { return attachmentPlacement == AttachmentPlacement::Right; }
 
     // The accounts' order in the account bar and the folder tree, as the
     // reader dragged the account tiles: account ids, first to last. Accounts
