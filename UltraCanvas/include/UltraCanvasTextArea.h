@@ -1,7 +1,5 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.15.0 - spell marks move with an edit instead of vanishing below the caret
-//                 (RebaseSpellErrors); onSpellLanguageSuggested
 // Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
 //                 (searchHighlightColor, HighlightMatches(text, caseSensitive))
 // Version: 3.13.0 - MarkdownHeadingSlug: GitHub-style heading anchors in markdown mode
