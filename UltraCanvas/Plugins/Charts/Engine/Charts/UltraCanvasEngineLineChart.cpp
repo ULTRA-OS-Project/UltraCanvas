@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <limits>
 #include <sstream>
+#include <cmath>
+#include <cstdlib>
 
 namespace UltraCanvas {
 

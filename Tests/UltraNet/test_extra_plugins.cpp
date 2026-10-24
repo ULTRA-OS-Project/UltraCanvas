@@ -24,6 +24,8 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <cctype>
+#include <cstdio>
 
 #if !defined(_WIN32)
   #include <arpa/inet.h>

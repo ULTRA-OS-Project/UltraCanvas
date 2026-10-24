@@ -57,6 +57,7 @@
 #include <filesystem>
 #include <string>
 #include <thread>
+#include <cctype>
 
 using namespace UltraDBAdmin;
 using namespace UltraDBAdminRelay;

@@ -41,6 +41,8 @@
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <cctype>
+#include <cstdlib>
 #include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {

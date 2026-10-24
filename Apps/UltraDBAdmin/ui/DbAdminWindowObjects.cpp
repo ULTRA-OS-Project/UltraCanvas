@@ -24,6 +24,8 @@
 #include <filesystem>
 #include <set>
 #include <utility>
+#include <algorithm>
+#include <cctype>
 
 using namespace UltraCanvas;
 
