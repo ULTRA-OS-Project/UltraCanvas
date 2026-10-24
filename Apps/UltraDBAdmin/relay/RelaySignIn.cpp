@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/relay/RelaySignIn.cpp
+// Version: 0.1.1 - a P-256 key read from its DER form (OpenSSL 3.0.2)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "RelaySignIn.h"
@@ -13,6 +14,7 @@
 #include <openssl/evp.h>
 #include <openssl/param_build.h>
 #include <openssl/rand.h>
+#include <openssl/x509.h>
 
 #include <yyjson.h>
 
@@ -139,20 +141,18 @@ Key RsaKey(const std::string& n, const std::string& e) {
 
 Key P256Key(const std::string& x, const std::string& y) {
     if (x.size() != 32 || y.size() != 32) return nullptr;
-    std::string point = std::string(1, '\x04') + x + y;
-    OSSL_PARAM_BLD* build = OSSL_PARAM_BLD_new();
-    EVP_PKEY* key = nullptr;
-    if (build && OSSL_PARAM_BLD_push_utf8_string(build, OSSL_PKEY_PARAM_GROUP_NAME, "prime256v1", 0) &&
-        OSSL_PARAM_BLD_push_octet_string(build, OSSL_PKEY_PARAM_PUB_KEY, point.data(), point.size())) {
-        OSSL_PARAM* params = OSSL_PARAM_BLD_to_param(build);
-        EVP_PKEY_CTX* ctx = EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr);
-        if (params && ctx && EVP_PKEY_fromdata_init(ctx) == 1)
-            EVP_PKEY_fromdata(ctx, &key, EVP_PKEY_PUBLIC_KEY, params);
-        EVP_PKEY_CTX_free(ctx);
-        OSSL_PARAM_free(params);
-    }
-    OSSL_PARAM_BLD_free(build);
-    return Key(key);
+    // The key as a SubjectPublicKeyInfo (RFC 5480): the fixed DER prefix for
+    // an id-ecPublicKey on prime256v1, then the uncompressed point. Read with
+    // d2i_PUBKEY, which every OpenSSL reads alike (OSSL_PARAM_BLD's EC import
+    // fails on 3.0.2's).
+    static const unsigned char prefix[] = { 0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d,
+                                            0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01,
+                                            0x07, 0x03, 0x42, 0x00, 0x04 };
+    std::string der(reinterpret_cast<const char*>(prefix), sizeof prefix);
+    der += x;
+    der += y;
+    const unsigned char* p = reinterpret_cast<const unsigned char*>(der.data());
+    return Key(d2i_PUBKEY(nullptr, &p, static_cast<long>(der.size())));
 }
 
 // JWS's ES256 signature is r || s, 32 bytes each; OpenSSL verifies DER.

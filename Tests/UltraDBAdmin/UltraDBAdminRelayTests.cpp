@@ -35,6 +35,7 @@
 #include <openssl/ecdsa.h>
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
+#include <openssl/x509.h>
 #endif
 
 #include <UltraDatabase/UltraDatabase.h>
@@ -446,12 +447,13 @@ struct SigningKey {
             return "{\"kty\":\"RSA\",\"use\":\"sig\",\"kid\":\"" + kid + "\",\"n\":\"" +
                    Base64UrlEncode(Bn(key, OSSL_PKEY_PARAM_RSA_N)) + "\",\"e\":\"" +
                    Base64UrlEncode(Bn(key, OSSL_PKEY_PARAM_RSA_E)) + "\"}";
-        unsigned char point[65];
-        size_t size = 0;
-        EVP_PKEY_get_octet_string_param(key, OSSL_PKEY_PARAM_PUB_KEY, point, sizeof point, &size);
+        // The public key's DER ends with the uncompressed point (04 || x || y).
+        unsigned char* der = nullptr;
+        const int size = i2d_PUBKEY(key, &der);
+        const std::string point = size >= 65 ? std::string(reinterpret_cast<char*>(der) + size - 65, 65) : std::string(65, '\0');
+        OPENSSL_free(der);
         return "{\"kty\":\"EC\",\"crv\":\"P-256\",\"kid\":\"" + kid + "\",\"x\":\"" +
-               Base64UrlEncode(std::string(reinterpret_cast<char*>(point) + 1, 32)) + "\",\"y\":\"" +
-               Base64UrlEncode(std::string(reinterpret_cast<char*>(point) + 33, 32)) + "\"}";
+               Base64UrlEncode(point.substr(1, 32)) + "\",\"y\":\"" + Base64UrlEncode(point.substr(33, 32)) + "\"}";
     }
     std::string Sign(const std::string& claims, const std::string& headerAlg = "") const {
         const std::string header = "{\"alg\":\"" + (headerAlg.empty() ? alg : headerAlg) + "\",\"kid\":\"" + kid + "\"}";
