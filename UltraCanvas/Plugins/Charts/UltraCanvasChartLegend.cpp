@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasChartLegend.cpp
 // Shared legend component implementation.
+// Version: 1.2.1 - Measure puts the host's face and size back
 // Version: 1.2.0 - area-scaled size keys with explicit sample values
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
@@ -249,6 +250,17 @@ namespace UltraCanvas {
             layout.valid = true;
             return layout;
         }
+
+        // The face and size set here are the legend's: the host's go back on
+        // every return. Left in the context, the host measured its own labels
+        // in the legend's face on the frame the legend was laid out and drew
+        // them in its own on every later one - wider than their boxes.
+        struct RestoreState {
+            IRenderContext* ctx;
+            ~RestoreState() { ctx->PopState(); }
+        };
+        ctx->PushState();
+        RestoreState restore{ctx};
 
         ctx->SetFontFamily(style.fontFamily);
         ctx->SetFontSize(style.fontSize);

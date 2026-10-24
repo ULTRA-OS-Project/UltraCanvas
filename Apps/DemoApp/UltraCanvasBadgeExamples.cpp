@@ -2,10 +2,11 @@
 // Demonstration of UltraCanvasBadge: status pills, count badges (with a max),
 // status dots, overlay badges anchored to icon tiles, and an interactive
 // counter that shows show-zero suppression and the "99+" cap.
+// Version: 1.1.1 - the bell tile carries a two-letter mark like the others
 // Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
 //                  example, badges in wrapping rows, every text sized to fit
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -133,7 +134,7 @@ namespace UltraCanvas {
         // ===== 5. INTERACTIVE COUNTER =====
         auto card5 = DemoKit::AddCard(bottomRow, "BgL5", "Interactive (Add / Clear the overlay count):");
         auto bellRow = tileRow(card5, "BgBellRow");
-        auto bell = MakeTile("BgTileBell", 0, 0, "Bell", Color(103, 58, 183));
+        auto bell = MakeTile("BgTileBell", 0, 0, "Bl", Color(103, 58, 183));
         DemoKit::AddFixed(bellRow, bell);
         auto bellBadge = CreateCountBadge("BgBellBadge", 0, 0, 3);
         bellBadge->AnchorTo(bell, BadgeCorner::TopRight, -4, 4);

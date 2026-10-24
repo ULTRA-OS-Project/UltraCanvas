@@ -61,6 +61,12 @@ before adding cross-module code.
   demo page names a `Docs/....md` that does not exist. Never edit the list by
   hand, and never put prose inside it - it is rewritten up to the next
   heading.
+- A demo page is built with `Apps/DemoApp/UltraCanvasDemoPageKit.h`
+  (`DemoKit::CreatePage`, cards, wrapping text, no fixed-size labels). Linux
+  CI runs `UltraCanvasDemo --audit-layout` and `--audit-layout --pseudo-loc`
+  (every text ~40% longer) on a virtual display and fails on a label or
+  button narrower than its text, or content cut off without a scrollbar.
+  Run both before pushing a page (`--audit-page <id>` for one page).
 
 ## Core conventions
 
