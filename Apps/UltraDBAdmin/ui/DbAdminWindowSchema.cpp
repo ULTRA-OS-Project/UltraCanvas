@@ -4,10 +4,12 @@
 // tab (DbAdminServer). Each reads what it shows on the job queue, and on
 // Refresh: Routines and Server whenever they are shown, Relations - a read of
 // every table - when the tree's selection is in another schema than it shows. DbAdminWindow.h says what the window is.
+// Version: 0.2.0 - a session stopped through UltraDb_StopSession; a layer wraps only well past the view
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminWindow.h"
 
+#include "DbAdminOperationDialogs.h"
 #include "DbAdminWindowParts.h"
 
 #include "Plugins/Diagrams/UltraCanvasERDiagram.h"
@@ -25,7 +27,6 @@ using namespace window;
 
 namespace {
 
-SqlEngine EngineOf(const ConnectionSpec& spec) { return spec.IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres; }
 
 // A picture of the schema, not an editor of it: Delete would take a table
 // out of the drawing alone, which reads as dropping it.
@@ -64,7 +65,10 @@ void PlaceInLayers(UltraCanvasERDiagram& diagram, const std::vector<std::vector<
                 area += (entity->width + 60.0) * (entity->height + 60.0);
                 longest = std::max(longest, along(*entity));
             }
-    const double wrap = std::max(longest, columns ? std::sqrt(area / aspect) : std::sqrt(area * aspect));
+    // A layer wraps only when well past the view's shape: the tables it
+    // pushes on sit beyond the next layer, their links crossing it.
+    const double wrap =
+        std::max(longest, 1.5 * (columns ? std::sqrt(area / aspect) : std::sqrt(area * aspect)));
     struct Line {
         std::vector<std::string> ids;
         double length = 0.0, thickness = 0.0;
@@ -610,26 +614,46 @@ void DbAdminWindow::StopServerSession(bool terminate) {
     const UltraDbResultSet& rows = serverModel_->Rows();
     if (source < 0 || static_cast<size_t>(source) >= rows.Size()) return;
     const UltraDbRow& row = rows.Row(static_cast<size_t>(source));
-    const int64_t pid = row[SessionPidColumn()].AsInt64();
+    const int64_t id = row[SessionIdColumn()].AsInt64();
     if (row["this_session"].AsBool()) {
         serverInfo_->SetText("That is the session this tab reads with: it is not stopped from here.");
         serverInfo_->SetTextColor(ErrorColor());
         return;
     }
-    const std::string who = "session " + std::to_string(pid) + " (" + row["user"].AsString() +
+    const std::string blocked = WriteBlockReason(*spec);
+    if (!blocked.empty()) { SetStatus(blocked); return; }
+    const std::string who = "session " + std::to_string(id) + " (" + row["user"].AsString() +
                             (row["application"].AsString().empty() ? std::string() : ", " + row["application"].AsString()) + ")";
     const std::string title = terminate ? "End session" : "Stop query";
     const std::string intro = terminate ? "Disconnect " + who + "?" : "Stop the query that " + who + " is running?";
-    ConfirmOperation(spec->id, title, intro, StopSessionPlan(pid, terminate), title,
-                     terminate ? ButtonRole::Danger : ButtonRole::Primary,
-                     [this, who, terminate](const UltraDbResult& result, const UltraDbResultSet& answer) {
-                         if (!result) return;
-                         const bool done = answer.Size() == 1 && answer.Row(0)[size_t(0)].AsBool();
-                         SetStatus(done ? std::string(terminate ? "Ended " : "Stopped the query of ") + who + "."
-                                        : who + " was not stopped: it has ended, or it is not yours to stop.",
-                                   !done);
-                         ReadServer();
-                     });
+    const std::string connection = RegisteredName(*spec);
+    const std::string note = ProductionNote(*spec);
+    // The statement is the driver's (UltraDb_StopSessionSql), shown first;
+    // UltraDb_StopSession runs it once confirmed.
+    Background([this, connection, id, terminate, who, title, intro, note]() -> std::function<void()> {
+        std::string sql;
+        const UltraDbResult result = UltraDb_StopSessionSql(connection, id, terminate, sql);
+        return [this, connection, id, terminate, who, title, intro, note, result, sql]() {
+            if (!result) { SetStatus("Not done: " + OneLine(result.message), true); return; }
+            ShowPlanDialog(window_.get(), title, note + intro, sql + ";\n", title,
+                           terminate ? ButtonRole::Danger : ButtonRole::Primary,
+                           [this, connection, id, terminate, who, title]() {
+                               SetStatus(title + "…");
+                               Background([this, connection, id, terminate, who]() -> std::function<void()> {
+                                   bool stopped = false;
+                                   const UltraDbResult result = UltraDb_StopSession(connection, id, terminate, stopped);
+                                   return [this, result, stopped, terminate, who]() {
+                                       if (!result) SetStatus("Not done: " + OneLine(result.message), true);
+                                       else
+                                           SetStatus(stopped ? std::string(terminate ? "Ended " : "Stopped the query of ") + who + "."
+                                                             : who + " was not stopped: it has ended, or it is not yours to stop.",
+                                                     !stopped);
+                                       ReadServer();
+                                   };
+                               });
+                           });
+        };
+    });
 }
 
 void DbAdminWindow::UpdateServerBar() {

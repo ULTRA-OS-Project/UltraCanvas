@@ -75,7 +75,7 @@ PACKAGES=(
     # 2026-10; without them a change to one of the five compiled nowhere
     libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
-    libsodium-dev libsqlite3-dev libpq-dev
+    libsodium-dev libsqlite3-dev libpq-dev libmariadb-dev
     # locale-gen, for the comma-decimal locale below
     locales
     # spell checking (no native backend on Linux) and its default dictionary

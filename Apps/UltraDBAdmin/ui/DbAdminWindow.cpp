@@ -199,7 +199,7 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     if (auto* app = UltraCanvasApplication::GetInstance())
         logTimer_ = app->StartTimer(kLogRefreshMs, true, [this](TimerId) { RefreshLog(); });
     if (!storeNote_.empty()) SetStatus(storeNote_, true);
-    else if (store_.All().empty()) SetStatus("No connections yet - Add connection names a SQLite file or a PostgreSQL server.");
+    else if (store_.All().empty()) SetStatus("No connections yet - Add connection names a SQLite file, a PostgreSQL or a MySQL / MariaDB server.");
     else SetStatus(std::to_string(store_.All().size()) + " connections. Expand one to see its tables.");
     return true;
 }
@@ -235,7 +235,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildToolbar() {
     bar->AddChild(title);
     bar->AddChild(MakeBarDivider("dbaTitleDivider"));
 
-    auto add = MakeActionButton("dbaAdd", "Add connection", "add", "A SQLite file or a PostgreSQL server",
+    auto add = MakeActionButton("dbaAdd", "Add connection", "add", "A SQLite file, a PostgreSQL or a MySQL / MariaDB server",
                                 ButtonRole::Primary);
     add->SetOnClick([this]() { AddConnection(); });
     bar->AddChild(add);
@@ -1095,7 +1095,7 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
         return;
     }
     const ConnectionSpec* spec = store_.Find(objectConnectionId_);
-    structure_ = StructureEdit(table, spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres);
+    structure_ = StructureEdit(table, spec ? EngineOf(*spec) : SqlEngine::Sqlite);
     source_ = source;
     columnModel_->Replace(table);
     constraintModel_->Replace(table);
@@ -1117,7 +1117,7 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
     structureInfoText_ = info;
 
     pager_ = std::make_shared<TablePager>(RegisteredName(*store_.Find(objectConnectionId_)), table, kPageSize,
-                                          spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres);
+                                          spec ? EngineOf(*spec) : SqlEngine::Sqlite);
     edits_ = EditBuffer(table);
     if (activeTab_ >= 0) openTabs_[static_cast<size_t>(activeTab_)].loaded = true;
     // A search hit opens its table filtered on the column it was found in.
@@ -1716,14 +1716,14 @@ void DbAdminWindow::CopyRows(RowsSource source, ExportFormat format) {
     // table the console's SELECT read; a result of no one table is named
     // "result", to be changed.
     const ConnectionSpec* spec = store_.Find(console ? sqlConnectionId_ : objectConnectionId_);
-    const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+    const SqlEngine engine = spec ? EngineOf(*spec) : SqlEngine::Sqlite;
     std::string table;
     if (!console && pager_) {
-        table = QuotedName(pager_->Table().schema) + "." + QuotedName(pager_->Table().name);
+        table = QualifiedName(engine, pager_->Table().schema, pager_->Table().name);
     } else if (console) {
         const UltraDbStatementResult* statement = statementModel_->At(shownStatement_);
         if (statement) table = StatementTable(statement->sql);
-        if (table.empty()) table = QuotedName("result");
+        if (table.empty()) table = QuotedName(engine, "result");
     }
     const std::string text = RowsText(all.Columns(), rows, format, engine, table);
     if (!SetClipboardText(text)) { SetStatus("The clipboard cannot be reached.", true); return; }
@@ -1780,7 +1780,7 @@ void DbAdminWindow::AddRow() {
     if (!blocked.empty()) { SetStatus(blocked); return; }
     const uint64_t generation = objectGen_;
     const ConnectionSpec* spec = store_.Find(objectConnectionId_);
-    const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+    const SqlEngine engine = spec ? EngineOf(*spec) : SqlEngine::Sqlite;
     ShowRowDialog(window_.get(), edits_.Table(), engine, nullptr, nullptr,
                   [this, generation](const std::map<std::string, CellValue>& values) -> std::string {
                       if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
@@ -1805,7 +1805,7 @@ void DbAdminWindow::EditRow(int row) {
         const uint64_t generation = objectGen_;
         const size_t at = static_cast<size_t>(stagedIndex);
         const ConnectionSpec* spec = store_.Find(objectConnectionId_);
-        const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+        const SqlEngine engine = spec ? EngineOf(*spec) : SqlEngine::Sqlite;
         ShowRowDialog(window_.get(), edits_.Table(), engine, nullptr, nullptr,
                       [this, generation, at](const std::map<std::string, CellValue>& values) -> std::string {
                           if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
@@ -1828,7 +1828,7 @@ void DbAdminWindow::EditRow(int row) {
     }
     const uint64_t generation = objectGen_;
     const ConnectionSpec* spec = store_.Find(objectConnectionId_);
-    const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+    const SqlEngine engine = spec ? EngineOf(*spec) : SqlEngine::Sqlite;
     ShowRowDialog(window_.get(), edits_.Table(), engine, &original, &edits_,
                   [this, generation, original](const std::map<std::string, CellValue>& values) -> std::string {
                       if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
@@ -2153,13 +2153,17 @@ void DbAdminWindow::PreviewStructure() {
         std::vector<DdlStep> steps;
         if (result) result = snapshot.Plan(connection, source, steps);
         const std::string sql = StructureEdit::PlanText(steps);
-        const bool sqlite = snapshot.Engine() == SqlEngine::Sqlite;
-        return [this, result, sql, label, sqlite]() {
+        const SqlEngine engine = snapshot.Engine();
+        return [this, result, sql, label, engine]() {
             if (!result) { SetStatus(result.message, true); return; }
             ShowSqlPreview(window_.get(), "Structure changes to " + label,
-                           sqlite ? "Apply runs these in one transaction. SQLite reads foreign_keys only outside "
-                                    "one, so a rebuild switches it off before and on after."
-                                  : "Apply runs these in one transaction: if one fails, the table stays as it was.",
+                           engine == SqlEngine::Sqlite
+                               ? "Apply runs these in one transaction. SQLite reads foreign_keys only outside "
+                                 "one, so a rebuild switches it off before and on after."
+                           : engine == SqlEngine::MySql
+                               ? "Apply runs these one by one: MySQL commits each ALTER TABLE, so if one fails, "
+                                 "those before it stay done."
+                               : "Apply runs these in one transaction: if one fails, the table stays as it was.",
                            sql);
         };
     });
@@ -2468,17 +2472,18 @@ void DbAdminWindow::ImportSql() {
     options.AddFilter("SQL scripts (.sql, .sql.gz)", std::vector<std::string>{"sql", "gz"});
     options.AddFilter("All files", std::vector<std::string>{"*"});
     const std::string id = spec->id;
-    UltraCanvasFileLoader::OpenFileDialog(options, [this, id](DialogResult result, const std::string& path) {
+    const SqlEngine engine = EngineOf(*spec);
+    UltraCanvasFileLoader::OpenFileDialog(options, [this, id, engine](DialogResult result, const std::string& path) {
         if (result != DialogResult::OK || path.empty()) return;
         const std::string name = PathToUtf8(PathFromUtf8(path).filename());
         sqlInfo_->SetText("Reading " + name + "…");
         sqlInfo_->SetTextColor(StatusColor());
-        Background([this, id, path, name]() -> std::function<void()> {
+        Background([this, id, engine, path, name]() -> std::function<void()> {
             const FileBytesResult file = UltraCanvasFileLoader::LoadFile(path);
             std::string script, error = file.success ? std::string() : file.error;
             if (file.success) ScriptFromBytes(file.bytes, script, error);
             ScriptSummary summary;
-            if (error.empty()) summary = SummarizeScript(script);
+            if (error.empty()) summary = SummarizeScript(engine, script);
             std::string size = HumanSize(static_cast<int64_t>(file.bytes.size()));
             if (!file.decompressedFrom.empty()) size += ", unpacked from " + file.decompressedFrom;
             return [this, id, name, script, error, summary, size]() {
@@ -2612,7 +2617,7 @@ void DbAdminWindow::RunExport(ExportSource source, const std::string& path, Expo
     for (auto& c : extension)
         if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
     const bool workbook = extension == ".xlsx" || extension == ".ods";
-    options.engine = spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+    options.engine = EngineOf(*spec);
     const std::string name = PathToUtf8(PathFromUtf8(path).filename());
     exporting_ = true;
     UpdateExportButtons();
@@ -2652,9 +2657,9 @@ void DbAdminWindow::RunExport(ExportSource source, const std::string& path, Expo
     const UltraDbTableSchema table = pager_->Table();
     const std::shared_ptr<const TablePager> pager = pager_;   // its filters and order: what Browse shows
     const std::shared_ptr<std::atomic<bool>> stop = exportStop_;
-    const bool sqlite = spec->IsSqlite();
+    const SqlEngine engine = EngineOf(*spec);
     // One job on the queue, through a cursor: a page at a time, never the whole table.
-    Background([this, connection, table, pager, path, options, workbook, stop, progress, sqlite]() mutable
+    Background([this, connection, table, pager, path, options, workbook, stop, progress, engine]() mutable
                -> std::function<void()> {
         std::string sql;
         UltraDbParams params;
@@ -2674,7 +2679,8 @@ void DbAdminWindow::RunExport(ExportSource source, const std::string& path, Expo
         }
         if (result && options.format == ExportFormat::Sql) {
             result = UltraDb_QuoteQualifiedName(connection, table.schema, table.name, options.table);
-            if (result && sqlite) result = SqlitePreamble(connection, table, options.preamble);
+            if (result && engine == SqlEngine::Sqlite) result = SqlitePreamble(connection, table, options.preamble);
+            else if (result && engine == SqlEngine::MySql) result = MysqlPreamble(connection, table, options.preamble);
             else if (result && table.kind == UltraDbObjectKind::Table) {
                 // The table's own definition first, read from the catalog, and
                 // its counters moved past the rows after them - unless a
@@ -2757,7 +2763,7 @@ void DbAdminWindow::RunSql(RunScope scope) {
     } else {
         const std::string text = sqlEditor_->GetText();
         StatementSpan span;
-        if (!StatementAt(text, CaretOffset(), span)) {
+        if (!StatementAt(EngineOf(*spec), text, CaretOffset(), span)) {
             sqlInfo_->SetText("No statement here: put the caret in one.");
             sqlInfo_->SetTextColor(StatusColor());
             return;
@@ -2768,14 +2774,14 @@ void DbAdminWindow::RunSql(RunScope scope) {
     }
     if (script.find_first_not_of(" \t\r\n;") == std::string::npos) return;
     if (scope == RunScope::Explain) {
-        const std::vector<StatementSpan> spans = StatementSpans(script);
+        const std::vector<StatementSpan> spans = StatementSpans(EngineOf(*spec), script);
         if (spans.size() != 1) {
             sqlInfo_->SetText(spans.empty() ? std::string("Nothing to explain.")
                                             : "Explain takes one statement: select it, or put the caret in it.");
             sqlInfo_->SetTextColor(StatusColor());
             return;
         }
-        script = ExplainSql(spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres,
+        script = ExplainSql(EngineOf(*spec),
                             script.substr(spans[0].begin, spans[0].end - spans[0].begin));
     }
     SqlRunner* runner = RunnerFor(*spec);

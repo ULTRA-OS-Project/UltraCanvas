@@ -15,6 +15,12 @@
 //                column's type, NOT NULL or default the documented rebuild
 //                (DbAdminSqliteTable.h), with foreign keys off around the
 //                transaction and checked before it commits.
+//   MySQL /    - ALTER TABLE: MODIFY COLUMN restates a column whose type,
+//   MariaDB      NOT NULL or default changed (AUTO_INCREMENT, collation and
+//                comment said again); DROP INDEX ... ON the table. MySQL
+//                commits around every ALTER, so the steps run one by one,
+//                outside a transaction, and the preview says a failure
+//                leaves the steps before it done.
 // The statements run in a fixed order, so no step sees a name another has
 // not made yet: drop indexes; rebuild or alter definitions under the old
 // names; rename columns; drop columns; add columns; create indexes; rename
@@ -26,10 +32,12 @@
 //
 // A plain value class, like EditBuffer: the window keeps one for the table
 // Structure shows and hands a copy to the worker.
+// Version: 0.2.0 - MySQL / MariaDB
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "DbAdminEngine.h"
 #include "DbAdminSqliteTable.h"
 
 #include <UltraDatabase/UltraDatabase.h>
@@ -39,8 +47,6 @@
 #include <vector>
 
 namespace UltraDBAdmin {
-
-enum class SqlEngine { Sqlite, Postgres };
 
 // A column as it is to be.
 struct ColumnDraft {

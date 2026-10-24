@@ -1,23 +1,23 @@
 // Apps/UltraDBAdmin/engine/DbAdminServer.h
 // The Server tab (Docs/Research/UltraDBAdminDesignProposal.md, 5.2 Server,
 // stage 4): what the database itself is doing and how it is set up.
-//   PostgreSQL - Sessions: who is connected and what each runs
-//                (pg_stat_activity), a query cancelled or a session ended
-//                (pg_cancel_backend, pg_terminate_backend); Settings
-//                (pg_settings, with a filter on the name and description);
-//                Sizes: the databases, then the tables of a schema with
-//                their indexes and TOAST.
+//   PostgreSQL, MySQL / MariaDB - read through UltraDatabase's server
+//                administration (UltraDatabaseServer.h, G10): Sessions -
+//                who is connected and what each runs, a query stopped or a
+//                session ended; Settings, with a filter on the name and
+//                description; Sizes: the databases, then the tables of a
+//                schema with their data and indexes. Shown as the grid wants
+//                them: how long a query has run as h:mm:ss, a size readable.
 //   SQLite     - the file: page size and count, free pages, its size,
 //                journal mode, encoding, auto-vacuum, user_version,
 //                application_id, foreign_keys, the library's version.
-// Every view is a result set the window shows in a grid; a value typed into
-// the settings filter is bound.
+// Every view is a result set the window shows in a grid.
+// Version: 0.2.0 - the server engines through UltraDatabase 0.5.0; MySQL / MariaDB
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
-#include "DbAdminOperations.h"      // OperationPlan
-#include "DbAdminStructureEdit.h"   // SqlEngine
+#include "DbAdminEngine.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 
@@ -38,13 +38,8 @@ const char* ServerViewText(ServerView view);
 UltraDbResult ReadServerView(const std::string& connection, SqlEngine engine, ServerView view,
                              const std::string& schema, const std::string& filter, UltraDbResultSet& out);
 
-// Sessions' column that holds the session's process id.
-const char* SessionPidColumn();
-
-// pg_cancel_backend (stop the running query) or pg_terminate_backend (end
-// the session) of the session `pid`, as the confirmation shows it and
-// RunPlan runs it: its one row says whether PostgreSQL did - false when
-// there was no such session, or it was not this user's to stop.
-OperationPlan StopSessionPlan(int64_t pid, bool terminate);
+// Sessions' column that holds the session's id (a PostgreSQL process id, a
+// MySQL thread id) - what UltraDb_StopSession takes.
+const char* SessionIdColumn();
 
 } // namespace UltraDBAdmin

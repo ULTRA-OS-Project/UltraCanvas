@@ -17,8 +17,15 @@
 //                 exists, so the order of tables does not matter), comments,
 //                 views; COMMIT. Triggers and the functions they call, types
 //                 and extensions are pg_dump's to write, and the file says so.
+//   MySQL /     - as mysqldump writes one database: SET FOREIGN_KEY_CHECKS = 0,
+//   MariaDB       each table's SHOW CREATE TABLE (its keys, indexes, foreign
+//                 keys and AUTO_INCREMENT counter) and rows, its triggers
+//                 between DELIMITER lines, then the views; names without the
+//                 database, so it loads into the one in use. No DEFINER
+//                 clause. Procedures, functions and events are mysqldump's.
 //
-// Read back by the SQL tab's Import SQL, or by sqlite3 / psql.
+// Read back by the SQL tab's Import SQL, or by sqlite3 / psql / mysql.
+// Version: 0.2.0 - MySQL / MariaDB
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

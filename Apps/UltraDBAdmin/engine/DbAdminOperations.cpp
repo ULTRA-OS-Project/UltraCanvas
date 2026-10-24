@@ -1,4 +1,6 @@
 // Apps/UltraDBAdmin/engine/DbAdminOperations.cpp
+// Version: 0.2.0 - MySQL / MariaDB: DDL outside transactions, TRUNCATE / DELETE, RENAME TABLE,
+//                 CREATE TABLE ... LIKE, AUTO_INCREMENT, CHECK / ANALYZE / OPTIMIZE TABLE
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminOperations.h"
@@ -45,11 +47,11 @@ bool IsNameToken(const SqlToken& token) {
 bool IsDot(const SqlToken& token) { return token.kind == SqlToken::Kind::Punct && token.text == "."; }
 
 // The columns a copy carries rows in: all but those the database computes.
-std::string WritableColumns(const UltraDbTableSchema& table) {
+std::string WritableColumns(SqlEngine engine, const UltraDbTableSchema& table) {
     std::string names;
     for (const auto& column : table.columns) {
         if (column.generated) continue;
-        names += (names.empty() ? "" : ", ") + QuotedName(column.name);
+        names += (names.empty() ? "" : ", ") + QuotedName(engine, column.name);
     }
     return names;
 }
@@ -68,10 +70,30 @@ bool IsIntegerType(const std::string& type) {
     return integers.count(Lower(type)) > 0;
 }
 
+// MySQL's integer types, with a display width or UNSIGNED after the word:
+// "int", "bigint unsigned", "int(11)".
+bool IsMysqlIntegerType(const std::string& type) {
+    static const std::set<std::string> integers = {"tinyint", "smallint", "mediumint", "int", "integer", "bigint"};
+    std::string word;
+    for (const char c : Lower(type)) {
+        if (!(c >= 'a' && c <= 'z')) break;
+        word += c;
+    }
+    return integers.count(word) > 0;
+}
+
+// MySQL commits before and after every statement that defines something,
+// whatever transaction it is in: a plan of such statements runs them one by
+// one, and says so.
+void NoTransaction(OperationPlan& plan, const char* what) {
+    plan.transaction = false;
+    plan.notes.push_back(std::string("MySQL commits ") + what + " as it runs: there is no undoing it with a rollback.");
+}
+
 } // namespace
 
-std::string QualifiedName(const std::string& schema, const std::string& name) {
-    return schema.empty() ? QuotedName(name) : QuotedName(schema) + "." + QuotedName(name);
+std::string QualifiedName(SqlEngine engine, const std::string& schema, const std::string& name) {
+    return schema.empty() ? QuotedName(engine, name) : QuotedName(engine, schema) + "." + QuotedName(engine, name);
 }
 
 std::string PlanText(const OperationPlan& plan) {
@@ -120,11 +142,26 @@ UltraDbResult RunPlan(const std::string& connection, const OperationPlan& plan, 
 OperationPlan EmptyTablePlan(SqlEngine engine, const std::string& schema, const std::string& table,
                              bool restartNumbering) {
     OperationPlan plan;
-    const std::string target = QualifiedName(schema, table);
+    const std::string target = QualifiedName(engine, schema, table);
+    if (engine == SqlEngine::MySql) {
+        // TRUNCATE starts AUTO_INCREMENT again and cannot help it; DELETE
+        // keeps the counter.
+        if (restartNumbering) {
+            plan.statements.push_back("TRUNCATE TABLE " + target);
+            NoTransaction(plan, "TRUNCATE");
+            plan.notes.push_back("TRUNCATE runs no triggers and starts AUTO_INCREMENT again at 1. A table other "
+                                 "tables refer to is refused.");
+        } else {
+            plan.statements.push_back("DELETE FROM " + target);
+            plan.notes.push_back("DELETE runs the table's DELETE triggers and foreign key actions for every row; "
+                                 "AUTO_INCREMENT goes on where it was.");
+        }
+        return plan;
+    }
     if (engine == SqlEngine::Sqlite) {
         plan.statements.push_back("DELETE FROM " + target);
         if (restartNumbering) {
-            plan.statements.push_back("DELETE FROM " + QualifiedName(schema, "sqlite_sequence") +
+            plan.statements.push_back("DELETE FROM " + QualifiedName(engine, schema, "sqlite_sequence") +
                                       " WHERE name = " + StringLiteral(table));
             plan.notes.push_back("The AUTOINCREMENT counter starts again at 1.");
         }
@@ -148,7 +185,8 @@ OperationPlan DropObjectPlan(SqlEngine engine, const std::string& schema, const 
         case UltraDbObjectKind::ForeignTable:     what = "FOREIGN TABLE"; break;
         case UltraDbObjectKind::Sequence:         what = "SEQUENCE"; break;
     }
-    plan.statements.push_back(std::string("DROP ") + what + " " + QualifiedName(schema, name));
+    plan.statements.push_back(std::string("DROP ") + what + " " + QualifiedName(engine, schema, name));
+    if (engine == SqlEngine::MySql) NoTransaction(plan, "a DROP");
     if (kind == UltraDbObjectKind::Table)
         plan.notes.push_back(engine == SqlEngine::Sqlite
                                  ? "The table goes with its rows, indexes and triggers."
@@ -174,8 +212,16 @@ bool RenameObjectPlan(SqlEngine engine, const std::string& schema, const std::st
         error = "SQLite renames only a table; drop the view and create it again under the new name.";
         return false;
     }
-    out.statements.push_back(std::string("ALTER ") + what + " " + QualifiedName(schema, name) + " RENAME TO " +
-                             QuotedName(newName));
+    if (engine == SqlEngine::MySql) {
+        // RENAME TABLE renames a view too; a sequence (MariaDB) is a table there.
+        out.statements.push_back("RENAME TABLE " + QualifiedName(engine, schema, name) + " TO " +
+                                 QualifiedName(engine, schema, newName));
+        NoTransaction(out, "a RENAME");
+        out.notes.push_back("A view or trigger that names the table by its old name stops working.");
+        return true;
+    }
+    out.statements.push_back(std::string("ALTER ") + what + " " + QualifiedName(engine, schema, name) + " RENAME TO " +
+                             QuotedName(engine, newName));
     if (engine == SqlEngine::Sqlite)
         out.notes.push_back("SQLite rewrites the views, triggers and foreign keys that name the table.");
     return true;
@@ -220,9 +266,23 @@ bool CopyTablePlan(SqlEngine engine, const UltraDbTableSchema& table, const Sqli
     if (newName.empty()) { error = "The copy needs a name."; return false; }
     if (Lower(newName) == Lower(table.name)) { error = "The copy needs a name of its own."; return false; }
     if (table.kind != UltraDbObjectKind::Table) { error = "Only a table is copied here."; return false; }
-    const std::string original = QualifiedName(table.schema, table.name);
-    const std::string copy = QualifiedName(table.schema, newName);
-    const std::string columns = WritableColumns(table);
+    const std::string original = QualifiedName(engine, table.schema, table.name);
+    const std::string copy = QualifiedName(engine, table.schema, newName);
+    const std::string columns = WritableColumns(engine, table);
+
+    if (engine == SqlEngine::MySql) {
+        // LIKE copies the columns, their defaults, the indexes and
+        // AUTO_INCREMENT; InnoDB moves the counter past the rows inserted.
+        out.statements.push_back("CREATE TABLE " + copy + " LIKE " + original);
+        if (withData && !columns.empty())
+            out.statements.push_back("INSERT INTO " + copy + " (" + columns + ") SELECT " + columns + " FROM " + original);
+        NoTransaction(out, "CREATE TABLE");
+        if (!table.foreignKeys.empty())
+            out.notes.push_back("CREATE TABLE ... LIKE carries no foreign keys: the copy refers to no other table.");
+        if (!table.triggers.empty())
+            out.notes.push_back("The table's triggers are not copied: each is bound to the original table.");
+        return true;
+    }
 
     if (engine == SqlEngine::Sqlite) {
         if (source.createSql.empty()) { error = "The table's definition was not read."; return false; }
@@ -234,8 +294,8 @@ bool CopyTablePlan(SqlEngine engine, const UltraDbTableSchema& table, const Sqli
         out.statements.push_back(create);
         for (const auto& [name, sql] : source.indexes) {
             std::string index;
-            if (!RewriteCreateIndex(sql, QualifiedName(table.schema, CopiedIndexName(name, table.name, newName)),
-                                    QuotedName(newName), index, error)) {
+            if (!RewriteCreateIndex(sql, QualifiedName(engine, table.schema, CopiedIndexName(name, table.name, newName)),
+                                    QuotedName(engine, newName), index, error)) {
                 error = "The index " + name + " cannot be copied: " + error + ".";
                 return false;
             }
@@ -259,7 +319,7 @@ bool CopyTablePlan(SqlEngine engine, const UltraDbTableSchema& table, const Sqli
         for (const auto& column : table.columns) {
             if (!column.autoIncrement || column.generated) continue;
             out.statements.push_back("SELECT setval(pg_get_serial_sequence(" + StringLiteral(copy) + ", " +
-                                     StringLiteral(column.name) + "), COALESCE(MAX(" + QuotedName(column.name) +
+                                     StringLiteral(column.name) + "), COALESCE(MAX(" + QuotedName(engine, column.name) +
                                      "), 0) + 1, false) FROM " + copy);
         }
     }
@@ -287,7 +347,7 @@ bool CreateTablePlan(SqlEngine engine, const std::string& schema, const std::str
     for (const auto& column : columns) {
         if (column.name.empty()) { error = "Every column needs a name."; return false; }
         if (!seen.insert(Lower(column.name)).second) { error = "Two columns are named " + column.name + "."; return false; }
-        if (column.type.empty() && engine == SqlEngine::Postgres) {
+        if (column.type.empty() && engine != SqlEngine::Sqlite) {
             error = column.name + " needs a type.";
             return false;
         }
@@ -322,16 +382,22 @@ bool CreateTablePlan(SqlEngine engine, const std::string& schema, const std::str
             error = "An identity column is smallint, integer or bigint: " + counted->name + " is " + counted->type + ".";
             return false;
         }
+        if (engine == SqlEngine::MySql && !IsMysqlIntegerType(counted->type)) {
+            error = "AUTO_INCREMENT numbers an integer column: " + counted->name + " is " + counted->type + ".";
+            return false;
+        }
     }
 
     const bool inlineKey = counted && engine == SqlEngine::Sqlite;   // INTEGER PRIMARY KEY AUTOINCREMENT
-    std::string sql = "CREATE TABLE " + QualifiedName(schema, name) + " (";
+    std::string sql = "CREATE TABLE " + QualifiedName(engine, schema, name) + " (";
     for (size_t i = 0; i < columns.size(); ++i) {
         const NewColumn& column = columns[i];
-        std::string definition = "\n    " + QuotedName(column.name);
+        std::string definition = "\n    " + QuotedName(engine, column.name);
         if (!column.type.empty()) definition += " " + column.type;
         if (&column == counted) {
-            definition += engine == SqlEngine::Sqlite ? " PRIMARY KEY AUTOINCREMENT" : " GENERATED BY DEFAULT AS IDENTITY";
+            definition += engine == SqlEngine::Sqlite   ? " PRIMARY KEY AUTOINCREMENT"
+                          : engine == SqlEngine::MySql ? " AUTO_INCREMENT"
+                                                       : " GENERATED BY DEFAULT AS IDENTITY";
         }
         if (column.notNull) definition += " NOT NULL";
         if (column.hasDefault) {
@@ -342,11 +408,12 @@ bool CreateTablePlan(SqlEngine engine, const std::string& schema, const std::str
     }
     if (!key.empty() && !inlineKey) {
         std::string names;
-        for (const auto& column : key) names += (names.empty() ? "" : ", ") + QuotedName(column);
+        for (const auto& column : key) names += (names.empty() ? "" : ", ") + QuotedName(engine, column);
         sql += "\n    PRIMARY KEY (" + names + ")";
     }
     sql += "\n)";
     out.statements.push_back(sql);
+    if (engine == SqlEngine::MySql) out.transaction = false;   // one statement; MySQL commits it as it runs
     if (key.empty())
         out.notes.push_back("No primary key: Browse shows its rows but cannot edit them, as it addresses a row by its key.");
     return true;
@@ -354,10 +421,17 @@ bool CreateTablePlan(SqlEngine engine, const std::string& schema, const std::str
 
 // ===== Maintenance =====
 
-std::vector<Maintenance> MaintenanceTasks(SqlEngine engine) {
+std::vector<Maintenance> MaintenanceTasks(SqlEngine engine, bool table) {
+    // A SQLite table's maintenance is ANALYZE; the checks and VACUUM are the file's.
     if (engine == SqlEngine::Sqlite)
-        return {Maintenance::IntegrityCheck, Maintenance::QuickCheck, Maintenance::Analyze, Maintenance::Optimize,
-                Maintenance::Vacuum};
+        return table ? std::vector<Maintenance>{Maintenance::Analyze}
+                     : std::vector<Maintenance>{Maintenance::IntegrityCheck, Maintenance::QuickCheck,
+                                                Maintenance::Analyze, Maintenance::Optimize, Maintenance::Vacuum};
+    // MySQL's maintenance statements name their tables: offered on one.
+    if (engine == SqlEngine::MySql)
+        return table ? std::vector<Maintenance>{Maintenance::IntegrityCheck, Maintenance::QuickCheck,
+                                                Maintenance::Analyze, Maintenance::Optimize}
+                     : std::vector<Maintenance>{};
     return {Maintenance::Analyze, Maintenance::Vacuum};
 }
 
@@ -382,11 +456,17 @@ const char* MaintenanceAbout(Maintenance task, SqlEngine engine) {
         case Maintenance::Analyze:
             return "Gathers the statistics the query planner chooses indexes by";
         case Maintenance::IntegrityCheck:
-            return "Reads every page, row and index of the database and reports what is damaged; \"ok\" when nothing is";
+            return engine == SqlEngine::MySql
+                       ? "Reads the table and its indexes and reports what is damaged (CHECK TABLE); \"OK\" when nothing is"
+                       : "Reads every page, row and index of the database and reports what is damaged; \"ok\" when nothing is";
         case Maintenance::QuickCheck:
-            return "The integrity check without checking that indexes match their tables: much faster";
+            return engine == SqlEngine::MySql
+                       ? "CHECK TABLE ... QUICK: the rows are not scanned for wrong links"
+                       : "The integrity check without checking that indexes match their tables: much faster";
         case Maintenance::Optimize:
-            return "Lets SQLite analyze what it finds worth analyzing (PRAGMA optimize)";
+            return engine == SqlEngine::MySql
+                       ? "Rebuilds the table and its indexes, giving back the space deleted rows left (OPTIMIZE TABLE)"
+                       : "Lets SQLite analyze what it finds worth analyzing (PRAGMA optimize)";
     }
     return "";
 }
@@ -395,12 +475,24 @@ OperationPlan MaintenancePlan(SqlEngine engine, Maintenance task, const std::str
                               const std::string& table) {
     OperationPlan plan;
     plan.transaction = false;    // VACUUM cannot run in a transaction, and the rest need none
+    if (engine == SqlEngine::MySql) {
+        if (table.empty()) return plan;   // each names its table
+        const std::string target = QualifiedName(engine, schema, table);
+        switch (task) {
+            case Maintenance::IntegrityCheck: plan.statements.push_back("CHECK TABLE " + target); break;
+            case Maintenance::QuickCheck:     plan.statements.push_back("CHECK TABLE " + target + " QUICK"); break;
+            case Maintenance::Analyze:        plan.statements.push_back("ANALYZE TABLE " + target); break;
+            case Maintenance::Optimize:       plan.statements.push_back("OPTIMIZE TABLE " + target); break;
+            case Maintenance::Vacuum:         break;   // SQLite's and PostgreSQL's
+        }
+        return plan;
+    }
     if (engine == SqlEngine::Sqlite) {
-        const std::string qs = QuotedName(schema.empty() ? std::string("main") : schema);
+        const std::string qs = QuotedName(engine, schema.empty() ? std::string("main") : schema);
         switch (task) {
             case Maintenance::Vacuum:         plan.statements.push_back("VACUUM " + qs); break;
             case Maintenance::Analyze:
-                plan.statements.push_back("ANALYZE " + (table.empty() ? qs : qs + "." + QuotedName(table)));
+                plan.statements.push_back("ANALYZE " + (table.empty() ? qs : qs + "." + QuotedName(engine, table)));
                 break;
             case Maintenance::IntegrityCheck: plan.statements.push_back("PRAGMA " + qs + ".integrity_check"); break;
             case Maintenance::QuickCheck:     plan.statements.push_back("PRAGMA " + qs + ".quick_check"); break;
@@ -408,7 +500,7 @@ OperationPlan MaintenancePlan(SqlEngine engine, Maintenance task, const std::str
         }
         return plan;
     }
-    const std::string target = table.empty() ? std::string() : " " + QualifiedName(schema, table);
+    const std::string target = table.empty() ? std::string() : " " + QualifiedName(engine, schema, table);
     switch (task) {
         case Maintenance::Vacuum:  plan.statements.push_back("VACUUM (ANALYZE)" + target); break;
         case Maintenance::Analyze: plan.statements.push_back("ANALYZE" + target); break;
@@ -425,7 +517,7 @@ const std::vector<std::string>& JournalModes() {
 bool JournalModePlan(const std::string& schema, const std::string& mode, OperationPlan& out, std::string& error) {
     out = OperationPlan();
     out.transaction = false;     // the mode cannot change inside a transaction
-    const std::string qs = QuotedName(schema.empty() ? std::string("main") : schema);
+    const std::string qs = QuotedName(SqlEngine::Sqlite, schema.empty() ? std::string("main") : schema);
     if (mode.empty()) {
         out.statements.push_back("PRAGMA " + qs + ".journal_mode");
         return true;
