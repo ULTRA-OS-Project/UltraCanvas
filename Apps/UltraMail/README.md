@@ -169,7 +169,8 @@ Apps/UltraMail/
                                   HTMLReader/CSSLayout, text in a read-only area),
                                   attachment strip; the text selectable and
                                   copyable (header and body, right-click Copy /
-                                  Select All), a copy button on a one-time code
+                                  Select All, and Copy link over a link), a copy
+                                  button on a one-time code
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips (paperclip, name, size); a click
                                   opens the Open / Save As… menu, a double-click

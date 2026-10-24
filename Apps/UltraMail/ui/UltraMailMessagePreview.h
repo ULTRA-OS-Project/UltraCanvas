@@ -3,6 +3,7 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.15.0 - "Copy link" in the body's right-click menu over a link
 // Version: 0.14.0 - SetAttachmentsRight: the attachments in a column at the
 //                  right of the body (Settings > Reading > Attachments)
 // Version: 0.13.0 - senderMenuItems: a right-click on the sender's name or badge
@@ -30,7 +31,7 @@
 //                  pictures hosted on trusted websites load by themselves.
 // Version: 0.4.0 - the sender badge replaces the initial avatar, and a warning
 //                  strip above the body says why a message looks like a scam.
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -173,6 +174,9 @@ public:
     // own in the HTML body, otherwise the first one in the code bar above
     // the body.
     const std::vector<OneTimeCode>& OneTimeCodes() const { return codes_; }
+    // The right-click menu opened last over the message's text (null before
+    // the first), for tests.
+    const std::shared_ptr<UltraCanvas::UltraCanvasMenu>& TextMenu() const { return textMenu_; }
 
     // Raised when a body was scanned for the first time (the verdict has been
     // stored already): the message list refreshes that row's badge.
@@ -190,16 +194,18 @@ private:
     // builder (CSSLayout engine), plain text into a read-only text area.
     void RenderBody(const std::string& body, bool isHtml);
 
-    // The right-click menu over the message's text: Copy (offered when
-    // something is selected) and Select All.
     // The sender's menu: its address as the title, senderMenuItems, then
     // Copy and Select All when the right-click was on the header's text.
     void ShowSenderMenu(const UltraCanvas::UCEvent& event, bool withText, bool canCopy,
                         std::function<void()> copy, std::function<void()> selectAll);
     // Whether a window point is over the sender's name or badge.
     bool PointerOnSender(const UltraCanvas::Point2Di& windowPoint) const;
+    // The right-click menu over the message's text: Copy link when `link`
+    // (the link under the pointer) is set, Copy (offered when something is
+    // selected) and Select All.
     void ShowTextMenu(const UltraCanvas::UCEvent& event, bool canCopy,
-                      std::function<void()> copy, std::function<void()> selectAll);
+                      std::function<void()> copy, std::function<void()> selectAll,
+                      const std::string& link = std::string());
     // Gives a selection (the header's, the HTML body's) its menu, and makes
     // it the only one highlighted once it selects something.
     void WireTextSelection(const std::shared_ptr<UltraCanvas::UltraCanvasTextSelection>& selection);

@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.20.0 - "Copy link" in the right-click menu over a link of the body
+//                  (HTML and plain text), above Copy and Select All
 // Version: 0.19.0 - the attachments in a column at the right of the body
 //                  (SetAttachmentsRight), or a row under it as before
 // Version: 0.18.3 - loan scams (loan-offer-fraud) are named in the warning strip
@@ -56,7 +58,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
@@ -215,10 +217,7 @@ public:
         return hovered_.empty() ? UltraCanvasTextArea::GetMouseCursor() : UCMouseCursor::Hand;
     }
 
-private:
-    std::string hovered_;
-    std::string pressedLink_;
-
+    // The link at a point of the area (as event.pointer gives it), or "".
     std::string LinkUnder(const Point2Di& pointer) {
         const LineColumnIndex hit = PosToLineColumn(pointer);
         if (!hit.IsValid()) return std::string();
@@ -233,6 +232,10 @@ private:
         if (byte >= line.size()) return std::string();
         return PlainLinkAt(line, byte);
     }
+
+private:
+    std::string hovered_;
+    std::string pressedLink_;
 
     void Hover(const std::string& href, const Point2Di& pointerWindow) {
         if (href == hovered_) {
@@ -261,6 +264,23 @@ void CollectLabels(UltraCanvasContainer& box, std::vector<UltraCanvasLabel*>& la
         if (auto* label = dynamic_cast<UltraCanvasLabel*>(child.get())) labels.push_back(label);
         else if (auto* inner = dynamic_cast<UltraCanvasContainer*>(child.get())) CollectLabels(*inner, labels);
     }
+}
+
+// The link of a built HTML body at a window point, or "": the label under the
+// point is asked for the link at that place of its text.
+std::string LinkAtWindowPoint(UltraCanvasContainer& box, const Point2Di& windowPoint) {
+    std::vector<UltraCanvasLabel*> labels;
+    CollectLabels(box, labels);
+    const Point2Df at(static_cast<float>(windowPoint.x), static_cast<float>(windowPoint.y));
+    for (UltraCanvasLabel* label : labels) {
+        if (!label->IsVisible() || label->GetTextLinks().empty()) continue;
+        const Rect2Df b = label->GetBoundsInWindow();
+        if (!b.Contains(at)) continue;
+        const int link = label->LinkIndexAtPoint(Point2Di(windowPoint.x - static_cast<int>(b.x),
+                                                          windowPoint.y - static_cast<int>(b.y)));
+        if (link >= 0) return label->GetTextLinks()[static_cast<std::size_t>(link)].href;
+    }
+    return std::string();
 }
 
 std::string SanitizeFolder(const std::string& folder) {
@@ -782,7 +802,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         };
         ShowTextMenu(event, area->HasSelection(),
                      withArea([](UltraCanvasTextArea& a) { a.CopySelection(); }),
-                     withArea([](UltraCanvasTextArea& a) { a.SelectAll(); }));
+                     withArea([](UltraCanvasTextArea& a) { a.SelectAll(); }),
+                     area->LinkUnder(event.pointer));
         return true;
     };
     text->SetReadOnly(true);
@@ -817,11 +838,17 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
 }
 
 void MessagePreview::ShowTextMenu(const UCEvent& event, bool canCopy,
-                                  std::function<void()> copy, std::function<void()> selectAll) {
+                                  std::function<void()> copy, std::function<void()> selectAll,
+                                  const std::string& link) {
     UltraCanvasWindowBase* window = root_ ? root_->GetWindow() : nullptr;
     if (!window) return;
     textMenu_ = std::make_shared<UltraCanvasMenu>("prevTextMenu", 0, 0, 180, 0);
     textMenu_->SetMenuType(MenuType::PopupMenu);
+    // Over a link: its address, as the message wrote it, for pasting elsewhere.
+    if (!link.empty()) {
+        textMenu_->AddItem(MenuItemData::Action("Copy link", [link]() { SetClipboardText(link); }));
+        textMenu_->AddItem(MenuItemData::Separator());
+    }
     MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
     copyItem.enabled = canCopy;
     textMenu_->AddItem(copyItem);
@@ -874,6 +901,9 @@ void MessagePreview::WireTextSelection(const std::shared_ptr<UltraCanvasTextSele
         // On the sender's name: the sender's menu, Copy and Select All in it.
         if (raw == headerSelection_.get() && hasMessage_ && PointerOnSender(event.pointerWindow))
             ShowSenderMenu(event, /*withText=*/true, raw->HasSelection(), copy, selectAll);
+        else if (raw == bodySelection_.get() && bodyHost_)
+            ShowTextMenu(event, raw->HasSelection(), copy, selectAll,
+                         LinkAtWindowPoint(*bodyHost_, event.pointerWindow));
         else
             ShowTextMenu(event, raw->HasSelection(), copy, selectAll);
     };
