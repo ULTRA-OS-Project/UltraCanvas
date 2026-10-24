@@ -24,6 +24,7 @@ endif()
 add_executable(UltraDBAdmin
     main.cpp
     engine/DbAdminBlob.cpp
+    engine/DbAdminCompletion.cpp
     engine/DbAdminConnections.cpp
     engine/DbAdminDump.cpp
     engine/DbAdminEditBuffer.cpp

@@ -15,6 +15,7 @@ enable_language(C)
 set(_dbadmin ${CMAKE_SOURCE_DIR}/Apps/UltraDBAdmin)
 set(_dbadmin_engine
     ${_dbadmin}/engine/DbAdminBlob.cpp
+    ${_dbadmin}/engine/DbAdminCompletion.cpp
     ${_dbadmin}/engine/DbAdminConnections.cpp
     ${_dbadmin}/engine/DbAdminDump.cpp
     ${_dbadmin}/engine/DbAdminEditBuffer.cpp

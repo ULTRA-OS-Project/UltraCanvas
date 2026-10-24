@@ -4721,6 +4721,27 @@ else()
     message(STATUS "  TextAreaSearchHighlightTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXTAREA AUTO-COMPLETE TEST =====
+# ShowAutoComplete's list at the caret: keys move in it and take a
+# suggestion in place of the word before the caret. Skips without DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaAutoCompleteTest...")
+    add_executable(TextAreaAutoCompleteTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaAutoCompleteTest.cpp
+    )
+    target_include_directories(TextAreaAutoCompleteTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaAutoCompleteTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaAutoCompleteTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaAutoCompleteTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaAutoCompleteTest COMMAND TextAreaAutoCompleteTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaAutoCompleteTest")
+else()
+    message(STATUS "  TextAreaAutoCompleteTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== TEXTAREA DETACHED TEST =====
 # A text area outside any window has no render context: SetText + ScrollTo on
 # it (the media viewer's Details panel) must not build layouts. Skips without

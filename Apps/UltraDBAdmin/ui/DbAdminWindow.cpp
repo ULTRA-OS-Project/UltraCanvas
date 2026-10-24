@@ -645,8 +645,22 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
             RunSql(event.shift ? RunScope::Statement : RunScope::Script);
             return true;
         }
+        if (event.virtualKey == UCKeys::Space && event.ctrl) {
+            Complete(true);
+            return true;
+        }
+        // A letter typed, or one taken back, may change the list; a paste or
+        // a script loaded does not open one.
+        completionTyped_ = !event.ctrl && !event.meta && !event.alt &&
+                           (!event.text.empty() || event.virtualKey == UCKeys::Backspace);
         return false;
     };
+    sqlEditor_->SetOnTextChanged([this](const std::string&) {
+        const bool typed = completionTyped_;
+        completionTyped_ = false;
+        if (typed) Complete(false);
+        else sqlEditor_->HideAutoComplete();
+    });
     FillWith(editorPane, sqlEditor_);
 
     auto results = CreateHorizontalSplitPane("dbaResultsSplit", 0, 0, 0, 0);
@@ -1040,6 +1054,7 @@ void DbAdminWindow::RemoveConnection() {
 }
 
 void DbAdminWindow::RefreshSelected() {
+    completionCatalogs_.clear();          // tables may have come or gone
     const NodeRef* ref = RefOf(selectedNode_);
     if (!ref) { SetStatus("Select a connection or schema to read it again."); return; }
     // An object row refreshes its schema; the schema row is its parent.
@@ -2846,6 +2861,55 @@ void DbAdminWindow::RunSql(RunScope scope) {
     FillHistory();
 }
 
+const CompletionCatalog* DbAdminWindow::CompletionCatalogFor(const ConnectionSpec& spec, bool asked) {
+    // An unqualified name is in the schema picked in the tree, else the
+    // engine's default one.
+    std::string connectionId, schema;
+    if (!SchemaScope(connectionId, schema) || connectionId != spec.id || schema.empty())
+        schema = spec.IsSqlite() ? "main" : EngineOf(spec) == SqlEngine::MySql ? spec.database : "public";
+    const std::string key = spec.id + "/" + schema;
+    const auto found = completionCatalogs_.find(key);
+    if (found != completionCatalogs_.end()) return found->second.get();
+    if (completionLoading_.insert(key).second) {
+        const std::string connection = RegisteredName(spec);
+        const SqlEngine engine = EngineOf(spec);
+        Background([this, connection, engine, schema, key, asked]() -> std::function<void()> {
+            auto catalog = std::make_shared<CompletionCatalog>();
+            const UltraDbResult result = LoadCompletionCatalog(connection, engine, schema, *catalog);
+            return [this, catalog, result, key, asked]() {
+                completionLoading_.erase(key);
+                // Not read: keywords only, and asked again next time.
+                if (!result) return;
+                completionCatalogs_[key] = catalog;
+                if (asked || sqlEditor_->IsAutoCompleteOpen()) Complete(true);
+            };
+        });
+    }
+    return nullptr;
+}
+
+void DbAdminWindow::Complete(bool asked) {
+    const ConnectionSpec* spec = SelectedConnection();
+    if (!spec) {
+        sqlEditor_->HideAutoComplete();
+        return;
+    }
+    const std::string text = sqlEditor_->GetText();
+    const size_t offset = CaretOffset();
+    const std::string prefix = CompletionPrefix(text, offset);
+    const bool afterDot = offset > prefix.size() && text[offset - prefix.size() - 1] == '.';
+    // As it is typed: from the second letter, or just after a '.'.
+    if (!asked && !afterDot && prefix.size() < 2) {
+        sqlEditor_->HideAutoComplete();
+        return;
+    }
+    static const CompletionCatalog kNone;
+    const CompletionCatalog* catalog = CompletionCatalogFor(*spec, asked);
+    const std::vector<std::string> list = CompletionsAt(EngineOf(*spec), text, offset, catalog ? *catalog : kNone);
+    if (list.empty()) sqlEditor_->HideAutoComplete();
+    else sqlEditor_->ShowAutoComplete(list);
+}
+
 void DbAdminWindow::StopSql() {
     auto runner = runners_.find(sqlConnectionId_);
     if (runner == runners_.end() || !runner->second->IsRunning()) return;
@@ -2854,6 +2918,9 @@ void DbAdminWindow::StopSql() {
 }
 
 void DbAdminWindow::ApplyOutcome(const std::string& connectionId, const RunOutcome& outcome) {
+    // The script may have made or dropped tables: completion reads them again.
+    for (auto it = completionCatalogs_.begin(); it != completionCatalogs_.end();)
+        it = it->first.rfind(connectionId + "/", 0) == 0 ? completionCatalogs_.erase(it) : std::next(it);
     const ConnectionSpec* spec = store_.Find(connectionId);
     const std::string where = spec ? spec->name : std::string("the connection");
     statementModel_->Replace(outcome.statements);

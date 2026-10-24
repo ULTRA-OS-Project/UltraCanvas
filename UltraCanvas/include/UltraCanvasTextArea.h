@@ -1,5 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.15.0 - auto-completion: ShowAutoComplete opens a list of suggestions at the
+//                 caret (it was a placeholder); IsAutoCompleteOpen, GetAutoCompletePrefix
 // Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
 //                 (searchHighlightColor, HighlightMatches(text, caseSensitive))
 // Version: 3.13.0 - MarkdownHeadingSlug: GitHub-style heading anchors in markdown mode
@@ -48,6 +50,9 @@ namespace UltraCanvas {
     // (UltraCanvasImageViewer, defined in UltraCanvasImageViewer.h). Held by
     // shared_ptr so a forward declaration suffices here.
     class UltraCanvasImageViewer;
+    // The auto-completion list (UltraCanvasListView.h, UltraCanvasListModel.h).
+    class UltraCanvasListView;
+    class UltraCanvasSimpleListModel;
 
     // ===== HIT RECT FOR CLICKABLE ELEMENTS =====
     // Tracks clickable regions for links and images
@@ -814,10 +819,21 @@ namespace UltraCanvas {
         void SetOnCursorPositionChanged(CursorPositionChangedCallback callback) { onCursorPositionChanged = callback; }
         void SetOnSelectionChanged(SelectionChangedCallback callback) { onSelectionChanged = callback; }
 
-        // Auto-completion support
+        // Auto-completion: a list of suggestions just under the caret, the
+        // first one highlighted. While it is open Up, Down, Page Up and Page
+        // Down move in it; Enter or Tab puts the highlighted suggestion in
+        // place of the word before the caret (GetAutoCompletePrefix) and
+        // closes it, as a click on a suggestion does; Escape closes it. Any
+        // other key edits as usual and leaves the list as it is: the host
+        // shows a new one from onTextChanged - narrowed to what is typed - or
+        // hides it. An empty list hides it.
         void ShowAutoComplete(const std::vector<std::string>& suggestions);
         void HideAutoComplete();
         void AcceptAutoComplete();
+        bool IsAutoCompleteOpen() const { return autoCompleteOpen; }
+        // The word that ends at the caret - letters, digits, '_' and '$' and
+        // any character beyond ASCII - which a suggestion replaces.
+        std::string GetAutoCompletePrefix() const;
 
         // Bracket matching
         void HighlightMatchingBrackets();
@@ -1120,6 +1136,17 @@ namespace UltraCanvas {
         void RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line);
 
     private:
+        // Auto-completion (ShowAutoComplete)
+        std::shared_ptr<UltraCanvasListView> autoCompleteList;
+        std::shared_ptr<UltraCanvasSimpleListModel> autoCompleteModel;
+        std::vector<std::string> autoCompleteItems;
+        bool autoCompleteOpen = false;
+        // The codepoint column the word before the caret starts at.
+        int AutoCompleteWordStart() const;
+        void AcceptAutoCompleteRow(int row);
+        // Up / Down / Enter / Tab / Escape while the list is open; true when used.
+        bool HandleAutoCompleteKey(const UCEvent& event);
+
         // Text data - std::string with GLib g_utf8_* for UTF-8 handling
         std::string textContent;
         std::vector<std::string> lines;

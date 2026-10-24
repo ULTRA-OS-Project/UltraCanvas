@@ -8,12 +8,16 @@
 // (SQLite's file; PostgreSQL's sessions with this one among them, a running
 // query cancelled from another session, the settings filter with LIKE's
 // characters typed, the sizes; the monitor's charts from two readings of a
-// live server).
+// live server), and the SQL tab's completion: the catalog read from each
+// engine, and what is offered where - tables after FROM, a statement's
+// columns after SELECT, an alias's or a schema's after "name.", names quoted
+// as the engine needs, nothing in a string or a comment.
 // SQLite in temporary folders; PostgreSQL where the tests of UltraDatabase
 // find one (ULTRAFIBU_TEST_PG_*; REQUIRED makes a missing server a failure).
-// Version: 0.2.0 - the monitor
+// Version: 0.2.0 - the monitor; completion
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "DbAdminCompletion.h"
 #include "DbAdminConnections.h"
 #include "DbAdminExport.h"
 #include "DbAdminOperations.h"
@@ -774,6 +778,99 @@ void TestServerMysql() {
     UltraDb_CloseConnection(c);
 }
 
+// ===== Completion =====
+
+bool Offers(const std::vector<std::string>& list, const std::string& item) {
+    return std::find(list.begin(), list.end(), item) != list.end();
+}
+
+// What is offered at the '|' of `script` (the bar taken out).
+std::vector<std::string> At(SqlEngine engine, const std::string& script, const CompletionCatalog& catalog) {
+    const size_t bar = script.find('|');
+    std::string text = script;
+    text.erase(bar, 1);
+    return CompletionsAt(engine, text, bar, catalog);
+}
+
+void TestCompletionSqlite() {
+    Section("Completion (SQLite)");
+    TempDir dir;
+    const std::string c = SqliteFile("dbadmin-complete", dir.File("complete.db"));
+    Check(RunScript(c, "CREATE TABLE orders(id INTEGER PRIMARY KEY, customer_id INTEGER, total REAL);"
+                       "CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT, \"Order Note\" TEXT);"
+                       "CREATE VIEW big_orders AS SELECT * FROM orders WHERE total > 100;"),
+          "two tables and a view");
+    CompletionCatalog catalog;
+    Check(LoadCompletionCatalog(c, SqlEngine::Sqlite, "main", catalog).success, "the catalog");
+    Check(catalog.schemas.count("main") && catalog.schemas["main"].size() == 3 &&
+              catalog.schemas["main"]["customers"] == std::vector<std::string>({ "id", "name", "Order Note" }),
+          "its tables, a view and their columns in order");
+    const SqlEngine e = SqlEngine::Sqlite;
+    auto list = At(e, "SELECT * FROM or|", catalog);
+    Check(!list.empty() && list.front() == "orders", "after FROM: the table that begins so, first");
+    Check(Offers(At(e, "SELECT * FROM |", catalog), "big_orders"), "a view among the tables");
+    list = At(e, "SELECT cu| FROM orders", catalog);
+    Check(Offers(list, "customer_id") && !Offers(list, "name"), "after SELECT: the columns of the table named after it");
+    list = At(e, "SELECT o.| FROM orders o JOIN customers c ON c.id = o.customer_id", catalog);
+    Check(Offers(list, "total") && !Offers(list, "name"), "an alias's columns");
+    list = At(e, "SELECT c.| FROM orders o JOIN customers c ON c.id = o.customer_id", catalog);
+    Check(Offers(list, "\"Order Note\"") && Offers(list, "name"), "a name with a space, quoted");
+    list = At(e, "SELECT * FROM orders WHERE to|", catalog);
+    Check(!list.empty() && list.front() == "total", "after WHERE: the columns");
+    list = At(e, "sel|", catalog);
+    Check(Offers(list, "select") && !Offers(list, "SELECT"), "a keyword in the case it is typed in");
+    list = At(e, "SELECT * FROM orders WHERE cu|", catalog);
+    Check(Offers(list, "customer_id") && !Offers(list, "vacuum") && !Offers(list, "VACUUM"),
+          "a keyword only for the letters it begins with");
+    list = At(e, "SELECT * FROM main.|", catalog);
+    Check(Offers(list, "orders") && Offers(list, "customers"), "after schema. its tables");
+    Check(At(e, "SELECT 'or|", catalog).empty(), "nothing inside a string");
+    Check(At(e, "SELECT 1 -- or|", catalog).empty(), "nothing inside a comment");
+    list = At(e, "SELECT 1; SELECT * FROM customers WHERE na|", catalog);
+    Check(!list.empty() && list.front() == "name", "the statement the caret is in, not the one before");
+    Check(CompletionPrefix("SELECT nam", 10) == "nam", "the word a suggestion replaces");
+    UltraDb_CloseConnection(c);
+}
+
+void TestCompletionServer(const char* label, SqlEngine engine, const std::string& c, const std::string& schema) {
+    Section(label);
+    const std::string s = QuotedName(engine, schema);
+    Check(RunScript(c, std::string(engine == SqlEngine::MySql ? "CREATE DATABASE " : "CREATE SCHEMA ") + s + ";"
+                       "CREATE TABLE " + s + ".invoices(id integer PRIMARY KEY, amount numeric(10,2));"
+                       "CREATE TABLE " + s + "." + QuotedName(engine, "MixedCase") + "(" + QuotedName(engine, "Id") +
+                       " integer);"),
+          "a schema with two tables");
+    CompletionCatalog catalog;
+    Check(LoadCompletionCatalog(c, engine, schema, catalog).success, "the catalog");
+    Check(catalog.schemas.count(schema) && catalog.schemas[schema].count("invoices") &&
+              catalog.schemas[schema]["invoices"] == std::vector<std::string>({ "id", "amount" }),
+          "the schema's tables and columns");
+    auto list = At(engine, "SELECT * FROM inv|", catalog);
+    Check(!list.empty() && list.front() == "invoices", "after FROM, the default schema's table");
+    list = At(engine, "SELECT * FROM |", catalog);
+    Check(Offers(list, QuotedName(engine, "MixedCase")) == (engine == SqlEngine::Postgres) &&
+              Offers(list, "MixedCase") == (engine != SqlEngine::Postgres),
+          "an upper-case name quoted where the engine folds it");
+    list = At(engine, "SELECT am| FROM invoices", catalog);
+    Check(Offers(list, "amount"), "a column after SELECT");
+    UltraDb_Exec(c, std::string(engine == SqlEngine::MySql ? "DROP DATABASE " : "DROP SCHEMA ") + s +
+                        (engine == SqlEngine::MySql ? "" : " CASCADE"));
+}
+
+void TestCompletionPostgres() {
+    const std::string c = PostgresConnection("dbadmin-complete-pg");
+    if (c.empty()) return;
+    TestCompletionServer("Completion (PostgreSQL)", SqlEngine::Postgres, c, "dbadmin_" + ConnectionStore::NewId());
+    UltraDb_CloseConnection(c);
+}
+
+void TestCompletionMysql() {
+    const std::string c = MysqlConnection("dbadmin-complete-my");
+    if (c.empty()) return;
+    TestCompletionServer("Completion (MySQL / MariaDB)", SqlEngine::MySql, c, "dbadmin_" + ConnectionStore::NewId());
+    UltraDb_CloseConnection(c);
+}
+
 int main() {
     std::printf("UltraDBAdmin schema tests\n\n");
     TestRelationsSqlite();
@@ -785,6 +882,9 @@ int main() {
     TestServerSqlite();
     TestServerPostgres();
     TestServerMysql();
+    TestCompletionSqlite();
+    TestCompletionPostgres();
+    TestCompletionMysql();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

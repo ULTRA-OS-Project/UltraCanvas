@@ -598,6 +598,13 @@ rates and the cache's misses into a hit ratio (`engine/DbAdminMonitor`). The
 engine's line chart gained `SetValueAtLeast`, so a quiet server's chart keeps
 a readable axis.
 
+**Stage 5 began with schema-aware completion**: the SQL tab offers tables,
+columns, aliases, schemas and keywords where each fits - read from
+`information_schema.COLUMNS` (SQLite: `pragma_table_info`) once per
+connection and schema (`engine/DbAdminCompletion`). `UltraCanvasTextArea`'s
+`ShowAutoComplete`, a placeholder until then, became the list at the caret
+that any editor can fill.
+
 Stage 1 alone already replaces the "install DB Browser for SQLite" step for
 supporting ULTRA OS apps.
 

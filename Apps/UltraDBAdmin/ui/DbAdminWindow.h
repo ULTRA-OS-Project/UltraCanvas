@@ -28,6 +28,8 @@
 //               whole script), Run statement (Ctrl+Shift+Enter: the one under
 //               the caret), Explain, Stop, the history and saved snippets,
 //               what each statement did, and the rows of the one selected;
+//               completion of tables, columns and keywords as they are typed
+//               or on Ctrl+Space (DbAdminCompletion);
 //   Search    - a text in every table and view of a schema, a count per
 //               column; a hit opens the table filtered on that column;
 //   Relations - the schema's tables and the foreign keys between them as an
@@ -59,7 +61,7 @@
 // PostToUIThread, guarded by a token that dies with the window. A result for
 // something no longer shown - another table was picked meanwhile - is
 // recognised by its generation number and dropped.
-// Version: 0.5.0 - the Server tab's monitor charts
+// Version: 0.5.0 - the Server tab's monitor charts; completion in the SQL editor
 // Version: 0.4.0 - the Relations, Routines and Server tabs
 // Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log,
 //                 Run statement, Explain, snippets, auto-commit, the typed row form
@@ -80,6 +82,7 @@
 #include "DbAdminRoutines.h"
 #include "DbAdminSearch.h"
 #include "DbAdminServer.h"
+#include "DbAdminCompletion.h"
 #include "DbAdminMonitor.h"
 #include "DbAdminSnippets.h"
 #include "DbAdminSqlLog.h"
@@ -402,6 +405,12 @@ private:
     SqlRunner* RunnerFor(const ConnectionSpec& spec);
     enum class RunScope { Script, Statement, Explain };
     void RunSql(RunScope scope = RunScope::Script);
+    // The completion list for the word at the caret: as it is typed (from
+    // two letters, or after a '.'), or asked for with Ctrl+Space.
+    void Complete(bool asked);
+    // The catalog completion reads for the tree's connection and schema;
+    // nullptr while it is being read (on the job queue).
+    const CompletionCatalog* CompletionCatalogFor(const ConnectionSpec& spec, bool asked);
     // The caret's place in the editor's text, as a byte offset.
     size_t CaretOffset() const;
     void ShowSnippetsMenu();
@@ -554,6 +563,11 @@ private:
     std::map<std::string, std::unique_ptr<SqlRunner>> runners_;   // by connection id
     std::vector<std::string> historyShown_;   // the dropdown's scripts, in its order
     std::string sqlConnectionId_;        // the console's connection: the tree's, when Run was pressed
+    // Completion: a catalog per connection and default schema ("id/schema"),
+    // read the first time it is needed, forgotten by Refresh and after a run.
+    std::map<std::string, std::shared_ptr<const CompletionCatalog>> completionCatalogs_;
+    std::set<std::string> completionLoading_;
+    bool completionTyped_ = false;       // the editor's last change was a key typed
 
     // Search
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
