@@ -706,7 +706,10 @@ and never introduce a new literal copy of one:
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
    that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
    `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
-   CI runs that too. Reading HTML, CSS or an `&entity;`? Through the
+   CI runs that too. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
+   the Windows builds compile it against libc++, which refuses what libstdc++
+   lets through (`std::to_string` of a file time's tick count, say), and the
+   script type-checks the module against libc++ in seconds. Reading HTML, CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
