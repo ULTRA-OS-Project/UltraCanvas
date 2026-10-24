@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.39 - the compose window opens wide enough for its toolbar in
+//                  one row; Settings > Reading > Attachments reaches the reading
+//                  pane and the compose windows
 // Version: 0.9.38 - a recipient suggestion's menu: Edit contact, Delete address,
 //                  Set as SPAM; blocked senders are not suggested; Edit contact
 //                  (here and for a message's sender) edits that address; a
@@ -495,7 +498,8 @@ void UltraMailApp::FinishStartup() {
     }
     // Demo path: one dialog on its own, to look at it (wizard, password,
     // password-new, oauth, wait, account - the last one on the demo account
-    // seeded by ULTRAMAIL_DEMO_MAIL=1 - outbox and settings).
+    // seeded by ULTRAMAIL_DEMO_MAIL=1 - outbox, settings, and compose: a
+    // formatted message with two attachments).
     if (const char* dd = std::getenv("ULTRAMAIL_DEMO_DIALOG"); dd && *dd) {
         const std::string which = dd;
         UltraCanvas::UltraCanvasWindowBase* parent = window_.get();
@@ -514,6 +518,21 @@ void UltraMailApp::FinishStartup() {
             HandleAccountSettings(accounts_.front().accountId);
         else if (which == "outbox") OpenOutbox();
         else if (which == "settings") OpenSettings();
+        else if (which == "compose") {
+            // A formatted message with two attachments: where they are shown.
+            Draft d = Composer::NewMessage("Erika Example", "erika@example.com");
+            d.to = {"anna@example.com"};
+            d.subject = "Quarterly figures";
+            d.richBody = PlainBodyToRichDocument("Hi Anna,\n\nthe figures are attached.\n\nErika");
+            for (const char* name : {"Q3-figures.pdf", "Notes.txt"}) {
+                Attachment a;
+                a.filename = name;
+                a.mediaType = "application/octet-stream";
+                a.data.assign(2048, 'x');
+                d.attachments.push_back(std::move(a));
+            }
+            OpenComposer(d);
+        }
     }
     // Demo path: the account signature. =1 opens the signature editor on a
     // designed HTML signature; =2 a new message from the demo account (seeded
@@ -768,6 +787,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // Apply the remembered reading-pane choice (default on; a rebuild only when off).
     mailView_.SetReadingPane(prefs_.showReadingPane);
     mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+    mailView_.SetAttachmentsRight(prefs_.AttachmentsRight());
     mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                  prefs_.folderTreeWidth);
 
@@ -1151,8 +1171,9 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     FinishStartup();   // the cloud accounts and the vault, before the first frame was done
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
-    cfg.width  = 640;
-    cfg.height = 560;   // two toolbar rows above the body
+    // Wide enough for every formatting tool in one row.
+    cfg.width  = ComposeView::kPreferredWidth;
+    cfg.height = 600;
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
     GuardQuitDuringTransfers(win);
@@ -1163,6 +1184,7 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     view->SetDraft(draft);
     view->SetParentWindow(win.get());
     view->SetCloud(cloud_);
+    view->SetAttachmentsRight(prefs_.AttachmentsRight());
     // To / Cc / Bcc complete from the address book as it is when the window
     // opens (one read, then matched in memory as the writer types), the
     // addresses written to most - by the mail in the Sent folders, recent
@@ -4042,6 +4064,11 @@ void UltraMailApp::OpenSettings() {
         prefs_.Save(prefsPath_);
         mailView_.SetReadingPane(prefs_.showReadingPane);
         mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+        // Settings > Reading > Attachments: the reading pane and every open
+        // compose window.
+        mailView_.SetAttachmentsRight(prefs_.AttachmentsRight());
+        for (auto& c : composers_)
+            if (c.view) c.view->SetAttachmentsRight(prefs_.AttachmentsRight());
         mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                      prefs_.folderTreeWidth);
         mailView_.SetTreeCurrentAccountOnly(prefs_.folderTreeContent ==

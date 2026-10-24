@@ -3,9 +3,8 @@
   right; bulleted and numbered lists, quote in and out; a line, a link, a
   picture - flat, in groups with thin separators, each named by its tooltip.
   They sit on a tinted strip framed together with the message body, so the
-  body is a clear place to write rather than an open white area. The colour
-  swatches have a text-colour mark in place of the word "Colour", and
-  *Plain text | Formatted* shows a mark for each. *Send*, *Attach file…* and
+  body is a clear place to write rather than an open white area. *Plain text |
+  Formatted* shows a mark for each. *Send*, *Attach file…* and
   *Cloud link…* (was *Attach cloud link…*) carry icons. The signature
   editor has the same toolbar and frame.
 - **Dialogs open with a header**: an icon tile, a title and the line that

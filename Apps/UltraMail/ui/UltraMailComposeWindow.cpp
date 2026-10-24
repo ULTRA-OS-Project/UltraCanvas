@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.13.0 - Send, the attach buttons and Cancel on top; every
+//                   formatting tool in one row; Font and Size show the text
+//                   at the cursor; the attachments under the body or in a
+//                   column at its right (SetAttachmentsRight)
 // Version: 0.12.0 - the formatting tools and the body share one framed card
 //                   (the tools on a tinted strip on top); Send, Attach file and
 //                   Cloud link carry icons, Plain text | Formatted too
@@ -94,6 +98,50 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     root_->layout.SetFlexColumn()
                  .SetFlexGap(Theme::kInnerGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    // The action row, on top: Send first, the attach actions beside it, Cancel
+    // apart on the right so it cannot be hit by accident.
+    auto toolbar = CreateContainer("cToolbar", 0, 0, 0, Theme::kToolbarHeight);
+    toolbar->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+    auto sendBtn = CreateButton("cSend", 0, 0, 100, Theme::kControlHeight, "Send");
+    Theme::FitToLabel(sendBtn, 100);
+    Theme::StylePrimary(sendBtn);
+    Theme::SetButtonIcon(sendBtn, "send");
+    sendBtn->SetTooltip("Send the message now");
+    sendBtn->onClick = [this]() { if (onSend) onSend(CollectDraft()); };
+    toolbar->AddChild(sendBtn);
+
+    auto attachBtn = CreateButton("cAttach", 0, 0, 120, Theme::kControlHeight, "Attach file…");
+    Theme::FitToLabel(attachBtn, 120);
+    Theme::StyleSecondary(attachBtn);
+    Theme::SetButtonIcon(attachBtn, "attach");
+    attachBtn->SetTooltip("Attach a file from this computer");
+    attachBtn->onClick = [this]() { ChooseFileToAttach(); };
+    toolbar->AddChild(attachBtn);
+
+    auto cloudBtn = CreateButton("cCloud", 0, 0, 120, Theme::kControlHeight, "Cloud link…");
+    Theme::FitToLabel(cloudBtn, 120);
+    Theme::StyleSecondary(cloudBtn);
+    Theme::SetButtonIcon(cloudBtn, "cloud");
+    cloudBtn->SetTooltip(cloud_ ? "Upload a file to cloud storage, or pick one, and put its share link into the message"
+                                : "Cloud storage is not set up in this application");
+    cloudBtn->onClick = [this]() { ChooseCloudLink(); };
+    toolbar->AddChild(cloudBtn);
+
+    toolbar->AddStretchSpacer(1);
+
+    auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::FitToLabel(cancelBtn, 90);
+    Theme::StyleSecondary(cancelBtn);
+    cancelBtn->onClick = [this]() { if (onCancel) onCancel(); };
+    toolbar->AddChild(cancelBtn);
+
+    root_->AddChild(toolbar);
+    toolbar->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    root_->AddChild(Theme::MakeDivider("cTopRule"));
 
     // Header fields: a quiet label beside a full-width input.
     auto addField = [this](const std::string& id, const std::string& caption,
@@ -203,6 +251,18 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     root_->AddChild(editorCard);
     editorCard->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // Under the strip: the text and, when the attachments are shown at the
+    // right, their column beside it - inside the frame, so the toolbar keeps
+    // the whole width.
+    bodyRow_ = CreateContainer("cBodyRow", 0, 0, 0, 0);
+    bodyRow_->layout.SetFlexRow()
+                    .SetFlexGap(0)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    {
+        ContainerStyle style;
+        style.autoShowScrollbars = false;
+        bodyRow_->SetContainerStyle(style);
+    }
 
     // The formatting toolbar, with Plain text | Formatted at its right end.
     // The tools act on the rich editor, and only while the body is formatted.
@@ -210,6 +270,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     barOptions.idPrefix = "c";
     barOptions.dialogParent = parent_;
     barOptions.quoteTools = true;
+    barOptions.singleRow = true;   // the window is opened wide enough (kPreferredWidth)
     // Asked on every click, and again when a Link… or Picture… dialog
     // answers - by then the window may be closed and this view gone.
     barOptions.editor = [weak = weak_from_this()]() -> UltraCanvasRichTextEdit* {
@@ -235,6 +296,9 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     editorCard->AddChild(formatBar_.root);
     formatBar_.root->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     editorCard->AddChild(Theme::MakeDivider("cRule"));
+    editorCard->AddChild(bodyRow_);
+    bodyRow_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // The body takes whatever height the fields and the toolbars leave. Both
     // editors exist; the mode decides which one shows and holds the message.
@@ -243,7 +307,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     body_->SetWordWrap(true);
     Theme::StyleTextArea(body_, /*bordered=*/false);
     body_->SetText(draft_.body);
-    editorCard->AddChild(body_);
+    bodyRow_->AddChild(body_);
     body_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     rich_ = CreateRichTextEdit("cRich", 0, 0, 0, 0);
@@ -256,68 +320,67 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     rich_->SetShowFontNotice(false);
     rich_->SetDocument(draft_.richBody ? draft_.richBody : PlainBodyToRichDocument(""));
     rich_->GetEditor().SetCaret(RichDocPosition(0, 0));  // the empty line above the quote
-    editorCard->AddChild(rich_);
+    // Font and Size follow the text at the cursor.
+    auto syncBar = [weak = weak_from_this()]() {
+        if (auto self = weak.lock(); self && self->rich_)
+            self->formatBar_.Sync(self->rich_->GetFormatState());
+    };
+    rich_->onSelectionChanged = syncBar;
+    rich_->onDocumentChanged  = syncBar;
+    formatBar_.Sync(rich_->GetFormatState());
+    bodyRow_->AddChild(rich_);
     rich_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     formatted_ = draft_.richBody != nullptr;
     ShowMode();
 
-    // Attachment chips between the body and the toolbar; the row is shown
-    // only while there is something to show (forwards carry the original's
-    // attachments).
+    // Attachment chips under the body, or in a column at its right
+    // (Settings > Reading > Attachments); shown only while there is something
+    // to show (forwards carry the original's attachments).
     attachWrap_ = CreateContainer("cAttachWrap", 0, 0, 0, kAttachRowHeight);
-    ContainerStyle stripStyle;
-    stripStyle.autoShowScrollbars = false;
-    attachWrap_->SetContainerStyle(stripStyle);
     attachWrap_->AddChild(attachments_.Build());
-    root_->AddChild(attachWrap_);
-    attachWrap_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    PlaceAttachments();
     RefreshAttachments();
 
-    // Bottom toolbar: Send first, the attach actions beside it, Cancel apart
-    // on the right so it cannot be hit by accident.
-    auto toolbar = CreateContainer("cToolbar", 0, 0, 0, Theme::kToolbarHeight);
-    toolbar->layout.SetFlexRow()
-                   .SetFlexGap(Theme::kInnerGap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-
-    auto sendBtn = CreateButton("cSend", 0, 0, 100, Theme::kControlHeight, "Send");
-    Theme::FitToLabel(sendBtn, 100);
-    Theme::StylePrimary(sendBtn);
-    Theme::SetButtonIcon(sendBtn, "send");
-    sendBtn->SetTooltip("Send the message now");
-    sendBtn->onClick = [this]() { if (onSend) onSend(CollectDraft()); };
-    toolbar->AddChild(sendBtn);
-
-    auto attachBtn = CreateButton("cAttach", 0, 0, 120, Theme::kControlHeight, "Attach file…");
-    Theme::FitToLabel(attachBtn, 120);
-    Theme::StyleSecondary(attachBtn);
-    Theme::SetButtonIcon(attachBtn, "attach");
-    attachBtn->SetTooltip("Attach a file from this computer");
-    attachBtn->onClick = [this]() { ChooseFileToAttach(); };
-    toolbar->AddChild(attachBtn);
-
-    auto cloudBtn = CreateButton("cCloud", 0, 0, 120, Theme::kControlHeight, "Cloud link…");
-    Theme::FitToLabel(cloudBtn, 120);
-    Theme::StyleSecondary(cloudBtn);
-    Theme::SetButtonIcon(cloudBtn, "cloud");
-    cloudBtn->SetTooltip(cloud_ ? "Upload a file to cloud storage, or pick one, and put its share link into the message"
-                                : "Cloud storage is not set up in this application");
-    cloudBtn->onClick = [this]() { ChooseCloudLink(); };
-    toolbar->AddChild(cloudBtn);
-
-    toolbar->AddStretchSpacer(1);
-
-    auto cancelBtn = CreateButton("cCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
-    Theme::FitToLabel(cancelBtn, 90);
-    Theme::StyleSecondary(cancelBtn);
-    cancelBtn->onClick = [this]() { if (onCancel) onCancel(); };
-    toolbar->AddChild(cancelBtn);
-
-    root_->AddChild(toolbar);
-    toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
     return root_;
+}
+
+void ComposeView::SetAttachmentsRight(bool right) {
+    if (right == attachmentsRight_) return;
+    attachmentsRight_ = right;
+    PlaceAttachments();
+}
+
+void ComposeView::PlaceAttachments() {
+    if (!attachWrap_ || !root_ || !bodyRow_) return;
+    if (UltraCanvasContainer* holder = attachWrap_->GetParentContainer())
+        holder->RemoveChild(attachWrap_);
+    attachments_.SetVertical(attachmentsRight_);
+    ContainerStyle style;
+    style.autoShowScrollbars = attachmentsRight_;   // a long column scrolls
+    style.autoShowHorizontalScrollbar = false;
+    attachWrap_->SetContainerStyle(style);
+    if (attachmentsRight_) {
+        // A tinted column, set off from the text by a line.
+        attachWrap_->SetBackgroundColor(Theme::kSidebar);
+        attachWrap_->SetBorderLeft(1.0f, Theme::kDivider);
+        attachWrap_->size.width  = CSSLayout::Dimension::Px(AttachmentStrip::ColumnWidth() + 1.0f);
+        attachWrap_->size.height = CSSLayout::Dimension::Auto();
+        attachWrap_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        bodyRow_->AddChild(attachWrap_);
+    } else {
+        attachWrap_->SetBackgroundColor(Colors::Transparent);
+        attachWrap_->SetBorderLeft(0.0f, Colors::Transparent);
+        attachWrap_->size.width  = CSSLayout::Dimension::Auto();
+        attachWrap_->size.height = CSSLayout::Dimension::Px(kAttachRowHeight);
+        attachWrap_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        root_->AddChild(attachWrap_);   // under the editor card, the last row
+    }
+    attachWrap_->SetVisible(!draft_.attachments.empty());
+    root_->InvalidateLayout();
+    root_->RequestRedraw();
 }
 
 void ComposeView::Resize(float width, float height) {

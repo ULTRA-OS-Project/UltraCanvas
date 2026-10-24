@@ -9,7 +9,8 @@ a 16 px grid.
   (`Theme::SetButtonIcon`, `Theme::MakeToolButton`), so the colour in the
   file does not matter.
   - Formatting bar: `bold`, `italic`, `underline`, `strikethrough`,
-    `text-colour`, `align-left`, `align-centre`, `align-right`,
+    `text-colour` and `highlight` (the Text | Background colour switch),
+    `align-left`, `align-centre`, `align-right`,
     `list-bullets`, `list-numbers`, `quote-in`, `quote-out`, `rule`, `link`,
     `picture`; the compose window's mode switch: `plain-text`, `formatted`.
   - Actions: `send`, `attach`, `cloud`, `check` (save, confirm),

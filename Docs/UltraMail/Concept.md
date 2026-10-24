@@ -257,7 +257,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 - **Attachments** — "Attach file…" (file dialog; drag & drop later) and
   "Cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
-  shown as a chip strip with sizes and a total-size warning.
+  shown as a chip strip with sizes and a total-size warning - under the
+  message, or in a column at its right (*Settings > Reading > Attachments*,
+  for reading and writing alike).
 - **Signatures** — per account, in *Account Settings > Signature*: none,
   plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
   (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
@@ -267,9 +269,10 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
 - **Formatting** — a *Plain text | Formatted* switch on every message, and in
   formatted mode the same toolbar as the signature editor (character
-  formatting, font, size, colour, alignment, lists, a rule, links, pictures),
-  as icons on a strip framed together with the body; each tool's tooltip names
-  it.
+  formatting, font, size, text or background colour, alignment, lists, a
+  rule, links, pictures), as icons on a strip framed together with the body -
+  in one row in the compose window, whose Send row is on top; each tool's
+  tooltip names it, and Font and Size show the text at the cursor.
   *(Implemented in UltraMail 0.10.12.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the

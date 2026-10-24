@@ -16,6 +16,7 @@
 // held by a shared_ptr: the answers that can come after its window closed -
 // the file and cloud pickers, the plain-text question, a Link… or Picture…
 // dialog - hold it weakly and find nothing to change.
+// Version: 0.10.0 - SetAttachmentsRight, kPreferredWidth; the action row on top
 // Version: 0.9.0 - a right click on a recipient suggestion: Edit contact,
 //                  Delete address, Set as SPAM (editRecipientContact,
 //                  deleteRecipientAddress, markRecipientSpam)
@@ -68,6 +69,12 @@ public:
     void SetCloud(std::shared_ptr<UltraCloud::CloudService> cloud) { cloud_ = std::move(cloud); }
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
+    // The window width at which every formatting tool fits in one row.
+    static constexpr int kPreferredWidth = 1140;
+    // The attachments in a column at the right of the body (true) or in a
+    // row under it (false, the default) - Settings > Reading > Attachments.
+    // Before or after Build().
+    void SetAttachmentsRight(bool right);
     // Size the view to the window's client area (call on window resize).
     void Resize(float width, float height);
 
@@ -105,6 +112,8 @@ private:
     void ChooseCloudLink();
     // Rebuild the chips and show the attachment row only while there are any.
     void RefreshAttachments();
+    // Puts the attachment row under the body, or its column at the right.
+    void PlaceAttachments();
     // Switches the body between the plain-text area and the rich editor,
     // carrying the text across. Formatted -> plain drops the formatting, so it
     // asks first when there is something to lose (unless `ask` is false).
@@ -134,6 +143,8 @@ private:
     bool formatted_ = false;        // which of body_ / rich_ holds the message
     bool switchingMode_ = false;    // SetSelectedIndex from code, not a click
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachWrap_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyRow_;    // the editor (and the column)
+    bool attachmentsRight_ = false;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> recipientMenu_;   // a suggestion's right-click menu
 };
