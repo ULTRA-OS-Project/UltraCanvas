@@ -593,6 +593,11 @@ UltraDbResult StructureEdit::Apply(const std::string& connection, const std::vec
         const UltraDbResult result = UltraDb_Exec(connection, steps[i].sql, steps[i].params);
         if (!result) { failed = i; after(); return result; }
     }
+    // Nothing inside (MySQL's steps all run on their own): no transaction.
+    if (std::none_of(steps.begin(), steps.end(), [](const DdlStep& s) { return s.phase == DdlStep::Phase::Inside; })) {
+        after();
+        return UltraDbResult::Ok();
+    }
     UltraDbResult begun;
     const UltraDbHandle tx = UltraDb_Begin(connection, &begun);
     if (tx == UltraDbInvalidHandle) { after(); return begun; }

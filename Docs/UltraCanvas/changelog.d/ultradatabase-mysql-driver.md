@@ -7,7 +7,8 @@
   exact as text; each result column names its source table. TLS is verified
   by default, the password comes from UltraVault, `LOAD DATA LOCAL` is off.
   Scripts are cut as the mysql client cuts them, DELIMITER included
-  (UltraDb_ExecBatch); a cursor streams from a session of its own, or inside
+  (UltraDb_ExecBatch), and `UltraDb_MysqlScriptStatements` says where each
+  statement of a script is, for an editor; a cursor streams from a session of its own, or inside
   a transaction reads what the transaction wrote; UltraDb_CancelQuery sends
   KILL QUERY. Schema introspection reads information_schema - a schema is a
   database - with each column's default as the DDL writes it on both

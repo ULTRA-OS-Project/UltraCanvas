@@ -1,7 +1,8 @@
 # UltraDBAdmin
 
-Browse and query the databases UltraDatabase reaches - SQLite files and
-PostgreSQL servers - in the spirit of phpMyAdmin, as a desktop application.
+Browse and query the databases UltraDatabase reaches - SQLite files,
+PostgreSQL servers and MySQL / MariaDB servers - in the spirit of
+phpMyAdmin, as a desktop application.
 The design, the roadmap and the decisions behind it are in
 [`Docs/Research/UltraDBAdminDesignProposal.md`](../../Docs/Research/UltraDBAdminDesignProposal.md).
 
@@ -11,14 +12,14 @@ files, exporting tables, query results and whole schemas, and the
 operations on a whole object - create, copy, rename, empty, drop - with
 SQLite's maintenance; and from stage 4, a schema's relations as an ER
 diagram, its triggers and routines, and the server's sessions, settings and
-sizes.** The console runs
+sizes; and stage 3, all of it on MySQL and MariaDB too.** The console runs
 whatever SQL it is given, so a connection marked *read only* (the database
 refuses every change, and neither Browse nor Structure offers editing) is
 the way to make it safe.
 
 | | |
 |---|---|
-| **Connections** | SQLite files and PostgreSQL servers (host or socket directory, port, database, user, password, TLS posture), added and edited in a dialog, kept in `connections.json` in the data folder. A password is stored in the app's own encrypted vault (`vault/`, UltraVault's device-key vault) and never written to the list; the connection hands UltraDatabase only the vault key. *Production* draws a connection in red; *read only* makes the database refuse changes. |
+| **Connections** | SQLite files, PostgreSQL servers and MySQL / MariaDB servers (host or socket - a directory for PostgreSQL, the socket file for MySQL - port, 5432 or 3306 when empty, database, user, password, TLS posture), added and edited in a dialog, kept in `connections.json` in the data folder. A password is stored in the app's own encrypted vault (`vault/`, UltraVault's device-key vault) and never written to the list; the connection hands UltraDatabase only the vault key. *Production* draws a connection in red; *read only* makes the database refuse changes. |
 | **Tabs** | Each table or view picked in the tree opens in a tab of its own, in a row above Browse, Structure, SQL, Search, Relations, Routines and Server; a click shows it again as it was left - its page, its order, its filters and the changes staged to it, which a tab marks with `*` and keeps until they are committed, reverted or the tab is closed (which asks first). Up to ten are open; the eleventh takes the place of the oldest with nothing staged. |
 | **Tree menu** | A right-click on a connection, a schema or an object offers what can be done to it. A table: open it, its structure, export its rows, copy its name (quoted), **Copy table** (a new name, with or without its rows: SQLite from the table's own CREATE TABLE and its indexes, renamed; PostgreSQL `LIKE ... INCLUDING ALL`, the identity moved past the rows), **Rename**, **Empty table** (DELETE or TRUNCATE, the counter reset if asked), **Drop**, and its maintenance. A schema - and a SQLite connection, whose schema is `main` - : **New table** (a line per column: name, type, NOT NULL, key, numbered, default - checked as one SQL fragment each), **Search every table**, **Export as SQL**, **Relations**, **Routines**, and maintenance: SQLite's *Check integrity*, *Quick check*, *Analyze*, *Optimize*, *Vacuum* and journal mode; PostgreSQL's *Analyze* and *Vacuum* on a connection or a table. Each operation shows its SQL before it runs (`engine/DbAdminOperations`); none writes CASCADE; a read-only connection offers only what reads; the ones that remove something are red and ask. |
 | **Tree** | Each connection's schemas, and in each its tables, views, materialized views, foreign tables and sequences (`UltraDb_ListSchemas`, `UltraDb_ListObjects`), read when the node is expanded. A server that cannot be reached says why in the tree; collapsing and expanding tries again, **Refresh** reconnects. |
@@ -55,8 +56,60 @@ even while a page loads or a script runs: UltraDatabase keeps a connection
 until the last call on it returns, so what is running finishes on the old
 settings and the next query uses the new.
 
-SSH tunnels, the server's monitor charts and MySQL are the later stages of
-the proposal.
+SSH tunnels and the server's monitor charts are the later stages of the
+proposal.
+
+## MySQL and MariaDB
+
+A MySQL or MariaDB connection goes through UltraDatabase's driver over
+MariaDB Connector/C, which speaks to both; a MySQL database is a schema in
+the tree. Every name is quoted with backticks (`UltraDb_QuoteIdentifier`),
+and where the engines differ, each tab says it MySQL's way:
+
+- **Browse and Search**: "contains" is `CAST(column AS CHAR) LIKE ? ESCAPE '!'`
+  - `!` rather than a backslash, which a server in `NO_BACKSLASH_ESCAPES`
+  mode reads differently - in any case as the column's collation compares;
+  Search's "is exactly" compares with `BINARY`, so case counts.
+- **Structure**: a column whose type, NOT NULL or default changes is
+  restated with `MODIFY COLUMN`, saying its `AUTO_INCREMENT`, collation and
+  comment again (an `ON UPDATE` clause is not kept, and the preview says
+  so); an index is dropped with `DROP INDEX ... ON` its table. MySQL commits
+  before and after every `ALTER TABLE`, so Apply runs the steps one by one,
+  and a failure leaves the steps before it done - the preview says that too.
+- **Operations**: **Empty table** is `TRUNCATE` (the counter reset) or
+  `DELETE`; **Rename** is `RENAME TABLE`, for a view too; **Copy table** is
+  `CREATE TABLE ... LIKE` and `INSERT ... SELECT` without the generated
+  columns (no foreign keys come with it, and the plan says so). The
+  maintenance - *Check integrity* (`CHECK TABLE`), *Quick check*, *Analyze*,
+  *Optimize* - is on a table, as each statement names one. DDL runs outside
+  a transaction, which MySQL would commit anyway.
+- **SQL**: a script is split as the mysql client splits it -
+  `DELIMITER` lines, a `BEGIN ... END` body, `#` and `-- ` comments,
+  backslash escapes and backticks - by the same splitter UltraDb_ExecBatch
+  runs it with (`UltraDb_MysqlScriptStatements`), so Import SQL's count and
+  the statement under the caret are the ones that run. **Explain** is
+  `EXPLAIN`.
+- **Export and the dump**: strings escaped as mysqldump escapes them, a blob
+  as `X'..'`; a table's export writes its `SHOW CREATE TABLE` first. **Export
+  as SQL** on a database writes, as mysqldump does, `SET FOREIGN_KEY_CHECKS = 0`,
+  each table's `SHOW CREATE TABLE` and rows, its triggers between
+  `DELIMITER ;;` lines, then the views - every name without the database and
+  no `DEFINER` clause, so the file loads into whichever database is in use,
+  as any user. Procedures, functions and events are mysqldump's to write.
+- **Routines**: triggers, functions and procedures with their parameters.
+  **Edit in SQL** gives `DROP ... IF EXISTS` and the definition between
+  `DELIMITER $$` lines, named with its database and without its `DEFINER`, as
+  MySQL replaces none in place; the templates do the same, a function
+  `DETERMINISTIC` (binary logging refuses one that says nothing).
+- **Server**: **Sessions** from the process list (without the `PROCESS`
+  privilege, the user's own), **Stop query** `KILL QUERY` and **End
+  session** `KILL`; **Settings** - MariaDB's system variables with their
+  descriptions, MySQL's with where each value came from; **Sizes** from
+  `information_schema.TABLES`. Every tab reads the server through
+  UltraDatabase's server administration (`UltraDb_ServerSessions`,
+  `UltraDb_ServerSettings`, `UltraDb_ServerSizes`, `UltraDb_StopSession`),
+  PostgreSQL's too.
+- **Row form**: `UTC_TIMESTAMP()` and `UUID()` among the value functions.
 
 ## Data folder
 
@@ -77,8 +130,9 @@ Apps/UltraDBAdmin/
 ├── engine/                       no UI - compiled headless by Tests/UltraDBAdmin
 │   ├── DbAdminBlob               what a blob is, by its bytes; its hex dump
 │   ├── DbAdminConnections        the connection list and its vault
-│   ├── DbAdminDump               a whole schema as one SQL file; a PostgreSQL table's definition
+│   ├── DbAdminDump               a whole schema or database as one SQL file; a PostgreSQL table's definition
 │   ├── DbAdminEditBuffer         staged row edits, their SQL, the commit
+│   ├── DbAdminEngine             the SQL dialect a connection speaks
 │   ├── DbAdminExport             rows to CSV, JSON, SQL through a cursor; a workbook's cells
 │   ├── DbAdminFormat             a value as one line of a grid cell
 │   ├── DbAdminImport             a file's rows mapped onto a table, inserted all or none
@@ -88,11 +142,11 @@ Apps/UltraDBAdmin/
 │   ├── DbAdminRelations          a schema's tables and the links between them, in layers
 │   ├── DbAdminRoutines           triggers, functions, procedures: listed, edited, dropped, templates
 │   ├── DbAdminSearch             a text in every table: a count per column
-│   ├── DbAdminServer             PostgreSQL's sessions, settings and sizes; SQLite's file
+│   ├── DbAdminServer             a server's sessions, settings and sizes, as the grid shows them; SQLite's file
 │   ├── DbAdminSnippets           the saved snippets
 │   ├── DbAdminSqlLog             every statement the app ran
 │   ├── DbAdminSqlRunner          a script on a worker thread, Stop, history, one transaction
-│   ├── DbAdminSqlScript          a SQL file read before it runs: statements, risks, psql-only parts
+│   ├── DbAdminSqlScript          a SQL file read before it runs: statements, risks, psql-only parts; MySQL's split
 │   ├── DbAdminSqliteTable        a SQLite CREATE TABLE read and rewritten, for the rebuild
 │   ├── DbAdminStructureEdit      staged structure edits, their DDL per engine, Apply
 │   ├── DbAdminTablePager         the Browse view's pages and filters
@@ -138,7 +192,15 @@ stopped export leaving the file that was there, and a workbook's cells -
 and Browse's filters (counts on SQLite and PostgreSQL, `%` and `_` matched
 literally, ILIKE, a number and a date compared by type), a blob staged,
 written and read back on both engines, rows copied as CSV, JSON and
-INSERTs, a blob's kind and hex dump, and the table a SELECT reads.
+INSERTs, a blob's kind and hex dump, and the table a SELECT reads. On
+MySQL / MariaDB, where `ULTRADB_TEST_MYSQL_*` name a server (CI runs MySQL
+8; the suites also pass on MariaDB 10.11): Browse's filters (`%`, `_`, `!` and
+a backslash matched literally, a number searched as text) and a blob with a
+backslash and a quote in it written and read back, and the structure edits
+(`MODIFY COLUMN` keeping `AUTO_INCREMENT` and the comment, `DROP INDEX ...
+ON`, each step on its own, a conversion the data refuses stopping before the
+rename), and a MySQL script's statements counted past `DELIMITER`, `#`
+comments, escapes and backticks.
 
 A second program, `UltraDBAdminOperationsTests`, has the rest: the SQL log
 (every statement, the app's connections only, no bound value in it), the
@@ -154,7 +216,14 @@ identity, serial and generated columns, jsonb, bytea, comments, views,
 indexes, triggers - and again with DROP first, structure only, data only, a
 stopped dump leaving the file that was there; the snippets, the statement
 under the caret, EXPLAIN, the row form's checks and value functions, and
-auto-commit kept with a connection.
+auto-commit kept with a connection. On MySQL / MariaDB: the operations (an
+`AUTO_INCREMENT` table created outside a transaction, copied with its index
+and generated column, truncated, renamed, its four maintenance reports, a
+referenced row neither deleted nor its table dropped), the search (any case,
+`BINARY` for exactly, `%` and `_` literal, a blob left out) and the dump of a
+database read back into an empty one (a backslash, a newline, quotes and a
+`;` in a value, a blob, a generated column, the counter, the foreign key, the
+trigger, the view, the table's comment), and again with DROP first.
 
 A third, `UltraDBAdminSchemaTests`, has stage 4's: the relations of a
 schema on both engines (a required one-to-many, a one-to-one by a primary
@@ -167,4 +236,10 @@ trigger calls refused, new ones from their templates, an extension's
 functions left out); and the server views (SQLite's file in WAL mode with
 its `user_version`; PostgreSQL's sessions with this one among them, a
 running `pg_sleep` stopped from another session, the settings filter in any
-case and with `%` typed, every setting, the sizes).
+case and with `%` typed, every setting, the sizes) - and all three again on
+MySQL / MariaDB: the relations of a database written with `FOREIGN KEY`
+clauses (MySQL 8 ignores a column's `REFERENCES`), the routines (a trigger
+edited between `DELIMITER` lines and the edit the one that fires, a function
+edited where it lives and dropped by its name, a procedure, the templates),
+and the server (the sessions, `max_connections` found in any case, a
+`SLEEP` stopped with `KILL QUERY`, a session not there not stopped).

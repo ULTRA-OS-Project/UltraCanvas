@@ -226,7 +226,7 @@ void ShowColumnDialog(UltraCanvasWindowBase* parent, const StructureEdit& edit, 
     auto expression = CreateTextInput("dbcDefault", 0, 0, 0, kRowHeight);
     expression->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     expression->SetText(current.defaultExpression);
-    expression->SetPlaceholder(sqlite ? "0, 'text', CURRENT_TIMESTAMP" : "0, 'text', now()");
+    expression->SetPlaceholder(edit.Engine() == SqlEngine::Postgres ? "0, 'text', now()" : "0, 'text', CURRENT_TIMESTAMP");
     expression->SetTooltip("SQL, as written after DEFAULT: a string needs its quotes.");
     form->defaultExpression = expression.get();
     defaultLine->AddChild(expression);

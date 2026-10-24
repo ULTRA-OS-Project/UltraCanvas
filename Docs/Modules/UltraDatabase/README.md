@@ -242,8 +242,13 @@ PostgreSQL they are server-side - `WITH HOLD` outside a transaction, so the
 connection is free for other statements between pages, `WITHOUT HOLD`
 inside one, where they end with it. **Scripts** are split as psql splits
 them on PostgreSQL (semicolons outside text, comments and `BEGIN ATOMIC`
-bodies) and by SQLite itself on SQLite; each statement reports its text,
-outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
+bodies), by SQLite itself on SQLite, and as the mysql client splits them on
+MySQL / MariaDB (`DELIMITER` lines, `BEGIN ... END` bodies, `#` comments,
+backslash escapes); each statement reports its text, outcome and rows.
+`UltraDb_MysqlScriptStatements(script)` gives the same MySQL split as byte
+offsets - where each statement begins, ends and its terminator ends - for
+an editor that runs the statement under the caret or counts a file's
+statements before it imports them. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
 both safe from another thread while the statement holds the connection.
 
 **Watching statements.** `UltraDb_AddStatementObserver` reports every

@@ -4,6 +4,7 @@
 // tab (DbAdminServer). Each reads what it shows on the job queue, and on
 // Refresh: Routines and Server whenever they are shown, Relations - a read of
 // every table - when the tree's selection is in another schema than it shows. DbAdminWindow.h says what the window is.
+// Version: 0.2.0 - a session stopped through UltraDb_StopSession; a layer wraps only well past the view
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminWindow.h"
@@ -64,7 +65,10 @@ void PlaceInLayers(UltraCanvasERDiagram& diagram, const std::vector<std::vector<
                 area += (entity->width + 60.0) * (entity->height + 60.0);
                 longest = std::max(longest, along(*entity));
             }
-    const double wrap = std::max(longest, columns ? std::sqrt(area / aspect) : std::sqrt(area * aspect));
+    // A layer wraps only when well past the view's shape: the tables it
+    // pushes on sit beyond the next layer, their links crossing it.
+    const double wrap =
+        std::max(longest, 1.5 * (columns ? std::sqrt(area / aspect) : std::sqrt(area * aspect)));
     struct Line {
         std::vector<std::string> ids;
         double length = 0.0, thickness = 0.0;
