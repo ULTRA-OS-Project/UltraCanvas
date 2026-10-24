@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminConnections.cpp
+// Version: 0.3.0 - EngineOf
 // Version: 0.2.0 - auto-commit per connection
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -96,6 +97,10 @@ std::string ConnectionIdOf(const std::string& registeredName) {
     if (id.size() > console.size() && id.compare(id.size() - console.size(), console.size(), console) == 0)
         id.resize(id.size() - console.size());
     return id;
+}
+
+SqlEngine EngineOf(const ConnectionSpec& spec) {
+    return spec.IsSqlite() ? SqlEngine::Sqlite : spec.IsMysql() ? SqlEngine::MySql : SqlEngine::Postgres;
 }
 
 std::string Describe(const ConnectionSpec& spec) {

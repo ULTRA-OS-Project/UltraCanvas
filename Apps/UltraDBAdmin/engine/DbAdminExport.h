@@ -60,9 +60,11 @@ std::string CsvField(const UltraDbValue& value);                        // NULL:
 std::string JsonValue(const UltraDbValue& value);
 std::string SqlLiteral(const UltraDbValue& value, SqlEngine engine);
 
-// A name as SQLite and PostgreSQL both read it: in double quotes, a quote
-// inside doubled - "order ""items""".
-std::string QuotedName(const std::string& name);
+// A name as `engine` reads it: SQLite and PostgreSQL in double quotes, a
+// quote inside doubled - "order ""items""" - MySQL in backticks, a backtick
+// inside doubled (double quotes name something there only under
+// ANSI_QUOTES, and are a string otherwise).
+std::string QuotedName(SqlEngine engine, const std::string& name);
 
 // Rows as text, the way the file formats write them: CSV (a header line,
 // commas, quotes only where needed, LF), JSON (an array of objects) or SQL
@@ -133,5 +135,10 @@ UltraDbResult TableQuery(const std::string& connection, const UltraDbTableSchema
 // What a SQL export of a SQLite table writes first: its CREATE TABLE and the
 // CREATE INDEX statements, so the file rebuilds the table. "" elsewhere.
 UltraDbResult SqlitePreamble(const std::string& connection, const UltraDbTableSchema& table, std::string& out);
+
+// The same for a MySQL / MariaDB table: SHOW CREATE TABLE, its indexes, keys
+// and AUTO_INCREMENT counter with it. A table with generated columns, whose
+// INSERTs would be refused, gets a comment saying so instead.
+UltraDbResult MysqlPreamble(const std::string& connection, const UltraDbTableSchema& table, std::string& out);
 
 } // namespace UltraDBAdmin

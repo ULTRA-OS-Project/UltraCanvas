@@ -4,11 +4,13 @@
 // Search and the SQL log; DbAdminWindowSchema.cpp, Relations, Routines and
 // Server): its sizes, its tab order and the small layout
 // helpers its pages are built with. Internal to the window.
+// Version: 0.3.0 - ProductionNote shared
 // Version: 0.2.0 - the Relations, Routines and Server tabs
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "DbAdminConnections.h"
 #include "DbAdminFormat.h"
 #include "DbAdminTheme.h"
 
@@ -200,6 +202,11 @@ inline LineColumnIndex LineColumnAt(const std::string& text, size_t offset) {
         else if ((c & 0xC0) != 0x80) ++at.columnIndex;
     }
     return at;
+}
+
+// Said before a confirmation's question on a production connection.
+inline std::string ProductionNote(const ConnectionSpec& spec) {
+    return spec.production ? spec.name + " is a production connection. " : std::string();
 }
 
 // The first line of a script, for the history dropdown.

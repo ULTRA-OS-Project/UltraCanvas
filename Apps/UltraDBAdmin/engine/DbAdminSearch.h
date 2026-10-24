@@ -6,14 +6,16 @@
 // in every comparison, never written into the SQL.
 //
 //   Contains  - the column read as text holds it, in any case: LIKE on
-//               SQLite (ASCII case), ILIKE on PostgreSQL; %, _ and \ in the
-//               text matched as themselves (ESCAPE '\').
+//               SQLite (ASCII case), ILIKE on PostgreSQL, LIKE on MySQL (the
+//               connection's collation ignores case); %, _ and the escape in
+//               the text matched as themselves (ESCAPE '\', MySQL '!').
 //   Exactly   - the column read as text is it, case and all.
 //
 // Blob columns are not searched. The window runs one table per job, so the
 // search can be stopped between tables and never holds up a Browse page for
 // longer than one table takes. A hit opens the table filtered on that
 // column (Browse's filter: contains, or =).
+// Version: 0.3.0 - MySQL: LIKE with '!' as the escape; LikeEscaped takes the escape
 // Version: 0.2.0 - LikeEscaped, for any LIKE ... ESCAPE '\' with typed text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -31,8 +33,9 @@ namespace UltraDBAdmin {
 
 enum class SearchMode { Contains, Exactly };
 
-// `text` for a LIKE pattern with ESCAPE '\': %, _ and \ matched as written.
-std::string LikeEscaped(const std::string& text);
+// `text` for a LIKE pattern with ESCAPE `escape`: %, _ and the escape itself
+// matched as written.
+std::string LikeEscaped(const std::string& text, char escape = '\\');
 
 struct SearchHit {
     std::string schema;

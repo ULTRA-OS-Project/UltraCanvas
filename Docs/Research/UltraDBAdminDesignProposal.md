@@ -154,7 +154,7 @@ completion — which are the parts phpMyAdmin is weakest at.
 | Named connection registry | yes; register, open, close, info by name | `include/UltraDatabase/UltraDatabaseConnection.h` |
 | Enumerate registered connections | **no** — `UltraDb_GetConnectionInfo` needs the name | same |
 | Drivers | `sqlite` (bundled), `postgresql` (when libpq is found) | `core/UltraDatabase/UltraDatabase{Sqlite,Postgres}Driver.cpp` |
-| MySQL / MariaDB | **no** — Stage 2 plan | `Docs/Modules/UltraDatabase/README.md`, `master_dependencies.yaml` |
+| MySQL / MariaDB | **no** — Stage 2 plan (since added: UltraDatabase 0.5.0, stage 3 below) | `Docs/Modules/UltraDatabase/README.md`, `master_dependencies.yaml` |
 | Parameterised query, exec, prepared statements | yes | `UltraDatabaseQuery.h` |
 | Transactions | yes, handle-based | `UltraDatabaseTransaction.h` |
 | Versioned migrations | yes | `UltraDatabaseMigrate.h` |
@@ -562,9 +562,25 @@ file. Read straight from the catalogs (`pg_stat_activity`, `pg_settings`,
 G10 module extension; the module gains one when MySQL needs the same views.
 SSH tunnels (G9) and monitor charts are still to come.
 
-MySQL stays at stage 3, after editing: it is not the priority (decided
-2026-10-20). Stage 1 alone already replaces the "install DB Browser for
-SQLite" step for supporting ULTRA OS apps.
+**Stage 3 followed** (UltraDatabase 0.5.0): the MySQL / MariaDB driver
+(G8) over MariaDB Connector/C, linked dynamically (LGPL-2.1), with its
+introspection, cancel, cursors and a script splitter that reads `DELIMITER`
+as the mysql client does; and G10 after all - the server administration
+(`UltraDatabaseServer.h`: sessions, settings, sizes, a session stopped) in
+the module, filled by the PostgreSQL and the MySQL driver alike, which the
+Server tab now reads for both instead of its own catalog queries. The app
+needed more than DDL spellings: backtick quoting everywhere it builds SQL
+(the engine passed to every name it quotes), `LIKE ... ESCAPE '!'` and
+`CAST AS CHAR` for the filters and Search, `MODIFY COLUMN` restating a
+column (its `AUTO_INCREMENT`, collation and comment), and DDL run statement
+by statement - MySQL commits around each, so no plan of Structure or the
+operations can promise all-or-nothing there, and each says so. The dump is
+mysqldump's shape; routines are edited as `DROP` and `CREATE` between
+`DELIMITER` lines. MariaDB 10.11 locally and MySQL 8 in CI run the same
+tests.
+
+Stage 1 alone already replaces the "install DB Browser for SQLite" step for
+supporting ULTRA OS apps.
 
 ### 8.1 The browser build and its relay
 

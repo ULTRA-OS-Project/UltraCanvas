@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminExport.cpp
+// Version: 0.4.0 - MySQL: names in backticks, strings escaped as mysqldump escapes them; MysqlPreamble
 // Version: 0.3.0 - a postamble before COMMIT
 // Version: 0.2.0 - RowsText, QuotedName
 // Version: 0.1.0
@@ -87,9 +88,27 @@ std::string SqlLiteral(const UltraDbValue& value, SqlEngine engine) {
         case UltraDbType::Int:    return value.AsString();
         case UltraDbType::Double: return Finite(value) ? value.AsString() : "NULL";
         case UltraDbType::Blob:
-            return engine == SqlEngine::Sqlite ? "X'" + Hex(value.AsBlob()) + "'"
-                                               : "decode('" + Hex(value.AsBlob()) + "', 'hex')";
+            return engine != SqlEngine::Postgres ? "X'" + Hex(value.AsBlob()) + "'"
+                                                 : "decode('" + Hex(value.AsBlob()) + "', 'hex')";
         case UltraDbType::Text: {
+            if (engine == SqlEngine::MySql) {
+                // As mysqldump writes it: a backslash escapes in MySQL's
+                // strings, so it, a quote and the characters a line or a
+                // file would break on are escaped with one.
+                std::string out = "'";
+                for (const char c : value.AsString()) {
+                    switch (c) {
+                        case '\\': out += "\\\\"; break;
+                        case '\'': out += "\\'"; break;
+                        case '\0': out += "\\0"; break;
+                        case '\n': out += "\\n"; break;
+                        case '\r': out += "\\r"; break;
+                        case '\x1a': out += "\\Z"; break;
+                        default: out += c;
+                    }
+                }
+                return out + "'";
+            }
             std::string out = "'";
             for (const char c : value.AsString()) {
                 if (c == '\'') out += '\'';
@@ -178,13 +197,14 @@ bool ExportWriter::Open(const std::string& path, const ExportOptions& options, c
     return true;
 }
 
-std::string QuotedName(const std::string& name) {
-    std::string out = "\"";
+std::string QuotedName(SqlEngine engine, const std::string& name) {
+    const char quote = engine == SqlEngine::MySql ? '`' : '"';
+    std::string out(1, quote);
     for (const char c : name) {
-        if (c == '"') out += '"';
+        if (c == quote) out += quote;
         out += c;
     }
-    return out + "\"";
+    return out + quote;
 }
 
 std::string RowsText(const std::vector<std::string>& columns, const std::vector<UltraDbRow>& rows,
@@ -214,7 +234,7 @@ std::string RowsText(const std::vector<std::string>& columns, const std::vector<
         }
         case ExportFormat::Sql: {
             std::string names;
-            for (size_t i = 0; i < columns.size(); ++i) names += (i == 0 ? "" : ", ") + QuotedName(columns[i]);
+            for (size_t i = 0; i < columns.size(); ++i) names += (i == 0 ? "" : ", ") + QuotedName(engine, columns[i]);
             for (const auto& row : rows) {
                 text += "INSERT INTO " + table + " (" + names + ") VALUES (";
                 for (size_t i = 0; i < row.Size(); ++i) text += (i == 0 ? "" : ", ") + SqlLiteral(row[i], engine);
@@ -404,6 +424,26 @@ UltraDbResult SqlitePreamble(const std::string& connection, const UltraDbTableSc
     if (!result) return result;
     out = source.createSql + ";\n";
     for (const auto& [name, sql] : source.indexes) out += sql + ";\n";
+    return UltraDbResult::Ok();
+}
+
+UltraDbResult MysqlPreamble(const std::string& connection, const UltraDbTableSchema& table, std::string& out) {
+    out.clear();
+    if (table.kind != UltraDbObjectKind::Table) return UltraDbResult::Ok();
+    for (const auto& column : table.columns) {
+        if (!column.generated) continue;
+        // MySQL refuses a value for a generated column: the rows alone, said so.
+        out = "-- The rows of " + table.schema + "." + table.name +
+              " only: it has columns the database computes, which take no value; Export as SQL on its database "
+              "(the tree's menu) writes a file that rebuilds it.\n";
+        return UltraDbResult::Ok();
+    }
+    UltraDbResultSet rows;
+    const UltraDbResult result =
+        UltraDb_Query(connection, "SHOW CREATE TABLE " + QuotedName(SqlEngine::MySql, table.schema) + "." +
+                                      QuotedName(SqlEngine::MySql, table.name), {}, rows);
+    if (!result) return result;
+    if (rows.Size() == 1 && !rows.Row(0)["Create Table"].IsNull()) out = rows.Row(0)["Create Table"].AsString() + ";\n";
     return UltraDbResult::Ok();
 }
 
