@@ -379,6 +379,13 @@ dead, which apt itself waits out for as long as the job lasts. The build's
 Linux legs also restore the packages the last run on `main` downloaded
 (`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
 serves only what changed.
+A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
+ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
+its runner is five to ten times slower and the two macOS rows share one code
+base and one packaging script. A pull request that changes what only the
+Intel toolchain would catch (the macOS platform layer, the packaging, a
+bundled library) asks for that row with the `ci:intel` label; adding it
+starts a run with the full matrix.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 
