@@ -89,6 +89,10 @@ namespace UltraCanvas {
         // it never pays for loading a backend and a dictionary.
         bool spellCheckEnabled = false;
         std::string spellCheckLanguage = "";   // empty = detect from the locale
+        // Switch the dictionary when most words of the document being edited
+        // are flagged and another installed language fits it (fewer than 10%
+        // flagged) - the text is evidently in that language.
+        bool spellCheckAutoLanguage = true;
 
         const std::vector<int> fontZoomPercents = {50,65,80,90,100,110,125,150,175,200};
         int fontZoomPercent = 100;
@@ -518,6 +522,10 @@ namespace UltraCanvas {
         void OnSpellLanguageChanged(const std::string& languageCode);
         // Menu handler: switches dictionary, and switches checking on with it.
         void OnSpellDictionarySelected(const std::string& languageCode);
+        // Automatic language detection: the service setting follows the config,
+        // and a suggestion from the document being edited switches dictionary.
+        void ApplySpellLanguageDetection();
+        void OnSpellLanguageSuggested(const DocumentTab* doc, const std::string& languageCode);
         std::vector<MenuItemData> BuildSpellingMenuItems();
         // Rows, columns, merge and split for the table the caret is in.
         std::vector<MenuItemData> BuildTableMenuItems();
