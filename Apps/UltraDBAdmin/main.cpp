@@ -30,6 +30,9 @@
 #include "UltraCanvasUtils.h"
 #if defined(ULTRADBADMIN_WEB)
 #include "web/DbAdminRelayWeb.h"
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+#include "UltraCanvasVectorFormatsPlugin.h"
+#endif
 #else
 #include <UltraDatabase/UltraDatabaseRelayUltraNet.h>
 #include <UltraDatabase/UltraDatabaseSshTunnel.h>
@@ -92,6 +95,11 @@ int main(int, char*[]) {
         debugOutput << "Failed to initialize the UltraCanvas application" << std::endl;
         return EXIT_FAILURE;
     }
+    // The icons are SVG, which the browser's libvips cannot read: the Vector
+    // plugin reads them.
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+    RegisterVectorFormatsPlugin();
+#endif
     UltraCanvasTheme::SetCurrent(UltraDBAdmin::AppTheme());
     UltraDBAdmin::UseBrowserRelay();
     static UltraDBAdmin::DbAdminWindow window;

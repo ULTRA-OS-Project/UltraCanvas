@@ -90,12 +90,20 @@ target_include_directories(UltraDBAdmin PRIVATE
 # Modules before the core on the link line: GNU ld resolves left to right.
 if(EMSCRIPTEN)
     target_link_libraries(UltraDBAdmin PRIVATE UltraDatabase ${ULTRACANVAS_LIBRARY})
+    # The icons are SVG, and the browser's libvips reads none: the Vector
+    # plugin's preview seam does (UltraCanvas/OS/WASM/README.md). Linking it
+    # defines ULTRACANVAS_HAS_VECTOR_PLUGIN, and main.cpp registers it.
+    if(TARGET UltraCanvasVectorPlugin)
+        target_link_libraries(UltraDBAdmin PRIVATE UltraCanvasVectorPlugin)
+    endif()
     target_compile_definitions(UltraDBAdmin PRIVATE ULTRADBADMIN_WEB=1 ULTRADBADMIN_NO_VAULT=1)
     # The page: UltraDBAdmin.html, its fonts, icons and app icon preloaded at
     # /share/ (GetResourcesDir() in the browser), the browser's WebSocket for
     # the relay, and a shell that fills the viewport.
     set_target_properties(UltraDBAdmin PROPERTIES SUFFIX ".html")
-    foreach(_dba_preload media/fonts media/icons/dbadmin media/appicon/UltraDBAdmin.png)
+    # (and the one framework icon it shows: the tab row's overflow arrow)
+    foreach(_dba_preload media/fonts media/icons/dbadmin media/icons/arrow_down_solid.svg
+                         media/appicon/UltraDBAdmin.png)
         target_link_options(UltraDBAdmin PRIVATE
             "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/${_dba_preload}@/share/${_dba_preload}")
     endforeach()

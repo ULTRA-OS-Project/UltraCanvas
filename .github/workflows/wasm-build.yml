@@ -235,7 +235,8 @@ jobs:
             echo ""
             echo "| File | Raw | gzip -9 | brotli -q 11 |"
             echo "|---|---:|---:|---:|"
-            for demo in UltraCanvasDemo wasm-demo ultraos-frontpage; do
+            for demo in UltraCanvasDemo wasm-demo ultraos-frontpage UltraDBAdmin; do
+              [ -f "$demo.wasm" ] || continue      # UltraDBAdmin: the baseline only
               total=0
               for f in "$demo".wasm "$demo".js "$demo".data "$demo".ww.js; do
                 [ -f "$f" ] || continue
@@ -267,7 +268,7 @@ jobs:
           # relay's WebSocket, puts the browser's own error on the console.
           case "$CONFIGURE" in
             *BUILD_ULTRADBADMIN=ON*)
-              cp build-wasm/Apps/UltraDBAdmin/UltraDBAdmin.{html,js,wasm,data} wasm-demo/ ;;
+              cp build-wasm/UltraDBAdmin.{html,js,wasm,data} wasm-demo/ ;;
           esac
           ls -l wasm-demo
 

@@ -66,7 +66,10 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     std::string error;
     if (dataDirectory.empty()) {
         store_.OpenInMemory();
+#if !defined(ULTRADBADMIN_WEB)
+        // A page keeps nothing by design: the relay is its list.
         storeNote_ = "No data folder: connections are kept until the app closes.";
+#endif
     } else if (!store_.Open(dataDirectory, error)) {
         store_.OpenInMemory();
         storeNote_ = "Connections cannot be saved (" + error + "); they are kept until the app closes.";
