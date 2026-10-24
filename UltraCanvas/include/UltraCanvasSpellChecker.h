@@ -119,7 +119,10 @@ struct SpellCheckResult {
 struct SpellLanguageDetectionOptions {
     bool enabled = false;
     double triggerErrorRate = 0.70;   // more misspelled than this starts a detection
-    double acceptErrorRate = 0.10;    // the best dictionary must flag fewer than this
+    // The best dictionary must flag fewer than this. Not lower: names, brands
+    // and technical terms are in no dictionary, so real text in the right
+    // language routinely has a tenth of its words flagged.
+    double acceptErrorRate = 0.15;
     int minimumWords = 10;            // fewer checked words never start a detection
     int maximumSampleWords = 300;     // words looked up per candidate dictionary
 };

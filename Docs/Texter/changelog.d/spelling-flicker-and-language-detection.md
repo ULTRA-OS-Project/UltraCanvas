@@ -9,7 +9,7 @@
   the words in the document being edited are flagged, it is almost certainly
   written in another language than the dictionary in use. Texter then checks
   the text against the other installed dictionaries and switches to the one
-  that flags the fewest words, provided it flags fewer than 10% - type a German
+  that flags the fewest words, provided it flags fewer than 15% - type a German
   text with English selected and the dictionary changes to German by itself.
   The choice is stored like one made from *Edit > Spelling > Dictionary*. Only
   the active tab switches the language, so two documents in two languages do

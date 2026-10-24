@@ -15,7 +15,7 @@
   the current one first) and returns the best fit with its error rate, leaving
   the active language as it was. With `SetLanguageDetectionOptions({enabled =
   true})` the worker runs it by itself when a check flags more than 70% of at
-  least 10 words, and a dictionary flagging fewer than 10% comes back as
+  least 10 words, and a dictionary flagging fewer than 15% comes back as
   `SpellCheckResult::suggestedLanguage`; both thresholds are options. The
   service never switches by itself: `UltraCanvasTextArea::onSpellLanguageSuggested`
   and `UltraCanvasRichTextEdit::onSpellLanguageSuggested` hand the suggestion

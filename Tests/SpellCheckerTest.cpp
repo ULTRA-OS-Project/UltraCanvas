@@ -1,6 +1,7 @@
 // SpellCheckerTest.cpp
 // Test suite for the UltraCanvasSpellChecker service, tokenizer and backends
-// Version: 1.2.0 - error rebasing across edits, language detection
+// Version: 1.2.0 - error rebasing across edits, language detection; the newest-job
+//                  check runs against a gated backend, so it no longer depends on timing
 // Version: 1.1.0
 // Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
@@ -16,7 +17,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <map>
+#include <mutex>
 #include <set>
 #include <cstdlib>
 #include <memory>
@@ -119,6 +122,50 @@ private:
     std::string current;
 };
 
+
+// Holds the worker inside a check until the test lets it go, so "a newer job
+// was queued while this one ran" happens every time instead of only when the
+// scheduler happens to interleave the threads that way.
+class GatedSpellBackend : public ISpellCheckBackend {
+public:
+    std::string GetBackendName() const override { return "gated"; }
+    bool Initialize() override { return true; }
+    void Shutdown() override {}
+    std::vector<SpellLanguageInfo> EnumerateLanguages() override {
+        SpellLanguageInfo info = ResolveSpellLanguageNames("en-US");
+        info.code = "en-US";
+        info.isAvailable = true;
+        return { info };
+    }
+    bool SetLanguage(const std::string& languageCode) override { return languageCode == "en-US"; }
+    std::string GetLanguage() const override { return "en-US"; }
+    std::vector<std::string> GetSuggestions(const std::string&, int) override { return {}; }
+
+    bool IsWordCorrect(const std::string& word) override {
+        std::unique_lock<std::mutex> lock(mutex);
+        entered = true;
+        changed.notify_all();
+        changed.wait(lock, [this] { return open; });
+        return word != "sentance";
+    }
+
+    // True once the worker is inside a check, within the timeout.
+    bool WaitUntilEntered() {
+        std::unique_lock<std::mutex> lock(mutex);
+        return changed.wait_for(lock, std::chrono::seconds(5), [this] { return entered; });
+    }
+    void Open() {
+        std::lock_guard<std::mutex> lock(mutex);
+        open = true;
+        changed.notify_all();
+    }
+
+private:
+    std::mutex mutex;
+    std::condition_variable changed;
+    bool entered = false;
+    bool open = false;
+};
 
 // A backend with a small word list per language, so language detection can be
 // tested without any dictionary installed. It records every language it was
@@ -516,19 +563,30 @@ int main() {
         TEST("Each queued job gets a distinct id", secondJob != firstJob);
         TEST("Job ids increase monotonically", secondJob > firstJob);
 
-        // Drain: the worker publishes at most one result per context, and it is
-        // the newest job's - a superseded job must never overwrite it.
+        // Drain until the newest job's result arrives. The first job's may be
+        // taken before it, and rightly: when the worker finished it before the
+        // second was queued, it was the newest job at the time. Insisting the
+        // first result taken is the second job's made this fail now and then
+        // on a loaded machine. That a superseded job is never published once a
+        // newer one is queued is tested deterministically with the gated
+        // backend below.
         SpellCheckResult result;
         bool drained = false;
-        for (int attempt = 0; attempt < 200 && !drained; ++attempt) {
-            drained = service.TryTakeResult(contextId, result);
-            if (!drained) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        bool sawOnlyKnownJobs = true;
+        for (int attempt = 0; attempt < 300; ++attempt) {
+            SpellCheckResult taken;
+            if (service.TryTakeResult(contextId, taken)) {
+                drained = true;
+                if (taken.jobId != firstJob && taken.jobId != secondJob) sawOnlyKnownJobs = false;
+                result = std::move(taken);
+                if (result.jobId == secondJob) break;
             }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         TEST("A queued check produces a result", drained);
         TEST("Result carries the context id", !drained || result.contextId == contextId);
-        TEST("Only the newest job is published",
+        TEST("Results come only from the jobs queued", sawOnlyKnownJobs);
+        TEST("The newest job's result arrives",
              !drained || result.jobId == secondJob);
         TEST("Result reports the language it ran with",
              !drained || !result.languageCode.empty());
@@ -647,6 +705,38 @@ int main() {
         TEST("Correct words are left alone",
              drained && !HasErrorForWord(result.errors, "checking"));
 
+        service.CancelContext(contextId);
+    }
+
+    // ===== A SUPERSEDED JOB IS NEVER PUBLISHED =====
+    // The worker is held inside the first job while the second is queued, so
+    // the first finishes after it was superseded - every run, not only when
+    // the threads happen to interleave that way.
+    std::cerr << "\n--- Superseded jobs (gated backend) ---" << std::endl;
+    {
+        auto gatedBackend = std::make_unique<GatedSpellBackend>();
+        GatedSpellBackend* gate = gatedBackend.get();
+        service.SetBackend(std::move(gatedBackend));
+        service.SetMode(SpellCheckMode::AsYouType);
+
+        const uint64_t contextId = 7878;
+        const uint64_t firstJob = service.QueueCheckText(contextId, "first sentance", SpellCheckOptions());
+        TEST("The worker starts on the first job", gate->WaitUntilEntered());
+        const uint64_t secondJob = service.QueueCheckText(contextId, "second sentance", SpellCheckOptions());
+        gate->Open();
+
+        SpellCheckResult result;
+        bool drained = false;
+        for (int attempt = 0; attempt < 300 && !drained; ++attempt) {
+            drained = service.TryTakeResult(contextId, result);
+            if (!drained) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        TEST("Only the newest job is published",
+             drained && result.jobId == secondJob && result.jobId != firstJob);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        SpellCheckResult late;
+        TEST("The superseded job never turns up afterwards",
+             !service.TryTakeResult(contextId, late));
         service.CancelContext(contextId);
     }
 
@@ -824,6 +914,14 @@ int main() {
              checkOnWorker(8803, "Blorf quazzle mimbo trellak voozy sprindle", result));
         TEST("No dictionary fits, so nothing is suggested", result.suggestedLanguage.empty());
         service.CancelContext(8803);
+
+        // Real text is never all dictionary words: names and technical terms
+        // are flagged in the right language too. Two of nineteen (10.5%) must
+        // not stop the switch.
+        TEST("German text with names in it completes",
+             checkOnWorker(8805, german + " Merz Habeck", result));
+        TEST("A few names do not stop the suggestion", result.suggestedLanguage == "de-DE");
+        service.CancelContext(8805);
 
         detection.enabled = false;
         service.SetLanguageDetectionOptions(detection);

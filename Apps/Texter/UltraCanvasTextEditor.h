@@ -90,7 +90,7 @@ namespace UltraCanvas {
         bool spellCheckEnabled = false;
         std::string spellCheckLanguage = "";   // empty = detect from the locale
         // Switch the dictionary when most words of the document being edited
-        // are flagged and another installed language fits it (fewer than 10%
+        // are flagged and another installed language fits it (fewer than 15%
         // flagged) - the text is evidently in that language.
         bool spellCheckAutoLanguage = true;
 

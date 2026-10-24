@@ -225,7 +225,7 @@ options.shouldSkipRange = [snapshot](size_t startByte, size_t byteLength) -> boo
 | `SpellError` | One flagged word: byte, codepoint **and** line/column offsets, plus `word`, `kind`, `suggestions` |
 | `SpellCheckOptions` | Skip rules, suggestion policy, and the `shouldSkipRange` veto hook |
 | `SpellCheckResult` | Async result: `contextId`, `jobId`, `languageCode`, `errors`, `checkedWordCount`, `misspelledCount`, and `suggestedLanguage` when automatic detection found a better dictionary |
-| `SpellLanguageDetectionOptions` | Automatic language detection: `enabled` (off by default), `triggerErrorRate` (0.70), `acceptErrorRate` (0.10), `minimumWords`, `maximumSampleWords` |
+| `SpellLanguageDetectionOptions` | Automatic language detection: `enabled` (off by default), `triggerErrorRate` (0.70), `acceptErrorRate` (0.15), `minimumWords`, `maximumSampleWords` |
 | `SpellLanguageGuess` | What `DetectLanguage()` found: `languageCode`, `errorRate`, `sampledWords` |
 | `SpellCheckStyle` | Mark style, colours, wave geometry, stroke width |
 | `SpellMenuOptions` | Labels and section toggles for `BuildSpellCheckMenu()` |
@@ -303,7 +303,7 @@ candidate dictionary, so it is slow: call it off the UI thread.
 With `SpellLanguageDetectionOptions::enabled`, the worker does this by itself:
 a check that flags more than `triggerErrorRate` (70%) of at least
 `minimumWords` checked words runs a detection, and when another dictionary
-flags fewer than `acceptErrorRate` (10%) of the sample, the result carries it
+flags fewer than `acceptErrorRate` (15%) of the sample, the result carries it
 as `suggestedLanguage`. The service never switches on its own - the language
 is shared by every element - so the host decides:
 
