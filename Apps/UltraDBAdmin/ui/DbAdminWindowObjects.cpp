@@ -32,8 +32,6 @@ using namespace window;
 
 namespace {
 
-SqlEngine EngineOf(const ConnectionSpec& spec) { return spec.IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres; }
-
 // A chip's text: a long name ellipsized, so ten tabs still fit.
 std::string ChipText(const std::string& label) { return CellText(UltraDbValue(label), 28); }
 
@@ -46,10 +44,6 @@ const char* KindTitle(UltraDbObjectKind kind) {
         case UltraDbObjectKind::Sequence:         return "Sequence";
     }
     return "Object";
-}
-
-std::string ProductionNote(const ConnectionSpec& spec) {
-    return spec.production ? spec.name + " is a production connection. " : std::string();
 }
 
 } // namespace
@@ -278,10 +272,7 @@ std::vector<MenuItemData> DbAdminWindow::MaintenanceItems(const NodeRef& ref, co
     if (!spec) return items;
     const SqlEngine engine = EngineOf(*spec);
     const std::string blocked = WriteBlockReason(*spec);
-    for (const Maintenance task : MaintenanceTasks(engine)) {
-        // A table's maintenance is what it has: ANALYZE (and VACUUM on PostgreSQL).
-        if (!table.empty() && task != Maintenance::Analyze && !(task == Maintenance::Vacuum && engine == SqlEngine::Postgres))
-            continue;
+    for (const Maintenance task : MaintenanceTasks(engine, !table.empty())) {
         MenuItemData item = MenuItemData::Action(MaintenanceText(task),
                                                  [this, ref, schema, table, task]() { RunMaintenance(ref, schema, table, task); });
         item.tooltip = MaintenanceAbout(task, engine);
@@ -826,10 +817,13 @@ void DbAdminWindow::ExportFromTree(const NodeRef& ref) {
 }
 
 void DbAdminWindow::CopyName(const NodeRef& ref) {
+    const ConnectionSpec* spec = store_.Find(ref.connectionId);
+    if (!spec) return;
+    const SqlEngine engine = EngineOf(*spec);
     std::string text;
-    if (ref.kind == NodeRef::Kind::Object) text = QualifiedName(ref.schema, ref.name);
-    else if (ref.kind == NodeRef::Kind::Schema) text = QuotedName(ref.schema);
-    else if (const ConnectionSpec* spec = store_.Find(ref.connectionId)) text = spec->name;
+    if (ref.kind == NodeRef::Kind::Object) text = QualifiedName(engine, ref.schema, ref.name);
+    else if (ref.kind == NodeRef::Kind::Schema) text = QuotedName(engine, ref.schema);
+    else text = spec->name;
     if (text.empty()) return;
     if (!SetClipboardText(text)) { SetStatus("The clipboard cannot be reached.", true); return; }
     SetStatus(text + " copied.");

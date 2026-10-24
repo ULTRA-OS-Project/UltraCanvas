@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminOperationDialogs.cpp
+// Version: 0.2.0 - MySQL / MariaDB types
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminOperationDialogs.h"
@@ -164,11 +165,14 @@ void AddColumnLine(const std::shared_ptr<NewTableForm>& form, const NewColumn& c
     line.row->AddChild(name);
 
     auto type = CreateTextInput(id + "-type", 0, 0, 130, kLineHeight);
-    type->SetPlaceholder(sqlite ? "TEXT" : "text");
+    const bool mysql = form->engine == SqlEngine::MySql;
+    type->SetPlaceholder(sqlite ? "TEXT" : mysql ? "varchar(80)" : "text");
     type->SetText(column.type);
-    type->SetTooltip(sqlite ? "INTEGER, TEXT, REAL, BLOB, NUMERIC - or none at all"
-                            : "integer, bigint, text, varchar(80), numeric(10,2), boolean, date, timestamptz, "
-                              "uuid, jsonb, bytea ...");
+    type->SetTooltip(sqlite  ? "INTEGER, TEXT, REAL, BLOB, NUMERIC - or none at all"
+                     : mysql ? "int, bigint, varchar(80), text, decimal(10,2), tinyint(1), date, datetime, "
+                               "timestamp, json, blob ..."
+                             : "integer, bigint, text, varchar(80), numeric(10,2), boolean, date, timestamptz, "
+                               "uuid, jsonb, bytea ...");
     type->layoutItem.SetFlexShrink(0);
     line.type = type.get();
     line.row->AddChild(type);
@@ -331,12 +335,13 @@ void ShowNewTableDialog(UltraCanvasWindowBase* parent, SqlEngine engine, const s
     const bool sqlite = engine == SqlEngine::Sqlite;
     NewColumn id;
     id.name = "id";
-    id.type = sqlite ? "INTEGER" : "integer";
+    const bool mysql = engine == SqlEngine::MySql;
+    id.type = sqlite ? "INTEGER" : mysql ? "int" : "integer";
     id.primaryKey = id.autoIncrement = true;
     AddColumnLine(form, id);
     NewColumn text;
     text.name = "name";
-    text.type = sqlite ? "TEXT" : "text";
+    text.type = sqlite ? "TEXT" : mysql ? "varchar(255)" : "text";
     AddColumnLine(form, text);
     AddColumnLine(form, NewColumn());
 

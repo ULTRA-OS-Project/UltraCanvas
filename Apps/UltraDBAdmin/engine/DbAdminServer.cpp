@@ -1,11 +1,13 @@
 // Apps/UltraDBAdmin/engine/DbAdminServer.cpp
+// Version: 0.2.0 - the server engines through UltraDatabase
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminServer.h"
 
 #include "DbAdminExport.h"   // QuotedName
 #include "DbAdminFormat.h"   // HumanSize
-#include "DbAdminSearch.h"   // LikeEscaped
+
+#include <cstdio>
 
 namespace UltraDBAdmin {
 namespace {
@@ -13,7 +15,7 @@ namespace {
 // One PRAGMA's single value, as text; "" when it has none.
 std::string Pragma(const std::string& connection, const std::string& schema, const char* name) {
     UltraDbResultSet rows;
-    const std::string target = schema.empty() ? std::string() : QuotedName(schema) + ".";
+    const std::string target = schema.empty() ? std::string() : QuotedName(SqlEngine::Sqlite, schema) + ".";
     if (!UltraDb_Query(connection, "PRAGMA " + target + name, {}, rows) || rows.Size() == 0 || rows.Row(0).Size() == 0)
         return std::string();
     return rows.Row(0)[0].IsNull() ? std::string() : rows.Row(0)[0].AsString();
@@ -32,7 +34,7 @@ UltraDbResult SqliteFileInfo(const std::string& connection, const std::string& s
     if (pageSize.empty()) {
         // A file that cannot be read answers nothing: say why, not a blank table.
         UltraDbResultSet probe;
-        const UltraDbResult result = UltraDb_Query(connection, "PRAGMA " + QuotedName(s) + ".page_size", {}, probe);
+        const UltraDbResult result = UltraDb_Query(connection, "PRAGMA " + QuotedName(SqlEngine::Sqlite, s) + ".page_size", {}, probe);
         if (!result) return result;
     }
     add("Page size", pageSize + " bytes", "The unit SQLite reads and writes");
@@ -79,63 +81,60 @@ const char* ServerViewText(ServerView view) {
     return "";
 }
 
-const char* SessionPidColumn() { return "pid"; }
+const char* SessionIdColumn() { return "id"; }
+
+namespace {
+
+// The module's rows as the grid shows them: a time as h:mm:ss, a size
+// readable (the bytes kept for sorting). Other columns as they come.
+void Shown(const UltraDbResultSet& rows, ServerView view, UltraDbResultSet& out) {
+    out.Clear();
+    if (view == ServerView::Settings) { out = rows; return; }
+    std::vector<std::string> columns = rows.Columns();
+    if (view == ServerView::Sizes)
+        columns = {"kind", "name", "total", "data", "indexes", "bytes"};
+    out.SetColumns(columns);
+    for (const auto& row : rows) {
+        std::vector<UltraDbValue> values;
+        if (view == ServerView::Sizes) {
+            auto size = [&row](const char* column) {
+                return row[column].IsNull() ? UltraDbValue() : UltraDbValue(HumanSize(row[column].AsInt64()));
+            };
+            values = {row["kind"], row["name"], size("bytes"), size("data_bytes"), size("index_bytes"), row["bytes"]};
+        } else {
+            for (size_t i = 0; i < row.Size(); ++i) {
+                if (columns[i] == "running" && !row[i].IsNull()) {
+                    const int64_t seconds = row[i].AsInt64();
+                    char text[32];
+                    std::snprintf(text, sizeof text, "%lld:%02lld:%02lld", static_cast<long long>(seconds / 3600),
+                                  static_cast<long long>(seconds / 60 % 60), static_cast<long long>(seconds % 60));
+                    values.push_back(UltraDbValue(std::string(text)));
+                } else {
+                    values.push_back(row[i]);
+                }
+            }
+        }
+        out.AddRow(std::move(values));
+    }
+}
+
+} // namespace
 
 UltraDbResult ReadServerView(const std::string& connection, SqlEngine engine, ServerView view,
                              const std::string& schema, const std::string& filter, UltraDbResultSet& out) {
     out.Clear();
     if (engine == SqlEngine::Sqlite || view == ServerView::FileInfo) return SqliteFileInfo(connection, schema, out);
-    const std::string pattern = "%" + LikeEscaped(filter) + "%";
+    UltraDbResultSet rows;
+    UltraDbResult result = UltraDbResult::Ok();
     switch (view) {
-        case ServerView::Sessions:
-            return UltraDb_Query(
-                connection,
-                "SELECT pid, usename AS \"user\", datname AS database, application_name AS application,"
-                "       COALESCE(client_addr::text, 'local') AS client, state,"
-                "       to_char(now() - COALESCE(query_start, backend_start), 'HH24:MI:SS') AS running,"
-                "       wait_event_type AS waiting, query,"
-                "       pid = pg_backend_pid() AS this_session"
-                "  FROM pg_catalog.pg_stat_activity"
-                " WHERE backend_type = 'client backend'"
-                " ORDER BY state = 'active' DESC, query_start",
-                {}, out);
-        case ServerView::Settings:
-            return UltraDb_Query(
-                connection,
-                "SELECT name, setting, unit, category, short_desc AS description, source,"
-                "       pending_restart AS restart_pending"
-                "  FROM pg_catalog.pg_settings"
-                " WHERE name ILIKE ? ESCAPE '\\' OR short_desc ILIKE ? ESCAPE '\\'"
-                " ORDER BY category, name",
-                {UltraDbValue(pattern), UltraDbValue(pattern)}, out);
-        case ServerView::Sizes:
-            return UltraDb_Query(
-                connection,
-                "SELECT 'database' AS kind, datname AS name, pg_size_pretty(pg_database_size(oid)) AS total,"
-                "       '' AS data, '' AS indexes, pg_database_size(oid) AS bytes"
-                "  FROM pg_catalog.pg_database WHERE datallowconn"
-                " UNION ALL "
-                "SELECT 'table', n.nspname || '.' || c.relname, pg_size_pretty(pg_total_relation_size(c.oid)),"
-                "       pg_size_pretty(pg_relation_size(c.oid)), pg_size_pretty(pg_indexes_size(c.oid)),"
-                "       pg_total_relation_size(c.oid)"
-                "  FROM pg_catalog.pg_class c JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace"
-                " WHERE n.nspname = ? AND c.relkind IN ('r', 'm', 'p')"
-                " ORDER BY kind, bytes DESC",
-                {UltraDbValue(schema)}, out);
-        case ServerView::FileInfo:
-            break;
+        case ServerView::Sessions: result = UltraDb_ServerSessions(connection, rows); break;
+        case ServerView::Settings: result = UltraDb_ServerSettings(connection, filter, rows); break;
+        case ServerView::Sizes:    result = UltraDb_ServerSizes(connection, schema, rows); break;
+        case ServerView::FileInfo: break;
     }
+    if (!result) return result;
+    Shown(rows, view, out);
     return UltraDbResult::Ok();
-}
-
-OperationPlan StopSessionPlan(int64_t pid, bool terminate) {
-    OperationPlan plan;
-    plan.transaction = false;
-    plan.statements.push_back(std::string("SELECT ") + (terminate ? "pg_terminate_backend(" : "pg_cancel_backend(") +
-                              std::to_string(pid) + ")");
-    plan.notes.push_back(terminate ? "The session ends: what it had not committed is rolled back."
-                                   : "The query stops with an error; the session stays.");
-    return plan;
 }
 
 } // namespace UltraDBAdmin

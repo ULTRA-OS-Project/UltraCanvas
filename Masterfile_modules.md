@@ -1632,16 +1632,20 @@ networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
 **Implementation status (this branch):** Stage 1 implemented, and the
-PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
-parameterized queries, prepared statements, transactions and versioned
-migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
-`Tests/UltraDatabase`); the PostgreSQL driver
-(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
-found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+PostgreSQL and MySQL / MariaDB drivers from Stage 2. The SQLite core, the
+connection registry, parameterized queries, prepared statements,
+transactions and versioned migrations are built and tested
+(`UltraCanvas/{include,core}/UltraDatabase/`, `Tests/UltraDatabase`); the
+PostgreSQL driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built
+wherever libpq is found, the MySQL / MariaDB driver
+(`UltraDatabaseMysqlDriver.cpp`, over MariaDB Connector/C, LGPL-2.1, linked
+dynamically) wherever libmariadb is; both verify TLS by default and read
+their password from UltraVault, and UltraFIBU's multi-user mode runs on
+PostgreSQL. Also built: schema introspection, server administration
+(`UltraDatabaseServer.h`: sessions, settings, sizes, stopping a session),
 streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
-plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
-DuckDB), async queries, pooling and at-rest encryption. Details in
+plan: the other drivers (MSSQL, Redis, MongoDB, DuckDB), async queries,
+pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**

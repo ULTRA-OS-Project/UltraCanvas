@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminTablePager.cpp
+// Version: 0.3.0 - MySQL: CAST AS CHAR, LIKE with '!' as the escape
 // Version: 0.2.0 - filters per column
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -12,10 +13,10 @@ namespace {
 
 // A LIKE pattern matching `text` literally: %, _ and the escape itself
 // escaped with a backslash (the statement says ESCAPE '\').
-std::string LikeLiteral(const std::string& text) {
+std::string LikeLiteral(const std::string& text, char escape) {
     std::string out;
     for (const char c : text) {
-        if (c == '%' || c == '_' || c == '\\') out += '\\';
+        if (c == '%' || c == '_' || c == escape) out += escape;
         out += c;
     }
     return out;
@@ -98,18 +99,23 @@ UltraDbResult TablePager::WhereSql(std::string& sql, UltraDbParams& params) cons
         if (!q) return q;
         // A text match reads the column as text, so it finds digits in a
         // number or a date; PostgreSQL's LIKE heeds case, its ILIKE does
-        // not, as SQLite's LIKE does not for ASCII.
-        const std::string asText = "CAST(" + column + " AS TEXT)";
-        const char* like = engine_ == SqlEngine::Postgres ? " ILIKE ? ESCAPE '\\'" : " LIKE ? ESCAPE '\\'";
+        // not, as SQLite's LIKE does not for ASCII, nor MySQL's under the
+        // connection's collation. MySQL escapes with '!': a backslash in the
+        // statement's text means something else under NO_BACKSLASH_ESCAPES.
+        const bool mysql = engine_ == SqlEngine::MySql;
+        const char escape = mysql ? '!' : '\\';
+        const std::string asText = "CAST(" + column + (mysql ? " AS CHAR)" : " AS TEXT)");
+        const std::string like = std::string(engine_ == SqlEngine::Postgres ? " ILIKE" : " LIKE") + " ? ESCAPE '" +
+                                 std::string(1, escape) + "'";
         std::string term;
         switch (filter.op) {
             case FilterOp::Contains:
                 term = asText + like;
-                params.push_back(UltraDbValue("%" + LikeLiteral(filter.value) + "%"));
+                params.push_back(UltraDbValue("%" + LikeLiteral(filter.value, escape) + "%"));
                 break;
             case FilterOp::StartsWith:
                 term = asText + like;
-                params.push_back(UltraDbValue(LikeLiteral(filter.value) + "%"));
+                params.push_back(UltraDbValue(LikeLiteral(filter.value, escape) + "%"));
                 break;
             case FilterOp::Equals:         term = column + " = ?";  break;
             case FilterOp::NotEquals:      term = column + " <> ?"; break;

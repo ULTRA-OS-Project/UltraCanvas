@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminSearch.cpp
+// Version: 0.3.0 - MySQL: CAST AS CHAR, '!' as the escape, BINARY for "is exactly"
 // Version: 0.2.0 - LikeEscaped shared with the Server tab
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -18,10 +19,10 @@ std::string Lower(std::string text) {
 
 } // namespace
 
-std::string LikeEscaped(const std::string& text) {
+std::string LikeEscaped(const std::string& text, char escape) {
     std::string out;
     for (const char c : text) {
-        if (c == '%' || c == '_' || c == '\\') out += '\\';
+        if (c == '%' || c == '_' || c == escape) out += escape;
         out += c;
     }
     return out;
@@ -43,19 +44,26 @@ bool SearchQuery(SqlEngine engine, const UltraDbTableSchema& table, const std::s
     params.clear();
     const std::vector<std::string> columns = SearchColumns(table);
     if (columns.empty()) return false;
+    const bool mysql = engine == SqlEngine::MySql;
     const std::string like = engine == SqlEngine::Postgres ? "ILIKE" : "LIKE";
-    const std::string pattern = "%" + LikeEscaped(text) + "%";
+    // MySQL: '!' escapes, as a backslash in the statement's text means
+    // something else under NO_BACKSLASH_ESCAPES; its LIKE ignores case by the
+    // connection's collation, and BINARY makes "is exactly" mind it.
+    const char escape = mysql ? '!' : '\\';
+    const std::string pattern = "%" + LikeEscaped(text, escape) + "%";
     sql = "SELECT ";
     for (size_t i = 0; i < columns.size(); ++i) {
-        const std::string value = "CAST(" + QuotedName(columns[i]) + " AS TEXT)";
-        const std::string test = mode == SearchMode::Contains ? value + " " + like + " ? ESCAPE '\\'" : value + " = ?";
+        const std::string value = "CAST(" + QuotedName(engine, columns[i]) + (mysql ? " AS CHAR)" : " AS TEXT)");
+        const std::string test = mode == SearchMode::Contains
+                                     ? value + " " + like + " ? ESCAPE '" + std::string(1, escape) + "'"
+                                     : (mysql ? "BINARY " + value : value) + " = ?";
         // The columns are named c0, c1, ...: a column's own name could be
         // anything, and the answer is read by position anyway.
         sql += (i == 0 ? "" : ", ") + std::string("COALESCE(SUM(CASE WHEN ") + test + " THEN 1 ELSE 0 END), 0) AS c" +
                std::to_string(i);
         params.push_back(UltraDbValue(mode == SearchMode::Contains ? pattern : text));
     }
-    sql += " FROM " + QualifiedName(table.schema, table.name);
+    sql += " FROM " + QualifiedName(engine, table.schema, table.name);
     return true;
 }
 

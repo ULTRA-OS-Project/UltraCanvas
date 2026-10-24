@@ -11,21 +11,24 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
-> introspection, streaming cursors, per-statement scripts, cancelling and
-> statement observers.**
+> Status: **Stage 1 implemented, the PostgreSQL and MySQL / MariaDB drivers
+> from Stage 2, schema introspection, server administration, streaming
+> cursors, per-statement scripts, cancelling and statement observers.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 69 tests, the PostgreSQL ones
-> against a live server where one is configured). The **PostgreSQL** driver
-> (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
-> found at configure time; it takes `?` placeholders, verifies TLS by default
-> and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
-> it, and CI tests it against a real server (`Tests/UltraFIBU`). The other
-> networked drivers (MySQL, …), async queries and pooling described below
-> are still the Stage 2/3 plan.
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 84 tests, the PostgreSQL and MySQL
+> ones against a live server where one is configured). The **PostgreSQL**
+> driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
+> libpq is found at configure time; it takes `?` placeholders, verifies TLS by
+> default and reads the password from UltraVault. UltraFIBU's multi-user mode
+> runs on it, and CI tests it against a real server (`Tests/UltraFIBU`). The
+> **MySQL / MariaDB** driver (`UltraDatabaseMysqlDriver.cpp`, over MariaDB
+> Connector/C) is built whenever libmariadb is found, and speaks to MariaDB
+> and MySQL servers alike: the same `?` placeholders, as server-side prepared
+> statements, TLS verified by default, the password from UltraVault. Async
+> queries and pooling described below are still the Stage 2/3 plan.
 
 ---
 
@@ -124,8 +127,8 @@ persistence with no external server and no extra dependency.
 
 | Engine | Category | Backing library |
 |---|---|---|
-| PostgreSQL | Relational (SQL) | `libpq` |
-| MySQL / MariaDB | Relational (SQL) | `libmariadb` |
+| PostgreSQL | Relational (SQL) | `libpq` - built into the module when found |
+| MySQL / MariaDB | Relational (SQL) | `libmariadb` (MariaDB Connector/C, LGPL-2.1, linked dynamically) - built into the module when found |
 | Microsoft SQL Server | Relational (SQL) | ODBC / FreeTDS |
 | DuckDB | Embedded analytics (OLAP) | bundled/optional |
 | Redis / Valkey | Key-value cache | `hiredis` |
@@ -239,8 +242,13 @@ PostgreSQL they are server-side - `WITH HOLD` outside a transaction, so the
 connection is free for other statements between pages, `WITHOUT HOLD`
 inside one, where they end with it. **Scripts** are split as psql splits
 them on PostgreSQL (semicolons outside text, comments and `BEGIN ATOMIC`
-bodies) and by SQLite itself on SQLite; each statement reports its text,
-outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
+bodies), by SQLite itself on SQLite, and as the mysql client splits them on
+MySQL / MariaDB (`DELIMITER` lines, `BEGIN ... END` bodies, `#` comments,
+backslash escapes); each statement reports its text, outcome and rows.
+`UltraDb_MysqlScriptStatements(script)` gives the same MySQL split as byte
+offsets - where each statement begins, ends and its terminator ends - for
+an editor that runs the statement under the caret or counts a file's
+statements before it imports them. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
 both safe from another thread while the statement holds the connection.
 
 **Watching statements.** `UltraDb_AddStatementObserver` reports every
@@ -300,6 +308,13 @@ for (const UltraDbColumnInfo& c : rs.ColumnInfo())
     ;  // c.declaredType ("numeric(12,2)"), c.sourceSchema / sourceTable / sourceColumn
 ```
 
+On MySQL and MariaDB a schema is a database: one connection lists every
+database its user may see (but the server's own: `mysql`,
+`information_schema`, `performance_schema`, `sys`), read from
+`information_schema`; a column's default comes back as it would be written
+in the DDL on both servers (`'none'`, `0`, `current_timestamp()`), whatever
+each reports. Names are quoted with backticks.
+
 `UltraDb_ListConnections()` lists the registered connection names. A driver
 that cannot introspect answers `Unsupported`. On PostgreSQL the column
 metadata costs one catalog query per table the first time and nothing after
@@ -313,7 +328,35 @@ has `SQLITE_ENABLE_COLUMN_METADATA` (checked at configure time).
 and `float4` as `Double`. Numbers cross the driver dot-decimal in both
 directions whatever the process's locale, and `AsString()` of a `Double` is
 dot-decimal too: the shortest text that reads back exactly (`3.14`, not
-`3,140000`).
+`3,140000`). MySQL's `DECIMAL` is `Text` too, and so is an unsigned
+`BIGINT` too large for an `Int`; a BIT column is the `Int` its bits make, a
+`BINARY` / `VARBINARY` / `BLOB` column a `Blob`, a date or time its text.
+
+### Server administration
+
+`UltraDatabaseServer.h` is what a server is doing and how it is set up - the
+Server tab of UltraDBAdmin (the proposal's G10). One shape for PostgreSQL
+and MySQL / MariaDB, fixed column names whatever the engine; SQLite has no
+server and answers `Unsupported`.
+
+```cpp
+UltraDbResultSet rows;
+UltraDb_ServerSessions("crm", rows);          // id, user, database, application, client,
+                                              // state, running (s), waiting, query, this_session
+UltraDb_ServerSettings("crm", "mem", rows);   // name, value, unit, category, description, source
+UltraDb_ServerSizes("crm", "public", rows);   // kind, name, bytes, data_bytes, index_bytes
+
+std::string sql;                              // what a confirmation shows first:
+UltraDb_StopSessionSql("crm", id, false, sql);  // SELECT pg_cancel_backend(42) / KILL QUERY 42
+bool stopped = false;
+UltraDb_StopSession("crm", id, false, stopped); // false: gone, or not this user's to stop
+```
+
+The asking session is never stopped from itself. A settings filter matches
+the name or the description in any case, `%` and `_` typed in it taken as
+themselves. MySQL's settings come from `performance_schema` (with where each
+value came from), MariaDB's from `information_schema.SYSTEM_VARIABLES` (with
+a description for each).
 
 ---
 
@@ -347,8 +390,13 @@ idea* above).
   (`UltraVault::Initialize`, with its own file and passphrase) before it
   connects; the driver only reads from it, and reports "UltraVault is not
   open" rather than quietly opening an empty one. The password is wiped
-  from the driver's memory once libpq has it. Empty `credentials` means
-  libpq's own methods (peer / trust / `.pgpass`).
+  from the driver's memory once the client library has it. Empty
+  `credentials` means the server's own ways of knowing the user: libpq's
+  peer / trust / `.pgpass`, MariaDB's `unix_socket` and MySQL's
+  `auth_socket` over the server's socket file (a `host` that is a path).
+- **No client files for the server.** The MySQL driver turns `LOAD DATA
+  LOCAL` off: with it on, a server could ask for any file the program can
+  read.
 - **TLS for networked engines.** `UltraDbTls::{Disable,Prefer,Require,
   VerifyFull}` with verification on by default; certificate handling
   reuses the platform trust store (and UltraNet's TLS stack where a
@@ -372,12 +420,16 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseValue.h          UltraDbValue, UltraDbRow, UltraDbResultSet
 │   ├── UltraDatabaseTransaction.h    Begin / Commit / Rollback
 │   ├── UltraDatabaseMigrate.h        versioned schema migrations
+│   ├── UltraDatabaseSchema.h         introspection, quoting names
+│   ├── UltraDatabaseServer.h         sessions, settings, sizes, stopping a session
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
-├── core/UltraDatabase/               (.cpp implementations + bundled SQLite)
+├── core/UltraDatabase/               (.cpp implementations)
+│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver and its introspection
+│   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
+│   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
+│   └── UltraDatabaseServerViews.cpp  server administration for both server engines
 ├── OS/<Platform>/UltraDatabaseSupport.cpp
-└── Plugins/UltraDatabase/
-    ├── postgresql/
-    ├── mysql/
+└── Plugins/UltraDatabase/            (later drivers as loadable plug-ins)
     ├── mssql/
     ├── redis/
     └── ...
@@ -436,13 +488,14 @@ headless data module usable from any ULTRA OS process.
 | Connection registry (lazy open) | Implemented |
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
-| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
-| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
+| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
+| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
+| Server administration (`UltraDatabaseServer.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
-| Test suite (69 tests) | Passing |
+| Test suite (84 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
-| MySQL / MariaDB driver | Planned (Stage 2) |
+| MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |
 | Async queries | Planned (Stage 2) |
 | Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
@@ -450,9 +503,9 @@ headless data module usable from any ULTRA OS process.
 1. **Stage 1** — SQLite core, connection registry, `Query`/`Exec`/
    `Prepare`/values/transactions/migrations. Enough for every app's
    local storage (and all of UltraMail).
-2. **Stage 2** — async queries + worker pool, streaming cursors, the
-   driver-plugin manager, the MySQL/MariaDB driver. (The PostgreSQL
-   driver, with its UltraVault and TLS wiring, is done.)
+2. **Stage 2** — async queries + worker pool, the driver-plugin manager.
+   (The PostgreSQL and MySQL / MariaDB drivers, with their UltraVault and
+   TLS wiring, and streaming cursors are done.)
 3. **Stage 3** — remaining drivers (MSSQL, Redis, MongoDB, DuckDB),
    at-rest encryption, read-replica/failover options.
 
