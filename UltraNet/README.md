@@ -23,6 +23,7 @@ else (SMTP, IMAP, MQTT, SSH, LDAP, RTSP, gRPC, …).
 - [Architecture](#architecture)
 - [Quick examples](#quick-examples)
 - [Module layout](#module-layout)
+- [SSH tunnels](#ssh-tunnels)
 - [Debugging a mail connection](#debugging-a-mail-connection)
 - [The FTP session log](#the-ftp-session-log)
 - [Integration with sibling modules](#integration-with-sibling-modules)
