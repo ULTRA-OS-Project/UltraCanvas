@@ -66,7 +66,9 @@ IMAP sync ──> mail.db            IMAP sync (the same SyncEngine)
 auto-discovery, the credential vault and the sync engine, and it caches every
 message body on disk. Re-implementing that would mean two mailbox
 implementations to keep correct. EmailCleaner reads UltraMail's body cache and
-mirrors its account list; it never writes to UltraMail's tables.
+mirrors its account list; it never writes to UltraMail's tables - except to
+delete the address-book entries the user selects on the Contacts page (see
+*The contacts review*).
 
 **It can still have accounts of its own** (0.4). Needing a mail client set up
 before a mailbox can be cleaned was the wrong way round for someone who only
@@ -100,6 +102,7 @@ set up in UltraMail — and such an UltraMail account can be acted on from here
 | `EmailCleanerActions` | Store, Unsubscribe | Plans an action on a selection (pure), and carries the plan out through a backend interface. |
 | `EmailCleanerMailBackend` | Actions, UltraNet | The half that leaves the machine: the Trash move and the unsubscribe request. |
 | `EmailCleanerAttachments` | Types, Classifier, UltraNet MIME | Reads one attachment back out of the cached message — and refuses the risky ones. |
+| `EmailCleanerContacts` | Types, UltraMail address book | Holds each contact against the mail sent and received; tags it Keep / Delete / Review. |
 | `ui/` | UltraCanvas | Draws. Runs no SQL of its own and makes no classification decisions. |
 
 Everything below `ui/` is headless and unit-tested: no display, no network.
@@ -284,6 +287,54 @@ one that classifies partly *on* those attachment types — must not be the thing
 that opens them. The refusal is checked twice, against the index row and against
 the part the message really carries, so neither a stale index nor a misleading
 filename can get one through.
+
+## The contacts review
+
+UltraMail used to fill its address book by itself: every sender it synced was
+collected unless a contact already had the address. It now adds only known
+services, but what it collected stays - an address book kept for a few years
+holds every shop, newsletter and stranger that ever wrote, and the handful of
+people the user actually corresponds with are lost among them. The one fact
+that tells the two apart is whether the user ever **wrote back** - and the Sent
+folder knows.
+
+**Sent mail is read, not analysed.** A message whose From is the account's own
+address, or that sits in the account's Sent folder (the SPECIAL-USE `\Sent`
+role, else the names servers use: `Sent`, `Sent Items`, `[Gmail]/Sent Mail`,
+`Gesendet`, ...), is the owner's own mail. It answers none of the three
+questions above - the owner is not filling their own mailbox - so it is kept
+off the map; the ingest stores only whom it went to (`sent_mail`, one row per
+To / Cc recipient). An account added in EmailCleaner downloads its Sent folder
+for this, beside the inbox and the junk folder.
+
+**Every contact gets two numbers and a tag.** The **Contacts** page holds
+UltraMail's address book (`contacts.db`) against the analysis: messages sent to
+each of a contact's addresses, and - the second figure - messages received
+from them, over every account. A message kept in two folders (Gmail's Sent and
+All Mail) counts once, by its Message-ID. The list is ordered by mail sent,
+then received. The tag:
+
+| Tag | When | Selected for deletion |
+|---|---|---|
+| **Keep** | the user wrote to it at least once | no |
+| **Delete** | never written to, and only collected - section Other or Services, no group of the user's own | **yes**, marked red |
+| **Review** | never written to, but filed by the user (Family, Friends, Work, Leisure, an own group), or no address at all | no |
+
+The Review tag is the judgement: a contact the user filed was put there on
+purpose - a relative they phone, a club they never e-mail - and silence in the
+Sent folder does not overrule that. Any row can be ticked or unticked; a
+ticked row turns red.
+
+**Deleting is the one write to UltraMail's files.** Everything else EmailCleaner
+reads of UltraMail's (the account list, the vault, the body cache) it only
+reads. The address book is the exception, because cleaning it is the point:
+**Delete selected…** names the contacts in a confirmation, says how many of them
+were written to, and removes only the address-book entries, all in one
+transaction (`ContactStore::RemoveAll`). Their addresses are then *forgotten*
+(`ContactStore::Forget`), so UltraMail does not add them again from the next
+message they send; writing to one still does, since that is the user's own
+act. The mail stays where it is - stopping it is the block and unsubscribe
+actions' job, not this page's.
 
 ## What Phase 3 leaves out
 

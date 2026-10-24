@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasRadialBarChartExamples.cpp
 // Comprehensive radial bar / radial line chart demonstration
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the controls in a
+//                  card above the charts, one card per chart, checkboxes sized to their text
 // Version: 1.0.0
-// Last Modified: 2026-07-28
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/UltraCanvasRadialBarChart.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
@@ -119,22 +122,28 @@ namespace UltraCanvas {
 
 // ===== CONTROL PANEL =====
 
+    // The groups sit side by side and wrap under each other when narrow;
+    // dropdowns and sliders keep their 180 px, checkboxes fit their text.
     static void CreateRadialBarControlPanel(
         std::shared_ptr<UltraCanvasContainer> container,
-        std::vector<std::shared_ptr<UltraCanvasRadialBarChart>> charts,
-        int x, int y)
+        std::vector<std::shared_ptr<UltraCanvasRadialBarChart>> charts)
     {
-        int yOffset = y;
-        int controlHeight = 25;
-        int spacing = 8;
+        const int controlWidth = 180;
+        const int controlHeight = 25;
 
-        auto styleHeader = std::make_shared<UltraCanvasLabel>("RbStyleHeader", x, yOffset, 200, 20);
-        styleHeader->SetText("Bar Style:");
-        styleHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(styleHeader);
-        yOffset += 25;
+        auto groups = DemoKit::AddRow(container, "RbControlGroups", 32);
+        auto addGroup = [&groups](const std::string& id, const std::string& headerId,
+                                  const std::string& header) {
+            auto group = DemoKit::CreateColumn(id, 8);
+            DemoKit::Add(groups, group);
+            auto label = DemoKit::AddText(group, headerId, header);
+            label->SetFontWeight(FontWeight::Bold);
+            return group;
+        };
 
-        auto styleDropdown = std::make_shared<UltraCanvasDropdown>("RbStyle", x, yOffset, 180, controlHeight);
+        auto styleGroup = addGroup("RbStyleGroup", "RbStyleHeader", "Bar Style:");
+
+        auto styleDropdown = std::make_shared<UltraCanvasDropdown>("RbStyle", 0, 0, controlWidth, controlHeight);
         styleDropdown->AddItem("Bars");
         styleDropdown->AddItem("Lines");
         styleDropdown->SetSelectedIndex(0);
@@ -143,10 +152,9 @@ namespace UltraCanvas {
                                               : RadialBarStyle::Bars;
             for (auto& c : charts) c->SetBarStyle(style);
         };
-        container->AddChild(styleDropdown);
-        yOffset += controlHeight + spacing;
+        DemoKit::AddFixed(styleGroup, styleDropdown);
 
-        auto capDropdown = std::make_shared<UltraCanvasDropdown>("RbCap", x, yOffset, 180, controlHeight);
+        auto capDropdown = std::make_shared<UltraCanvasDropdown>("RbCap", 0, 0, controlWidth, controlHeight);
         capDropdown->AddItem("Round Cap");
         capDropdown->AddItem("Butt Cap");
         capDropdown->AddItem("Square Cap");
@@ -162,25 +170,18 @@ namespace UltraCanvas {
             }
             for (auto& c : charts) c->SetCapStyle(cap);
         };
-        container->AddChild(capDropdown);
-        yOffset += controlHeight + spacing;
+        DemoKit::AddFixed(styleGroup, capDropdown);
 
-        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("RbGradient", x, yOffset, 180, controlHeight);
-        gradientCheckbox->SetText("Gradient Fade");
+        auto gradientCheckbox = std::make_shared<UltraCanvasCheckbox>("RbGradient", "Gradient Fade");
         gradientCheckbox->SetChecked(true);
         gradientCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetGradientFade(newState == CheckedState::Checked);
         };
-        container->AddChild(gradientCheckbox);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::Add(styleGroup, gradientCheckbox);
 
-        auto scaleHeader = std::make_shared<UltraCanvasLabel>("RbScaleHeader", x, yOffset, 200, 20);
-        scaleHeader->SetText("Value Scaling:");
-        scaleHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(scaleHeader);
-        yOffset += 25;
+        auto scaleGroup = addGroup("RbScaleGroup", "RbScaleHeader", "Value Scaling:");
 
-        auto normDropdown = std::make_shared<UltraCanvasDropdown>("RbNorm", x, yOffset, 180, controlHeight);
+        auto normDropdown = std::make_shared<UltraCanvasDropdown>("RbNorm", 0, 0, controlWidth, controlHeight);
         normDropdown->AddItem("Global Scale");
         normDropdown->AddItem("Per-Series Scale");
         normDropdown->SetSelectedIndex(0);
@@ -190,132 +191,93 @@ namespace UltraCanvas {
                 : RadialBarNormalization::Global;
             for (auto& c : charts) c->SetNormalization(mode);
         };
-        container->AddChild(normDropdown);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::AddFixed(scaleGroup, normDropdown);
 
-        auto holeHeader = std::make_shared<UltraCanvasLabel>("RbHoleHeader", x, yOffset, 200, 20);
-        holeHeader->SetText("Inner Circle Size:");
-        holeHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(holeHeader);
-        yOffset += 25;
+        auto holeGroup = addGroup("RbHoleGroup", "RbHoleHeader", "Inner Circle Size:");
 
-        auto innerSlider = std::make_shared<UltraCanvasSlider>("RbInner", x, yOffset, 180, controlHeight);
+        auto innerSlider = std::make_shared<UltraCanvasSlider>("RbInner", 0, 0, controlWidth, controlHeight);
         innerSlider->SetRange(0.1, 0.6);
         innerSlider->SetStep(0.01);
         innerSlider->SetValue(0.25);
         innerSlider->onValueChanged = [charts](double value) {
             for (auto& c : charts) c->SetInnerRadiusFraction(static_cast<float>(value));
         };
-        container->AddChild(innerSlider);
-        yOffset += controlHeight + spacing;
+        DemoKit::AddFixed(holeGroup, innerSlider);
 
-        auto gapHeader = std::make_shared<UltraCanvasLabel>("RbGapHeader", x, yOffset, 200, 20);
-        gapHeader->SetText("Series Gap (degrees):");
+        auto gapHeader = DemoKit::AddText(holeGroup, "RbGapHeader", "Series Gap (degrees):");
         gapHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(gapHeader);
-        yOffset += 25;
 
-        auto gapSlider = std::make_shared<UltraCanvasSlider>("RbGap", x, yOffset, 180, controlHeight);
+        auto gapSlider = std::make_shared<UltraCanvasSlider>("RbGap", 0, 0, controlWidth, controlHeight);
         gapSlider->SetRange(0.0, 15.0);
         gapSlider->SetStep(0.5);
         gapSlider->SetValue(3.0);
         gapSlider->onValueChanged = [charts](double value) {
             for (auto& c : charts) c->SetSeriesGapAngle(static_cast<float>(value));
         };
-        container->AddChild(gapSlider);
-        yOffset += controlHeight + spacing * 2;
+        DemoKit::AddFixed(holeGroup, gapSlider);
 
-        auto extrasHeader = std::make_shared<UltraCanvasLabel>("RbExtrasHeader", x, yOffset, 200, 20);
-        extrasHeader->SetText("Extras:");
-        extrasHeader->SetFontWeight(FontWeight::Bold);
-        container->AddChild(extrasHeader);
-        yOffset += 25;
+        auto extrasGroup = addGroup("RbExtrasGroup", "RbExtrasHeader", "Extras:");
 
-        auto guidesCheckbox = std::make_shared<UltraCanvasCheckbox>("RbGuides", x, yOffset, 180, controlHeight);
-        guidesCheckbox->SetText("Ring Guides");
+        auto guidesCheckbox = std::make_shared<UltraCanvasCheckbox>("RbGuides", "Ring Guides");
         guidesCheckbox->SetChecked(false);
         guidesCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetShowRingGuides(newState == CheckedState::Checked);
         };
-        container->AddChild(guidesCheckbox);
-        yOffset += controlHeight + spacing;
+        DemoKit::Add(extrasGroup, guidesCheckbox);
 
-        auto seriesLabelsCheckbox = std::make_shared<UltraCanvasCheckbox>("RbSeriesLabels", x, yOffset, 180, controlHeight);
-        seriesLabelsCheckbox->SetText("Series Labels");
+        auto seriesLabelsCheckbox = std::make_shared<UltraCanvasCheckbox>("RbSeriesLabels", "Series Labels");
         seriesLabelsCheckbox->SetChecked(true);
         seriesLabelsCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetShowSeriesLabels(newState == CheckedState::Checked);
         };
-        container->AddChild(seriesLabelsCheckbox);
-        yOffset += controlHeight + spacing;
+        DemoKit::Add(extrasGroup, seriesLabelsCheckbox);
 
-        auto peakCheckbox = std::make_shared<UltraCanvasCheckbox>("RbPeaks", x, yOffset, 180, controlHeight);
-        peakCheckbox->SetText("Peak (Max) Labels");
+        auto peakCheckbox = std::make_shared<UltraCanvasCheckbox>("RbPeaks", "Peak (Max) Labels");
         peakCheckbox->SetChecked(true);
         peakCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetShowPeakLabels(newState == CheckedState::Checked);
         };
-        container->AddChild(peakCheckbox);
-        yOffset += controlHeight + spacing;
+        DemoKit::Add(extrasGroup, peakCheckbox);
 
-        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("RbHover", x, yOffset, 180, controlHeight);
-        hoverCheckbox->SetText("Hover Highlight");
+        auto hoverCheckbox = std::make_shared<UltraCanvasCheckbox>("RbHover", "Hover Highlight");
         hoverCheckbox->SetChecked(true);
         hoverCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
             for (auto& c : charts) c->SetHoverHighlightEnabled(newState == CheckedState::Checked);
         };
-        container->AddChild(hoverCheckbox);
+        DemoKit::Add(extrasGroup, hoverCheckbox);
     }
 
 // ===== MAIN RADIAL BAR CHART EXAMPLES CREATOR =====
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRadialBarChartExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("RadialBarChartContainer", 0, 0, 1200, 810);
-
-        // === TITLE ===
-        auto titleLabel = std::make_shared<UltraCanvasLabel>("RbTitleLabel", 20, 10, 1160, 35);
-        titleLabel->SetText("Radial Bar Chart Examples - Value-Driven Rays Around a Circle");
-        titleLabel->SetFontSize(18);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        titleLabel->SetAlignment(TextAlignment::Center);
-        titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-        container->AddChild(titleLabel);
-
-        // === DESCRIPTION ===
-        auto descLabel = std::make_shared<UltraCanvasLabel>("RbDescLabel", 20, 55, 1160, 60);
-        descLabel->SetText(
-            "Rays radiate from a base ring; ray length is proportional to value. Series occupy contiguous angular\n"
-            "sectors with configurable gaps. Features bar and line styles, cap shapes including arrows, gradient fade,\n"
+        auto page = DemoKit::CreatePage("RadialBarChartContainer",
+            "Radial Bar Chart Examples - Value-Driven Rays Around a Circle",
+            "Rays radiate from a base ring; ray length is proportional to value. Series occupy contiguous angular "
+            "sectors with configurable gaps. Features bar and line styles, cap shapes including arrows, gradient fade, "
             "global/per-series/manual scaling, ring guides, peak annotations, tooltips and hover highlighting."
         );
-        descLabel->SetFontSize(11);
-        descLabel->SetWrap(TextWrap::WrapWord);
-        container->AddChild(descLabel);
+
+        auto controlsCard = DemoKit::AddCard(page, "RbControls");
+        // A card holds a 460 px chart without squeezing it.
+        constexpr float chartCardWidth = 460 + 2 * DemoKit::kCardPadding + 2;
+        auto charts = DemoKit::AddRow(page, "RbCharts");
 
         // ===== EXAMPLE 1: MULTI-SENSOR RADIAL BARS =====
-        auto sensorLabel = std::make_shared<UltraCanvasLabel>("RbSensorLabel", 240, 130, 460, 25);
-        sensorLabel->SetText("Multi-Sensor Readings (6 Sensors × 24 Hours)");
-        sensorLabel->SetFontSize(13);
-        sensorLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(sensorLabel);
+        auto sensorCard = DemoKit::AddCard(charts, "RbSensorLabel", "Multi-Sensor Readings (6 Sensors × 24 Hours)", "", chartCardWidth);
 
-        auto sensorChart = BuildSensorChart("SensorRadialBars", 240, 160, 460, 320);
+        auto sensorChart = BuildSensorChart("SensorRadialBars", 0, 0, 460, 320);
         sensorChart->SetCenterText("Sensors");
         sensorChart->SetGradientFade(true);
         sensorChart->SetCapStyle(RadialBarCapStyle::Round);
         sensorChart->SetShowPeakLabels(true);
         sensorChart->SetNormalization(RadialBarNormalization::Global);
         sensorChart->SetTooltipsEnabled(true);
-        container->AddChild(sensorChart);
+        DemoKit::AddFixed(sensorCard, sensorChart);
 
         // ===== EXAMPLE 2: GEOGRAPHIC RADIAL LINES =====
-        auto geoLabel = std::make_shared<UltraCanvasLabel>("RbGeoLabel", 720, 130, 460, 25);
-        geoLabel->SetText("Median Age by Country (Radial Lines per Continent)");
-        geoLabel->SetFontSize(13);
-        geoLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(geoLabel);
+        auto geoCard = DemoKit::AddCard(charts, "RbGeoLabel", "Median Age by Country (Radial Lines per Continent)", "", chartCardWidth);
 
-        auto geoChart = BuildMedianAgeRays("GeoRadialLines", 720, 160, 460, 320);
+        auto geoChart = BuildMedianAgeRays("GeoRadialLines", 0, 0, 460, 320);
         geoChart->SetBarStyle(RadialBarStyle::Lines);
         geoChart->SetGradientFade(false);
         geoChart->SetInnerRadiusFraction(0.18f);
@@ -328,16 +290,12 @@ namespace UltraCanvas {
             return std::string(buf);
         });
         geoChart->SetTooltipsEnabled(true);
-        container->AddChild(geoChart);
+        DemoKit::AddFixed(geoCard, geoChart);
 
         // ===== EXAMPLE 3: PARTIAL-SWEEP RAINFALL FAN =====
-        auto rainLabel = std::make_shared<UltraCanvasLabel>("RbRainLabel", 240, 490, 460, 25);
-        rainLabel->SetText("Monthly Rainfall (270° Fan, Ring Guides, Square Caps)");
-        rainLabel->SetFontSize(13);
-        rainLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(rainLabel);
+        auto rainCard = DemoKit::AddCard(charts, "RbRainLabel", "Monthly Rainfall (270° Fan, Ring Guides, Square Caps)", "", chartCardWidth);
 
-        auto rainChart = BuildRainfallChart("RainfallFan", 240, 520, 460, 280);
+        auto rainChart = BuildRainfallChart("RainfallFan", 0, 0, 460, 280);
         rainChart->SetSweepAngle(270.0f);
         rainChart->SetStartAngle(-225.0f);
         rainChart->SetCapStyle(RadialBarCapStyle::Square);
@@ -353,16 +311,12 @@ namespace UltraCanvas {
             return std::string(buf);
         });
         rainChart->SetTooltipsEnabled(true);
-        container->AddChild(rainChart);
+        DemoKit::AddFixed(rainCard, rainChart);
 
         // ===== EXAMPLE 4: ARROW RAYS / MANUAL RANGE =====
-        auto kpiLabel = std::make_shared<UltraCanvasLabel>("RbKpiLabel", 720, 490, 460, 25);
-        kpiLabel->SetText("KPI Attainment (Arrow Caps, Manual 0–150% Range)");
-        kpiLabel->SetFontSize(13);
-        kpiLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(kpiLabel);
+        auto kpiCard = DemoKit::AddCard(charts, "RbKpiLabel", "KPI Attainment (Arrow Caps, Manual 0–150% Range)", "", chartCardWidth);
 
-        auto kpiChart = CreateRadialBarChart("KpiRadialBars", 720, 520, 460, 280);
+        auto kpiChart = CreateRadialBarChart("KpiRadialBars", 0, 0, 460, 280);
         kpiChart->AddSeries("Sales", {
             {"Q1", 92}, {"Q2", 108}, {"Q3", 117}, {"Q4", 131}
         }, Color(15, 157, 88, 255));
@@ -387,14 +341,13 @@ namespace UltraCanvas {
             return std::string(buf);
         });
         kpiChart->SetTooltipsEnabled(true);
-        container->AddChild(kpiChart);
+        DemoKit::AddFixed(kpiCard, kpiChart);
 
-        // === CONTROL PANEL (left column) ===
-        CreateRadialBarControlPanel(container,
-                                    {sensorChart, geoChart, rainChart, kpiChart},
-                                    20, 130);
+        // === CONTROL PANEL (above the charts) ===
+        CreateRadialBarControlPanel(controlsCard,
+                                    {sensorChart, geoChart, rainChart, kpiChart});
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

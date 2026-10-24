@@ -670,6 +670,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmojiSettings.cpp
+        # Whether the computer has a font for a text, by script.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontCoverage.cpp
         # A notification's click outside the bus: the Windows backend under
         # OS/MSWindows/ (the platform glob), the no-ops in here elsewhere.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNotificationActivation.cpp

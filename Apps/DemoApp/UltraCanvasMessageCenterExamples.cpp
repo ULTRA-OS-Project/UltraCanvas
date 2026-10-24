@@ -4,13 +4,18 @@
 // in-memory journal, so it never touches the user's message centre, seeds a
 // few chats, mails and notifications through a second endpoint, and lets the
 // visitor post more with a button — the element updates live.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the button,
+//   readout and feed in one card that fills the area, the button as wide as
+//   its text
 // Version: 1.0.1 - seeds only an empty feed (the journal outlives the page, so
 //   every visit added the samples again); the subtitle's height follows its
 //   lines instead of clipping them at 40 px
 // Version: 1.0.0
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -131,45 +136,32 @@ struct DemoSource {
 #endif // ULTRACANVAS_HAS_MESSAGECENTER
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageCenterExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("MessageCenterExamples", 0, 0, 1000, 640);
-    container->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    container->SetPadding(10, 20);
-
-    auto title = CreateLabel("MCTitle", 0, 0, 0, 30);
-    title->SetText("Message Centre");
-    title->SetFontSize(18);
-    title->SetFontWeight(FontWeight::Bold);
-    container->AddChild(title);
-    title->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    // Height 0 = auto: the wrapped text is three lines at the usual width and
-    // was cut to a fixed 40 px.
-    auto subtitle = CreateLabel("MCSubtitle", 0, 0, 0, 0);
-    subtitle->SetWrap(TextWrap::WrapWord);
-    subtitle->SetFontSize(12);
-    container->AddChild(subtitle);
-    subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
 #ifdef ULTRACANVAS_HAS_MESSAGECENTER
-    subtitle->SetText("One element on the UltraMessage feed: chats, mail and notifications, grouped by source, "
-                      "filtered by section and service, searchable, with the notification's own actions. "
-                      "This page hosts a private broker with an in-memory journal and seeds it; "
-                      "\"Post another\" adds a message live.");
+    auto container = DemoKit::CreatePage("MessageCenterExamples", "Message Centre",
+            "One element on the UltraMessage feed: chats, mail and notifications, grouped by source, "
+            "filtered by section and service, searchable, with the notification's own actions. "
+            "This page hosts a private broker with an in-memory journal and seeds it; "
+            "\"Post another\" adds a message live.");
+    // The feed scrolls itself: the page is the area's height and the feed
+    // takes what the texts and the bar leave.
+    container->SetFillsArea(true);
 
-    auto bar = CreateContainer("MCBar", 0, 0, 0, 0);
-    bar->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    auto post = CreateButton("MCPost", 0, 0, 130, 28, "Post another");
-    post->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    bar->AddChild(post);
-    auto gap = CreateContainer("MCGap", 0, 0, 10, 1);
-    gap->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    bar->AddChild(gap);
-    auto readout = CreateLabel("MCReadout", 0, 0, 600, 28);
-    readout->SetFontSize(12);
-    readout->SetText("Unread: 0");
-    bar->AddChild(readout);
-    container->AddChild(bar);
-    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto card = DemoKit::CreateCard("MCCard");
+    DemoKit::Add(container, card, 1);
+    card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
+
+    auto bar = DemoKit::AddRow(card, "MCBar", 10);
+    bar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    // As wide as its text, at least the 130 px it had.
+    auto post = std::make_shared<UltraCanvasButton>("MCPost", 0, 0, 0, 28, "Post another");
+    {
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(130);
+        post->boxConstraints = limits;
+    }
+    DemoKit::Add(bar, post);
+    auto readout = DemoKit::CreateText("MCReadout", "Unread: 0");
+    DemoKit::Add(bar, readout, 1);
 
     auto center = CreateMessageCenter("MCCenter", 0, 0, 0, 0);
     center->onUnreadCountChanged = [readout = readout.get()](int unread) {
@@ -178,8 +170,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
     center->onOpen = [readout = readout.get()](const MessageCenterEntry& entry) {
         readout->SetText("Open: " + entry.title + " — " + entry.snippet);
     };
-    container->AddChild(center);
-    center->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    DemoKit::Add(card, center, 1);
+    center->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
     // The demo's own bus: the element hosts the broker, the source posts to it.
     UltraMsgConnectOptions options = UltraCanvasMessageCenter::DefaultConnectOptions();
@@ -200,8 +192,9 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMessageC
     };
     // The source lives as long as the page: captured by the button above.
 #else
-    subtitle->SetText("This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
-                      "so the message centre element is not available.");
+    auto container = DemoKit::CreatePage("MessageCenterExamples", "Message Centre",
+            "This build has no UltraMessage module (ULTRACANVAS_ENABLE_ULTRAMESSAGE needs UltraDatabase), "
+            "so the message centre element is not available.");
 #endif
     return container;
 }

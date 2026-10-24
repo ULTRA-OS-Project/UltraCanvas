@@ -1,3 +1,138 @@
+#### 2026-10-24 *0.9.396*
+- **`UltraCanvasLabel::GetNaturalTextWidth()`: where a label's text ends.** A
+  label given a fixed box is usually wider than its text, and something meant
+  to sit right after the text - a copy button after a code, a badge after a
+  name - had to guess the text's width from a character count and a font it
+  hoped the platform would use. The label now says it: the width its text
+  takes, as it lays it out (font, markup, inline images, line breaks kept),
+  without padding or border; 0 for empty text or before the label can reach a
+  render context. It was the private measurement behind the label's own
+  max-content size. Documented under *Where the text ends* in
+  `Docs/UltraCanvas/UltraCanvasLabelExamples.md`; UltraAuthenticator is the
+  first user.
+
+#### 2026-10-24 *0.9.395*
+- **UltraCanvasERDiagram: a self-reference in crow's foot.** A relationship
+  from a table to itself was routed to the Chen diamond, which crow's foot
+  does not draw, so its line ended in empty space beside the table. It is now
+  a loop that leaves the table's top edge and comes back into its right
+  edge, with a marker at each end.
+
+#### 2026-10-24 *0.9.394*
+- **UltraDatabase 0.4.0: statement observers.** `UltraDb_AddStatementObserver`
+  reports every statement that runs through the public calls, on any
+  connection, once it has ended: its kind (query, exec, transaction, one
+  statement of a script, a cursor, introspection), its text, how many values
+  were bound - never the values themselves - the rows it returned, whether it
+  ran in a transaction, its time and its outcome. It is called on the thread
+  that ran the statement, outside every lock of the module, so an observer may
+  run statements of its own. With no observer added, nothing is timed or
+  copied. `UltraDb_RemoveStatementObserver` stops it. UltraDBAdmin's SQL log is
+  the first observer. Tested in `Tests/UltraDatabase/test_observer.cpp`.
+
+#### 2026-10-23 *0.9.393*
+- **The WYSIWYG editor now names the fonts a document needs that the computer
+  lacks.** `UltraCanvasRichTextEdit` shows a notice along its top that lists
+  two kinds of font:
+  - **Scripts no font covers.** Before, their text came out as rows of hex
+    boxes that looked like a bug in the editor. Each script is now named with
+    a free font that covers it, for example "Chinese text needs Noto Sans
+    SC".
+  - **Families the document names that are not installed.** This text is
+    drawn in a substitute.
+
+  Each font in the notice is a link to the page it is downloaded from, and
+  the notice's x hides it. `GetFontReport()` and `onFontReportChanged`
+  report the same list to the host, `onFontLinkClicked` lets the host handle
+  a link itself, and `SetShowFontNotice(false)` keeps the report but hides
+  the notice. The report is worked out when a document is set, a second
+  after an edit, and when the fonts change. That includes Windows' system
+  fonts arriving after a cold start. The demo app's *WYSIWYG — Chinese,
+  Arabic & Myanmar* page shows the notice on a computer that has no font for
+  Chinese or Arabic.
+- **New `UltraCanvasFontCoverage.h`: is there a font for this text?** It has
+  four calls:
+  - `CountCharactersWithoutFont` counts the characters of a text that no
+    installed, bundled or registered font covers.
+  - `FindScriptsWithoutFont` groups those characters by script. Each script
+    comes with a free Noto font that covers it and that font's download
+    page.
+  - `FontDownloadUrl` gives the address of a search for a font family on
+    Google Fonts.
+  - `IsFontFamilyAvailable` says whether a family is installed, bundled or
+    registered.
+
+  The new headless `FontCoverageTest` covers them, and
+  `RichTextEditElementTest` covers the report and the notice.
+
+#### 2026-10-23 *0.9.392*
+- **DemoApp: one page look, and an audit that finds cut text.**
+  - `UltraCanvasDemoPageKit.h` is the Level Meter page's look for every page:
+    a title and a description, the examples in white rounded cards, captions
+    and notes in grey - and every label sized to its text (it wraps and is as
+    tall as its lines), rows that wrap, the page as tall as its content and
+    scrolled by the page area. The Toolbar page is on it.
+  - `UltraCanvasDemo --audit-layout` opens every page, lays it out and lists
+    each label or button whose text does not fit and each element a parent
+    cuts off with no scrollbar to reach it; `--pseudo-loc` first makes every
+    text ~40% longer, as a translation is (and with `--component` shows the
+    page that way); `--audit-page <id>` audits one page.
+  - The *IODeviceManager* entry is DeviceExplorer's own panel
+    (`Apps/DeviceExplorer/ui`) and reads *Partially implemented*: printers,
+    scanners and cameras are found and shown, other categories and platform
+    backends are planned. *VideoFX* reads *Fully implemented*: every stage of
+    its roadmap but keyframes is done and UltraVideo is built on it.
+- **UltraCanvasToolbar: a label is as wide as its text** (it was 80 px, which
+  cut a longer translation), **and `AddDropdownButton` shows its initial
+  text** - the item reading so is selected; the dropdown opened empty.
+- **DemoApp: slim gray scrollbars.** The demo-wide scrollbar style is an 8 px
+  light gray track with a mid-gray round-ended thumb that darkens on hover and
+  while dragged (it was a 12 px blue one).
+- **UltraCanvasButton: a new text fits the width at once.** `SetText` widens
+  (or narrows back) a button to its text when it can measure, instead of at
+  its next measure: the parent reads that width to break a wrapping row into
+  lines first, and laid the row out a line short with the old one, so the
+  button's new text ("Resume" for "Pause", a longer translation) was cut.
+- **Longer translations in two framework panels.** SmartHomePanel's device
+  count ("30 of 30 devices") is as wide as its text, 124 px at least, instead
+  of cut at 124; the menu configurator's action buttons, each as wide as its
+  text, make their pane scroll sideways when they outgrow it.
+- **DemoApp: a page is never narrower than its fixed-size content.** The page
+  kit gives the page, and every card and row on the way to a chart, diagram
+  or text button, that content's width as its minimum; a card sharing a row
+  wraps under its neighbour instead of cutting the chart, and a window
+  narrower than a 1000 px chart scrolls the page sideways. Labels break inside
+  a word only when the word is longer than the line (a code sample).
+  `--audit-layout` reports no finding on any of the 166 pages.
+- **UltraCanvasTextLayoutCache: a no-wrap text stays one line again.** A
+  `TextLayoutKey` that named no ellipsize applied `EllipsizeNone` over the
+  end-cut `SetWrap(WrapNone)` had chosen, so a `WrapNone` label measured
+  against a narrow width wrapped a character a line instead of being cut.
+  `TextLayoutKey::ellipsize` is a `std::optional` now: unset leaves the wrap
+  mode's choice; the button and the menu still name their own.
+  `TextLayoutCacheTest` covers it.
+- **DemoApp: the tree fills the sidebar, the status bar is gone, and the
+  page area scrolls both ways.** The status legend under the tree was
+  measured with its title wrapped a character a line (the cache fix above)
+  and took ~420 px of a medium-size window from the tree. The status line at
+  the bottom of the window has been removed with all its code. A page built
+  at a fixed width (the SVG gallery's 1000 px) was cut down to the area and
+  its right-hand column cut off; it keeps its width as its min-width now, and
+  the area shows a horizontal scrollbar when the window is narrower than the
+  page.
+- **CSS layout: a wrapped line wider than an "at most" row is measured shrunk
+  to it.** A column measures its children at "at most" its width; a wrapping
+  row measured that way broke its lines there but kept each item at its full
+  natural width, so a growing text item alone on its line (a note that moves
+  under the field beside it) was measured one wrapped line short, and the row,
+  laid out at that height, cut the last line off when it was arranged at the
+  real width. The line is shrunk to the width as it is when arranged
+  (fit-content). `CSSLayoutTests` covers it.
+  No item is shrunk below its min-content width there (CSS's automatic
+  minimum): wrapping text shrinks to its longest word, while a counter or a
+  button keeps its width and a row too wide for its card still overflows
+  whole (`CSSLayoutAutoExpandTest`).
+
 #### 2026-10-23 *0.9.391*
 - **List view: every column fitted to its text.** `SetColumnFitting` makes
   each column as wide as its widest `DisplayRole` text plus the delegate's

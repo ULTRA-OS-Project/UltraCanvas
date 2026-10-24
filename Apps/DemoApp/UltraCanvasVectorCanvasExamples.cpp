@@ -8,13 +8,17 @@
 // bound to the selected shape's fill. The page is the reference for what
 // the framework provides (Docs/UltraCanvas/UltraCanvasVectorCanvas.md) and
 // what an application adds on top.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): toolbar,
+//                  canvas, side panel and status in one card that fills the
+//                  area, the canvas takes the space the panel leaves
 // Version: 1.0.1 - Undo and Redo use the shared line icons ArtCreator's
 //                  toolbar uses, not Texter's thin outlines
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -488,21 +492,16 @@ namespace {
 
 // ===== VECTOR CANVAS EXAMPLES =====
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCanvasExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("VectorCanvasExamples", 0, 0, 1000, 780);
-    container->SetBackgroundColor(Color(245, 245, 245, 255));
+    auto container = DemoKit::CreatePage("VectorCanvasExamples", "Vector Editing - UltraCanvasVectorCanvas",
+            "Select: click, shift-click, marquee; drag to move, drag a handle to scale (shift keeps the aspect), click a selected shape again for rotate / skew handles.\n"
+            "Rectangle, Ellipse and Freehand draw; Delete, Ctrl+Z / Ctrl+Y, Ctrl+G / Ctrl+Shift+G, Ctrl+D, arrows nudge. Wheel zooms, space pans, drag a guide out of a ruler.");
+    // The canvas zooms and pans itself: the page is the area's height and
+    // the editor card takes what the texts leave.
+    container->SetFillsArea(true);
 
-    auto title = std::make_shared<UltraCanvasLabel>("VCTitle", 10, 10, 700, 30);
-    title->SetText("Vector Editing - UltraCanvasVectorCanvas");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    container->AddChild(title);
-
-    auto description = std::make_shared<UltraCanvasLabel>("VCDescription", 10, 42, 970, 40);
-    description->SetText("Select: click, shift-click, marquee; drag to move, drag a handle to scale (shift keeps the aspect), click a selected shape again for rotate / skew handles.\n"
-                         "Rectangle, Ellipse and Freehand draw; Delete, Ctrl+Z / Ctrl+Y, Ctrl+G / Ctrl+Shift+G, Ctrl+D, arrows nudge. Wheel zooms, space pans, drag a guide out of a ruler.");
-    description->SetFontSize(11);
-    description->SetTextColor(Color(80, 80, 80, 255));
-    container->AddChild(description);
+    auto card = DemoKit::CreateCard("VCCard");
+    DemoKit::Add(container, card, 1);
+    card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
     auto editor = std::make_shared<DemoVectorEditor>();
 
@@ -512,7 +511,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
     // 24 px grid, the size a toolbar shows them at, so their lines land on
     // whole pixels. The name and its shortcut are in the tooltip; labels are
     // off, so a button is its icon.
-    auto toolbar = std::make_shared<UltraCanvasToolbar>("VCToolbar", 10, 88, 980, 36);
+    auto toolbar = std::make_shared<UltraCanvasToolbar>("VCToolbar", 0, 0, 980, 36);
     {
         ToolbarAppearance app = toolbar->GetAppearance();
         app.showIconLabels = false;
@@ -554,12 +553,17 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
         s.toGrid = on; s.toObjects = on; s.toPage = on;
         editor->canvas->SetSnapOptions(s);
     })->SetTooltip("Snap to the grid, other objects and the page");
-    container->AddChild(toolbar);
+    DemoKit::AddStretched(card, toolbar);
+
+    // The canvas and the side panel share the rest of the card's height.
+    auto workArea = DemoKit::CreateRow("VCWorkArea", 10, false);
+    DemoKit::Add(card, workArea, 1);
+    workArea->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexShrink(1);
 
     // The canvas is built WITH its box. SetBounds() on a sizeless element
     // only moves finalBounds: the next layout pass gives an in-flow child
     // with no CSS width/height a zero height, and the drawing area vanishes.
-    auto canvas = CreateVectorCanvas("VCCanvas", 10, 130, 720, 600);
+    auto canvas = CreateVectorCanvas("VCCanvas", 0, 0, 720, 600);
     VectorGridSpec grid;
     grid.visible = false; grid.spacing = 20; grid.subdivisions = 2;
     canvas->SetGrid(grid);
@@ -567,60 +571,64 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
     snap.toGuides = true; snap.toGrid = false; snap.toObjects = false;
     canvas->SetSnapOptions(snap);
     canvas->SetRulerUnit(1.0, "pt");
-    container->AddChild(canvas);
+    // It takes the width the panel leaves and the row's height (stretched,
+    // so its height is left to the row); never less than 300 px tall.
+    DemoKit::Add(workArea, canvas, 1);
+    canvas->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+    canvas->size.height = CSSLayout::Dimension::Auto();
+    {
+        CSSLayout::BoxConstraints limits = canvas->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(300);
+        limits.minHeight = CSSLayout::Dimension::Px(300);
+        canvas->boxConstraints = limits;
+    }
     editor->canvas = canvas;
 
-    auto panel = std::make_shared<UltraCanvasContainer>("VCPanel", 740, 130, 250, 600);
+    // The side panel keeps its 250 px; its texts wrap, and when they are
+    // taller than a short window the panel scrolls.
+    auto panel = DemoKit::CreateColumn("VCPanel", 6);
+    panel->size.width = CSSLayout::Dimension::Px(250);
     panel->SetBackgroundColor(Color(255, 255, 255, 255));
     panel->SetBorders(1, Color(200, 200, 200, 255));
+    panel->SetPadding(10);
+    {
+        ContainerStyle panelStyle = panel->GetContainerStyle();
+        panelStyle.autoShowScrollbars = true;
+        panel->SetContainerStyle(panelStyle);
+    }
+    DemoKit::Add(workArea, panel);
 
-    auto fillTitle = std::make_shared<UltraCanvasLabel>("VCFillTitle", 10, 8, 230, 22);
-    fillTitle->SetText("Fill of the selected shape");
-    fillTitle->SetFontWeight(FontWeight::Bold);
+    auto fillTitle = DemoKit::AddHeading(panel, "VCFillTitle", "Fill of the selected shape");
     fillTitle->SetFontSize(12);
-    panel->AddChild(fillTitle);
 
-    auto ramp = CreateGradientEditor("VCRamp", 10, 34, 230, 46);
-    panel->AddChild(ramp);
+    auto ramp = CreateGradientEditor("VCRamp", 0, 0, 230, 46);
+    DemoKit::AddStretched(panel, ramp);
     editor->ramp = ramp;
 
-    auto rampHint = std::make_shared<UltraCanvasLabel>("VCRampHint", 10, 84, 230, 60);
-    rampHint->SetText("Drag a stop to move it, double-click the strip to add one, drag a stop away to remove it. A flat fill becomes a linear gradient.");
-    rampHint->SetFontSize(10);
-    rampHint->SetTextColor(Color(90, 90, 90, 255));
-    panel->AddChild(rampHint);
+    DemoKit::AddCaption(panel, "VCRampHint",
+            "Drag a stop to move it, double-click the strip to add one, drag a stop away to remove it. A flat fill becomes a linear gradient.");
 
-    auto layersTitle = std::make_shared<UltraCanvasLabel>("VCLayersTitle", 10, 160, 230, 22);
-    layersTitle->SetText("What the framework provides");
-    layersTitle->SetFontWeight(FontWeight::Bold);
+    auto layersTitle = DemoKit::AddHeading(panel, "VCLayersTitle", "What the framework provides");
     layersTitle->SetFontSize(12);
-    panel->AddChild(layersTitle);
 
-    auto info = std::make_shared<UltraCanvasLabel>("VCInfo", 10, 186, 230, 400);
-    info->SetText(
+    auto info = DemoKit::AddText(panel, "VCInfo",
             "UltraCanvasVectorCanvas\n"
-            "  page, rulers, guides, grid, snapping,\n"
-            "  selection handles, tool hooks\n\n"
+            "page, rulers, guides, grid, snapping, selection handles, tool hooks\n\n"
             "VectorEdit\n"
-            "  VectorSelection, VectorHistory,\n"
-            "  VectorHitTester, transform / z-order /\n"
-            "  group / align / duplicate / convert\n\n"
+            "VectorSelection, VectorHistory, VectorHitTester, transform / z-order / "
+            "group / align / duplicate / convert\n\n"
             "UltraCanvasBezierPath\n"
-            "  nodes and handles, FromPolyline\n\n"
+            "nodes and handles, FromPolyline\n\n"
             "UltraCanvasGradientEditor\n"
-            "  the stops of a fill\n\n"
-            "This page's tools are ~250 lines of\n"
-            "application code over that.");
+            "the stops of a fill\n\n"
+            "This page's tools are ~250 lines of application code over that.");
     info->SetFontSize(10);
     info->SetTextColor(Color(60, 60, 60, 255));
-    panel->AddChild(info);
-    container->AddChild(panel);
 
-    auto status = std::make_shared<UltraCanvasLabel>("VCStatus", 10, 738, 980, 24);
+    auto status = DemoKit::AddText(card, "VCStatus", "");
     status->SetFontSize(11);
     status->SetTextColor(Color(60, 60, 60, 255));
     status->SetBackgroundColor(Color(230, 230, 230, 255));
-    container->AddChild(status);
     editor->status = status;
 
     editor->Attach();

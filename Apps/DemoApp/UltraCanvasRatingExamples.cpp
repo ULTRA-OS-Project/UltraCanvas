@@ -2,11 +2,14 @@
 // Demonstration of UltraCanvasRating: built-in star/circle/square symbols,
 // half-step ratings, a read-only display, and a custom rating rendered from
 // vector (SVG) files for its on / off / half states.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  example, readouts and notes sized to their text
 // Version: 1.0.0
-// Last Modified: 2026-07-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasRating.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
@@ -24,109 +27,86 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateRatingExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("RatingExamples", 0, 0, 1000, 640);
-        container->SetPadding(0, 0, 10, 0);
+        auto page = DemoKit::CreatePage("RatingExamples", "Rating Examples",
+                "Click to set a score, hover to preview. Half ratings, alternate symbols, a "
+                "read-only display, and a custom rating drawn from SVG files (on / off / half).");
 
-        auto title = CreateLabel("RatingTitle", 20, 10, 0, 30);
-        title->SetText("Rating Examples");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto subtitle = CreateLabel("RatingSubtitle", 20, 42, 940, 40);
-        subtitle->SetText("Click to set a score, hover to preview. Half ratings, alternate symbols, a "
-                          "read-only display, and a custom rating drawn from SVG files (on / off / half).");
-        subtitle->SetFontSize(12);
-        container->AddChild(subtitle);
-
-        const int labelX = 360;
-        int y = 100;
-
-        auto readout = [&](const std::string& id, const std::string& initial) {
-            auto l = CreateLabel(id, labelX, y + 8, 260, 22);
-            l->SetText(initial);
+        // A rating beside its live readout; the readout is as wide as its text.
+        auto readout = [](const std::shared_ptr<UltraCanvasContainer>& row,
+                          const std::string& id, const std::string& initial) {
+            auto l = DemoKit::CreateText(id, initial);
             l->SetBackgroundColor(Color(240, 240, 240));
             l->SetPadding(3);
-            container->AddChild(l);
+            l->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            DemoKit::Add(row, l);
             return l;
         };
-        auto section = [&](const std::string& id, const std::string& text) {
-            auto l = CreateLabel(id, 20, y - 22, 320, 20);
-            l->SetText(text);
-            l->SetFontWeight(FontWeight::Bold);
-            container->AddChild(l);
-        };
+
+        auto cards = DemoKit::AddRow(page, "RatingCards");
 
         // ===== 1. STARS (whole) =====
-        section("RtL1", "Stars (whole steps):");
-        auto r1 = CreateRating("Rt1", 20, y, 200, 36, 5, 3);
+        auto card1 = DemoKit::AddCard(cards, "RtL1", "Stars (whole steps):");
+        auto row1 = DemoKit::AddRow(card1, "RtRow1");
+        auto r1 = CreateRating("Rt1", 0, 0, 200, 36, 5, 3);
         r1->SetSymbolSize(32);
-        container->AddChild(r1);
-        auto v1 = readout("RtV1", "Rating: 3");
+        DemoKit::AddFixed(row1, r1);
+        auto v1 = readout(row1, "RtV1", "Rating: 3");
         r1->onRatingChanged = [v1](float v) { v1->SetText("Rating: " + std::to_string((int)v)); };
-        y += 64;
 
         // ===== 2. STARS (half) =====
-        section("RtL2", "Stars (half steps):");
-        auto r2 = CreateHalfRating("Rt2", 20, y, 200, 36, 5, 3.5f);
+        auto card2 = DemoKit::AddCard(cards, "RtL2", "Stars (half steps):");
+        auto row2 = DemoKit::AddRow(card2, "RtRow2");
+        auto r2 = CreateHalfRating("Rt2", 0, 0, 200, 36, 5, 3.5f);
         r2->SetSymbolSize(32);
-        container->AddChild(r2);
-        auto v2 = readout("RtV2", "Rating: 3.5");
+        DemoKit::AddFixed(row2, r2);
+        auto v2 = readout(row2, "RtV2", "Rating: 3.5");
         r2->onRatingChanged = [v2](float v) { v2->SetText("Rating: " + FormatScore(v)); };
-        y += 64;
 
         // ===== 3. ALTERNATE SYMBOLS =====
-        section("RtL3", "Circle and Square symbols:");
-        auto r3 = CreateHalfRating("Rt3", 20, y, 200, 36, 5, 4);
+        auto card3 = DemoKit::AddCard(cards, "RtL3", "Circle and Square symbols:");
+        auto row3 = DemoKit::AddRow(card3, "RtRow3");
+        auto r3 = CreateHalfRating("Rt3", 0, 0, 200, 36, 5, 4);
         r3->SetSymbol(RatingSymbol::Circle);
         r3->SetSymbolSize(30);
         r3->SetColors(Color(0, 150, 136), Color(214, 214, 220));   // teal
-        container->AddChild(r3);
+        DemoKit::AddFixed(row3, r3);
 
-        auto r3b = CreateHalfRating("Rt3b", 230, y, 200, 36, 5, 2);
+        auto r3b = CreateHalfRating("Rt3b", 0, 0, 200, 36, 5, 2);
         r3b->SetSymbol(RatingSymbol::Square);
         r3b->SetSymbolSize(28);
         r3b->SetColors(Color(103, 58, 183), Color(214, 214, 220)); // purple
-        container->AddChild(r3b);
-        y += 64;
+        DemoKit::AddFixed(row3, r3b);
 
         // ===== 4. READ-ONLY DISPLAY =====
-        section("RtL4", "Read-only display (3.5 / 5):");
-        auto r4 = CreateHalfRating("Rt4", 20, y, 200, 36, 5, 3.5f);
+        auto card4 = DemoKit::AddCard(cards, "RtL4", "Read-only display (3.5 / 5):");
+        auto r4 = CreateHalfRating("Rt4", 0, 0, 200, 36, 5, 3.5f);
         r4->SetSymbolSize(28);
         r4->SetReadOnly(true);
-        container->AddChild(r4);
-        y += 64;
+        DemoKit::AddFixed(card4, r4);
 
         // ===== 5. CUSTOM VECTOR (SVG) SYMBOLS =====
-        section("RtL5", "Custom vector hearts (SVG on / off / half):");
-        auto r5 = CreateHalfRating("Rt5", 20, y, 240, 40, 5, 2.5f);
+        auto card5 = DemoKit::AddCard(cards, "RtL5", "Custom vector hearts (SVG on / off / half):");
+        auto row5 = DemoKit::AddRow(card5, "RtRow5");
+        auto r5 = CreateHalfRating("Rt5", 0, 0, 240, 40, 5, 2.5f);
         r5->SetSymbolSize(34);
         const std::string iconDir = NormalizePath(GetResourcesDir() + "media/icons/");
         r5->SetCustomSymbols(iconDir + "rating-heart-on.svg",
                              iconDir + "rating-heart-off.svg",
                              iconDir + "rating-heart-half.svg");
         r5->SetAllowHalf(true);
-        container->AddChild(r5);
-        auto v5 = readout("RtV5", "Rating: 2.5");
+        DemoKit::AddFixed(row5, r5);
+        auto v5 = readout(row5, "RtV5", "Rating: 2.5");
         r5->onRatingChanged = [v5](float v) { v5->SetText("Rating: " + FormatScore(v)); };
-        y += 70;
 
         // ===== INSTRUCTIONS =====
-        auto instructions = CreateLabel("RatingInstructions", 20, y, 940, 96);
-        instructions->SetText(
-                "API:\n"
-                "\xE2\x80\xA2 CreateRating / CreateHalfRating(id, x, y, w, h, maxRating, value)\n"
-                "\xE2\x80\xA2 SetSymbol(Star | Circle | Square); SetColors(on, off); SetReadOnly(bool)\n"
-                "\xE2\x80\xA2 SetCustomSymbols(onPath, offPath, halfPath) - vector/image files per state\n"
-                "  (if no half file is given, half is synthesised by clipping 'on' over 'off')\n"
-                "\xE2\x80\xA2 Keyboard: Left/Right adjust, Home/End clear/max; onRatingChanged / onHoverChanged");
-        instructions->SetFontSize(11);
-        instructions->SetBackgroundColor(Color(255, 255, 240));
-        instructions->SetPadding(6);
-        container->AddChild(instructions);
+        DemoKit::AddNotes(page, "RatingInstructions", "API", {
+                "CreateRating / CreateHalfRating(id, x, y, w, h, maxRating, value)",
+                "SetSymbol(Star | Circle | Square); SetColors(on, off); SetReadOnly(bool)",
+                "SetCustomSymbols(onPath, offPath, halfPath) - vector/image files per state "
+                "(if no half file is given, half is synthesised by clipping 'on' over 'off')",
+                "Keyboard: Left/Right adjust, Home/End clear/max; onRatingChanged / onHoverChanged"});
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

@@ -2,8 +2,11 @@
 // Demonstration of UltraCanvasAlbum: layout designs, image-fit modes, action-icon
 // display options and visitor / user-edit / admin modes for a mixed photo / video
 // / music album.
+// Version: 2.19.0 - the shared page look (UltraCanvasDemoPageKit): the album and
+//                  its status in a card that fills the area, the options in a card
+//                  below; option rows wrap, labels and buttons grow with their text
 // Version: 2.18.0
-// Last Modified: 2026-08-11
+// Last Modified: 2026-10-23
 // V2.18.0: Video tile covers now come from the album widget itself
 //   (AlbumConfig::videoPosterFrames, on by default), which extracts a poster
 //   frame in the background and caches it in memory. The example no longer
@@ -95,6 +98,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasAlbum.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
@@ -112,9 +116,9 @@
 namespace UltraCanvas {
 
     namespace {
-        // A plain flex layout wrapper that must never scroll itself — the album
-        // is the single scroll region. Disabling scrollbars keeps these wrappers
-        // from ever showing a (spurious) scrollbar of their own.
+        // A plain flex layout wrapper that must never scroll itself (the video
+        // window's info bar). Disabling scrollbars keeps it from ever showing a
+        // (spurious) scrollbar of its own.
         std::shared_ptr<UltraCanvasContainer> MakeLayoutBox(const std::string& id) {
             auto c = std::make_shared<UltraCanvasContainer>(id);
             ContainerStyle st;
@@ -125,14 +129,20 @@ namespace UltraCanvas {
             return c;
         }
 
-        // A horizontal control line: shrink:0, stretched on the cross axis.
+        // A horizontal control line that wraps when the window is narrow or
+        // the texts are long.
         std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
-            auto row = MakeLayoutBox(id);
-            row->layout.SetFlexRow().SetFlexGap(6)
-                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-            row->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            auto row = DemoKit::CreateRow(id, 6);
+            row->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
             return row;
+        }
+
+        // A floor, not a size: the element keeps at least `width` (so the
+        // option rows line up) and grows when its text needs more.
+        void SetMinWidth(UltraCanvasUIElement& element, int width) {
+            CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+            limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(width));
+            element.boxConstraints = limits;
         }
 
         // Paint an option button in its normal or selected state. Mirrors the
@@ -149,7 +159,7 @@ namespace UltraCanvas {
             b->SetBorder(selected ? 2.0f : 1.0f, selected ? selBorder : baseBorder);
         }
 
-        // Append a bold label followed by a radio row of fixed-size buttons into
+        // Append a bold label followed by a radio row of buttons into
         // `row`. onPick(i) fires for button i; clicking a button highlights it and
         // clears its siblings, so the row always reflects the current selection.
         // `selectedIndex` marks the initially-active button (-1 = none). Returns
@@ -161,15 +171,10 @@ namespace UltraCanvas {
                                   int labelW, int btnW, int btnH,
                                   const std::vector<const char*>& labels, Fn onPick,
                                   int selectedIndex = -1) {
-            auto lbl = std::make_shared<UltraCanvasLabel>(idPrefix + "lbl", 0, 0, labelW, btnH);
-            lbl->SetText(labelText);
-            lbl->SetFontSize(12);
+            auto lbl = DemoKit::CreateText(idPrefix + "lbl", labelText);
             lbl->SetFontWeight(FontWeight::Bold);
-            // Vertically centre the label text against the buttons (matches the
-            // slideshow example, where option labels are mid-aligned to their row).
-            lbl->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
-            lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            row->AddChild(lbl);
+            SetMinWidth(*lbl, labelW);
+            DemoKit::Add(row, lbl);
 
             // Shared list of the row's buttons so a click can restyle siblings.
             auto group = std::make_shared<std::vector<UltraCanvasButton*>>();
@@ -179,6 +184,8 @@ namespace UltraCanvas {
                         idPrefix + std::to_string(i), 0, 0, btnW, btnH, labels[i]);
                 b->SetFontSize(11);
                 b->SetCornerRadius(4.0f);
+                b->size.width = CSSLayout::Dimension::Auto();
+                SetMinWidth(*b, btnW);
                 StyleOptionButton(b.get(), static_cast<int>(i) == selectedIndex);
                 int idx = static_cast<int>(i);
                 auto* raw = b.get();
@@ -186,8 +193,7 @@ namespace UltraCanvas {
                     for (auto* gb : *group) StyleOptionButton(gb, gb == raw);
                     onPick(idx);
                 });
-                b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                row->AddChild(b);
+                DemoKit::Add(row, b);
                 group->push_back(raw);
                 buttons.push_back(b);
             }
@@ -448,44 +454,21 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAlbumExamples() {
-        // Root: a flex column that fills the display area (DisplayDemoItem assigns
-        // it flex-grow + stretch). Header and controls are pinned (flex-shrink:0);
-        // the album grows to fill the middle and scrolls its tiles internally.
-        auto root = MakeLayoutBox("AlbumExamples");
-        root->layout.SetFlexColumn().SetFlexGap(8)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        root->SetPadding(10, 12, 10, 12);
+        auto page = DemoKit::CreatePage("AlbumExamples",
+                "UltraCanvas Album — photo / video / music gallery with selectable designs",
+                "Switch the design with the buttons below. Click a photo to view it "
+                "full size, or a video / track to play it (or use the View / Play icon).");
+        // The album scrolls its own tiles: the page is the area's height, the
+        // album card takes what the options leave.
+        page->SetFillsArea(true);
 
-        // ===== Header (pinned) =====
-        auto header = MakeLayoutBox("AlbumHeader");
-        header->layout.SetFlexColumn().SetFlexGap(4)
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        header->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        auto title = std::make_shared<UltraCanvasLabel>("AlbumTitle", 0, 0, 0, 28);
-        title->SetText("UltraCanvas Album — photo / video / music gallery with selectable designs");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        header->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("AlbumSubtitle", 0, 0, 0, 20);
-        subtitle->SetText("Switch the design with the buttons below. Click a photo to view it "
-                          "full size, or a video / track to play it (or use the View / Play icon).");
-        subtitle->SetFontSize(11);
-        subtitle->SetTextColor(Color(110, 110, 110, 255));
-        subtitle->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        header->AddChild(subtitle);
-        root->AddChild(header);
+        auto albumCard = DemoKit::CreateCard("AlbumCard");
+        DemoKit::Add(page, albumCard, 1);
 
         // ===== The album itself (grows to fill, scrolls internally) =====
         // No explicit size — flex sizes it. An explicit w/h would override the
-        // flex-grow / align-self: stretch the engine applies below.
+        // flex-grow / align-self: stretch the card gives it.
         auto album = CreateAlbum("media-album", 0, 0, 0, 0);
-        album->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         AlbumConfig cfg;
         cfg.layout        = AlbumLayout::Masonry;
@@ -606,16 +589,11 @@ namespace UltraCanvas {
         }
 
         auto* albumPtr = album.get();
-        root->AddChild(album);
+        DemoKit::Add(albumCard, album, 1);
 
         // ===== Status (pinned) =====
-        auto status = std::make_shared<UltraCanvasLabel>("AlbumStatus", 0, 0, 0, 22);
-        status->SetText("Mode: Display · Layout: Masonry · click a tile to open, hover for actions");
-        status->SetFontSize(11);
-        status->SetTextColor(Color(120, 120, 120, 255));
-        status->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        root->AddChild(status);
+        auto status = DemoKit::AddCaption(albumCard, "AlbumStatus",
+                "Mode: Display · Layout: Masonry · click a tile to open, hover for actions");
         auto* statusPtr = status.get();
 
         // ===== Actions (gated per mode) =====
@@ -719,11 +697,7 @@ namespace UltraCanvas {
         };
 
         // ===== Controls (pinned) =====
-        auto controls = MakeLayoutBox("AlbumControls");
-        controls->layout.SetFlexColumn().SetFlexGap(4)
-                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        controls->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        auto controls = DemoKit::AddCard(page, "AlbumControls");
 
         const int kLabelW = 85;
         // Compact control buttons so the album gets more vertical room (two full
@@ -745,7 +719,7 @@ namespace UltraCanvas {
                           std::ostringstream o; o << "Layout: " << names[i];
                           statusPtr->SetText(o.str());
                       }, 2);  // Masonry is the default
-        controls->AddChild(layoutRow);
+        DemoKit::Add(controls, layoutRow);
 
         // ----- Crop-focus picker (built first so the image-fit callback can
         //       enable / disable it). The focus point only has a visible effect
@@ -776,11 +750,11 @@ namespace UltraCanvas {
                           setFocusEnabled(fitVals[i] == AlbumImageDisplay::Crop ||
                                           fitVals[i] == AlbumImageDisplay::Zoom);
                       }, 0);  // Crop is the default image fit
-        controls->AddChild(fitRow);
+        DemoKit::Add(controls, fitRow);
 
         // Crop is the default image fit, so the focus picker starts enabled.
         setFocusEnabled(true);
-        controls->AddChild(focusRow);
+        DemoKit::Add(controls, focusRow);
 
         // ----- Mode picker -----
         const AlbumMode modeVals[] = { AlbumMode::Display, AlbumMode::UserEdit, AlbumMode::Admin };
@@ -813,7 +787,7 @@ namespace UltraCanvas {
                                   : "Viewer: Media — full media viewer (browse folder, slideshow, "
                                     "zoom / rotate / adjust)");
                       }, 0);  // Mini viewer is the default
-        controls->AddChild(modeRow);
+        DemoKit::Add(controls, modeRow);
 
         // ----- Action-icon display picker -----
         auto actRow = MakeRow("album_act_row");
@@ -830,7 +804,7 @@ namespace UltraCanvas {
                           }
                           albumPtr->SetConfig(c);
                       }, 1);  // On hover is the default
-        controls->AddChild(actRow);
+        DemoKit::Add(controls, actRow);
 
         // ----- Action-icon corner picker (image vs caption text-block) -----
         const AlbumActionAnchor anchorVals[] = {
@@ -861,7 +835,7 @@ namespace UltraCanvas {
                           c.actionIconBackground = iconBgVals[i];
                           albumPtr->SetConfig(c);
                       }, 0);  // Round is the default
-        controls->AddChild(anchorRow);
+        DemoKit::Add(controls, anchorRow);
 
         // ----- Sizing + captions on one line -----
         auto sizeRow = MakeRow("album_size_row");
@@ -889,11 +863,9 @@ namespace UltraCanvas {
                           c.imageCornerRadius = (i == 0) ? 0.0f : -1.0f;
                           albumPtr->SetConfig(c);
                       }, 1);  // Rounded is the default
-        controls->AddChild(sizeRow);
+        DemoKit::Add(controls, sizeRow);
 
-        root->AddChild(controls);
-
-        return root;
+        return page;
     }
 
 } // namespace UltraCanvas

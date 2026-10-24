@@ -1,11 +1,15 @@
 // Apps/DemoApp/UltraCanvasWaveformExamples.cpp
 // Demo page for the amplitude Waveform chart (UltraCanvasWaveformElement),
 // wired to an audio player that ships with a sample track pre-selected.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the waveform as
+//                  wide as the page in a card, the player and the pickers in a
+//                  wrapping row under it, every label sized to its text
 // Version: 1.1.0
-// Last Modified: 2026-06-26
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasWaveformElement.h"
 #include "UltraCanvasAudioPlayerElement.h"
 #include "UltraCanvasAudioDevices.h"
@@ -105,43 +109,45 @@ namespace UltraCanvas {
 // =============================================================================
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateWaveformExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("WaveformExamples", 0, 0, 1000, 600);
-
-        auto title = std::make_shared<UltraCanvasLabel>("WaveformTitle", 10, 10, 700, 30);
-        title->SetText("Waveform Chart");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("WaveformSubtitle", 10, 42, 960, 36);
-        subtitle->SetText("Amplitude min/max envelope with optional RMS band and a click/drag "
-                          "playhead, synced to the audio player below.");
-        subtitle->SetFontSize(11);
-        subtitle->SetTextColor(Color(90, 90, 90));
-        container->AddChild(subtitle);
+        auto container = DemoKit::CreatePage("WaveformExamples", "Waveform Chart",
+                "Amplitude min/max envelope with optional RMS band and a click/drag "
+                "playhead, synced to the audio player below.");
 
         // Status line (audio backend availability + load result).
-        auto status = std::make_shared<UltraCanvasLabel>("WaveformStatus", 10, 80, 960, 22);
+        auto status = DemoKit::AddText(container, "WaveformStatus", "");
         status->SetFontSize(11);
-        container->AddChild(status);
+
+        auto card = DemoKit::AddCard(container, "WaveformCard");
 
         // The sample track that ships with the framework.
         const std::string audioPath = NormalizePath(
                 GetResourcesDir() + "media/audios/the_mountain-cinematic-489998.mp3");
 
         // ----- Waveform element -----
-        auto waveform = CreateWaveformElement("WaveformChart", 10, 115, 960, 200);
+        auto waveform = CreateWaveformElement("WaveformChart", 0, 0, 960, 200);
         waveform->SetOverlay(WaveformOverlay::RMSAndZeroAxis);
-        container->AddChild(waveform);
+        DemoKit::AddStretched(card, waveform);
+
+        // The player and the pickers beside it; they wrap under it when narrow.
+        auto controlRow = DemoKit::AddRow(card, "WaveformControls", 20);
 
         // ----- Audio player (sample track pre-selected) -----
-        auto player = CreateAudioPlayer("WaveformPlayer", 10, 330, 640, 56);
-        container->AddChild(player);
+        auto player = CreateAudioPlayer("WaveformPlayer", 0, 0, 640, 56);
+        DemoKit::AddFixed(controlRow, player);
 
-        auto fileLabel = std::make_shared<UltraCanvasLabel>("WaveformFile", 10, 452, 960, 18);
+        // A picker: its label over its dropdown.
+        auto addPicker = [&controlRow](const std::string& id, const std::string& labelId,
+                                       const std::string& text,
+                                       const std::shared_ptr<UltraCanvasDropdown>& drop) {
+            auto column = DemoKit::CreateColumn(id, 2);
+            DemoKit::AddText(column, labelId, text)->SetFontSize(11);
+            DemoKit::AddFixed(column, drop);
+            DemoKit::Add(controlRow, column);
+        };
+
+        auto fileLabel = DemoKit::CreateText("WaveformFile", "");
         fileLabel->SetFontSize(11);
         fileLabel->SetTextColor(Color(90, 90, 90));
-        container->AddChild(fileLabel);
 
         // Strip any directory part for display.
         auto baseName = [](const std::string& p) -> std::string {
@@ -199,12 +205,7 @@ namespace UltraCanvas {
         };
 
         // ----- Render-style picker -----
-        auto styleLabel = std::make_shared<UltraCanvasLabel>("WaveformStyleLabel", 670, 330, 120, 22);
-        styleLabel->SetText("Render style:");
-        styleLabel->SetFontSize(11);
-        container->AddChild(styleLabel);
-
-        auto styleDrop = CreateDropdown("WaveformStyleDrop", 670, 352, 150, 30);
+        auto styleDrop = CreateDropdown("WaveformStyleDrop", 0, 0, 150, 30);
         styleDrop->AddItem("Filled");
         styleDrop->AddItem("Outline");
         styleDrop->AddItem("Bars");
@@ -218,15 +219,10 @@ namespace UltraCanvas {
                 default: w->SetRenderStyle(WaveformRenderStyle::Filled);  break;
             }
         };
-        container->AddChild(styleDrop);
+        addPicker("WaveformStylePicker", "WaveformStyleLabel", "Render style:", styleDrop);
 
         // ----- Overlay picker -----
-        auto overlayLabel = std::make_shared<UltraCanvasLabel>("WaveformOverlayLabel", 840, 330, 130, 22);
-        overlayLabel->SetText("Overlay:");
-        overlayLabel->SetFontSize(11);
-        container->AddChild(overlayLabel);
-
-        auto overlayDrop = CreateDropdown("WaveformOverlayDrop", 840, 352, 150, 30);
+        auto overlayDrop = CreateDropdown("WaveformOverlayDrop", 0, 0, 150, 30);
         overlayDrop->AddItem("None");
         overlayDrop->AddItem("RMS");
         overlayDrop->AddItem("Zero axis");
@@ -242,17 +238,12 @@ namespace UltraCanvas {
                 default: w->SetOverlay(WaveformOverlay::NoOverlay);           break;
             }
         };
-        container->AddChild(overlayDrop);
+        addPicker("WaveformOverlayPicker", "WaveformOverlayLabel", "Overlay:", overlayDrop);
 
         // ----- Display-range picker -----
         // Limits the visible portion of the track to a trailing window that
         // scrolls with the playhead, or shows the whole track ("All audio").
-        auto rangeLabel = std::make_shared<UltraCanvasLabel>("WaveformRangeLabel", 670, 388, 150, 22);
-        rangeLabel->SetText("Display range:");
-        rangeLabel->SetFontSize(11);
-        container->AddChild(rangeLabel);
-
-        auto rangeDrop = CreateDropdown("WaveformRangeDrop", 670, 410, 150, 30);
+        auto rangeDrop = CreateDropdown("WaveformRangeDrop", 0, 0, 150, 30);
         rangeDrop->AddItem("Last 10 seconds");
         rangeDrop->AddItem("Last 60 seconds");
         rangeDrop->AddItem("All audio");
@@ -266,7 +257,9 @@ namespace UltraCanvas {
                 default: w->SetVisibleWindowSeconds(0.0);  break;   // all
             }
         };
-        container->AddChild(rangeDrop);
+        addPicker("WaveformRangePicker", "WaveformRangeLabel", "Display range:", rangeDrop);
+
+        DemoKit::Add(card, fileLabel);
 
         return container;
     }

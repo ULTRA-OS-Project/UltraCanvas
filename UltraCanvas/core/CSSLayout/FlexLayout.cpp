@@ -2,6 +2,10 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.6.2 - a line wider than an AtMost main extent is shrunk to it when
+//                 measured, as it is when arranged (a row of a column came out
+//                 a wrapped line too short) - no item below its min-content
+//                 width, so a row of counters still overflows whole
 // Version: 1.6.1 - a wrapping row breaks its lines at an AtMost main extent
 //                 too, so a column measuring it gets every line's height.
 // Version: 1.6.0 - widthSetByParent: an Exact width is the container's used width
@@ -586,6 +590,34 @@ namespace UltraCanvas {
                         resolveFlexibleLengths(line.items, s.availableMain, s.mainGap);
                     } else {
                         for (auto* it : line.items) it->mainSize = it->hypoMain;
+                        // An AtMost main extent is a ceiling here too: a line
+                        // wider than it shrinks to it (fit-content), as it
+                        // will when it is arranged at that width. Measured at
+                        // its unshrunk width, a wrapping text item in the line
+                        // reported one line fewer than it then needed, and the
+                        // row was laid out that much too short.
+                        if (std::isfinite(s.availableMain)) {
+                            float lineMain = s.mainGap * (float)(line.items.size() - 1);
+                            for (auto* it : line.items)
+                                lineMain += it->hypoMain + it->marginMainStart + it->marginMainEnd;
+                            if (lineMain > s.availableMain + 0.001f) {
+                                // No item below its min-content width (CSS's
+                                // automatic minimum): text that wraps shrinks
+                                // to its longest word, a counter or a button
+                                // keeps its width and the line overflows, as
+                                // before, rather than cutting its text.
+                                std::vector<float> ownMin;
+                                ownMin.reserve(line.items.size());
+                                for (auto* it : line.items) {
+                                    ownMin.push_back(it->minMain);
+                                    if (s.axis.isRow && it->el->intrinsic.valid)
+                                        it->minMain = std::max(it->minMain,
+                                            std::min(it->hypoMain, it->el->intrinsic.minContentWidth));
+                                }
+                                resolveFlexibleLengths(line.items, s.availableMain, s.mainGap);
+                                for (size_t i = 0; i < line.items.size(); ++i) line.items[i]->minMain = ownMin[i];
+                            }
+                        }
                     }
 
                     float lineCross = 0.f;

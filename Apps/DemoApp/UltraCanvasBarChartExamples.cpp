@@ -6,11 +6,17 @@
 // pictogram). The engine supplies axes, grid, layout, legend, the solved
 // value-label plan, hover hit-testing with tooltips, and the entrance
 // animation; this file adds only the bar content contract.
+// Version: 1.3.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a
+//                  card that fills the area, captions that wrap, control strips
+//                  that wrap and checkboxes as wide as their text
 // Version: 1.2.0
-// Last Modified: 2026-09-27
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // Changelog:
+//   v1.3.0 (2026-10-23):
+//     - The shared page look: DemoKit page and card, wrapped captions, the
+//       control strips are wrapping rows, no label with a fixed size.
 //   v1.2.0 (2026-09-27):
 //     - Bar connections: the Clustered and Stacked tabs join each series'
 //       bars across the categories with a straight or curved line
@@ -26,6 +32,7 @@
 //       radially inside the sector clip.
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartEngineElement.h"
 #include "Plugins/Charts/Engine/UltraCanvasChartSeries.h"
 #include "UltraCanvasConfig.h"
@@ -576,14 +583,10 @@ std::shared_ptr<EngineBarChart> MakeCityChart(const std::string& id) {
 // PAGE ASSEMBLY
 // =============================================================================
 
-// Captions carry explicit line breaks and a fixed two-line height: a wrapped
-// label re-measures against an unconstrained width on re-layout (see the chord
-// chart page), so wrapping is not used here.
+// A tab's caption: wraps to the tab's width and is as tall as its lines.
 std::shared_ptr<UltraCanvasLabel> MakeCaption(const std::string& id, const std::string& text) {
-    auto caption = std::make_shared<UltraCanvasLabel>(id, 0, 34, text);
-    caption->SetFontSize(12);
+    auto caption = DemoKit::CreateText(id, text);
     caption->SetTextColor(Color(90, 90, 100, 255));
-    caption->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     return caption;
 }
 
@@ -597,7 +600,7 @@ std::shared_ptr<UltraCanvasContainer> MakeChartRowTab(
     tab->layout.SetFlexColumn().SetFlexGap(4)
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    tab->AddChild(MakeCaption(idPrefix + "Caption", caption));
+    DemoKit::Add(tab, MakeCaption(idPrefix + "Caption", caption));
 
     auto row = std::make_shared<UltraCanvasContainer>(idPrefix + "Row");
     row->layout.SetFlexRow().SetFlexGap(8)
@@ -617,17 +620,16 @@ std::shared_ptr<UltraCanvasContainer> MakeChartRowTab(
 std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
     const std::string& idPrefix,
     const std::vector<std::shared_ptr<EngineBarChart>>& charts,
-    std::function<void(UltraCanvasContainer&)> addExtras = nullptr)
+    std::function<void(const std::shared_ptr<UltraCanvasContainer>&)> addExtras = nullptr)
 {
-    auto strip = std::make_shared<UltraCanvasContainer>(idPrefix + "Controls", 0, 30);
-    strip->layout.SetFlexRow().SetFlexGap(10)
-                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    strip->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // A row that wraps: a narrow tab, or longer texts, put the controls on
+    // further lines instead of cutting them.
+    auto strip = DemoKit::CreateRow(idPrefix + "Controls", 10);
+    strip->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-    auto label = std::make_shared<UltraCanvasLabel>(idPrefix + "OrientLabel", 70, 20, "Projection:");
+    auto label = DemoKit::CreateText(idPrefix + "OrientLabel", "Projection:");
     label->SetFontSize(11);
-    label->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    strip->AddChild(label);
+    DemoKit::Add(strip, label);
 
     auto orientation = std::make_shared<UltraCanvasDropdown>(idPrefix + "Orientation", 130, 24);
     orientation->AddItem("Vertical");
@@ -641,40 +643,36 @@ std::shared_ptr<UltraCanvasContainer> MakeControlStrip(
                                     : ChartProjectionKind::Vertical;
         for (const auto& chart : charts) chart->SetProjectionKind(kind);
     };
-    orientation->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    strip->AddChild(orientation);
+    DemoKit::AddFixed(strip, orientation);
 
-    auto labelsCheckbox = std::make_shared<UltraCanvasCheckbox>(idPrefix + "Labels", 130, 24);
-    labelsCheckbox->SetText("Value labels");
+    // Checkboxes are as wide as their text.
+    auto labelsCheckbox = std::make_shared<UltraCanvasCheckbox>(idPrefix + "Labels", "Value labels");
     labelsCheckbox->SetChecked(true);
     labelsCheckbox->onStateChanged = [charts](CheckedState, CheckedState newState) {
         for (const auto& chart : charts) {
             chart->SetShowValueLabels(newState == CheckedState::Checked);
         }
     };
-    labelsCheckbox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    strip->AddChild(labelsCheckbox);
+    DemoKit::Add(strip, labelsCheckbox);
 
     auto replayButton = std::make_shared<UltraCanvasButton>(idPrefix + "Animate", 0, 0, 120, 24);
     replayButton->SetText("Replay grow-in");
     replayButton->onClick = [charts]() {
         for (const auto& chart : charts) chart->StartEngineAnimation(0.7f);
     };
-    replayButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    strip->AddChild(replayButton);
+    DemoKit::AddFixed(strip, replayButton);
 
-    if (addExtras) addExtras(*strip);
+    if (addExtras) addExtras(strip);
     return strip;
 }
 
 // Bar connection controls: off / straight / curved, and where the line meets
 // each bar.
-void AddBarConnectionControls(UltraCanvasContainer& strip, const std::string& idPrefix,
+void AddBarConnectionControls(const std::shared_ptr<UltraCanvasContainer>& strip, const std::string& idPrefix,
                               const std::shared_ptr<EngineBarChart>& chart, int initialIndex) {
-    auto label = std::make_shared<UltraCanvasLabel>(idPrefix + "ConnLabel", 100, 20, "Bar connection:");
+    auto label = DemoKit::CreateText(idPrefix + "ConnLabel", "Bar connection:");
     label->SetFontSize(11);
-    label->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    strip.AddChild(label);
+    DemoKit::Add(strip, label);
 
     auto shape = std::make_shared<UltraCanvasDropdown>(idPrefix + "Connection", 110, 24);
     shape->AddItem("Off");
@@ -687,18 +685,15 @@ void AddBarConnectionControls(UltraCanvasContainer& strip, const std::string& id
         chart->SetBarConnectionShape(index == 2 ? ChartBarConnectionShape::Curved
                                                 : ChartBarConnectionShape::Straight);
     };
-    shape->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    strip.AddChild(shape);
+    DemoKit::AddFixed(strip, shape);
 
-    auto edges = std::make_shared<UltraCanvasCheckbox>(idPrefix + "ConnEdges", 150, 24);
-    edges->SetText("From bar edges");
+    auto edges = std::make_shared<UltraCanvasCheckbox>(idPrefix + "ConnEdges", "From bar edges");
     edges->onStateChanged = [chart](CheckedState, CheckedState newState) {
         chart->SetBarConnectionAnchor(newState == CheckedState::Checked
                                           ? ChartBarConnectionAnchor::BarEdges
                                           : ChartBarConnectionAnchor::BarCenter);
     };
-    edges->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    strip.AddChild(edges);
+    DemoKit::Add(strip, edges);
 }
 
 // ----- TAB 1: NORMAL - VERTICAL AND HORIZONTAL -----
@@ -712,7 +707,7 @@ std::shared_ptr<UltraCanvasContainer> MakeOrientationTab() {
 
     return MakeChartRowTab(
         "BarOrient",
-        "A normal single-series bar chart. Both charts are the same content class and the same data;\n"
+        "A normal single-series bar chart. Both charts are the same content class and the same data; "
         "the engine's Horizontal projection transposes the right-hand one - no second implementation.",
         {vertical, horizontal});
 }
@@ -725,11 +720,11 @@ std::shared_ptr<UltraCanvasContainer> MakeClusteredTab() {
 
     auto tab = MakeChartRowTab(
         "BarClustered",
-        "Clustered (grouped) bars: each category slot holds one bar per series, side by side. Bar connections join each\n"
+        "Clustered (grouped) bars: each category slot holds one bar per series, side by side. Bar connections join each "
         "series across the shops, straight or curved; hover a bar for its tooltip and to emphasise its series' line.",
         {chart});
-    tab->AddChild(MakeControlStrip("BarClustered", {chart},
-        [chart](UltraCanvasContainer& strip) {
+    DemoKit::Add(tab, MakeControlStrip("BarClustered", {chart},
+        [chart](const std::shared_ptr<UltraCanvasContainer>& strip) {
             AddBarConnectionControls(strip, "BarClustered", chart, 1);
         }));
     return tab;
@@ -743,13 +738,12 @@ std::shared_ptr<UltraCanvasContainer> MakeStackedTab() {
 
     auto tab = MakeChartRowTab(
         "BarStacked",
-        "Stacked bars: series segments pile up per category and the label plan carries the stack totals.\n"
+        "Stacked bars: series segments pile up per category and the label plan carries the stack totals. "
         "100% stacking rescales every column to its share of the total, with a fixed percent axis.",
         {chart});
-    tab->AddChild(MakeControlStrip("BarStacked", {chart},
-        [chart](UltraCanvasContainer& strip) {
-            auto percent = std::make_shared<UltraCanvasCheckbox>("BarStackedPercent", 140, 24);
-            percent->SetText("100% stacked");
+    DemoKit::Add(tab, MakeControlStrip("BarStacked", {chart},
+        [chart](const std::shared_ptr<UltraCanvasContainer>& strip) {
+            auto percent = std::make_shared<UltraCanvasCheckbox>("BarStackedPercent", "100% stacked");
             percent->onStateChanged = [chart](CheckedState, CheckedState newState) {
                 chart->SetArrangement(newState == CheckedState::Checked
                                           ? ChartBarArrangement::PercentStacked
@@ -758,8 +752,7 @@ std::shared_ptr<UltraCanvasContainer> MakeStackedTab() {
                                          ? "Regional share of revenue - 100% stacked"
                                          : "Quarterly revenue by region - stacked");
             };
-            percent->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            strip.AddChild(percent);
+            DemoKit::Add(strip, percent);
             AddBarConnectionControls(strip, "BarStacked", chart, 0);
         }));
     return tab;
@@ -780,9 +773,9 @@ std::shared_ptr<UltraCanvasContainer> MakeStylesTab() {
     tab->SetPadding(6);
     tab->layout.SetFlexColumn().SetFlexGap(4)
                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    tab->AddChild(MakeCaption(
+    DemoKit::Add(tab, MakeCaption(
         "BarStylesCaption",
-        "One dataset, four fill treatments of the same bar geometry: gradient, rounded, outline and hatched.\n"
+        "One dataset, four fill treatments of the same bar geometry: gradient, rounded, outline and hatched. "
         "Legend swatches are painted in the fill style, and every style survives all three projections - rounded ring sectors included."));
 
     auto addRow = [&tab](const std::string& id,
@@ -829,10 +822,10 @@ std::shared_ptr<UltraCanvasContainer> MakeGraphicFillTab() {
 
     auto tab = MakeChartRowTab(
         "BarGraphic",
-        "Bars filled with graphics: the left chart floods each bar with an image paint pattern; the right stacks\n"
+        "Bars filled with graphics: the left chart floods each bar with an image paint pattern; the right stacks "
         "a repeated icon cut to the exact fraction. Both survive Polar - icons march radially, clipped to the sector.",
         {texture, pictogram});
-    tab->AddChild(MakeControlStrip("BarGraphic", {texture, pictogram}));
+    DemoKit::Add(tab, MakeControlStrip("BarGraphic", {texture, pictogram}));
     return tab;
 }
 
@@ -843,35 +836,21 @@ std::shared_ptr<UltraCanvasContainer> MakeGraphicFillTab() {
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarChartsExamples() {
-    auto container = std::make_shared<UltraCanvasContainer>("BarChartContainer");
-    container->SetBackgroundColor(Color(255, 255, 255, 255));
-    container->SetPadding(8, 10);
-    container->layout.SetFlexColumn().SetFlexGap(6)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    container->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    auto titleLabel = std::make_shared<UltraCanvasLabel>("BarTitleLabel", 0, 32);
-    titleLabel->SetText("Bar Charts - Every Arrangement and Fill on the Chart Engine");
-    titleLabel->SetFontSize(18);
-    titleLabel->SetFontWeight(FontWeight::Bold);
-    titleLabel->SetAlignment(TextAlignment::Center);
-    titleLabel->SetBackgroundColor(Color(240, 240, 250, 255));
-    titleLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    container->AddChild(titleLabel);
-
-    auto descLabel = std::make_shared<UltraCanvasLabel>("BarDescLabel", 0, 42);
-    descLabel->SetText(
-        "One bar-chart content class on UltraCanvasChartEngineElement: axes, grid, layout, legend, value labels, bar geometry,\n"
+    auto container = DemoKit::CreatePage("BarChartContainer",
+        "Bar Charts - Every Arrangement and Fill on the Chart Engine",
+        "One bar-chart content class on UltraCanvasChartEngineElement: axes, grid, layout, legend, value labels, bar geometry, "
         "hover tooltips and the grow-in animation are engine services. Tabs cover vertical/horizontal/polar, clustered, stacked, styles and graphic fills.");
-    descLabel->SetFontSize(11);
-    descLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    container->AddChild(descLabel);
+    // The charts take whatever height the tabs get: the page is the area's
+    // height, not its content's.
+    container->SetFillsArea(true);
+
+    auto card = DemoKit::CreateCard("BarChartCard");
+    card->SetPadding(4);
+    DemoKit::Add(container, card, 1);
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>("BarChartTabs", 0, 0, 0, 0);
     tabs->SetTabPosition(TabPosition::Top);
     tabs->SetTabStyle(TabStyle::Modern);
-    tabs->layoutItem.SetFlex(1, 1, CSSLayout::Dimension::Px(0))
-                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     tabs->AddTab("Vertical & Horizontal", MakeOrientationTab());
     tabs->AddTab("Clustered",             MakeClusteredTab());
@@ -879,7 +858,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateBarChart
     tabs->AddTab("Rendering Styles",      MakeStylesTab());
     tabs->AddTab("Graphic Fills",         MakeGraphicFillTab());
 
-    container->AddChild(tabs);
+    DemoKit::Add(card, tabs, 1);
+    tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
     return container;
 }
 

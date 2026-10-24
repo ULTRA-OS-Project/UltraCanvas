@@ -1,4 +1,6 @@
 // Apps/UltraDBAdmin/ui/DbAdminWindow.cpp
+// Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log, Run statement,
+//                 Explain, snippets, auto-commit, the typed row form; the cell editor follows the grid
 // Version: 0.2.0 - filters, editing in the cell, blobs, rows copied as text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -9,10 +11,12 @@
 #include "DbAdminConnectionDialog.h"
 #include "DbAdminFormat.h"
 #include "DbAdminImportDialog.h"
+#include "DbAdminOperationDialogs.h"
 #include "DbAdminSqlScript.h"
 #include "DbAdminRowDialog.h"
 #include "DbAdminStructureDialog.h"
 #include "DbAdminTheme.h"
+#include "DbAdminWindowParts.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
@@ -39,167 +43,16 @@
 using namespace UltraCanvas;
 
 namespace UltraDBAdmin {
-namespace {
-
-constexpr float kWindowWidth   = 1180.0f;
-constexpr float kWindowHeight  = 740.0f;
-constexpr float kPagePadding   = 10.0f;
-constexpr float kTabPadding    = 10.0f;
-constexpr float kSectionGap    = 8.0f;
-constexpr float kControlHeight = kButtonHeight;
-constexpr float kBarHeight     = 34.0f;
-constexpr float kHeaderHeight  = 48.0f;
-constexpr int   kTreeWidth     = 280;
-constexpr int   kTreeMinWidth  = 180;
-constexpr int   kStatementWidth = 380;
-constexpr size_t kPageSize     = 200;
-
-// Tab order, as added below.
-constexpr int kBrowseTab    = 0;
-constexpr int kStructureTab = 1;
-constexpr int kSqlTab       = 2;
-
-const char* const kPlaceholderText = "…";
-
-
-
-// ----- layout helpers, as UltraNetMonitor has them -----
-
-// A pane's single child fills it edge to edge: basis zero and grow one, so
-// the pane's size decides and the child holds no size of its own against it.
-void FillWith(const std::shared_ptr<UltraCanvasContainer>& container,
-              const std::shared_ptr<UltraCanvasUIElement>& element, float grow = 1.0f) {
-    container->AddChild(element);
-    element->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    element->layoutItem.SetFlexGrow(grow);
-    element->layoutItem.SetFlexShrink(1);
-    element->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-}
-
-void MakePlainColumn(const std::shared_ptr<UltraCanvasContainer>& container) {
-    container->layout.SetFlexColumn()
-                     .SetFlexGap(kSectionGap)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    ContainerStyle plain;
-    plain.autoShowScrollbars = false;
-    container->SetContainerStyle(plain);
-}
-
-std::shared_ptr<UltraCanvasContainer> MakeToolbar(const std::string& id, float height = kBarHeight) {
-    auto bar = CreateContainer(id, 0, 0, 0, height);
-    bar->layout.SetFlexRow()
-               .SetFlexGap(6)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(height));
-    ContainerStyle plainBar;
-    plainBar.autoShowScrollbars = false;
-    bar->SetContainerStyle(plainBar);
-    return bar;
-}
-
-void PinToolbar(const std::shared_ptr<UltraCanvasUIElement>& bar) {
-    bar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    bar->layoutItem.SetFlexGrow(0);
-    bar->layoutItem.SetFlexShrink(0);
-}
-
-// Takes what the controls leave, and gives it back first (ellipsized).
-std::shared_ptr<UltraCanvasLabel> MakeBarStatus(const std::string& id, const std::string& text = "") {
-    auto label = CreateLabel(id, 0, 0, 0, 24, text);
-    label->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
-    label->layoutItem.SetFlexGrow(1);
-    label->layoutItem.SetFlexShrink(1);
-    label->SetTextColor(StatusColor());
-    label->SetAlignment(TextAlignment::Left);
-    return label;
-}
-
-// A tab's page: no size of its own - the tabbed container sizes it.
-std::shared_ptr<UltraCanvasContainer> MakeTabPage(const std::string& id) {
-    auto page = CreateContainer(id, 0, 0, 0, 0);
-    MakePlainColumn(page);
-    page->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
-    page->SetPadding(kTabPadding);
-    return page;
-}
-
-// The splitters are the gaps between the cards: the ground, a grip on it.
-SplitPaneStyle PaneStyle() {
-    SplitPaneStyle style;
-    style.splitterThickness = 8;
-    style.splitterHitMargin = 3;
-    style.handle.shape      = SplitterHandleShape::RoundedSquare;
-    style.handle.crossSize  = 8;
-    style.handle.axisLength = 40;
-    return SplitPaneStyle::FromTheme(UltraCanvasTheme::Current(), style);
-}
-
-// The tree's icon for a node of the given kind.
-std::string ObjectIcon(UltraDbObjectKind kind) {
-    switch (kind) {
-        case UltraDbObjectKind::Table:            return IconPath("node-table");
-        case UltraDbObjectKind::View:             return IconPath("node-view");
-        case UltraDbObjectKind::MaterializedView: return IconPath("node-materialized-view");
-        case UltraDbObjectKind::ForeignTable:     return IconPath("node-foreign-table");
-        case UltraDbObjectKind::Sequence:         return IconPath("node-sequence");
-    }
-    return IconPath("node-table");
-}
-
-std::shared_ptr<UltraCanvasListView> MakeList(const std::string& id, const std::shared_ptr<IListModel>& model) {
-    auto view = std::make_shared<UltraCanvasListView>(id, -1, -1, 400, 200);
-    view->SetModel(model);
-    view->SetShowHeader(true);
-    view->SetShowItemTooltips(true);
-    StyleList(*view);
-    return view;
-}
-
-const char* KindWord(UltraDbObjectKind kind) {
-    switch (kind) {
-        case UltraDbObjectKind::Table:            return "table";
-        case UltraDbObjectKind::View:             return "view";
-        case UltraDbObjectKind::MaterializedView: return "materialized view";
-        case UltraDbObjectKind::ForeignTable:     return "foreign table";
-        case UltraDbObjectKind::Sequence:         return "sequence";
-    }
-    return "object";
-}
-
-// "4 512" rather than "4512": a row count is read at a glance.
-std::string Grouped(int64_t value) {
-    std::string digits = std::to_string(value < 0 ? -value : value);
-    std::string out;
-    for (size_t i = 0; i < digits.size(); ++i) {
-        if (i > 0 && (digits.size() - i) % 3 == 0) out += " ";   // thin space
-        out += digits[i];
-    }
-    return value < 0 ? "-" + out : out;
-}
-
-std::string Seconds(double seconds) {
-    // locale-ok: a duration for the reader, in the desktop's own decimal mark.
-    char text[32];
-    std::snprintf(text, sizeof text, seconds < 10.0 ? "%.2f s" : "%.1f s", seconds);
-    return text;
-}
-
-// A message for a one-line label: a server's error can run to three lines
-// ("... Is the server running on that host?"); the tooltip has all of it.
-std::string OneLine(const std::string& text) {
-    return CellText(UltraDbValue(text), 240);
-}
-
-// The first line of a script, for the history dropdown.
-std::string FirstLine(const std::string& script) {
-    return CellText(UltraDbValue(script), 70);
-}
-
-} // namespace
+using namespace window;
 
 DbAdminWindow::~DbAdminWindow() {
     // Nothing posted from now on reaches the window; then the threads end.
     *exportStop_ = true;
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        if (logTimer_) app->StopTimer(logTimer_);
+        if (cellTimer_) app->StopTimer(cellTimer_);
+    }
+    if (logObserver_) UltraDb_RemoveStatementObserver(logObserver_);
     alive_.reset();
     jobs_.Stop();
     runners_.clear();
@@ -214,6 +67,13 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
         store_.OpenInMemory();
         storeNote_ = "Connections cannot be saved (" + error + "); they are kept until the app closes.";
     }
+    if (!snippets_.Open(dataDirectory, error)) {
+        snippets_.Open(std::string(), error);
+        storeNote_ = "Snippets cannot be kept: " + error;
+    }
+    // The SQL log: every statement on the app's own sessions, whichever
+    // thread ran it; the list shows what is new every few hundred ms.
+    logObserver_ = SqlLog::Attach(log_, [](const std::string& name) { return !ConnectionIdOf(name).empty(); });
 
     WindowConfig config;
     config.title     = std::string("UltraDBAdmin ") + ULTRADBADMIN_VERSION;
@@ -244,10 +104,29 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     split_->SetPaneMinSize(1, 420);
     MakePlainColumn(treePane);
     MakePlainColumn(tabPane);
-    // The tabs' card: the pane draws it, a pixel round the tabs.
-    MakeCard(*tabPane);
-    tabPane->SetPadding(1.0f);
     FillWith(treePane, BuildTreePane());
+
+    // On the right: the tabs' card above, the SQL log's below.
+    rightSplit_ = CreateVerticalSplitPane("dbaRightSplit", 0, 0, 0, 0);
+    rightSplit_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
+    rightSplit_->SetSplitPaneStyle(PaneStyle());
+    auto cardPane = rightSplit_->AddPane(4.0);
+    auto logPane  = rightSplit_->AddPane(1.0);
+    rightSplit_->SetPaneFixedSize(1, kLogHeight);
+    rightSplit_->SetPaneMinSize(0, 300);
+    rightSplit_->SetPaneMinSize(1, 70);
+    MakePlainColumn(cardPane);
+    MakePlainColumn(logPane);
+    // The tabs' card: the pane draws it, a pixel round the tabs.
+    MakeCard(*cardPane);
+    cardPane->SetPadding(1.0f);
+    cardPane->layout.SetFlexGap(0);
+    objectStrip_ = MakeToolbar("dbaObjects", static_cast<float>(kObjectStripHeight));
+    objectStrip_->layout.SetFlexGap(4);
+    objectStrip_->SetPadding(4.0f, 8.0f, 0.0f, 8.0f);
+    cardPane->AddChild(objectStrip_);
+    PinToolbar(objectStrip_);
+    FillWith(logPane, BuildLogPanel());
 
     tabs_ = CreateTabbedContainer("dbaTabs", 0, 0, 0, 0);
     tabs_->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Auto());
@@ -259,11 +138,21 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     tabs_->AddTab("Browse", BuildBrowsePage());
     tabs_->AddTab("Structure", BuildStructurePage());
     tabs_->AddTab("SQL", BuildSqlPage());
+    tabs_->AddTab("Search", BuildSearchPage());
+    tabs_->AddTab("Relations", BuildRelationsPage());
+    tabs_->AddTab("Routines", BuildRoutinesPage());
+    tabs_->AddTab("Server", BuildServerPage());
     tabs_->SetTabIcon(kBrowseTab, IconPath("tab-browse"));
     tabs_->SetTabIcon(kStructureTab, IconPath("tab-structure"));
     tabs_->SetTabIcon(kSqlTab, IconPath("tab-sql"));
+    tabs_->SetTabIcon(kSearchTab, IconPath("tab-search"));
+    tabs_->SetTabIcon(kRelationsTab, IconPath("tab-relations"));
+    tabs_->SetTabIcon(kRoutinesTab, IconPath("tab-routines"));
+    tabs_->SetTabIcon(kServerTab, IconPath("tab-server"));
     tabs_->SetActiveTab(kBrowseTab);
-    FillWith(tabPane, tabs_);
+    tabs_->onTabChange = [this](int, int index) { OnPageShown(index); };
+    FillWith(cardPane, tabs_);
+    FillWith(tabPane, rightSplit_);
     FillWith(page_, split_);
 
     window_->AddChild(page_);
@@ -277,8 +166,20 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
             SetStatus("Changes are being written: close the window once that has finished.");
             return false;
         }
-        if (edits_.Empty() && structure_.Empty()) return true;
-        ConfirmDiscard("close UltraDBAdmin", [this]() { window_->Close(); });
+        const size_t staged = StagedEverywhere();
+        if (staged == 0) return true;
+        UltraCanvasDialogManager::ShowConfirmation(
+            "Drop " + std::to_string(staged) + (staged == 1 ? " staged change" : " staged changes") +
+                " and close UltraDBAdmin? " + (staged == 1 ? "It has" : "None of them has") + " been written.",
+            "Uncommitted changes",
+            [this](bool confirmed) {
+                if (!confirmed) return;
+                for (auto& tab : openTabs_) { tab.edits.Revert(); tab.structure.Revert(); }
+                edits_.Revert();
+                structure_.Revert();
+                window_->Close();
+            },
+            window_.get());
         return false;
     };
 
@@ -289,7 +190,14 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     }
     RebuildTree();
     ClearObject("Pick a table or view in the tree.");
+    RebuildObjectStrip();
     UpdateSqlBar();
+    UpdateSearchBar();
+    UpdateRelationsBar();
+    UpdateRoutinesBar();
+    UpdateServerBar();
+    if (auto* app = UltraCanvasApplication::GetInstance())
+        logTimer_ = app->StartTimer(kLogRefreshMs, true, [this](TimerId) { RefreshLog(); });
     if (!storeNote_.empty()) SetStatus(storeNote_, true);
     else if (store_.All().empty()) SetStatus("No connections yet - Add connection names a SQLite file or a PostgreSQL server.");
     else SetStatus(std::to_string(store_.All().size()) + " connections. Expand one to see its tables.");
@@ -376,6 +284,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildTreePane() {
         if (child && child->kind == NodeRef::Kind::Placeholder) LoadChildren(node->data.nodeId);
     };
     tree_->onNodeSelected = [this](TreeNode* node) { OnNodeSelected(node); };
+    tree_->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) { ShowTreeMenu(node, event); };
     FillWith(pane, tree_);
     return pane;
 }
@@ -663,23 +572,39 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
     runButton_->SetOnClick([this]() { RunSql(); });
     bar->AddChild(runButton_);
 
+    runStatementButton_ = MakeActionButton("dbaRunStatement", "", "run-statement",
+                                           "Run the statement under the caret, alone (Ctrl+Shift+Enter)");
+    runStatementButton_->SetOnClick([this]() { RunSql(RunScope::Statement); });
+    bar->AddChild(runStatementButton_);
+
+    explainButton_ = MakeActionButton("dbaExplain", "Explain", "explain",
+                                      "How the database would run the selection, or the statement under the caret: "
+                                      "its plan, not its rows (EXPLAIN; never ANALYZE, which would run it)");
+    explainButton_->SetOnClick([this]() { RunSql(RunScope::Explain); });
+    bar->AddChild(explainButton_);
+
     stopButton_ = MakeActionButton("dbaStop", "Stop", "stop", "Cancel the running statement", ButtonRole::Danger);
     stopButton_->SetOnClick([this]() { StopSql(); });
     bar->AddChild(stopButton_);
     bar->AddChild(MakeBarDivider("dbaSqlFileDivider"));
 
-    importSqlButton_ = MakeActionButton("dbaImportSql", "Import SQL", "import",
-                                        "Run a SQL file (.sql, or .sql.gz) on the connection picked in the tree");
+    importSqlButton_ = MakeActionButton("dbaImportSql", "", "import",
+                                        "Import SQL: run a SQL file (.sql, or .sql.gz) on the connection picked in the tree");
     importSqlButton_->SetOnClick([this]() { ImportSql(); });
     bar->AddChild(importSqlButton_);
 
-    exportRowsButton_ = MakeActionButton("dbaExportRows", "Export rows", "export",
-                                         "Write the rows shown below to a file: CSV, TSV, JSON, SQL or a workbook");
+    exportRowsButton_ = MakeActionButton("dbaExportRows", "", "export",
+                                         "Export rows: write the rows shown below to a file - CSV, TSV, JSON, SQL or a workbook");
     exportRowsButton_->SetOnClick([this]() { ExportRows(ExportSource::Result); });
     bar->AddChild(exportRowsButton_);
     bar->AddChild(MakeBarDivider("dbaSqlHistoryDivider"));
 
-    historyDropdown_ = CreateDropdown("dbaHistory", 0, 0, 220, kControlHeight);
+    snippetsButton_ = MakeActionButton("dbaSnippets", "Snippets", "snippet",
+                                       "Saved SQL: put one in the editor, or keep the editor's under a name");
+    snippetsButton_->SetOnClick([this]() { ShowSnippetsMenu(); });
+    bar->AddChild(snippetsButton_);
+
+    historyDropdown_ = CreateDropdown("dbaHistory", 0, 0, 180, kControlHeight);
     historyDropdown_->layoutItem.SetFlexShrink(0);
     historyDropdown_->SetFollowTheme(true);
     historyDropdown_->SetTooltip("Scripts run on this connection, newest first: pick one to put it back in the editor");
@@ -711,7 +636,7 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
     sqlEditor_->onBeforeKeyDown = [this](const UCEvent& event) {
         const bool enter = event.virtualKey == UCKeys::Return || event.virtualKey == UCKeys::NumPadEnter;
         if (enter && (event.ctrl || event.meta)) {
-            RunSql();
+            RunSql(event.shift ? RunScope::Statement : RunScope::Script);
             return true;
         }
         return false;
@@ -982,9 +907,10 @@ void DbAdminWindow::OnNodeSelected(TreeNode* node) {
     if (!ref || ref->kind == NodeRef::Kind::Placeholder) return;
     selectedNode_ = node->data.nodeId;
     UpdateSqlBar();
+    UpdateSearchBar();
+    OnPageShown(tabs_->GetActiveTab());
     if (ref->kind != NodeRef::Kind::Object) return;
-    const NodeRef object = *ref;
-    ConfirmDiscard("open " + object.schema + "." + object.name, [this, object]() { OpenObject(object); });
+    OpenFromTree(*ref);
 }
 
 void DbAdminWindow::AddConnection() {
@@ -1006,11 +932,28 @@ void DbAdminWindow::EditConnection() {
 std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std::string& password,
                                           bool clearPassword) {
     const bool edited = !spec.id.empty();
+    // A change to how the database is reached closes its tables' tabs - they
+    // were read through the old session - but never drops changes staged in
+    // them unasked. A new name, colour or auto-commit leaves them open.
+    const ConnectionSpec* before = edited ? store_.Find(spec.id) : nullptr;
+    const bool sessionChanges =
+        before && (before->driver != spec.driver || before->database != spec.database || before->host != spec.host ||
+                   before->port != spec.port || before->user != spec.user || before->tls != spec.tls ||
+                   before->readOnly != spec.readOnly || !password.empty() || clearPassword);
+    if (sessionChanges) {
+        StashActiveTab();
+        size_t staged = 0;
+        for (const auto& tab : openTabs_)
+            if (tab.ref.connectionId == spec.id) staged += StagedChanges(tab);
+        if (staged > 0)
+            return "Commit or revert the " + std::to_string(staged) + (staged == 1 ? " change" : " changes") +
+                   " staged to its tables first: they were read through the connection as it is now.";
+    }
     std::string error;
     const std::string id = store_.Put(spec, password, clearPassword, error);
     if (id.empty()) return "Not saved: " + error;
     const ConnectionSpec saved = *store_.Find(id);
-    if (edited && objectConnectionId_ == id) ClearObject("The connection changed: pick the table again.");
+    if (sessionChanges) CloseTabsOf(id);
     // New settings take effect with the next query; a script or page still
     // running finishes on the old ones.
     const UltraDbResult registered = store_.Register(saved);
@@ -1021,6 +964,7 @@ std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std:
         selectedNode_ = "c/" + id;
     }
     UpdateSqlBar();
+    UpdateEditBar();               // auto-commit, read only: the bar says what holds now
     SetStatus(saved.name + (edited ? " saved." : " added. Expand it to see its tables."));
     return std::string();
 }
@@ -1044,7 +988,7 @@ void DbAdminWindow::RemoveConnection() {
                 }
                 runners_.erase(runner);
             }
-            if (objectConnectionId_ == id) ClearObject("Pick a table or view in the tree.");
+            CloseTabsOf(id);
             std::string error;
             if (!store_.Remove(id, error)) { SetStatus("Not removed: " + error, true); return; }
             RebuildTree();
@@ -1088,11 +1032,14 @@ void DbAdminWindow::ClearObject(const std::string& message) {
     pageLoading_ = false;
     browseModel_->Clear();
     browseView_->ClearSortIndicator();
+    if (IListSelection* selection = browseView_->GetSelection()) selection->Clear();
     structure_ = StructureEdit();
     source_ = SqliteTableSource();
     columnModel_->Replace(UltraDbTableSchema());
     constraintModel_->Replace(UltraDbTableSchema());
     definitionArea_->SetText("", false);
+    definitionText_.clear();
+    structureInfoText_.clear();
     structureInfo_->SetText(message);
     browseNote_->SetText(message);
     browseNote_->SetTextColor(StatusColor());
@@ -1159,6 +1106,7 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
         definition += trigger.definition;
     }
     definitionArea_->SetText(definition, false);
+    definitionText_ = definition;
 
     std::string info = objectLabel_ + " - " + KindWord(table.kind) + ", " +
                        std::to_string(table.columns.size()) + (table.columns.size() == 1 ? " column" : " columns");
@@ -1166,15 +1114,28 @@ void DbAdminWindow::ApplyTable(uint64_t generation, const UltraDbResult& result,
     if (table.sizeBytes >= 0) info += ", " + HumanSize(table.sizeBytes);
     if (!table.comment.empty()) info += " - " + table.comment;
     structureInfo_->SetText(info);
+    structureInfoText_ = info;
 
     pager_ = std::make_shared<TablePager>(RegisteredName(*store_.Find(objectConnectionId_)), table, kPageSize,
                                           spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres);
     edits_ = EditBuffer(table);
+    if (activeTab_ >= 0) openTabs_[static_cast<size_t>(activeTab_)].loaded = true;
+    // A search hit opens its table filtered on the column it was found in.
+    if (filterWhenOpen_ && IsObject(objectRef_, whenOpenRef_)) {
+        filterWhenOpen_ = false;
+        auto filtered = std::make_shared<TablePager>(*pager_);
+        std::string error;
+        if (filtered->SetFilter(openFilter_, error)) pager_ = filtered;
+    }
     FillFilterColumns();
     UpdateEditBar();
     UpdateStructureBar();
     LoadPage(0);
     CountRows();
+    if (exportWhenOpen_ && IsObject(objectRef_, whenOpenRef_)) {
+        exportWhenOpen_ = false;
+        ExportRows(ExportSource::Table);
+    }
 }
 
 void DbAdminWindow::ApplySequence(uint64_t generation, const UltraDbResult& result, const UltraDbResultSet& rows) {
@@ -1315,6 +1276,16 @@ void DbAdminWindow::FillFilterColumns() {
         if (!pager_->Table().columns.empty()) filterColumn_->SetSelectedIndex(0, false);
     }
     filterValue_->SetText("");
+    // A table shown with a filter (its tab again, a search hit) shows that filter's column.
+    if (pager_ && !pager_->Filters().empty()) {
+        const auto& columns = pager_->Table().columns;
+        for (size_t i = 0; i < columns.size(); ++i) {
+            if (columns[i].name != pager_->Filters().front().column) continue;
+            filterColumn_->SetSelectedIndex(static_cast<int>(i), false);
+            ShowFilterOf(static_cast<int>(i));
+            return;
+        }
+    }
     UpdateFilterBar();
 }
 
@@ -1437,6 +1408,8 @@ bool DbAdminWindow::IsBlobColumn(int column) const {
 
 void DbAdminWindow::BeginCellEdit(int row, int column) {
     FinishCellEdit(true);
+    // A staged new row is changed in its form: it has no key to address a cell by.
+    if (browseModel_->StagedIndex(row) >= 0) { EditRow(row); return; }
     const UltraDbResultSet& rows = browseModel_->Rows();
     if (row < 0 || static_cast<size_t>(row) >= rows.Size()) return;
     const UltraDbColumnSchema* schema = BrowseColumn(column);
@@ -1469,7 +1442,13 @@ void DbAdminWindow::BeginCellEdit(int row, int column) {
     cellRow_ = original;
     cellColumn_ = schema->name;
     cellGen_ = objectGen_;
+    cellViewRow_ = row;
+    cellViewColumn_ = column;
+    cellRect_ = cell;
     cellEditing_ = true;
+    // The grid tells nobody it scrolled: the editor looks, while it is open.
+    if (auto* app = UltraCanvasApplication::GetInstance())
+        cellTimer_ = app->StartTimer(kCellFollowMs, true, [this](TimerId) { PlaceCellEditor(); });
     cellEditor_->SetText(text);
     cellEditor_->SetVisible(true);
     browsePage_->InvalidateLayout();
@@ -1478,15 +1457,41 @@ void DbAdminWindow::BeginCellEdit(int row, int column) {
     SetStatus("Editing " + schema->name + ": Enter stages the value, Escape leaves the cell as it was.");
 }
 
+void DbAdminWindow::PlaceCellEditor() {
+    if (!cellEditing_) return;
+    const Rect2Di cell = browseView_->GetCellRect(cellViewRow_, cellViewColumn_);
+    if (cell.x == cellRect_.x && cell.y == cellRect_.y && cell.width == cellRect_.width) return;
+    // Scrolled out of the rows shown, it ends as a click elsewhere does: what
+    // was typed is staged.
+    const UltraCanvasListView::ScrollMetrics metrics = browseView_->GetScrollMetrics();
+    const int header = browseView_->GetShowHeader() ? browseView_->GetStyle().headerHeight : 0;
+    if (cell.height <= 0 || cell.y < header || cell.y + cell.height > header + metrics.viewportHeight ||
+        cell.x + cell.width <= 0 || cell.x >= metrics.viewportWidth) {
+        FinishCellEdit(true);
+        return;
+    }
+    cellRect_ = cell;
+    const Point2Df view = browseView_->GetPositionInWindow();
+    const Point2Df page = browsePage_->GetPositionInWindow();
+    cellEditor_->layoutItem.position->left = CSSLayout::Dimension::Px(view.x + cell.x - page.x);
+    cellEditor_->layoutItem.position->top = CSSLayout::Dimension::Px(view.y + cell.y - page.y);
+    browsePage_->InvalidateLayout();
+}
+
 void DbAdminWindow::FinishCellEdit(bool keep) {
     if (!cellEditing_) return;
     cellEditing_ = false;          // first: moving the focus calls here again
+    if (cellTimer_) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(cellTimer_);
+        cellTimer_ = 0;
+    }
     const std::string text = cellEditor_->GetText();
     // Ended by a key, the grid takes the keyboard back; ended by a click
     // elsewhere, the focus stays where it went.
     if (cellEditor_->IsFocused() && browseView_) browseView_->SetFocus(true);
     cellEditor_->SetVisible(false);
     browsePage_->InvalidateLayout();
+    if (!keep) SetStatus(cellColumn_ + " left as it was.");
     if (!keep || cellGen_ != objectGen_) return;
     // An empty field over a NULL that nothing staged leaves it NULL: "Set to
     // NULL" is the way to empty a cell, and an empty text is typed only where
@@ -1497,8 +1502,8 @@ void DbAdminWindow::FinishCellEdit(bool keep) {
         SetStatus(error, true);
         return;
     }
-    AfterEdit();
-    SetStatus(cellColumn_ + " staged. Commit writes it, Revert drops it.");
+    SetStatus(cellColumn_ + (AutoCommit() ? " changed." : " staged. Commit writes it, Revert drops it."));
+    AfterStage();
 }
 
 void DbAdminWindow::SetCellNull(int row, int column) {
@@ -1513,7 +1518,7 @@ void DbAdminWindow::SetCellNull(int row, int column) {
         SetStatus(error, true);
         return;
     }
-    AfterEdit();
+    AfterStage();
 }
 
 // ===== BLOBS =====
@@ -1597,7 +1602,7 @@ void DbAdminWindow::LoadBlob(int row, int column) {
             SetStatus(error, true);
             return;
         }
-        AfterEdit();
+        AfterStage();
         SetStatus(PathToUtf8(PathFromUtf8(path).filename()) + " (" + HumanSize(static_cast<int64_t>(file.bytes.size())) +
                   ") staged for " + name + ". Commit writes it.");
     });
@@ -1611,7 +1616,11 @@ void DbAdminWindow::ShowBrowseMenu(int row, const UCEvent& event) {
     const UltraDbColumnSchema* schema = BrowseColumn(column);
     const bool onRow = row >= 0 && static_cast<size_t>(row) < browseModel_->Rows().Size();
     const bool editable = EditBlockReason().empty();
-    const size_t selected = browseView_->GetSelection() ? browseView_->GetSelection()->GetSelectedRows().size() : 0;
+    // The rows read that are selected: a staged new row has nothing to copy yet.
+    size_t selected = 0;
+    if (IListSelection* selection = browseView_->GetSelection())
+        for (const int picked : selection->GetSelectedRows())
+            if (picked >= 0 && static_cast<size_t>(picked) < browseModel_->Rows().Size()) ++selected;
     menu_ = std::make_shared<UltraCanvasMenu>("dbaBrowseMenu", 0, 0, 260, 0);
     menu_->SetMenuType(MenuType::PopupMenu);
     if (onRow && schema) {
@@ -1648,6 +1657,13 @@ void DbAdminWindow::ShowBrowseMenu(int row, const UCEvent& event) {
         menu_->AddItem(MenuItemData::Separator());
         menu_->AddItem(MenuItemData::Action("Edit row", [this, row]() { EditRow(row); }));
         menu_->AddItem(MenuItemData::Action("Delete row", [this]() { DeleteSelectedRow(); }));
+    }
+    if (browseModel_->StagedIndex(row) >= 0 && editable) {
+        menu_->AddItem(MenuItemData::Action("Edit the new row", [this, row]() { EditRow(row); }));
+        menu_->AddItem(MenuItemData::Action("Remove the new row", [this, row]() {
+            if (IListSelection* selection = browseView_->GetSelection()) selection->Select(row, false);
+            DeleteSelectedRow();
+        }));
     }
     PopupElementSettings settings;
     menu_->OpenMenu(event.pointerWindow, *window_, settings);
@@ -1744,18 +1760,35 @@ int DbAdminWindow::SelectedBrowseRow() const {
 void DbAdminWindow::AfterEdit() {
     browseModel_->Refresh();
     UpdateEditBar();
+    RebuildObjectStrip();          // a tab marks its staged changes
+}
+
+bool DbAdminWindow::AutoCommit() const {
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    return spec && spec->autoCommit;
+}
+
+void DbAdminWindow::AfterStage() {
+    AfterEdit();
+    // Auto-commit writes the change straight away; CommitChanges still asks
+    // before a deletion and anything on a production connection.
+    if (AutoCommit() && !edits_.Empty() && !committing_) CommitChanges();
 }
 
 void DbAdminWindow::AddRow() {
     const std::string blocked = EditBlockReason();
     if (!blocked.empty()) { SetStatus(blocked); return; }
     const uint64_t generation = objectGen_;
-    ShowRowDialog(window_.get(), edits_.Table(), nullptr, nullptr,
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+    ShowRowDialog(window_.get(), edits_.Table(), engine, nullptr, nullptr,
                   [this, generation](const std::map<std::string, CellValue>& values) -> std::string {
                       if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
                       std::string error;
                       if (!edits_.InsertRow(values, error)) return error;
-                      AfterEdit();
+                      AfterStage();
+                      // New rows follow the rows read: the grid shows the one just staged.
+                      if (!edits_.Empty()) browseView_->ScrollToRow(browseModel_->GetRowCount() - 1);
                       return std::string();
                   });
 }
@@ -1763,6 +1796,27 @@ void DbAdminWindow::AddRow() {
 void DbAdminWindow::EditRow(int row) {
     const std::string blocked = EditBlockReason();
     if (!blocked.empty()) { SetStatus(blocked); return; }
+    const int stagedIndex = browseModel_->StagedIndex(row);
+    if (stagedIndex >= 0) {
+        // A new row not written yet: its form again, with what was staged.
+        const RowChange* change = edits_.InsertAt(static_cast<size_t>(stagedIndex));
+        if (!change) return;
+        const std::map<std::string, CellValue> staged = change->values;
+        const uint64_t generation = objectGen_;
+        const size_t at = static_cast<size_t>(stagedIndex);
+        const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+        const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+        ShowRowDialog(window_.get(), edits_.Table(), engine, nullptr, nullptr,
+                      [this, generation, at](const std::map<std::string, CellValue>& values) -> std::string {
+                          if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
+                          std::string error;
+                          if (!edits_.UpdateInsert(at, values, error)) return error;
+                          AfterStage();
+                          return std::string();
+                      },
+                      &staged);
+        return;
+    }
     if (row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) {
         SetStatus("Select a row to edit (or double-click it).");
         return;
@@ -1773,12 +1827,14 @@ void DbAdminWindow::EditRow(int row) {
         return;
     }
     const uint64_t generation = objectGen_;
-    ShowRowDialog(window_.get(), edits_.Table(), &original, &edits_,
+    const ConnectionSpec* spec = store_.Find(objectConnectionId_);
+    const SqlEngine engine = spec && spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres;
+    ShowRowDialog(window_.get(), edits_.Table(), engine, &original, &edits_,
                   [this, generation, original](const std::map<std::string, CellValue>& values) -> std::string {
                       if (generation != objectGen_) return "Another table was opened meanwhile; nothing was staged.";
                       std::string error;
                       if (!edits_.UpdateRow(original, values, error)) return error;
-                      AfterEdit();
+                      AfterStage();
                       return std::string();
                   });
 }
@@ -1787,6 +1843,14 @@ void DbAdminWindow::DeleteSelectedRow() {
     const std::string blocked = EditBlockReason();
     if (!blocked.empty()) { SetStatus(blocked); return; }
     const int row = SelectedBrowseRow();
+    const int stagedIndex = browseModel_->StagedIndex(row);
+    if (stagedIndex >= 0) {
+        // A new row not written yet is simply no longer staged.
+        edits_.RemoveInsert(static_cast<size_t>(stagedIndex));
+        AfterEdit();
+        SetStatus("The new row is no longer staged.");
+        return;
+    }
     if (row < 0 || static_cast<size_t>(row) >= browseModel_->Rows().Size()) {
         SetStatus("Select the row to delete.");
         return;
@@ -1796,7 +1860,7 @@ void DbAdminWindow::DeleteSelectedRow() {
         SetStatus(error, true);
         return;
     }
-    AfterEdit();
+    AfterStage();
 }
 
 void DbAdminWindow::PreviewChanges() {
@@ -1909,25 +1973,6 @@ void DbAdminWindow::ConfirmRevert(size_t count, const std::string& kind, std::fu
         window_.get());
 }
 
-void DbAdminWindow::ConfirmDiscard(const std::string& what, std::function<void()> then) {
-    if (edits_.Empty() && structure_.Empty()) { then(); return; }
-    const size_t count = edits_.Count() + structure_.Count();
-    UltraCanvasDialogManager::ShowConfirmation(
-        "Drop " + std::to_string(count) + (count == 1 ? " staged change" : " staged changes") + " to " +
-            objectLabel_ + (what.empty() ? std::string() : " and " + what) +
-            (count == 1 ? "? It has not been written." : "? None of them has been written."),
-        "Uncommitted changes",
-        [this, then](bool confirmed) {
-            if (!confirmed) return;
-            edits_.Revert();
-            structure_.Revert();
-            AfterEdit();
-            AfterStructureEdit();
-            then();
-        },
-        window_.get());
-}
-
 void DbAdminWindow::UpdateEditBar() {
     if (!pendingLabel_) return;
     const std::string blocked = EditBlockReason();
@@ -1952,7 +1997,9 @@ void DbAdminWindow::UpdateEditBar() {
         for (size_t i = 0; i < parts.size(); ++i) text += (i == 0 ? "" : ", ") + parts[i];
         text += committing_ ? " - committing…" : " - not yet written";
     } else {
-        text = editable ? std::string("Double-click a cell to edit it; right-click for more.") : blocked;
+        text = !editable ? blocked
+               : AutoCommit() ? std::string("Auto-commit: a change is written as soon as it is made. Double-click a cell to edit it.")
+                              : std::string("Double-click a cell to edit it; right-click for more.");
     }
     pendingLabel_->SetText(text);
     pendingLabel_->SetTooltip(text);
@@ -2215,9 +2262,14 @@ void DbAdminWindow::FinishApplyStructure(uint64_t generation, const UltraDbResul
             LoadChildren(schemaNode);
         }
         ref.name = finalName;
+        if (activeTab_ >= 0) {
+            openTabs_[static_cast<size_t>(activeTab_)].ref = ref;
+            openTabs_[static_cast<size_t>(activeTab_)].label = ref.schema + "." + ref.name;
+        }
     }
     // Read it again, as it now is; the edit starts afresh from that.
     OpenObject(ref);
+    RebuildObjectStrip();
     SetStatus(message);
 }
 
@@ -2623,9 +2675,26 @@ void DbAdminWindow::RunExport(ExportSource source, const std::string& path, Expo
         if (result && options.format == ExportFormat::Sql) {
             result = UltraDb_QuoteQualifiedName(connection, table.schema, table.name, options.table);
             if (result && sqlite) result = SqlitePreamble(connection, table, options.preamble);
-            else if (result)
-                options.preamble = "-- The rows of " + table.schema + "." + table.name +
-                                   " only: its definition is pg_dump --schema-only's to write.\n";
+            else if (result && table.kind == UltraDbObjectKind::Table) {
+                // The table's own definition first, read from the catalog, and
+                // its counters moved past the rows after them - unless a
+                // column the database computes or numbers itself (GENERATED
+                // ALWAYS) would refuse the INSERTs as they are written.
+                PostgresDdl ddl;
+                result = PostgresTableDdl(connection, table, ddl);
+                if (result && !ddl.overridingSystemValue && ddl.insertColumns.size() == table.columns.size()) {
+                    options.preamble = ddl.create + ";\n";
+                    for (const auto& index : ddl.indexes) options.preamble += index + ";\n";
+                    for (const auto& comment : ddl.comments) options.preamble += comment + ";\n";
+                    for (const auto& key : ddl.foreignKeys)
+                        options.preamble += "-- Once the tables it refers to exist: " + key + ";\n";
+                    for (const auto& counter : ddl.counters) options.postamble += counter + ";\n";
+                } else if (result) {
+                    options.preamble = "-- The rows of " + table.schema + "." + table.name +
+                                       " only: it has columns the database computes, which take no value; Export "
+                                       "as SQL on its schema (the tree's menu) writes a file that rebuilds it.\n";
+                }
+            }
         }
         size_t written = 0;
         if (result) result = ExportQuery(connection, sql, path, options, written, stop.get(), progress, params);
@@ -2651,21 +2720,64 @@ void DbAdminWindow::FinishExport(const UltraDbResult& result, size_t rows, const
 
 // ===== SQL =====
 
+size_t DbAdminWindow::CaretOffset() const {
+    const std::string text = sqlEditor_->GetText();
+    const LineColumnIndex caret = sqlEditor_->GetCursorPosition();
+    size_t at = 0;
+    for (int line = 0; line < caret.lineIndex && at < text.size(); ++at)
+        if (text[at] == '\n') ++line;
+    for (int column = 0; column < caret.columnIndex && at < text.size();) {
+        ++at;
+        while (at < text.size() && (static_cast<unsigned char>(text[at]) & 0xC0) == 0x80) ++at;
+        ++column;
+    }
+    return at;
+}
+
 SqlRunner* DbAdminWindow::RunnerFor(const ConnectionSpec& spec) {
     auto& runner = runners_[spec.id];
     if (!runner) runner = std::make_unique<SqlRunner>(ConsoleName(spec));
     return runner.get();
 }
 
-void DbAdminWindow::RunSql() {
+void DbAdminWindow::RunSql(RunScope scope) {
     const ConnectionSpec* spec = SelectedConnection();
     if (!spec) {
         sqlInfo_->SetText("Pick a connection (or anything in it) in the tree first.");
         sqlInfo_->SetTextColor(ErrorColor());
         return;
     }
-    const std::string script = sqlEditor_->HasSelection() ? sqlEditor_->GetSelectedText() : sqlEditor_->GetText();
+    // The selection, else the whole script - or, for one statement and for
+    // a plan, the statement under the caret.
+    std::string script;
+    if (sqlEditor_->HasSelection()) {
+        script = sqlEditor_->GetSelectedText();
+    } else if (scope == RunScope::Script) {
+        script = sqlEditor_->GetText();
+    } else {
+        const std::string text = sqlEditor_->GetText();
+        StatementSpan span;
+        if (!StatementAt(text, CaretOffset(), span)) {
+            sqlInfo_->SetText("No statement here: put the caret in one.");
+            sqlInfo_->SetTextColor(StatusColor());
+            return;
+        }
+        script = text.substr(span.begin, span.end - span.begin);
+        // The statement run is the one shown selected.
+        sqlEditor_->SetSelection(LineColumnAt(text, span.begin), LineColumnAt(text, span.end));
+    }
     if (script.find_first_not_of(" \t\r\n;") == std::string::npos) return;
+    if (scope == RunScope::Explain) {
+        const std::vector<StatementSpan> spans = StatementSpans(script);
+        if (spans.size() != 1) {
+            sqlInfo_->SetText(spans.empty() ? std::string("Nothing to explain.")
+                                            : "Explain takes one statement: select it, or put the caret in it.");
+            sqlInfo_->SetTextColor(StatusColor());
+            return;
+        }
+        script = ExplainSql(spec->IsSqlite() ? SqlEngine::Sqlite : SqlEngine::Postgres,
+                            script.substr(spans[0].begin, spans[0].end - spans[0].begin));
+    }
     SqlRunner* runner = RunnerFor(*spec);
     const std::string id = spec->id;
     std::weak_ptr<char> alive = alive_;
@@ -2758,6 +2870,8 @@ void DbAdminWindow::UpdateSqlBar() {
     auto running = runners_.find(sqlConnectionId_);
     const bool busy = running != runners_.end() && running->second->IsRunning();
     runButton_->SetDisabled(busy || !spec);
+    runStatementButton_->SetDisabled(busy || !spec);
+    explainButton_->SetDisabled(busy || !spec);
     stopButton_->SetDisabled(!busy);
     importSqlButton_->SetDisabled(busy || !spec);
     const bool selectedAny = spec != nullptr;

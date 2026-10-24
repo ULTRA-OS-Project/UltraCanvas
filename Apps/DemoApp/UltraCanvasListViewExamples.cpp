@@ -12,12 +12,16 @@
 // list view paints only the rows on screen, so "Add 1,000 domains" costs
 // nothing to scroll.
 //
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                 list, the lists as wide as their cards, every text sized to
+//                 fit, the status lines grow with their messages
 // Version: 1.1.0 - the domain dashboard, until now a page of its own
 //                 (UltraCanvasListViewDashboardExamples.cpp), is section 5
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -432,22 +436,17 @@ namespace UltraCanvas {
             }
         };
 
-        // Section 5 of the page: the dashboard, its own status line and the
-        // "Add 1,000 domains" button, 590 px from `top` down.
-        void AddDomainDashboardSection(UltraCanvasContainer& page, int top) {
-            auto section = std::make_shared<UltraCanvasLabel>("LVSection5", 20, top, 960, 25);
-            section->SetText("5. Custom Delegate: Domain Dashboard");
-            section->SetFontWeight(FontWeight::Bold);
-            section->SetTextColor(Color(0, 100, 200, 255));
-            page.AddChild(section);
+        // Section 5 of the page: a card with the dashboard, its own status
+        // line and the "Add 1,000 domains" button.
+        void AddDomainDashboardSection(const std::shared_ptr<UltraCanvasContainer>& page) {
+            auto section = DemoKit::AddCard(page, "LVSection5", "5. Custom Delegate: Domain Dashboard");
 
-            auto intro = std::make_shared<UltraCanvasLabel>("DashboardIntro", 20, top + 28, 960, 36);
-            intro->SetText("Click a domain to open it, \"Enable\" to turn on security insights, the three dots (or right-click a row) "
+            auto intro = DemoKit::AddText(section, "DashboardIntro",
+                           "Click a domain to open it, \"Enable\" to turn on security insights, the three dots (or right-click a row) "
                            "for its menu, and a column header to sort. Every row is painted by one IItemDelegate.");
             intro->SetFontSize(11);
             intro->SetWrap(TextWrap::WrapWordChar);
-            intro->SetTextColor(Color(100, 100, 100));
-            page.AddChild(intro);
+            intro->SetTextColor(DemoKit::CaptionText());
 
             auto state = std::make_shared<DashboardState>();
             state->model = std::make_shared<DomainListModel>();
@@ -467,7 +466,7 @@ namespace UltraCanvas {
 
             // Tall enough for the header and all ten rows, so the page scrolls
             // past the list until "Add 1,000 domains" gives it a scrollbar.
-            auto list = std::make_shared<UltraCanvasListView>("DomainList", 20, top + 70, 960, 480);
+            auto list = std::make_shared<UltraCanvasListView>("DomainList", 0, 0, 960, 480);
             ListViewStyle style = list->GetStyle();
             style.showHeader = true;
             style.showGridLines = true;
@@ -482,18 +481,29 @@ namespace UltraCanvas {
             list->SetDelegate(state->delegate);
             list->SetRowHeight(kRowHeight);
             state->list = list.get();
-            page.AddChild(list);
+            DemoKit::AddStretched(section, list);
 
-            auto status = std::make_shared<UltraCanvasLabel>("DashboardStatus", 20, top + 560, 760, 30);
-            status->SetText(std::to_string(state->model->GetRowCount()) + " domains");
+            // The status line takes the width the button leaves and wraps a
+            // long message; the button is as wide as its text.
+            auto statusRow = DemoKit::AddRow(section, "DashboardStatusRow", 10);
+            auto status = DemoKit::CreateText("DashboardStatus",
+                    std::to_string(state->model->GetRowCount()) + " domains");
             status->SetFontSize(11);
             status->SetBackgroundColor(Colors::White);
             status->SetBorders(1.0f);
-            status->SetPadding(0, 8);
+            status->SetPadding(6, 8);
+            status->SetAlignment(TextAlignment::Left, VerticalAlignment::Middle);
+            CSSLayout::BoxConstraints statusLimits;
+            statusLimits.minHeight = CSSLayout::Dimension::Px(30);
+            status->boxConstraints = statusLimits;
             state->status = status;
-            page.AddChild(status);
+            DemoKit::Add(statusRow, status, 1);
+            status->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-            auto addMany = CreateButton("DashboardAddMany", 790, top + 560, 190, 30, "Add 1,000 domains");
+            auto addMany = CreateButton("DashboardAddMany", 0, 0, 0, 30, "Add 1,000 domains");
+            CSSLayout::BoxConstraints addManyLimits;
+            addManyLimits.minWidth = CSSLayout::Dimension::Px(190);
+            addMany->boxConstraints = addManyLimits;
             addMany->SetOnClick([state]() {
                 const std::string selected = state->SelectedDomain();
                 const int first = state->added;
@@ -510,7 +520,7 @@ namespace UltraCanvas {
                 state->Say(std::to_string(state->model->GetRowCount()) +
                            " domains - only the rows on screen are painted, so scrolling stays smooth");
             });
-            page.AddChild(addMany);
+            DemoKit::Add(statusRow, addMany);
 
             // ----- Cells -----
             list->onCellHovered = [state](int row, int column, const Point2Di& inCell) {
@@ -560,47 +570,30 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateListViewExamples() {
-        // Sections 1-4 end at y = 605 and the dashboard (section 5) runs from
-        // 625 to 1215; the demo's display area scrolls down to it.
-        auto container = std::make_shared<UltraCanvasContainer>("ListViewExamples", 0, 0, 1000, 1235);
-
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("ListViewTitle", 20, 10, 600, 35);
-        title->SetText("ListView Component Showcase");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        container->AddChild(title);
-
-        // Subtitle
-        // Two lines, and narrow enough to end before the status box at x = 600.
-        auto subtitle = std::make_shared<UltraCanvasLabel>("ListViewSubtitle", 20, 45, 570, 40);
-        subtitle->SetText("Simple, multi-column, styled and icon lists, and a dashboard below them —\n"
-                          "hover a row or a column header for its tooltip");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(120, 120, 120, 255));
-        container->AddChild(subtitle);
+        auto container = DemoKit::CreatePage("ListViewExamples", "ListView Component Showcase",
+                "Simple, multi-column, styled and icon lists, and a dashboard below them — "
+                "hover a row or a column header for its tooltip");
 
         // Status feedback label
-        // Three lines of 11px text plus padding: the cell-click feedback below
-        // is the tallest thing this label has to show.
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("LVStatusLabel", 600, 10, 380, 74);
-        statusLabel->SetText("Click any list item to see feedback here.\n"
-                             "Hover a row (or a column header) to see its tooltip.");
+        // At least three lines of 11px text plus padding (the cell-click
+        // feedback is the tallest thing it shows), so a click does not move
+        // the lists below; a longer text makes it taller.
+        auto statusLabel = DemoKit::AddText(container, "LVStatusLabel",
+                "Click any list item to see feedback here.\n"
+                "Hover a row (or a column header) to see its tooltip.");
         statusLabel->SetFontSize(11);
         statusLabel->SetBackgroundColor(Color(245, 245, 245, 255));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(8.0f);
-        container->AddChild(statusLabel);
+        CSSLayout::BoxConstraints statusLimits;
+        statusLimits.minHeight = CSSLayout::Dimension::Px(74);
+        statusLabel->boxConstraints = statusLimits;
 
         // ============================================================
         // Section 1: Simple List (Single Selection) — top-left
         // ============================================================
-        auto section1 = std::make_shared<UltraCanvasLabel>("LVSection1", 20, 90, 460, 25);
-        section1->SetText("1. Simple List (Single Selection)");
-        section1->SetFontWeight(FontWeight::Bold);
-        section1->SetTextColor(Color(0, 100, 200, 255));
-        container->AddChild(section1);
+        auto topRow = DemoKit::AddRow(container, "LVTopRow");
+        auto section1 = DemoKit::AddCard(topRow, "LVSection1", "1. Simple List (Single Selection)");
 
         auto simpleModel = std::make_shared<UltraCanvasSimpleListModel>();
         simpleModel->AddItem(ListItem("Apple", "", "A common red fruit"));
@@ -614,7 +607,7 @@ namespace UltraCanvas {
         simpleModel->AddItem(ListItem("Kiwi", "", "Brown fuzzy fruit"));
         simpleModel->AddItem(ListItem("Lemon", "", "Yellow citrus fruit"));
 
-        auto simpleList = std::make_shared<UltraCanvasListView>("SimpleListView", 20, 125, 460, 225);
+        auto simpleList = std::make_shared<UltraCanvasListView>("SimpleListView", 0, 0, 460, 225);
         simpleList->SetModel(simpleModel);
         simpleList->SetRowHeight(22);
 
@@ -628,22 +621,15 @@ namespace UltraCanvas {
             statusLabel->SetText("Simple List: Double-clicked '" + simpleModel->GetItem(row).label + "'");
         };
 
-        container->AddChild(simpleList);
+        DemoKit::AddStretched(section1, simpleList);
 
-        auto desc1 = std::make_shared<UltraCanvasLabel>("SimpleListDesc", 20, 355, 460, 20);
-        desc1->SetText("Single-selection list with 10 fruit items — hover a row for its description");
-        desc1->SetFontSize(10);
-        desc1->SetTextColor(Color(140, 140, 140, 255));
-        container->AddChild(desc1);
+        DemoKit::AddCaption(section1, "SimpleListDesc",
+                "Single-selection list with 10 fruit items — hover a row for its description");
 
         // ============================================================
         // Section 2: Multi-Column List with Header — top-right
         // ============================================================
-        auto section2 = std::make_shared<UltraCanvasLabel>("LVSection2", 500, 90, 320, 25);
-        section2->SetText("2. Multi-Column List with Header");
-        section2->SetFontWeight(FontWeight::Bold);
-        section2->SetTextColor(Color(0, 100, 200, 255));
-        container->AddChild(section2);
+        auto section2 = DemoKit::AddCard(topRow, "LVSection2", "2. Multi-Column List with Header");
 
         auto multiModel = std::make_shared<UltraCanvasMultiColumnListModel>();
         // The 4th ListColumnDef argument is the header tooltip, shown when the
@@ -714,7 +700,7 @@ namespace UltraCanvas {
         // Type and Modified use the default (Auto): case-insensitive text, and
         // ISO dates sort correctly as text.
 
-        auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
+        auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 0, 0, 480, 225);
         multiList->SetModel(multiProxy);
 
         ListViewStyle multiStyle;
@@ -759,10 +745,11 @@ namespace UltraCanvas {
         // sorts by that column ascending, clicking the sorted column again
         // turns it round, and the triangle in the header cell follows
         // SetSortIndicator. Switching it off restores the model's own order.
-        auto sortCheckbox = std::make_shared<UltraCanvasCheckbox>("MultiColSortable", 830, 90, 150, 24,
+        // As wide as its text, above the list.
+        auto sortCheckbox = std::make_shared<UltraCanvasCheckbox>("MultiColSortable", 0, 0, 0, 24,
                                                                   "Sortable columns");
         sortCheckbox->SetChecked(true);
-        container->AddChild(sortCheckbox);
+        DemoKit::AddFixed(section2, sortCheckbox);
 
         std::weak_ptr<UltraCanvasListView> multiListWeak = multiList;
         std::weak_ptr<UltraCanvasCheckbox> sortCheckboxWeak = sortCheckbox;
@@ -792,22 +779,16 @@ namespace UltraCanvas {
             statusLabel->SetText("Multi-Column: sorting off\nRows are back in model order.");
         };
 
-        container->AddChild(multiList);
+        DemoKit::AddStretched(section2, multiList);
 
-        auto desc2 = std::make_shared<UltraCanvasLabel>("MultiColDesc", 500, 355, 480, 20);
-        desc2->SetText("Click a header to sort (again to reverse), multi-select (Ctrl+Click), per-cell tooltips");
-        desc2->SetFontSize(10);
-        desc2->SetTextColor(Color(140, 140, 140, 255));
-        container->AddChild(desc2);
+        DemoKit::AddCaption(section2, "MultiColDesc",
+                "Click a header to sort (again to reverse), multi-select (Ctrl+Click), per-cell tooltips");
 
         // ============================================================
         // Section 3: Styled List (Alternating Rows + Multi-Select) — bottom-left
         // ============================================================
-        auto section3 = std::make_shared<UltraCanvasLabel>("LVSection3", 20, 385, 460, 25);
-        section3->SetText("3. Styled List (Alternating Rows + Multi-Select)");
-        section3->SetFontWeight(FontWeight::Bold);
-        section3->SetTextColor(Color(0, 100, 200, 255));
-        container->AddChild(section3);
+        auto bottomRow = DemoKit::AddRow(container, "LVBottomRow");
+        auto section3 = DemoKit::AddCard(bottomRow, "LVSection3", "3. Styled List (Alternating Rows + Multi-Select)");
 
         // ListItem's third argument is the tooltip (ToolTipRole), shown on hover
         auto styledModel = std::make_shared<UltraCanvasSimpleListModel>();
@@ -824,7 +805,7 @@ namespace UltraCanvas {
         styledModel->AddItem(ListItem("Midnight Black", "", "#000000 — rgb(0, 0, 0)"));
         styledModel->AddItem(ListItem("Pearl White", "", "#EAE0C8 — rgb(234, 224, 200)"));
 
-        auto styledList = std::make_shared<UltraCanvasListView>("StyledListView", 20, 420, 460, 160);
+        auto styledList = std::make_shared<UltraCanvasListView>("StyledListView", 0, 0, 460, 160);
         styledList->SetModel(styledModel);
 
         ListViewStyle styledStyle;
@@ -855,22 +836,15 @@ namespace UltraCanvas {
                                  " items selected\nSelected: " + names);
         };
 
-        container->AddChild(styledList);
+        DemoKit::AddStretched(section3, styledList);
 
-        auto desc3 = std::make_shared<UltraCanvasLabel>("StyledListDesc", 20, 585, 460, 20);
-        desc3->SetText("Alternating rows, purple theme, multi-select (Ctrl/Shift+Click), hover for hex value");
-        desc3->SetFontSize(10);
-        desc3->SetTextColor(Color(140, 140, 140, 255));
-        container->AddChild(desc3);
+        DemoKit::AddCaption(section3, "StyledListDesc",
+                "Alternating rows, purple theme, multi-select (Ctrl/Shift+Click), hover for hex value");
 
         // ============================================================
         // Section 4: Custom Delegate with Icons — bottom-right
         // ============================================================
-        auto section4 = std::make_shared<UltraCanvasLabel>("LVSection4", 500, 385, 480, 25);
-        section4->SetText("4. Custom Delegate with Icons");
-        section4->SetFontWeight(FontWeight::Bold);
-        section4->SetTextColor(Color(0, 100, 200, 255));
-        container->AddChild(section4);
+        auto section4 = DemoKit::AddCard(bottomRow, "LVSection4", "4. Custom Delegate with Icons");
 
         std::string iconsDir = NormalizePath(GetResourcesDir() + "media/icons/");
 
@@ -884,7 +858,7 @@ namespace UltraCanvas {
         iconModel->AddItem(ListItem("C#", iconsDir + "csharp.png", "Microsoft .NET language"));
         iconModel->AddItem(ListItem("Go", iconsDir + "go.png", "Google systems language"));
 
-        auto iconList = std::make_shared<UltraCanvasListView>("IconListView", 500, 420, 480, 160);
+        auto iconList = std::make_shared<UltraCanvasListView>("IconListView", 0, 0, 480, 160);
         iconList->SetModel(iconModel);
         iconList->SetRowHeight(28);
 
@@ -906,18 +880,15 @@ namespace UltraCanvas {
                                  "\n(Double-click action would open details)");
         };
 
-        container->AddChild(iconList);
+        DemoKit::AddStretched(section4, iconList);
 
-        auto desc4 = std::make_shared<UltraCanvasLabel>("IconListDesc", 500, 585, 480, 20);
-        desc4->SetText("Single-column with 20px icons, 28px rows — hover a row for its description");
-        desc4->SetFontSize(10);
-        desc4->SetTextColor(Color(140, 140, 140, 255));
-        container->AddChild(desc4);
+        DemoKit::AddCaption(section4, "IconListDesc",
+                "Single-column with 20px icons, 28px rows — hover a row for its description");
 
         // ============================================================
         // Section 5: Custom Delegate - the domain dashboard, full width below
         // ============================================================
-        AddDomainDashboardSection(*container, 625);
+        AddDomainDashboardSection(container);
 
         return container;
     }

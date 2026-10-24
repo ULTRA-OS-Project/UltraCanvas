@@ -734,6 +734,27 @@ else()
     message(STATUS "  FontChangeRepaintTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FONT COVERAGE TEST =====
+# CountCharactersWithoutFont(): the characters of a text no font covers,
+# headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontCoverageTest...")
+    add_executable(FontCoverageTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FontCoverageTest.cpp
+    )
+    target_include_directories(FontCoverageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FontCoverageTest PRIVATE cxx_std_20)
+    target_link_libraries(FontCoverageTest PRIVATE UltraCanvas)
+    set_target_properties(FontCoverageTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FontCoverageTest COMMAND FontCoverageTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontCoverageTest")
+else()
+    message(STATUS "  FontCoverageTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== EMOJI SETTINGS TEST =====
 # Defined in EmojiTests.cmake, which the top level also includes on its own
 # (ULTRACANVAS_BUILD_EMOJI_TESTS) where BUILD_TESTS is off - the Windows row.
@@ -1064,6 +1085,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: LabelSelectionTest")
 else()
     message(STATUS "  LabelSelectionTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== LABEL NATURAL TEXT WIDTH TEST =====
+# UltraCanvasLabel::GetNaturalTextWidth: the text measured rather than its box,
+# in step with the label's own hit test, unchanged by padding, 0 when empty or
+# outside a window. Needs the real framework (the text layout). Skips itself
+# without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building LabelNaturalTextWidthTest...")
+    add_executable(LabelNaturalTextWidthTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LabelNaturalTextWidthTest.cpp
+    )
+    target_include_directories(LabelNaturalTextWidthTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(LabelNaturalTextWidthTest PRIVATE cxx_std_20)
+    target_link_libraries(LabelNaturalTextWidthTest PRIVATE UltraCanvas)
+    set_target_properties(LabelNaturalTextWidthTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME LabelNaturalTextWidthTest COMMAND LabelNaturalTextWidthTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: LabelNaturalTextWidthTest")
+else()
+    message(STATUS "  LabelNaturalTextWidthTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== CARET STACKING ORDER TEST =====

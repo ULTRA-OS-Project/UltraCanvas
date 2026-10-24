@@ -967,7 +967,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is
-  no unregister.
+  no unregister. `UltraCanvasFontCoverage.h` (`core/UltraCanvasFontCoverage.cpp`):
+  `CountCharactersWithoutFont` / `FindScriptsWithoutFont` - the characters of
+  a text no font covers (drawn as hex boxes), by script, each with a free Noto
+  font and its download page - plus `FontDownloadUrl` and
+  `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
+  notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
   Emoji come from a bundled font the emoji setting picks
@@ -1797,6 +1802,8 @@ extended or replaced without changing callers.
   a time; server-side cursors on PostgreSQL)
 - `UltraDb_ExecBatch` (every statement of a script with its own result)
 - `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
+- `UltraDb_AddStatementObserver`, `UltraDb_RemoveStatementObserver` (every
+  statement reported as it ends: text, bound-value count, rows, time, outcome)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
 - `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
   `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
@@ -34897,6 +34904,43 @@ and on any build without PangoFT2, there is no such signal: the default font
 map is dropped instead, and contexts that already exist pick the font up when
 their surface is next recreated.
 
+## Is there a font for this text?
+
+`UltraCanvasFontCoverage.h` asks the text engine which characters of a text
+no font in the process covers: the system's fonts, the bundled ones and any
+registered with `RegisterFontFile()`. Those are the characters drawn as a box
+of hex digits. The text is set in `fontFamily` (the system UI font when it is
+empty), with every other font as the fallback, the same way any text is
+drawn. `UltraCanvasRichTextEdit` uses these checks for its
+[missing-fonts notice](UltraCanvasRichTextEdit.md#missing-fonts).
+
+```cpp
+for (const MissingScriptFont& missing : FindScriptsWithoutFont("你好 مرحبا")) {
+    // missing.script "Chinese", missing.isoCode "Hani",
+    // missing.suggestedFont "Noto Sans SC", missing.characters 2,
+    // missing.downloadUrl "https://fonts.google.com/noto/specimen/Noto+Sans+SC"
+}
+if (CountCharactersWithoutFont("你好") > 0) {
+    // no font covers Chinese here
+}
+if (!IsFontFamilyAvailable("Georgia")) {
+    std::string where = FontDownloadUrl("Georgia");   // a search on Google Fonts
+}
+```
+
+| | |
+|---|---|
+| `int CountCharactersWithoutFont(text, family = "")` | How many characters have no font: 0 when all of them do (and for an empty text), -1 when there is no text engine to ask. |
+| `std::vector<MissingScriptFont> FindScriptsWithoutFont(text, family = "")` | The same characters grouped by script, in the order the text first uses them. Each comes with a free font that covers it (the Noto family, SIL Open Font License) and its download page. The common scripts have names of their own ("Chinese", "Arabic", "Devanagari", ...). Any other is named by its ISO 15924 code and pointed at the whole Noto family. |
+| `std::string FontDownloadUrl(family)` | A search for the family on Google Fonts. |
+| `bool IsFontFamilyAvailable(family)` | Whether the text engine knows the family, ignoring case. A family it doesn't know is drawn in a substitute. |
+
+Each call asks afresh, so a font installed or registered since the last call
+counts. Call them from the UI thread. On Windows after a cold start the
+system fonts can still be loading in the background
+(`GetSystemFontScanStatus()`). Until they arrive, only the bundled fonts
+count.
+
 ## In the filer
 
 `UltraCanvasFilerWidget` classifies font files as `FilerFileCategory::Font`
@@ -42366,6 +42410,7 @@ FILE: Docs/UltraCanvas/UltraCanvasLabelExamples.md
   - [The theme and the label's variant](#the-theme-and-the-labels-variant)
 - [Methods](#methods)
   - [Text](#text)
+  - [Where the text ends](#where-the-text-ends)
   - [Style and font](#style-and-font)
   - [From UltraCanvasUIElement](#from-ultracanvasuielement)
   - [Text links](#text-links)
@@ -42508,6 +42553,36 @@ void SetTextIsMarkup(bool markup);          // the text is Pango markup (<b>, <s
 ```
 
 To clear a label, `SetText("")`; to append, `SetText(label->GetText() + more)`.
+
+### Where the text ends
+
+```cpp
+float GetNaturalTextWidth();   // the text's own width in px, without padding or border
+```
+
+A label given a fixed box is usually wider than its text, and something meant
+to sit *after the text* - a copy button after a code, a badge after a name -
+belongs where the text ends, not where the box does. `GetNaturalTextWidth`
+measures the text as the label lays it out (its font, markup and inline
+images; line breaks kept, the widest line counted), so the answer holds for
+any font the platform substitutes. In a left-aligned label the text starts at
+the border and padding:
+
+```cpp
+auto code = std::make_shared<UltraCanvasLabel>("code", 20, 20, 240, 36, "123 456");
+window->AddChild(code);   // measured through the window's render context
+auto copy = std::make_shared<UltraCanvasButton>("copy", 0, 23, 30, 30);
+window->AddChild(copy);
+
+// After the text, not after the 240 px box.
+const float textEnd = code->GetX() + code->GetBorderLeftWidth() +
+                      code->GetPaddingLeft() + code->GetNaturalTextWidth();
+copy->SetPosition(textEnd + 8, 23);
+```
+
+It returns 0 for an empty text and for a label that cannot reach a render
+context yet (not in a window), so measure after `AddChild`, and again after a
+`SetText` whose width can change.
 
 ### Style and font
 
@@ -59888,6 +59963,7 @@ state of the selection** rather than two asterisks in a buffer.
 - [Input methods](#input-methods)
 - [Right-to-left text](#right-to-left-text)
 - [Fonts for other scripts](#fonts-for-other-scripts)
+  - [Missing fonts](#missing-fonts)
 - [Accessibility](#accessibility)
 - [Drag and drop](#drag-and-drop)
 - [Find and replace](#find-and-replace)
@@ -60546,6 +60622,69 @@ text is laid out, and names that family on the runs. The demo's
 *WYSIWYG — Chinese, Arabic & Myanmar* page does this with Noto Sans Myanmar
 (`media/textsamples/fonts`, SIL OFL 1.1). Keep such fonts out of
 `media/fonts`, which every application loads at start-up.
+
+### Missing fonts
+
+The element tells the reader which fonts the document needs and the
+computer lacks. While anything is missing, a notice along the element's top
+names it, and each font in it is a link to the page it is downloaded from.
+The notice reports two kinds of font:
+
+- **Scripts no font covers.** These characters are drawn as boxes of hex
+  digits. Each script is named with a free Noto font that covers it, linked
+  to its page on Google Fonts. For example, "Chinese text needs Noto Sans
+  SC".
+- **Families the document names that are not installed.** Pango draws this
+  text in a substitute. Each family is linked to a search for it on Google
+  Fonts.
+
+The notice's x hides it until the report changes. The text, the scrollbars
+and the comment pane start below the notice.
+
+```cpp
+auto edit = std::make_shared<UltraCanvasRichTextEdit>("doc", 0, 0, 800, 600);
+edit->onFontReportChanged = [](const UltraCanvasRichTextEdit::FontReport& report) {
+    for (const MissingScriptFont& script : report.missingScripts) {
+        // script.script "Arabic", script.suggestedFont "Noto Sans Arabic",
+        // script.downloadUrl, script.characters
+    }
+    for (const std::string& family : report.missingFamilies) {
+        // FontDownloadUrl(family) is where the notice links it
+    }
+};
+edit->onFontLinkClicked = [](const std::string& url) {
+    return false;   // false: the element opens the page in the browser
+};
+edit->SetShowFontNotice(true);   // the default; false keeps the report only
+```
+
+| | |
+|---|---|
+| `const FontReport& GetFontReport()` | The fonts missing now: `missingFamilies` and `missingScripts`. It is worked out on the spot if the document changed. |
+| `void SetShowFontNotice(bool)` / `IsShowingFontNotice()` | Turns the notice on or off. On by default. |
+| `bool IsFontNoticeVisible()` | Whether the notice is on screen now. |
+| `void DismissFontNotice()` | Hides the notice, as its x does, until the report changes. |
+| `onFontReportChanged` | Called when the report changes, including when it becomes empty. |
+| `onFontLinkClicked` | A link in the notice was clicked. Return true to handle it yourself; otherwise the element opens the page in the browser. The URLs are the element's own, never the document's. |
+| `style.fontNoticeColor` / `fontNoticeBorderColor` / `fontNoticeTextColor` | The notice's colours. |
+
+The report covers the body, the headers and footers, the notes and the table
+cells. Pictures and formulas don't count. A code block's font is the
+element's own style, not the document's, so it is never reported as
+missing.
+
+The report is worked out again:
+
+- when a document is set;
+- a second after an edit, so typing doesn't lay the whole document out on
+  every key;
+- when the fonts change. Registering a font file and Windows' system fonts
+  arriving after a cold start both run
+  `UltraCanvasWindowBase::RefreshAfterFontChange()`, which reaches the
+  element through `InvalidateLayout()`.
+
+The checks behind it are in `UltraCanvasFontCoverage.h`, for use outside the
+editor; see [UltraCanvasFontFile](UltraCanvasFontFile.md#is-there-a-font-for-this-text).
 
 ## Accessibility
 
@@ -85182,6 +85321,28 @@ FILE: Docs/Modules/IODeviceManager/README.md
 
 # IODeviceManager - One API for the Devices an Application Operates
 
+## Contents
+
+- [Scanners, Cameras and Printers Behind a Single Interface](#scanners-cameras-and-printers-behind-a-single-interface)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Device Enumeration](#device-enumeration)
+  - [Scanning](#scanning)
+  - [Cameras](#cameras)
+  - [Printing](#printing)
+  - [Network Scanners](#network-scanners)
+  - [Network Printers](#network-printers)
+  - [Printer Status](#printer-status)
+  - [Your Own Devices](#your-own-devices)
+- [Device Categories](#device-categories)
+- [Backends by Platform](#backends-by-platform)
+- [Why IODeviceManager?](#why-iodevicemanager)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+- [Architecture Highlights](#architecture-highlights)
+- [Get Started](#get-started)
+- [See It: DeviceExplorer](#see-it-deviceexplorer)
+
 ## Scanners, Cameras and Printers Behind a Single Interface
 
 > **API contract and design: [Architecture.md](Architecture.md). What is and
@@ -90052,12 +90213,13 @@ PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
 > Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
-> introspection, streaming cursors, per-statement scripts and cancelling.**
+> introspection, streaming cursors, per-statement scripts, cancelling and
+> statement observers.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 56 tests, the PostgreSQL ones
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 69 tests, the PostgreSQL ones
 > against a live server where one is configured). The **PostgreSQL** driver
 > (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
 > found at configure time; it takes `?` placeholders, verifies TLS by default
@@ -90282,6 +90444,22 @@ bodies) and by SQLite itself on SQLite; each statement reports its text,
 outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
 both safe from another thread while the statement holds the connection.
 
+**Watching statements.** `UltraDb_AddStatementObserver` reports every
+statement that runs through the calls above, on any connection, once it has
+ended: its kind (query, exec, transaction, a script's statement, a cursor,
+introspection), its text, how many values were bound - never the values -
+the rows it returned, whether it ran in a transaction, its time and its
+outcome. An admin tool's SQL log is one observer (UltraDBAdmin's); a debug
+trace another. With no observer added nothing is timed or copied.
+
+```cpp
+const int id = UltraDb_AddStatementObserver([](const UltraDbStatementEvent& e) {
+    // On the thread that ran it, outside every lock of the module: quick and thread-safe.
+    std::fprintf(stderr, "%s: %zu rows, %s\n", e.connection.c_str(), e.rows, e.sql.c_str());
+});
+UltraDb_RemoveStatementObserver(id);
+```
+
 **Values.** `UltraDbValue` is a small variant: null, bool, int64,
 double, text (UTF-8), blob (bytes), and timestamp. Typed accessors
 (`AsU32`, `AsString`, `AsBlob`, `IsNull`, …) with defined coercion
@@ -90461,7 +90639,8 @@ headless data module usable from any ULTRA OS process.
 | Transactions + versioned migrations | Implemented |
 | Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
 | Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
-| Test suite (56 tests) | Passing |
+| Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
+| Test suite (69 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver | Planned (Stage 2) |
@@ -96208,6 +96387,20 @@ The hardest *unfixable-in-app*
 issues are X11 screen/clipboard/ptrace exposure — they need to be documented
 honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
+
+==============================================================================
+FILE: Docs/UltraAuthenticator/changelog.d/copy-button-measured.md
+==============================================================================
+
+- **The copy button sits right after the code on every platform.** Its place
+  was worked out from a character width measured for one Linux font, so with
+  another monospaced face - Consolas on Windows is narrower - it stood off
+  from the digits, and after the dots of a hidden code it could crowd them.
+  It is placed from the code label's own measurement now
+  (`UltraCanvasLabel::GetNaturalTextWidth`, framework changelog:
+  `label-natural-text-width`), and follows the text whenever it changes
+  between digits, dots and the dashes before a counter-based card's first
+  code.
 
 ==============================================================================
 FILE: Docs/UltraPassword/README.md

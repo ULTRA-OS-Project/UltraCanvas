@@ -14,12 +14,16 @@
 // the table are exactly the formatting Markdown cannot spell, and they are the
 // reason this element exists next to UltraCanvasTextArea.
 //
+// Version: 1.4.0 - the shared page look (UltraCanvasDemoPageKit): both pages fill the
+//                  page area with the toolbars and the editor in one card, the
+//                  editor takes the height left, status and notes wrap
 // Version: 1.3.0 - Open, Save as and Insert image offer FileLoader's types; saves through SaveTextDocument
 // Version: 1.2.2
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -399,8 +403,9 @@ namespace UltraCanvas {
             button->SetAcceptsFocus(false);
         }
 
-        std::shared_ptr<UltraCanvasToolbar> MakeToolbar(const std::string& id, float y) {
-            auto toolbar = std::make_shared<UltraCanvasToolbar>(id, 20, y, 960, 40);
+        // Built 40 px tall; the page stretches it across the card.
+        std::shared_ptr<UltraCanvasToolbar> MakeToolbar(const std::string& id) {
+            auto toolbar = std::make_shared<UltraCanvasToolbar>(id, 0, 0, 960, 40);
             toolbar->SetAppearance(ToolbarAppearance::Default());
             return toolbar;
         }
@@ -423,39 +428,29 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWYSIWYGExamples() {
-        const float kWidth = 1020.0f;
-        const float kHeight = 780.0f;
-
-        auto root = std::make_shared<UltraCanvasContainer>("WYSIWYGExamples", 0, 0, kWidth, kHeight);
-        root->SetBackgroundColor(Color(248, 248, 250, 255));
+        // ===== HEADER =====
+        auto root = DemoKit::CreatePage("WYSIWYGExamples", "WYSIWYG Editor — UltraCanvasRichTextEdit",
+                "The caret sits in rendered text and bold is a state of the selection. "
+                "Edits a UCRichDocument, so .odt / .docx round-trip with their formatting intact.");
+        // The editor scrolls itself: the page is the area's height and the
+        // editor takes what the toolbars, status and notes leave.
+        root->SetFillsArea(true);
+        auto card = DemoKit::CreateCard("wysiwygCard");
+        DemoKit::Add(root, card, 1);
 
         auto page = std::make_shared<WysiwygPage>();
 
-        // ===== HEADER =====
-        auto title = std::make_shared<UltraCanvasLabel>("wysiwygTitle", 20, 12, 960, 28);
-        title->SetText("WYSIWYG Editor — UltraCanvasRichTextEdit");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        root->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("wysiwygSubtitle", 20, 44, 960, 20);
-        subtitle->SetText("The caret sits in rendered text and bold is a state of the selection. "
-                          "Edits a UCRichDocument, so .odt / .docx round-trip with their formatting intact.");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100, 255));
-        root->AddChild(subtitle);
-
         // ===== THE EDITOR =====
-        auto edit = CreateRichTextEdit("wysiwygEditor", 20, 212, 960, 460);
+        // Added under the toolbars below; built first because they drive it.
+        auto edit = CreateRichTextEdit("wysiwygEditor", 0, 0, 960, 460);
         edit->SetDocument(BuildSampleDocument());
         edit->SetModified(false);
-        root->AddChild(edit);
         page->edit = edit.get();
 
         auto* raw = page.get();
 
         // ===== ROW 1: DOCUMENT AND STRUCTURE =====
-        auto documentBar = MakeToolbar("wysiwygDocumentBar", 72);
+        auto documentBar = MakeToolbar("wysiwygDocumentBar");
 
         MakeToolbarButton(documentBar->AddButton("wysiwygOpen", "Open", Icon("folder-open.svg"),
             [raw]() {
@@ -558,10 +553,10 @@ namespace UltraCanvas {
             [raw]() { raw->edit->ClearFormatting(); raw->Sync(); }),
             "Strip every character attribute from the selection");
 
-        root->AddChild(documentBar);
+        DemoKit::AddStretched(card, documentBar);
 
         // ===== ROW 2: CHARACTER FORMATTING =====
-        auto characterBar = MakeToolbar("wysiwygCharacterBar", 118);
+        auto characterBar = MakeToolbar("wysiwygCharacterBar");
 
         auto addToggle = [&](const std::string& id, const std::string& text,
                              const std::string& icon, const std::string& tooltip,
@@ -636,10 +631,10 @@ namespace UltraCanvas {
             page->colorBox = colorBox.get();
         }
 
-        root->AddChild(characterBar);
+        DemoKit::AddStretched(card, characterBar);
 
         // ===== ROW 3: PARAGRAPH FORMATTING =====
-        auto paragraphBar = MakeToolbar("wysiwygParagraphBar", 164);
+        auto paragraphBar = MakeToolbar("wysiwygParagraphBar");
 
         auto styleBox = AddBox(paragraphBar, "wysiwygStyle",
                                {"Body text", "Heading 1", "Heading 2", "Heading 3", "Heading 4",
@@ -712,23 +707,23 @@ namespace UltraCanvas {
                     : "Editing again.");
             }), "Toggle the read-only rendering mode");
 
-        root->AddChild(paragraphBar);
+        DemoKit::AddStretched(card, paragraphBar);
+
+        edit->size.width = CSSLayout::Dimension::Auto();
+        edit->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        DemoKit::Add(card, edit, 1);
 
         // ===== STATUS AND NOTES =====
-        auto status = std::make_shared<UltraCanvasLabel>("wysiwygStatus", 20, 680, 960, 22);
-        status->SetFontSize(12);
+        auto status = DemoKit::AddText(card, "wysiwygStatus", "");
         status->SetTextColor(Color(70, 70, 70, 255));
-        root->AddChild(status);
         page->status = status.get();
 
-        auto notes = std::make_shared<UltraCanvasLabel>("wysiwygNotes", 20, 704, 960, 56);
-        notes->SetText("Known limits: columns in a multi-column section are not balanced, a right-to-left "
-                       "paragraph keeps left-to-right indents, the input method's candidate window is not "
-                       "placed at the caret, and screen readers are tested on Linux only so far (the Windows "
-                       "and macOS bridges are untested). See UltraCanvasRichTextEdit.md.");
+        auto notes = DemoKit::AddCaption(root, "wysiwygNotes",
+                "Known limits: columns in a multi-column section are not balanced, a right-to-left "
+                "paragraph keeps left-to-right indents, the input method's candidate window is not "
+                "placed at the caret, and screen readers are tested on Linux only so far (the Windows "
+                "and macOS bridges are untested). See UltraCanvasRichTextEdit.md.");
         notes->SetFontSize(11);
-        notes->SetTextColor(Color(120, 120, 120, 255));
-        root->AddChild(notes);
 
         // ===== KEEPING THE TOOLBARS IN STEP =====
         // The element owns these callbacks, so capturing `page` here is what
@@ -912,35 +907,22 @@ namespace UltraCanvas {
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWYSIWYGInternationalExamples() {
-        const float kWidth = 1020.0f;
-        const float kHeight = 780.0f;
-
-        auto root = std::make_shared<UltraCanvasContainer>("WYSIWYGIntlExamples", 0, 0, kWidth, kHeight);
-        root->SetBackgroundColor(Color(248, 248, 250, 255));
-
-        auto title = std::make_shared<UltraCanvasLabel>("wysiwygIntlTitle", 20, 12, 960, 28);
-        title->SetText("WYSIWYG Editor — Chinese, Arabic & Myanmar");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        root->AddChild(title);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("wysiwygIntlSubtitle", 20, 44, 960, 20);
-        subtitle->SetText("Chinese lines break between any two characters; Arabic paragraphs start at the right; "
-                          "Myanmar syllables are shaped from stacked letters. Click in and type, or use the arrow keys.");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(100, 100, 100, 255));
-        root->AddChild(subtitle);
+        auto root = DemoKit::CreatePage("WYSIWYGIntlExamples", "WYSIWYG Editor — Chinese, Arabic & Myanmar",
+                "Chinese lines break between any two characters; Arabic paragraphs start at the right; "
+                "Myanmar syllables are shaped from stacked letters. Click in and type, or use the arrow keys.");
+        // The editor scrolls itself and takes the height the rest leaves.
+        root->SetFillsArea(true);
+        auto card = DemoKit::CreateCard("wysiwygIntlCard");
+        DemoKit::Add(root, card, 1);
 
         RegisterMyanmarFont();
-        auto edit = CreateRichTextEdit("wysiwygIntlEditor", 20, 120, 960, 560);
+        // Added under the toolbar below.
+        auto edit = CreateRichTextEdit("wysiwygIntlEditor", 0, 0, 960, 560);
         edit->SetDocument(BuildInternationalDocument());
         edit->SetModified(false);
-        root->AddChild(edit);
 
-        auto status = std::make_shared<UltraCanvasLabel>("wysiwygIntlStatus", 20, 688, 960, 22);
-        status->SetFontSize(12);
+        auto status = DemoKit::CreateText("wysiwygIntlStatus", "");
         status->SetTextColor(Color(70, 70, 70, 255));
-        root->AddChild(status);
 
         // Raw pointers only: the root owns both, and the callbacks below live
         // exactly as long as it does.
@@ -954,7 +936,7 @@ namespace UltraCanvas {
             statusLabel->SetText(text);
         };
 
-        auto bar = MakeToolbar("wysiwygIntlBar", 72);
+        auto bar = MakeToolbar("wysiwygIntlBar");
         MakeToolbarButton(bar->AddButton("wysiwygIntlDirection", "Right-to-left", "",
             [editor, describe]() {
                 editor->SetRightToLeft(!editor->IsRightToLeft());
@@ -991,16 +973,19 @@ namespace UltraCanvas {
                                              + " — the paragraph directions go with it");
                     });
             }), "Save as .odt or .docx");
-        root->AddChild(bar);
+        DemoKit::AddStretched(card, bar);
 
-        auto notes = std::make_shared<UltraCanvasLabel>("wysiwygIntlNotes", 20, 712, 960, 48);
-        notes->SetText("Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
-                       "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
-                       "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar is set in Noto Sans "
-                       "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi.");
+        edit->size.width = CSSLayout::Dimension::Auto();
+        edit->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        DemoKit::Add(card, edit, 1);
+        DemoKit::Add(card, status);
+
+        auto notes = DemoKit::AddCaption(root, "wysiwygIntlNotes",
+                "Text is shaped and ordered by the Unicode bidirectional rules, so an English word or a "
+                "number inside Arabic keeps its own direction. A paragraph whose first letter is Arabic "
+                "starts at the right by itself; Right-to-left makes any paragraph start there. Myanmar is set in Noto Sans "
+                "Myanmar, which the demo ships and registers; the text uses the Unicode encoding, not Zawgyi.");
         notes->SetFontSize(11);
-        notes->SetTextColor(Color(120, 120, 120, 255));
-        root->AddChild(notes);
 
         edit->onSelectionChanged = describe;
         describe();

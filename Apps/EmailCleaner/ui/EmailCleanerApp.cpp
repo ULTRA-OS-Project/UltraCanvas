@@ -1,4 +1,5 @@
 // Apps/EmailCleaner/ui/EmailCleanerApp.cpp
+// Version: 0.4.0 - the Contacts page: the address book against the mail sent
 // Version: 0.3.0 - own accounts beside UltraMail's
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerApp.h"
@@ -11,6 +12,7 @@
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasModalDialog.h"
 
+#include "UltraMailContactStore.h"
 #include "UltraMailCredentialVault.h"
 #include "UltraMailDiscovery.h"
 #include "UltraMailLocalStore.h"
@@ -313,6 +315,9 @@ void EmailCleanerApp::ImportAccounts() {
                             if (folder.role == UltraMail::FolderRole::Trash)
                                 ultraMailTrashDirs_[account.accountId].insert(
                                     CacheDirectoryName(account.accountId, folder.name));
+                            else if (folder.role == UltraMail::FolderRole::Sent)
+                                ultraMailSentDirs_[account.accountId].insert(
+                                    CacheDirectoryName(account.accountId, folder.name));
                         }
                     }
                     ++imported;
@@ -420,9 +425,16 @@ std::shared_ptr<UltraCanvasWindow> EmailCleanerApp::CreateMainWindow() {
                                              pageH - ActionsPanel::kHeight));
     tabs_->AddTab("Messages", messagesPage);
 
+    contactsView_.onReload = [this]() { RefreshContacts(); };
+    contactsView_.onDelete = [this](const std::vector<ContactReview>& selected) {
+        DeleteContacts(selected);
+    };
+    tabs_->AddTab("Contacts", contactsView_.Build(0, 0, pageW, pageH));
+
     window_->AddChild(tabs_);
 
     Refresh();
+    RefreshContacts();
     return window_;
 }
 
@@ -568,11 +580,24 @@ std::set<std::string> EmailCleanerApp::TrashDirsFor(const std::string& accountId
         auto it = ultraMailTrashDirs_.find(accountId);
         return it == ultraMailTrashDirs_.end() ? std::set<std::string>{} : it->second;
     }
+    return OwnRoleDirs(accountId, UltraMail::FolderRole::Trash);
+}
+
+std::set<std::string> EmailCleanerApp::SentDirsFor(const std::string& accountId) {
+    if (!IsOwnAccountId(accountId)) {
+        auto it = ultraMailSentDirs_.find(accountId);
+        return it == ultraMailSentDirs_.end() ? std::set<std::string>{} : it->second;
+    }
+    return OwnRoleDirs(accountId, UltraMail::FolderRole::Sent);
+}
+
+std::set<std::string> EmailCleanerApp::OwnRoleDirs(const std::string& accountId,
+                                                   UltraMail::FolderRole role) {
     std::set<std::string> dirs;
     std::vector<UltraMail::Folder> folders;
     if (ownAccounts_.IsOpen() && ownAccounts_.Store().ListFolders(accountId, folders)) {
         for (const UltraMail::Folder& folder : folders)
-            if (folder.role == UltraMail::FolderRole::Trash)
+            if (folder.role == role)
                 dirs.insert(CacheDirectoryName(accountId, folder.name));
     }
     return dirs;
@@ -592,17 +617,26 @@ void EmailCleanerApp::AnalyseCaches(bool skipExisting, const std::string& fetchR
         if (!wanted.empty() && account.accountId != wanted) continue;
         options.ownerAddress = account.email;
         options.skipFolders  = TrashDirsFor(account.accountId);
+        // The owner's sent mail is read for its recipients - the contacts
+        // review - and kept off the map.
+        options.sentFolders  = SentDirsFor(account.accountId);
+        options.sentByName   = true;
         total.Add(ingestor_.IngestMailCache(CacheDirFor(account.accountId),
                                             account.accountId, options));
     }
 
     const std::string prefix = fetchReport.empty() ? "" : fetchReport + " ";
+    const std::string sentNote = total.sent > 0
+        ? " " + std::to_string(total.sent) + " sent messages read for the contacts list."
+        : "";
+    RefreshContacts();
     if (!skipExisting) {
         Refresh();
         accountBar_.SetStatus(prefix + "Re-analysed " + std::to_string(total.analysed) +
                               " messages with " +
                               std::to_string(ingestor_.GetClassifier().Rules().Size()) +
-                              " rules (" + std::to_string(total.unwanted) + " unwanted).");
+                              " rules (" + std::to_string(total.unwanted) + " unwanted)." +
+                              sentNote);
         return;
     }
     if (total.filesSeen == 0) {
@@ -616,7 +650,90 @@ void EmailCleanerApp::AnalyseCaches(bool skipExisting, const std::string& fetchR
     accountBar_.SetStatus(prefix + "Analysed " + std::to_string(total.analysed) +
                           " new messages (" + std::to_string(total.skipped) +
                           " already known, " + std::to_string(total.unwanted) +
-                          " unwanted).");
+                          " unwanted)." + sentNote);
+}
+
+// ---- Contacts --------------------------------------------------------------
+
+std::string EmailCleanerApp::AddressBookPath() const {
+    return mailDataDir_ + "/contacts.db";
+}
+
+void EmailCleanerApp::RefreshContacts() {
+    // The address book is UltraMail's: it collects every sender it syncs.
+    // Read it only when it is there - opening it would create an empty one.
+    std::error_code ec;
+    if (!std::filesystem::exists(PathFromUtf8(AddressBookPath()), ec)) {
+        contactsView_.SetUnavailable("No address book found - EmailCleaner reviews "
+                                     "UltraMail's (" + AddressBookPath() + ").");
+        return;
+    }
+    std::vector<UltraMail::Contact> contacts;
+    UltraDbResult read;
+    {
+        UltraMail::ContactStore book;
+        read = book.Open("emailcleaner-contacts", AddressBookPath());
+        if (read) read = book.ListAll(contacts);
+    }
+    // Let go of the file again, as with UltraMail's account list.
+    UltraDb_CloseConnection("emailcleaner-contacts");
+    if (!read) {
+        contactsView_.SetUnavailable("The address book could not be read: " +
+                                     read.message);
+        return;
+    }
+
+    std::map<std::string, Correspondence> correspondence;
+    if (UltraDbResult counted = store_.GetCorrespondence(correspondence); !counted) {
+        contactsView_.SetUnavailable("The mail counts could not be read: " +
+                                     counted.message);
+        return;
+    }
+    contactsView_.SetReviews(ReviewContacts(contacts, correspondence));
+}
+
+void EmailCleanerApp::DeleteContacts(const std::vector<ContactReview>& selected) {
+    if (selected.empty()) return;
+
+    std::string names;
+    for (size_t i = 0; i < selected.size() && i < 5; ++i)
+        names += "\n  " + selected[i].Name();
+    if (selected.size() > 5)
+        names += "\n  … and " + std::to_string(selected.size() - 5) + " more";
+
+    int written = 0;
+    for (const ContactReview& review : selected)
+        if (review.sent > 0) ++written;
+    const std::string warning = written > 0
+        ? "\n\n" + std::to_string(written) + " of them you have written to."
+        : "";
+
+    UltraCanvasDialogManager::ShowConfirmation(
+        "Delete " + std::to_string(selected.size()) +
+        (selected.size() == 1 ? " contact" : " contacts") +
+        " from UltraMail's address book?" + names + warning +
+        "\n\nThe mail stays where it is; only the address book entries go, and "
+        "UltraMail does not add these addresses again unless you write to one.",
+        "Delete contacts",
+        [this, selected](bool confirmed) {
+            if (!confirmed) return;
+            int removed = 0;
+            UltraDbResult result;
+            {
+                UltraMail::ContactStore book;
+                result = book.Open("emailcleaner-contacts", AddressBookPath());
+                if (result) result = RemoveContacts(book, selected, removed);
+            }
+            UltraDb_CloseConnection("emailcleaner-contacts");
+
+            const std::string deleted = "Deleted " + std::to_string(removed) +
+                (removed == 1 ? " contact" : " contacts") + " from the address book";
+            accountBar_.SetStatus(result  ? deleted + "."
+                : removed > 0 ? deleted + ", but UltraMail may add them again: " +
+                                result.message
+                              : "No contacts were deleted: " + result.message);
+            RefreshContacts();
+        });
 }
 
 // ---- Own accounts ----------------------------------------------------------

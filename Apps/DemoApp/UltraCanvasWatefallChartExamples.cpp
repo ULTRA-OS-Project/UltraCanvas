@@ -1,7 +1,10 @@
 // WaterfallChart_ShortDemo.cpp
 // Short waterfall chart demo for integration with UltraCanvas Demo App
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per chart
+//                  in a wrapping row, the buttons and the feature list in a
+//                  card beside them, everything sized to its text
 // Version: 1.0.0
-// Last Modified: 2025-09-29
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/UltraCanvasWaterfallChart.h"
@@ -9,6 +12,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include <memory>
 #include <random>
 
@@ -19,19 +23,11 @@ namespace UltraCanvas {
 // =============================================================================
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateWaterfallChartExamples() {
-        // Main container
-        auto container = std::make_shared<UltraCanvasContainer>(
-                "WaterfallChartDemo", 0, 0, 1000, 780
-        );
+        auto container = DemoKit::CreatePage("WaterfallChartDemo", "Waterfall Chart Examples", "");
 
-        // Title label
-        auto titleLabel = std::make_shared<UltraCanvasLabel>(
-                "WaterfallTitle", 20, 10, 960, 30
-        );
-        titleLabel->SetText("Waterfall Chart Examples");
-        titleLabel->SetFontSize(16);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(titleLabel);
+        // The charts side by side while they fit, each card as wide as its
+        // chart at least.
+        auto chartRow = DemoKit::AddRow(container, "WaterfallCharts");
 
         // =============================================================================
         // EXAMPLE 1: REVENUE FLOW ANALYSIS
@@ -48,7 +44,7 @@ namespace UltraCanvas {
         revenueData->AddWaterfallPoint("Total", 0.0, true, false);
 
         auto revenueChart = CreateWaterfallChartWithData(
-                "revenue_chart", 10, 50, 500, 300,
+                "revenue_chart", 0, 0, 500, 300,
                 revenueData, "Revenue Flow ($K)"
         );
 
@@ -62,7 +58,9 @@ namespace UltraCanvas {
         );
         revenueChart->SetShowValueLabels(true);
 
-        container->AddChild(revenueChart);
+        auto revenueCard = DemoKit::AddCard(chartRow, "WaterfallRevenueCard", "", "",
+                                            500 + 2 * DemoKit::kCardPadding);
+        DemoKit::AddFixed(revenueCard, revenueChart);
 
         // =============================================================================
         // EXAMPLE 2: CASH FLOW WITH SUBTOTALS
@@ -80,7 +78,7 @@ namespace UltraCanvas {
         cashFlowData->AddWaterfallPoint("Final", 0.0, false, true);
 
         auto cashFlowChart = CreateWaterfallChartWithData(
-                "cashflow_chart", 480, 50, 540, 300,
+                "cashflow_chart", 0, 0, 540, 300,
                 cashFlowData, "Cash Flow ($K)"
         );
 
@@ -95,7 +93,9 @@ namespace UltraCanvas {
                 Color(117, 117, 117, 255), 2.0f
         );
 
-        container->AddChild(cashFlowChart);
+        auto cashFlowCard = DemoKit::AddCard(chartRow, "WaterfallCashFlowCard", "", "",
+                                             540 + 2 * DemoKit::kCardPadding);
+        DemoKit::AddFixed(cashFlowCard, cashFlowChart);
 
         // =============================================================================
         // EXAMPLE 3: PERFORMANCE IMPACT (WITH GRADIENT STYLE)
@@ -111,7 +111,7 @@ namespace UltraCanvas {
         performanceData->AddWaterfallPoint("Final", 0.0, false, true);
 
         auto performanceChart = CreateWaterfallChartWithData(
-                "performance_chart", 10, 340, 520, 300,
+                "performance_chart", 0, 0, 520, 300,
                 performanceData, "Performance Impact"
         );
 
@@ -126,17 +126,25 @@ namespace UltraCanvas {
         );
         performanceChart->SetShowCumulativeLabels(false);
 
-        container->AddChild(performanceChart);
+        auto performanceCard = DemoKit::AddCard(chartRow, "WaterfallPerformanceCard", "", "",
+                                                520 + 2 * DemoKit::kCardPadding);
+        DemoKit::AddFixed(performanceCard, performanceChart);
 
         // =============================================================================
         // INTERACTIVE CONTROLS
         // =============================================================================
 
+        // Buttons as wide as their text, at least the 200 px they had.
+        CSSLayout::BoxConstraints buttonLimits;
+        buttonLimits.minWidth = CSSLayout::Dimension::Px(200);
+        auto controlsCard = DemoKit::AddCard(chartRow, "WaterfallControlsCard");
+        auto buttonRow = DemoKit::AddRow(controlsCard, "WaterfallButtons", 10);
+
         // Style toggle button
         auto btnToggleStyle = std::make_shared<UltraCanvasButton>(
-                "btnToggleStyle", 520, 380, 200, 40
+                "btnToggleStyle", 0, 0, 0, 40, "Cycle Bar Style"
         );
-        btnToggleStyle->SetText("Cycle Bar Style");
+        btnToggleStyle->boxConstraints = buttonLimits;
 
         static int styleIndex = 0;
         btnToggleStyle->onClick = [revenueChart, cashFlowChart, performanceChart]() {
@@ -154,13 +162,13 @@ namespace UltraCanvas {
             performanceChart->SetBarStyle(newStyle);
         };
 
-        container->AddChild(btnToggleStyle);
+        DemoKit::Add(buttonRow, btnToggleStyle);
 
         // Random data button
         auto btnRandomData = std::make_shared<UltraCanvasButton>(
-                "btnRandomData", 520, 430, 200, 40
+                "btnRandomData", 0, 0, 0, 40, "Generate Random Data"
         );
-        btnRandomData->SetText("Generate Random Data");
+        btnRandomData->boxConstraints = buttonLimits;
 
         btnRandomData->onClick = [revenueData]() {
             std::random_device rd;
@@ -179,31 +187,20 @@ namespace UltraCanvas {
             revenueData->AddWaterfallPoint("Total", 0.0, false, true);
         };
 
-        container->AddChild(btnRandomData);
+        DemoKit::Add(buttonRow, btnRandomData);
 
-        // Info label
-        auto infoLabel = std::make_shared<UltraCanvasLabel>(
-                "WaterfallInfo", 520, 490, 460, 190
-        );
-        infoLabel->SetText(
-                "Waterfall Chart Features:\n\n"
-                "• Revenue flow visualization\n"
-                "• Cash flow with subtotals\n"
-                "• Performance impact tracking\n"
-                "• Positive/negative coloring\n"
-                "• Multiple bar styles\n"
-                "• Connection lines\n"
-                "• Interactive tooltips\n"
-                "• Value labels\n\n"
-                "Hover over bars for details!"
-        );
-        infoLabel->SetFontSize(11);
-        infoLabel->SetTextColor(Color(60, 60, 60, 255));
-        infoLabel->SetBackgroundColor(Color(245, 245, 245, 255));
-        infoLabel->SetBorders(1.0f, Color(200, 200, 200, 255));
-        infoLabel->SetPadding(10.0f);
-
-        container->AddChild(infoLabel);
+        // Info
+        DemoKit::AddHeading(controlsCard, "WaterfallInfoTitle", "Waterfall Chart Features:");
+        DemoKit::Add(controlsCard, DemoKit::CreateBullets("WaterfallInfo", {
+                "Revenue flow visualization",
+                "Cash flow with subtotals",
+                "Performance impact tracking",
+                "Positive/negative coloring",
+                "Multiple bar styles",
+                "Connection lines",
+                "Interactive tooltips",
+                "Value labels"}));
+        DemoKit::AddCaption(controlsCard, "WaterfallInfoHint", "Hover over bars for details!");
 
         return container;
     }

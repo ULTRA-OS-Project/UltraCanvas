@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasGaugeExamples.cpp
 // Comprehensive examples of gauge element modes using UltraCanvas layout managers
+// Version: 2.8.0 - the shared page look (UltraCanvasDemoPageKit): title and
+//                  description above the tabs, which sit in a card as wide as the
+//                  page; every label wraps and is as tall as its text
 // Version: 2.7.1
-// Last Modified: 2026-10-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 // V2.7.1 changelog: the cards and their gauges have no size of their own -
 //   they were built at 272 x 374 (kCardW / kCardH) and placed in 1fr grid
@@ -31,6 +34,7 @@
 //   tick colors), sub-dial relabeled MPH and recentred.
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
@@ -55,8 +59,33 @@ namespace UltraCanvas {
 
 namespace {
     constexpr float kSliderH = 22;
-    constexpr float kValueLabelH = 20;
     constexpr float kCardPadding = 10;
+
+    // A value / info line under a gauge: centred, grey, as tall as its text.
+    inline std::shared_ptr<UltraCanvasLabel> MakeValueLabel(const std::string& id,
+                                                            const std::string& text) {
+        auto label = DemoKit::CreateText(id, text);
+        label->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
+        label->SetFontSize(11);
+        label->SetTextColor(Color(100, 100, 115, 255));
+        return label;
+    }
+
+    // A tab's title: wraps, as tall as its text.
+    inline std::shared_ptr<UltraCanvasLabel> MakeTabTitle(const std::string& id,
+                                                          const std::string& text) {
+        auto title = DemoKit::CreateHeading(id, text);
+        title->SetTextColor(Color(50, 50, 75, 255));
+        return title;
+    }
+
+    // A tab's page: no size of its own, the tabbed container gives it one.
+    inline std::shared_ptr<UltraCanvasContainer> MakeTab(const std::string& id) {
+        auto tab = std::make_shared<UltraCanvasContainer>(id);
+        tab->SetBackgroundColor(Color(240, 241, 248, 255));
+        tab->SetPadding(12);
+        return tab;
+    }
 
     // ===== CSS-layout helpers (replace the old box/grid layout managers) =====
     inline void SetVBox(const std::shared_ptr<UltraCanvasContainer>& c, float gap) {
@@ -146,13 +175,9 @@ static std::shared_ptr<UltraCanvasContainer> CreateGaugeCard(
     // value in their centre, so the showcase cards drop it to enlarge the gauge).
     std::shared_ptr<UltraCanvasLabel> valueLabel;
     if (showValueLabel) {
-        valueLabel = std::make_shared<UltraCanvasLabel>(id + "_V", 0, 0, 0, kValueLabelH);
-        valueLabel->SetAlignment(TextAlignment::Center);
-        valueLabel->SetFontSize(11);
-        valueLabel->SetTextColor(Color(100, 100, 115, 255));
         std::ostringstream initVal;
         initVal << std::fixed << std::setprecision(decimals) << sliderInit << " " << valueSuffix;
-        valueLabel->SetText(initVal.str());
+        valueLabel = MakeValueLabel(id + "_V", initVal.str());
         AddFlex(card, valueLabel, 0);
     }
 
@@ -176,21 +201,15 @@ static std::shared_ptr<UltraCanvasContainer> CreateGaugeCard(
 // TAB 1: ANALOG GAUGES
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
-    auto tab = std::make_shared<UltraCanvasContainer>("AnalogTab", 0, 0, w, h);
-    tab->SetBackgroundColor(Color(240, 241, 248, 255));
-    tab->SetPadding(12);
+static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab() {
+    auto tab = MakeTab("AnalogTab");
 
     SetVBox(tab, 10);
 
-    auto title = std::make_shared<UltraCanvasLabel>("AnaTitle", 0, 0, w - 24, 28);
-    title->SetText("Analog Gauges - Speedometer, Semicircular, Compass, Clock, Stopwatch");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 75, 255));
-    AddFlex(tab, title, 0);
+    AddFlex(tab, MakeTabTitle("AnaTitle",
+            "Analog Gauges - Speedometer, Semicircular, Compass, Clock, Stopwatch"), 0);
 
-    auto gridContainer = std::make_shared<UltraCanvasContainer>("AnaGrid", 0, 0, w - 24, h - 60);
+    auto gridContainer = std::make_shared<UltraCanvasContainer>("AnaGrid");
     SetGrid2x3(gridContainer, 12);
 
     // --- Speedometer with RPM sub-dial ---
@@ -250,11 +269,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
     clockCard->SetPadding(kCardPadding);
     SetVBox(clockCard, 6);
     AddFlex(clockCard, clock, 1);
-    auto clockInfo = std::make_shared<UltraCanvasLabel>("clockI", 0, 0, 0, kValueLabelH);
-    clockInfo->SetText("Live system time");
-    clockInfo->SetAlignment(TextAlignment::Center);
-    clockInfo->SetFontSize(11);
-    clockInfo->SetTextColor(Color(100, 100, 115, 255));
+    auto clockInfo = MakeValueLabel("clockI", "Live system time");
     AddFlex(clockCard, clockInfo, 0);
     AddGrid(gridContainer, clockCard, 1, 0);
 
@@ -286,24 +301,28 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
         AddFlex(swGaugeWrap, stopwatch, 1);
         AddFlex(swCard, swGaugeWrap, 1);
 
-        // Start/Stop/Reset buttons
-        auto swBtnContainer = std::make_shared<UltraCanvasContainer>("sw_Btns", 0, 0, 0, 28);
+        // Start/Stop/Reset buttons: each as wide as its text, at least the
+        // old 80 px; they share the row and wrap when the card is narrow.
+        auto swBtnContainer = std::make_shared<UltraCanvasContainer>("sw_Btns");
         SetHBox(swBtnContainer, 6);
-        swBtnContainer->size.height = CSSLayout::Dimension::Px(28);
-        auto swStart = std::make_shared<UltraCanvasButton>("sw_Start", 0, 0, 80, 26, "Start");
-        auto swStop = std::make_shared<UltraCanvasButton>("sw_Stop", 0, 0, 80, 26, "Stop");
-        auto swReset = std::make_shared<UltraCanvasButton>("sw_Reset", 0, 0, 80, 26, "Reset");
+        swBtnContainer->layout.SetFlexWrap(CSSLayout::FlexWrap::Wrap);
+        auto makeSwButton = [](const std::string& id, const std::string& text) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 26, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(80);
+            button->boxConstraints = limits;
+            return button;
+        };
+        auto swStart = makeSwButton("sw_Start", "Start");
+        auto swStop = makeSwButton("sw_Stop", "Stop");
+        auto swReset = makeSwButton("sw_Reset", "Reset");
         AddFlex(swBtnContainer, swStart, 1);
         AddFlex(swBtnContainer, swStop, 1);
         AddFlex(swBtnContainer, swReset, 1);
         AddFlex(swCard, swBtnContainer, 0);
 
         // Value label
-        auto swValue = std::make_shared<UltraCanvasLabel>("sw_V", 0, 0, 0, kValueLabelH);
-        swValue->SetAlignment(TextAlignment::Center);
-        swValue->SetFontSize(11);
-        swValue->SetTextColor(Color(100, 100, 115, 255));
-        swValue->SetText("14.90 s");
+        auto swValue = MakeValueLabel("sw_V", "14.90 s");
         AddFlex(swCard, swValue, 0);
 
         auto swGaugePtr = stopwatch.get();
@@ -343,21 +362,15 @@ static std::shared_ptr<UltraCanvasContainer> BuildAnalogTab(float w, float h) {
 // TAB 2: PROGRESS & LINEAR GAUGES
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) {
-    auto tab = std::make_shared<UltraCanvasContainer>("ProgTab", 0, 0, w, h);
-    tab->SetBackgroundColor(Color(240, 241, 248, 255));
-    tab->SetPadding(12);
+static std::shared_ptr<UltraCanvasContainer> BuildProgressTab() {
+    auto tab = MakeTab("ProgTab");
 
     SetVBox(tab, 10);
 
-    auto title = std::make_shared<UltraCanvasLabel>("ProgTitle", 0, 0, w - 24, 28);
-    title->SetText("Progress & Linear Gauges - Bar, LED, Segmented, Multi-Pointer, With Arrow");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 75, 255));
-    AddFlex(tab, title, 0);
+    AddFlex(tab, MakeTabTitle("ProgTitle",
+            "Progress & Linear Gauges - Bar, LED, Segmented, Multi-Pointer, With Arrow"), 0);
 
-    auto gridContainer = std::make_shared<UltraCanvasContainer>("ProgGrid", 0, 0, w - 24, h - 60);
+    auto gridContainer = std::make_shared<UltraCanvasContainer>("ProgGrid");
     SetGrid2x3(gridContainer, 12);
 
     // --- Linear Bar download progress ---
@@ -449,21 +462,15 @@ static std::shared_ptr<UltraCanvasContainer> BuildProgressTab(float w, float h) 
 // TAB 3: SPECIALIZED GAUGES
 // =============================================================================
 
-static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float h) {
-    auto tab = std::make_shared<UltraCanvasContainer>("SpecTab", 0, 0, w, h);
-    tab->SetBackgroundColor(Color(240, 241, 248, 255));
-    tab->SetPadding(12);
+static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab() {
+    auto tab = MakeTab("SpecTab");
 
     SetVBox(tab, 10);
 
-    auto title = std::make_shared<UltraCanvasLabel>("SpecTitle", 0, 0, w - 24, 28);
-    title->SetText("Specialized Gauges - Battery, Thermometer, Cylinder, Digital Clock, Digital");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 75, 255));
-    AddFlex(tab, title, 0);
+    AddFlex(tab, MakeTabTitle("SpecTitle",
+            "Specialized Gauges - Battery, Thermometer, Cylinder, Digital Clock, Digital"), 0);
 
-    auto gridContainer = std::make_shared<UltraCanvasContainer>("SpecGrid", 0, 0, w - 24, h - 60);
+    auto gridContainer = std::make_shared<UltraCanvasContainer>("SpecGrid");
     SetGrid2x3(gridContainer, 12);
 
     // --- Battery Bar pointer ---
@@ -524,11 +531,7 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
         SetVBox(dclockWrap, 0);
         AddFlex(dclockWrap, dclock, 1);
         AddFlex(dclockCard, dclockWrap, 1);
-        auto dclockInfo = std::make_shared<UltraCanvasLabel>("dclock_V", 0, 0, 0, kValueLabelH);
-        dclockInfo->SetAlignment(TextAlignment::Center);
-        dclockInfo->SetFontSize(11);
-        dclockInfo->SetTextColor(Color(100, 100, 115, 255));
-        dclockInfo->SetText("Live HH:MM:SS");
+        auto dclockInfo = MakeValueLabel("dclock_V", "Live HH:MM:SS");
         AddFlex(dclockCard, dclockInfo, 0);
     }
     AddGrid(gridContainer, dclockCard, 1, 1);
@@ -556,14 +559,12 @@ static std::shared_ptr<UltraCanvasContainer> BuildSpecializedTab(float w, float 
 // =============================================================================
 
 namespace {
-    // A small captioned label above a control, packed into a fixed-height block.
-    // Height is 18 (not 14): an 11px font needs ~15-16px for ascenders + descenders,
-    // and the text layout clips its line to the label's explicit height — at 14px the
-    // descenders (y, g) were cut off and overdrawn by the control below.
+    // A small captioned label above a control. It has no height of its own:
+    // it wraps and is as tall as its lines, so neither the descenders nor a
+    // longer translation are cut by the control below.
     inline std::shared_ptr<UltraCanvasLabel> MakeCaption(const std::string& id,
                                                          const std::string& text) {
-        auto lbl = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 18);
-        lbl->SetText(text);
+        auto lbl = DemoKit::CreateText(id, text);
         lbl->SetFontSize(11);
         lbl->SetTextColor(Color(90, 90, 110, 255));
         return lbl;
@@ -748,21 +749,15 @@ namespace {
     }
 }
 
-static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float h) {
-    auto tab = std::make_shared<UltraCanvasContainer>("RoundTab", 0, 0, w, h);
-    tab->SetBackgroundColor(Color(240, 241, 248, 255));
-    tab->SetPadding(12);
+static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab() {
+    auto tab = MakeTab("RoundTab");
     SetVBox(tab, 10);
 
-    auto title = std::make_shared<UltraCanvasLabel>("RoundTitle", 0, 0, w - 24, 28);
-    title->SetText("Round Gauges - ring width, indicator/segment style, surface fill, centre content & faded colours");
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 50, 75, 255));
-    AddFlex(tab, title, 0);
+    AddFlex(tab, MakeTabTitle("RoundTitle",
+            "Round Gauges - ring width, indicator/segment style, surface fill, centre content & faded colours"), 0);
 
     // Body: interactive playground (left) + style showcase grid (right).
-    auto body = std::make_shared<UltraCanvasContainer>("RoundBody", 0, 0, w - 24, h - 60);
+    auto body = std::make_shared<UltraCanvasContainer>("RoundBody");
     SetHBox(body, 12);
 
     // ---------------------------------------------------------------------
@@ -808,8 +803,13 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
     // "Code" button — a small bordered button overlaid at the bottom-right of the
     // gauge display (over the choices below). It generates the C++ for the current
     // choices and shows it in a popup window with an editable text area.
-    auto codeBtn = std::make_shared<UltraCanvasButton>("round_codebtn", 0, 0, 50, 20);
-    codeBtn->SetText("Code");
+    // As wide as its text, at least the old 50 px.
+    auto codeBtn = std::make_shared<UltraCanvasButton>("round_codebtn", 0, 0, 0, 20, "Code");
+    {
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(50);
+        codeBtn->boxConstraints = limits;
+    }
     codeBtn->SetFontSize(10.0f);
     codeBtn->SetBorder(1.0f, Color(150, 150, 165, 255));
     codeBtn->SetColors(Color(255, 255, 255, 235), Color(235, 238, 245, 255));
@@ -1123,19 +1123,31 @@ static std::shared_ptr<UltraCanvasContainer> BuildRoundGaugesTab(float w, float 
 // =============================================================================
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateGaugeExamples() {
-    // V2.1: Larger overall size to fit 3 columns of 320-wide cards comfortably
+    auto page = DemoKit::CreatePage("GaugeExamples", "Gauges",
+            "Mode-driven gauges: analog dials, progress/LED bars, "
+            "circular rings, batteries, thermometers, clocks and digital panels");
+
+    auto card = DemoKit::AddCard(page, "GaugeCard");
+
+    // The tabs keep their 860 px height and take the page's width, at least
+    // the 920 px the 3-column grids were laid out for (a narrower window
+    // scrolls instead of squeezing the gauges).
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
         "GaugeTabs", 0, 0, 920, 860);
     tabs->SetTabStyle(TabStyle::Rounded);
     tabs->SetTabHeight(32);
+    DemoKit::AddStretched(card, tabs);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(920);
+    tabs->boxConstraints = limits;
 
-    tabs->AddTab("Round Gauges", BuildRoundGaugesTab(920, 810));
-    tabs->AddTab("Progress & Linear", BuildProgressTab(920, 810));
-    tabs->AddTab("Specialized", BuildSpecializedTab(920, 810));
-    tabs->AddTab("Analog", BuildAnalogTab(920, 810));
+    tabs->AddTab("Round Gauges", BuildRoundGaugesTab());
+    tabs->AddTab("Progress & Linear", BuildProgressTab());
+    tabs->AddTab("Specialized", BuildSpecializedTab());
+    tabs->AddTab("Analog", BuildAnalogTab());
     tabs->SetActiveTab(0);
 
-    return tabs;
+    return page;
 }
 
 } // namespace UltraCanvas

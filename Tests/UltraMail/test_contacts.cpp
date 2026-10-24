@@ -416,6 +416,27 @@ TEST(save_all_saves_a_batch_or_nothing) {
     REQUIRE(known.count("cleo@x.example") == 0);
 }
 
+TEST(remove_reports_a_failed_delete_and_keeps_the_contact) {
+    ContactStore s = FreshStore("remove-fails");
+    Contact c = MakeContact("Ada", ContactSection::Friends, "ada@x.example");
+    REQUIRE(s.Save(c).success);
+
+    // One of the three deletes cannot run: the whole Remove fails and nothing
+    // of the contact goes. It used to commit the other two and say success.
+    REQUIRE(UltraDb_Exec("contacts-remove-fails", "DROP TABLE contact_phones").success);
+    REQUIRE(!s.Remove(c.id).success);
+    REQUIRE(!s.RemoveAll({ c.id }).success);
+
+    std::set<std::string> known;
+    REQUIRE(s.KnownAddresses(known).success);
+    REQUIRE(known.count("ada@x.example") == 1);
+    // (Get would read the dropped phones table too; ask for the row itself.)
+    UltraDbResultSet rs;
+    REQUIRE(UltraDb_Query("contacts-remove-fails", "SELECT 1 FROM contacts WHERE id=?",
+                          { c.id }, rs).success);
+    REQUIRE(!rs.Empty());
+}
+
 // The address book on disk is in WAL mode, as the mail index is: in the
 // default rollback journal every saved contact created, flushed and deleted a
 // journal file, which on Windows cost tens of milliseconds a contact.

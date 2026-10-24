@@ -3,8 +3,10 @@
 // line, area, cumulative flow, scatter and bubble charts next to their engine
 // ports (UltraCanvasEngineLineChart, UltraCanvasEngineScatterChart), each pair
 // fed the same data the legacy chart's own demo page uses.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): checkboxes and
+//                  buttons as wide as their text, the old width as a minimum
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEngineComparison.h"
@@ -51,10 +53,19 @@ std::shared_ptr<ChartDataVector> MakeDataSource(const std::vector<std::string>& 
 // The strips are siblings of the charts, never their parents, so capturing a
 // chart's shared_ptr in a control callback is ownership, not a cycle.
 
+// Controls are as wide as their text, at least the width they were given:
+// a longer caption (a translation) widens the control instead of being cut.
+void SetMinimumWidth(UltraCanvasUIElement& element, int minWidth) {
+    CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(minWidth));
+    element.boxConstraints = limits;
+}
+
 std::shared_ptr<UltraCanvasCheckbox> MakeCheck(const std::string& id, const std::string& text,
                                                bool checked, int width,
                                                std::function<void(bool)> onChange) {
-    auto box = std::make_shared<UltraCanvasCheckbox>(id, width, 24);
+    auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 24);
+    SetMinimumWidth(*box, width);
     box->SetText(text);
     box->SetChecked(checked);
     box->onStateChanged = [onChange](CheckedState, CheckedState state) {
@@ -99,7 +110,8 @@ void AddEngineControls(UltraCanvasContainer& strip, const std::string& prefix,
             }
         }));
 
-    auto replay = std::make_shared<UltraCanvasButton>(prefix + "Replay", 0, 0, 120, 24);
+    auto replay = std::make_shared<UltraCanvasButton>(prefix + "Replay", 0, 0, 0, 24);
+    SetMinimumWidth(*replay, 120);
     replay->SetText("Replay animation");
     replay->onClick = [engine]() { engine->StartEngineAnimation(0.8f); };
     AddToStrip(strip, replay);

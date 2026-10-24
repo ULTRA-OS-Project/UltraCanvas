@@ -816,6 +816,8 @@ if(BUILD_DEMO_APP)
     set(DEMO_SOURCES
             Apps/DemoApp/main.cpp
             Apps/DemoApp/UltraCanvasDemo.cpp
+            Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp
+            Apps/DemoApp/UltraCanvasDemoPageKit.cpp
             Apps/DemoApp/UltraCanvasDemoExamples.cpp
             Apps/DemoApp/UltraCanvasButtonExamples.cpp
             Apps/DemoApp/UltraCanvasDropDownExamples.cpp
@@ -1133,6 +1135,23 @@ if(BUILD_DEMO_APP)
         target_sources(UltraCanvasDemo PRIVATE Apps/DemoApp/UltraCanvasSmartHomeExamples.cpp)
         target_link_libraries(UltraCanvasDemo PRIVATE SmartHomeUI)
         target_compile_definitions(UltraCanvasDemo PRIVATE ULTRACANVAS_DEMO_HAS_SMARTHOME=1)
+    endif()
+
+    # The IODeviceManager entry is DeviceExplorer itself: the application's
+    # panel (Apps/DeviceExplorer/ui), compiled in from the same files, so the
+    # page and the application cannot drift apart. Its version is named in
+    # the panel's About, so the definition goes on the one page that passes
+    # it. Not in the browser or on Android, where there is no device to scan.
+    if(NOT EMSCRIPTEN AND NOT ANDROID)
+        target_sources(UltraCanvasDemo PRIVATE
+            Apps/DemoApp/UltraCanvasIODeviceManagerExamples.cpp
+            Apps/DeviceExplorer/ui/DeviceExplorerModel.cpp
+            Apps/DeviceExplorer/ui/DeviceExplorerPanel.cpp
+            Apps/DeviceExplorer/ui/DeviceExplorerPrinterQuery.cpp)
+        target_include_directories(UltraCanvasDemo PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Apps/DeviceExplorer/ui)
+        target_compile_definitions(UltraCanvasDemo PRIVATE ULTRACANVAS_DEMO_HAS_DEVICEEXPLORER=1)
+        set_source_files_properties(Apps/DemoApp/UltraCanvasIODeviceManagerExamples.cpp PROPERTIES
+            COMPILE_DEFINITIONS "DEVICEEXPLORER_VERSION=\"${DEVICEEXPLORER_VERSION}\"")
     endif()
 
     # Link against all plugin libraries
