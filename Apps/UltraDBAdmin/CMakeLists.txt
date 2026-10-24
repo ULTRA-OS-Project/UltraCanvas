@@ -31,6 +31,7 @@ add_executable(UltraDBAdmin
     engine/DbAdminFormat.cpp
     engine/DbAdminImport.cpp
     engine/DbAdminJobQueue.cpp
+    engine/DbAdminMonitor.cpp
     engine/DbAdminOperations.cpp
     engine/DbAdminPaths.cpp
     engine/DbAdminRelations.cpp

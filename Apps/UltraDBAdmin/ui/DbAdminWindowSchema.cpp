@@ -3,7 +3,11 @@
 // UltraCanvasERDiagram), the Routines tab (DbAdminRoutines) and the Server
 // tab (DbAdminServer). Each reads what it shows on the job queue, and on
 // Refresh: Routines and Server whenever they are shown, Relations - a read of
-// every table - when the tree's selection is in another schema than it shows. DbAdminWindow.h says what the window is.
+// every table - when the tree's selection is in another schema than it shows.
+// The Server tab's monitor reads the status every kMonitorIntervalMs while
+// it is shown (DbAdminMonitor) and draws a line chart per measure.
+// DbAdminWindow.h says what the window is.
+// Version: 0.3.0 - the Server tab's monitor charts
 // Version: 0.2.0 - a session stopped through UltraDb_StopSession; a layer wraps only well past the view
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -12,11 +16,14 @@
 #include "DbAdminOperationDialogs.h"
 #include "DbAdminWindowParts.h"
 
+#include "Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.h"
 #include "Plugins/Diagrams/UltraCanvasERDiagram.h"
 #include "UltraCanvasListSelection.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <ctime>
 #include <set>
 #include <utility>
 
@@ -519,7 +526,11 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildServerPage() {
     };
     bar->AddChild(serverViewPick_);
     serverReadButton_ = MakeActionButton("dbaServerRead", "Refresh", "refresh", "Read it again");
-    serverReadButton_->SetOnClick([this]() { ReadServer(); });
+    serverReadButton_->SetOnClick([this]() {
+        // On the monitor: the charts start again.
+        if (ChosenServerView() == ServerView::Monitor) monitorConnectionId_.clear();
+        ReadServer();
+    });
     bar->AddChild(serverReadButton_);
     serverFilter_ = CreateTextInput("dbaServerFilter", 0, 0, 180, kControlHeight);
     serverFilter_->layoutItem.SetFlexShrink(0);
@@ -557,6 +568,12 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildServerPage() {
         rawView->SetSortIndicator(column, ascending);
     };
     FillWith(page, serverGrid_);
+    // The monitor's charts, in rows of three, in place of the grid.
+    serverMonitorBox_ = CreateContainer("dbaServerMonitor", 0, 0, 0, 0);
+    MakePlainColumn(serverMonitorBox_);
+    serverMonitorBox_->layout.SetFlexGap(10);
+    serverMonitorBox_->SetVisible(false);
+    FillWith(page, serverMonitorBox_);
     return page;
 }
 
@@ -578,6 +595,14 @@ void DbAdminWindow::ReadServer() {
     serverConnectionId_ = connectionId;
     serverSchema_ = schema;
     serverShown_ = view;
+    serverGrid_->SetVisible(view != ServerView::Monitor);
+    serverMonitorBox_->SetVisible(view == ServerView::Monitor);
+    if (view == ServerView::Monitor) {
+        serverLoading_ = false;
+        // The same server's charts carry on; another's start afresh.
+        ReadMonitor(connectionId != monitorConnectionId_);
+        return;
+    }
     serverLoading_ = true;
     serverSummary_.clear();
     UpdateServerBar();
@@ -656,6 +681,125 @@ void DbAdminWindow::StopServerSession(bool terminate) {
     });
 }
 
+void DbAdminWindow::ReadMonitor(bool restart) {
+    const ConnectionSpec* spec = store_.Find(serverConnectionId_);
+    if (!spec) return;
+    if (restart || monitorConnectionId_ != serverConnectionId_) {
+        monitor_.Clear();
+        monitorConnectionId_ = serverConnectionId_;
+        monitorReading_ = false;
+        ++monitorGen_;
+        serverSummary_ = "Reading the status of " + spec->name + "…";
+        ShowMonitor();
+        UpdateServerBar();
+    }
+    if (monitorReading_) return;          // the last reading is not back yet
+    monitorReading_ = true;
+    const uint64_t generation = monitorGen_;
+    const std::string connection = RegisteredName(*spec);
+    const SqlEngine engine = EngineOf(*spec);
+    const std::string name = spec->name;
+    Background([this, connection, engine, name, generation]() -> std::function<void()> {
+        UltraDbResultSet rows;
+        const UltraDbResult result = ReadServerView(connection, engine, ServerView::Monitor, "", "", rows);
+        const double seconds =
+            std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        const std::time_t at = std::time(nullptr);
+        return [this, result, rows = std::move(rows), seconds, at, name, generation]() {
+            if (generation != monitorGen_) return;
+            monitorReading_ = false;
+            if (!result) {
+                serverSummary_ = "Not read: " + OneLine(result.message);
+            } else {
+                monitor_.Add(seconds, rows, at);
+                serverSummary_ = name + " - read every " + std::to_string(kMonitorIntervalMs / 1000) +
+                                 " seconds while shown";
+            }
+            ShowMonitor();
+            UpdateServerBar();
+        };
+    });
+}
+
+void DbAdminWindow::ShowMonitor() {
+    const std::vector<MonitorChart>& charts = monitor_.Charts();
+    bool same = charts.size() == monitorCards_.size();
+    for (size_t i = 0; same && i < charts.size(); ++i) same = charts[i].key == monitorCards_[i].key;
+    if (!same) {
+        // A card per chart, three to a row.
+        serverMonitorBox_->ClearChildren();
+        monitorCards_.clear();
+        const ThemeRoles& roles = UltraCanvasTheme::Current().roles;
+        std::shared_ptr<UltraCanvasContainer> row;
+        for (size_t i = 0; i < charts.size(); ++i) {
+            const MonitorChart& chart = charts[i];
+            if (i % 3 == 0) {
+                row = CreateContainer("dbaMonitorRow" + std::to_string(i / 3), 0, 0, 0, 0);
+                row->layout.SetFlexRow().SetFlexGap(10);
+                FillWith(serverMonitorBox_, row);
+            }
+            auto card = CreateContainer("dbaMonitorCard_" + chart.key, 0, 0, 0, 0);
+            MakePlainColumn(card);
+            MakeCard(*card);
+            card->layout.SetFlexGap(6);
+            card->SetPadding(8.0f);
+            FillWith(row, card);
+            auto head = CreateContainer("dbaMonitorHead_" + chart.key, 0, 0, 0, 22);
+            head->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+            PinToolbar(head);
+            auto title = CreateLabel("dbaMonitorTitle_" + chart.key, 0, 0, 0, 20,
+                                     chart.title + (chart.unit.empty() ? std::string() : " (" + chart.unit + ")"));
+            title->SetFontWeight(FontWeight::Bold);
+            title->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            head->AddChild(title);
+            auto value = CreateLabel("dbaMonitorValue_" + chart.key, 0, 0, 110, 20, "");
+            value->SetAlignment(TextAlignment::Right);
+            value->SetTextColor(roles.accent);
+            value->SetFontWeight(FontWeight::Bold);
+            value->layoutItem.SetFlexShrink(0);
+            head->AddChild(value);
+            card->AddChild(head);
+            // A filled line from zero, its time along the bottom.
+            auto line = CreateEngineLineChart("dbaMonitorChart_" + chart.key, 0, 0, 300, 120);
+            line->SetMode(EngineLineChartMode::Area);
+            line->SetAreaOpacity(0.15f);
+            line->SetShowEdgeLines(true);
+            line->SetLineWidth(2.0f);
+            line->SetShowMarkers(false);
+            line->SetShowValueLabels(false);
+            line->SetCategoryPadding(0.0);
+            line->SetValueFormat("", "", true);
+            // Redrawn every reading: no rise from the base each time, and an
+            // axis that reads at rest - counts to 4, rates to 5, all of 100 %.
+            line->SetAnimateOnDataChange(false);
+            line->SetValueAtLeast(chart.unit == "%" ? 100.0 : chart.unit.empty() ? 4.0 : 5.0);
+            line->SetBackgroundColor(roles.panel);
+            line->SetPlotAreaColor(roles.panel);
+            line->SetEmptyMessage("Waiting for the next reading", "A rate needs two");
+            line->SetEmptyMessageColor(roles.inkMuted);
+            line->SetEnableTooltips(true);
+            FillWith(card, line);
+            monitorCards_.push_back(MonitorCard{ chart.key, value, line });
+        }
+    }
+    for (size_t i = 0; i < charts.size(); ++i) {
+        const MonitorChart& chart = charts[i];
+        MonitorCard& card = monitorCards_[i];
+        std::vector<std::string> times;
+        EngineLineSeries series;
+        series.name = chart.title;
+        series.color = UltraCanvasTheme::Current().roles.accent;
+        for (const MonitorPoint& point : chart.points) {
+            times.push_back(MonitorClockText(point.at));
+            series.values.push_back(point.value);
+        }
+        card.chart->SetCategories(times);
+        card.chart->SetSeries({ series });
+        card.value->SetText(chart.points.empty() ? std::string()
+                                                 : MonitorValueText(chart.points.back().value, chart.unit));
+    }
+}
+
 void DbAdminWindow::UpdateServerBar() {
     if (!serverReadButton_) return;
     std::string connectionId, schema;
@@ -678,6 +822,7 @@ void DbAdminWindow::UpdateServerBar() {
     serverViewPick_->SetDisabled(views.size() < 2);
     serverReadButton_->SetDisabled(!spec || serverLoading_);
     serverFilter_->SetDisabled(view != ServerView::Settings);
+    serverReadButton_->SetTooltip(view == ServerView::Monitor ? "Start the charts again" : "Read it again");
     const bool sessions = serverShown_ == ServerView::Sessions && !serverLoading_;
     IListSelection* selection = serverGrid_->GetSelection();
     const bool picked = sessions && selection && !selection->GetSelectedRows().empty();

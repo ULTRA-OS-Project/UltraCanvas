@@ -3,7 +3,7 @@
 // engine family. The built-in SQLite driver implements these same interfaces;
 // PostgreSQL / MySQL / ... arrive as additional drivers (Stage 2+ ships them
 // as loadable DSOs) without changing the core or any caller.
-// Version: 0.5.0 - DefaultPort, ThroughTunnel (SSH tunnels)
+// Version: 0.5.0 - DefaultPort, ThroughTunnel (SSH tunnels); ServerStatus
 // Version: 0.4.0 - server administration (UltraDatabaseServer.h)
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -166,6 +166,10 @@ public:
     }
     virtual UltraDbResult ServerSizes(const std::string& schema, UltraDbResultSet& out) {
         (void)schema;
+        out.Clear();
+        return NoServer();
+    }
+    virtual UltraDbResult ServerStatus(UltraDbResultSet& out) {
         out.Clear();
         return NoServer();
     }

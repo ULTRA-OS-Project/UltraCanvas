@@ -265,7 +265,7 @@ second customer besides this app.
 | SQL editor | `UltraCanvasTextArea` with `SetProgrammingLanguage("SQL")` (rules in `UltraCanvasSyntaxTokenizer.h`, `CreateSqlRules`) and `ShowAutoComplete(suggestions)` | exists |
 | Insert / edit row form | `CreateFormGrid` / `AddFormRow` (`UltraCanvasFormLayout.h`), date and number pickers | exists |
 | Relations / designer | `UltraCanvasERDiagram` (`Plugins/Diagrams/UltraCanvasERDiagram.h`: `AddEntity`, `AddAttribute`, `AddRelationship`, layouts, Crow's Foot) | exists; **no** import from a database yet |
-| Server monitor charts | `UltraCanvasLineChartElement` and the chart plugins | exists |
+| Server monitor charts | `UltraCanvasEngineLineChart` (the chart engine) | exists |
 | CSV import / export dialogs | `UltraCanvasCSVImportDialog`, `UltraCanvasCSVExportDialog` | exist, but bound to an `UltraCanvasSpreadsheet` source |
 | BLOB viewer | `UltraCanvasMediaViewer` (image, PDF, text …); `UltraCanvasTextArea` in `TextAreaEditingMode::Hex` | both exist |
 | Open / save `.sql`, `.csv`, `.xlsx`, `.json` | `UltraCanvasFileLoader` — dialogs, readers/writers, format inventory | dialogs and text formats exist and are required by the house rules; XLSX / ODS are written today only by `UltraCanvasSpreadsheet::SaveToFile`, so a table export to them needs F2 |
@@ -587,7 +587,16 @@ driver connects, from the connection's `ssh_*` options as planned, through an
 opener the application installs (`UltraDatabaseSshTunnel.h` over UltraNet), so
 the module links no network library; and UltraDBAdmin's connection dialog has
 the bastion, the sign-in (agent, password or key file, in the vault) and the
-host key, trusted on first use as ssh does. Monitor charts are still to come.
+host key, trusted on first use as ssh does.
+
+**Monitor charts followed**: UltraDatabase gained the status a monitor
+samples (`UltraDb_ServerStatus`: sessions, statements, transactions, rows
+read and written, buffer cache reads and misses, traffic - each engine what
+it keeps), and the Server tab a **Monitor** view - an area chart per measure
+on the chart engine, read every two seconds while shown, counters turned into
+rates and the cache's misses into a hit ratio (`engine/DbAdminMonitor`). The
+engine's line chart gained `SetValueAtLeast`, so a quiet server's chart keeps
+a readable axis.
 
 Stage 1 alone already replaces the "install DB Browser for SQLite" step for
 supporting ULTRA OS apps.

@@ -16,7 +16,11 @@
 // on SQLite and refills one on PostgreSQL, and a stopped export leaving the
 // file that was there. And Browse's filters (bound values, LIKE escaped,
 // ILIKE on PostgreSQL), a blob staged and written, rows copied as CSV, JSON
-// and INSERTs, a blob's kind and hex dump, the table a SELECT reads.
+// and INSERTs, a blob's kind and hex dump, the table a SELECT reads. A
+// connection through an SSH tunnel as the store keeps it and UltraDatabase
+// is asked for it. The Server tab's monitor: rates, the cache's hit ratio, a
+// server restart, the charts a server's measures give.
+// Version: 0.3.0 - SSH tunnels; the server monitor
 // Version: 0.2.0 - filters, blobs, rows as text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -27,6 +31,7 @@
 #include "DbAdminFormat.h"
 #include "DbAdminImport.h"
 #include "DbAdminJobQueue.h"
+#include "DbAdminMonitor.h"
 #include "DbAdminSqlRunner.h"
 #include "DbAdminSqlScript.h"
 #include "DbAdminSqliteTable.h"
@@ -1590,6 +1595,60 @@ void TestJobQueue() {
     Check(ran == 1 && queue.Outstanding() == 0, "a job posted after Stop is ignored");
 }
 
+// A status as UltraDb_ServerStatus gives it.
+UltraDbResultSet StatusRows(std::initializer_list<std::pair<const char*, int64_t>> values) {
+    UltraDbResultSet rows;
+    rows.SetColumns({ "name", "value", "counter" });
+    for (const auto& [name, value] : values)
+        rows.AddRow({ UltraDbValue(name), UltraDbValue(value), UltraDbValue(std::string(name) != "connections") });
+    return rows;
+}
+
+const MonitorChart* ChartOf(const ServerMonitor& monitor, const std::string& key) {
+    for (const auto& chart : monitor.Charts())
+        if (chart.key == key) return &chart;
+    return nullptr;
+}
+
+void TestMonitor() {
+    Section("Server monitor");
+    ServerMonitor monitor;
+    monitor.Add(100.0, StatusRows({ { "connections", 4 }, { "transactions", 1000 }, { "cache_reads", 5000 },
+                                { "disk_reads", 100 }, { "bytes_sent", 0 } }));
+    std::vector<std::string> keys;
+    for (const auto& chart : monitor.Charts()) keys.push_back(chart.key);
+    Check(keys == std::vector<std::string>({ "sessions", "transactions", "cache_hits", "sent" }),
+          "a chart per measure kept, in the tab's order");
+    Check(ChartOf(monitor, "sessions")->points.size() == 1 && ChartOf(monitor, "transactions")->points.empty(),
+          "the first reading: a gauge's value, no rate yet");
+    monitor.Add(102.0, StatusRows({ { "connections", 6 }, { "transactions", 1050 }, { "cache_reads", 6000 },
+                                { "disk_reads", 150 }, { "bytes_sent", 4096 } }));
+    const MonitorChart* xacts = ChartOf(monitor, "transactions");
+    Check(xacts->points.size() == 1 && xacts->points[0].value == 25.0 && xacts->points[0].seconds == 2.0,
+          "50 transactions in 2 s: 25 a second, at 2 s");
+    Check(ChartOf(monitor, "cache_hits")->points.back().value == 95.0, "50 of 1000 reads from disk: 95 % hits");
+    Check(ChartOf(monitor, "sent")->points.back().value == 2.0, "4096 bytes in 2 s: 2 KB a second");
+    Check(ChartOf(monitor, "sessions")->points.back().value == 6.0, "a gauge as it is");
+    // The server restarted: its counters start again, and so does the rate.
+    monitor.Add(104.0, StatusRows({ { "connections", 1 }, { "transactions", 10 }, { "cache_reads", 10 },
+                                { "disk_reads", 10 }, { "bytes_sent", 10 } }));
+    Check(xacts->points.size() == 1, "a counter that went back draws no point");
+    monitor.Add(106.0, StatusRows({ { "connections", 1 }, { "transactions", 30 }, { "cache_reads", 10 },
+                                { "disk_reads", 10 }, { "bytes_sent", 10 } }));
+    Check(xacts->points.size() == 2 && xacts->points.back().value == 10.0, "and the next one does, from the new value");
+    Check(ChartOf(monitor, "cache_hits")->points.back().value == 100.0, "nothing read: nothing missed");
+    monitor.Add(106.0, StatusRows({ { "connections", 9 } }));
+    Check(ChartOf(monitor, "sessions")->points.back().value == 1.0, "a reading no later than the last is ignored");
+    for (int i = 0; i < 200; ++i) monitor.Add(108.0 + i, StatusRows({ { "connections", i } }));
+    Check(ChartOf(monitor, "sessions")->points.size() == kMonitorPoints, "a chart keeps its last points");
+    monitor.Clear();
+    Check(monitor.Charts().empty() && monitor.Readings() == 0, "cleared");
+
+    Check(MonitorValueText(0.5, "/s") == "0.5 /s" && MonitorValueText(1234567, "") == "1,234,567" &&
+              MonitorValueText(95.04, "%") == "95%" && MonitorValueText(3, "KB/s") == "3 KB/s",
+          "a value as the title shows it");
+}
+
 } // namespace
 
 int main() {
@@ -1601,6 +1660,7 @@ int main() {
     TestPager();
     TestSqlRunner();
     TestJobQueue();
+    TestMonitor();
     TestEditBuffer();
     TestSqliteTable();
     TestStructureEditSqlite();

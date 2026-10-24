@@ -22,6 +22,7 @@ set(_dbadmin_engine
     ${_dbadmin}/engine/DbAdminFormat.cpp
     ${_dbadmin}/engine/DbAdminImport.cpp
     ${_dbadmin}/engine/DbAdminJobQueue.cpp
+    ${_dbadmin}/engine/DbAdminMonitor.cpp
     ${_dbadmin}/engine/DbAdminOperations.cpp
     ${_dbadmin}/engine/DbAdminPaths.cpp
     ${_dbadmin}/engine/DbAdminRelations.cpp

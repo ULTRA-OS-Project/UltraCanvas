@@ -2,7 +2,8 @@
 // The UltraDatabase manager: driver registry, named-connection registry with
 // lazy opening, and the public UltraDb_* entrypoints for queries, prepared
 // statements, transactions and migrations.
-// Version: 0.6.0 - SSH tunnels (UltraDatabaseTunnel.h): opened with a connection, closed with it
+// Version: 0.6.0 - SSH tunnels (UltraDatabaseTunnel.h): opened with a connection, closed with it;
+//                  the server's status for a monitor (UltraDb_ServerStatus)
 // Version: 0.5.0 - the MySQL / MariaDB driver, server administration (UltraDatabaseServer.h)
 // Version: 0.4.0 - statement observers (UltraDb_AddStatementObserver)
 // Version: 0.3.3 - Retired() is never destroyed: a close from an atexit handler wrote into it after its teardown
@@ -881,6 +882,16 @@ UltraDbResult UltraDb_ServerSizes(const std::string& connection, const std::stri
     UltraDbResult result = conn ? conn->ServerSizes(schema, out) : err;
     watch.Report(Kind::Introspection, connection, "-- the sizes of the databases" + (schema.empty() ? "" : " and " + schema),
                  0, out.Size(), false, result);
+    return result;
+}
+
+UltraDbResult UltraDb_ServerStatus(const std::string& connection, UltraDbResultSet& out) {
+    out.Clear();
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    UltraDbResult result = conn ? conn->ServerStatus(out) : err;
+    watch.Report(Kind::Introspection, connection, "-- the server's status", 0, out.Size(), false, result);
     return result;
 }
 

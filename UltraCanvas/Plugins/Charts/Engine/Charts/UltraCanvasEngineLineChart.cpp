@@ -1,7 +1,8 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.cpp
 // Line, area, stacked area and cumulative flow charts on the chart engine.
+// Version: 1.1.0 - SetValueAtLeast
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineLineChart.h"
@@ -164,6 +165,11 @@ void UltraCanvasEngineLineChart::SetValueFormat(const std::string& prefix,
 
 void UltraCanvasEngineLineChart::SetIncludeZero(bool include) {
     includeZero = include;
+    MarkEngineDirty(ChartDirty::Data);
+}
+
+void UltraCanvasEngineLineChart::SetValueAtLeast(double value) {
+    valueAtLeast = value;
     MarkEngineDirty(ChartDirty::Data);
 }
 
@@ -388,6 +394,7 @@ void UltraCanvasEngineLineChart::DescribeAxes(ChartAxisSet& axes) {
     } else {
         for (const std::vector<double>& values : visible) value.Observe(values);
         if (Filled() || includeZero || polar) value.Observe(0.0);
+        if (std::isfinite(valueAtLeast)) value.Observe(valueAtLeast);
         // Keeps the extreme points and their markers clear of the plot edge;
         // a range that starts at zero keeps its baseline.
         value.rangePadding = 0.05;

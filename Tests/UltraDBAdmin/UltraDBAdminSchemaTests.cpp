@@ -7,9 +7,11 @@
 // dropped, and a new one made from its template) and the Server tab
 // (SQLite's file; PostgreSQL's sessions with this one among them, a running
 // query cancelled from another session, the settings filter with LIKE's
-// characters typed, the sizes).
+// characters typed, the sizes; the monitor's charts from two readings of a
+// live server).
 // SQLite in temporary folders; PostgreSQL where the tests of UltraDatabase
 // find one (ULTRAFIBU_TEST_PG_*; REQUIRED makes a missing server a failure).
+// Version: 0.2.0 - the monitor
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnections.h"
@@ -17,6 +19,7 @@
 #include "DbAdminOperations.h"
 #include "DbAdminRelations.h"
 #include "DbAdminRoutines.h"
+#include "DbAdminMonitor.h"
 #include "DbAdminServer.h"
 #include "DbAdminSqlScript.h"
 
@@ -561,10 +564,47 @@ void TestRoutinesMysql() {
 
 // ===== Server =====
 
+// The monitor over a live server: its charts from two readings with rows
+// written between them - the rows written per second above zero. `table`
+// (qualified) has an integer id and a text t; `traffic` for MySQL, which
+// counts its clients' bytes.
+void CheckMonitor(const std::string& c, SqlEngine engine, const std::string& table, bool traffic) {
+    UltraDbResultSet status;
+    Check(ReadServerView(c, engine, ServerView::Monitor, "", "", status).success && status.Size() >= 7,
+          "the server's status");
+    ServerMonitor monitor;
+    const auto start = std::chrono::steady_clock::now();
+    monitor.Add(0.0, status);
+    Check(UltraDb_Exec(c, "INSERT INTO " + table + " (id, t) VALUES (900001, 'a'), (900002, 'b'), (900003, 'c')") &&
+              UltraDb_Exec(c, "DELETE FROM " + table + " WHERE id > 900000"),
+          "rows written between the readings");
+    // PostgreSQL's statistics arrive within a second or so.
+    double written = 0;
+    for (int i = 0; i < 30 && written <= 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        ReadServerView(c, engine, ServerView::Monitor, "", "", status);
+        ServerMonitor again = monitor;
+        again.Add(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), status);
+        for (const auto& chart : again.Charts())
+            if (chart.key == "rows_written" && !chart.points.empty()) written = chart.points.back().value;
+        if (written > 0) monitor = again;
+    }
+    Check(written > 0, "rows written per second, above zero");
+    std::vector<std::string> keys;
+    for (const auto& chart : monitor.Charts()) keys.push_back(chart.key);
+    const bool hasTraffic = std::find(keys.begin(), keys.end(), "received") != keys.end();
+    Check(keys.size() >= 6 && keys.front() == "sessions" && hasTraffic == traffic,
+          "a chart per measure the server keeps (" + std::to_string(keys.size()) + ")");
+    for (const auto& chart : monitor.Charts())
+        if (chart.key == "cache_hits")
+            Check(!chart.points.empty() && chart.points.back().value >= 0 && chart.points.back().value <= 100,
+                  "the cache's hit ratio, a percentage");
+}
+
 void TestServerSqlite() {
     Section("Server (SQLite)");
     Check(ServerViews(SqlEngine::Sqlite) == std::vector<ServerView>{ServerView::FileInfo}, "SQLite has its file");
-    Check(ServerViews(SqlEngine::Postgres).size() == 3, "PostgreSQL has sessions, settings and sizes");
+    Check(ServerViews(SqlEngine::Postgres).size() == 4, "PostgreSQL has sessions, a monitor, settings and sizes");
     TempDir dir;
     const std::string file = dir.File("info.db");
     const std::string c = SqliteFile("dbadmin-server", file);
@@ -657,6 +697,7 @@ void TestServerPostgres() {
         UltraDb_CloseConnection(sleeper);
     }
     Check(Stop(c, 1, true) == 0, "no such session: nothing stopped");
+    CheckMonitor(c, SqlEngine::Postgres, QualifiedName(SqlEngine::Postgres, schema, "big"), false);
     UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(SqlEngine::Postgres, schema) + " CASCADE");
     UltraDb_CloseConnection(c);
 }
@@ -668,7 +709,8 @@ void TestServerMysql() {
     const std::string c = MysqlConnection("dbadmin-server-my");
     if (c.empty()) return;
     constexpr SqlEngine my = SqlEngine::MySql;
-    Check(ServerViews(my) == std::vector<ServerView>{ServerView::Sessions, ServerView::Settings, ServerView::Sizes},
+    Check(ServerViews(my) == std::vector<ServerView>{ServerView::Sessions, ServerView::Monitor, ServerView::Settings,
+                                                     ServerView::Sizes},
           "a MySQL server's views");
     const std::string schema = "dbadmin_" + ConnectionStore::NewId();
     const std::string s = QuotedName(my, schema);
@@ -727,6 +769,7 @@ void TestServerMysql() {
         UltraDb_CloseConnection(sleeper);
     }
     Check(Stop(c, 2000000000, true) == 0, "no such session: nothing stopped");
+    CheckMonitor(c, my, s + ".big", true);
     UltraDb_Exec(c, "DROP DATABASE " + s);
     UltraDb_CloseConnection(c);
 }

@@ -345,6 +345,7 @@ UltraDb_ServerSessions("crm", rows);          // id, user, database, application
                                               // state, running (s), waiting, query, this_session
 UltraDb_ServerSettings("crm", "mem", rows);   // name, value, unit, category, description, source
 UltraDb_ServerSizes("crm", "public", rows);   // kind, name, bytes, data_bytes, index_bytes
+UltraDb_ServerStatus("crm", rows);            // name, value, counter - for a monitor to sample
 
 std::string sql;                              // what a confirmation shows first:
 UltraDb_StopSessionSql("crm", id, false, sql);  // SELECT pg_cancel_backend(42) / KILL QUERY 42
@@ -357,6 +358,16 @@ the name or the description in any case, `%` and `_` typed in it taken as
 themselves. MySQL's settings come from `performance_schema` (with where each
 value came from), MariaDB's from `information_schema.SYSTEM_VARIABLES` (with
 a description for each).
+
+`UltraDb_ServerStatus` is what a monitor samples every few seconds: a row per
+measure the engine keeps, each a gauge (`connections`, `active` - not
+counting the asking session) or a counter that only grows (`queries`,
+`transactions`, `rows_read`, `rows_written`, `cache_reads`, `disk_reads`,
+`bytes_received`, `bytes_sent`); the differences of two readings are the
+server's load. PostgreSQL's come from `pg_stat_activity` and
+`pg_stat_database` summed over its databases (no statement count or traffic
+there), MySQL's and MariaDB's from `SHOW GLOBAL STATUS` - InnoDB's row
+counts, or on MariaDB 10.6 and later, which keeps none, the handler's.
 
 ### SSH tunnels
 

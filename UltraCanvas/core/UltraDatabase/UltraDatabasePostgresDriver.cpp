@@ -346,6 +346,9 @@ public:
     UltraDbResult ServerSizes(const std::string& schema, UltraDbResultSet& out) override {
         return ultradb_internal::PostgresServerSizes(*this, schema, out);
     }
+    UltraDbResult ServerStatus(UltraDbResultSet& out) override {
+        return ultradb_internal::PostgresServerStatus(*this, out);
+    }
     UltraDbResult StopSessionSql(int64_t id, bool endSession, std::string& sql) override {
         sql = ultradb_internal::PostgresStopSessionSql(id, endSession);
         return UltraDbResult::Ok();

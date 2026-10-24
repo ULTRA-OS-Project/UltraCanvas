@@ -1648,7 +1648,8 @@ wherever libpq is found, the MySQL / MariaDB driver
 dynamically) wherever libmariadb is; both verify TLS by default and read
 their password from UltraVault, and UltraFIBU's multi-user mode runs on
 PostgreSQL. Also built: schema introspection, server administration
-(`UltraDatabaseServer.h`: sessions, settings, sizes, stopping a session),
+(`UltraDatabaseServer.h`: sessions, settings, sizes, stopping a session,
+the status a monitor samples),
 streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
 plan: the other drivers (MSSQL, Redis, MongoDB, DuckDB), async queries,
 pooling and at-rest encryption. Details in

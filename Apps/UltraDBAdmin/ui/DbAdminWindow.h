@@ -37,7 +37,9 @@
 //               and aggregates, each with its statement: edited in the SQL
 //               tab and run again, dropped, or a new one from a template;
 //   Server    - PostgreSQL's sessions (a query cancelled, a session ended),
-//               its settings and the sizes of its databases and tables;
+//               its settings and the sizes of its databases and tables, and
+//               a monitor: charts of its sessions, statements, rows, cache
+//               and traffic, read every 2 seconds while they are shown;
 //               SQLite's file: its pages, journal mode, encoding, versions.
 // Search, Relations and Routines work on the schema the tree's selection is
 // in, Server on its connection; the last three read it when they are shown.
@@ -57,6 +59,7 @@
 // PostToUIThread, guarded by a token that dies with the window. A result for
 // something no longer shown - another table was picked meanwhile - is
 // recognised by its generation number and dropped.
+// Version: 0.5.0 - the Server tab's monitor charts
 // Version: 0.4.0 - the Relations, Routines and Server tabs
 // Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log,
 //                 Run statement, Explain, snippets, auto-commit, the typed row form
@@ -77,6 +80,7 @@
 #include "DbAdminRoutines.h"
 #include "DbAdminSearch.h"
 #include "DbAdminServer.h"
+#include "DbAdminMonitor.h"
 #include "DbAdminSnippets.h"
 #include "DbAdminSqlLog.h"
 #include "DbAdminSqlRunner.h"
@@ -111,6 +115,7 @@
 
 namespace UltraCanvas {
 class UltraCanvasERDiagram;
+class UltraCanvasEngineLineChart;
 }
 
 namespace UltraDBAdmin {
@@ -384,6 +389,8 @@ private:
     void StopServerSession(bool terminate); // the selected session's query, or the session
     void UpdateServerBar();
     ServerView ChosenServerView() const;
+    void ReadMonitor(bool restart);         // one reading of the status, on a worker
+    void ShowMonitor();                     // the charts, from monitor_
 
     // ===== SQL LOG =====
     void RefreshLog();                      // what is new, from log_ (a timer calls it)
@@ -609,6 +616,19 @@ private:
     std::string serverSummary_;
     bool serverLoading_ = false;
     uint64_t serverGen_ = 0;
+    // The monitor: a card per chart, made when the first reading names them.
+    struct MonitorCard {
+        std::string key;
+        std::shared_ptr<UltraCanvas::UltraCanvasLabel> value;
+        std::shared_ptr<UltraCanvas::UltraCanvasEngineLineChart> chart;
+    };
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> serverMonitorBox_;
+    std::vector<MonitorCard> monitorCards_;
+    ServerMonitor monitor_;
+    std::string monitorConnectionId_;    // whose readings monitor_ holds
+    bool monitorReading_ = false;
+    uint64_t monitorGen_ = 0;
+    UltraCanvas::TimerId monitorTimer_ = 0;
 
     // SQL log
     std::shared_ptr<SqlLog> log_ = std::make_shared<SqlLog>(2000);

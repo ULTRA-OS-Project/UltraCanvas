@@ -51,6 +51,7 @@ DbAdminWindow::~DbAdminWindow() {
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         if (logTimer_) app->StopTimer(logTimer_);
         if (cellTimer_) app->StopTimer(cellTimer_);
+        if (monitorTimer_) app->StopTimer(monitorTimer_);
     }
     if (logObserver_) UltraDb_RemoveStatementObserver(logObserver_);
     alive_.reset();
@@ -196,8 +197,13 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     UpdateRelationsBar();
     UpdateRoutinesBar();
     UpdateServerBar();
-    if (auto* app = UltraCanvasApplication::GetInstance())
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
         logTimer_ = app->StartTimer(kLogRefreshMs, true, [this](TimerId) { RefreshLog(); });
+        // The monitor reads only while its charts are in sight.
+        monitorTimer_ = app->StartTimer(kMonitorIntervalMs, true, [this](TimerId) {
+            if (tabs_->GetActiveTab() == kServerTab && serverShown_ == ServerView::Monitor) ReadMonitor(false);
+        });
+    }
     if (!storeNote_.empty()) SetStatus(storeNote_, true);
     else if (store_.All().empty()) SetStatus("No connections yet - Add connection names a SQLite file, a PostgreSQL or a MySQL / MariaDB server.");
     else SetStatus(std::to_string(store_.All().size()) + " connections. Expand one to see its tables.");
