@@ -1471,14 +1471,24 @@ silently. (`None` and `Always` are X11 macros, hence the spelled-out
 enumerators — the same reason `FilerExtensionBadge::NoneBadge` is spelled that
 way.)
 
-While something IS held back, one centred line of plain text at the foot of
-the file area reads *"3 items are hidden here · Show hidden files"*. It sits
-on the display's own background with no rule or fill of its own, so it reads
-as part of the folder, not as another status bar. **Show hidden files** is a
-link: clicking it does exactly what the `Display > Hidden files` context-menu
-entry does — for this display, leaving `SetShowHiddenFiles` elsewhere alone.
-The line disappears as soon as nothing is held back (including the moment its
-own link is clicked).
+While something IS held back, one centred line at the foot of the file area
+reads *"3 items are hidden here"* next to a blue **Show hidden files** button.
+It sits on the display's own background with no rule or fill of its own, so it
+reads as part of the folder, not as another status bar. The button does
+exactly what the `Display > Hidden files` context-menu entry does — for this
+display, leaving `SetShowHiddenFiles` elsewhere alone. The line disappears as
+soon as nothing is held back (including the moment its own button is
+pressed).
+
+A host whose settings decide what is held back sets `onHiddenNoticeSettings`;
+a gear button then sits right of **Show hidden files** and a click on it runs
+the callback. Unset, there is no gear. It may be set at any time - the gear
+follows on the next paint:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; void OpenHomeFolderSettings(); -->
+```cpp
+filer->onHiddenNoticeSettings = [] { OpenHomeFolderSettings(); };
+```
 
 `GetHiddenItemCount()` counts what the current listing leaves out: the hidden
 entries, the names the ignore patterns drop, and the subfolders a curated home
@@ -1491,7 +1501,7 @@ The strip takes its height out of the file area, exactly as the selection info
 bar does (it sits directly above it), so no entry is ever drawn under it, and
 it is left out of the whole-area views (`GourceTree`, `View3D`) and of a pane
 too short to hold both files and strip. The count is drawn in
-`secondaryTextColor` on `backgroundColor`, the link in the accent blue.
+`secondaryTextColor` on `backgroundColor`.
 
 Hosts pick the mode per folder. The UltraFiler uses `WhenAnyHidden` in the home
 folder — the one folder where every filter bites at once: the profile's hidden

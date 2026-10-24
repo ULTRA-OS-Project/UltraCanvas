@@ -5520,6 +5520,15 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     // The context menu's Settings item opens the same settings window as the
     // navigation row's gear button.
     tab->filer->onSettings = [this]() { OpenSettingsDialog(); };
+    // The gear beside the hidden-items notice's "Show hidden files": the
+    // settings that decided what this folder holds back - Display > Home
+    // folder in the home folder (curation and hidden files), Display >
+    // Ignored files everywhere else, where only those patterns announce.
+    tab->filer->onHiddenNoticeSettings = [this, filer = tab->filer.get()]() {
+        OpenSettingsDialog(IsUserHomeDir(filer->GetPath())
+                ? UltraFilerSettingsDialog::Page::HomeFolder
+                : UltraFilerSettingsDialog::Page::IgnoredFiles);
+    };
     tab->filer->onPrint = [this](const std::vector<FilerEntry>& t) { HandlePrint(t); };
     tab->filer->onShare = [this](const std::vector<FilerEntry>& t) { HandleShare(t); };
     tab->filer->onAttributes = [this](const std::vector<FilerEntry>& t) { HandleAttributes(t); };

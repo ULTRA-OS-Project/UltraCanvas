@@ -1,7 +1,10 @@
-- **Filer widget: the hidden-items notice is plain text in the file area.**
-  "45 items are hidden here · Show hidden files" is now one centred line on
-  the display's own background with a link, instead of a grey strip with a
-  blue button that read as one more status bar.
+- **Filer widget: the hidden-items notice sits in the file area.** "45 items
+  are hidden here" and its blue **Show hidden files** button are now one
+  centred line on the display's own background, instead of a grey strip that
+  read as one more status bar under the files.
+- **Filer widget: `onHiddenNoticeSettings`.** Set it and a gear button sits
+  right of **Show hidden files**; a click runs the callback, so a host can open
+  the settings that decide what the display holds back.
 - **Filer widget: `FormatSizeText(bytes)`.** The display's own size
   formatting (`103.6 KB`), public and static, so a host's status bar rounds a
   selection the same way as the info bar under the files.

@@ -104,9 +104,10 @@
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
 // Version: 1.42.0 - FormatSizeText: the display's own size formatting for a
-//                  host's status bar; the hidden-items notice is one line of
-//                  plain text with a "Show hidden files" link on the file
-//                  area's background, no longer a grey strip with a button.
+//                  host's status bar; the hidden-items notice sits on the file
+//                  area's background (no grey strip), its count beside the
+//                  blue "Show hidden files" button, plus a gear for the
+//                  host's settings (onHiddenNoticeSettings).
 // Version: 1.41.0 - a remote folder being fetched or updated: a thin blue bar
 //                  at the foot of the file area (FilerStyle::loadingBarColor)
 //                  in place of the "Loading folder" notice over it; the status
@@ -821,11 +822,12 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
-        // Hidden-items notice: a line of plain text at the foot of the file
-        // area naming how many entries the listing leaves out - the hidden
-        // ones, plus what a curated home folder (SetCuratedHomeFolder) keeps
-        // back - with a "Show hidden files" link that switches this display
-        // to showing everything. It only appears while something IS left out, and takes
+        // Hidden-items notice: a line at the foot of the file area, on its own
+        // background, naming how many entries the listing leaves out - the
+        // hidden ones, plus what a curated home folder (SetCuratedHomeFolder)
+        // keeps back - with a "Show hidden files" button that switches this
+        // display to showing everything, and a gear right of it when the host
+        // sets onHiddenNoticeSettings. It only appears while something IS left out, and takes
         // its height out of the file area, so no entry is drawn under it.
         // NoNotice by default: hosts choose the folders where the display holds
         // something back the user never asked to hide (UltraFiler: WhenAnyHidden
@@ -1803,6 +1805,11 @@ namespace UltraCanvas {
         std::function<void(const std::vector<FilerEntry>&)> onAttributes;
         std::function<void(const std::vector<FilerEntry>&)> onAccess;
         std::function<void()> onSettings;
+        // The gear right of the hidden-items notice's "Show hidden files"
+        // button: set it and the gear appears there, and a click on it runs
+        // this - a host opens the settings that decide what the display holds
+        // back (UltraFiler: Settings > Display > Home folder). Unset, no gear.
+        std::function<void()> onHiddenNoticeSettings;
         std::function<void(const FilerEntry&)> onOpenPath;  // default: SetPath(parent)
         // Host-provided tail of the context menu's Extras submenu, called
         // every time the menu opens (so item flags can follow the host's
@@ -1874,6 +1881,7 @@ namespace UltraCanvas {
         int  hiddenItemCount = 0;
         int  ignoredItemCount = 0;
         std::shared_ptr<UltraCanvasButton> hiddenNoticeButton;
+        std::shared_ptr<UltraCanvasButton> hiddenNoticeSettingsButton;
         // Ignored names (SetIgnoredNamePatterns): the glob patterns, and the
         // one folder they are confined to (empty = every folder).
         std::vector<std::string> ignoredNamePatterns;
