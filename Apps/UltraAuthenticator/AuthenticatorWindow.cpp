@@ -19,6 +19,7 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
 
+#include <cmath>
 #include <ctime>
 #include <string>
 #include <utility>
@@ -117,6 +118,16 @@ std::string MonogramText(const std::string& name) {
         letter[0] = static_cast<char>(lead - 'a' + 'A');
     }
     return letter;
+}
+
+// The gap between a code and its copy button.
+constexpr long kAfterCodeGap = 8;
+
+// What a code of `digits` digits is expected to take, grouped (one more
+// character than digits) at the code font's advance - where the copy button
+// goes until the label can measure its own text.
+long CodeWidthEstimate(uint32_t digits) {
+    return static_cast<long>(digits + 1) * Theme::kCodeCharWidth;
 }
 
 std::string CopyTooltip(bool isHotp) {
@@ -632,10 +643,10 @@ void AuthenticatorWindow::RebuildRows() {
         }
         row.card->AddChild(row.codeLabel);
 
-        // Copy, right after the digits: the code's own width (grouped, so
-        // one more character than digits) at the monospaced face's advance.
-        const long copyX = textX +
-            static_cast<long>(account.params.digits + 1) * Theme::kCodeCharWidth + 8;
+        // Copy, right after the code. This first position is an estimate;
+        // PlaceAfterCode moves it to where the label's text actually ends
+        // once the code is on it (RefreshCodes, at the end of this build).
+        const long copyX = textX + CodeWidthEstimate(account.params.digits) + kAfterCodeGap;
         row.copyButton = std::make_shared<UltraCanvasButton>(
             id + "-copy", copyX, 54 + (36 - Theme::kIconButton) / 2,
             Theme::kIconButton, Theme::kIconButton);
@@ -736,6 +747,30 @@ void AuthenticatorWindow::RebuildRows() {
     RefreshCodes();
 }
 
+void AuthenticatorWindow::PlaceAfterCode(Row& row) {
+    if (!row.codeLabel || !row.copyButton) return;
+    // Where the code label's text ends - the digits, the dots of a hidden
+    // code or the dashes before the first one, in whatever monospaced face
+    // the platform gave us - measured by the label itself. The estimate is
+    // only for a label that cannot be measured yet (no render context).
+    float textWidth = row.codeLabel->GetNaturalTextWidth();
+    if (textWidth <= 0.f) {
+        textWidth = static_cast<float>(CodeWidthEstimate(row.params.digits));
+    }
+    const float textEnd = row.codeLabel->GetX() + row.codeLabel->GetBorderLeftWidth() +
+                          row.codeLabel->GetPaddingLeft() + textWidth;
+    const float copyX = std::round(textEnd) + static_cast<float>(kAfterCodeGap);
+    if (std::abs(row.copyButton->GetX() - copyX) >= 1.f) {
+        row.copyButton->SetPosition(copyX, row.copyButton->GetY());
+    }
+    if (row.countdownLabel) {
+        const float labelX = copyX + static_cast<float>(Theme::kIconButton + 6);
+        if (std::abs(row.countdownLabel->GetX() - labelX) >= 1.f) {
+            row.countdownLabel->SetPosition(labelX, row.countdownLabel->GetY());
+        }
+    }
+}
+
 void AuthenticatorWindow::RefreshCodes() {
     if (!store_.IsOpen()) return;
 
@@ -795,6 +830,9 @@ void AuthenticatorWindow::RefreshCodes() {
             row.countdownRing->SetVisible(true);
         }
     }
+    // The text on a code label changes width between digits, dots and
+    // dashes; the copy button follows wherever it now ends.
+    for (Row& row : rows_) PlaceAfterCode(row);
 }
 
 void AuthenticatorWindow::RevealRow(const std::string& key) {
@@ -821,6 +859,7 @@ void AuthenticatorWindow::AdvanceHotpRow(const std::string& key) {
     for (Row& row : rows_) {
         if (row.key != key) continue;
         if (row.codeLabel) row.codeLabel->SetText(GroupCode(code));
+        PlaceAfterCode(row);
         // Kept so the copy button can copy this code - even once hidden mode
         // has masked it again - without spending another counter.
         WipeString(row.hotpCode);
