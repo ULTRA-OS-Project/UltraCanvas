@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.14 - Charts > Importance-Performance Chart (UltraCanvasImportancePerformanceChart)
 // Version: 1.0.13 - gray, 8 px scrollbars; the status legend as rows sized to their text
 // Version: 1.0.12 - no status bar; a fixed-width page keeps its width (min-width), so the
 //                  page area scrolls sideways when the window is narrower
@@ -1392,6 +1393,16 @@ namespace UltraCanvas {
                 .AddVariant("bubblecharts", "Hierarchical Packing")
                 .AddVariant("bubblecharts", "Bubble Timeline")
                 .AddVariant("bubblecharts", "3D Bubbles (OpenGL)");
+
+        chartBuilder.AddItem("importanceperformance", "Importance-Performance Chart",
+                             "Slack's importance-performance matrix: service factors over "
+                             "urgent action / improve / appropriate / excess zones",
+                             ImplementationStatus::PartiallyImplemented,
+                             [this]() { return CreateImportancePerformanceChartExamples(); },
+                             "DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md")
+                .AddVariant("importanceperformance", "Slack Zones (smooth)")
+                .AddVariant("importanceperformance", "Slack Zones (stepped)");
 
         // ===== DIAGRAMS =====
         auto diagramBuilder = DemoCategoryBuilder(this, DemoCategory::Diagrams);

@@ -17,6 +17,7 @@
 // UltraCanvasChartElementBase, so the existing charts stay untouched (Tier 0
 // of the migration plan); native (Tier 2) charts derive from here.
 //
+// Version: 1.6.0 - draws ChartHighlightShape::Polygon (densified along the rings under Polar)
 // Version: 1.5.0 - OnThemeChanged() renamed OnChartThemeChanged(): it hid the element's
 //   OnThemeChanged(const UltraCanvasTheme&); value-axis tick labels inside the
 //   plot are label-plan obstacles

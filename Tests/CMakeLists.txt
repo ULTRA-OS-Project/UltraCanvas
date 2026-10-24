@@ -3745,6 +3745,27 @@ add_test(
 )
 message(STATUS "    Test registered: ChartEngineTest")
 
+# ===== IMPORTANCE-PERFORMANCE MODEL TEST =====
+# The importance-performance chart's model: open Chaikin smoothing, point in
+# polygon, the pole of inaccessibility, zone order and classification, levels,
+# validation and the Slack preset in both forms. UI-free.
+message(STATUS "  Building ImportancePerformanceModelTest...")
+add_executable(ImportancePerformanceModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImportancePerformanceModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
+)
+target_include_directories(ImportancePerformanceModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ImportancePerformanceModelTest PRIVATE cxx_std_20)
+set_target_properties(ImportancePerformanceModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ImportancePerformanceModelTest COMMAND ImportancePerformanceModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ImportancePerformanceModelTest")
+
 # ===== ELEMENT PLUGIN TEST =====
 # The element plugin registry, create-by-name, keyword text dispatch, the named
 # property surface, the ABI handshake, and a real end-to-end DSO load: two test
@@ -5312,6 +5333,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MatrixDiagramRenderTest")
 else()
     message(STATUS "  MatrixDiagramRenderTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMPORTANCE-PERFORMANCE CHART RENDER TEST =====
+# The importance-performance chart drawn offscreen in both Slack forms: the
+# zones are painted in their colours where the model puts them, every factor
+# is hit where it is drawn with its zone in the tooltip, and the band and
+# zone titles are laid out. With ULTRACANVAS_SCREENSHOT_DIR set, each form is
+# written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building ImportancePerformanceChartRenderTest...")
+    add_executable(ImportancePerformanceChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImportancePerformanceChartRenderTest.cpp
+    )
+    target_include_directories(ImportancePerformanceChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImportancePerformanceChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(ImportancePerformanceChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(ImportancePerformanceChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImportancePerformanceChartRenderTest COMMAND ImportancePerformanceChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImportancePerformanceChartRenderTest")
+else()
+    message(STATUS "  ImportancePerformanceChartRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== BUSY INDICATOR RENDER TEST =====
