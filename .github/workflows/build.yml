@@ -22,6 +22,10 @@ on:
     branches:
       - main
       - 'claude/**'
+    # The default types plus `labeled`: adding the `ci:intel` label to a pull
+    # request starts a run whose matrix has the macOS Intel row (the gate
+    # reads the labels), without a push to carry it.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
       # Set only by changelog-fold.yml. Its "Changelog: x.y.z" commit is pushed
@@ -71,6 +75,8 @@ jobs:
     runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     outputs:
       pending: ${{ steps.check.outputs.pending }}
+      os: ${{ steps.matrix.outputs.os }}
+      include: ${{ steps.matrix.outputs.include }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -109,51 +115,87 @@ jobs:
             echo "pending=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # The build matrix, as two JSON lists the build job reads: the `os`
+      # rows and the `include` entries that give each its labels. It is made
+      # here rather than written under the build job because one row is
+      # conditional, and a matrix written there cannot drop a row by event:
+      # an `exclude` is applied BEFORE `include`, so the row's include entry
+      # added it back as a job of its own without a build type (2026-10-24).
+      #
+      # The macOS Intel row builds on main only - a push, or a dispatch - and
+      # not on pull requests. Its runner compiles five to ten times slower
+      # than every other row and is the scarcest (16-27 minutes in the queue
+      # on 2026-10-13), so it finished a pull request's matrix 45-100 minutes
+      # after the other five rows had, with nothing of its own to say: the
+      # two macOS rows share one code base and one packaging script, and what
+      # differs between them (the libraries' vcpkg triplet, the deployment
+      # target's x86_64 SDK) is checked on every run on main, before anything
+      # is released. A pull request's matrix is five rows and finishes with
+      # the Windows ARM one.
+      #
+      # A pull request that changes what only the Intel toolchain would
+      # catch - the macOS platform layer, the packaging, a bundled library -
+      # asks for the row with the `ci:intel` label: adding it starts a run
+      # with the full matrix (the `labeled` event above), so the failure
+      # shows on the pull request rather than on main.
+      #
+      # NOTE: GitHub retired macos-13 (the last x86_64 image of the
+      # macos-NN series) in December 2025. `macos-15-intel` is its
+      # designated replacement label for Intel builds, supported until
+      # macOS 15 leaves Apple support (~2027). When that goes too, the
+      # options are: drop Intel builds, use self-hosted runners, or
+      # cross-compile universal binaries.
+      #
+      # Both macOS legs name their macOS version, never macos-latest, so a
+      # new runner image (and its Xcode and SDK) arrives by a change here and
+      # not on GitHub's schedule. While the libraries came from Homebrew the
+      # runner's version was also the oldest macOS the apps ran on: when
+      # macos-latest moved to macOS 26 in July 2026 the arm64 apps started
+      # only on macOS 26, while their Info.plist still said 12.0. The
+      # libraries are now built for MACOSX_DEPLOYMENT_TARGET (build job).
+      #
+      # Linux/aarch64 runs on GitHub-hosted arm64 runners (free for public
+      # repos). Same 22.04 base as the x86_64 row, so both Linux artifacts
+      # carry the same glibc floor, and the dependency install is shared
+      # verbatim between them.
+      - id: matrix
+        shell: bash
+        env:
+          WITH_INTEL: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:intel') }}
+        run: |
+          python3 - "$WITH_INTEL" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          rows = [
+              {"os": "macos-15",         "arch_label": "arm64"},
+              {"os": "macos-15-intel",   "arch_label": "x86_64"},
+              {"os": "ubuntu-22.04",     "arch_label": "x86_64"},
+              {"os": "ubuntu-22.04-arm", "arch_label": "arm64"},
+              {"os": "windows-latest",   "arch_label": "x86_64",
+               "msystem": "CLANG64", "msys_prefix": "mingw-w64-clang-x86_64",
+               "msys_toolchain": "mingw-w64-clang-x86_64-clang"},
+              {"os": "windows-11-arm",   "arch_label": "arm64",
+               "msystem": "CLANGARM64", "msys_prefix": "mingw-w64-clang-aarch64",
+               "msys_toolchain": "mingw-w64-clang-aarch64-clang"},
+          ]
+          if sys.argv[1] != "true":
+              rows = [r for r in rows if r["os"] != "macos-15-intel"]
+          print("os=" + json.dumps([r["os"] for r in rows]))
+          print("include=" + json.dumps(rows))
+          PY
+
   build:
     needs: gate
     if: needs.gate.outputs.pending == 'false'
     strategy:
       fail-fast: false
+      # The rows and their labels come from the gate (its `matrix` step says
+      # which rows and why); build_type is the one dimension that is fixed.
+      # Keeping `os` and `build_type` as the dimensions keeps the job names
+      # `build (<os>, Release)`, which branch protection knows.
       matrix:
-        # NOTE: GitHub retired macos-13 (the last x86_64 image of the
-        # macos-NN series) in December 2025. `macos-15-intel` is its
-        # designated replacement label for Intel builds, supported until
-        # macOS 15 leaves Apple support (~2027). When that goes too, the
-        # options are: drop Intel builds, use self-hosted runners, or
-        # cross-compile universal binaries.
-        #
-        # Both macOS legs name their macOS version, never macos-latest, so a
-        # new runner image (and its Xcode and SDK) arrives by a change here and
-        # not on GitHub's schedule. While the libraries came from Homebrew the
-        # runner's version was also the oldest macOS the apps ran on: when
-        # macos-latest moved to macOS 26 in July 2026 the arm64 apps started
-        # only on macOS 26, while their Info.plist still said 12.0. The
-        # libraries are now built for MACOSX_DEPLOYMENT_TARGET (below).
-        os: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-11-arm]
+        os: ${{ fromJSON(needs.gate.outputs.os) }}
         build_type: [Release]
-        include:
-          - os: macos-15
-            arch_label: arm64
-          - os: macos-15-intel
-            arch_label: x86_64
-          - os: ubuntu-22.04
-            arch_label: x86_64
-          # Linux/aarch64 on GitHub-hosted arm64 runners (free for public
-          # repos). Same 22.04 base as the x86_64 row, so both Linux
-          # artifacts carry the same glibc floor, and the dependency
-          # install below is shared verbatim between them.
-          - os: ubuntu-22.04-arm
-            arch_label: arm64
-          - os: windows-latest
-            arch_label: x86_64
-            msystem: CLANG64
-            msys_prefix: mingw-w64-clang-x86_64
-            msys_toolchain: mingw-w64-clang-x86_64-clang
-          - os: windows-11-arm
-            arch_label: arm64
-            msystem: CLANGARM64
-            msys_prefix: mingw-w64-clang-aarch64
-            msys_toolchain: mingw-w64-clang-aarch64-clang
+        include: ${{ fromJSON(needs.gate.outputs.include) }}
 
     runs-on: ${{ matrix.os }}
 
@@ -897,6 +939,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
@@ -935,6 +978,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
@@ -1268,6 +1312,14 @@ jobs:
           if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
           export ULTRACANVAS_SDK_PREFIX="$sdk"
           (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
+          # UltraStore's core on the same leg: the catalog, the verifier
+          # (libsodium's Ed25519), the resolver and the client, then the
+          # program's own view of the runner.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreCore$")
+          store=build/ultrastore
+          [ "${{ runner.os }}" = "Windows" ] && store="$store.exe"
+          "$store" --version
+          "$store" platform
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version

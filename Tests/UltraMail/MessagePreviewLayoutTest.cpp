@@ -20,10 +20,11 @@
 // without a DISPLAY. With ULTRACANVAS_SCREENSHOT_DIR set it writes the pane
 // there: a drag's selection, the sign-in code's button and the code bar
 // (message-preview-selection.ppm, -code.ppm, -code-bar.ppm).
+// Version: 1.3.0 - Copy link: a right-click on a link of the HTML or plain-text body
 // Version: 1.2.0 - the sender's menu: a right-click on the sender's name or badge
 // Version: 1.1.0 - text selection and the one-time code's copy button
 // Version: 1.0.1 - the temp folder is named by a clock stamp (no getpid on Windows)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraCanvasApplication.h"
@@ -85,6 +86,30 @@ std::string HtmlMessage() {
            "MIME-Version: 1.0\r\n"
            "Content-Type: text/html; charset=utf-8\r\n"
            "\r\n" + body + "\r\n";
+}
+
+// A link in formatted mail and one written in plain text.
+std::string HtmlLinkMessage() {
+    return "From: Shop <shop@example.com>\r\n"
+           "To: info@example.eu\r\n"
+           "Subject: The offer\r\n"
+           "Date: Wed, 07 Oct 2026 16:00:00 +0000\r\n"
+           "MIME-Version: 1.0\r\n"
+           "Content-Type: text/html; charset=utf-8\r\n"
+           "\r\n"
+           "<html><body><p>Read <a href='https://example.com/offer?id=7'>the whole offer</a>"
+           " today.</p></body></html>\r\n";
+}
+
+std::string PlainLinkMessage() {
+    return "From: Friend <friend@example.com>\r\n"
+           "To: info@example.eu\r\n"
+           "Subject: Look\r\n"
+           "Date: Wed, 07 Oct 2026 16:05:00 +0000\r\n"
+           "MIME-Version: 1.0\r\n"
+           "Content-Type: text/plain; charset=utf-8\r\n"
+           "\r\n"
+           "Look at https://example.org/page-with-a-long-name now.\r\n";
 }
 
 // A newsletter as Reddit sends it: the body at least as wide as the window,
@@ -265,7 +290,8 @@ int main() {
                               std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     if (!WriteMessage(mailDir, 1, HtmlMessage()) || !WriteMessage(mailDir, 2, MessageWithAttachment()) ||
         !WriteMessage(mailDir, 3, WideBodyMessage()) || !WriteMessage(mailDir, 4, SignInCodeMessage()) ||
-        !WriteMessage(mailDir, 5, PlainCodeMessage()))
+        !WriteMessage(mailDir, 5, PlainCodeMessage()) || !WriteMessage(mailDir, 6, HtmlLinkMessage()) ||
+        !WriteMessage(mailDir, 7, PlainLinkMessage()))
         SKIP_ALL("could not write the test messages");
 
     UltraCanvasApplication app;
@@ -548,6 +574,78 @@ int main() {
             render();
         }
         TEST("sender menu: not for a right-click on the subject", subjectText && senderMenus == 2);
+    }
+
+    // 9. A right-click on a link offers Copy link first, which copies its
+    // address; elsewhere in the text the menu starts with Copy.
+    auto firstItem = [&]() {
+        auto menu = preview.TextMenu();
+        return menu && !menu->GetItems().empty() ? menu->GetItems()[0].label : std::string();
+    };
+    auto copyLinkCopies = [&](const std::string& href) {
+        auto menu = preview.TextMenu();
+        if (!menu || menu->GetItems().empty() || !menu->GetItems()[0].onClick) return false;
+        menu->GetItems()[0].onClick();
+        std::string clip;
+        return GetClipboardText(clip) && clip == href;
+    };
+    preview.Show(Envelope(6, "The offer"));
+    render();
+    std::vector<UltraCanvasLabel*> linkLabels;
+    CollectLabels(Find(root, "prevBodyScroll").get(), linkLabels);
+    UltraCanvasLabel* linkLabel = nullptr;
+    for (UltraCanvasLabel* label : linkLabels)
+        if (!label->GetTextLinks().empty()) linkLabel = label;
+    TEST("copy link: the HTML body has a label with the link", linkLabel != nullptr);
+    if (linkLabel) {
+        const int midY = static_cast<int>(linkLabel->GetHeight() / 2.0f);
+        int linkX = -1;
+        for (int x = 0; x < static_cast<int>(linkLabel->GetWidth()) && linkX < 0; ++x)
+            if (linkLabel->LinkIndexAtPoint(Point2Di(x, midY)) >= 0) linkX = x + 4;
+        TEST("copy link: the link is found in the label", linkX > 0);
+        if (linkX > 0) {
+            linkLabel->OnEvent(rightAt(UCEventType::MouseDown, *linkLabel));
+            render();
+            TEST("copy link: not offered beside the link", firstItem() == "Copy");
+            UCEvent onLink = MouseAt(UCEventType::MouseDown, *linkLabel, static_cast<float>(linkX),
+                                     static_cast<float>(midY));
+            onLink.button = UCMouseButton::Right;
+            linkLabel->OnEvent(onLink);
+            render();
+            TEST("copy link: offered first over the HTML link", firstItem() == "Copy link");
+            TEST("copy link: copies the HTML link's address",
+                 copyLinkCopies("https://example.com/offer?id=7"));
+        }
+    }
+
+    preview.Show(Envelope(7, "Look"));
+    render();
+    auto plainArea = Find(root, "prevBodyText");
+    TEST("copy link: the plain-text body is a text area", plainArea != nullptr);
+    if (plainArea) {
+        const Rect2Df area = plainArea->GetBoundsInWindow();
+        auto rightClickAt = [&](int x, int y) {
+            UCEvent press;
+            press.type = UCEventType::MouseDown;
+            press.button = UCMouseButton::Right;
+            press.pointer = Point2Di(x, y);
+            press.pointerWindow = Point2Di(static_cast<int>(area.x) + x, static_cast<int>(area.y) + y);
+            plainArea->OnEvent(press);
+            render();
+        };
+        // The first line, a few pixels down from the area's top.
+        const int lineY = 12;
+        rightClickAt(6, lineY);
+        TEST("copy link: not offered over the plain text's first word", firstItem() == "Copy");
+        bool offered = false;
+        for (int x = 20; x < static_cast<int>(area.width) && !offered; x += 6) {
+            rightClickAt(x, lineY);
+            offered = firstItem() == "Copy link";
+        }
+        TEST("copy link: offered over the plain text's link", offered);
+        if (offered)
+            TEST("copy link: copies the address written in the text",
+                 copyLinkCopies("https://example.org/page-with-a-long-name"));
     }
 
     std::error_code ec;
