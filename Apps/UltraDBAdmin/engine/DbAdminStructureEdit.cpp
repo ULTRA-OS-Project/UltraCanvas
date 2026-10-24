@@ -1,9 +1,11 @@
 // Apps/UltraDBAdmin/engine/DbAdminStructureEdit.cpp
+// Version: 0.2.0 - MySQL / MariaDB: MODIFY COLUMN, DROP INDEX ... ON, each step committing on its own
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminStructureEdit.h"
 
 #include "DbAdminEditBuffer.h"
+#include "DbAdminExport.h"   // SqlLiteral
 
 #include <algorithm>
 
@@ -152,6 +154,10 @@ bool StructureEdit::CheckColumn(const ColumnDraft& draft, const ColumnDraft* rep
     }
     if (engine_ == SqlEngine::Postgres && draft.type.empty()) {
         error = "PostgreSQL needs a type: text, integer, numeric(12,2), timestamptz…";
+        return false;
+    }
+    if (engine_ == SqlEngine::MySql && draft.type.empty()) {
+        error = "MySQL needs a type: varchar(80), int, decimal(12,2), datetime…";
         return false;
     }
     if (!draft.type.empty() && !CheckSqlFragment(draft.type, "The type", error)) return false;
@@ -364,9 +370,15 @@ UltraDbResult StructureEdit::Plan(const std::string& connection, const SqliteTab
     const std::string target = qualify(table_.name);
     const std::string alter = "ALTER TABLE " + target;
     const bool sqlite = engine_ == SqlEngine::Sqlite;
+    const bool mysql = engine_ == SqlEngine::MySql;
+    // MySQL commits before and after each ALTER TABLE: no transaction can
+    // hold them, so its steps run one by one, outside one.
+    const DdlStep::Phase inside = mysql ? DdlStep::Phase::Before : DdlStep::Phase::Inside;
 
-    // 1. Indexes to drop, first: a rebuild does not put them back.
-    for (const auto& name : droppedIndexes_) add(DdlStep::Phase::Inside, "DROP INDEX " + qualify(name));
+    // 1. Indexes to drop, first: a rebuild does not put them back. MySQL
+    // names an index's table, not its schema.
+    for (const auto& name : droppedIndexes_)
+        add(inside, mysql ? "DROP INDEX " + quote(name) + " ON " + target : "DROP INDEX " + qualify(name));
 
     // 2. Definitions, under the old names.
     if (sqlite && NeedsRebuild()) {
@@ -454,6 +466,27 @@ UltraDbResult StructureEdit::Plan(const std::string& connection, const SqliteTab
             add(DdlStep::Phase::Inside, sql, first ? "The triggers the drop took with it." : "");
             first = false;
         }
+    } else if (mysql) {
+        // MODIFY COLUMN states the whole column anew: what it does not say is
+        // gone. So AUTO_INCREMENT, the collation and the comment are said
+        // again as they were.
+        bool first = true;
+        for (size_t i = 0; i < columns_.size(); ++i) {
+            const ColumnDraft& draft = columns_[i];
+            const UltraDbColumnSchema* original = Original(i);
+            if (!original || draft.dropped || !DefinitionChanged(i)) continue;
+            std::string definition = ColumnDefinition(draft, quote(draft.origin));
+            if (original->autoIncrement) definition += " AUTO_INCREMENT";
+            if (!original->collation.empty() && draft.type == DraftOf(*original).type)
+                definition += " COLLATE " + original->collation;
+            if (!original->comment.empty())
+                definition += " COMMENT " + SqlLiteral(UltraDbValue(original->comment), SqlEngine::MySql);
+            add(inside, alter + " MODIFY COLUMN " + definition,
+                first ? "MODIFY states the whole column: its AUTO_INCREMENT, collation and comment are kept, "
+                        "an ON UPDATE clause is not."
+                      : "");
+            first = false;
+        }
     } else if (!sqlite) {
         for (size_t i = 0; i < columns_.size(); ++i) {
             const ColumnDraft& draft = columns_[i];
@@ -483,15 +516,15 @@ UltraDbResult StructureEdit::Plan(const std::string& connection, const SqliteTab
     // 3. Renames, 4. drops, 5. new columns.
     for (const auto& draft : columns_) {
         if (!draft.origin.empty() && !draft.dropped && draft.name != draft.origin)
-            add(DdlStep::Phase::Inside, alter + " RENAME COLUMN " + quote(draft.origin) + " TO " + quote(draft.name));
+            add(inside, alter + " RENAME COLUMN " + quote(draft.origin) + " TO " + quote(draft.name));
     }
     for (const auto& draft : columns_) {
         if (!draft.origin.empty() && draft.dropped)
-            add(DdlStep::Phase::Inside, alter + " DROP COLUMN " + quote(draft.origin));
+            add(inside, alter + " DROP COLUMN " + quote(draft.origin));
     }
     for (const auto& draft : columns_) {
         if (draft.origin.empty())
-            add(DdlStep::Phase::Inside, alter + " ADD COLUMN " + ColumnDefinition(draft, quote(draft.name)));
+            add(inside, alter + " ADD COLUMN " + ColumnDefinition(draft, quote(draft.name)));
     }
 
     // 6. New indexes. SQLite puts the schema on the index's name, PostgreSQL
@@ -500,14 +533,14 @@ UltraDbResult StructureEdit::Plan(const std::string& connection, const SqliteTab
         std::vector<std::string> columns;
         for (const auto& column : index.columns) columns.push_back(quote(column));
         const std::string head = index.unique ? "CREATE UNIQUE INDEX " : "CREATE INDEX ";
-        add(DdlStep::Phase::Inside, sqlite ? head + qualify(index.name) + " ON " + quote(table_.name) + " (" +
+        add(inside, sqlite ? head + qualify(index.name) + " ON " + quote(table_.name) + " (" +
                                                  Join(columns) + ")"
                                            : head + quote(index.name) + " ON " + target + " (" + Join(columns) + ")");
     }
 
     // 7. The table's own name, last.
     const std::string finalName = newName_.empty() ? table_.name : newName_;
-    if (!newName_.empty()) add(DdlStep::Phase::Inside, alter + " RENAME TO " + quote(newName_));
+    if (!newName_.empty()) add(inside, alter + " RENAME TO " + quote(newName_));
 
     // The rebuild ran with foreign keys off: nothing may refer to a row that is not there.
     if (sqlite && NeedsRebuild() && source.foreignKeys) {
@@ -525,6 +558,10 @@ UltraDbResult StructureEdit::Plan(const std::string& connection, const SqliteTab
             first = false;
         }
         add(DdlStep::Phase::After, "PRAGMA foreign_keys = ON", "After the transaction, whatever its outcome.");
+    }
+    if (mysql && !out.empty()) {
+        const std::string note = "MySQL commits each statement as it runs: should one fail, those before it stay done.";
+        out.front().note = out.front().note.empty() ? note : note + " " + out.front().note;
     }
     if (!result) out.clear();
     return result;

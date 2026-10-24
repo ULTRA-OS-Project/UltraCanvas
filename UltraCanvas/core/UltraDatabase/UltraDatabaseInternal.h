@@ -9,6 +9,7 @@
 
 #include "UltraDatabase/UltraDatabaseCore.h"
 #include "UltraDatabase/UltraDatabasePlugins.h"
+#include "UltraDatabase/UltraDatabaseQuery.h"
 #include "UltraDatabase/UltraDatabaseSchema.h"
 
 #include <cstdint>
@@ -38,8 +39,11 @@ size_t MysqlSkip(const std::string& sql, size_t i);
 // A MySQL script cut into its statements as the mysql client cuts it: at the
 // terminator outside text and comments, DELIMITER lines setting it (and not
 // sent); with the standard ';', not inside a CREATE's BEGIN ... END body.
-// Each trimmed, without its terminator; empty ones dropped.
+// Each from its first token (comments before it left out) to its
+// terminator, without it; empty ones dropped.
 std::vector<std::string> MysqlStatements(const std::string& sql);
+// The same statements as where they are in `sql` (UltraDb_MysqlScriptStatements).
+std::vector<UltraDbScriptStatement> MysqlStatementSpans(const std::string& sql);
 
 // Rewrite UltraDatabase's `?` placeholders into PostgreSQL's `$1, $2, ...`,
 // leaving a `?` inside a string literal, a quoted identifier, a dollar-quoted

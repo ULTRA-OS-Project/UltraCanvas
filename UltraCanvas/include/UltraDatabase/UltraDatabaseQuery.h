@@ -1,6 +1,7 @@
 // include/UltraDatabase/UltraDatabaseQuery.h
 // The query surface. Values are always passed separately from SQL text and
 // bound by the driver, so user input never becomes part of a SQL string.
+// Version: 0.5.0 - UltraDb_MysqlScriptStatements
 // Version: 0.4.0 - statement observers: every statement reported as it ends
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -68,6 +69,21 @@ UltraDbResult UltraDb_Finalize(UltraDbHandle statement);
 UltraDbResult UltraDb_ExecBatch(const std::string& connection,
                                 const std::string& sql,
                                 std::vector<UltraDbStatementResult>& out);
+
+// Where each statement of a MySQL / MariaDB script is, as UltraDb_ExecBatch
+// cuts it on such a connection - DELIMITER lines, BEGIN ... END bodies, `#`
+// comments and backslash escapes read as the mysql client reads them: byte
+// offsets from the statement's first token (comments before it are not part
+// of it) to its end before the terminator, and just past the terminator
+// (== `end` for a last statement without one). Plain text, no connection: for
+// an editor's "run the statement under the caret", or counting what an
+// import will run.
+struct UltraDbScriptStatement {
+    size_t begin = 0;
+    size_t end = 0;
+    size_t terminatorEnd = 0;
+};
+std::vector<UltraDbScriptStatement> UltraDb_MysqlScriptStatements(const std::string& script);
 
 // ---- Cancelling ------------------------------------------------------------
 

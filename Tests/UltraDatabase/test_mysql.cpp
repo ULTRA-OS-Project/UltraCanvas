@@ -53,7 +53,17 @@ TEST(mysql_split_ignores_semicolons_in_text_and_comments) {
     REQUIRE_EQ(s.size(), (size_t)2);
     REQUIRE(s[0].find("'it\\'s; here'") != std::string::npos);
     REQUIRE(s[0].find("`e;f`") != std::string::npos);
-    REQUIRE_EQ(s[1], std::string("/* r; */ SELECT 2"));
+    REQUIRE_EQ(s[1], std::string("SELECT 2"));      // the comment before it is not part of it
+    // Where each is in the script, for an editor.
+    const std::string script = "-- one\nSELECT 1;\nDELIMITER $$\nCREATE TRIGGER t BEFORE INSERT ON x FOR EACH ROW BEGIN SET @a = 1; END$$\nDELIMITER ;\nSELECT 3";
+    const auto spans = UltraDb_MysqlScriptStatements(script);
+    REQUIRE_EQ(spans.size(), (size_t)3);
+    REQUIRE_EQ(script.substr(spans[0].begin, spans[0].end - spans[0].begin), std::string("SELECT 1"));
+    REQUIRE_EQ(script.substr(spans[0].end, spans[0].terminatorEnd - spans[0].end), std::string(";"));
+    REQUIRE(script.compare(spans[1].begin, 14, "CREATE TRIGGER") == 0);
+    REQUIRE_EQ(script.substr(spans[1].end, spans[1].terminatorEnd - spans[1].end), std::string("$$"));
+    REQUIRE_EQ(script.substr(spans[2].begin), std::string("SELECT 3"));
+    REQUIRE_EQ(spans[2].terminatorEnd, script.size());
     // "--" is a comment only before a space: SELECT 5--1 is arithmetic.
     auto t = Split("SELECT 5--1; SELECT 2");
     REQUIRE_EQ(t.size(), (size_t)2);

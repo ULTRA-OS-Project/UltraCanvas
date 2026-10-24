@@ -18,6 +18,7 @@
 #include "DbAdminRelations.h"
 #include "DbAdminRoutines.h"
 #include "DbAdminServer.h"
+#include "DbAdminSqlScript.h"
 
 #include "UltraCanvasPathUtf8.h"
 #include <UltraDatabase/UltraDatabase.h>
@@ -113,6 +114,38 @@ std::string PostgresConnection(const std::string& name) {
     return name;
 }
 
+// The MySQL / MariaDB server of Tests/UltraDatabase/test_mysql.h: its socket
+// (or host), user and database from ULTRADB_TEST_MYSQL_*. "" when none is
+// configured - a failure where ULTRADB_TEST_MYSQL_REQUIRED says one must be.
+std::string MysqlConnection(const std::string& name) {
+    const char* database = std::getenv("ULTRADB_TEST_MYSQL_DB");
+    const bool required = std::getenv("ULTRADB_TEST_MYSQL_REQUIRED") != nullptr;
+    if (!database || !*database) {
+        Check(!required, "a MySQL server is configured");
+        std::printf("  [SKIP] no MySQL configured (ULTRADB_TEST_MYSQL_DB)\n");
+        return std::string();
+    }
+    auto env = [](const char* key, const char* fallback) {
+        const char* v = std::getenv(key);
+        return std::string(v && *v ? v : fallback);
+    };
+    UltraDbConnectionConfig cfg;
+    cfg.name = name;
+    cfg.driver = "mysql";
+    cfg.database = database;
+    cfg.host = env("ULTRADB_TEST_MYSQL_HOST", "/run/mysqld/mysqld.sock");
+    cfg.port = std::atoi(env("ULTRADB_TEST_MYSQL_PORT", "0").c_str());
+    cfg.user = env("ULTRADB_TEST_MYSQL_USER", "");
+    cfg.tls = UltraDbTls::Disable;       // the local test server
+    if (!UltraDb_RegisterConnection(cfg) || !UltraDb_OpenConnection(name)) {
+        Check(!required, "the MySQL server is reached");
+        std::printf("  [SKIP] MySQL not reached\n");
+        UltraDb_CloseConnection(name);
+        return std::string();
+    }
+    return name;
+}
+
 bool Run(const std::string& c, const OperationPlan& plan) {
     size_t failed = 0;
     const UltraDbResult result = RunPlan(c, plan, nullptr, failed);
@@ -120,12 +153,11 @@ bool Run(const std::string& c, const OperationPlan& plan) {
     return result.success;
 }
 
-// What a stop plan answers: 1 stopped, 0 not, -1 failed.
-int Stop(const std::string& c, int64_t pid, bool terminate) {
-    UltraDbResultSet rows;
-    size_t failed = 0;
-    if (!RunPlan(c, StopSessionPlan(pid, terminate), &rows, failed) || rows.Size() != 1) return -1;
-    return rows.Row(0)[size_t(0)].AsBool() ? 1 : 0;
+// What stopping a session answers: 1 stopped, 0 not, -1 failed.
+int Stop(const std::string& c, int64_t id, bool terminate) {
+    bool stopped = false;
+    if (!UltraDb_StopSession(c, id, terminate, stopped)) return -1;
+    return stopped ? 1 : 0;
 }
 
 bool RunScript(const std::string& c, const std::string& script) {
@@ -240,11 +272,11 @@ void TestRelationsPostgres() {
     if (c.empty()) return;
     const std::string schema = "dbadmin_" + ConnectionStore::NewId();
     const std::string other = schema + "_other";
-    Check(RunScript(c, "CREATE SCHEMA " + QuotedName(schema) + "; CREATE SCHEMA " + QuotedName(other) + ";"
-                       "CREATE TABLE " + QualifiedName(other, "regions") + "(id integer PRIMARY KEY);"
-                       "SET search_path TO " + QuotedName(schema) + ";" + kRelationsSchema +
+    Check(RunScript(c, "CREATE SCHEMA " + QuotedName(SqlEngine::Postgres, schema) + "; CREATE SCHEMA " + QuotedName(SqlEngine::Postgres, other) + ";"
+                       "CREATE TABLE " + QualifiedName(SqlEngine::Postgres, other, "regions") + "(id integer PRIMARY KEY);"
+                       "SET search_path TO " + QuotedName(SqlEngine::Postgres, schema) + ";" + kRelationsSchema +
                        "CREATE TABLE lines(order_id integer REFERENCES orders(id), n integer,"
-                       " region_id integer REFERENCES " + QualifiedName(other, "regions") + "(id),"
+                       " region_id integer REFERENCES " + QualifiedName(SqlEngine::Postgres, other, "regions") + "(id),"
                        " PRIMARY KEY (order_id, n));"
                        "CREATE TABLE shipments(order_id integer, n integer, PRIMARY KEY (order_id, n),"
                        " FOREIGN KEY (order_id, n) REFERENCES lines(order_id, n));"
@@ -271,8 +303,56 @@ void TestRelationsPostgres() {
               layers[3] == std::vector<std::string>{"shipments"} &&
               layers[4] == std::vector<std::string>{"employees"},
           "each table a layer below the one it refers to: customers, orders, lines, shipments; employees last");
-    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(schema) + " CASCADE");
-    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(other) + " CASCADE");
+    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(SqlEngine::Postgres, schema) + " CASCADE");
+    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(SqlEngine::Postgres, other) + " CASCADE");
+    UltraDb_CloseConnection(c);
+}
+
+void TestRelationsMysql() {
+    Section("Relations (MySQL / MariaDB)");
+    const std::string c = MysqlConnection("dbadmin-rel-my");
+    if (c.empty()) return;
+    constexpr SqlEngine my = SqlEngine::MySql;
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    const std::string other = schema + "_other";
+    const std::string s = QuotedName(my, schema);
+    // MySQL 8 reads a REFERENCES written on a column and ignores it: each key
+    // is a FOREIGN KEY clause of its own.
+    Check(RunScript(c, "CREATE DATABASE " + s + "; CREATE DATABASE " + QuotedName(my, other) + ";"
+                       "CREATE TABLE " + QualifiedName(my, other, "regions") + "(id int PRIMARY KEY);"
+                       "USE " + s + ";"
+                       "CREATE TABLE customers(id int PRIMARY KEY, name text NOT NULL);"
+                       "CREATE TABLE orders(id int PRIMARY KEY, customer_id int NOT NULL, total double,"
+                       " CONSTRAINT orders_customer FOREIGN KEY (customer_id) REFERENCES customers(id));"
+                       "CREATE TABLE profiles(customer_id int PRIMARY KEY, bio text,"
+                       " FOREIGN KEY (customer_id) REFERENCES customers(id));"
+                       "CREATE TABLE employees(id int PRIMARY KEY, manager_id int,"
+                       " FOREIGN KEY (manager_id) REFERENCES employees(id));"
+                       "CREATE TABLE codes(id int PRIMARY KEY, customer_id int NOT NULL UNIQUE,"
+                       " FOREIGN KEY (customer_id) REFERENCES customers(id));"
+                       "CREATE VIEW big_orders AS SELECT * FROM orders WHERE total > 100;"
+                       "CREATE TABLE `lines`(order_id int, n int, region_id int, PRIMARY KEY (order_id, n),"
+                       " FOREIGN KEY (order_id) REFERENCES orders(id),"
+                       " FOREIGN KEY (region_id) REFERENCES " + QualifiedName(my, other, "regions") + "(id));"
+                       "CREATE TABLE shipments(order_id int, n int, PRIMARY KEY (order_id, n),"
+                       " FOREIGN KEY (order_id, n) REFERENCES `lines`(order_id, n));"),
+          "the tables made, one key into another database");
+    std::vector<UltraDbTableSchema> tables;
+    bool truncated = true;
+    std::vector<std::string> failed;
+    Check(ReadSchemaTables(c, schema, 100, tables, truncated, failed).success && tables.size() == 7 && !truncated,
+          "seven tables, the view left out (" + std::to_string(tables.size()) + ")");
+    size_t outside = 0;
+    const std::vector<RelationLink> links = RelationLinks(tables, outside);
+    Check(outside == 1, "the key into the other database counted, not drawn");
+    CheckRelations(links, "MySQL");
+    const RelationLink* shipment = LinkOf(links, "shipments", "lines");
+    Check(shipment && shipment->columns.size() == 2 && shipment->oneToOne,
+          "shipments: a two-column key that is its whole primary key, one-to-one");
+    const RelationLink* order = LinkOf(links, "orders", "customers");
+    Check(order && order->name == "orders_customer", "a MySQL link is named after its constraint");
+    UltraDb_Exec(c, "DROP DATABASE " + s);
+    UltraDb_Exec(c, "DROP DATABASE " + QuotedName(my, other));
     UltraDb_CloseConnection(c);
 }
 
@@ -322,7 +402,7 @@ void TestRoutinesPostgres() {
     const std::string c = PostgresConnection("dbadmin-routines-pg");
     if (c.empty()) return;
     const std::string schema = "dbadmin_" + ConnectionStore::NewId();
-    const std::string s = QuotedName(schema);
+    const std::string s = QuotedName(SqlEngine::Postgres, schema);
     Check(RunScript(c, "CREATE SCHEMA " + s + ";"
                        "CREATE TABLE " + s + ".items(id serial PRIMARY KEY, label text, stamp text);"
                        "CREATE FUNCTION " + s + ".twice(n integer) RETURNS integer LANGUAGE sql IMMUTABLE"
@@ -409,6 +489,76 @@ void TestRoutinesPostgres() {
     UltraDb_CloseConnection(c);
 }
 
+void TestRoutinesMysql() {
+    Section("Routines (MySQL / MariaDB)");
+    const std::string c = MysqlConnection("dbadmin-routines-my");
+    if (c.empty()) return;
+    constexpr SqlEngine my = SqlEngine::MySql;
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    const std::string s = QuotedName(my, schema);
+    Check(RunScript(c, "CREATE DATABASE " + s + ";\n"
+                       "CREATE TABLE " + s + ".items(id int AUTO_INCREMENT PRIMARY KEY, label text, stamp text);\n"
+                       "CREATE FUNCTION " + s + ".twice(n INT) RETURNS INT DETERMINISTIC RETURN n * 2;\n"
+                       "DELIMITER $$\n"
+                       "CREATE TRIGGER " + s + ".items_stamp BEFORE INSERT ON " + s + ".items FOR EACH ROW\n"
+                       "BEGIN SET NEW.stamp = 'one'; END$$\n"
+                       "CREATE PROCEDURE " + s + ".tidy(IN keep INT)\n"
+                       "BEGIN DELETE FROM " + s + ".items WHERE id > keep; END$$\n"
+                       "DELIMITER ;\n"),
+          "a database with a trigger, a function and a procedure");
+    std::vector<RoutineInfo> routines;
+    Check(ListRoutines(c, my, schema, routines).success && routines.size() == 3,
+          "three routines (" + std::to_string(routines.size()) + ")");
+    Check(!routines.empty() && routines.front().kind == RoutineInfo::Kind::Trigger, "the trigger first");
+    const RoutineInfo* trigger = RoutineOf(routines, "items_stamp");
+    Check(trigger && trigger->table == "items" && Has(trigger->definition, "CREATE") &&
+              Has(trigger->definition, "items_stamp"),
+          "the trigger, its table and its statement");
+    const RoutineInfo* number = RoutineOf(routines, "twice");
+    Check(number && number->kind == RoutineInfo::Kind::Function && Has(number->arguments, "n") &&
+              Has(number->definition, "RETURN n * 2"),
+          "the function, its arguments and its statement");
+    const RoutineInfo* procedure = RoutineOf(routines, "tidy");
+    Check(procedure && procedure->kind == RoutineInfo::Kind::Procedure && Has(procedure->definition, "PROCEDURE"),
+          "the procedure");
+
+    if (trigger) {
+        std::string edited = EditableDefinition(my, *trigger);
+        Check(Has(edited, "DELIMITER $$") && Has(edited, "DROP TRIGGER IF EXISTS") && !Has(edited, "DEFINER="),
+              "a trigger to edit: dropped and made again between DELIMITER lines, no DEFINER");
+        const size_t at = edited.find("'one'");
+        if (at != std::string::npos) edited.replace(at, 5, "'two'");
+        Check(SummarizeScript(my, edited).statements == 2, "two statements to the SQL tab");
+        Check(RunScript(c, edited), "the edited trigger runs");
+        UltraDb_Exec(c, "INSERT INTO " + s + ".items(label) VALUES ('a')");
+        Check(Rows(c, "SELECT stamp FROM " + s + ".items").Row(0)[0].AsString() == "two",
+              "the edited trigger is the one that fires");
+    }
+    if (number) {
+        std::string edited = EditableDefinition(my, *number);
+        const size_t at = edited.find("n * 2");
+        if (at != std::string::npos) edited.replace(at, 5, "n * 3");
+        Check(RunScript(c, edited) && Count(c, "SELECT " + s + ".twice(5)") == 15, "the edited function runs");
+        const OperationPlan drop = DropRoutinePlan(my, *number);
+        Check(drop.statements.size() == 1 && drop.statements[0] == "DROP FUNCTION " + s + ".`twice`" && Run(c, drop),
+              "the function dropped, by its name alone: " + (drop.statements.empty() ? std::string() : drop.statements[0]));
+    }
+    if (procedure) Check(Run(c, DropRoutinePlan(my, *procedure)), "the procedure dropped");
+    if (trigger) Check(Run(c, DropRoutinePlan(my, *trigger)), "the trigger dropped");
+    Check(ListRoutines(c, my, schema, routines).success && routines.empty(), "none left");
+
+    Check(RunScript(c, RoutineTemplate(my, RoutineInfo::Kind::Trigger, schema, "items")),
+          "a new trigger from its template runs");
+    Check(RunScript(c, RoutineTemplate(my, RoutineInfo::Kind::Function, schema, "")),
+          "a new function from its template runs");
+    Check(RunScript(c, RoutineTemplate(my, RoutineInfo::Kind::Procedure, schema, "")),
+          "a new procedure from its template runs");
+    Check(ListRoutines(c, my, schema, routines).success && routines.size() == 3,
+          "and they are listed (" + std::to_string(routines.size()) + ")");
+    UltraDb_Exec(c, "DROP DATABASE " + s);
+    UltraDb_CloseConnection(c);
+}
+
 // ===== Server =====
 
 void TestServerSqlite() {
@@ -441,8 +591,8 @@ void TestServerPostgres() {
     const std::string c = PostgresConnection("dbadmin-server-pg");
     if (c.empty()) return;
     const std::string schema = "dbadmin_" + ConnectionStore::NewId();
-    Check(RunScript(c, "CREATE SCHEMA " + QuotedName(schema) + "; CREATE TABLE " + QualifiedName(schema, "big") +
-                       "(id integer PRIMARY KEY, t text); INSERT INTO " + QualifiedName(schema, "big") +
+    Check(RunScript(c, "CREATE SCHEMA " + QuotedName(SqlEngine::Postgres, schema) + "; CREATE TABLE " + QualifiedName(SqlEngine::Postgres, schema, "big") +
+                       "(id integer PRIMARY KEY, t text); INSERT INTO " + QualifiedName(SqlEngine::Postgres, schema, "big") +
                        " SELECT g, repeat('x', 200) FROM generate_series(1, 2000) g;"),
           "a table with some rows");
 
@@ -453,10 +603,10 @@ void TestServerPostgres() {
     for (const auto& row : rows) self = self || row["this_session"].AsBool();
     Check(self, "this session among them");
     const auto& columns = rows.Columns();
-    Check(std::find(columns.begin(), columns.end(), SessionPidColumn()) != columns.end(), "each with its process id");
+    Check(std::find(columns.begin(), columns.end(), SessionIdColumn()) != columns.end(), "each with its id");
 
     Check(ReadServerView(c, SqlEngine::Postgres, ServerView::Settings, schema, "WORK_MEM", rows).success &&
-              !Cell(rows, "work_mem", "setting").empty() && !Cell(rows, "maintenance_work_mem", "setting").empty(),
+              !Cell(rows, "work_mem", "value").empty() && !Cell(rows, "maintenance_work_mem", "value").empty(),
           "the settings filter, any case");
     Check(ReadServerView(c, SqlEngine::Postgres, ServerView::Settings, schema, "work%mem", rows).success &&
               rows.Size() == 0,
@@ -473,9 +623,9 @@ void TestServerPostgres() {
     }
     Check(databases >= 1 && big, "the databases, then the schema's table with its size");
 
-    Check(StopSessionPlan(42, false).statements == std::vector<std::string>{"SELECT pg_cancel_backend(42)"} &&
-              StopSessionPlan(42, true).statements == std::vector<std::string>{"SELECT pg_terminate_backend(42)"} &&
-              !StopSessionPlan(42, true).transaction,
+    std::string cancel, terminate;
+    Check(UltraDb_StopSessionSql(c, 42, false, cancel) && cancel == "SELECT pg_cancel_backend(42)" &&
+              UltraDb_StopSessionSql(c, 42, true, terminate) && terminate == "SELECT pg_terminate_backend(42)",
           "what the confirmation shows");
     // A query that runs until it is cancelled, from a session of its own.
     const std::string sleeper = PostgresConnection("dbadmin-server-sleeper");
@@ -495,7 +645,7 @@ void TestServerPostgres() {
             ReadServerView(c, SqlEngine::Postgres, ServerView::Sessions, schema, "", rows);
             for (const auto& row : rows)
                 if (row["application"].AsString() == "dbadmin-sleeper" && row["state"].AsString() == "active")
-                    pid = row[SessionPidColumn()].AsInt64();
+                    pid = row[SessionIdColumn()].AsInt64();
         }
         Check(pid > 0, "the running query is among the sessions, active");
         Check(pid > 0 && Stop(c, pid, false) == 1, "its query cancelled");
@@ -507,20 +657,91 @@ void TestServerPostgres() {
         UltraDb_CloseConnection(sleeper);
     }
     Check(Stop(c, 1, true) == 0, "no such session: nothing stopped");
-    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(schema) + " CASCADE");
+    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(SqlEngine::Postgres, schema) + " CASCADE");
     UltraDb_CloseConnection(c);
 }
 
 } // namespace
 
+void TestServerMysql() {
+    Section("Server (MySQL / MariaDB)");
+    const std::string c = MysqlConnection("dbadmin-server-my");
+    if (c.empty()) return;
+    constexpr SqlEngine my = SqlEngine::MySql;
+    Check(ServerViews(my) == std::vector<ServerView>{ServerView::Sessions, ServerView::Settings, ServerView::Sizes},
+          "a MySQL server's views");
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    const std::string s = QuotedName(my, schema);
+    Check(RunScript(c, "CREATE DATABASE " + s + "; CREATE TABLE " + s + ".big(id int PRIMARY KEY, t text) ENGINE=InnoDB;"
+                       "INSERT INTO " + s + ".big VALUES (1, REPEAT('x', 200));"),
+          "a table");
+
+    UltraDbResultSet rows;
+    Check(ReadServerView(c, my, ServerView::Sessions, schema, "", rows).success && rows.Size() >= 1, "the sessions");
+    bool self = false;
+    for (const auto& row : rows) self = self || row["this_session"].AsBool();
+    Check(self, "this session among them");
+    Check(ReadServerView(c, my, ServerView::Settings, schema, "MAX_CONN", rows).success &&
+              !Cell(rows, "max_connections", "value").empty(),
+          "the settings filter, any case");
+    Check(ReadServerView(c, my, ServerView::Settings, schema, "max%conn", rows).success && rows.Size() == 0,
+          "% typed in the filter is a %");
+    Check(ReadServerView(c, my, ServerView::Sizes, schema, "", rows).success, "the sizes");
+    bool database = false, big = false;
+    for (const auto& row : rows) {
+        database = database || row["kind"].AsString() == "database";
+        big = big || row["name"].AsString() == schema + ".big";
+    }
+    Check(database && big, "the databases, then the database's table");
+    std::string sql;
+    Check(UltraDb_StopSessionSql(c, 42, false, sql) && sql == "KILL QUERY 42" &&
+              UltraDb_StopSessionSql(c, 42, true, sql) && sql == "KILL 42",
+          "what the confirmation shows");
+
+    // A query that runs until it is stopped, from a session of its own.
+    const std::string sleeper = MysqlConnection("dbadmin-server-my-sleeper");
+    if (!sleeper.empty()) {
+        std::atomic<bool> done{false};
+        UltraDbResult slept;
+        const auto start = std::chrono::steady_clock::now();
+        std::thread worker([&] {
+            UltraDbResultSet out;
+            slept = UltraDb_Query(sleeper, "SELECT SLEEP(30) AS dbadmin_sleeper", {}, out);
+            done = true;
+        });
+        int64_t id = 0;
+        for (int i = 0; i < 100 && id == 0; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            ReadServerView(c, my, ServerView::Sessions, schema, "", rows);
+            for (const auto& row : rows)
+                if (Has(row["query"].AsString(), "dbadmin_sleeper") && row["state"].AsString() == "active" &&
+                    !row["this_session"].AsBool())
+                    id = row[SessionIdColumn()].AsInt64();
+        }
+        Check(id > 0, "the running query is among the sessions, active");
+        Check(id > 0 && Stop(c, id, false) == 1, "its query stopped");
+        worker.join();
+        const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        Check(done && seconds < 20, "the query ended early, as stopped");
+        Check(Count(sleeper, "SELECT 1") == 1, "the session itself is still there");
+        UltraDb_CloseConnection(sleeper);
+    }
+    Check(Stop(c, 2000000000, true) == 0, "no such session: nothing stopped");
+    UltraDb_Exec(c, "DROP DATABASE " + s);
+    UltraDb_CloseConnection(c);
+}
+
 int main() {
     std::printf("UltraDBAdmin schema tests\n\n");
     TestRelationsSqlite();
     TestRelationsPostgres();
+    TestRelationsMysql();
     TestRoutinesSqlite();
     TestRoutinesPostgres();
+    TestRoutinesMysql();
     TestServerSqlite();
     TestServerPostgres();
+    TestServerMysql();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

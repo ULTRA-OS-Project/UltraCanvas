@@ -7,6 +7,7 @@
 // statement and running it again (CREATE OR REPLACE; a SQLite trigger is
 // dropped and created). Functions an extension brought are left out: they
 // are the extension's.
+// Version: 0.2.0 - MySQL / MariaDB; WithoutDefiner shared with the dump
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -51,7 +52,13 @@ std::string RoutineTemplate(SqlEngine engine, RoutineInfo::Kind kind, const std:
 
 // The definition to edit and run again: PostgreSQL's CREATE OR REPLACE as it
 // is (a trigger's CREATE becomes CREATE OR REPLACE); a SQLite trigger behind
-// its DROP TRIGGER, in one transaction, as SQLite replaces no trigger.
+// its DROP TRIGGER, in one transaction, as SQLite replaces no trigger; a
+// MySQL one behind its DROP ... IF EXISTS, between DELIMITER lines.
 std::string EditableDefinition(SqlEngine engine, const RoutineInfo& routine);
+
+// A MySQL definition (SHOW CREATE ...) without its DEFINER clause: run again
+// by another user, "DEFINER=`root`@`localhost`" needs a privilege that user
+// may not have, and without it the object belongs to whoever runs it.
+std::string WithoutDefiner(const std::string& sql);
 
 } // namespace UltraDBAdmin

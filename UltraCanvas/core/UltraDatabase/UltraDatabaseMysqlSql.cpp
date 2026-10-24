@@ -1,6 +1,7 @@
 // core/UltraDatabase/UltraDatabaseMysqlSql.cpp
 // The MySQL / MariaDB driver's SQL lexing: the statement splitter
-// UltraDb_ExecBatch cuts a script with.
+// UltraDb_ExecBatch cuts a script with, and UltraDb_MysqlScriptStatements
+// hands an editor.
 //
 // Its own translation unit, compiled whether or not libmariadb was found, for
 // the reason the PostgreSQL one is (UltraDatabasePostgresSql.cpp): it is pure
@@ -15,6 +16,7 @@
 // DELIMITER, which is not SQL at all: the client consumes the line and splits
 // at the new terminator. Dumps and the usual way of writing a trigger or a
 // procedure depend on it, so the splitter does the same.
+// Version: 0.2.0 - the statements as spans of the script (UltraDb_MysqlScriptStatements)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -103,8 +105,8 @@ size_t MysqlSkip(const std::string& sql, size_t i) {
     return i;
 }
 
-std::vector<std::string> MysqlStatements(const std::string& sql) {
-    std::vector<std::string> statements;
+std::vector<UltraDbScriptStatement> MysqlStatementSpans(const std::string& sql) {
+    std::vector<UltraDbScriptStatement> statements;
     std::string delimiter = ";";
     size_t start = 0;
     bool content = false;         // anything but whitespace and comments yet
@@ -112,12 +114,19 @@ std::vector<std::string> MysqlStatements(const std::string& sql) {
     bool create = false;          // the statement is a CREATE ...
     int depth = 0;                // BEGIN / CASE ... END inside a CREATE
 
-    auto finish = [&](size_t until) {
+    // A statement from `start` to `until`, its terminator ending at `after`.
+    auto finish = [&](size_t until, size_t after) {
         if (content) {
+            // From its first character that is neither space nor a comment.
             size_t a = start, b = until;
-            while (a < b && IsSpace(sql[a])) ++a;
+            while (a < b) {
+                if (IsSpace(sql[a])) { ++a; continue; }
+                const size_t skipped = IsComment(sql, a) ? MysqlSkip(sql, a) : a;
+                if (skipped == a) break;
+                a = skipped;
+            }
             while (b > a && IsSpace(sql[b - 1])) --b;
-            statements.push_back(sql.substr(a, b - a));
+            statements.push_back({a, b, after});
         }
         content = false;
         firstWord = true;
@@ -159,7 +168,7 @@ std::vector<std::string> MysqlStatements(const std::string& sql) {
         // body, as the depth counts it; with another, wherever it stands - a
         // script that set one has written its bodies for it.
         if (sql.compare(i, delimiter.size(), delimiter) == 0 && (delimiter != ";" || depth == 0)) {
-            finish(i);
+            finish(i, i + delimiter.size());
             start = i = i + delimiter.size();
             continue;
         }
@@ -197,8 +206,20 @@ std::vector<std::string> MysqlStatements(const std::string& sql) {
         }
         ++i;
     }
-    finish(n);
+    finish(n, n);
+    return statements;
+}
+
+std::vector<std::string> MysqlStatements(const std::string& sql) {
+    std::vector<std::string> statements;
+    for (const auto& span : MysqlStatementSpans(sql)) {
+        statements.push_back(sql.substr(span.begin, span.end - span.begin));
+    }
     return statements;
 }
 
 } // namespace ultradb_internal
+
+std::vector<UltraDbScriptStatement> UltraDb_MysqlScriptStatements(const std::string& script) {
+    return ultradb_internal::MysqlStatementSpans(script);
+}

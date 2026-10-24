@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminValueTypes.cpp
+// Version: 0.2.0 - MySQL / MariaDB: UTC_TIMESTAMP(), UUID()
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminValueTypes.h"
@@ -149,17 +150,20 @@ bool CheckValue(ValueKind kind, const std::string& column, const std::string& te
 
 std::vector<ValueFunction> ValueFunctions(SqlEngine engine, ValueKind kind) {
     const bool sqlite = engine == SqlEngine::Sqlite;
+    const bool mysql = engine == SqlEngine::MySql;
     std::vector<ValueFunction> out;
     const bool any = kind == ValueKind::Any || kind == ValueKind::Text;
     if (kind == ValueKind::Timestamp || any) {
         out.push_back({"Now (CURRENT_TIMESTAMP)", "CURRENT_TIMESTAMP"});
         if (sqlite) out.push_back({"Now, local time", "datetime('now', 'localtime')"});
+        else if (mysql) out.push_back({"Now, in UTC (UTC_TIMESTAMP())", "UTC_TIMESTAMP()"});
         else out.push_back({"Now, as the transaction began (now())", "now()"});
     }
     if (kind == ValueKind::Date || any) out.push_back({"Today (CURRENT_DATE)", "CURRENT_DATE"});
     if (kind == ValueKind::Time || any) out.push_back({"This time (CURRENT_TIME)", "CURRENT_TIME"});
     if (kind == ValueKind::Uuid || (any && !sqlite)) {
-        if (!sqlite) out.push_back({"A new UUID (gen_random_uuid())", "gen_random_uuid()"});
+        if (mysql) out.push_back({"A new UUID (UUID())", "UUID()"});
+        else if (!sqlite) out.push_back({"A new UUID (gen_random_uuid())", "gen_random_uuid()"});
     }
     if (any && sqlite) out.push_back({"A random id (32 hex digits)", "lower(hex(randomblob(16)))"});
     if (any && !sqlite) out.push_back({"The user (CURRENT_USER)", "CURRENT_USER"});
@@ -167,7 +171,7 @@ std::vector<ValueFunction> ValueFunctions(SqlEngine engine, ValueKind kind) {
 }
 
 bool IsValueFunction(const std::string& sql) {
-    for (const SqlEngine engine : {SqlEngine::Sqlite, SqlEngine::Postgres})
+    for (const SqlEngine engine : {SqlEngine::Sqlite, SqlEngine::Postgres, SqlEngine::MySql})
         for (const ValueKind kind : {ValueKind::Any, ValueKind::Timestamp, ValueKind::Date, ValueKind::Time, ValueKind::Uuid})
             for (const auto& function : ValueFunctions(engine, kind))
                 if (function.sql == sql) return true;

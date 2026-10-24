@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminStructureDialog.cpp
+// Version: 0.2.0 - MySQL / MariaDB types
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminStructureDialog.h"
@@ -32,7 +33,10 @@ const std::vector<std::string>& CommonTypes(SqlEngine engine) {
     static const std::vector<std::string> postgres = {
         "integer", "bigint", "numeric(12,2)", "double precision", "text", "varchar(255)", "boolean",
         "date", "timestamptz", "jsonb", "uuid", "bytea"};
-    return engine == SqlEngine::Sqlite ? sqlite : postgres;
+    static const std::vector<std::string> mysql = {
+        "int", "bigint", "decimal(12,2)", "double", "varchar(255)", "text", "tinyint(1)",
+        "date", "datetime", "timestamp", "json", "blob"};
+    return engine == SqlEngine::Sqlite ? sqlite : engine == SqlEngine::MySql ? mysql : postgres;
 }
 
 std::shared_ptr<UltraCanvasModalDialog> MakeDialog(const std::string& title, int height) {
@@ -186,9 +190,14 @@ void ShowColumnDialog(UltraCanvasWindowBase* parent, const StructureEdit& edit, 
     auto type = CreateTextInput("dbcType", 0, 0, 0, kRowHeight);
     type->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     type->SetText(current.type);
-    type->SetPlaceholder(sqlite ? "none: SQLite takes any value" : "text, integer, numeric(12,2)…");
-    type->SetTooltip("As the database spells it. A changed type converts the values: "
-                     + std::string(sqlite ? "by SQLite's type affinity." : "with CAST(column AS type)."));
+    const bool mysql = edit.Engine() == SqlEngine::MySql;
+    type->SetPlaceholder(sqlite  ? "none: SQLite takes any value"
+                         : mysql ? "varchar(80), int, decimal(12,2)…"
+                                 : "text, integer, numeric(12,2)…");
+    type->SetTooltip("As the database spells it. A changed type converts the values: " +
+                     std::string(sqlite  ? "by SQLite's type affinity."
+                                 : mysql ? "MySQL's MODIFY COLUMN converts them itself."
+                                         : "with CAST(column AS type)."));
     form->type = type.get();
     typeLine->AddChild(type);
     auto common = CreateDropdown("dbcCommon", 0, 0, 170, kRowHeight);

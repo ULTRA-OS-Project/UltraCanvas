@@ -1,10 +1,13 @@
 // Apps/UltraDBAdmin/engine/DbAdminSqlScript.cpp
+// Version: 0.4.0 - MySQL / MariaDB through UltraDb_MysqlScriptStatements
 // Version: 0.3.0 - StatementSpans, StatementAt, ExplainSql
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminSqlScript.h"
 
 #include "DbAdminSqliteTable.h"
+
+#include <UltraDatabase/UltraDatabase.h>
 
 #include <algorithm>
 #include <set>
@@ -100,9 +103,58 @@ bool CodeTokens(const std::string& script, std::vector<SqlToken>& tokens, std::s
     return true;
 }
 
+// A MySQL statement's first word, upper-cased: what it does.
+std::string FirstWord(const std::string& script, const UltraDbScriptStatement& statement) {
+    std::string word;
+    for (size_t i = statement.begin; i < statement.end; ++i) {
+        const char c = script[i];
+        const bool letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+        if (!letter) break;
+        word.push_back(c);
+    }
+    return Upper(word);
+}
+
+// The word after the first: START TRANSACTION.
+std::string SecondWord(const std::string& script, const UltraDbScriptStatement& statement) {
+    size_t i = statement.begin;
+    while (i < statement.end && script[i] != ' ' && script[i] != '\t' && script[i] != '\n' && script[i] != '\r') ++i;
+    while (i < statement.end && (script[i] == ' ' || script[i] == '\t' || script[i] == '\n' || script[i] == '\r')) ++i;
+    UltraDbScriptStatement rest = statement;
+    rest.begin = i;
+    return FirstWord(script, rest);
+}
+
+const std::set<std::string>& RiskyWords() {
+    static const std::set<std::string> words = {"DROP", "DELETE", "TRUNCATE", "ALTER", "UPDATE"};
+    return words;
+}
+
+void CountRisky(ScriptSummary& summary, const std::string& first) {
+    if (!RiskyWords().count(first)) return;
+    auto it = std::find_if(summary.risky.begin(), summary.risky.end(),
+                           [&](const auto& entry) { return entry.first == first; });
+    if (it == summary.risky.end()) summary.risky.emplace_back(first, 1);
+    else ++it->second;
+}
+
+ScriptSummary SummarizeMysql(const std::string& script) {
+    ScriptSummary summary;
+    static const std::set<std::string> control = {"BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "RELEASE", "XA"};
+    for (const auto& statement : UltraDb_MysqlScriptStatements(script)) {
+        ++summary.statements;
+        const std::string first = FirstWord(script, statement);
+        if (control.count(first) || (first == "START" && SecondWord(script, statement) == "TRANSACTION"))
+            summary.ownTransactions = true;
+        CountRisky(summary, first);
+    }
+    return summary;
+}
+
 } // namespace
 
-ScriptSummary SummarizeScript(const std::string& script) {
+ScriptSummary SummarizeScript(SqlEngine engine, const std::string& script) {
+    if (engine == SqlEngine::MySql) return SummarizeMysql(script);
     ScriptSummary summary;
     summary.unsupported = NeedsPsql(script);
     if (!summary.unsupported.empty()) return summary;
@@ -113,7 +165,6 @@ ScriptSummary SummarizeScript(const std::string& script) {
         return summary;
     }
 
-    static const std::set<std::string> risky = {"DROP", "DELETE", "TRUNCATE", "ALTER", "UPDATE"};
     static const std::set<std::string> control = {"BEGIN", "COMMIT", "END", "ROLLBACK", "SAVEPOINT", "RELEASE"};
     for (const auto& [start, end] : SplitTokens(tokens)) {
         ++summary.statements;
@@ -122,19 +173,19 @@ ScriptSummary SummarizeScript(const std::string& script) {
             if (control.count(first) ||
                 (first == "START" && start + 1 < end && IsWord(tokens[start + 1], "TRANSACTION")))
                 summary.ownTransactions = true;
-            if (risky.count(first)) {
-                auto it = std::find_if(summary.risky.begin(), summary.risky.end(),
-                                       [&](const auto& entry) { return entry.first == first; });
-                if (it == summary.risky.end()) summary.risky.emplace_back(first, 1);
-                else ++it->second;
-            }
+            CountRisky(summary, first);
         }
     }
     return summary;
 }
 
-std::vector<StatementSpan> StatementSpans(const std::string& script) {
+std::vector<StatementSpan> StatementSpans(SqlEngine engine, const std::string& script) {
     std::vector<StatementSpan> spans;
+    if (engine == SqlEngine::MySql) {
+        for (const auto& statement : UltraDb_MysqlScriptStatements(script))
+            spans.push_back({statement.begin, statement.end, statement.terminatorEnd});
+        return spans;
+    }
     std::vector<SqlToken> tokens;
     std::string error;
     if (!CodeTokens(script, tokens, error)) return spans;
@@ -148,8 +199,8 @@ std::vector<StatementSpan> StatementSpans(const std::string& script) {
     return spans;
 }
 
-bool StatementAt(const std::string& script, size_t offset, StatementSpan& out) {
-    const std::vector<StatementSpan> spans = StatementSpans(script);
+bool StatementAt(SqlEngine engine, const std::string& script, size_t offset, StatementSpan& out) {
+    const std::vector<StatementSpan> spans = StatementSpans(engine, script);
     if (spans.empty()) return false;
     // The statement the caret is in or right after (on its ';', or in the
     // blank lines below it); before the first, the first.
