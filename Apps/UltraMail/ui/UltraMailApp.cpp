@@ -493,6 +493,28 @@ void UltraMailApp::FinishStartup() {
         src.date = "Tue, 14 Jan 2026 14:02:00 +0000";
         OpenComposer(Composer::Reply(src, "Erika Example", "erika@example.com", false));
     }
+    // Demo path: one dialog on its own, to look at it (wizard, password,
+    // password-new, oauth, wait, account - the last one on the demo account
+    // seeded by ULTRAMAIL_DEMO_MAIL=1 - outbox and settings).
+    if (const char* dd = std::getenv("ULTRAMAIL_DEMO_DIALOG"); dd && *dd) {
+        const std::string which = dd;
+        UltraCanvas::UltraCanvasWindowBase* parent = window_.get();
+        if (which == "wizard") AccountWizard::Show(parent, [](const AccountDraft&) {});
+        else if (which == "password" || which == "password-new")
+            PassphraseDialog::Show(parent, which == "password-new", "",
+                                   [](const std::string&) {});
+        else if (which == "oauth")
+            OAuthCodeDialog::Show(parent, "Google", "erika@gmail.com",
+                                  [](const std::string&) {});
+        else if (which == "wait")
+            WaitDialog::Show(parent, "Looking up server settings",
+                "UltraMail is asking example.com and the Thunderbird provider database "
+                "for the mail servers of erika@example.com\xE2\x80\xA6", nullptr, "server");
+        else if (which == "account" && !accounts_.empty())
+            HandleAccountSettings(accounts_.front().accountId);
+        else if (which == "outbox") OpenOutbox();
+        else if (which == "settings") OpenSettings();
+    }
     // Demo path: the account signature. =1 opens the signature editor on a
     // designed HTML signature; =2 a new message from the demo account (seeded
     // by ULTRAMAIL_DEMO_MAIL=1) signed with it.
@@ -3925,7 +3947,7 @@ void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
         "Looking up server settings",
         "UltraMail is asking " + domain + " and the Thunderbird provider database "
         "for the mail servers of " + draft.email + "…",
-        [cancelled]() { cancelled->store(true); });
+        [cancelled]() { cancelled->store(true); }, "server");
 
     std::thread([this, draft, parent, cancelled, waiting]() {
         AutoDiscovery discovery;

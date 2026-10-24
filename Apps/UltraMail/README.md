@@ -314,6 +314,9 @@ are unknown. The password (or OAuth token set) is stored in the
 `CredentialVault`, never in the config. Try it: run with
 `ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
 dialog.
+`ULTRAMAIL_DEMO_DIALOG=<name>` opens one dialog on its own, to look at it:
+`wizard`, `password`, `password-new`, `oauth`, `wait`, `outbox`, `settings`, or `account`
+(the account settings of the demo account `ULTRAMAIL_DEMO_MAIL=1` seeds).
 
 **OAuth2 sign-in (Gmail, Outlook / Microsoft 365, Yahoo):** Google and
 Microsoft reject the account password over IMAP and SMTP, so those accounts

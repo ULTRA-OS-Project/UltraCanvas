@@ -75,7 +75,7 @@ public:
     bool AttachFile(const std::string& path);
     // Put a share link into the body: "<name>: <url>" on its own line.
     void InsertLink(const std::string& name, const std::string& url);
-    // Open the cloud link picker (what "Attach cloud link…" does).
+    // Open the cloud link picker (what the "Cloud link…" button does).
     void OpenCloudLinkPicker() { ChooseCloudLink(); }
 
     // Raised when Send is clicked, with the edited draft.

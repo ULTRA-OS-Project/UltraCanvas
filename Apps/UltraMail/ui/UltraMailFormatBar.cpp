@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailFormatBar.cpp
+// Version: 0.3.0 - icon-only flat tools (media/icons/ultramail/) in groups
+//                  with separators, on a tinted strip; the quote tools join the
+//                  paragraph row, the colour swatches get a text-colour mark
 // Version: 0.2.0 - Quote + / Quote − for the compose window, at the end of
 //                  the character row
 // Version: 0.1.0 - moved out of the signature editor, so the compose window has
@@ -14,6 +17,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasRichTextEdit.h"
@@ -28,9 +32,17 @@ namespace UltraMail {
 
 namespace {
 
-constexpr float kToolButton = 30.0f;
+constexpr float kToolButton = Theme::kControlHeight + 2.0f;   // a square tool
 constexpr float kRowGap     = 4.0f;
+constexpr float kStripPadding = 4.0f;
 constexpr float kSwatchBarWidth = 160.0f;
+
+// The strip's height with both rows, or with the paragraph row alone (which
+// holds the host's own controls).
+float BarHeight(bool bothRows) {
+    const float row = kToolButton;
+    return 2 * kStripPadding + (bothRows ? 2 * row + kRowGap : row);
+}
 
 // Fonts every mail program can show: text in a font the reader lacks falls
 // back to theirs anyway.
@@ -61,7 +73,7 @@ void CapToParentWidth(UltraCanvasContainer& c) {
 }
 
 std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
-    auto row = CreateContainer(id, 0, 0, 0, Theme::kControlHeight);
+    auto row = CreateContainer(id, 0, 0, 0, kToolButton);
     CapToParentWidth(*row);
     row->layout.SetFlexRow()
                .SetFlexGap(kRowGap)
@@ -89,7 +101,9 @@ FormatBar FormatBar::Build(const Options& options) {
     const EditorLookup editor = options.editor;
     UltraCanvasWindowBase* parent = options.dialogParent;
 
-    bar.root = CreateContainer(id + "Bar", 0, 0, 0, 2 * Theme::kControlHeight + kRowGap);
+    // A tinted strip: the host puts it on top of the editor, inside one frame,
+    // so the tools read as the editor's own toolbar.
+    bar.root = CreateContainer(id + "Bar", 0, 0, 0, BarHeight(true));
     bar.root->layout.SetFlexColumn()
                     .SetFlexGap(kRowGap)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -98,16 +112,17 @@ FormatBar FormatBar::Build(const Options& options) {
         style.autoShowScrollbars = false;
         bar.root->SetContainerStyle(style);
     }
+    bar.root->SetPadding(kStripPadding);
+    bar.root->SetBackgroundColor(Theme::kSidebar);
     CapToParentWidth(*bar.root);
 
+    // Icon-only and flat: what a tool does is in its tooltip, as in any
+    // word processor.
     auto addTool = [&editor](const std::shared_ptr<UltraCanvasContainer>& row,
-                             const std::string& toolId, const std::string& label,
-                             const std::string& tooltip, float width,
+                             const std::string& toolId, const std::string& icon,
+                             const std::string& tooltip,
                              std::function<void(UltraCanvasRichTextEdit&)> action) {
-        auto button = CreateButton(toolId, 0, 0, width, Theme::kControlHeight, label);
-        Theme::FitToLabel(button, width);
-        Theme::StyleSecondary(button);
-        button->SetTooltip(tooltip);
+        auto button = Theme::MakeToolButton(toolId, icon, tooltip, kToolButton);
         button->onClick = [editor, action]() { OnEditor(editor, action); };
         row->AddChild(button);
         return button;
@@ -115,15 +130,15 @@ FormatBar FormatBar::Build(const Options& options) {
 
     // ----- Row 1: characters -----
     auto charRow = MakeRow(id + "CharRow");
-    auto bold = addTool(charRow, id + "Bold", "B", "Bold (Ctrl+B)", kToolButton,
-                        [](UltraCanvasRichTextEdit& e) { e.ToggleBold(); });
-    bold->SetFont("", Theme::kSizeBody, FontWeight::Bold);
-    addTool(charRow, id + "Italic", "I", "Italic (Ctrl+I)", kToolButton,
+    addTool(charRow, id + "Bold", "bold", "Bold (Ctrl+B)",
+            [](UltraCanvasRichTextEdit& e) { e.ToggleBold(); });
+    addTool(charRow, id + "Italic", "italic", "Italic (Ctrl+I)",
             [](UltraCanvasRichTextEdit& e) { e.ToggleItalic(); });
-    addTool(charRow, id + "Underline", "U", "Underline (Ctrl+U)", kToolButton,
+    addTool(charRow, id + "Underline", "underline", "Underline (Ctrl+U)",
             [](UltraCanvasRichTextEdit& e) { e.ToggleUnderline(); });
-    addTool(charRow, id + "Strike", "S", "Strikethrough", kToolButton,
+    addTool(charRow, id + "Strike", "strikethrough", "Strikethrough",
             [](UltraCanvasRichTextEdit& e) { e.ToggleStrikethrough(); });
+    charRow->AddChild(Theme::MakeToolSeparator(id + "Sep1"));
 
     auto font = CreateDropdown(id + "Font", 0, 0, 130, Theme::kControlHeight);
     font->AddItem("Font", "");
@@ -149,12 +164,17 @@ FormatBar FormatBar::Build(const Options& options) {
         OnEditor(editor, [pt](UltraCanvasRichTextEdit& e) { e.SetFontSize(pt); });
     };
     charRow->AddChild(size);
+    charRow->AddChild(Theme::MakeToolSeparator(id + "Sep2"));
 
-    auto colourLabel = Theme::MakeLine(id + "ColourLbl", "Colour", Theme::kControlHeight,
-                                       Theme::kSizeBody, Theme::kTextSecondary);
-    colourLabel->SetElementSize(Size2Df(44, Theme::kControlHeight));
-    colourLabel->SetAlignment(TextAlignment::Right);
-    charRow->AddChild(colourLabel);
+    // The text-colour mark (an A over a bar) in front of the swatches, in
+    // place of the word "Colour".
+    auto colourMark = CreateImageElement(id + "ColourMark", Theme::kToolIcon, Theme::kToolIcon);
+    colourMark->LoadFromFile(Theme::MailIcon("text-colour"));
+    colourMark->SetFitMode(ImageFitMode::Contain);
+    colourMark->SetTintColor(Theme::kTextSecondary);
+    colourMark->SetTooltip("Colour of the selected text");
+    colourMark->layoutItem.SetFlexShrink(0);
+    charRow->AddChild(colourMark);
     auto colours = CreateColorSwatchBar(id + "Colour", 0, 0, 0, Theme::kControlHeight - 4.0f,
                                         TextPalette());
     // A fixed width: the swatches fit themselves into it. At its preferred
@@ -166,59 +186,52 @@ FormatBar FormatBar::Build(const Options& options) {
         OnEditor(editor, [hex](UltraCanvasRichTextEdit& e) { e.SetTextColor(hex); });
     };
     charRow->AddChild(colours);
-    if (options.quoteTools) {
-        // Where an answer goes between quoted lines, or a quoted line comes
-        // out of the quote: the paragraphs at the cursor (or every selected
-        // one) one quote level in or out. Each click is one undo step.
-        // In the character row, which has room after the swatches: the
-        // paragraph row is full at the compose window's default width (it
-        // ends in Plain text | Formatted). The quote mark and a sign keep
-        // them small.
-        auto quoteTool = [&](const std::string& toolId, const std::string& sign,
-                             const std::string& tooltip,
-                             std::function<void(UltraCanvasRichTextEdit&)> action) {
-            auto tool = addTool(charRow, toolId, sign, tooltip, 34, std::move(action));
-            tool->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/quote.svg"));
-            tool->SetIconPosition(ButtonIconPosition::Left);
-            tool->SetIconSize(14, 14);
-            tool->SetIconSpacing(2);
-            tool->SetUseIconAsMask(true);
-            Theme::FitToLabel(tool, 34);
-        };
-        quoteTool(id + "QuoteIn", "+", "Quote: the paragraph one quote level in",
-                  [](UltraCanvasRichTextEdit& e) { e.IncreaseQuoteLevel(); });
-        quoteTool(id + "QuoteOut", "\xE2\x88\x92", "Unquote: the paragraph one quote level out",
-                  [](UltraCanvasRichTextEdit& e) { e.DecreaseQuoteLevel(); });
-    }
     charRow->AddStretchSpacer(1);
     bar.root->AddChild(charRow);
     bar.characterRow_ = charRow.get();
 
-    // ----- Row 2: paragraphs, links, pictures -----
+    // ----- Row 2: paragraphs, quotes, links, pictures -----
     auto paraRow = MakeRow(id + "ParaRow");
-    auto keep = [&bar](const std::shared_ptr<UltraCanvasButton>& tool) {
+    auto keep = [&bar](const std::shared_ptr<UltraCanvasUIElement>& tool) {
         bar.paragraphTools_.push_back(tool.get());
     };
-    keep(addTool(paraRow, id + "Left", "Left", "Align left", 40,
+    auto separator = [&](const std::string& sepId) {
+        auto line = Theme::MakeToolSeparator(id + sepId);
+        paraRow->AddChild(line);
+        keep(line);
+    };
+    keep(addTool(paraRow, id + "Left", "align-left", "Align left",
                  [](UltraCanvasRichTextEdit& e) { e.SetAlignment(RichTextAlign::Left); }));
-    keep(addTool(paraRow, id + "Center", "Centre", "Centre", 50,
+    keep(addTool(paraRow, id + "Center", "align-centre", "Centre",
                  [](UltraCanvasRichTextEdit& e) { e.SetAlignment(RichTextAlign::Center); }));
-    keep(addTool(paraRow, id + "Right", "Right", "Align right", 44,
+    keep(addTool(paraRow, id + "Right", "align-right", "Align right",
                  [](UltraCanvasRichTextEdit& e) { e.SetAlignment(RichTextAlign::Right); }));
-    keep(addTool(paraRow, id + "Bullets", "\xE2\x80\xA2 List", "Bulleted list", 50,
+    separator("Sep3");
+    keep(addTool(paraRow, id + "Bullets", "list-bullets", "Bulleted list",
                  [](UltraCanvasRichTextEdit& e) { e.ToggleBulletList(); }));
-    keep(addTool(paraRow, id + "Numbers", "1. List", "Numbered list", 50,
+    keep(addTool(paraRow, id + "Numbers", "list-numbers", "Numbered list",
                  [](UltraCanvasRichTextEdit& e) { e.ToggleNumberedList(); }));
-    keep(addTool(paraRow, id + "Rule", "Line", "A horizontal line", 40,
+    if (options.quoteTools) {
+        // Where an answer goes between quoted lines, or a quoted line comes
+        // out of the quote: the paragraphs at the cursor (or every selected
+        // one) one quote level in or out. Each click is one undo step.
+        keep(addTool(paraRow, id + "QuoteIn", "quote-in",
+                     "Quote: the paragraph one quote level in",
+                     [](UltraCanvasRichTextEdit& e) { e.IncreaseQuoteLevel(); }));
+        keep(addTool(paraRow, id + "QuoteOut", "quote-out",
+                     "Unquote: the paragraph one quote level out",
+                     [](UltraCanvasRichTextEdit& e) { e.DecreaseQuoteLevel(); }));
+    }
+    separator("Sep4");
+    keep(addTool(paraRow, id + "Rule", "rule", "A horizontal line",
                  [](UltraCanvasRichTextEdit& e) { e.InsertHorizontalRule(); }));
 
     // Link: the address for the selected text (or the address itself, typed
     // at the cursor, when nothing is selected). The editor is looked up again
     // when the answer comes: the window may have closed meanwhile.
-    auto link = CreateButton(id + "Link", 0, 0, 50, Theme::kControlHeight, "Link\xE2\x80\xA6");
-    Theme::FitToLabel(link, 50);
-    Theme::StyleSecondary(link);
-    link->SetTooltip("Link the selected text to a web page or an e-mail address");
+    auto link = Theme::MakeToolButton(id + "Link", "link",
+                                      "Link the selected text to a web page or an e-mail address",
+                                      kToolButton);
     link->onClick = [editor, parent]() {
         UltraCanvasDialogManager::ShowInputDialog(
             "Web page or e-mail address", "Link", "https://", InputType::Text,
@@ -247,11 +260,9 @@ FormatBar FormatBar::Build(const Options& options) {
 
     // Picture: a logo or a photo, inside the line at the cursor. It is sent
     // as a part of the message (cid:), like the pictures of a reply.
-    auto picture = CreateButton(id + "Picture", 0, 0, 64, Theme::kControlHeight,
-                                "Picture\xE2\x80\xA6");
-    Theme::FitToLabel(picture, 64);
-    Theme::StyleSecondary(picture);
-    picture->SetTooltip("Put a picture (a logo, a photo) at the cursor");
+    auto picture = Theme::MakeToolButton(id + "Picture", "picture",
+                                         "Put a picture (a logo, a photo) at the cursor",
+                                         kToolButton);
     picture->onClick = [editor, parent]() {
         FileDialogOptions dialog;
         dialog.title = "Insert picture";
@@ -284,8 +295,7 @@ void FormatBar::SetToolsVisible(bool visible) {
     for (UltraCanvasUIElement* tool : paragraphTools_) tool->SetVisible(visible);
     if (root) {
         // Only the height: the width stays whatever the host's layout gives.
-        root->size.height = CSSLayout::Dimension::Px(
-            visible ? 2 * Theme::kControlHeight + kRowGap : Theme::kControlHeight);
+        root->size.height = CSSLayout::Dimension::Px(BarHeight(visible));
         root->InvalidateLayout();
     }
 }

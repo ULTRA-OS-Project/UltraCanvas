@@ -25,6 +25,8 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.14.0 - the sections in the tree carry icons (media/icons/ultramail/
+//                   section-*)
 // Version: 1.13.0 - Spam/scam warnings: a switch of its own for loan and credit offers
 // Version: 1.12.0 - Mail > Connection: how long alerts about failed mail checks
 //                   wait after the computer was switched on (a dropdown, off
@@ -1223,10 +1225,16 @@ namespace {
         d->pageArea->AddChild(page);
     }
 
-    void AddTreeNode(DialogState* d, const char* parentId, const char* id, const char* text) {
+    // `icon`: a section's mark, a name in media/icons/ultramail/ (the pages
+    // under a section have none).
+    void AddTreeNode(DialogState* d, const char* parentId, const char* id, const char* text,
+                     const char* icon = nullptr) {
         TreeNodeData data;
         data.nodeId = id;
         data.text = text;
+        if (icon)
+            data.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/ultramail/"
+                                                       + icon + ".svg"), 16, 16);
         d->tree->AddNode(parentId, data);
     }
 
@@ -1268,21 +1276,21 @@ namespace {
         rootData.nodeId = "settings";
         rootData.text = "Settings";
         d->tree->SetRootNode(rootData);
-        AddTreeNode(d, "settings", kPageMail, "Mail");
+        AddTreeNode(d, "settings", kPageMail, "Mail", "section-mail");
         AddTreeNode(d, kPageMail, kPageNewMail, "New mail");
         AddTreeNode(d, kPageMail, kPageConnection, "Connection");
-        AddTreeNode(d, "settings", kPageReading, "Reading");
+        AddTreeNode(d, "settings", kPageReading, "Reading", "section-reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
         AddTreeNode(d, kPageReading, kPageWaiting, "Waiting for reply");
-        AddTreeNode(d, "settings", kPagePrivacy, "Privacy");
+        AddTreeNode(d, "settings", kPagePrivacy, "Privacy", "section-privacy");
         AddTreeNode(d, kPagePrivacy, kPageImages, "Images");
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
-        AddTreeNode(d, "settings", kPageDisplay, "Display");
+        AddTreeNode(d, "settings", kPageDisplay, "Display", "section-display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
-        AddTreeNode(d, "settings", kPageWarnings, "Warnings");
+        AddTreeNode(d, "settings", kPageWarnings, "Warnings", "section-warnings");
         AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
         // The page's title is "Trusted and blocked senders"; the tree has
         // room for less.

@@ -255,7 +255,7 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   (via the existing Markdown→HTML serializer of `UCRichDocument`) plus
   the plain-text source. A "plain text only" toggle is one click.
 - **Attachments** — "Attach file…" (file dialog; drag & drop later) and
-  "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
+  "Cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
   shown as a chip strip with sizes and a total-size warning.
 - **Signatures** — per account, in *Account Settings > Signature*: none,
@@ -267,7 +267,9 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
 - **Formatting** — a *Plain text | Formatted* switch on every message, and in
   formatted mode the same toolbar as the signature editor (character
-  formatting, font, size, colour, alignment, lists, a rule, links, pictures).
+  formatting, font, size, colour, alignment, lists, a rule, links, pictures),
+  as icons on a strip framed together with the body; each tool's tooltip names
+  it.
   *(Implemented in UltraMail 0.10.12.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the

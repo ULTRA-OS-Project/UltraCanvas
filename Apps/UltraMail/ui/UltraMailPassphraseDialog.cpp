@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailPassphraseDialog.cpp
+// Version: 0.6.0 - a header with a lock tile; Set password / Unlock carry icons
 // Version: 0.5.0 - themed inputs and buttons
-// Last Modified: 2026-09-09
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailPassphraseDialog.h"
 
@@ -46,17 +47,16 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
                    .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto intro = CreateLabel("passIntro", 0, 0, 380, 60,
+    auto header = Theme::MakeDialogHeader("passHeader", "lock",
+        firstRun ? "Choose a master password" : "Unlock your mail passwords",
         firstRun
-            ? "Choose a master password. It encrypts the passwords of your mail "
-              "accounts, and it is not stored anywhere — if you forget it you "
-              "will have to enter your mail passwords again."
-            : "Enter your master password to unlock your mail account passwords.");
-    intro->SetWrap(TextWrap::WrapWord);
-    intro->SetFontSize(Theme::kSizeBody);
-    intro->SetTextColor(Theme::kTextSecondary);
-    content->AddChild(intro);
-    intro->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            ? "It encrypts the passwords of your mail accounts, and it is not "
+              "stored anywhere — if you forget it you will have to enter your "
+              "mail passwords again."
+            : "Enter your master password to unlock your mail account passwords.",
+        firstRun ? 48.0f : 32.0f);
+    header->SetMargin(0, 0, 4, 0);
+    content->AddChild(header);
 
     // A previous wrong attempt, shown in place rather than as a stacked alert.
     if (!errorText.empty()) {
@@ -117,6 +117,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
                               firstRun ? "Set password" : "Unlock");
     Theme::FitToLabel(okBtn, 140);
     Theme::StylePrimary(okBtn);
+    Theme::SetButtonIcon(okBtn, firstRun ? "check" : "unlock");
     okBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(okBtn);
 

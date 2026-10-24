@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailComposeWindow.cpp
+// Version: 0.12.0 - the formatting tools and the body share one framed card
+//                   (the tools on a tinted strip on top); Send, Attach file and
+//                   Cloud link carry icons, Plain text | Formatted too
 // Version: 0.11.1 - the body editor shows no missing-fonts notice
 // Version: 0.11.0 - a recipient suggestion's right-click menu: Edit contact,
 //                   Delete address, Set as SPAM
@@ -18,7 +21,7 @@
 //                  a body that takes the remaining height, an attachment row
 //                  shown only while there are attachments, and a bottom
 //                  toolbar (Send primary, Attach…, Cancel on the right).
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailComposeWindow.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -183,7 +186,23 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     subject_->SetPlaceholder("Subject");
     addField("cSubj", "Subject", subject_);
 
-    root_->AddChild(Theme::MakeDivider("cRule"));
+    // The editor card: the formatting strip on top, the body below, in one
+    // frame - the toolbar reads as the editor's own, and the body is a clear
+    // place to write instead of an unbounded white area.
+    auto editorCard = CreateContainer("cEditorCard", 0, 0, 0, 0);
+    Theme::ApplyCard(editorCard, Theme::kControlRadius);
+    editorCard->SetPadding(1.0f);   // the strip's fill stays inside the frame
+    editorCard->layout.SetFlexColumn()
+                      .SetFlexGap(0)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    {
+        ContainerStyle style;
+        style.autoShowScrollbars = false;
+        editorCard->SetContainerStyle(style);
+    }
+    root_->AddChild(editorCard);
+    editorCard->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // The formatting toolbar, with Plain text | Formatted at its right end.
     // The tools act on the rich editor, and only while the body is formatted.
@@ -198,17 +217,24 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
         return self && self->formatted_ ? self->rich_.get() : nullptr;
     };
     formatBar_ = FormatBar::Build(barOptions);
-    mode_ = CreateSegmentedControl("cMode", 0, 0, 160, Theme::kControlHeight);
+    mode_ = CreateSegmentedControl("cMode", 0, 0, 200, Theme::kControlHeight);
     Theme::StyleSegmented(mode_);
-    mode_->AddSegment("Plain text");
-    mode_->AddSegment("Formatted");
+    {
+        auto style = mode_->GetStyle();
+        style.iconAsMask = true;
+        style.iconSize = Theme::kButtonIcon;
+        mode_->SetStyle(style);
+    }
+    mode_->AddSegment("Plain text", Theme::MailIcon("plain-text"));
+    mode_->AddSegment("Formatted", Theme::MailIcon("formatted"));
     mode_->SetTooltip("Plain text, or formatted text (sent as HTML with a plain-text version)");
     mode_->onSegmentSelected = [this](int segment) {
         if (!switchingMode_) SetFormatted(segment == 1);
     };
     formatBar_.paragraphRow->AddChild(mode_);
-    root_->AddChild(formatBar_.root);
-    formatBar_.root->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    editorCard->AddChild(formatBar_.root);
+    formatBar_.root->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    editorCard->AddChild(Theme::MakeDivider("cRule"));
 
     // The body takes whatever height the fields and the toolbars leave. Both
     // editors exist; the mode decides which one shows and holds the message.
@@ -217,7 +243,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     body_->SetWordWrap(true);
     Theme::StyleTextArea(body_, /*bordered=*/false);
     body_->SetText(draft_.body);
-    root_->AddChild(body_);
+    editorCard->AddChild(body_);
     body_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     rich_ = CreateRichTextEdit("cRich", 0, 0, 0, 0);
@@ -230,7 +256,7 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     rich_->SetShowFontNotice(false);
     rich_->SetDocument(draft_.richBody ? draft_.richBody : PlainBodyToRichDocument(""));
     rich_->GetEditor().SetCaret(RichDocPosition(0, 0));  // the empty line above the quote
-    root_->AddChild(rich_);
+    editorCard->AddChild(rich_);
     rich_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     formatted_ = draft_.richBody != nullptr;
@@ -258,24 +284,23 @@ std::shared_ptr<UltraCanvasContainer> ComposeView::Build() {
     auto sendBtn = CreateButton("cSend", 0, 0, 100, Theme::kControlHeight, "Send");
     Theme::FitToLabel(sendBtn, 100);
     Theme::StylePrimary(sendBtn);
+    Theme::SetButtonIcon(sendBtn, "send");
+    sendBtn->SetTooltip("Send the message now");
     sendBtn->onClick = [this]() { if (onSend) onSend(CollectDraft()); };
     toolbar->AddChild(sendBtn);
 
     auto attachBtn = CreateButton("cAttach", 0, 0, 120, Theme::kControlHeight, "Attach file…");
     Theme::FitToLabel(attachBtn, 120);
     Theme::StyleSecondary(attachBtn);
+    Theme::SetButtonIcon(attachBtn, "attach");
+    attachBtn->SetTooltip("Attach a file from this computer");
     attachBtn->onClick = [this]() { ChooseFileToAttach(); };
     toolbar->AddChild(attachBtn);
 
-    auto cloudBtn = CreateButton("cCloud", 0, 0, 192, Theme::kControlHeight,
-                                 "Attach cloud link…");
-    Theme::FitToLabel(cloudBtn, 192);
+    auto cloudBtn = CreateButton("cCloud", 0, 0, 120, Theme::kControlHeight, "Cloud link…");
+    Theme::FitToLabel(cloudBtn, 120);
     Theme::StyleSecondary(cloudBtn);
-    cloudBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/cloud.svg"));
-    cloudBtn->SetIconPosition(ButtonIconPosition::Left);
-    cloudBtn->SetIconSize(16, 16);
-    cloudBtn->SetIconSpacing(6);
-    cloudBtn->SetUseIconAsMask(true);
+    Theme::SetButtonIcon(cloudBtn, "cloud");
     cloudBtn->SetTooltip(cloud_ ? "Upload a file to cloud storage, or pick one, and put its share link into the message"
                                 : "Cloud storage is not set up in this application");
     cloudBtn->onClick = [this]() { ChooseCloudLink(); };
