@@ -20,11 +20,14 @@
 // 256-colour GIF palette is a block rather than a hairline. The host sizes
 // such a bar with HeightForWidth().
 //
+// Version: 1.3.0 - onColorHovered: the entry under the pointer, for a host
+//                  that previews it; a wrapping bar picks a line length that
+//                  leaves no short last line when one fits (256 = 8 x 32)
 // Version: 1.2.0 - SetWrap / HeightForWidth: a palette on several lines;
 //                  SetColorAt; onColorContextClicked: a right click with the
 //                  entry's index and where it happened (to edit the entry)
 // Version: 1.1.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -94,7 +97,8 @@ public:
     // Off (the default): one row, the swatches shrinking to fit and centred.
     // On: as many lines as needed to keep every swatch at least minSwatchSize,
     // with the colours shared out evenly over the lines, left-aligned from the
-    // top-left corner.
+    // top-left corner. Where a line count up to two more than the fewest
+    // divides the colours exactly, that one is used, so every line is full.
     void SetWrap(bool wrap);
     bool GetWrap() const { return wrap_; }
     // The height the bar needs at `width` to show every swatch: in wrap mode
@@ -147,6 +151,10 @@ public:
     // a popup there. When set it takes the right click instead of
     // onColorAdjustSelected.
     std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
+    // The pointer came onto a colour swatch (its index into GetColors()), or
+    // left the bar (-1). Crossing the gap between two swatches reports
+    // nothing, so a host previewing the colour does not flicker.
+    std::function<void(int index)> onColorHovered;
 
     // ===== OVERRIDES =====
     // A pointer control: it never takes the keyboard, so hosts that use the
@@ -191,6 +199,7 @@ private:
     int  selectedIndex_    = -1;      // into colors_, -1 == none
     bool checkeredSelected_ = false;
     int  hoverSlot_        = -1;
+    int  hoverReported_    = -1;      // what onColorHovered last said
 };
 
 // ===== FACTORY FUNCTIONS =====

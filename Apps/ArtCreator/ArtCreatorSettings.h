@@ -5,10 +5,12 @@
 // keeps the colour picker the way it was left: the design chosen in its list
 // and whether its channels are open. The picker changes them, so they are
 // saved as they change; there is no settings window. It also keeps the
-// colour palettes under the picker (picker.palettes).
+// colour palettes under the picker (picker.palettes) and the palettes the
+// user made in the palette manager (picker.userpalettes).
+// Version: 1.2.0 - picker.userpalettes: the palettes made with "Add palette"
 // Version: 1.1.0 - picker.palettes: the palette rows under the colour picker
 // Version: 1.0.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -37,6 +39,9 @@ public:
     // UltraCanvasColorPaletteManager::SerializePalettes writes them; empty
     // for the one default row.
     std::string palettes;
+    // The user's own palettes, made with the palette manager's "Add
+    // palette", in the same form; empty for none.
+    std::string userPalettes;
 
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
@@ -76,6 +81,8 @@ public:
         }
         it = kv.find("picker.palettes");
         if (it != kv.end()) palettes = it->second;
+        it = kv.find("picker.userpalettes");
+        if (it != kv.end()) userPalettes = it->second;
         return true;
     }
 
@@ -91,6 +98,7 @@ public:
         file << "picker.design = " << ColorPickerWheelStyleName(pickerDesign) << "\n";
         file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
         if (!palettes.empty()) file << "picker.palettes = " << palettes << "\n";
+        if (!userPalettes.empty()) file << "picker.userpalettes = " << userPalettes << "\n";
         return file.good();
     }
 

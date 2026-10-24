@@ -1,5 +1,6 @@
 // core/UltraCanvasColorPicker.cpp
 // Implementation of the comprehensive colour picker widget.
+// Version: 1.10.0 - SetSurfacePreview: a palette swatch hovered floods the surface
 // Version: 1.9.0 - SetShowBackgroundColor: a foreground-only picker
 // Version: 1.8.0 - the design selector offers the colour + brightness sliders too;
 //                  the HSV/HSL/RGB tabs collapse with the channel sliders;
@@ -12,7 +13,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorPicker.h"
@@ -369,6 +370,19 @@ namespace UltraCanvas {
         if (!show && editingBackground) EndBackgroundEdit();
         showBackground = show;
         hoverSwatch = HoverSwatch::NoneSwatch;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::SetSurfacePreview(const Color& c) {
+        if (surfacePreviewActive && surfacePreview == c) return;
+        surfacePreviewActive = true;
+        surfacePreview = c;
+        RequestRedraw();
+    }
+
+    void UltraCanvasColorPicker::ClearSurfacePreview() {
+        if (!surfacePreviewActive) return;
+        surfacePreviewActive = false;
         RequestRedraw();
     }
 
@@ -1346,6 +1360,7 @@ namespace UltraCanvas {
         Color surface = style.backgroundColor;
         if (hoverSwatch == HoverSwatch::Foreground)      { surface = GetColor();     surface.a = 255; }
         else if (hoverSwatch == HoverSwatch::Background) { surface = previousColor;  surface.a = 255; }
+        else if (surfacePreviewActive)                   { surface = surfacePreview; surface.a = 255; }
         ctx->SetFillPaint(surface);
         ctx->FillRectangle(Rect2Dd(0, 0, GetWidth(), GetHeight()));
 
