@@ -835,6 +835,46 @@ namespace UltraCanvas {
                 .AddVariant("chip", "Filter (selectable)")
                 .AddVariant("chip", "Tag Input");
 
+        basicBuilder.AddItem("chipgroup", "Chip Group",
+                             "A row of chips with one selection rule: single (categories, filters) or multiple (tags)",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateChipGroupExamples(); },
+                             "DemoApp/UltraCanvasChipGroupExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasChipGroup.md")
+                .AddVariant("chipgroup", "Single selection")
+                .AddVariant("chipgroup", "Single, none allowed")
+                .AddVariant("chipgroup", "Multiple selection");
+
+        basicBuilder.AddItem("card", "Card",
+                             "A raised surface with header, content and a row of real buttons; clickable, highlighted, selected",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateCardExamples(); },
+                             "DemoApp/UltraCanvasCardExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasCard.md")
+                .AddVariant("card", "Header, content, actions")
+                .AddVariant("card", "Clickable surface")
+                .AddVariant("card", "Highlighted / Selected");
+
+        basicBuilder.AddItem("collapsiblepanel", "Collapsible Panel",
+                             "A panel that folds to its header strip: chevron, title, detail text, header buttons, a resizable top edge",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateCollapsiblePanelExamples(); },
+                             "DemoApp/UltraCanvasCollapsiblePanelExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasCollapsiblePanel.md")
+                .AddVariant("collapsiblepanel", "Fold / unfold")
+                .AddVariant("collapsiblepanel", "Header buttons")
+                .AddVariant("collapsiblepanel", "Bottom dock, resizable");
+
+        basicBuilder.AddItem("sidebarnav", "Sidebar Navigation",
+                             "The navigation column of a window: sections of items with icon, label and badge; keyboard; compact mode",
+                             ImplementationStatus::FullyImplemented,
+                             [this]() { return CreateSidebarNavigationExamples(); },
+                             "DemoApp/UltraCanvasSidebarNavigationExamples.cpp",
+                             "Docs/UltraCanvas/UltraCanvasSidebarNavigation.md")
+                .AddVariant("sidebarnav", "Sections and badges")
+                .AddVariant("sidebarnav", "Compact mode")
+                .AddVariant("sidebarnav", "Keyboard");
+
         basicBuilder.AddItem("badge", "Badge",
                              "Count / status indicators: coloured pills, dots, and overlay badges anchored to icons",
                              ImplementationStatus::FullyImplemented,

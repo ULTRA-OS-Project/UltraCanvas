@@ -68,6 +68,7 @@ from an external "Show password" checkbox. See
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
 | Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
+| Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
 | Which point of a box stays put - a 3 x 3 grid of corners, edge midpoints and centre, for a transform bar's scale / rotate / move ([doc](UltraCanvasReferencePointPicker.md)) | `UltraCanvasReferencePointPicker` | `UltraCanvasReferencePointPicker.h` |
 | A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
@@ -113,6 +114,8 @@ formats, and does not re-decode on every frame the way an ad-hoc
 
 | You need | Element | Header |
 |---|---|---|
+| A card: header with icon, title, subtitle and a trailing badge, a content area, a row of real buttons at the foot, a clickable surface ([doc](UltraCanvasCard.md)) | `UltraCanvasCard` | `UltraCanvasCard.h` |
+| A panel that folds to its header - a download queue, a log, a problems list docked at the bottom, with a chevron, a detail text, header buttons and a resizable top edge ([doc](UltraCanvasCollapsiblePanel.md)) | `UltraCanvasCollapsiblePanel` | `UltraCanvasCollapsiblePanel.h` |
 | Group children, scroll them | `UltraCanvasContainer` (scrolling is built in) | `UltraCanvasContainer.h` |
 | A standalone scrollbar | `UltraCanvasScrollbar` | `UltraCanvasScrollbar.h` |
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
@@ -131,6 +134,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 
 | You need | Element | Header |
 |---|---|---|
+| The navigation column of a window: sections of items with icon, label and badge, one selected, keyboard and wheel, a compact icons-only mode ([doc](UltraCanvasSidebarNavigation.md)) | `UltraCanvasSidebarNavigation` | `UltraCanvasSidebarNavigation.h` |
 | Menu bar, popup and context menus | `UltraCanvasMenu` (+ `MenuBuilder`, `MenuItemData`) | `UltraCanvasMenu.h` |
 | Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
