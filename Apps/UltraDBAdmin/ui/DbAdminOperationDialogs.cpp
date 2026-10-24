@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminOperationDialogs.cpp
+// Version: 0.4.0 - the relay dialog: Sign in; titled "Connect to a DB relay", what a relay is under the buttons
 // Version: 0.3.0 - the data compare dialog
 // Version: 0.2.0 - MySQL / MariaDB types
 // Version: 0.1.0
@@ -566,14 +567,11 @@ void ShowRelayDialog(UltraCanvasWindowBase* parent, const std::string& url, bool
     auto form = std::make_shared<RelayForm>();
     form->onConnect = std::move(onConnect);
     form->onSignIn = std::move(onSignIn);
-    auto dialog = MakeDialog("Connect to a relay", 560, 330);
+    // Its title is the window's: the title bar on a desktop, and in a browser
+    // the one the WebAssembly backend draws above a dialog.
+    auto dialog = MakeDialog("Connect to a DB relay", 560, 310);
     if (!dialog) return;
     form->dialog = dialog.get();
-    dialog->AddChild(Intro("dbrIntro",
-                           "An UltraDBAdmin relay runs your queries on the databases its administrator set up, "
-                           "with passwords that stay on the relay. Your token - or signing in, where the relay "
-                           "offers it - says who you are and what you may read or change.",
-                           78));
     auto grid = CreateFormGrid("dbrForm", 8.0f, 10.0f);
     grid->layoutItem.SetFlexShrink(0);
     auto address = CreateTextInput("dbrUrl", 0, 0, 0, kLineHeight);
@@ -589,7 +587,6 @@ void ShowRelayDialog(UltraCanvasWindowBase* parent, const std::string& url, bool
     auto error = ErrorLine("dbrError");
     form->error = error.get();
     dialog->AddChild(error);
-    dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
 
     auto buttons = ButtonRow("dbrButtons");
     buttons->AddStretchSpacer(1);
@@ -665,6 +662,15 @@ void ShowRelayDialog(UltraCanvasWindowBase* parent, const std::string& url, bool
     };
     buttons->AddChild(connect);
     dialog->AddChild(buttons);
+    // What a relay is, under the buttons, for whoever wants to know.
+    auto intro = Intro("dbrIntro",
+                       "An UltraDBAdmin relay runs your queries on the databases its administrator set up, "
+                       "with passwords that stay on the relay. Your token - or signing in, where the relay "
+                       "offers it - says who you are and what you may read or change.",
+                       78);
+    intro->SetTextColor(StatusColor());
+    dialog->AddChild(intro);
+    dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }
 

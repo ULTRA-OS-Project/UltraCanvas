@@ -30,7 +30,7 @@ const chromium = playwright.chromium || playwright.default.chromium;
 
 // Where the page puts things (1400 x 900, the fonts it carries). A change to
 // the layout moves them: the screenshots of a failed run show where to.
-const SIGN_IN = [680, 500];          // the relay dialog's Sign in
+const SIGN_IN = [680, 368];          // the relay dialog's Sign in
 const SHOP_EXPANDER = [29, 117];     // the tree's only connection
 const ORDERS = [116, 169];           // its schema main's only table
 const SQL_TAB = [571, 123];

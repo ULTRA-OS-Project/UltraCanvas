@@ -8,3 +8,6 @@
 - **A statement time-out on the relay** (`statement_timeout`, 300 s unless
   set): a query still running then is stopped on the database and the page
   told why.
+- **The relay dialog** is titled "Connect to a DB relay", with the address,
+  the token and the buttons first and what a relay is under them; in the
+  browser it has a title bar to move it by, as every dialog there now has.

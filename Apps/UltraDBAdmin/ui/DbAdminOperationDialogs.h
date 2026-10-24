@@ -20,6 +20,7 @@
 // The dialogs never run SQL themselves: they hand what was chosen back to
 // the window, which plans and runs it on its worker. A callback that returns
 // an error keeps the dialog open with the error shown; "" closes it.
+// Version: 0.4.0 - ShowRelayDialog: titled "Connect to a DB relay", the explanation under the buttons
 // Version: 0.3.0 - ShowRelayDialog: Sign in, beside the token
 // Version: 0.2.0 - ShowCompareDialog, ShowRelayDialog
 // Version: 0.1.0
