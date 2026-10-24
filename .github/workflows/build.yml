@@ -1274,7 +1274,7 @@ jobs:
           # (libsodium's Ed25519), the resolver and the client, then the
           # program's own view of the runner.
           (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreCore$")
-          store=build/bin/ultrastore
+          store=build/ultrastore
           [ "${{ runner.os }}" = "Windows" ] && store="$store.exe"
           "$store" --version
           "$store" platform

@@ -70,7 +70,9 @@ target_compile_features(ultrastore PRIVATE cxx_std_20)
 # The version comes from the first line of Docs/UltraStore/CHANGELOG.md through
 # cmake/UltraCanvasVersion.cmake - never a literal of its own.
 target_compile_definitions(ultrastore PRIVATE ULTRASTORE_VERSION="${ULTRASTORE_VERSION}")
-set_target_properties(ultrastore PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+# Beside UltraCanvasStart in the build root (CMAKE_RUNTIME_OUTPUT_DIRECTORY),
+# where the core's DLL is on Windows: under bin/ the program does not start
+# there (exit 127 in CI, the DLL not found).
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     install(TARGETS ultrastore RUNTIME DESTINATION bin)
 endif()
