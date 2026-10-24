@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.6.0 - spell marks move with an edit instead of vanishing below the caret;
+//                 onSpellLanguageSuggested
 // Version: 1.5.0 - SetHighlightColor: the background behind the selected text
 // Version: 1.4.0 - GetFontReport and the font notice: the fonts a document needs that the
 //                  computer lacks, each a link to the page it is downloaded from
@@ -600,6 +602,10 @@ public:
     // THREADING: see SpellCheckOptions::shouldSkipRange — the hook it installs
     // runs on the spell worker thread.
     std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
+    // A finished check suggests another dictionary (automatic detection, see
+    // SpellLanguageDetectionOptions). The element does not switch: the language
+    // is shared, so the host decides. UI thread, outside the render pass.
+    std::function<void(const std::string& /*languageCode*/)> onSpellLanguageSuggested;
 
 private:
     // ===== BLOCK LAYOUT CACHE =====
@@ -904,7 +910,9 @@ private:
     // visual line the range crosses.
     std::vector<Rect2Df> BlockRangeRects(int blockIndex, int startByte, int endByte) const;
     void QueueSpellCheck();
-    void DropStaleSpellErrors();
+    // Moves the errors on hand onto `current` (built by BuildSpellText with
+    // `starts`), so an edit never leaves a mark on the wrong text.
+    void RebaseSpellErrors(const std::string& current, const std::vector<int>& starts);
     void RegisterSpellResultNotifier();
     void DrawSpellErrorMarks(IRenderContext* ctx);
     // Selects `match`, scrolls it into view and notifies.
@@ -1077,6 +1085,7 @@ private:
     std::vector<SpellError> spellErrors;
     std::vector<int> spellBlockStarts;
     std::string spellText;            // the text the errors on hand describe
+    uint64_t spellPendingJobId = 0;   // the job whose result describes the document now
     uint64_t spellContextId = 0;
     SpellCheckOptions spellOptions;
     std::shared_ptr<UltraCanvasMenu> spellSuggestionMenu;

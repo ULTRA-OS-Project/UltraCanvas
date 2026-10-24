@@ -928,6 +928,15 @@ namespace UltraCanvas {
         // and are used for this check only. Runs on the UI thread.
         std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 
+        // Called when a finished check carries a language suggestion - the
+        // service's automatic detection found that another installed dictionary
+        // fits this text far better (see SpellLanguageDetectionOptions). The
+        // area does not switch by itself: the language is shared by every
+        // checked element, so the host decides, normally with
+        // UltraCanvasSpellChecker::Instance().SetLanguage(code). Runs on the UI
+        // thread, outside the render pass.
+        std::function<void(const std::string& /*languageCode*/)> onSpellLanguageSuggested;
+
     protected:
         // ----- Gutter / decoration extension points -----
         // The base class draws line numbers and the current-line highlight only.
@@ -1100,9 +1109,11 @@ namespace UltraCanvas {
         bool LineColumnToByteOffset(const LineColumnIndex& idx, size_t& out) const;
         void DrawSpellErrorMarks(IRenderContext* ctx);
         void QueueSpellCheck();
-        // Drops the errors whose span no longer holds the word they were raised
-        // for, so an edit never leaves a mark on the wrong text.
-        void DropStaleSpellErrors();
+        // Moves the errors on hand onto the edited text: the ones after the edit
+        // shift with it, the ones it touched are dropped. Without this every
+        // mark below the caret vanished at each keystroke and came back with
+        // the next result - the squiggles under the text flickered as one typed.
+        void RebaseSpellErrors();
         // Asks the service to request a repaint when a result lands, so a check
         // finishing after the edit's frame still gets drawn.
         void RegisterSpellResultNotifier();
@@ -1185,6 +1196,12 @@ namespace UltraCanvas {
         // of the element and released in the destructor via CancelContext.
         bool spellCheckEnabled = false;
         std::vector<SpellError> spellErrors;
+        // The text spellErrors' offsets refer to; RebaseSpellErrors diffs it
+        // against textContent. Only held while there are errors to move.
+        std::string spellErrorsText;
+        // The job whose result describes the current text. A result for any
+        // other job was computed for text that has since changed.
+        uint64_t spellPendingJobId = 0;
         uint64_t spellContextId = 0;
         SpellCheckOptions spellOptions;
         // Held so the popup outlives the click that opened it.

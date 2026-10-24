@@ -1,10 +1,12 @@
 // core/UltraCanvasSpellChecker.cpp
 // Implementation of the cross-platform spell checking service
+// Version: 1.2.0 - automatic language detection: DetectLanguage, and the worker
+//                  suggests another dictionary when a check flags most words
 // Version: 1.1.1 - the user dictionary lives in the framework's data folder rule
 //                  (UltraCanvasDataFolder.h): Application Support on macOS, with the
 //                  folder an earlier version left in ~/.local/share moved there once
 // Version: 1.1.0
-// Last Modified: 2026-10-13
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpellChecker.h"
@@ -190,6 +192,113 @@ std::vector<WordSpan> TokenizeWords(const std::string& text) {
     }
 
     return spans;
+}
+
+// The edit is found as the span between the longest common prefix and the
+// longest common suffix of the two texts - a typed character, a deletion, a
+// paste or a replaced selection is always one such span. Errors before it
+// stay, errors after it move by the size difference, and errors it touched go:
+// their word may have changed. An error merely adjacent to the edit is kept
+// unless the edit extended its word - a space typed after a misspelling keeps
+// the mark, a letter does not.
+bool RebaseErrors(std::vector<SpellError>& errors,
+                  const std::string& before,
+                  const std::string& after) {
+    if (errors.empty() || before == after) return false;
+
+    const size_t shorter = std::min(before.size(), after.size());
+    size_t prefix = 0;
+    while (prefix < shorter && before[prefix] == after[prefix]) ++prefix;
+    size_t suffix = 0;
+    while (suffix < shorter - prefix &&
+           before[before.size() - 1 - suffix] == after[after.size() - 1 - suffix]) {
+        ++suffix;
+    }
+    const size_t beforeEditEnd = before.size() - suffix;
+    const size_t afterEditEnd = after.size() - suffix;
+
+    auto countSpan = [](const std::string& text, size_t from, size_t to,
+                        long long& codepoints, long long& newlines) {
+        codepoints = 0;
+        newlines = 0;
+        for (size_t i = from; i < to; ++i) {
+            const unsigned char c = static_cast<unsigned char>(text[i]);
+            if ((c & 0xC0) != 0x80) ++codepoints;
+            if (c == '\n') ++newlines;
+        }
+    };
+    long long removedCp = 0, removedLines = 0, insertedCp = 0, insertedLines = 0;
+    countSpan(before, prefix, beforeEditEnd, removedCp, removedLines);
+    countSpan(after, prefix, afterEditEnd, insertedCp, insertedLines);
+    const long long byteDelta = static_cast<long long>(after.size()) -
+                                static_cast<long long>(before.size());
+
+    const bool keepTouchingBefore =
+        prefix >= after.size() || !IsWordByte(static_cast<unsigned char>(after[prefix]));
+    const bool keepTouchingAfter =
+        afterEditEnd == 0 ||
+        !IsWordByte(static_cast<unsigned char>(after[afterEditEnd - 1]));
+
+    // An error after the edit but still on the line the edit ends on changes
+    // column by however much the edit moved that line's tail - the same for
+    // all of them, so it is worked out once rather than per error (a document
+    // that is one long line would otherwise make this quadratic).
+    const size_t editLineEndBefore = before.find('\n', beforeEditEnd);
+    auto columnOf = [&countSpan](const std::string& text, size_t offset) {
+        size_t lineStart = 0;
+        if (offset > 0) {
+            const size_t newline = text.rfind('\n', offset - 1);
+            if (newline != std::string::npos) lineStart = newline + 1;
+        }
+        long long column = 0, ignored = 0;
+        countSpan(text, lineStart, offset, column, ignored);
+        return column;
+    };
+    const long long columnDelta = columnOf(after, afterEditEnd) - columnOf(before, beforeEditEnd);
+
+    std::vector<SpellError> rebased;
+    rebased.reserve(errors.size());
+    for (SpellError& error : errors) {
+        const size_t errorEnd = error.startByte + error.byteLength;
+        if (errorEnd > before.size()) continue;   // does not describe `before` at all
+
+        if (errorEnd < prefix || (errorEnd == prefix && keepTouchingBefore)) {
+            rebased.push_back(std::move(error));
+            continue;
+        }
+        if (error.startByte < beforeEditEnd ||
+            (error.startByte == beforeEditEnd && !keepTouchingAfter)) {
+            continue;   // inside the edit, or its word was extended by it
+        }
+
+        const bool onEditLine = editLineEndBefore == std::string::npos ||
+                                error.startByte <= editLineEndBefore;
+
+        error.startByte = static_cast<size_t>(static_cast<long long>(error.startByte) + byteDelta);
+        error.startChar = static_cast<size_t>(static_cast<long long>(error.startChar) +
+                                              insertedCp - removedCp);
+        if (error.lineIndex >= 0) {
+            error.lineIndex += static_cast<int>(insertedLines - removedLines);
+        }
+        if (onEditLine && error.columnIndex >= 0) {
+            error.columnIndex = static_cast<int>(error.columnIndex + columnDelta);
+        }
+        rebased.push_back(std::move(error));
+    }
+
+    // Belt and braces: a mark is only ever drawn over the word it was raised for.
+    rebased.erase(
+        std::remove_if(rebased.begin(), rebased.end(),
+                       [&after](const SpellError& error) {
+                           return error.startByte + error.byteLength > after.size() ||
+                                  after.compare(error.startByte, error.byteLength,
+                                                error.word) != 0;
+                       }),
+        rebased.end());
+
+    const bool dropped = rebased.size() != errors.size();
+    errors = std::move(rebased);
+    return dropped;
 }
 
 const SpellError* FindErrorAtByteOffset(const std::vector<SpellError>& errors,
@@ -626,9 +735,31 @@ std::vector<std::string> UltraCanvasSpellChecker::GetSuggestions(const std::stri
     return backend->GetSuggestions(word, maxCount);
 }
 
+// The words CheckText never looks up. Shared with DetectLanguage, so a
+// detection is decided on exactly the words a check would flag.
+static bool IsSpanSkipped(const SpellCheckText::WordSpan& span, const SpellCheckOptions& options) {
+    const std::string& word = span.text;
+    if (static_cast<int>(span.charLength) < options.minimumWordLength) return true;
+    if (options.shouldSkipRange && options.shouldSkipRange(span.startByte, span.byteLength)) return true;
+    if (options.skipUrlsAndEmails && SpellCheckText::LooksLikeUrlOrEmail(word)) return true;
+    if (options.skipWordsWithUnderscore && word.find('_') != std::string::npos) return true;
+    if (options.skipWordsWithDigits && SpellCheckText::ContainsDigit(word)) return true;
+    if (options.skipUpperCaseWords && SpellCheckText::IsAllUpperCase(word)) return true;
+    if (options.skipMixedCaseWords && SpellCheckText::IsMixedCase(word)) return true;
+    return false;
+}
+
 std::vector<SpellError> UltraCanvasSpellChecker::CheckText(const std::string& text,
                                                            const SpellCheckOptions& options) const {
+    int checkedWordCount = 0;
+    return CheckTextCounted(text, options, checkedWordCount);
+}
+
+std::vector<SpellError> UltraCanvasSpellChecker::CheckTextCounted(const std::string& text,
+                                                                  const SpellCheckOptions& options,
+                                                                  int& checkedWordCount) const {
     std::vector<SpellError> errors;
+    checkedWordCount = 0;
     if (text.empty()) return errors;
     if (!initialized.load()) return errors;
 
@@ -640,31 +771,7 @@ std::vector<SpellError> UltraCanvasSpellChecker::CheckText(const std::string& te
     for (const SpellCheckText::WordSpan& span : spans) {
         const std::string& word = span.text;
 
-        if (static_cast<int>(span.charLength) < options.minimumWordLength) {
-            previousLowered.clear();
-            continue;
-        }
-        if (options.shouldSkipRange && options.shouldSkipRange(span.startByte, span.byteLength)) {
-            previousLowered.clear();
-            continue;
-        }
-        if (options.skipUrlsAndEmails && SpellCheckText::LooksLikeUrlOrEmail(word)) {
-            previousLowered.clear();
-            continue;
-        }
-        if (options.skipWordsWithUnderscore && word.find('_') != std::string::npos) {
-            previousLowered.clear();
-            continue;
-        }
-        if (options.skipWordsWithDigits && SpellCheckText::ContainsDigit(word)) {
-            previousLowered.clear();
-            continue;
-        }
-        if (options.skipUpperCaseWords && SpellCheckText::IsAllUpperCase(word)) {
-            previousLowered.clear();
-            continue;
-        }
-        if (options.skipMixedCaseWords && SpellCheckText::IsMixedCase(word)) {
+        if (IsSpanSkipped(span, options)) {
             previousLowered.clear();
             continue;
         }
@@ -699,6 +806,7 @@ std::vector<SpellError> UltraCanvasSpellChecker::CheckText(const std::string& te
 
         if (IsWordAcceptable(word)) continue;
 
+        ++checkedWordCount;
         bool correct = true;
         {
             // Locked per word, not per document, so a long background check
@@ -728,6 +836,186 @@ std::vector<SpellError> UltraCanvasSpellChecker::CheckText(const std::string& te
     }
 
     return errors;
+}
+
+// ===================================================================
+// SERVICE - LANGUAGE DETECTION
+// ===================================================================
+
+void UltraCanvasSpellChecker::SetLanguageDetectionOptions(
+    const SpellLanguageDetectionOptions& options) {
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        detectionOptions = options;
+    }
+    // Thresholds that changed make the remembered verdicts meaningless.
+    std::lock_guard<std::mutex> lock(jobMutex);
+    detectionMemos.clear();
+}
+
+SpellLanguageDetectionOptions UltraCanvasSpellChecker::GetLanguageDetectionOptions() const {
+    std::lock_guard<std::mutex> lock(stateMutex);
+    return detectionOptions;
+}
+
+// One dictionary per base language: loading every dictionary costs time, and
+// en-US against en-GB tells nothing about which language the text is in. The
+// current language comes first, so it is the one a tie keeps; for the others
+// the variant named after the language itself (de-DE, fr-FR, en-US) is
+// preferred over regional ones.
+std::vector<std::string> UltraCanvasSpellChecker::LanguageDetectionCandidates() const {
+    const std::vector<SpellLanguageInfo> languages = GetAvailableLanguages();
+    const std::string current = GetLanguage();
+    const std::string currentBase = LanguageTagBase(NormaliseLanguageTag(current));
+
+    std::vector<std::string> candidates;
+    std::vector<std::string> bases;
+    std::vector<bool> preferred;
+    if (!current.empty()) {
+        candidates.push_back(current);
+        bases.push_back(currentBase);
+        preferred.push_back(true);
+    }
+
+    for (const SpellLanguageInfo& info : languages) {
+        if (!info.isAvailable || info.code.empty()) continue;
+        const std::string tag = NormaliseLanguageTag(info.code);
+        const std::string base = LanguageTagBase(tag);
+        const bool isPreferred = (tag == base + "_" + base) || tag == "en_us";
+
+        auto it = std::find(bases.begin(), bases.end(), base);
+        if (it == bases.end()) {
+            candidates.push_back(info.code);
+            bases.push_back(base);
+            preferred.push_back(isPreferred);
+            continue;
+        }
+        const size_t index = static_cast<size_t>(it - bases.begin());
+        if (isPreferred && !preferred[index]) {
+            candidates[index] = info.code;
+            preferred[index] = true;
+        }
+    }
+    return candidates;
+}
+
+SpellLanguageGuess UltraCanvasSpellChecker::DetectLanguage(const std::string& text,
+                                                           const SpellCheckOptions& options,
+                                                           int maximumSampleWords) const {
+    SpellLanguageGuess guess;
+    if (text.empty() || !initialized.load()) return guess;
+
+    std::vector<std::string> words;
+    for (const SpellCheckText::WordSpan& span : SpellCheckText::TokenizeWords(text)) {
+        if (IsSpanSkipped(span, options)) continue;
+        if (IsWordAcceptable(span.text)) continue;   // the user's words fit every language
+        words.push_back(span.text);
+    }
+    if (words.empty()) return guess;
+
+    // Spread the sample over the whole text rather than taking its start, so a
+    // long document is judged by all of it.
+    const size_t limit = static_cast<size_t>(std::max(1, maximumSampleWords));
+    if (words.size() > limit) {
+        std::vector<std::string> sample;
+        sample.reserve(limit);
+        for (size_t i = 0; i < limit; ++i) {
+            sample.push_back(std::move(words[i * words.size() / limit]));
+        }
+        words = std::move(sample);
+    }
+    guess.sampledWords = static_cast<int>(words.size());
+
+    const std::vector<std::string> candidates = LanguageDetectionCandidates();
+    if (candidates.empty()) return guess;
+
+    // The backend is held for the whole pass: switching it per candidate and
+    // letting other callers in between would hand them answers from whichever
+    // dictionary happened to be loaded. A language picked by the user meanwhile
+    // waits here and is applied afterwards, on top of the restored original.
+    std::lock_guard<std::mutex> lock(backendMutex);
+    if (!backend) return guess;
+    const std::string original = backend->GetLanguage();
+
+    size_t bestErrors = words.size() + 1;
+    for (const std::string& candidate : candidates) {
+        if (backend->GetLanguage() != candidate && !backend->SetLanguage(candidate)) continue;
+
+        size_t errors = 0;
+        for (const std::string& word : words) {
+            if (!backend->IsWordCorrect(word)) ++errors;
+            if (errors >= bestErrors) break;   // already worse than the best so far
+        }
+        if (errors < bestErrors) {
+            bestErrors = errors;
+            guess.languageCode = candidate;
+        }
+    }
+
+    if (!original.empty() && backend->GetLanguage() != original) {
+        backend->SetLanguage(original);
+    }
+
+    if (!guess.languageCode.empty()) {
+        guess.errorRate = static_cast<double>(bestErrors) / static_cast<double>(words.size());
+    }
+    return guess;
+}
+
+void UltraCanvasSpellChecker::SuggestLanguageForResult(const SpellCheckJob& job,
+                                                       SpellCheckResult& result) {
+    const SpellLanguageDetectionOptions options = GetLanguageDetectionOptions();
+    if (!options.enabled) return;
+    if (result.checkedWordCount < std::max(1, options.minimumWords)) return;
+
+    const double errorRate = static_cast<double>(result.misspelledCount) /
+                             static_cast<double>(result.checkedWordCount);
+    if (errorRate <= options.triggerErrorRate) return;
+
+    {
+        std::lock_guard<std::mutex> lock(jobMutex);
+        auto it = detectionMemos.find(job.contextId);
+        if (it != detectionMemos.end() &&
+            it->second.checkedLanguage == result.languageCode &&
+            result.checkedWordCount < it->second.checkedWordCount * 3 / 2) {
+            // Detected recently against this same language. Its finding is
+            // repeated rather than recomputed - the result that first carried
+            // it may have been dropped as stale while the user kept typing.
+            result.suggestedLanguage = it->second.suggestedLanguage;
+            result.suggestedLanguageErrorRate = it->second.suggestedErrorRate;
+            return;
+        }
+
+        // A newer edit makes this text obsolete; its own check will decide.
+        auto latest = latestJobPerContext.find(job.contextId);
+        if (latest == latestJobPerContext.end() || latest->second != job.jobId) return;
+    }
+
+    const SpellLanguageGuess guess = DetectLanguage(job.text, job.options,
+                                                    options.maximumSampleWords);
+
+    LanguageDetectionMemo memo;
+    memo.checkedLanguage = result.languageCode;
+    memo.checkedWordCount = result.checkedWordCount;
+    if (!guess.languageCode.empty() && guess.languageCode != result.languageCode &&
+        guess.errorRate < options.acceptErrorRate) {
+        memo.suggestedLanguage = guess.languageCode;
+        memo.suggestedErrorRate = guess.errorRate;
+    }
+
+    debugOutput << "UltraCanvasSpellChecker: " << result.misspelledCount << " of "
+                << result.checkedWordCount << " words misspelled in '" << result.languageCode
+                << "'; best fit '" << guess.languageCode << "' flags "
+                << static_cast<int>(guess.errorRate * 100.0 + 0.5) << "% of "
+                << guess.sampledWords << " sampled words"
+                << (memo.suggestedLanguage.empty() ? " - no switch" : " - suggested")
+                << std::endl;
+
+    result.suggestedLanguage = memo.suggestedLanguage;
+    result.suggestedLanguageErrorRate = memo.suggestedErrorRate;
+
+    std::lock_guard<std::mutex> lock(jobMutex);
+    detectionMemos[job.contextId] = std::move(memo);
 }
 
 // ===================================================================
@@ -793,6 +1081,7 @@ void UltraCanvasSpellChecker::CancelContext(uint64_t contextId) {
                            }),
             pendingJobs.end());
         latestJobPerContext.erase(contextId);
+        detectionMemos.erase(contextId);
     }
     {
         std::lock_guard<std::mutex> lock(resultMutex);
@@ -825,6 +1114,7 @@ void UltraCanvasSpellChecker::StopWorker() {
     std::lock_guard<std::mutex> lock(jobMutex);
     pendingJobs.clear();
     latestJobPerContext.clear();
+    detectionMemos.clear();
 }
 
 void UltraCanvasSpellChecker::WorkerLoop() {
@@ -844,7 +1134,12 @@ void UltraCanvasSpellChecker::WorkerLoop() {
         result.contextId = job.contextId;
         result.jobId = job.jobId;
         result.languageCode = GetLanguage();
-        result.errors = CheckText(job.text, job.options);
+        result.errors = CheckTextCounted(job.text, job.options, result.checkedWordCount);
+        result.misspelledCount = static_cast<int>(std::count_if(
+            result.errors.begin(), result.errors.end(), [](const SpellError& error) {
+                return error.kind == SpellErrorKind::Misspelled;
+            }));
+        SuggestLanguageForResult(job, result);
 
         // Drop the result if a newer edit arrived while we were checking.
         {
