@@ -5,12 +5,30 @@
 `ImplementationStatus::Planned`. Its page is placeholder text only, and this
 document is the design behind it.
 
+**Revision 2 (2026-10-24): scope correction.** Reference image 4, the
+importance–performance matrix, is **out of scope for this element**. It comes
+from operations strategy (Slack 1994), not from talent management. It rates
+competitive *factors*, not people, and it is a scatter plot of points over
+curved regions, not a grid of named categories. Revision 1 filed it as a fifth
+`Zones` design and recommended keeping it here (§9 Q1). That was wrong for the
+same reason the matrix diagram's room-adjacency images were (its revision 3):
+two unrelated datasets would share one element, and Phase 4 existed only for
+image 4's curves. It now has its own proposal,
+[`UltraCanvasImportancePerformanceChartProposal.md`](UltraCanvasImportancePerformanceChartProposal.md),
+a chart on the chart engine. Consequences here: the `Zones` design, the zone
+and band types, `ZoneOf`, the `ImportancePerformance` sample and the old
+Phase 4 are gone. Feature ids D5, C5, P4 and L2 are kept, marked *ceded*, so
+the ids of the other features do not change. Placing people by continuous
+scores (P1, P2) stays, because 9-box ratings are often numbers too.
+
 **Author:** UltraCanvas Framework
-**Last Modified:** 2026-10-23
+**Last Modified:** 2026-10-24
 **Related:** `UltraCanvasQuadrantChart` (implemented: a 2×2 plane with
 continuous points, the nearest *chart* sibling), `UltraCanvasMatrixDiagram`
 (implemented: relationship symbols between item lists, the nearest *grid*
 sibling), `UltraCanvasHeatmapChart` (implemented: a scalar per cell),
+`UltraCanvasImportancePerformanceChartProposal.md` (proposed: reference
+image 4, ceded in revision 2),
 `UltraCanvasSWOTDiagram` (implemented: four fixed panels of bullet lists in
 several design presets, the template this proposal follows for *designs*),
 [`UltraCanvasMatrixDiagramProposal.md`](UltraCanvasMatrixDiagramProposal.md)
@@ -26,15 +44,15 @@ central:
 
 | Candidate | What it is | What a performance matrix needs that it lacks |
 |---|---|---|
-| `UltraCanvasQuadrantChart` | 2×2 plane split by two straight lines, with points plotted in axis units | 3×3 (and N×M) grids; text, codes, bullets and icons *in* the cells; ordinal axis levels with their own captions and icons; curved zones |
+| `UltraCanvasQuadrantChart` | 2×2 plane split by two straight lines, with points plotted in axis units | 3×3 (and N×M) grids; text, codes, bullets and icons *in* the cells; ordinal axis levels with their own captions and icons |
 | `UltraCanvasMatrixDiagram` | Two to four item lists crossed, with a symbol from a scale at each intersection | The cells are not relationships between two lists. Each cell is a labelled category of a scored plane, and people or factors are placed into it |
 | `UltraCanvasHeatmapChart` | A scalar value per cell, shown through a colour map | Cell titles, descriptions and bullet lists; populations; header tabs |
 | `UltraCanvasSWOTDiagram` | Four fixed panels of bullet lists | Any grid other than four panels; axes; a population |
 
-What the five reference images share is one idea. **Two ordinal axes (usually
+What reference images 1, 2, 3 and 5 share is one idea. **Two ordinal axes (usually
 performance and potential) make a grid of named categories, and a population
 (people, products, service factors) falls into those categories.** That idea is
-the model. How it is drawn (tabs, tiles, cards or curved zones) is a design
+the model. How it is drawn (tabs, tiles or cards) is a design
 preset over that model, the same way `SWOTDesign` gives one SWOT dataset six
 looks.
 
@@ -42,14 +60,15 @@ Recommendation:
 
 * One UI-free model, `PerformanceMatrixModel`
   (`include/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.h`). It holds
-  the two axes, the cells, the optional zones and the population, plus the
+  the two axes, the cells and the population, plus the
   arithmetic: placement from scores, counts, distribution against a target.
 * One element, `UltraCanvasPerformanceMatrix`
   (`include/Plugins/Diagrams/UltraCanvasPerformanceMatrix.h`), deriving from
   `UltraCanvasChartElementBase` the way SWOT does.
-* Five designs: `Grid`, `Tiles`, `HeaderTabs`, `Cards` and `Zones`. Every
-  reference image is one of them plus a palette.
-* Four phases (§10). Phase 1 alone retires the demo placeholder.
+* Four designs: `Grid`, `Tiles`, `HeaderTabs` and `Cards`. Each of reference
+  images 1, 2, 3 and 5 is one of them plus a palette. Image 4 is a different
+  chart (revision 2).
+* Three phases (§10). Phase 1 alone retires the demo placeholder.
 
 ---
 
@@ -58,15 +77,16 @@ Recommendation:
 A performance matrix rates every member of a population on two ordinal
 dimensions and reads off a category from where the two ratings cross. The
 category carries the meaning, such as "Future Star" or "Urgent Action", and
-usually a recommended action. Four families are in common use, and the
-reference images cover all of them:
+usually a recommended action. Three families are in common use, and
+reference images 1, 2, 3 and 5 cover the first two. A fourth family shares
+the name and is listed only to mark the boundary:
 
 | Family | Axes | Usual grid | Population |
 |---|---|---|---|
 | **9-box talent grid** (adapted from the GE–McKinsey business screen) | Performance (X) × Potential (Y) | 3×3 | Employees |
 | **Performance management matrix** | Performance level (rows) × a facet of potential such as engagement, ability or aspiration (columns) | 3×3 with header tabs | Employees, or none: often a pure reference card |
-| **Importance–performance matrix** (Martilla & James 1977; Slack 1994 for operations) | Importance to the customer (X) × performance against competitors (Y) | Continuous, split into *zones* by curved boundaries | Service or product factors, plotted as points |
 | **Skill / will and similar 2×2s** | Skill × Will, Ability × Motivation | 2×2 | Employees |
+| *Importance–performance matrix* (Martilla & James 1977; Slack 1994): **not this element** | Importance to the customer × performance against competitors | Continuous, split into zones | Service or product factors, plotted as points. See the importance–performance chart proposal |
 
 Three properties set these apart from the charts we already have:
 
@@ -123,7 +143,7 @@ Demands: no new design. A **monochrome palette** (**S1**) derives the tab
 shades from one colour. The rounded container (**S4**) is a style flag, not a
 design. Image 3 is why a palette has to be separate from a design.
 
-### Image 4 — "Importance Performance Matrix", curved zones
+### Image 4 — "Importance Performance Matrix" *(ceded — revision 2)*
 
 There is no grid. The plane is split by curved boundaries into four zones:
 *Excess* (top left), *Appropriate* (most of the upper area), *Improve* (bottom
@@ -133,11 +153,11 @@ are ordinal with three level names (*Worse Than / Same As / Better Than* on Y
 and *Less Important / Qualifying / Order Winning* on X), plus low and high end
 captions (*Bad / Good*, *Low / High*) and a two-line title on each axis.
 
-Demands: **D5** `Zones` design, with zones given as outlines in axis units
-(**C5**); a labelled band drawn along a boundary (**C5**); level names placed
-along a continuous axis (**L2**). In its usual use this chart plots service
-factors as points, so **P1** must work with continuous scores too, and **P4**
-must classify each point into the zone it lands in.
+Not a performance matrix in this document's sense: the axes rate how much
+customers care about a competitive factor and how it compares with
+competitors, and the factors are plotted as points. Everything this image
+demands is in
+[`UltraCanvasImportancePerformanceChartProposal.md`](UltraCanvasImportancePerformanceChartProposal.md).
 
 ### Image 5 — "9 box matrix for talent management", bordered cards
 
@@ -154,7 +174,8 @@ axis (**L4**).
 
 ### Cross-image constants
 
-Every image has two axes, and every level is named. Every grid is 3×3, but
+Every image has two axes, and every level is named. Every grid in images
+1, 2, 3 and 5 is 3×3, but
 2×2 and 4×4 variants are common enough elsewhere that the model must not
 assume three levels. Colour encodes rank or row, and never anything the text
 does not also say, which matters for colour-blind readers (§7.4). None of the
@@ -181,8 +202,8 @@ It still fails in three ways:
 * Images 1, 3 and 5 have no plotted points at all. Pushing reference cards
   through a scatter-plot element would mean switching off most of what it does.
 
-What the quadrant chart *does* own is the continuous plane. Image 4 is the one
-place where the two overlap, and §9 Q1 takes up that question.
+What the quadrant chart *does* own is the continuous plane. Image 4 was the
+one place where the two overlapped, and it has moved out (revision 2).
 
 ### 4.2 Why not a shape of the matrix diagram
 
@@ -232,7 +253,7 @@ geometry is close, but the model is not.
    boundaries are.
 7. `Tests/PerformanceMatrixModelTest.cpp` and its entry in
    `Tests/CMakeLists.txt`, covering placement from scores, counts,
-   distribution, zone classification and the JSON and CSV round trips, after
+   distribution and the JSON and CSV round trips, after
    `Tests/MatrixModelTest.cpp`.
 8. A `Docs/UltraCanvas/changelog.d/` entry. Run
    `python3 scripts/generate_doc_toc.py`, `check_doc_examples.py` on the new
@@ -277,7 +298,7 @@ namespace UltraCanvas {
         std::string lowCaption  = "Low";       // at the arrow's low end
         std::string highCaption = "High";
         std::vector<PerformanceLevel> levels;  // always ordered low -> high
-        double      minScore = 0.0;            // continuous range: scores, zones
+        double      minScore = 0.0;            // continuous range for scores
         double      maxScore = 1.0;
         bool        reversed = false;          // draw high first (left / top)
     };
@@ -296,25 +317,6 @@ namespace UltraCanvas {
         std::string iconPath;
         Color       fill = Color(0, 0, 0, 0);  // used by PerformanceCellColoring::Explicit
         std::string note;              // tooltip only
-    };
-
-    // ===== ZONES (Zones design only) =====
-
-    struct PerformanceZone {
-        std::string id;
-        std::string title;                 // "Urgent Action"
-        std::string iconPath;
-        Color       fill;
-        std::vector<Point2Dd> outline;     // closed polygon in axis units
-        bool        smooth = true;         // draw the outline as a spline through its points
-    };
-
-    // A labelled band along a curve, e.g. Slack's "lower bound of acceptability".
-    struct PerformanceBand {
-        std::string label;
-        Color       fill;
-        std::vector<Point2Dd> centreLine;  // axis units
-        double      width = 0.06;          // in axis units, measured on the Y range
     };
 
     // ===== POPULATION =====
@@ -353,8 +355,6 @@ namespace UltraCanvas {
         PerformanceAxis xAxis;             // usually performance
         PerformanceAxis yAxis;             // usually potential
         std::vector<PerformanceCell>       cells;    // at most one per (row, col)
-        std::vector<PerformanceZone>       zones;
-        std::vector<PerformanceBand>       bands;
         std::vector<PerformanceMatrixItem> items;
 
         // Optional target share per cell, row-major, summing to 1. Forced
@@ -367,7 +367,6 @@ namespace UltraCanvas {
         const PerformanceCell* FindCell(int row, int col) const;
         PerformanceCellRef     CellOf(const PerformanceMatrixItem& item) const;
         std::vector<int>       CountsPerCell() const;               // row-major
-        int                    ZoneOf(const Point2Dd& scores) const; // index, -1 = none
         PerformanceMatrixValidation Validate() const;
     };
 
@@ -390,7 +389,6 @@ namespace UltraCanvas {
         PerformanceMatrixModel PerformanceManagement();  // reference image 1
         PerformanceMatrixModel PerformanceVsPotential(); // reference image 2, codes 1A-3C
         PerformanceMatrixModel TalentReview();           // reference image 5, bullets
-        PerformanceMatrixModel ImportancePerformance();  // reference image 4, Slack zones
         PerformanceMatrixModel SkillWill();              // 2x2
     }
 
@@ -406,8 +404,7 @@ namespace UltraCanvas {
         Grid,        // contiguous grid, axis arrows and titles
         Tiles,       // separated rounded tiles: big code + description (image 2)
         HeaderTabs,  // coloured header tabs with icons, plain cells (images 1, 3)
-        Cards,       // bordered cards, number badge, bullet list (image 5)
-        Zones        // continuous plane cut by curved zones (image 4)
+        Cards        // bordered cards, number badge, bullet list (image 5)
     };
 
     enum class PerformanceCellColoring {
@@ -435,7 +432,7 @@ namespace UltraCanvas {
         Color panelBackground;
 
         static PerformanceMatrixPalette TrafficLight();        // image 2
-        static PerformanceMatrixPalette Vivid();               // images 1, 4
+        static PerformanceMatrixPalette Vivid();               // image 1
         static PerformanceMatrixPalette Monochrome(const Color& hue);  // image 3
         static PerformanceMatrixPalette Pastel();              // image 5
     };
@@ -455,7 +452,7 @@ namespace UltraCanvas {
 
         void SetShowAxisArrows(bool show);
         void SetShowContainerPanel(bool show);  // S4: rounded panel behind everything
-        void SetShowLegend(bool show);          // groups, or the zone key
+        void SetShowLegend(bool show);          // groups
         void SetAnonymised(bool on);            // P5: counts only, never names
 
         void SetSelectedCell(const PerformanceCellRef& ref);
@@ -504,7 +501,7 @@ Notes on the shape of the model:
 | D2 | `Tiles`: separated rounded tiles, large code over a wrapped description | 2 |
 | D3 | `HeaderTabs`: coloured tabs with icon and label above and left of white cells | 1, 3 |
 | D4 | `Cards`: white cards, coloured border, number badge, bullet list | 5 |
-| D5 | `Zones`: continuous plane, curved filled zones with icon and title, optional bands | 4 |
+| D5 | *Ceded (revision 2)*: curved zones belong to the importance–performance chart | — |
 
 ### Content (C)
 
@@ -512,9 +509,9 @@ Notes on the shape of the model:
 |---|---|
 | C1 | Level label, caption, icon and accent on both axes |
 | C2 | Cell code, badge, title, description, bullets, action, icon. Each is optional and drawn when set |
-| C3 | Sample models: `NineBox`, `PerformanceManagement`, `PerformanceVsPotential`, `TalentReview`, `ImportancePerformance`, `SkillWill` |
+| C3 | Sample models: `NineBox`, `PerformanceManagement`, `PerformanceVsPotential`, `TalentReview`, `SkillWill` |
 | C4 | Best corner (default: high X and high Y), used by `DiagonalBands` and by keyboard order |
-| C5 | Zones as closed outlines in axis units, optionally smoothed; labelled bands along a centre line |
+| C5 | *Ceded (revision 2)* |
 | C6 | 1 to 6 levels per axis; 2×2, 3×3, 4×4 and mixed (3×4) grids |
 
 ### Population (P)
@@ -524,7 +521,7 @@ Notes on the shape of the model:
 | P1 | Items placed by cell or by continuous scores |
 | P2 | Score → level mapping through `PerformanceLevel::upperBound`, equal spacing by default |
 | P3 | Counts and percentages per cell, row and column; deviation from `targetDistribution` |
-| P4 | Zone classification of scored items (`ZoneOf`); in the `Zones` design items are drawn as points |
+| P4 | *Ceded (revision 2)* |
 | P5 | Anonymised mode: names and tooltips off, counts only, for presenting a calibration to a wider room |
 | P6 | Group colours and a legend; the legend filters the population (click a group to hide it) |
 
@@ -533,7 +530,7 @@ Notes on the shape of the model:
 | Id | Feature |
 |---|---|
 | L1 | Axis arrows (single or double-headed), rotated Y title, low and high end captions |
-| L2 | Level names placed along a continuous axis (`Zones`) at band centres |
+| L2 | *Ceded (revision 2)* |
 | L3 | The stepped corner of header tabs (image 1) |
 | L4 | An optional colour bar along an axis, from the level accents (image 5) |
 | L5 | Title and subtitle band; the header band reserves its height before the grid is sized |
@@ -574,7 +571,7 @@ Notes on the shape of the model:
 
 ### 7.1 Text in fixed cells
 
-Every design but `Zones` puts a fixed grid of cells in a fixed rectangle. Then
+Every design puts a fixed grid of cells in a fixed rectangle. Then
 text has to fit: image 5's four-bullet cards and image 2's two-line
 descriptions at slide size, and a phone-sized dashboard tile. The plan, in
 order:
@@ -598,22 +595,10 @@ more", and open the full list with I6. `Dots` packs on a grid inside the cell,
 not at random positions, so the drawing is stable between redraws and dots
 never overlap. `Count` and `Percent` always work and are the default (§9 Q3).
 
-### 7.3 Zones from outlines
+### 7.3 Zones from outlines *(ceded — revision 2)*
 
-Zones are author-supplied closed outlines in axis units, smoothed with a
-Catmull-Rom spline when `smooth` is set. They are not computed from boundary
-functions. This keeps the model plain data (JSON-friendly) and lets a caller
-draw any of the published IPA variants. Two things need care:
-
-* **Drawing**: each zone is filled clipped to the plot rectangle, in model
-  order, so a later zone covers an earlier one. Bands are drawn last, as a
-  stroked path of width `width`, with the label laid along the path's longest
-  near-straight run.
-* **Classification**: `ZoneOf` must use the *same* curve as the drawing, or a
-  point drawn inside *Improve* gets classified as *Urgent Action*. The model
-  flattens the spline into a polygon once (the same flattening the renderer
-  uses), and both drawing and classification read that polygon with an
-  even-odd test.
+*Ceded (revision 2).* Curved zones and classifying points into them are
+worked out in the importance–performance chart proposal (its §7).
 
 ### 7.4 Colour is never the only signal
 
@@ -649,22 +634,17 @@ say this plainly.
 | Loading and saving files | `UltraCanvasFileLoader`. The model functions take and return strings, and the demo's Open and Save buttons go through the loader (CLAUDE.md) |
 | Model tests | `Tests/MatrixModelTest.cpp` as the template |
 
-Nothing new is needed from the render context. `Zones` needs path filling
-(`BezierCurveTo`, `ClosePath`) and clipping (`ClipRect`, `ClipPath`), which
-the contour chart already uses.
+Nothing new is needed from the render context: every design is rectangles,
+rounded rectangles, images and text.
 
 ---
 
 ## 9. Open questions (with recommendations)
 
-**Q1. Should the importance–performance matrix (image 4) be here, or a
-`QuadrantType` on the quadrant chart?** It plots points on a continuous plane,
-which is the quadrant chart's job, but its regions are curved, it has more
-than four of them, and its axes have named levels, none of which the quadrant
-chart has. **Recommendation: here, as the `Zones` design.** It shares the
-named-level axes, the population, classification and the legend with the grid
-designs. Adding curves to the quadrant chart would only bring half of that.
-The quadrant chart's doc gets a "for curved zones, see…" pointer.
+**Q1. Should the importance–performance matrix (image 4) be here?**
+*Answered in revision 2: no.* It is a different chart from a different field,
+and it gets its own element on the chart engine
+([`UltraCanvasImportancePerformanceChartProposal.md`](UltraCanvasImportancePerformanceChartProposal.md)).
 
 **Q2. Is "performance" always X?** In the 9-box convention, yes: performance
 on X and potential on Y, best at the top right. Image 1 puts performance on
@@ -702,10 +682,8 @@ item where it is, with the same `performancematrix` id.
 | Phase | Delivers | Retires |
 |---|---|---|
 | **1** | Model (axes, cells, `Validate`, `FindCell`), designs D1 `Grid`, D2 `Tiles` and D3 `HeaderTabs`, palettes S1, colouring S2 except `ByCount`, L1, L3, L5, L6, §7.1 text fitting, samples `NineBox`, `PerformanceManagement` and `PerformanceVsPotential`, demo page with one variant per design, the guide, model tests | The demo placeholder; reference images 1, 2 and 3 |
-| **2** | D4 `Cards` with badges and bullets, L4, sample `TalentReview`; population P1–P3, P5, P6, `Count` / `Percent` / `Dots` / `Names` with §7.2 overflow, `ByCount`, tooltips I1, cell and item clicks I2 and I3, legend | Reference image 5; the 9-box becomes usable with real data |
+| **2** | D4 `Cards` with badges and bullets, L4, samples `TalentReview` and `SkillWill`; population P1–P3, P5, P6, `Count` / `Percent` / `Dots` / `Names` with §7.2 overflow, `ByCount`, tooltips I1, cell and item clicks I2 and I3, legend | Reference image 5; the 9-box becomes usable with real data |
 | **3** | I4 drag with veto, I5 keyboard, I6 overflow list, X1 JSON, X2 CSV, demo Open and Save through `UltraCanvasFileLoader` | The calibration-meeting use case |
-| **4** | D5 `Zones`, bands, L2, P4 classification (§7.3), sample `ImportancePerformance`, sample `SkillWill` | Reference image 4 |
 
-Phases 1 and 2 are entirely axis-aligned rectangles and text. All the curve
-work is in Phase 4, so if Q1 is decided the other way, Phase 4 moves to the
-quadrant chart and nothing in Phases 1–3 changes.
+Every phase is axis-aligned rectangles and text. Reference image 4 is
+delivered by the importance–performance chart, on its own schedule.
