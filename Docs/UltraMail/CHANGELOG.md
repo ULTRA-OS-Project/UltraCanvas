@@ -1,3 +1,9 @@
+#### 2026-10-24 *0.10.73*
+- **Copy link.** A right-click on a link in a message - formatted (HTML) or
+  plain text - offers *Copy link* at the top of the menu, above *Copy* and
+  *Select All*: it puts the link's address on the clipboard as the message
+  wrote it, without opening it.
+
 #### 2026-10-24 *0.10.72*
 - **The compose window's toolbar is one row, with Send on top.** The window
   opens wide enough (1140 px) for every formatting tool in a single row
