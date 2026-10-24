@@ -35,7 +35,7 @@ TEST(every_platform_row_gets_its_package) {
                                   Machine(OS::Windows, Arch::Arm64), Machine(OS::UltraOS, Arch::X86_64)}) {
         const Resolution r = PackageResolver::Resolve(*video, m);
         REQUIRE(!r.Available());
-        REQUIRE(r.kind == MatchKind::None);
+        REQUIRE(r.kind == MatchKind::NoMatch);
         REQUIRE(r.release != nullptr);   // the newest release, for the systems it supports
     }
     REQUIRE_EQ(PackageResolver::SupportedSystems(video->releases[1]),

@@ -109,7 +109,7 @@ Result<Package> ReadPackage(const JSONValue& v, const std::string& where) {
     if (p.format.empty()) {
         return Result<Package>::Failure(ErrorCode::ParseError, "A package names no format", where);
     }
-    return Result<Package>::Success(std::move(p));
+    return Result<Package>::Succeed(std::move(p));
 }
 
 Result<Release> ReadRelease(const JSONValue& v, const std::string& where) {
@@ -138,7 +138,7 @@ Result<Release> ReadRelease(const JSONValue& v, const std::string& where) {
         if (!p) return Result<Release>::Failure(p.error.code, p.error.message, p.error.detail);
         r.packages.push_back(std::move(p.Value()));
     }
-    return Result<Release>::Success(std::move(r));
+    return Result<Release>::Succeed(std::move(r));
 }
 
 Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, const std::string& where) {
@@ -214,7 +214,7 @@ Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, c
     }
     std::stable_sort(c.releases.begin(), c.releases.end(),
                      [](const Release& a, const Release& b) { return VersionLess(b.version, a.version); });
-    return Result<Component>::Success(std::move(c));
+    return Result<Component>::Succeed(std::move(c));
 }
 
 JSONValue WritePackage(const Package& p) {
@@ -277,7 +277,7 @@ JSONValue WriteComponent(const Component& c) {
         if (c.pricing.trialDays > 0) pr.Set("trial_days", static_cast<int64_t>(c.pricing.trialDays));
         o.Set("pricing", std::move(pr));
     }
-    if (c.updates.period != UpdatePeriod::Always) {
+    if (c.updates.period != UpdatePeriod::Unlimited) {
         JSONValue up = JSONValue::MakeObject();
         up.Set("period", UpdatePeriodName(c.updates.period));
         if (!c.updates.until.empty()) up.Set("until", c.updates.until);
@@ -330,14 +330,14 @@ std::string PricingModelName(PricingModel model) {
 UpdatePeriod ParseUpdatePeriod(std::string_view text) {
     if (text == "never") return UpdatePeriod::Never;
     if (text == "until") return UpdatePeriod::Until;
-    return UpdatePeriod::Always;
+    return UpdatePeriod::Unlimited;
 }
 
 std::string UpdatePeriodName(UpdatePeriod period) {
     switch (period) {
         case UpdatePeriod::Never: return "never";
         case UpdatePeriod::Until: return "until";
-        case UpdatePeriod::Always: break;
+        case UpdatePeriod::Unlimited: break;
     }
     return "always";
 }
@@ -466,7 +466,7 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
     if (dup != ids.end()) {
         return Result<Catalog>::Failure(ErrorCode::ParseError, "Two entries share an id", *dup);
     }
-    return Result<Catalog>::Success(std::move(catalog));
+    return Result<Catalog>::Succeed(std::move(catalog));
 }
 
 std::string SerializeCatalog(const Catalog& catalog) {

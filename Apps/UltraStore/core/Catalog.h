@@ -70,12 +70,12 @@ struct Pricing {
 
 // How long a purchase includes updates: always, never (the bought version
 // only), or until a date - after it the store shows updates as a new purchase.
-enum class UpdatePeriod { Always, Never, Until };
+enum class UpdatePeriod { Unlimited, Never, Until };   // "always" in the catalog; not Always, an X11 macro
 UpdatePeriod ParseUpdatePeriod(std::string_view text);    // "always" / "never" / "until"
 std::string  UpdatePeriodName(UpdatePeriod period);
 
 struct UpdatePolicy {
-    UpdatePeriod period = UpdatePeriod::Always;
+    UpdatePeriod period = UpdatePeriod::Unlimited;
     std::string until;      // "2027-12-31" when period == Until
 };
 

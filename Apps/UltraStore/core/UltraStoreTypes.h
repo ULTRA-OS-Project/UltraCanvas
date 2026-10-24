@@ -64,7 +64,7 @@ struct LocalizedText {
 
 // ===== RESULTS =====
 enum class ErrorCode {
-    None,
+    Ok,              // no error (not "None": an X11 macro)
     InvalidArgument,
     ParseError,          // the catalog is not the JSON the schema describes
     SchemaTooNew,        // the catalog needs a newer UltraStore
@@ -81,7 +81,7 @@ enum class ErrorCode {
 std::string ErrorCodeName(ErrorCode code);
 
 struct Error {
-    ErrorCode code = ErrorCode::None;
+    ErrorCode code = ErrorCode::Ok;
     std::string message;       // for a person: what went wrong, in words
     std::string detail;        // for a log: the technical reason, may be empty
 };
@@ -91,12 +91,12 @@ struct Result {
     std::optional<T> value;
     Error error;
 
-    bool Ok() const { return !value ? false : error.code == ErrorCode::None; }
+    bool Ok() const { return !value ? false : error.code == ErrorCode::Ok; }
     explicit operator bool() const { return Ok(); }
     const T& Value() const { return *value; }
     T& Value() { return *value; }
 
-    static Result Success(T v) { Result r; r.value = std::move(v); return r; }
+    static Result Succeed(T v) { Result r; r.value = std::move(v); return r; }
     static Result Failure(ErrorCode code, std::string message, std::string detail = {}) {
         Result r; r.error = Error{code, std::move(message), std::move(detail)}; return r;
     }
@@ -110,7 +110,7 @@ struct Result<void> {
     bool Ok() const { return ok; }
     explicit operator bool() const { return ok; }
 
-    static Result Success() { Result r; r.ok = true; return r; }
+    static Result Succeed() { Result r; r.ok = true; return r; }
     static Result Failure(ErrorCode code, std::string message, std::string detail = {}) {
         Result r; r.error = Error{code, std::move(message), std::move(detail)}; return r;
     }

@@ -17,16 +17,16 @@ namespace UltraStore {
 
 // How well a package fits the machine, best first. Emulated is an x86_64
 // package on Apple silicon with Rosetta: offered, labelled "runs under
-// Rosetta". None: the app is shown greyed out, with the systems it supports.
-enum class MatchKind { Exact, Universal, Any, Emulated, None };
+// Rosetta". NoMatch: the app is shown greyed out, with the systems it supports.
+enum class MatchKind { Exact, Universal, Any, Emulated, NoMatch };   // not None, an X11 macro
 std::string MatchKindName(MatchKind kind);
 
 struct Resolution {
-    MatchKind kind = MatchKind::None;
+    MatchKind kind = MatchKind::NoMatch;
     const Release* release = nullptr;
     const Package* package = nullptr;
 
-    bool Available() const { return kind != MatchKind::None && package != nullptr; }
+    bool Available() const { return kind != MatchKind::NoMatch && package != nullptr; }
 };
 
 // One step of an install: a component or the app itself, the release and the
@@ -35,7 +35,7 @@ struct InstallStep {
     const Component* component = nullptr;
     const Release* release = nullptr;
     const Package* package = nullptr;
-    MatchKind match = MatchKind::None;
+    MatchKind match = MatchKind::NoMatch;
     bool alreadyInstalled = false;   // present at this exact version: nothing to fetch
 };
 
@@ -53,7 +53,7 @@ struct InstalledVersions {
 
 class PackageResolver {
 public:
-    // The best package of a release for the machine, or None.
+    // The best package of a release for the machine, or NoMatch.
     static Resolution ResolveRelease(const Release& release, const PlatformInfo& platform);
 
     // The newest release of an app on a channel that has a package for the

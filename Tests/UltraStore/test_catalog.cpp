@@ -57,7 +57,7 @@ TEST(catalog_round_trips_through_json) {
     REQUIRE(intel->visibility == Visibility::Unlisted);
     REQUIRE(intel->lifecycle == Lifecycle::Deprecated);
     REQUIRE_EQ(intel->successor, std::string("org.ultraos.ultravideo"));
-    REQUIRE(intel->pricing.model == PricingModel::Free && intel->updates.period == UpdatePeriod::Always);
+    REQUIRE(intel->pricing.model == PricingModel::Free && intel->updates.period == UpdatePeriod::Unlimited);
     REQUIRE(c.FindAny("org.ultraos.lib.videofx") != nullptr);
     REQUIRE(c.FindApp("org.ultraos.lib.videofx") == nullptr);
     REQUIRE(c.FindAny("nope") == nullptr);

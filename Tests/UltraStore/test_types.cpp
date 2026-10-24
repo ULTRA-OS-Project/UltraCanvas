@@ -65,13 +65,13 @@ TEST(hex_round_trips_and_rejects_junk) {
 }
 
 TEST(results_carry_values_or_errors) {
-    auto ok = Result<int>::Success(7);
+    auto ok = Result<int>::Succeed(7);
     REQUIRE(ok && ok.Value() == 7);
     auto bad = Result<int>::Failure(ErrorCode::NotFound, "nothing", "detail");
     REQUIRE(!bad);
     REQUIRE(bad.error.code == ErrorCode::NotFound);
     REQUIRE_EQ(bad.error.message, std::string("nothing"));
-    auto done = Result<void>::Success();
+    auto done = Result<void>::Succeed();
     REQUIRE(done);
     REQUIRE(!Result<void>::Failure(ErrorCode::IoError, "disk"));
     REQUIRE_EQ(ErrorCodeName(ErrorCode::SequenceRollback), std::string("SequenceRollback"));

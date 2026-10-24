@@ -19,9 +19,9 @@ bool VariantsSatisfied(const Package& package, const PlatformInfo& platform) {
 }
 
 MatchKind MatchOf(const Package& package, const PlatformInfo& platform) {
-    if (package.target.os != platform.target.os) return MatchKind::None;
-    if (!platform.MeetsMinOs(package.minOs)) return MatchKind::None;
-    if (!VariantsSatisfied(package, platform)) return MatchKind::None;
+    if (package.target.os != platform.target.os) return MatchKind::NoMatch;
+    if (!platform.MeetsMinOs(package.minOs)) return MatchKind::NoMatch;
+    if (!VariantsSatisfied(package, platform)) return MatchKind::NoMatch;
     if (package.target.arch == platform.target.arch) return MatchKind::Exact;
     if (package.target.arch == Arch::Universal) return MatchKind::Universal;
     if (package.target.arch == Arch::Any) return MatchKind::Any;
@@ -29,7 +29,7 @@ MatchKind MatchOf(const Package& package, const PlatformInfo& platform) {
         platform.canRunX86_64 && platform.target.os == OS::MacOS) {
         return MatchKind::Emulated;
     }
-    return MatchKind::None;
+    return MatchKind::NoMatch;
 }
 
 int Rank(MatchKind kind) {
@@ -38,7 +38,7 @@ int Rank(MatchKind kind) {
         case MatchKind::Universal: return 1;
         case MatchKind::Any:       return 2;
         case MatchKind::Emulated:  return 3;
-        case MatchKind::None:      break;
+        case MatchKind::NoMatch:      break;
     }
     return 4;
 }
@@ -51,7 +51,7 @@ std::string MatchKindName(MatchKind kind) {
         case MatchKind::Universal: return "universal";
         case MatchKind::Any:       return "any";
         case MatchKind::Emulated:  return "emulated";
-        case MatchKind::None:      break;
+        case MatchKind::NoMatch:      break;
     }
     return "none";
 }
@@ -68,13 +68,13 @@ Resolution PackageResolver::ResolveRelease(const Release& release, const Platfor
     best.release = &release;
     for (const Package& p : release.packages) {
         const MatchKind kind = MatchOf(p, platform);
-        if (kind == MatchKind::None) continue;
+        if (kind == MatchKind::NoMatch) continue;
         if (best.package == nullptr || Rank(kind) < Rank(best.kind)) {
             best.kind = kind;
             best.package = &p;
         }
     }
-    if (!best.package) best.kind = MatchKind::None;
+    if (!best.package) best.kind = MatchKind::NoMatch;
     return best;
 }
 
@@ -97,7 +97,7 @@ Result<InstallPlan> PackageResolver::Plan(const Catalog& catalog, const Componen
     std::set<std::string> done;       // "id@version" already in the plan
     std::vector<std::string> trail;   // the dependency chain being walked, for cycles
     std::string failure;
-    ErrorCode failureCode = ErrorCode::None;
+    ErrorCode failureCode = ErrorCode::Ok;
 
     std::function<bool(const Component&, const Release&, bool)> visit =
         [&](const Component& component, const Release& rel, bool isApp) -> bool {
@@ -164,7 +164,7 @@ Result<InstallPlan> PackageResolver::Plan(const Catalog& catalog, const Componen
     if (!visit(app, release, true)) {
         return Result<InstallPlan>::Failure(failureCode, failure);
     }
-    return Result<InstallPlan>::Success(std::move(plan));
+    return Result<InstallPlan>::Succeed(std::move(plan));
 }
 
 std::string PackageResolver::SupportedSystems(const Release& release) {

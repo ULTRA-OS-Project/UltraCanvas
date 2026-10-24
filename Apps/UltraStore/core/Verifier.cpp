@@ -22,7 +22,7 @@ std::string Trim(const std::string& s) {
 }
 
 Result<void> CryptoResult(const UltraCryptResult& r, ErrorCode onFailure, const std::string& message) {
-    if (r) return Result<void>::Success();
+    if (r) return Result<void>::Succeed();
     if (r.code == UltraCryptResultCode::BackendUnavailable) {
         return Result<void>::Failure(ErrorCode::CryptoUnavailable,
                                      "UltraCrypt has no cryptographic backend in this build", r.message);
@@ -54,7 +54,7 @@ Result<void> VerifyCatalogSignature(const std::string& catalogBytes,
         }
         const UltraCryptResult r = UltraCrypt_Verify(kAlgorithm, key, catalogBytes.data(),
                                                      catalogBytes.size(), signature);
-        if (r) return Result<void>::Success();
+        if (r) return Result<void>::Succeed();
         if (r.code == UltraCryptResultCode::BackendUnavailable) return CryptoResult(r, ErrorCode::Internal, "");
         lastDetail = r.message;
     }
@@ -108,7 +108,7 @@ Result<void> GenerateSigningKey(std::vector<uint8_t>& outSeed, std::vector<uint8
     if (!r) return CryptoResult(r, ErrorCode::Internal, "The key pair could not be made");
     outSeed.assign(seed.Data(), seed.Data() + seed.GetSize());
     outPublicKey = std::move(pk);
-    return Result<void>::Success();
+    return Result<void>::Succeed();
 }
 
 Result<std::vector<uint8_t>> PublicKeyOfSeed(const std::vector<uint8_t>& seed) {
@@ -123,7 +123,7 @@ Result<std::vector<uint8_t>> PublicKeyOfSeed(const std::vector<uint8_t>& seed) {
         const Result<void> c = CryptoResult(r, ErrorCode::Internal, "The key pair could not be made");
         return Result<std::vector<uint8_t>>::Failure(c.error.code, c.error.message, c.error.detail);
     }
-    return Result<std::vector<uint8_t>>::Success(std::move(pk));
+    return Result<std::vector<uint8_t>>::Succeed(std::move(pk));
 }
 
 Result<std::vector<uint8_t>> SignCatalog(const std::string& catalogBytes, const std::vector<uint8_t>& seed) {
@@ -144,7 +144,7 @@ Result<std::vector<uint8_t>> SignCatalog(const std::string& catalogBytes, const 
         const Result<void> c = CryptoResult(r, ErrorCode::Internal, "The catalog could not be signed");
         return Result<std::vector<uint8_t>>::Failure(c.error.code, c.error.message, c.error.detail);
     }
-    return Result<std::vector<uint8_t>>::Success(std::move(signature));
+    return Result<std::vector<uint8_t>>::Succeed(std::move(signature));
 }
 
 } // namespace UltraStore

@@ -159,7 +159,7 @@ std::string LocalizedText::Text(const std::string& language) const {
 
 std::string ErrorCodeName(ErrorCode code) {
     switch (code) {
-        case ErrorCode::None:              return "None";
+        case ErrorCode::Ok:              return "Ok";
         case ErrorCode::InvalidArgument:   return "InvalidArgument";
         case ErrorCode::ParseError:        return "ParseError";
         case ErrorCode::SchemaTooNew:      return "SchemaTooNew";
