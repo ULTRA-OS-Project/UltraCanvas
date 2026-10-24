@@ -6,6 +6,7 @@
 # connection store, the Browse pager, the SQL runner) and is what
 # Tests/UltraDBAdmin compiles headless; ui/ is the window.
 #
+# Version: 0.2.0 - ultradbadmin-relay
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -109,6 +110,21 @@ if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
     install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraDBAdmin.svg
             DESTINATION share/icons/hicolor/scalable/apps)
     message(STATUS "  UltraDBAdmin desktop entry: share/applications/UltraDBAdmin.desktop")
+endif()
+
+# ===== THE RELAY =====
+# ultradbadmin-relay: the server half of the browser build (relay/main.cpp,
+# Docs/Research/UltraDBAdminDesignProposal.md 8.1) - headless, UltraDatabase
+# and the vault, no window. A POSIX server program.
+if(UNIX AND NOT EMSCRIPTEN AND NOT ANDROID)
+    add_executable(ultradbadmin-relay
+        relay/main.cpp
+        relay/RelayConfig.cpp
+        relay/RelayWebSocket.cpp)
+    target_link_libraries(ultradbadmin-relay PRIVATE UltraDatabase UltraVault Threads::Threads)
+    target_compile_features(ultradbadmin-relay PRIVATE cxx_std_20)
+    install(TARGETS ultradbadmin-relay RUNTIME DESTINATION bin)
+    message(STATUS "  [✓] ultradbadmin-relay - ENABLED (target: ultradbadmin-relay)")
 endif()
 
 message(STATUS "  [✓] UltraDBAdmin app - ENABLED (target: UltraDBAdmin)")

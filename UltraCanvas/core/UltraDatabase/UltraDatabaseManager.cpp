@@ -51,6 +51,7 @@ void EnsureBuiltins() {
     (void)ultradb_internal::BuiltinSqliteDriver();
     (void)ultradb_internal::BuiltinPostgresDriver();
     (void)ultradb_internal::BuiltinMysqlDriver();
+    (void)ultradb_internal::BuiltinRelayDriver();
 }
 
 // ---- Connection registry ---------------------------------------------------
@@ -467,9 +468,11 @@ UltraDbResult UltraDb_RegisterConnection(const UltraDbConnectionConfig& config) 
     auto entry = std::make_shared<ConnEntry>();
     entry->config = config;
 
+    std::shared_ptr<ConnEntry> replaced;   // closed after the lock, as UltraDb_CloseConnection does
     std::lock_guard<std::mutex> lk(RegistryMutex());
     auto& slot = Registry()[config.name];
     if (slot) Retire(config.name, slot);
+    replaced = std::move(slot);
     slot = std::move(entry);  // replaces any prior entry
     return UltraDbResult::Ok();
 }
@@ -487,13 +490,22 @@ std::vector<std::string> UltraDb_ListConnections() {
 }
 
 UltraDbResult UltraDb_CloseConnection(const std::string& name) {
-    std::lock_guard<std::mutex> lk(RegistryMutex());
-    auto it = Registry().find(name);
-    if (it == Registry().end())
-        return UltraDbResult::Error(UltraDbResultCode::ConnectionNotFound,
-                                    "no connection named '" + name + "'");
-    Retire(name, it->second);
-    Registry().erase(it);  // the last call on it closes the physical connection
+    // Taken out under the lock, closed after it: closing can take a round
+    // trip (a server's goodbye, a relay's), which must not hold up every
+    // other connection - nor call back into the registry, as a relay served
+    // in the same process does.
+    std::shared_ptr<ConnEntry> closing;
+    {
+        std::lock_guard<std::mutex> lk(RegistryMutex());
+        auto it = Registry().find(name);
+        if (it == Registry().end())
+            return UltraDbResult::Error(UltraDbResultCode::ConnectionNotFound,
+                                        "no connection named '" + name + "'");
+        Retire(name, it->second);
+        closing = std::move(it->second);
+        Registry().erase(it);
+    }
+    closing.reset();  // the last call on it closes the physical connection
     return UltraDbResult::Ok();
 }
 

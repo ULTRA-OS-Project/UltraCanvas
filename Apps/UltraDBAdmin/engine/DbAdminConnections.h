@@ -23,7 +23,9 @@
 #include <string>
 #include <vector>
 
+#if !defined(ULTRADBADMIN_NO_VAULT)
 namespace UltraVault { class DeviceKeyVault; }
+#endif
 
 namespace UltraDBAdmin {
 
@@ -52,10 +54,23 @@ struct ConnectionSpec {
     bool        hasSshSecret = false;   // the SSH password or private key is in the vault
     bool        hasSshPassphrase = false;
     std::string sshHostKey;             // "SHA256:..." trusted; "" until the user trusts one
+    // Through an UltraDBAdmin relay, when driver is "relay"
+    // (UltraDatabaseRelay.h): `host` is the relay's address, `database` the
+    // name of a connection it offers, the token kept where a password is, and
+    // this the engine behind it - whose SQL the app writes.
+    std::string relayEngine;            // "sqlite", "postgresql" or "mysql"
 
     bool UsesTunnel() const { return !sshHost.empty(); }
-    bool IsSqlite() const { return driver == "sqlite" || driver == "sqlite3"; }
-    bool IsMysql() const { return driver == "mysql" || driver == "mariadb"; }
+    bool IsRelay() const { return driver == "relay"; }
+    // The dialect, through a relay the engine's behind it.
+    bool IsSqlite() const {
+        return driver == "sqlite" || driver == "sqlite3" || (IsRelay() && relayEngine == "sqlite");
+    }
+    bool IsMysql() const {
+        return driver == "mysql" || driver == "mariadb" || (IsRelay() && relayEngine == "mysql");
+    }
+    // A file on this computer, not a server or a relay.
+    bool IsLocalFile() const { return driver == "sqlite" || driver == "sqlite3"; }
 };
 
 // The dialect `spec` speaks.
@@ -77,7 +92,8 @@ std::string ConnectionIdOf(const std::string& registeredName);
 
 // A one-line description for the tree's tooltip and the window title:
 // "notes.db", "alice@db.example.com:5432/crm" or, through a tunnel,
-// "alice@db.internal/crm via deploy@bastion.example.com".
+// "alice@db.internal/crm via deploy@bastion.example.com"; through a relay
+// "crm on wss://db.example.com/relay".
 std::string Describe(const ConnectionSpec& spec);
 
 class ConnectionStore {
@@ -87,6 +103,8 @@ public:
 
     // Read `directory`/connections.json and open the vault in
     // `directory`/vault. A missing file is an empty list, not an error.
+    // Built without a vault (ULTRADBADMIN_NO_VAULT, the browser build) a
+    // secret is kept in memory for the session only.
     bool Open(const std::string& directory, std::string& error);
 
     // Kept in memory only, with an in-memory vault - for tests.
@@ -133,7 +151,9 @@ private:
 
     std::string file_;              // empty: in memory
     std::vector<ConnectionSpec> specs_;
+#if !defined(ULTRADBADMIN_NO_VAULT)
     std::unique_ptr<UltraVault::DeviceKeyVault> vault_;
+#endif
     bool memoryVault_ = false;
 };
 

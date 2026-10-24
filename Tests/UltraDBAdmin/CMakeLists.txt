@@ -3,6 +3,7 @@
 # formatting, the Browse pager, the SQL runner - without a window. Compiles
 # the engine sources directly, as Tests/UltraFIBU does, so it runs where the
 # UI library cannot be built. Enabled by ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS.
+# Version: 0.5.0 - the relay program (its listener, UltraNet's WebSocket, the engine through it)
 # Version: 0.4.0 - the SSH tunnel program (UltraNet's SSH plug-in, a bastion, both servers)
 # Version: 0.3.0 - the schema suite (relations, routines, server), a third
 # Version: 0.2.0 - the operations suite, a second program
@@ -85,5 +86,25 @@ if(TARGET UltraNet AND TARGET UltraNetSshPlugin)
         ULTRADBADMIN_TEST_SSH_PLUGIN_DIR="$<TARGET_FILE_DIR:UltraNetSshPlugin>")
     set_target_properties(UltraDBAdminTunnelTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     add_test(NAME UltraDBAdminTunnel COMMAND UltraDBAdminTunnelTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
+
+# Through the relay end to end (UltraDBAdminRelayTests.cpp): the relay's
+# configuration and WebSocket listener (Apps/UltraDBAdmin/relay) on a free
+# port, UltraNet's WebSocket as the transport, the engine on a relay
+# connection; PostgreSQL where the environment names one.
+if(TARGET UltraNet AND UNIX AND NOT EMSCRIPTEN)
+    add_executable(UltraDBAdminRelayTests UltraDBAdminRelayTests.cpp
+        ${_dbadmin}/relay/RelayConfig.cpp
+        ${_dbadmin}/relay/RelayWebSocket.cpp
+        ${_dbadmin_engine})
+    target_compile_features(UltraDBAdminRelayTests PRIVATE cxx_std_20)
+    target_include_directories(UltraDBAdminRelayTests PRIVATE
+        ${_dbadmin}/engine
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
+    target_link_libraries(UltraDBAdminRelayTests PRIVATE UltraDatabase UltraVault UltraNet Threads::Threads)
+    set_target_properties(UltraDBAdminRelayTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME UltraDBAdminRelay COMMAND UltraDBAdminRelayTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()

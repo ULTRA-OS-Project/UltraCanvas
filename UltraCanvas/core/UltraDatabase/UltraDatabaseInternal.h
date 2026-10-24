@@ -30,6 +30,10 @@ IUltraDbDriverPlugin* BuiltinPostgresDriver();
 // otherwise.
 IUltraDbDriverPlugin* BuiltinMysqlDriver();
 
+// The "relay" driver (UltraDatabaseRelay.h), always built: it needs no
+// library, only the transport an application installs.
+IUltraDbDriverPlugin* BuiltinRelayDriver();
+
 // What MySQL treats as text or a comment, starting at `i` - a '...' or "..."
 // string (a backslash escapes in it), a `name`, a # or "-- " comment, a
 // /* */ comment (not nested) - and the index just past it, or `i` itself when
