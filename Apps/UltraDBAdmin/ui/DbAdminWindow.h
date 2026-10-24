@@ -1,7 +1,12 @@
 // Apps/UltraDBAdmin/ui/DbAdminWindow.h
 // UltraDBAdmin's window. A toolbar (Add, Edit, Remove a connection, Refresh),
 // the tree of connections -> schemas -> tables, views and sequences on the
-// left, and three tabs on the right:
+// left - its right-click menu carries each object's operations: open, copy
+// its name, export, copy the table, rename, empty, drop, a new table, a
+// schema dumped as SQL, a search of every table, SQLite's maintenance - and
+// on the right a row of the objects open, one tab each (each keeps its page,
+// sort, filters and staged changes while another is shown), four tabs for
+// the one shown, and the SQL log under them: every statement the app ran.
 //   Browse    - the selected table a page at a time (TablePager), sorted on
 //               the server by a click on a column header, Previous / Next,
 //               narrowed by filters (a column, a comparison, a value: bound,
@@ -19,8 +24,12 @@
 //               table renamed is staged (StructureEdit), shown in the lists
 //               and as DDL, and written by Apply in one transaction - on
 //               SQLite with the table rebuilt where SQLite's ALTER cannot;
-//   SQL       - a script editor with Run (Ctrl+Enter) and Stop, what each
-//               statement did, and the rows of the one selected.
+//   SQL       - a script editor with Run (Ctrl+Enter: the selection or the
+//               whole script), Run statement (Ctrl+Shift+Enter: the one under
+//               the caret), Explain, Stop, the history and saved snippets,
+//               what each statement did, and the rows of the one selected;
+//   Search    - a text in every table and view of a schema, a count per
+//               column; a hit opens the table filtered on that column.
 // And imports: Browse's Import... puts the rows of a CSV file or a workbook
 // into the table shown, mapped column by column, all or none; the SQL tab's
 // Import SQL... runs a SQL file on the console's session, as one transaction
@@ -37,22 +46,31 @@
 // PostToUIThread, guarded by a token that dies with the window. A result for
 // something no longer shown - another table was picked meanwhile - is
 // recognised by its generation number and dropped.
+// Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log,
+//                 Run statement, Explain, snippets, auto-commit, the typed row form
 // Version: 0.2.0 - filters, editing in the cell, blobs, rows copied as text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "DbAdminConnections.h"
+#include "DbAdminDump.h"
 #include "DbAdminEditBuffer.h"
 #include "DbAdminExport.h"
 #include "DbAdminImport.h"
 #include "DbAdminJobQueue.h"
 #include "DbAdminModels.h"
+#include "DbAdminOperations.h"
+#include "DbAdminSearch.h"
+#include "DbAdminSnippets.h"
+#include "DbAdminSqlLog.h"
 #include "DbAdminSqlRunner.h"
 #include "DbAdminStructureEdit.h"
 #include "DbAdminTablePager.h"
+#include "DbAdminTheme.h"
 
 #include "UltraCanvasButton.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
@@ -63,6 +81,7 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraCanvasTimer.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasWindow.h"
 
@@ -103,6 +122,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildBrowsePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildStructurePage();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSqlPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildSearchPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildLogPanel();
 
     // ===== BACKGROUND =====
     // Runs `work` on the job queue; the function it returns runs on the UI
@@ -132,6 +153,40 @@ private:
     std::string SaveConnection(const ConnectionSpec& spec, const std::string& password,
                                bool clearPassword);
 
+    // ===== OPEN OBJECTS =====
+    // An object open in a tab of its own. The tab shown is the window's
+    // state below (pager_, edits_, structure_, ...); the others keep theirs
+    // here until they are shown again.
+    struct ObjectTab {
+        NodeRef ref;
+        std::string label;
+        bool loaded = false;                  // read: what follows holds
+        std::shared_ptr<const TablePager> pager;
+        size_t pageIndex = 0;
+        EditBuffer edits;
+        StructureEdit structure;
+        SqliteTableSource source;
+        UltraDbTableSchema table;
+        std::string definition, info;
+    };
+    static constexpr size_t kMaxTabs = 10;
+    // Opens `ref` in its tab - shown, if it has one, else a new one.
+    void OpenFromTree(const NodeRef& ref);
+    int FindTab(const NodeRef& ref) const;
+    void StashActiveTab();
+    void ActivateTab(int index);               // unless a commit or an Apply is under way
+    void ShowTab(int index);                   // without that check
+    void CloseTab(int index);                  // asks first when it has staged changes
+    void DropTab(int index);                   // without asking
+    void CloseTabsOf(const std::string& connectionId);
+    // The strip is built anew after the event that changed it: a chip's own
+    // click is what often changes it, and the chip must outlive its handler.
+    void RebuildObjectStrip();
+    void BuildObjectStrip();
+    size_t StagedChanges(const ObjectTab& tab) const;
+    size_t StagedEverywhere() const;           // every tab's, the shown one's included
+    bool TabSwitchBlocked();                   // a commit, an Apply, an import under way: says so
+
     // ===== BROWSE AND STRUCTURE =====
     void OpenObject(const NodeRef& ref);
     void ApplyTable(uint64_t generation, const UltraDbResult& result, const UltraDbTableSchema& table,
@@ -140,6 +195,8 @@ private:
     void ApplyPage(uint64_t generation, size_t page, const UltraDbResult& result, UltraDbResultSet rows);
     void ApplyCount(uint64_t generation, const UltraDbResult& result, int64_t rows);
     void ApplySequence(uint64_t generation, const UltraDbResult& result, const UltraDbResultSet& rows);
+    // The tab's table back in Browse and Structure, as it was left.
+    void RestoreObject(const ObjectTab& tab);
     void CountRows();
     void SortBrowse(int column);
     void UpdateBrowseBar();
@@ -158,6 +215,7 @@ private:
 
     // ===== IN THE CELL =====
     void BeginCellEdit(int row, int column);
+    void PlaceCellEditor();                 // over the cell, as the grid scrolls; ends it out of view
     void FinishCellEdit(bool keep);         // keep: stage what was typed
     void SetCellNull(int row, int column);
     const UltraDbColumnSchema* BrowseColumn(int column) const;   // null: not a column of the table
@@ -185,6 +243,8 @@ private:
     void EditRow(int row);
     void DeleteSelectedRow();
     void AfterEdit();                       // redraw the grid, recount the bar
+    void AfterStage();                      // a change staged: AfterEdit, and with auto-commit, Commit
+    bool AutoCommit() const;
     void PreviewChanges();
     void CommitChanges();
     void RunCommit();
@@ -192,10 +252,6 @@ private:
                      const std::string& failedSql);
     void RevertChanges();
     void UpdateEditBar();
-    // Runs `then` at once when nothing is staged - rows or structure - else
-    // after the user agrees to drop the staged changes ("... and `what`?";
-    // empty: just drop them).
-    void ConfirmDiscard(const std::string& what, std::function<void()> then);
 
     // ===== STRUCTURE EDITING =====
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildStructureBar();
@@ -241,9 +297,58 @@ private:
     void FinishExport(const UltraDbResult& result, size_t rows, const std::string& path, bool truncated);
     void UpdateExportButtons();
 
+    // ===== TREE MENU AND OPERATIONS =====
+    void ShowTreeMenu(UltraCanvas::TreeNode* node, const UltraCanvas::UCEvent& event);
+    std::vector<UltraCanvas::MenuItemData> MaintenanceItems(const NodeRef& ref, const std::string& schema,
+                                                            const std::string& table);
+    // Why `spec` takes no change now, or "": read only.
+    std::string WriteBlockReason(const ConnectionSpec& spec) const;
+    // Runs `plan` on the connection's session, on the job queue; `done` on
+    // the UI thread after.
+    void RunOperation(const std::string& connectionId, const std::string& what, const OperationPlan& plan,
+                      std::function<void(const UltraDbResult&, const UltraDbResultSet&)> done);
+    // The plan shown first, then run. A production connection is said so.
+    void ConfirmOperation(const std::string& connectionId, const std::string& title, const std::string& intro,
+                          const OperationPlan& plan, const std::string& action, ButtonRole role,
+                          std::function<void(const UltraDbResult&, const UltraDbResultSet&)> done);
+    // The table read on the worker, then `then` on the UI thread.
+    void ReadTableThen(const NodeRef& ref,
+                       std::function<void(const UltraDbTableSchema&, const SqliteTableSource&)> then);
+    void ReloadSchemaNode(const std::string& connectionId, const std::string& schema);
+    void NewTable(const NodeRef& ref);
+    void CopyTable(const NodeRef& ref);
+    void RenameObject(const NodeRef& ref);
+    void EmptyTable(const NodeRef& ref);
+    void DropObject(const NodeRef& ref);
+    void RunMaintenance(const NodeRef& ref, const std::string& schema, const std::string& table, Maintenance task);
+    void JournalMode(const NodeRef& ref, const std::string& schema, const std::string& mode);
+    void DumpSchema(const NodeRef& ref);
+    void ExportFromTree(const NodeRef& ref);
+    void CopyName(const NodeRef& ref);
+
+    // ===== SEARCH =====
+    void StartSearch();
+    void SearchNext(uint64_t generation);
+    void StopSearch(const std::string& why);
+    void OpenSearchHit(int row);
+    void UpdateSearchBar();
+    // The schema a search goes through: the tree's selection, or "".
+    bool SearchScope(std::string& connectionId, std::string& schema) const;
+
+    // ===== SQL LOG =====
+    void RefreshLog();                      // what is new, from log_ (a timer calls it)
+    void RefillLog();                       // all of it again: the filter changed
+    void CopyLog();
+    std::string ConnectionLabel(const std::string& registered) const;
+
     // ===== SQL =====
     SqlRunner* RunnerFor(const ConnectionSpec& spec);
-    void RunSql();
+    enum class RunScope { Script, Statement, Explain };
+    void RunSql(RunScope scope = RunScope::Script);
+    // The caret's place in the editor's text, as a byte offset.
+    size_t CaretOffset() const;
+    void ShowSnippetsMenu();
+    void SaveSnippet();
     void StopSql();
     void ApplyOutcome(const std::string& connectionId, const RunOutcome& outcome);
     void ShowStatementRows(int row);
@@ -252,6 +357,7 @@ private:
 
     ConnectionStore store_;
     std::string storeNote_;          // why the list is in memory only, if it is
+    SnippetStore snippets_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;
@@ -260,6 +366,22 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> editButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> removeButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel_;
+
+    // Open objects: the strip of their tabs above the four tabs.
+    std::vector<ObjectTab> openTabs_;
+    int activeTab_ = -1;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> objectStrip_;
+    std::string definitionText_, structureInfoText_;   // the shown object's, for its tab
+    // Asked for while the object was being read: done once it is.
+    bool exportWhenOpen_ = false;
+    bool filterWhenOpen_ = false;
+    ColumnFilter openFilter_;
+    NodeRef whenOpenRef_;                 // the object they are for
+    bool stripPending_ = false;
+    bool IsObject(const NodeRef& a, const NodeRef& b) const {
+        return a.connectionId == b.connectionId && a.schema == b.schema && a.name == b.name &&
+               a.objectKind == b.objectKind;
+    }
 
     std::shared_ptr<UltraCanvas::UltraCanvasTreeView> tree_;
     std::map<std::string, NodeRef> nodes_;
@@ -300,6 +422,9 @@ private:
     UltraDbRow cellRow_;                 // the row as read: its key addresses it
     std::string cellColumn_;
     uint64_t cellGen_ = 0;
+    int cellViewRow_ = -1, cellViewColumn_ = -1;
+    UltraCanvas::Rect2Di cellRect_;                   // where the editor was laid, in the grid
+    UltraCanvas::TimerId cellTimer_ = 0;
 
     // The right-click menu shown last; kept until the next one.
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> menu_;
@@ -356,6 +481,9 @@ private:
     // SQL
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea> sqlEditor_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> runButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> runStatementButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> explainButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> snippetsButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> stopButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> importSqlButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> historyDropdown_;
@@ -369,6 +497,34 @@ private:
     std::map<std::string, std::unique_ptr<SqlRunner>> runners_;   // by connection id
     std::vector<std::string> historyShown_;   // the dropdown's scripts, in its order
     std::string sqlConnectionId_;        // the console's connection: the tree's, when Run was pressed
+
+    // Search
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> searchMode_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> searchButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> searchStopButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> searchInfo_;
+    std::shared_ptr<SearchHitModel> searchModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> searchView_;
+    bool searching_ = false;
+    uint64_t searchGen_ = 0;             // rises with every search started or stopped
+    std::string searchConnectionId_, searchSchema_, searchText_;
+    SearchMode searchModeValue_ = SearchMode::Contains;
+    std::vector<UltraDbObjectSummary> searchTargets_;
+    size_t searchIndex_ = 0;
+    std::vector<std::string> searchFailures_;
+    std::string searchSummary_;          // how the last search ended
+
+    // SQL log
+    std::shared_ptr<SqlLog> log_ = std::make_shared<SqlLog>(2000);
+    int logObserver_ = 0;
+    UltraCanvas::TimerId logTimer_ = 0;
+    uint64_t shownSeq_ = 0;              // the newest entry the list has looked at
+    std::shared_ptr<LogModel> logModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> logView_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> logInfo_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> logSchemaReads_;
+    std::shared_ptr<UltraCanvas::UltraCanvasSplitPane> rightSplit_;
 
     JobQueue jobs_;
     // Lives exactly as long as the window; a posted result checks it first.

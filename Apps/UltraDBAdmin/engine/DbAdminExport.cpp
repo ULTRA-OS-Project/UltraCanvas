@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminExport.cpp
+// Version: 0.3.0 - a postamble before COMMIT
 // Version: 0.2.0 - RowsText, QuotedName
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -260,7 +261,7 @@ bool ExportWriter::Finish(std::string& error) {
     if (!file_) { error = "nothing was written"; return false; }
     bool ok = true;
     if (options_.format == ExportFormat::Json) ok = Put(rows_ == 0 ? "]\n" : "\n]\n", error);
-    if (options_.format == ExportFormat::Sql) ok = Put("COMMIT;\n", error);
+    if (options_.format == ExportFormat::Sql) ok = Put(options_.postamble + "COMMIT;\n", error);
     if (std::fclose(file_) != 0 && ok) {
         error = "the file could not be completed";
         ok = false;

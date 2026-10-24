@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminSqlScript.cpp
+// Version: 0.3.0 - StatementSpans, StatementAt, ExplainSql
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminSqlScript.h"
@@ -62,22 +63,13 @@ bool ScriptFromBytes(const std::vector<uint8_t>& bytes, std::string& script, std
     return true;
 }
 
-ScriptSummary SummarizeScript(const std::string& script) {
-    ScriptSummary summary;
-    summary.unsupported = NeedsPsql(script);
-    if (!summary.unsupported.empty()) return summary;
-    std::vector<SqlToken> all;
-    std::string error;
-    if (!TokenizeSql(script, all, error)) {
-        summary.unsupported = "it does not read as SQL: " + error;
-        return summary;
-    }
-    std::vector<SqlToken> tokens;
-    for (auto& token : all)
-        if (token.kind != SqlToken::Kind::Comment) tokens.push_back(std::move(token));
+namespace {
 
-    static const std::set<std::string> risky = {"DROP", "DELETE", "TRUNCATE", "ALTER", "UPDATE"};
-    static const std::set<std::string> control = {"BEGIN", "COMMIT", "END", "ROLLBACK", "SAVEPOINT", "RELEASE"};
+// The statements of a script, as token ranges [first, last) without their
+// ';' - split where SQLite and psql split: at ';', except inside a CREATE
+// TRIGGER body, which ends at END;.
+std::vector<std::pair<size_t, size_t>> SplitTokens(const std::vector<SqlToken>& tokens) {
+    std::vector<std::pair<size_t, size_t>> ranges;
     size_t start = 0;
     while (start < tokens.size()) {
         if (IsSemicolon(tokens[start])) { ++start; continue; }
@@ -92,6 +84,38 @@ ScriptSummary SummarizeScript(const std::string& script) {
             if (IsSemicolon(tokens[end]) && (!trigger || (end > start && IsWord(tokens[end - 1], "END")))) break;
             ++end;
         }
+        ranges.emplace_back(start, end);
+        start = end + 1;
+    }
+    return ranges;
+}
+
+// The script's tokens without its comments; false when it does not tokenize.
+bool CodeTokens(const std::string& script, std::vector<SqlToken>& tokens, std::string& error) {
+    std::vector<SqlToken> all;
+    if (!TokenizeSql(script, all, error)) return false;
+    tokens.clear();
+    for (auto& token : all)
+        if (token.kind != SqlToken::Kind::Comment) tokens.push_back(std::move(token));
+    return true;
+}
+
+} // namespace
+
+ScriptSummary SummarizeScript(const std::string& script) {
+    ScriptSummary summary;
+    summary.unsupported = NeedsPsql(script);
+    if (!summary.unsupported.empty()) return summary;
+    std::vector<SqlToken> tokens;
+    std::string error;
+    if (!CodeTokens(script, tokens, error)) {
+        summary.unsupported = "it does not read as SQL: " + error;
+        return summary;
+    }
+
+    static const std::set<std::string> risky = {"DROP", "DELETE", "TRUNCATE", "ALTER", "UPDATE"};
+    static const std::set<std::string> control = {"BEGIN", "COMMIT", "END", "ROLLBACK", "SAVEPOINT", "RELEASE"};
+    for (const auto& [start, end] : SplitTokens(tokens)) {
         ++summary.statements;
         const std::string first = Upper(tokens[start].text);
         if (tokens[start].kind == SqlToken::Kind::Word) {
@@ -105,9 +129,41 @@ ScriptSummary SummarizeScript(const std::string& script) {
                 else ++it->second;
             }
         }
-        start = end + 1;
     }
     return summary;
+}
+
+std::vector<StatementSpan> StatementSpans(const std::string& script) {
+    std::vector<StatementSpan> spans;
+    std::vector<SqlToken> tokens;
+    std::string error;
+    if (!CodeTokens(script, tokens, error)) return spans;
+    for (const auto& [start, end] : SplitTokens(tokens)) {
+        StatementSpan span;
+        span.begin = tokens[start].begin;
+        span.end = tokens[end - 1].end;
+        span.semicolon = end < tokens.size() ? tokens[end].end : span.end;
+        spans.push_back(span);
+    }
+    return spans;
+}
+
+bool StatementAt(const std::string& script, size_t offset, StatementSpan& out) {
+    const std::vector<StatementSpan> spans = StatementSpans(script);
+    if (spans.empty()) return false;
+    // The statement the caret is in or right after (on its ';', or in the
+    // blank lines below it); before the first, the first.
+    out = spans.front();
+    for (const auto& span : spans) {
+        if (span.begin > offset) break;
+        out = span;
+    }
+    return true;
+}
+
+std::string ExplainSql(SqlEngine engine, const std::string& statement) {
+    // Never EXPLAIN ANALYZE: that runs the statement, an UPDATE included.
+    return (engine == SqlEngine::Sqlite ? "EXPLAIN QUERY PLAN " : "EXPLAIN ") + statement;
 }
 
 std::string RiskyText(const ScriptSummary& summary) {
