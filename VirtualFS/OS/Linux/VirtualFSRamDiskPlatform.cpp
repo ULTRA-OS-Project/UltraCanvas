@@ -116,18 +116,18 @@ VirtualFSResult PlatformCreate(const std::string& name,
     outDisk.capacityBytes = ShmFreeBytes();
     outDisk.backing = VirtualFSRamDiskBacking::Tmpfs;
     outDisk.deviceId.clear();  // a directory, not a device node
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult PlatformDestroy(const VirtualFSRamDisk& disk) {
     std::error_code ec;
     if (!std::filesystem::exists(disk.mountPath, ec)) {
-        return VirtualFSResult::Success;  // already gone - destroying is idempotent
+        return VirtualFSResult::Ok;  // already gone - destroying is idempotent
     }
 
     // tmpfs pages are freed on unlink, so no wipe pass is needed here.
     std::filesystem::remove_all(disk.mountPath, ec);
-    return ec ? VirtualFSResult::Error : VirtualFSResult::Success;
+    return ec ? VirtualFSResult::Error : VirtualFSResult::Ok;
 }
 
 std::vector<VirtualFSRamDisk> PlatformList() {
@@ -167,7 +167,7 @@ std::size_t PlatformMaxNameLength() {
 // the same as on the platforms where the probe launches a process.
 VirtualFSRamDiskBacking PlatformPreferredBacking() {
     return ShmIsTmpfs() ? VirtualFSRamDiskBacking::Tmpfs
-                        : VirtualFSRamDiskBacking::None;
+                        : VirtualFSRamDiskBacking::NotCreated;
 }
 
 } // namespace RamDiskDetail

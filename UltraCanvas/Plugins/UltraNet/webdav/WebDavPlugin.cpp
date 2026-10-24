@@ -63,7 +63,7 @@ std::size_t ReadFile(char* p, std::size_t s, std::size_t n, void* ud) {
 UltraNetResultCode MapCurlError(CURLcode rc, long status) {
     if (rc == CURLE_OK) {
         if (status >= 400) return UltraNetResultCode::HttpError;
-        return UltraNetResultCode::Success;
+        return UltraNetResultCode::Ok;
     }
     switch (rc) {
         case CURLE_URL_MALFORMAT:           return UltraNetResultCode::InvalidUrl;
@@ -104,7 +104,7 @@ UltraNetResult Run(CURL* h, const std::string& url) {
     UltraNetResult r;
     r.url = url; r.httpStatus = static_cast<int>(status);
     r.code = MapCurlError(rc, status);
-    r.success = (r.code == UltraNetResultCode::Success);
+    r.success = (r.code == UltraNetResultCode::Ok);
     if (!r.success && rc != CURLE_OK) r.message = curl_easy_strerror(rc);
     else if (!r.success) r.message = "HTTP " + std::to_string(status);
     return r;
@@ -261,7 +261,7 @@ public:
             UltraNetResult r = Run(h.get(), listUrl);
             // PROPFIND returns 207 Multi-Status on success; map that to ok.
             if (r.httpStatus == 207) {
-                r.code = UltraNetResultCode::Success;
+                r.code = UltraNetResultCode::Ok;
                 r.success = true;
                 r.message.clear();
             }

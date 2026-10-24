@@ -1,4 +1,7 @@
 // Apps/UltraDBAdmin/engine/DbAdminExport.cpp
+// Version: 0.4.0 - MySQL: names in backticks, strings escaped as mysqldump escapes them; MysqlPreamble
+// Version: 0.3.0 - a postamble before COMMIT
+// Version: 0.2.0 - RowsText, QuotedName
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminExport.h"
@@ -69,7 +72,7 @@ std::string CsvField(const UltraDbValue& value) {
 std::string JsonValue(const UltraDbValue& value) {
     switch (value.Type()) {
         case UltraDbType::Null:   return "null";
-        case UltraDbType::Bool:   return value.AsBool() ? "true" : "false";
+        case UltraDbType::Boolean:   return value.AsBool() ? "true" : "false";
         case UltraDbType::Int:    return value.AsString();
         case UltraDbType::Double: return Finite(value) ? value.AsString() : "null";
         case UltraDbType::Blob:   return JsonString("\\x" + Hex(value.AsBlob()));
@@ -81,13 +84,31 @@ std::string JsonValue(const UltraDbValue& value) {
 std::string SqlLiteral(const UltraDbValue& value, SqlEngine engine) {
     switch (value.Type()) {
         case UltraDbType::Null:   return "NULL";
-        case UltraDbType::Bool:   return value.AsBool() ? "TRUE" : "FALSE";
+        case UltraDbType::Boolean:   return value.AsBool() ? "TRUE" : "FALSE";
         case UltraDbType::Int:    return value.AsString();
         case UltraDbType::Double: return Finite(value) ? value.AsString() : "NULL";
         case UltraDbType::Blob:
-            return engine == SqlEngine::Sqlite ? "X'" + Hex(value.AsBlob()) + "'"
-                                               : "decode('" + Hex(value.AsBlob()) + "', 'hex')";
+            return engine != SqlEngine::Postgres ? "X'" + Hex(value.AsBlob()) + "'"
+                                                 : "decode('" + Hex(value.AsBlob()) + "', 'hex')";
         case UltraDbType::Text: {
+            if (engine == SqlEngine::MySql) {
+                // As mysqldump writes it: a backslash escapes in MySQL's
+                // strings, so it, a quote and the characters a line or a
+                // file would break on are escaped with one.
+                std::string out = "'";
+                for (const char c : value.AsString()) {
+                    switch (c) {
+                        case '\\': out += "\\\\"; break;
+                        case '\'': out += "\\'"; break;
+                        case '\0': out += "\\0"; break;
+                        case '\n': out += "\\n"; break;
+                        case '\r': out += "\\r"; break;
+                        case '\x1a': out += "\\Z"; break;
+                        default: out += c;
+                    }
+                }
+                return out + "'";
+            }
             std::string out = "'";
             for (const char c : value.AsString()) {
                 if (c == '\'') out += '\'';
@@ -109,7 +130,7 @@ WorkbookCell WorkbookValue(const UltraDbValue& value, bool numericColumn) {
             cell.kind = WorkbookCell::Kind::Number;
             cell.number = value.AsDouble();
             break;
-        case UltraDbType::Bool:
+        case UltraDbType::Boolean:
             cell.kind = WorkbookCell::Kind::Boolean;
             cell.boolean = value.AsBool();
             break;
@@ -176,6 +197,55 @@ bool ExportWriter::Open(const std::string& path, const ExportOptions& options, c
     return true;
 }
 
+std::string QuotedName(SqlEngine engine, const std::string& name) {
+    const char quote = engine == SqlEngine::MySql ? '`' : '"';
+    std::string out(1, quote);
+    for (const char c : name) {
+        if (c == quote) out += quote;
+        out += c;
+    }
+    return out + quote;
+}
+
+std::string RowsText(const std::vector<std::string>& columns, const std::vector<UltraDbRow>& rows,
+                     ExportFormat format, SqlEngine engine, const std::string& table) {
+    std::string text;
+    switch (format) {
+        case ExportFormat::Csv: {
+            const CSVExportOptions options;   // comma, quotes where needed, LF
+            text = UltraCanvas::CSVFormatRecord(columns, options);
+            for (const auto& row : rows) {
+                std::vector<std::string> fields;
+                for (size_t i = 0; i < row.Size(); ++i) fields.push_back(CsvField(row[i]));
+                text += UltraCanvas::CSVFormatRecord(fields, options);
+            }
+            break;
+        }
+        case ExportFormat::Json: {
+            text = "[";
+            for (size_t r = 0; r < rows.size(); ++r) {
+                text += r == 0 ? "\n{" : ",\n{";
+                for (size_t i = 0; i < rows[r].Size() && i < columns.size(); ++i)
+                    text += (i == 0 ? "" : ", ") + JsonString(columns[i]) + ": " + JsonValue(rows[r][i]);
+                text += "}";
+            }
+            text += rows.empty() ? "]\n" : "\n]\n";
+            break;
+        }
+        case ExportFormat::Sql: {
+            std::string names;
+            for (size_t i = 0; i < columns.size(); ++i) names += (i == 0 ? "" : ", ") + QuotedName(engine, columns[i]);
+            for (const auto& row : rows) {
+                text += "INSERT INTO " + table + " (" + names + ") VALUES (";
+                for (size_t i = 0; i < row.Size(); ++i) text += (i == 0 ? "" : ", ") + SqlLiteral(row[i], engine);
+                text += ");\n";
+            }
+            break;
+        }
+    }
+    return text;
+}
+
 bool ExportWriter::Write(const UltraDbRow& row, std::string& error) {
     std::string text;
     switch (options_.format) {
@@ -211,7 +281,7 @@ bool ExportWriter::Finish(std::string& error) {
     if (!file_) { error = "nothing was written"; return false; }
     bool ok = true;
     if (options_.format == ExportFormat::Json) ok = Put(rows_ == 0 ? "]\n" : "\n]\n", error);
-    if (options_.format == ExportFormat::Sql) ok = Put("COMMIT;\n", error);
+    if (options_.format == ExportFormat::Sql) ok = Put(options_.postamble + "COMMIT;\n", error);
     if (std::fclose(file_) != 0 && ok) {
         error = "the file could not be completed";
         ok = false;
@@ -269,10 +339,10 @@ UltraDbResult ExportResult(const std::string& connection, const UltraDbResultSet
 
 UltraDbResult ExportQuery(const std::string& connection, const std::string& sql, const std::string& path,
                           const ExportOptions& options, size_t& written, const std::atomic<bool>* cancel,
-                          const std::function<void(size_t)>& progress) {
+                          const std::function<void(size_t)>& progress, const UltraDbParams& params) {
     written = 0;
     UltraDbResult result;
-    const UltraDbHandle cursor = UltraDb_OpenCursor(connection, sql, {}, &result);
+    const UltraDbHandle cursor = UltraDb_OpenCursor(connection, sql, params, &result);
     if (cursor == UltraDbInvalidHandle) return result;
     ExportWriter writer;
     std::string error;
@@ -306,11 +376,11 @@ UltraDbResult ExportQuery(const std::string& connection, const std::string& sql,
 }
 
 UltraDbResult ReadRows(const std::string& connection, const std::string& sql, size_t limit, UltraDbResultSet& out,
-                       bool& truncated) {
+                       bool& truncated, const UltraDbParams& params) {
     out = UltraDbResultSet();
     truncated = false;
     UltraDbResult result;
-    const UltraDbHandle cursor = UltraDb_OpenCursor(connection, sql, {}, &result);
+    const UltraDbHandle cursor = UltraDb_OpenCursor(connection, sql, params, &result);
     if (cursor == UltraDbInvalidHandle) return result;
     bool exhausted = false, first = true;
     UltraDbResultSet page;
@@ -354,6 +424,26 @@ UltraDbResult SqlitePreamble(const std::string& connection, const UltraDbTableSc
     if (!result) return result;
     out = source.createSql + ";\n";
     for (const auto& [name, sql] : source.indexes) out += sql + ";\n";
+    return UltraDbResult::Ok();
+}
+
+UltraDbResult MysqlPreamble(const std::string& connection, const UltraDbTableSchema& table, std::string& out) {
+    out.clear();
+    if (table.kind != UltraDbObjectKind::Table) return UltraDbResult::Ok();
+    for (const auto& column : table.columns) {
+        if (!column.generated) continue;
+        // MySQL refuses a value for a generated column: the rows alone, said so.
+        out = "-- The rows of " + table.schema + "." + table.name +
+              " only: it has columns the database computes, which take no value; Export as SQL on its database "
+              "(the tree's menu) writes a file that rebuilds it.\n";
+        return UltraDbResult::Ok();
+    }
+    UltraDbResultSet rows;
+    const UltraDbResult result =
+        UltraDb_Query(connection, "SHOW CREATE TABLE " + QuotedName(SqlEngine::MySql, table.schema) + "." +
+                                      QuotedName(SqlEngine::MySql, table.name), {}, rows);
+    if (!result) return result;
+    if (rows.Size() == 1 && !rows.Row(0)["Create Table"].IsNull()) out = rows.Row(0)["Create Table"].AsString() + ";\n";
     return UltraDbResult::Ok();
 }
 

@@ -776,7 +776,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is
-  no unregister.
+  no unregister. `UltraCanvasFontCoverage.h` (`core/UltraCanvasFontCoverage.cpp`):
+  `CountCharactersWithoutFont` / `FindScriptsWithoutFont` - the characters of
+  a text no font covers (drawn as hex boxes), by script, each with a free Noto
+  font and its download page - plus `FontDownloadUrl` and
+  `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
+  notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
   Emoji come from a bundled font the emoji setting picks
@@ -1389,7 +1394,11 @@ through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 engine and a model on demand and supervises the engine as a loopback
 process shared between applications; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
-chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
+chat and embeddings through it; the module's one library that draws,
+`UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
+`UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
+dialog an application shows when a service needs a model that is not on
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 
@@ -1561,7 +1570,10 @@ worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
-on libcurl. Remaining gaps are per-function and environment-dependent —
+on libcurl. `UltraNetCookieJar` (`UltraNet/UltraNetCookieJar.h`) is a
+browser's cookie jar with the rules in the open (RFC 6265bis: `Store`,
+`HeaderFor`, `Classify`, `SiteOf`, `ParseCookieDate`, kept in a text file),
+for a client that follows redirects itself; UltraWeb uses it. Remaining gaps are per-function and environment-dependent —
 build and run the `UltraNetApiStatus` probe tool for ground truth on a
 given machine. See `Docs/Modules/UltraNet/README.md`.
 
@@ -1599,6 +1611,8 @@ extended or replaced without changing callers.
   a time; server-side cursors on PostgreSQL)
 - `UltraDb_ExecBatch` (every statement of a script with its own result)
 - `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
+- `UltraDb_AddStatementObserver`, `UltraDb_RemoveStatementObserver` (every
+  statement reported as it ends: text, bound-value count, rows, time, outcome)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
 - `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
   `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
@@ -1618,16 +1632,20 @@ networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
 **Implementation status (this branch):** Stage 1 implemented, and the
-PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
-parameterized queries, prepared statements, transactions and versioned
-migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
-`Tests/UltraDatabase`); the PostgreSQL driver
-(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
-found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+PostgreSQL and MySQL / MariaDB drivers from Stage 2. The SQLite core, the
+connection registry, parameterized queries, prepared statements,
+transactions and versioned migrations are built and tested
+(`UltraCanvas/{include,core}/UltraDatabase/`, `Tests/UltraDatabase`); the
+PostgreSQL driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built
+wherever libpq is found, the MySQL / MariaDB driver
+(`UltraDatabaseMysqlDriver.cpp`, over MariaDB Connector/C, LGPL-2.1, linked
+dynamically) wherever libmariadb is; both verify TLS by default and read
+their password from UltraVault, and UltraFIBU's multi-user mode runs on
+PostgreSQL. Also built: schema introspection, server administration
+(`UltraDatabaseServer.h`: sessions, settings, sizes, stopping a session),
 streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
-plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
-DuckDB), async queries, pooling and at-rest encryption. Details in
+plan: the other drivers (MSSQL, Redis, MongoDB, DuckDB), async queries,
+pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**

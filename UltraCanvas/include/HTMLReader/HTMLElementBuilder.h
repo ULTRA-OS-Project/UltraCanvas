@@ -3,9 +3,14 @@
 // Block-level markup becomes UltraCanvasContainer nodes with CSSLayout box
 // properties; runs of inline content become UltraCanvasLabel nodes using
 // Pango markup for bold/italic/links/inline color; <img> becomes
-// UltraCanvasImageElement fed through a caller-supplied resource loader.
+// UltraCanvasImageElement fed through a caller-supplied resource loader;
+// <video> and <audio> become the player the host makes for them
+// (BuildOptions::mediaFactory).
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.19.0 - BuildOptions::mediaFactory and MediaRequest: <video> and
+//                   <audio> as players the host builds, sized as a browser
+//                   sizes them; their fallback content without one
 // Version: 1.18.0 - onLinkActivatedNewWindow: a link whose target names another
 //                   window (target="_blank", <base target>) goes there
 // Version: 1.17.0 - onChooseFiles (file uploads); a <label>'s text acts on its
@@ -34,7 +39,7 @@
 // Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,6 +61,33 @@
 
 namespace UltraCanvas {
 namespace HTML {
+
+// One address a <video> or <audio> may play: its src="" or a <source>'s,
+// as the document writes it (unresolved), with the type="" it names.
+struct MediaSource {
+    std::string src;
+    std::string type;
+};
+
+// What a <video> or <audio> asks for (BuildOptions::mediaFactory).
+struct MediaRequest {
+    // The element in its document: the same pointer on every build of one
+    // parsed document, so a host can hand the same player back on a rebuild
+    // (a new width, pictures arriving) and playback goes on.
+    const Node* node = nullptr;
+    bool video = true;                 // <video>; false: <audio>
+    std::vector<MediaSource> sources;  // src="" first, then the <source>s in order
+    std::string poster;                // poster="" (unresolved)
+    bool controls = false;
+    bool autoplay = false;
+    bool loop = false;
+    bool muted = false;
+    // The box it gets, in CSS px: CSS width / height, else the width and
+    // height attributes, else a video's 640 x 360 (one side given: the
+    // other at 16:9) and an audio player's 300 x 40. Narrowed to its line.
+    float width = 0.f;
+    float height = 0.f;
+};
 
 struct BuildOptions {
     // Base typography / colors, reading-mode overrides.
@@ -116,6 +148,15 @@ struct BuildOptions {
     // when cancelled. Without it the button is disabled.
     std::function<void(bool multiple, const std::string& accept,
                        std::function<void(std::vector<std::string> paths)> done)> onChooseFiles;
+
+    // <video> and <audio>: the element that plays one, made by the host
+    // (UltraCanvasWebView makes the framework's video player). It is placed
+    // like a picture, by the text-align it inherits, at the request's size.
+    // Unset, or when it returns null, the element's fallback content - the
+    // text and links between its tags - is shown instead, as a browser that
+    // cannot play it would. An <audio> without controls that does not play
+    // by itself shows nothing.
+    std::function<std::shared_ptr<UltraCanvasUIElement>(const MediaRequest& request)> mediaFactory;
 };
 
 struct BuildResult {
@@ -246,6 +287,12 @@ private:
     std::shared_ptr<UltraCanvasUIElement> BuildImage(Node& element,
                                                      const std::string& linkHref = "");
     std::shared_ptr<UltraCanvasUIElement> BuildRule(Node& element);
+    // A <video> or <audio> through opts.mediaFactory, on a line of its own
+    // placed as a picture's (the row), or null: its fallback content then.
+    // `player` is the factory's element itself.
+    std::shared_ptr<UltraCanvasUIElement> BuildMedia(Node& element,
+                                                     std::shared_ptr<UltraCanvasUIElement>* player = nullptr);
+    bool IsMedia(const Node& node) const;
     // A <table> (or display: table) on the CSSLayout table engine: one cell
     // element per <td>/<th> at its row / column / spans, columns shared by
     // every row. A table narrower than its line is placed by its align

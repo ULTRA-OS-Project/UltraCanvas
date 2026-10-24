@@ -887,6 +887,38 @@ void test_flex_wrap_row_height_in_column() {
     expectMeasured("column as tall as the row", *outer, 200.f, 60.f);
 }
 
+// A wrapping row whose second item is text that grows (a field and the
+// note beside it, which moves under the field when the row is narrow): the
+// column measures the row at "at most" its width, and the text, alone on its
+// line but wider than the row, has to be measured at the row's width - as
+// it is arranged - or its wrapped second line is missing from the row's
+// height and the row cuts it off.
+void test_flex_wrap_row_shrinks_line_at_most() {
+    beginTest("flex column: a wrapped line wider than an AtMost row is measured shrunk");
+    LayoutContext ctx;
+    auto outer = makeFlexRoot(FlexDirection::Column, FlexWrap::NoWrap, JustifyContent::Start);
+    auto row = makeFlexRoot(FlexDirection::Row, FlexWrap::Wrap, JustifyContent::Start,
+                            AlignItems::Start, AlignContent::Start);
+    { FlexItem fi; fi.grow = 0; fi.shrink = 0; fi.alignSelf = AlignSelf::Stretch;
+      row->layoutItem.data = fi; }
+    row->AddChild(makeFlexChild("field", 120, 30, 0, 0));
+    // 220 px of text, 20 px a line; may grow and shrink.
+    auto text = std::make_shared<WrapLeaf>("text", /*maxW*/220.f, /*lineH*/20.f);
+    { FlexItem fi; fi.grow = 1; fi.shrink = 1; text->layoutItem.data = fi; }
+    row->AddChild(text);
+    outer->AddChild(row);
+
+    // 200 wide: the text does not fit beside the field, so it takes the
+    // second line - at 200 px, two lines of text, not one line at 220.
+    MeasureConstraints c{
+        { ConstraintMode::Exact,     200.f },
+        { ConstraintMode::Unbounded, INFINITY }
+    };
+    outer->Measure(c, ctx);
+    expectMeasured("text measured at the row's width", *text, 200.f, 40.f);
+    expectMeasured("row has both text lines", *row, 200.f, 70.f);
+}
+
 void test_grid_auto_track_uses_intrinsic() {
     beginTest("grid auto track sizes from leaf child content width");
     LayoutContext ctx;
@@ -1062,6 +1094,7 @@ int main() {
     test_flex_uses_intrinsic_for_auto_basis();
     test_flex_column_wrapping_child_height_for_width();
     test_flex_wrap_row_height_in_column();
+    test_flex_wrap_row_shrinks_line_at_most();
     test_grid_auto_track_uses_intrinsic();
 
     test_flex_default_does_not_stretch();

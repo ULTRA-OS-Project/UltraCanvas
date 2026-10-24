@@ -216,6 +216,7 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
         ${_uw_dir}/host/UltraWebFetch.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
         ${_uw_dir}/host/UltraWebLoader.cpp
+        ${_uw_dir}/host/UltraWebCookies.cpp
         ${_uw_dir}/host/UltraWebPages.cpp
         ${_uw_dir}/host/UltraWebStorage.cpp
         ${_uw_dir}/ui/UltraWebTab.cpp)
@@ -229,6 +230,27 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     add_test(NAME UltraWebTabTest COMMAND UltraWebTabTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: UltraWebTabTest")
+endif()
+
+# ===== ULTRAWEB COOKIES TEST =====
+# UltraWeb's page services with a cookie jar (UltraNetCookieJar, whose rules
+# Tests/UltraNet tests) against a loopback server - a login's redirect sets
+# a cookie and the next hop sends it (POSIX only).
+if(TARGET UltraCanvas AND TARGET UltraNet)
+    set(_uw_dir ${ULTRACANVAS_ROOT}/Apps/UltraWeb)
+    add_executable(UltraWebCookiesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebCookiesTest.cpp
+        ${_uw_dir}/host/UltraWebCookies.cpp
+        ${_uw_dir}/host/UltraWebPages.cpp)
+    target_include_directories(UltraWebCookiesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR} ${_uw_dir})
+    target_compile_features(UltraWebCookiesTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraWebCookiesTest PRIVATE UltraNet UltraCanvas)
+    set_target_properties(UltraWebCookiesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraWebCookiesTest COMMAND UltraWebCookiesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraWebCookiesTest")
 endif()
 
 # ===== ULTRAWEB DOWNLOADS TEST =====
@@ -712,6 +734,27 @@ else()
     message(STATUS "  FontChangeRepaintTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FONT COVERAGE TEST =====
+# CountCharactersWithoutFont(): the characters of a text no font covers,
+# headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontCoverageTest...")
+    add_executable(FontCoverageTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FontCoverageTest.cpp
+    )
+    target_include_directories(FontCoverageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FontCoverageTest PRIVATE cxx_std_20)
+    target_link_libraries(FontCoverageTest PRIVATE UltraCanvas)
+    set_target_properties(FontCoverageTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FontCoverageTest COMMAND FontCoverageTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontCoverageTest")
+else()
+    message(STATUS "  FontCoverageTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== EMOJI SETTINGS TEST =====
 # Defined in EmojiTests.cmake, which the top level also includes on its own
 # (ULTRACANVAS_BUILD_EMOJI_TESTS) where BUILD_TESTS is off - the Windows row.
@@ -839,7 +882,7 @@ endif()
 # -Wunused-parameter. One file includes them all, in sorted order: the
 # library's own sources include them in every order already, and the
 # Win32 names <windows.h> would rename are kept out of our APIs by
-# scripts/check_win32_names.py, so the order needs no care.
+# scripts/check_platform_names.py, so the order needs no care.
 if(TARGET UltraCanvas AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang" AND NOT MSVC)
     set(_ucHeaderGlobs
         ${ULTRACANVAS_INCLUDE_DIR}/*.h
@@ -1042,6 +1085,29 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: LabelSelectionTest")
 else()
     message(STATUS "  LabelSelectionTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== LABEL NATURAL TEXT WIDTH TEST =====
+# UltraCanvasLabel::GetNaturalTextWidth: the text measured rather than its box,
+# in step with the label's own hit test, unchanged by padding, 0 when empty or
+# outside a window. Needs the real framework (the text layout). Skips itself
+# without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building LabelNaturalTextWidthTest...")
+    add_executable(LabelNaturalTextWidthTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LabelNaturalTextWidthTest.cpp
+    )
+    target_include_directories(LabelNaturalTextWidthTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(LabelNaturalTextWidthTest PRIVATE cxx_std_20)
+    target_link_libraries(LabelNaturalTextWidthTest PRIVATE UltraCanvas)
+    set_target_properties(LabelNaturalTextWidthTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME LabelNaturalTextWidthTest COMMAND LabelNaturalTextWidthTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: LabelNaturalTextWidthTest")
+else()
+    message(STATUS "  LabelNaturalTextWidthTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== CARET STACKING ORDER TEST =====
@@ -2105,8 +2171,10 @@ message(STATUS "    Test registered: ListViewTooltipTest")
 # ===== LISTVIEW SCROLL TEST =====
 # EnsureRowVisible before the view's first layout (the row is revealed once it
 # has a size, instead of scrolling it below the top), the multi-column model's
-# SetItems (one notification for every row) and the selection following rows
-# inserted or removed above it. No window, no display.
+# SetItems (one notification for every row), the selection following rows
+# inserted or removed above it, columns wider than the view (the horizontal
+# scrollbar, the sideways scroll and the Left / Right keys) and columns
+# fitted to their text (SetColumnFitting). No window, no display.
 if(TARGET UltraCanvas)
     message(STATUS "  Building ListViewScrollTest...")
     add_executable(ListViewScrollTest
@@ -3677,6 +3745,27 @@ add_test(
 )
 message(STATUS "    Test registered: ChartEngineTest")
 
+# ===== IMPORTANCE-PERFORMANCE MODEL TEST =====
+# The importance-performance chart's model: open Chaikin smoothing, point in
+# polygon, the pole of inaccessibility, zone order and classification, levels,
+# validation and the Slack preset in both forms. UI-free.
+message(STATUS "  Building ImportancePerformanceModelTest...")
+add_executable(ImportancePerformanceModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImportancePerformanceModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Charts/Engine/UltraCanvasChartHighlights.cpp
+)
+target_include_directories(ImportancePerformanceModelTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ImportancePerformanceModelTest PRIVATE cxx_std_20)
+set_target_properties(ImportancePerformanceModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ImportancePerformanceModelTest COMMAND ImportancePerformanceModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ImportancePerformanceModelTest")
+
 # ===== ELEMENT PLUGIN TEST =====
 # The element plugin registry, create-by-name, keyword text dispatch, the named
 # property surface, the ABI handshake, and a real end-to-end DSO load: two test
@@ -4022,6 +4111,25 @@ set_target_properties(ButtonIconPixelTest PROPERTIES
 add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonIconPixelTest")
+
+# ===== TEXT CENTRED ON CAPITALS TEST =====
+# A segmented control's captions and a spreadsheet's cells centre their
+# capitals on the segment's or row's middle, as a button does, rather than
+# the text's line box, which sits high or low with the font. Offscreen; needs
+# no display.
+message(STATUS "  Building TextCentredOnCapsTest...")
+add_executable(TextCentredOnCapsTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TextCentredOnCapsTest.cpp
+)
+target_include_directories(TextCentredOnCapsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(TextCentredOnCapsTest PRIVATE cxx_std_20)
+target_link_libraries(TextCentredOnCapsTest PRIVATE UltraCanvas)
+set_target_properties(TextCentredOnCapsTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TextCentredOnCapsTest COMMAND TextCentredOnCapsTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TextCentredOnCapsTest")
 
 # ===== TEXT LAYOUT CACHE TEST =====
 # The text layout an element draws with is built once and kept: ten draws
@@ -5225,6 +5333,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MatrixDiagramRenderTest")
 else()
     message(STATUS "  MatrixDiagramRenderTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMPORTANCE-PERFORMANCE CHART RENDER TEST =====
+# The importance-performance chart drawn offscreen in both Slack forms: the
+# zones are painted in their colours where the model puts them, every factor
+# is hit where it is drawn with its zone in the tooltip, and the band and
+# zone titles are laid out. With ULTRACANVAS_SCREENSHOT_DIR set, each form is
+# written there as a PNG.
+if(TARGET UltraCanvas AND ULTRACANVAS_ENABLE_CHARTS)
+    message(STATUS "  Building ImportancePerformanceChartRenderTest...")
+    add_executable(ImportancePerformanceChartRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImportancePerformanceChartRenderTest.cpp
+    )
+    target_include_directories(ImportancePerformanceChartRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImportancePerformanceChartRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(ImportancePerformanceChartRenderTest PRIVATE UltraCanvas)
+    set_target_properties(ImportancePerformanceChartRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImportancePerformanceChartRenderTest COMMAND ImportancePerformanceChartRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImportancePerformanceChartRenderTest")
+else()
+    message(STATUS "  ImportancePerformanceChartRenderTest skipped (UltraCanvas or charts not present)")
 endif()
 
 # ===== BUSY INDICATOR RENDER TEST =====

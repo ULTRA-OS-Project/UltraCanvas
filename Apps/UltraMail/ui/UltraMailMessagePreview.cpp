@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.20.0 - "Copy link" in the right-click menu over a link of the body
+//                  (HTML and plain text), above Copy and Select All
+// Version: 0.19.0 - the attachments in a column at the right of the body
+//                  (SetAttachmentsRight), or a row under it as before
 // Version: 0.18.3 - loan scams (loan-offer-fraud) are named in the warning strip
 // Version: 0.18.2 - the More menu is anchored to its button: above it when there is
 //                   no room below
@@ -54,7 +58,7 @@
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 #include "UltraMailHeaderText.h"
@@ -213,10 +217,7 @@ public:
         return hovered_.empty() ? UltraCanvasTextArea::GetMouseCursor() : UCMouseCursor::Hand;
     }
 
-private:
-    std::string hovered_;
-    std::string pressedLink_;
-
+    // The link at a point of the area (as event.pointer gives it), or "".
     std::string LinkUnder(const Point2Di& pointer) {
         const LineColumnIndex hit = PosToLineColumn(pointer);
         if (!hit.IsValid()) return std::string();
@@ -231,6 +232,10 @@ private:
         if (byte >= line.size()) return std::string();
         return PlainLinkAt(line, byte);
     }
+
+private:
+    std::string hovered_;
+    std::string pressedLink_;
 
     void Hover(const std::string& href, const Point2Di& pointerWindow) {
         if (href == hovered_) {
@@ -259,6 +264,23 @@ void CollectLabels(UltraCanvasContainer& box, std::vector<UltraCanvasLabel*>& la
         if (auto* label = dynamic_cast<UltraCanvasLabel*>(child.get())) labels.push_back(label);
         else if (auto* inner = dynamic_cast<UltraCanvasContainer*>(child.get())) CollectLabels(*inner, labels);
     }
+}
+
+// The link of a built HTML body at a window point, or "": the label under the
+// point is asked for the link at that place of its text.
+std::string LinkAtWindowPoint(UltraCanvasContainer& box, const Point2Di& windowPoint) {
+    std::vector<UltraCanvasLabel*> labels;
+    CollectLabels(box, labels);
+    const Point2Df at(static_cast<float>(windowPoint.x), static_cast<float>(windowPoint.y));
+    for (UltraCanvasLabel* label : labels) {
+        if (!label->IsVisible() || label->GetTextLinks().empty()) continue;
+        const Rect2Df b = label->GetBoundsInWindow();
+        if (!b.Contains(at)) continue;
+        const int link = label->LinkIndexAtPoint(Point2Di(windowPoint.x - static_cast<int>(b.x),
+                                                          windowPoint.y - static_cast<int>(b.y)));
+        if (link >= 0) return label->GetTextLinks()[static_cast<std::size_t>(link)].href;
+    }
+    return std::string();
 }
 
 std::string SanitizeFolder(const std::string& folder) {
@@ -589,12 +611,34 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
         s.scrollbarStyle = ScrollbarStyle::Modern();   // thin and round, as the list's
         bodyHost_->SetContainerStyle(s);
     }
-    root_->AddChild(bodyHost_);
+    // The body, and the attachments' column beside it when they are shown
+    // at the right.
+    bodyRow_ = CreateContainer("prevBodyRow", 0, 0, 0, 0);
+    bodyRow_->layout.SetFlexRow()
+                    .SetFlexGap(Theme::kInnerGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    if (auto s = bodyRow_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = false;   // the body host scrolls, not the row
+        bodyRow_->SetContainerStyle(s);
+    }
+    root_->AddChild(bodyRow_);
+    bodyRow_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    bodyRow_->AddChild(bodyHost_);
     bodyHost_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    // Attachment chips below the body (fixed height, hidden while empty).
-    auto strip = attachmentStrip_.Build();
-    root_->AddChild(strip);
+    // Attachment chips below the body (fixed height, hidden while empty), or
+    // in a column at its right that scrolls when they do not fit.
+    attachColumn_ = CreateContainer("prevAttachColumn", 0, 0, AttachmentStrip::ColumnWidth(), 0);
+    if (auto s = attachColumn_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = true;
+        s.autoShowHorizontalScrollbar = false;
+        s.scrollbarStyle = ScrollbarStyle::Modern();
+        attachColumn_->SetContainerStyle(s);
+    }
+    attachColumn_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    attachmentStrip_.Build();
+    PlaceAttachments();
     attachmentStrip_.onSaveAs = [this](const Attachment& a) {
         if (onSaveAttachment) onSaveAttachment(a);
     };
@@ -604,6 +648,36 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
 
     Clear();
     return root_;
+}
+
+void MessagePreview::SetAttachmentsRight(bool right) {
+    if (right == attachmentsRight_) return;
+    attachmentsRight_ = right;
+    PlaceAttachments();
+}
+
+void MessagePreview::PlaceAttachments() {
+    auto strip = attachmentStrip_.Container();
+    if (!strip || !root_ || !bodyRow_ || !attachColumn_) return;
+    if (UltraCanvasContainer* holder = strip->GetParentContainer()) holder->RemoveChild(strip);
+    if (UltraCanvasContainer* holder = attachColumn_->GetParentContainer())
+        holder->RemoveChild(attachColumn_);
+    attachmentStrip_.SetVertical(attachmentsRight_);
+    if (attachmentsRight_) {
+        attachColumn_->AddChild(strip);
+        bodyRow_->AddChild(attachColumn_);
+    } else {
+        root_->AddChild(strip);   // under the body row, the last row
+    }
+    SyncAttachmentColumn();
+    root_->InvalidateLayout();
+    root_->RequestRedraw();
+}
+
+void MessagePreview::SyncAttachmentColumn() {
+    // The column goes with the chips: hidden while there are none.
+    auto strip = attachmentStrip_.Container();
+    if (attachColumn_ && strip) attachColumn_->SetVisible(attachmentsRight_ && strip->IsVisible());
 }
 
 void MessagePreview::ReRender() {
@@ -728,7 +802,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         };
         ShowTextMenu(event, area->HasSelection(),
                      withArea([](UltraCanvasTextArea& a) { a.CopySelection(); }),
-                     withArea([](UltraCanvasTextArea& a) { a.SelectAll(); }));
+                     withArea([](UltraCanvasTextArea& a) { a.SelectAll(); }),
+                     area->LinkUnder(event.pointer));
         return true;
     };
     text->SetReadOnly(true);
@@ -763,11 +838,17 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
 }
 
 void MessagePreview::ShowTextMenu(const UCEvent& event, bool canCopy,
-                                  std::function<void()> copy, std::function<void()> selectAll) {
+                                  std::function<void()> copy, std::function<void()> selectAll,
+                                  const std::string& link) {
     UltraCanvasWindowBase* window = root_ ? root_->GetWindow() : nullptr;
     if (!window) return;
     textMenu_ = std::make_shared<UltraCanvasMenu>("prevTextMenu", 0, 0, 180, 0);
     textMenu_->SetMenuType(MenuType::PopupMenu);
+    // Over a link: its address, as the message wrote it, for pasting elsewhere.
+    if (!link.empty()) {
+        textMenu_->AddItem(MenuItemData::Action("Copy link", [link]() { SetClipboardText(link); }));
+        textMenu_->AddItem(MenuItemData::Separator());
+    }
     MenuItemData copyItem = MenuItemData::ActionWithShortcut("Copy", "Ctrl+C", std::move(copy));
     copyItem.enabled = canCopy;
     textMenu_->AddItem(copyItem);
@@ -820,6 +901,9 @@ void MessagePreview::WireTextSelection(const std::shared_ptr<UltraCanvasTextSele
         // On the sender's name: the sender's menu, Copy and Select All in it.
         if (raw == headerSelection_.get() && hasMessage_ && PointerOnSender(event.pointerWindow))
             ShowSenderMenu(event, /*withText=*/true, raw->HasSelection(), copy, selectAll);
+        else if (raw == bodySelection_.get() && bodyHost_)
+            ShowTextMenu(event, raw->HasSelection(), copy, selectAll,
+                         LinkAtWindowPoint(*bodyHost_, event.pointerWindow));
         else
             ShowTextMenu(event, raw->HasSelection(), copy, selectAll);
     };
@@ -1247,6 +1331,7 @@ void MessagePreview::Clear() {
     codes_.clear();
     if (codeBar_) codeBar_->SetVisible(false);
     attachmentStrip_.SetAttachments({});
+    SyncAttachmentColumn();
 }
 
 void MessagePreview::IconCached(const std::string& key) {
@@ -1324,6 +1409,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     if (bodyMissing_) {
         RenderBody("(message body not downloaded yet)", false);
         attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
@@ -1332,6 +1418,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         RenderBody("(this message's body could not be read)\n\n"
                    + (loaded.error.empty() ? PathToUtf8(path) : loaded.error), false);
         attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
@@ -1344,6 +1431,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         pendingHtml = pm.bodyIsHtml;
         havePending = true;
         attachmentStrip_.SetAttachments(pm.attachments);
+        SyncAttachmentColumn();
         // The text for a plain reply, and the HTML a formatted one is built
         // from (UltraMailRichComposer).
         current_.body = pm.bodyIsHtml ? HTML::ExtractPlainText(pm.body, HTML::PlainTextLayout::Lines)

@@ -1,16 +1,20 @@
 // Apps/UltraWeb/ui/UltraWebWindow.cpp
 // The browser window (UltraWebWindow.h).
+// Version: 0.9.0 - a streamed download sends the site's cookies; the cookie
+//                  jar is written when the window closes; Ctrl+Shift+Delete
+//                  clears it
 // Version: 0.8.0 - target="_blank" links open in a new tab
 // Version: 0.7.0 - tabs: a tab strip above the toolbar, one page or app per tab
 // Version: 0.6.0 - a downloads list: a panel above the status bar
 // Version: 0.5.0 - downloads: a link to no page is saved through the save dialog
 // Version: 0.3.0 - web pages in an UltraCanvasWebView; back / forward
 // Version: 0.2.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-22
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraWebWindow.h"
 
+#include "../host/UltraWebCookies.h"
 #include "../host/UltraWebDownloads.h"
 
 #include "UltraCanvasApplication.h"
@@ -80,6 +84,7 @@ UltraWebWindow::~UltraWebWindow() {
     downloadList_.onChanged = nullptr;
     if (window_) window_->UnInstallWindowEventFilter("uw-shortcuts");
     tabs_.clear();
+    SharedCookieJar()->Flush();
 }
 
 bool UltraWebWindow::Initialize() {
@@ -312,6 +317,17 @@ void UltraWebWindow::InstallShortcuts() {
                 window_->SetFocusedElement(address_.get());
                 address_->SelectAll();
                 return true;
+            case UCKeys::Delete: {
+                // Ctrl+Shift+Delete, as in browsers: forget every site's cookies.
+                if (!e.shift) return false;
+                auto jar = SharedCookieJar();
+                const size_t count = jar->Count();
+                jar->Clear();
+                jar->Flush();
+                SetStatus(count == 0 ? std::string("No cookies to clear")
+                                     : "Cleared " + std::to_string(count) + (count == 1 ? " cookie" : " cookies"));
+                return true;
+            }
             default: return false;
         }
     }, { UCEventType::KeyDown });
@@ -359,6 +375,9 @@ void UltraWebWindow::SaveDownload(const HTML::LoadedPage& page) {
             const int id = downloadList_.Add(url, savedName, path);
             ShowDownloads(true);
             SetStatus("Downloading " + savedName + " ...");
+            // The site's cookies go with it, as with the page: a file
+            // behind a login is the logged-in user's.
+            const std::string cookie = SharedCookieJar()->HeaderFor(url, UltraNetCookieRequest::Navigation, UltraNetCookieJar::Now());
             std::shared_ptr<Download> download = StartDownload(url, path, PostToUi,
                 [this, alive, id](int64_t received, int64_t total) {
                     if (alive.expired()) return;
@@ -370,7 +389,8 @@ void UltraWebWindow::SaveDownload(const HTML::LoadedPage& page) {
                     downloadList_.Finish(id, ok, error);
                     SetStatus(ok ? "Saved " + savedName + " to " + path
                                  : "Download of " + savedName + " " + (error == "cancelled" ? "cancelled" : "failed: " + error));
-                });
+                },
+                cookie);
             downloads_[id] = download;
         });
 }

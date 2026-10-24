@@ -144,7 +144,7 @@ VirtualFSOpenMode
 *Source: VirtualFSTypes.h*
 ```cpp
 enum class VirtualFSResult {
-    Success = 0,            // Operation completed successfully
+    Ok = 0,            // Operation completed successfully
     
     // General errors (1-99)
     Error = 1,              // Generic error
@@ -1154,9 +1154,9 @@ public:
         // rewrite for the other writable formats.
         for (const auto& path : virtualPaths) {
             auto result = Delete(path);
-            if (result != VirtualFSResult::Success) return result;
+            if (result != VirtualFSResult::Ok) return result;
         }
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     }
     
     virtual VirtualFSResult Rename(
@@ -1354,7 +1354,7 @@ int main() {
     std::vector<uint8_t> data;
     auto result = VirtualFS_ReadFile("/home/user/archive.zip/docs/readme.txt", data);
     
-    if (result == VirtualFSResult::Success) {
+    if (result == VirtualFSResult::Ok) {
         std::string content(data.begin(), data.end());
         std::cout << "Content:\n" << content << "\n";
     }
@@ -1481,7 +1481,7 @@ int main() {
     
     std::cout << "\n";
     
-    if (result == VirtualFSResult::Success) {
+    if (result == VirtualFSResult::Ok) {
         std::cout << "Extraction complete!\n";
     } else {
         std::cout << "Error: " << VirtualFS_GetErrorMessage(result) << "\n";

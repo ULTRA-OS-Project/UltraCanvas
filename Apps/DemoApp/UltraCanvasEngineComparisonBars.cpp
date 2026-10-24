@@ -2,8 +2,10 @@
 // "Bars & Flows" tabs of the Chart Engine Comparison page: the waterfall,
 // diverging (Likert, tornado / opposing bars), population pyramid and dumbbell
 // charts, each legacy chart beside its engine port on the same data.
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): checkboxes and
+//                  buttons as wide as their text, the old width as a minimum
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasEngineComparison.h"
@@ -28,6 +30,14 @@ using EngineCharts = std::vector<std::shared_ptr<UltraCanvasChartEngineElement>>
 
 // ---- shared controls --------------------------------------------------------
 
+// Controls are as wide as their text, at least the width they were given:
+// a longer caption (a translation) widens the control instead of being cut.
+void SetMinimumWidth(UltraCanvasUIElement& element, int minWidth) {
+    CSSLayout::BoxConstraints limits = element.boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(minWidth));
+    element.boxConstraints = limits;
+}
+
 std::shared_ptr<UltraCanvasDropdown> MakeDropdown(const std::string& id, int width,
                                                   const std::vector<std::string>& items,
                                                   int selected) {
@@ -40,7 +50,8 @@ std::shared_ptr<UltraCanvasDropdown> MakeDropdown(const std::string& id, int wid
 std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(const std::string& id, int width,
                                                   const std::string& text, bool checked,
                                                   std::function<void(bool)> onChange) {
-    auto checkbox = std::make_shared<UltraCanvasCheckbox>(id, width, 24, text);
+    auto checkbox = std::make_shared<UltraCanvasCheckbox>(id, 0, 24, text);
+    SetMinimumWidth(*checkbox, width);
     checkbox->SetChecked(checked);
     checkbox->onStateChanged = [onChange](CheckedState, CheckedState state) {
         onChange(state == CheckedState::Checked);
@@ -61,7 +72,8 @@ void AddEngineExtras(UltraCanvasContainer& strip, const std::string& idPrefix,
     };
     AddToStrip(strip, theme);
 
-    auto replay = std::make_shared<UltraCanvasButton>(idPrefix + "Replay", 0, 0, 120, 24);
+    auto replay = std::make_shared<UltraCanvasButton>(idPrefix + "Replay", 0, 0, 0, 24);
+    SetMinimumWidth(*replay, 120);
     replay->SetText("Replay animation");
     replay->onClick = [charts]() {
         for (const auto& chart : charts) chart->StartEngineAnimation(0.7f);

@@ -113,7 +113,7 @@ TEST(sqlite_affinity_follows_sqlite_rules) {
     REQUIRE(SqliteValueTypeForDeclaredType("VARCHAR(80)") == UltraDbType::Text);
     REQUIRE(SqliteValueTypeForDeclaredType("BLOB") == UltraDbType::Blob);
     REQUIRE(SqliteValueTypeForDeclaredType("DOUBLE PRECISION") == UltraDbType::Double);
-    REQUIRE(SqliteValueTypeForDeclaredType("BOOLEAN") == UltraDbType::Bool);
+    REQUIRE(SqliteValueTypeForDeclaredType("BOOLEAN") == UltraDbType::Boolean);
     REQUIRE(SqliteValueTypeForDeclaredType("DATETIME") == UltraDbType::Text);
     REQUIRE(SqliteValueTypeForDeclaredType("DECIMAL(10,2)") == UltraDbType::Double);
     REQUIRE(SqliteValueTypeForDeclaredType("") == UltraDbType::Text);

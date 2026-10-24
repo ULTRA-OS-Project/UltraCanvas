@@ -117,7 +117,7 @@ struct UltraIMConversation {
 // ============================================================================
 
 enum class UltraIMCapabilityFlags : uint32_t {
-    None            = 0,
+    NoCapabilities            = 0,
     TextMessages    = 1u << 0,
     GroupChats      = 1u << 1,
     FileTransfer    = 1u << 2,
@@ -207,7 +207,7 @@ struct UltraIMProviderInfo {
     std::string             displayName;
     std::string             version;
     std::string             iconPath;
-    UltraIMCapabilityFlags  capabilities = UltraIMCapabilityFlags::None;
+    UltraIMCapabilityFlags  capabilities = UltraIMCapabilityFlags::NoCapabilities;
     UltraIMLoginType        loginType = UltraIMLoginType::UsernamePassword;
     UltraIMConnectionState  connectionState = UltraIMConnectionState::Disconnected;
     std::string             localUserId;   // Signed-in identity ("" when signed out)
@@ -287,7 +287,7 @@ struct UltraIMEvent {
 // ============================================================================
 
 enum class UltraIMResultCode {
-    Success,
+    Ok,
     NotInitialized,
     ProviderNotFound,
     NotAuthenticated,
@@ -314,7 +314,7 @@ struct UltraIMResult {
 
     operator bool() const { return success; }
 
-    static UltraIMResult Ok() { return {UltraIMResultCode::Success, true, std::string()}; }
+    static UltraIMResult Ok() { return {UltraIMResultCode::Ok, true, std::string()}; }
     static UltraIMResult Error(UltraIMResultCode code, const std::string& message) {
         return {code, false, message};
     }

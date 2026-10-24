@@ -527,7 +527,7 @@ UltraNetResultCode MapCurlError(CURLcode rc, long httpStatus) {
     switch (rc) {
         case CURLE_OK:
             if (httpStatus >= 400) return UltraNetResultCode::HttpError;
-            return UltraNetResultCode::Success;
+            return UltraNetResultCode::Ok;
         case CURLE_URL_MALFORMAT:           return UltraNetResultCode::InvalidUrl;
         case CURLE_UNSUPPORTED_PROTOCOL:    return UltraNetResultCode::UnsupportedScheme;
         case CURLE_COULDNT_RESOLVE_HOST:
@@ -837,7 +837,7 @@ UltraNetResult FinalizeFromEasy(CURL* easy,
         const long long totalBytes = slash == std::string::npos
                                          ? -1 : std::atoll(range.c_str() + slash + 2);
         if (totalBytes == static_cast<long long>(sink.resumeOffset)) {
-            result.code    = UltraNetResultCode::Success;
+            result.code    = UltraNetResultCode::Ok;
             result.success = true;
             result.message = "already complete";
             return result;
@@ -850,7 +850,7 @@ UltraNetResult FinalizeFromEasy(CURL* easy,
             std::ostringstream os; os << "HTTP " << status;
             result.message = os.str();
         } else {
-            result.code    = UltraNetResultCode::Success;
+            result.code    = UltraNetResultCode::Ok;
             result.success = true;
         }
     } else {

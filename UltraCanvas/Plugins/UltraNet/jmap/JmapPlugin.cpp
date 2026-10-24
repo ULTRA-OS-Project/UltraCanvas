@@ -712,7 +712,7 @@ public:
                 // still live: reported with its flags unknown.
                 for (const auto& id : chunk) {
                     auto f = flagsById.find(id);
-                    onFlags(uidById[id], f == flagsById.end() ? UltraNetMailFlags::None : f->second,
+                    onFlags(uidById[id], f == flagsById.end() ? UltraNetMailFlags::NoFlags : f->second,
                             f != flagsById.end());
                 }
             }

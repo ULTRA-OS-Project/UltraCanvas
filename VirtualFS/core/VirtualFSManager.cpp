@@ -36,7 +36,7 @@ VirtualFSResult VirtualFSManager::Initialize() {
         std::lock_guard<std::mutex> lock(providerMutex);
 
         if (initialized) {
-            return VirtualFSResult::Success;
+            return VirtualFSResult::Ok;
         }
 
         // Set default temp directory
@@ -49,7 +49,7 @@ VirtualFSResult VirtualFSManager::Initialize() {
     // takes providerMutex itself
     RegisterBuiltInProviders();
 
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 void VirtualFSManager::Shutdown() {
@@ -120,7 +120,7 @@ VirtualFSResult VirtualFSManager::RegisterProvider(std::shared_ptr<IVirtualFSPro
         }
     }
     
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 void VirtualFSManager::UnregisterProvider(const std::string& providerName) {
@@ -593,7 +593,7 @@ VirtualFSResult VirtualFSManager::ReadFromRealFS(const std::string& path, std::v
             return VirtualFSResult::ReadError;
         }
         
-        return VirtualFSResult::Success;
+        return VirtualFSResult::Ok;
     } catch (const std::exception& e) {
         NotifyError(VirtualFSResult::ReadError, e.what(), path);
         return VirtualFSResult::ReadError;
@@ -620,7 +620,7 @@ VirtualFSResult VirtualFSManager::ReadFilePartial(
             std::streamsize fileSize = file.tellg();
             if (static_cast<int64_t>(offset) >= fileSize) {
                 outData.clear();
-                return VirtualFSResult::Success;
+                return VirtualFSResult::Ok;
             }
             
             uint64_t actualLength = std::min(length, static_cast<uint64_t>(fileSize) - offset);
@@ -631,7 +631,7 @@ VirtualFSResult VirtualFSManager::ReadFilePartial(
                 return VirtualFSResult::ReadError;
             }
             
-            return VirtualFSResult::Success;
+            return VirtualFSResult::Ok;
         } catch (const std::exception& e) {
             NotifyError(VirtualFSResult::ReadError, e.what(), path);
             return VirtualFSResult::ReadError;
@@ -655,7 +655,7 @@ VirtualFSResult VirtualFSManager::ReadFileString(
     std::vector<uint8_t> data;
     auto result = ReadFile(path, data);
     
-    if (result == VirtualFSResult::Success) {
+    if (result == VirtualFSResult::Ok) {
         outText.assign(data.begin(), data.end());
         // TODO: Handle encoding conversion if needed
     }
@@ -718,7 +718,7 @@ VirtualFSResult VirtualFSManager::ExtractAll(
     
     const VirtualFSResult result =
             provider->ExtractAll(destDirectory, options, progressCallback);
-    if (outError && result != VirtualFSResult::Success &&
+    if (outError && result != VirtualFSResult::Ok &&
         result != VirtualFSResult::Cancelled) {
         *outError = provider->GetLastError();
     }
@@ -764,7 +764,7 @@ VirtualFSResult VirtualFSManager::CreateArchive(
     }
     
     auto result = provider->CreateArchive(archivePath, options);
-    if (result != VirtualFSResult::Success) {
+    if (result != VirtualFSResult::Ok) {
         return result;
     }
     
@@ -849,7 +849,7 @@ VirtualFSResult VirtualFSManager::CreateArchive(
             provider->Close();
             return result;
         }
-        if (result != VirtualFSResult::Success) {
+        if (result != VirtualFSResult::Ok) {
             provider->Close();
             return result;
         }
@@ -885,12 +885,12 @@ VirtualFSResult VirtualFSManager::AddToArchive(
             result = provider->AddFile(sourcePath, destPath, options);
         }
         
-        if (result != VirtualFSResult::Success) {
+        if (result != VirtualFSResult::Ok) {
             return result;
         }
     }
     
-    return VirtualFSResult::Success;
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult VirtualFSManager::DeleteFromArchive(
@@ -917,7 +917,7 @@ VirtualFSResult VirtualFSManager::DeleteFromArchive(
     // One batched call: the provider rewrites the archive once for the whole
     // set instead of once per entry.
     auto result = provider->DeleteEntries(entryPaths, progressCallback);
-    if (result == VirtualFSResult::Success) {
+    if (result == VirtualFSResult::Ok) {
         // Drop any cached file data read from the pre-delete archive.
         ClearCacheForPath(archivePath);
     }
@@ -1107,7 +1107,7 @@ std::shared_ptr<IVirtualFSProvider> VirtualFSManager::GetOrOpenArchive(const std
     }
     
     auto result = provider->Open(normalized);
-    if (result != VirtualFSResult::Success) {
+    if (result != VirtualFSResult::Ok) {
         return nullptr;
     }
     
@@ -1199,7 +1199,7 @@ std::shared_ptr<IVirtualFSProvider> VirtualFSManager::OpenNestedArchive(
     }
     
     auto data = std::make_shared<std::vector<uint8_t>>();
-    if (outerProvider->ReadFile(pathInOuter, *data) != VirtualFSResult::Success) {
+    if (outerProvider->ReadFile(pathInOuter, *data) != VirtualFSResult::Ok) {
         return nullptr;
     }
     
@@ -1227,7 +1227,7 @@ std::shared_ptr<IVirtualFSProvider> VirtualFSManager::OpenNestedArchive(
         opened = instance->Open(tempPath);
     }
     
-    if (opened != VirtualFSResult::Success) {
+    if (opened != VirtualFSResult::Ok) {
         if (!tempPath.empty()) {
             std::error_code ec;
             std::filesystem::remove(UltraCanvas::PathFromUtf8(tempPath), ec);

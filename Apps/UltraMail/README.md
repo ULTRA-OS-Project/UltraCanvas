@@ -169,7 +169,8 @@ Apps/UltraMail/
                                   HTMLReader/CSSLayout, text in a read-only area),
                                   attachment strip; the text selectable and
                                   copyable (header and body, right-click Copy /
-                                  Select All), a copy button on a one-time code
+                                  Select All, and Copy link over a link), a copy
+                                  button on a one-time code
     UltraMailAccountWizard.{h,cpp} setup wizard dialog (identity step)
     UltraMailAttachmentStrip.{h,cpp} attachment chips (paperclip, name, size); a click
                                   opens the Open / Save As… menu, a double-click
@@ -314,6 +315,10 @@ are unknown. The password (or OAuth token set) is stored in the
 `CredentialVault`, never in the config. Try it: run with
 `ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
 dialog.
+`ULTRAMAIL_DEMO_DIALOG=<name>` opens one dialog on its own, to look at it:
+`wizard`, `password`, `password-new`, `oauth`, `wait`, `outbox`, `settings`, `compose`
+(a formatted message with two attachments), or `account`
+(the account settings of the demo account `ULTRAMAIL_DEMO_MAIL=1` seeds).
 
 **OAuth2 sign-in (Gmail, Outlook / Microsoft 365, Yahoo):** Google and
 Microsoft reject the account password over IMAP and SMTP, so those accounts

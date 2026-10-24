@@ -9,13 +9,17 @@
 // A password-protected .xlsx asks for its password on Open, keeps it when it
 // is saved again as .xlsx, and an unprotected workbook saved as .xlsx is
 // offered a password.
+// Version: 1.4.0 - the shared page look (UltraCanvasDemoPageKit): the toolbar,
+//                  the hint and the grid in a card that fills the page area, the
+//                  buttons and the status sized to their text
 // Version: 1.3.0 - password-protected workbooks: opened, kept and offered on Save
 // Version: 1.2.0 - Open and Save offer FileLoader's spreadsheet types
 // Version: 1.1.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -117,51 +121,58 @@ namespace UltraCanvas {
             if (fromFile > 0) return std::to_string(fromFile) + " column widths from the file";
             return std::to_string(fitted) + " columns auto-fitted to their content";
         }
+
+        // A toolbar button as wide as its text, at least `minWidth` (the
+        // width it had).
+        std::shared_ptr<UltraCanvasButton> MakeToolbarButton(const std::string& id, const std::string& text,
+                                                             float minWidth) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 30, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+            button->boxConstraints = limits;
+            return button;
+        }
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSpreadsheetExamples() {
-        const int kWidth  = 1020;
-        const int kHeight = 720;
+        auto root = DemoKit::CreatePage("SpreadsheetExamples", "UltraCanvas Spreadsheet", "");
+        // The grid scrolls itself: the page is the area's height and the grid
+        // takes what the toolbar and the hint leave.
+        root->SetFillsArea(true);
 
-        auto root = std::make_shared<UltraCanvasContainer>("SpreadsheetExamples", 0, 0, kWidth, kHeight);
-        root->SetBackgroundColor(Colors::White);
-
-        // ===== TITLE =====
-        auto title = std::make_shared<UltraCanvasLabel>("ssTitle", 20, 12, 900, 28);
-        title->SetText("UltraCanvas Spreadsheet");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        root->AddChild(title);
+        auto card = DemoKit::CreateCard("ssCard");
+        DemoKit::Add(root, card, 1);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         // ===== TOOLBAR: Open / Import / Save buttons + status label =====
-        auto openBtn = std::make_shared<UltraCanvasButton>("ssOpenBtn", 20, 50, 190, 30,
-                                                           "Open Spreadsheet File");
-        root->AddChild(openBtn);
+        // Wraps onto a second line when the window is narrow.
+        auto toolbar = DemoKit::AddRow(card, "ssToolbar", 8);
+        toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        auto importBtn = std::make_shared<UltraCanvasButton>("ssImportBtn", 218, 50, 150, 30,
-                                                             "Import CSV");
-        root->AddChild(importBtn);
+        auto openBtn = MakeToolbarButton("ssOpenBtn", "Open Spreadsheet File", 190);
+        DemoKit::Add(toolbar, openBtn);
 
-        auto saveBtn = std::make_shared<UltraCanvasButton>("ssSaveBtn", 376, 50, 110, 30,
-                                                           "Save");
-        root->AddChild(saveBtn);
+        auto importBtn = MakeToolbarButton("ssImportBtn", "Import CSV", 150);
+        DemoKit::Add(toolbar, importBtn);
 
-        auto formatBtn = std::make_shared<UltraCanvasButton>("ssFormatBtn", 494, 50, 130, 30,
-                                                             "Format Cells");
+        auto saveBtn = MakeToolbarButton("ssSaveBtn", "Save", 110);
+        DemoKit::Add(toolbar, saveBtn);
+
+        auto formatBtn = MakeToolbarButton("ssFormatBtn", "Format Cells", 130);
         SetFlatButtonIcon(*formatBtn, "dropdown.svg", ButtonIconPosition::Right, 10);
-        root->AddChild(formatBtn);
+        DemoKit::Add(toolbar, formatBtn);
 
-        auto status = std::make_shared<UltraCanvasLabel>("ssStatus", 632, 56, 374, 22);
+        // The status takes the rest of the line and wraps a long path.
+        auto status = DemoKit::CreateText("ssStatus", "");
         status->SetFontSize(12);
         status->SetTextColor(Color(90, 90, 90, 255));
-        root->AddChild(status);
+        DemoKit::Add(toolbar, status, 1);
 
         // Second toolbar line: where the column widths came from, plus how to
         // reach the formatting menu.
-        auto hint = std::make_shared<UltraCanvasLabel>("ssHint", 20, 84, 980, 18);
+        auto hint = DemoKit::AddText(card, "ssHint", "");
         hint->SetFontSize(11);
         hint->SetTextColor(Color(120, 120, 120, 255));
-        root->AddChild(hint);
 
         // Both load paths report the same two facts, so they are built once.
         auto describeGrid = [](const UltraCanvasSpreadsheet* grid) {
@@ -171,7 +182,7 @@ namespace UltraCanvas {
         };
 
         // ===== SPREADSHEET ELEMENT =====
-        auto sheet = CreateSpreadsheetElement("ssDemoGrid", 20, 106, kWidth - 40, kHeight - 118);
+        auto sheet = CreateSpreadsheetElement("ssDemoGrid", 0, 0, 980, 600);
 
         // Load the bundled OpenDocument Spreadsheet demo file on entry so the
         // element opens on a real .ods document (monthly sales / chargeback
@@ -191,7 +202,9 @@ namespace UltraCanvas {
                           "sort just that block  ·  right-click (or Format Cells) for "
                           "alignment, number formats and colours");
         }
-        root->AddChild(sheet);
+        DemoKit::AddStretched(card, sheet);
+        sheet->size.height = CSSLayout::Dimension::Auto();
+        sheet->layoutItem.SetFlexGrow(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         // ===== HEADER SORT =====
         // Selecting a block of two or more rows puts a sort button in each of

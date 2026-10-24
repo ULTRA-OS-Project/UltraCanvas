@@ -2,6 +2,8 @@
 // Version: 0.1.0
 
 #include "UltraAIChatDialog.h"
+
+#include "UltraAILocalModelDialog.h"
 #include "UltraAISettingsDialog.h"
 
 #include "UltraAI.h"
@@ -265,19 +267,24 @@ void UltraAIChatDialog::OnSend() {
     RefreshAttachmentChips();
     assistantAccum_.clear();
 
-    sending_ = true;
-    if (sendButton_) sendButton_->SetText("Sending...");
+    StartStream(endpoint);
+}
+
+void UltraAIChatDialog::StartStream(const Endpoint& endpoint) {
+    if (sending_) return;
     // Name the endpoint the user picked (e.g. "ai.ultraos.eu"), not its
     // provider id — the server being contacted is the endpoint, not "openai".
     const std::string epLabel = endpoint.name.empty() ? endpoint.id : endpoint.name;
-    SetStatus("Contacting " + epLabel + "...");
-
     TextLLMConfig chatCfg = ToTextLLMConfig(endpoint);
     ChatRequest req;
     req.messages = messages_;
     req.model = endpoint.defaultModel;   // empty -> adapter default
 
-    std::thread worker([this, alive = uiAlive_, chatCfg, req]() {
+    sending_ = true;
+    if (sendButton_) sendButton_->SetText("Sending...");
+    SetStatus("Contacting " + epLabel + "...");
+
+    std::thread worker([this, alive = uiAlive_, chatCfg, req, endpoint]() {
         auto post = [alive](std::function<void()> fn) {
             auto* app = UltraCanvasApplicationBase::GetCurrent();
             auto guarded = [alive, fn = std::move(fn)]() {
@@ -293,11 +300,15 @@ void UltraAIChatDialog::OnSend() {
             std::string msg = createError.message.empty()
                 ? "Could not create the provider."
                 : createError.message;
+            if (createError.providerCode == "needs-install") {
+                post([this, endpoint, msg]() { OnNeedsLocalModel(endpoint, msg); });
+                return;
+            }
             post([this, msg]() { OnStreamFinished(msg); });
             return;
         }
 
-        auto cb = [this, post](const StreamEvent& ev) {
+        auto cb = [this, post, endpoint](const StreamEvent& ev) {
             switch (ev.kind) {
                 case StreamEventKind::TextDelta: {
                     std::string d = ev.textDelta;
@@ -307,6 +318,10 @@ void UltraAIChatDialog::OnSend() {
                 case StreamEventKind::Error: {
                     std::string m = ev.error.message.empty()
                         ? "Stream error." : ev.error.message;
+                    if (ev.error.providerCode == "needs-install") {
+                        post([this, endpoint, m]() { OnNeedsLocalModel(endpoint, m); });
+                        break;
+                    }
                     post([this, m]() { OnStreamFinished(m); });
                     break;
                 }
@@ -327,6 +342,23 @@ void UltraAIChatDialog::OnSend() {
         }
     });
     worker.detach();
+}
+
+void UltraAIChatDialog::OnNeedsLocalModel(const Endpoint& endpoint, const std::string& message) {
+    // The turn is not over: the transcript keeps its "Assistant" heading and
+    // the conversation its last user message, so a resend continues it.
+    sending_ = false;
+    if (sendButton_) sendButton_->SetText("Send");
+    SetStatus(message);
+    stream_.reset();
+    UltraAILocalModelDialog::Show(this, "Chat", "textllm", endpoint.defaultModel,
+        [this, alive = uiAlive_, endpoint](const std::string& modelId) {
+            if (!alive->load()) return;
+            Endpoint resolved = endpoint;
+            if (resolved.defaultModel.empty()) resolved.defaultModel = modelId;
+            SetStatus("Model installed; sending...");
+            StartStream(resolved);
+        });
 }
 
 void UltraAIChatDialog::OnStreamDelta(const std::string& delta) {

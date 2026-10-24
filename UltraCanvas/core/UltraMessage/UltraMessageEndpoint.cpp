@@ -42,7 +42,7 @@ int64_t Int(const JSONValue& json, const char* key, int64_t fallback = 0) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetInteger(fallback) : fallback;
 }
-bool Bool(const JSONValue& json, const char* key, bool fallback = false) {
+bool JsonBool(const JSONValue& json, const char* key, bool fallback = false) {
     const JSONValue* v = json.Find(key);
     return v ? v->GetBoolean(fallback) : fallback;
 }
@@ -302,11 +302,11 @@ void HandleControlReply(const EndpointPtr& endpoint, const JSONValue& frame) {
 void HandleWelcome(const EndpointPtr& endpoint, const JSONValue& frame) {
     {
         std::lock_guard<std::mutex> lock(endpoint->welcomeMutex);
-        endpoint->welcomeOk = Bool(frame, "ok", false);
+        endpoint->welcomeOk = JsonBool(frame, "ok", false);
         endpoint->welcomeError = Str(frame, "error");
         endpoint->info.instanceId = Str(frame, "instance");
         endpoint->info.processId = static_cast<int>(Int(frame, "pid"));
-        endpoint->info.verified = Bool(frame, "verified");
+        endpoint->info.verified = JsonBool(frame, "verified");
         endpoint->info.connectedAtMs = NowMs();
         BrokerInfoFromJson(Obj(frame, "broker"), endpoint->broker);
         endpoint->welcomed = true;
@@ -448,7 +448,7 @@ JSONValue Control(const EndpointPtr& endpoint, const char* op, JSONValue args, U
             return JSONValue::MakeObject();
         }
     }
-    if (!Bool(pending->reply, "ok", false)) {
+    if (!JsonBool(pending->reply, "ok", false)) {
         result = ResultFromJson(Obj(pending->reply, "error"));
         if (result.ok) result = UltraMsgResult::Error(UltraMsgResultCode::Internal, "control call failed");
         return JSONValue::MakeObject();
@@ -948,7 +948,7 @@ UltraMsgHandle UltraMsg_Subscribe(UltraMsgHandle handle, const std::string& topi
     UltraMsgResult result;
     Control(endpoint, Op::Subscribe, std::move(args), result, [&](const JSONValue& reply) {
         // On the reader thread, before any delivery for this subscription.
-        if (!Bool(reply, "ok", false)) return;
+        if (!JsonBool(reply, "ok", false)) return;
         subscription->brokerId = static_cast<uint64_t>(Int(Obj(reply, "result"), "sub"));
         std::lock_guard<std::mutex> lock(endpoint->mutex);
         endpoint->subscriptions[subscription->brokerId] = subscription;

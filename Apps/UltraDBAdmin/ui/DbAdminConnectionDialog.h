@@ -1,6 +1,6 @@
 // Apps/UltraDBAdmin/ui/DbAdminConnectionDialog.h
-// Add or edit a connection: a SQLite file, or a PostgreSQL server with its
-// user, password and TLS posture. The form shows the rows of the chosen type
+// Add or edit a connection: a SQLite file, or a PostgreSQL or MySQL /
+// MariaDB server with its user, password and TLS posture. The form shows the rows of the chosen type
 // only. A password typed here goes to the caller, which puts it into the
 // vault (ConnectionStore::Put); editing a connection leaves its stored
 // password alone unless a new one is typed or "Forget" is ticked - the
@@ -8,6 +8,7 @@
 //
 // The dialog stays open on a mistake: Save asks the caller, and closes only
 // when it reports no error.
+// Version: 0.2.0 - MySQL / MariaDB
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

@@ -670,6 +670,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmojiSettings.cpp
+        # Whether the computer has a font for a text, by script.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontCoverage.cpp
         # A notification's click outside the bus: the Windows backend under
         # OS/MSWindows/ (the platform glob), the no-ops in here elsewhere.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNotificationActivation.cpp
@@ -848,6 +850,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEngineRadialBarChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEnginePieChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasEnginePolarChart.cpp
+        # Charts built on the engine with no legacy twin
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceChart.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasSpecificChartElements.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartDataStructures.cpp
@@ -2925,6 +2930,7 @@ if(ULTRACANVAS_ENABLE_NET)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpEasy.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetHttpAsync.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCookies.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetCookieJar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetDns.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetUrl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraNet/UltraNetMime.cpp
@@ -3395,6 +3401,31 @@ if(ULTRACANVAS_ENABLE_DATABASE)
                       PATH_SUFFIXES postgresql postgresql/16 postgresql/15)
             find_library(LIBPQ_LIBRARIES NAMES pq)
         endif()
+        # MySQL / MariaDB, over MariaDB Connector/C - LGPL-2.1, so linked as
+        # the shared library and never statically (THIRD_PARTY_LICENSES.md;
+        # Docs/Research/UltraDBAdminDesignProposal.md §9.1). Optional and
+        # soft-failing as libpq is: without it a "mysql" connection reports
+        # the driver missing.
+        # The packages ship libmariadb.a beside the shared library, and a
+        # plain -lmariadb leaves the choice to the linker: the shared object
+        # is asked for by name, as the OpenZWave link does (SmartHome), and a
+        # build that finds only the archive goes without the driver.
+        if(PkgConfig_FOUND)
+            pkg_check_modules(LIBMARIADB libmariadb)
+        endif()
+        if(NOT LIBMARIADB_INCLUDE_DIRS)
+            find_path(LIBMARIADB_INCLUDE_DIRS mysql.h PATH_SUFFIXES mariadb)
+        endif()
+        find_library(LIBMARIADB_SHARED_LIBRARY
+                     NAMES libmariadb.so libmariadb.dylib libmariadb.3.dylib libmariadb.dll.a
+                     HINTS ${LIBMARIADB_LIBRARY_DIRS})
+        unset(LIBMARIADB_LIBRARIES)
+        if(LIBMARIADB_SHARED_LIBRARY)
+            set(LIBMARIADB_LIBRARIES ${LIBMARIADB_SHARED_LIBRARY})
+        elseif(LIBMARIADB_FOUND)
+            message(STATUS "  [!] libmariadb found only as a static archive: MySQL / MariaDB driver left out "
+                           "(Connector/C is LGPL-2.1 and is linked dynamically)")
+        endif()
         # The archive is uc-database; UltraDatabase is its home (see
         # "MODULE HOMES" above).
         add_library(uc-database STATIC ${ULTRADATABASE_SOURCES})
@@ -3418,18 +3449,26 @@ if(ULTRACANVAS_ENABLE_DATABASE)
                 target_link_directories(uc-database PRIVATE ${LIBPQ_LIBRARY_DIRS})
             endif()
             target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
-            set(ULTRADATABASE_POSTGRES_NOTE " + PostgreSQL")
-            # A server connection's `credentials` is an UltraVault key ("vault:…"),
-            # never a literal password, so the driver reads it from the vault.
-            # Without this link and define every password login refuses with
-            # "UltraVault is not built in" - which it did until 0.9.66.
-            if(TARGET uc-vault)
-                target_link_libraries(uc-database PRIVATE uc-vault)
-                target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_VAULT=1)
-                string(APPEND ULTRADATABASE_POSTGRES_NOTE " (passwords from UltraVault)")
-            endif()
+            set(ULTRADATABASE_DRIVERS_NOTE " + PostgreSQL")
         else()
-            set(ULTRADATABASE_POSTGRES_NOTE " (no libpq: SQLite only)")
+            set(ULTRADATABASE_DRIVERS_NOTE " (no libpq)")
+        endif()
+        if(LIBMARIADB_LIBRARIES AND LIBMARIADB_INCLUDE_DIRS)
+            target_include_directories(uc-database PRIVATE ${LIBMARIADB_INCLUDE_DIRS})
+            target_link_libraries(uc-database PRIVATE ${LIBMARIADB_LIBRARIES})
+            target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_MYSQL=1)
+            string(APPEND ULTRADATABASE_DRIVERS_NOTE " + MySQL/MariaDB")
+        else()
+            string(APPEND ULTRADATABASE_DRIVERS_NOTE " (no libmariadb)")
+        endif()
+        # A server connection's `credentials` is an UltraVault key ("vault:…"),
+        # never a literal password, so the drivers read it from the vault.
+        # Without this link and define every password login refuses with
+        # "UltraVault is not built in" - which it did until 0.9.66.
+        if((LIBPQ_LIBRARIES OR LIBMARIADB_LIBRARIES) AND TARGET uc-vault)
+            target_link_libraries(uc-database PRIVATE uc-vault)
+            target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_VAULT=1)
+            string(APPEND ULTRADATABASE_DRIVERS_NOTE " (passwords from UltraVault)")
         endif()
         target_compile_definitions(uc-database PUBLIC ULTRACANVAS_HAS_DATABASE=1)
         _ultracanvas_module_home(UltraDatabase uc-database)
@@ -3451,7 +3490,7 @@ if(ULTRACANVAS_ENABLE_DATABASE)
             target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraDatabase)
         endif()
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_DATABASE=1)
-        message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION}${ULTRADATABASE_POSTGRES_NOTE})")
+        message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION}${ULTRADATABASE_DRIVERS_NOTE})")
     endif()
 else()
     message(STATUS "  [−] UltraDatabase - DISABLED")

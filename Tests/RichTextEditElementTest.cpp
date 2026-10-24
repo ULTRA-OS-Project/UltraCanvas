@@ -1653,6 +1653,64 @@ int main() {
         UltraCanvasAccessibility::RemoveListener(listener);
     }
 
+    // ===== FONTS THE DOCUMENT NEEDS =====
+    // A family the document names that is not installed, and a character no
+    // font covers (U+10FFFD, the last private-use plane): both are reported,
+    // and a notice along the top names them until it is dismissed.
+    std::cerr << "\n--- Font report ---" << std::endl;
+    {
+        auto fontEdit = std::make_shared<UltraCanvasRichTextEdit>("FontEdit", 0, 0, 600, 300);
+        window->AddChild(fontEdit);
+        auto document = std::make_shared<UCRichDocument>();
+        RichDocBlock block;
+        block.type = RichBlockType::Paragraph;
+        RichTextRun plain;
+        plain.text = "Plain text, then a named family.";
+        RichTextRun named;
+        named.text = " Named.";
+        named.fontFamily = "No Such Family 12345";
+        block.runs = {plain, named};
+        document->blocks.push_back(block);
+        fontEdit->SetDocument(document);
+        window->UpdateAndRender();
+
+        const UltraCanvasRichTextEdit::FontReport& report = fontEdit->GetFontReport();
+        TEST("A family that is not installed is reported",
+             report.missingFamilies.size() == 1 && report.missingFamilies[0] == "No Such Family 12345");
+        TEST("...and no script, the text has fonts", report.missingScripts.empty());
+        TEST("The notice is shown", fontEdit->IsFontNoticeVisible());
+
+        int reported = 0;
+        fontEdit->onFontReportChanged = [&reported](const UltraCanvasRichTextEdit::FontReport&) { reported++; };
+        fontEdit->GetEditor().SetCaret({0, 0});
+        fontEdit->InsertText("\xF4\x8F\xBF\xBD\xF4\x8F\xBF\xBD");
+        const UltraCanvasRichTextEdit::FontReport& typed = fontEdit->GetFontReport();
+        TEST("Typed characters no font covers are reported as a script",
+             typed.missingScripts.size() == 1 && typed.missingScripts[0].characters == 2);
+        TEST("...with a page to get a font from",
+             !typed.missingScripts.empty() &&
+             typed.missingScripts[0].downloadUrl.rfind("https://", 0) == 0);
+        TEST("The change was announced", reported == 1);
+
+        // A press on the notice is not a press in the text.
+        window->UpdateAndRender();
+        const RichDocPosition before = fontEdit->GetEditor().GetCaret();
+        fontEdit->OnEvent(MouseEvent(UCEventType::MouseDown, 300, 4));
+        fontEdit->OnEvent(MouseEvent(UCEventType::MouseUp, 300, 4));
+        TEST("A press on the notice leaves the caret", fontEdit->GetEditor().GetCaret() == before);
+
+        fontEdit->DismissFontNotice();
+        window->UpdateAndRender();
+        TEST("A dismissed notice is hidden", !fontEdit->IsFontNoticeVisible());
+        fontEdit->OnEvent(MouseEvent(UCEventType::MouseDown, 300, 4));
+        fontEdit->OnEvent(MouseEvent(UCEventType::MouseUp, 300, 4));
+        TEST("...and the top is text again", fontEdit->GetEditor().GetCaret() != before);
+
+        fontEdit->SetDocument(std::make_shared<UCRichDocument>(UCRichDocument::FromMarkdown("Only Latin.", "")));
+        TEST("A document with nothing missing reports nothing", fontEdit->GetFontReport().IsEmpty());
+        window->RemoveChild(fontEdit);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

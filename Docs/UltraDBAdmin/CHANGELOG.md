@@ -1,3 +1,139 @@
+#### 2026-10-24 *0.11*
+- **MySQL and MariaDB.** A connection can be a MySQL or MariaDB server:
+  host or the socket file, port 3306 by default, database, user, password
+  in the vault, TLS. Every tab works on it, in MySQL's own dialect:
+  - Names are quoted with backticks. Browse's filters and Search use
+    `CAST AS CHAR` and `LIKE ... ESCAPE '!'`; Search's "is exactly"
+    minds case (`BINARY`).
+  - Structure restates a changed column with `MODIFY COLUMN`, keeping its
+    `AUTO_INCREMENT`, collation and comment, and drops an index with
+    `DROP INDEX ... ON`. MySQL commits around every `ALTER TABLE`, so the
+    steps run one by one, and the preview says a failure leaves the steps
+    before it done.
+  - The operations: empty with `TRUNCATE` or `DELETE`, rename with
+    `RENAME TABLE`, copy with `CREATE TABLE ... LIKE`; *Check integrity*,
+    *Quick check*, *Analyze* and *Optimize* on a table.
+  - The SQL tab splits a script as the mysql client does (`DELIMITER`,
+    `#` comments, backslash escapes), for Import SQL's count and the
+    statement under the caret alike.
+  - Export as SQL writes a database as mysqldump does: foreign key checks
+    off, each table's `SHOW CREATE TABLE` and rows, its triggers between
+    `DELIMITER` lines, the views - without the database's name or a
+    `DEFINER`, so the file loads anywhere. A table's own export writes its
+    `SHOW CREATE TABLE` first.
+  - Routines lists triggers, functions and procedures; **Edit in SQL**
+    gives `DROP ... IF EXISTS` and the definition between `DELIMITER`
+    lines, named with its database.
+  - Server shows the sessions (**Stop query** is `KILL QUERY`, **End
+    session** `KILL`), the system variables and the sizes.
+  - The row form offers `UTC_TIMESTAMP()` and `UUID()`.
+- The Server tab reads PostgreSQL through UltraDatabase's new server
+  administration too, the same calls MySQL's view uses.
+
+#### 2026-10-24 *0.10*
+- **Relations.** A new tab draws the tables of the schema picked in the tree
+  and the foreign keys between them as an ER diagram, in crow's foot (each
+  table a box of its typed columns with PK, FK and UK badges) or Chen. A
+  link is drawn one-to-many, optional where a key column may be NULL, and
+  one-to-one where the key is unique in its table; a table that refers to
+  itself is a loop. The tables are laid out in layers, each beside or below
+  the tables it refers to. A key into another schema is counted, not drawn.
+  A table double-clicked opens in Browse.
+- **Routines.** A new tab lists a schema's triggers, and on PostgreSQL its
+  functions, procedures and aggregates, each with the statement that makes
+  it. **Edit in SQL** puts that statement in the SQL tab to change and run
+  again (a SQLite trigger is dropped and made again in one transaction);
+  **New** starts a trigger, function or procedure from a template; **Drop**
+  shows its SQL first, names a function with its arguments, and never
+  cascades.
+- **Server.** A new tab shows a PostgreSQL server's sessions - with **Stop
+  query** and **End session** for the one selected - its settings, filtered
+  by name or description, and the sizes of its databases and of a schema's
+  tables; for SQLite, the file: its pages, size, journal mode, encoding,
+  versions and whether foreign keys are checked.
+- The tree's menu leads to them: **Relations** and **Routines** on a schema
+  or a SQLite connection, **Server** (**The file**) on a connection.
+
+#### 2026-10-24 *0.9*
+- **Tabs of open objects.** Each table or view picked in the tree opens in a
+  tab of its own above Browse, Structure and SQL, and keeps its page, order,
+  filters and staged changes while another is shown; a tab with changes
+  staged is marked `*` and asks before it closes. Ten at most.
+- **The tree's right-click menu and its operations.** A table: open, structure,
+  export, copy its name, **Copy table** (with or without its rows), **Rename**,
+  **Empty table**, **Drop**, Analyze / Vacuum. A schema or a SQLite
+  connection: **New table** (a line per column), **Search every table**,
+  **Export as SQL** (the whole schema: structure, rows, or both, with DROP IF
+  EXISTS if asked), and SQLite's maintenance - integrity check, quick check,
+  analyze, optimize, vacuum, journal mode. Every operation shows its SQL
+  before it runs, writes no CASCADE, and is offered only where the connection
+  is not read only.
+- **Search.** A new tab finds a text in every table and view of a schema - a
+  count per column, the text bound - and opens a hit filtered on its column.
+  Stop acts between tables.
+- **The SQL log.** Under the tabs, every statement the app ran, with its time,
+  connection, duration, rows and error (never its bound values); copied as
+  SQL, or double-clicked back into the console.
+- **The console.** **Run statement** (Ctrl+Shift+Enter) runs the statement
+  under the caret; **Explain** shows its plan (EXPLAIN QUERY PLAN / EXPLAIN,
+  never ANALYZE); **Snippets** keeps SQL under a name.
+- **The row form** offers a field per type - true / false for a boolean, the
+  pattern for a date - says before Commit what a column cannot take ("12,5"
+  in a number column), and sets a column to its value, NULL, its default or a
+  database function (CURRENT_TIMESTAMP, gen_random_uuid() ...).
+- **Auto-commit** per connection: a row change is written as it is made; a
+  deletion and anything on a production connection still ask.
+- The cell editor follows the grid when it scrolls, and ends, staging what
+  was typed, when its cell scrolls out of view.
+- An export of a PostgreSQL table as SQL now begins with the table's own
+  definition, read from the catalog, so the file rebuilds the table there too.
+- **New rows show in Browse before Commit.** A staged new row follows the rows
+  read, marked `NEW`, with `(default)` for a column left to the database; the
+  grid scrolls to it. A double-click opens its form again with what was
+  staged, and Delete row (or the right-click menu) drops it - as edited cells
+  show `*` and deleted rows `DEL`.
+
+#### 2026-10-23 *0.8*
+- **Grids: columns as wide as their text.** The browse grid, the SQL results
+  and the import preview sized their columns from a character count, so a
+  column of narrow glyphs was wider than it needed to be and a wide one
+  still cut its text. Each column is now measured (the list view's
+  `SetColumnFitting`): its widest value and its title, at most 360 px. Drag
+  a border and the widths are yours.
+
+#### 2026-10-23 *0.7*
+- **Browse: a wide table scrolls sideways.** A table with more columns than
+  fit the window showed only the leftmost ones, with no way to see the rest.
+  The grid now has a horizontal scrollbar (the list view's, see the framework
+  changelog): drag it, Shift+wheel, or press Left / Right. Those two keys used
+  to switch between Browse, Structure and SQL while the grid had the focus;
+  they move the grid now. A cell edited in place is scrolled fully into view
+  first.
+
+#### 2026-10-22 *0.6*
+- **Browse: filters, editing in the cell, blobs, and rows copied as text.**
+  - **Filters.** A bar under the grid filters on a column: contains, starts
+    with, =, ≠, <, ≤, >, ≥, is NULL, is not NULL. There is one filter per
+    column and all of them must hold. Each value is a bound parameter, so a
+    number compares as a number and a date as a date. "Contains" ignores case
+    on PostgreSQL too. The row count, the paging and an export of the table
+    all follow the filters.
+  - **Editing in the cell.** A double-click opens a field over the cell. Enter
+    stages the value, Escape leaves the cell as it was, and clicking
+    elsewhere stages it too. The right-click menu also sets a cell to NULL.
+    The row form stays on Edit row.
+  - **Blobs.** A blob cell opens a viewer, which shows a picture as a picture,
+    text as text, and anything else as a hex dump. The kind of file is read
+    from its bytes, not guessed from a name. Save to file writes the bytes as
+    they are, with an extension that fits their kind. Load from file stages a
+    file's bytes for the cell, and Commit writes them (SQLite BLOB,
+    PostgreSQL bytea). The console's result rows offer View and Save as well.
+  - **Copy rows.** Select rows (Ctrl+click, Shift+click) and copy them from
+    the right-click menu as CSV, JSON or SQL INSERT statements, or press
+    Ctrl+C for CSV. This works in Browse and in the console's result. The
+    INSERTs go into Browse's table, or into the table the console's SELECT
+    read.
+
 #### 2026-10-22 *0.5*
 - **A cleaner look, and buttons that say what they do without "…"**. Every
   button label is now the action itself - **Add connection**, **Edit row**,

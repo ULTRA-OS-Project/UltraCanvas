@@ -1219,7 +1219,7 @@ bool ZWaveProtocol::AddValueToScene(uint8_t sceneId, const ZWaveValue& value) {
     switch (value.Type) {
         // OpenZWave 1.6 overloads AddSceneValue on the value's type; there are
         // no per-type AddSceneValueBool/Byte/Int/Float entry points.
-        case ZWaveValueType::Bool:
+        case ZWaveValueType::Boolean:
             return OpenZWave::Manager::Get()->AddSceneValue(
                 sceneId, valueId, static_cast<bool>(value.BoolValue));
         case ZWaveValueType::Byte:
@@ -1689,7 +1689,7 @@ ZWaveValue ZWaveProtocol::ConvertValue(const OpenZWave::ValueID& valueId) const 
     
     switch (valueId.GetType()) {
         case OpenZWave::ValueID::ValueType_Bool:
-            value.Type = ZWaveValueType::Bool;
+            value.Type = ZWaveValueType::Boolean;
             mgr->GetValueAsBool(valueId, &value.BoolValue);
             break;
             

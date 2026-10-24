@@ -87,7 +87,7 @@ UltraDbType SqliteValueTypeForDeclaredType(const std::string& declaredType) {
     if (Contains(t, "CHAR") || Contains(t, "CLOB") || Contains(t, "TEXT")) return UltraDbType::Text;
     if (Contains(t, "BLOB")) return UltraDbType::Blob;
     if (Contains(t, "REAL") || Contains(t, "FLOA") || Contains(t, "DOUB")) return UltraDbType::Double;
-    if (Contains(t, "BOOL")) return UltraDbType::Bool;
+    if (Contains(t, "BOOL")) return UltraDbType::Boolean;
     if (Contains(t, "DATE") || Contains(t, "TIME")) return UltraDbType::Text;
     return UltraDbType::Double;                            // NUMERIC affinity
 }

@@ -1,4 +1,6 @@
 // Apps/UltraDBAdmin/ui/DbAdminConnectionDialog.cpp
+// Version: 0.3.0 - MySQL / MariaDB servers, each with its default port
+// Version: 0.2.0 - auto-commit
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnectionDialog.h"
@@ -26,7 +28,7 @@ namespace UltraDBAdmin {
 namespace {
 
 constexpr int kDialogWidth  = 520;
-constexpr int kDialogHeight = 470;
+constexpr int kDialogHeight = 506;
 constexpr float kRowHeight  = 28.0f;
 
 // The TLS dropdown, in UltraDbTls order.
@@ -75,6 +77,7 @@ struct Form {
     UltraCanvasDropdown* tls = nullptr;
     UltraCanvasCheckbox* readOnly = nullptr;
     UltraCanvasCheckbox* production = nullptr;
+    UltraCanvasCheckbox* autoCommit = nullptr;
     UltraCanvasLabel* error = nullptr;
     // The rows only one type has: caption and control, hidden together.
     std::vector<UltraCanvasUIElement*> sqliteRows;
@@ -83,21 +86,37 @@ struct Form {
     SaveConnectionFn onSave;
 };
 
-bool IsSqliteChoice(const Form& form) { return form.driver->GetSelectedIndex() != 1; }
+// The Type dropdown's items, in order.
+const char* const kDrivers[] = {"sqlite", "postgresql", "mysql"};
+
+std::string DriverChoice(const Form& form) {
+    const int at = form.driver->GetSelectedIndex();
+    return at >= 0 && at < 3 ? kDrivers[at] : kDrivers[0];
+}
+
+bool IsSqliteChoice(const Form& form) { return DriverChoice(form) == "sqlite"; }
+
+int DefaultPort(const Form& form) { return DriverChoice(form) == "mysql" ? 3306 : 5432; }
 
 void ShowRowsFor(Form& form) {
     const bool sqlite = IsSqliteChoice(form);
     for (auto* element : form.sqliteRows) element->SetVisible(sqlite);
     for (auto* element : form.serverRows) element->SetVisible(!sqlite);
+    // A server's own default port, and its kind of local socket.
+    const bool mysql = DriverChoice(form) == "mysql";
+    form.port->SetPlaceholder(std::to_string(DefaultPort(form)));
+    form.host->SetPlaceholder(mysql ? "localhost, a name, an address or a socket file (/run/mysqld/mysqld.sock)"
+                                    : "localhost, a name, an address or a socket directory");
     form.error->SetText("");
 }
 
 void Save(Form& form) {
     ConnectionSpec spec = form.original;
     spec.name = Trim(form.name->GetText());
-    spec.driver = IsSqliteChoice(form) ? "sqlite" : "postgresql";
+    spec.driver = DriverChoice(form);
     spec.readOnly = form.readOnly->IsChecked();
     spec.production = form.production->IsChecked();
+    spec.autoCommit = form.autoCommit->IsChecked();
     std::string password;
     bool clearPassword = false;
     if (spec.IsSqlite()) {
@@ -118,7 +137,8 @@ void Save(Form& form) {
         spec.user = Trim(form.user->GetText());
         const int port = ParsePort(form.port->GetText());
         if (port < 0) {
-            form.error->SetText("The port is a number from 1 to 65535, or empty for the default (5432).");
+            form.error->SetText("The port is a number from 1 to 65535, or empty for the default (" +
+                                std::to_string(DefaultPort(form)) + ").");
             return;
         }
         spec.port = port;
@@ -197,7 +217,8 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
     auto driver = CreateDropdown("dbcDriver", 0, 0, 0, kRowHeight);
     driver->AddItem("SQLite file", "sqlite");
     driver->AddItem("PostgreSQL server", "postgresql");
-    driver->SetSelectedIndex(spec.IsSqlite() ? 0 : 1, /*runNotifications=*/false);
+    driver->AddItem("MySQL / MariaDB server", "mysql");
+    driver->SetSelectedIndex(spec.IsSqlite() ? 0 : spec.IsMysql() ? 2 : 1, /*runNotifications=*/false);
     AddFormRow(grid, "dbcDriver", "Type:", driver);
     form->driver = driver.get();
 
@@ -217,17 +238,15 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
     form->file = file.get();
     browse->SetOnClick([form]() { ChooseFile(*form); });
 
-    // PostgreSQL: where, who, how.
+    // A server: where, who, how.
     const bool server = !spec.IsSqlite();
     auto host = CreateTextInput("dbcHost", 0, 0, 0, kRowHeight);
     host->SetText(server ? spec.host : std::string());
-    host->SetPlaceholder("localhost, a name, an address or a socket directory");
     AddTypedRow(grid, "dbcHost", "Host:", host, form->serverRows);
     form->host = host.get();
 
     auto port = CreateTextInput("dbcPort", 0, 0, 0, kRowHeight);
     port->SetText(server && spec.port > 0 ? std::to_string(spec.port) : std::string());
-    port->SetPlaceholder("5432");
     AddTypedRow(grid, "dbcPort", "Port:", port, form->serverRows);
     form->port = port.get();
 
@@ -272,6 +291,13 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
                                                           spec.production);
     AddFormWideRow(grid, production);
     form->production = production.get();
+
+    auto autoCommit = UltraCanvasCheckbox::CreateCheckbox(
+        "dbcAutoCommit", 0, 0, 0, 24, "Auto-commit - a row change is written at once",
+        spec.autoCommit);
+    autoCommit->SetTooltip("As phpMyAdmin does. A deletion, and any change on a production connection, still asks first.");
+    AddFormWideRow(grid, autoCommit);
+    form->autoCommit = autoCommit.get();
 
     dialog->AddChild(grid);
 

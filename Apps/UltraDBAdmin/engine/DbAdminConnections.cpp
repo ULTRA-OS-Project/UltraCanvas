@@ -1,4 +1,6 @@
 // Apps/UltraDBAdmin/engine/DbAdminConnections.cpp
+// Version: 0.3.0 - EngineOf
+// Version: 0.2.0 - auto-commit per connection
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnections.h"
@@ -56,6 +58,7 @@ JSONValue ToJson(const ConnectionSpec& s) {
     o.Set("tls", TlsName(s.tls));
     o.Set("readOnly", s.readOnly);
     o.Set("production", s.production);
+    o.Set("autoCommit", s.autoCommit);
     return o;
 }
 
@@ -72,6 +75,7 @@ ConnectionSpec FromJson(const JSONValue& o) {
     s.tls         = TlsFromName(o["tls"].GetString("verify-full"));
     s.readOnly    = o["readOnly"].GetBoolean(false);
     s.production  = o["production"].GetBoolean(false);
+    s.autoCommit  = o["autoCommit"].GetBoolean(false);
     return s;
 }
 
@@ -83,6 +87,20 @@ std::string RegisteredName(const ConnectionSpec& spec) {
 
 std::string ConsoleName(const ConnectionSpec& spec) {
     return RegisteredName(spec) + ".console";
+}
+
+std::string ConnectionIdOf(const std::string& registeredName) {
+    static const std::string prefix = "ultradbadmin.";
+    static const std::string console = ".console";
+    if (registeredName.rfind(prefix, 0) != 0) return std::string();
+    std::string id = registeredName.substr(prefix.size());
+    if (id.size() > console.size() && id.compare(id.size() - console.size(), console.size(), console) == 0)
+        id.resize(id.size() - console.size());
+    return id;
+}
+
+SqlEngine EngineOf(const ConnectionSpec& spec) {
+    return spec.IsSqlite() ? SqlEngine::Sqlite : spec.IsMysql() ? SqlEngine::MySql : SqlEngine::Postgres;
 }
 
 std::string Describe(const ConnectionSpec& spec) {

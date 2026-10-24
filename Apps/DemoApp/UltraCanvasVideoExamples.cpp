@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasVideoExamples.cpp
 // Video player & recorder example screen
+// Version: 0.2.0 - the shared page look (UltraCanvasDemoPageKit): playback and
+//                  recording as cards side by side, the status line and the
+//                  buttons sized to their text
 // Version: 0.1.5
-// Last Modified: 2026-07-23
+// Last Modified: 2026-10-23
 // V0.1.5: "Start camera" now fully closes any prior (stopped) session and clears the
 //   stale recording path before reopening, so it reliably returns to a clean live
 //   preview after a recording was stopped (previously it rebuilt the record pipeline
@@ -21,6 +24,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasVideoPlayerElement.h"
 #include "UltraCanvasVideoRecorderElement.h"
 #include "UltraCanvasVideoDevices.h"
@@ -29,16 +33,20 @@
 
 namespace UltraCanvas {
 
+    // A button as wide as its text, at least the width it had.
+    static std::shared_ptr<UltraCanvasButton> MakeVideoButton(const std::string& id, const std::string& text,
+                                                              float minWidth) {
+        auto button = CreateButton(id, 0, 0, 0, 36, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+        button->boxConstraints = limits;
+        return button;
+    }
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVideoExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("VideoExamples", 0, 0, 1000, 600);
+        auto page = DemoKit::CreatePage("VideoExamples", "Video Player & Recorder", "");
 
-        auto title = std::make_shared<UltraCanvasLabel>("VideoTitle", 10, 10, 600, 30);
-        title->SetText("Video Player & Recorder");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        auto status = std::make_shared<UltraCanvasLabel>("VideoStatus", 10, 45, 980, 25);
+        auto status = DemoKit::AddText(page, "VideoStatus", "");
         if (UltraCanvasVideoDevices::IsAvailable()) {
             status->SetText("Backend: " + UltraCanvasVideoDevices::GetBackendName() + " — ready");
             status->SetTextColor(Color(40, 120, 40));
@@ -55,16 +63,13 @@ namespace UltraCanvas {
             status->SetTextColor(Color(180, 60, 60));
         }
         status->SetFontSize(11);
-        container->AddChild(status);
+
+        auto cardRow = DemoKit::AddRow(page, "VideoCards");
 
         // ----- Playback -----
-        auto playLabel = std::make_shared<UltraCanvasLabel>("VPlayLabel", 10, 90, 400, 22);
-        playLabel->SetText("Playback");
-        playLabel->SetFontWeight(FontWeight::Bold);
-        playLabel->SetTextColor(Color(0, 100, 200));
-        container->AddChild(playLabel);
+        auto playCard = DemoKit::AddCard(cardRow, "VPlayLabel", "Playback");
 
-        auto player = CreateVideoPlayer("DemoVideoPlayer", 10, 120, 460, 300);
+        auto player = CreateVideoPlayer("DemoVideoPlayer", 0, 0, 460, 300);
         auto playerWeak = std::weak_ptr<UltraCanvasVideoPlayerElement>(player);
         // Start playback as soon as a file is opened, the same way the Album
         // viewer does (UltraCanvasAlbumExamples.cpp): the platform decode
@@ -76,23 +81,20 @@ namespace UltraCanvas {
             status->SetTextColor(Color(40, 120, 40));
             if (auto p = playerWeak.lock()) p->Play();
         };
-        container->AddChild(player);
+        DemoKit::AddFixed(playCard, player);
 
-        auto openBtn = CreateButton("OpenVideo", 10, 430, 130, 36, "Open video");
+        auto playButtons = DemoKit::AddRow(playCard, "VPlayButtons", 10);
+        auto openBtn = MakeVideoButton("OpenVideo", "Open video", 130);
         openBtn->onClick = [playerWeak]() {
             if (auto p = playerWeak.lock()) p->ShowOpenDialog();
         };
-        container->AddChild(openBtn);
+        DemoKit::Add(playButtons, openBtn);
 
         // ----- Recording -----
-        auto recLabel = std::make_shared<UltraCanvasLabel>("VRecLabel", 520, 90, 400, 22);
-        recLabel->SetText("Recording");
-        recLabel->SetFontWeight(FontWeight::Bold);
-        recLabel->SetTextColor(Color(200, 60, 60));
-        container->AddChild(recLabel);
+        auto recCard = DemoKit::AddCard(cardRow, "VRecLabel", "Recording");
 
-        auto recorder = CreateVideoRecorder("DemoVideoRecorder", 520, 120, 460, 300);
-        container->AddChild(recorder);
+        auto recorder = CreateVideoRecorder("DemoVideoRecorder", 0, 0, 460, 300);
+        DemoKit::AddFixed(recCard, recorder);
         auto recWeak = std::weak_ptr<UltraCanvasVideoRecorderElement>(recorder);
 
         // Start/Stop-camera toggle. The camera starts off; "Start camera" opens the
@@ -100,8 +102,9 @@ namespace UltraCanvas {
         // and closes the camera — back to the initial state. The page is destroyed on
         // navigation (DisplayDemoItem/ClearDisplay), which closes the camera, so it is
         // never left running in the background.
-        auto camBtn = CreateButton("StartCam", 520, 430, 130, 36, "Start camera");
-        container->AddChild(camBtn);
+        auto recButtons = DemoKit::AddRow(recCard, "VRecButtons", 10);
+        auto camBtn = MakeVideoButton("StartCam", "Start camera", 130);
+        DemoKit::Add(recButtons, camBtn);
         std::weak_ptr<UltraCanvasButton> camBtnWeak = camBtn;
 
         recorder->onRecordStarted = [status, camBtnWeak]() {
@@ -170,20 +173,21 @@ namespace UltraCanvas {
             }
         };
 
-        auto recBtn = CreateButton("RecToFile", 660, 430, 150, 36, "Record to file");
+        auto recBtn = MakeVideoButton("RecToFile", "Record to file", 150);
         recBtn->onClick = [recWeak]() {
             if (auto r = recWeak.lock()) r->ShowSaveDialog();
         };
-        container->AddChild(recBtn);
+        DemoKit::Add(recButtons, recBtn);
 
         // ----- Camera selection -----
         // Lists the auto-selected default plus every other camera the backend
         // reports, and switches the recorder's input device on change.
-        auto camSelLabel = std::make_shared<UltraCanvasLabel>("VCamSelLabel", 520, 478, 62, 22);
-        camSelLabel->SetText("Camera:");
-        container->AddChild(camSelLabel);
+        auto camRow = DemoKit::AddRow(recCard, "VCamSelRow", 8);
+        camRow->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        DemoKit::AddText(camRow, "VCamSelLabel", "Camera:");
 
-        auto camDrop = CreateDropdown("CameraSelect", 586, 474, 394, 28);
+        // Takes the rest of the line; a long label moves it onto its own.
+        auto camDrop = CreateDropdown("CameraSelect", 0, 0, 300, 28);
         camDrop->AddItem("Default camera (auto-selected)", "");
         for (const auto& cam : UltraCanvasVideoDevices::ListCameras()) {
             camDrop->AddItem(cam.name + (cam.isDefault ? "  (auto-selected)" : ""), cam.id);
@@ -195,9 +199,9 @@ namespace UltraCanvas {
                 r->SelectCamera(item.value, label);
             }
         };
-        container->AddChild(camDrop);
+        DemoKit::Add(camRow, camDrop, 1);
 
-        return container;
+        return page;
     }
 
 } // namespace UltraCanvas

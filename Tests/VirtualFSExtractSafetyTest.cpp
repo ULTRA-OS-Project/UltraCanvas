@@ -140,12 +140,12 @@ int main(int argc, char** argv) {
 
         const fs::path dest = work / "dest";
         VirtualFSLibArchiveProvider provider;
-        Check(provider.Open(archivePath.string()) == VirtualFSResult::Success, "archive opens");
+        Check(provider.Open(archivePath.string()) == VirtualFSResult::Ok, "archive opens");
         const VirtualFSResult result = provider.ExtractAll(dest.string());
         const std::string error = provider.GetLastError();
         std::printf("         result %d, lastError: %s\n", static_cast<int>(result), error.c_str());
 
-        Check(result != VirtualFSResult::Success, "the extraction does not report Success");
+        Check(result != VirtualFSResult::Ok, "the extraction does not report Success");
         Check(error.find("../escape.txt") != std::string::npos &&
               error.find(absName) != std::string::npos &&
               error.find("a/../../escape2.txt") != std::string::npos,
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
         const fs::path oldCwd = fs::current_path();
         fs::current_path(work / "elsewhere");
         VirtualFSLibArchiveProvider provider;
-        Check(provider.Open(archivePath.string()) == VirtualFSResult::Success, "archive opens");
+        Check(provider.Open(archivePath.string()) == VirtualFSResult::Ok, "archive opens");
         const VirtualFSResult result = provider.ExtractAll(dest.string());
         const std::string error = provider.GetLastError();
         fs::current_path(oldCwd);
@@ -204,8 +204,8 @@ int main(int argc, char** argv) {
         fs::create_directories(work / "real-dest");
         fs::create_directory_symlink(work / "real-dest", work / "dest-link", ec);
         VirtualFSLibArchiveProvider provider;
-        Check(provider.Open(archivePath.string()) == VirtualFSResult::Success, "archive opens");
-        Check(provider.ExtractAll((work / "dest-link").string()) == VirtualFSResult::Success,
+        Check(provider.Open(archivePath.string()) == VirtualFSResult::Ok, "archive opens");
+        Check(provider.ExtractAll((work / "dest-link").string()) == VirtualFSResult::Ok,
               "extracts: the destination's own link is not the archive's");
         Check(ReadFile(work / "real-dest" / "inner" / "file.txt") == "fine", "the file is there");
         provider.Close();

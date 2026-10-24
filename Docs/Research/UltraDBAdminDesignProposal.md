@@ -154,7 +154,7 @@ completion — which are the parts phpMyAdmin is weakest at.
 | Named connection registry | yes; register, open, close, info by name | `include/UltraDatabase/UltraDatabaseConnection.h` |
 | Enumerate registered connections | **no** — `UltraDb_GetConnectionInfo` needs the name | same |
 | Drivers | `sqlite` (bundled), `postgresql` (when libpq is found) | `core/UltraDatabase/UltraDatabase{Sqlite,Postgres}Driver.cpp` |
-| MySQL / MariaDB | **no** — Stage 2 plan | `Docs/Modules/UltraDatabase/README.md`, `master_dependencies.yaml` |
+| MySQL / MariaDB | **no** — Stage 2 plan (since added: UltraDatabase 0.5.0, stage 3 below) | `Docs/Modules/UltraDatabase/README.md`, `master_dependencies.yaml` |
 | Parameterised query, exec, prepared statements | yes | `UltraDatabaseQuery.h` |
 | Transactions | yes, handle-based | `UltraDatabaseTransaction.h` |
 | Versioned migrations | yes | `UltraDatabaseMigrate.h` |
@@ -528,14 +528,59 @@ options) is lost. **Import followed**: rows from CSV files
 and workbooks through FileLoader's spreadsheet formats and the framework's
 Text Import dialog, mapped onto a table and inserted all or none; SQL files
 (`.sql`, `.sql.gz`) summarised and run on the console as one transaction.
-Stage 2 is complete apart from editing in the grid cell itself and blobs.
+**The rest of stage 2 followed**: Browse filters per column (bound
+values), editing a cell in place, blobs viewed (picture, text or hex), saved
+and loaded, and rows copied as CSV, JSON or INSERT statements - stage 2 is
+complete.
 **Export, stage 1's last item, followed**: a table through a cursor, or a
 query's rows, to CSV / TSV (the framework's Text Export dialog and writer),
 JSON, SQL INSERTs (with a SQLite table's own CREATE TABLE) or a workbook.
+**The rest of stages 1 and 2 followed** (UltraDBAdmin 0.3): a tab per open
+object, each keeping its page, filters and staged changes; the SQL log of
+every statement the app runs (UltraDatabase 0.4.0's statement observers,
+`UltraDb_AddStatementObserver`); the tree's context menu with the
+Operations of 5.2 - create, copy (structure, or structure and rows), rename,
+empty and drop a table, SQLite's VACUUM, ANALYZE, integrity and quick check,
+optimize and journal mode, PostgreSQL's VACUUM (ANALYZE) and ANALYZE - each
+shown as SQL first; Search across every table of a schema; a schema exported
+as one SQL file (structure, data, DROP IF EXISTS), a PostgreSQL table's
+definition read from its catalog; the console's Run statement, Explain and
+saved snippets; the row form's field per type and its value functions; and
+auto-commit per connection.
 
-MySQL stays at stage 3, after editing: it is not the priority (decided
-2026-10-20). Stage 1 alone already replaces the "install DB Browser for
-SQLite" step for supporting ULTRA OS apps.
+**Stage 4 followed, before stage 3** (decided 2026-10-23): the Relations
+tab - the ER diagram filled from the schema introspection
+(`UltraCanvasERDiagram`, crow's foot or Chen; the tables in layers, parents
+first; a table double-clicked opens) - the ER diagram's X4, the live
+import; the Triggers / Routines tab - triggers on both engines,
+PostgreSQL's functions, procedures and aggregates, each edited as its own
+CREATE OR REPLACE in the SQL tab, dropped, or started from a template; and
+the Server tab for PostgreSQL - sessions with Stop query and End session,
+settings with a filter, the sizes of databases and tables - and SQLite's
+file. Read straight from the catalogs (`pg_stat_activity`, `pg_settings`,
+`pg_proc`, `pg_trigger`, `sqlite_master`, PRAGMAs) rather than through a
+G10 module extension; the module gains one when MySQL needs the same views.
+SSH tunnels (G9) and monitor charts are still to come.
+
+**Stage 3 followed** (UltraDatabase 0.5.0): the MySQL / MariaDB driver
+(G8) over MariaDB Connector/C, linked dynamically (LGPL-2.1), with its
+introspection, cancel, cursors and a script splitter that reads `DELIMITER`
+as the mysql client does; and G10 after all - the server administration
+(`UltraDatabaseServer.h`: sessions, settings, sizes, a session stopped) in
+the module, filled by the PostgreSQL and the MySQL driver alike, which the
+Server tab now reads for both instead of its own catalog queries. The app
+needed more than DDL spellings: backtick quoting everywhere it builds SQL
+(the engine passed to every name it quotes), `LIKE ... ESCAPE '!'` and
+`CAST AS CHAR` for the filters and Search, `MODIFY COLUMN` restating a
+column (its `AUTO_INCREMENT`, collation and comment), and DDL run statement
+by statement - MySQL commits around each, so no plan of Structure or the
+operations can promise all-or-nothing there, and each says so. The dump is
+mysqldump's shape; routines are edited as `DROP` and `CREATE` between
+`DELIMITER` lines. MariaDB 10.11 locally and MySQL 8 in CI run the same
+tests.
+
+Stage 1 alone already replaces the "install DB Browser for SQLite" step for
+supporting ULTRA OS apps.
 
 ### 8.1 The browser build and its relay
 

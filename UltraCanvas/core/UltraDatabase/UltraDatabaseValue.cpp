@@ -86,7 +86,7 @@ std::string FormatDoubleClassic(double value) {
 bool UltraDbValue::AsBool() const {
     switch (type_) {
         case UltraDbType::Null:   return false;
-        case UltraDbType::Bool:
+        case UltraDbType::Boolean:
         case UltraDbType::Int:    return i_ != 0;
         case UltraDbType::Double: return d_ != 0.0;
         case UltraDbType::Text:   return s_ == "1" || s_ == "true" || s_ == "TRUE" ||
@@ -99,7 +99,7 @@ bool UltraDbValue::AsBool() const {
 int64_t UltraDbValue::AsInt64() const {
     switch (type_) {
         case UltraDbType::Null:   return 0;
-        case UltraDbType::Bool:
+        case UltraDbType::Boolean:
         case UltraDbType::Int:    return i_;
         case UltraDbType::Double: return static_cast<int64_t>(d_);
         case UltraDbType::Text:   return s_.empty() ? 0
@@ -112,7 +112,7 @@ int64_t UltraDbValue::AsInt64() const {
 double UltraDbValue::AsDouble() const {
     switch (type_) {
         case UltraDbType::Null:   return 0.0;
-        case UltraDbType::Bool:
+        case UltraDbType::Boolean:
         case UltraDbType::Int:    return static_cast<double>(i_);
         case UltraDbType::Double: return d_;
         case UltraDbType::Text: {
@@ -130,7 +130,7 @@ double UltraDbValue::AsDouble() const {
 std::string UltraDbValue::AsString() const {
     switch (type_) {
         case UltraDbType::Null:   return std::string();
-        case UltraDbType::Bool:   return i_ != 0 ? "true" : "false";
+        case UltraDbType::Boolean:   return i_ != 0 ? "true" : "false";
         case UltraDbType::Int:    return std::to_string(i_);
         // Dot-decimal, and the shortest text that reads back as the same
         // double: 3.14 is "3.14". std::to_string, used before, wrote it

@@ -226,7 +226,7 @@ public:
     }
 
 private:
-    enum class Mode { None, Server, Monitor };
+    enum class Mode { Off, Server, Monitor };
 
     void SetState(UltraMsgAdapterStatus status, const std::string& message, const std::string& remedy,
                   const std::string& mode) {
@@ -359,7 +359,7 @@ private:
             g_main_context_unref(context_);
             context_ = nullptr;
         }
-        mode_ = Mode::None;
+        mode_ = Mode::Off;
     }
 
     static void OnNameAcquired(GDBusConnection*, const gchar*, gpointer userData) {
@@ -376,7 +376,7 @@ private:
         if (self->stopping_.load()) return;
         if (self->mode_ == Mode::Server) {
             // Lost after owning it: another server took over. Fall back.
-            self->mode_ = Mode::None;
+            self->mode_ = Mode::Off;
         }
         if (!connection) {
             self->SetState(UltraMsgAdapterStatus::Unavailable, "the session bus connection closed", "", "");
@@ -586,7 +586,7 @@ private:
     IAdapterHost* host_ = nullptr;
     std::thread thread_;
     std::atomic<bool> stopping_{false};
-    std::atomic<Mode> mode_{Mode::None};
+    std::atomic<Mode> mode_{Mode::Off};
 
     mutable std::mutex stateMutex_;
     UltraMsgAdapterState state_;

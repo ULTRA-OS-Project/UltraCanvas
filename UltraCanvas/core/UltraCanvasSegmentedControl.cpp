@@ -1,9 +1,13 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
+// Version: 1.6.0 - a caption is centred on its capitals (the layout gets the segment's
+//                 height), not on its line box, which sat high or low with the font
+// Version: 1.5.0 - style.iconAsMask tints the icon with the text colour; an icon and a
+//                 centred caption are centred as one
 // Version: 1.4.0 - SetSegmentTextColor: a segment's own text colour while unselected
 // Version: 1.3.1 - the key switch says the keys it ignores (default; -Wswitch)
 // Version: 1.3.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSegmentedControl.h"
@@ -352,12 +356,38 @@ namespace UltraCanvas {
         // Render icon if present. Alone in its segment it sits in the middle:
         // the segment is seldom exactly icon + padding wide (equal widths share
         // out the control), so the left padding would push it off centre.
+        // Beside a centred caption the two are centred as one, rather than the
+        // icon at the left edge and the text in the middle of what remains.
+        ITextLayout* centredText = nullptr;
+        if (segment.HasIcon() && segment.HasText() && segment.alignment == TextAlignment::Center) {
+            centredText = GetOrCreateTextLayout(ctx, segment);
+            if (centredText->GetExplicitWidth() >= 0) centredText->SetExplicitWidth(-1);
+            const double textW = centredText->GetLayoutSize().width;
+            const double groupW = style.iconSize + style.iconSpacing + textW;
+            contentX = static_cast<int>(std::round(rect.x + std::max(0.0, (rect.width - groupW) / 2.0)));
+        }
         if (segment.HasIcon()) {
             int iconX = segment.HasText() ? contentX
                                           : rect.x + (rect.width - style.iconSize) / 2;
             int iconY = contentY - style.iconSize / 2;
-            ctx->DrawImage(segment.iconPath, Rect2Dd(iconX, iconY, style.iconSize, style.iconSize), ImageFitMode::Contain);
+            const Rect2Dd iconRect(iconX, iconY, style.iconSize, style.iconSize);
+            if (style.iconAsMask) ctx->DrawMask(textColor, segment.iconPath, iconRect, ImageFitMode::Contain);
+            else ctx->DrawImage(segment.iconPath, iconRect, ImageFitMode::Contain);
             contentX += style.iconSize + style.iconSpacing;
+        }
+        // The caption gets the segment's height and centres itself in it
+        // (VerticalAlignment::Middle): its capitals on the segment's middle,
+        // as a button's caption is, wherever the font's line box sits.
+        // Centring the line box put the text a few pixels high or low with
+        // the font (high in the Windows demo).
+        auto fitHeight = [&rect](ITextLayout* layout) {
+            if (layout->GetExplicitHeight() != rect.height) layout->SetExplicitHeight(rect.height);
+        };
+        if (centredText) {
+            centredText->ChangeAttribute(TextAttributeFactory::CreateForeground(textColor));
+            fitHeight(centredText);
+            ctx->DrawTextLayout(*centredText, Point2Dd(contentX, rect.y));
+            return;
         }
 
         // Render text
@@ -369,8 +399,8 @@ namespace UltraCanvas {
             if (textLayout->GetExplicitWidth() != layoutWidth) {
                 textLayout->SetExplicitWidth(layoutWidth);
             }
-            auto textSize = textLayout->GetLayoutSize();
-            ctx->DrawTextLayout(*textLayout, Point2Dd(contentX, contentY - textSize.height / 2));
+            fitHeight(textLayout);
+            ctx->DrawTextLayout(*textLayout, Point2Dd(contentX, rect.y));
         }
     }
 
@@ -383,11 +413,11 @@ namespace UltraCanvas {
                         .fontWeight = style.fontWeight,
                         .fontSlant = FontSlant::Normal
                 };
-                //auto txtMarkup = fmt::format("<span font=\"{}\">{}</span>", fstyle.ToFontDesc(), segment.text);
                 segment.textLayout = ctx->CreateTextLayout("<span>"+segment.text+"</span>", true);
-                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontFamily(style.fontFamily));
-                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontWeight(style.fontWeight));
-                segment.textLayout->ChangeAttribute(TextAttributeFactory::CreateFontSize(style.fontSize));
+                // The layout's own font, not font attributes over its text:
+                // the vertical centring measures the capitals of the layout's
+                // font, and would measure the default size's instead.
+                segment.textLayout->SetFontStyle(fstyle);
                 segment.textLayout->SetAlignment(segment.alignment);
                 segment.textLayout->SetVerticalAlignment(VerticalAlignment::Middle);
             }

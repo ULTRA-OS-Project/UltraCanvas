@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasTimelineDiagramExamples.cpp
 // Timeline diagram examples: one tab per design preset, with live controls
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): controls,
+//                  diagram and statistics in cards that wrap, every text sized
+//                  to fit, the about texts wrap instead of carrying line breaks
 // Version: 1.0.0
-// Last Modified: 2026-07-30
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasTimelineDiagram.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasButton.h"
@@ -38,72 +42,58 @@ namespace UltraCanvas {
         return item;
     }
 
+    namespace {
+        // A button in the controls card: stretched across it, and as wide as
+        // its text when that is wider.
+        std::shared_ptr<UltraCanvasButton> AddTimelineDiagramButton(const std::shared_ptr<UltraCanvasContainer>& card,
+                                                                    const std::string& id, const std::string& text,
+                                                                    const Color& background) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 32, text);
+            button->SetBackgroundColor(background);
+            DemoKit::Add(card, button);
+            return button;
+        }
+
+        // A caption over a dropdown, the dropdown stretched across the card.
+        std::shared_ptr<UltraCanvasDropdown> AddTimelineDiagramSelector(const std::shared_ptr<UltraCanvasContainer>& card,
+                                                                        const std::string& id, const std::string& labelId,
+                                                                        const std::string& label) {
+            auto caption = DemoKit::AddCaption(card, labelId, label);
+            caption->SetFontWeight(FontWeight::Bold);
+            auto selector = std::make_shared<UltraCanvasDropdown>(id, 0, 0, 170, 28);
+            DemoKit::AddStretched(card, selector);
+            return selector;
+        }
+
+        // A side card keeps its width (the sidebar's 200 px) and lets the
+        // diagram card take the rest of the row.
+        std::shared_ptr<UltraCanvasContainer> AddTimelineDiagramSideCard(const std::shared_ptr<UltraCanvasContainer>& row,
+                                                                         const std::string& id, const std::string& titleId,
+                                                                         const std::string& title) {
+            auto card = DemoKit::AddCard(row, id, "", "", 200);
+            card->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+            DemoKit::AddHeading(card, titleId, title);
+            return card;
+        }
+    } // namespace
+
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateTimelineDiagramExamples() {
-        // Children placed directly inside a sidebar/panel container are inset
-        // explicitly instead of using SetPadding() - the same pattern the
-        // SWOT/Quadrant/Venn demos use - so absolutely-positioned children are
-        // not clipped by the container's content area.
-        const int PAD = 15;
+        auto mainContainer = DemoKit::CreatePage("tlMainContainer", "Timeline Diagram Infographic",
+                "Narrative timeline with nine design presets, palettes, even/proportional placement and interactive items");
 
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("tlMainContainer", 0, 0, 1140, 800);
-        mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
-
-        auto headerContainer = std::make_shared<UltraCanvasContainer>("tlHeader", 0, 0, 1140, 90);
-        headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
-        mainContainer->AddChild(headerContainer);
-
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("tlMainTitle", 30, 15, 1080, 35);
-        mainTitle->SetText("Timeline Diagram Infographic");
-        mainTitle->SetFontSize(22);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetAlignment(TextAlignment::Left);
-        mainTitle->SetTextColor(Color(33, 37, 41, 255));
-        headerContainer->AddChild(mainTitle);
-
-        auto subtitleLabel = std::make_shared<UltraCanvasLabel>("tlSubtitle", 30, 52, 1000, 30);
-        subtitleLabel->SetText("Narrative timeline with nine design presets, palettes, even/proportional placement and interactive items");
-        subtitleLabel->SetFontSize(13);
-        subtitleLabel->SetAlignment(TextAlignment::Left);
-        subtitleLabel->SetTextColor(Color(108, 117, 125, 255));
-        headerContainer->AddChild(subtitleLabel);
-
-        auto contentContainer = std::make_shared<UltraCanvasContainer>("tlContent", 0, 90, 1140, 710);
-        mainContainer->AddChild(contentContainer);
+        // Controls | tabs with the status line | statistics and about. The
+        // side cards wrap under the diagram in a narrow window.
+        auto contentContainer = DemoKit::AddRow(mainContainer, "tlContent");
 
         // ===== LEFT SIDEBAR (controls) =====
-        auto leftSidebar = std::make_shared<UltraCanvasContainer>("tlLeftSidebar", 20, 20, 200, 670);
-        leftSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(leftSidebar);
+        auto leftSidebar = AddTimelineDiagramSideCard(contentContainer, "tlLeftSidebar", "tlControlsTitle", "CONTROLS");
 
-        const int SIDEBAR_W = 170;
-
-        auto controlsTitle = std::make_shared<UltraCanvasLabel>("tlControlsTitle", PAD, PAD, SIDEBAR_W, 22);
-        controlsTitle->SetText("CONTROLS");
-        controlsTitle->SetFontSize(11);
-        controlsTitle->SetFontWeight(FontWeight::Bold);
-        controlsTitle->SetTextColor(Color(73, 80, 87, 255));
-        controlsTitle->SetAlignment(TextAlignment::Left);
-        leftSidebar->AddChild(controlsTitle);
-
-        auto themeLabel = std::make_shared<UltraCanvasLabel>("tlThemeLabel", PAD, 50, SIDEBAR_W, 18);
-        themeLabel->SetText("Theme");
-        themeLabel->SetFontSize(10);
-        themeLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(themeLabel);
-
-        auto themeSelector = std::make_shared<UltraCanvasDropdown>("tlThemeSelector", PAD, 70, SIDEBAR_W, 28);
+        auto themeSelector = AddTimelineDiagramSelector(leftSidebar, "tlThemeSelector", "tlThemeLabel", "Theme");
         themeSelector->AddItem("Light", "light");
         themeSelector->AddItem("Dark", "dark");
         themeSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(themeSelector);
 
-        auto paletteLabel = std::make_shared<UltraCanvasLabel>("tlPaletteLabel", PAD, 106, SIDEBAR_W, 18);
-        paletteLabel->SetText("Palette");
-        paletteLabel->SetFontSize(10);
-        paletteLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(paletteLabel);
-
-        auto paletteSelector = std::make_shared<UltraCanvasDropdown>("tlPaletteSelector", PAD, 126, SIDEBAR_W, 28);
+        auto paletteSelector = AddTimelineDiagramSelector(leftSidebar, "tlPaletteSelector", "tlPaletteLabel", "Palette");
         paletteSelector->AddItem("Vibrant", "vibrant");
         paletteSelector->AddItem("Corporate Blue", "corporate");
         paletteSelector->AddItem("Pastel", "pastel");
@@ -113,132 +103,67 @@ namespace UltraCanvas {
         paletteSelector->AddItem("Slate", "slate");
         paletteSelector->AddItem("Mono", "mono");
         paletteSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(paletteSelector);
 
-        auto sideLabel = std::make_shared<UltraCanvasLabel>("tlSideLabel", PAD, 162, SIDEBAR_W, 18);
-        sideLabel->SetText("Side Policy");
-        sideLabel->SetFontSize(10);
-        sideLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(sideLabel);
-
-        auto sideSelector = std::make_shared<UltraCanvasDropdown>("tlSideSelector", PAD, 182, SIDEBAR_W, 28);
+        auto sideSelector = AddTimelineDiagramSelector(leftSidebar, "tlSideSelector", "tlSideLabel", "Side Policy");
         sideSelector->AddItem("Alternate", "alternate");
         sideSelector->AddItem("All Above / Left", "above");
         sideSelector->AddItem("All Below / Right", "below");
         sideSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(sideSelector);
 
-        auto placementLabel = std::make_shared<UltraCanvasLabel>("tlPlacementLabel", PAD, 218, SIDEBAR_W, 18);
-        placementLabel->SetText("Placement");
-        placementLabel->SetFontSize(10);
-        placementLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(placementLabel);
-
-        auto placementSelector = std::make_shared<UltraCanvasDropdown>("tlPlacementSelector", PAD, 238, SIDEBAR_W, 28);
+        auto placementSelector = AddTimelineDiagramSelector(leftSidebar, "tlPlacementSelector", "tlPlacementLabel", "Placement");
         placementSelector->AddItem("Even (infographic)", "even");
         placementSelector->AddItem("Proportional (dates)", "proportional");
         placementSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(placementSelector);
 
-        auto colorLabel = std::make_shared<UltraCanvasLabel>("tlColorLabel", PAD, 274, SIDEBAR_W, 18);
-        colorLabel->SetText("Color Mode");
-        colorLabel->SetFontSize(10);
-        colorLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(colorLabel);
-
-        auto colorSelector = std::make_shared<UltraCanvasDropdown>("tlColorSelector", PAD, 294, SIDEBAR_W, 28);
+        auto colorSelector = AddTimelineDiagramSelector(leftSidebar, "tlColorSelector", "tlColorLabel", "Color Mode");
         colorSelector->AddItem("Per Item", "peritem");
         colorSelector->AddItem("Single", "single");
         colorSelector->AddItem("Gradient Along Path", "gradient");
         colorSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(colorSelector);
 
-        auto btnAddItem = std::make_shared<UltraCanvasButton>("tlBtnAddItem", PAD, 336, SIDEBAR_W, 32);
-        btnAddItem->SetText("Add Random Item");
-        btnAddItem->SetBackgroundColor(Color(13, 110, 253, 255));
-        leftSidebar->AddChild(btnAddItem);
+        auto btnAddItem = AddTimelineDiagramButton(leftSidebar, "tlBtnAddItem", "Add Random Item", Color(13, 110, 253, 255));
+        auto btnRemove = AddTimelineDiagramButton(leftSidebar, "tlBtnRemove", "Remove Selected", Color(220, 53, 69, 255));
+        auto btnReverse = AddTimelineDiagramButton(leftSidebar, "tlBtnReverse", "Reverse Direction", Color(111, 66, 193, 255));
+        auto btnReload = AddTimelineDiagramButton(leftSidebar, "tlBtnReload", "Reload Sample Data", Color(25, 135, 84, 255));
+        auto btnReset = AddTimelineDiagramButton(leftSidebar, "tlBtnReset", "Reset View", Color(108, 117, 125, 255));
 
-        auto btnRemove = std::make_shared<UltraCanvasButton>("tlBtnRemove", PAD, 373, SIDEBAR_W, 32);
-        btnRemove->SetText("Remove Selected");
-        btnRemove->SetBackgroundColor(Color(220, 53, 69, 255));
-        leftSidebar->AddChild(btnRemove);
-
-        auto btnReverse = std::make_shared<UltraCanvasButton>("tlBtnReverse", PAD, 410, SIDEBAR_W, 32);
-        btnReverse->SetText("Reverse Direction");
-        btnReverse->SetBackgroundColor(Color(111, 66, 193, 255));
-        leftSidebar->AddChild(btnReverse);
-
-        auto btnReload = std::make_shared<UltraCanvasButton>("tlBtnReload", PAD, 447, SIDEBAR_W, 32);
-        btnReload->SetText("Reload Sample Data");
-        btnReload->SetBackgroundColor(Color(25, 135, 84, 255));
-        leftSidebar->AddChild(btnReload);
-
-        auto btnReset = std::make_shared<UltraCanvasButton>("tlBtnReset", PAD, 484, SIDEBAR_W, 32);
-        btnReset->SetText("Reset View");
-        btnReset->SetBackgroundColor(Color(108, 117, 125, 255));
-        leftSidebar->AddChild(btnReset);
-
-        auto helpBox = std::make_shared<UltraCanvasLabel>("tlHelpBox", PAD, 530, SIDEBAR_W, 120);
-        helpBox->SetText("INTERACTION TIPS\n\n"
-                         "- Click an item to select\n"
-                         "- Click empty space to\n"
-                         "  clear the selection\n"
-                         "- Hover for the full text\n"
-                         "- Double-click an item");
-        helpBox->SetFontSize(9);
-        helpBox->SetAlignment(TextAlignment::Left);
+        auto helpBox = DemoKit::AddCaption(leftSidebar, "tlHelpBox",
+                "INTERACTION TIPS\n\n"
+                "- Click an item to select\n"
+                "- Click empty space to clear the selection\n"
+                "- Hover for the full text\n"
+                "- Double-click an item");
+        helpBox->SetTextColor(DemoKit::BodyText());
         helpBox->SetBackgroundColor(Color(255, 243, 205, 255));
         helpBox->SetPadding(10);
-        leftSidebar->AddChild(helpBox);
 
         // ===== TABS =====
-        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("tlTabs", 240, 20, 660, 580);
+        auto diagramCard = DemoKit::AddCard(contentContainer, "tlDiagramCard", "", "", 690);
+        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("tlTabs", 0, 0, 660, 580);
         tabbedContainer->SetTabPosition(TabPosition::Top);
-        contentContainer->AddChild(tabbedContainer);
+        DemoKit::AddFixed(diagramCard, tabbedContainer);
 
-        // ===== RIGHT SIDEBAR (stats + about) =====
-        auto rightSidebar = std::make_shared<UltraCanvasContainer>("tlRightSidebar", 920, 20, 200, 580);
-        rightSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(rightSidebar);
-
-        auto statsTitle = std::make_shared<UltraCanvasLabel>("tlStatsTitle", PAD, PAD, SIDEBAR_W, 24);
-        statsTitle->SetText("STATISTICS");
-        statsTitle->SetFontSize(11);
-        statsTitle->SetFontWeight(FontWeight::Bold);
-        statsTitle->SetTextColor(Color(73, 80, 87, 255));
-        statsTitle->SetAlignment(TextAlignment::Left);
-        rightSidebar->AddChild(statsTitle);
-
-        auto statsPanel = std::make_shared<UltraCanvasLabel>("tlStatsPanel", PAD, 48, SIDEBAR_W, 180);
-        statsPanel->SetFontSize(10);
-        statsPanel->SetAlignment(TextAlignment::Left);
-        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-        statsPanel->SetPadding(12);
-        rightSidebar->AddChild(statsPanel);
-
-        auto aboutTitle = std::make_shared<UltraCanvasLabel>("tlAboutTitle", PAD, 240, SIDEBAR_W, 24);
-        aboutTitle->SetText("ABOUT THIS DESIGN");
-        aboutTitle->SetFontSize(11);
-        aboutTitle->SetFontWeight(FontWeight::Bold);
-        aboutTitle->SetTextColor(Color(73, 80, 87, 255));
-        aboutTitle->SetAlignment(TextAlignment::Left);
-        rightSidebar->AddChild(aboutTitle);
-
-        auto aboutPanel = std::make_shared<UltraCanvasLabel>("tlAboutPanel", PAD, 272, SIDEBAR_W, 250);
-        aboutPanel->SetFontSize(9);
-        aboutPanel->SetAlignment(TextAlignment::Left);
-        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
-        aboutPanel->SetPadding(12);
-        rightSidebar->AddChild(aboutPanel);
-
-        auto statusBar = std::make_shared<UltraCanvasLabel>("tlStatusBar", 240, 610, 660, 60);
-        statusBar->SetText("Ready - click items to select them, hover for tooltips");
+        auto statusBar = DemoKit::AddText(diagramCard, "tlStatusBar",
+                "Ready - click items to select them, hover for tooltips");
         statusBar->SetFontSize(11);
-        statusBar->SetAlignment(TextAlignment::Left);
         statusBar->SetBackgroundColor(Color(233, 236, 239, 255));
         statusBar->SetPadding(15);
         statusBar->SetTextColor(Color(73, 80, 87, 255));
-        contentContainer->AddChild(statusBar);
+
+        // ===== RIGHT SIDEBAR (stats + about) =====
+        auto rightSidebar = AddTimelineDiagramSideCard(contentContainer, "tlRightSidebar", "tlStatsTitle", "STATISTICS");
+
+        auto statsPanel = DemoKit::AddText(rightSidebar, "tlStatsPanel", "");
+        statsPanel->SetFontSize(10);
+        statsPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        statsPanel->SetPadding(12);
+
+        DemoKit::AddHeading(rightSidebar, "tlAboutTitle", "ABOUT THIS DESIGN");
+
+        auto aboutPanel = DemoKit::AddText(rightSidebar, "tlAboutPanel", "");
+        aboutPanel->SetFontSize(9);
+        aboutPanel->SetBackgroundColor(Color(248, 249, 250, 255));
+        aboutPanel->SetPadding(12);
 
         // Diagram geometry inside each tab
         const int DIAG_X = 20, DIAG_Y = 15, DIAG_W = 620, DIAG_H = 510;
@@ -251,23 +176,23 @@ namespace UltraCanvas {
         };
         const std::vector<TabSpec> tabSpecs = {
                 {"Bar", TimelineDesign::Bar, true,
-                 "Bar\n\nA thick spine split into\none colored segment per\nitem, with circular nodes\nalternating on the top and\nbottom edges and the\nperiod caption on the\nopposite side."},
+                 "Bar\n\nA thick spine split into one colored segment per item, with circular nodes alternating on the top and bottom edges and the period caption on the opposite side."},
                 {"Line", TimelineDesign::Line, true,
-                 "Line\n\nA thin axis with small\nnodes on it and a short\nstem to each text block.\nThe most restrained of\nthe horizontal designs."},
+                 "Line\n\nA thin axis with small nodes on it and a short stem to each text block. The most restrained of the horizontal designs."},
                 {"Alternating", TimelineDesign::Alternating, true,
-                 "Alternating\n\nThe classic zigzag: cards\nabove and below a central\nspine, connected by stems.\nGood when each item has a\nparagraph of text."},
+                 "Alternating\n\nThe classic zigzag: cards above and below a central spine, connected by stems. Good when each item has a paragraph of text."},
                 {"Cards", TimelineDesign::Cards, true,
-                 "Cards\n\nA row of separate cards\nwith a numbered badge on\nthe top edge. No spine -\nreads as independent\ntiles rather than a\ncontinuous path."},
+                 "Cards\n\nA row of separate cards with a numbered badge on the top edge. No spine - reads as independent tiles rather than a continuous path."},
                 {"Vertical", TimelineDesign::Vertical, true,
-                 "Vertical\n\nTop-down spine with cards\nleft and right. The right\nchoice for long lists and\nportrait layouts."},
+                 "Vertical\n\nTop-down spine with cards left and right. The right choice for long lists and portrait layouts."},
                 {"Serpentine", TimelineDesign::Serpentine, false,
-                 "Serpentine\n\nA snaking ribbon that\nwraps over several runs,\nwith numbered nodes on\nthe path. Fits twelve or\nmore items into a wide\nframe."},
+                 "Serpentine\n\nA snaking ribbon that wraps over several runs, with numbered nodes on the path. Fits twelve or more items into a wide frame."},
                 {"Hanging", TimelineDesign::Hanging, false,
-                 "Hanging\n\nA month axis with stems\ndropping to bubbles of\nvarying size. Bubble text\nis wrapped to the circle,\nand bubbles are staggered\nover two tiers so they\nnever collide."},
+                 "Hanging\n\nA month axis with stems dropping to bubbles of varying size. Bubble text is wrapped to the circle, and bubbles are staggered over two tiers so they never collide."},
                 {"Chevron", TimelineDesign::Chevron, true,
-                 "Chevron\n\nArrow blocks pointing\nforward - the process /\nphase presentation where\nthe direction of travel\nmatters more than the\ndates."},
+                 "Chevron\n\nArrow blocks pointing forward - the process / phase presentation where the direction of travel matters more than the dates."},
                 {"Steps", TimelineDesign::Steps, true,
-                 "Steps\n\nAscending staircase\nblocks. Suits growth\nnarratives where each\nstage builds on the\nprevious one."}};
+                 "Steps\n\nAscending staircase blocks. Suits growth narratives where each stage builds on the previous one."}};
 
         std::vector<std::shared_ptr<UltraCanvasTimelineDiagram>> allDiagrams;
         for (const auto& spec : tabSpecs) {

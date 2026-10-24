@@ -63,7 +63,7 @@ std::string FormatDouble(double value, int decimals) {
 std::mutex               g_stateMutex;
 HardwareInfoOptions      g_options;
 HardwareSnapshot         g_cachedSnapshot;
-HardwareQuery            g_cachedQuery = HardwareQuery::None;
+HardwareQuery            g_cachedQuery = HardwareQuery::Nothing;
 int64_t                  g_cachedAtMs  = 0;
 
 // Reduce a snapshot to the categories a caller asked for. A cached snapshot is
@@ -277,7 +277,7 @@ void UltraCanvasHardwareInfo::SetOptions(const HardwareInfoOptions& options) {
     g_options = options;
     // The cache holds values shaped by the old options (masked or not, sensors
     // or not), so it cannot answer for the new ones.
-    g_cachedQuery = HardwareQuery::None;
+    g_cachedQuery = HardwareQuery::Nothing;
     g_cachedAtMs = 0;
 }
 

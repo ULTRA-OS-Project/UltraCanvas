@@ -68,6 +68,10 @@ APPS=(UltraCanvasDemo Texter UltraFiler UltraMail UltraAIApp UltraViewer UltraPa
 # the same transfers from a terminal. Both output to bin/.
 APPS+=(AnchorPoint anchorpoint-cli)
 
+# ChatCube, the messenger; its networks are the UltraIM provider modules
+# copied to bin/Plugins/UltraIM below.
+APPS+=(ChatCube)
+
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
 # libstdc++ / libgcc_s ARE bundled on purpose so the package runs on older distros.
@@ -175,6 +179,21 @@ if compgen -G "$BUILDDIR/Plugins/UltraNet/*.so" > /dev/null; then
     mkdir -p "$PKG/bin/Plugins/UltraNet"
     cp -a "$BUILDDIR"/Plugins/UltraNet/*.so "$PKG/bin/Plugins/UltraNet/"
     log "  plugins UltraNet ($(ls -1 "$PKG/bin/Plugins/UltraNet"/*.so | wc -l) DSOs)"
+fi
+
+# --- UltraIM provider modules (loaded by ChatCube) ---------------------------
+
+# Likewise MODULE libraries, in $BUILDDIR/Plugins/UltraIM; ChatCube looks in
+# <exe>/Plugins/UltraIM. Without ultraim_direct it can only report "The
+# ChatCube Direct module was not found", so a ChatCube without it fails here.
+if compgen -G "$BUILDDIR/Plugins/UltraIM/*.so" > /dev/null; then
+    mkdir -p "$PKG/bin/Plugins/UltraIM"
+    cp -a "$BUILDDIR"/Plugins/UltraIM/*.so "$PKG/bin/Plugins/UltraIM/"
+    log "  plugins UltraIM ($(ls -1 "$PKG/bin/Plugins/UltraIM"/*.so | wc -l) DSOs)"
+fi
+if [ -x "$PKG/bin/ChatCube" ] && [ ! -f "$PKG/bin/Plugins/UltraIM/ultraim_direct.so" ]; then
+    echo "Error: ChatCube is packaged without bin/Plugins/UltraIM/ultraim_direct.so, its ChatCube Direct provider" >&2
+    exit 1
 fi
 
 # --- strip our own binaries --------------------------------------------------

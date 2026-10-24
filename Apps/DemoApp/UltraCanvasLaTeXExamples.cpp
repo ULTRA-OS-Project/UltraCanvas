@@ -16,11 +16,15 @@
 //
 // New examples appear automatically when a .tex file is dropped into the
 // media/LaTex folder.
+// Version: 3.2.0 - the shared page look (UltraCanvasDemoPageKit): the page
+//                  fills the area, the tabs in a card, every header label as
+//                  tall as its wrapped text
 // Version: 3.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
@@ -130,6 +134,7 @@ namespace {
         if (!UltraCanvasLaTeXDocumentReader::Load(PathToUtf8(texPath), document, error, &diagnostics)) {
             auto failed = std::make_shared<UltraCanvasLabel>("LaTeXDocError_" + stem, 0, 0, 0, 0);
             failed->SetText("The document could not be imported:\n" + error);
+            failed->SetWrap(TextWrap::WrapWord);
             failed->SetFontSize(12);
             failed->SetTextColor(Color(150, 60, 60, 255));
             failed->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -209,6 +214,7 @@ namespace {
             auto failed = std::make_shared<UltraCanvasLabel>("LaTeXModuleError_" + stem, 0, 0, 0, 0);
             failed->SetText("The LaTeX engine module could not be loaded, so this document "
                             "cannot be typeset:\n" + GetLaTeXModuleError());
+            failed->SetWrap(TextWrap::WrapWord);
             failed->SetFontSize(12);
             failed->SetTextColor(Color(150, 60, 60, 255));
             failed->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
@@ -221,8 +227,10 @@ namespace {
         }
 
         // ----- Rendered output header -----
-        auto renderedLabel = std::make_shared<UltraCanvasLabel>("LaTeXRenderedLabel_" + stem, 0, 0, 0, 20);
-        renderedLabel->SetText(headerText);
+        // The headers are as tall as their wrapped lines: a long diagnostic
+        // in the status is not cut.
+        auto renderedLabel = std::make_shared<UltraCanvasLabel>("LaTeXRenderedLabel_" + stem, headerText);
+        renderedLabel->SetWrap(TextWrap::WrapWord);
         renderedLabel->SetFontSize(12);
         renderedLabel->SetFontWeight(FontWeight::Bold);
         renderedLabel->SetTextColor(headerColor);
@@ -242,8 +250,9 @@ namespace {
         page->AddChild(renderArea);
 
         // ----- LaTeX source -----
-        auto sourceLabel = std::make_shared<UltraCanvasLabel>("LaTeXSourceLabel_" + stem, 0, 0, 0, 20);
-        sourceLabel->SetText("LaTeX source (" + PathToUtf8(texPath.filename()) + "):");
+        auto sourceLabel = std::make_shared<UltraCanvasLabel>("LaTeXSourceLabel_" + stem,
+                "LaTeX source (" + PathToUtf8(texPath.filename()) + "):");
+        sourceLabel->SetWrap(TextWrap::WrapWord);
         sourceLabel->SetFontSize(12);
         sourceLabel->SetFontWeight(FontWeight::Bold);
         sourceLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -267,38 +276,19 @@ namespace {
 
 // ===== LATEX DOCUMENTS DEMO =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateLaTeXExamples() {
-        // Root: a flex column that fills the display area.
-        auto root = std::make_shared<UltraCanvasContainer>("LaTeXExamples", 0, 0, 1000, 700);
-        root->layout.SetFlexColumn().SetFlexGap(8)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        root->SetPadding(10, 12, 10, 12);
-
-        auto title = std::make_shared<UltraCanvasLabel>("LaTeXTitle", 0, 0, 0, 28);
-        title->SetText("LaTeX Documents");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(title);
-
         const std::string latexDir = NormalizePath(GetResourcesDir() + "media/LaTex");
 
-        auto info = std::make_shared<UltraCanvasLabel>("LaTeXInfo", 0, 0, 0, 32);
-        info->SetText("Example .tex documents scanned from " + latexDir +
-                      ".\nEach document is rendered live from its source: formulas by the "
-                      "UltraCanvas math engine, articles by the LaTeX document reader.");
-        info->SetFontSize(11);
-        info->SetTextColor(Color(110, 110, 110, 255));
-        info->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(info);
+        // Root: the page fills the display area; the tabs take the height
+        // left under the texts and each document scrolls inside its view.
+        auto root = DemoKit::CreatePage("LaTeXExamples", "LaTeX Documents",
+                "Example .tex documents scanned from " + latexDir +
+                ".\nEach document is rendered live from its source: formulas by the "
+                "UltraCanvas math engine, articles by the LaTeX document reader.");
+        root->SetFillsArea(true);
 
-        auto note = std::make_shared<UltraCanvasLabel>("LaTeXScopeNote", 0, 0, 0, 18);
-        note->SetText("Scope: math (amsmath) and the article document subset. Everything shown "
-                      "is typeset by the framework; what it cannot render is reported as a diagnostic.");
-        note->SetFontSize(11);
-        note->SetTextColor(Color(90, 90, 90, 255));
-        note->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        root->AddChild(note);
+        DemoKit::AddCaption(root, "LaTeXScopeNote",
+                "Scope: math (amsmath) and the article document subset. Everything shown "
+                "is typeset by the framework; what it cannot render is reported as a diagnostic.");
 
         // Scan the LaTeX folder for .tex files (case-insensitive extension match)
         // so newly added examples show up without any code change.
@@ -327,14 +317,11 @@ namespace {
                   });
 
         if (texFiles.empty()) {
-            auto empty = std::make_shared<UltraCanvasLabel>("LaTeXEmpty", 0, 0, 0, 0);
-            empty->SetText("No .tex files found in " + latexDir);
+            auto empty = DemoKit::CreateText("LaTeXEmpty", "No .tex files found in " + latexDir);
             empty->SetFontSize(13);
             empty->SetTextColor(Color(150, 60, 60, 255));
             empty->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-            empty->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            root->AddChild(empty);
+            DemoKit::Add(root, empty, 1);
             return root;
         }
 
@@ -347,14 +334,17 @@ namespace {
         // The example set is large — the tab column scrolls when it does not fit
         // the window height. The overflow dropdown is intentionally not enabled:
         // it is not supported for vertical (Left/Right) tab layouts.
-        tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        // In a card that takes the page's spare height.
+        auto tabsCard = DemoKit::CreateCard("LaTeXTabsCard");
+        tabsCard->SetPadding(4);
+        DemoKit::Add(root, tabsCard, 1);
 
         for (const auto& texPath : texFiles) {
             tabs->AddTab(PathToUtf8(texPath.stem()), CreateLaTeXTabPage(texPath));
         }
         tabs->SetActiveTab(0);
-        root->AddChild(tabs);
+        DemoKit::Add(tabsCard, tabs, 1);
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
         return root;
     }

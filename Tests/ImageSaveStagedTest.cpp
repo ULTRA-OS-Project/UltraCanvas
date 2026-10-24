@@ -20,8 +20,6 @@
 #include "UltraCanvasPathUtf8.h"
 #ifdef HAS_LIBVIPS
 #include "PixelFX/PixelFX.h"
-// After the header above, which pulls in the X11 chain: this one #undefs
-// X11's None for its own enumerators.
 #include "Plugins/QRCode/UltraCanvasQRCode.h"
 #endif
 

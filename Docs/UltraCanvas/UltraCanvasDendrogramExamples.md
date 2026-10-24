@@ -265,7 +265,7 @@ struct DendrogramStyle {
     double defaultBranchWidth        = 1.5f;
     DendrogramLinkStyle linkStyle   = DendrogramLinkStyle::Rectangular;
 
-    ConfidenceDisplayMode confidenceMode = ConfidenceDisplayMode::None;
+    ConfidenceDisplayMode confidenceMode = ConfidenceDisplayMode::Hidden;
     double confidenceHighThreshold       = 0.80f;
     double confidenceLowThreshold        = 0.40f;
     double branchWidthMin = 0.5f, branchWidthMax = 3.5f;
@@ -352,15 +352,15 @@ enum class BranchColorMode {
 };
 
 enum class GroupLabelPlacement {
-    None, SidebarBracket, FloatingBadge, ArcText, LeaderCallout
+    NoLabels, SidebarBracket, FloatingBadge, ArcText, LeaderCallout
 };
 
 enum class GroupFillMode {
-    None, BandFill, SectorFill, ConvexHull
+    NoFill, BandFill, SectorFill, ConvexHull
 };
 
 enum class ConfidenceDisplayMode {
-    None, LineThickness, LineDash, NodeDot, LineThicknessAndDot
+    Hidden, LineThickness, LineDash, NodeDot, LineThicknessAndDot
 };
 
 // NEW in 1.5.0 - how a node dot's radius is derived

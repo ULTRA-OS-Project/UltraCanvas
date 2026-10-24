@@ -27,11 +27,14 @@
 // as an external executable (never linked).
 //
 // "(bundled)" = vendored in-tree, "(optional)" = built only when present.
+// Version: 5.5.0 - the shared page look (UltraCanvasDemoPageKit): the table in a
+//                  card filling the page area, the description wraps
 // Version: 5.4.0
-// Last Modified: 2026-09-04
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasMenu.h"
@@ -561,24 +564,12 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateDependenciesExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("DependenciesExamples");
-
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("DepTitle", 20, 10, 700, 35);
-        title->SetText("Dependencies & Third-Party Libraries");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(50, 50, 150, 255));
-        container->AddChild(title);
-
-        // Subtitle
-        auto subtitle = std::make_shared<UltraCanvasLabel>("DepSubtitle", 20, 45, 940, 25);
-        subtitle->SetText("Grouped per module; (bundled) = vendored, (optional) = feature-gated.  "
-                          "Click a library name for its website & source-code links, "
-                          "click a license tag — e.g. (MIT) — for the license description.");
-        subtitle->SetFontSize(12);
-        subtitle->SetTextColor(Color(120, 120, 120, 255));
-        container->AddChild(subtitle);
+        auto container = DemoKit::CreatePage("DependenciesExamples", "Dependencies & Third-Party Libraries",
+                "Grouped per module; (bundled) = vendored, (optional) = feature-gated.  "
+                "Click a library name for its website & source-code links, "
+                "click a license tag — e.g. (MIT) — for the license description.");
+        // The table scrolls itself: the page is the area's height.
+        container->SetFillsArea(true);
 
         // ============================================================
         // Build the model. A row with empty OS columns is a module section
@@ -725,7 +716,7 @@ namespace UltraCanvas {
         const int maxLines = 4;
         const int rowHeight = lineHeight * maxLines + 8;   // 72 px
 
-        auto listView = std::make_shared<UltraCanvasListView>("DependenciesListView", 20, 80, 920, 730);
+        auto listView = std::make_shared<UltraCanvasListView>("DependenciesListView", 0, 0, 920, 730);
         listView->SetModel(model);
         // Rows are not selectable — the links are the interaction here.
         listView->SetSelection(nullptr);
@@ -818,7 +809,13 @@ namespace UltraCanvas {
                 *win, PopupElementSettings());
         };
 
-        container->AddChild(listView);
+        // As wide as the card and as tall as the page leaves it.
+        auto card = DemoKit::CreateCard("DependenciesCard");
+        card->SetPadding(4);
+        DemoKit::Add(container, card, 1);
+        listView->size.width  = CSSLayout::Dimension::Auto();
+        listView->size.height = CSSLayout::Dimension::Auto();
+        DemoKit::Add(card, listView, 1);
 
         return container;
     }

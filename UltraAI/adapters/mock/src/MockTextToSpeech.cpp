@@ -164,7 +164,7 @@ StreamHandle MockTextToSpeech::SpeakStream(const SpeakRequest& request,
     auto interval  = impl_->streamInterval;
 
     std::thread worker([handle, resp, chunkSize, interval, onEvent]() {
-        if (resp.error.code != ErrorCode::None) {
+        if (resp.error.code != ErrorCode::Ok) {
             TtsStreamEvent ev;
             ev.kind = TtsStreamEventKind::Error;
             ev.error = resp.error;

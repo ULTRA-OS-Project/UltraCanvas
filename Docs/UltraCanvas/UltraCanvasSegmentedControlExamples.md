@@ -212,6 +212,7 @@ struct SegmentedControlStyle {
 
     // Icons
     int iconSize = 16;
+    bool iconAsMask = false;   // tint one-colour icons with the segment's text colour
 
     // Presets
     static SegmentedControlStyle Default();

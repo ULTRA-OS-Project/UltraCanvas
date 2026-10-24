@@ -1,3 +1,53 @@
+#### 2026-10-21 *0.1.19*
+- **No enumerator is named `None` any more.** X11's `None` macro rewrote
+  `ErrorCode::None`, `ToolChoice::None` and `ControlType::None` in any file
+  that included a UltraCanvas UI header before a UltraAI one, so every such
+  file worked around it with include order and `UltraAICommon.h` carried an
+  `#undef`. They are `ErrorCode::Ok`, `ToolChoice::NoTool` and
+  `ControlType::NoControl`; the `#undef` and the include-order comments are
+  gone. `Error::IsOk()` is unchanged.
+- **The built-in catalogue's files were checked against Hugging Face.** The
+  six models' file names match their repositories; Qwen3 1.7B (Q8_0) is
+  2.17 GB (the catalogue said 1.83) and Qwen3 8B (Q4_K_M) carries its exact
+  size, so the fit and the download figures are right. The hashes are still
+  read from the tree API at install time.
+
+#### 2026-10-21 *0.1.18*
+- **The "Get a local model" dialog is the module's, for every application.**
+  It moved from the dashboard into `UltraAI/ui/` (`UltraAILocalModelDialog.h`,
+  library `UltraAI_UI`, built in-tree with the UltraCanvas core), so UltraTexter's
+  new Edit > Translate Selection... asks for a model the same way the
+  dashboard's Chat does. `UltraAILocalModelDialog::NeedsInstall(error)` is
+  the test an application makes on a chat, embedding or translation error
+  before showing it.
+
+#### 2026-10-21 *0.1.17*
+- **Local models in the dashboard.** Settings > Services has a *Local models*
+  page: what this computer is (memory, cores, GPU) and which acceleration
+  the engine will use, with the choice to override it; the llama-server
+  engine's state with Install / Remove; a table of the catalogue's models and
+  the user's own with service, size, fit (GPU / CPU / too large) and state
+  (installed, running, not installed), and Install, Remove, Stop and Forget
+  for the selected one; the progress of the install in flight, with Cancel;
+  *Add model file...* (a GGUF of your own, used in place), *Add from Hugging
+  Face...* (organisation/repository:file), *Refresh catalogue* and *Open
+  folder*; the download policy (ask, automatic, never) and the idle time
+  after which an unused engine stops; disk use. Restore defaults puts the
+  policy back to Ask, the accelerator to Auto and the idle time to 15 min.
+- **A service that needs a model asks for it.** The first time Chat is sent
+  to a `local` endpoint whose model is not installed, the *Get a local model*
+  dialog opens: the models that fit this computer with the recommended one
+  preselected, size, licence and what else is downloaded (the engine), a
+  checkbox to download future models without asking, and *Download and
+  continue*, which shows the download's progress and then sends the message
+  that was waiting. *Not now* leaves everything as it was.
+- **The endpoint editor knows the `local` provider.** With it picked, *Fetch
+  models* lists the local runtime's models (installed or not) instead of
+  asking a server, and the hint under the provider says so.
+- The settings pages' shared parts (the type scale, the page skeleton, the
+  control factories) moved into `UltraAISettingsWidgets.h` so the new page is
+  built from the same ones as the rest of the window.
+
 #### 2026-10-20 *0.1.16*
 - **Models run on this computer with nothing to install.** The new local
   runtime (`UltraAILocalRuntime.h`, `UltraAI/runtime/`) downloads an inference

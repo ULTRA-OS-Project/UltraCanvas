@@ -29,18 +29,18 @@
 
 namespace ultranet_apistatus {
 
-enum class Status {
+enum class ApiState {
     Working,
     Implemented,
     NotImplemented,
     Broken
 };
 
-const char* StatusLabel(Status s);   // "WORKING", "IMPLEMENTED", ...
-const char* StatusKey(Status s);     // "working", "implemented", ... (JSON)
+const char* StatusLabel(ApiState s);   // "WORKING", "IMPLEMENTED", ...
+const char* StatusKey(ApiState s);     // "working", "implemented", ... (JSON)
 
 struct Outcome {
-    Status      status = Status::Broken;
+    ApiState      status = ApiState::Broken;
     std::string detail;
 };
 

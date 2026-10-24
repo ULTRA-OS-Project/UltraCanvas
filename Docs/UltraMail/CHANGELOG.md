@@ -1,3 +1,140 @@
+#### 2026-10-24 *0.10.72*
+- **The compose window's toolbar is one row, with Send on top.** The window
+  opens wide enough (1140 px) for every formatting tool in a single row
+  above the text, and the action row - *Send*, *Attach file…*,
+  *Cloud link…* and, apart on the right, *Cancel* - moved from the bottom to
+  the top of the window, above the address fields.
+- **Font and Size name the text at the cursor.** In place of the words
+  "Font" and "Size" they show the font and the size of the text the cursor
+  is in, or of the selected text: *Default* for text without a font or size
+  of its own (the reader's program picks it), and a font or size the lists
+  do not offer - a reply quoting Calibri 10.5 - is added to the list and
+  shown. Over a selection in several fonts they keep what they showed.
+- **Text or background colour.** A switch with two icons in front of the
+  colour swatches picks what a swatch colours: the letters, or the
+  background behind them, like a highlighter, with a palette of light
+  colours (white takes the background away). It is sent as the HTML's
+  `background-color`.
+- **Settings > Reading > Attachments: at the bottom or on the right side.**
+  A message's attachments are shown in a row under it, as before, or in a
+  column at its right, which keeps the message its whole height. The
+  choice is for reading (the reading pane) and for writing: the compose
+  window puts the files attached in the same place, inside the editor's
+  frame under the toolbar. It applies at once, to compose windows already
+  open too.
+- `UltraMailFormatBarTest` checks the formatting bar in a real window: one
+  row, the font and size shown at the cursor, and the two colour targets.
+- **The compose window looks like a mail program's.** The formatting tools
+  are icons now - bold, italic, underline, strikethrough; left, centre,
+  right; bulleted and numbered lists, quote in and out; a line, a link, a
+  picture - flat, in groups with thin separators, each named by its tooltip.
+  They sit on a tinted strip framed together with the message body, so the
+  body is a clear place to write rather than an open white area. *Plain text |
+  Formatted* shows a mark for each. *Send*, *Attach file…* and
+  *Cloud link…* (was *Attach cloud link…*) carry icons. The signature
+  editor has the same toolbar and frame.
+- **Dialogs open with a header**: an icon tile, a title and the line that
+  says what the dialog is for - Add an email account, the master password,
+  the browser sign-in code, the wait while server settings are looked up or
+  a sign-in completes (with a moving busy bar), Account settings and the
+  signature editor. Their action buttons carry icons (Continue, Save,
+  Unlock, Delete account, Edit signature…, Show info, Send now, Edit…,
+  Add contact, Add group), and the settings window's sections (Mail,
+  Reading, Privacy, Display, Warnings) have icons in its tree. The icons
+  are UltraMail's own set, `media/icons/ultramail/`.
+- **The signature editor's Save and Cancel are shown again.** Its button
+  row was sized with a width of 0, which kept the dialog's column from
+  stretching it, so the row - *HTML source*, *Cancel* and *Save* - was laid
+  out zero pixels wide and never drawn.
+- Demo: `ULTRAMAIL_DEMO_DIALOG=<name>` opens one dialog on its own to look
+  at it (`wizard`, `password`, `password-new`, `oauth`, `wait`, `outbox`,
+  `settings`, `account`).
+
+#### 2026-10-23 *0.10.71*
+- **No missing-fonts notice when writing mail.** The new notice in the
+  framework's WYSIWYG editor lists the fonts a document names that the
+  computer lacks. It is turned off in the compose window and in the signature
+  editor. A mail often names its sender's fonts (Calibri, Arial), the text
+  shows fine in a substitute, and a notice above the message being written
+  would only be in the way.
+
+#### 2026-10-23 *0.10.70*
+- **Deleting a contact reports a failure instead of half-doing it.**
+  `ContactStore::Remove` ran its three deletes (emails, phones, the contact)
+  without looking at their results and committed anyway, so a delete that
+  failed part-way could leave the contact's phones or emails behind and still
+  report success. It now goes through `RemoveAll`: a failed statement rolls
+  the whole delete back and is returned.
+
+#### 2026-10-23 *0.10.69*
+- **No-reply addresses are no longer suggested.** The To / Cc / Bcc fields
+  offered every address in the address book, so a collected
+  `noreply@...`, `no-reply@...`, `do-not-reply@...` or `noreply.billing@...`
+  sender came up beside the people one writes to. An address whose local
+  part reads "noreply" or "donotreply" (ignoring `-`, `_` and `.`) is now
+  left out; it stays in the address book.
+- **A right click on a suggestion has a menu.** *Edit contact…* opens the
+  contact editor for that address; *Delete address* removes it from its
+  contact, after asking (a contact left with no address is deleted); *Set as
+  SPAM* puts the sender on the blocked list, as the sender menu's *Block this
+  sender* does, so its mail is judged again. The field then shows its
+  suggestions as they now are.
+- **Blocked senders are not suggested**, whether blocked from that menu, the
+  sender menu or *Settings > Warnings > Trusted & blocked*.
+- **Edit contact edits the address it was opened for.** The contact editor
+  always showed - and saved over - a contact's primary address, so *Edit
+  contact…* on a contact's second address, from a suggestion or from a
+  message that address sent, showed another one. It now shows that address
+  and changes only it, keeping its label and the contact's other addresses;
+  emptied, the address is removed, and changed to another of the contact's
+  addresses, the two become one.
+- **Incoming mail no longer fills the address book with strangers.** Every
+  sender of new mail in the inbox was added, spam included - so spammers
+  were offered as recipients, and their next mail read as from someone in
+  the address book instead of a *New sender*. Now only senders in the
+  known-sender registry (shops, platforms, services) are added from incoming
+  mail, under Services; a person joins the address book when you write to
+  them, or add them. Contacts collected before stay until deleted.
+- **A deleted address stays deleted.** Deleting a contact, or an address
+  from the suggestion menu, remembers it, and incoming mail does not add it
+  back; neither is a blocked sender added. Writing to it still adds it.
+- **Writing to a picked suggestion no longer makes a broken contact.** A
+  recipient written as "Anna Schmidt <anna@example.com>" was remembered with
+  that whole text as its address - a second contact beside the real one. Its
+  name and address are now read apart.
+- **A forged service is not filed as one.** A sender in the known-sender
+  registry (a shop, a platform) went under Services on its From address
+  alone, which anyone can write. It is added now only when the receiving
+  server proved the sender's domain (DKIM or DMARC).
+- **Remove what the old collector left behind.** *Contacts*, right-click
+  *Other* > *Remove collected contacts…* lists the contacts there that are a
+  name and an address and nothing else, never written to (no mail in the
+  Sent folders went to them), and removes them all at once after asking.
+- **A service's mail downloaded later still files it.** The proof of a
+  sender's domain comes with the message's body, so a known service whose
+  mail was first held without its body was never collected. It is now, once
+  the body arrives: when the next update fetches the bodies an earlier one
+  missed, when the message is opened, or when its body is fetched to
+  unsubscribe.
+
+#### 2026-10-22 *0.10.68*
+- **The message list shows a tooltip only where a cell cuts its text off.**
+  Resting the pointer on any row showed "sender <address> - unread" with the
+  date on a second line, wherever the pointer was and however much of the row
+  was readable, in a box two lines high. Now only a cell whose text did not
+  fit gets one, on one line and holding what the cell lacked: the sender's
+  name and address in *From*, the whole subject in *Subject*, the full date
+  in *Date*. A sender, subject or date shown in full gets none. The badge
+  column keeps its own tooltip (what the sender is, and why).
+- **Switching an account between IMAP and JMAP asks for the password again.**
+  The account settings page kept the stored password when the *Protocol*
+  changed, so an account switched to JMAP - whose server often wants its own
+  app password or API token - could be saved but not connect. Choosing the
+  other protocol on a password account now shows a warning under the fields
+  and makes the password field *Required*; *Save* and *Save anyway* wait for
+  it and put the cursor there. Switching back to the saved protocol lifts the
+  demand; an account signed in with OAuth2 keeps its tokens and is not asked.
+
 #### 2026-10-22 *0.10.67*
 - **Saving an attachment opens in the Downloads folder on Windows.** The save
   dialog's first folder looked for `Downloads` under `HOME`, which Windows does

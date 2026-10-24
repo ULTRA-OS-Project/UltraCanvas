@@ -46,6 +46,13 @@ options), *Gradient* (the fill's ramp) with the Fill tool, and *Line* with
 Pen, Freehand and Straight Line, or with the Selector or Shape Editor while
 a line (a straight line, polyline or open path) is selected.
 
+The Selector's options are four small framed sections: a *Handles* switch
+(Scale | Rotate - the rotate handles' edges skew - which follows a second
+click on the selection) and three rows of flat icon buttons with tooltips: *Arrange* (to front, forward, backward, to back),
+*Align* (left, centre, right | top, middle, bottom | centre on page) and
+*Distribute* (centres evenly | equal gaps). Each row is greyed until the
+selection holds enough objects for it - one, two, three.
+
 The colour picker has a list of designs in its corner - colour circle,
 slider and square, colour rectangle, or colour and brightness sliders - and
 folds its channels (the HSV / HSL / RGB tabs and sliders) away under
@@ -109,7 +116,8 @@ the selection and to every line drawn afterwards.
 
 ## Menus and shortcuts
 
-- **File**: New (Ctrl+N; page presets, mm / cm / in / pt / px, orientation),
+- **File**: New (Ctrl+N; page presets - opening on the one the page
+  matches - width x height, mm / cm / in / pt / px, orientation),
   New Window (Ctrl+Alt+N), New Icon (16 to 256 px, see *Icon mode*), Open (Ctrl+O), Save (Ctrl+S), Save As
   (Ctrl+Shift+S), Export (Ctrl+E), Document Setup, Quit (Ctrl+Q).
 - **Edit**: Undo / Redo (Ctrl+Z / Ctrl+Y), Cut / Copy / Paste (in-app

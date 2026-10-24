@@ -71,7 +71,7 @@ const char* IODeviceStateToString(IODeviceState state) {
 
 const char* IODeviceResultCodeToString(IODeviceResultCode code) {
     switch (code) {
-        case IODeviceResultCode::Success:            return "Success";
+        case IODeviceResultCode::Ok:            return "Success";
         case IODeviceResultCode::NotImplemented:     return "NotImplemented";
         case IODeviceResultCode::NotSupported:       return "NotSupported";
         case IODeviceResultCode::InvalidArgument:    return "InvalidArgument";

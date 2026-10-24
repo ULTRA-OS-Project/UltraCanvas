@@ -90,7 +90,7 @@ std::string EventKey(const NetworkConnectionEvent& e) {
 // the same although the socket is gone by then.
 struct Remembered {
     std::optional<ProcessIdentity> process;
-    LoopbackRole                   loopbackRole = LoopbackRole::None;
+    LoopbackRole                   loopbackRole = LoopbackRole::NotLoopback;
     std::string                    localPeer;
     std::vector<std::string>       forProcesses;
 };
@@ -351,7 +351,7 @@ private:
                         const NetworkConnection& was = earlier->second;
                         if (!c.localPeer && was.localPeer) {
                             c.localPeer = was.localPeer;
-                            if (c.loopbackRole == LoopbackRole::None) c.loopbackRole = was.loopbackRole;
+                            if (c.loopbackRole == LoopbackRole::NotLoopback) c.loopbackRole = was.loopbackRole;
                         }
                         if (c.forProcesses.empty() && !was.forProcesses.empty()) c.forProcesses = was.forProcesses;
                     }

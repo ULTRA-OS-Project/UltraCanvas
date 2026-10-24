@@ -277,6 +277,43 @@ and on any build without PangoFT2, there is no such signal: the default font
 map is dropped instead, and contexts that already exist pick the font up when
 their surface is next recreated.
 
+## Is there a font for this text?
+
+`UltraCanvasFontCoverage.h` asks the text engine which characters of a text
+no font in the process covers: the system's fonts, the bundled ones and any
+registered with `RegisterFontFile()`. Those are the characters drawn as a box
+of hex digits. The text is set in `fontFamily` (the system UI font when it is
+empty), with every other font as the fallback, the same way any text is
+drawn. `UltraCanvasRichTextEdit` uses these checks for its
+[missing-fonts notice](UltraCanvasRichTextEdit.md#missing-fonts).
+
+```cpp
+for (const MissingScriptFont& missing : FindScriptsWithoutFont("你好 مرحبا")) {
+    // missing.script "Chinese", missing.isoCode "Hani",
+    // missing.suggestedFont "Noto Sans SC", missing.characters 2,
+    // missing.downloadUrl "https://fonts.google.com/noto/specimen/Noto+Sans+SC"
+}
+if (CountCharactersWithoutFont("你好") > 0) {
+    // no font covers Chinese here
+}
+if (!IsFontFamilyAvailable("Georgia")) {
+    std::string where = FontDownloadUrl("Georgia");   // a search on Google Fonts
+}
+```
+
+| | |
+|---|---|
+| `int CountCharactersWithoutFont(text, family = "")` | How many characters have no font: 0 when all of them do (and for an empty text), -1 when there is no text engine to ask. |
+| `std::vector<MissingScriptFont> FindScriptsWithoutFont(text, family = "")` | The same characters grouped by script, in the order the text first uses them. Each comes with a free font that covers it (the Noto family, SIL Open Font License) and its download page. The common scripts have names of their own ("Chinese", "Arabic", "Devanagari", ...). Any other is named by its ISO 15924 code and pointed at the whole Noto family. |
+| `std::string FontDownloadUrl(family)` | A search for the family on Google Fonts. |
+| `bool IsFontFamilyAvailable(family)` | Whether the text engine knows the family, ignoring case. A family it doesn't know is drawn in a substitute. |
+
+Each call asks afresh, so a font installed or registered since the last call
+counts. Call them from the UI thread. On Windows after a cold start the
+system fonts can still be loading in the background
+(`GetSystemFontScanStatus()`). Until they arrive, only the bundled fonts
+count.
+
 ## In the filer
 
 `UltraCanvasFilerWidget` classifies font files as `FilerFileCategory::Font`

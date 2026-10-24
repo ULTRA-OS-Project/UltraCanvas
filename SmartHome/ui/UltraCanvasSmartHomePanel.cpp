@@ -17,6 +17,7 @@
 // there and applies it in Poll(), on the UI thread, from an application
 // timer: elements are not to be added or removed from another thread.
 //
+// Version: 2.0.1 - the device count is as wide as its text (124 px at least)
 // Version: 2.0.0
 // Author: UltraCanvas Framework
 
@@ -83,7 +84,16 @@ SmartHomePanel::SmartHomePanel(const std::string& identifier,
     toolbar->SetPadding(0, 12);
     toolbar->SetBackgroundColor(colorCardBackground);
     countLabel = Label(identifier + "_Count", "", 11, colorTextSecondary);
-    Size(*countLabel, 124, 19);
+    // As wide as "30 of 30 devices" needs in the language shown - at least
+    // the 124 px the English takes, so the toolbar does not jump as the
+    // count changes - not cut at a fixed 124.
+    countLabel->size.height = CSSLayout::Dimension::Px(19);
+    {
+        CSSLayout::BoxConstraints limits = countLabel->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(124);
+        countLabel->boxConstraints = limits;
+    }
+    countLabel->layoutItem.SetFlexShrink(0);
     // Six views; the host names the page, so the toolbar spends its width here.
     modeSelector = CreateSegmentedControl(identifier + "_Mode", 0, 0, 552, 28);
     SegmentedControlStyle modeStyle;

@@ -561,7 +561,7 @@ TEST(oauth_tokens_round_trip_through_the_vault_and_replace_the_password) {
     REQUIRE_EQ(static_cast<int>(vault.Unlock("correct horse battery staple")),
                static_cast<int>(VaultStatus::Ok));
 
-    REQUIRE(vault.MethodFor("erika") == SignInMethod::None);
+    REQUIRE(vault.MethodFor("erika") == SignInMethod::NoSignIn);
     REQUIRE(!vault.StoreOAuthTokens("erika", OAuthTokens{}));   // nothing to store
 
     REQUIRE(vault.Store("erika", "app-password"));
@@ -585,7 +585,7 @@ TEST(oauth_tokens_round_trip_through_the_vault_and_replace_the_password) {
 
     REQUIRE(vault.StoreOAuthTokens("erika", t));
     REQUIRE(vault.RemoveOAuthTokens("erika"));
-    REQUIRE(vault.MethodFor("erika") == SignInMethod::None);
+    REQUIRE(vault.MethodFor("erika") == SignInMethod::NoSignIn);
 
     vault.Lock();
     fs::remove_all(dir);

@@ -63,7 +63,7 @@ uint32_t MapNetFlagsToLocal(UltraNetMailFlags nf) {
 }
 
 UltraNetMailFlags MapLocalFlagToNet(uint32_t lf) {
-    UltraNetMailFlags nf = UltraNetMailFlags::None;
+    UltraNetMailFlags nf = UltraNetMailFlags::NoFlags;
     if (lf & Flag_Seen)     nf |= UltraNetMailFlags::Seen;
     if (lf & Flag_Answered) nf |= UltraNetMailFlags::Answered;
     if (lf & Flag_Flagged)  nf |= UltraNetMailFlags::Flagged;

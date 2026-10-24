@@ -27,7 +27,7 @@ PackageManager DefaultManagerFor(Platform platform) {
         case Platform::Linux:   return PackageManager::Apt;
         case Platform::MacOS:   return PackageManager::Homebrew;
         case Platform::Windows: return PackageManager::Msys2Pacman;
-        default:                return PackageManager::None;
+        default:                return PackageManager::NoPackageManager;
     }
 }
 
@@ -57,7 +57,7 @@ std::vector<std::string> PlatformNotes(const SystemProfile& profile, Platform ta
             notes.push_back("`package-win.sh` makes the standalone zip");
             break;
         case Platform::Linux:
-            if (local && profile.packageManager == PackageManager::None) {
+            if (local && profile.packageManager == PackageManager::NoPackageManager) {
                 notes.push_back("No apt, dnf, pacman or zypper was found: install the packages named below with your distribution's tool");
             }
             notes.push_back("A C++20 compiler: `clang` 14 or newer, or `gcc` 11 or newer (CI builds with clang)");
@@ -79,7 +79,7 @@ Plan BuildPlan(const SystemProfile& profile, const Choices& choices,
                                                                   : choices.platform;
     const bool local = target == profile.platform;
     PackageManager manager = local ? profile.packageManager : DefaultManagerFor(target);
-    if (local && manager == PackageManager::None) manager = DefaultManagerFor(target);
+    if (local && manager == PackageManager::NoPackageManager) manager = DefaultManagerFor(target);
 
     plan.notes = PlatformNotes(profile, target);
 

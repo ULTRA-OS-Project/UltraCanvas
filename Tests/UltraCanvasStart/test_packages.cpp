@@ -15,7 +15,7 @@ TEST(Table_ids_are_unique_and_core_covers_every_manager) {
     for (const auto& d : AllDependencies()) {
         REQUIRE(ids.insert(d.id).second);
         REQUIRE(!d.title.empty());
-        if (d.checkKind != CheckKind::None) REQUIRE(!d.checkName.empty());
+        if (d.checkKind != CheckKind::NoCheck) REQUIRE(!d.checkName.empty());
     }
     // Cairo is the framework's renderer: every manager must name a package.
     for (const auto& d : AllDependencies()) {
@@ -81,7 +81,7 @@ TEST(InstallStep_builds_an_argument_list_not_a_command_line) {
     REQUIRE(!msys.needsElevation);
     REQUIRE_EQ(msys.argv[1], std::string("-S"));
 
-    const PlanStep none = InstallStep(PackageManager::None, { "x" });
+    const PlanStep none = InstallStep(PackageManager::NoPackageManager, { "x" });
     REQUIRE(none.kind == StepKind::Manual);
 }
 

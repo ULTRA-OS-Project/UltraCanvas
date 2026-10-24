@@ -62,7 +62,7 @@ std::string ToString(UltraNetMailAuth auth) {
         case UltraNetMailAuth::OAuth2:            return "oauth2";
         case UltraNetMailAuth::Kerberos:          return "kerberos";
         case UltraNetMailAuth::NTLM:              return "ntlm";
-        case UltraNetMailAuth::None:              return "none";
+        case UltraNetMailAuth::NoAuth:              return "none";
         case UltraNetMailAuth::Any:
         default:                                  return "auto";
     }
@@ -74,7 +74,7 @@ UltraNetMailAuth MailAuthFromString(const std::string& s) {
     if (s == "oauth2")    return UltraNetMailAuth::OAuth2;
     if (s == "kerberos")  return UltraNetMailAuth::Kerberos;
     if (s == "ntlm")      return UltraNetMailAuth::NTLM;
-    if (s == "none")      return UltraNetMailAuth::None;
+    if (s == "none")      return UltraNetMailAuth::NoAuth;
     return UltraNetMailAuth::Any;
 }
 

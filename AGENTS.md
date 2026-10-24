@@ -217,11 +217,44 @@ before adding cross-module code.
   Pick another name (`CreateForFile`, `LoadImageFile`). A name the framework
   must keep is made safe by an `#undef` in the Windows platform headers next
   to the existing `#undef DrawText` (`UltraCanvasWindowsApplication.h`,
-  `UltraCanvasWindowsWindow.h`). `scripts/check_win32_names.py` enforces this
-  in CI (`win32-names.yml`) from the name list in
-  `scripts/win32_aw_macros.txt`; `scripts/win32_names_baseline.txt` holds the
-  sites that predate the check and only shrinks. A site that is correct as it
+  `UltraCanvasWindowsWindow.h`). `scripts/check_platform_names.py` enforces
+  this in CI (`platform-names.yml`) from the name list in
+  `scripts/win32_aw_macros.txt`; `scripts/platform_names_baseline.txt` holds
+  the sites that predate the check and only shrinks. A site that is correct as it
   stands says so with `// win32-name-ok: <why>`.
+- **No identifier is named like an X11 macro.** On Linux and BSD the window
+  headers reach `<X11/Xlib.h>`, which `#define`s `None`, `Success`, `Status`,
+  `Bool`, `Always`, `NoValue`, `Above`, `Below`, `True`, `False` and a few
+  hundred more as object-like macros, so an enumerator, method or member of
+  that name compiles in the files that include X11 after it and fails
+  ("expected identifier") in the one that includes a window header first.
+  Say what the value means instead - `ErrorCode::Ok`, `BorderStyle::NoBorder`,
+  `ArcEdgeType::AboveBaseline` - and never add an `#undef None` guard: it
+  only moves the failure to the next file. `scripts/check_platform_names.py`
+  enforces this in CI (`platform-names.yml`, the same check as the Win32 one)
+  from the name list in `scripts/x11_macro_names.txt` (generated from the X11
+  headers); its X11 entries in `scripts/platform_names_baseline.txt` are none
+  and stay so. A site that is
+  correct as it stands says so with `// x11-name-ok: <why>`.
+- **Nor like an Objective-C runtime name.** The macOS and iOS glue is
+  Objective-C++, and every C++ header a `.mm` file includes is parsed with
+  `<objc/objc.h>` in effect: `YES`, `NO`, `nil` and `Nil` are macros that
+  rewrite any identifier of that name, and `id`, `Class`, `SEL`, `IMP`,
+  `BOOL` and `Protocol` are global typedefs that a file-scope declaration
+  of the same name redefines. Inside a namespace, a class, an enum or a
+  parameter list those six are free (`struct S { int id; }` is fine), so
+  the rule is: no enumerator or member named `YES` / `NO` / `nil` / `Nil`,
+  and nothing at file scope named like the types - put it in a namespace.
+  Foundation also brings `<MacTypes.h>`, which puts `Rect`, `Point`,
+  `Boolean`, `Byte`, `Size`, `Handle`, `Ptr`, `Fixed`, `Style`, `OSErr`,
+  `UInt8`, `Str255` and a hundred more typedefs, and the Style constants
+  `normal`, `bold`, `italic`, ..., at global scope, and `kInvalidID` as a
+  macro: the same file-scope rule covers them, from the list
+  `scripts/mactypes_global_names.txt` generated from that header.
+  `scripts/check_platform_names.py` enforces this in CI (`platform-names.yml`,
+  the same check again); its Objective-C entries in
+  `scripts/platform_names_baseline.txt` are none and stay so. A site that is
+  correct as it stands says so with `// objc-name-ok: <why>`.
 - **An inline body in a public header uses all its parameters.** It is
   compiled into every file that includes the header, so a parameter it
   leaves unused warns in every build with `-Wextra` (the Models plugin, the
@@ -342,7 +375,17 @@ DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 The full 3-OS dependency lists are in `.github/workflows/build.yml`. CI
 installs Ubuntu packages with `scripts/ci-apt.sh install`, not
 `sudo apt-get install`: it stops and retries a download that has stopped
-dead, which apt itself waits out for as long as the job lasts.
+dead, which apt itself waits out for as long as the job lasts. The build's
+Linux legs also restore the packages the last run on `main` downloaded
+(`ci-apt.sh cache-in` / `cache-out`, saved on `main` only), so a slow mirror
+serves only what changed.
+A pull request builds five rows - Linux x86_64 and arm64, Windows x86_64 and
+ARM, macOS on Apple silicon - and the macOS Intel row on main only, since
+its runner is five to ten times slower and the two macOS rows share one code
+base and one packaging script. A pull request that changes what only the
+Intel toolchain would catch (the macOS platform layer, the packaging, a
+bundled library) asks for that row with the `ci:intel` label; adding it
+starts a run with the full matrix.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
 then `ctest --test-dir build`. Framework tests live under `Tests/`.
 
@@ -550,6 +593,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraNetMonitor/CHANGELOG.md` | UltraNetMonitor |
 | `Docs/UltraDBAdmin/CHANGELOG.md` | UltraDBAdmin — the database browser |
 | `Docs/UltraPassword/CHANGELOG.md` | UltraPassword — the password vault |
+| `Docs/UltraStore/CHANGELOG.md` | UltraStore — the app store |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
@@ -705,11 +749,14 @@ and never introduce a new literal copy of one:
    `FormatFloatClassic`, never `std::stof` / `atof` / `std::to_string(double)`
    / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
    that too. Naming a function? Not after a Win32 A/W macro (`CreateFile`,
-   `LoadImage`, `SendMessage`) — run `python3 scripts/check_win32_names.py`;
-   CI runs that too. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
+   `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
+   `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
+   `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI
+   runs that too. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
    the Windows builds compile it against libc++, which refuses what libstdc++
    lets through (`std::to_string` of a file time's tick count, say), and the
-   script type-checks the module against libc++ in seconds. Reading HTML, CSS or an `&entity;`? Through the
+   script type-checks the module against libc++ in seconds. Reading HTML,
+   CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI

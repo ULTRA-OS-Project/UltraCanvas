@@ -75,6 +75,7 @@ void BackupDialog::CreateBackupDialog() {
                          "Master password"));
         y += 20;
         masterInput_ = CreatePasswordInput("bk-master", margin, y, fieldWidth, 28);
+        Theme::StyleInput(masterInput_);
         AddChild(masterInput_);
         y += 38;
     }
@@ -84,6 +85,7 @@ void BackupDialog::CreateBackupDialog() {
                                : "Backup passphrase"));
     y += 20;
     passphraseInput_ = CreatePasswordInput("bk-pass", margin, y, fieldWidth, 28);
+    Theme::StyleInput(passphraseInput_);
     AddChild(passphraseInput_);
     y += 38;
 
@@ -93,6 +95,7 @@ void BackupDialog::CreateBackupDialog() {
         y += 20;
         confirmInput_ = CreatePasswordInput("bk-confirm", margin, y, fieldWidth,
                                             28);
+        Theme::StyleInput(confirmInput_);
         AddChild(confirmInput_);
         y += 38;
 
@@ -119,12 +122,14 @@ void BackupDialog::CreateBackupDialog() {
     auto okBtn = std::make_shared<UltraCanvasButton>(
         "bk-ok", kDialogWidth - margin - 220, dialogHeight - 54, 110, 32);
     okBtn->SetText(exporting ? "Back up…" : "Restore…");
+    Theme::StylePrimary(okBtn, exporting ? "backup" : "restore");
     okBtn->onClick = [this]() { Accept(); };
     AddChild(okBtn);
 
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "bk-cancel", kDialogWidth - margin - 100, dialogHeight - 54, 100, 32);
     cancelBtn->SetText("Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     AddChild(cancelBtn);
 }

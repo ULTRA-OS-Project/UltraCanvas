@@ -334,7 +334,7 @@ namespace UltraCanvas {
         switch (shadeMode) {
             case SunburstShadeMode::LightenByDepth: return base.Lighten(amount);
             case SunburstShadeMode::DarkenByDepth:  return base.Darken(amount);
-            case SunburstShadeMode::None:           break;
+            case SunburstShadeMode::NoShade:           break;
         }
         return base;
     }
@@ -441,7 +441,7 @@ namespace UltraCanvas {
 
     std::string UltraCanvasSunburstChart::BuildLabelText(const Segment& seg) const {
         switch (labelContent) {
-            case SunburstLabelContent::None:          return "";
+            case SunburstLabelContent::NoLabel:          return "";
             case SunburstLabelContent::Name:          return seg.node->label;
             case SunburstLabelContent::Value:         return FormatValue(seg.value);
             case SunburstLabelContent::Percentage:    return FormatPercent(seg.percentage);
@@ -531,7 +531,7 @@ namespace UltraCanvas {
             DrawSegment(ctx, segments[i], highlighted);
         }
 
-        if (labelContent != SunburstLabelContent::None) {
+        if (labelContent != SunburstLabelContent::NoLabel) {
             RenderSegmentLabels(ctx);
         }
 

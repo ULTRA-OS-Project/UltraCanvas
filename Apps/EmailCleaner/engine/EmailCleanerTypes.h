@@ -7,6 +7,7 @@
 // Everything here is pure: no database, no network, no UI. The UTC calendar
 // helpers at the bottom exist so bucketing is deterministic across machines
 // (a timetable must not change because the reader moved timezone).
+// Version: 0.2.0 - outgoing mail and its recipients; Correspondence
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -138,6 +139,14 @@ struct AnalyzedMessage {
     std::vector<AttachmentRecord> attachments;
     std::vector<KeywordHit>       hits;
 
+    // Mail the account owner sent (From is the owner, or it sits in the Sent
+    // folder). It is not "who fills my mailbox", so the ingest keeps it out of
+    // the messages table and records only whom it went to — the half of the
+    // correspondence the contacts review counts as "you wrote to them".
+    bool                     outgoing = false;
+    // Every To / Cc address, lowercased, without duplicates.
+    std::vector<std::string> recipients;
+
     // Composite key of a message inside the store.
     bool SameKey(const AnalyzedMessage& other) const {
         return accountId == other.accountId && folder == other.folder && uid == other.uid;
@@ -164,6 +173,18 @@ struct SenderBlock {
     double UnwantedRatio() const {
         return messageCount > 0 ? static_cast<double>(unwantedCount) / messageCount : 0.0;
     }
+};
+
+// How much mail went each way between the owner and one address, over every
+// account: `sent` messages the owner wrote to it (To or Cc), `received`
+// messages it sent the owner. A message stored twice (Gmail's INBOX and
+// All Mail) counts once, by its Message-ID.
+struct Correspondence {
+    std::string address;            // lowercased
+    int         sent         = 0;
+    int         received     = 0;
+    int64_t     lastSent     = 0;   // epoch seconds, 0 = never
+    int64_t     lastReceived = 0;
 };
 
 // How the map view sizes a block.

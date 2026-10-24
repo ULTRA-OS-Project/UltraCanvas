@@ -74,6 +74,7 @@ void ChangePasswordDialog::CreateChangePasswordDialog() {
         y += 20;
 
         *field.target = CreatePasswordInput(field.id, margin, y, fieldWidth, 28);
+        Theme::StyleInput(*field.target);
         AddChild(*field.target);
         y += 38;
 
@@ -95,12 +96,14 @@ void ChangePasswordDialog::CreateChangePasswordDialog() {
     auto okBtn = std::make_shared<UltraCanvasButton>(
         "cpw-ok", kDialogWidth - margin - 210, kDialogHeight - 54, 100, 32);
     okBtn->SetText("Change");
+    Theme::StylePrimary(okBtn);
     okBtn->onClick = [this]() { Accept(); };
     AddChild(okBtn);
 
     auto cancelBtn = std::make_shared<UltraCanvasButton>(
         "cpw-cancel", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
     cancelBtn->SetText("Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [this]() { CloseDialog(DialogResult::Cancel); };
     AddChild(cancelBtn);
 }

@@ -1,3 +1,590 @@
+#### 2026-10-24 *0.9.402*
+- **UltraStore joins the tree.** `Apps/UltraStore` (0.1.0): the store's core
+  as a static library and the `ultrastore` command line, built with
+  `BUILD_ULTRASTORE` (on by default; the target requires UltraCrypt with
+  libsodium and UltraDatabase with SQLite and stops the configure without
+  them), tested with `ULTRACANVAS_BUILD_ULTRASTORE_TESTS` on the Linux CI
+  legs. Design in `Docs/UltraStore/README.md`.
+
+#### 2026-10-24 *0.9.401*
+- **CI: the macOS Intel row builds on main only.** A pull request's matrix
+  is five rows and finishes with the Windows ARM one, in about 35 minutes;
+  the macOS Intel row runs on every push to main and on dispatches, before
+  anything is released. Its runner compiles five to ten times slower than
+  every other row and waited 16-27 minutes for a free machine on each run
+  of 2026-10-13, so it finished a pull request's matrix 45-100 minutes after
+  the other five rows had, with nothing of its own to say: the two macOS
+  rows share one code base and one packaging script, and what differs
+  between them - the libraries' vcpkg triplet, the x86_64 SDK - is still
+  checked on main. A pull request that changes what only the Intel
+  toolchain would catch asks for the row with the `ci:intel` label, which
+  starts a run with the full matrix. The matrix is now made by the gate job
+  (a row cannot be dropped by event from a matrix written under the build
+  job: `exclude` runs before `include`, which put the row back without a
+  build type).
+
+#### 2026-10-24 *0.9.400*
+- **New design proposal: an importance–performance chart, and the performance
+  matrix proposal gives up the image that needed it.** The fourth reference
+  image of the performance matrix proposal turned out to be Slack's
+  importance–performance matrix. That is a chart from operations strategy:
+  competitive factors are plotted as points over authored zones (*Urgent
+  action*, *Improve*, *Appropriate*, *Excess?*). It is not a talent grid. No
+  existing chart draws it: the quadrant chart has only two straight dividers,
+  and the engine scatter chart's highlights are computed from points, with no
+  outline of your own.
+  `Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md` proposes
+  `UltraCanvasImportancePerformanceChart`, derived from
+  `UltraCanvasEngineScatterChart`, with one general engine addition: an
+  explicit `ChartHighlightShape::Polygon`. It covers zones that are stepped or
+  smoothed, a labelled boundary band, named level ranges on the axes,
+  classification that uses the same geometry as the drawing, and Slack,
+  Martilla & James and diagonal presets, in three phases.
+  `UltraCanvasPerformanceMatrixProposal.md` revision 2 drops its `Zones`
+  design and its fourth phase accordingly.
+- **New chart: the importance–performance chart (Phase 1).**
+  `UltraCanvasImportancePerformanceChart` plots the factors of a service, by
+  how much customers care about each one and how it compares with
+  competitors, over authored zones that name the action. It is built on
+  `UltraCanvasEngineScatterChart`, so groups, markers, point labels, the
+  legend and hover come from there. The chart adds:
+  - filled zones, stepped or smoothed, each with a title and an optional
+    icon. A title is placed at the zone's pole of inaccessibility in the part
+    later zones leave visible, and is left out when it does not fit.
+  - labelled bands, such as Slack's lower bound of acceptability. The label
+    is turned along the band's longest straight stretch, and factor names
+    steer around it and around the zone titles.
+  - named level ranges on both axes, with the end captions at the screen's
+    ends even when an axis is inverted for Slack's "1 = best" scales.
+  - the zone of each factor in its tooltip, and a zone's title, action and
+    factor count on a bare stretch of it.
+
+  The model (`UltraCanvasImportancePerformanceModel.h`) is UI-free.
+  `ZoneOf` and `ClassifyFactors` test the same smoothed polygon the chart
+  draws, so a factor drawn in a zone is always reported in it. It also has
+  `Validate()` and the `SlackZones(smooth)` and `SampleFactors()` presets.
+  On the demo page **Charts → Importance-Performance Chart**, the two Slack
+  forms list the factors by zone.
+  `Tests/ImportancePerformanceModelTest.cpp` and
+  `Tests/ImportancePerformanceChartRenderTest.cpp` cover the model and the
+  drawing; the render test writes PNGs when `ULTRACANVAS_SCREENSHOT_DIR` is
+  set. Guide: `Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md`.
+- **Chart engine: `ChartHighlightShape::Polygon`.** An explicit outline in
+  value space, taken from `members`. It is rounded by `smoothing` the way a
+  `Blob` is, but in value space before the mapping, so a caller that smooths
+  the same outline tests exactly the drawn shape. Under Polar its edges are
+  sampled along the rings.
+- **Engine scatter chart: a derived chart can keep highlights of its own.**
+  Every data, theme and legend change clears *all* highlights before it
+  rebuilds the confidence ellipses, so a subclass's highlights would have been
+  wiped on the first change. The rebuild now calls the protected
+  `AddChartHighlights()` first, and `RefreshHighlights()` reruns it.
+- **New design proposal: a performance matrix element.** The demo app has
+  listed *Performance Matrix* under Info Graphics as a "planned" placeholder
+  with no design behind it.
+  `Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md` now is that
+  design, worked out from reference images of the 9-box talent grid, the
+  performance management matrix with coloured header tabs, coded
+  performance-vs-potential tiles and bordered talent-review cards. It argues why none of the
+  quadrant chart, matrix diagram, heatmap or SWOT diagram can absorb these,
+  and proposes one UI-free `PerformanceMatrixModel` (named-level axes, cells
+  and an optional population placed by cell or by score) under an
+  `UltraCanvasPerformanceMatrix` element with four designs (`Grid`, `Tiles`,
+  `HeaderTabs`, `Cards`). It also covers text fitting, crowded cells,
+  colour-blind safety and personal data, and sets out its open questions and
+  three phases. Its sketched API is recorded in
+  `scripts/doc_examples_baseline.txt` until it is written.
+
+#### 2026-10-24 *0.9.399*
+- **Segmented controls and the spreadsheet centre their text on its capitals.**
+  Both centred a line of text by its line box (ascent plus descent), which
+  sits wherever the font's metrics put it, so the Windows demo drew every
+  segmented control's captions a couple of pixels high and every spreadsheet
+  cell low enough to cut the descenders off. They now centre the middle of a
+  capital letter on the middle of the segment or row, as buttons and labels
+  already do:
+  - `UltraCanvasSegmentedControl` gives each caption's layout the segment's
+    height and its font as the layout's own (`SetFontStyle`) rather than as
+    font attributes, which the layout's cap-height measurement ignored.
+  - `UltraCanvasSpreadsheet` places cells, the row and column headers, the
+    formula bar, the sheet tabs and the add-sheet button with
+    `TextTopCentredOnCaps`.
+  - `TextCentredOnCapsTest` draws both offscreen in the bundled
+    Ubuntu font, and in FreeSans and Carlito where installed (line boxes that
+    put the capitals 2.5 px high and 1.5 px low), and checks the capitals'
+    middle is within a pixel of the middle.
+
+#### 2026-10-24 *0.9.398*
+- **The rich text editor sets a background colour behind text.**
+  `UltraCanvasRichTextEdit::SetHighlightColor("#RRGGBB")` (and
+  `UCRichDocumentEditor::SetHighlightColor`) colours the background of the
+  selection, or of what is typed next, as a highlighter does; an empty
+  colour removes it. Runs always had `highlightColor`, drawn on screen and
+  written to HTML as `background-color`, but nothing could set it while
+  editing. `RichCharFormatDelta::setHighlight` / `highlightColor` carry it,
+  `RichCharFormatState::highlightColor` / `highlightMixed` report it for a
+  toolbar, and `ClearFormatting` takes it away with the rest. UltraMail's
+  compose window uses it for its Text | Background colour switch.
+
+#### 2026-10-24 *0.9.397*
+- **CI keeps the Linux packages it downloaded.** On 2026-10-23 the Ubuntu
+  mirror served the x64 Linux build so slowly that its dependency step ran
+  out of its 45 minutes twice in a row, downloading the same packages as the
+  run before. The Linux build legs now restore the `.deb` files the last run
+  on `main` downloaded into apt's cache before they install anything, so apt
+  fetches only what changed since (`scripts/ci-apt.sh cache-in`). `main`
+  saves them after the last install, pruned to the versions installed
+  (`cache-out`), keyed by the set of files, one cache per runner image and
+  architecture; a pull request saves none, as with ccache.
+- **UltraDatabase 0.5.0: the MySQL / MariaDB driver.** A `mysql` (or
+  `mariadb`) connection reaches a MariaDB or a MySQL server through MariaDB
+  Connector/C (libmariadb, LGPL-2.1, linked as the shared library), built in
+  wherever the library is found. Parameters are bound to server-side
+  prepared statements, never written into the SQL; the integer types come
+  back as Int, FLOAT and DOUBLE as Double, binary columns as Blob, DECIMAL
+  exact as text; each result column names its source table. TLS is verified
+  by default, the password comes from UltraVault, `LOAD DATA LOCAL` is off.
+  Scripts are cut as the mysql client cuts them, DELIMITER included
+  (UltraDb_ExecBatch), and `UltraDb_MysqlScriptStatements` says where each
+  statement of a script is, for an editor; a cursor streams from a session of its own, or inside
+  a transaction reads what the transaction wrote; UltraDb_CancelQuery sends
+  KILL QUERY. Schema introspection reads information_schema - a schema is a
+  database - with each column's default as the DDL writes it on both
+  servers.
+- **UltraDatabase: server administration** (`UltraDatabaseServer.h`, the
+  design proposal's G10). `UltraDb_ServerSessions`, `UltraDb_ServerSettings`,
+  `UltraDb_ServerSizes`, `UltraDb_StopSessionSql` and `UltraDb_StopSession`
+  give PostgreSQL's and MySQL's sessions, settings and sizes in one shape,
+  and stop a session's query or the session - never the asking one. SQLite
+  answers Unsupported. Tested against PostgreSQL, MariaDB and (in CI) MySQL 8
+  in `Tests/UltraDatabase` (test_mysql.cpp, test_server.cpp).
+
+#### 2026-10-24 *0.9.396*
+- **`UltraCanvasLabel::GetNaturalTextWidth()`: where a label's text ends.** A
+  label given a fixed box is usually wider than its text, and something meant
+  to sit right after the text - a copy button after a code, a badge after a
+  name - had to guess the text's width from a character count and a font it
+  hoped the platform would use. The label now says it: the width its text
+  takes, as it lays it out (font, markup, inline images, line breaks kept),
+  without padding or border; 0 for empty text or before the label can reach a
+  render context. It was the private measurement behind the label's own
+  max-content size. Documented under *Where the text ends* in
+  `Docs/UltraCanvas/UltraCanvasLabelExamples.md`; UltraAuthenticator is the
+  first user.
+
+#### 2026-10-24 *0.9.395*
+- **UltraCanvasERDiagram: a self-reference in crow's foot.** A relationship
+  from a table to itself was routed to the Chen diamond, which crow's foot
+  does not draw, so its line ended in empty space beside the table. It is now
+  a loop that leaves the table's top edge and comes back into its right
+  edge, with a marker at each end.
+
+#### 2026-10-24 *0.9.394*
+- **UltraDatabase 0.4.0: statement observers.** `UltraDb_AddStatementObserver`
+  reports every statement that runs through the public calls, on any
+  connection, once it has ended: its kind (query, exec, transaction, one
+  statement of a script, a cursor, introspection), its text, how many values
+  were bound - never the values themselves - the rows it returned, whether it
+  ran in a transaction, its time and its outcome. It is called on the thread
+  that ran the statement, outside every lock of the module, so an observer may
+  run statements of its own. With no observer added, nothing is timed or
+  copied. `UltraDb_RemoveStatementObserver` stops it. UltraDBAdmin's SQL log is
+  the first observer. Tested in `Tests/UltraDatabase/test_observer.cpp`.
+
+#### 2026-10-23 *0.9.393*
+- **The WYSIWYG editor now names the fonts a document needs that the computer
+  lacks.** `UltraCanvasRichTextEdit` shows a notice along its top that lists
+  two kinds of font:
+  - **Scripts no font covers.** Before, their text came out as rows of hex
+    boxes that looked like a bug in the editor. Each script is now named with
+    a free font that covers it, for example "Chinese text needs Noto Sans
+    SC".
+  - **Families the document names that are not installed.** This text is
+    drawn in a substitute.
+
+  Each font in the notice is a link to the page it is downloaded from, and
+  the notice's x hides it. `GetFontReport()` and `onFontReportChanged`
+  report the same list to the host, `onFontLinkClicked` lets the host handle
+  a link itself, and `SetShowFontNotice(false)` keeps the report but hides
+  the notice. The report is worked out when a document is set, a second
+  after an edit, and when the fonts change. That includes Windows' system
+  fonts arriving after a cold start. The demo app's *WYSIWYG — Chinese,
+  Arabic & Myanmar* page shows the notice on a computer that has no font for
+  Chinese or Arabic.
+- **New `UltraCanvasFontCoverage.h`: is there a font for this text?** It has
+  four calls:
+  - `CountCharactersWithoutFont` counts the characters of a text that no
+    installed, bundled or registered font covers.
+  - `FindScriptsWithoutFont` groups those characters by script. Each script
+    comes with a free Noto font that covers it and that font's download
+    page.
+  - `FontDownloadUrl` gives the address of a search for a font family on
+    Google Fonts.
+  - `IsFontFamilyAvailable` says whether a family is installed, bundled or
+    registered.
+
+  The new headless `FontCoverageTest` covers them, and
+  `RichTextEditElementTest` covers the report and the notice.
+
+#### 2026-10-23 *0.9.392*
+- **DemoApp: one page look, and an audit that finds cut text.**
+  - `UltraCanvasDemoPageKit.h` is the Level Meter page's look for every page:
+    a title and a description, the examples in white rounded cards, captions
+    and notes in grey - and every label sized to its text (it wraps and is as
+    tall as its lines), rows that wrap, the page as tall as its content and
+    scrolled by the page area. The Toolbar page is on it.
+  - `UltraCanvasDemo --audit-layout` opens every page, lays it out and lists
+    each label or button whose text does not fit and each element a parent
+    cuts off with no scrollbar to reach it; `--pseudo-loc` first makes every
+    text ~40% longer, as a translation is (and with `--component` shows the
+    page that way); `--audit-page <id>` audits one page.
+  - The *IODeviceManager* entry is DeviceExplorer's own panel
+    (`Apps/DeviceExplorer/ui`) and reads *Partially implemented*: printers,
+    scanners and cameras are found and shown, other categories and platform
+    backends are planned. *VideoFX* reads *Fully implemented*: every stage of
+    its roadmap but keyframes is done and UltraVideo is built on it.
+- **UltraCanvasToolbar: a label is as wide as its text** (it was 80 px, which
+  cut a longer translation), **and `AddDropdownButton` shows its initial
+  text** - the item reading so is selected; the dropdown opened empty.
+- **DemoApp: slim gray scrollbars.** The demo-wide scrollbar style is an 8 px
+  light gray track with a mid-gray round-ended thumb that darkens on hover and
+  while dragged (it was a 12 px blue one).
+- **UltraCanvasButton: a new text fits the width at once.** `SetText` widens
+  (or narrows back) a button to its text when it can measure, instead of at
+  its next measure: the parent reads that width to break a wrapping row into
+  lines first, and laid the row out a line short with the old one, so the
+  button's new text ("Resume" for "Pause", a longer translation) was cut.
+- **Longer translations in two framework panels.** SmartHomePanel's device
+  count ("30 of 30 devices") is as wide as its text, 124 px at least, instead
+  of cut at 124; the menu configurator's action buttons, each as wide as its
+  text, make their pane scroll sideways when they outgrow it.
+- **DemoApp: a page is never narrower than its fixed-size content.** The page
+  kit gives the page, and every card and row on the way to a chart, diagram
+  or text button, that content's width as its minimum; a card sharing a row
+  wraps under its neighbour instead of cutting the chart, and a window
+  narrower than a 1000 px chart scrolls the page sideways. Labels break inside
+  a word only when the word is longer than the line (a code sample).
+  `--audit-layout` reports no finding on any of the 166 pages.
+- **UltraCanvasTextLayoutCache: a no-wrap text stays one line again.** A
+  `TextLayoutKey` that named no ellipsize applied `EllipsizeNone` over the
+  end-cut `SetWrap(WrapNone)` had chosen, so a `WrapNone` label measured
+  against a narrow width wrapped a character a line instead of being cut.
+  `TextLayoutKey::ellipsize` is a `std::optional` now: unset leaves the wrap
+  mode's choice; the button and the menu still name their own.
+  `TextLayoutCacheTest` covers it.
+- **DemoApp: the tree fills the sidebar, the status bar is gone, and the
+  page area scrolls both ways.** The status legend under the tree was
+  measured with its title wrapped a character a line (the cache fix above)
+  and took ~420 px of a medium-size window from the tree. The status line at
+  the bottom of the window has been removed with all its code. A page built
+  at a fixed width (the SVG gallery's 1000 px) was cut down to the area and
+  its right-hand column cut off; it keeps its width as its min-width now, and
+  the area shows a horizontal scrollbar when the window is narrower than the
+  page.
+- **CSS layout: a wrapped line wider than an "at most" row is measured shrunk
+  to it.** A column measures its children at "at most" its width; a wrapping
+  row measured that way broke its lines there but kept each item at its full
+  natural width, so a growing text item alone on its line (a note that moves
+  under the field beside it) was measured one wrapped line short, and the row,
+  laid out at that height, cut the last line off when it was arranged at the
+  real width. The line is shrunk to the width as it is when arranged
+  (fit-content). `CSSLayoutTests` covers it.
+  No item is shrunk below its min-content width there (CSS's automatic
+  minimum): wrapping text shrinks to its longest word, while a counter or a
+  button keeps its width and a row too wide for its card still overflows
+  whole (`CSSLayoutAutoExpandTest`).
+
+#### 2026-10-23 *0.9.391*
+- **List view: every column fitted to its text.** `SetColumnFitting` makes
+  each column as wide as its widest `DisplayRole` text plus the delegate's
+  padding, never narrower than its header, within a minimum and a cap -
+  measured at the first paint after the rows change, and no longer once the
+  user drags a border. UltraMail's Date column did this with a subclass;
+  UltraDBAdmin's grids estimated widths from a character count, so a column
+  of narrow glyphs was wider than it needed to be and a wide one still cut
+  its text.
+- **Container: the corner between two scrollbars is painted.** With both
+  scrollbars showing, the square where their tracks meet was left to
+  whatever lay beneath; it is the track's colour now.
+
+#### 2026-10-23 *0.9.390*
+- **A menu on an autocomplete suggestion.** `UltraCanvasAutoComplete` has
+  `onItemContextMenu(index, item, event)`: a right press on a row of the
+  suggestion popup hands that row's item to the handler, which opens a popup
+  menu acting on it, instead of picking it. Unset, a right press still picks
+  the row as before. UltraMail's recipient fields use it for *Edit contact*
+  and *Delete address*.
+
+#### 2026-10-23 *0.9.389*
+- **List view: a horizontal scrollbar when the columns are wider than the
+  view.** A multi-column `UltraCanvasListView` whose columns did not fit cut
+  the rightmost ones off with no way to reach them (UltraDBAdmin's browse
+  grid on a wide table). Now a horizontal scrollbar shows along the bottom,
+  the header and the cells scroll sideways together, Shift+wheel moves them,
+  and when both scrollbars show each stops short of the other's track.
+  `ScrollToColumn` / `EnsureColumnVisible` / `GetHorizontalScrollOffset` do
+  it from code; `GetCellRect`, `GetColumnAt` and `GetHeaderColumnAt` account
+  for the scroll; `ScrollMetrics` gains the sideways figures.
+  - **The Left / Right keys scroll the columns, and stay with the view.**
+    They bubbled up unhandled, so in a table inside a tabbed container they
+    switched the tab instead of moving the table. The view now takes them,
+    whether or not the columns fit.
+
+#### 2026-10-23 *0.9.388*
+- **`UltraCanvasSegmentedControl` tints line icons and centres an icon with
+  its caption.** `SegmentedControlStyle::iconAsMask` draws each segment's
+  icon as a mask in that segment's text colour, so a one-colour icon turns
+  white on the selected segment with its caption instead of staying dark on
+  the blue. An icon beside a centred caption is centred together with it;
+  it used to sit at the segment's left edge with the text centred in what
+  was left. ArtCreator's Scale / Rotate switch is the first user.
+
+#### 2026-10-23 *0.9.387*
+- **Converting a CorelDRAW file to SVG no longer risks the SVG already
+  there.** `UltraCanvasCDRPlugin::ExportToSVG` truncated each target page
+  file before writing it, so a conversion that failed partway - a full disk,
+  a network share that went away - left an empty or cut-short file in place
+  of the one it replaced. Each page is now written through
+  `WriteFileAtomically`: beside the target first, moved over it only once
+  complete; a failure leaves the old file and no temporary one behind. The
+  error says why (`FileWriteFailureReason`: the folder does not exist, the
+  file is read-only, access is denied, the disk is full, or the system's
+  error) instead of only "Cannot write file: <path>". `CDRPluginRenderTest`
+  covers exporting over a file and into a missing folder. The EPS plugin was
+  checked too: it only reads, so it has nothing to change.
+
+#### 2026-10-22 *0.9.386*
+- **List view: which cell a double-click hit, and where a cell is.**
+  `onCellDoubleClicked(row, column, posInCell)` follows `onItemDoubleClicked`
+  with the column, and `GetCellRect(row, column)` gives a cell's box as it is
+  drawn now (element-local, scrolled), so an owner can lay a text field over a
+  cell and edit it in place. The list view's documentation shows how;
+  UltraDBAdmin's Browse grid is the first to do it.
+- **FileLoader: `SaveFile(path, bytes, error)`**, the counterpart of
+  `LoadFile`: bytes written to a local file as they are, for content no format
+  writer stands for (a database blob, a download kept as it came). The file is
+  written beside its name and moved there when complete, so a write that fails
+  never leaves half a file in place of the one that was there.
+
+#### 2026-10-22 *0.9.385*
+- **No framework enumerator is named `None` any more.** X11's `None` macro
+  rewrote such an enumerator in any file that included a window header
+  first, so 28 headers and sources carried an `#undef None` and others
+  worked around it with include order. Every `None` enumerator in the
+  framework's headers is renamed and every `#undef None` is gone:
+  `HardwareQuery::Nothing`; spreadsheet `CellErrorType::NoError`,
+  `BorderStyle::NoBorder`, `UnderlineStyle::NoUnderline`,
+  `FillPattern::NoFill`, `FilterOperator::NoFilter`,
+  `ClipboardOperation::NoOperation`, `PasteOperation::NoOperation`,
+  `HitArea::Nowhere`; `WaveformOverlay::NoOverlay`; QR code
+  `QRLogoStyle::NoLogo`, `QRGradientType::NoGradient`; charts
+  `ConnectionCapStyle::NoCap`, `SunburstLabelContent::NoLabel`,
+  `SunburstShadeMode::NoShade`, `ValueVisualizationType::NoVisualization`,
+  `DecorativeRingType::NoRing`, `ConnectionLineType::NoLine`,
+  `NestedAreaLabelPosition::NoLabels`, `ChordLabelPlacement::NoLabels`, pie
+  `LabelPosition::NoLabels`; diagrams `ArcValueDisplay::NoLabel`,
+  `GroupLabelPlacement::NoLabels`, `GroupFillMode::NoFill`,
+  `ConfidenceDisplayMode::Hidden`, `FlowChartArrowStyle::NoArrow`; UltraNet
+  `UltraNetAuthType::NoAuth`, `UltraNetProxyType::NoProxy`,
+  `UltraNetMailAuth::NoAuth`, `UltraNetMailFlags::NoFlags`; UltraVault
+  `SignInMethod::NoSignIn`; VirtualFS `VirtualFSCapability::NoCapabilities`,
+  `VirtualFSRamDiskBacking::NotCreated`, `UCVFSCompressionType::Uncompressed`;
+  printers `IODuplexMode::OneSided`, `IOSupplyColor::NoColor`; network
+  monitor `LoopbackRole::NotLoopback`, `NameSource::NoSource`; video timeline
+  `Drag::NoDrag`; LaTeX `MathAtomClass::NoClass`; and in the modules that
+  arrived meanwhile, `UltraIMCapabilityFlags::NoCapabilities`,
+  `UltraIMResultCode::Ok` and `UltraRtcResultCode::Ok`. The strings the file
+  formats write are unchanged. (`NoValue` is also an X11 macro, hence
+  `NoVisualization`.)
+- **Nor is any named `Success`.** X11's `Success` macro (0) did the same to
+  the result-code enumerators, guarded by `#undef Success` in UltraNet,
+  UltraWin, UltraMessage, UltraDatabase, UltraCrypt, UltraVault, IODevice,
+  EBook and VirtualFS headers and two core sources. The enumerator is `Ok`
+  in every result code - `VirtualFSResult::Ok`, `UltraNetResultCode::Ok`,
+  `UltraWinResultCode::Ok`, `UltraMsgResultCode::Ok`, `UltraDbResultCode::Ok`,
+  `UltraCryptResultCode::Ok`, `UltraVault::ResultCode::Ok`,
+  `IODeviceResultCode::Ok`, `NetworkMonitorResultCode::Ok`,
+  `StoreResultCode::Ok` - and the factories `WasmStatus::Success()` and
+  `VaultResult::Success()` are `WasmStatus::Ok()` (like `UltraNetResult::Ok()`)
+  and `VaultResult::NoError()` (`VaultResult::Ok()` is its query). Every
+  `#undef Success` is gone.
+- **And no `#undef` of an X11 macro is left at all.** The `Status`, `Always`
+  and `Bool` guards in UltraNet, UltraWin, UltraDatabase, IODevice, EBook,
+  Spreadsheet and RequirementModel headers are gone with the identifiers
+  they covered: `RequirementField::Status` is `State` (the ReqIF field
+  names are unchanged), `UltraDbType::Boolean` and `ZWaveValueType::Bool` are
+  `Boolean`, `AiStatus::Status()` is `StatusOf()` and the IMAP response's
+  `Status()` is `StatusWord()`. Nothing was named `Always` any more.
+- **CI keeps it that way.** `scripts/check_x11_names.py` (`x11-names.yml`)
+  fails on an enumerator, function, method or member named like any of the
+  481 object-like macros `<X11/X.h>`, `Xlib.h` and `Xutil.h` define, and on
+  an `#undef` or `push_macro` of one; the list is generated from the headers
+  into `scripts/x11_macro_names.txt`, the baseline is empty, and a site that
+  is correct as it stands says `// x11-name-ok: <why>`. The names it found
+  on its first run are gone too: `ArcEdgeType` and `ArcLabelSide` say
+  `AboveBaseline` / `BelowBaseline`, the IPP tag is `IppTag::NoValueTag`, the
+  Zigbee frames' `Status` fields are `StatusCode`, and a handful of file-local
+  helpers named `Bool`, `Below` or `CurrentTime` are renamed.
+- **And the Objective-C runtime's names the same way.** In a `.mm` file
+  `YES`, `NO`, `nil` and `Nil` are macros and `id`, `Class`, `SEL`, `IMP`,
+  `BOOL` and `Protocol` are global typedefs. `scripts/check_objc_names.py`
+  (`objc-names.yml`) fails on an enumerator or member named like a macro and
+  on a file-scope declaration named like a type; inside a namespace, a
+  class, an enum or a parameter list the names are free, as clang confirms,
+  so the framework's `int id` members and `const std::string& id` parameters
+  are not findings. Its first run found nothing; the baseline is empty, and
+  a site that is correct as it stands says `// objc-name-ok: <why>`.
+- **One script for the three name checks.** `scripts/check_platform_names.py`
+  replaces `check_win32_names.py`, `check_x11_names.py` and
+  `check_objc_names.py`: the same rules and finding kinds (`win32-name-*`,
+  `x11-*`, `objc-*`), the same `// <platform>-name-ok` markers, one
+  workflow (`platform-names.yml`) and one baseline
+  (`scripts/platform_names_baseline.txt`, carrying the Win32 sites still
+  being worked off). `--platform win32|x11|objc` narrows a run,
+  `--self-test` covers all three, and `--generate-names` takes the platform
+  whose list to rebuild.
+- **`MacTypes.h` is covered too.** Every Foundation import reaches
+  CoreServices' `MacTypes.h`, which puts `Rect`, `Point`, `Boolean`, `Byte`,
+  `Size`, `Handle`, `Ptr`, `Fixed`, `Style`, `OSErr`, `UInt8`, `Str255` and
+  a hundred more typedefs at global scope, the Style constants `normal`,
+  `bold`, `italic`, `underline`, ... as global enumerators, and `kInvalidID`
+  as a macro. `scripts/mactypes_global_names.txt` is generated from the
+  header itself (`--platform objc --generate-names <SDK>/usr/include/MacTypes.h`;
+  the file is byte-identical in the 10.15 and 11.3 SDKs), and the
+  Objective-C file-scope rule reads it. `Length`, `Debugger68k` and the
+  macro form of `StrLength` are left out: a C++ translation unit never sees
+  them. The tree is clean; the Objective-C rules now skip the Windows, Linux,
+  BSD, WASM and Android glue, which no `.mm` file reaches.
+
+#### 2026-10-22 *0.9.384*
+- **Colour emoji were drawn huge on Windows.** The bundled Noto Color Emoji,
+  the default emoji font since the emoji setting, is a bitmap font: 109 px
+  pictures that fontconfig scales to the text's size by the rules of its
+  `10-scale-bitmap-fonts.conf`. A system `fonts.conf` includes them from
+  `conf.d`; the one the framework writes where there is none - every packaged
+  Windows build, and Android - did not, so an emoji stood 128 px high in a
+  line of 14 pt text (UltraMail's message list and reading pane showed a
+  LinkedIn subject's 👤 as a giant silhouette). The generated `fonts.conf`
+  now carries the scaling rules on Windows and Android, Windows' inline
+  configuration for an empty fontconfig loads them too, and
+  `GenerateBitmapScalingConfig()` (`UltraCanvasApplication.h`) hands them to
+  any other configuration. Linux keeps taking them from `/etc/fonts/conf.d`.
+  `EmojiSettingsTest` checks that a 14 pt line with the colour emoji stays
+  under 40 px.
+
+#### 2026-10-22 *0.9.383*
+- **`<video>` and `<audio>` in the HTML reader.** `HTML::BuildOptions::mediaFactory`
+  asks the host for a player with an `HTML::MediaRequest`: the element, its
+  sources in order (`src`, then the `<source>`s with their types), its
+  poster, `controls` / `autoplay` / `loop` / `muted`, and the size a browser
+  gives it (CSS, else the attributes, else 640 x 360 or an audio bar of
+  300 x 40). The player is placed as a picture is. Without a factory, or when
+  it answers null, the fallback content between the tags shows, as before.
+  `UltraCanvasWebView` sets the factory itself (`SetMediaPlayback`, on by
+  default). Each element plays in an `UltraCanvasVideoPlayerElement` on the
+  first address the page may load. The view keeps a player across rebuilds
+  of the same page, so playback goes on, and stops it when the page changes.
+  `autoplay` plays only a muted element (`Tests/HTMLMediaTest.cpp`).
+- **`HTML::PageLoaderServices::fetchResource`** fetches a style sheet or a
+  picture together with the address of the page it is for, when the host
+  sets it; otherwise `fetch` is used as before. UltraWeb uses it to keep
+  cookies from going to third parties. `PageLoader::AllowsResource` applies
+  the loader's scheme rules (mixed content, local files) to an address the
+  page loads outside the loader, and `PageUrl()` returns the address of the
+  page on show.
+- **`UltraNetCookieJar`, a browser's cookie jar in UltraNet**
+  (`UltraNet/UltraNetCookieJar.h`). Unlike a session's libcurl cookies, the
+  caller sees every cookie and decides when they go. `Store` applies a
+  `Set-Cookie` header, and `HeaderFor` returns the `Cookie` header for a
+  request, by RFC 6265bis: expiry (at most 400 days), `Domain` and `Path`,
+  `Secure`, `SameSite` and the `__Secure-` / `__Host-` prefixes. A request
+  for another site's page (`Classify`, `SiteOf`) neither sends nor sets one.
+  The cookies with an expiry are kept in a tab-separated text file (UltraNet
+  pulls in no JSON engine). UltraWeb is its first user; its tests are in
+  `Tests/UltraNet/test_cookie_jar.cpp`.
+- **GStreamer's base and good plugins are installed on the Linux CI row and
+  in cloud sessions** (`.github/workflows/build.yml`,
+  `.claude/hooks/session-start.sh`). Without `playbin` every video player
+  opened nothing, so `HTMLMediaTest` could only check the fallback content;
+  now it plays its WAV there.
+- **A save that fails says why.** The vector writers (SVG, PDF, EPS, AI, CDR,
+  XAR), the layered-image project file and the `.ucd` writer reported only
+  "Failed to create SVG file: <path>", "Could not create <path>" or "Could not
+  write <path>", so ArtCreator and UltraPaint showed that and nothing more.
+  They now give the reason: the folder does not exist, a folder has the
+  file's name, the file is marked read-only, access is denied (locked by
+  another program, or no permission), the location is read-only, the disk is
+  full, or else the system's own error text and code.
+- **Saving a drawing no longer risks the one already there.** The vector
+  writers truncated the target before the first byte of the new drawing
+  existed, so a save that failed partway - a full disk, a network share that
+  went away, a codec error - left the file empty or cut short, and the
+  drawing it held was gone. They now write through `WriteFileAtomically`: the
+  new file is written beside the old one and replaces it only once it is
+  complete, and a save that fails leaves the old file and no temporary one
+  behind. They also check that the write finished; a disk that filled up
+  partway used to pass as saved. `SVGConverterTest` covers saving over a
+  file, a missing folder and a folder in the way.
+  - `UltraCanvasFileError.h` 1.2.0: `FileWriteFailureReason(path, errno)` is
+    `DescribeFileWriteError`'s answer, else the system error the failing call
+    left, for a write that failed although the file still opens;
+    `DescribeFileWriteError` names a file marked read-only.
+  - `UltraCanvasFileLoader::SaveVectorDocument` reports the destination's
+    reason when the writer gave none.
+
+#### 2026-10-22 *0.9.382*
+- **ChatCube Direct: a relay behind a redirect.** `RelayClient` no longer
+  lets libcurl follow redirects - on a 301/302 libcurl sends a POST again
+  without its body, which the relay answered with 422. It follows them
+  itself (up to three), body and all, and keeps the new base address, which
+  `DirectProvider` stores after sign-in. `SetBaseUrl` takes an address
+  without a scheme as `https://`, and a 422's `detail` becomes the error
+  message. DirectProviderTests 0.1.1 checks both against the relay behind
+  a redirector.
+- **The Windows and Linux packages carry the UltraIM provider modules.**
+  `package-win.sh` and `package-linux.sh` copy `Plugins/UltraIM` next to the
+  executables (before the dependency closure, so the modules' own libraries
+  come along), and `package-linux.sh` lists ChatCube. Either script now
+  fails when ChatCube is packaged without `ultraim_direct`, instead of
+  shipping an app that can only say its module was not found.
+- **UltraDatabase: a connection closed at exit wrote into freed memory.**
+  The manager's table of retired connections was a function-local static,
+  first built by the first `UltraDb_CloseConnection`. UltraMessage's atexit
+  handler - registered earlier - closes its journal after that table was
+  already destroyed, and the process aborted in `free()` as it exited
+  (`malloc_consolidate(): unaligned fastbin chunk`). The table is now never
+  destroyed, like the handle tables. `UltraDatabaseExitClose`, a test
+  program of its own, closes a connection from such a handler under glibc's
+  strict heap checks.
+
+#### 2026-10-22 *0.9.381*
+- **`UltraCanvasAlbum` 1.11.0: `onItemPressed` and `ReleaseDrag`.** An
+  application that carries a tile's drag itself - UltraVideo's bin, whose
+  tiles land on the timeline - hears the left button press on a tile in
+  `onItemPressed(index)`, arms its own drag there as it does from a button's
+  press, and calls `ReleaseDrag()` when that drag starts, so the album's
+  reorder (edit modes) does not follow the same press. `onItemDraggedOut`
+  (1.9.0), which needed an edit mode and let the album decide when a tile
+  had left, is gone: it had that one caller. UltraVideo's bin is a
+  `Display` album now - the hover actions, a double-click and the drag.
+- **CI: the gate, the lint checks and the Android backend check run on
+  `ubuntu-22.04`.** They ran on `ubuntu-latest`, a separate pool from the
+  `ubuntu-22.04` one the build legs use, and on 2026-10-21 that pool held
+  them for up to three hours - the gate alone kept one pull request's six
+  builds from starting for ninety minutes - while the build legs ran at once.
+  Every script they run passes under that image's Python 3.10.
+  The Doc examples check moves too: a baseline entry drops the
+  `UltraCanvas::` one clang writes before a type and another leaves out
+  (`check_doc_examples.py` 1.8.0), so its clang 14 and the 24.04 image's
+  clang 18 read the baseline alike.
+- **VideoFX 0.16.2: a clip's faces are looked for afresh when its file
+  changes.** The faces found in a clip (`keepFacesInView` under `Fill`) are
+  remembered per file and range for the preview's sake; the file's size and
+  write time are part of the key now, so a clip re-exported over an old one
+  of the same name no longer frames to the faces of the old one.
+  `VideoFXTest` exports a faceless clip under the name the late-face clip
+  then takes, and the crop follows the new file's face.
+
 #### 2026-10-22 *0.9.380*
 - **Tree view: the expand button can be an arrow.** `SetExpanderStyle`
   (`TreeExpanderStyle::Chevron`) draws a row's expand button as an arrow -

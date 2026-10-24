@@ -8,6 +8,10 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
+// Version: 0.7.0 - UltraMail's line icons (media/icons/ultramail/): MailIcon,
+//                  SetButtonIcon, the flat ToolButton / MakeToolButton of the
+//                  formatting bar, MakeToolSeparator, and MakeDialogHeader (an
+//                  icon tile, a title and a line of text on top of a dialog)
 // Version: 0.6.0 - the page, card, card caption and list-row colours are the framework's
 //                  (Colors::SectionPage / SectionCard* / ListRow*, GroupBoxVisualStyle::
 //                  SectionCard), shared with UltraPaint
@@ -15,18 +19,21 @@
 //                  surface's text and icons reaches the surface
 // Version: 0.4.0 - StyleSegmented (the signature editor, the compose window)
 // Version: 0.3.0 - sender-badge colours (kTrust*) and the badge metric
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasGroupBox.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -181,6 +188,85 @@ inline void StyleDanger(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b
     if (b) b->SetStyle(DangerButton());
 }
 
+// The flat button of a tool strip (the formatting bar): no frame and no fill
+// until the pointer is over it, so a row of icons reads as one toolbar rather
+// than a wall of boxes.
+inline UltraCanvas::ButtonStyle ToolButton() {
+    UltraCanvas::ButtonStyle s;
+    s.normalColor      = UltraCanvas::Colors::Transparent;
+    s.hoverColor       = kRowHover;
+    s.pressedColor     = kAccentSoft;
+    s.disabledColor    = UltraCanvas::Colors::Transparent;
+    s.normalTextColor  = kTextPrimary;
+    s.hoverTextColor   = kTextPrimary;
+    s.pressedTextColor = kAccent;
+    s.disabledTextColor= kTextMuted;
+    s.borderWidth      = 0.0f;
+    s.borderColor      = UltraCanvas::Colors::Transparent;
+    s.cornerRadius     = kControlRadius;
+    s.fontSize         = kSizeBody;
+    return s;
+}
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+// UltraMail's line icons: media/icons/ultramail/<name>.svg, one colour on a
+// 16 px grid (see the README there). A button draws them as a mask in its
+// text colour, so they follow the primary / secondary / danger styles.
+constexpr int kButtonIcon = 14;   // beside a button's label
+constexpr int kToolIcon   = 16;   // alone on a tool button
+
+inline std::string MailIcon(const std::string& name) {
+    return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir()
+                                      + "media/icons/ultramail/" + name + ".svg");
+}
+
+// A line icon in front of the button's label, in the label's colour. Call it
+// after the button's style (which holds the icon's mask and spacing) and after
+// FitToLabel: the button then hugs icon and label with even padding, rather
+// than keeping FitToLabel's floor - a wider button draws the icon at its left
+// edge and the label centred in the rest, so the two drift apart.
+inline void SetButtonIcon(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b,
+                          const std::string& name, int size = kButtonIcon) {
+    if (!b) return;
+    b->SetIcon(MailIcon(name));
+    b->SetIconPosition(UltraCanvas::ButtonIconPosition::Left);
+    b->SetIconSize(size, size);
+    b->SetIconSpacing(6);
+    b->SetUseIconAsMask(true);
+    b->SetPadding(4, 12, 4, 12);
+    if (b->boxConstraints) b->boxConstraints->minWidth = UltraCanvas::CSSLayout::Dimension::Auto();
+}
+
+// A square, icon-only tool button. The tooltip is its only label, so it must
+// say what the button does.
+inline std::shared_ptr<UltraCanvas::UltraCanvasButton>
+MakeToolButton(const std::string& id, const std::string& icon, const std::string& tooltip,
+               float side = kControlHeight + 4.0f) {
+    auto b = UltraCanvas::CreateButton(id, 0, 0, side, side, "");
+    b->SetStyle(ToolButton());
+    b->SetIcon(MailIcon(icon));
+    b->SetIconPosition(UltraCanvas::ButtonIconPosition::Left);
+    b->SetIconSize(kToolIcon, kToolIcon);
+    b->SetIconSpacing(0);
+    b->SetUseIconAsMask(true);
+    b->SetTooltip(tooltip);
+    b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    return b;
+}
+
+// The thin upright line between groups of tool buttons.
+inline std::shared_ptr<UltraCanvas::UltraCanvasContainer>
+MakeToolSeparator(const std::string& id, float height = kControlHeight - 6.0f) {
+    auto line = UltraCanvas::CreateContainer(id, 0, 0, 1, height);
+    line->SetBackgroundColor(kCardBorder);
+    line->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // A little air on both sides on top of the row's own gap.
+    line->SetMargin(0, 3, 0, 3);
+    return line;
+}
+
 // Every button sizes to its label: its width follows the text (and icon), so
 // a longer label - a translation, "Reloading…" - is never cut to "Reloa…".
 // `minWidth` keeps the old fixed width as a floor, so short English labels
@@ -297,6 +383,60 @@ MakeLine(const std::string& id, const std::string& text, float height,
     label->SetFontWeight(weight);
     label->SetTextColor(color);
     return label;
+}
+
+// The head of a dialog: the icon in a tinted tile, a bold title and, below
+// it, a line of explaining text that wraps. One row for the top of a flex
+// column; the text keeps the height it is given (`textHeight`).
+inline std::shared_ptr<UltraCanvas::UltraCanvasContainer>
+MakeDialogHeader(const std::string& id, const std::string& icon, const std::string& title,
+                 const std::string& text, float textHeight = 32.0f,
+                 const UltraCanvas::Color& tint = kAccentSoft,
+                 const UltraCanvas::Color& ink = kAccent) {
+    constexpr float kTile = 40.0f;
+    constexpr float kTitleHeight = 20.0f;
+    auto header = UltraCanvas::CreateContainer(id, 0, 0, 0, 0);
+    header->layout.SetFlexRow()
+                  .SetFlexGap(12)
+                  .SetFlexAlignItems(UltraCanvas::CSSLayout::AlignItems::Start);
+    UltraCanvas::ContainerStyle style;
+    style.autoShowScrollbars = false;
+    header->SetContainerStyle(style);
+
+    auto tile = UltraCanvas::CreateContainer(id + ".tile", 0, 0, kTile, kTile);
+    tile->SetBackgroundColor(tint);
+    tile->SetBorders(0.0f, UltraCanvas::Colors::Transparent, 10.0f);
+    tile->layout.SetFlexRow()
+                .SetFlexJustifyContent(UltraCanvas::CSSLayout::JustifyContent::Center)
+                .SetFlexAlignItems(UltraCanvas::CSSLayout::AlignItems::Center);
+    tile->layoutItem.SetFlexShrink(0);
+    auto glyph = UltraCanvas::CreateImageElement(id + ".icon", 22, 22);
+    glyph->LoadFromFile(MailIcon(icon));
+    glyph->SetFitMode(UltraCanvas::ImageFitMode::Contain);
+    glyph->SetTintColor(ink);
+    glyph->SetInteractive(false);
+    tile->AddChild(glyph);
+    header->AddChild(tile);
+
+    auto words = UltraCanvas::CreateContainer(id + ".words", 0, 0, 0, 0);
+    words->layout.SetFlexColumn()
+                 .SetFlexGap(2)
+                 .SetFlexAlignItems(UltraCanvas::CSSLayout::AlignItems::Stretch);
+    words->SetContainerStyle(style);
+    auto heading = MakeLine(id + ".title", title, kTitleHeight, kSizeHeading, kTextPrimary,
+                            UltraCanvas::FontWeight::Bold);
+    words->AddChild(heading);
+    if (!text.empty()) {
+        auto line = MakeLine(id + ".text", text, textHeight, kSizeBody, kTextSecondary);
+        line->SetWrap(UltraCanvas::TextWrap::WrapWord);
+        words->AddChild(line);
+    }
+    header->AddChild(words);
+    words->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    header->SetElementSize(UltraCanvas::Size2Df(
+        0, std::max(kTile, kTitleHeight + (text.empty() ? 0.0f : 2.0f + textHeight))));
+    header->layoutItem.SetFlexShrink(0).SetAlignSelf(UltraCanvas::CSSLayout::AlignSelf::Stretch);
+    return header;
 }
 
 // A 1px horizontal rule for flex columns.

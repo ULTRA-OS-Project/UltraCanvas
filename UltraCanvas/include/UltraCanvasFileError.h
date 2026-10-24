@@ -7,6 +7,8 @@
 // consistent across the framework.
 //
 // Header-only and dependency-free (std only) so any module can use it.
+// Version: 1.2.0 - DescribeFileWriteError names a file marked read-only;
+//                  FileWriteFailureReason falls back to the system's error
 // Version: 1.1.0
 // Author: UltraCanvas Framework
 #pragma once
@@ -109,6 +111,9 @@ inline std::string DescribeFileWriteError(const std::string& path) {
     int e = errno;
     switch (e) {
         case EACCES:
+            if (fs::exists(p, ec) &&
+                (fs::status(p, ec).permissions() & fs::perms::owner_write) == fs::perms::none)
+                return "The file is marked read-only: " + path;
             return "Access denied — the file may be open or locked by another "
                    "application, or you do not have permission to write here: " + path;
 #ifdef EROFS
@@ -129,6 +134,25 @@ inline std::string DescribeFileWriteError(const std::string& path) {
                    "): " + path;
         }
     }
+}
+
+// The reason to report once writing `path` has failed: DescribeFileWriteError
+// when it finds the cause, otherwise the error the failing call left in errno
+// (`systemError`, read right after it - a disk that filled up during the
+// write leaves a file that still opens), otherwise that it could not be saved.
+//
+//   errno = 0;
+//   std::ofstream out(PathFromUtf8(path), std::ios::binary);
+//   if (!out.is_open()) return "Could not save: " + FileWriteFailureReason(path, errno);
+inline std::string FileWriteFailureReason(const std::string& path, int systemError) {
+    const std::string why = DescribeFileWriteError(path);
+    if (!why.empty()) return why;
+    if (systemError != 0) {
+        const char* sys = std::strerror(systemError);
+        return std::string("Cannot save file (") + (sys ? sys : "unknown error") +
+               ", system error " + std::to_string(systemError) + "): " + path;
+    }
+    return "The file could not be saved: " + path;
 }
 
 // ===== WRITING A FILE WITHOUT RISKING THE ONE ALREADY THERE =====

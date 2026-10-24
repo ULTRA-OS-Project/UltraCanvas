@@ -34,7 +34,7 @@ enum class PackageManager {
     Zypper,       // openSUSE
     Homebrew,     // macOS
     Msys2Pacman,  // Windows, MSYS2 CLANG64 / CLANGARM64
-    None
+    NoPackageManager
 };
 
 std::string PlatformName(Platform platform);
@@ -50,7 +50,7 @@ struct SystemProfile {
     std::string architecture;        // "x86_64", "arm64" (normalised, see NormalizeArchitecture)
     std::string distributionId;      // Linux: ID= from os-release ("ubuntu"), else empty
     std::string distributionLike;    // Linux: ID_LIKE= ("debian"), else empty
-    PackageManager packageManager = PackageManager::None;
+    PackageManager packageManager = PackageManager::NoPackageManager;
     std::string packageManagerPath;  // where the manager's program was found, or empty
     std::string msysPrefix;          // Windows: the MSYS2 root ("C:/msys64"), or empty
     std::string msystem;             // Windows: MSYSTEM from the environment, or empty
@@ -82,7 +82,7 @@ std::string DependencyGroupDescription(DependencyGroup group);
 enum class CheckKind {
     Tool,         // a program on PATH, asked for --version
     PkgConfig,    // a pkg-config module (pkg-config --modversion <module>)
-    None          // no check possible; the package manager is the authority
+    NoCheck          // no check possible; the package manager is the authority
 };
 
 // One thing the framework needs, with the package that provides it on each
@@ -92,7 +92,7 @@ struct Dependency {
     std::string id;                  // "cairo", "cmake", "libcdr"
     std::string title;               // what it is, one line
     DependencyGroup group = DependencyGroup::Core;
-    CheckKind checkKind = CheckKind::None;
+    CheckKind checkKind = CheckKind::NoCheck;
     std::string checkName;           // the tool or the pkg-config module
     std::string minimumVersion;      // "3.16" for CMake; empty when any version does
     std::string apt, dnf, pacman, zypper, brew, msys2;

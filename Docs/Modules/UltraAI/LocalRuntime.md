@@ -185,9 +185,11 @@ against that hash only. `requires` drives the fit; without it, 1.2 x the
 files' size stands in. `tags` holding `recommended` puts a model first in
 `Recommend()` for its capability.
 
-The built-in catalogue (2026-10-20): Qwen3 4B, 1.7B and 8B for chat,
+The built-in catalogue (2026-10-21): Qwen3 4B, 1.7B and 8B for chat,
 Gemma 3 4B with vision, Qwen3 Embedding 0.6B and Nomic Embed Text v1.5 for
-embeddings.
+embeddings. Its file names and sizes were checked against the Hugging Face
+repositories on that date; the hashes are still read from the tree API at
+install time.
 
 ---
 
@@ -287,9 +289,14 @@ LocalRuntime::Instance().SetSettings(s);
   upstream archives are built for 13.3 and later, and a downloaded
   executable runs as it is (UltraNet sets no quarantine attribute).
 - The catalogue's hashes are taken from Hugging Face at install time until
-  they are pinned; sizes are approximate until then.
+  they are pinned; the file names and sizes were checked against the
+  repositories on 2026-10-21.
 - The gallery index is not yet signed; it is fetched over TLS from a URL
   the settings control.
-- No framework dialog and no dashboard page yet (phase 2 of the plan): an
-  application reads `"needs-install"` and asks with its own UI, or sets
-  `allow_download` after asking once.
+- The *Get a local model* dialog is the module's (`UltraAI/ui/`,
+  `UltraAILocalModelDialog.h`, library `UltraAI_UI`): an application links
+  `UltraAI_UI` beside `UltraAI_Core`, tests an error with
+  `UltraAILocalModelDialog::NeedsInstall(error)` and calls `Show(window,
+  serviceName, capability, preferredModelId, onReady)`; the dashboard's Chat
+  and Texter's Translate Selection do. The *Local models* settings page is
+  the dashboard's (`Apps/UltraAIApp/UltraAILocalModelsPage`).

@@ -65,7 +65,7 @@ bool StartsWith(const char* s, const char* prefix) {
 
 // Every probe target is a loopback peer this tool starts itself. libcurl falls
 // back to the *_proxy environment variables whenever no proxy is configured
-// through UltraNetConfig (setting UltraNetProxyType::None means "not
+// through UltraNetConfig (setting UltraNetProxyType::NoProxy means "not
 // configured", not "bypass"), so on a machine whose no_proxy list omits
 // loopback, every HTTP probe would be routed at a proxy that cannot reach it.
 // Make sure loopback is exempt, without disturbing the proxy itself — the

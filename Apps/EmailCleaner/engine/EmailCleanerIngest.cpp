@@ -1,6 +1,7 @@
 // Apps/EmailCleaner/engine/EmailCleanerIngest.cpp
 // Parsing (over UltraNet's MIME reader), classification and the walk over
 // UltraMail's cached message bodies.
+// Version: 0.2.0 - outgoing mail: recipients recorded, not analysed
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerIngest.h"
@@ -84,6 +85,28 @@ bool AddressedTo(const std::vector<std::string>& recipients,
     return matches(recipients) || matches(carbonCopies);
 }
 
+// Every address in the To and Cc lists, lowercased, each once.
+std::vector<std::string> RecipientAddresses(const std::vector<std::string>& recipients,
+                                            const std::vector<std::string>& carbonCopies) {
+    std::vector<std::string> out;
+    for (const std::vector<std::string>* list : { &recipients, &carbonCopies }) {
+        for (const std::string& entry : *list) {
+            std::string name, address;
+            ParseAddress(entry, name, address);
+            if (address.empty()) continue;
+            if (std::find(out.begin(), out.end(), address) == out.end())
+                out.push_back(address);
+        }
+    }
+    return out;
+}
+
+// Whether every message in `folder` is the owner's sent mail.
+bool IsSentFolder(const std::string& folder, const IngestOptions& options) {
+    return options.sentFolders.count(folder) > 0 ||
+           (options.sentByName && LooksLikeSentDirectory(folder));
+}
+
 } // namespace
 
 void IngestStats::Add(const IngestStats& other) {
@@ -96,6 +119,7 @@ void IngestStats::Add(const IngestStats& other) {
     attachments += other.attachments;
     movedAway   += other.movedAway;
     foldersLeftOut += other.foldersLeftOut;
+    sent        += other.sent;
 }
 
 bool ReadFileBytes(const std::string& path, std::string& out) {
@@ -112,6 +136,28 @@ bool LooksLikeTrashDirectory(const std::string& directoryName) {
     std::string path = directoryName;
     std::replace(path.begin(), path.end(), '_', '/');
     return MailBackend::LooksLikeTrash(path);
+}
+
+bool LooksLikeSentDirectory(const std::string& directoryName) {
+    // Names servers actually use, in the languages this is most likely to
+    // meet; the SPECIAL-USE role (IngestOptions::sentFolders) is preferred.
+    static const char* kNames[] = {
+        "sent", "sent items", "sent mail", "sent messages",
+        "gesendet", "gesendete objekte", "gesendete elemente",
+        "envoy\xc3\xa9s", "\xc3\xa9l\xc3\xa9ments envoy\xc3\xa9s",
+        "enviados", "elementos enviados", "posta inviata", "inviata",
+        "verzonden", "verzonden items", "skickat", "skickade objekt"
+    };
+    // The cache writes "/" in an IMAP path as "_"; a server may also use ".".
+    std::string path = Lower(directoryName);
+    std::replace(path.begin(), path.end(), '_', '/');
+    std::replace(path.begin(), path.end(), '.', '/');
+    const size_t slash = path.rfind('/');
+    const std::string leaf = slash == std::string::npos ? path : path.substr(slash + 1);
+    for (const char* n : kNames) {
+        if (leaf == n) return true;
+    }
+    return false;
 }
 
 int64_t UidFromFileName(const std::string& fileName) {
@@ -148,6 +194,9 @@ AnalyzedMessage Ingestor::Analyze(const std::string& rawMessage,
     message.subject   = parsed.subject;
     ParseAddress(parsed.from, message.senderName, message.senderAddr);
     message.senderDomain = DomainOf(message.senderAddr);
+    message.recipients   = RecipientAddresses(parsed.to, parsed.cc);
+    message.outgoing     = !ownerAddress.empty() &&
+                           message.senderAddr == Lower(ownerAddress);
 
     if (!ParseRfc5322Date(parsed.date, message.date)) {
         // No usable Date: header. Leave it at 0 — the timetable and timeline
@@ -229,14 +278,19 @@ bool Ingestor::IngestRaw(const std::string& rawMessage, const std::string& accou
                          const IngestOptions& options, AnalyzedMessage* out) {
     // An incremental scan leaves an already-analysed message alone; a re-scan
     // after a rule change (skipExisting = false) writes over it.
-    if (options.skipExisting && uid != 0 && store_.HasMessage(accountId, folder, uid))
+    const bool sentFolder = IsSentFolder(folder, options);
+    if (options.skipExisting && uid != 0 &&
+        (store_.HasSentMessage(accountId, folder, uid) ||
+         (!sentFolder && store_.HasMessage(accountId, folder, uid))))
         return true;
 
     AnalyzedMessage message =
         Analyze(rawMessage, accountId, folder, uid, options.ownerAddress);
+    if (sentFolder) message.outgoing = true;
     if (!options.storeHits) message.hits.clear();
 
-    const UltraDbResult r = store_.UpsertMessage(message);
+    const UltraDbResult r = message.outgoing ? store_.RecordSentMessages({ message })
+                                             : store_.UpsertMessage(message);
     if (out) *out = message;
     return static_cast<bool>(r);
 }
@@ -278,6 +332,9 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
     // per-message commit a naive loop would pay.
     std::vector<AnalyzedMessage> batch;
     batch.reserve(files.size());
+    // The owner's own mail: only its recipients are kept.
+    std::vector<AnalyzedMessage> sentBatch;
+    const bool sentFolder = IsSentFolder(folder, options);
 
     for (const auto& [uid, path] : files) {
         if (options.maxMessages > 0 && stats.analysed >= options.maxMessages) break;
@@ -291,8 +348,12 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
         const bool movedAway = uid != 0 &&
             store_.FindMovedAway(accountId, folder, uid, movedId);
 
+        // In a Sent folder only a sent_mail row counts as seen: a messages row
+        // there is the owner's mail analysed before sent mail was told apart,
+        // which is read again and moved over.
         if (!movedAway && options.skipExisting && uid != 0 &&
-            store_.HasMessage(accountId, folder, uid)) {
+            (store_.HasSentMessage(accountId, folder, uid) ||
+             (!sentFolder && store_.HasMessage(accountId, folder, uid)))) {
             ++stats.skipped;
             continue;
         }
@@ -314,6 +375,13 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
             // message, which is analysed like any other.
             store_.ForgetMovedAway(accountId, folder, uid);
         }
+        if (sentFolder) message.outgoing = true;
+        if (message.outgoing) {
+            ++stats.sent;
+            sentBatch.push_back(std::move(message));
+            if (onProgress) onProgress(stats.analysed + stats.sent, folder);
+            continue;
+        }
         if (!options.storeHits) message.hits.clear();
         ++stats.analysed;
         if (IsUnwanted(message.category)) ++stats.unwanted;
@@ -332,6 +400,10 @@ IngestStats Ingestor::IngestFolderDirectory(const std::string& directory,
             stats.unwanted = 0;
             stats.attachments = 0;
         }
+    }
+    if (!sentBatch.empty() && !store_.RecordSentMessages(sentBatch)) {
+        stats.failed += stats.sent;
+        stats.sent = 0;
     }
 
     IngestState state;

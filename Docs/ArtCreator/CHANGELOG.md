@@ -1,3 +1,39 @@
+#### 2026-10-23 *0.8.4*
+- **The Selector's sections in boxes of their own**: Handles, Arrange,
+  Align and Distribute are each a rounded, lightly filled frame with a
+  small, regular-weight grey caption in its top line at the right, in place
+  of the bold captions over bare rows.
+- **Handles: Scale and Rotate with icons**, white on the lit segment; the
+  switch reads *Rotate* (its edge handles still skew).
+- The icon bars (and the Layers card's) have 2 px less above and below the
+  buttons.
+
+#### 2026-10-22 *0.8.3*
+- **The Selector's panel, redrawn.** *Handles* is a Scale | Rotate / skew
+  switch that shows which handles are up and follows a second click on the
+  selection. *Arrange* (front, forward, backward, back), *Align* (left,
+  centre, right | top, middle, bottom | centre on page) and the new
+  *Distribute* (centres evenly | equal gaps) are rows of flat icon buttons
+  with tooltips, the menu's icons, instead of two rows of text buttons
+  each; each is greyed until the selection has enough objects (one, two,
+  three). The panel's Arrange and Align now keep the selection afterwards,
+  as the menu's do.
+- **Quieter section captions and even button rows in every tool's
+  options**: a caption is the card caption's grey with a little space above
+  it, and the text buttons of a row (Shape Editor's node types, the effect
+  tools' Remove / Apply ...) are equally wide and rounded.
+- The Layers card's buttons are the same icon bar.
+- **New Drawing, Document Setup and Text look like the right panel**: their
+  fields sit on a white card over the light section page, in one column of
+  equal width, with the buttons at the foot. New Drawing / Document Setup
+  puts width x height on one line, makes the unit (mm cm in pt px) and the
+  orientation segmented switches, and opens on the preset the page matches
+  (an A4 page used to show *Custom*). The Text dialog puts Bold and Italic
+  side by side and previews the text in the chosen font, weight and slant.
+- **The Text dialog opens ready to type**: its text field has the keyboard
+  (and the previous text, if any, selected), where it used to need a click
+  first.
+
 #### 2026-10-19 *0.8.2*
 - **Colour palettes under the picker**, as UltraPaint's: the row of swatches
   in the Colour card ends in a small **+** that opens a gallery of colour

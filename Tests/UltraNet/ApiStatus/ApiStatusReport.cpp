@@ -110,12 +110,12 @@ struct Totals {
 
     int Count() const { return working + implemented + notImplemented + broken; }
 
-    void Add(Status s) {
+    void Add(ApiState s) {
         switch (s) {
-            case Status::Working:        ++working;        break;
-            case Status::Implemented:    ++implemented;    break;
-            case Status::NotImplemented: ++notImplemented; break;
-            case Status::Broken:         ++broken;         break;
+            case ApiState::Working:        ++working;        break;
+            case ApiState::Implemented:    ++implemented;    break;
+            case ApiState::NotImplemented: ++notImplemented; break;
+            case ApiState::Broken:         ++broken;         break;
         }
     }
 };
@@ -219,30 +219,30 @@ void RenderJson(std::ostream& os, const std::vector<Row>& rows,
 
 // ---------------------------------------------------------------------------
 
-const char* StatusLabel(Status s) {
+const char* StatusLabel(ApiState s) {
     switch (s) {
-        case Status::Working:        return "WORKING";
-        case Status::Implemented:    return "IMPLEMENTED";
-        case Status::NotImplemented: return "NOT IMPLEMENTED";
-        case Status::Broken:         return "BROKEN";
+        case ApiState::Working:        return "WORKING";
+        case ApiState::Implemented:    return "IMPLEMENTED";
+        case ApiState::NotImplemented: return "NOT IMPLEMENTED";
+        case ApiState::Broken:         return "BROKEN";
     }
     return "?";
 }
 
-const char* StatusKey(Status s) {
+const char* StatusKey(ApiState s) {
     switch (s) {
-        case Status::Working:        return "working";
-        case Status::Implemented:    return "implemented";
-        case Status::NotImplemented: return "not_implemented";
-        case Status::Broken:         return "broken";
+        case ApiState::Working:        return "working";
+        case ApiState::Implemented:    return "implemented";
+        case ApiState::NotImplemented: return "not_implemented";
+        case ApiState::Broken:         return "broken";
     }
     return "unknown";
 }
 
-Outcome Working(std::string detail)        { return {Status::Working,        std::move(detail)}; }
-Outcome Implemented(std::string detail)    { return {Status::Implemented,    std::move(detail)}; }
-Outcome NotImplemented(std::string detail) { return {Status::NotImplemented, std::move(detail)}; }
-Outcome Broken(std::string detail)         { return {Status::Broken,         std::move(detail)}; }
+Outcome Working(std::string detail)        { return {ApiState::Working,        std::move(detail)}; }
+Outcome Implemented(std::string detail)    { return {ApiState::Implemented,    std::move(detail)}; }
+Outcome NotImplemented(std::string detail) { return {ApiState::NotImplemented, std::move(detail)}; }
+Outcome Broken(std::string detail)         { return {ApiState::Broken,         std::move(detail)}; }
 
 std::vector<Probe>& Registry() {
     static std::vector<Probe> v;

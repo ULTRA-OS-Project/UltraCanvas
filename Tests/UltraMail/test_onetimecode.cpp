@@ -1,6 +1,8 @@
 // Tests/UltraMail/test_onetimecode.cpp
 // FindOneTimeCodes: the sign-in and confirmation codes the reading pane puts a
 // copy button on - in any language - and the numbers it must leave alone.
+// Version: 0.2.0 - X's verification mail (the code alone under its sentence,
+//                  again in a link and in the subject)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -77,6 +79,35 @@ TEST(one_time_code_papierkram_plain_text_lines) {
 }
 
 // Near the word, in many languages and scripts.
+// X's "502488 is your X verification code": the code alone in a block under
+// "You can use this code as a backup", again inside the Confirm link and in
+// the subject. The blocks are what the reading pane reads from the built page.
+TEST(one_time_code_x_verification_mail) {
+    const std::vector<std::string> blocks = {
+        "", "", "Confirm your email address", "", "", "Confirm", "",
+        "You can use this code as a backup, just in case:", "502488", "",
+        "Verification codes expire after two hours.", "", "Thanks,\nX", "", "",
+        "Help  |  Email security tips",
+        "X Corp. \xEF\xBB\xBF" "865 \xEF\xBB\xBF" "FM \xEF\xBB\xBF" "1209, \xEF\xBB\xBF"
+        "Building \xEF\xBB\xBF" "2, \xEF\xBB\xBF" "Bastrop, TX 78602",
+    };
+    auto codes = FindOneTimeCodes("502488 is your X verification code", blocks);
+    REQUIRE(!codes.empty());
+    REQUIRE_EQ(codes[0].code, std::string("502488"));
+    REQUIRE_EQ(codes[0].block, 8);
+    REQUIRE(codes[0].standalone);
+    for (const auto& c : codes) REQUIRE(c.code != "78602" && c.code != "1209");
+
+    // Its plain-text part, a line at a time.
+    codes = FindOneTimeCodes("502488 is your X verification code",
+        {"X", "", "Confirm your email address", "", "Confirm",
+         "https://x.com/i/jf/onefactor/verify?session_token=&amp;verification_code=502488", "",
+         "You can use this code as a backup, just in case:", "502488", "", "Thanks,", "X"});
+    REQUIRE(!codes.empty());
+    REQUIRE_EQ(codes[0].block, 8);
+    REQUIRE(codes[0].standalone);
+}
+
 TEST(one_time_code_found_next_to_the_word_in_any_language) {
     REQUIRE_EQ(OnlyCode("Your verification code is 482913."), std::string("482913"));
     REQUIRE_EQ(OnlyCode("G-123456 is your Google verification code."), std::string("G-123456"));

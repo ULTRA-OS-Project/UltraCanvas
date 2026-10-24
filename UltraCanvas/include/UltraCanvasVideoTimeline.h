@@ -251,7 +251,7 @@ private:
         TimelineTrackToggle toggle = TimelineTrackToggle::Visible;
         double seconds = 0.0;
     };
-    enum class Drag { None, Playhead, MoveClip, TrimLeft, TrimRight, FadeIn, FadeOut, Transition, RubberBand, Scrollbar };
+    enum class Drag { NoDrag, Playhead, MoveClip, TrimLeft, TrimRight, FadeIn, FadeOut, Transition, RubberBand, Scrollbar };
 
     Rect2Df BodyRect() const;          // the lanes and the ruler, right of the header column
     Rect2Df LanesRect() const;         // the lanes only
@@ -339,7 +339,7 @@ private:
 
     Point2Df lastPointer;
     Hit hover;
-    Drag drag = Drag::None;
+    Drag drag = Drag::NoDrag;
     Point2Df dragStart;
     bool dragMoved = false;
     std::string dragClipId;
