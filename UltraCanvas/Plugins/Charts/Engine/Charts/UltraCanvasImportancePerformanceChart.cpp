@@ -534,6 +534,7 @@ void UltraCanvasImportancePerformanceChart::RenderPlannedLabels(IRenderContext* 
 void UltraCanvasImportancePerformanceChart::OnLegendEntryToggled(size_t entryIndex, bool enabled) {
     UltraCanvasEngineScatterChart::OnLegendEntryToggled(entryIndex, enabled);
     if (entryIndex < groupHidden.size()) groupHidden[entryIndex] = !enabled;
+    ++modelGeneration;                 // the titles keep clear of the visible marks only
 }
 
 } // namespace UltraCanvas
