@@ -10,9 +10,11 @@
 //                       indexes to be added and dropped;
 //   StatementModel    - what each statement of a console script did;
 //   LogModel          - the SQL log: every statement the app ran, newest last;
-//   SearchHitModel    - where a search across the tables found its text.
+//   SearchHitModel    - where a search across the tables found its text;
+//   RoutineModel      - a schema's triggers, functions and procedures.
 // A cell is CellText (engine/DbAdminFormat.h): NULL is not an empty string, a
 // blob says how big it is. Its tooltip is the longer text.
+// Version: 0.4.0 - RoutineModel
 // Version: 0.3.0 - staged new rows shown after the rows read
 // Version: 0.2.0 - LogModel, SearchHitModel
 // Version: 0.1.0
@@ -20,6 +22,7 @@
 #pragma once
 
 #include "DbAdminEditBuffer.h"
+#include "DbAdminRoutines.h"
 #include "DbAdminSearch.h"
 #include "DbAdminSqlLog.h"
 #include "DbAdminStructureEdit.h"
@@ -199,6 +202,26 @@ public:
 
 private:
     std::vector<SearchHit> hits_;
+};
+
+class RoutineModel : public UltraCanvas::IListModel {
+public:
+    enum Field { KindField = 0, NameField, OnField, ReturnsField, LanguageField, ColumnCount };
+
+    int GetRowCount() const override { return static_cast<int>(routines_.size()); }
+    int GetColumnCount() const override { return ColumnCount; }
+    UltraCanvas::ListDataValue GetData(const UltraCanvas::ListIndex& index,
+                                       UltraCanvas::ListDataRole role) const override;
+    bool SetData(const UltraCanvas::ListIndex&, UltraCanvas::ListDataRole,
+                 const UltraCanvas::ListDataValue&) override { return false; }
+    UltraCanvas::ListColumnDef GetColumnDef(int column) const override;
+
+    void Replace(std::vector<RoutineInfo> routines);
+    void Clear() { Replace({}); }
+    const RoutineInfo* At(int row) const;
+
+private:
+    std::vector<RoutineInfo> routines_;
 };
 
 // What one statement did, in a few words: "12 rows", "3 rows affected",

@@ -139,11 +139,18 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     tabs_->AddTab("Structure", BuildStructurePage());
     tabs_->AddTab("SQL", BuildSqlPage());
     tabs_->AddTab("Search", BuildSearchPage());
+    tabs_->AddTab("Relations", BuildRelationsPage());
+    tabs_->AddTab("Routines", BuildRoutinesPage());
+    tabs_->AddTab("Server", BuildServerPage());
     tabs_->SetTabIcon(kBrowseTab, IconPath("tab-browse"));
     tabs_->SetTabIcon(kStructureTab, IconPath("tab-structure"));
     tabs_->SetTabIcon(kSqlTab, IconPath("tab-sql"));
     tabs_->SetTabIcon(kSearchTab, IconPath("tab-search"));
+    tabs_->SetTabIcon(kRelationsTab, IconPath("tab-relations"));
+    tabs_->SetTabIcon(kRoutinesTab, IconPath("tab-routines"));
+    tabs_->SetTabIcon(kServerTab, IconPath("tab-server"));
     tabs_->SetActiveTab(kBrowseTab);
+    tabs_->onTabChange = [this](int, int index) { OnPageShown(index); };
     FillWith(cardPane, tabs_);
     FillWith(tabPane, rightSplit_);
     FillWith(page_, split_);
@@ -186,6 +193,9 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     RebuildObjectStrip();
     UpdateSqlBar();
     UpdateSearchBar();
+    UpdateRelationsBar();
+    UpdateRoutinesBar();
+    UpdateServerBar();
     if (auto* app = UltraCanvasApplication::GetInstance())
         logTimer_ = app->StartTimer(kLogRefreshMs, true, [this](TimerId) { RefreshLog(); });
     if (!storeNote_.empty()) SetStatus(storeNote_, true);
@@ -898,6 +908,7 @@ void DbAdminWindow::OnNodeSelected(TreeNode* node) {
     selectedNode_ = node->data.nodeId;
     UpdateSqlBar();
     UpdateSearchBar();
+    OnPageShown(tabs_->GetActiveTab());
     if (ref->kind != NodeRef::Kind::Object) return;
     OpenFromTree(*ref);
 }
