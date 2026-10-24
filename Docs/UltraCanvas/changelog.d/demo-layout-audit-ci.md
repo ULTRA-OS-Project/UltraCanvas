@@ -16,3 +16,7 @@
   face. On every later frame it drew them in its own, wider face, so a name
   ran past its box: "Delivery reliabilit|y" on the Importance-Performance
   chart. The legend now restores the context's font before it returns.
+  The legend's own default face is now the default font (empty family), the
+  one the chart's text is in, instead of "Arial" and whatever the system
+  substituted for it. The polar and circular-progress charts still pass their
+  own `legendFontFamily`, which is Arial as their other text is.

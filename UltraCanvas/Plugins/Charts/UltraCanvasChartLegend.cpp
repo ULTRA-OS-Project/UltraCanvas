@@ -1,6 +1,6 @@
 // Plugins/Charts/UltraCanvasChartLegend.cpp
 // Shared legend component implementation.
-// Version: 1.2.1 - Measure puts the host's face and size back
+// Version: 1.2.1 - Measure puts the host's face and size back; the default face, not Arial
 // Version: 1.2.0 - area-scaled size keys with explicit sample values
 // Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
