@@ -515,6 +515,27 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       # ===== Linux: system package manager =====
+      # The .deb files the last run on main downloaded, restored into apt's
+      # cache before anything is installed, so apt fetches only what changed
+      # since: on 2026-10-23 the mirror served this job so slowly that the
+      # step below ran out of its 45 minutes twice in a row, downloading the
+      # same packages as the run before. Saved by main alone, as ccache is (a
+      # pull request's cache would serve that pull request only and crowd the
+      # repository's 10 GB); pruned to the versions installed, so it stays
+      # near the size of one install. One per runner image and architecture.
+      - name: Restore the apt package cache (Linux)
+        if: runner.os == 'Linux'
+        id: apt-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-${{ matrix.os }}-
+          restore-keys: apt-debs-${{ matrix.os }}-
+
+      - name: Put the cached packages in apt's cache (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         # A mirror that crawls still finishes (15-27 min on 2026-10-07, against
@@ -760,6 +781,19 @@ jobs:
           # the single place the CI compiler is decided.
           echo "CC=clang-$V"    >> "$GITHUB_ENV"
           echo "CXX=clang++-$V" >> "$GITHUB_ENV"
+
+      # After the last apt install of the job (Clang's, just above).
+      - name: Keep the downloaded packages (Linux, main)
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main'
+        id: apt-keep
+        run: echo "hash=$(scripts/ci-apt.sh cache-out "${{ runner.temp }}/apt-debs")" >> "$GITHUB_OUTPUT"
+
+      - name: Save the apt package cache (Linux, main)
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main' && steps.apt-keep.outputs.hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-${{ matrix.os }}-${{ steps.apt-keep.outputs.hash }}
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
       # Windows installs MSYS2's native rust package above (gnu/gnullvm ABI,
