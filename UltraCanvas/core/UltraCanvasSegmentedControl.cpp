@@ -1,5 +1,7 @@
 // core/UltraCanvasSegmentedControl.cpp
 // Implementation of segmented control component
+// Version: 1.6.1 - a caption stays on one line, shortened with an ellipsis when the segment
+//                 is too narrow, instead of wrapping out of the segment
 // Version: 1.6.0 - a caption is centred on its capitals (the layout gets the segment's
 //                 height), not on its line box, which sat high or low with the font
 // Version: 1.5.0 - style.iconAsMask tints the icon with the text colour; an icon and a
@@ -112,6 +114,9 @@ namespace UltraCanvas {
         // Add text width
         if (segment.HasText()) {
             ITextLayout* textLayout = GetOrCreateTextLayout(ctx, segment);
+            // The caption's own width, not the segment's it was last drawn in
+            // (which would shorten it to what fitted then).
+            if (textLayout->GetExplicitWidth() >= 0) textLayout->SetExplicitWidth(-1);
             Size2Di textSize = textLayout->GetLayoutSize();
             width += textSize.width;
         }
@@ -420,6 +425,10 @@ namespace UltraCanvas {
                 segment.textLayout->SetFontStyle(fstyle);
                 segment.textLayout->SetAlignment(segment.alignment);
                 segment.textLayout->SetVerticalAlignment(VerticalAlignment::Middle);
+                // One line, shortened with an ellipsis when the segment is too
+                // narrow: a caption wrapped onto a second line ran out of the
+                // segment above and below.
+                segment.textLayout->SetWrap(TextWrap::WrapNone);
             }
             return segment.textLayout.get();
         } else {

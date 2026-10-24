@@ -1,5 +1,7 @@
 // include/UltraCanvasRenderContext.h
 // Cross-platform rendering interface with improved context management
+// Version: 2.11.0 - GetFontStyle: the font DrawText draws in now; TextTopCentredOnCaps(row) in it;
+//                   ITextLayout::GetCapHeight measures the font the text starts in, font attributes included
 // Version: 2.10.0 - CreateTextLayout counts the layouts it made (TextLayoutsCreated) and calls the
 //                   backend's MakeTextLayout; FontStyle compares equal
 // Version: 2.9.0 - CompositeToSurfaceWithOpacity: an alpha-blended composite at an
@@ -10,7 +12,7 @@
 // Version: 2.7.0 - FlushToSurfaceWithOpacity: a flush mixed with the destination
 //                  (the window fades popups in with it)
 // Version: 2.6.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -528,6 +530,9 @@ namespace UltraCanvas {
         }
 
         virtual const TextStyle& GetTextStyle() const = 0;
+        // The font DrawText draws in now: what SetFontFace, SetFontSize and
+        // SetFontStyle last set (restored by PopState).
+        virtual const FontStyle& GetFontStyle() const = 0;
         virtual void SetTextStyle(const TextStyle& style) = 0;
         virtual void SetTextAlignment(TextAlignment align) = 0;
         virtual void SetTextVerticalAlignment(VerticalAlignment align) = 0;
@@ -697,6 +702,8 @@ namespace UltraCanvas {
         // Top y at which to DrawText a single line of `font` so that its
         // capitals are centred on `row`. Defined after ITextLayout below.
         int TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+        // The same in the context's current font (GetFontStyle).
+        int TextTopCentredOnCaps(const Rect2Dd& row) { return TextTopCentredOnCaps(row, GetFontStyle()); }
 
         // Height of a single line of `font` - its line box, ascent plus
         // descent, as DrawText draws it - in fractional pixels. Use it for
@@ -1106,9 +1113,11 @@ namespace UltraCanvas {
 //        void GetSize(int& widthPangoUnits, int& heightPangoUnits) const = 0;
         virtual double GetBaseline() const = 0;
 //        int GetBaselinePangoUnits() const = 0;
-        // Height of a capital letter in the layout's font, baseline to cap
-        // top, in pixels. Measured from the font once and cached, so it is
-        // the same for every layout in that font whatever text it holds.
+        // Height of a capital letter in the font the layout's text starts in
+        // (its own font, with any font attributes over the first character),
+        // baseline to cap top, in pixels. Measured from the font once and
+        // cached, so it is the same for every layout in that font whatever
+        // text it holds.
         virtual double GetCapHeight() = 0;
         virtual int GetLineCount() const = 0;
 

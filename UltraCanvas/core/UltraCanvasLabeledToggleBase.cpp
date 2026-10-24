@@ -1,9 +1,10 @@
 // UltraCanvasLabeledToggleBase.cpp
 // Shared layout/event/label/focus plumbing for checkbox, radio, and switch.
+// Version: 1.3.1 - the label is centred on its capitals, level with the box or dot
 // Version: 1.3.0 - a press focuses the toggle; Space activates it and Enter is left
 //                 to the window (a dialog's default button)
 // Version: 1.2.0 - accessible name, toggle state and action
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasLabeledToggleBase.h"
@@ -119,11 +120,16 @@ namespace UltraCanvas {
                 ? (IsHovered() ? base.textHoverColor : base.textColor)
                 : base.textDisabledColor;
 
-        ctx->SetFontFace(base.fontFamily, base.fontWeight, FontSlant::Normal);
-        ctx->SetFontSize(base.fontSize);
+        FontStyle font;
+        font.fontFamily = base.fontFamily;
+        font.fontSize = base.fontSize;
+        font.fontWeight = base.fontWeight;
+        ctx->SetFontStyle(font);
         ctx->SetTextPaint(color);
 
-        float textY = textRect.y + (textRect.height - ctx->GetTextLineHeight(text)) / 2.0f;
+        // Centred on its capitals - level with the box or dot centred beside
+        // it - not on its line box, which sits high or low with the font.
+        float textY = static_cast<float>(ctx->TextTopCentredOnCaps(textRect, font));
         ctx->DrawText(text, Point2Dd(textRect.x, textY));
     }
 

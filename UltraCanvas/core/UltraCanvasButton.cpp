@@ -1,5 +1,6 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.12.4 - a split button's two captions are centred on their capitals, not their line box
 // Version: 2.12.3 - SetText fits the width to the new text at once, so a parent
 //                  breaking a row into lines reads the new width
 // Version: 2.12.2 - that layout is an UltraCanvasTextLayoutCache
@@ -13,7 +14,7 @@
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
 //                  centred half a pixel off was resampled and blurred
 // Version: 2.7.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -1050,18 +1051,22 @@ namespace UltraCanvas {
         // Draw primary text
         if (!text.empty()) {
             ctx->SetTextPaint(primaryText);
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize);
+            FontStyle primaryFont;
+            primaryFont.fontFamily = style.fontFamily;
+            primaryFont.fontSize = style.fontSize;
+            primaryFont.fontWeight = style.fontWeight;
+            ctx->SetFontStyle(primaryFont);
 
             Size2Di textSize = ctx->GetTextLineDimensions(text);
 
+            // Both captions are centred on their capitals, as the plain
+            // button's is (DrawText), not on their line box.
             Point2Dd primaryTextPos;
+            primaryTextPos.y = ctx->TextTopCentredOnCaps(textRect, primaryFont);
             if (HasIcon() && (iconPosition == ButtonIconPosition::Left || iconPosition == ButtonIconPosition::Right)) {
                 primaryTextPos.x = textRect.x;
-                primaryTextPos.y = textRect.y + (textRect.height - textSize.height) / 2;
             } else {
                 primaryTextPos.x = textRect.x + (textRect.width - textSize.width) / 2;
-                primaryTextPos.y = textRect.y + (textRect.height - textSize.height) / 2;
             }
 
             if (GetPrimaryState() == ElementState::Pressed) {
@@ -1078,22 +1083,24 @@ namespace UltraCanvas {
         // Draw secondary text
         if (!split.secondaryText.empty()) {
             ctx->SetTextPaint(secondaryText);
-            ctx->SetFontFace(style.fontFamily, style.fontWeight, FontSlant::Normal);
-            ctx->SetFontSize(style.fontSize * 0.9f);  // Slightly smaller font
+            FontStyle secondaryFont;
+            secondaryFont.fontFamily = style.fontFamily;
+            secondaryFont.fontSize = style.fontSize * 0.9f;  // Slightly smaller font
+            secondaryFont.fontWeight = style.fontWeight;
+            ctx->SetFontStyle(secondaryFont);
 
             Size2Di textSize = ctx->GetTextLineDimensions(split.secondaryText);
 
             Point2Dd secondaryTextPos;
+            secondaryTextPos.y = ctx->TextTopCentredOnCaps(secondaryTextRect, secondaryFont);
 
             // Position text based on whether there's an icon
             if (HasSecondaryIcon() && split.horizontal) {
                 // Text position already calculated in layout
                 secondaryTextPos.x = secondaryTextRect.x;
-                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textSize.height) / 2;
             } else {
                 // Center text if no icon
                 secondaryTextPos.x = secondaryTextRect.x + (secondaryTextRect.width - textSize.width) / 2;
-                secondaryTextPos.y = secondaryTextRect.y + (secondaryTextRect.height - textSize.height) / 2;
             }
 
             if (GetPrimaryState() == ElementState::Pressed) {

@@ -1084,6 +1084,10 @@ namespace UltraCanvas {
         return currentState.textStyle;
     }
 
+    const FontStyle &RenderContextCairo::GetFontStyle() const {
+        return currentState.fontStyle;
+    }
+
     double RenderContextCairo::GetAlpha() const {
         return currentState.globalAlpha;
     }

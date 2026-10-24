@@ -1,5 +1,6 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.5.0 - a cell set to the Top vertical alignment draws at the top of its row
 // Version: 1.4.0 - every line of text (cells, headers, formula bar, tabs) is centred
 //                 on its capitals rather than its line box
 // Version: 1.3.0
@@ -563,10 +564,19 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
         // Calculate text position based on alignment
         int padding = 3;
         int textX = bounds.x + padding;
-        // A value of several lines is centred as a block.
-        int textY = text.find('\n') == std::string::npos
-            ? ctx->TextTopCentredOnCaps(Rect2Dd(bounds.x, bounds.y, bounds.width, bounds.height), cellFont)
-            : bounds.y + (bounds.height - ctx->GetTextLineHeight(text)) / 2;
+        // Vertical alignment: a cell set to Top starts at the top of its row.
+        // Bottom - every cell's default, as in the spreadsheet formats, so
+        // indistinguishable from one set to it - and Middle are centred, the
+        // look of the rest of the interface. A value of several lines is
+        // centred as a block.
+        int textY;
+        if (style.vAlign == VerticalAlignment::Top) {
+            textY = bounds.y + 2;
+        } else if (text.find('\n') == std::string::npos) {
+            textY = ctx->TextTopCentredOnCaps(Rect2Dd(bounds.x, bounds.y, bounds.width, bounds.height), cellFont);
+        } else {
+            textY = bounds.y + (bounds.height - ctx->GetTextLineHeight(text)) / 2;
+        }
 
         // Horizontal alignment
         if (style.hAlign == HorizontalAlignment::Center) {
