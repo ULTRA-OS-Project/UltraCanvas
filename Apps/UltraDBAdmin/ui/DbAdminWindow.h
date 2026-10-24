@@ -63,7 +63,8 @@
 // PostToUIThread, guarded by a token that dies with the window. A result for
 // something no longer shown - another table was picked meanwhile - is
 // recognised by its generation number and dropped.
-// Version: 0.5.0 - the Server tab's monitor charts; completion in the SQL editor; data compare
+// Version: 0.5.0 - the Server tab's monitor charts; completion in the SQL editor; data compare;
+//                  connections through a relay, and the browser build that has nothing else
 // Version: 0.4.0 - the Relations, Routines and Server tabs
 // Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log,
 //                 Run statement, Explain, snippets, auto-commit, the typed row form
@@ -183,6 +184,13 @@ private:
     const NodeRef* RefOf(const std::string& nodeId) const;
     const ConnectionSpec* SelectedConnection() const;
     void AddConnection();
+    // An UltraDBAdmin relay's connections (UltraDatabaseRelay.h): its
+    // address and the user's token asked for, then every connection it
+    // offers added to the tree - or updated, when already there. The browser
+    // build starts here.
+    void ConnectRelay();
+    void AddRelayConnections(const std::string& url, const std::string& token,
+                             const std::vector<UltraDbRelayConnection>& offered);
     void EditConnection();
     void RemoveConnection();
     void RefreshSelected();
@@ -429,6 +437,7 @@ private:
 
     ConnectionStore store_;
     std::string storeNote_;          // why the list is in memory only, if it is
+    std::string relayUrl_;           // the relay connected to last
     SnippetStore snippets_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;

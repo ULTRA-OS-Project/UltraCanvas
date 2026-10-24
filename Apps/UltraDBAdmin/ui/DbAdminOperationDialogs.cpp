@@ -15,6 +15,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSpacer.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 
@@ -544,6 +545,93 @@ void ShowCompareDialog(UltraCanvasWindowBase* parent, const CompareDialogSpec& s
         RunCompare(form);
         return true;
     };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
+}
+
+void ShowRelayDialog(UltraCanvasWindowBase* parent, const std::string& url, bool cancellable,
+                     std::function<void(const std::string&, const std::string&,
+                                        std::function<void(const std::string&)>)> onConnect) {
+    struct RelayForm {
+        UltraCanvasModalDialog* dialog = nullptr;
+        UltraCanvasTextInput* url = nullptr;
+        UltraCanvasTextInput* token = nullptr;
+        UltraCanvasLabel* error = nullptr;
+        UltraCanvasButton* connect = nullptr;
+        bool busy = false;
+        std::function<void(const std::string&, const std::string&, std::function<void(const std::string&)>)> onConnect;
+    };
+    auto form = std::make_shared<RelayForm>();
+    form->onConnect = std::move(onConnect);
+    auto dialog = MakeDialog("Connect to a relay", 560, 300);
+    if (!dialog) return;
+    form->dialog = dialog.get();
+    dialog->AddChild(Intro("dbrIntro",
+                           "An UltraDBAdmin relay runs your queries on the databases its administrator set up, "
+                           "with passwords that stay on the relay. Your token says who you are and what you may "
+                           "read or change.",
+                           56));
+    auto grid = CreateFormGrid("dbrForm", 8.0f, 10.0f);
+    grid->layoutItem.SetFlexShrink(0);
+    auto address = CreateTextInput("dbrUrl", 0, 0, 0, kLineHeight);
+    address->SetText(url);
+    address->SetPlaceholder("wss://db.example.com/relay");
+    form->url = address.get();
+    AddFormRow(grid, "dbrUrlRow", "Relay", address);
+    auto token = CreatePasswordInput("dbrToken", 0, 0, 0, kLineHeight);
+    token->SetPlaceholder("the token the relay's administrator gave you");
+    form->token = token.get();
+    AddFormRow(grid, "dbrTokenRow", "Token", token);
+    dialog->AddChild(grid);
+    auto error = ErrorLine("dbrError");
+    form->error = error.get();
+    dialog->AddChild(error);
+    dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
+
+    auto buttons = ButtonRow("dbrButtons");
+    buttons->AddStretchSpacer(1);
+    if (cancellable) {
+        auto cancel = MakeDialogButton("dbrCancel", "Cancel", 90);
+        cancel->SetOnClick([form]() { form->dialog->CloseDialog(DialogResult::Cancel); });
+        buttons->AddChild(cancel);
+    }
+    auto connect = MakeDialogButton("dbrConnect", "Connect", 110, ButtonRole::Primary);
+    form->connect = connect.get();
+    std::weak_ptr<RelayForm> weak = form;
+    auto run = [form, weak]() {
+        if (form->busy || !form->onConnect) return;
+        const std::string address = form->url->GetText(), secret = form->token->GetText();
+        if (address.rfind("ws://", 0) != 0 && address.rfind("wss://", 0) != 0) {
+            form->error->SetText("The relay's address begins wss:// (or ws:// on this computer).");
+            return;
+        }
+        if (secret.empty()) {
+            form->error->SetText("Type your token.");
+            return;
+        }
+        form->busy = true;
+        form->connect->SetDisabled(true);
+        form->error->SetTextColor(StatusColor());
+        form->error->SetText("Asking the relay…");
+        form->onConnect(address, secret, [weak](const std::string& failed) {
+            auto form = weak.lock();
+            if (!form) return;
+            form->busy = false;
+            form->connect->SetDisabled(false);
+            if (failed.empty()) {
+                form->dialog->CloseDialog(DialogResult::OK);
+                return;
+            }
+            form->error->SetTextColor(ErrorColor());
+            form->error->SetText(failed);
+        });
+    };
+    connect->SetOnClick(run);
+    token->onEnterPressed = [run](const std::string&) {
+        run();
+        return true;
+    };
+    buttons->AddChild(connect);
+    dialog->AddChild(buttons);
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }
 

@@ -17,6 +17,9 @@
 #include "DbAdminStructureDialog.h"
 #include "DbAdminTheme.h"
 #include "DbAdminWindowParts.h"
+#if defined(ULTRADBADMIN_WEB)
+#include "web/DbAdminRelayWeb.h"
+#endif
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
@@ -211,7 +214,15 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
 }
 
 void DbAdminWindow::Show() {
+#if defined(ULTRADBADMIN_WEB)
+    // The page is the screen: the window fills the browser's viewport.
+    if (window_) window_->Maximize();
+#endif
     if (window_) window_->Show();
+#if defined(ULTRADBADMIN_WEB)
+    // The browser has its databases through the relay alone: ask for it first.
+    if (store_.All().empty()) ConnectRelay();
+#endif
 }
 
 void DbAdminWindow::LayoutForSize(float width, float height) {
@@ -255,6 +266,18 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildToolbar() {
                                      ButtonRole::Danger);
     removeButton_->SetOnClick([this]() { RemoveConnection(); });
     bar->AddChild(removeButton_);
+
+    auto relay = MakeActionButton("dbaRelay", "Relay", "relay",
+                                  "The connections an UltraDBAdmin relay offers you - the databases behind it, "
+                                  "with passwords that stay there");
+    relay->SetOnClick([this]() { ConnectRelay(); });
+    bar->AddChild(relay);
+#if defined(ULTRADBADMIN_WEB)
+    // In the browser a database is reached through the relay alone: there is
+    // no file to open and no server to name.
+    add->SetVisible(false);
+    editButton_->SetVisible(false);
+#endif
 
     auto refresh = MakeActionButton("dbaRefresh", "Refresh", "refresh",
                                     "Read the selected connection's schemas and tables again");
@@ -972,9 +995,78 @@ void DbAdminWindow::AddConnection() {
                          });
 }
 
+void DbAdminWindow::ConnectRelay() {
+    std::string url = relayUrl_;
+#if defined(ULTRADBADMIN_WEB)
+    if (url.empty()) url = DefaultRelayUrl();
+#endif
+    if (url.empty())
+        for (const ConnectionSpec& spec : store_.All())
+            if (spec.IsRelay()) url = spec.host;
+#if defined(ULTRADBADMIN_WEB)
+    const bool cancellable = !store_.All().empty();
+#else
+    const bool cancellable = true;
+#endif
+    ShowRelayDialog(window_.get(), url, cancellable,
+                    [this](const std::string& url, const std::string& token,
+                           std::function<void(const std::string&)> done) {
+                        Background([this, url, token, done]() -> std::function<void()> {
+                            std::vector<UltraDbRelayConnection> offered;
+                            const UltraDbResult result = UltraDb_RelayConnections(url, token, offered);
+                            return [this, result, offered, url, token, done]() {
+                                if (!result) {
+                                    done(result.code == UltraDbResultCode::CredentialsUnavailable
+                                             ? std::string("The relay does not know this token.")
+                                             : "Not connected: " + OneLine(result.message));
+                                    return;
+                                }
+                                if (offered.empty()) {
+                                    done("The relay offers this token no connection.");
+                                    return;
+                                }
+                                relayUrl_ = url;
+                                AddRelayConnections(url, token, offered);
+                                done(std::string());
+                            };
+                        });
+                    });
+}
+
+void DbAdminWindow::AddRelayConnections(const std::string& url, const std::string& token,
+                                        const std::vector<UltraDbRelayConnection>& offered) {
+    size_t added = 0;
+    for (const UltraDbRelayConnection& connection : offered) {
+        // The same relay's same connection is brought up to date, not doubled.
+        ConnectionSpec spec;
+        for (const ConnectionSpec& existing : store_.All())
+            if (existing.IsRelay() && existing.host == url && existing.database == connection.name) spec = existing;
+        if (spec.id.empty()) spec.name = connection.name;
+        spec.driver = "relay";
+        spec.host = url;
+        spec.database = connection.name;
+        spec.relayEngine = connection.engine;
+        spec.readOnly = connection.readOnly;   // the relay enforces it; the app says so
+        std::string error;
+        const std::string id = store_.Put(spec, token, false, error);
+        const ConnectionSpec* stored = id.empty() ? nullptr : store_.Find(id);
+        if (!stored) {
+            SetStatus("Not added: " + error, true);
+            continue;
+        }
+        store_.Register(*stored);
+        ++added;
+    }
+    RebuildTree();
+    SetStatus(std::to_string(added) + (added == 1 ? " connection" : " connections") + " from the relay at " + url +
+              ". Expand one to see its tables.");
+}
+
 void DbAdminWindow::EditConnection() {
     const ConnectionSpec* spec = SelectedConnection();
     if (!spec) { SetStatus("Select a connection in the tree to edit it."); return; }
+    // A relay's connections are the relay's: signing in again brings them up to date.
+    if (spec->IsRelay()) { ConnectRelay(); return; }
     ShowConnectionDialog(window_.get(), spec,
                          [this](const ConnectionSpec& edited, const ConnectionStore::SecretChanges& secrets) {
                              return SaveConnection(edited, secrets);

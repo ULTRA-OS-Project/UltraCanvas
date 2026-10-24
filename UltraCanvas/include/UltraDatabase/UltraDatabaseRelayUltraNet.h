@@ -64,6 +64,22 @@ public:
         return it == sockets_.end() ? nullptr : it->second.lock();
     }
     const UltraNetWebSocketCallbacks& Previous() const { return previous_; }
+    // Why the last connect failed before it had a handle (a libcurl built
+    // without WebSockets says so here).
+    void SetConnectError(const std::string& error) {
+        std::lock_guard<std::mutex> lock(m_);
+        connectError_ = error;
+    }
+    std::string TakeConnectError() {
+        std::lock_guard<std::mutex> lock(m_);
+        std::string e;
+        e.swap(connectError_);
+        return e;
+    }
+    void EnsureInstalled() {
+        std::lock_guard<std::mutex> lock(m_);
+        Install();
+    }
 
 private:
     void Install();
@@ -72,6 +88,7 @@ private:
     bool installed_ = false;
     UltraNetWebSocketCallbacks previous_;
     std::map<UltraNetHandle, std::weak_ptr<Socket>> sockets_;
+    std::string connectError_;
 };
 
 // One WebSocket and the answers waited for on it.
@@ -142,6 +159,7 @@ inline void Hub::Install() {
         else if (Hub::Get().Previous().onClose) Hub::Get().Previous().onClose(h, code, reason);
     };
     mine.onError = [](UltraNetHandle h, const std::string& error) {
+        if (h == UltraNetInvalidHandle) Hub::Get().SetConnectError(error);
         if (auto s = Hub::Get().Find(h)) s->Gone(error);
         else if (Hub::Get().Previous().onError) Hub::Get().Previous().onError(h, error);
     };
@@ -176,9 +194,13 @@ inline std::unique_ptr<IUltraDbRelayTransport> Connect(const std::string& url, U
     // handle is the next one UltraNet gives, which is known only after.
     UltraNetWebSocketOptions options;
     options.connectTimeoutMs = 10000;
+    Hub::Get().EnsureInstalled();
+    Hub::Get().TakeConnectError();
     socket->handle = UltraNet_WebSocketConnect(url, options);
     if (socket->handle == UltraNetInvalidHandle) {
-        error = UltraDbResult::Error(UltraDbResultCode::ConnectionFailed, "the relay at " + url + " is not reached",
+        const std::string why = Hub::Get().TakeConnectError();
+        error = UltraDbResult::Error(UltraDbResultCode::ConnectionFailed,
+                                     "the relay at " + url + " is not reached" + (why.empty() ? std::string() : ": " + why),
                                      "relay");
         return nullptr;
     }

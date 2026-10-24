@@ -1,5 +1,5 @@
 // Apps/UltraDBAdmin/relay/RelayWebSocket.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "RelayWebSocket.h"
 
@@ -230,6 +230,20 @@ void RelayListener::Run() {
     listener_ = -1;
 }
 
+std::string ClientAddress(const std::string& peer, const std::string& forwardedFor) {
+    const bool loopback = peer == "::1" || peer.rfind("127.", 0) == 0 || peer.rfind("::ffff:127.", 0) == 0;
+    if (!loopback || forwardedFor.empty()) return peer;
+    const size_t comma = forwardedFor.rfind(',');
+    std::string last = comma == std::string::npos ? forwardedFor : forwardedFor.substr(comma + 1);
+    size_t a = 0, b = last.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(last[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(last[b - 1]))) --b;
+    last = last.substr(a, b - a);
+    if (last.empty() || last.size() > 64 || last.find_first_not_of("0123456789abcdefABCDEF.:[]") != std::string::npos)
+        return peer;
+    return last;
+}
+
 void RelayListener::Serve(int socket, std::string peer) {
     // ----- the HTTP request -----
     std::string request;
@@ -279,7 +293,7 @@ void RelayListener::Serve(int socket, std::string peer) {
     // ----- messages -----
     auto client = std::make_shared<Client>();
     client->socket = socket;
-    const uint64_t session = server_.OpenSession(peer);
+    const uint64_t session = server_.OpenSession(ClientAddress(peer, headers["x-forwarded-for"]));
     std::string message;
     bool messageOpen = false;
     while (!stopping_) {

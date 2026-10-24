@@ -1625,6 +1625,13 @@ extended or replaced without changing callers.
   server reached through an SSH bastion, named by the connection's `ssh_*`
   options; `UltraDb_UseUltraNetSshTunnels()` in `UltraDatabaseSshTunnel.h`
   opens the tunnels through UltraNet's SSH plug-in)
+- The `relay` driver, `UltraDb_SetRelayConnector`, `UltraDb_RelayConnections`,
+  `UltraDbRelayServer` (`UltraDatabaseRelay.h`: a connection whose every call
+  goes as JSON to a relay on the database's side, which offers connections by
+  name to users known by their tokens' hashes, read or write each, within its
+  limits, every statement audited; `UltraDb_UseUltraNetRelay()` in
+  `UltraDatabaseRelayUltraNet.h` is a transport over UltraNet's WebSocket -
+  how UltraDBAdmin's browser build reaches its databases)
 
 **Driver Categories (Tier 2 / Tier 3, located under `Plugins/UltraDatabase/`):**
 - Relational (SQL): PostgreSQL, MySQL / MariaDB, Microsoft SQL Server
@@ -1649,7 +1656,7 @@ dynamically) wherever libmariadb is; both verify TLS by default and read
 their password from UltraVault, and UltraFIBU's multi-user mode runs on
 PostgreSQL. Also built: schema introspection, server administration
 (`UltraDatabaseServer.h`: sessions, settings, sizes, stopping a session,
-the status a monitor samples),
+the status a monitor samples), SSH tunnels, the relay,
 streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
 plan: the other drivers (MSSQL, Redis, MongoDB, DuckDB), async queries,
 pooling and at-rest encryption. Details in

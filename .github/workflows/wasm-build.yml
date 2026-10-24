@@ -42,6 +42,9 @@ on:
       - 'UltraCanvas/libspecific/Cairo/**'
       - 'UltraCanvas/third_party/stb/**'
       - 'Apps/DemoApp/**'
+      - 'Apps/UltraDBAdmin/**'
+      - 'UltraCanvas/core/UltraDatabase/**'
+      - 'UltraCanvas/include/UltraDatabase/**'
   push:
     branches: [main]
     paths:
@@ -53,6 +56,9 @@ on:
       - 'UltraCanvas/libspecific/Cairo/**'
       - 'UltraCanvas/third_party/stb/**'
       - 'Apps/DemoApp/**'
+      - 'Apps/UltraDBAdmin/**'
+      - 'UltraCanvas/core/UltraDatabase/**'
+      - 'UltraCanvas/include/UltraDatabase/**'
   workflow_dispatch:
     inputs:
       # Pinned, not 'latest': latest moves to a new release, major ones
@@ -83,9 +89,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The baseline also builds UltraDBAdmin's browser build
+          # (Apps/UltraDBAdmin/README.md): a threaded page, as its relay
+          # connections wait on worker threads, so the single-threaded
+          # variant leaves it out.
           - variant: baseline
             threads: 1
-            configure: -DCMAKE_BUILD_TYPE=Release
+            configure: -DCMAKE_BUILD_TYPE=Release -DBUILD_ULTRADBADMIN=ON
             experimental: false
           - variant: min-size
             threads: 1
@@ -243,6 +253,8 @@ jobs:
       # UltraCanvas/OS/WASM/README.md). A worker file is copied when an
       # emsdk emits one again; without it the threads would not start.
       - name: Collect the pages
+        env:
+          CONFIGURE: ${{ matrix.configure }}
         run: |
           mkdir wasm-demo
           cp UltraCanvas/OS/WASM/demo/serve.py wasm-demo/
@@ -250,6 +262,13 @@ jobs:
             cp "build-wasm/$page".{html,js,wasm,data} wasm-demo/
             [ -f "build-wasm/$page.ww.js" ] && cp "build-wasm/$page.ww.js" wasm-demo/
           done
+          # UltraDBAdmin's page, where the variant builds it. Not in the smoke
+          # test below: without its relay the page's first act, opening the
+          # relay's WebSocket, puts the browser's own error on the console.
+          case "$CONFIGURE" in
+            *BUILD_ULTRADBADMIN=ON*)
+              cp build-wasm/Apps/UltraDBAdmin/UltraDBAdmin.{html,js,wasm,data} wasm-demo/ ;;
+          esac
           ls -l wasm-demo
 
       - name: Upload the pages

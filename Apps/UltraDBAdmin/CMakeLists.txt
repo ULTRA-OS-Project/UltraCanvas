@@ -6,7 +6,7 @@
 # connection store, the Browse pager, the SQL runner) and is what
 # Tests/UltraDBAdmin compiles headless; ui/ is the window.
 #
-# Version: 0.2.0 - ultradbadmin-relay
+# Version: 0.2.0 - ultradbadmin-relay; the browser build (UltraDBAdmin.html)
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -17,7 +17,14 @@ if(NOT ULTRACANVAS_LIBRARY)
     message(STATUS "  [−] UltraDBAdmin app - SKIPPED (UltraCanvas UI library not built)")
     return()
 endif()
-if(NOT TARGET UltraDatabase OR NOT TARGET UltraVault)
+if(EMSCRIPTEN)
+    # The browser build: no vault (nothing to keep - the relay holds the
+    # passwords), only UltraDatabase with its relay driver.
+    if(NOT TARGET UltraDatabase)
+        message(STATUS "  [−] UltraDBAdmin page - SKIPPED (UltraDatabase not built)")
+        return()
+    endif()
+elseif(NOT TARGET UltraDatabase OR NOT TARGET UltraVault)
     message(STATUS "  [−] UltraDBAdmin app - SKIPPED (UltraDatabase or UltraVault not built)")
     return()
 endif()
@@ -61,12 +68,18 @@ add_executable(UltraDBAdmin
     ui/DbAdminWindowObjects.cpp
     ui/DbAdminWindowSchema.cpp
 )
-# One copy per user (UltraCanvasSingleInstance.h).
-ultracanvas_single_instance(UltraDBAdmin)
+if(EMSCRIPTEN)
+    target_sources(UltraDBAdmin PRIVATE web/DbAdminRelayWeb.cpp)
+else()
+    # One copy per user (UltraCanvasSingleInstance.h).
+    ultracanvas_single_instance(UltraDBAdmin)
+endif()
 
 # Export dynamic symbols so on-demand plugin modules resolve core symbols
 # when the core is linked statically, as the other applications do.
-set_target_properties(UltraDBAdmin PROPERTIES ENABLE_EXPORTS ON)
+if(NOT EMSCRIPTEN)
+    set_target_properties(UltraDBAdmin PROPERTIES ENABLE_EXPORTS ON)
+endif()
 
 target_include_directories(UltraDBAdmin PRIVATE
     ${ULTRACANVAS_INCLUDE_DIRS}
@@ -75,7 +88,26 @@ target_include_directories(UltraDBAdmin PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 
 # Modules before the core on the link line: GNU ld resolves left to right.
-target_link_libraries(UltraDBAdmin PRIVATE UltraDatabase UltraVault ${ULTRACANVAS_LIBRARY})
+if(EMSCRIPTEN)
+    target_link_libraries(UltraDBAdmin PRIVATE UltraDatabase ${ULTRACANVAS_LIBRARY})
+    target_compile_definitions(UltraDBAdmin PRIVATE ULTRADBADMIN_WEB=1 ULTRADBADMIN_NO_VAULT=1)
+    # The page: UltraDBAdmin.html, its fonts, icons and app icon preloaded at
+    # /share/ (GetResourcesDir() in the browser), the browser's WebSocket for
+    # the relay, and a shell that fills the viewport.
+    set_target_properties(UltraDBAdmin PROPERTIES SUFFIX ".html")
+    foreach(_dba_preload media/fonts media/icons/dbadmin media/appicon/UltraDBAdmin.png)
+        target_link_options(UltraDBAdmin PRIVATE
+            "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/${_dba_preload}@/share/${_dba_preload}")
+    endforeach()
+    unset(_dba_preload)
+    target_link_options(UltraDBAdmin PRIVATE
+        -lwebsocket.js
+        "SHELL:--shell-file ${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
+    set_property(TARGET UltraDBAdmin APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/web/shell.html")
+else()
+    target_link_libraries(UltraDBAdmin PRIVATE UltraDatabase UltraVault ${ULTRACANVAS_LIBRARY})
+endif()
 if(TARGET fmt::fmt)
     target_link_libraries(UltraDBAdmin PRIVATE fmt::fmt)
 endif()

@@ -2,7 +2,8 @@
 
 Browse and query the databases UltraDatabase reaches - SQLite files,
 PostgreSQL servers and MySQL / MariaDB servers - in the spirit of
-phpMyAdmin, as a desktop application.
+phpMyAdmin, as a desktop application - and, compiled to WebAssembly, in a
+browser.
 The design, the roadmap and the decisions behind it are in
 [`Docs/Research/UltraDBAdminDesignProposal.md`](../../Docs/Research/UltraDBAdminDesignProposal.md).
 
@@ -12,7 +13,8 @@ files, exporting tables, query results and whole schemas, and the
 operations on a whole object - create, copy, rename, empty, drop - with
 SQLite's maintenance; and from stage 4, a schema's relations as an ER
 diagram, its triggers and routines, and the server's sessions, settings and
-sizes; and stage 3, all of it on MySQL and MariaDB too.** The console runs
+sizes; and stage 3, all of it on MySQL and MariaDB too; and stage 6, the
+same application in a browser, through a relay on the server (below).** The console runs
 whatever SQL it is given, so a connection marked *read only* (the database
 refuses every change, and neither Browse nor Structure offers editing) is
 the way to make it safe.
@@ -56,8 +58,6 @@ even while a page loads or a script runs: UltraDatabase keeps a connection
 until the last call on it returns, so what is running finishes on the old
 settings and the next query uses the new.
 
-The server's monitor charts are a later stage of the proposal.
-
 ## SSH tunnels
 
 A server behind a bastion is reached through an SSH tunnel: **Through an SSH
@@ -80,6 +80,117 @@ PostgreSQL still checks it against the database's host. Every session -
 Browse's, the SQL console's - goes through the connection's tunnel, which
 closes with it. The tunnel is UltraDatabase's (`UltraDatabaseTunnel.h`),
 opened through UltraNet's SSH plug-in (`UltraDb_UseUltraNetSshTunnels`).
+
+## The browser build and its relay
+
+The same application runs in a browser, compiled to WebAssembly
+(`UltraDBAdmin.html`), with every database call going to
+**ultradbadmin-relay** on the server - a small headless program beside the
+databases (proposal §8.1). The page holds no password and names no host: the
+relay offers the connections configured on its side, by name, to the users
+its tokens name, and the browser reaches only those.
+
+```
+browser ── UltraDBAdmin.wasm ──WebSocket──► TLS proxy ──► ultradbadmin-relay ──► PostgreSQL / MySQL / SQLite
+```
+
+In the app a relay connection is a connection like the others - every tab
+works through it, Stop and the server's sessions too - made by **Relay**
+in the header: the relay's address (`wss://db.example.com/relay`) and the
+user's token, then one connection per name the relay offers that token,
+shown as `name on wss://...`. The token is kept where a password goes - the
+app's vault on a desktop, the page's memory in a browser, so a page that is
+reloaded asks for it again - and a connection the relay offers *read* only
+is read only in the app, and in the database. The desktop app reaches a
+relay too, through UltraNet's WebSocket (a libcurl built with WebSocket
+support, 7.86 or later).
+
+The browser build opens its relay at start-up - `?relay=wss://...` in the
+page's address, else `wss://` the page's own host `/relay` - and has no
+**Add connection**: no SQLite file from the visitor's disk, no server of its
+own, no SSH tunnel (the relay is already on the inside).
+
+### Running the relay
+
+```
+ultradbadmin-relay --hash-token < token.txt          # its token_sha256 for the file
+ultradbadmin-relay --config relay.ini --set-secret crm   # a password from stdin into the relay's vault
+ultradbadmin-relay --config relay.ini --check        # what it offers, to whom
+ultradbadmin-relay --config relay.ini                # serve
+```
+
+`relay.ini` (`relay/RelayConfig.h` has every key):
+
+```ini
+listen = 127.0.0.1:8765               ; loopback: TLS is the proxy's
+path = /relay
+vault = /var/lib/ultradbadmin-relay/vault
+audit = /var/log/ultradbadmin-relay/audit.log
+origins = https://db.example.com      ; the pages allowed to connect
+
+[connection crm]
+driver = postgresql                   ; postgresql, mysql or sqlite
+host = db.internal
+database = crm
+user = crm_app
+password_secret = crm                 ; --set-secret crm; a password here is refused
+tls = verify-full
+
+[user anna]
+token_sha256 = 3f2a...                ; --hash-token
+crm = write                           ; read, write; a connection not named: none
+
+[limits]
+rows_per_page = 1000
+requests_per_minute = 1200
+```
+
+A token is at least 24 characters - a long random one, given to its user
+the way a password would be; the file keeps only its SHA-256. *read* opens
+the connection in the driver's read-only mode, so the database refuses
+every change whatever the page sends. The limits cap the rows of a page and
+of a result, a user's requests a minute and sessions; the audit log has a
+line per statement - time, user, address, connection, whether it worked,
+the SQL, with the visitor's address (the last one the proxy in front puts
+in `X-Forwarded-For`). The relay runs where it reaches its databases: it
+opens no SSH tunnel, and an `ssh_` option is refused.
+
+The relay speaks plain WebSocket and serves `GET /health`. It listens on
+loopback and leaves TLS to the web server in front - the one that serves
+the page, so page and relay share an origin:
+
+```nginx
+location /relay {
+    proxy_pass http://127.0.0.1:8765;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_read_timeout 1h;
+}
+```
+
+A `listen` address other than loopback is refused unless `plain_ok = true`
+says the network is trusted. The page itself is `UltraDBAdmin.html` with
+its `.js`, `.wasm` and `.data`, served with the cross-origin isolation
+headers every threaded UltraCanvas page needs
+(`Cross-Origin-Opener-Policy: same-origin`,
+`Cross-Origin-Embedder-Policy: require-corp`;
+`UltraCanvas/OS/WASM/README.md`).
+
+### Building the page
+
+As the other WebAssembly pages (`UltraCanvas/OS/WASM/README.md`: emsdk and
+the wasm sysroot), with the app switched on:
+
+```
+emcmake cmake -B build-wasm -S . -DCMAKE_BUILD_TYPE=Release -DBUILD_ULTRADBADMIN=ON
+cmake --build build-wasm --target UltraDBAdmin
+```
+
+The page carries UltraDatabase with its SQLite core only (Emscripten's
+port, which the module is built with), and opens no database itself;
+libpq and libmariadb are in the relay alone.
 
 ## MySQL and MariaDB
 
@@ -176,12 +287,19 @@ Apps/UltraDBAdmin/
 │   ├── DbAdminStructureEdit      staged structure edits, their DDL per engine, Apply
 │   ├── DbAdminTablePager         the Browse view's pages and filters
 │   └── DbAdminValueTypes         what a column takes; the value functions it can be set to
+├── relay/                        ultradbadmin-relay, the browser build's server half
+│   ├── main.cpp                  the program: --config, --check, --hash-token, --set-secret, the audit log
+│   ├── RelayConfig               its INI file
+│   └── RelayWebSocket            its WebSocket listener (RFC 6455), /health
+├── web/                          the browser build only
+│   ├── DbAdminRelayWeb           every relay connection through the browser's WebSocket; the relay's address
+│   └── shell.html                the page around the canvas
 └── ui/
     ├── DbAdminWindow             tree, tabs, status line, Browse, Structure, SQL
     ├── DbAdminWindowObjects      the tabs of open objects, the tree's menu and operations, Search, the SQL log
     ├── DbAdminWindowSchema       the Relations (an ER diagram), Routines and Server tabs
     ├── DbAdminWindowParts        what the window's three sources share: sizes, layout helpers
-    ├── DbAdminOperationDialogs   an operation's SQL first; the copy, rename, empty and dump forms; a new table
+    ├── DbAdminOperationDialogs   an operation's SQL first; the copy, rename, empty and dump forms; a new table; the compare and the relay sign-in
     ├── DbAdminTheme              the theme, the icons, the buttons, cards and bars every page uses
     ├── DbAdminModels             list models over result sets
     ├── DbAdminRowDialog          the row form (a field per type, NULL, default, a function), the SQL preview
@@ -279,3 +397,17 @@ against an sshd of its own (`ULTRANET_TEST_SSH_*`, `ULTRADB_TEST_TUNNEL_*`).
 The engine suite checks the store's side: the bastion and host key in the
 list, the key and passphrase in the vault only, and what UltraDatabase is
 handed.
+
+A fifth, `UltraDBAdminRelayTests`, runs the relay on this computer: its
+configuration file read and what it refuses (a password in the file, a
+network address without TLS, a token hash that is not one, a grant of a
+connection not configured, an SSH option), the audit log's address behind a
+proxy, its WebSocket listener on a free port (`/health`, another path, a
+plain GET, an origin not allowed), and the app's own engine on a relay
+connection - the token kept where a password goes, a Browse page and its
+count, the completion catalog, a console script - against a SQLite file the
+relay serves, and on PostgreSQL where `ULTRAFIBU_TEST_PG_*` names a server:
+a read-only grant refusing a change, the server's status, a query stopped
+through the relay. UltraDatabase's own `test_relay` checks the wire format
+and the server without a socket. The browser build is checked by building
+it in the WebAssembly workflow.

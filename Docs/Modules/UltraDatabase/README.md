@@ -406,6 +406,51 @@ it connects to, so `VerifyFull` through a tunnel is refused with that reason
 (`Require`, or no TLS, is the choice there - the SSH tunnel itself encrypts
 the way to the bastion). A tunnel to SQLite, or to a socket, is refused.
 
+### Through a relay
+
+An application that cannot reach a database itself - a page in a browser,
+which opens no TCP connection and must hold no password - reaches it
+through a relay on the database's side (`UltraDatabaseRelay.h`): the
+`relay` driver sends every call of a connection there, and the relay runs
+it on a connection configured on its own side and answers. Queries,
+scripts, cursors, cancelling, introspection and server administration all
+go through it unchanged, so an application written against UltraDatabase
+works through a relay as it is.
+
+```cpp
+UltraDb_UseUltraNetRelay();                            // once: UltraDatabaseRelayUltraNet.h
+
+UltraDbConnectionConfig cfg;
+cfg.name = "crm";
+cfg.driver = "relay";
+cfg.host = "wss://db.example.com/relay";               // the relay
+cfg.database = "crm";                                  // a connection it offers, by name
+cfg.options["relay_token"] = token;                    // the user's token
+UltraDb_RegisterConnection(cfg);
+
+std::vector<UltraDbRelayConnection> offered;           // what this token may open
+UltraDb_RelayConnections("wss://db.example.com/relay", token, offered);
+```
+
+The transport is the application's (`UltraDb_SetRelayConnector`):
+`UltraDatabaseRelayUltraNet.h`, header-only, is one over UltraNet's
+WebSocket (it needs a libcurl built with WebSocket support - 7.86 or later,
+`ws` among its protocols); a browser build passes one over Emscripten's
+WebSocket. The wire format is JSON text, one request and one answer per
+message, matched by `id`, so a cancel goes out while a query waits.
+
+The other side is `UltraDbRelayServer`: it is given the connections it
+offers by name - the client cannot name a host, so the relay is no proxy
+into the network - and its users by the SHA-256 of their tokens
+(`UltraDb_RelayTokenHash`), each with *read* or *write* access to each
+connection; *read* opens the connection in the driver's read-only mode, so
+the database refuses a change whatever the client sends. Its limits
+(`UltraDbRelayLimits`) cap the rows of a page and of a result, the requests
+a minute and the sessions of a user; every statement it runs reaches the
+audit callback with the user and the address that ran it. It answers
+requests and opens no socket: the listener and TLS around it are the
+program's (`Apps/UltraDBAdmin/relay`).
+
 ---
 
 ## Threading
@@ -469,13 +514,18 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseTransaction.h    Begin / Commit / Rollback
 │   ├── UltraDatabaseMigrate.h        versioned schema migrations
 │   ├── UltraDatabaseSchema.h         introspection, quoting names
-│   ├── UltraDatabaseServer.h         sessions, settings, sizes, stopping a session
+│   ├── UltraDatabaseServer.h         sessions, settings, sizes, status, stopping a session
+│   ├── UltraDatabaseTunnel.h         SSH tunnels: the options, the opener seam
+│   ├── UltraDatabaseSshTunnel.h      the opener over UltraNet's SSH plug-in (header-only)
+│   ├── UltraDatabaseRelay.h          the relay driver's seam, UltraDbRelayServer
+│   ├── UltraDatabaseRelayUltraNet.h  the relay's transport over UltraNet's WebSocket (header-only)
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
 ├── core/UltraDatabase/               (.cpp implementations)
 │   ├── UltraDatabaseSqlite*.cpp      the SQLite driver and its introspection
 │   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
 │   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
-│   └── UltraDatabaseServerViews.cpp  server administration for both server engines
+│   ├── UltraDatabaseServerViews.cpp  server administration for both server engines
+│   └── UltraDatabaseRelay*.cpp       the relay: its JSON wire format, the client driver, the server
 ├── OS/<Platform>/UltraDatabaseSupport.cpp
 └── Plugins/UltraDatabase/            (later drivers as loadable plug-ins)
     ├── mssql/
@@ -541,7 +591,8 @@ headless data module usable from any ULTRA OS process.
 | Server administration (`UltraDatabaseServer.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
 | SSH tunnels (`UltraDatabaseTunnel.h`, `UltraDatabaseSshTunnel.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
-| Test suite (87 tests) | Passing |
+| Relay (`UltraDatabaseRelay.h`: the `relay` driver, `UltraDbRelayServer`, `UltraDatabaseRelayUltraNet.h`) | Implemented |
+| Test suite (92 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |

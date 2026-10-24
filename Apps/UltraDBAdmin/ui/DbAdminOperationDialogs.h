@@ -11,6 +11,8 @@
 //                          NOT NULL, key, numbered, default - a line each,
 //                          lines added and removed;
 //   ShowTextDialog       - text to read: integrity_check's findings;
+//   ShowRelayDialog      - an UltraDBAdmin relay's address and the user's
+//                          token, for the connections it offers;
 //   ShowCompareDialog    - a table's rows beside another table's: the other
 //                          connection, schema and table, Compare, what
 //                          differs in a grid, and the SQL that makes the
@@ -18,7 +20,7 @@
 // The dialogs never run SQL themselves: they hand what was chosen back to
 // the window, which plans and runs it on its worker. A callback that returns
 // an error keeps the dialog open with the error shown; "" closes it.
-// Version: 0.2.0 - ShowCompareDialog
+// Version: 0.2.0 - ShowCompareDialog, ShowRelayDialog
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -67,6 +69,14 @@ void ShowNewTableDialog(UltraCanvas::UltraCanvasWindowBase* parent, SqlEngine en
 
 void ShowTextDialog(UltraCanvas::UltraCanvasWindowBase* parent, const std::string& title, const std::string& intro,
                     const std::string& text);
+
+// The relay to sign in to: its address (`url` first) and the token. Connect
+// calls `onConnect`, which answers through `done`: "" closes the dialog, an
+// error is shown and it stays. `cancellable` false: the browser build, which
+// has nothing to show without a relay, offers no Cancel.
+void ShowRelayDialog(UltraCanvas::UltraCanvasWindowBase* parent, const std::string& url, bool cancellable,
+                     std::function<void(const std::string& url, const std::string& token,
+                                        std::function<void(const std::string& error)> done)> onConnect);
 
 struct CompareDialogSpec {
     std::string title;

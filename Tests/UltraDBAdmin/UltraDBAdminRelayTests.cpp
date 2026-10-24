@@ -8,7 +8,7 @@
 // the tests find one, PostgreSQL (its server status, a query stopped through
 // the relay). The health check, the handshake's key, a path or an origin
 // that is not the relay's.
-// Version: 0.1.0
+// Version: 0.2.0 - an SSH option refused, the audit log's address
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminCompletion.h"
 #include "DbAdminConnections.h"
@@ -197,8 +197,17 @@ void TestConfig() {
     Check(!ParseRelayConfig("[user ben]\ntoken_sha256 = " + std::string(64, 'a') + "\ncrm = read\n", config, error) &&
               error.find("no [connection]") != std::string::npos,
           "a grant of a connection not configured");
+    Check(!ParseRelayConfig("[connection crm]\nssh_host = bastion\n", config, error) &&
+              error.find("SSH") != std::string::npos,
+          "an SSH tunnel from the relay is refused, not ignored");
     Check(WebSocketAccept("dGhlIHNhbXBsZSBub25jZQ==") == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=",
           "the handshake's key, as RFC 6455 computes it");
+    // Who the audit log names.
+    Check(ClientAddress("203.0.113.7", "") == "203.0.113.7", "a visitor by the address it came from");
+    Check(ClientAddress("127.0.0.1", "198.51.100.4, 203.0.113.7") == "203.0.113.7",
+          "behind a proxy here, the address the proxy added");
+    Check(ClientAddress("203.0.113.7", "10.0.0.1") == "203.0.113.7", "a header from elsewhere ignored");
+    Check(ClientAddress("127.0.0.1", "x'; DROP") == "127.0.0.1", "a header that is no address ignored");
 }
 
 // The relay on a free port of 127.0.0.1, its listener on a thread.

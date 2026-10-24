@@ -1,5 +1,5 @@
 // Apps/UltraDBAdmin/relay/RelayConfig.cpp
-// Version: 0.1.0
+// Version: 0.2.0 - no ssh_ options: the relay opens no tunnel
 // Author: UltraCanvas Framework / ULTRA OS
 #include "RelayConfig.h"
 
@@ -153,7 +153,7 @@ bool ParseRelayConfig(const std::string& text, RelayConfig& out, std::string& er
                     if (!Truth(value, truth)) return fail("read_only is true or false");
                     c.readOnly = truth;
                 } else if (key.rfind("ssh_", 0) == 0) {
-                    c.options[key] = value;     // a bastion, as UltraDatabaseTunnel.h reads it
+                    return fail("no SSH tunnel from the relay: run it where it reaches the database");
                 } else {
                     return fail("no connection setting " + key);
                 }

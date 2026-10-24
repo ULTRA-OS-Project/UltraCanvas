@@ -91,8 +91,9 @@ endif()
 
 # Through the relay end to end (UltraDBAdminRelayTests.cpp): the relay's
 # configuration and WebSocket listener (Apps/UltraDBAdmin/relay) on a free
-# port, UltraNet's WebSocket as the transport, the engine on a relay
-# connection; PostgreSQL where the environment names one.
+# port, a WebSocket client of the test's own as the transport (UltraNet's
+# needs a libcurl with WebSockets, which not every runner has), the engine on
+# a relay connection; PostgreSQL where the environment names one.
 if(TARGET UltraNet AND UNIX AND NOT EMSCRIPTEN)
     add_executable(UltraDBAdminRelayTests UltraDBAdminRelayTests.cpp
         ${_dbadmin}/relay/RelayConfig.cpp

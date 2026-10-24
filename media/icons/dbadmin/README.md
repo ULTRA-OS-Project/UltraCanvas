@@ -8,7 +8,7 @@ The interface icons of `Apps/UltraDBAdmin`, loaded by name through
   `import`, `export`, `preview`, `revert`, `apply`, `run`, `stop`,
   `rename`, `key`, `filter`, `clear`, `copy`, `search`, `explain`,
   `run-statement`, `snippet`, `close`, `table-add`, `maintenance`, `fit`,
-  `end-session`, `compare`): one colour, a 1.5 px stroke with round caps and joins.
+  `end-session`, `compare`, `relay`): one colour, a 1.5 px stroke with round caps and joins.
   A button draws them as a mask in its text colour, so the colour in the
   file does not matter.
 - **Tree** (`node-connection`, `node-connection-production`, `node-schema`,

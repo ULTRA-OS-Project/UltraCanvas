@@ -1,8 +1,8 @@
 # UltraDBAdmin — a phpMyAdmin-style manager for UltraDatabase (Investigation and Proposal)
 
 **Date:** 2026-10-20
-**Status:** Proposal — investigation only, no implementation yet. Decisions
-2026-10-20: see §9.
+**Status:** Implemented in stages - every stage of §8 is built, with what
+remains listed there. Decisions 2026-10-20: see §9.
 **Scope:** a new application, `Apps/UltraDBAdmin`, that does for
 every database UltraDatabase can reach what phpMyAdmin does for MySQL: browse
 and edit rows, see and change table structure, run SQL, search, import and
@@ -611,6 +611,28 @@ number compared by its value so PostgreSQL's 10.50 is MySQL's 10.5; and the
 statements that make the other table the same, previewed and run as one
 transaction (`engine/DbAdminCompare`). The other table is held in memory (up
 to 500,000 rows) while the first streams past it through a cursor.
+
+**Stage 6, the browser build, followed** (§8.1): UltraDatabase gained a
+`relay` driver and `UltraDbRelayServer` (`UltraDatabaseRelay.h`), the app
+compiles to `UltraDBAdmin.html`, and `ultradbadmin-relay` serves it. Where
+it differs from §8.1, as built:
+
+- **The seam is UltraDatabase's, not the app's.** Instead of an
+  `IDbAdminBackend` in `engine/`, the relay is a driver: every `UltraDb_*`
+  call of a `relay` connection goes over the wire, so the engine and the UI
+  are the same code in both builds, and any UltraDatabase program can use a
+  relay. The desktop build reaches a relay too.
+- **Users sign in with a token, not the ULTRA account.** The relay knows
+  each user by the SHA-256 of a long random token an administrator hands
+  out, with read or write access per connection; signing in through the
+  UltraNet OAuth2 service remains to be done. There is no *admin* level yet:
+  write access is the connection's own rights.
+- **TLS is the proxy's.** The relay listens on loopback and refuses a
+  network address unless told the network is trusted; the web server that
+  serves the page terminates TLS and passes the WebSocket on, and its
+  `X-Forwarded-For` names the visitor in the audit log.
+- **The limits** are rows per page and per result, requests a minute and
+  sessions per user; a statement time-out is not there yet.
 
 Stage 1 alone already replaces the "install DB Browser for SQLite" step for
 supporting ULTRA OS apps.

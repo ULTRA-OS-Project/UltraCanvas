@@ -4,8 +4,8 @@
 // message a request answered on a thread of its own - so a cancel reaches
 // the server while the query it stops still runs. GET /health answers "ok"
 // for a load balancer. No TLS here: the relay listens on loopback behind a
-// TLS proxy (RelayConfig.h).
-// Version: 0.1.0
+// TLS proxy (RelayConfig.h), whose X-Forwarded-For names the visitor.
+// Version: 0.2.0 - the visitor's address from a proxy on this computer
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -28,6 +28,13 @@ struct ListenOptions {
     size_t maxMessage = 32 * 1024 * 1024;  // bytes in one request
     int maxClients = 256;
 };
+
+// Who a session is, for the audit log: the address the connection came
+// from, or - when that is this computer, a proxy in front - the last address
+// its X-Forwarded-For names, the one that proxy added. A client cannot put
+// itself in the log under another name by sending the header itself: from
+// elsewhere it is ignored, and behind a proxy only the proxy's entry counts.
+std::string ClientAddress(const std::string& peer, const std::string& forwardedFor);
 
 class RelayListener {
 public:
