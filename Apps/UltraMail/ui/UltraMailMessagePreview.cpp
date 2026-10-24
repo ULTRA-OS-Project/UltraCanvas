@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.20.1 - Copy link over a linked picture too (a newsletter's button)
 // Version: 0.20.0 - "Copy link" in the right-click menu over a link of the body
 //                  (HTML and plain text), above Copy and Select All
 // Version: 0.19.0 - the attachments in a column at the right of the body
@@ -721,6 +722,14 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             if (onLinkHovered) onLinkHovered(href);
         };
         opts.linkTooltips = linkTooltips;
+        // A right-click on a linked picture (a newsletter's button): the text
+        // menu with Copy link, Copy and Select All acting on the body's text.
+        opts.onLinkedImageContextMenu = [this](const std::string& href, const UCEvent& event) {
+            std::weak_ptr<UltraCanvasTextSelection> weak = bodySelection_;
+            ShowTextMenu(event, bodySelection_ && bodySelection_->HasSelection(),
+                         [weak]() { if (auto s = weak.lock()) s->CopyToClipboard(); },
+                         [weak]() { if (auto s = weak.lock()) s->SelectAll(); }, href);
+        };
         // The text can be selected across the whole body and copied.
         opts.selectableText = true;
         HTML::ElementBuilder builder;

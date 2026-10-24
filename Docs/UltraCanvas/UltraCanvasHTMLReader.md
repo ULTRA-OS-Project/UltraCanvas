@@ -1,6 +1,6 @@
 # UltraCanvasHTMLReader — HTML, CSS and entities, once
 
-<!-- doc-check: void Log(const std::string& line); void Remember(const std::string& href); std::vector<uint8_t> LoadBytes(const std::string& href); void Open(const std::string& href); bool LoadCidPart(const std::string& src, std::string& mimeType, std::vector<uint8_t>& data); struct MyElement; struct Message { std::string htmlBody; }; Message message; -->
+<!-- doc-check: void Log(const std::string& line); void Remember(const std::string& href); std::vector<uint8_t> LoadBytes(const std::string& href); void Open(const std::string& href); void ShowLinkMenu(const std::string& href, const UltraCanvas::UCEvent& event); bool LoadCidPart(const std::string& src, std::string& mimeType, std::vector<uint8_t>& data); struct MyElement; struct Message { std::string htmlBody; }; Message message; -->
 
 The **HTMLReader** module (`UltraCanvas/{include,core}/HTMLReader/`) is the
 framework's one implementation of reading HTML and CSS: a tolerant parser, a
@@ -338,6 +338,9 @@ opts.resourceLoader = [&](const std::string& href) { return LoadBytes(href); }; 
 opts.onLinkActivated = [&](const std::string& href) { Open(href); };
 opts.onLinkActivatedNewWindow = [&](const std::string& href) { Open(href); };   // target="_blank": a new tab
 opts.onLinkHovered = [&](const std::string& href) { status->SetText(href); };
+opts.onLinkedImageContextMenu = [&](const std::string& href, const UCEvent& event) {
+    ShowLinkMenu(href, event);                // right-click on <a><img></a>: Copy link
+};
 opts.linkTooltips = false;                    // the status line shows the address instead
 opts.selectableText = true;                   // the text selects and copies, as in a browser
 
@@ -357,7 +360,11 @@ paragraph to paragraph, a double-click takes a word, Ctrl+C / Ctrl+A work
 once the text has been clicked, and a text link opens when it is released
 without a drag. Keep `r.textSelection` to offer Copy and Select All in a
 menu (its `onContextMenu` is asked on a right-click); see
-`UltraCanvasLabelExamples.md`, *Selectable text*.
+`UltraCanvasLabelExamples.md`, *Selectable text*. The link under that
+right-click is the label's: `LinkIndexAtPoint` on the label under the
+pointer. A linked picture (`<a><img></a>`, a newsletter's button) is not text:
+its right-click goes to `onLinkedImageContextMenu` with the link's href. A
+right-click never opens a link.
 
 Pictures are sized as a browser sizes a replaced element: `width` alone or
 `height` alone gives the other in the picture's shape, both give a box of

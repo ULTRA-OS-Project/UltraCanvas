@@ -20,6 +20,7 @@
 // without a DISPLAY. With ULTRACANVAS_SCREENSHOT_DIR set it writes the pane
 // there: a drag's selection, the sign-in code's button and the code bar
 // (message-preview-selection.ppm, -code.ppm, -code-bar.ppm).
+// Version: 1.4.0 - Copy link over a linked picture (a newsletter's button)
 // Version: 1.3.0 - Copy link: a right-click on a link of the HTML or plain-text body
 // Version: 1.2.0 - the sender's menu: a right-click on the sender's name or badge
 // Version: 1.1.0 - text selection and the one-time code's copy button
@@ -31,6 +32,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextSelection.h"
 #include "UltraCanvasPathUtf8.h"
@@ -41,6 +43,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -98,7 +101,9 @@ std::string HtmlLinkMessage() {
            "Content-Type: text/html; charset=utf-8\r\n"
            "\r\n"
            "<html><body><p>Read <a href='https://example.com/offer?id=7'>the whole offer</a>"
-           " today.</p></body></html>\r\n";
+           " today.</p><p><a href='https://example.com/buy'><img alt='Buy now' src='data:image/png;base64,"
+           "iVBORw0KGgoAAAANSUhEUgAAADwAAAAYCAIAAAApowkFAAAAMElEQVR42u3OQQkAAAgEsItiNKMazQi+hcECLNXzTqSl"
+           "paWlpaWlpaWlpaWlpaVvC+vBCGrZx0p4AAAAAElFTkSuQmCC'></a></p></body></html>\r\n";
 }
 
 std::string PlainLinkMessage() {
@@ -616,6 +621,39 @@ int main() {
             TEST("copy link: copies the HTML link's address",
                  copyLinkCopies("https://example.com/offer?id=7"));
         }
+    }
+    // A linked picture - a newsletter's button: Copy link too, and the
+    // right-click does not open it.
+    std::vector<std::shared_ptr<UltraCanvasUIElement>> pictures;
+    std::function<void(const std::shared_ptr<UltraCanvasUIElement>&)> findPictures =
+        [&](const std::shared_ptr<UltraCanvasUIElement>& e) {
+            if (!e) return;
+            if (dynamic_cast<UltraCanvasImageElement*>(e.get())) pictures.push_back(e);
+            if (auto* box = dynamic_cast<UltraCanvasContainer*>(e.get()))
+                for (const auto& child : box->GetChildren()) findPictures(child);
+        };
+    findPictures(Find(root, "prevBodyScroll"));
+    TEST("copy link: the HTML body shows the linked picture", pictures.size() == 1);
+    if (pictures.size() == 1) {
+        // Counted in place of opening the link in the browser.
+        auto* picture = static_cast<UltraCanvasImageElement*>(pictures[0].get());
+        int opened = 0;
+        TEST("copy link: the linked picture opens on a click", picture->onClick != nullptr);
+        picture->onClick = [&opened]() { ++opened; };
+        const Rect2Df b = picture->GetBoundsInWindow();
+        UCEvent press;
+        press.type = UCEventType::MouseDown;
+        press.button = UCMouseButton::Right;
+        press.pointer = Point2Di(5, 5);
+        press.pointerWindow = Point2Di(static_cast<int>(b.x) + 5, static_cast<int>(b.y) + 5);
+        auto before = preview.TextMenu();
+        picture->OnEvent(press);
+        render();
+        TEST("copy link: a right-click on the linked picture opens the menu",
+             preview.TextMenu() && preview.TextMenu() != before);
+        TEST("copy link: offered first over the linked picture", firstItem() == "Copy link");
+        TEST("copy link: the right-click does not open the picture's link", opened == 0);
+        TEST("copy link: copies the picture's link", copyLinkCopies("https://example.com/buy"));
     }
 
     preview.Show(Envelope(7, "Look"));
