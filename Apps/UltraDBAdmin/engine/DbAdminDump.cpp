@@ -1,10 +1,12 @@
 // Apps/UltraDBAdmin/engine/DbAdminDump.cpp
+// Version: 0.2.0 - MySQL / MariaDB: SHOW CREATE TABLE, rows, triggers between DELIMITER lines, views
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminDump.h"
 
 #include "DbAdminExport.h"       // QuotedName, SqlLiteral
 #include "DbAdminOperations.h"   // QualifiedName
+#include "DbAdminRoutines.h"     // WithoutDefiner
 #include "DbAdminSqliteTable.h"
 
 #include "UltraCanvasPathUtf8.h"
@@ -104,7 +106,7 @@ UltraDbResult WriteRows(const std::string& connection, SqlEngine engine, const R
                         const std::function<void(const std::string&, size_t)>& progress, const std::string& label) {
     if (source.columns.empty()) return UltraDbResult::Ok();
     std::string names;
-    for (const auto& column : source.columns) names += (names.empty() ? "" : ", ") + QuotedName(column);
+    for (const auto& column : source.columns) names += (names.empty() ? "" : ", ") + QuotedName(engine, column);
     const std::string head = "INSERT INTO " + source.target + " (" + names + ")" +
                              (source.overriding ? " OVERRIDING SYSTEM VALUE" : "") + " VALUES (";
     UltraDbResult error;
@@ -132,13 +134,13 @@ UltraDbResult WriteRows(const std::string& connection, SqlEngine engine, const R
     return result;
 }
 
-std::string SelectColumns(const std::vector<std::string>& columns, const std::string& target,
+std::string SelectColumns(SqlEngine engine, const std::vector<std::string>& columns, const std::string& target,
                           const std::vector<std::string>& key) {
     std::string names;
-    for (const auto& column : columns) names += (names.empty() ? "" : ", ") + QuotedName(column);
+    for (const auto& column : columns) names += (names.empty() ? "" : ", ") + QuotedName(engine, column);
     std::string sql = "SELECT " + names + " FROM " + target;
     std::string order;
-    for (const auto& column : key) order += (order.empty() ? "" : ", ") + QuotedName(column);
+    for (const auto& column : key) order += (order.empty() ? "" : ", ") + QuotedName(engine, column);
     if (!order.empty()) sql += " ORDER BY " + order;
     return sql;
 }
@@ -166,7 +168,7 @@ UltraDbResult DumpSqlite(const std::string& connection, const std::string& schem
             UltraDbTableSchema view;
             const UltraDbResult described = UltraDb_DescribeTable(connection, schema, object.name, view);
             if (!described) return described;
-            if (options.dropFirst) text += "DROP VIEW IF EXISTS " + QuotedName(object.name) + ";\n";
+            if (options.dropFirst) text += "DROP VIEW IF EXISTS " + QuotedName(SqlEngine::Sqlite, object.name) + ";\n";
             after += WithoutTrailingSemicolon(view.viewDefinition) + ";\n";
             continue;
         }
@@ -179,7 +181,7 @@ UltraDbResult DumpSqlite(const std::string& connection, const std::string& schem
         if (!result) return result;
         if (source.sequence >= 0) anySequence = true;
         if (options.structure) {
-            if (options.dropFirst) text += "DROP TABLE IF EXISTS " + QuotedName(object.name) + ";\n";
+            if (options.dropFirst) text += "DROP TABLE IF EXISTS " + QuotedName(SqlEngine::Sqlite, object.name) + ";\n";
             text += source.createSql + ";\n";
             for (const auto& [name, sql] : source.indexes) after += sql + ";\n";
             for (const auto& trigger : source.triggers) after += trigger + ";\n";
@@ -189,9 +191,9 @@ UltraDbResult DumpSqlite(const std::string& connection, const std::string& schem
         ++tables;
         if (options.data) {
             RowSource rowSource;
-            rowSource.target = QuotedName(object.name);
+            rowSource.target = QuotedName(SqlEngine::Sqlite, object.name);
             rowSource.columns = WritableColumns(table);
-            rowSource.query = SelectColumns(rowSource.columns, QualifiedName(schema, object.name), table.primaryKey);
+            rowSource.query = SelectColumns(SqlEngine::Sqlite, rowSource.columns, QualifiedName(SqlEngine::Sqlite, schema, object.name), table.primaryKey);
             size_t tableRows = 0;
             result = WriteRows(connection, SqlEngine::Sqlite, rowSource, options, file, path, tableRows, cancel,
                                progress, object.name);
@@ -203,7 +205,7 @@ UltraDbResult DumpSqlite(const std::string& connection, const std::string& schem
     if (options.data && anySequence) {
         UltraDbResultSet counters;
         const UltraDbResult result =
-            UltraDb_Query(connection, "SELECT name, seq FROM " + QualifiedName(schema, "sqlite_sequence"), {}, counters);
+            UltraDb_Query(connection, "SELECT name, seq FROM " + QualifiedName(SqlEngine::Sqlite, schema, "sqlite_sequence"), {}, counters);
         if (result) {
             text += "DELETE FROM sqlite_sequence;\n";
             for (size_t i = 0; i < counters.Size(); ++i)
@@ -232,7 +234,7 @@ UltraDbResult DumpPostgres(const std::string& connection, const std::string& sch
     std::string drops, views, viewDrops;
     std::vector<std::string> skipped;
     for (const auto& object : objects) {
-        const std::string target = QualifiedName(schema, object.name);
+        const std::string target = QualifiedName(SqlEngine::Postgres, schema, object.name);
         if (object.kind == UltraDbObjectKind::View || object.kind == UltraDbObjectKind::MaterializedView) {
             if (!options.structure) continue;
             UltraDbTableSchema view;
@@ -262,21 +264,21 @@ UltraDbResult DumpPostgres(const std::string& connection, const std::string& sch
                        "-- triggers, types, extensions and privileges are pg_dump's to write.\n"
                        "BEGIN;\n";
     if (options.structure) {
-        text += "CREATE SCHEMA IF NOT EXISTS " + QuotedName(schema) + ";\n";
+        text += "CREATE SCHEMA IF NOT EXISTS " + QuotedName(SqlEngine::Postgres, schema) + ";\n";
         if (options.dropFirst) {
             text += viewDrops;
             for (const auto& table : tableList)
                 for (const auto& constraint : table.schema.foreignKeys)
                     if (!constraint.name.empty())
-                        text += "ALTER TABLE IF EXISTS " + QualifiedName(schema, table.schema.name) +
-                                " DROP CONSTRAINT IF EXISTS " + QuotedName(constraint.name) + ";\n";
+                        text += "ALTER TABLE IF EXISTS " + QualifiedName(SqlEngine::Postgres, schema, table.schema.name) +
+                                " DROP CONSTRAINT IF EXISTS " + QuotedName(SqlEngine::Postgres, constraint.name) + ";\n";
             for (const auto& table : tableList)
-                text += "DROP TABLE IF EXISTS " + QualifiedName(schema, table.schema.name) + ";\n";
+                text += "DROP TABLE IF EXISTS " + QualifiedName(SqlEngine::Postgres, schema, table.schema.name) + ";\n";
         }
     }
     std::string after, foreignKeys;
     for (const auto& table : tableList) {
-        const std::string target = QualifiedName(schema, table.schema.name);
+        const std::string target = QualifiedName(SqlEngine::Postgres, schema, table.schema.name);
         if (options.structure) {
             for (const auto& note : table.ddl.notes) text += "-- " + note + "\n";
             text += table.ddl.create + ";\n";
@@ -292,7 +294,7 @@ UltraDbResult DumpPostgres(const std::string& connection, const std::string& sch
         source.target = target;
         source.columns = table.ddl.insertColumns;
         source.overriding = table.ddl.overridingSystemValue;
-        source.query = SelectColumns(source.columns, target, table.schema.primaryKey);
+        source.query = SelectColumns(SqlEngine::Postgres, source.columns, target, table.schema.primaryKey);
         size_t tableRows = 0;
         const UltraDbResult result = WriteRows(connection, SqlEngine::Postgres, source, options, file, path, tableRows,
                                                cancel, progress, table.schema.name);
@@ -310,11 +312,99 @@ UltraDbResult DumpPostgres(const std::string& connection, const std::string& sch
     return UltraDbResult::Ok();
 }
 
+// ----- MySQL / MariaDB -----
+
+// The text of a SHOW CREATE ... answer's `column`, the DEFINER clause left out
+// so the file loads under any account.
+UltraDbResult ShowCreate(const std::string& connection, const std::string& what, const std::string& target,
+                         const char* column, std::string& out) {
+    UltraDbResultSet rows;
+    const UltraDbResult result = UltraDb_Query(connection, "SHOW CREATE " + what + " " + target, {}, rows);
+    if (!result) return result;
+    if (rows.Size() != 1 || rows.Row(0)[column].IsNull())
+        return UltraDbResult::Error(UltraDbResultCode::QueryFailed, "SHOW CREATE " + what + " " + target +
+                                                                         " gave no definition (is it this user's?)");
+    out = WithoutDefiner(rows.Row(0)[column].AsString());
+    return UltraDbResult::Ok();
+}
+
+// `sql` without `quotedSchema` + "." before the names in it: SHOW CREATE
+// VIEW names every table with its database, which would tie the file to it.
+std::string WithoutSchema(std::string sql, const std::string& quotedSchema) {
+    const std::string prefix = quotedSchema + ".";
+    for (size_t at = sql.find(prefix); at != std::string::npos; at = sql.find(prefix, at)) sql.erase(at, prefix.size());
+    return sql;
+}
+
+UltraDbResult DumpMysql(const std::string& connection, const std::string& schema,
+                        const std::vector<UltraDbObjectSummary>& objects, const DumpOptions& options, PartFile& file,
+                        const std::string& path, size_t& tables, size_t& rows, const std::atomic<bool>* cancel,
+                        const std::function<void(const std::string&, size_t)>& progress) {
+    constexpr SqlEngine engine = SqlEngine::MySql;
+    // Names are written without the database, as mysqldump writes them: the
+    // file loads into whichever database is in use.
+    std::string text = "-- MySQL / MariaDB dump of the database " + schema + ", written by UltraDBAdmin.\n"
+                       "-- Tables, rows, indexes, foreign keys, triggers and views (in name order).\n"
+                       "-- Procedures, functions and events are mysqldump --routines --events' to write.\n"
+                       "SET NAMES utf8mb4;\n"
+                       "SET FOREIGN_KEY_CHECKS = 0;\n";
+    std::string triggers, views, viewDrops;
+    for (const auto& object : objects) {
+        const std::string target = QualifiedName(engine, schema, object.name);
+        const std::string name = QuotedName(engine, object.name);
+        if (object.kind == UltraDbObjectKind::View) {
+            if (!options.structure) continue;
+            std::string create;
+            const UltraDbResult result = ShowCreate(connection, "VIEW", target, "Create View", create);
+            if (!result) return result;
+            if (options.dropFirst) viewDrops += "DROP VIEW IF EXISTS " + name + ";\n";
+            views += WithoutSchema(WithoutTrailingSemicolon(create), QuotedName(engine, schema)) + ";\n";
+            continue;
+        }
+        if (object.kind != UltraDbObjectKind::Table) continue;
+        UltraDbTableSchema table;
+        UltraDbResult result = UltraDb_DescribeTable(connection, schema, object.name, table);
+        if (!result) return result;
+        if (options.structure) {
+            std::string create;
+            result = ShowCreate(connection, "TABLE", target, "Create Table", create);
+            if (!result) return result;
+            if (options.dropFirst) text += "DROP TABLE IF EXISTS " + name + ";\n";
+            text += create + ";\n";
+            // A trigger's body holds ';': each goes between DELIMITER lines,
+            // which the SQL tab's import and the mysql client both read. Its
+            // definition as the introspection rebuilds it names the trigger
+            // and its table without the database, as the file needs.
+            for (const auto& trigger : table.triggers) {
+                if (options.dropFirst) triggers += "DROP TRIGGER IF EXISTS " + QuotedName(engine, trigger.name) + ";\n";
+                triggers += "DELIMITER ;;\n" + WithoutTrailingSemicolon(trigger.definition) + ";;\nDELIMITER ;\n";
+            }
+        }
+        if (!file.Put(text)) return FileError(path, "the file could not be written (is the disk full?)");
+        text.clear();
+        ++tables;
+        if (!options.data) continue;
+        RowSource source;
+        source.target = name;
+        source.columns = WritableColumns(table);
+        source.query = SelectColumns(engine, source.columns, target, table.primaryKey);
+        size_t tableRows = 0;
+        result = WriteRows(connection, engine, source, options, file, path, tableRows, cancel, progress, object.name);
+        rows += tableRows;
+        if (!result) return result;
+    }
+    // Views last, once every table they read is there; one view reading
+    // another loads when its name comes later.
+    text += triggers + viewDrops + views + "SET FOREIGN_KEY_CHECKS = 1;\n";
+    if (!file.Put(text)) return FileError(path, "the file could not be written (is the disk full?)");
+    return UltraDbResult::Ok();
+}
+
 } // namespace
 
 UltraDbResult PostgresTableDdl(const std::string& connection, const UltraDbTableSchema& table, PostgresDdl& out) {
     out = PostgresDdl();
-    const std::string target = QualifiedName(table.schema, table.name);
+    const std::string target = QualifiedName(SqlEngine::Postgres, table.schema, table.name);
     const UltraDbParams self{UltraDbValue(target)};
 
     UltraDbResultSet columns;
@@ -344,7 +434,7 @@ UltraDbResult PostgresTableDdl(const std::string& connection, const UltraDbTable
         const std::string generated = row["generated"].AsString();
         const std::string expr = row["expr"].IsNull() ? std::string() : row["expr"].AsString();
         const bool serial = !row["serial"].IsNull() && identity.empty() && expr.rfind("nextval(", 0) == 0;
-        std::string definition = "    " + QuotedName(name) + " ";
+        std::string definition = "    " + QuotedName(SqlEngine::Postgres, name) + " ";
         if (serial) {
             // A serial makes its own sequence, as the original's was made.
             const std::string lower = Lower(type);
@@ -367,11 +457,11 @@ UltraDbResult PostgresTableDdl(const std::string& connection, const UltraDbTable
         if (generated.empty()) out.insertColumns.push_back(name);
         if (!identity.empty() || serial) {
             out.counters.push_back("SELECT setval(pg_get_serial_sequence(" + StringLiteral(target) + ", " +
-                                   StringLiteral(name) + "), COALESCE(MAX(" + QuotedName(name) + "), 0) + 1, false) FROM " +
+                                   StringLiteral(name) + "), COALESCE(MAX(" + QuotedName(SqlEngine::Postgres, name) + "), 0) + 1, false) FROM " +
                                    target);
         }
         if (!row["comment"].IsNull())
-            out.comments.push_back("COMMENT ON COLUMN " + target + "." + QuotedName(name) + " IS " +
+            out.comments.push_back("COMMENT ON COLUMN " + target + "." + QuotedName(SqlEngine::Postgres, name) + " IS " +
                                    StringLiteral(row["comment"].AsString()));
     }
 
@@ -387,7 +477,7 @@ UltraDbResult PostgresTableDdl(const std::string& connection, const UltraDbTable
     for (size_t i = 0; i < constraints.Size(); ++i) {
         const UltraDbRow& row = constraints.Row(i);
         const std::string type = row["type"].AsString();
-        const std::string clause = "CONSTRAINT " + QuotedName(row["name"].AsString()) + " " + row["def"].AsString();
+        const std::string clause = "CONSTRAINT " + QuotedName(SqlEngine::Postgres, row["name"].AsString()) + " " + row["def"].AsString();
         if (type == "p" || type == "u" || type == "c" || type == "x") definitions.push_back("    " + clause);
         else if (type == "f") out.foreignKeys.push_back("ALTER TABLE " + target + " ADD " + clause);
     }
@@ -437,6 +527,8 @@ UltraDbResult DumpSchema(const std::string& connection, SqlEngine engine, const 
     if (!file.Open(path)) return FileError(path, "it cannot be written there");
     result = engine == SqlEngine::Sqlite
                  ? DumpSqlite(connection, schema, objects, options, file, path, tables, rows, cancel, progress)
+             : engine == SqlEngine::MySql
+                 ? DumpMysql(connection, schema, objects, options, file, path, tables, rows, cancel, progress)
                  : DumpPostgres(connection, schema, objects, options, file, path, tables, rows, cancel, progress);
     if (!result) return result;            // the part file goes with `file`
     std::string error;

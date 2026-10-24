@@ -2,6 +2,7 @@
 // The UltraDatabase manager: driver registry, named-connection registry with
 // lazy opening, and the public UltraDb_* entrypoints for queries, prepared
 // statements, transactions and migrations.
+// Version: 0.5.0 - the MySQL / MariaDB driver, server administration (UltraDatabaseServer.h)
 // Version: 0.4.0 - statement observers (UltraDb_AddStatementObserver)
 // Version: 0.3.3 - Retired() is never destroyed: a close from an atexit handler wrote into it after its teardown
 // Version: 0.3.2 - the SQLite driver reports a statement's own changes only
@@ -42,6 +43,7 @@ std::map<std::string, IUltraDbDriverPlugin*>& DriverRegistry() {
 void EnsureBuiltins() {
     (void)ultradb_internal::BuiltinSqliteDriver();
     (void)ultradb_internal::BuiltinPostgresDriver();
+    (void)ultradb_internal::BuiltinMysqlDriver();
 }
 
 // ---- Connection registry ---------------------------------------------------
@@ -271,7 +273,7 @@ IUltraDbDriverPlugin* UltraDatabase_GetDriver(const std::string& driverId) {
 // Core (public, declared in UltraDatabaseCore.h)
 // ============================================================================
 
-std::string UltraDatabase_GetVersion() { return "0.4.0"; }
+std::string UltraDatabase_GetVersion() { return "0.5.0"; }
 
 std::vector<std::string> UltraDatabase_GetSupportedDrivers() {
     EnsureBuiltins();
@@ -679,6 +681,63 @@ UltraDbResult UltraDb_DescribeTable(const std::string& connection, const std::st
     UltraDbResult result = conn ? conn->DescribeTable(schema, table, out) : err;
     watch.Report(Kind::Introspection, connection, "-- describe " + (schema.empty() ? table : schema + "." + table), 0,
                  0, false, result);
+    return result;
+}
+
+// ===== SERVER ADMINISTRATION =====
+
+UltraDbResult UltraDb_ServerSessions(const std::string& connection, UltraDbResultSet& out) {
+    out.Clear();
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    UltraDbResult result = conn ? conn->ServerSessions(out) : err;
+    watch.Report(Kind::Introspection, connection, "-- the server's sessions", 0, out.Size(), false, result);
+    return result;
+}
+
+UltraDbResult UltraDb_ServerSettings(const std::string& connection, const std::string& filter,
+                                     UltraDbResultSet& out) {
+    out.Clear();
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    UltraDbResult result = conn ? conn->ServerSettings(filter, out) : err;
+    watch.Report(Kind::Introspection, connection, "-- the server's settings", filter.empty() ? 0 : 1, out.Size(),
+                 false, result);
+    return result;
+}
+
+UltraDbResult UltraDb_ServerSizes(const std::string& connection, const std::string& schema,
+                                  UltraDbResultSet& out) {
+    out.Clear();
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    UltraDbResult result = conn ? conn->ServerSizes(schema, out) : err;
+    watch.Report(Kind::Introspection, connection, "-- the sizes of the databases" + (schema.empty() ? "" : " and " + schema),
+                 0, out.Size(), false, result);
+    return result;
+}
+
+UltraDbResult UltraDb_StopSessionSql(const std::string& connection, int64_t id, bool endSession,
+                                     std::string& sql) {
+    sql.clear();
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    return conn ? conn->StopSessionSql(id, endSession, sql) : err;
+}
+
+UltraDbResult UltraDb_StopSession(const std::string& connection, int64_t id, bool endSession,
+                                  bool& stopped) {
+    stopped = false;
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    std::string sql;
+    UltraDbResult result = conn ? conn->StopSessionSql(id, endSession, sql) : err;
+    if (result) result = conn->StopSession(id, endSession, stopped);
+    watch.Report(Kind::Exec, connection, sql, 0, 0, false, result);
     return result;
 }
 

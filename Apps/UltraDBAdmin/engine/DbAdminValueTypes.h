@@ -6,15 +6,16 @@
 // still converts and has the last word; this only says early what it would.
 //
 // And the value functions a cell can be set to instead of a value - the
-// database's CURRENT_TIMESTAMP, PostgreSQL's gen_random_uuid() - per engine
+// database's CURRENT_TIMESTAMP, PostgreSQL's gen_random_uuid(), MySQL's UUID() - per engine
 // and kind (Docs/Research/UltraDBAdminDesignProposal.md, 5.2 Insert). A
 // function is written into the statement as SQL, so only the ones listed
 // here are ever written (IsValueFunction).
+// Version: 0.2.0 - MySQL / MariaDB
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
-#include "DbAdminStructureEdit.h"   // SqlEngine
+#include "DbAdminEngine.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 

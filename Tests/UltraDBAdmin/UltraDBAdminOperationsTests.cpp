@@ -127,6 +127,38 @@ std::string PostgresConnection(const std::string& name) {
     return name;
 }
 
+// The MySQL / MariaDB server of Tests/UltraDatabase/test_mysql.h: its socket
+// (or host), user and database from ULTRADB_TEST_MYSQL_*. "" when none is
+// configured - a failure where ULTRADB_TEST_MYSQL_REQUIRED says one must be.
+std::string MysqlConnection(const std::string& name) {
+    const char* database = std::getenv("ULTRADB_TEST_MYSQL_DB");
+    const bool required = std::getenv("ULTRADB_TEST_MYSQL_REQUIRED") != nullptr;
+    if (!database || !*database) {
+        Check(!required, "a MySQL server is configured");
+        std::printf("  [SKIP] no MySQL configured (ULTRADB_TEST_MYSQL_DB)\n");
+        return std::string();
+    }
+    auto env = [](const char* key, const char* fallback) {
+        const char* v = std::getenv(key);
+        return std::string(v && *v ? v : fallback);
+    };
+    UltraDbConnectionConfig cfg;
+    cfg.name = name;
+    cfg.driver = "mysql";
+    cfg.database = database;
+    cfg.host = env("ULTRADB_TEST_MYSQL_HOST", "/run/mysqld/mysqld.sock");
+    cfg.port = std::atoi(env("ULTRADB_TEST_MYSQL_PORT", "0").c_str());
+    cfg.user = env("ULTRADB_TEST_MYSQL_USER", "");
+    cfg.tls = UltraDbTls::Disable;       // the local test server
+    if (!UltraDb_RegisterConnection(cfg) || !UltraDb_OpenConnection(name)) {
+        Check(!required, "the MySQL server is reached");
+        std::printf("  [SKIP] MySQL not reached\n");
+        UltraDb_CloseConnection(name);
+        return std::string();
+    }
+    return name;
+}
+
 // A column of a new table; the default, when given, is SQL.
 NewColumn Col(const std::string& name, const std::string& type, bool notNull = false, bool key = false,
               bool counter = false, const char* defaultExpression = nullptr) {
@@ -314,7 +346,7 @@ void TestOperationsSqlite() {
               rows.Row(0)[0].AsString() == "wal",
           "set to WAL");
     Check(!JournalModePlan("main", "wal; DROP TABLE orders", plan, error), "a mode not on the list refused");
-    Check(MaintenanceTasks(SqlEngine::Postgres).size() == 2, "PostgreSQL offers analyze and vacuum");
+    Check(MaintenanceTasks(SqlEngine::Postgres, false).size() == 2, "PostgreSQL offers analyze and vacuum");
 
     // Rename.
     Check(!RenameObjectPlan(SqlEngine::Sqlite, "main", "orders_shape", UltraDbObjectKind::Table, "orders_shape", plan, error),
@@ -348,14 +380,14 @@ void TestOperationsPostgres() {
     const std::string c = PostgresConnection("dbadmin-ops-pg");
     if (c.empty()) return;
     const std::string schema = "dbadmin_" + ConnectionStore::NewId();
-    UltraDb_Exec(c, "CREATE SCHEMA " + QuotedName(schema));
+    UltraDb_Exec(c, "CREATE SCHEMA " + QuotedName(SqlEngine::Postgres, schema));
     std::string error;
     OperationPlan plan;
     NewColumn id = Col("id", "integer", false, true, true);
     NewColumn label = Col("label", "text", true, false, false, "'none'");
     Check(CreateTablePlan(SqlEngine::Postgres, schema, "items", {id, label}, plan, error) && Run(c, plan),
           "created with an identity key");
-    const std::string items = QualifiedName(schema, "items");
+    const std::string items = QualifiedName(SqlEngine::Postgres, schema, "items");
     UltraDb_Exec(c, "ALTER TABLE " + items + " ADD COLUMN shout text GENERATED ALWAYS AS (upper(label)) STORED");
     UltraDb_Exec(c, "CREATE INDEX ON " + items + " (label)");
     for (const char* text : {"a", "b", "c"}) UltraDb_Exec(c, "INSERT INTO " + items + " (label) VALUES (?)", {text});
@@ -363,7 +395,7 @@ void TestOperationsPostgres() {
     const UltraDbTableSchema table = Describe(c, schema, "items");
     Check(CopyTablePlan(SqlEngine::Postgres, table, SqliteTableSource(), "items_copy", true, plan, error) && Run(c, plan),
           "copied with rows: " + error);
-    const std::string copy = QualifiedName(schema, "items_copy");
+    const std::string copy = QualifiedName(SqlEngine::Postgres, schema, "items_copy");
     Check(Count(c, "SELECT count(*) FROM " + copy) == 3, "its rows");
     UltraDb_Exec(c, "INSERT INTO " + copy + " (label) VALUES ('d')");
     Check(Count(c, "SELECT max(id) FROM " + copy) == 4, "its identity goes on past the rows copied");
@@ -376,15 +408,15 @@ void TestOperationsPostgres() {
     UltraDb_Exec(c, "INSERT INTO " + copy + " (label) VALUES ('e')");
     Check(Count(c, "SELECT id FROM " + copy) == 1, "RESTART IDENTITY numbers from 1 again");
     Check(Run(c, MaintenancePlan(SqlEngine::Postgres, Maintenance::Analyze, schema, "items")), "analyzed");
-    UltraDb_Exec(c, "CREATE VIEW " + QualifiedName(schema, "few") + " AS SELECT * FROM " + items);
+    UltraDb_Exec(c, "CREATE VIEW " + QualifiedName(SqlEngine::Postgres, schema, "few") + " AS SELECT * FROM " + items);
     Check(RenameObjectPlan(SqlEngine::Postgres, schema, "few", UltraDbObjectKind::View, "some", plan, error) &&
-              Run(c, plan) && Count(c, "SELECT count(*) FROM " + QualifiedName(schema, "some")) == 3 &&
+              Run(c, plan) && Count(c, "SELECT count(*) FROM " + QualifiedName(SqlEngine::Postgres, schema, "some")) == 3 &&
               Run(c, DropObjectPlan(SqlEngine::Postgres, schema, "some", UltraDbObjectKind::View)),
           "a view renamed, and dropped");
     Check(Run(c, MaintenancePlan(SqlEngine::Postgres, Maintenance::Vacuum, schema, "items")), "vacuumed");
 
     // A referenced table cannot be truncated without CASCADE, which is never written.
-    UltraDb_Exec(c, "CREATE TABLE " + QualifiedName(schema, "refs") + " (item integer REFERENCES " + items + " (id))");
+    UltraDb_Exec(c, "CREATE TABLE " + QualifiedName(SqlEngine::Postgres, schema, "refs") + " (item integer REFERENCES " + items + " (id))");
     Check(!Run(c, EmptyTablePlan(SqlEngine::Postgres, schema, "items", false)), "a referenced table is not truncated");
     Check(Count(c, "SELECT count(*) FROM " + items) == 3, "and keeps its rows");
     Check(!Run(c, DropObjectPlan(SqlEngine::Postgres, schema, "items", UltraDbObjectKind::Table)),
@@ -392,7 +424,72 @@ void TestOperationsPostgres() {
     Check(Run(c, DropObjectPlan(SqlEngine::Postgres, schema, "refs", UltraDbObjectKind::Table)) &&
               Run(c, DropObjectPlan(SqlEngine::Postgres, schema, "items", UltraDbObjectKind::Table)),
           "dropped once nothing refers to it");
-    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(schema) + " CASCADE");
+    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(SqlEngine::Postgres, schema) + " CASCADE");
+    UltraDb_CloseConnection(c);
+}
+
+void TestOperationsMysql() {
+    Section("Operations (MySQL / MariaDB)");
+    const std::string c = MysqlConnection("dbadmin-ops-my");
+    if (c.empty()) return;
+    constexpr SqlEngine my = SqlEngine::MySql;
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    UltraDb_Exec(c, "CREATE DATABASE " + QuotedName(my, schema));
+    std::string error;
+    OperationPlan plan;
+    NewColumn id = Col("id", "int", false, true, true);
+    NewColumn label = Col("label", "varchar(80)", true, false, false, "'none'");
+    Check(CreateTablePlan(my, schema, "items", {id, label}, plan, error) && Run(c, plan),
+          "created with an AUTO_INCREMENT key: " + error);
+    Check(!plan.transaction, "MySQL's DDL commits on its own: no transaction around it");
+    const std::string items = QualifiedName(my, schema, "items");
+    Check(items == "`" + schema + "`.`items`", "names in backticks: " + items);
+    UltraDb_Exec(c, "ALTER TABLE " + items + " ADD COLUMN shout varchar(80) AS (upper(label)) STORED");
+    UltraDb_Exec(c, "CREATE INDEX by_label ON " + items + " (label)");
+    for (const char* text : {"a", "b", "c"}) UltraDb_Exec(c, "INSERT INTO " + items + " (label) VALUES (?)", {text});
+
+    const UltraDbTableSchema table = Describe(c, schema, "items");
+    Check(CopyTablePlan(my, table, SqliteTableSource(), "items_copy", true, plan, error) && Run(c, plan),
+          "copied with rows: " + error);
+    const std::string copy = QualifiedName(my, schema, "items_copy");
+    Check(Count(c, "SELECT count(*) FROM " + copy) == 3, "its rows");
+    UltraDb_Exec(c, "INSERT INTO " + copy + " (label) VALUES ('d')");
+    Check(Count(c, "SELECT max(id) FROM " + copy) == 4, "its AUTO_INCREMENT goes on past the rows copied");
+    Check(Rows(c, "SELECT shout FROM " + copy + " WHERE label = 'd'").Row(0)[0].AsString() == "D",
+          "its generated column computes");
+    Check(Count(c, "SELECT count(DISTINCT INDEX_NAME) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = '" +
+                       schema + "' AND TABLE_NAME = 'items_copy'") == 2,
+          "its key and its index");
+
+    Check(Run(c, EmptyTablePlan(my, schema, "items_copy", true)), "truncated");
+    UltraDb_Exec(c, "INSERT INTO " + copy + " (label) VALUES ('e')");
+    Check(Count(c, "SELECT id FROM " + copy) == 1, "TRUNCATE numbers from 1 again");
+    Check(MaintenanceTasks(my, false).empty() && MaintenanceTasks(my, true).size() == 4,
+          "MySQL's maintenance names a table: none on a whole database");
+    UltraDbResultSet answer;
+    for (const Maintenance task : MaintenanceTasks(my, true))
+        Check(Run(c, MaintenancePlan(my, task, schema, "items"), &answer) && answer.Size() >= 1,
+              std::string(MaintenanceText(task)) + ": the server's report");
+    UltraDb_Exec(c, "CREATE VIEW " + QualifiedName(my, schema, "few") + " AS SELECT * FROM " + items);
+    Check(RenameObjectPlan(my, schema, "few", UltraDbObjectKind::View, "some", plan, error) && Run(c, plan) &&
+              Count(c, "SELECT count(*) FROM " + QualifiedName(my, schema, "some")) == 3 &&
+              Run(c, DropObjectPlan(my, schema, "some", UltraDbObjectKind::View)),
+          "a view renamed, and dropped");
+    Check(RenameObjectPlan(my, schema, "items_copy", UltraDbObjectKind::Table, "items_old", plan, error) &&
+              Run(c, plan) && Count(c, "SELECT count(*) FROM " + QualifiedName(my, schema, "items_old")) == 1,
+          "a table renamed");
+
+    // A referenced row is not deleted, and the table keeps them all.
+    const std::string refs = QualifiedName(my, schema, "refs");
+    UltraDb_Exec(c, "CREATE TABLE " + refs + " (item int, FOREIGN KEY (item) REFERENCES " + items + " (id)) ENGINE=InnoDB");
+    UltraDb_Exec(c, "INSERT INTO " + refs + " VALUES (1)");
+    Check(!Run(c, EmptyTablePlan(my, schema, "items", false)), "a referenced row is not deleted");
+    Check(Count(c, "SELECT count(*) FROM " + items) == 3, "and the table keeps its rows");
+    Check(!Run(c, DropObjectPlan(my, schema, "items", UltraDbObjectKind::Table)), "nor dropped while referenced");
+    Check(Run(c, DropObjectPlan(my, schema, "refs", UltraDbObjectKind::Table)) &&
+              Run(c, DropObjectPlan(my, schema, "items", UltraDbObjectKind::Table)),
+          "dropped once nothing refers to it");
+    UltraDb_Exec(c, "DROP DATABASE " + QuotedName(my, schema));
     UltraDb_CloseConnection(c);
 }
 
@@ -446,8 +543,8 @@ void TestSearchPostgres() {
     const std::string c = PostgresConnection("dbadmin-search-pg");
     if (c.empty()) return;
     const std::string schema = "dbadmin_" + ConnectionStore::NewId();
-    UltraDb_Exec(c, "CREATE SCHEMA " + QuotedName(schema));
-    const std::string t = QualifiedName(schema, "people");
+    UltraDb_Exec(c, "CREATE SCHEMA " + QuotedName(SqlEngine::Postgres, schema));
+    const std::string t = QualifiedName(SqlEngine::Postgres, schema, "people");
     UltraDb_Exec(c, "CREATE TABLE " + t + " (id serial PRIMARY KEY, name text, born date, active boolean, pic bytea)");
     UltraDb_Exec(c, "INSERT INTO " + t + " (name, born, active) VALUES ('Ada', '1815-12-10', true), "
                     "('ADA', '1990-01-01', false), ('Bea', '1815-01-01', NULL)");
@@ -461,7 +558,38 @@ void TestSearchPostgres() {
     hits.clear();
     SearchTable(c, SqlEngine::Postgres, Describe(c, schema, "people"), "true", SearchMode::Exactly, hits);
     Check(hits.size() == 1 && hits[0].column == "active" && hits[0].rows == 1, "a boolean read as text");
-    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(schema) + " CASCADE");
+    UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(SqlEngine::Postgres, schema) + " CASCADE");
+    UltraDb_CloseConnection(c);
+}
+
+void TestSearchMysql() {
+    Section("Search (MySQL / MariaDB)");
+    const std::string c = MysqlConnection("dbadmin-search-my");
+    if (c.empty()) return;
+    constexpr SqlEngine my = SqlEngine::MySql;
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    UltraDb_Exec(c, "CREATE DATABASE " + QuotedName(my, schema));
+    const std::string t = QualifiedName(my, schema, "people");
+    UltraDb_Exec(c, "CREATE TABLE " + t + " (id int AUTO_INCREMENT PRIMARY KEY, name varchar(40), born date, "
+                    "active tinyint(1), pic blob)");
+    UltraDb_Exec(c, "INSERT INTO " + t + " (name, born, active, pic) VALUES ('Ada', '1815-12-10', 1, 'Ada'), "
+                    "('ADA', '1990-01-01', 0, NULL), ('a_b 100%', '1815-01-01', NULL, NULL), ('axb', NULL, NULL, NULL)");
+    std::vector<SearchHit> hits;
+    Check(SearchTable(c, my, Describe(c, schema, "people"), "ada", SearchMode::Contains, hits).success, "searched");
+    Check(hits.size() == 1 && hits[0].column == "name" && hits[0].rows == 2, "Ada and ADA, not the blob");
+    hits.clear();
+    SearchTable(c, my, Describe(c, schema, "people"), "1815", SearchMode::Contains, hits);
+    Check(hits.size() == 1 && hits[0].column == "born" && hits[0].rows == 2, "a date read as text");
+    hits.clear();
+    SearchTable(c, my, Describe(c, schema, "people"), "Ada", SearchMode::Exactly, hits);
+    Check(hits.size() == 1 && hits[0].rows == 1, "exactly: case and all");
+    hits.clear();
+    SearchTable(c, my, Describe(c, schema, "people"), "a_b", SearchMode::Contains, hits);
+    Check(hits.size() == 1 && hits[0].rows == 1, "_ is matched as itself");
+    hits.clear();
+    SearchTable(c, my, Describe(c, schema, "people"), "0%", SearchMode::Contains, hits);
+    Check(hits.size() == 1 && hits[0].column == "name" && hits[0].rows == 1, "% is matched as itself");
+    UltraDb_Exec(c, "DROP DATABASE " + QuotedName(my, schema));
     UltraDb_CloseConnection(c);
 }
 
@@ -557,7 +685,7 @@ void TestDumpPostgres() {
     const std::string c = PostgresConnection("dbadmin-dump-pg");
     if (c.empty()) return;
     const std::string schema = "dbadmin_" + ConnectionStore::NewId();
-    const std::string s = QuotedName(schema);
+    const std::string s = QuotedName(SqlEngine::Postgres, schema);
     UltraDb_Exec(c, "CREATE SCHEMA " + s);
     UltraDb_Exec(c, "CREATE TABLE " + s + ".customers (id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY, "
                     "name text NOT NULL UNIQUE, CONSTRAINT named CHECK (length(name) > 0))");
@@ -594,7 +722,7 @@ void TestDumpPostgres() {
         ExportOptions options;
         options.format = ExportFormat::Sql;
         options.engine = SqlEngine::Postgres;
-        options.table = QualifiedName(schema, "tags");
+        options.table = QualifiedName(SqlEngine::Postgres, schema, "tags");
         options.preamble = tags.create + ";\n";
         for (const auto& counter : tags.counters) options.postamble += counter + ";\n";
         size_t written = 0;
@@ -654,6 +782,81 @@ void TestDumpPostgres() {
     UltraDb_CloseConnection(c);
 }
 
+void TestDumpMysql() {
+    Section("Schema dump (MySQL / MariaDB)");
+    const std::string c = MysqlConnection("dbadmin-dump-my");
+    if (c.empty()) return;
+    constexpr SqlEngine my = SqlEngine::MySql;
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    const std::string s = QuotedName(my, schema);
+    Check(RunScript(c, "CREATE DATABASE " + s + ";\n"
+                       "CREATE TABLE " + s + ".customers (id int AUTO_INCREMENT PRIMARY KEY, "
+                       "name varchar(40) NOT NULL UNIQUE) ENGINE=InnoDB COMMENT 'Everyone, it''s all here';\n"
+                       "CREATE TABLE " + s + ".orders (id int AUTO_INCREMENT PRIMARY KEY, customer int, "
+                       "total decimal(10,2) DEFAULT 0, net decimal(10,2) AS (total / 1.19) STORED, "
+                       "note text, data blob, `Odd Name` varchar(9), "
+                       "FOREIGN KEY (customer) REFERENCES " + s + ".customers (id) ON DELETE CASCADE) ENGINE=InnoDB;\n"
+                       "CREATE INDEX by_total ON " + s + ".orders (total);\n"
+                       "CREATE VIEW " + s + ".big AS SELECT id, total FROM " + s + ".orders WHERE total > 10;\n"
+                       "CREATE TRIGGER " + s + ".stamp BEFORE INSERT ON " + s + ".orders FOR EACH ROW "
+                       "BEGIN IF NEW.note IS NULL THEN SET NEW.note = 'new'; END IF; END;\n"
+                       "INSERT INTO " + s + ".customers (name) VALUES ('Ada'), ('O''Brien');\n"
+                       "INSERT INTO " + s + ".orders (customer, total, note, data, `Odd Name`) VALUES "
+                       "(1, 119.00, 'a \\\\ b\\n''c'';', X'00FF5C27', 'x'), (2, 5.5, NULL, NULL, NULL);"),
+          "a database with keys, a generated column, a view and a trigger");
+    const std::string note = Rows(c, "SELECT note FROM " + s + ".orders WHERE customer = 1").Row(0)[0].AsString();
+
+    TempDir dir;
+    const std::string path = dir.File("my.sql");
+    size_t tables = 0, rows = 0;
+    UltraDbResult result = DumpSchema(c, my, schema, path, DumpOptions(), tables, rows);
+    Check(result.success && tables == 2 && rows == 4, "dumped: " + result.message);
+    const std::string text = ReadFile(path);
+    Check(Has(text, "SET FOREIGN_KEY_CHECKS = 0") && Has(text, "DELIMITER ;;") && !Has(text, "DEFINER="),
+          "foreign keys off, the trigger between DELIMITER lines, no DEFINER clause");
+    Check(!Has(text, "`" + schema + "`"), "names without the database: it loads into the one in use");
+    Check(SummarizeScript(my, text).statements > 6 && SummarizeScript(my, text).unsupported.empty(),
+          "Import SQL reads it");
+    // Read back into the same database, after it is gone and made again.
+    UltraDb_Exec(c, "DROP DATABASE " + s);
+    UltraDb_Exec(c, "CREATE DATABASE " + s);
+    Check(RunScript(c, "USE " + s + ";\n" + text), "the dump runs on an empty database");
+    Check(Count(c, "SELECT count(*) FROM " + s + ".orders") == 2, "its rows");
+    Check(Rows(c, "SELECT note FROM " + s + ".orders WHERE customer = 1").Row(0)[0].AsString() == note,
+          "a backslash, a newline, quotes and a ';' read back as they were");
+    Check(Rows(c, "SELECT hex(data) FROM " + s + ".orders WHERE customer = 1").Row(0)[0].AsString() == "00FF5C27",
+          "a blob read back");
+    Check(Rows(c, "SELECT CAST(net AS CHAR) FROM " + s + ".orders WHERE customer = 1").Row(0)[0].AsString() == "100.00",
+          "the generated column computes again");
+    UltraDb_Exec(c, "INSERT INTO " + s + ".customers (name) VALUES ('Cy')");
+    Check(Count(c, "SELECT max(id) FROM " + s + ".customers") == 3, "AUTO_INCREMENT goes on after the rows");
+    UltraDb_Exec(c, "INSERT INTO " + s + ".orders (customer) VALUES (3)");
+    Check(Rows(c, "SELECT note FROM " + s + ".orders WHERE customer = 3").Row(0)[0].AsString() == "new",
+          "the trigger is back");
+    Check(!UltraDb_Exec(c, "INSERT INTO " + s + ".orders (customer) VALUES (99)").success, "the foreign key is back");
+    Check(Count(c, "SELECT count(*) FROM " + s + ".big") == 1, "the view is back");
+    Check(Rows(c, "SELECT TABLE_COMMENT FROM information_schema.TABLES WHERE TABLE_SCHEMA = '" + schema +
+                      "' AND TABLE_NAME = 'customers'").Row(0)[0].AsString() == "Everyone, it's all here",
+          "the comment is back");
+    // With DROP first, over what is there.
+    DumpOptions drop;
+    drop.dropFirst = true;
+    Check(DumpSchema(c, my, schema, path, drop, tables, rows).success, "dumped with DROP IF EXISTS");
+    Check(RunScript(c, "USE " + s + ";\n" + ReadFile(path)) && Count(c, "SELECT count(*) FROM " + s + ".orders") == 3,
+          "it replaces the tables in place");
+    // A table's export as SQL: SHOW CREATE TABLE first.
+    {
+        TempDir out;
+        std::string preamble;
+        Check(MysqlPreamble(c, Describe(c, schema, "customers"), preamble).success && Has(preamble, "CREATE TABLE `customers`"),
+              "a table's definition for its export: " + preamble.substr(0, 60));
+        Check(MysqlPreamble(c, Describe(c, schema, "orders"), preamble).success && Has(preamble, "-- The rows of"),
+              "a table with a generated column: its rows only, said so");
+    }
+    UltraDb_Exec(c, "DROP DATABASE " + s);
+    UltraDb_CloseConnection(c);
+}
+
 // ===== Snippets, console =====
 
 void TestSnippets() {
@@ -681,11 +884,11 @@ void TestSnippets() {
 void TestStatementAt() {
     Section("The statement under the caret");
     const std::string script = "SELECT 1;\n\n-- the second\nSELECT ';' AS semi;\nUPDATE t SET a = 1";
-    const std::vector<StatementSpan> spans = StatementSpans(script);
+    const std::vector<StatementSpan> spans = StatementSpans(SqlEngine::Sqlite, script);
     Check(spans.size() == 3, "three statements");
     auto at = [&](size_t offset) {
         StatementSpan span;
-        if (!StatementAt(script, offset, span)) return std::string();
+        if (!StatementAt(SqlEngine::Sqlite, script, offset, span)) return std::string();
         return script.substr(span.begin, span.end - span.begin);
     };
     Check(at(0) == "SELECT 1", "at the start: the first");
@@ -695,12 +898,20 @@ void TestStatementAt() {
     Check(at(script.size()) == "UPDATE t SET a = 1", "at the end: the last, without a ';'");
     Check(spans.size() == 3 && spans[2].semicolon == spans[2].end, "the last has no ';'");
     StatementSpan none;
-    Check(!StatementAt("  -- nothing\n", 0, none), "a script of comments has no statement");
-    Check(StatementSpans("SELECT 'open").empty(), "a quote never closed: none");
+    Check(!StatementAt(SqlEngine::Sqlite, "  -- nothing\n", 0, none), "a script of comments has no statement");
+    Check(StatementSpans(SqlEngine::Sqlite, "SELECT 'open").empty(), "a quote never closed: none");
     const std::string trigger = "CREATE TRIGGER x AFTER INSERT ON t BEGIN UPDATE t SET a = 1; END;\nSELECT 2";
-    Check(StatementSpans(trigger).size() == 2, "a trigger's body is one statement");
+    Check(StatementSpans(SqlEngine::Sqlite, trigger).size() == 2, "a trigger's body is one statement");
+    const std::string mysql = "SELECT 1;\nDELIMITER $$\nCREATE PROCEDURE p() BEGIN SELECT 2; END$$\nDELIMITER ;\n# done\nSELECT 3";
+    StatementSpan in;
+    Check(StatementAt(SqlEngine::MySql, mysql, mysql.find("SELECT 2"), in) &&
+              mysql.substr(in.begin, in.end - in.begin) == "CREATE PROCEDURE p() BEGIN SELECT 2; END",
+          "MySQL: the caret in a procedure's body is in the procedure");
+    Check(StatementAt(SqlEngine::MySql, mysql, mysql.size(), in) && mysql.substr(in.begin) == "SELECT 3",
+          "MySQL: a # comment before a statement is not part of it");
     Check(ExplainSql(SqlEngine::Sqlite, "SELECT 1") == "EXPLAIN QUERY PLAN SELECT 1", "SQLite's plan");
     Check(ExplainSql(SqlEngine::Postgres, "SELECT 1") == "EXPLAIN SELECT 1", "PostgreSQL's plan, not ANALYZE");
+    Check(ExplainSql(SqlEngine::MySql, "SELECT 1") == "EXPLAIN SELECT 1", "MySQL's plan, not ANALYZE");
     const std::string c = SqliteFile("dbadmin-explain", ":memory:");
     UltraDb_Exec(c, "CREATE TABLE t(a INTEGER PRIMARY KEY, b TEXT)");
     const UltraDbResultSet plan = Rows(c, ExplainSql(SqlEngine::Sqlite, "SELECT * FROM t WHERE a = 1"));
@@ -830,10 +1041,13 @@ int main() {
     TestCreateTablePlan();
     TestOperationsSqlite();
     TestOperationsPostgres();
+    TestOperationsMysql();
     TestSearch();
     TestSearchPostgres();
+    TestSearchMysql();
     TestDumpSqlite();
     TestDumpPostgres();
+    TestDumpMysql();
     TestSnippets();
     TestStatementAt();
     TestValueTypes();

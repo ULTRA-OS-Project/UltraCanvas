@@ -137,7 +137,7 @@ their *License* is likewise marked **—** (OS component).
 | miniz | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
-| MySQL / MariaDB (planned) | [mysql.com](https://www.mysql.com/) | [github.com/mysql/mysql-server](https://github.com/mysql/mysql-server) | — |
+| MariaDB Connector/C (libmariadb; the MySQL / MariaDB driver) | [mariadb.com](https://mariadb.com/docs/connectors/mariadb-connector-c/) | [github.com/mariadb-corporation/mariadb-connector-c](https://github.com/mariadb-corporation/mariadb-connector-c) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
@@ -150,7 +150,7 @@ their *License* is likewise marked **—** (OS component).
 | Opus (libopus) | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opus](https://github.com/xiph/opus) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | opusfile | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opusfile](https://github.com/xiph/opusfile) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | Pango | [pango.gnome.org](https://pango.gnome.org/) | [gitlab.gnome.org/GNOME/pango](https://gitlab.gnome.org/GNOME/pango) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
-| PostgreSQL (planned) | [postgresql.org](https://www.postgresql.org/) | [github.com/postgres/postgres](https://github.com/postgres/postgres) | — |
+| PostgreSQL client library (libpq) | [postgresql.org](https://www.postgresql.org/) | [github.com/postgres/postgres](https://github.com/postgres/postgres) | [PostgreSQL](https://spdx.org/licenses/PostgreSQL.html) |
 | PulseAudio | [freedesktop.org/wiki/Software/PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) | [gitlab.freedesktop.org/pulseaudio/pulseaudio](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | QEMU (runtime, not linked) | [qemu.org](https://www.qemu.org/) | [gitlab.com/qemu-project/qemu](https://gitlab.com/qemu-project/qemu) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | qrcodegen | [nayuki.io](https://www.nayuki.io/page/qr-code-generator-library) | [github.com/nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -493,11 +493,16 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Embedded SQL engine (Stage 1) | SQLite (system libsqlite3) | SQLite (system libsqlite3) | SQLite (system libsqlite3) |
-| Networked drivers (Stage 2) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) |
+| PostgreSQL driver | libpq (`libpq-dev`) | libpq when found (not in CI's vcpkg set) | libpq when found (not in CI's MSYS2 set) |
+| MySQL / MariaDB driver | MariaDB Connector/C (`libmariadb-dev`), the shared library | Connector/C when found (not in CI's vcpkg set) | Connector/C when found (not in CI's MSYS2 set) |
 
 > The build prefers the system libsqlite3 (pkg-config, then a plain
 > `find_library`); when it is missing the `UltraDatabase` target is simply not
-> built and the rest of the tree configures unchanged.
+> built and the rest of the tree configures unchanged. The two server drivers
+> are optional the same way: without libpq or libmariadb a connection to that
+> engine reports its driver missing. Connector/C is LGPL-2.1 and linked only as
+> the shared library - CMake asks for it by name and leaves the driver out
+> when only `libmariadb.a` is there (`THIRD_PARTY_LICENSES.md`).
 
 ### Ultra Net module
 

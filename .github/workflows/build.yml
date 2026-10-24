@@ -557,6 +557,27 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       # ===== Linux: system package manager =====
+      # The .deb files the last run on main downloaded, restored into apt's
+      # cache before anything is installed, so apt fetches only what changed
+      # since: on 2026-10-23 the mirror served this job so slowly that the
+      # step below ran out of its 45 minutes twice in a row, downloading the
+      # same packages as the run before. Saved by main alone, as ccache is (a
+      # pull request's cache would serve that pull request only and crowd the
+      # repository's 10 GB); pruned to the versions installed, so it stays
+      # near the size of one install. One per runner image and architecture.
+      - name: Restore the apt package cache (Linux)
+        if: runner.os == 'Linux'
+        id: apt-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-${{ matrix.os }}-
+          restore-keys: apt-debs-${{ matrix.os }}-
+
+      - name: Put the cached packages in apt's cache (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         # A mirror that crawls still finishes (15-27 min on 2026-10-07, against
@@ -747,11 +768,12 @@ jobs:
           # libsodium: cryptographic backend for UltraCrypt
           scripts/ci-apt.sh install libsodium-dev
           # UltraDatabase: SQLite is the single-user store, libpq the
-          # multi-user one. Both are named explicitly rather than relied on
-          # from the runner image, because UltraDatabase soft-disables itself
-          # when a header is missing - and a silently disabled database layer
+          # multi-user one, libmariadb (MariaDB Connector/C) the MySQL /
+          # MariaDB driver. All named explicitly rather than relied on from
+          # the runner image, because UltraDatabase soft-disables itself when
+          # a header is missing - and a silently disabled database layer
           # takes the whole UltraFIBU bookkeeping suite out of CI with it.
-          scripts/ci-apt.sh install libsqlite3-dev libpq-dev
+          scripts/ci-apt.sh install libsqlite3-dev libpq-dev libmariadb-dev
           # c-ares: UltraNet's async DNS uses the event-thread API
           # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
           # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
@@ -802,6 +824,19 @@ jobs:
           # the single place the CI compiler is decided.
           echo "CC=clang-$V"    >> "$GITHUB_ENV"
           echo "CXX=clang++-$V" >> "$GITHUB_ENV"
+
+      # After the last apt install of the job (Clang's, just above).
+      - name: Keep the downloaded packages (Linux, main)
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main'
+        id: apt-keep
+        run: echo "hash=$(scripts/ci-apt.sh cache-out "${{ runner.temp }}/apt-debs")" >> "$GITHUB_OUTPUT"
+
+      - name: Save the apt package cache (Linux, main)
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main' && steps.apt-keep.outputs.hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-${{ matrix.os }}-${{ steps.apt-keep.outputs.hash }}
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
       # Windows installs MSYS2's native rust package above (gnu/gnullvm ABI,
@@ -997,6 +1032,17 @@ jobs:
             exit 1
           fi
           echo "UltraDatabase verified: SQLite + PostgreSQL"
+
+      - name: Verify UltraDatabase built with MySQL / MariaDB (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "UltraDatabase - ENABLED.*MySQL/MariaDB" configure.log; then
+            echo "::error::UltraDatabase configured without its MySQL / MariaDB driver (libmariadb-dev missing, or only its static archive found?) - the MySQL tests would silently not run"
+            exit 1
+          fi
+          echo "UltraDatabase verified: SQLite + PostgreSQL + MySQL/MariaDB"
 
       # Spell checking also degrades quietly: no Hunspell and every text widget
       # still builds, with no dictionaries and no red underlines. That passed
@@ -1336,6 +1382,40 @@ jobs:
           # it arrives as one line with no diagnosis.
           psql -h /var/run/postgresql -p 5432 -d ultrafibu_ci -c 'SELECT 1' >/dev/null
 
+      # The MySQL / MariaDB driver's tests (Tests/UltraDatabase: test_mysql,
+      # test_server) against a real server. The x86_64 runner image carries
+      # MySQL 8, which is also what proves Connector/C talks to MySQL as well
+      # as to MariaDB (the proposal's open question); where the image has no
+      # server, Ubuntu's MySQL is installed. The tests log in as the runner's
+      # own user over the server's socket (auth_socket), so no password is
+      # needed or written anywhere. Without the variables the tests SKIP, and
+      # ULTRADB_TEST_MYSQL_REQUIRED below turns that skip into a failure.
+      - name: Start MySQL for the database tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          if ! command -v mysqld >/dev/null 2>&1; then
+            scripts/ci-apt.sh install mysql-server
+          fi
+          sudo systemctl start mysql || sudo service mysql start
+          USER_NAME="$(whoami)"
+          SETUP="CREATE USER IF NOT EXISTS '$USER_NAME'@'localhost' IDENTIFIED WITH auth_socket;
+                 GRANT ALL PRIVILEGES ON *.* TO '$USER_NAME'@'localhost';
+                 CREATE DATABASE IF NOT EXISTS ultradb_ci;"
+          # The image's root has the password root; a fresh install's root
+          # logs in over the socket. auth_socket is loaded where it is not yet
+          # (an image whose root logs in with a password may not load it).
+          root_sql() { sudo mysql -uroot -proot "$@" 2>/dev/null || sudo mysql -uroot "$@"; }
+          if [ -z "$(root_sql -N -e "SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME = 'auth_socket'")" ]; then
+            root_sql -e "INSTALL PLUGIN auth_socket SONAME 'auth_socket.so'"
+          fi
+          root_sql -e "$SETUP"
+          SOCKET="$(root_sql -N -e 'SELECT @@socket')"
+          echo "ULTRADB_TEST_MYSQL_HOST=$SOCKET" >> "$GITHUB_ENV"
+          echo "ULTRADB_TEST_MYSQL_USER=$USER_NAME" >> "$GITHUB_ENV"
+          # The connection the tests make, made here, where an error names its cause.
+          mysql --protocol=socket -S "$SOCKET" -u "$USER_NAME" ultradb_ci -e 'SELECT VERSION()'
+
       # macOS and Windows build no full test suite (BUILD_TESTS is Linux-only);
       # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS builds these two anyway, so the
       # vendored libcdr is exercised there on real files: detailed.cdr has to
@@ -1620,6 +1700,10 @@ jobs:
           ULTRAFIBU_TEST_PG_DB: ultrafibu_ci
           # A skip here is indistinguishable from a pass, so forbid it.
           ULTRAFIBU_TEST_PG_REQUIRED: 1
+          # The MySQL server of "Start MySQL for the database tests";
+          # _HOST and _USER come from that step via GITHUB_ENV.
+          ULTRADB_TEST_MYSQL_DB: ultradb_ci
+          ULTRADB_TEST_MYSQL_REQUIRED: 1
         run: ctest --output-on-failure 2>&1 | tee ctest.log
 
       # "Run unit tests" runs DesktopShellTest with no display, where the X11

@@ -4,7 +4,12 @@
 // table, copy one (its structure, or structure and rows), empty it, drop a
 // table, view or sequence - and SQLite's maintenance: VACUUM, ANALYZE,
 // PRAGMA integrity_check / quick_check / optimize and the journal mode.
-// PostgreSQL's maintenance is VACUUM (ANALYZE) and ANALYZE.
+// PostgreSQL's maintenance is VACUUM (ANALYZE) and ANALYZE; MySQL's CHECK,
+// ANALYZE and OPTIMIZE TABLE, on a table.
+//
+// MySQL commits every statement that defines something as it runs - CREATE,
+// DROP, RENAME, TRUNCATE - whatever transaction it is in, so a plan of them
+// is not one transaction there, and its preview says so.
 //
 // Each operation is a plan first - the statements, shown as SQL before
 // anything runs - then RunPlan. Names are quoted (QuotedName: SQLite and
@@ -20,6 +25,7 @@
 // columns, comments - and an identity column's counter moved past the rows
 // copied. Triggers are not copied on either: a trigger names its table in
 // its body, and a copy firing the original's triggers is a surprise.
+// Version: 0.2.0 - MySQL / MariaDB
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -51,8 +57,9 @@ std::string PlanText(const OperationPlan& plan);
 UltraDbResult RunPlan(const std::string& connection, const OperationPlan& plan, UltraDbResultSet* rows,
                       size_t& failed);
 
-// "main"."orders" - schema and name quoted; an empty schema leaves it out.
-std::string QualifiedName(const std::string& schema, const std::string& name);
+// "main"."orders" (`shop`.`orders` on MySQL) - schema and name quoted as
+// `engine` quotes them; an empty schema leaves it out.
+std::string QualifiedName(SqlEngine engine, const std::string& schema, const std::string& name);
 
 // ===== Empty, drop =====
 
@@ -78,7 +85,9 @@ bool RenameObjectPlan(SqlEngine engine, const std::string& schema, const std::st
 
 // A copy of `table` as `newName` in the same schema, with its rows when
 // `withData`. `source` is the SQLite table's own definition
-// (ReadSqliteTableSource); PostgreSQL ignores it. False, with `error`, for a
+// (ReadSqliteTableSource); the server engines ignore it. MySQL copies with
+// CREATE TABLE ... LIKE, which carries the indexes and AUTO_INCREMENT but no
+// foreign key. False, with `error`, for a
 // name that is empty or the table's own, or a definition the SQLite parser
 // does not read completely.
 bool CopyTablePlan(SqlEngine engine, const UltraDbTableSchema& table, const SqliteTableSource& source,
@@ -114,14 +123,17 @@ bool CreateTablePlan(SqlEngine engine, const std::string& schema, const std::str
 
 enum class Maintenance {
     Vacuum,           // SQLite: the whole file; PostgreSQL: VACUUM (ANALYZE), of a table or all
-    Analyze,
-    IntegrityCheck,   // SQLite only
-    QuickCheck,       // SQLite only
-    Optimize          // SQLite only: PRAGMA optimize
+    Analyze,          // MySQL: ANALYZE TABLE
+    IntegrityCheck,   // SQLite: PRAGMA integrity_check; MySQL: CHECK TABLE
+    QuickCheck,       // SQLite: PRAGMA quick_check; MySQL: CHECK TABLE ... QUICK
+    Optimize          // SQLite: PRAGMA optimize; MySQL: OPTIMIZE TABLE
 };
 
-// What `engine` offers, in menu order.
-std::vector<Maintenance> MaintenanceTasks(SqlEngine engine);
+// What `engine` offers, in menu order, on a table (`table`) or on a whole
+// schema: on a SQLite table only ANALYZE (the checks and VACUUM are the
+// file's); MySQL's statements each name a table, so it offers none on a
+// schema.
+std::vector<Maintenance> MaintenanceTasks(SqlEngine engine, bool table);
 const char* MaintenanceText(Maintenance task);   // "Vacuum", "Check integrity", ...
 // What it does, for the menu's tooltip and the confirmation.
 const char* MaintenanceAbout(Maintenance task, SqlEngine engine);

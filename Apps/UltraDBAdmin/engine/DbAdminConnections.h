@@ -3,11 +3,14 @@
 // directory, never with a password in it. A password goes into the app's own
 // vault (UltraVault::DeviceKeyVault, encrypted at rest) under a key made from
 // the connection's id, and the connection hands UltraDatabase only that key -
-// the PostgreSQL driver reads it from the vault when it connects.
+// the PostgreSQL and MySQL drivers read it from the vault when they connect.
+// Version: 0.3.0 - MySQL / MariaDB connections; EngineOf
 // Version: 0.2.0 - auto-commit per connection
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "DbAdminEngine.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 
@@ -22,9 +25,9 @@ namespace UltraDBAdmin {
 struct ConnectionSpec {
     std::string id;                 // generated; ASCII, so it can name a vault key
     std::string name;               // what the tree shows
-    std::string driver = "sqlite";  // "sqlite" or "postgresql"
-    std::string database;           // SQLite: the file; PostgreSQL: the database
-    std::string host;               // PostgreSQL only; a socket directory works too
+    std::string driver = "sqlite";  // "sqlite", "postgresql" or "mysql" (MariaDB too)
+    std::string database;           // SQLite: the file; a server: the database
+    std::string host;               // a server only; a socket directory (PostgreSQL) or socket file (MySQL) works too
     int         port = 0;           // 0: the driver's default
     std::string user;
     bool        hasPassword = false;   // a password is in the vault for this id
@@ -37,7 +40,11 @@ struct ConnectionSpec {
     bool        autoCommit = false;
 
     bool IsSqlite() const { return driver == "sqlite" || driver == "sqlite3"; }
+    bool IsMysql() const { return driver == "mysql" || driver == "mariadb"; }
 };
+
+// The dialect `spec` speaks.
+SqlEngine EngineOf(const ConnectionSpec& spec);
 
 // The name a spec is registered under in UltraDatabase: the session the
 // tree, Browse and Structure use.

@@ -1,3 +1,36 @@
+#### 2026-10-24 *0.9.397*
+- **CI keeps the Linux packages it downloaded.** On 2026-10-23 the Ubuntu
+  mirror served the x64 Linux build so slowly that its dependency step ran
+  out of its 45 minutes twice in a row, downloading the same packages as the
+  run before. The Linux build legs now restore the `.deb` files the last run
+  on `main` downloaded into apt's cache before they install anything, so apt
+  fetches only what changed since (`scripts/ci-apt.sh cache-in`). `main`
+  saves them after the last install, pruned to the versions installed
+  (`cache-out`), keyed by the set of files, one cache per runner image and
+  architecture; a pull request saves none, as with ccache.
+- **UltraDatabase 0.5.0: the MySQL / MariaDB driver.** A `mysql` (or
+  `mariadb`) connection reaches a MariaDB or a MySQL server through MariaDB
+  Connector/C (libmariadb, LGPL-2.1, linked as the shared library), built in
+  wherever the library is found. Parameters are bound to server-side
+  prepared statements, never written into the SQL; the integer types come
+  back as Int, FLOAT and DOUBLE as Double, binary columns as Blob, DECIMAL
+  exact as text; each result column names its source table. TLS is verified
+  by default, the password comes from UltraVault, `LOAD DATA LOCAL` is off.
+  Scripts are cut as the mysql client cuts them, DELIMITER included
+  (UltraDb_ExecBatch), and `UltraDb_MysqlScriptStatements` says where each
+  statement of a script is, for an editor; a cursor streams from a session of its own, or inside
+  a transaction reads what the transaction wrote; UltraDb_CancelQuery sends
+  KILL QUERY. Schema introspection reads information_schema - a schema is a
+  database - with each column's default as the DDL writes it on both
+  servers.
+- **UltraDatabase: server administration** (`UltraDatabaseServer.h`, the
+  design proposal's G10). `UltraDb_ServerSessions`, `UltraDb_ServerSettings`,
+  `UltraDb_ServerSizes`, `UltraDb_StopSessionSql` and `UltraDb_StopSession`
+  give PostgreSQL's and MySQL's sessions, settings and sizes in one shape,
+  and stop a session's query or the session - never the asking one. SQLite
+  answers Unsupported. Tested against PostgreSQL, MariaDB and (in CI) MySQL 8
+  in `Tests/UltraDatabase` (test_mysql.cpp, test_server.cpp).
+
 #### 2026-10-24 *0.9.396*
 - **`UltraCanvasLabel::GetNaturalTextWidth()`: where a label's text ends.** A
   label given a fixed box is usually wider than its text, and something meant
