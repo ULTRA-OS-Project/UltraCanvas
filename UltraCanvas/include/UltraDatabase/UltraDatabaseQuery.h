@@ -1,6 +1,7 @@
 // include/UltraDatabase/UltraDatabaseQuery.h
 // The query surface. Values are always passed separately from SQL text and
 // bound by the driver, so user input never becomes part of a SQL string.
+// Version: 0.4.0 - statement observers: every statement reported as it ends
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -9,6 +10,7 @@
 #include "UltraDatabaseValue.h"
 
 #include <cstddef>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -102,3 +104,43 @@ UltraDbResult UltraDb_FetchRows(UltraDbHandle cursor, size_t maxRows,
 
 // Release a cursor. Safe on a cursor whose transaction already ended.
 UltraDbResult UltraDb_CloseCursor(UltraDbHandle cursor);
+
+// ---- Watching statements ---------------------------------------------------
+
+// What ran, reported once it has ended - an admin tool's SQL log, a debug
+// trace. Bound values are not reported, only how many there were: they are
+// the user's data, and a log is no place for a password column.
+struct UltraDbStatementEvent {
+    enum class Kind {
+        Query,          // UltraDb_Query, UltraDb_QueryInTx, UltraDb_QueryPrepared
+        Exec,           // UltraDb_Exec, UltraDb_ExecInTx, UltraDb_ExecPrepared
+        Transaction,    // BEGIN, COMMIT, ROLLBACK
+        Script,         // one statement of UltraDb_ExecBatch
+        Cursor,         // UltraDb_OpenCursor (its pages are not reported)
+        Introspection   // UltraDb_ListSchemas / ListObjects / DescribeTable: `sql` says which
+    };
+    Kind          kind = Kind::Query;
+    std::string   connection;          // the name it ran on
+    std::string   sql;                 // as sent; a prepared statement's text
+    size_t        boundValues = 0;
+    size_t        rows = 0;            // rows returned; 0 for a statement that returns none
+    bool          inTransaction = false;
+    double        seconds = 0.0;       // the call's wall time; -1 for a statement of a script,
+                                       // which the engine runs as one call
+    UltraDbResult result;              // the outcome, affectedRows and all
+};
+
+using UltraDbStatementObserver = std::function<void(const UltraDbStatementEvent&)>;
+
+// Every statement on every connection is reported to `observer`, on the
+// thread that ran it, after it ended and outside every lock of the module -
+// so the observer may run statements itself (they are reported too), and
+// must be thread-safe and quick: the caller waits for it. Returns an id for
+// UltraDb_RemoveStatementObserver; 0 for an empty function. With no observer
+// added, nothing is timed or copied.
+int UltraDb_AddStatementObserver(UltraDbStatementObserver observer);
+
+// Stops reporting to the observer `id` added. A report already under way on
+// another thread can still end after this returns, so what the observer uses
+// is best owned by it (a shared_ptr it captured), not borrowed.
+void UltraDb_RemoveStatementObserver(int id);

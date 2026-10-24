@@ -1,4 +1,6 @@
 // Apps/UltraDBAdmin/ui/DbAdminModels.cpp
+// Version: 0.5.0 - staged new rows shown after the rows read
+// Version: 0.4.0 - LogModel, SearchHitModel
 // Version: 0.3.0 - a column's width is the view's to measure (SetColumnFitting);
 //                  the model gives the header's estimate only
 // Version: 0.2.0 - a staged blob shows as its size
@@ -56,12 +58,50 @@ std::string TooltipText(const UltraDbValue& value) {
 
 // ===== ResultSetModel =====
 
-int ResultSetModel::GetRowCount() const { return static_cast<int>(rows_.Size()); }
+int ResultSetModel::GetRowCount() const { return static_cast<int>(rows_.Size() + StagedRows()); }
 int ResultSetModel::GetColumnCount() const { return static_cast<int>(columns_.size()); }
+
+size_t ResultSetModel::StagedRows() const {
+    if (!pending_ || columns_.empty()) return 0;
+    size_t n = 0;
+    while (pending_->InsertAt(n)) ++n;
+    return n;
+}
+
+ListDataValue ResultSetModel::StagedData(size_t insert, int column, ListDataRole role) const {
+    const RowChange* change = pending_ ? pending_->InsertAt(insert) : nullptr;
+    if (!change) return {};
+    const std::string& name = columns_[static_cast<size_t>(column)];
+    const auto it = change->values.find(name);
+    std::string text;
+    if (it == change->values.end()) {
+        text = "(default)";              // left to the column's default, or computed
+    } else {
+        switch (it->second.kind) {
+            case CellValue::Kind::Null:     text = NullText(); break;
+            case CellValue::Kind::Blob:     text = CellText(UltraDbValue::Blob(it->second.bytes)); break;
+            case CellValue::Kind::Default:  text = "(default)"; break;
+            case CellValue::Kind::Function: text = it->second.text; break;
+            case CellValue::Kind::Text:     text = CellText(UltraDbValue(it->second.text)); break;
+        }
+    }
+    switch (role) {
+        case ListDataRole::DisplayRole:
+            return column == 0 ? "NEW " + text : text;
+        case ListDataRole::ToolTipRole:
+            return std::string("A new row, not written yet: Commit inserts it, Revert drops it. Double-click to "
+                               "change it.");
+        default:
+            return {};
+    }
+}
 
 ListDataValue ResultSetModel::GetData(const ListIndex& index, ListDataRole role) const {
     if (index.row < 0 || index.row >= GetRowCount() || index.column < 0 || index.column >= GetColumnCount())
         return {};
+    // The rows read first; after them, the new rows staged for the table.
+    if (static_cast<size_t>(index.row) >= rows_.Size())
+        return StagedData(static_cast<size_t>(index.row) - rows_.Size(), index.column, role);
     const UltraDbRow& row = rows_.Row(static_cast<size_t>(index.row));
     if (static_cast<size_t>(index.column) >= row.Size()) return {};
     const UltraDbValue& value = row[static_cast<size_t>(index.column)];
@@ -391,6 +431,107 @@ void StatementModel::Replace(std::vector<UltraDbStatementResult> statements) {
 const UltraDbStatementResult* StatementModel::At(int row) const {
     if (row < 0 || row >= GetRowCount()) return nullptr;
     return &statements_[static_cast<size_t>(row)];
+}
+
+// ===== LogModel =====
+
+ListDataValue LogModel::GetData(const ListIndex& index, ListDataRole role) const {
+    const LogEntry* entry = At(index.row);
+    if (!entry) return {};
+    if (role == ListDataRole::ToolTipRole) {
+        std::string tip = entry->sql;
+        if (tip.size() > kTooltipChars) tip = CellText(UltraDbValue(tip), kTooltipChars);
+        if (entry->boundValues > 0)
+            tip += "\n\n" + std::to_string(entry->boundValues) +
+                   (entry->boundValues == 1 ? " value bound (not shown)" : " values bound (not shown)");
+        if (entry->inTransaction) tip += "\nIn a transaction.";
+        if (!entry->ok) tip += "\n\n" + entry->message;
+        return tip;
+    }
+    if (role != ListDataRole::DisplayRole) return {};
+    switch (index.column) {
+        case Time:      return LogTime(*entry);
+        case Where:     return where_ ? where_(entry->connection) : entry->connection;
+        case Took:      return LogDuration(*entry);
+        case Result:    return entry->ok ? LogOutcome(*entry) : "failed: " + CellText(UltraDbValue(entry->message), 80);
+        case Statement: return CellText(UltraDbValue(entry->sql), 300);
+        default:        return {};
+    }
+}
+
+ListColumnDef LogModel::GetColumnDef(int column) const {
+    switch (column) {
+        case Time:      return ListColumnDef("Time", 112);
+        case Where:     return ListColumnDef("Connection", 160);
+        case Took:      return ListColumnDef("Took", 64, TextAlignment::Right);
+        case Result:    return ListColumnDef("Result", 140);
+        case Statement: return ListColumnDef("Statement", 560);
+        default:        return ListColumnDef("", 80);
+    }
+}
+
+void LogModel::Append(const std::vector<LogEntry>& entries) {
+    if (entries.empty()) return;
+    entries_.insert(entries_.end(), entries.begin(), entries.end());
+    NotifyDataChanged();
+}
+
+void LogModel::Clear() {
+    entries_.clear();
+    NotifyDataChanged();
+}
+
+void LogModel::Trim(size_t keep) {
+    if (entries_.size() <= keep) return;
+    entries_.erase(entries_.begin(), entries_.begin() + static_cast<std::ptrdiff_t>(entries_.size() - keep));
+    NotifyDataChanged();
+}
+
+const LogEntry* LogModel::At(int row) const {
+    if (row < 0 || row >= GetRowCount()) return nullptr;
+    return &entries_[static_cast<size_t>(row)];
+}
+
+// ===== SearchHitModel =====
+
+ListDataValue SearchHitModel::GetData(const ListIndex& index, ListDataRole role) const {
+    const SearchHit* hit = At(index.row);
+    if (!hit) return {};
+    if (role == ListDataRole::ToolTipRole) return std::string("Double-click: open ") + hit->table +
+                                                  " showing only these rows";
+    if (role == ListDataRole::SortRole && index.column == RowsField) return static_cast<float>(hit->rows);
+    if (role != ListDataRole::DisplayRole) return {};
+    switch (index.column) {
+        case TableField:  return hit->kind == UltraDbObjectKind::Table ? hit->table : hit->table + " (view)";
+        case ColumnField: return hit->column;
+        case RowsField:   return std::to_string(hit->rows);
+        default:     return {};
+    }
+}
+
+ListColumnDef SearchHitModel::GetColumnDef(int column) const {
+    switch (column) {
+        case TableField:  return ListColumnDef("Table", 220);
+        case ColumnField: return ListColumnDef("Column", 200);
+        case RowsField:   return ListColumnDef("Rows", 80, TextAlignment::Right);
+        default:     return ListColumnDef("", 80);
+    }
+}
+
+void SearchHitModel::Append(const std::vector<SearchHit>& hits) {
+    if (hits.empty()) return;
+    hits_.insert(hits_.end(), hits.begin(), hits.end());
+    NotifyDataChanged();
+}
+
+void SearchHitModel::Clear() {
+    hits_.clear();
+    NotifyDataChanged();
+}
+
+const SearchHit* SearchHitModel::At(int row) const {
+    if (row < 0 || row >= GetRowCount()) return nullptr;
+    return &hits_[static_cast<size_t>(row)];
 }
 
 } // namespace UltraDBAdmin

@@ -1,3 +1,50 @@
+#### 2026-10-24 *0.9.394*
+- **UltraDatabase 0.4.0: statement observers.** `UltraDb_AddStatementObserver`
+  reports every statement that runs through the public calls, on any
+  connection, once it has ended: its kind (query, exec, transaction, one
+  statement of a script, a cursor, introspection), its text, how many values
+  were bound - never the values themselves - the rows it returned, whether it
+  ran in a transaction, its time and its outcome. It is called on the thread
+  that ran the statement, outside every lock of the module, so an observer may
+  run statements of its own. With no observer added, nothing is timed or
+  copied. `UltraDb_RemoveStatementObserver` stops it. UltraDBAdmin's SQL log is
+  the first observer. Tested in `Tests/UltraDatabase/test_observer.cpp`.
+
+#### 2026-10-23 *0.9.393*
+- **The WYSIWYG editor now names the fonts a document needs that the computer
+  lacks.** `UltraCanvasRichTextEdit` shows a notice along its top that lists
+  two kinds of font:
+  - **Scripts no font covers.** Before, their text came out as rows of hex
+    boxes that looked like a bug in the editor. Each script is now named with
+    a free font that covers it, for example "Chinese text needs Noto Sans
+    SC".
+  - **Families the document names that are not installed.** This text is
+    drawn in a substitute.
+
+  Each font in the notice is a link to the page it is downloaded from, and
+  the notice's x hides it. `GetFontReport()` and `onFontReportChanged`
+  report the same list to the host, `onFontLinkClicked` lets the host handle
+  a link itself, and `SetShowFontNotice(false)` keeps the report but hides
+  the notice. The report is worked out when a document is set, a second
+  after an edit, and when the fonts change. That includes Windows' system
+  fonts arriving after a cold start. The demo app's *WYSIWYG — Chinese,
+  Arabic & Myanmar* page shows the notice on a computer that has no font for
+  Chinese or Arabic.
+- **New `UltraCanvasFontCoverage.h`: is there a font for this text?** It has
+  four calls:
+  - `CountCharactersWithoutFont` counts the characters of a text that no
+    installed, bundled or registered font covers.
+  - `FindScriptsWithoutFont` groups those characters by script. Each script
+    comes with a free Noto font that covers it and that font's download
+    page.
+  - `FontDownloadUrl` gives the address of a search for a font family on
+    Google Fonts.
+  - `IsFontFamilyAvailable` says whether a family is installed, bundled or
+    registered.
+
+  The new headless `FontCoverageTest` covers them, and
+  `RichTextEditElementTest` covers the report and the notice.
+
 #### 2026-10-23 *0.9.392*
 - **DemoApp: one page look, and an audit that finds cut text.**
   - `UltraCanvasDemoPageKit.h` is the Level Meter page's look for every page:

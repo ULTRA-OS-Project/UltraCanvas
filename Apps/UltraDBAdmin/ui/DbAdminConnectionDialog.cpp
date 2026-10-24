@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminConnectionDialog.cpp
+// Version: 0.2.0 - auto-commit
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminConnectionDialog.h"
@@ -26,7 +27,7 @@ namespace UltraDBAdmin {
 namespace {
 
 constexpr int kDialogWidth  = 520;
-constexpr int kDialogHeight = 470;
+constexpr int kDialogHeight = 506;
 constexpr float kRowHeight  = 28.0f;
 
 // The TLS dropdown, in UltraDbTls order.
@@ -75,6 +76,7 @@ struct Form {
     UltraCanvasDropdown* tls = nullptr;
     UltraCanvasCheckbox* readOnly = nullptr;
     UltraCanvasCheckbox* production = nullptr;
+    UltraCanvasCheckbox* autoCommit = nullptr;
     UltraCanvasLabel* error = nullptr;
     // The rows only one type has: caption and control, hidden together.
     std::vector<UltraCanvasUIElement*> sqliteRows;
@@ -98,6 +100,7 @@ void Save(Form& form) {
     spec.driver = IsSqliteChoice(form) ? "sqlite" : "postgresql";
     spec.readOnly = form.readOnly->IsChecked();
     spec.production = form.production->IsChecked();
+    spec.autoCommit = form.autoCommit->IsChecked();
     std::string password;
     bool clearPassword = false;
     if (spec.IsSqlite()) {
@@ -272,6 +275,13 @@ void ShowConnectionDialog(UltraCanvasWindowBase* parent, const ConnectionSpec* e
                                                           spec.production);
     AddFormWideRow(grid, production);
     form->production = production.get();
+
+    auto autoCommit = UltraCanvasCheckbox::CreateCheckbox(
+        "dbcAutoCommit", 0, 0, 0, 24, "Auto-commit - a row change is written at once",
+        spec.autoCommit);
+    autoCommit->SetTooltip("As phpMyAdmin does. A deletion, and any change on a production connection, still asks first.");
+    AddFormWideRow(grid, autoCommit);
+    form->autoCommit = autoCommit.get();
 
     dialog->AddChild(grid);
 

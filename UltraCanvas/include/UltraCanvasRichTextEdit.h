@@ -18,6 +18,8 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.4.0 - GetFontReport and the font notice: the fonts a document needs that the
+//                  computer lacks, each a link to the page it is downloaded from
 // Version: 1.3.0 - SetZoomRange: follow a canvas zoom beyond 0.25 to 5;
 //                  ApplyCharFormat: set formatting exactly
 // Author: UltraCanvas Framework
@@ -31,6 +33,8 @@
 #include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasSpellChecker.h"
 #include "UltraCanvasInlineMath.h"
+#include "UltraCanvasFontCoverage.h"
+#include "UltraCanvasTimer.h"
 
 #include <array>
 #include <atomic>
@@ -105,7 +109,11 @@ struct RichTextEditStyle {
     float commentPaneWidth = 230.0f;
     // Tracked changes: inserted text underlined, deleted text struck through.
     Color insertionColor = Color(0, 105, 180);
-    Color deletionColor = Color(185, 30, 30);
+    Color deletionColor = Color(185, 30, 30);    // The notice along the top naming the fonts the document needs that the
+    // computer lacks (GetFontReport).
+    Color fontNoticeColor = Color(255, 244, 214);
+    Color fontNoticeBorderColor = Color(230, 180, 80);
+    Color fontNoticeTextColor = Color(110, 70, 0);
 };
 
 // A clickable region inside a rendered block (hyperlinks today).
@@ -489,6 +497,41 @@ public:
     // A comment's box was double-clicked: a host opens its editor
     // (SetCommentText). Its text is selected already.
     std::function<void(int commentIndex)> onCommentActivated;
+
+    // ===== FONTS THE DOCUMENT NEEDS =====
+    // What this computer lacks to show the document as it was written: the
+    // font families its text names that are not installed (drawn in a
+    // substitute), and the scripts no font covers at all (drawn as boxes of
+    // hex digits), each with a free font that covers it and the page it is
+    // downloaded from. The headers, footers, notes and table cells count;
+    // pictures and formulas do not. Worked out when a document is set, after
+    // edits (at most once a second) and when the fonts change - a font
+    // registered or installed, Windows' fonts arriving after a cold start.
+    struct FontReport {
+        std::vector<std::string> missingFamilies;
+        std::vector<MissingScriptFont> missingScripts;
+        bool IsEmpty() const { return missingFamilies.empty() && missingScripts.empty(); }
+        bool operator==(const FontReport& other) const;
+    };
+    const FontReport& GetFontReport();
+    // While the report is not empty, a notice along the element's top names
+    // the fonts, each a link to its download page; its x hides it until the
+    // report changes. On by default.
+    void SetShowFontNotice(bool show);
+    bool IsShowingFontNotice() const { return showFontNotice; }
+    // Whether the notice is on screen now (shown, not dismissed, and a
+    // report with something in it).
+    bool IsFontNoticeVisible() const;
+    void DismissFontNotice();
+    // A link in the notice was clicked. Return true to consume it; otherwise
+    // the page is opened in the browser. (Unlike onLinkClicked these are the
+    // element's own links, never the document's.)
+    std::function<bool(const std::string& url)> onFontLinkClicked;
+    // The report changed (also when it became empty).
+    std::function<void(const FontReport& report)> onFontReportChanged;
+    // Fonts may have changed (RefreshAfterFontChange calls it on every
+    // element): the report is worked out again before the next frame.
+    void InvalidateLayout() override;
 
     // ===== COMMENTS =====
     // A comment on the selection (the word at the caret without one). The
@@ -942,6 +985,36 @@ private:
     bool layoutsDirty = true;
     bool visibleAreaDirty = true;
     bool caretMoved = false;
+
+    // ===== FONT REPORT AND NOTICE =====
+    FontReport fontReport;
+    bool fontReportDirty = true;      // the document or the fonts changed since
+    bool fontReportDue = true;        // ... and it is time to work it out again
+    TimerId fontReportTimer = 0;      // the second after an edit
+    bool showFontNotice = true;
+    bool fontNoticeDismissed = false;
+    float fontNoticeHeight = 0.0f;    // the strip the notice takes, 0 when hidden
+    bool fontNoticeHover = false;     // the pointer is over it (its cursor is set)
+    struct FontNoticePiece {
+        std::string text;
+        std::string url;              // a link when not empty
+        bool spaceBefore = true;
+        Rect2Df rect{0, 0, 0, 0};     // element coordinates, once laid out
+    };
+    std::vector<FontNoticePiece> fontNoticePieces;
+    Rect2Df fontNoticeCloseRect{0, 0, 0, 0};
+    void RefreshFontReport();
+    void ScheduleFontReport();
+    void BuildFontNoticePieces();
+    // Lays the notice out at the element's width; returns its height.
+    float LayoutFontNotice(IRenderContext* ctx);
+    void RenderFontNotice(IRenderContext* ctx);
+    bool FontNoticeContains(const Point2Di& elementPoint) const;
+    // Handles a press on the notice: a link opens, the x hides it.
+    void PressFontNotice(const Point2Di& elementPoint);
+    // The element's bounds below the notice: where the text, the scrollbars
+    // and the comment pane go.
+    Rect2Df TextBounds() const;
 
     bool readOnly = false;
     // Drawing for output (PDF, print): no selection, caret, guides or marks.
