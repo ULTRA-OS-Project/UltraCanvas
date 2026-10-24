@@ -1,5 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminOperationDialogs.cpp
-// Version: 0.4.0 - the relay dialog: Sign in; titled "Connect to a DB relay", what a relay is under the buttons
+// Version: 0.4.0 - the relay dialog: Sign in, titled "Connect to a DB relay"; the new table's and the compare's notes under their buttons (Note)
 // Version: 0.3.0 - the data compare dialog
 // Version: 0.2.0 - MySQL / MariaDB types
 // Version: 0.1.0
@@ -49,6 +49,15 @@ std::shared_ptr<UltraCanvasLabel> Intro(const std::string& id, const std::string
     auto label = CreateLabel(id, 0, 0, 0, height, text);
     label->SetWrap(TextWrap::WrapWord);
     label->layoutItem.SetFlexShrink(0);
+    return label;
+}
+
+// How a form works, under its buttons and quieter than the form: for the
+// dialogs whose fields come first (a warning of what is about to happen
+// stays on top, as Intro).
+std::shared_ptr<UltraCanvasLabel> Note(const std::string& id, const std::string& text, float height = 40) {
+    auto label = Intro(id, text, height);
+    label->SetTextColor(StatusColor());
     return label;
 }
 
@@ -318,10 +327,6 @@ void ShowNewTableDialog(UltraCanvasWindowBase* parent, SqlEngine engine, const s
     auto dialog = MakeDialog("New table in " + schema, 820, 600);
     if (!dialog) return;
     form->dialog = dialog.get();
-    dialog->AddChild(Intro("dbnIntro",
-                           "A line per column; an empty line is left out. A type and a default are SQL, as the "
-                           "database writes them. More columns, indexes and keys can follow in Structure.",
-                           40));
 
     auto nameRow = ButtonRow("dbnNameRow");
     auto nameLabel = CreateLabel("dbnNameLabel", 0, 0, 60, 24, "Name");
@@ -390,6 +395,10 @@ void ShowNewTableDialog(UltraCanvasWindowBase* parent, SqlEngine engine, const s
     });
     buttons->AddChild(create);
     dialog->AddChild(buttons);
+    dialog->AddChild(Note("dbnIntro",
+                          "A line per column; an empty line is left out. A type and a default are SQL, as the "
+                          "database writes them. More columns, indexes and keys can follow in Structure.",
+                          40));
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }
 
@@ -477,7 +486,6 @@ void ShowCompareDialog(UltraCanvasWindowBase* parent, const CompareDialogSpec& s
     auto dialog = MakeDialog(spec.title, 860, 600);
     if (!dialog) return;
     form->dialog = dialog.get();
-    dialog->AddChild(Intro("dbdIntro", spec.intro, 40));
 
     auto grid = CreateFormGrid("dbdForm", 8.0f, 10.0f);
     grid->layoutItem.SetFlexShrink(0);
@@ -542,6 +550,7 @@ void ShowCompareDialog(UltraCanvasWindowBase* parent, const CompareDialogSpec& s
     compare->SetOnClick([form]() { RunCompare(form); });
     buttons->AddChild(compare);
     dialog->AddChild(buttons);
+    dialog->AddChild(Note("dbdIntro", spec.intro, 40));
     table->onEnterPressed = [form](const std::string&) {
         RunCompare(form);
         return true;
@@ -663,13 +672,11 @@ void ShowRelayDialog(UltraCanvasWindowBase* parent, const std::string& url, bool
     buttons->AddChild(connect);
     dialog->AddChild(buttons);
     // What a relay is, under the buttons, for whoever wants to know.
-    auto intro = Intro("dbrIntro",
-                       "An UltraDBAdmin relay runs your queries on the databases its administrator set up, "
-                       "with passwords that stay on the relay. Your token - or signing in, where the relay "
-                       "offers it - says who you are and what you may read or change.",
-                       78);
-    intro->SetTextColor(StatusColor());
-    dialog->AddChild(intro);
+    dialog->AddChild(Note("dbrIntro",
+                          "An UltraDBAdmin relay runs your queries on the databases its administrator set up, "
+                          "with passwords that stay on the relay. Your token - or signing in, where the relay "
+                          "offers it - says who you are and what you may read or change.",
+                          78));
     dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }

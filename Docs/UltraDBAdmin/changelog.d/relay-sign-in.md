@@ -11,3 +11,8 @@
 - **The relay dialog** is titled "Connect to a DB relay", with the address,
   the token and the buttons first and what a relay is under them; in the
   browser it has a title bar to move it by, as every dialog there now has.
+- **Forms first, notes after.** In the row form, the column and index forms,
+  New table and Compare the fields and buttons come first and how the form
+  works is a quieter note under them; dialogs that say what is about to
+  happen (the SQL before an operation, Import SQL's warnings, the import's
+  mapping, the integrity check's findings) keep it on top.
