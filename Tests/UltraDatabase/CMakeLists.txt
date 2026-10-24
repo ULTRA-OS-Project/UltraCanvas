@@ -11,6 +11,8 @@ set(ULTRADATABASE_TEST_SOURCES
     test_batch_cursor.cpp
     test_lifetime.cpp
     test_observer.cpp
+    test_mysql.cpp
+    test_server.cpp
 )
 
 add_executable(UltraDatabaseTests ${ULTRADATABASE_TEST_SOURCES})
