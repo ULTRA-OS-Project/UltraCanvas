@@ -1,7 +1,9 @@
 // core/UltraCanvasSpreadsheet.cpp
 // Main spreadsheet UI component implementation
+// Version: 1.4.0 - every line of text (cells, headers, formula bar, tabs) is centred
+//                 on its capitals rather than its line box
 // Version: 1.3.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include <stdexcept>
@@ -13,6 +15,16 @@
 #include <cmath>
 
 namespace UltraCanvas {
+
+namespace {
+// The font of the grid's own text: the formula bar, the headers and the tabs.
+FontStyle ChromeFont() {
+    FontStyle font;
+    font.fontFamily = "Arial";
+    font.fontSize = 11;
+    return font;
+}
+} // namespace
 
 // ============================================================================
 // CONSTRUCTOR / DESTRUCTOR
@@ -149,12 +161,16 @@ void UltraCanvasSpreadsheet::RenderFormulaBar(IRenderContext* ctx) {
     // Active cell address
     CellAddress active = GetActiveCell();
     ctx->SetTextPaint(Colors::Black);
-    ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
-    ctx->SetFontSize(11);
+    // Every line of text in the grid is centred on its capitals
+    // (TextTopCentredOnCaps), as a button's caption is: centring the line box
+    // instead puts the text wherever the font's ascent and descent put it,
+    // which on Windows was low enough to cut the descenders off.
+    const FontStyle chromeFont = ChromeFont();
+    ctx->SetFontStyle(chromeFont);
+    const Rect2Dd barRow(formulaBarBounds_.x, formulaBarBounds_.y, formulaBarBounds_.width, formulaBarBounds_.height);
+    const int barTextY = ctx->TextTopCentredOnCaps(barRow, chromeFont);
     std::string addrText = active.ToString();
-    ctx->DrawText(addrText,
-                  Point2Df(formulaBarBounds_.x + 6,
-                  formulaBarBounds_.y + (formulaBarBounds_.height - ctx->GetTextLineHeight(addrText)) / 2));
+    ctx->DrawText(addrText, Point2Df(formulaBarBounds_.x + 6, barTextY));
 
     // The "fx" button that opens the function menu
     const Rect2Di fx = FunctionMenuButtonRect();
@@ -163,20 +179,23 @@ void UltraCanvasSpreadsheet::RenderFormulaBar(IRenderContext* ctx) {
         ctx->FillRectangle(Rect2Df(fx.x, fx.y, fx.width, fx.height));
         ctx->SetStrokePaint(gridlineColor_);
         ctx->DrawRectangle(Rect2Df(fx.x, fx.y, fx.width, fx.height));
-        ctx->SetFontFace("Times New Roman", FontWeight::Bold, FontSlant::Italic);
-        ctx->SetFontSize(13);
+        FontStyle fxFont;
+        fxFont.fontFamily = "Times New Roman";
+        fxFont.fontSize = 13;
+        fxFont.fontWeight = FontWeight::Bold;
+        fxFont.fontSlant = FontSlant::Italic;
+        ctx->SetFontStyle(fxFont);
         const std::string fxLabel = "fx";
         const int arrowW = 7;
         const int labelW = ctx->GetTextLineWidth(fxLabel);
         const int startX = fx.x + (fx.width - labelW - arrowW - 3) / 2;
         ctx->SetTextPaint(headerTextColor_);
-        ctx->DrawText(fxLabel, Point2Df(startX, fx.y + (fx.height - ctx->GetTextLineHeight(fxLabel)) / 2));
+        ctx->DrawText(fxLabel, Point2Df(startX, ctx->TextTopCentredOnCaps(Rect2Dd(fx.x, fx.y, fx.width, fx.height), fxFont)));
         const double ax = startX + labelW + 3, ay = fx.y + fx.height * 0.5 - 1.5;
         ctx->SetFillPaint(headerTextColor_);
         ctx->FillLinePath(std::vector<Point2Dd>{ Point2Dd(ax, ay), Point2Dd(ax + arrowW, ay),
                                                  Point2Dd(ax + arrowW / 2.0, ay + 4) });
-        ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(11);
+        ctx->SetFontStyle(chromeFont);
     }
 
     // Formula/value text
@@ -196,9 +215,7 @@ void UltraCanvasSpreadsheet::RenderFormulaBar(IRenderContext* ctx) {
     // Being edited here, the editor draws the text itself; drawn as well, the
     // two copies sat a few pixels apart and read as "==SUM(...)".
     if (!(editMode_ == SpreadsheetEditMode::Editing && cellEditor)) {
-        ctx->DrawText(displayText,
-                      Point2Df(textX,
-                      formulaBarBounds_.y + (formulaBarBounds_.height - ctx->GetTextLineHeight(displayText)) / 2));
+        ctx->DrawText(displayText, Point2Df(textX, barTextY));
     }
     ctx->PopState();
 }
@@ -274,12 +291,12 @@ void UltraCanvasSpreadsheet::RenderColumnHeaders(IRenderContext* ctx) {
 
         // Column letter
         ctx->SetTextPaint(isSelected ? Colors::White : headerTextColor_);
-        ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(11);
+        const FontStyle headerFont = ChromeFont();
+        ctx->SetFontStyle(headerFont);
         std::string colName = CellAddress::ColumnToLetter(col);
         int textWidth = ctx->GetTextLineWidth(colName);
         ctx->DrawText(colName, Point2Df(x + (colWidth - textWidth) / 2,
-                      headerY + (headerHeight - ctx->GetTextLineHeight(colName)) / 2));
+                      ctx->TextTopCentredOnCaps(Rect2Dd(x, headerY, colWidth, headerHeight), headerFont)));
 
         if (sortable && col >= sortRange.start.col && col <= sortRange.end.col) {
             Rect2Di button = GetHeaderSortButtonRect(x, colWidth);
@@ -408,12 +425,12 @@ void UltraCanvasSpreadsheet::RenderRowHeaders(IRenderContext* ctx) {
 
         // Row number
         ctx->SetTextPaint(isSelected ? Colors::White : headerTextColor_);
-        ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
-        ctx->SetFontSize(11);
+        const FontStyle headerFont = ChromeFont();
+        ctx->SetFontStyle(headerFont);
         std::string rowNum = std::to_string(row + 1);
         int textWidth = ctx->GetTextLineWidth(rowNum);
         ctx->DrawText(rowNum, Point2Df(headerX + (headerWidth - textWidth) / 2,
-                      y + (rowHeight - ctx->GetTextLineHeight(rowNum)) / 2));
+                      ctx->TextTopCentredOnCaps(Rect2Dd(headerX, y, headerWidth, rowHeight), headerFont)));
 
         y += rowHeight;
     }
@@ -525,11 +542,12 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
         const auto& style = cell->GetStyle();
 
         // Set font
-        std::string fontFamily = style.font.family.empty() ? "Arial" : style.font.family;
-        ctx->SetFontFace(fontFamily,
-                         (style.font.bold ? FontWeight::Bold : FontWeight::Normal),
-                         (style.font.italic ? FontSlant::Italic : FontSlant::Normal));
-        ctx->SetFontSize(style.font.size);
+        FontStyle cellFont;
+        cellFont.fontFamily = style.font.family.empty() ? "Arial" : style.font.family;
+        cellFont.fontSize = style.font.size;
+        cellFont.fontWeight = style.font.bold ? FontWeight::Bold : FontWeight::Normal;
+        cellFont.fontSlant = style.font.italic ? FontSlant::Italic : FontSlant::Normal;
+        ctx->SetFontStyle(cellFont);
         // Negative values in a "red negatives" number format paint red, as in
         // the authoring application; otherwise the style's own font colour wins.
         Color textColor = style.font.color;
@@ -545,7 +563,10 @@ void UltraCanvasSpreadsheet::RenderCell(IRenderContext* ctx, int row, int col, c
         // Calculate text position based on alignment
         int padding = 3;
         int textX = bounds.x + padding;
-        int textY = bounds.y + (bounds.height - ctx->GetTextLineHeight(text)) / 2;
+        // A value of several lines is centred as a block.
+        int textY = text.find('\n') == std::string::npos
+            ? ctx->TextTopCentredOnCaps(Rect2Dd(bounds.x, bounds.y, bounds.width, bounds.height), cellFont)
+            : bounds.y + (bounds.height - ctx->GetTextLineHeight(text)) / 2;
 
         // Horizontal alignment
         if (style.hAlign == HorizontalAlignment::Center) {
@@ -849,8 +870,8 @@ void UltraCanvasSpreadsheet::RenderSheetTabs(IRenderContext* ctx) {
     drawNavButton(layout.nextButton, layout.canScrollNext, false);
 
     // Sheet tabs
-    ctx->SetFontFace("Arial", FontWeight::Normal, FontSlant::Normal);
-    ctx->SetFontSize(11);
+    const FontStyle tabFont = ChromeFont();
+    ctx->SetFontStyle(tabFont);
     for (const auto& [index, tab] : layout.tabs) {
         const auto& sheet = sheets_[index];
         std::string name = sheet->GetName();
@@ -875,7 +896,7 @@ void UltraCanvasSpreadsheet::RenderSheetTabs(IRenderContext* ctx) {
         ctx->ClipRect(Rect2Df(tab.x + 2, tab.y, std::max(0, tab.width - 4), tab.height));
         ctx->SetTextPaint(Colors::Black);
         ctx->DrawText(name, Point2Df(tab.x + 10,
-                      tab.y + (tab.height - ctx->GetTextLineHeight(name)) / 2));
+                      ctx->TextTopCentredOnCaps(Rect2Dd(tab.x, tab.y, tab.width, tab.height), tabFont)));
         ctx->PopState();
     }
 
@@ -887,7 +908,8 @@ void UltraCanvasSpreadsheet::RenderSheetTabs(IRenderContext* ctx) {
     ctx->DrawRectangle(Rect2Df(addButton.x, addButton.y, addButton.width, addButton.height));
     ctx->SetTextPaint(Colors::Black);
     ctx->DrawText("+", Point2Df(addButton.x + (addButton.width - ctx->GetTextLineWidth("+")) / 2,
-                                addButton.y + (addButton.height - ctx->GetTextLineHeight("+")) / 2));
+                                ctx->TextTopCentredOnCaps(Rect2Dd(addButton.x, addButton.y, addButton.width,
+                                                                  addButton.height), tabFont)));
 }
 
 void UltraCanvasSpreadsheet::RenderScrollbars(IRenderContext* ctx) {
