@@ -264,6 +264,9 @@ if(ANDROID)
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    # The desktop store; its hard requirement on libsodium and SQLite would
+    # stop this configure, and the Android store is a later milestone.
+    set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
@@ -802,7 +805,14 @@ option(BUILD_ULTRASTORE "Build the UltraStore application" ON)
 if(BUILD_ULTRASTORE)
     message(STATUS "")
     message(STATUS "── Building UltraStore ──")
-    add_subdirectory(Apps/UltraStore)
+    if(ANDROID OR IOS OR EMSCRIPTEN)
+        # The desktop store. The stores for the phones and the browser read
+        # the same catalog later; this target's requirements must not stop
+        # their configures now.
+        message(STATUS "  [−] UltraStore - SKIPPED (the desktop store; not built for this platform)")
+    else()
+        add_subdirectory(Apps/UltraStore)
+    endif()
 endif()
 
 # ===== ANCHORPOINT =====
