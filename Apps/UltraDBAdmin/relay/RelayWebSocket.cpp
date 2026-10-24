@@ -1,5 +1,5 @@
 // Apps/UltraDBAdmin/relay/RelayWebSocket.cpp
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "RelayWebSocket.h"
 
@@ -134,7 +134,50 @@ std::string HttpAnswer(int code, const char* status, const std::string& body) {
            std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
 }
 
+std::string HttpAnswer(const HttpReply& reply) {
+    std::string out = "HTTP/1.1 " + std::to_string(reply.status) + " " + reply.reason +
+                      "\r\nContent-Type: " + reply.contentType +
+                      "\r\nContent-Length: " + std::to_string(reply.body.size()) + "\r\n";
+    for (const auto& [name, value] : reply.headers) out += name + ": " + value + "\r\n";
+    return out + "Connection: close\r\n\r\n" + reply.body;
+}
+
+int HexDigit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+std::string PercentDecode(const std::string& s) {
+    std::string out;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '+') out += ' ';
+        else if (s[i] == '%' && i + 2 < s.size() && HexDigit(s[i + 1]) >= 0 && HexDigit(s[i + 2]) >= 0) {
+            out += static_cast<char>(HexDigit(s[i + 1]) * 16 + HexDigit(s[i + 2]));
+            i += 2;
+        } else out += s[i];
+    }
+    return out;
+}
+
 } // namespace
+
+std::map<std::string, std::string> ParseQuery(const std::string& query) {
+    std::map<std::string, std::string> out;
+    size_t at = 0;
+    while (at <= query.size()) {
+        size_t end = query.find('&', at);
+        if (end == std::string::npos) end = query.size();
+        const std::string pair = query.substr(at, end - at);
+        if (!pair.empty()) {
+            const size_t eq = pair.find('=');
+            out[PercentDecode(pair.substr(0, eq))] = eq == std::string::npos ? std::string() : PercentDecode(pair.substr(eq + 1));
+        }
+        at = end + 1;
+    }
+    return out;
+}
 
 std::string WebSocketAccept(const std::string& key) {
     const auto digest = Sha1(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
@@ -277,6 +320,19 @@ void RelayListener::Serve(int socket, std::string peer) {
     const std::string path = space == std::string::npos ? std::string() : line.substr(space + 1, space2 - space - 1);
     auto answer = [socket](const std::string& text) { SendAll(socket, text.data(), text.size()); };
     if (method == "GET" && path == "/health") return answer(HttpAnswer(200, "OK", "ok\n"));
+    // Below the relay's path: the program's own pages (the sign-in).
+    if (options_.http && path.compare(0, options_.path.size() + 1, options_.path + "/") == 0) {
+        HttpRequest http;
+        http.method = method;
+        const size_t q = path.find('?');
+        http.path = path.substr(0, q);
+        if (q != std::string::npos) http.query = ParseQuery(path.substr(q + 1));
+        http.headers = headers;
+        http.peer = ClientAddress(peer, headers["x-forwarded-for"]);
+        HttpReply reply;
+        if (method == "GET" && options_.http(http, reply)) return answer(HttpAnswer(reply));
+        return answer(HttpAnswer(404, "Not Found", "not here\n"));
+    }
     if (method != "GET" || path != options_.path) return answer(HttpAnswer(404, "Not Found", "not here\n"));
     if (Lower(headers["upgrade"]) != "websocket" || headers["sec-websocket-key"].empty() ||
         headers["sec-websocket-version"] != "13")

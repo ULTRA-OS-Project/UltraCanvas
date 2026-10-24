@@ -622,17 +622,24 @@ it differs from §8.1, as built:
   call of a `relay` connection goes over the wire, so the engine and the UI
   are the same code in both builds, and any UltraDatabase program can use a
   relay. The desktop build reaches a relay too.
-- **Users sign in with a token, not the ULTRA account.** The relay knows
-  each user by the SHA-256 of a long random token an administrator hands
-  out, with read or write access per connection; signing in through the
-  UltraNet OAuth2 service remains to be done. There is no *admin* level yet:
-  write access is the connection's own rights.
+- **Users sign in with a token or an OpenID Connect provider.** The relay
+  knows each user by the SHA-256 of a long random token an administrator
+  hands out, or signs them in with an OpenID Connect provider (`[signin]`,
+  `relay/RelaySignIn`): the relay is the provider's client - authorization
+  code with PKCE, the ID token's signature checked against the provider's
+  keys with its issuer, audience, expiry and nonce - and finds the user by
+  verified email or subject, handing the page a ticket. The ULTRA account is
+  one such provider once it exists; the UltraNet OAuth2 sign-in service
+  brokers third-party providers for desktop apps and is not used, as the
+  relay is a client of its own. Read or write access is per connection;
+  there is no *admin* level: write access is the connection's own rights.
 - **TLS is the proxy's.** The relay listens on loopback and refuses a
   network address unless told the network is trusted; the web server that
   serves the page terminates TLS and passes the WebSocket on, and its
   `X-Forwarded-For` names the visitor in the audit log.
-- **The limits** are rows per page and per result, requests a minute and
-  sessions per user; a statement time-out is not there yet.
+- **The limits** are rows per page and per result, requests a minute,
+  sessions per user, and a statement time-out (300 s unless set): a request
+  still running then is cancelled on the database.
 
 Stage 1 alone already replaces the "install DB Browser for SQLite" step for
 supporting ULTRA OS apps.

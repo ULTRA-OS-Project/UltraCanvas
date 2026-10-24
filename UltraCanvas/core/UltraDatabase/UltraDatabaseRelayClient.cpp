@@ -3,6 +3,7 @@
 // to the relay through the application's transport, and its answer read
 // back into the module's types. A connection is one "open" on the relay; its
 // cursors and statements go through the same transport.
+// Version: 0.2.0 - what sign-in the relay offers (UltraDb_RelaySignInOffer)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabase/UltraDatabaseRelay.h"
@@ -268,8 +269,8 @@ UltraDbResult RelayStatement::Execute(const UltraDbParams& params, UltraDbResult
     return connection_.ExecuteDirect(sql_, params, out);
 }
 
-// The relay at `url`, greeted with `token`: the link and the greeting's answer.
-std::shared_ptr<Link> Greet(const std::string& url, const std::string& token, Json& answer, UltraDbResult& error) {
+// A link to the relay at `url`, not yet greeted.
+std::shared_ptr<Link> Reach(const std::string& url, UltraDbResult& error) {
     UltraDbRelayConnector connector;
     {
         std::lock_guard<std::mutex> lock(ConnectorMutex());
@@ -289,7 +290,13 @@ std::shared_ptr<Link> Greet(const std::string& url, const std::string& token, Js
         if (error.success) error = Failed(UltraDbResultCode::ConnectionFailed, "the relay at " + url + " is not reached");
         return nullptr;
     }
-    auto link = std::make_shared<Link>(std::move(transport));
+    return std::make_shared<Link>(std::move(transport));
+}
+
+// The relay at `url`, greeted with `token`: the link and the greeting's answer.
+std::shared_ptr<Link> Greet(const std::string& url, const std::string& token, Json& answer, UltraDbResult& error) {
+    std::shared_ptr<Link> link = Reach(url, error);
+    if (!link) return nullptr;
     Json hello = Json::Object();
     hello.Set("op", Json::String("hello"));
     hello.Set("token", Json::String(token));
@@ -355,5 +362,18 @@ UltraDbResult UltraDb_RelayConnections(const std::string& url, const std::string
     if (const Json* list = answer.Get("connections"))
         for (const Json& one : list->items)
             out.push_back(UltraDbRelayConnection{ one.Str("name"), one.Str("engine"), one.Flag("readOnly") });
+    return UltraDbResult::Ok();
+}
+
+UltraDbResult UltraDb_RelaySignInOffer(const std::string& url, std::string& label) {
+    label.clear();
+    UltraDbResult error;
+    std::shared_ptr<Link> link = Reach(url, error);
+    if (!link) return error;
+    Json ask = Json::Object();
+    ask.Set("op", Json::String("methods"));
+    Json answer;
+    if (!link->Call(std::move(ask), answer, error)) return error;
+    label = answer.Str("signin");
     return UltraDbResult::Ok();
 }

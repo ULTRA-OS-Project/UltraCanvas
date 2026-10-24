@@ -97,8 +97,9 @@ browser ── UltraDBAdmin.wasm ──WebSocket──► TLS proxy ──► ul
 In the app a relay connection is a connection like the others - every tab
 works through it, Stop and the server's sessions too - made by **Relay**
 in the header: the relay's address (`wss://db.example.com/relay`) and the
-user's token, then one connection per name the relay offers that token,
-shown as `name on wss://...`. The token is kept where a password goes - the
+user's token - or **Sign in**, where the relay offers its sign-in (below) -
+then one connection per name the relay offers that user, shown as
+`name on wss://...`. The token is kept where a password goes - the
 app's vault on a desktop, the page's memory in a browser, so a page that is
 reloaded asks for it again - and a connection the relay offers *read* only
 is read only in the app, and in the database. The desktop app reaches a
@@ -143,17 +144,67 @@ crm = write                           ; read, write; a connection not named: non
 [limits]
 rows_per_page = 1000
 requests_per_minute = 1200
+statement_timeout = 300               ; seconds a request may run; 0: no limit
 ```
 
 A token is at least 24 characters - a long random one, given to its user
 the way a password would be; the file keeps only its SHA-256. *read* opens
 the connection in the driver's read-only mode, so the database refuses
 every change whatever the page sends. The limits cap the rows of a page and
-of a result, a user's requests a minute and sessions; the audit log has a
+of a result, a user's requests a minute and sessions, and how long a
+request may run: a query, a script or a cursor's page still running after
+`statement_timeout` seconds (300 unless set) is stopped on the database and
+answered *stopped after 300 s*; the audit log has a
 line per statement - time, user, address, connection, whether it worked,
 the SQL, with the visitor's address (the last one the proxy in front puts
 in `X-Forwarded-For`). The relay runs where it reaches its databases: it
 opens no SSH tunnel, and an `ssh_` option is refused.
+
+### Signing in with an account
+
+Instead of handing out tokens, the relay can sign its users in with an
+OpenID Connect provider - the company's Keycloak or Entra ID, Google, any
+provider that publishes a discovery document - and the page and the desktop
+app then show **Sign in** beside the token:
+
+```ini
+public_url = https://db.example.com/relay   ; how browsers reach the relay
+
+[signin]
+label = Example SSO                   ; "Sign in with Example SSO"
+issuer = https://sso.example.com/realms/staff
+client_id = ultradbadmin
+client_secret_secret = sso            ; --set-secret sso; leave out for a public client
+scopes = openid email                 ; the default
+ticket_hours = 8                      ; the default
+
+[user anna]
+email = anna@example.com              ; the provider's verified email...
+crm = write
+
+[user ben]
+subject = 248289761001                ; ...or its subject (sub), for a provider that verifies no email
+crm = read
+```
+
+Register the relay at the provider as a web application whose redirect URI
+is `<public_url>/callback` (`https://db.example.com/relay/callback`). The
+relay is the provider's client, so no token of the provider ever reaches the
+browser: the page goes to `<public_url>/signin`, the relay sends it on to
+the provider with PKCE and a nonce, takes the code back at `/callback`,
+exchanges it, checks the ID token - its signature against the provider's
+published keys (RS256 or ES256), its issuer, audience, expiry and nonce -
+and finds the user by subject, or by email when the provider verified it.
+The page then comes back with a ticket in its address's fragment, which no
+server and no log sees and which the page takes off the address at once; a
+ticket is good for `ticket_hours`, and kept by the relay as its SHA-256 only.
+The desktop app does the same through the system browser and a loopback
+address of its own. A sign-in may only return to `public_url`'s own origin,
+the `origins` configured, or this computer. The audit log has a line for each
+sign-in, made or refused, and why. The provider is read at start-up
+(`--check` shows it), and its keys again when it rolls them.
+
+### Behind a proxy
 
 The relay speaks plain WebSocket and serves `GET /health`. It listens on
 loopback and leaves TLS to the web server in front - the one that serves
@@ -290,7 +341,8 @@ Apps/UltraDBAdmin/
 ├── relay/                        ultradbadmin-relay, the browser build's server half
 │   ├── main.cpp                  the program: --config, --check, --hash-token, --set-secret, the audit log
 │   ├── RelayConfig               its INI file
-│   └── RelayWebSocket            its WebSocket listener (RFC 6455), /health
+│   ├── RelaySignIn               signing in with an OpenID Connect provider: the redirects, the ID token's checks, tickets
+│   └── RelayWebSocket            its WebSocket listener (RFC 6455), /health, the sign-in's pages
 ├── web/                          the browser build only
 │   ├── DbAdminRelayWeb           every relay connection through the browser's WebSocket; the relay's address
 │   └── shell.html                the page around the canvas
@@ -408,6 +460,24 @@ connection - the token kept where a password goes, a Browse page and its
 count, the completion catalog, a console script - against a SQLite file the
 relay serves, and on PostgreSQL where `ULTRAFIBU_TEST_PG_*` names a server:
 a read-only grant refusing a change, the server's status, a query stopped
-through the relay. UltraDatabase's own `test_relay` checks the wire format
-and the server without a socket. The browser build is checked by building
-it in the WebAssembly workflow.
+through the relay. Where the relay has its sign-in (OpenSSL 3): the ID
+token's checks one by one - RS256 and ES256 signatures, a changed token,
+another issuer, another application, several audiences, an expired token,
+another sign-in's nonce, `none` and HS256, a key the provider does not
+publish - who a token is, where a sign-in may return, and the whole sign-in
+against a provider of the test's own on 127.0.0.1: PKCE, the ticket in the
+fragment or a desktop's loopback query, the ticket then opening the user's
+connections, a replayed callback, a stranger, a refused sign-in and a return
+elsewhere turned away, each in the audit log. UltraDatabase's own
+`test_relay` checks the wire format, the statement time-out (a query, a
+script and a cursor's page that never end) and a program's own sign-in
+without a socket.
+
+The browser build is tested end to end by the WebAssembly workflow's
+`dbadmin-browser` job (`Tests/UltraDBAdmin/e2e/run_e2e.sh`): the baseline's
+`UltraDBAdmin.html` in Chrome against a relay built natively and a test
+OpenID provider (`test_oidc_provider.py`, the Python standard library and
+the openssl command) - the page signs in through the relay, browses a table
+and runs a query the time-out stops, and the relay's audit log is checked
+for each step. It runs the same on a developer's computer:
+`run_e2e.sh <ultradbadmin-relay> <folder with the page> <out>`.

@@ -550,26 +550,30 @@ void ShowCompareDialog(UltraCanvasWindowBase* parent, const CompareDialogSpec& s
 
 void ShowRelayDialog(UltraCanvasWindowBase* parent, const std::string& url, bool cancellable,
                      std::function<void(const std::string&, const std::string&,
-                                        std::function<void(const std::string&)>)> onConnect) {
+                                        std::function<void(const std::string&)>)> onConnect,
+                     std::function<void(const std::string&, std::function<void(const std::string&)>)> onSignIn) {
     struct RelayForm {
         UltraCanvasModalDialog* dialog = nullptr;
         UltraCanvasTextInput* url = nullptr;
         UltraCanvasTextInput* token = nullptr;
         UltraCanvasLabel* error = nullptr;
         UltraCanvasButton* connect = nullptr;
+        UltraCanvasButton* signIn = nullptr;
         bool busy = false;
         std::function<void(const std::string&, const std::string&, std::function<void(const std::string&)>)> onConnect;
+        std::function<void(const std::string&, std::function<void(const std::string&)>)> onSignIn;
     };
     auto form = std::make_shared<RelayForm>();
     form->onConnect = std::move(onConnect);
-    auto dialog = MakeDialog("Connect to a relay", 560, 300);
+    form->onSignIn = std::move(onSignIn);
+    auto dialog = MakeDialog("Connect to a relay", 560, 330);
     if (!dialog) return;
     form->dialog = dialog.get();
     dialog->AddChild(Intro("dbrIntro",
                            "An UltraDBAdmin relay runs your queries on the databases its administrator set up, "
-                           "with passwords that stay on the relay. Your token says who you are and what you may "
-                           "read or change.",
-                           56));
+                           "with passwords that stay on the relay. Your token - or signing in, where the relay "
+                           "offers it - says who you are and what you may read or change.",
+                           78));
     auto grid = CreateFormGrid("dbrForm", 8.0f, 10.0f);
     grid->layoutItem.SetFlexShrink(0);
     auto address = CreateTextInput("dbrUrl", 0, 0, 0, kLineHeight);
@@ -597,35 +601,64 @@ void ShowRelayDialog(UltraCanvasWindowBase* parent, const std::string& url, bool
     auto connect = MakeDialogButton("dbrConnect", "Connect", 110, ButtonRole::Primary);
     form->connect = connect.get();
     std::weak_ptr<RelayForm> weak = form;
-    auto run = [form, weak]() {
-        if (form->busy || !form->onConnect) return;
-        const std::string address = form->url->GetText(), secret = form->token->GetText();
-        if (address.rfind("ws://", 0) != 0 && address.rfind("wss://", 0) != 0) {
+    // The answer to Connect or Sign in: "" closes the dialog.
+    auto done = [weak](const std::string& failed) {
+        auto form = weak.lock();
+        if (!form) return;
+        form->busy = false;
+        form->connect->SetDisabled(false);
+        if (form->signIn) form->signIn->SetDisabled(false);
+        if (failed.empty()) {
+            form->dialog->CloseDialog(DialogResult::OK);
+            return;
+        }
+        form->error->SetTextColor(ErrorColor());
+        form->error->SetText(failed);
+    };
+    // The address, checked; "" when it is not one.
+    auto checkedUrl = [form]() -> std::string {
+        const std::string text = form->url->GetText();
+        if (text.rfind("ws://", 0) != 0 && text.rfind("wss://", 0) != 0) {
+            form->error->SetTextColor(ErrorColor());
             form->error->SetText("The relay's address begins wss:// (or ws:// on this computer).");
-            return;
+            return std::string();
         }
-        if (secret.empty()) {
-            form->error->SetText("Type your token.");
-            return;
-        }
+        return text;
+    };
+    auto start = [form](const char* what) {
         form->busy = true;
         form->connect->SetDisabled(true);
+        if (form->signIn) form->signIn->SetDisabled(true);
         form->error->SetTextColor(StatusColor());
-        form->error->SetText("Asking the relay…");
-        form->onConnect(address, secret, [weak](const std::string& failed) {
-            auto form = weak.lock();
-            if (!form) return;
-            form->busy = false;
-            form->connect->SetDisabled(false);
-            if (failed.empty()) {
-                form->dialog->CloseDialog(DialogResult::OK);
-                return;
-            }
+        form->error->SetText(what);
+    };
+    auto run = [form, checkedUrl, start, done]() {
+        if (form->busy || !form->onConnect) return;
+        const std::string url = checkedUrl();
+        if (url.empty()) return;
+        const std::string secret = form->token->GetText();
+        if (secret.empty()) {
             form->error->SetTextColor(ErrorColor());
-            form->error->SetText(failed);
-        });
+            form->error->SetText(form->onSignIn ? "Type your token, or sign in." : "Type your token.");
+            return;
+        }
+        start("Asking the relay…");
+        form->onConnect(url, secret, done);
     };
     connect->SetOnClick(run);
+    if (form->onSignIn) {
+        auto signIn = MakeDialogButton("dbrSignIn", "Sign in", 110);
+        signIn->SetTooltip("Sign in with the account the relay's administrator set up for you (OpenID Connect)");
+        form->signIn = signIn.get();
+        signIn->SetOnClick([form, checkedUrl, start, done]() {
+            if (form->busy) return;
+            const std::string url = checkedUrl();
+            if (url.empty()) return;
+            start("Signing in…");
+            form->onSignIn(url, done);
+        });
+        buttons->AddChild(signIn);
+    }
     token->onEnterPressed = [run](const std::string&) {
         run();
         return true;

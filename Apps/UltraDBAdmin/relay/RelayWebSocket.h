@@ -5,6 +5,7 @@
 // the server while the query it stops still runs. GET /health answers "ok"
 // for a load balancer. No TLS here: the relay listens on loopback behind a
 // TLS proxy (RelayConfig.h), whose X-Forwarded-For names the visitor.
+// Version: 0.3.0 - plain HTTP under the relay's path for the program (the sign-in)
 // Version: 0.2.0 - the visitor's address from a proxy on this computer
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -13,6 +14,8 @@
 
 #include <atomic>
 #include <cstdint>
+#include <functional>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string>
@@ -20,12 +23,35 @@
 
 namespace UltraDBAdminRelay {
 
+// A plain HTTP request below the relay's path (/relay/signin...), for the
+// program to answer.
+struct HttpRequest {
+    std::string method;
+    std::string path;                               // without the query
+    std::map<std::string, std::string> query;       // decoded
+    std::map<std::string, std::string> headers;     // names in lower case
+    std::string peer;                               // ClientAddress
+};
+
+struct HttpReply {
+    int status = 200;
+    std::string reason = "OK";
+    std::string contentType = "text/html; charset=utf-8";
+    std::map<std::string, std::string> headers;     // Location, Cache-Control...
+    std::string body;
+};
+
+// A query string's parameters, %-decoded ("a=1&b=x%20y").
+std::map<std::string, std::string> ParseQuery(const std::string& query);
+
 struct ListenOptions {
     std::string host = "127.0.0.1";
     int port = 8765;                       // 0: any free port (the tests)
     std::string path = "/relay";
     std::vector<std::string> origins;      // allowed Origin headers; empty: any
     size_t maxMessage = 32 * 1024 * 1024;  // bytes in one request
+    // Answers a GET below `path` (path + "/..."); false: not its, 404.
+    std::function<bool(const HttpRequest&, HttpReply&)> http;
     int maxClients = 256;
 };
 

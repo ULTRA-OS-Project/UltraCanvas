@@ -1628,8 +1628,9 @@ extended or replaced without changing callers.
 - The `relay` driver, `UltraDb_SetRelayConnector`, `UltraDb_RelayConnections`,
   `UltraDbRelayServer` (`UltraDatabaseRelay.h`: a connection whose every call
   goes as JSON to a relay on the database's side, which offers connections by
-  name to users known by their tokens' hashes, read or write each, within its
-  limits, every statement audited; `UltraDb_UseUltraNetRelay()` in
+  name to users known by their tokens' hashes - or by a sign-in of the
+  program's own (`SetSignIn`, `UltraDb_RelaySignInOffer`) - read or write
+  each, within its limits and a statement time-out, every statement audited; `UltraDb_UseUltraNetRelay()` in
   `UltraDatabaseRelayUltraNet.h` is a transport over UltraNet's WebSocket -
   how UltraDBAdmin's browser build reaches its databases)
 

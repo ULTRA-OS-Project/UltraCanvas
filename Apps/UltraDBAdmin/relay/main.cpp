@@ -11,10 +11,14 @@
 //   ultradbadmin-relay --hash-token               a token from stdin -> token_sha256
 //   ultradbadmin-relay --config relay.ini --set-secret crm
 //                                                 a password from stdin -> the vault
+// Version: 0.2.0 - the OpenID Connect sign-in ([signin], RelaySignIn.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "RelayConfig.h"
 #include "RelayWebSocket.h"
+#if defined(ULTRADBADMIN_RELAY_SIGNIN)
+#include "RelaySignIn.h"
+#endif
 
 #include "UltraCanvasPathUtf8.h"
 #include <UltraDatabase/UltraDatabase.h>
@@ -160,13 +164,72 @@ int main(int argc, char** argv) {
         });
     }
 
+    // The sign-in: the provider read now, so a mistake shows at start-up.
+#if defined(ULTRADBADMIN_RELAY_SIGNIN)
+    std::unique_ptr<RelaySignIn> signIn;
+    if (config.signIn.enabled) {
+        std::string secret;
+        if (!config.signIn.clientSecretName.empty() &&
+            (!vault || !vault->Retrieve(config.signIn.clientSecretName, secret))) {
+            std::fprintf(stderr, "the client secret %s is not in the relay's vault (--set-secret %s)\n",
+                         config.signIn.clientSecretName.c_str(), config.signIn.clientSecretName.c_str());
+            return 1;
+        }
+        signIn = std::make_unique<RelaySignIn>(config, secret, [&audit, &auditMutex](const std::string& peer,
+                                                                                    const std::string& line, bool ok) {
+            if (!audit.is_open()) return;
+            UltraDbRelayAuditEntry entry;
+            entry.user = "-";
+            entry.peer = peer;
+            entry.connection = "-";
+            entry.sql = line;
+            if (!ok) entry.result = UltraDbResult::Error(UltraDbResultCode::CredentialsUnavailable, line, "relay");
+            std::lock_guard<std::mutex> lock(auditMutex);
+            audit << AuditLine(entry);
+            audit.flush();
+        });
+        for (char& c : secret) c = '\0';
+        if (!signIn->Start(error)) {
+            std::fprintf(stderr, "[signin] %s: %s\n", config.signIn.issuer.c_str(), error.c_str());
+            return 1;
+        }
+        RelaySignIn* tickets = signIn.get();
+        server.SetSignIn(config.signIn.label, [&config, tickets](const std::string& token, UltraDbRelayUser& user) {
+            std::string name;
+            if (!tickets->Ticket(token, name)) return false;
+            for (const UltraDbRelayUser& u : config.users)
+                if (u.name == name) {
+                    user = u;
+                    return true;
+                }
+            return false;
+        });
+    }
+#else
+    if (config.signIn.enabled) {
+        std::fprintf(stderr, "this relay was built without OpenSSL 3, so it has no [signin]\n");
+        return 1;
+    }
+#endif
+
     if (check) {
         std::printf("listen %s:%d%s\n", config.listenHost.c_str(), config.listenPort, config.path.c_str());
+#if defined(ULTRADBADMIN_RELAY_SIGNIN)
+        if (signIn)
+            std::printf("signin %s: %s - signs in at %s, returns to %s/callback\n", config.signIn.label.c_str(),
+                        config.signIn.issuer.c_str(), signIn->AuthorizationEndpoint().c_str(), config.publicUrl.c_str());
+#endif
+        if (config.limits.statementTimeoutSeconds > 0)
+            std::printf("statements stopped after %d s\n", config.limits.statementTimeoutSeconds);
         for (const OfferedConnection& c : config.connections)
             std::printf("connection %s: %s %s%s\n", c.name.c_str(), c.config.driver.c_str(), c.config.database.c_str(),
                         c.config.readOnly ? " (read only)" : "");
         for (const UltraDbRelayUser& u : config.users) {
             std::printf("user %s:", u.name.c_str());
+            const auto identity = config.identities.find(u.name);
+            if (identity != config.identities.end())
+                std::printf(" (signs in as %s)", identity->second.subject.empty() ? identity->second.email.c_str()
+                                                                                  : identity->second.subject.c_str());
             for (const auto& [name, access] : u.access)
                 std::printf(" %s=%s", name.c_str(),
                             access == UltraDbRelayAccess::Write ? "write" : access == UltraDbRelayAccess::Read ? "read" : "none");
@@ -180,6 +243,9 @@ int main(int argc, char** argv) {
     options.port = config.listenPort;
     options.path = config.path;
     options.origins = config.origins;
+#if defined(ULTRADBADMIN_RELAY_SIGNIN)
+    if (signIn) options.http = [&signIn](const HttpRequest& request, HttpReply& reply) { return signIn->Handle(request, reply); };
+#endif
     RelayListener listener(server, options);
     if (!listener.Start(error)) {
         std::fprintf(stderr, "%s\n", error.c_str());

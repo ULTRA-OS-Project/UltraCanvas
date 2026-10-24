@@ -189,6 +189,14 @@ private:
     // offers added to the tree - or updated, when already there. The browser
     // build starts here.
     void ConnectRelay();
+    // The relay's connections for `token` - a user's token or a ticket of its
+    // sign-in - added to the tree; `done` hears "" or why not.
+    void ConnectWithToken(const std::string& url, const std::string& token, std::function<void(const std::string&)> done);
+    // The relay's own sign-in (Apps/UltraDBAdmin/relay/RelaySignIn.h): in the
+    // browser the page goes there and comes back with a ticket; on a desktop
+    // the system browser goes there and the ticket comes to a loopback
+    // address of the app's own.
+    void SignInToRelay(const std::string& url, std::function<void(const std::string&)> done);
     void AddRelayConnections(const std::string& url, const std::string& token,
                              const std::vector<UltraDbRelayConnection>& offered);
     void EditConnection();

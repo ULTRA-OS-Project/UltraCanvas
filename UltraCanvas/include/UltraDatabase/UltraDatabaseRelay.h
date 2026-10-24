@@ -48,6 +48,7 @@
 //   std::string answer = relay.Handle(session, "{\"id\":1,\"op\":\"hello\",\"token\":\"a long random token\"}");
 //   relay.CloseSession(session);
 //
+// Version: 0.2.0 - a statement time-out; a sign-in of the program's own (SetSignIn, UltraDb_RelaySignInOffer)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -100,6 +101,11 @@ struct UltraDbRelayConnection {
 UltraDbResult UltraDb_RelayConnections(const std::string& url, const std::string& token,
                                        std::vector<UltraDbRelayConnection>& out);
 
+// How else than a token one signs in to the relay at `url`: the name of its
+// sign-in (an OpenID Connect provider, "Example SSO"), or "" when it takes
+// tokens only. Asked before any token is said.
+UltraDbResult UltraDb_RelaySignInOffer(const std::string& url, std::string& label);
+
 // ===== SERVER =====
 
 enum class UltraDbRelayAccess { Denied, Read, Write };
@@ -115,6 +121,10 @@ struct UltraDbRelayLimits {
     size_t rowsPerResult = 100000;      // a query's rows at most; more: use a cursor
     int requestsPerMinute = 1200;       // per user; 0: no limit
     size_t sessionsPerUser = 16;        // open relay sessions, per user
+    // A request - a query, a script, a cursor's page - still running after
+    // this many seconds is stopped (UltraDb_CancelQuery on the session's own
+    // connection) and answered Cancelled, saying why. 0: no time-out.
+    int statementTimeoutSeconds = 300;
 };
 
 // A statement the relay ran, for the audit log.
@@ -140,6 +150,11 @@ public:
     void AddUser(const UltraDbRelayUser& user);
     void SetLimits(const UltraDbRelayLimits& limits);
     void SetAudit(std::function<void(const UltraDbRelayAuditEntry&)> audit);
+    // A sign-in of the program's own beside the tokens (the relay program's
+    // OpenID Connect sign-in hands out tickets): `check` is asked about a
+    // token no user's hash matches, and fills `user` - name and access - when
+    // it knows it. `label` is what clients show ("Sign in with <label>").
+    void SetSignIn(std::string label, std::function<bool(const std::string& token, UltraDbRelayUser& user)> check);
 
     // A client's session (one WebSocket); `peer` names it in the audit log.
     uint64_t OpenSession(const std::string& peer);

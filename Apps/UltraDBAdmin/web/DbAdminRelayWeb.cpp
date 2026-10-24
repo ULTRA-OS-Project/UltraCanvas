@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/web/DbAdminRelayWeb.cpp
+// Version: 0.2.0 - StartRelaySignIn, TakeRelayTicket
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminRelayWeb.h"
@@ -145,6 +146,26 @@ std::string DefaultRelayUrl() {
     }));
     std::string out = url ? url : "";
     free(url);
+    return out;
+}
+
+void StartRelaySignIn(const std::string& relayUrl) {
+    MAIN_THREAD_EM_ASM({
+        const relay = UTF8ToString($0).replace(/^ws(s?):/, 'http$1:');
+        const back = location.href.split('#')[0];
+        location.assign(relay + '/signin?return=' + encodeURIComponent(back));
+    }, relayUrl.c_str());
+}
+
+std::string TakeRelayTicket() {
+    char* ticket = static_cast<char*>(MAIN_THREAD_EM_ASM_PTR({
+        const m = /[#&]relay_ticket=([A-Za-z0-9_-]+)/.exec(location.hash);
+        if (!m) return 0;
+        history.replaceState(null, '', location.href.split('#')[0]);
+        return stringToNewUTF8(m[1]);
+    }));
+    std::string out = ticket ? ticket : "";
+    free(ticket);
     return out;
 }
 

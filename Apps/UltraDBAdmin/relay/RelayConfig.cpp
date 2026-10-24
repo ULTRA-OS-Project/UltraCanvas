@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/relay/RelayConfig.cpp
+// Version: 0.3.0 - [signin], public_url, a user's email or subject; statement_timeout
 // Version: 0.2.0 - no ssh_ options: the relay opens no tunnel
 // Author: UltraCanvas Framework / ULTRA OS
 #include "RelayConfig.h"
@@ -51,12 +52,37 @@ bool IsLoopback(const std::string& host) {
     return host == "localhost" || host == "::1" || host == "[::1]" || host.rfind("127.", 0) == 0;
 }
 
+std::string UrlHost(const std::string& url) {
+    const size_t scheme = url.find("://");
+    if (scheme == std::string::npos) return std::string();
+    const size_t start = scheme + 3;
+    const size_t end = url.find_first_of("/?#", start);
+    std::string authority = url.substr(start, end == std::string::npos ? std::string::npos : end - start);
+    const size_t at = authority.rfind('@');
+    if (at != std::string::npos) authority = authority.substr(at + 1);
+    if (!authority.empty() && authority[0] == '[') {
+        const size_t close = authority.find(']');
+        return close == std::string::npos ? std::string() : authority.substr(1, close - 1);
+    }
+    return authority.substr(0, authority.find(':'));
+}
+
+namespace {
+
+// https://, or http:// to this computer (a provider or a relay under test).
+bool SecureOrLocal(const std::string& url) {
+    if (url.rfind("https://", 0) == 0) return !UrlHost(url).empty();
+    return url.rfind("http://", 0) == 0 && IsLoopback(UrlHost(url));
+}
+
+} // namespace
+
 bool ParseRelayConfig(const std::string& text, RelayConfig& out, std::string& error) {
     out = RelayConfig();
     std::istringstream in(text);
     std::string line;
     int number = 0;
-    enum class Section { Main, Connection, User, Limits } section = Section::Main;
+    enum class Section { Main, Connection, User, Limits, SignIn } section = Section::Main;
     auto fail = [&](const std::string& what) {
         error = "line " + std::to_string(number) + ": " + what;
         return false;
@@ -91,8 +117,11 @@ bool ParseRelayConfig(const std::string& text, RelayConfig& out, std::string& er
                 section = Section::User;
             } else if (kind == "limits") {
                 section = Section::Limits;
+            } else if (kind == "signin") {
+                out.signIn.enabled = true;
+                section = Section::SignIn;
             } else {
-                return fail("no section [" + kind + "]: connection, user or limits");
+                return fail("no section [" + kind + "]: connection, user, signin or limits");
             }
             continue;
         }
@@ -127,6 +156,11 @@ bool ParseRelayConfig(const std::string& text, RelayConfig& out, std::string& er
                         if (!Trim(origin).empty()) out.origins.push_back(Trim(origin));
                 } else if (key == "plain_ok") {
                     if (!Truth(value, out.plainOk)) return fail("plain_ok is true or false");
+                } else if (key == "public_url") {
+                    if (value.rfind("https://", 0) != 0 && value.rfind("http://", 0) != 0)
+                        return fail("public_url is the relay's https:// address, as browsers reach it");
+                    out.publicUrl = value;
+                    while (!out.publicUrl.empty() && out.publicUrl.back() == '/') out.publicUrl.pop_back();
                 } else {
                     return fail("no setting " + key);
                 }
@@ -166,6 +200,12 @@ bool ParseRelayConfig(const std::string& text, RelayConfig& out, std::string& er
                     if (v.size() != 64 || v.find_first_not_of("0123456789abcdef") != std::string::npos)
                         return fail("token_sha256 is 64 hex digits (--hash-token)");
                     u.tokenSha256 = v;
+                } else if (key == "email") {
+                    if (value.find('@') == std::string::npos) return fail("email is an address");
+                    out.identities[u.name].email = Lower(value);
+                } else if (key == "subject") {
+                    if (value.empty()) return fail("subject is the provider's sub claim");
+                    out.identities[u.name].subject = value;
                 } else {
                     const std::string v = Lower(value);
                     if (v == "read") u.access[key] = UltraDbRelayAccess::Read;
@@ -181,14 +221,36 @@ bool ParseRelayConfig(const std::string& text, RelayConfig& out, std::string& er
                 else if (key == "rows_per_result") out.limits.rowsPerResult = static_cast<size_t>(n);
                 else if (key == "requests_per_minute") out.limits.requestsPerMinute = static_cast<int>(n);
                 else if (key == "sessions_per_user") out.limits.sessionsPerUser = static_cast<size_t>(n);
+                else if (key == "statement_timeout") out.limits.statementTimeoutSeconds = static_cast<int>(n);
                 else return fail("no limit " + key);
+                break;
+            case Section::SignIn:
+                if (key == "label") out.signIn.label = value;
+                else if (key == "issuer") {
+                    if (!SecureOrLocal(value)) return fail("issuer is an https:// address");
+                    out.signIn.issuer = value;
+                } else if (key == "client_id") out.signIn.clientId = value;
+                else if (key == "client_secret_secret") out.signIn.clientSecretName = value;
+                else if (key == "client_secret")
+                    return fail("no client secret here: store it with --set-secret and name it with client_secret_secret");
+                else if (key == "scopes") out.signIn.scopes = value;
+                else if (key == "ticket_hours") {
+                    if (!Number(value, n) || n < 1 || n > 24 * 30) return fail("ticket_hours is 1 to 720");
+                    out.signIn.ticketHours = static_cast<int>(n);
+                } else return fail("no sign-in setting " + key);
                 break;
         }
     }
     // What makes no sense as a whole.
     for (const auto& u : out.users) {
-        if (u.tokenSha256.empty()) {
-            error = "user " + u.name + " has no token_sha256";
+        const auto identity = out.identities.find(u.name);
+        const bool signsIn = identity != out.identities.end();
+        if (u.tokenSha256.empty() && !signsIn) {
+            error = "user " + u.name + " has no token_sha256, email or subject";
+            return false;
+        }
+        if (signsIn && !out.signIn.enabled) {
+            error = "user " + u.name + " signs in by email or subject, but there is no [signin]";
             return false;
         }
         for (const auto& [name, unused] : u.access) {
@@ -198,6 +260,24 @@ bool ParseRelayConfig(const std::string& text, RelayConfig& out, std::string& er
                 error = "user " + u.name + " is granted " + name + ", which is no [connection]";
                 return false;
             }
+        }
+    }
+    if (out.signIn.enabled) {
+        if (out.signIn.issuer.empty() || out.signIn.clientId.empty()) {
+            error = "[signin] needs issuer and client_id";
+            return false;
+        }
+        if (out.signIn.scopes.find("openid") == std::string::npos) {
+            error = "[signin] scopes must hold openid: the sign-in reads the ID token";
+            return false;
+        }
+        if (out.publicUrl.empty()) {
+            error = "[signin] needs public_url: the address the provider sends the browser back to";
+            return false;
+        }
+        if (!SecureOrLocal(out.publicUrl) && !out.plainOk) {
+            error = "public_url = " + out.publicUrl + " is not https://: the sign-in's tickets would travel in the clear";
+            return false;
         }
     }
     if (!IsLoopback(out.listenHost) && !out.plainOk) {

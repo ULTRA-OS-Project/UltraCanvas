@@ -3,6 +3,7 @@
 # formatting, the Browse pager, the SQL runner - without a window. Compiles
 # the engine sources directly, as Tests/UltraFIBU does, so it runs where the
 # UI library cannot be built. Enabled by ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS.
+# Version: 0.6.0 - the relay's sign-in in UltraDBAdminRelayTests
 # Version: 0.5.0 - the relay program (its listener, UltraNet's WebSocket, the engine through it)
 # Version: 0.4.0 - the SSH tunnel program (UltraNet's SSH plug-in, a bastion, both servers)
 # Version: 0.3.0 - the schema suite (relations, routines, server), a third
@@ -106,6 +107,13 @@ if(TARGET UltraNet AND UNIX AND NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
     target_link_libraries(UltraDBAdminRelayTests PRIVATE UltraDatabase UltraVault UltraNet Threads::Threads)
     set_target_properties(UltraDBAdminRelayTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # The OpenID Connect sign-in, where the relay itself has it.
+    find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
+    if(OpenSSL_FOUND AND TARGET uc-yyjson)
+        target_sources(UltraDBAdminRelayTests PRIVATE ${_dbadmin}/relay/RelaySignIn.cpp)
+        target_link_libraries(UltraDBAdminRelayTests PRIVATE OpenSSL::Crypto uc-yyjson)
+        target_compile_definitions(UltraDBAdminRelayTests PRIVATE ULTRADBADMIN_RELAY_SIGNIN=1)
+    endif()
     add_test(NAME UltraDBAdminRelay COMMAND UltraDBAdminRelayTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 endif()

@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminWindow.cpp
+// Version: 0.4.0 - the relay: its sign-in, a ticket brought back to the page
 // Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log, Run statement,
 //                 Explain, snippets, auto-commit, the typed row form; the cell editor follows the grid
 // Version: 0.2.0 - filters, editing in the cell, blobs, rows copied as text
@@ -19,6 +20,12 @@
 #include "DbAdminWindowParts.h"
 #if defined(ULTRADBADMIN_WEB)
 #include "web/DbAdminRelayWeb.h"
+#else
+#include "UltraCanvasUtils.h"
+#include <UltraNet/UltraNetOAuth2.h>
+#include <UltraNet/UltraNetSocket.h>
+#include <UltraNet/UltraNetUrl.h>
+#include <thread>
 #endif
 
 #include "UltraCanvasApplication.h"
@@ -223,8 +230,20 @@ void DbAdminWindow::Show() {
 #endif
     if (window_) window_->Show();
 #if defined(ULTRADBADMIN_WEB)
-    // The browser has its databases through the relay alone: ask for it first.
-    if (store_.All().empty()) ConnectRelay();
+    // The browser has its databases through the relay alone: back from its
+    // sign-in with a ticket, or asked for it first.
+    const std::string ticket = TakeRelayTicket();
+    if (!ticket.empty()) {
+        const std::string url = DefaultRelayUrl();
+        SetStatus("Signed in - asking the relay at " + url + "…");
+        ConnectWithToken(url, ticket, [this](const std::string& failed) {
+            if (failed.empty()) return;
+            SetStatus(failed, true);
+            ConnectRelay();
+        });
+    } else if (store_.All().empty()) {
+        ConnectRelay();
+    }
 #endif
 }
 
@@ -1011,29 +1030,105 @@ void DbAdminWindow::ConnectRelay() {
 #else
     const bool cancellable = true;
 #endif
-    ShowRelayDialog(window_.get(), url, cancellable,
-                    [this](const std::string& url, const std::string& token,
-                           std::function<void(const std::string&)> done) {
-                        Background([this, url, token, done]() -> std::function<void()> {
-                            std::vector<UltraDbRelayConnection> offered;
-                            const UltraDbResult result = UltraDb_RelayConnections(url, token, offered);
-                            return [this, result, offered, url, token, done]() {
-                                if (!result) {
-                                    done(result.code == UltraDbResultCode::CredentialsUnavailable
-                                             ? std::string("The relay does not know this token.")
-                                             : "Not connected: " + OneLine(result.message));
-                                    return;
-                                }
-                                if (offered.empty()) {
-                                    done("The relay offers this token no connection.");
-                                    return;
-                                }
-                                relayUrl_ = url;
-                                AddRelayConnections(url, token, offered);
-                                done(std::string());
-                            };
+    ShowRelayDialog(
+        window_.get(), url, cancellable,
+        [this](const std::string& url, const std::string& token, std::function<void(const std::string&)> done) {
+            ConnectWithToken(url, token, std::move(done));
+        },
+        [this](const std::string& url, std::function<void(const std::string&)> done) {
+            SignInToRelay(url, std::move(done));
+        });
+}
+
+void DbAdminWindow::ConnectWithToken(const std::string& url, const std::string& token,
+                                     std::function<void(const std::string&)> done) {
+    Background([this, url, token, done]() -> std::function<void()> {
+        std::vector<UltraDbRelayConnection> offered;
+        const UltraDbResult result = UltraDb_RelayConnections(url, token, offered);
+        return [this, result, offered, url, token, done]() {
+            if (!result) {
+                done(result.code == UltraDbResultCode::CredentialsUnavailable
+                         ? std::string("The relay does not know this token, or the sign-in has run out.")
+                         : "Not connected: " + OneLine(result.message));
+                return;
+            }
+            if (offered.empty()) {
+                done("The relay offers you no connection.");
+                return;
+            }
+            relayUrl_ = url;
+            AddRelayConnections(url, token, offered);
+            done(std::string());
+        };
+    });
+}
+
+void DbAdminWindow::SignInToRelay(const std::string& url, std::function<void(const std::string&)> done) {
+    Background([this, url, done]() -> std::function<void()> {
+        std::string label;
+        const UltraDbResult asked = UltraDb_RelaySignInOffer(url, label);
+        return [this, url, done, asked, label]() {
+            if (!asked) {
+                done("Not connected: " + OneLine(asked.message));
+                return;
+            }
+            if (label.empty()) {
+                done("This relay takes tokens only: ask its administrator for one.");
+                return;
+            }
+#if defined(ULTRADBADMIN_WEB)
+            // The page leaves for the relay's sign-in and comes back with a ticket (Show).
+            SetStatus("Signing in with " + label + "…");
+            StartRelaySignIn(url);
+#else
+            SetStatus("Signing in with " + label + " in your web browser…");
+            // Not on the window's worker: the wait for the browser can take
+            // minutes, and the tree's and Browse's queries go on meanwhile.
+            std::weak_ptr<char> alive = alive_;
+            std::thread([this, url, done, alive]() {
+                // A loopback address of the app's own for the ticket, on a free port.
+                UltraNetSocketOptions options;
+                options.bindAddress = "127.0.0.1";
+                options.reuseAddress = true;
+                const UltraNetHandle probe = UltraNet_TcpListen(0, options);
+                UltraNetEndpoint local;
+                const bool bound = probe != UltraNetInvalidHandle && UltraNet_SocketLocalEndpoint(probe, local);
+                if (probe != UltraNetInvalidHandle) UltraNet_SocketClose(probe);
+                std::string failed, ticket;
+                if (!bound) {
+                    failed = "No free port on this computer for the sign-in's return.";
+                } else {
+                    const std::string back = "http://127.0.0.1:" + std::to_string(local.port) + "/relay-signin";
+                    const std::string state = UltraNet_OAuth2GenerateState();
+                    std::string page = url;
+                    page.replace(0, page.find(':'), page.rfind("wss", 0) == 0 ? "https" : "http");
+                    page += "/signin?return=" + UltraNet_UrlEncode(back) + "&state=" + state;
+                    if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+                        app->PostToUIThread([page, alive]() {
+                            if (!alive.expired()) UltraCanvas::OpenURL(page);
                         });
-                    });
+                    UltraNetOAuth2CallbackResult result;
+                    const UltraNetResult waited = UltraNet_OAuth2WaitForCallback(
+                        back, result, 300000,
+                        "<!doctype html><meta charset=\"utf-8\"><body style=\"font-family:sans-serif;margin:3em\">"
+                        "<h1>Signed in</h1><p>UltraDBAdmin has your sign-in. You can close this tab.</p></body>",
+                        [alive]() { return alive.expired(); });
+                    if (!waited) failed = "Not signed in: " + OneLine(waited.message);
+                    else if (!result.error.empty()) failed = "Not signed in: " + result.error;
+                    else if (result.state != state || result.code.empty()) failed = "The sign-in came back for someone else.";
+                    else ticket = result.code;
+                }
+                auto* app = UltraCanvasApplicationBase::GetCurrent();
+                if (!app || alive.expired()) return;
+                app->PostToUIThread([this, url, done, alive, failed, ticket]() {
+                    if (alive.expired()) return;
+                    if (!failed.empty()) done(failed);
+                    else ConnectWithToken(url, ticket, done);
+                });
+            }).detach();
+#endif
+        };
+    });
 }
 
 void DbAdminWindow::AddRelayConnections(const std::string& url, const std::string& token,

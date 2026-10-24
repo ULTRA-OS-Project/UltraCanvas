@@ -11,7 +11,12 @@
 //     refuses to write, the lists each user is shown;
 //   - its limits: too many rows at once, too many requests, too many
 //     sessions; and the audit log, with who ran each statement;
+//   - the statement time-out: a query, a script and a cursor's page that run
+//     too long stopped, saying why, and the connection usable after;
+//   - a sign-in of the program's own (SetSignIn): offered, and its tickets
+//     known beside the tokens;
 //   - on PostgreSQL, a query stopped through the relay while it runs.
+// Version: 0.2.0 - the time-out, the program's own sign-in
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -301,6 +306,81 @@ TEST(relay_keeps_its_limits) {
     REQUIRE(last.code == UltraDbResultCode::Busy);
     UltraDb_CloseConnection("relay-limits");
     UltraDb_CloseConnection("relay-limits-2");
+    UltraDb_SetRelayConnector(nullptr);
+    g_relay = nullptr;
+    std::filesystem::remove(file);
+}
+
+TEST(relay_stops_what_runs_too_long) {
+    InProcess relay;
+    const std::string file = TempFile("ultradb-relay-timeout.db");
+    Offer(relay, file);
+    UltraDbRelayLimits limits;
+    limits.statementTimeoutSeconds = 1;
+    relay.server.SetLimits(limits);
+    UseRelay(relay);
+    REQUIRE(UltraDb_RegisterConnection(Through("relay-slow", "shop", "anna-token")).success);
+    // Counts for ever: only the time-out ends it.
+    const std::string forever = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT count(*) FROM c";
+    UltraDbResultSet rows;
+    auto start = std::chrono::steady_clock::now();
+    const UltraDbResult query = UltraDb_Query("relay-slow", forever, rows);
+    REQUIRE(!query.success && query.code == UltraDbResultCode::Cancelled);
+    REQUIRE(query.message.find("1 s") != std::string::npos);
+    REQUIRE(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
+    // A script: the statement that ran too long says so.
+    std::vector<UltraDbStatementResult> statements;
+    const UltraDbResult script = UltraDb_ExecBatch("relay-slow", "SELECT 1; " + forever, statements);
+    REQUIRE(!script.success && statements.size() == 2 && statements[0].result.success);
+    REQUIRE(statements[1].result.code == UltraDbResultCode::Cancelled &&
+            statements[1].result.message.find("1 s") != std::string::npos);
+    // A cursor whose first page never comes.
+    UltraDbResult error;
+    const UltraDbHandle cursor = UltraDb_OpenCursor("relay-slow", forever, {}, &error);
+    if (cursor != UltraDbInvalidHandle) {
+        bool exhausted = false;
+        const UltraDbResult page = UltraDb_FetchRows(cursor, 10, rows, exhausted);
+        REQUIRE(!page.success && page.code == UltraDbResultCode::Cancelled);
+        UltraDb_CloseCursor(cursor);
+    } else {
+        REQUIRE(error.code == UltraDbResultCode::Cancelled);
+    }
+    // What is quick still runs, on the same connection.
+    REQUIRE(UltraDb_Query("relay-slow", "SELECT 42 AS n", rows).success && rows.Size() == 1);
+    // Without a time-out nothing is stopped by the relay (a quick check only).
+    limits.statementTimeoutSeconds = 0;
+    relay.server.SetLimits(limits);
+    REQUIRE(UltraDb_Query("relay-slow", "SELECT 1", rows).success);
+    UltraDb_CloseConnection("relay-slow");
+    UltraDb_SetRelayConnector(nullptr);
+    g_relay = nullptr;
+    std::filesystem::remove(file);
+}
+
+TEST(relay_knows_its_own_sign_in) {
+    InProcess relay;
+    const std::string file = TempFile("ultradb-relay-signin.db");
+    Offer(relay, file);
+    UseRelay(relay);
+    std::string label = "?";
+    REQUIRE(UltraDb_RelaySignInOffer("inproc://relay", label).success && label.empty());
+    // The program's sign-in: a ticket it handed out stands for carla.
+    relay.server.SetSignIn("Example SSO", [](const std::string& token, UltraDbRelayUser& user) {
+        if (token != "ticket-for-carla") return false;
+        user.name = "carla";
+        user.access["shop"] = UltraDbRelayAccess::Read;
+        return true;
+    });
+    REQUIRE(UltraDb_RelaySignInOffer("inproc://relay", label).success && label == "Example SSO");
+    std::vector<UltraDbRelayConnection> offered;
+    REQUIRE(UltraDb_RelayConnections("inproc://relay", "ticket-for-carla", offered).success);
+    REQUIRE(offered.size() == 1 && offered[0].name == "shop" && offered[0].readOnly);
+    REQUIRE(UltraDb_RelayConnections("inproc://relay", "ticket-for-nobody", offered).code ==
+            UltraDbResultCode::CredentialsUnavailable);
+    // The users' own tokens still count, and come first.
+    REQUIRE(UltraDb_RelayConnections("inproc://relay", "anna-token", offered).success && !offered[0].readOnly);
+    // A user with no token of its own is not reached by an empty one.
+    REQUIRE(UltraDb_RelayConnections("inproc://relay", "", offered).code == UltraDbResultCode::CredentialsUnavailable);
     UltraDb_SetRelayConnector(nullptr);
     g_relay = nullptr;
     std::filesystem::remove(file);

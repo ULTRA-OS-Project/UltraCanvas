@@ -446,10 +446,21 @@ into the network - and its users by the SHA-256 of their tokens
 connection; *read* opens the connection in the driver's read-only mode, so
 the database refuses a change whatever the client sends. Its limits
 (`UltraDbRelayLimits`) cap the rows of a page and of a result, the requests
-a minute and the sessions of a user; every statement it runs reaches the
-audit callback with the user and the address that ran it. It answers
-requests and opens no socket: the listener and TLS around it are the
-program's (`Apps/UltraDBAdmin/relay`).
+a minute and the sessions of a user, and how long a request may run: a
+query, a script or a cursor's page still running after
+`statementTimeoutSeconds` (300 by default) is stopped - a watchdog thread
+cancels the session's own connection, which works on every engine - and
+answered `Cancelled`, saying why. Every statement it runs reaches the audit
+callback with the user and the address that ran it. It answers requests and
+opens no socket: the listener and TLS around it are the program's
+(`Apps/UltraDBAdmin/relay`).
+
+Besides the tokens, a program may sign its users in its own way:
+`SetSignIn(label, check)` gives the server a callback asked about a token no
+user's hash matches - the relay program's OpenID Connect sign-in hands out
+tickets and knows them - and a label clients show; a client asks
+`UltraDb_RelaySignInOffer(url, label)` what sign-in a relay offers before it
+has any token.
 
 ---
 
@@ -591,8 +602,8 @@ headless data module usable from any ULTRA OS process.
 | Server administration (`UltraDatabaseServer.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
 | SSH tunnels (`UltraDatabaseTunnel.h`, `UltraDatabaseSshTunnel.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
-| Relay (`UltraDatabaseRelay.h`: the `relay` driver, `UltraDbRelayServer`, `UltraDatabaseRelayUltraNet.h`) | Implemented |
-| Test suite (92 tests) | Passing |
+| Relay (`UltraDatabaseRelay.h`: the `relay` driver, `UltraDbRelayServer` with its limits and statement time-out, a program's own sign-in, `UltraDatabaseRelayUltraNet.h`) | Implemented |
+| Test suite (94 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |

@@ -6,6 +6,7 @@
 //
 // Requests and answers (each carries the request's "id"; an answer "ok" and
 // on failure "result", the outcome):
+//   methods {}                           -> {signin}    the sign-in beside tokens, "" for none
 //   hello   {token}                      -> {user, connections: [{name, engine, readOnly}]}
 //   open    {connection}                 -> {c, engine}
 //   close   {c}
@@ -21,6 +22,10 @@
 //   server  {c, view, filter, schema}    -> {rows}       sessions / settings / sizes / status
 //   stopsql {c, target, end}             -> {sql}
 //   stop    {c, target, end}             -> {stopped}
+// exec, batch, cursor and fetch run under the statement time-out
+// (UltraDbRelayLimits): a watchdog thread cancels the session's connection
+// when one outlives it.
+// Version: 0.2.0 - the statement time-out; methods, and a sign-in of the program's own
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabase/UltraDatabaseRelay.h"
@@ -31,9 +36,11 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <condition_variable>
 #include <cstdio>
 #include <deque>
 #include <mutex>
+#include <thread>
 
 using ultradb_relay::Json;
 
@@ -114,8 +121,88 @@ struct Session {
     std::mutex m;
     std::map<int64_t, std::string> connections;       // handle -> the relay's own name
     std::map<int64_t, UltraDbHandle> cursors;         // handle -> the module's cursor
+    std::map<int64_t, std::string> cursorConnections; // handle -> the relay's name it runs on
     int64_t next = 1;
 };
+
+// Cancels a request's connection when the request outlives its time: one
+// thread for the server, woken by the nearest deadline.
+class Watchdog {
+public:
+    ~Watchdog() {
+        {
+            std::lock_guard<std::mutex> lock(m_);
+            stopping_ = true;
+        }
+        cv_.notify_all();
+        if (thread_.joinable()) thread_.join();
+    }
+    // Watches `connection` for `seconds`; the ticket for Disarm.
+    uint64_t Arm(const std::string& connection, int seconds) {
+        std::lock_guard<std::mutex> lock(m_);
+        if (!thread_.joinable()) thread_ = std::thread([this] { Run(); });
+        const uint64_t ticket = next_++;
+        watched_[ticket] = Watched{ std::chrono::steady_clock::now() + std::chrono::seconds(seconds), connection, false };
+        cv_.notify_all();
+        return ticket;
+    }
+    // Stops watching; true when the time ran out and the request was stopped.
+    bool Disarm(uint64_t ticket) {
+        std::lock_guard<std::mutex> lock(m_);
+        const auto it = watched_.find(ticket);
+        if (it == watched_.end()) return false;
+        const bool fired = it->second.fired;
+        watched_.erase(it);
+        return fired;
+    }
+
+private:
+    struct Watched {
+        std::chrono::steady_clock::time_point deadline;
+        std::string connection;
+        bool fired = false;
+    };
+    void Run() {
+        std::unique_lock<std::mutex> lock(m_);
+        while (!stopping_) {
+            auto next = std::chrono::steady_clock::time_point::max();
+            std::vector<std::string> due;
+            const auto now = std::chrono::steady_clock::now();
+            for (auto& [unused, w] : watched_) {
+                if (w.fired) continue;
+                if (w.deadline <= now) {
+                    w.fired = true;
+                    due.push_back(w.connection);
+                } else {
+                    next = std::min(next, w.deadline);
+                }
+            }
+            if (!due.empty()) {
+                // Not under the lock: a cancel may take a round trip to the server.
+                lock.unlock();
+                for (const std::string& name : due) UltraDb_CancelQuery(name);
+                lock.lock();
+                continue;
+            }
+            if (next == std::chrono::steady_clock::time_point::max()) cv_.wait(lock);
+            else cv_.wait_until(lock, next);
+        }
+    }
+    std::mutex m_;
+    std::condition_variable cv_;
+    std::map<uint64_t, Watched> watched_;
+    uint64_t next_ = 1;
+    bool stopping_ = false;
+    std::thread thread_;
+};
+
+// What a request stopped by the time-out answers.
+UltraDbResult TimedOut(int seconds) {
+    return UltraDbResult::Error(UltraDbResultCode::Cancelled,
+                                "stopped after " + std::to_string(seconds) +
+                                    " s: the relay lets a statement run that long at most",
+                                "relay");
+}
 
 // Who a connection of the relay's own serves: for the audit log.
 struct Served {
@@ -161,6 +248,14 @@ struct UltraDbRelayServer::Impl {
     uint64_t nextSession = 1;
     std::shared_ptr<AuditState> audit = std::make_shared<AuditState>();
     int observer = 0;
+    std::string signInLabel;
+    std::function<bool(const std::string&, UltraDbRelayUser&)> signIn;
+    Watchdog watchdog;      // last: stopped before the rest goes
+
+    int Timeout() {
+        std::lock_guard<std::mutex> lock(m);
+        return limits.statementTimeoutSeconds;
+    }
 
     std::shared_ptr<Session> Find(uint64_t id) {
         std::lock_guard<std::mutex> lock(m);
@@ -187,6 +282,7 @@ struct UltraDbRelayServer::Impl {
             std::lock_guard<std::mutex> lock(s.m);
             connections.swap(s.connections);
             cursors.swap(s.cursors);
+            s.cursorConnections.clear();
         }
         for (const auto& [unused, cursor] : cursors) UltraDb_CloseCursor(cursor);
         for (const auto& [unused, name] : connections) {
@@ -243,6 +339,13 @@ void UltraDbRelayServer::SetLimits(const UltraDbRelayLimits& limits) {
     impl_->limits = limits;
 }
 
+void UltraDbRelayServer::SetSignIn(std::string label,
+                                   std::function<bool(const std::string&, UltraDbRelayUser&)> check) {
+    std::lock_guard<std::mutex> lock(impl_->m);
+    impl_->signInLabel = std::move(label);
+    impl_->signIn = std::move(check);
+}
+
 void UltraDbRelayServer::SetAudit(std::function<void(const UltraDbRelayAuditEntry&)> audit) {
     std::lock_guard<std::mutex> lock(impl_->audit->m);
     impl_->audit->audit = std::move(audit);
@@ -280,18 +383,32 @@ std::string UltraDbRelayServer::Handle(uint64_t sessionId, const std::string& re
     if (!session) return Refused(id, UltraDbResultCode::ConnectionNotFound, "no such session");
 
     // ----- who is asking -----
+    if (op == "methods") {
+        Json answer = Answer(id);
+        std::lock_guard<std::mutex> lock(impl_->m);
+        answer.Set("signin", Json::String(impl_->signIn ? impl_->signInLabel : std::string()));
+        return answer.Dump();
+    }
     if (op == "hello") {
-        const std::string hash = Sha256Hex(req.Str("token"));
+        const std::string token = req.Str("token");
+        const std::string hash = Sha256Hex(token);
         UltraDbRelayUser user;
         bool known = false;
-        size_t open = 0;
+        std::function<bool(const std::string&, UltraDbRelayUser&)> signIn;
         {
             std::lock_guard<std::mutex> lock(impl_->m);
             for (const UltraDbRelayUser& u : impl_->users)
-                if (!known && SameSecret(u.tokenSha256, hash)) {
+                if (!known && !u.tokenSha256.empty() && SameSecret(u.tokenSha256, hash)) {
                     user = u;
                     known = true;
                 }
+            signIn = impl_->signIn;
+        }
+        // Not a user's token: perhaps the program's own sign-in knows it.
+        if (!known && signIn && !token.empty()) known = signIn(token, user) && !user.name.empty();
+        size_t open = 0;
+        {
+            std::lock_guard<std::mutex> lock(impl_->m);
             for (const auto& [unused, s] : impl_->sessions)
                 if (known && s->user == user.name) ++open;
             if (known && open >= impl_->limits.sessionsPerUser)
@@ -397,6 +514,15 @@ std::string UltraDbRelayServer::Handle(uint64_t sessionId, const std::string& re
             }
         }
         if (cursor == UltraDbInvalidHandle) return Refused(id, UltraDbResultCode::NotFound, "no such cursor");
+        std::string runsOn;
+        {
+            std::lock_guard<std::mutex> lock(session->m);
+            const auto it = session->cursorConnections.find(req.Num("cursor"));
+            if (it != session->cursorConnections.end()) {
+                runsOn = it->second;
+                if (op == "uncursor") session->cursorConnections.erase(it);
+            }
+        }
         if (op == "uncursor") {
             UltraDb_CloseCursor(cursor);
             return Answer(id).Dump();
@@ -408,7 +534,10 @@ std::string UltraDbRelayServer::Handle(uint64_t sessionId, const std::string& re
         }
         UltraDbResultSet rows;
         bool exhausted = false;
-        const UltraDbResult r = UltraDb_FetchRows(cursor, max, rows, exhausted);
+        const int timeout = impl_->Timeout();
+        const uint64_t watch = timeout > 0 && !runsOn.empty() ? impl_->watchdog.Arm(runsOn, timeout) : 0;
+        UltraDbResult r = UltraDb_FetchRows(cursor, max, rows, exhausted);
+        if (watch && impl_->watchdog.Disarm(watch) && !r) r = TimedOut(timeout);
         if (!r) return Refused(id, r);
         Json answer = Answer(id);
         answer.Set("rows", ultradb_relay::FromResultSet(rows));
@@ -434,9 +563,15 @@ std::string UltraDbRelayServer::Handle(uint64_t sessionId, const std::string& re
         UltraDb_CancelQuery(name);
         return Answer(id).Dump();
     }
+    // A request that runs statements runs under the time-out.
+    const int timeout = impl_->Timeout();
+    auto arm = [&]() -> uint64_t { return timeout > 0 ? impl_->watchdog.Arm(name, timeout) : 0; };
+    auto ranOut = [&](uint64_t watch) { return watch != 0 && impl_->watchdog.Disarm(watch); };
     if (op == "exec") {
         UltraDbResultSet rows;
-        const UltraDbResult r = UltraDb_Query(name, req.Str("sql"), ultradb_relay::ToParams(req.Get("params")), rows);
+        const uint64_t watch = arm();
+        UltraDbResult r = UltraDb_Query(name, req.Str("sql"), ultradb_relay::ToParams(req.Get("params")), rows);
+        if (ranOut(watch) && !r) r = TimedOut(timeout);
         size_t cap = 0;
         {
             std::lock_guard<std::mutex> lock(impl_->m);
@@ -453,7 +588,13 @@ std::string UltraDbRelayServer::Handle(uint64_t sessionId, const std::string& re
     }
     if (op == "batch") {
         std::vector<UltraDbStatementResult> statements;
-        const UltraDbResult r = UltraDb_ExecBatch(name, req.Str("sql"), statements);
+        const uint64_t watch = arm();
+        UltraDbResult r = UltraDb_ExecBatch(name, req.Str("sql"), statements);
+        if (ranOut(watch)) {
+            for (UltraDbStatementResult& one : statements)
+                if (!one.result && one.result.code == UltraDbResultCode::Cancelled) one.result = TimedOut(timeout);
+            if (!r) r = TimedOut(timeout);
+        }
         Json answer = Answer(id);
         answer.Set("result", ultradb_relay::FromResult(r));
         answer.Set("statements", ultradb_relay::FromStatements(statements));
@@ -461,14 +602,17 @@ std::string UltraDbRelayServer::Handle(uint64_t sessionId, const std::string& re
     }
     if (op == "cursor") {
         UltraDbResult r;
+        const uint64_t watch = arm();
         const UltraDbHandle cursor =
             UltraDb_OpenCursor(name, req.Str("sql"), ultradb_relay::ToParams(req.Get("params")), &r);
+        if (ranOut(watch) && cursor == UltraDbInvalidHandle) r = TimedOut(timeout);
         if (cursor == UltraDbInvalidHandle) return Refused(id, r);
         int64_t mine = 0;
         {
             std::lock_guard<std::mutex> lock(session->m);
             mine = session->next++;
             session->cursors[mine] = cursor;
+            session->cursorConnections[mine] = name;
         }
         Json answer = Answer(id);
         answer.Set("cursor", Json::Int(mine));
