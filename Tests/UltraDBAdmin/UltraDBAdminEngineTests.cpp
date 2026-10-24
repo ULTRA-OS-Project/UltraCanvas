@@ -192,6 +192,83 @@ void TestConnectionStoreOnDisk() {
           "every field read back as written");
 }
 
+void TestConnectionTunnel() {
+    Section("Connections through an SSH tunnel");
+    TempDir dir;
+    std::string error;
+    std::string id;
+    const std::string key = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjE=\n-----END OPENSSH PRIVATE KEY-----\n";
+    {
+        ConnectionStore store;
+        if (!store.Open(dir.Utf8(), error)) {
+            std::printf("  [SKIP] %s\n", error.c_str());
+            return;
+        }
+        ConnectionSpec spec;
+        spec.name = "Behind the bastion";
+        spec.driver = "postgresql";
+        spec.host = "db.internal";
+        spec.database = "crm";
+        spec.sshHost = "bastion.example.com";
+        spec.sshPort = 2200;
+        spec.sshUser = "deploy";
+        spec.sshAuth = "key";
+        spec.sshHostKey = "SHA256:trusted";
+        ConnectionStore::SecretChanges secrets;
+        secrets.password = "db-Pa55";
+        secrets.sshSecret = key;
+        secrets.sshPassphrase = "key-Pa55";
+        id = store.Put(spec, secrets, error);
+        Check(!id.empty() && store.Find(id)->hasSshSecret && store.Find(id)->hasSshPassphrase,
+              "a tunnelled connection keeps its key and passphrase in the vault (" + error + ")");
+        Check(Describe(*store.Find(id)) == "db.internal/crm via deploy@bastion.example.com:2200",
+              "described with its bastion: " + Describe(*store.Find(id)));
+
+        // What UltraDatabase is handed: recorded by an opener that opens nothing.
+        static UltraDbTunnelRequest seen;
+        UltraDb_SetTunnelOpener([](const UltraDbTunnelRequest& request, UltraDbResult& failure) {
+            seen = request;
+            failure = UltraDbResult::Error(UltraDbResultCode::HostKeyUnknown, "recorded");
+            return std::unique_ptr<IUltraDbTunnel>();
+        });
+        store.Register(*store.Find(id));
+        const UltraDbResult opened = UltraDb_OpenConnection(RegisteredName(*store.Find(id)));
+        if (opened.code == UltraDbResultCode::HostKeyUnknown) {
+            Check(seen.sshHost == "bastion.example.com" && seen.sshPort == 2200 && seen.sshUser == "deploy" &&
+                      seen.hostKeyFingerprint == "SHA256:trusted" && seen.targetHost == "db.internal" &&
+                      seen.targetPort == 5432,
+                  "the bastion, its port, user and host key, and the database as it reaches it");
+            Check(std::string(seen.privateKey.begin(), seen.privateKey.end()) == key && seen.password.empty() &&
+                      seen.keyPassphrase == "key-Pa55",
+                  "the key and its passphrase read from the vault, the key as a key");
+        } else {
+            std::printf("  [SKIP] the opener was not reached here: %s\n", opened.message.c_str());
+        }
+        UltraDb_SetTunnelOpener(nullptr);
+        UltraDb_CloseConnection(RegisteredName(*store.Find(id)));
+        UltraDb_CloseConnection(ConsoleName(*store.Find(id)));
+    }
+    const std::string json = ReadFile(dir.path / "connections.json");
+    Check(json.find("bastion.example.com") != std::string::npos && json.find("SHA256:trusted") != std::string::npos,
+          "the bastion and its host key are in the list");
+    Check(json.find("OPENSSH") == std::string::npos && json.find("key-Pa55") == std::string::npos,
+          "the key and its passphrase are not");
+
+    ConnectionStore again;
+    Check(again.Open(dir.Utf8(), error), "the store opens again");
+    ConnectionSpec back = *again.Find(id);
+    Check(back.sshHost == "bastion.example.com" && back.sshPort == 2200 && back.sshUser == "deploy" &&
+              back.sshAuth == "key" && back.sshHostKey == "SHA256:trusted" && back.hasSshSecret,
+          "every tunnel field read back as written");
+    // The tunnel taken away: its secrets go from the vault with it.
+    back.sshHost.clear();
+    Check(!again.Put(back, ConnectionStore::SecretChanges(), error).empty() && !again.Find(id)->hasSshSecret &&
+              !again.Find(id)->hasSshPassphrase,
+          "without a tunnel no SSH secret is kept");
+    UltraVault::SecretValue secret;
+    Check(!UltraVault::Get("dbadmin.connection." + id + ".ssh", secret).IsOk(), "and the vault no longer holds it");
+}
+
 void TestCellText() {
     Section("Cell text");
     Check(CellText(UltraDbValue()) == "NULL", "NULL reads NULL");
@@ -1519,6 +1596,7 @@ int main() {
     std::printf("UltraDBAdmin engine tests\n\n");
     TestConnectionStoreInMemory();
     TestConnectionStoreOnDisk();
+    TestConnectionTunnel();
     TestCellText();
     TestPager();
     TestSqlRunner();

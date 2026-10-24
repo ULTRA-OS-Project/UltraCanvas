@@ -823,6 +823,38 @@ void DbAdminWindow::ShowLoadError(const std::string& nodeId, const UltraDbResult
     }
     SetStatus(result.message, true);
     tree_->RequestRedraw();
+    if (result.code == UltraDbResultCode::HostKeyUnknown && !result.hostKeyFingerprint.empty())
+        TrustHostKey(nodeId, result.hostKeyFingerprint);
+}
+
+void DbAdminWindow::TrustHostKey(const std::string& nodeId, const std::string& fingerprint) {
+    const NodeRef* ref = RefOf(nodeId);
+    const ConnectionSpec* spec = ref ? store_.Find(ref->connectionId) : nullptr;
+    if (!spec || !spec->UsesTunnel()) return;
+    const std::string id = spec->id;
+    // As ssh asks on a first connection: the user compares the key with the
+    // one the bastion's administrator gave them, and only then trusts it.
+    UltraCanvasDialogManager::ShowConfirmation(
+        spec->name + " reaches its database through " + spec->sshHost +
+            ", whose host key is not known yet:\n\n" + fingerprint +
+            "\n\nTrust it only if it is the key the bastion's administrator gave you (ssh-keygen -l on the "
+            "bastion shows it). Once trusted, a bastion that presents another key is refused.",
+        "Trust the SSH host key",
+        [this, id, fingerprint, nodeId](bool confirmed) {
+            if (!confirmed) return;
+            const ConnectionSpec* current = store_.Find(id);
+            if (!current) return;
+            ConnectionSpec trusted = *current;
+            trusted.sshHostKey = fingerprint;
+            std::string error;
+            if (store_.Put(trusted, ConnectionStore::SecretChanges(), error).empty()) {
+                SetStatus("The host key could not be kept: " + error, true);
+                return;
+            }
+            store_.Register(trusted);
+            SetStatus("Trusted " + trusted.sshHost + "'s host key; connecting again…");
+            if (tree_->FindNode(nodeId)) LoadChildren(nodeId);
+        });
 }
 
 void DbAdminWindow::ApplySchemas(const std::string& nodeId, const UltraDbResult& result,
@@ -915,8 +947,8 @@ void DbAdminWindow::OnNodeSelected(TreeNode* node) {
 
 void DbAdminWindow::AddConnection() {
     ShowConnectionDialog(window_.get(), nullptr,
-                         [this](const ConnectionSpec& spec, const std::string& password, bool clearPassword) {
-                             return SaveConnection(spec, password, clearPassword);
+                         [this](const ConnectionSpec& spec, const ConnectionStore::SecretChanges& secrets) {
+                             return SaveConnection(spec, secrets);
                          });
 }
 
@@ -924,13 +956,12 @@ void DbAdminWindow::EditConnection() {
     const ConnectionSpec* spec = SelectedConnection();
     if (!spec) { SetStatus("Select a connection in the tree to edit it."); return; }
     ShowConnectionDialog(window_.get(), spec,
-                         [this](const ConnectionSpec& edited, const std::string& password, bool clearPassword) {
-                             return SaveConnection(edited, password, clearPassword);
+                         [this](const ConnectionSpec& edited, const ConnectionStore::SecretChanges& secrets) {
+                             return SaveConnection(edited, secrets);
                          });
 }
 
-std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std::string& password,
-                                          bool clearPassword) {
+std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const ConnectionStore::SecretChanges& secrets) {
     const bool edited = !spec.id.empty();
     // A change to how the database is reached closes its tables' tabs - they
     // were read through the old session - but never drops changes staged in
@@ -939,7 +970,11 @@ std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std:
     const bool sessionChanges =
         before && (before->driver != spec.driver || before->database != spec.database || before->host != spec.host ||
                    before->port != spec.port || before->user != spec.user || before->tls != spec.tls ||
-                   before->readOnly != spec.readOnly || !password.empty() || clearPassword);
+                   before->readOnly != spec.readOnly || !secrets.password.empty() || secrets.clearPassword ||
+                   before->sshHost != spec.sshHost || before->sshPort != spec.sshPort ||
+                   before->sshUser != spec.sshUser || before->sshAuth != spec.sshAuth ||
+                   before->sshHostKey != spec.sshHostKey || !secrets.sshSecret.empty() ||
+                   !secrets.sshPassphrase.empty());
     if (sessionChanges) {
         StashActiveTab();
         size_t staged = 0;
@@ -950,7 +985,7 @@ std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std:
                    " staged to its tables first: they were read through the connection as it is now.";
     }
     std::string error;
-    const std::string id = store_.Put(spec, password, clearPassword, error);
+    const std::string id = store_.Put(spec, secrets, error);
     if (id.empty()) return "Not saved: " + error;
     const ConnectionSpec saved = *store_.Find(id);
     if (sessionChanges) CloseTabsOf(id);

@@ -18,7 +18,7 @@ the app code hard-codes.
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 84 tests, the PostgreSQL and MySQL
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 87 tests, the PostgreSQL and MySQL
 > ones against a live server where one is configured). The **PostgreSQL**
 > driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
 > libpq is found at configure time; it takes `?` placeholders, verifies TLS by
@@ -358,6 +358,43 @@ themselves. MySQL's settings come from `performance_schema` (with where each
 value came from), MariaDB's from `information_schema.SYSTEM_VARIABLES` (with
 a description for each).
 
+### SSH tunnels
+
+A server behind a bastion - only the bastion's SSH port open - is reached
+through an SSH tunnel (`UltraDatabaseTunnel.h`, the proposal's G9). The
+connection's options name the bastion; `host` and `port` stay the
+database's, as the bastion reaches it. When the connection opens, the tunnel
+opens first, and the driver connects through it; every session the driver
+opens for the connection (a MySQL cursor's, a cancel's) goes through the same
+tunnel, and the tunnel closes with the connection.
+
+```cpp
+UltraDb_UseUltraNetSshTunnels();                       // once: UltraDatabaseSshTunnel.h
+
+cfg.host = "db.internal";                              // as the bastion reaches it
+cfg.options["ssh_host"] = "bastion.example.com";
+cfg.options["ssh_user"] = "deploy";
+cfg.options["ssh_credentials"] = "vault:crm.ssh";      // a password or a private key, in UltraVault
+cfg.options["ssh_key_passphrase"] = "vault:crm.ssh-passphrase";
+cfg.options["ssh_host_key"] = "SHA256:Rf5Z...";        // trusted; "": known_hosts decides
+```
+
+The module opens no socket itself: the application installs an opener once
+(`UltraDb_SetTunnelOpener`). `UltraDatabaseSshTunnel.h` is one over UltraNet's
+SSH plug-in, header-only, so UltraDatabase links no network library and only
+a program that includes it carries the bridge. The secrets are read from
+UltraVault by the module, handed to the opener and wiped. An unknown bastion
+key fails the connection with `HostKeyUnknown` and the key in
+`UltraDbResult::hostKeyFingerprint` - for the user to compare and trust - and
+a changed one with `HostKeyChanged`; neither is ever accepted on its own.
+
+Through the tunnel the driver connects to 127.0.0.1 (`ThroughTunnel` on the
+driver): PostgreSQL as `hostaddr`, with the certificate still checked against
+`host`; MySQL's Connector/C can check a certificate only against the address
+it connects to, so `VerifyFull` through a tunnel is refused with that reason
+(`Require`, or no TLS, is the choice there - the SSH tunnel itself encrypts
+the way to the bastion). A tunnel to SQLite, or to a socket, is refused.
+
 ---
 
 ## Threading
@@ -492,7 +529,8 @@ headless data module usable from any ULTRA OS process.
 | Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
 | Server administration (`UltraDatabaseServer.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
-| Test suite (84 tests) | Passing |
+| SSH tunnels (`UltraDatabaseTunnel.h`, `UltraDatabaseSshTunnel.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
+| Test suite (87 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |

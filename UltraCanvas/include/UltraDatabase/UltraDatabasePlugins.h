@@ -3,6 +3,7 @@
 // engine family. The built-in SQLite driver implements these same interfaces;
 // PostgreSQL / MySQL / ... arrive as additional drivers (Stage 2+ ships them
 // as loadable DSOs) without changing the core or any caller.
+// Version: 0.5.0 - DefaultPort, ThroughTunnel (SSH tunnels)
 // Version: 0.4.0 - server administration (UltraDatabaseServer.h)
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -200,6 +201,20 @@ public:
     // nullptr and sets `error`.
     virtual std::unique_ptr<IUltraDbConnection> Open(
         const UltraDbConnectionConfig& config, UltraDbResult& error) = 0;
+
+    // The port the server listens on when a config names none; 0 for an
+    // engine that has no server (a tunnel is then refused).
+    virtual int DefaultPort() const { return 0; }
+
+    // `config` changed to reach its server through an SSH tunnel's port on
+    // 127.0.0.1 (UltraDatabaseTunnel.h). By default the host becomes
+    // 127.0.0.1 - so a certificate is checked against that name; a driver
+    // that can connect to one address and verify another overrides this.
+    virtual UltraDbResult ThroughTunnel(UltraDbConnectionConfig& config, int localPort) const {
+        config.host = "127.0.0.1";
+        config.port = localPort;
+        return UltraDbResult::Ok();
+    }
 };
 
 // Register a driver. Ownership stays with the caller (drivers are typically

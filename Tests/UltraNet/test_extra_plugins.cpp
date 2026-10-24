@@ -14,6 +14,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include <UltraNet/UltraNetSsh.h>
 
 #include <algorithm>
 #include <chrono>
@@ -356,6 +357,220 @@ TEST(ssh_plugin_loads_and_registers) {
     UltraNetRemoteOptions opt;
     REQUIRE_EQ(sh->OpenShell("not-an-ssh-url", opt), UltraNetInvalidHandle);
 }
+
+// ===== SSH tunnels =====
+// Against a real sshd: ULTRANET_TEST_SSH_URL (ssh://user@host:port) and
+// ULTRANET_TEST_SSH_KEY (the private key file that signs in there). Without
+// them the tests skip - unless ULTRANET_TEST_SSH_REQUIRED is set, as in CI,
+// where a missing server is a failure. The tunnel's far end is an echo
+// server of the test's own on 127.0.0.1, which the sshd reaches as the test
+// does.
+#if !defined(_WIN32)
+namespace {
+
+struct SshServer {
+    std::string url;
+    std::vector<uint8_t> key;
+};
+
+bool SshServerFromEnv(SshServer& out, bool& required) {
+    required = std::getenv("ULTRANET_TEST_SSH_REQUIRED") != nullptr;
+    const char* url = std::getenv("ULTRANET_TEST_SSH_URL");
+    const char* key = std::getenv("ULTRANET_TEST_SSH_KEY");
+    if (!url || !*url || !key || !*key) return false;
+    std::FILE* f = std::fopen(key, "rb");
+    if (!f) return false;
+    char buffer[4096];
+    size_t n = 0;
+    while ((n = std::fread(buffer, 1, sizeof buffer, f)) > 0) out.key.insert(out.key.end(), buffer, buffer + n);
+    std::fclose(f);
+    out.url = url;
+    return !out.key.empty();
+}
+
+// Echoes every byte back on each connection, until stopped.
+class EchoServer {
+public:
+    EchoServer() {
+        listener_ = socket(AF_INET, SOCK_STREAM, 0);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        socklen_t length = sizeof addr;
+        bind(listener_, reinterpret_cast<sockaddr*>(&addr), sizeof addr);
+        listen(listener_, 8);
+        getsockname(listener_, reinterpret_cast<sockaddr*>(&addr), &length);
+        port_ = ntohs(addr.sin_port);
+        thread_ = std::thread([this] {
+            for (;;) {
+                const int client = accept(listener_, nullptr, nullptr);
+                if (client < 0) return;
+                std::thread([client] {
+                    char buffer[16384];
+                    for (;;) {
+                        const ssize_t n = recv(client, buffer, sizeof buffer, 0);
+                        if (n <= 0) break;
+                        ssize_t sent = 0;
+                        while (sent < n) {
+                            const ssize_t m = send(client, buffer + sent, static_cast<size_t>(n - sent), 0);
+                            if (m <= 0) break;
+                            sent += m;
+                        }
+                    }
+                    close(client);
+                }).detach();
+            }
+        });
+    }
+    ~EchoServer() {
+        shutdown(listener_, SHUT_RDWR);
+        close(listener_);
+        thread_.join();
+    }
+    int Port() const { return port_; }
+
+private:
+    int listener_ = -1;
+    int port_ = 0;
+    std::thread thread_;
+};
+
+// Connect to 127.0.0.1:port, send `data`, read as many bytes back.
+std::string RoundTrip(int port, const std::string& data) {
+    const int s = socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(static_cast<uint16_t>(port));
+    if (connect(s, reinterpret_cast<sockaddr*>(&addr), sizeof addr) != 0) {
+        close(s);
+        return "(no connection)";
+    }
+    std::string back;
+    std::thread writer([&] {
+        size_t sent = 0;
+        while (sent < data.size()) {
+            const ssize_t n = send(s, data.data() + sent, data.size() - sent, 0);
+            if (n <= 0) break;
+            sent += static_cast<size_t>(n);
+        }
+    });
+    char buffer[16384];
+    while (back.size() < data.size()) {
+        const ssize_t n = recv(s, buffer, sizeof buffer, 0);
+        if (n <= 0) break;
+        back.append(buffer, static_cast<size_t>(n));
+    }
+    writer.join();
+    close(s);
+    return back;
+}
+
+// A file with nothing in it, for a known_hosts that knows no host.
+std::string EmptyKnownHosts() {
+    const fs::path path = fs::temp_directory_path() / "ultranet_ssh_test_known_hosts";
+    std::FILE* f = std::fopen(path.string().c_str(), "wb");
+    if (f) std::fclose(f);
+    return path.string();
+}
+
+} // namespace
+
+TEST(ssh_tunnel_checks_the_host_key_and_forwards) {
+    SshServer server;
+    bool required = false;
+    if (!SshServerFromEnv(server, required)) {
+        REQUIRE(!required);
+        SKIP("no SSH server configured (ULTRANET_TEST_SSH_URL, ULTRANET_TEST_SSH_KEY)");
+    }
+    REQUIRE(LoadInto("SSH", "ssh"));
+    EchoServer echo;
+    UltraNetSshTunnelOptions options;
+    options.url = server.url;
+    options.remote.privateKeyPem = server.key;
+    options.remote.knownHostsFile = EmptyKnownHosts();
+    options.targetHost = "127.0.0.1";
+    options.targetPort = echo.Port();
+
+    // A host nobody has seen: refused, its fingerprint handed back.
+    UltraNetHandle handle = UltraNetInvalidHandle;
+    UltraNetSshTunnelInfo info;
+    UltraNetResult r = UltraNet_OpenSshTunnel(options, handle, info);
+    REQUIRE_EQ(r.code, UltraNetResultCode::SshHostKeyUnknown);
+    REQUIRE(info.hostKeyFingerprint.rfind("SHA256:", 0) == 0);
+    REQUIRE_EQ(handle, UltraNetInvalidHandle);
+    const std::string fingerprint = info.hostKeyFingerprint;
+
+    // Another key than the one trusted: refused.
+    options.remote.hostKeyFingerprint = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    r = UltraNet_OpenSshTunnel(options, handle, info);
+    REQUIRE_EQ(r.code, UltraNetResultCode::SshHostKeyChanged);
+
+    // A key that does not sign in: refused.
+    options.remote.hostKeyFingerprint = fingerprint;
+    UltraNetSshTunnelOptions wrongKey = options;
+    wrongKey.remote.privateKeyPem.clear();
+    wrongKey.remote.credentials.password = "not-the-password";
+    r = UltraNet_OpenSshTunnel(wrongKey, handle, info);
+    REQUIRE_EQ(r.code, UltraNetResultCode::AuthenticationFailed);
+
+    // The key trusted: open, and every connection carried to the far end.
+    r = UltraNet_OpenSshTunnel(options, handle, info);
+    if (!r) std::fprintf(stderr, "\n    %s", r.message.c_str());
+    REQUIRE(r.success);
+    REQUIRE(handle != UltraNetInvalidHandle);
+    REQUIRE(info.localPort > 0);
+    REQUIRE_EQ(info.hostKeyFingerprint, fingerprint);
+    REQUIRE_EQ(RoundTrip(info.localPort, "hello through the bastion"), std::string("hello through the bastion"));
+
+    // Three at once, each with half a megabyte both ways.
+    std::string big(512 * 1024, '\0');
+    for (size_t i = 0; i < big.size(); ++i) big[i] = static_cast<char>((i * 7919u) >> 3);
+    std::string results[3];
+    std::thread a([&] { results[0] = RoundTrip(info.localPort, big); });
+    std::thread b([&] { results[1] = RoundTrip(info.localPort, big); });
+    std::thread c([&] { results[2] = RoundTrip(info.localPort, big); });
+    a.join();
+    b.join();
+    c.join();
+    for (const auto& result : results) REQUIRE(result == big);
+
+    // Closed: the port takes no more connections.
+    REQUIRE(UltraNet_CloseSshTunnel(handle).success);
+    REQUIRE_EQ(RoundTrip(info.localPort, "x"), std::string("(no connection)"));
+    REQUIRE_EQ(UltraNet_CloseSshTunnel(handle).code, UltraNetResultCode::InvalidHandle);
+}
+
+TEST(ssh_tunnel_to_a_closed_port_ends_the_connection) {
+    SshServer server;
+    bool required = false;
+    if (!SshServerFromEnv(server, required)) {
+        REQUIRE(!required);
+        SKIP("no SSH server configured");
+    }
+    REQUIRE(LoadInto("SSH", "ssh"));
+    int closedPort = 0;
+    {
+        EchoServer gone;   // a port that was free a moment ago
+        closedPort = gone.Port();
+    }
+    UltraNetSshTunnelOptions options;
+    options.url = server.url;
+    options.remote.privateKeyPem = server.key;
+    options.remote.knownHostsFile = EmptyKnownHosts();
+    options.targetHost = "127.0.0.1";
+    options.targetPort = closedPort;
+    UltraNetHandle handle = UltraNetInvalidHandle;
+    UltraNetSshTunnelInfo info;
+    UltraNet_OpenSshTunnel(options, handle, info);           // learns the fingerprint
+    options.remote.hostKeyFingerprint = info.hostKeyFingerprint;
+    REQUIRE(UltraNet_OpenSshTunnel(options, handle, info).success);
+    // The SSH server cannot reach the far end: the client sees its
+    // connection end, no bytes, and the tunnel stays up for the next.
+    REQUIRE_EQ(RoundTrip(info.localPort, "anyone there?"), std::string());
+    REQUIRE(UltraNet_CloseSshTunnel(handle).success);
+}
+#endif
 
 // ===== mDNS =====
 TEST(mdns_plugin_loads_and_registers) {

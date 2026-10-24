@@ -19,7 +19,7 @@ the way to make it safe.
 
 | | |
 |---|---|
-| **Connections** | SQLite files, PostgreSQL servers and MySQL / MariaDB servers (host or socket - a directory for PostgreSQL, the socket file for MySQL - port, 5432 or 3306 when empty, database, user, password, TLS posture), added and edited in a dialog, kept in `connections.json` in the data folder. A password is stored in the app's own encrypted vault (`vault/`, UltraVault's device-key vault) and never written to the list; the connection hands UltraDatabase only the vault key. *Production* draws a connection in red; *read only* makes the database refuse changes. |
+| **Connections** | SQLite files, PostgreSQL servers and MySQL / MariaDB servers (host or socket - a directory for PostgreSQL, the socket file for MySQL - port, 5432 or 3306 when empty, database, user, password, TLS posture) - directly or through an **SSH tunnel** (below), added and edited in a dialog, kept in `connections.json` in the data folder. A password is stored in the app's own encrypted vault (`vault/`, UltraVault's device-key vault) and never written to the list; the connection hands UltraDatabase only the vault key. *Production* draws a connection in red; *read only* makes the database refuse changes. |
 | **Tabs** | Each table or view picked in the tree opens in a tab of its own, in a row above Browse, Structure, SQL, Search, Relations, Routines and Server; a click shows it again as it was left - its page, its order, its filters and the changes staged to it, which a tab marks with `*` and keeps until they are committed, reverted or the tab is closed (which asks first). Up to ten are open; the eleventh takes the place of the oldest with nothing staged. |
 | **Tree menu** | A right-click on a connection, a schema or an object offers what can be done to it. A table: open it, its structure, export its rows, copy its name (quoted), **Copy table** (a new name, with or without its rows: SQLite from the table's own CREATE TABLE and its indexes, renamed; PostgreSQL `LIKE ... INCLUDING ALL`, the identity moved past the rows), **Rename**, **Empty table** (DELETE or TRUNCATE, the counter reset if asked), **Drop**, and its maintenance. A schema - and a SQLite connection, whose schema is `main` - : **New table** (a line per column: name, type, NOT NULL, key, numbered, default - checked as one SQL fragment each), **Search every table**, **Export as SQL**, **Relations**, **Routines**, and maintenance: SQLite's *Check integrity*, *Quick check*, *Analyze*, *Optimize*, *Vacuum* and journal mode; PostgreSQL's *Analyze* and *Vacuum* on a connection or a table. Each operation shows its SQL before it runs (`engine/DbAdminOperations`); none writes CASCADE; a read-only connection offers only what reads; the ones that remove something are red and ask. |
 | **Tree** | Each connection's schemas, and in each its tables, views, materialized views, foreign tables and sequences (`UltraDb_ListSchemas`, `UltraDb_ListObjects`), read when the node is expanded. A server that cannot be reached says why in the tree; collapsing and expanding tries again, **Refresh** reconnects. |
@@ -56,8 +56,30 @@ even while a page loads or a script runs: UltraDatabase keeps a connection
 until the last call on it returns, so what is running finishes on the old
 settings and the next query uses the new.
 
-SSH tunnels and the server's monitor charts are the later stages of the
-proposal.
+The server's monitor charts are a later stage of the proposal.
+
+## SSH tunnels
+
+A server behind a bastion is reached through an SSH tunnel: **Through an SSH
+tunnel** in the connection dialog, then the SSH server and its port (22 when
+empty), the SSH user and how to sign in there - the SSH agent and the default
+keys, a password, or a private key file, read through
+`UltraCanvasFileLoader` into the vault with its passphrase. Host and port are
+then the database's as the bastion reaches it (an empty host: the bastion
+itself). The password or key and the passphrase are kept in the app's vault
+beside the database password, never in `connections.json`.
+
+On the first connection the bastion's host key is not known: the app shows
+its fingerprint (`SHA256:...`) and asks to trust it - as ssh does - for the
+user to compare with the one the bastion's administrator gave them; trusted,
+it is kept with the connection, and a bastion that presents another key is
+refused. **Forget the trusted host key** (a reinstalled server) and a new
+bastion host clear it. Through the tunnel MySQL can check no certificate
+against the database's name, so *Verify* is refused there with that reason;
+PostgreSQL still checks it against the database's host. Every session -
+Browse's, the SQL console's - goes through the connection's tunnel, which
+closes with it. The tunnel is UltraDatabase's (`UltraDatabaseTunnel.h`),
+opened through UltraNet's SSH plug-in (`UltraDb_UseUltraNetSshTunnels`).
 
 ## MySQL and MariaDB
 
@@ -243,3 +265,14 @@ edited between `DELIMITER` lines and the edit the one that fires, a function
 edited where it lives and dropped by its name, a procedure, the templates),
 and the server (the sessions, `max_connections` found in any case, a
 `SLEEP` stopped with `KILL QUERY`, a session not there not stopped).
+
+A fourth, `UltraDBAdminTunnelTests` (built where UltraNet's SSH plug-in is),
+connects through a real SSH tunnel: the app's own connection store with the
+bastion's key in the vault, a PostgreSQL and a MySQL / MariaDB server reached
+through a local sshd over TCP - the unknown host key refused with its
+fingerprint, trusted, a query, a cursor's 2000 rows, the SQL console's own
+session, a changed key refused, MySQL's *Verify* not attempted. CI runs it
+against an sshd of its own (`ULTRANET_TEST_SSH_*`, `ULTRADB_TEST_TUNNEL_*`).
+The engine suite checks the store's side: the bastion and host key in the
+list, the key and passphrase in the vault only, and what UltraDatabase is
+handed.

@@ -164,6 +164,9 @@ private:
     void ApplyObjects(const std::string& nodeId, const UltraDbResult& result,
                       const std::vector<UltraDbObjectSummary>& objects);
     void ShowLoadError(const std::string& nodeId, const UltraDbResult& result);
+    // An SSH bastion's host key not known yet: shown, and kept with the
+    // connection once the user trusts it; then `nodeId` is read again.
+    void TrustHostKey(const std::string& nodeId, const std::string& fingerprint);
     void ResetNode(const std::string& nodeId);   // forget the children; load again on expand
     void OnNodeSelected(UltraCanvas::TreeNode* node);
     const NodeRef* RefOf(const std::string& nodeId) const;
@@ -172,8 +175,7 @@ private:
     void EditConnection();
     void RemoveConnection();
     void RefreshSelected();
-    std::string SaveConnection(const ConnectionSpec& spec, const std::string& password,
-                               bool clearPassword);
+    std::string SaveConnection(const ConnectionSpec& spec, const ConnectionStore::SecretChanges& secrets);
 
     // ===== OPEN OBJECTS =====
     // An object open in a tab of its own. The tab shown is the window's

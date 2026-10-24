@@ -1550,7 +1550,9 @@ future.
 **Plugin Categories (Tier 2 / Tier 3, located under `Plugins/UltraNet/`):**
 - Mail: SMTP, IMAP, POP3
 - Messaging: MQTT, AMQP
-- Remote Access: SSH, Telnet
+- Remote Access: SSH (shell, commands, and local port forwarding -
+  `UltraNet_OpenSshTunnel` in `UltraNetSsh.h`, the host key checked against
+  known_hosts or a trusted fingerprint), Telnet
 - Directory: LDAP, LDAPS
 - Streaming: RTSP, RTMP, RTP, SIP
 - IoT: CoAP, MQTT-SN, SNMP
@@ -1619,6 +1621,10 @@ extended or replaced without changing callers.
   indexes, triggers), `UltraDb_QuoteIdentifier`, `UltraDb_QuoteQualifiedName`
   (the one way a name goes into SQL text), `UltraDbResultSet::ColumnInfo`
   (declared type and source table / column per result column)
+- `UltraDb_SetTunnelOpener`, `UltraDb_UsesTunnel` (`UltraDatabaseTunnel.h`: a
+  server reached through an SSH bastion, named by the connection's `ssh_*`
+  options; `UltraDb_UseUltraNetSshTunnels()` in `UltraDatabaseSshTunnel.h`
+  opens the tunnels through UltraNet's SSH plug-in)
 
 **Driver Categories (Tier 2 / Tier 3, located under `Plugins/UltraDatabase/`):**
 - Relational (SQL): PostgreSQL, MySQL / MariaDB, Microsoft SQL Server

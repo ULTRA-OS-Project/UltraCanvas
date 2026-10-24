@@ -3,6 +3,7 @@
 # formatting, the Browse pager, the SQL runner - without a window. Compiles
 # the engine sources directly, as Tests/UltraFIBU does, so it runs where the
 # UI library cannot be built. Enabled by ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS.
+# Version: 0.4.0 - the SSH tunnel program (UltraNet's SSH plug-in, a bastion, both servers)
 # Version: 0.3.0 - the schema suite (relations, routines, server), a third
 # Version: 0.2.0 - the operations suite, a second program
 # Version: 0.1.0
@@ -63,3 +64,23 @@ add_test(NAME UltraDBAdminOperations COMMAND UltraDBAdminOperationsTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_test(NAME UltraDBAdminSchema COMMAND UltraDBAdminSchemaTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# Connections through a real SSH tunnel: the store, UltraDatabase's tunnel
+# and UltraNet's SSH plug-in together, so it links UltraNet and runs where the
+# plug-in is built. Against a bastion and two servers named by the
+# environment (UltraDBAdminTunnelTests.cpp); without them it skips.
+if(TARGET UltraNet AND TARGET UltraNetSshPlugin)
+    add_executable(UltraDBAdminTunnelTests UltraDBAdminTunnelTests.cpp ${_dbadmin_engine})
+    target_compile_features(UltraDBAdminTunnelTests PRIVATE cxx_std_20)
+    target_include_directories(UltraDBAdminTunnelTests PRIVATE
+        ${_dbadmin}/engine
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
+    target_link_libraries(UltraDBAdminTunnelTests PRIVATE UltraDatabase UltraVault UltraNet Threads::Threads)
+    add_dependencies(UltraDBAdminTunnelTests UltraNetSshPlugin)
+    target_compile_definitions(UltraDBAdminTunnelTests PRIVATE
+        ULTRADBADMIN_TEST_SSH_PLUGIN_DIR="$<TARGET_FILE_DIR:UltraNetSshPlugin>")
+    set_target_properties(UltraDBAdminTunnelTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME UltraDBAdminTunnel COMMAND UltraDBAdminTunnelTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()

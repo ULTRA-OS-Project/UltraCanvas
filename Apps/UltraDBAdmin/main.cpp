@@ -1,12 +1,14 @@
 // Apps/UltraDBAdmin/main.cpp
 // UltraDBAdmin - browse and query the databases UltraDatabase reaches, SQLite
-// files and PostgreSQL servers, in the spirit of phpMyAdmin
+// files, PostgreSQL and MySQL / MariaDB servers - directly or through an SSH
+// tunnel - in the spirit of phpMyAdmin
 // (Docs/Research/UltraDBAdminDesignProposal.md). This is the application:
 // the single-instance claim, the window, the event loop. The window is
 // ui/DbAdminWindow; what needs no window is in engine/.
 //
 // One window per user: a second start brings the running one forward and
 // quits (UltraCanvasSingleInstance.h).
+// Version: 0.2.0 - SSH tunnels through UltraNet (UltraDatabaseSshTunnel.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/DbAdminTheme.h"
@@ -20,6 +22,7 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
+#include <UltraDatabase/UltraDatabaseSshTunnel.h>
 
 #include <csignal>
 #include <cstdio>
@@ -51,7 +54,7 @@ void SignalHandler(int) { UltraCanvasApplicationBase::RequestExitFromSignal(); }
 
 void PrintUsage(const char* programName) {
     std::printf(
-        "UltraDBAdmin - browse and query SQLite files and PostgreSQL servers\n"
+        "UltraDBAdmin - browse and query SQLite files, PostgreSQL and MySQL / MariaDB servers\n"
         "Powered by the UltraCanvas framework\n"
         "\n"
         "Usage: %s [options]\n"
@@ -112,6 +115,8 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
         // Before the window: its elements are styled from the theme as they are made.
         UltraCanvasTheme::SetCurrent(UltraDBAdmin::AppTheme());
+        // A connection behind a bastion reaches its server through UltraNet's SSH plug-in.
+        UltraDb_UseUltraNetSshTunnels();
 
         UltraDBAdmin::DbAdminWindow window;
         if (!window.Initialize(UltraDBAdmin::DataDirectory())) {

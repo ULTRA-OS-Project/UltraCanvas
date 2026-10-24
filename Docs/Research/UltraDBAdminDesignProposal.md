@@ -579,6 +579,16 @@ mysqldump's shape; routines are edited as `DROP` and `CREATE` between
 `DELIMITER` lines. MariaDB 10.11 locally and MySQL 8 in CI run the same
 tests.
 
+**SSH tunnels (G9) followed** (UltraDatabase 0.6.0): the UltraNet SSH
+plug-in forwards a local port (`UltraNet_OpenSshTunnel`) and now checks
+every server's host key - known_hosts or a fingerprint the user trusted - which
+it did not before; UltraDatabase opens a connection's tunnel before its
+driver connects, from the connection's `ssh_*` options as planned, through an
+opener the application installs (`UltraDatabaseSshTunnel.h` over UltraNet), so
+the module links no network library; and UltraDBAdmin's connection dialog has
+the bastion, the sign-in (agent, password or key file, in the vault) and the
+host key, trusted on first use as ssh does. Monitor charts are still to come.
+
 Stage 1 alone already replaces the "install DB Browser for SQLite" step for
 supporting ULTRA OS apps.
 

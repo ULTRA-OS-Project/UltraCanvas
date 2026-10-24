@@ -2,6 +2,7 @@
 // The UltraDatabase manager: driver registry, named-connection registry with
 // lazy opening, and the public UltraDb_* entrypoints for queries, prepared
 // statements, transactions and migrations.
+// Version: 0.6.0 - SSH tunnels (UltraDatabaseTunnel.h): opened with a connection, closed with it
 // Version: 0.5.0 - the MySQL / MariaDB driver, server administration (UltraDatabaseServer.h)
 // Version: 0.4.0 - statement observers (UltraDb_AddStatementObserver)
 // Version: 0.3.3 - Retired() is never destroyed: a close from an atexit handler wrote into it after its teardown
@@ -15,6 +16,11 @@
 #include "UltraDatabase/UltraDatabaseTransaction.h"
 #include "UltraDatabase/UltraDatabaseMigrate.h"
 #include "UltraDatabase/UltraDatabaseSchema.h"
+#include "UltraDatabase/UltraDatabaseTunnel.h"
+
+#if defined(ULTRADATABASE_HAS_VAULT)
+  #include "UltraVault/UltraVault.h"
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -50,6 +56,9 @@ void EnsureBuiltins() {
 
 struct ConnEntry {
     UltraDbConnectionConfig             config;
+    // Declared before `conn`, so destroyed after it: the driver closes its
+    // sessions while the tunnel they run through is still there.
+    std::unique_ptr<IUltraDbTunnel>     tunnel;  // an SSH tunnel's, when the config asks for one
     std::unique_ptr<IUltraDbConnection> conn;   // opened lazily
     std::mutex                          openMtx; // guards lazy open of `conn`
 };
@@ -92,6 +101,141 @@ std::shared_ptr<ConnEntry> FindEntry(const std::string& name) {
     return it == Registry().end() ? nullptr : it->second;
 }
 
+// ---- SSH tunnels (UltraDatabaseTunnel.h) -----------------------------------
+
+std::mutex& TunnelMutex() { static std::mutex m; return m; }
+UltraDbTunnelOpener& TunnelOpener() {
+    static UltraDbTunnelOpener opener;
+    return opener;
+}
+
+std::string Option(const UltraDbConnectionConfig& config, const char* key) {
+    auto it = config.options.find(key);
+    return it == config.options.end() ? std::string() : it->second;
+}
+
+void Wipe(std::string& s) {
+    volatile char* p = s.empty() ? nullptr : &s[0];
+    for (size_t i = 0; i < s.size(); ++i) p[i] = 0;
+    s.clear();
+}
+
+void Wipe(std::vector<uint8_t>& bytes) {
+    volatile uint8_t* p = bytes.data();
+    for (size_t i = 0; i < bytes.size(); ++i) p[i] = 0;
+    bytes.clear();
+}
+
+// The secret an option names ("vault:<key>"), read from UltraVault; nothing
+// for an empty option. `what` names it in an error.
+bool ReadSecret(const std::string& reference, const char* what, std::vector<uint8_t>& out, UltraDbResult& err) {
+    out.clear();
+    if (reference.empty()) return true;
+    std::string key = reference;
+    if (key.rfind("vault:", 0) == 0) key = key.substr(6);
+#if defined(ULTRADATABASE_HAS_VAULT)
+    if (!UltraVault::IsAvailable()) {
+        err = UltraDbResult::Error(UltraDbResultCode::CredentialsUnavailable,
+                                   std::string("the ") + what + " cannot be read: UltraVault is not open");
+        return false;
+    }
+    UltraVault::SecretValue secret;
+    const UltraVault::Result read = UltraVault::Get(key, secret);
+    if (!read) {
+        err = UltraDbResult::Error(UltraDbResultCode::CredentialsUnavailable,
+                                   std::string("the ") + what + " '" + key + "' " +
+                                       (read.code == UltraVault::ResultCode::NotFound ? "is not in UltraVault"
+                                                                                      : "could not be read: " + read.message));
+        return false;
+    }
+    out.assign(secret.bytes.begin(), secret.bytes.end());
+    Wipe(secret.bytes);
+    return true;
+#else
+    err = UltraDbResult::Error(UltraDbResultCode::CredentialsUnavailable,
+                               std::string("the ") + what + " is in UltraVault, which is not built in");
+    return false;
+#endif
+}
+
+bool LooksLikePrivateKey(const std::vector<uint8_t>& secret) {
+    static const std::string begin = "-----BEGIN ";
+    return secret.size() > begin.size() && std::equal(begin.begin(), begin.end(), secret.begin());
+}
+
+// Open `e`'s tunnel and fill `driverConfig` - `e->config` without its ssh_*
+// options, pointed at the tunnel by the driver.
+bool OpenTunnel(ConnEntry& e, IUltraDbDriverPlugin& drv, UltraDbConnectionConfig& driverConfig, UltraDbResult& err) {
+    const UltraDbConnectionConfig& config = e.config;
+    UltraDbTunnelOpener opener;
+    {
+        std::lock_guard<std::mutex> lk(TunnelMutex());
+        opener = TunnelOpener();
+    }
+    if (!opener) {
+        err = UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                   "the connection asks for an SSH tunnel and none can be opened here "
+                                   "(no UltraDb_SetTunnelOpener)");
+        return false;
+    }
+    UltraDbTunnelRequest request;
+    request.targetPort = config.port > 0 ? config.port : drv.DefaultPort();
+    if (request.targetPort <= 0) {
+        err = UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                   "a " + config.driver + " database has no server to reach through an SSH tunnel");
+        return false;
+    }
+    if (!config.host.empty() && config.host[0] == '/') {
+        err = UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                   "an SSH tunnel reaches a host and port, not the socket " + config.host);
+        return false;
+    }
+    request.sshHost = Option(config, "ssh_host");
+    const std::string sshPort = Option(config, "ssh_port");
+    request.sshPort = sshPort.empty() ? 22 : std::atoi(sshPort.c_str());
+    if (request.sshPort <= 0 || request.sshPort > 65535) {
+        err = UltraDbResult::Error(UltraDbResultCode::InvalidArgument, "ssh_port is not a port: " + sshPort);
+        return false;
+    }
+    request.sshUser = Option(config, "ssh_user");
+    request.hostKeyFingerprint = Option(config, "ssh_host_key");
+    // "" is the bastion itself, as the bastion reaches it.
+    request.targetHost = config.host.empty() ? "127.0.0.1" : config.host;
+
+    std::vector<uint8_t> secret, passphrase;
+    if (!ReadSecret(Option(config, "ssh_credentials"), "SSH password or key", secret, err) ||
+        !ReadSecret(Option(config, "ssh_key_passphrase"), "SSH key's passphrase", passphrase, err)) {
+        Wipe(secret);
+        return false;
+    }
+    if (LooksLikePrivateKey(secret)) request.privateKey = std::move(secret);
+    else request.password.assign(secret.begin(), secret.end());
+    request.keyPassphrase.assign(passphrase.begin(), passphrase.end());
+    Wipe(secret);
+    Wipe(passphrase);
+
+    err = UltraDbResult::Ok();
+    e.tunnel = opener(request, err);
+    Wipe(request.password);
+    Wipe(request.privateKey);
+    Wipe(request.keyPassphrase);
+    if (!e.tunnel) {
+        if (err.success)
+            err = UltraDbResult::Error(UltraDbResultCode::ConnectionFailed, "the SSH tunnel did not open");
+        return false;
+    }
+
+    driverConfig = config;
+    for (auto it = driverConfig.options.begin(); it != driverConfig.options.end();)
+        it = it->first.rfind("ssh_", 0) == 0 ? driverConfig.options.erase(it) : std::next(it);
+    err = drv.ThroughTunnel(driverConfig, e.tunnel->LocalPort());
+    if (!err) {
+        e.tunnel.reset();
+        return false;
+    }
+    return true;
+}
+
 // Open (if needed) and return the physical connection for an entry.
 IUltraDbConnection* OpenEntry(const std::shared_ptr<ConnEntry>& e, UltraDbResult& err) {
     std::lock_guard<std::mutex> lk(e->openMtx);
@@ -104,7 +248,18 @@ IUltraDbConnection* OpenEntry(const std::shared_ptr<ConnEntry>& e, UltraDbResult
                                    "no driver registered for '" + e->config.driver + "'");
         return nullptr;
     }
-    e->conn = drv->Open(e->config, err);
+    if (!UltraDb_UsesTunnel(e->config)) {
+        e->conn = drv->Open(e->config, err);
+        return e->conn.get();
+    }
+    UltraDbConnectionConfig driverConfig;
+    if (!OpenTunnel(*e, *drv, driverConfig, err)) return nullptr;
+    e->conn = drv->Open(driverConfig, err);
+    if (!e->conn) {
+        e->tunnel.reset();
+        if (err.message.find("SSH tunnel") == std::string::npos)
+            err.message += " (through the SSH tunnel via " + Option(e->config, "ssh_host") + ")";
+    }
     return e->conn.get();
 }
 
@@ -286,6 +441,15 @@ std::vector<std::string> UltraDatabase_GetSupportedDrivers() {
 // ============================================================================
 // Connections (public, declared in UltraDatabaseConnection.h)
 // ============================================================================
+
+void UltraDb_SetTunnelOpener(UltraDbTunnelOpener opener) {
+    std::lock_guard<std::mutex> lk(TunnelMutex());
+    TunnelOpener() = std::move(opener);
+}
+
+bool UltraDb_UsesTunnel(const UltraDbConnectionConfig& config) {
+    return !Option(config, "ssh_host").empty();
+}
 
 UltraDbResult UltraDb_RegisterConnection(const UltraDbConnectionConfig& config) {
     if (config.name.empty())

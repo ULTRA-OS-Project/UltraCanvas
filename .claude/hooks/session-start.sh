@@ -36,6 +36,7 @@
 # ModelMS3DTest, DiagramJsonLocaleTest) run under one and skip without it - and
 # the image has none (no de_DE, checked 2026-10-15), so here they had never run.
 #
+# Version: 1.4.0 - openssh-server, for the SSH tunnel tests
 # Version: 1.3.0 - the libraries of the MQTT, AMQP, CoAP, SNMP and SSH plug-ins
 # Version: 1.2.0 - the de_DE.UTF-8 locale the locale tests need
 # Version: 1.1.1 - Hunspell and the en_US dictionary, as CI now installs
@@ -76,6 +77,9 @@ PACKAGES=(
     libpaho-mqtt-dev librabbitmq-dev libcoap3-dev libsnmp-dev libssh-dev
     # UltraCrypt (credential vaults), UltraDatabase (SQLite, PostgreSQL client)
     libsodium-dev libsqlite3-dev libpq-dev libmariadb-dev
+    # an sshd to run the SSH tunnel tests against (a private one, on a high
+    # port - see "Start an SSH server for the tunnel tests" in build.yml)
+    openssh-server
     # locale-gen, for the comma-decimal locale below
     locales
     # spell checking (no native backend on Linux) and its default dictionary
