@@ -60195,6 +60195,7 @@ editor->ToggleSuperscript();
 editor->SetFontFamily("Georgia");
 editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
+editor->SetHighlightColor("#FFF59D");  // the background behind the text; "" removes it
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
 
@@ -98333,7 +98334,7 @@ point an existing build elsewhere without a rebuild, in decreasing priority
 
 The value `off` (or `none`) at any of these turns the service off. The
 wizard's hint says when a provider cannot be signed in to at all. The same
-setting serves the composer's *Attach cloud link…* sign-ins: Google Drive,
+setting serves the composer's *Cloud link…* sign-ins: Google Drive,
 OneDrive and Dropbox go through the service too (UltraCloud, under the
 service's `google`, `microsoft` and `dropbox`), unless a client of their own
 is configured.
@@ -98891,9 +98892,11 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   (via the existing Markdown→HTML serializer of `UCRichDocument`) plus
   the plain-text source. A "plain text only" toggle is one click.
 - **Attachments** — "Attach file…" (file dialog; drag & drop later) and
-  "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
+  "Cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
-  shown as a chip strip with sizes and a total-size warning.
+  shown as a chip strip with sizes and a total-size warning - under the
+  message, or in a column at its right (*Settings > Reading > Attachments*,
+  for reading and writing alike).
 - **Signatures** — per account, in *Account Settings > Signature*: none,
   plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
   (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
@@ -98903,7 +98906,10 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
 - **Formatting** — a *Plain text | Formatted* switch on every message, and in
   formatted mode the same toolbar as the signature editor (character
-  formatting, font, size, colour, alignment, lists, a rule, links, pictures).
+  formatting, font, size, text or background colour, alignment, lists, a
+  rule, links, pictures), as icons on a strip framed together with the body -
+  in one row in the compose window, whose Send row is on top; each tool's
+  tooltip names it, and Font and Size show the text at the cursor.
   *(Implemented in UltraMail 0.10.12.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the
@@ -99717,6 +99723,66 @@ clean, and each of those is a test in
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/compose-one-row-attachments-placement.md
+==============================================================================
+
+- **The compose window's toolbar is one row, with Send on top.** The window
+  opens wide enough (1140 px) for every formatting tool in a single row
+  above the text, and the action row - *Send*, *Attach file…*,
+  *Cloud link…* and, apart on the right, *Cancel* - moved from the bottom to
+  the top of the window, above the address fields.
+- **Font and Size name the text at the cursor.** In place of the words
+  "Font" and "Size" they show the font and the size of the text the cursor
+  is in, or of the selected text: *Default* for text without a font or size
+  of its own (the reader's program picks it), and a font or size the lists
+  do not offer - a reply quoting Calibri 10.5 - is added to the list and
+  shown. Over a selection in several fonts they keep what they showed.
+- **Text or background colour.** A switch with two icons in front of the
+  colour swatches picks what a swatch colours: the letters, or the
+  background behind them, like a highlighter, with a palette of light
+  colours (white takes the background away). It is sent as the HTML's
+  `background-color`.
+- **Settings > Reading > Attachments: at the bottom or on the right side.**
+  A message's attachments are shown in a row under it, as before, or in a
+  column at its right, which keeps the message its whole height. The
+  choice is for reading (the reading pane) and for writing: the compose
+  window puts the files attached in the same place, inside the editor's
+  frame under the toolbar. It applies at once, to compose windows already
+  open too.
+- `UltraMailFormatBarTest` checks the formatting bar in a real window: one
+  row, the font and size shown at the cursor, and the two colour targets.
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/dialogs-with-icons.md
+==============================================================================
+
+- **The compose window looks like a mail program's.** The formatting tools
+  are icons now - bold, italic, underline, strikethrough; left, centre,
+  right; bulleted and numbered lists, quote in and out; a line, a link, a
+  picture - flat, in groups with thin separators, each named by its tooltip.
+  They sit on a tinted strip framed together with the message body, so the
+  body is a clear place to write rather than an open white area. *Plain text |
+  Formatted* shows a mark for each. *Send*, *Attach file…* and
+  *Cloud link…* (was *Attach cloud link…*) carry icons. The signature
+  editor has the same toolbar and frame.
+- **Dialogs open with a header**: an icon tile, a title and the line that
+  says what the dialog is for - Add an email account, the master password,
+  the browser sign-in code, the wait while server settings are looked up or
+  a sign-in completes (with a moving busy bar), Account settings and the
+  signature editor. Their action buttons carry icons (Continue, Save,
+  Unlock, Delete account, Edit signature…, Show info, Send now, Edit…,
+  Add contact, Add group), and the settings window's sections (Mail,
+  Reading, Privacy, Display, Warnings) have icons in its tree. The icons
+  are UltraMail's own set, `media/icons/ultramail/`.
+- **The signature editor's Save and Cancel are shown again.** Its button
+  row was sized with a width of 0, which kept the dialog's column from
+  stretching it, so the row - *HTML source*, *Cancel* and *Save* - was laid
+  out zero pixels wide and never drawn.
+- Demo: `ULTRAMAIL_DEMO_DIALOG=<name>` opens one dialog on its own to look
+  at it (`wizard`, `password`, `password-new`, `oauth`, `wait`, `outbox`,
+  `settings`, `account`).
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
