@@ -10,10 +10,15 @@
 //   ShowNewTableDialog   - a new table's name and its columns: name, type,
 //                          NOT NULL, key, numbered, default - a line each,
 //                          lines added and removed;
-//   ShowTextDialog       - text to read: integrity_check's findings.
+//   ShowTextDialog       - text to read: integrity_check's findings;
+//   ShowCompareDialog    - a table's rows beside another table's: the other
+//                          connection, schema and table, Compare, what
+//                          differs in a grid, and the SQL that makes the
+//                          other table the same.
 // The dialogs never run SQL themselves: they hand what was chosen back to
 // the window, which plans and runs it on its worker. A callback that returns
 // an error keeps the dialog open with the error shown; "" closes it.
+// Version: 0.2.0 - ShowCompareDialog
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -62,5 +67,30 @@ void ShowNewTableDialog(UltraCanvas::UltraCanvasWindowBase* parent, SqlEngine en
 
 void ShowTextDialog(UltraCanvas::UltraCanvasWindowBase* parent, const std::string& title, const std::string& intro,
                     const std::string& text);
+
+struct CompareDialogSpec {
+    std::string title;
+    std::string intro;
+    std::vector<std::string> connections;   // the names to pick the other table's connection from
+    int connection = 0;                     // picked first
+    std::string schema, table;              // the other table, first guessed
+};
+
+struct CompareChoice {
+    int connection = 0;
+    std::string schema, table;
+};
+
+// What a compare found: an error ("" when it ran), a summary, the
+// differences as rows, and whether the other table can be made the same.
+using CompareShown = std::function<void(const std::string& error, const std::string& summary,
+                                        const UltraDbResultSet& rows, bool canSync)>;
+
+// `onCompare` compares on the window's worker and calls `shown` on the UI
+// thread; `onSync` shows the plan and runs it, then calls `again`, which
+// compares once more.
+void ShowCompareDialog(UltraCanvas::UltraCanvasWindowBase* parent, const CompareDialogSpec& spec,
+                       std::function<void(const CompareChoice&, CompareShown shown)> onCompare,
+                       std::function<void(const CompareChoice&, std::function<void()> again)> onSync);
 
 } // namespace UltraDBAdmin

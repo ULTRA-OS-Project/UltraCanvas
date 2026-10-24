@@ -605,6 +605,13 @@ connection and schema (`engine/DbAdminCompletion`). `UltraCanvasTextArea`'s
 `ShowAutoComplete`, a placeholder until then, became the list at the caret
 that any editor can fill.
 
+**Data compare followed**: a table's menu sets its rows beside another
+table's on any connection - across engines - matched by the primary key, a
+number compared by its value so PostgreSQL's 10.50 is MySQL's 10.5; and the
+statements that make the other table the same, previewed and run as one
+transaction (`engine/DbAdminCompare`). The other table is held in memory (up
+to 500,000 rows) while the first streams past it through a cursor.
+
 Stage 1 alone already replaces the "install DB Browser for SQLite" step for
 supporting ULTRA OS apps.
 

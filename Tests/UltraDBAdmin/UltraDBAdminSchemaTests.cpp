@@ -11,12 +11,16 @@
 // live server), and the SQL tab's completion: the catalog read from each
 // engine, and what is offered where - tables after FROM, a statement's
 // columns after SELECT, an alias's or a schema's after "name.", names quoted
-// as the engine needs, nothing in a string or a comment.
+// as the engine needs, nothing in a string or a comment. And data compare:
+// two tables matched by key, on one engine and across two, the rows only on
+// one side and the columns that differ, the SQL that makes them the same
+// and, run, the second table equal to the first.
 // SQLite in temporary folders; PostgreSQL where the tests of UltraDatabase
 // find one (ULTRAFIBU_TEST_PG_*; REQUIRED makes a missing server a failure).
-// Version: 0.2.0 - the monitor; completion
+// Version: 0.2.0 - the monitor; completion; data compare
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "DbAdminCompare.h"
 #include "DbAdminCompletion.h"
 #include "DbAdminConnections.h"
 #include "DbAdminExport.h"
@@ -871,6 +875,119 @@ void TestCompletionMysql() {
     UltraDb_CloseConnection(c);
 }
 
+// ===== Data compare =====
+
+// Rows of `table` on `c`, as one text: to see two tables hold the same.
+const RowDifference* FindDifference(const CompareResult& r, RowDifference::Kind kind, const std::string& id) {
+    for (const auto& d : r.differences) {
+        const auto& values = kind == RowDifference::Kind::OnlyRight ? d.right : d.left;
+        if (d.kind == kind && !values.empty() && CompareText(values[0]) == id) return &d;
+    }
+    return nullptr;
+}
+
+// `left` and `right` hold the same five products but for: 4 only left, 5
+// only right, 2's price and 3's name changed; right has a column of its own.
+void CheckCompare(const char* label, const CompareSide& left, const CompareSide& right) {
+    CompareResult r;
+    const UltraDbResult compared = CompareTables(left, right, CompareLimits(), r);
+    Check(compared.success, std::string(label) + ": compared (" + compared.message + ")");
+    Check(r.key == std::vector<std::string>({ "id" }) && r.columns.size() == 4, "matched by the key, four columns");
+    Check(r.onlyRightColumns == std::vector<std::string>({ "note" }), "the right's own column, not compared");
+    Check(r.leftRows == 4 && r.rightRows == 4, "four rows each side");
+    Check(r.same == 1 && r.onlyLeft == 1 && r.onlyRight == 1 && r.changed == 2,
+          "one the same, one only left, one only right, two changed");
+    const RowDifference* price = FindDifference(r, RowDifference::Kind::Changed, "2");
+    Check(price && price->changed.size() == 1 && r.columns[price->changed[0]] == "price",
+          "2: its price alone differs (10.50 on one side is 10.5 on the other)");
+    Check(FindDifference(r, RowDifference::Kind::OnlyLeft, "4") && FindDifference(r, RowDifference::Kind::OnlyRight, "5"),
+          "4 only left, 5 only right");
+    const UltraDbResultSet rows = DifferenceRows(r);
+    bool arrow = false;
+    for (const auto& row : rows) arrow = arrow || row["price"].AsString().rfind("10.5 -> 11", 0) == 0;
+    Check(rows.Size() == 4 && rows.Columns().front() == "difference" && arrow,
+          "as the grid shows them: a changed value as here -> there");
+    Check(CompareSummary(r, "in a", "in b").find("1 the same, 2 changed, 1 only in a, 1 only in b") != std::string::npos,
+          "the summary");
+    OperationPlan plan;
+    std::string error;
+    Check(SyncPlan(right, r, plan, error) && plan.statements.size() == 4 && plan.transaction,
+          "the SQL: an insert, two updates, a delete, as one transaction");
+    size_t failed = 0;
+    const UltraDbResult ran = RunPlan(right.connection, plan, nullptr, failed);
+    Check(ran.success, "run on the right (" + ran.message + ")");
+    CompareResult after;
+    Check(CompareTables(left, right, CompareLimits(), after).success && after.Differences() == 0 && after.same == 4,
+          "and then the two hold the same");
+}
+
+const char* kCompareLeft =
+    "CREATE TABLE products(id integer PRIMARY KEY, name varchar(40), price numeric(10,2), active boolean);"
+    "INSERT INTO products VALUES (1, 'apple', 1.25, TRUE), (2, 'pear', 10.50, TRUE), (3, 'plum', 3.00, FALSE),"
+    " (4, 'fig', 7.00, TRUE);";
+const char* kCompareRight =
+    "CREATE TABLE products(id integer PRIMARY KEY, name varchar(40), price numeric(10,2), active boolean, note text);"
+    "INSERT INTO products VALUES (1, 'apple', 1.25, TRUE, 'x'), (2, 'pear', 11.00, TRUE, NULL),"
+    " (3, 'plum!', 3.0, FALSE, NULL), (5, 'kiwi', 2.00, TRUE, NULL);";
+
+void TestCompareSqlite() {
+    Section("Data compare (SQLite)");
+    TempDir dir;
+    const std::string a = SqliteFile("dbadmin-compare-a", dir.File("a.db"));
+    const std::string b = SqliteFile("dbadmin-compare-b", dir.File("b.db"));
+    Check(RunScript(a, kCompareLeft) && RunScript(b, kCompareRight), "two files");
+    CheckCompare("SQLite", { a, SqlEngine::Sqlite, "main", "products" }, { b, SqlEngine::Sqlite, "main", "products" });
+    CompareResult r;
+    Check(RunScript(a, "CREATE TABLE nokey(x integer);") &&
+              CompareTables({ a, SqlEngine::Sqlite, "main", "nokey" }, { b, SqlEngine::Sqlite, "main", "products" },
+                            CompareLimits(), r).code == UltraDbResultCode::InvalidArgument,
+          "a table without a key is refused");
+    CompareLimits small;
+    small.maxRows = 2;
+    Check(!CompareTables({ a, SqlEngine::Sqlite, "main", "products" }, { b, SqlEngine::Sqlite, "main", "products" },
+                         small, r).success,
+          "a table over the limit is refused");
+    Check(CompareText(UltraDbValue("10.50")) == CompareText(UltraDbValue(10.5)) &&
+              CompareText(UltraDbValue("007")) != CompareText(UltraDbValue(int64_t(7))) &&
+              CompareText(UltraDbValue(true)) == CompareText(UltraDbValue(int64_t(1))) &&
+              CompareText(UltraDbValue()) != CompareText(UltraDbValue("")),
+          "values read alike across engines, a code with leading zeros and NULL kept apart");
+    UltraDb_CloseConnection(a);
+    UltraDb_CloseConnection(b);
+}
+
+void TestCompareServer(const char* label, SqlEngine engine, const std::string& c) {
+    Section(label);
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    const std::string s = QuotedName(engine, schema);
+    const bool mysql = engine == SqlEngine::MySql;
+    Check(RunScript(c, std::string(mysql ? "CREATE DATABASE " : "CREATE SCHEMA ") + s + ";"), "a schema");
+    std::string script = kCompareRight;
+    // Into the new schema; MySQL's boolean is a tinyint, and TRUE / FALSE are 1 / 0 there.
+    for (size_t at; (at = script.find("products")) != std::string::npos;) script.replace(at, 8, s + ".prod_r");
+    Check(RunScript(c, script), "the right table on the server");
+    TempDir dir;
+    const std::string a = SqliteFile("dbadmin-compare-x", dir.File("x.db"));
+    Check(RunScript(a, kCompareLeft), "the left table in a SQLite file");
+    CheckCompare(label, { a, SqlEngine::Sqlite, "main", "products" }, { c, engine, schema, "prod_r" });
+    UltraDb_Exec(c, std::string(mysql ? "DROP DATABASE " : "DROP SCHEMA ") + s + (mysql ? "" : " CASCADE"));
+    UltraDb_CloseConnection(a);
+}
+
+void TestComparePostgres() {
+    const std::string c = PostgresConnection("dbadmin-compare-pg");
+    if (c.empty()) return;
+    TestCompareServer("Data compare (SQLite against PostgreSQL)", SqlEngine::Postgres, c);
+    UltraDb_CloseConnection(c);
+}
+
+void TestCompareMysql() {
+    const std::string c = MysqlConnection("dbadmin-compare-my");
+    if (c.empty()) return;
+    TestCompareServer("Data compare (SQLite against MySQL / MariaDB)", SqlEngine::MySql, c);
+    UltraDb_CloseConnection(c);
+}
+
 int main() {
     std::printf("UltraDBAdmin schema tests\n\n");
     TestRelationsSqlite();
@@ -885,6 +1002,9 @@ int main() {
     TestCompletionSqlite();
     TestCompletionPostgres();
     TestCompletionMysql();
+    TestCompareSqlite();
+    TestComparePostgres();
+    TestCompareMysql();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

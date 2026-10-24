@@ -1,18 +1,24 @@
 // Apps/UltraDBAdmin/ui/DbAdminOperationDialogs.cpp
+// Version: 0.3.0 - the data compare dialog
 // Version: 0.2.0 - MySQL / MariaDB types
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminOperationDialogs.h"
 
+#include "DbAdminModels.h"
+
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasListView.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -407,6 +413,137 @@ void ShowTextDialog(UltraCanvasWindowBase* parent, const std::string& title, con
     ok->SetOnClick([raw]() { raw->CloseDialog(DialogResult::OK); });
     buttons->AddChild(ok);
     dialog->AddChild(buttons);
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
+}
+
+namespace {
+
+struct CompareForm {
+    UltraCanvasModalDialog* dialog = nullptr;
+    UltraCanvasDropdown* connection = nullptr;
+    UltraCanvasTextInput* schema = nullptr;
+    UltraCanvasTextInput* table = nullptr;
+    UltraCanvasLabel* summary = nullptr;
+    UltraCanvasButton* compare = nullptr;
+    UltraCanvasButton* sync = nullptr;
+    std::shared_ptr<ResultSetModel> model;
+    UltraCanvasListView* grid = nullptr;
+    bool busy = false;
+    std::function<void(const CompareChoice&, CompareShown)> onCompare;
+    std::function<void(const CompareChoice&, std::function<void()>)> onSync;
+
+    CompareChoice Choice() const {
+        CompareChoice choice;
+        choice.connection = connection->GetSelectedIndex();
+        choice.schema = schema->GetText();
+        choice.table = table->GetText();
+        return choice;
+    }
+};
+
+void RunCompare(const std::shared_ptr<CompareForm>& form) {
+    if (form->busy || !form->onCompare) return;
+    form->busy = true;
+    form->compare->SetDisabled(true);
+    form->sync->SetDisabled(true);
+    form->summary->SetText("Comparing…");
+    form->summary->SetTextColor(StatusColor());
+    // The dialog may be closed before the answer comes.
+    std::weak_ptr<CompareForm> weak = form;
+    form->onCompare(form->Choice(), [weak](const std::string& error, const std::string& summary,
+                                           const UltraDbResultSet& rows, bool canSync) {
+        auto form = weak.lock();
+        if (!form) return;
+        form->busy = false;
+        form->compare->SetDisabled(false);
+        form->sync->SetDisabled(!error.empty() || !canSync);
+        form->summary->SetText(error.empty() ? summary : error);
+        form->summary->SetTextColor(error.empty() ? StatusColor() : ErrorColor());
+        form->model->Replace(rows);
+        FitResultColumns(*form->grid);
+    });
+}
+
+} // namespace
+
+void ShowCompareDialog(UltraCanvasWindowBase* parent, const CompareDialogSpec& spec,
+                       std::function<void(const CompareChoice&, CompareShown)> onCompare,
+                       std::function<void(const CompareChoice&, std::function<void()>)> onSync) {
+    auto form = std::make_shared<CompareForm>();
+    form->onCompare = std::move(onCompare);
+    form->onSync = std::move(onSync);
+    auto dialog = MakeDialog(spec.title, 860, 600);
+    if (!dialog) return;
+    form->dialog = dialog.get();
+    dialog->AddChild(Intro("dbdIntro", spec.intro, 40));
+
+    auto grid = CreateFormGrid("dbdForm", 8.0f, 10.0f);
+    grid->layoutItem.SetFlexShrink(0);
+    auto connection = CreateDropdown("dbdConnection", 0, 0, 0, kLineHeight);
+    for (const std::string& name : spec.connections) connection->AddItem(name);
+    if (!spec.connections.empty())
+        connection->SetSelectedIndex(std::clamp(spec.connection, 0, static_cast<int>(spec.connections.size()) - 1), false);
+    form->connection = connection.get();
+    AddFormRow(grid, "dbdConnectionRow", "Compare with", connection);
+    auto schema = CreateTextInput("dbdSchema", 0, 0, 0, kLineHeight);
+    schema->SetText(spec.schema);
+    schema->SetPlaceholder("the schema (\"main\" for a SQLite file)");
+    form->schema = schema.get();
+    AddFormRow(grid, "dbdSchemaRow", "Schema", schema);
+    auto table = CreateTextInput("dbdTable", 0, 0, 0, kLineHeight);
+    table->SetText(spec.table);
+    form->table = table.get();
+    AddFormRow(grid, "dbdTableRow", "Table", table);
+    dialog->AddChild(grid);
+
+    auto summary = CreateLabel("dbdSummary", 0, 0, 0, 40, "Pick the other table, then Compare.");
+    summary->SetWrap(TextWrap::WrapWord);
+    summary->SetTextColor(StatusColor());
+    summary->layoutItem.SetFlexShrink(0);
+    form->summary = summary.get();
+    dialog->AddChild(summary);
+
+    form->model = std::make_shared<ResultSetModel>();
+    auto rows = std::make_shared<UltraCanvasListView>("dbdRows", -1, -1, 400, 200);
+    rows->SetModel(form->model);
+    rows->SetShowHeader(true);
+    rows->SetShowItemTooltips(true);
+    StyleList(*rows);
+    FitResultColumns(*rows);
+    rows->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexGrow(1).SetFlexShrink(1);
+    rows->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    form->grid = rows.get();
+    dialog->AddChild(rows);
+
+    auto buttons = ButtonRow("dbdButtons");
+    auto sync = MakeDialogButton("dbdSync", "Make the other the same…", 200);
+    sync->SetTooltip("Insert, update and delete rows of the other table until it holds what this one holds - "
+                     "the SQL is shown first");
+    sync->SetDisabled(true);
+    form->sync = sync.get();
+    // The buttons hold the form, so it lives as long as the dialog; what
+    // comes back later holds it weakly.
+    std::weak_ptr<CompareForm> weak = form;
+    sync->SetOnClick([form, weak]() {
+        if (!form->onSync || form->busy) return;
+        form->onSync(form->Choice(), [weak]() {
+            if (auto again = weak.lock()) RunCompare(again);
+        });
+    });
+    buttons->AddChild(sync);
+    buttons->AddStretchSpacer(1);
+    auto close = MakeDialogButton("dbdClose", "Close", 90);
+    close->SetOnClick([form]() { form->dialog->CloseDialog(DialogResult::Cancel); });
+    buttons->AddChild(close);
+    auto compare = MakeDialogButton("dbdCompare", "Compare", 110, ButtonRole::Primary);
+    form->compare = compare.get();
+    compare->SetOnClick([form]() { RunCompare(form); });
+    buttons->AddChild(compare);
+    dialog->AddChild(buttons);
+    table->onEnterPressed = [form](const std::string&) {
+        RunCompare(form);
+        return true;
+    };
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }
 

@@ -38,6 +38,8 @@
 //   Routines  - its triggers, and on PostgreSQL its functions, procedures
 //               and aggregates, each with its statement: edited in the SQL
 //               tab and run again, dropped, or a new one from a template;
+// A table's menu also compares its rows with another table's - on any
+// connection - and can make the other the same (DbAdminCompare).
 //   Server    - PostgreSQL's sessions (a query cancelled, a session ended),
 //               its settings and the sizes of its databases and tables, and
 //               a monitor: charts of its sessions, statements, rows, cache
@@ -61,7 +63,7 @@
 // PostToUIThread, guarded by a token that dies with the window. A result for
 // something no longer shown - another table was picked meanwhile - is
 // recognised by its generation number and dropped.
-// Version: 0.5.0 - the Server tab's monitor charts; completion in the SQL editor
+// Version: 0.5.0 - the Server tab's monitor charts; completion in the SQL editor; data compare
 // Version: 0.4.0 - the Relations, Routines and Server tabs
 // Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log,
 //                 Run statement, Explain, snippets, auto-commit, the typed row form
@@ -82,6 +84,7 @@
 #include "DbAdminRoutines.h"
 #include "DbAdminSearch.h"
 #include "DbAdminServer.h"
+#include "DbAdminCompare.h"
 #include "DbAdminCompletion.h"
 #include "DbAdminMonitor.h"
 #include "DbAdminSnippets.h"
@@ -349,6 +352,9 @@ private:
     void ReloadSchemaNode(const std::string& connectionId, const std::string& schema);
     void NewTable(const NodeRef& ref);
     void CopyTable(const NodeRef& ref);
+    // The table's rows beside another table's (DbAdminCompare), and the
+    // other made the same on request.
+    void CompareData(const NodeRef& ref);
     void RenameObject(const NodeRef& ref);
     void EmptyTable(const NodeRef& ref);
     void DropObject(const NodeRef& ref);
