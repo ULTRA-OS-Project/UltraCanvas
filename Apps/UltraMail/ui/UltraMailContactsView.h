@@ -4,6 +4,7 @@
 // scrolling list of the selected one's contacts. Add with the button, edit by
 // double-clicking a row, delete with the row's bin icon; the row's right-click
 // menu also moves it to another section or group. Backed by ContactStore.
+// Version: 0.5.0 - Services' "Remove no-reply contacts…"
 // Version: 0.4.0 - Other's "Remove collected contacts…" (writtenTo);
 //                  EditContact takes the address to edit
 // Version: 0.3.0 - groups of the user's own, filter, virtualised list (a
@@ -88,6 +89,7 @@ private:
     void ShowPlaceMenu(const ContactPlace& place, const UltraCanvas::UCEvent& event);
     void ConfirmDelete(const Contact& contact);
     void ConfirmRemoveCollected();
+    void ConfirmRemoveNoReply();
     void AskNewGroup();
     void ConfirmDeleteGroup(const std::string& group);
     void Changed();           // Refresh + onChanged
