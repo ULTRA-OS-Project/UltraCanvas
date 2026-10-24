@@ -4091,6 +4091,25 @@ add_test(NAME ButtonIconPixelTest COMMAND ButtonIconPixelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ButtonIconPixelTest")
 
+# ===== TEXT CENTRED ON CAPITALS TEST =====
+# A segmented control's captions and a spreadsheet's cells centre their
+# capitals on the segment's or row's middle, as a button does, rather than
+# the text's line box, which sits high or low with the font. Offscreen; needs
+# no display.
+message(STATUS "  Building TextCentredOnCapsTest...")
+add_executable(TextCentredOnCapsTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TextCentredOnCapsTest.cpp
+)
+target_include_directories(TextCentredOnCapsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(TextCentredOnCapsTest PRIVATE cxx_std_20)
+target_link_libraries(TextCentredOnCapsTest PRIVATE UltraCanvas)
+set_target_properties(TextCentredOnCapsTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TextCentredOnCapsTest COMMAND TextCentredOnCapsTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TextCentredOnCapsTest")
+
 # ===== TEXT LAYOUT CACHE TEST =====
 # The text layout an element draws with is built once and kept: ten draws
 # of a label, or of a button shortened in the middle, make one layout on
