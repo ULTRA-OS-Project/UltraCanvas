@@ -1,8 +1,10 @@
 // Apps/UltraDBAdmin/ui/DbAdminWindowParts.h
 // What the window's two sources share (DbAdminWindow.cpp, the window;
 // DbAdminWindowObjects.cpp, its tabs of open objects, the tree's operations,
-// Search and the SQL log): its sizes, its tab order and the small layout
+// Search and the SQL log; DbAdminWindowSchema.cpp, Relations, Routines and
+// Server): its sizes, its tab order and the small layout
 // helpers its pages are built with. Internal to the window.
+// Version: 0.2.0 - the Relations, Routines and Server tabs
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -46,6 +48,11 @@ inline constexpr int kBrowseTab    = 0;
 inline constexpr int kStructureTab = 1;
 inline constexpr int kSqlTab       = 2;
 inline constexpr int kSearchTab    = 3;
+inline constexpr int kRelationsTab = 4;
+inline constexpr int kRoutinesTab  = 5;
+inline constexpr int kServerTab    = 6;
+inline constexpr size_t kRelationsLimit = 120;   // tables in one diagram
+inline constexpr double kRelationsFitPadding = 60.0;   // room for a self-reference's loop and its label
 
 inline constexpr int kLogHeight      = 150;   // the SQL log under the tabs, to begin with
 inline constexpr int kObjectStripHeight = 36;

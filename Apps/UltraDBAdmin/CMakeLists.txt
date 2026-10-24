@@ -33,7 +33,10 @@ add_executable(UltraDBAdmin
     engine/DbAdminJobQueue.cpp
     engine/DbAdminOperations.cpp
     engine/DbAdminPaths.cpp
+    engine/DbAdminRelations.cpp
+    engine/DbAdminRoutines.cpp
     engine/DbAdminSearch.cpp
+    engine/DbAdminServer.cpp
     engine/DbAdminSnippets.cpp
     engine/DbAdminSqlLog.cpp
     engine/DbAdminSqlRunner.cpp
@@ -52,6 +55,7 @@ add_executable(UltraDBAdmin
     ui/DbAdminTheme.cpp
     ui/DbAdminWindow.cpp
     ui/DbAdminWindowObjects.cpp
+    ui/DbAdminWindowSchema.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).
 ultracanvas_single_instance(UltraDBAdmin)

@@ -1087,6 +1087,29 @@ else()
     message(STATUS "  LabelSelectionTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== LABEL NATURAL TEXT WIDTH TEST =====
+# UltraCanvasLabel::GetNaturalTextWidth: the text measured rather than its box,
+# in step with the label's own hit test, unchanged by padding, 0 when empty or
+# outside a window. Needs the real framework (the text layout). Skips itself
+# without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building LabelNaturalTextWidthTest...")
+    add_executable(LabelNaturalTextWidthTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LabelNaturalTextWidthTest.cpp
+    )
+    target_include_directories(LabelNaturalTextWidthTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(LabelNaturalTextWidthTest PRIVATE cxx_std_20)
+    target_link_libraries(LabelNaturalTextWidthTest PRIVATE UltraCanvas)
+    set_target_properties(LabelNaturalTextWidthTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME LabelNaturalTextWidthTest COMMAND LabelNaturalTextWidthTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: LabelNaturalTextWidthTest")
+else()
+    message(STATUS "  LabelNaturalTextWidthTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CARET STACKING ORDER TEST =====
 # Where the shared caret lands in the window's compositing order: under a menu
 # opened over it, back on top once the menu closes. Needs the real framework -

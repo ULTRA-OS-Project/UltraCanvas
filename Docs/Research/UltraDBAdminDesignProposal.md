@@ -548,6 +548,20 @@ definition read from its catalog; the console's Run statement, Explain and
 saved snippets; the row form's field per type and its value functions; and
 auto-commit per connection.
 
+**Stage 4 followed, before stage 3** (decided 2026-10-23): the Relations
+tab - the ER diagram filled from the schema introspection
+(`UltraCanvasERDiagram`, crow's foot or Chen; the tables in layers, parents
+first; a table double-clicked opens) - the ER diagram's X4, the live
+import; the Triggers / Routines tab - triggers on both engines,
+PostgreSQL's functions, procedures and aggregates, each edited as its own
+CREATE OR REPLACE in the SQL tab, dropped, or started from a template; and
+the Server tab for PostgreSQL - sessions with Stop query and End session,
+settings with a filter, the sizes of databases and tables - and SQLite's
+file. Read straight from the catalogs (`pg_stat_activity`, `pg_settings`,
+`pg_proc`, `pg_trigger`, `sqlite_master`, PRAGMAs) rather than through a
+G10 module extension; the module gains one when MySQL needs the same views.
+SSH tunnels (G9) and monitor charts are still to come.
+
 MySQL stays at stage 3, after editing: it is not the priority (decided
 2026-10-20). Stage 1 alone already replaces the "install DB Browser for
 SQLite" step for supporting ULTRA OS apps.

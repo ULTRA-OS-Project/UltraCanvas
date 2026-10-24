@@ -3,6 +3,7 @@
 # formatting, the Browse pager, the SQL runner - without a window. Compiles
 # the engine sources directly, as Tests/UltraFIBU does, so it runs where the
 # UI library cannot be built. Enabled by ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS.
+# Version: 0.3.0 - the schema suite (relations, routines, server), a third
 # Version: 0.2.0 - the operations suite, a second program
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -22,7 +23,10 @@ set(_dbadmin_engine
     ${_dbadmin}/engine/DbAdminJobQueue.cpp
     ${_dbadmin}/engine/DbAdminOperations.cpp
     ${_dbadmin}/engine/DbAdminPaths.cpp
+    ${_dbadmin}/engine/DbAdminRelations.cpp
+    ${_dbadmin}/engine/DbAdminRoutines.cpp
     ${_dbadmin}/engine/DbAdminSearch.cpp
+    ${_dbadmin}/engine/DbAdminServer.cpp
     ${_dbadmin}/engine/DbAdminSnippets.cpp
     ${_dbadmin}/engine/DbAdminSqlLog.cpp
     ${_dbadmin}/engine/DbAdminSqlRunner.cpp
@@ -40,8 +44,9 @@ include(CTest)
 
 # The engine suite, and the operations suite (the SQL log, operations,
 # search, the schema dump, snippets, the console's helpers, the row form's
-# types): two programs over the same sources.
-foreach(_suite UltraDBAdminEngineTests UltraDBAdminOperationsTests)
+# types), and the schema suite (relations, routines, the server views):
+# three programs over the same sources.
+foreach(_suite UltraDBAdminEngineTests UltraDBAdminOperationsTests UltraDBAdminSchemaTests)
     add_executable(${_suite} ${_suite}.cpp ${_dbadmin_engine})
     target_compile_features(${_suite} PRIVATE cxx_std_20)
     target_include_directories(${_suite} PRIVATE
@@ -55,4 +60,6 @@ endforeach()
 add_test(NAME UltraDBAdminEngine COMMAND UltraDBAdminEngineTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_test(NAME UltraDBAdminOperations COMMAND UltraDBAdminOperationsTests
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME UltraDBAdminSchema COMMAND UltraDBAdminSchemaTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
