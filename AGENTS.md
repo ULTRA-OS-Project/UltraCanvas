@@ -593,6 +593,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraNetMonitor/CHANGELOG.md` | UltraNetMonitor |
 | `Docs/UltraDBAdmin/CHANGELOG.md` | UltraDBAdmin — the database browser |
 | `Docs/UltraPassword/CHANGELOG.md` | UltraPassword — the password vault |
+| `Docs/UltraStore/CHANGELOG.md` | UltraStore — the app store |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |

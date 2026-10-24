@@ -264,6 +264,9 @@ if(ANDROID)
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
     set(BUILD_EMAILCLEANER OFF CACHE BOOL "Build the EmailCleaner application")
+    # The desktop store; its hard requirement on libsodium and SQLite would
+    # stop this configure, and the Android store is a later milestone.
+    set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
@@ -343,6 +346,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAFIBU OFF CACHE BOOL "Build the UltraFIBU accounting application")
     set(BUILD_ULTRACLEANER OFF CACHE BOOL "Build the UltraCleaner application")
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
+    set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
@@ -788,6 +792,27 @@ endif()
 option(BUILD_ULTRAPASSWORD "Build the UltraPassword application" ON)
 if(BUILD_ULTRAPASSWORD AND TARGET UltraCrypt)
     add_subdirectory(Apps/UltraPassword)
+endif()
+
+# ===== ULTRASTORE =====
+# The ULTRA OS app store: a signed catalog of apps and the shared-library
+# components they run on, the package for this machine, per-user installs
+# and updates (Docs/UltraStore/README.md). The core and the `ultrastore`
+# command line come first; the window follows. It requires UltraCrypt with
+# libsodium and UltraDatabase with SQLite and stops the configure without
+# them - Apps/UltraStore/CMakeLists.txt says which and how to turn it off.
+option(BUILD_ULTRASTORE "Build the UltraStore application" ON)
+if(BUILD_ULTRASTORE)
+    message(STATUS "")
+    message(STATUS "── Building UltraStore ──")
+    if(ANDROID OR IOS OR EMSCRIPTEN)
+        # The desktop store. The stores for the phones and the browser read
+        # the same catalog later; this target's requirements must not stop
+        # their configures now.
+        message(STATUS "  [−] UltraStore - SKIPPED (the desktop store; not built for this platform)")
+    else()
+        add_subdirectory(Apps/UltraStore)
+    endif()
 endif()
 
 # ===== ANCHORPOINT =====
@@ -1574,6 +1599,18 @@ if(ULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS AND TARGET UltraCanvasStartEngine)
     add_subdirectory(Tests/UltraCanvasStart)
     message(STATUS "")
     message(STATUS "── UltraCanvasStart engine test suite enabled (target: UltraCanvasStartEngineTests) ──")
+endif()
+
+# ===== ULTRASTORE CORE TESTS =====
+# Headless tests of the store's core: the platform model, the catalog's JSON,
+# the Ed25519 verifier, the package resolver and the catalog client with an
+# injected fetcher. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRASTORE_TESTS "Build the UltraStore core test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASTORE_TESTS AND TARGET UltraStoreCore)
+    enable_testing()
+    add_subdirectory(Tests/UltraStore)
+    message(STATUS "")
+    message(STATUS "── UltraStore core test suite enabled (target: UltraStoreCoreTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====

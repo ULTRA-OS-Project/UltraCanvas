@@ -42,6 +42,7 @@ first lines as of 2026-10-18.
 | [UltraFIBU](#ultrafibu) | German double-entry bookkeeping | 0.24.5 | UltraDatabase, UltraCrypt |
 | **Desktop and system** | | | |
 | [UltraDesktop](#ultradesktop) | The ULTRA OS desktop | 0.4.1 | DesktopShell, ClipboardHistory, UltraMessage |
+| [UltraStore](#ultrastore) | The app store: signed catalog, per-user installs, updates | 0.1.0 | UltraNet, UltraCrypt, UltraDatabase |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
@@ -450,6 +451,29 @@ file for manual upload; the ERiC library is not included.
 ---
 
 ## Desktop and system
+
+### UltraStore
+
+**Purpose:** the ULTRA OS app store: lists the UltraCanvas applications
+from a signed catalog, installs the build for the machine with the shared
+libraries it needs, keeps everything up to date and removes it again. One
+program, `ultrastore`: the window when started plainly, the commands when
+given one.
+
+**Capabilities (0.1.0, the core and the command line):**
+- Knows the machine: os, processor, OS version, glibc, distribution, Rosetta.
+- Reads the catalog of apps and the runtime / library components they run
+  on, each release with a package per target and the exact component
+  versions it was built against, plus the admin backend's settings:
+  minimum OS version, pricing, update period, visibility, lifecycle, flags.
+- Checks the catalog's Ed25519 signature against the trusted keys and refuses
+  a catalog older than the one already seen; checks packages by SHA-256.
+- Picks the package for the machine and lays out the install plan with the
+  shared components first, skipping what is installed.
+- Fetches the catalog from the first mirror that answers and caches it for
+  offline use.
+- Next: UltraInstaller (download, unpack, registry), the window, the admin
+  backend, payment. Design: `Docs/UltraStore/README.md`.
 
 ### UltraDesktop
 
