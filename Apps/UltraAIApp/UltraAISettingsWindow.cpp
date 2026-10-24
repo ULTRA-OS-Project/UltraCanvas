@@ -7,14 +7,18 @@
 // caption, the controls, and at the foot of the page, in its own tinted
 // block, the notes that explain the setting. A page's "Restore defaults"
 // button sits at the left end of the bottom bar, opposite Close.
+// Version: 0.2.0 - the Local models page; the local provider's models in the endpoint editor
 // Version: 0.1.0
-// Last Modified: 2026-09-24
+// Last Modified: 2026-10-21
 // Author: UltraAI Module
 
 #include "UltraAISettingsWindow.h"
 
-#include "UltraAIAppSettings.h"
 #include "UltraAI.h"
+#include "UltraAILocalRuntime.h"
+#include "UltraAIAppSettings.h"
+#include "UltraAILocalModelsPage.h"
+#include "UltraAISettingsWidgets.h"
 
 #include "UltraCanvasApplication.h"   // UltraCanvasApplicationBase::GetCurrent
 #include "UltraCanvasButton.h"
@@ -49,27 +53,7 @@ using namespace UltraAI;
 
 namespace {
 
-    // ----- one type scale for the whole window (as UltraFiler's) -----
-    constexpr float kTitleFontSize = 15.0f;
-    constexpr float kTextFontSize  = 10.0f;
-    constexpr float kNoteFontSize  = 9.0f;
-    constexpr float kTreeFontSize  = 9.0f;
-
-    const Color kTextColor      = Color(40, 40, 44, 255);
-    const Color kNoteTextColor  = Color(96, 96, 104, 255);
-    const Color kNoteBackground = Color(244, 245, 248, 255);
-    const Color kNoteAccent     = Color(160, 176, 200, 255);
-    const Color kLocalColor     = Color(30, 120, 60, 255);
-    const Color kCloudColor     = Color(170, 90, 20, 255);
-
-    // Page geometry: the window is 720 wide, the tree takes 180, so a page
-    // has 540; with its padding that leaves ~500 for content. Texts are
-    // wrapped at fixed widths because content measuring needs a render
-    // context, which the window does not have while it is first laid out.
-    constexpr int kPagePadding  = 20;
-    constexpr int kTextWidth    = 480;
-    constexpr int kNoteWidth    = 470;
-    constexpr int kControlHeight = 22;
+    using namespace SettingsWidgets;
 
     // Default providers page: one row per service.
     constexpr int kServiceLabelWidth = 130;
@@ -82,6 +66,7 @@ namespace {
     constexpr const char* kPageServices         = "services";
     constexpr const char* kPageDefaultProviders = "services/default-providers";
     constexpr const char* kPageLocalAndCloud    = "services/local-and-cloud";
+    constexpr const char* kPageLocalModels      = "services/local-models";
     constexpr const char* kPageAccounts         = "accounts";
     constexpr const char* kPageEndpointEditor   = "accounts/editor";
     constexpr const char* kPageStart            = "start";
@@ -118,6 +103,7 @@ namespace {
 
         std::vector<ServiceRow>               serviceRows;
         std::shared_ptr<UltraCanvasCheckbox>  cloudFallbackBox;
+        std::shared_ptr<UltraAILocalModelsPage> localModels;
 
         // Inline endpoint editor (the one reusable "accounts/editor" page).
         std::shared_ptr<UltraCanvasTextInput> epName;
@@ -147,151 +133,6 @@ namespace {
     void RebuildEndpointNodes(DialogState* d, const std::string& selectNodeId);
     void OnFetchModels(DialogState* d);
     void PopulateModelDropdown(DialogState* d);
-
-    // ===== TEXT =====
-
-    std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id,
-                                                const std::string& text,
-                                                float fontSize = kTextFontSize,
-                                                const Color& color = kTextColor) {
-        auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
-        l->SetText(text);
-        l->SetFontSize(fontSize);
-        l->SetTextColor(color);
-        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        l->size.width  = CSSLayout::Dimension::Auto();
-        l->size.height = CSSLayout::Dimension::Auto();
-        return l;
-    }
-
-    std::shared_ptr<UltraCanvasLabel> MakeText(const std::string& id,
-                                               const std::string& text,
-                                               int width = kTextWidth,
-                                               float fontSize = kTextFontSize,
-                                               const Color& color = kTextColor) {
-        auto l = MakeLabel(id, text, fontSize, color);
-        l->SetWrap(TextWrap::WrapWord);
-        l->size.width = CSSLayout::Dimension::Px(width);
-        return l;
-    }
-
-    // ===== PAGE SKELETON =====
-
-    struct PageParts {
-        std::shared_ptr<UltraCanvasContainer> page;
-        std::shared_ptr<UltraCanvasContainer> body;
-        std::shared_ptr<UltraCanvasContainer> notes;
-    };
-
-    PageParts MakePage(const std::string& id, const std::string& title,
-                       const std::string& caption) {
-        PageParts parts;
-        parts.page = std::make_shared<UltraCanvasContainer>(id);
-        parts.page->layout.SetFlexColumn().SetFlexGap(0)
-                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        parts.page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
-
-        auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        parts.page->AddChild(titleLabel);
-
-        auto captionLabel = MakeText(id + "-caption", caption);
-        captionLabel->SetMargin(6, 0, 0, 0);
-        parts.page->AddChild(captionLabel);
-
-        parts.body = std::make_shared<UltraCanvasContainer>(id + "-body");
-        parts.body->layout.SetFlexColumn().SetFlexGap(8)
-                          .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-        parts.body->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        parts.body->SetMargin(14, 0, 0, 0);
-        parts.page->AddChild(parts.body);
-
-        // The spacer pushes the notes to the foot of the page.
-        auto spacer = std::make_shared<UltraCanvasContainer>(id + "-spacer");
-        spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        spacer->size.height = CSSLayout::Dimension::Px(16);
-        parts.page->AddChild(spacer);
-
-        parts.notes = std::make_shared<UltraCanvasContainer>(id + "-notes");
-        parts.notes->layout.SetFlexColumn().SetFlexGap(6)
-                           .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-        parts.notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        parts.notes->SetBackgroundColor(kNoteBackground);
-        parts.notes->SetBorderLeft(3, kNoteAccent);
-        parts.notes->SetPadding(10, 12, 10, 12);
-        parts.page->AddChild(parts.notes);
-        return parts;
-    }
-
-    void AddNote(PageParts& parts, const std::string& id, const std::string& text) {
-        parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize,
-                                       kNoteTextColor));
-    }
-
-    // ===== CONTROLS =====
-
-    std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id,
-                                                  const std::string& label,
-                                                  int width,
-                                                  std::function<void()> onClick) {
-        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
-        b->SetFontSize(kTextFontSize);
-        b->SetCornerRadius(4.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        b->SetTextColors(kTextColor);
-        b->SetBorder(1.0f, Color(0, 0, 0, 60));
-        if (onClick) b->SetOnClick(std::move(onClick));
-        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return b;
-    }
-
-    std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(
-            const std::string& id, const std::string& text, int width,
-            bool checked, std::function<void(bool)> onChange) {
-        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0,
-                static_cast<float>(width), static_cast<float>(kControlHeight),
-                text);
-        box->SetFontSize(kTextFontSize);
-        CheckboxVisualStyle style = box->GetVisualStyle();
-        style.base.textColor      = kTextColor;
-        style.base.textHoverColor = kTextColor;
-        box->SetVisualStyle(style);
-        box->SetChecked(checked);
-        box->size.width  = CSSLayout::Dimension::Px(width);
-        box->size.height = CSSLayout::Dimension::Px(kControlHeight);
-        box->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        box->onStateChanged = [onChange](CheckedState, CheckedState now) {
-            if (onChange) onChange(now == CheckedState::Checked);
-        };
-        return box;
-    }
-
-    // A "label above input" field group for the endpoint editor; the input is
-    // handed back through `out`.
-    std::shared_ptr<UltraCanvasContainer> MakeField(
-            const std::string& id, const std::string& label,
-            const std::string& placeholder,
-            std::shared_ptr<UltraCanvasTextInput>& out) {
-        auto col = std::make_shared<UltraCanvasContainer>(id + "-grp");
-        col->layout.SetFlexColumn().SetFlexGap(4)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        col->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        col->size.height = CSSLayout::Dimension::Px(50);
-
-        auto lbl = MakeLabel(id + "-lbl", label);
-        lbl->size.height = CSSLayout::Dimension::Px(18);
-        col->AddChild(lbl);
-
-        out = std::make_shared<UltraCanvasTextInput>(id, 0, 0, 0, 28);
-        out->SetPlaceholder(placeholder);
-        out->size.height = CSSLayout::Dimension::Px(28);
-        out->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        col->AddChild(out);
-        return col;
-    }
 
     // Union of every capability's registered providers, de-duplicated and
     // sorted — the choices for the editor's Provider dropdown.
@@ -411,11 +252,12 @@ namespace {
         }
 
         AddNote(parts, "uai-set-def-note1",
-                "Automatic uses a provider that runs on this computer — "
-                "llama.cpp or an Ollama / vLLM server for chat, ComfyUI for "
-                "images, and so on — and the built-in test double where "
-                "nothing local is available. The column on the right shows "
-                "what Automatic resolves to right now.");
+                "Automatic uses a provider that runs on this computer — the "
+                "local runtime's downloaded engine (\"local\", see Local "
+                "models), llama.cpp or an Ollama / vLLM server for chat, "
+                "ComfyUI for images, and so on — and the built-in test double "
+                "where nothing local is available. The column on the right "
+                "shows what Automatic resolves to right now.");
         AddNote(parts, "uai-set-def-note2",
                 "Picking a cloud provider here is a deliberate choice: it is "
                 "used even while cloud fallback is off (Services > Local & "
@@ -446,10 +288,13 @@ namespace {
         parts.body->AddChild(d->cloudFallbackBox);
 
         AddNote(parts, "uai-set-cloud-note1",
-                "Off (the default): every service runs locally. A cloud "
-                "service — ElevenLabs, OpenAI, Anthropic, MiniMax, ... — is "
-                "only used when it is chosen: in a service dialog, on the "
-                "Default providers page, or through an endpoint.");
+                "Off (the default): a service runs on this computer when a "
+                "local provider can serve it — chat and embeddings through the "
+                "models on the Local models page, the rest through a program "
+                "you run — and the test double otherwise. A cloud service — "
+                "ElevenLabs, OpenAI, Anthropic, MiniMax, ... — is only used "
+                "when it is chosen: in a service dialog, on the Default "
+                "providers page, or through an endpoint.");
         AddNote(parts, "uai-set-cloud-note2",
                 "On: a service with no local provider uses the first cloud "
                 "provider that is set up, instead of the test double. Cloud "
@@ -539,8 +384,10 @@ namespace {
         form->AddChild(provCol);
 
         form->AddChild(MakeText("uai-ep-localhint",
-            "Local server? Pick \"openai\", set Base URL http://127.0.0.1:8080, "
-            "leave the key empty.", kTextWidth, kNoteFontSize, kNoteTextColor));
+            "A model on this computer? Pick \"local\" and Fetch models; no URL, "
+            "no key. A server you run (Ollama, llama.cpp)? Pick \"openai\", set "
+            "Base URL http://127.0.0.1:8080, leave the key empty.",
+            kTextWidth, kNoteFontSize, kNoteTextColor));
 
         form->AddChild(MakeField("uai-ep-baseurl",
             "Base URL (optional, for self-hosted)",
@@ -652,9 +499,10 @@ namespace {
         PageParts parts = MakePage("uai-set-page-start", "Settings",
                 "Open a section on the left and choose the page to set:");
         AddNote(parts, "uai-set-start-note1",
-                "Services - which provider each service uses by default, and "
-                "whether the default may fall back to a cloud service. Out "
-                "of the box everything runs locally.");
+                "Services - which provider each service uses by default, the "
+                "models that run on this computer (Local models), and whether "
+                "the default may fall back to a cloud service. Out of the box "
+                "everything runs locally.");
         AddNote(parts, "uai-set-start-note2",
                 "Accounts - the endpoints: providers with their base URL, "
                 "model and API key.");
@@ -691,6 +539,9 @@ namespace {
         }
         d->shownPage = target;
         for (auto& [id, page] : d->pages) page->SetVisible(id == target);
+        // The Local models page reads the runtime afresh each time it is
+        // shown: an engine may have stopped, a service may have installed.
+        if (target == kPageLocalModels && d->localModels) d->localModels->Refresh();
         UpdateRestoreButton(d);
     }
 
@@ -844,6 +695,30 @@ namespace {
     void OnFetchModels(DialogState* d) {
         if (!d || d->epFetching) return;
 
+        // The `local` provider has no server to ask: its models are the local
+        // runtime's, installed or offered, by catalogue id.
+        std::string provider;
+        if (d->epProvider) {
+            if (const auto* item = d->epProvider->GetSelectedItem()) provider = item->text;
+        }
+        if (provider == "local") {
+            d->epModels.clear();
+            for (const LocalModelInfo& m : LocalRuntime::Instance().ListModels()) {
+                if (m.fit == ModelFit::TooLarge) continue;
+                Endpoint::DiscoveredModel dm;
+                dm.name = m.id;
+                dm.task = (m.capability == "embeddings" ? "embeddings" : "chat") +
+                          std::string(m.installed ? ", installed" : ", not installed");
+                d->epModels.push_back(std::move(dm));
+            }
+            PopulateModelDropdown(d);
+            if (d->epStatus)
+                d->epStatus->SetText("Local models: " + std::to_string(d->epModels.size()) +
+                                     " — pick one; it is downloaded when first used "
+                                     "(Services > Local models).");
+            return;
+        }
+
         const std::string baseUrl = d->epBaseUrl ? d->epBaseUrl->GetText() : "";
         if (baseUrl.empty()) {
             if (d->epStatus)
@@ -931,6 +806,7 @@ namespace {
 
         AddTreeNode(d, "settings", kPageServices, "Services");
         AddTreeNode(d, kPageServices, kPageDefaultProviders, "Default providers");
+        AddTreeNode(d, kPageServices, kPageLocalModels, "Local models");
         AddTreeNode(d, kPageServices, kPageLocalAndCloud, "Local & cloud");
         AddTreeNode(d, "settings", kPageAccounts, "Accounts");
         // Accounts' children — "New endpoint" plus one node per endpoint — are
@@ -950,6 +826,11 @@ namespace {
         content->AddChild(d->pageArea);
 
         AddPage(d, kPageDefaultProviders, BuildDefaultProvidersPage(d));
+        d->localModels = std::make_shared<UltraAILocalModelsPage>(d->alive);
+        AddPage(d, kPageLocalModels, d->localModels->Build(d->window.get()));
+        d->resets[kPageLocalModels] = {"Restore defaults", 150, [d]() {
+            if (d->localModels) d->localModels->RestoreDefaults();
+        }};
         AddPage(d, kPageLocalAndCloud, BuildLocalAndCloudPage(d));
         AddPage(d, kPageEndpointEditor, BuildEndpointEditorPage(d));
         AddPage(d, kPageStart, BuildStartPage(d));
@@ -1042,6 +923,7 @@ void UltraAISettingsWindow::Show(UltraCanvasWindowBase* parent, Page page) {
     const char* pageId = nullptr;
     switch (page) {
         case Page::DefaultProviders: pageId = kPageDefaultProviders; break;
+        case Page::LocalModels:      pageId = kPageLocalModels; break;
         case Page::LocalAndCloud:    pageId = kPageLocalAndCloud; break;
         case Page::Endpoints:        pageId = kNodeNewEndpoint; break;
         default: break;

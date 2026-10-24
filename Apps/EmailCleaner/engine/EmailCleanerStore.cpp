@@ -254,6 +254,38 @@ UltraDbResult AnalysisStore::Open(const std::string& connectionName,
           "  message_id TEXT DEFAULT '',"
           "  moved_at INTEGER DEFAULT 0,"
           "  PRIMARY KEY(account_id, folder, uid));" },
+
+        { 6, "sent mail",
+          // 0.5. Whom the owner wrote to, for the contacts review: one row
+          // per recipient of each outgoing message. Outgoing mail is not
+          // analysed, so nothing else of it is kept. message_id lets a message
+          // stored in two folders (Sent and All Mail) count once.
+          "CREATE TABLE sent_mail("
+          "  account_id TEXT NOT NULL,"
+          "  folder TEXT NOT NULL,"
+          "  uid INTEGER NOT NULL,"
+          "  recipient_addr TEXT NOT NULL,"
+          "  message_id TEXT DEFAULT '',"
+          "  date INTEGER DEFAULT 0,"
+          "  PRIMARY KEY(account_id, folder, uid, recipient_addr));"
+          "CREATE INDEX idx_sent_recipient ON sent_mail(recipient_addr);"
+          // The owner's own mail an earlier scan analysed goes, so the next
+          // scan reads it again and records whom it went to. (Mail in a Sent
+          // folder from another address is caught by the ingest, which
+          // re-reads a Sent folder message it has no sent_mail row for.)
+          "DELETE FROM keyword_hits WHERE EXISTS (SELECT 1 FROM messages m "
+          "  JOIN accounts a ON a.account_id = m.account_id "
+          "  WHERE a.email <> '' AND m.sender_addr = lower(a.email) "
+          "  AND m.account_id = keyword_hits.account_id AND m.folder = keyword_hits.folder "
+          "  AND m.uid = keyword_hits.uid);"
+          "DELETE FROM attachments WHERE EXISTS (SELECT 1 FROM messages m "
+          "  JOIN accounts a ON a.account_id = m.account_id "
+          "  WHERE a.email <> '' AND m.sender_addr = lower(a.email) "
+          "  AND m.account_id = attachments.account_id AND m.folder = attachments.folder "
+          "  AND m.uid = attachments.uid);"
+          "DELETE FROM messages WHERE EXISTS (SELECT 1 FROM accounts a "
+          "  WHERE a.account_id = messages.account_id AND a.email <> '' "
+          "  AND messages.sender_addr = lower(a.email));" },
     };
     // The list above must end at the version the header advertises.
     if (!steps.empty() && steps.back().version != kSchemaVersion) {
@@ -487,16 +519,103 @@ UltraDbResult AnalysisStore::ClearFolder(const std::string& accountId,
     for (const char* sql : {
              "DELETE FROM keyword_hits WHERE account_id = ? AND folder = ?",
              "DELETE FROM attachments WHERE account_id = ? AND folder = ?",
-             "DELETE FROM messages WHERE account_id = ? AND folder = ?" }) {
+             "DELETE FROM messages WHERE account_id = ? AND folder = ?",
+             "DELETE FROM sent_mail WHERE account_id = ? AND folder = ?" }) {
         UltraDbResult r = UltraDb_Exec(connection_, sql, key);
         if (!r) return r;
     }
     return UltraDbResult::Ok();
 }
 
+UltraDbResult AnalysisStore::RecordSentMessages(const std::vector<AnalyzedMessage>& messages) {
+    if (messages.empty()) return UltraDbResult::Ok();
+
+    UltraDbResult error;
+    UltraDbHandle tx = UltraDb_Begin(connection_, &error);
+    if (tx == UltraDbInvalidHandle) return error;
+
+    for (const AnalyzedMessage& m : messages) {
+        if (m.accountId.empty() || m.folder.empty()) {
+            UltraDb_Rollback(tx);
+            return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                        "message needs an account and a folder");
+        }
+        // Replaced wholesale, and whatever an earlier scan analysed under this
+        // key goes: it was the owner's own mail on the map.
+        const UltraDbParams key = { m.accountId, m.folder, m.uid };
+        for (const char* sql : {
+                 "DELETE FROM sent_mail WHERE account_id = ? AND folder = ? AND uid = ?",
+                 "DELETE FROM keyword_hits WHERE account_id = ? AND folder = ? AND uid = ?",
+                 "DELETE FROM attachments WHERE account_id = ? AND folder = ? AND uid = ?",
+                 "DELETE FROM messages WHERE account_id = ? AND folder = ? AND uid = ?" }) {
+            UltraDbResult r = UltraDb_ExecInTx(tx, sql, key);
+            if (!r) { UltraDb_Rollback(tx); return r; }
+        }
+        // A message to nobody still marks the key as seen, so the next scan
+        // skips it; the empty recipient never matches a contact.
+        std::vector<std::string> recipients = m.recipients;
+        if (recipients.empty()) recipients.push_back("");
+        for (const std::string& recipient : recipients) {
+            UltraDbResult r = UltraDb_ExecInTx(tx,
+                "INSERT OR IGNORE INTO sent_mail(account_id, folder, uid, recipient_addr, "
+                "message_id, date) VALUES(?, ?, ?, ?, ?, ?)",
+                { m.accountId, m.folder, m.uid, Lower(recipient), m.messageId, m.date });
+            if (!r) { UltraDb_Rollback(tx); return r; }
+        }
+    }
+    return UltraDb_Commit(tx);
+}
+
+bool AnalysisStore::HasSentMessage(const std::string& accountId, const std::string& folder,
+                                   int64_t uid) const {
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_,
+        "SELECT 1 FROM sent_mail WHERE account_id = ? AND folder = ? AND uid = ? LIMIT 1",
+        { accountId, folder, uid }, rs);
+    return r && !rs.Empty();
+}
+
+UltraDbResult AnalysisStore::GetCorrespondence(std::map<std::string, Correspondence>& out) const {
+    out.clear();
+    // A message's identity for counting: its Message-ID, else its place in
+    // the cache - so one message kept in two folders counts once.
+    const char* kIdentity =
+        "CASE WHEN message_id <> '' THEN message_id "
+        "ELSE account_id || '/' || folder || '/' || uid END";
+
+    UltraDbResultSet sent;
+    UltraDbResult r = UltraDb_Query(connection_,
+        "SELECT recipient_addr AS addr, COUNT(DISTINCT " + std::string(kIdentity) + ") AS n, "
+        "MAX(date) AS last FROM sent_mail WHERE recipient_addr <> '' "
+        "GROUP BY recipient_addr", sent);
+    if (!r) return r;
+    for (const UltraDbRow& row : sent) {
+        Correspondence& c = out[row["addr"].AsString()];
+        c.address  = row["addr"].AsString();
+        c.sent     = row["n"].AsInt();
+        c.lastSent = row["last"].AsInt64();
+    }
+
+    UltraDbResultSet received;
+    r = UltraDb_Query(connection_,
+        "SELECT sender_addr AS addr, COUNT(DISTINCT " + std::string(kIdentity) + ") AS n, "
+        "MAX(date) AS last FROM messages WHERE sender_addr <> '' "
+        "GROUP BY sender_addr", received);
+    if (!r) return r;
+    for (const UltraDbRow& row : received) {
+        Correspondence& c = out[row["addr"].AsString()];
+        c.address      = row["addr"].AsString();
+        c.received     = row["n"].AsInt();
+        c.lastReceived = row["last"].AsInt64();
+    }
+    return r;
+}
+
 UltraDbResult AnalysisStore::ClearMessages(const std::string& accountId) {
     if (accountId.empty()) {
         UltraDbResult r = UltraDb_Exec(connection_, "DELETE FROM keyword_hits");
+        if (!r) return r;
+        r = UltraDb_Exec(connection_, "DELETE FROM sent_mail");
         if (!r) return r;
         r = UltraDb_Exec(connection_, "DELETE FROM attachments");
         if (!r) return r;
@@ -504,6 +623,8 @@ UltraDbResult AnalysisStore::ClearMessages(const std::string& accountId) {
     }
     UltraDbResult r = UltraDb_Exec(connection_,
         "DELETE FROM keyword_hits WHERE account_id = ?", { accountId });
+    if (!r) return r;
+    r = UltraDb_Exec(connection_, "DELETE FROM sent_mail WHERE account_id = ?", { accountId });
     if (!r) return r;
     r = UltraDb_Exec(connection_, "DELETE FROM attachments WHERE account_id = ?", { accountId });
     if (!r) return r;

@@ -5334,7 +5334,7 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     FilerTabState* raw = state.get();
     tabStates.push_back(std::move(state));
 
-    const int index = tabbedContainer->AddTab(TabTitleForPath(path), raw->page);
+    const int index = tabbedContainer->AddTab(TabTitleFor(path), raw->page);
     tabbedContainer->SetTabIcon(index, TabIconForPath(path));
     if (activate) {
         // Fires onTabChange, which points `filer` at the new tab.
@@ -6438,7 +6438,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
                 id + "-pie", 0, 0, kComputerPieSize, kComputerPieSize);
         pie->SetDonutMode(true);
         pie->SetInnerRadius(0.52f);
-        pie->SetLabelPosition(LabelPosition::None);
+        pie->SetLabelPosition(LabelPosition::NoLabels);
         pie->SetBorderColor(Colors::White);
         pie->SetBorderWidth(2.0f);
         pie->SetCenterFont("Arial", 15.0f, FontWeight::Bold);
@@ -6583,12 +6583,89 @@ void UltraFilerWindow::FillFolderBreadcrumb(
         UltraCanvasBreadcrumb* crumb, const std::string& path,
         std::function<void(const std::string&)> onNavigate) {
     if (!crumb) return;
+    if (IsRemoteFilerPath(path)) {
+        FillRemoteBreadcrumb(crumb, path, std::move(onNavigate));
+        return;
+    }
     FolderBreadcrumbOptions options;
     // The strip's leading "Computer" opens the Computer page - the same
     // place the tree's Computer entry opens - rather than the drive root,
     // which the node next to it already is.
     options.onComputerClick = [this]() { SetComputerPageVisible(true); };
     BuildFolderBreadcrumb(crumb, path, std::move(onNavigate), options);
+}
+
+std::string UltraFilerWindow::TabTitleFor(const std::string& path) const {
+    // A drive's folder is named by its last segment; its top folder has none,
+    // and the local rule (the path's filename) would title the tab with the
+    // raw "ultracloud://<account>/" address - so it takes the drive's name.
+    if (IsRemoteFilerPath(path)) {
+        const std::string name = RemoteFilerName(path);
+        if (!name.empty()) return name;
+        RemoteDrive drive;
+        const std::string accountId = RemoteFilerAccountId(path);
+        if (remoteDrives && remoteDrives->Find(accountId, drive) &&
+            !drive.displayName.empty())
+            return drive.displayName;
+        return accountId.empty() ? path : accountId;
+    }
+    return TabTitleForPath(path);
+}
+
+void UltraFilerWindow::FillRemoteBreadcrumb(
+        UltraCanvasBreadcrumb* crumb, const std::string& path,
+        std::function<void(const std::string&)> onNavigate) {
+    // A drive's path is not a filesystem path, and the framework's folder
+    // strip resolves what it is given against the filesystem: on Windows
+    // "ultracloud://acct/Docs" came out as "C:\Users\<name>\ultracloud:\...",
+    // a strip of this computer's folders ending in an "ultracloud:" node that
+    // opened a local folder that does not exist - an empty display. So a
+    // drive gets a strip of its own: Computer, the drive, then its folders.
+    std::string accountId, remote;
+    if (!SplitRemoteFilerPath(path, accountId, remote)) return;
+
+    BreadcrumbItem computer("__computer__", "Computer");
+    computer.tooltip = "Computer - show all drives";
+    computer.onClick = [this]() { SetComputerPageVisible(true); };
+    computer.hasDropdown = true;
+    computer.sortDropdownItems = true;
+    computer.dropdownAvailableProvider = []() { return !ListDriveRoots().empty(); };
+    computer.dropdownItemsProvider = [onNavigate]() {
+        std::vector<MenuItemData> out;
+        for (const std::string& d : ListDriveRoots())
+            out.emplace_back(d, [onNavigate, d]() { if (onNavigate) onNavigate(d); });
+        return out;
+    };
+    std::vector<BreadcrumbItem> items{computer};
+
+    // The drive under the name the tree gives it ("FTP: Chutipa Cloud").
+    RemoteDrive drive;
+    std::string driveLabel = accountId;
+    if (remoteDrives && remoteDrives->Find(accountId, drive))
+        driveLabel = RemoteDriveTreeLabel(drive.providerId, drive.serverUrl,
+                                          drive.displayName);
+    const std::string root = MakeRemoteFilerPath(accountId, "/");
+    BreadcrumbItem driveItem(driveLabel);
+    driveItem.onClick = [onNavigate, root]() { if (onNavigate) onNavigate(root); };
+    items.push_back(driveItem);
+
+    // One node per folder below the root. No sub-folder dropdowns: listing a
+    // drive's folder is a round trip to the server, not a directory read the
+    // strip can make while it is laid out.
+    std::string accum;
+    for (std::string::size_type start = 1; start < remote.size(); ) {
+        std::string::size_type slash = remote.find('/', start);
+        if (slash == std::string::npos) slash = remote.size();
+        const std::string seg = remote.substr(start, slash - start);
+        start = slash + 1;
+        if (seg.empty()) continue;
+        accum += "/" + seg;
+        const std::string target = MakeRemoteFilerPath(accountId, accum);
+        BreadcrumbItem item(seg);
+        item.onClick = [onNavigate, target]() { if (onNavigate) onNavigate(target); };
+        items.push_back(item);
+    }
+    crumb->SetItems(items);
 }
 
 void UltraFilerWindow::ShowComputerBreadcrumb() {
@@ -6679,7 +6756,7 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     }
     const int index = TabIndexOf(tab);
     if (index >= 0) {
-        tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
+        tabbedContainer->SetTabTitle(index, TabTitleFor(path));
         tabbedContainer->SetTabIcon(index, TabIconForPath(path));
     }
     // The connection log button comes with a remote drive and goes with it.

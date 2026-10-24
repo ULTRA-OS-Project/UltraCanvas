@@ -1,7 +1,10 @@
 // Apps/DemoApp/UltraCanvasImagePerformanceTest.cpp
 // Bitmap codec comparison benchmark: file size / encode time / decode time per format
+// Version: 2.7.0 - the shared page look (UltraCanvasDemoPageKit): the page fills the
+//                  area, toolbar, chart and status in one card, every label sized
+//                  to its text, the toolbar wraps
 // Version: 2.6.1 - JPEG XL is benchmarked again wherever libvips can write it
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 //
 // ================================================================================
@@ -236,6 +239,7 @@
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -1322,12 +1326,13 @@ namespace UltraCanvas {
 //
 // LAYOUT (Rule 15 compliant — VBox + HBox everywhere, zero manual coords):
 //
-//   main VBox
-//     toolbar     (HBox: Choose | Run | Info | stretch)
-//     chart+thumbs VBox (stretch)
-//         CodecComparisonChartElement
-//         thumbsRow (HBox: 11 thumbnail ImageElements)
-//     status      (HBox: status label)
+//   page (DemoKit: title, description; fills the page area)
+//     card (stretch)
+//       toolbar     (wrapping HBox: Choose | Include BMP | Info)
+//       chart+thumbs VBox (stretch)
+//           CodecComparisonChartElement
+//           thumbsRow (11 thumbnail ImageElements, placed under their bars)
+//       status label
 // ============================================================================
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateImagePerformanceTest() {
@@ -1400,77 +1405,57 @@ namespace UltraCanvas {
         // Initial codec set: BMP excluded by default (see VERSION 2.3.0 notes).
         rebuildActiveCodecs(/*includeBmp=*/false);
 
-        // ========== ROOT CONTAINER + MAIN VBOX ==========
-        auto root = std::make_shared<UltraCanvasContainer>(
-                "ImagePerfTestMain", 0, 0, 1000, 810);
-        root->SetBackgroundColor(Color(255, 255, 255, 255));
-        root->SetPadding(12, 12, 12, 12);
-
-        root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        root->layout.SetFlexGap(10);
-
-        // ========== TITLE ==========
-        auto title = std::make_shared<UltraCanvasLabel>(
-                "PerfTestTitle", 0, 0, 0, 32);
-        title->SetText("Image Performance Test");
-        title->SetFontSize(20);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(40, 80, 120, 255));
-        root->AddChild(title); title->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        // ========== DESCRIPTION ==========
-        auto desc = std::make_shared<UltraCanvasLabel>(
-                "PerfTestDesc", 0, 0, 0, 42);
-        desc->SetText(
+        // ========== PAGE (title + description) ==========
+        auto root = DemoKit::CreatePage("ImagePerfTestMain", "Image Performance Test",
                 "Choose a bitmap image, then run the benchmark to compare how each codec "
                 "handles it: file size, encode time, and decode time are shown as three "
                 "bars per format. Click any thumbnail below the chart to view the "
                 "re-encoded result at 1:1.");
-        desc->SetFontSize(11);
-        desc->SetWrap(TextWrap::WrapWord);
-        desc->SetTextColor(Color(80, 80, 80, 255));
-        root->AddChild(desc); desc->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        // The chart takes the height the toolbar and status leave: the page is
+        // the display area's height, not its content's.
+        root->SetFillsArea(true);
+
+        auto card = DemoKit::CreateCard("PerfCard");
+        DemoKit::Add(root, card, 1);
 
         // ========== TOOLBAR ==========
-        auto toolbar = std::make_shared<UltraCanvasContainer>(
-                "PerfToolbar", 0, 0, 0, 44);
+        // A row that wraps: longer texts put the image info on a line of its own.
+        auto toolbar = DemoKit::CreateRow("PerfToolbar", 8);
         toolbar->SetBackgroundColor(Color(245, 248, 252, 255));
         toolbar->SetBorders(1.0f, Color(200, 210, 220, 255));
         toolbar->SetPadding(6, 6, 6, 6);
-
-        toolbar->layout.SetFlexRow();
-        toolbar->layout.SetFlexGap(8);
         toolbar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        state->chooseBtn = std::make_shared<UltraCanvasButton>(
-                "PerfChooseBtn", 0, 0, 160, 30);
-        state->chooseBtn->SetText("Choose Image");
+        // As wide as its text, at least the 160 px it had.
+        state->chooseBtn = std::make_shared<UltraCanvasButton>("PerfChooseBtn", "Choose Image");
+        {
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(160);
+            limits.minHeight = CSSLayout::Dimension::Px(30);
+            state->chooseBtn->boxConstraints = limits;
+        }
 
         // [x] Include BMP — opt-in for the BMP codec, which would otherwise
         // dominate the size axis. Toggling between runs re-runs automatically
         // (see handler installed below loadSourceImage / runBenchmark).
         state->includeBmpCheckbox = std::make_shared<UltraCanvasCheckbox>(
-                "PerfIncludeBmp", 0, 0, 130, 28);
-        state->includeBmpCheckbox->SetText("Include BMP");
+                "PerfIncludeBmp", "Include BMP");
         state->includeBmpCheckbox->SetChecked(false);
 
-        state->infoLabel = std::make_shared<UltraCanvasLabel>(
-                "PerfImageInfo", 0, 0, 0, 28);
-        state->infoLabel->SetText("No image loaded");
+        state->infoLabel = DemoKit::CreateText("PerfImageInfo", "No image loaded");
         state->infoLabel->SetFontSize(11);
         state->infoLabel->SetTextColor(Color(60, 60, 60, 255));
 
-        toolbar->AddChild(state->chooseBtn);
+        DemoKit::Add(toolbar, state->chooseBtn);
         toolbar->AddSpacer(8);
-        toolbar->AddChild(state->includeBmpCheckbox);
+        DemoKit::Add(toolbar, state->includeBmpCheckbox);
         toolbar->AddSpacer(8);
-        toolbar->AddChild(state->infoLabel); state->infoLabel->layoutItem.SetFlexGrow(1);   // stretches
+        DemoKit::Add(toolbar, state->infoLabel, 1);   // stretches
 
-        root->AddChild(toolbar); toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        DemoKit::Add(card, toolbar);
 
         // ========== CHART AREA (fills remaining vertical space) ==========
-        auto chartSection = std::make_shared<UltraCanvasContainer>(
-                "PerfChartSection", 0, 0, 0, 420);
+        auto chartSection = std::make_shared<UltraCanvasContainer>("PerfChartSection");
         chartSection->SetBackgroundColor(Color(255, 255, 255, 255));
 
         chartSection->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -1507,23 +1492,16 @@ namespace UltraCanvas {
         state->thumbsRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         chartSection->AddChild(state->thumbsRow);
 
-        chartSection->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        root->AddChild(chartSection);
+        // Grows from nothing: the chart gets what the toolbar and the status
+        // line leave of the card.
+        DemoKit::Add(card, chartSection, 1);
+        chartSection->layoutItem.SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        // ========== STATUS ROW ==========
-        auto statusRow = std::make_shared<UltraCanvasContainer>(
-                "PerfStatus", 0, 0, 0, 24);
-        statusRow->SetBackgroundColor(Color(255, 255, 255, 255));
-        statusRow->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-        state->statusLabel = std::make_shared<UltraCanvasLabel>(
-                "PerfStatusLabel", 0, 0, 0, 20);
-        state->statusLabel->SetText("Click [Choose Image...] to pick a bitmap.");
+        // ========== STATUS LINE ==========
+        state->statusLabel = DemoKit::AddText(card, "PerfStatusLabel",
+                "Click [Choose Image...] to pick a bitmap.");
         state->statusLabel->SetFontSize(11);
         state->statusLabel->SetTextColor(Color(60, 60, 60, 255));
-        statusRow->AddChild(state->statusLabel); state->statusLabel->layoutItem.SetFlexGrow(1);
-
-        root->AddChild(statusRow); statusRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
         // Position each active codec's thumbnail horizontally centered under
         // its bar group, and hide thumbnails for codecs that are not in the

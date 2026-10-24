@@ -22,6 +22,10 @@ on:
     branches:
       - main
       - 'claude/**'
+    # The default types plus `labeled`: adding the `ci:intel` label to a pull
+    # request starts a run whose matrix has the macOS Intel row (the gate
+    # reads the labels), without a push to carry it.
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
     inputs:
       # Set only by changelog-fold.yml. Its "Changelog: x.y.z" commit is pushed
@@ -68,9 +72,11 @@ jobs:
   # Only pushes are gated. A pull request always builds: its entry is pending
   # by design, and nothing it produces is published.
   gate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     outputs:
       pending: ${{ steps.check.outputs.pending }}
+      os: ${{ steps.matrix.outputs.os }}
+      include: ${{ steps.matrix.outputs.include }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -109,51 +115,87 @@ jobs:
             echo "pending=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # The build matrix, as two JSON lists the build job reads: the `os`
+      # rows and the `include` entries that give each its labels. It is made
+      # here rather than written under the build job because one row is
+      # conditional, and a matrix written there cannot drop a row by event:
+      # an `exclude` is applied BEFORE `include`, so the row's include entry
+      # added it back as a job of its own without a build type (2026-10-24).
+      #
+      # The macOS Intel row builds on main only - a push, or a dispatch - and
+      # not on pull requests. Its runner compiles five to ten times slower
+      # than every other row and is the scarcest (16-27 minutes in the queue
+      # on 2026-10-13), so it finished a pull request's matrix 45-100 minutes
+      # after the other five rows had, with nothing of its own to say: the
+      # two macOS rows share one code base and one packaging script, and what
+      # differs between them (the libraries' vcpkg triplet, the deployment
+      # target's x86_64 SDK) is checked on every run on main, before anything
+      # is released. A pull request's matrix is five rows and finishes with
+      # the Windows ARM one.
+      #
+      # A pull request that changes what only the Intel toolchain would
+      # catch - the macOS platform layer, the packaging, a bundled library -
+      # asks for the row with the `ci:intel` label: adding it starts a run
+      # with the full matrix (the `labeled` event above), so the failure
+      # shows on the pull request rather than on main.
+      #
+      # NOTE: GitHub retired macos-13 (the last x86_64 image of the
+      # macos-NN series) in December 2025. `macos-15-intel` is its
+      # designated replacement label for Intel builds, supported until
+      # macOS 15 leaves Apple support (~2027). When that goes too, the
+      # options are: drop Intel builds, use self-hosted runners, or
+      # cross-compile universal binaries.
+      #
+      # Both macOS legs name their macOS version, never macos-latest, so a
+      # new runner image (and its Xcode and SDK) arrives by a change here and
+      # not on GitHub's schedule. While the libraries came from Homebrew the
+      # runner's version was also the oldest macOS the apps ran on: when
+      # macos-latest moved to macOS 26 in July 2026 the arm64 apps started
+      # only on macOS 26, while their Info.plist still said 12.0. The
+      # libraries are now built for MACOSX_DEPLOYMENT_TARGET (build job).
+      #
+      # Linux/aarch64 runs on GitHub-hosted arm64 runners (free for public
+      # repos). Same 22.04 base as the x86_64 row, so both Linux artifacts
+      # carry the same glibc floor, and the dependency install is shared
+      # verbatim between them.
+      - id: matrix
+        shell: bash
+        env:
+          WITH_INTEL: ${{ github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:intel') }}
+        run: |
+          python3 - "$WITH_INTEL" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          rows = [
+              {"os": "macos-15",         "arch_label": "arm64"},
+              {"os": "macos-15-intel",   "arch_label": "x86_64"},
+              {"os": "ubuntu-22.04",     "arch_label": "x86_64"},
+              {"os": "ubuntu-22.04-arm", "arch_label": "arm64"},
+              {"os": "windows-latest",   "arch_label": "x86_64",
+               "msystem": "CLANG64", "msys_prefix": "mingw-w64-clang-x86_64",
+               "msys_toolchain": "mingw-w64-clang-x86_64-clang"},
+              {"os": "windows-11-arm",   "arch_label": "arm64",
+               "msystem": "CLANGARM64", "msys_prefix": "mingw-w64-clang-aarch64",
+               "msys_toolchain": "mingw-w64-clang-aarch64-clang"},
+          ]
+          if sys.argv[1] != "true":
+              rows = [r for r in rows if r["os"] != "macos-15-intel"]
+          print("os=" + json.dumps([r["os"] for r in rows]))
+          print("include=" + json.dumps(rows))
+          PY
+
   build:
     needs: gate
     if: needs.gate.outputs.pending == 'false'
     strategy:
       fail-fast: false
+      # The rows and their labels come from the gate (its `matrix` step says
+      # which rows and why); build_type is the one dimension that is fixed.
+      # Keeping `os` and `build_type` as the dimensions keeps the job names
+      # `build (<os>, Release)`, which branch protection knows.
       matrix:
-        # NOTE: GitHub retired macos-13 (the last x86_64 image of the
-        # macos-NN series) in December 2025. `macos-15-intel` is its
-        # designated replacement label for Intel builds, supported until
-        # macOS 15 leaves Apple support (~2027). When that goes too, the
-        # options are: drop Intel builds, use self-hosted runners, or
-        # cross-compile universal binaries.
-        #
-        # Both macOS legs name their macOS version, never macos-latest, so a
-        # new runner image (and its Xcode and SDK) arrives by a change here and
-        # not on GitHub's schedule. While the libraries came from Homebrew the
-        # runner's version was also the oldest macOS the apps ran on: when
-        # macos-latest moved to macOS 26 in July 2026 the arm64 apps started
-        # only on macOS 26, while their Info.plist still said 12.0. The
-        # libraries are now built for MACOSX_DEPLOYMENT_TARGET (below).
-        os: [macos-15, macos-15-intel, ubuntu-22.04, ubuntu-22.04-arm, windows-latest, windows-11-arm]
+        os: ${{ fromJSON(needs.gate.outputs.os) }}
         build_type: [Release]
-        include:
-          - os: macos-15
-            arch_label: arm64
-          - os: macos-15-intel
-            arch_label: x86_64
-          - os: ubuntu-22.04
-            arch_label: x86_64
-          # Linux/aarch64 on GitHub-hosted arm64 runners (free for public
-          # repos). Same 22.04 base as the x86_64 row, so both Linux
-          # artifacts carry the same glibc floor, and the dependency
-          # install below is shared verbatim between them.
-          - os: ubuntu-22.04-arm
-            arch_label: arm64
-          - os: windows-latest
-            arch_label: x86_64
-            msystem: CLANG64
-            msys_prefix: mingw-w64-clang-x86_64
-            msys_toolchain: mingw-w64-clang-x86_64-clang
-          - os: windows-11-arm
-            arch_label: arm64
-            msystem: CLANGARM64
-            msys_prefix: mingw-w64-clang-aarch64
-            msys_toolchain: mingw-w64-clang-aarch64-clang
+        include: ${{ fromJSON(needs.gate.outputs.include) }}
 
     runs-on: ${{ matrix.os }}
 
@@ -515,6 +557,27 @@ jobs:
           key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       # ===== Linux: system package manager =====
+      # The .deb files the last run on main downloaded, restored into apt's
+      # cache before anything is installed, so apt fetches only what changed
+      # since: on 2026-10-23 the mirror served this job so slowly that the
+      # step below ran out of its 45 minutes twice in a row, downloading the
+      # same packages as the run before. Saved by main alone, as ccache is (a
+      # pull request's cache would serve that pull request only and crowd the
+      # repository's 10 GB); pruned to the versions installed, so it stays
+      # near the size of one install. One per runner image and architecture.
+      - name: Restore the apt package cache (Linux)
+        if: runner.os == 'Linux'
+        id: apt-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-${{ matrix.os }}-
+          restore-keys: apt-debs-${{ matrix.os }}-
+
+      - name: Put the cached packages in apt's cache (Linux)
+        if: runner.os == 'Linux'
+        run: scripts/ci-apt.sh cache-in "${{ runner.temp }}/apt-debs"
+
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         # A mirror that crawls still finishes (15-27 min on 2026-10-07, against
@@ -678,6 +741,10 @@ jobs:
           # packages". Installing it explicitly lets apt resolve the set.
           scripts/ci-apt.sh install libunwind-dev
           scripts/ci-apt.sh install libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
+          # GStreamer's playbin and decoders: without them every video player
+          # opens nothing, and HTMLMediaTest checks only the fallback content
+          # instead of playing its WAV.
+          scripts/ci-apt.sh install gstreamer1.0-plugins-base gstreamer1.0-plugins-good
           # VideoFX's engine (FFmpeg 4.4 on 22.04). Without it the module builds
           # from its stub and VideoFXTest checks only the filter-text half.
           scripts/ci-apt.sh install libavformat-dev libavcodec-dev libavfilter-dev libavutil-dev libswscale-dev
@@ -701,11 +768,12 @@ jobs:
           # libsodium: cryptographic backend for UltraCrypt
           scripts/ci-apt.sh install libsodium-dev
           # UltraDatabase: SQLite is the single-user store, libpq the
-          # multi-user one. Both are named explicitly rather than relied on
-          # from the runner image, because UltraDatabase soft-disables itself
-          # when a header is missing - and a silently disabled database layer
+          # multi-user one, libmariadb (MariaDB Connector/C) the MySQL /
+          # MariaDB driver. All named explicitly rather than relied on from
+          # the runner image, because UltraDatabase soft-disables itself when
+          # a header is missing - and a silently disabled database layer
           # takes the whole UltraFIBU bookkeeping suite out of CI with it.
-          scripts/ci-apt.sh install libsqlite3-dev libpq-dev
+          scripts/ci-apt.sh install libsqlite3-dev libpq-dev libmariadb-dev
           # c-ares: UltraNet's async DNS uses the event-thread API
           # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
           # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
@@ -756,6 +824,19 @@ jobs:
           # the single place the CI compiler is decided.
           echo "CC=clang-$V"    >> "$GITHUB_ENV"
           echo "CXX=clang++-$V" >> "$GITHUB_ENV"
+
+      # After the last apt install of the job (Clang's, just above).
+      - name: Keep the downloaded packages (Linux, main)
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main'
+        id: apt-keep
+        run: echo "hash=$(scripts/ci-apt.sh cache-out "${{ runner.temp }}/apt-debs")" >> "$GITHUB_OUTPUT"
+
+      - name: Save the apt package cache (Linux, main)
+        if: runner.os == 'Linux' && github.ref == 'refs/heads/main' && steps.apt-keep.outputs.hash != ''
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/apt-debs
+          key: apt-debs-${{ matrix.os }}-${{ steps.apt-keep.outputs.hash }}
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
       # Windows installs MSYS2's native rust package above (gnu/gnullvm ABI,
@@ -858,6 +939,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
@@ -896,6 +978,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRAIM_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
@@ -951,6 +1034,17 @@ jobs:
             exit 1
           fi
           echo "UltraDatabase verified: SQLite + PostgreSQL"
+
+      - name: Verify UltraDatabase built with MySQL / MariaDB (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "UltraDatabase - ENABLED.*MySQL/MariaDB" configure.log; then
+            echo "::error::UltraDatabase configured without its MySQL / MariaDB driver (libmariadb-dev missing, or only its static archive found?) - the MySQL tests would silently not run"
+            exit 1
+          fi
+          echo "UltraDatabase verified: SQLite + PostgreSQL + MySQL/MariaDB"
 
       # Spell checking also degrades quietly: no Hunspell and every text widget
       # still builds, with no dictionaries and no red underlines. That passed
@@ -1218,6 +1312,14 @@ jobs:
           if command -v cygpath > /dev/null 2>&1; then sdk=$(cygpath -m "$sdk"); fi
           export ULTRACANVAS_SDK_PREFIX="$sdk"
           (cd build && ctest --output-on-failure --no-tests=error -R "^UltraCanvasStartEngine$")
+          # UltraStore's core on the same leg: the catalog, the verifier
+          # (libsodium's Ed25519), the resolver and the client, then the
+          # program's own view of the runner.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreCore$")
+          store=build/ultrastore
+          [ "${{ runner.os }}" = "Windows" ] && store="$store.exe"
+          "$store" --version
+          "$store" platform
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
@@ -1289,6 +1391,40 @@ jobs:
           # where the error names the cause - rather than inside ctest, where
           # it arrives as one line with no diagnosis.
           psql -h /var/run/postgresql -p 5432 -d ultrafibu_ci -c 'SELECT 1' >/dev/null
+
+      # The MySQL / MariaDB driver's tests (Tests/UltraDatabase: test_mysql,
+      # test_server) against a real server. The x86_64 runner image carries
+      # MySQL 8, which is also what proves Connector/C talks to MySQL as well
+      # as to MariaDB (the proposal's open question); where the image has no
+      # server, Ubuntu's MySQL is installed. The tests log in as the runner's
+      # own user over the server's socket (auth_socket), so no password is
+      # needed or written anywhere. Without the variables the tests SKIP, and
+      # ULTRADB_TEST_MYSQL_REQUIRED below turns that skip into a failure.
+      - name: Start MySQL for the database tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          if ! command -v mysqld >/dev/null 2>&1; then
+            scripts/ci-apt.sh install mysql-server
+          fi
+          sudo systemctl start mysql || sudo service mysql start
+          USER_NAME="$(whoami)"
+          SETUP="CREATE USER IF NOT EXISTS '$USER_NAME'@'localhost' IDENTIFIED WITH auth_socket;
+                 GRANT ALL PRIVILEGES ON *.* TO '$USER_NAME'@'localhost';
+                 CREATE DATABASE IF NOT EXISTS ultradb_ci;"
+          # The image's root has the password root; a fresh install's root
+          # logs in over the socket. auth_socket is loaded where it is not yet
+          # (an image whose root logs in with a password may not load it).
+          root_sql() { sudo mysql -uroot -proot "$@" 2>/dev/null || sudo mysql -uroot "$@"; }
+          if [ -z "$(root_sql -N -e "SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME = 'auth_socket'")" ]; then
+            root_sql -e "INSTALL PLUGIN auth_socket SONAME 'auth_socket.so'"
+          fi
+          root_sql -e "$SETUP"
+          SOCKET="$(root_sql -N -e 'SELECT @@socket')"
+          echo "ULTRADB_TEST_MYSQL_HOST=$SOCKET" >> "$GITHUB_ENV"
+          echo "ULTRADB_TEST_MYSQL_USER=$USER_NAME" >> "$GITHUB_ENV"
+          # The connection the tests make, made here, where an error names its cause.
+          mysql --protocol=socket -S "$SOCKET" -u "$USER_NAME" ultradb_ci -e 'SELECT VERSION()'
 
       # macOS and Windows build no full test suite (BUILD_TESTS is Linux-only);
       # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS builds these two anyway, so the
@@ -1574,6 +1710,10 @@ jobs:
           ULTRAFIBU_TEST_PG_DB: ultrafibu_ci
           # A skip here is indistinguishable from a pass, so forbid it.
           ULTRAFIBU_TEST_PG_REQUIRED: 1
+          # The MySQL server of "Start MySQL for the database tests";
+          # _HOST and _USER come from that step via GITHUB_ENV.
+          ULTRADB_TEST_MYSQL_DB: ultradb_ci
+          ULTRADB_TEST_MYSQL_REQUIRED: 1
         run: ctest --output-on-failure 2>&1 | tee ctest.log
 
       # "Run unit tests" runs DesktopShellTest with no display, where the X11
@@ -2076,7 +2216,7 @@ jobs:
     name: Publish the SDKs and UltraCanvasStart as release assets
     needs: build
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.release == true)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     permissions:
       contents: write
     steps:
@@ -2180,7 +2320,7 @@ jobs:
     name: Android backend check
     needs: gate
     if: needs.gate.outputs.pending == 'false'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     # The whole job, not only its apt step: without one only GitHub's 6-hour
     # default applied, and on 2026-10-07 a hung apt held PR #720's checks for
     # five hours before it was cancelled by hand. Normally 75 s (5.5 min on a

@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailRecipientComplete.cpp
+// Version: 0.3.0 - no-reply addresses are never suggested; RecipientAddress; leaveOut
 // Version: 0.2.0 - ranked by how often - and how lately - each address is written to
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -24,13 +25,8 @@ std::string Lower(std::string s) {
     return s;
 }
 
-// The bare address of a recipient: inside <...>, or the whole text.
 std::string BareLower(const std::string& recipient) {
-    const std::size_t lt = recipient.rfind('<');
-    const std::size_t gt = recipient.rfind('>');
-    if (lt != std::string::npos && gt != std::string::npos && gt > lt)
-        return Lower(Trim(recipient.substr(lt + 1, gt - lt - 1)));
-    return Lower(Trim(recipient));
+    return Lower(RecipientAddress(recipient));
 }
 
 // Whether a word of `text` (split at anything that is not a letter or digit,
@@ -58,6 +54,24 @@ bool NameFitsField(const std::string& name) {
 
 } // namespace
 
+bool IsNoReplyAddress(const std::string& address) {
+    const std::string bare = Lower(RecipientAddress(address));
+    std::string local;
+    for (char c : bare.substr(0, bare.find('@'))) {
+        if (c != '-' && c != '_' && c != '.') local += c;
+    }
+    return local.find("noreply") != std::string::npos ||
+           local.find("donotreply") != std::string::npos;
+}
+
+std::string RecipientAddress(const std::string& recipient) {
+    const std::size_t lt = recipient.rfind('<');
+    const std::size_t gt = recipient.rfind('>');
+    if (lt != std::string::npos && gt != std::string::npos && gt > lt)
+        return Trim(recipient.substr(lt + 1, gt - lt - 1));
+    return Trim(recipient);
+}
+
 std::string RecipientQuery(const std::string& fieldText) {
     const std::size_t comma = fieldText.rfind(',');
     return Trim(comma == std::string::npos ? fieldText : fieldText.substr(comma + 1));
@@ -73,7 +87,8 @@ std::string CompleteRecipient(const std::string& fieldText, const std::string& r
 std::vector<RecipientSuggestion> SuggestRecipients(
     const std::vector<Contact>& contacts, const std::string& query,
     const std::string& fieldText, std::size_t limit,
-    const std::map<std::string, double>* writtenTo) {
+    const std::map<std::string, double>* writtenTo,
+    const std::function<bool(const std::string& address)>& leaveOut) {
     struct Ranked {
         RecipientSuggestion s;
         double written = 0.0;
@@ -104,6 +119,8 @@ std::vector<RecipientSuggestion> SuggestRecipients(
         for (const ContactEmail& e : c.emails) {
             const std::string addr = Lower(Trim(e.address));
             if (addr.empty() || present.count(addr) || seen.count(addr)) continue;
+            if (IsNoReplyAddress(addr)) continue;   // nobody reads what is sent there
+            if (leaveOut && leaveOut(addr)) continue;
             const bool starts = WordStartsWith(name, q) || WordStartsWith(org, q) ||
                                 addr.compare(0, q.size(), q) == 0;
             const bool contains = !starts && (name.find(q) != std::string::npos ||

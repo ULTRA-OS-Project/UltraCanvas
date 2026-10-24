@@ -77,7 +77,7 @@ struct WasmStatus {
     bool interrupted = false;
     std::string message;
 
-    static WasmStatus Success() { return {}; }
+    static WasmStatus Ok() { return {}; }
     static WasmStatus Failure(std::string text) { WasmStatus s; s.ok = false; s.message = std::move(text); return s; }
 };
 

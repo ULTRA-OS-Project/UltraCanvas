@@ -1,6 +1,9 @@
 // Apps/DemoApp/UltraCanvasERDiagramExamples.cpp
 // Examples for UltraCanvasERDiagram v1.0.0
-// Last Modified: 2026-07-31
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the tabs, the
+//                  button bar and the status line in one card, the button bar
+//                  wraps and the status line sizes to its text
+// Last Modified: 2026-10-23
 //
 // One tab per reference diagram from the feature proposal
 // (Docs/UltraCanvas/UltraCanvasERDiagramProposal.md §2), so every Phase 1
@@ -24,6 +27,7 @@
 
 #include "Plugins/Diagrams/UltraCanvasERDiagram.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -608,56 +612,26 @@ static std::shared_ptr<UltraCanvasERDiagram> CreateIdef1xDiagram(
 
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateERDiagramExamples() {
-    const int CONTAINER_W = 960;
-    const int CONTAINER_H = 720;
-    const int PAD = 20;
-    const int TITLE_H = 32;
-    const int SUBTITLE_H = 44;
+    const int TABS_W = 920;
     const int TABS_H = 560;   // Diagrams need canvas height; the panel gets it
-    const int BTNBAR_H = 36;
-    const int STATUS_H = 26;
 
-    auto root = std::make_shared<UltraCanvasContainer>(
-            "erDemoRoot", 0, 0, CONTAINER_W, CONTAINER_H);
-    root->SetBackgroundColor(Color(248, 248, 250, 255));
-
-    int yCursor = PAD;
-
-    auto titleLabel = std::make_shared<UltraCanvasLabel>(
-            "erTitle", PAD, yCursor, CONTAINER_W - 2 * PAD, TITLE_H);
-    titleLabel->SetText("ER Diagram");
-    titleLabel->SetFontSize(20);
-    titleLabel->SetFontWeight(FontWeight::Bold);
-    titleLabel->SetTextColor(Color(50, 60, 130, 255));
-    root->AddChild(titleLabel);
-    yCursor += TITLE_H + 4;
-
-    auto subtitleLabel = std::make_shared<UltraCanvasLabel>(
-            "erSubtitle", PAD, yCursor, CONTAINER_W - 2 * PAD, SUBTITLE_H);
-    subtitleLabel->SetText(
+    auto root = DemoKit::CreatePage("erDemoRoot", "ER Diagram",
             "Entity-relationship modelling in Chen, Chen (min,max) and Crow's Foot "
             "notation over one shared model. Use the buttons to switch notation, "
             "theme and layout on the active tab - wheel zooms, drag pans.");
-    subtitleLabel->SetFontSize(11);
-    subtitleLabel->SetTextColor(Color(110, 110, 120, 255));
-    subtitleLabel->SetWrap(TextWrap::WrapWord);
-    root->AddChild(subtitleLabel);
-    yCursor += SUBTITLE_H + 8;
+
+    auto card = DemoKit::AddCard(root, "erDemoCard");
 
     auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-            "erTabs", PAD, yCursor, CONTAINER_W - 2 * PAD, TABS_H);
+            "erTabs", 0, 0, TABS_W, TABS_H);
     tabs->SetTabStyle(TabStyle::Rounded);
 
-    const int INNER_W = CONTAINER_W - 2 * PAD - 8;
+    const int INNER_W = TABS_W - 8;
     const int INNER_H = TABS_H - 40;
 
-    int statusY = yCursor + TABS_H + 8 + BTNBAR_H + 4;
-    auto statusLabel = std::make_shared<UltraCanvasLabel>(
-            "erStatus", PAD, statusY, CONTAINER_W - 2 * PAD, STATUS_H);
-    statusLabel->SetText("Internet Sales - Chen shapes with crow's-foot line ends "
-                         "and an auto-generated legend.");
-    statusLabel->SetFontSize(10);
-    statusLabel->SetTextColor(Color(90, 90, 100, 255));
+    auto statusLabel = DemoKit::CreateCaption(
+            "erStatus", "Internet Sales - Chen shapes with crow's-foot line ends "
+                        "and an auto-generated legend.");
 
     struct TabSpec {
         const char* title;
@@ -702,8 +676,7 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
         diagrams.push_back(spec.diagram);
     }
     tabs->SetActiveTab(0);
-    root->AddChild(tabs);
-    yCursor += TABS_H + 8;
+    DemoKit::AddFixed(card, tabs);
 
     // Active-diagram tracker so the button bar acts on whatever tab is shown.
     auto activeDiagram =
@@ -722,18 +695,15 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
     // ---- Button bar ----
     const int BTN_W = 150;
     const int BTN_H = 28;
-    const int BTN_GAP = 8;
-    int buttonX = PAD;
+    auto buttonBar = DemoKit::AddRow(card, "erButtonBar", 8);
 
     auto addButton = [&](const std::string& id, const std::string& text,
                          std::function<void()> action) {
-        auto button = CreateButton(id, static_cast<float>(buttonX),
-                                   static_cast<float>(yCursor),
+        auto button = CreateButton(id, 0, 0,
                                    static_cast<float>(BTN_W), static_cast<float>(BTN_H),
                                    text);
         button->SetOnClick(std::move(action));
-        root->AddChild(button);
-        buttonX += BTN_W + BTN_GAP;
+        DemoKit::Add(buttonBar, button);
     };
 
     auto notationIndex = std::make_shared<int>(0);
@@ -828,7 +798,7 @@ UltraCanvasDemoApplication::CreateERDiagramExamples() {
                              " relationships).");
     });
 
-    root->AddChild(statusLabel);
+    DemoKit::Add(card, statusLabel);
     return root;
 }
 

@@ -250,7 +250,7 @@ point an existing build elsewhere without a rebuild, in decreasing priority
 
 The value `off` (or `none`) at any of these turns the service off. The
 wizard's hint says when a provider cannot be signed in to at all. The same
-setting serves the composer's *Attach cloud link…* sign-ins: Google Drive,
+setting serves the composer's *Cloud link…* sign-ins: Google Drive,
 OneDrive and Dropbox go through the service too (UltraCloud, under the
 service's `google`, `microsoft` and `dropbox`), unless a client of their own
 is configured.
@@ -459,7 +459,12 @@ account's own identity; the server files the sent message in Sent); an
 SMTP server entered next to it is used to send instead. Switching an
 existing account between the protocols drops the mail held for it and
 fetches it anew: the same mailbox read over the other protocol numbers its
-messages differently. The choice is stored with the other server settings
+messages differently. Switching a password account also asks for its
+password again: the page warns as soon as the other protocol is chosen, the
+password field turns *Required*, and *Save* (and *Save anyway*) wait for it -
+the stored password belonged to the old server, and a JMAP server often wants
+its own app password or API token. An account signed in with OAuth2 keeps its
+tokens and is not asked. The choice is stored with the other server settings
 of the account and shown again on its Settings page.
 
 **JMAP is found by itself.** Before the autoconfig documents (which only

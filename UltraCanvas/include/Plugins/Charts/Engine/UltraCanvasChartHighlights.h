@@ -1,8 +1,8 @@
 // include/Plugins/Charts/Engine/UltraCanvasChartHighlights.h
 // The chart engine's highlight layer - the file the engine proposal reserves
 // (§5.2, §8.2): group washes drawn under the grid (slot 200) or as overlays
-// above the content (slot 700). Seven shapes: explicit rectangles and
-// ellipses in value space, value bands on one axis, and the computed group
+// above the content (slot 700). Eight shapes: explicit rectangles,
+// ellipses and polygons in value space, value bands on one axis, and the computed group
 // shapes - confidence ellipses (covariance eigen decomposition, the
 // 50%/95%-around-grouped-dots convention), padded convex hulls, smoothed
 // blobs, and per-point halos.
@@ -11,8 +11,9 @@
 // the engine element maps value-space input through its axes and projection
 // and draws the shapes (UltraCanvasChartEngineElement::AddHighlight).
 //
+// Version: 1.1.0 - Polygon: an explicit outline in value space, optionally Chaikin-rounded
 // Version: 1.0.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -35,18 +36,24 @@ enum class ChartHighlightShape {
     ValueBand,          // [bandLow, bandHigh] on one axis, full plot extent across;
                         // a domain-axis band is a vertical strip, and under Polar
                         // a value band is a ring and a domain band a wedge
-    PointHalo           // a translucent disc of `padding` px around each member
+    PointHalo,          // a translucent disc of `padding` px around each member
+    Polygon             // explicit: `members` is the closed outline, in order. Rounded
+                        // with SmoothPolygonChaikin *in value space* when smoothing > 0
+                        // (as Blob: smoothing * 4 iterations), so a caller that smooths
+                        // the same outline the same way tests exactly the drawn shape.
+                        // Set smoothing = 0 for the outline as given
 };
 
 // One highlight. Computed shapes derive their geometry from `members` -
 // value-space points, x mapped through the axis at `xAxisIndex` (the axis
 // driving the projection's domain/u coordinate) and y through `yAxisIndex`
 // (the value/v coordinate). Explicit shapes use `rectValueSpace` under the
-// same mapping; ValueBand uses `axisIndex` + bandLow/bandHigh alone.
+// same mapping; ValueBand uses `axisIndex` + bandLow/bandHigh alone; Polygon
+// takes its outline from `members`.
 struct ChartHighlight {
     ChartHighlightShape shape = ChartHighlightShape::Rectangle;
 
-    std::vector<Point2Dd> members;      // computed shapes
+    std::vector<Point2Dd> members;      // computed shapes; Polygon's outline
     Rect2Dd rectValueSpace;             // Rectangle / Ellipse
     size_t axisIndex = 0;               // ValueBand's axis
     double bandLow = 0.0;
@@ -58,7 +65,7 @@ struct ChartHighlight {
     double confidence = 0.95;           // ConfidenceEllipse level in (0, 1)
     bool showMeanMarker = true;         // ConfidenceEllipse: dot at the mean
     double padding = 18.0;              // Hull/Blob outward pad, PointHalo radius (px)
-    double smoothing = 0.6;             // Blob: 0..1 -> Chaikin iterations
+    double smoothing = 0.6;             // Blob, Polygon: 0..1 -> Chaikin iterations
 
     Color fill = Color(100, 140, 220, 40);
     Color stroke = Color(100, 140, 220, 180);

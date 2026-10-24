@@ -169,7 +169,7 @@ std::string AiGuide(const AiStatus& ai, Platform platform, Assistant assistant) 
     if (assistant == Assistant::Other) {
         out += "Cursor, Windsurf, ChatGPT, a Claude.ai Project, a Gemini Gem: any assistant that can read "
                "a file works, because the repository carries its own instructions.\n";
-    } else if (const AssistantStatus* status = ai.Status(assistant); status && status->installed) {
+    } else if (const AssistantStatus* status = ai.StatusOf(assistant); status && status->installed) {
         out += name + " is installed" + (status->version.empty() ? "" : " (" + status->version + ")") +
                " at " + Code(status->path) + ".\n";
     } else {

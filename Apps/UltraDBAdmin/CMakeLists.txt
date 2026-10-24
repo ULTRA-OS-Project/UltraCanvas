@@ -23,24 +23,39 @@ endif()
 
 add_executable(UltraDBAdmin
     main.cpp
+    engine/DbAdminBlob.cpp
     engine/DbAdminConnections.cpp
+    engine/DbAdminDump.cpp
     engine/DbAdminEditBuffer.cpp
     engine/DbAdminExport.cpp
     engine/DbAdminFormat.cpp
     engine/DbAdminImport.cpp
     engine/DbAdminJobQueue.cpp
+    engine/DbAdminOperations.cpp
     engine/DbAdminPaths.cpp
+    engine/DbAdminRelations.cpp
+    engine/DbAdminRoutines.cpp
+    engine/DbAdminSearch.cpp
+    engine/DbAdminServer.cpp
+    engine/DbAdminSnippets.cpp
+    engine/DbAdminSqlLog.cpp
     engine/DbAdminSqlRunner.cpp
     engine/DbAdminSqlScript.cpp
     engine/DbAdminSqliteTable.cpp
     engine/DbAdminStructureEdit.cpp
     engine/DbAdminTablePager.cpp
+    engine/DbAdminValueTypes.cpp
+    ui/DbAdminBlobDialog.cpp
     ui/DbAdminConnectionDialog.cpp
     ui/DbAdminImportDialog.cpp
     ui/DbAdminModels.cpp
+    ui/DbAdminOperationDialogs.cpp
     ui/DbAdminRowDialog.cpp
     ui/DbAdminStructureDialog.cpp
+    ui/DbAdminTheme.cpp
     ui/DbAdminWindow.cpp
+    ui/DbAdminWindowObjects.cpp
+    ui/DbAdminWindowSchema.cpp
 )
 # One copy per user (UltraCanvasSingleInstance.h).
 ultracanvas_single_instance(UltraDBAdmin)

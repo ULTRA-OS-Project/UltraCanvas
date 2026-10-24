@@ -71,7 +71,7 @@ its own license; the full license texts ship alongside the respective files.
   `libopenzwave.so`, so CMake asks for the shared object by name rather than
   passing `-lopenzwave` and letting the linker choose. Configuration fails if
   only the static library is found.
-- **License:** **LGPL 2.1** — the only copyleft component listed here. A static
+- **License:** **LGPL 2.1**. A static
   link would carry the LGPL's relinking obligation into the resulting binary;
   `SmartHome/tests/ZWaveLinkTest.cpp` documents the two commands that verify it
   did not happen.
@@ -353,6 +353,32 @@ their source is published here; UltraCanvas's own files are unaffected.
 - **Patents:** AAC's core patents have expired, but a distributor shipping an
   AAC decoder should still confirm the position for their jurisdiction and
   product. UltraCanvas ships no AAC codec of its own.
+
+---
+
+## MariaDB Connector/C (libmariadb — the MySQL / MariaDB driver)
+
+- **Used by:** UltraDatabase's MySQL / MariaDB driver
+  (`UltraCanvas/core/UltraDatabase/UltraDatabaseMysqlDriver.cpp`), and so by
+  every program that opens a `mysql` connection (UltraDBAdmin). Optional: a
+  build without it has no MySQL driver and says so.
+- **Upstream:** https://github.com/mariadb-corporation/mariadb-connector-c
+- **Linked, not vendored, and dynamically:** the system package is used
+  (`libmariadb-dev`; Homebrew's `mariadb-connector-c`, vcpkg's `libmariadb`,
+  MSYS2's `libmariadbclient`). The packages ship `libmariadb.a` beside the
+  shared library, so CMake asks for the shared object by name and leaves the
+  driver out when only the archive is found. No Connector/C source is carried
+  in this repository, and the driver that calls it is not a modification of
+  it: it stays MIT.
+- **License:** **LGPL-2.1-or-later.** A distributor of a binary that links it
+  ships the licence text and this notice, makes the exact Connector/C source
+  shipped available (pointing to its upstream release tag does, when it is
+  unmodified), keeps the library a separate file the user could replace, and
+  does not forbid reverse engineering for debugging such a replacement. What
+  that obliges, and what it does not, is set out in
+  `Docs/Research/UltraDBAdminDesignProposal.md` §9.1. Chosen over MySQL's own
+  client library, which is GPL-2.0 with Oracle's FOSS exception; Connector/C
+  speaks to MySQL servers as well.
 
 ---
 

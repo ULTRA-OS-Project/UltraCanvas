@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.18.1 - a row's tooltip only where its cell cut the text off: the
+//                   sender's name and address, the whole subject or the date,
+//                   on one line (it was "sender <address> - unread" and the
+//                   date on a second line, over every cell)
 // Version: 0.18.0 - the Date column is as wide as its widest date plus 6 px, and
 //                   never narrower than its header's caption and sort triangle;
 //                   re-measured from UltraCanvasListView::OnModelChanged
@@ -259,6 +263,9 @@ public:
     float fontSize   = 9.0f;
     int   rowHeight  = 22;
     int   textPadding = 6;
+    // The cells (row, column) whose text did not fit when last drawn: only
+    // they get a tooltip, the whole text (MailView::CellTooltip).
+    std::set<std::pair<int, int>> cutOff;
 
     void RenderItem(IRenderContext* ctx, const IListModel* model,
                     int row, int column,
@@ -318,6 +325,8 @@ public:
         ctx->SetTextAlignment(option.columnAlignment);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
         ctx->SetTextPaint(unread ? unreadColor : readColor);
+        if (ctx->GetTextLineWidth(text) > availW) cutOff.insert({row, column});
+        else                                      cutOff.erase({row, column});
         ctx->DrawTextInRect(text, Rect2Dd(textX, option.rect.y, availW, option.rect.height));
         ctx->SetFontWeight(FontWeight::Normal);   // leave the context as found
     }
@@ -453,6 +462,12 @@ void MailView::BuildListBox() {
     d->wantIcon    = [this](const std::string& key) { if (iconRequester_) iconRequester_(key); };
     delegate_ = d;
     list_->SetDelegate(delegate_);
+    // A tooltip only over a cell that cut its text off, holding the whole of
+    // it; the badge cell keeps its own (the model's cell tooltip).
+    list_->tooltipProvider = [this, d](int row, int column) -> std::string {
+        if (row < 0 || !d->cutOff.count({row, column})) return {};
+        return CellTooltip(row, column);
+    };
     lv->dateFontSize = d->fontSize;
     lv->dateTextGap  = d->textPadding;
 
@@ -1265,15 +1280,29 @@ void MailView::BuildMessageRow(const MessageEnvelope& m, const std::set<int64_t>
     int attachments = 0;
     if (auto it = security_.find(m.uid); it != security_.end() && it->second.attachments > 0)
         attachments = it->second.attachments;
-    outItem.tooltip = sender + " <" + m.fromAddr + ">"
-                 + (isUnread ? " — unread" : "") + (isWaiting ? " — waiting for reply" : "")
-                 + (attachments == 1 ? " — 1 attachment"
-                    : attachments > 1 ? " — " + std::to_string(attachments) + " attachments" : "")
-                 + "\n" + FormatShortDate(m.date);
-    // The badge cell explains itself rather than repeating the row tooltip:
-    // what the sender is, and — when the content scan found something — why.
+    // No row tooltip: the text cells show one only when they cut their text
+    // off (CellTooltip). The badge cell explains itself: what the sender is,
+    // and - when the content scan found something - why.
     outItem.SetCellTooltip(1, outBadge.tooltip);
     outState = { isUnread, isWaiting, attachments };
+}
+
+std::string MailView::CellTooltip(int row, int column) const {
+    if (row < 0 || row >= static_cast<int>(messages_.size())) return {};
+    const MessageEnvelope& m = messages_[static_cast<std::size_t>(row)];
+    switch (column) {
+        case 0: {   // the sender: name and address
+            const std::string name = SingleLine(DisplayHeader(m.fromName));
+            if (name.empty() || name == m.fromAddr) return m.fromAddr;
+            return m.fromAddr.empty() ? name : name + " <" + m.fromAddr + ">";
+        }
+        case 2:     // the subject
+            return m.subject.empty() ? std::string() : SingleLine(DisplayHeader(m.subject));
+        case kDateColumn:
+            return FormatShortDate(m.date);
+        default:
+            return {};
+    }
 }
 
 int MailView::SortedInsertPos(const MessageEnvelope& m) const {

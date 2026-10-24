@@ -1,10 +1,13 @@
 // Apps/DemoApp/UltraCanvasArcDiagramExamples.cpp
 // Demo examples for UltraCanvasArcDiagram — arc diagram
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the tabs in a card
+//                  that fills the area, every tab's description wraps above its diagram
 // Version: 1.1.1
-// Last Modified: 2026-06-04
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasArcDiagram.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -15,6 +18,24 @@
 
 namespace UltraCanvas {
 
+    // A tab's page: its description, wrapped, above the diagram. The tab
+    // gives it its exact size; a diagram taller than that scrolls.
+    static std::shared_ptr<UltraCanvasContainer> MakeTabPage(
+            const std::string& id, const std::string& descId, const std::string& text)
+    {
+        auto tab = std::make_shared<UltraCanvasContainer>(id);
+        // The diagram keeps its size; a tab shorter or narrower than it
+        // scrolls rather than cutting the bottom rows off.
+        ContainerStyle scrolling = tab->GetContainerStyle();
+        scrolling.autoShowScrollbars = true;
+        tab->SetContainerStyle(scrolling);
+        tab->SetPadding(8, 10, 8, 10);
+        tab->layout.SetFlexColumn().SetFlexGap(6)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        DemoKit::AddText(tab, descId, text)->SetFontSize(11);
+        return tab;
+    }
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB 1 — Character co-occurrence  (image 1 — Friends network)
 // Many nodes, degree-based sizing, vertical labels, semicircle arcs
@@ -22,12 +43,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeFriendsTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("ArcFriendsTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("ArcFriendsDesc", 10, 8, 900, 22);
-        desc->SetText("Character co-occurrence: node size = degree, labels vertical, semicircle arcs. Click a node to see connections.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("ArcFriendsTab", "ArcFriendsDesc",
+                "Character co-occurrence: node size = degree, labels vertical, semicircle arcs. Click a node to see connections.");
 
         auto diagram = std::make_shared<UltraCanvasArcDiagram>(
                 "ArcFriends", 10, 34, 990, 654);
@@ -109,7 +126,7 @@ namespace UltraCanvas {
             ae.targetId = e.b;
             ae.weight   = e.w;
             ae.color    = Color(160,160,160,static_cast<uint8_t>(60 + e.w * 15));
-            ae.side     = ArcEdgeType::Above;
+            ae.side     = ArcEdgeType::AboveBaseline;
             diagram->AddEdge(ae);
         }
 
@@ -139,7 +156,7 @@ namespace UltraCanvas {
             statusLabel->SetText(ss.str());
         };
 
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -150,12 +167,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeCanonicalTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("ArcCanonTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("ArcCanonDesc", 10, 8, 900, 22);
-        desc->SetText("Canonical arc diagram: arcs colored by category, width encodes strength. Perfect semicircle geometry.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("ArcCanonTab", "ArcCanonDesc",
+                "Canonical arc diagram: arcs colored by category, width encodes strength. Perfect semicircle geometry.");
 
         auto diagram = std::make_shared<UltraCanvasArcDiagram>(
                 "ArcCanon", 10, 34, 990, 654);
@@ -190,7 +203,7 @@ namespace UltraCanvas {
             ArcEdge ae;
             ae.sourceId = e.a; ae.targetId = e.b;
             ae.weight   = e.w; ae.color    = e.col;
-            ae.side     = ArcEdgeType::Above;
+            ae.side     = ArcEdgeType::AboveBaseline;
             diagram->AddEdge(ae);
         }
 
@@ -198,7 +211,7 @@ namespace UltraCanvas {
         s.arcHeightMode  = ArcHeightMode::Semicircle;
         s.arcMinWidth    = 1.0f;
         s.arcMaxWidth    = 6.0f;
-        s.labelSide      = ArcLabelSide::Below;
+        s.labelSide      = ArcLabelSide::BelowBaseline;
         s.labelFontSize  = 13.0f;
         s.nodeBaseSize   = 10.0f;
         s.nodePadding    = 90.0f;
@@ -217,7 +230,7 @@ namespace UltraCanvas {
             statusLabel->SetText(ss.str());
         };
 
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -228,12 +241,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeDirectedTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("ArcDirTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("ArcDirDesc", 10, 8, 900, 22);
-        desc->SetText("Directed flow: hover a node to focus its connections (others fade to gray). Click empty space to reset. Apex shows each link's share of total flow.");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("ArcDirTab", "ArcDirDesc",
+                "Directed flow: hover a node to focus its connections (others fade to gray). Click empty space to reset. Apex shows each link's share of total flow.");
 
         auto diagram = std::make_shared<UltraCanvasArcDiagram>(
                 "ArcDir", 10, 34, 990, 654);
@@ -272,15 +281,15 @@ namespace UltraCanvas {
 
         // Labels intentionally omitted — the new arcValueDisplay style auto-renders
         // each arc's share of the total weight as a percentage at the apex (zenit).
-        diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true,  ArcEdgeType::Above));
-        diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true,  ArcEdgeType::Above));
+        diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true,  ArcEdgeType::AboveBaseline));
+        diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true,  ArcEdgeType::AboveBaseline));
 
         // Self-loop (below)
-        ArcEdge selfLoop = makeEdge("special","special",3.0f, violet, true, ArcEdgeType::Below);
+        ArcEdge selfLoop = makeEdge("special","special",3.0f, violet, true, ArcEdgeType::BelowBaseline);
         diagram->AddEdge(selfLoop);
 
         ArcDiagramStyle s;
@@ -291,7 +300,7 @@ namespace UltraCanvas {
         s.showArrows        = true;
         s.arrowPosition     = ArcArrowPosition::AtMidArc;
         s.arrowSize         = 9.0f;
-        s.labelSide         = ArcLabelSide::Below;
+        s.labelSide         = ArcLabelSide::BelowBaseline;
         s.labelFontSize     = 11.0f;
         s.arcLabelFontSize  = 11.0f;
         s.nodeSizeMode      = ArcNodeSizeMode::Fixed;
@@ -319,7 +328,7 @@ namespace UltraCanvas {
             statusLabel->SetText(ss.str());
         };
 
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -330,12 +339,8 @@ namespace UltraCanvas {
     static std::shared_ptr<UltraCanvasContainer> MakeGenomicsTab(
             std::shared_ptr<UltraCanvasLabel> statusLabel)
     {
-        auto tab = std::make_shared<UltraCanvasContainer>("ArcGenomTab", 0, 0, 1020, 700);
-
-        auto desc = std::make_shared<UltraCanvasLabel>("ArcGenomDesc", 10, 8, 900, 22);
-        desc->SetText("RNA base pairs: known (above) and novel (below) connections, colored by statistical significance (P-value).");
-        desc->SetFontSize(11);
-        tab->AddChild(desc);
+        auto tab = MakeTabPage("ArcGenomTab", "ArcGenomDesc",
+                "RNA base pairs: known (above) and novel (below) connections, colored by statistical significance (P-value).");
 
         auto diagram = std::make_shared<UltraCanvasArcDiagram>(
                 "ArcGenom", 10, 34, 990, 654);
@@ -372,7 +377,7 @@ namespace UltraCanvas {
             ArcEdge e;
             e.sourceId = idA; e.targetId = idB;
             e.weight = 1.0f; e.color = p.c;
-            e.side = ArcEdgeType::Above;
+            e.side = ArcEdgeType::AboveBaseline;
             diagram->AddEdge(e);
         }
 
@@ -390,7 +395,7 @@ namespace UltraCanvas {
             ArcEdge e;
             e.sourceId = idA; e.targetId = idB;
             e.weight = 1.0f; e.color = p.c;
-            e.side = ArcEdgeType::Below;
+            e.side = ArcEdgeType::BelowBaseline;
             diagram->AddEdge(e);
         }
 
@@ -400,7 +405,7 @@ namespace UltraCanvas {
         s.arcMaxWidth      = 2.0f;
         s.bundleHeightStep = 6.0f;
         s.sortBySpan       = true;
-        s.labelSide        = ArcLabelSide::Below;
+        s.labelSide        = ArcLabelSide::BelowBaseline;
         s.labelFontSize    = 10.0f;
         s.nodeBaseSize     = 5.0f;
         s.nodePadding      = 30.0f;
@@ -418,11 +423,11 @@ namespace UltraCanvas {
         diagram->SetStyle(s);
 
         diagram->onEdgeClick = [statusLabel](int, const ArcEdge& e) {
-            std::string side = (e.side == ArcEdgeType::Above) ? "known" : "novel";
+            std::string side = (e.side == ArcEdgeType::AboveBaseline) ? "known" : "novel";
             statusLabel->SetText(e.sourceId + " - " + e.targetId + "  (" + side + " base pair)");
         };
 
-        tab->AddChild(diagram);
+        DemoKit::AddFixed(tab, diagram);
         return tab;
     }
 
@@ -432,57 +437,22 @@ namespace UltraCanvas {
     std::shared_ptr<UltraCanvasUIElement>
     UltraCanvasDemoApplication::CreateArcDiagramExamples()
     {
-        // No fixed size: the host display area stretches `main` (it applies
-        // flex-grow + align-self:stretch), so the Fr content column grows with
-        // the window and the subtitle re-wraps on resize.
-        auto main = std::make_shared<UltraCanvasContainer>("ArcDiagramExamples");
-        main->SetPadding(5,5,0,5);
-        // 3-row × 2-column grid: title/subtitle in the left column, status box in
-        // the right column spanning both top rows, tabs filling the bottom row.
-        // Fixed pixel heights on the label rows (Auto rows measure unwrapped text
-        // and would clip the subtitle's second wrapped line).
-        main->layout.SetGrid()
-                .SetGridColumns({
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                                 .value = CSSLayout::Dimension::Fr(1)},
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(350)}})
-                .SetGridRows({
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(34)},  // title row
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fixed,
-                                                 .value = CSSLayout::Dimension::Px(44)},  // subtitle (room for 2 lines)
-                        CSSLayout::GridTrackSize{.kind = CSSLayout::GridTrackSizeKind::Fr,
-                                                 .value = CSSLayout::Dimension::Fr(1)}})   // tabs fill
-                .SetGridGap(6)
-                .SetGridJustifyItems(CSSLayout::JustifyItems::Stretch)
-                .SetGridAlignItems(CSSLayout::AlignItems::Stretch);
+        auto page = DemoKit::CreatePage("ArcDiagramExamples", "Arc Diagram",
+                "Nodes on a baseline, edges as cubic Bezier arcs. Above = forward, below = back or "
+                "novel. Width + opacity encode weight.");
+        // The tabs fill the area, as the diagrams did before.
+        page->SetFillsArea(true);
 
-        auto title = std::make_shared<UltraCanvasLabel>("ArcTitle");
-        title->SetText("Arc Diagram");
-        title->SetFontSize(18);
-        title->SetFontWeight(FontWeight::Bold);
-        title->SetTextColor(Color(80, 50, 140));
-        main->AddChild(title);
-        title->layoutItem.SetGridRowColSimplified(0, 0);
+        auto card = DemoKit::CreateCard("ArcCard");
+        DemoKit::Add(page, card, 1);
+        card->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-        auto subtitle = std::make_shared<UltraCanvasLabel>("ArcSub");
-        subtitle->SetText("Nodes on a baseline, edges as cubic Bezier arcs. Above = forward, below = back or novel. Width + opacity encode weight.");
-        subtitle->SetFontSize(11);
-        subtitle->SetWrap(TextWrap::WrapWord);
-        subtitle->SetTextColor(Color(90, 90, 90));
-        main->AddChild(subtitle);
-        subtitle->layoutItem.SetGridRowColSimplified(1, 0);
-
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("ArcStatus");
-        statusLabel->SetText("Click a node or arc to inspect.");
-        statusLabel->SetFontSize(10);
+        auto statusLabel = DemoKit::CreateCaption("ArcStatus", "Click a node or arc to inspect.");
         statusLabel->SetBackgroundColor(Color(245, 245, 245));
         statusLabel->SetBorders(1.0f);
         statusLabel->SetPadding(6.0f);
-        statusLabel->SetAlignment(TextAlignment::Center);
-        main->AddChild(statusLabel);
-        statusLabel->layoutItem.SetGridRowColSimplified(0, 1, 2, 1);
+        statusLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
+        DemoKit::Add(card, statusLabel);
 
         auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
                 "ArcTabs");
@@ -495,9 +465,11 @@ namespace UltraCanvas {
         tabs->AddTab("Directed flow (Navy)",       MakeDirectedTab(statusLabel));
         tabs->AddTab("RNA base pairs (genomics)",  MakeGenomicsTab(statusLabel));
 
-        main->AddChild(tabs);
-        tabs->layoutItem.SetGridRowColSimplified(2, 0, 1, 2);
-        return main;
+        DemoKit::Add(card, tabs, 1);
+        // From nothing, not from the diagrams' height: the tabs take the
+        // card's room and each tab scrolls its diagram.
+        tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
+        return page;
     }
 
 } // namespace UltraCanvas

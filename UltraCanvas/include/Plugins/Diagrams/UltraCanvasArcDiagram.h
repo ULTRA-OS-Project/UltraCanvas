@@ -24,31 +24,21 @@
 #include <cmath>
 #include <limits>
 
-#ifdef Below
-#undef Below
-#endif
-#ifdef Above
-#undef Above
-#endif
-#ifdef None
-#undef None   // X11 defines `None` as 0L — collides with ArcValueDisplay::None
-#endif
-
 namespace UltraCanvas {
 
 // ===== ENUMERATIONS =====
 
     /// Which side of the baseline arcs are drawn on
     enum class ArcEdgeType {
-        Above,          ///< Arc curves above the baseline (forward links, default)
-        Below,          ///< Arc curves below the baseline (back links, secondary)
+        AboveBaseline,  ///< Arc curves above the baseline (forward links, default)
+        BelowBaseline,  ///< Arc curves below the baseline (back links, secondary)
         Auto            ///< Above when source < target index, below otherwise
     };
 
     /// Where node labels are positioned relative to the node dot
     enum class ArcLabelSide {
-        Below,          ///< Labels below the baseline (default)
-        Above,          ///< Labels above the baseline
+        BelowBaseline,  ///< Labels below the baseline (default)
+        AboveBaseline,  ///< Labels above the baseline
         Alternating,    ///< Alternates above/below by index — reduces overlap for dense graphs
         Vertical        ///< P2 — labels rotated 90° descending below baseline (image 1 style)
     };
@@ -82,7 +72,7 @@ namespace UltraCanvas {
 
     /// P12 — what to render automatically at the arc apex (zenit)
     enum class ArcValueDisplay {
-        None,           ///< No auto-generated apex label (default; honors edge.label)
+        NoLabel,           ///< No auto-generated apex label (default; honors edge.label)
         Value,          ///< Show edge weight as numeric value
         Percentage      ///< Show edge weight as percentage of total edge weight
     };
@@ -134,7 +124,7 @@ namespace UltraCanvas {
         float   labelFontSize       = 11.0f;    ///< Node label font size
         Color   labelColor          = Color(40, 40, 40, 255);       ///< Node label text color
         float   labelMargin         = 6.0f;     ///< Gap between node dot and label
-        ArcLabelSide labelSide      = ArcLabelSide::Below;
+        ArcLabelSide labelSide      = ArcLabelSide::BelowBaseline;
 
         // Arcs
         float   arcMinWidth         = 0.5f;     ///< Minimum arc stroke width
@@ -187,7 +177,7 @@ namespace UltraCanvas {
         bool    emphasizeActiveLabel = true;    ///< Draw active node's label in bold weight
 
         // P12 — auto value/percentage label drawn at arc apex (zenit)
-        ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
+        ArcValueDisplay arcValueDisplay  = ArcValueDisplay::NoLabel;
         int     arcValueDecimals    = 1;        ///< Decimal places for value/percentage text
         float   arcValueFontSize    = 10.0f;    ///< Font size for apex value label
         Color   arcValueLabelColor  = Color(40, 40, 40, 230);   ///< Apex value label color

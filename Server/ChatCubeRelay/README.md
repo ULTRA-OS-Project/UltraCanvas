@@ -89,5 +89,10 @@ Settings come from the environment (`.env.example` lists them). Deployment:
 WebSocket upgrade in front of it), `deploy/turnserver.conf` (coturn, sharing
 `CHATCUBE_RELAY_TURN_SECRET`).
 
+Give ChatCube the relay's `https://` address. A bare host is taken as
+`https://`, and an `http://` address that the server redirects to `https://`
+(the usual port-80 block in nginx) is followed and the new address kept -
+but going straight there saves the detour on every start.
+
 A relay with a self-signed certificate is trusted by key in ChatCube
 (UltraNet's `pinnedPublicKey`), never by switching verification off.

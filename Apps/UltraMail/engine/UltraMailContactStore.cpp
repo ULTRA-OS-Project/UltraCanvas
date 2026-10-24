@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailContactStore.cpp
+// Version: 0.3.0 - RemoveAll; forgotten_addresses (schema 3): Forget, ForgottenAddresses
 // Version: 0.1.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailContactStore.h"
@@ -82,6 +83,10 @@ UltraDbResult ContactStore::Open(const std::string& connectionName,
           "  created_at TEXT);"
           "ALTER TABLE contacts ADD COLUMN group_name TEXT NOT NULL DEFAULT '';"
           "CREATE INDEX idx_contacts_group ON contacts(group_name);" },
+        { 3, "addresses the user deleted",
+          "CREATE TABLE forgotten_addresses("
+          "  address TEXT PRIMARY KEY,"
+          "  forgotten_at TEXT);" },
     };
     UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
     if (!migrated) return migrated;
@@ -211,6 +216,31 @@ UltraDbResult ContactStore::KnownAddresses(std::set<std::string>& out) const {
     return UltraDbResult::Ok();
 }
 
+UltraDbResult ContactStore::Forget(const std::vector<std::string>& addresses) {
+    if (addresses.empty()) return UltraDbResult::Ok();
+    UltraDbHandle tx = UltraDb_Begin(connection_);
+    if (tx == UltraDbInvalidHandle)
+        return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
+    for (const auto& a : addresses) {
+        if (a.empty()) continue;
+        UltraDbResult r = UltraDb_ExecInTx(tx,
+            "INSERT OR REPLACE INTO forgotten_addresses(address, forgotten_at) "
+            "VALUES(lower(?), datetime('now'))", { a });
+        if (!r) { UltraDb_Rollback(tx); return r; }
+    }
+    return UltraDb_Commit(tx);
+}
+
+UltraDbResult ContactStore::ForgottenAddresses(std::set<std::string>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        "SELECT address FROM forgotten_addresses", rs);
+    if (!q) return q;
+    for (const auto& row : rs) out.insert(row["address"].AsString());
+    return UltraDbResult::Ok();
+}
+
 UltraDbResult ContactStore::SaveInTx(UltraDbHandle tx, Contact& c) {
     if (c.id == 0) {
         UltraDbResult ins = UltraDb_ExecInTx(tx,
@@ -241,12 +271,24 @@ UltraDbResult ContactStore::Get(int64_t id, Contact& out) const {
 }
 
 UltraDbResult ContactStore::Remove(int64_t id) {
+    // RemoveAll's transaction: a failed statement rolls the whole delete back
+    // and is returned, where this used to commit regardless and report success.
+    return RemoveAll({ id });
+}
+
+UltraDbResult ContactStore::RemoveAll(const std::vector<int64_t>& ids) {
+    if (ids.empty()) return UltraDbResult::Ok();
     UltraDbHandle tx = UltraDb_Begin(connection_);
     if (tx == UltraDbInvalidHandle)
         return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
-    UltraDb_ExecInTx(tx, "DELETE FROM contact_emails WHERE contact_id=?", { id });
-    UltraDb_ExecInTx(tx, "DELETE FROM contact_phones WHERE contact_id=?", { id });
-    UltraDb_ExecInTx(tx, "DELETE FROM contacts WHERE id=?", { id });
+    for (int64_t id : ids) {
+        for (const char* sql : { "DELETE FROM contact_emails WHERE contact_id=?",
+                                 "DELETE FROM contact_phones WHERE contact_id=?",
+                                 "DELETE FROM contacts WHERE id=?" }) {
+            UltraDbResult r = UltraDb_ExecInTx(tx, sql, { id });
+            if (!r) { UltraDb_Rollback(tx); return r; }
+        }
+    }
     return UltraDb_Commit(tx);
 }
 

@@ -1,9 +1,11 @@
 // core/UltraCanvasMenuConfigWidget.cpp
 // Implementation of the menu customisation widget.
+// Version: 1.0.2 - the action buttons' pane scrolls when a longer translation
+//                 makes them wider than it
 // Version: 1.0.1 - Add / Remove show chevron icons, not "→" / "←"; a separator
 //                 row reads "————", not "────" (the bundled UI font has
 //                 neither the arrows nor the box-drawing line)
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenuConfigWidget.h"
@@ -66,7 +68,14 @@ namespace UltraCanvas {
         };
         leftPane->AddChild(leftTree);
 
-        // Middle pane: action buttons.
+        // Middle pane: action buttons. Each is as wide as its text, which a
+        // translation can make wider than the pane: the pane then scrolls
+        // sideways (and can be dragged wider) rather than cutting them.
+        {
+            ContainerStyle midStyle = midPane->GetContainerStyle();
+            midStyle.autoShowScrollbars = true;
+            midPane->SetContainerStyle(midStyle);
+        }
         midPane->layout.SetFlexColumn().SetFlexGap(6)
                 .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);

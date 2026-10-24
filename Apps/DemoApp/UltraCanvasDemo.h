@@ -195,7 +195,6 @@ namespace UltraCanvas {
         std::shared_ptr<DemoHeaderContainer> headerContainer;  // Header with title and buttons
         std::shared_ptr<UltraCanvasContainer> displayContainer;  // Content display area
         std::shared_ptr<DemoLegendContainer> legendContainer;  // Legend container for status icons
-        std::shared_ptr<UltraCanvasLabel> statusLabel;
         std::shared_ptr<UltraCanvasLabel> descriptionLabel;
 
         // Demo items registry
@@ -226,23 +225,28 @@ namespace UltraCanvas {
         void RegisterDemoItem(std::unique_ptr<DemoItem> item);
         void DisplayDemoItem(const std::string& itemId);
         // Show an item the way a click on the tree would: the display, the tree
-        // selection, the header title and the status line all move together.
+        // selection and the header title move together.
         // Returns false for an unknown item id.
         bool SelectDemoItem(const std::string& itemId);
+        // --audit-layout: open every page (or only `onlyPage`), lay it out and
+        // list the text that does not fit and what a parent cuts off; with
+        // pseudoLocalize every text first ~40% longer. 0: nothing found.
+        int RunLayoutAudit(bool pseudoLocalize, const std::string& onlyPage);
+        // Every text of the page on show ~40% longer, as a translation is
+        // (--pseudo-loc with --component, to look at the result).
+        void PseudoLocalizeCurrentPage();
         void ClearDisplay();
-        void UpdateStatusDisplay(const std::string& itemId);
         void UpdateHeaderDisplay(const std::string& itemId);
 
         // ===== EVENT HANDLERS =====
         void OnTreeNodeSelected(TreeNode* node);
         // The filter field's text changed: narrow the tree to it (empty: the
-        // whole tree again) and say in the status line how much it found.
+        // whole tree again).
         void OnTreeFilterChanged(const std::string& text);
         void OnWindowResize(int newWidth, int newHeight);
 
         // ===== UTILITY METHODS =====
         std::string GetStatusIcon(ImplementationStatus status) const;
-        Color GetStatusColor(ImplementationStatus status) const;
         std::string GetCategoryDisplayName(DemoCategory category) const;
 
         // ===== DEMO CREATION METHODS =====
@@ -366,6 +370,7 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateJitterPlotExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateBubbleChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateQuadrantChartExamples();
+        std::shared_ptr<UltraCanvasUIElement> CreateImportancePerformanceChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateGanttChartExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateKanbanBoardExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateRaincloudPlotExample();

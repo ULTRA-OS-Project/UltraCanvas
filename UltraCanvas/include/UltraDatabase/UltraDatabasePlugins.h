@@ -3,6 +3,7 @@
 // engine family. The built-in SQLite driver implements these same interfaces;
 // PostgreSQL / MySQL / ... arrive as additional drivers (Stage 2+ ships them
 // as loadable DSOs) without changing the core or any caller.
+// Version: 0.4.0 - server administration (UltraDatabaseServer.h)
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -11,6 +12,7 @@
 #include "UltraDatabaseValue.h"
 #include "UltraDatabaseSchema.h"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -147,6 +149,40 @@ public:
         out = UltraDbTableSchema{};
         return UltraDbResult::Error(UltraDbResultCode::Unsupported,
                                     "this driver cannot describe tables", DriverName());
+    }
+
+    // Server administration, behind UltraDb_ServerSessions and the rest
+    // (UltraDatabaseServer.h, which fixes the result columns). An embedded
+    // engine has no server and keeps these defaults.
+    virtual UltraDbResult ServerSessions(UltraDbResultSet& out) {
+        out.Clear();
+        return NoServer();
+    }
+    virtual UltraDbResult ServerSettings(const std::string& filter, UltraDbResultSet& out) {
+        (void)filter;
+        out.Clear();
+        return NoServer();
+    }
+    virtual UltraDbResult ServerSizes(const std::string& schema, UltraDbResultSet& out) {
+        (void)schema;
+        out.Clear();
+        return NoServer();
+    }
+    virtual UltraDbResult StopSessionSql(int64_t id, bool endSession, std::string& sql) {
+        (void)id; (void)endSession;
+        sql.clear();
+        return NoServer();
+    }
+    virtual UltraDbResult StopSession(int64_t id, bool endSession, bool& stopped) {
+        (void)id; (void)endSession;
+        stopped = false;
+        return NoServer();
+    }
+
+private:
+    UltraDbResult NoServer() const {
+        return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                    "this engine has no server to administer", DriverName());
     }
 };
 

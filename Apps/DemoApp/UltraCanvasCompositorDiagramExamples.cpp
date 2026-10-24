@@ -1,7 +1,12 @@
 // Apps/DemoApp/UltraCanvasCompositorDiagramExamples.cpp
 // Comprehensive demo for UltraCanvasCompositorDiagram v0.4.1.
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): tabs, buttons
+//                 and status in a card that fills the page area, the diagrams as
+//                 wide as their tab, buttons as wide as their text (the old width
+//                 a minimum), both button bars wrap, the status line wraps
 // Version: 1.1.0 - Save / Load buttons (the header listed them, the toolbar
 //                 had none); a double-click on a node names it in the status
+// Last Modified: 2026-10-23
 //
 // Layout pattern follows UltraCanvasNodeDiagramExamples.cpp (title + subtitle
 // + tabs + button bar + status bar).
@@ -24,6 +29,7 @@
 #include <stdexcept>  // ImageCairo.h uses std::runtime_error without including this
 #include "Plugins/Diagrams/UltraCanvasCompositorDiagram.h"
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasButton.h"
@@ -1427,11 +1433,21 @@ struct ImageTabState {
     std::shared_ptr<UltraCanvasLabel> statusLabel;
 };
 
+// A button as wide as its text, never narrower than minW, h tall.
+std::shared_ptr<UltraCanvasButton> MakeTextButton(
+        const std::string& id, int minW, int h, const std::string& text) {
+    auto b = std::make_shared<UltraCanvasButton>(id, text);
+    b->size.height = CSSLayout::Dimension::Px(static_cast<float>(h));
+    CSSLayout::BoxConstraints limits = b->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    limits.minWidth = CSSLayout::Dimension::Px(static_cast<float>(minW));
+    b->boxConstraints = limits;
+    return b;
+}
+
 std::shared_ptr<UltraCanvasButton> MakeSubButton(
-        const std::string& id, int x, int y, int w, int h,
+        const std::string& id, int minW, int h,
         const std::string& text, std::function<void()> onClick) {
-    auto b = std::make_shared<UltraCanvasButton>(id, x, y, w, h);
-    b->SetText(text);
+    auto b = MakeTextButton(id, minW, h, text);
     b->SetBackgroundColor(Color(50, 60, 80, 255));
     b->onClick = std::move(onClick);
     return b;
@@ -1445,22 +1461,19 @@ std::shared_ptr<UltraCanvasButton> MakeSubButton(
 
 std::shared_ptr<UltraCanvasUIElement>
 UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
-    const int CONTAINER_W = 1280;
-    const int CONTAINER_H = 820;
-    const int PAD = 20;
-    const int TITLE_H = 32;
-    const int SUBTITLE_H = 36;
-    const int TABS_H = 600;
     const int BTNBAR_H = 36;
-    const int STATUS_H = 26;
 
-    auto root = std::make_shared<UltraCanvasContainer>(
-        "compDemoRoot", 0, 0, CONTAINER_W, CONTAINER_H);
-    root->SetBackgroundColor(Color(248, 248, 250, 255));
-    // Root is a CSS flex column: title / subtitle / tabs (grows) / button bar / status.
-    root->SetPadding(PAD);
-    root->layout.SetFlexColumn().SetFlexGap(8)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    auto page = DemoKit::CreatePage("compDemoRoot", "Compositor Diagram",
+        "Comprehensive showcase: typed sockets, embedded widgets, groups, "
+        "history, edge labels. Use the toolbar to toggle features, undo/redo, "
+        "copy/paste. Tab key opens the node palette (host-rendered).");
+    // The diagrams pan and zoom themselves: the page is the area's height and
+    // the card takes what the title leaves - tabs (grow) / button bar / status.
+    page->SetFillsArea(true);
+
+    auto card = DemoKit::CreateCard("compCard");
+    card->SetPadding(4);
+    DemoKit::Add(page, card, 1);
 
     // Add a flex child with the given grow factor, stretched on the cross axis.
     auto addFlex = [](const std::shared_ptr<UltraCanvasContainer>& parent,
@@ -1470,38 +1483,26 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
         parent->AddChild(child);
     };
 
-    auto title = std::make_shared<UltraCanvasLabel>(
-        "compTitle", 0, 0, 0, TITLE_H);
-    title->SetText("Compositor Diagram");
-    title->SetFontSize(20);
-    title->SetFontWeight(FontWeight::Bold);
-    title->SetTextColor(Color(50, 60, 130, 255));
-    addFlex(root, title, 0);
-
-    auto subtitle = std::make_shared<UltraCanvasLabel>(
-        "compSubtitle", 0, 0, 0, SUBTITLE_H);
-    subtitle->SetText(
-        "Comprehensive showcase: typed sockets, embedded widgets, groups, "
-        "history, edge labels. Use the toolbar to toggle features, undo/redo, "
-        "copy/paste. Tab key opens the node palette (host-rendered).");
-    subtitle->SetFontSize(11);
-    subtitle->SetTextColor(Color(110, 110, 120, 255));
-    subtitle->SetWrap(TextWrap::WrapWord);
-    addFlex(root, subtitle, 0);
+    // A diagram takes its tab's width, whatever the page area gives.
+    auto addDiagram = [&](const std::shared_ptr<UltraCanvasContainer>& parent,
+                          const std::shared_ptr<UltraCanvasUIElement>& diagram) {
+        diagram->size.width = CSSLayout::Dimension::Auto();
+        addFlex(parent, diagram, 1);
+    };
 
     // ---- TabbedContainer (grows to fill the middle) ----
-    auto tabs = std::make_shared<UltraCanvasTabbedContainer>(
-        "compTabs", 0, 0, CONTAINER_W - 2 * PAD, TABS_H);
+    auto tabs = std::make_shared<UltraCanvasTabbedContainer>("compTabs", 0, 0, 0, 0);
     tabs->SetTabStyle(TabStyle::Rounded);
+    tabs->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0));
 
-    const int INNER_W = CONTAINER_W - 2 * PAD - 8;
-    const int INNER_H = TABS_H - 40;
+    // The size each tab and diagram is built with; the tabbed container
+    // arranges the active tab into its content area.
+    const int INNER_W = 1232;
+    const int INNER_H = 560;
 
-    auto statusLabel = std::make_shared<UltraCanvasLabel>(
-        "compStatus", 0, 0, 0, STATUS_H);
-    statusLabel->SetText("Ready - Wheel zoom, drag to pan, shift+drag for selection box. "
-                         "Tab in canvas opens palette.");
-    statusLabel->SetFontSize(10);
+    auto statusLabel = DemoKit::CreateCaption("compStatus",
+        "Ready - Wheel zoom, drag to pan, shift+drag for selection box. "
+        "Tab in canvas opens palette.");
     statusLabel->SetTextColor(Color(90, 90, 100, 255));
 
     // ---- Tab 1: Recreate Images ----
@@ -1517,14 +1518,15 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     state1->diagram = diag1;
     state1->statusLabel = statusLabel;
 
-    // Sub-scenario button row (flex row at the top of the tab).
-    auto subBar1 = std::make_shared<UltraCanvasContainer>("compTab1Sub", 0, 0, 0, SUBBAR_H);
-    subBar1->layout.SetFlexRow().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    subBar1->size.height = CSSLayout::Dimension::Px(SUBBAR_H);
+    // Sub-scenario button row at the top of the tab; it wraps when the tab
+    // is narrower than the buttons.
+    auto subBar1 = DemoKit::CreateRow("compTab1Sub", 4);
+    subBar1->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    subBar1->SetPadding(2, 0, 2, 0);
     auto subBtn = [&](const std::string& id, const std::string& text,
                        std::function<void(UltraCanvasCompositorDiagram&)> populate) {
         const int W = 130;
-        auto b = MakeSubButton(id, 0, 0, W, SUBBAR_H - 4, text,
+        auto b = MakeSubButton(id, W, SUBBAR_H - 4, text,
             [state1, populate, text]() {
                 if (state1->diagram) {
                     populate(*state1->diagram);
@@ -1534,8 +1536,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
                     state1->statusLabel->SetText("Sub-scenario: " + text);
                 }
             });
-        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        subBar1->AddChild(b);
+        DemoKit::Add(subBar1, b);
     };
     subBtn("sub_layer", "Layer Compositor", BuildLayerCompositor);
     subBtn("sub_brush", "Brush Editor",     BuildBrushEditor);
@@ -1546,7 +1547,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     subBtn("sub_funn",  "Marketing Funnel", BuildMarketingFunnel);
 
     addFlex(tab1, subBar1, 0);
-    addFlex(tab1, diag1, 1);
+    addDiagram(tab1, diag1);
 
     // ---- Tab 2: Subgraph / Groups ----
     auto tab2 = std::make_shared<UltraCanvasContainer>(
@@ -1555,7 +1556,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     tab2->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     auto diag2 = CreateCompositorDiagram("compDiag2", 0, 0, INNER_W, INNER_H);
     BuildSubgraphScene(*diag2);
-    addFlex(tab2, diag2, 1);
+    addDiagram(tab2, diag2);
 
     // ---- Tab 3: Visual Scripting ----
     auto tab3 = std::make_shared<UltraCanvasContainer>(
@@ -1564,7 +1565,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     tab3->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     auto diag3 = CreateCompositorDiagram("compDiag3", 0, 0, INNER_W, INNER_H);
     BuildVisualScripting(*diag3);
-    addFlex(tab3, diag3, 1);
+    addDiagram(tab3, diag3);
 
     // ---- Tab 4: Feature Playground ----
     auto tab4 = std::make_shared<UltraCanvasContainer>(
@@ -1577,7 +1578,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     diag4->SetControlsVisible(true);
     diag4->SetSnapToGrid(true);
     diag4->SetAlignmentGuidesEnabled(true);
-    addFlex(tab4, diag4, 1);
+    addDiagram(tab4, diag4);
 
     tabs->AddTab("Recreate Images", tab1);
     tabs->AddTab("Subgraph / Groups", tab2);
@@ -1585,7 +1586,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
     tabs->AddTab("Feature Playground", tab4);
     tabs->SetActiveTab(0);
 
-    addFlex(root, tabs, 1);
+    DemoKit::Add(card, tabs, 1);
 
     // ---- Active diagram tracker ----
     auto activeDiagram = std::make_shared<std::shared_ptr<UltraCanvasCompositorDiagram>>(diag1);
@@ -1604,22 +1605,18 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
         }
     };
 
-    // ---- Button bar (global actions + toggles) — a flex row ----
-    auto buttonBar = std::make_shared<UltraCanvasContainer>("compBtnBar", 0, 0, 0, BTNBAR_H);
-    buttonBar->layout.SetFlexRow().SetFlexGap(4)
-              .SetFlexWrap(CSSLayout::FlexWrap::Wrap)
-              .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    buttonBar->size.height = CSSLayout::Dimension::Px(BTNBAR_H);
+    // ---- Button bar (global actions + toggles) — a row that wraps and
+    // grows a line taller when the buttons do not fit ----
+    auto buttonBar = DemoKit::CreateRow("compBtnBar", 4);
+    buttonBar->layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
     const int B_W = 70;
     const int TOG_W = 90;
     auto addBtn = [&](const std::string& id, const std::string& text, int w,
                        Color bg, std::function<void()> click) {
-        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, w, BTNBAR_H - 4);
-        b->SetText(text);
+        auto b = MakeTextButton(id, w, BTNBAR_H - 4, text);
         b->SetBackgroundColor(bg);
         b->onClick = std::move(click);
-        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        buttonBar->AddChild(b);
+        DemoKit::Add(buttonBar, b);
     };
     Color act(80, 140, 220, 255);    // action buttons
     Color tog(80, 110, 80, 255);     // toggles
@@ -1746,7 +1743,7 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
         if (statusLabel) statusLabel->SetText(std::string("Alignment guides: ") + (now ? "on" : "off"));
     });
 
-    addFlex(root, buttonBar, 0);
+    DemoKit::Add(card, buttonBar);
 
     // ---- Per-diagram event wiring (status updates on selection / history) ----
     for (auto& d : diags) {
@@ -1789,8 +1786,8 @@ UltraCanvasDemoApplication::CreateCompositorDiagramExamples() {
         };
     }
 
-    addFlex(root, statusLabel, 0);
-    return root;
+    DemoKit::Add(card, statusLabel);
+    return page;
 }
 
 } // namespace UltraCanvas

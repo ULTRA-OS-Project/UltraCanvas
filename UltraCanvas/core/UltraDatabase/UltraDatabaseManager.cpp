@@ -2,6 +2,9 @@
 // The UltraDatabase manager: driver registry, named-connection registry with
 // lazy opening, and the public UltraDb_* entrypoints for queries, prepared
 // statements, transactions and migrations.
+// Version: 0.5.0 - the MySQL / MariaDB driver, server administration (UltraDatabaseServer.h)
+// Version: 0.4.0 - statement observers (UltraDb_AddStatementObserver)
+// Version: 0.3.3 - Retired() is never destroyed: a close from an atexit handler wrote into it after its teardown
 // Version: 0.3.2 - the SQLite driver reports a statement's own changes only
 // Version: 0.3.1
 // Author: UltraCanvas Framework / ULTRA OS
@@ -15,6 +18,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -39,6 +43,7 @@ std::map<std::string, IUltraDbDriverPlugin*>& DriverRegistry() {
 void EnsureBuiltins() {
     (void)ultradb_internal::BuiltinSqliteDriver();
     (void)ultradb_internal::BuiltinPostgresDriver();
+    (void)ultradb_internal::BuiltinMysqlDriver();
 }
 
 // ---- Connection registry ---------------------------------------------------
@@ -60,9 +65,15 @@ std::map<std::string, std::shared_ptr<ConnEntry>>& Registry() {
 // connection closes with its last call, as before. Kept so a cancel by name
 // (UltraDb_CancelQuery) still reaches a statement that began under the name
 // before it changed hands. Guarded by RegistryMutex.
+//
+// Never destroyed, like the handle tables below: it is first built by the
+// first close, and UltraMessage's atexit handler - registered before that -
+// closes its journal after the static would already be gone. Destroyed, the
+// close then wrote into freed memory, and the process aborted in free() as
+// it exited (ChatCube, on every quit after its store had closed).
 std::map<std::string, std::vector<std::weak_ptr<ConnEntry>>>& Retired() {
-    static std::map<std::string, std::vector<std::weak_ptr<ConnEntry>>> r;
-    return r;
+    static auto* r = new std::map<std::string, std::vector<std::weak_ptr<ConnEntry>>>;
+    return *r;
 }
 
 // Under RegistryMutex: remember `entry` as retired under `name`, forgetting
@@ -138,6 +149,7 @@ std::mutex& HandleMutex() { static std::mutex* m = new std::mutex; return *m; }
 struct PreparedEntry {
     std::shared_ptr<ConnEntry>          keepAlive;
     std::shared_ptr<IUltraDbStatement>  stmt;
+    std::string                         sql;      // for the observers
 };
 std::map<UltraDbHandle, PreparedEntry>& PreparedTable() {
     static auto* t = new std::map<UltraDbHandle, PreparedEntry>;
@@ -163,7 +175,78 @@ std::map<UltraDbHandle, TxEntry>& TxTable() {
     return *t;
 }
 
+// ---- Statement observers ---------------------------------------------------
+// Never destroyed, for the reason the handle tables are not. A report copies
+// the list under the lock and calls it outside, so an observer may run
+// statements of its own, and may add or remove observers.
+
+std::mutex& ObserverMutex() { static std::mutex* m = new std::mutex; return *m; }
+std::map<int, std::shared_ptr<const UltraDbStatementObserver>>& Observers() {
+    static auto* o = new std::map<int, std::shared_ptr<const UltraDbStatementObserver>>;
+    return *o;
+}
+std::atomic<int> g_observers{0};   // how many there are: none, and nothing is timed
+int g_nextObserver = 0;            // under ObserverMutex
+
+using Kind = UltraDbStatementEvent::Kind;
+
+// Times one call from its construction, and reports it - when anyone was
+// watching as it began.
+class Watch {
+public:
+    Watch() : on_(g_observers.load(std::memory_order_relaxed) > 0) {
+        if (on_) start_ = std::chrono::steady_clock::now();
+    }
+    explicit operator bool() const { return on_; }
+
+    // `untimed`: the statement did not run as a call of its own (one of a
+    // script's), so it has no time apart; it reports -1.
+    void Report(Kind kind, const std::string& connection, const std::string& sql, size_t bound, size_t rows,
+                bool inTransaction, const UltraDbResult& result, bool untimed = false) const {
+        if (!on_) return;
+        UltraDbStatementEvent event;
+        event.kind = kind;
+        event.connection = connection;
+        event.sql = sql;
+        event.boundValues = bound;
+        event.rows = rows;
+        event.inTransaction = inTransaction;
+        event.seconds = untimed ? -1.0
+                                : std::chrono::duration<double>(std::chrono::steady_clock::now() - start_).count();
+        event.result = result;
+        std::vector<std::shared_ptr<const UltraDbStatementObserver>> observers;
+        {
+            std::lock_guard<std::mutex> lk(ObserverMutex());
+            for (const auto& kv : Observers()) observers.push_back(kv.second);
+        }
+        // An observer that throws must not turn a statement that ran into
+        // one that failed.
+        for (const auto& observer : observers) {
+            try { (*observer)(event); } catch (...) {}
+        }
+    }
+
+private:
+    bool on_ = false;
+    std::chrono::steady_clock::time_point start_;
+};
+
 } // namespace
+
+int UltraDb_AddStatementObserver(UltraDbStatementObserver observer) {
+    if (!observer) return 0;
+    std::lock_guard<std::mutex> lk(ObserverMutex());
+    const int id = ++g_nextObserver;
+    Observers()[id] = std::make_shared<const UltraDbStatementObserver>(std::move(observer));
+    g_observers.store(static_cast<int>(Observers().size()));
+    return id;
+}
+
+void UltraDb_RemoveStatementObserver(int id) {
+    std::lock_guard<std::mutex> lk(ObserverMutex());
+    Observers().erase(id);
+    g_observers.store(static_cast<int>(Observers().size()));
+}
 
 // ============================================================================
 // Driver registry (public, declared in UltraDatabasePlugins.h)
@@ -190,7 +273,7 @@ IUltraDbDriverPlugin* UltraDatabase_GetDriver(const std::string& driverId) {
 // Core (public, declared in UltraDatabaseCore.h)
 // ============================================================================
 
-std::string UltraDatabase_GetVersion() { return "0.3.2"; }
+std::string UltraDatabase_GetVersion() { return "0.5.0"; }
 
 std::vector<std::string> UltraDatabase_GetSupportedDrivers() {
     EnsureBuiltins();
@@ -284,10 +367,16 @@ UltraDbResult UltraDb_GetConnectionInfo(const std::string& name,
 
 UltraDbResult UltraDb_Query(const std::string& connection, const std::string& sql,
                             const UltraDbParams& params, UltraDbResultSet& out) {
+    const Watch watch;
     UltraDbResult err;
     Session conn = Resolve(connection, err);
-    if (!conn) return err;
-    return conn->ExecuteDirect(sql, params, out);
+    if (!conn) {
+        watch.Report(Kind::Query, connection, sql, params.size(), 0, false, err);
+        return err;
+    }
+    UltraDbResult result = conn->ExecuteDirect(sql, params, out);
+    watch.Report(Kind::Query, connection, sql, params.size(), out.Size(), false, result);
+    return result;
 }
 
 UltraDbResult UltraDb_Query(const std::string& connection, const std::string& sql,
@@ -297,11 +386,17 @@ UltraDbResult UltraDb_Query(const std::string& connection, const std::string& sq
 
 UltraDbResult UltraDb_Exec(const std::string& connection, const std::string& sql,
                            const UltraDbParams& params) {
+    const Watch watch;
     UltraDbResult err;
     Session conn = Resolve(connection, err);
-    if (!conn) return err;
+    if (!conn) {
+        watch.Report(Kind::Exec, connection, sql, params.size(), 0, false, err);
+        return err;
+    }
     UltraDbResultSet discard;
-    return conn->ExecuteDirect(sql, params, discard);
+    UltraDbResult result = conn->ExecuteDirect(sql, params, discard);
+    watch.Report(Kind::Exec, connection, sql, params.size(), 0, false, result);
+    return result;
 }
 
 UltraDbHandle UltraDb_Prepare(const std::string& connection, const std::string& sql,
@@ -323,7 +418,7 @@ UltraDbHandle UltraDb_Prepare(const std::string& connection, const std::string& 
     UltraDbHandle h = g_nextHandle.fetch_add(1);
     {
         std::lock_guard<std::mutex> lk(HandleMutex());
-        PreparedTable()[h] = PreparedEntry{e, std::shared_ptr<IUltraDbStatement>(std::move(stmt))};
+        PreparedTable()[h] = PreparedEntry{e, std::shared_ptr<IUltraDbStatement>(std::move(stmt)), sql};
     }
     if (error) *error = UltraDbResult::Ok();
     return h;
@@ -331,7 +426,8 @@ UltraDbHandle UltraDb_Prepare(const std::string& connection, const std::string& 
 
 static UltraDbResult ExecutePreparedImpl(UltraDbHandle statement,
                                          const UltraDbParams& params,
-                                         UltraDbResultSet& out) {
+                                         UltraDbResultSet& out, Kind kind) {
+    const Watch watch;
     PreparedEntry held;   // this call's share: see PreparedEntry
     {
         std::lock_guard<std::mutex> lk(HandleMutex());
@@ -341,17 +437,21 @@ static UltraDbResult ExecutePreparedImpl(UltraDbHandle statement,
                                         "invalid prepared-statement handle");
         held = it->second;
     }
-    return held.stmt->Execute(params, out);
+    UltraDbResult result = held.stmt->Execute(params, out);
+    if (watch)
+        watch.Report(kind, held.keepAlive->config.name, held.sql, params.size(),
+                     kind == Kind::Query ? out.Size() : 0, false, result);
+    return result;
 }
 
 UltraDbResult UltraDb_ExecPrepared(UltraDbHandle statement, const UltraDbParams& params) {
     UltraDbResultSet discard;
-    return ExecutePreparedImpl(statement, params, discard);
+    return ExecutePreparedImpl(statement, params, discard, Kind::Exec);
 }
 
 UltraDbResult UltraDb_QueryPrepared(UltraDbHandle statement, const UltraDbParams& params,
                                     UltraDbResultSet& out) {
-    return ExecutePreparedImpl(statement, params, out);
+    return ExecutePreparedImpl(statement, params, out, Kind::Query);
 }
 
 UltraDbResult UltraDb_Finalize(UltraDbHandle statement) {
@@ -383,7 +483,10 @@ UltraDbHandle UltraDb_Begin(const std::string& connection, UltraDbResult* error)
     UltraDbResultSet discard;
     // Ask the driver how its engine starts a transaction; see
     // IUltraDbConnection::BeginTransactionSql.
-    UltraDbResult begin = conn->ExecuteDirect(conn->BeginTransactionSql(), {}, discard);
+    const Watch watch;
+    const std::string beginSql = conn->BeginTransactionSql();
+    UltraDbResult begin = conn->ExecuteDirect(beginSql, {}, discard);
+    watch.Report(Kind::Transaction, connection, beginSql, 0, 0, true, begin);
     if (!begin) { if (error) *error = begin; return UltraDbInvalidHandle; }
 
     UltraDbHandle h = g_nextHandle.fetch_add(1);
@@ -411,19 +514,25 @@ static Session TxConn(UltraDbHandle tx, UltraDbResult& err) {
 
 UltraDbResult UltraDb_ExecInTx(UltraDbHandle transaction, const std::string& sql,
                                const UltraDbParams& params) {
+    const Watch watch;
     UltraDbResult err;
     Session conn = TxConn(transaction, err);
     if (!conn) return err;
     UltraDbResultSet discard;
-    return conn->ExecuteDirect(sql, params, discard);
+    UltraDbResult result = conn->ExecuteDirect(sql, params, discard);
+    if (watch) watch.Report(Kind::Exec, conn.entry->config.name, sql, params.size(), 0, true, result);
+    return result;
 }
 
 UltraDbResult UltraDb_QueryInTx(UltraDbHandle transaction, const std::string& sql,
                                 const UltraDbParams& params, UltraDbResultSet& out) {
+    const Watch watch;
     UltraDbResult err;
     Session conn = TxConn(transaction, err);
     if (!conn) return err;
-    return conn->ExecuteDirect(sql, params, out);
+    UltraDbResult result = conn->ExecuteDirect(sql, params, out);
+    if (watch) watch.Report(Kind::Query, conn.entry->config.name, sql, params.size(), out.Size(), true, result);
+    return result;
 }
 
 static UltraDbResult FinishTx(UltraDbHandle transaction, const char* verb) {
@@ -437,12 +546,14 @@ static UltraDbResult FinishTx(UltraDbHandle transaction, const char* verb) {
         conn = Session{it->second.keepAlive, it->second.conn};
         it->second.finished = true;
     }
+    const Watch watch;
     UltraDbResultSet discard;
     UltraDbResult r = conn->ExecuteDirect(verb, {}, discard);
     {
         std::lock_guard<std::mutex> lk(HandleMutex());
         TxTable().erase(transaction);
     }
+    if (watch) watch.Report(Kind::Transaction, conn.entry->config.name, verb, 0, 0, true, r);
     return r;
 }
 
@@ -539,19 +650,23 @@ UltraDbResult UltraDb_Migrate(const std::string& connection,
 UltraDbResult UltraDb_ListSchemas(const std::string& connection,
                                   std::vector<std::string>& out) {
     out.clear();
+    const Watch watch;
     UltraDbResult err;
     Session conn = Resolve(connection, err);
-    if (!conn) return err;
-    return conn->ListSchemas(out);
+    UltraDbResult result = conn ? conn->ListSchemas(out) : err;
+    watch.Report(Kind::Introspection, connection, "-- list the schemas", 0, out.size(), false, result);
+    return result;
 }
 
 UltraDbResult UltraDb_ListObjects(const std::string& connection, const std::string& schema,
                                   std::vector<UltraDbObjectSummary>& out) {
     out.clear();
+    const Watch watch;
     UltraDbResult err;
     Session conn = Resolve(connection, err);
-    if (!conn) return err;
-    return conn->ListObjects(schema, out);
+    UltraDbResult result = conn ? conn->ListObjects(schema, out) : err;
+    watch.Report(Kind::Introspection, connection, "-- list the objects of " + schema, 0, out.size(), false, result);
+    return result;
 }
 
 UltraDbResult UltraDb_DescribeTable(const std::string& connection, const std::string& schema,
@@ -560,10 +675,70 @@ UltraDbResult UltraDb_DescribeTable(const std::string& connection, const std::st
     if (table.empty())
         return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
                                     "table name must not be empty");
+    const Watch watch;
     UltraDbResult err;
     Session conn = Resolve(connection, err);
-    if (!conn) return err;
-    return conn->DescribeTable(schema, table, out);
+    UltraDbResult result = conn ? conn->DescribeTable(schema, table, out) : err;
+    watch.Report(Kind::Introspection, connection, "-- describe " + (schema.empty() ? table : schema + "." + table), 0,
+                 0, false, result);
+    return result;
+}
+
+// ===== SERVER ADMINISTRATION =====
+
+UltraDbResult UltraDb_ServerSessions(const std::string& connection, UltraDbResultSet& out) {
+    out.Clear();
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    UltraDbResult result = conn ? conn->ServerSessions(out) : err;
+    watch.Report(Kind::Introspection, connection, "-- the server's sessions", 0, out.Size(), false, result);
+    return result;
+}
+
+UltraDbResult UltraDb_ServerSettings(const std::string& connection, const std::string& filter,
+                                     UltraDbResultSet& out) {
+    out.Clear();
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    UltraDbResult result = conn ? conn->ServerSettings(filter, out) : err;
+    watch.Report(Kind::Introspection, connection, "-- the server's settings", filter.empty() ? 0 : 1, out.Size(),
+                 false, result);
+    return result;
+}
+
+UltraDbResult UltraDb_ServerSizes(const std::string& connection, const std::string& schema,
+                                  UltraDbResultSet& out) {
+    out.Clear();
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    UltraDbResult result = conn ? conn->ServerSizes(schema, out) : err;
+    watch.Report(Kind::Introspection, connection, "-- the sizes of the databases" + (schema.empty() ? "" : " and " + schema),
+                 0, out.Size(), false, result);
+    return result;
+}
+
+UltraDbResult UltraDb_StopSessionSql(const std::string& connection, int64_t id, bool endSession,
+                                     std::string& sql) {
+    sql.clear();
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    return conn ? conn->StopSessionSql(id, endSession, sql) : err;
+}
+
+UltraDbResult UltraDb_StopSession(const std::string& connection, int64_t id, bool endSession,
+                                  bool& stopped) {
+    stopped = false;
+    const Watch watch;
+    UltraDbResult err;
+    Session conn = Resolve(connection, err);
+    std::string sql;
+    UltraDbResult result = conn ? conn->StopSessionSql(id, endSession, sql) : err;
+    if (result) result = conn->StopSession(id, endSession, stopped);
+    watch.Report(Kind::Exec, connection, sql, 0, 0, false, result);
+    return result;
 }
 
 namespace {
@@ -619,10 +794,22 @@ UltraDbResult UltraDb_QuoteQualifiedName(const std::string& connection, const st
 UltraDbResult UltraDb_ExecBatch(const std::string& connection, const std::string& sql,
                                 std::vector<UltraDbStatementResult>& out) {
     out.clear();
+    const Watch watch;
     UltraDbResult err;
     Session conn = Resolve(connection, err);
-    if (!conn) return err;
-    return conn->ExecuteBatch(sql, out);
+    if (!conn) {
+        watch.Report(Kind::Script, connection, sql, 0, 0, false, err);
+        return err;
+    }
+    UltraDbResult result = conn->ExecuteBatch(sql, out);
+    if (watch) {
+        // One report per statement, each with its own outcome; the engine
+        // runs the script as one call, so none has a time of its own.
+        for (const auto& statement : out)
+            watch.Report(Kind::Script, connection, statement.sql, 0, statement.returnsRows ? statement.rows.Size() : 0,
+                         false, statement.result, true);
+    }
+    return result;
 }
 
 UltraDbResult UltraDb_CancelQuery(const std::string& connection) {
@@ -673,7 +860,9 @@ UltraDbHandle UltraDb_OpenCursor(const std::string& connection, const std::strin
     IUltraDbConnection* conn = OpenEntry(e, err);
     if (!conn) { if (error) *error = err; return UltraDbInvalidHandle; }
 
+    const Watch watch;
     std::unique_ptr<IUltraDbCursor> cursor = conn->OpenCursor(sql, params, err);
+    watch.Report(Kind::Cursor, connection, sql, params.size(), 0, false, cursor ? UltraDbResult::Ok() : err);
     if (!cursor) { if (error) *error = err; return UltraDbInvalidHandle; }
 
     UltraDbHandle h = g_nextHandle.fetch_add(1);

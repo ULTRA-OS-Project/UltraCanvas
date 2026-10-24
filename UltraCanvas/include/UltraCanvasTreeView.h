@@ -1,5 +1,7 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.8.0 - 2026-10-22 - SetExpanderStyle: the expand button as an arrow (Chevron)
+//                  instead of a +/- box, in SetExpanderArrowColor
 // Version: 1.7.0 - 2026-10-19 - TreeNodeData::loading: a row whose children are being fetched
 //                  slides a thin bar along its foot (SetLoadingBarColor); onDropFolderOfNode:
 //                  the folder a node stands for, for a Save dialog's file icon dropped on it
@@ -20,7 +22,7 @@
 //                  into the removed subtree
 // Version: 1.0.0 - the tree view: rows with icons and text, expanders, check flags, lines
 //                  (the numbers before 1.6.0 were given afterwards, from the framework changelog)
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-22
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -59,6 +61,12 @@ enum class TreeLineStyle {
     NoLine = 0,       // No connecting lines
     Dotted = 1,     // Dotted connecting lines
     Solid = 2       // Solid connecting lines
+};
+
+// How the expand button of a row with children looks
+enum class TreeExpanderStyle {
+    Box = 0,        // + or - in a square (the default)
+    Chevron = 1     // an arrow: pointing right when closed, down when open
 };
 
 // ===== PER-ROW CHECK FLAG =====
@@ -296,6 +304,8 @@ private:
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
     Color expandButtonColor = Color(0xE0, 0xE0, 0xE0); // +/- node icon background
+    TreeExpanderStyle expanderStyle = TreeExpanderStyle::Box;
+    Color expanderArrowColor = Color(0x70, 0x70, 0x78);        // the Chevron style's arrow
     Color checkboxBackgroundColor = Colors::White;             // check flag box fill
     Color checkboxBorderColor = Color(0x70, 0x70, 0x78);       // check flag box outline
     Color checkboxCheckColor = Color(0x21, 0x7A, 0x35);        // tick / mixed square
@@ -488,6 +498,14 @@ public:
     
     void SetShowExpandButtons(bool show) { showExpandButtons = show; RequestRedraw(); }
     bool GetShowExpandButtons() const { return showExpandButtons; }
+
+    // The expand button's look: Box, + or - in a square (the default), or
+    // Chevron, an arrow pointing right on a closed row and down on an open
+    // one, drawn in the arrow colour. A click on it acts the same either way.
+    void SetExpanderStyle(TreeExpanderStyle style) { expanderStyle = style; RequestRedraw(); }
+    TreeExpanderStyle GetExpanderStyle() const { return expanderStyle; }
+    void SetExpanderArrowColor(const Color& color) { expanderArrowColor = color; RequestRedraw(); }
+    const Color& GetExpanderArrowColor() const { return expanderArrowColor; }
 
     // Connect the TOP-LEVEL rows to each other as well, the way a file manager
     // does: a trunk down the left margin with a stub into every top-level row.

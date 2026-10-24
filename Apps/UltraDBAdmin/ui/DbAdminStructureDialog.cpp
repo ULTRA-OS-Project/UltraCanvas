@@ -1,7 +1,10 @@
 // Apps/UltraDBAdmin/ui/DbAdminStructureDialog.cpp
+// Version: 0.2.0 - MySQL / MariaDB types
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminStructureDialog.h"
+
+#include "DbAdminTheme.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
@@ -30,7 +33,10 @@ const std::vector<std::string>& CommonTypes(SqlEngine engine) {
     static const std::vector<std::string> postgres = {
         "integer", "bigint", "numeric(12,2)", "double precision", "text", "varchar(255)", "boolean",
         "date", "timestamptz", "jsonb", "uuid", "bytea"};
-    return engine == SqlEngine::Sqlite ? sqlite : postgres;
+    static const std::vector<std::string> mysql = {
+        "int", "bigint", "decimal(12,2)", "double", "varchar(255)", "text", "tinyint(1)",
+        "date", "datetime", "timestamp", "json", "blob"};
+    return engine == SqlEngine::Sqlite ? sqlite : engine == SqlEngine::MySql ? mysql : postgres;
 }
 
 std::shared_ptr<UltraCanvasModalDialog> MakeDialog(const std::string& title, int height) {
@@ -43,6 +49,7 @@ std::shared_ptr<UltraCanvasModalDialog> MakeDialog(const std::string& title, int
     config.position   = DialogPosition::CenterParent;
     auto dialog = UltraCanvasDialogManager::CreateDialog(config);
     if (!dialog) return nullptr;
+    dialog->SetFollowTheme(true);
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
     return dialog;
@@ -57,7 +64,7 @@ std::shared_ptr<UltraCanvasLabel> MakeIntro(const std::string& id, const std::st
 
 std::shared_ptr<UltraCanvasLabel> MakeError(const std::string& id) {
     auto error = CreateLabel(id, 0, 0, 0, 36, "");
-    error->SetTextColor(Color(176, 32, 32));
+    error->SetTextColor(ErrorColor());
     error->SetWrap(TextWrap::WrapWord);
     error->layoutItem.SetFlexShrink(0);
     return error;
@@ -70,11 +77,10 @@ void AddButtons(UltraCanvasModalDialog* dialog, const std::string& id, const std
     buttons->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->layoutItem.SetFlexShrink(0);
     buttons->AddStretchSpacer(1);
-    auto cancel = CreateButton(id + "-cancel", 0, 0, 90, kRowHeight, "Cancel");
+    auto cancel = MakeDialogButton(id + "-cancel", "Cancel", 90);
     cancel->SetOnClick([dialog]() { dialog->CloseDialog(DialogResult::Cancel); });
     buttons->AddChild(cancel);
-    auto save = CreateButton(id + "-save", 0, 0, 120, kRowHeight, primary);
-    save->SetStyle(ButtonStyles::PrimaryStyle());
+    auto save = MakeDialogButton(id + "-save", primary, 120, ButtonRole::Primary);
     save->SetOnClick(std::move(onPrimary));
     buttons->AddChild(save);
     dialog->AddChild(buttons);
@@ -184,9 +190,14 @@ void ShowColumnDialog(UltraCanvasWindowBase* parent, const StructureEdit& edit, 
     auto type = CreateTextInput("dbcType", 0, 0, 0, kRowHeight);
     type->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     type->SetText(current.type);
-    type->SetPlaceholder(sqlite ? "none: SQLite takes any value" : "text, integer, numeric(12,2)…");
-    type->SetTooltip("As the database spells it. A changed type converts the values: "
-                     + std::string(sqlite ? "by SQLite's type affinity." : "with CAST(column AS type)."));
+    const bool mysql = edit.Engine() == SqlEngine::MySql;
+    type->SetPlaceholder(sqlite  ? "none: SQLite takes any value"
+                         : mysql ? "varchar(80), int, decimal(12,2)…"
+                                 : "text, integer, numeric(12,2)…");
+    type->SetTooltip("As the database spells it. A changed type converts the values: " +
+                     std::string(sqlite  ? "by SQLite's type affinity."
+                                 : mysql ? "MySQL's MODIFY COLUMN converts them itself."
+                                         : "with CAST(column AS type)."));
     form->type = type.get();
     typeLine->AddChild(type);
     auto common = CreateDropdown("dbcCommon", 0, 0, 170, kRowHeight);
@@ -215,7 +226,7 @@ void ShowColumnDialog(UltraCanvasWindowBase* parent, const StructureEdit& edit, 
     auto expression = CreateTextInput("dbcDefault", 0, 0, 0, kRowHeight);
     expression->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     expression->SetText(current.defaultExpression);
-    expression->SetPlaceholder(sqlite ? "0, 'text', CURRENT_TIMESTAMP" : "0, 'text', now()");
+    expression->SetPlaceholder(edit.Engine() == SqlEngine::Postgres ? "0, 'text', now()" : "0, 'text', CURRENT_TIMESTAMP");
     expression->SetTooltip("SQL, as written after DEFAULT: a string needs its quotes.");
     form->defaultExpression = expression.get();
     defaultLine->AddChild(expression);

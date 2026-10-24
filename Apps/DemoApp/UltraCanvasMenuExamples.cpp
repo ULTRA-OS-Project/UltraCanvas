@@ -1,12 +1,16 @@
 // Apps/DemoApp/UltraCanvasMenuExamples.cpp
 // Implementation of all component example creators
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): one card per
+//                  example, buttons as wide as their text, the popup list a
+//                  column of labels sized to their text
 // Version: 1.1.1 - the Dark and Flat demo menus open anchored to their buttons
 // Version: 1.1.0 - flat icons of media/icons/menu/ instead of emoji in the labels
 // Version: 1.0.2
-// Last Modified: 2026-10-10
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 //#include "UltraCanvasButton3Sections.h"
 #include "Plugins/Charts/UltraCanvasDivergingBarChart.h"
 #include <sstream>
@@ -30,28 +34,30 @@ namespace UltraCanvas {
             item.iconPath = MenuIcon(name);
             return item;
         }
+
+        // A button as wide as its text, at least the width it had.
+        std::shared_ptr<UltraCanvasButton> MakeMenuDemoButton(const std::string& id, const std::string& text,
+                                                              float minWidth) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 35, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+            button->boxConstraints = limits;
+            return button;
+        }
     } // namespace
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateMenuExamples() {
         debugOutput << "Creating Menu Examples..." << std::endl;
 
-        // Create container for menu examples
-        auto container = std::make_shared<UltraCanvasContainer>("MenuContainer", 0, 0, 1000, 630);
-        container->SetBackgroundColor(Color(252, 252, 252, 255));
-        container->SetPadding(0,0,10,0);
+        auto container = DemoKit::CreatePage("MenuContainer", "Menus", "Various menu types and styles");
 
-        // Section label for Context Menus
-        auto contextLabel = std::make_shared<UltraCanvasLabel>("ContextLabel", 20, 10, 400, 30);
-        contextLabel->SetText("Context Menu Examples:");
-        contextLabel->SetFontSize(14);
-        contextLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(contextLabel);
+        // Context Menus
+        auto contextCard = DemoKit::AddCard(container, "ContextLabel", "Context Menu Examples:");
 
         // Button to trigger context menu
-        auto contextMenuBtn = std::make_shared<UltraCanvasButton>("ContextMenuBtn", 20, 45, 280, 35);
-        contextMenuBtn->SetText("Right-Click for Context Menu");
+        auto contextMenuBtn = MakeMenuDemoButton("ContextMenuBtn", "Right-Click for Context Menu", 280);
 //        contextMenuBtn->SetTooltipText("Right-click anywhere on this button to show context menu");
-        container->AddChild(contextMenuBtn);
+        DemoKit::AddFixed(contextCard, contextMenuBtn);
 
         // Create context menu
         auto contextMenu = std::make_shared<UltraCanvasMenu>("ContextMenu1", 0, 0, 200, 0);
@@ -123,15 +129,11 @@ namespace UltraCanvas {
             }
         };
 
-        // Section label for Main Menu Bar
-        auto mainMenuLabel = std::make_shared<UltraCanvasLabel>("MainMenuLabel", 20, 100, 400, 30);
-        mainMenuLabel->SetText("Main Menu Bar Example:");
-        mainMenuLabel->SetFontSize(14);
-        mainMenuLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(mainMenuLabel);
+        // Main Menu Bar
+        auto mainMenuCard = DemoKit::AddCard(container, "MainMenuLabel", "Main Menu Bar Example:");
 
 // Create main menu bar using MenuType::Menubar and MenuBuilder
-        auto mainMenuBar = MenuBuilder("MainMenuBar", 20, 135, 960, 32)
+        auto mainMenuBar = MenuBuilder("MainMenuBar", 0, 0, 960, 32)
                 .SetType(MenuType::Menubar)
                 .AddSubmenu("File", {
                         MenuItemData::ActionWithShortcut("New", "Ctrl+N", MenuIcon("new"), []() {
@@ -223,12 +225,15 @@ namespace UltraCanvas {
                 })
                 .Build();
 
-        container->AddChild(mainMenuBar);
+        DemoKit::AddStretched(mainMenuCard, mainMenuBar);
+
+        // The styled popup menus open from a row of buttons under the bar.
+        auto styledRow = DemoKit::AddRow(mainMenuCard, "StyledMenuRow", 10);
+        styledRow->SetPadding(12, 0, 0, 0);
 
         // Dark theme menu
-        auto darkMenuBtn = std::make_shared<UltraCanvasButton>("DarkMenuBtn", 20, 225, 170, 35);
-        darkMenuBtn->SetText("Dark Theme Menu");
-        container->AddChild(darkMenuBtn);
+        auto darkMenuBtn = MakeMenuDemoButton("DarkMenuBtn", "Dark Theme Menu", 170);
+        DemoKit::Add(styledRow, darkMenuBtn);
 
         auto darkMenu = std::make_shared<UltraCanvasMenu>("DarkMenu", 0, 0, 200, 0);
         darkMenu->SetMenuType(MenuType::PopupMenu);
@@ -254,9 +259,8 @@ namespace UltraCanvas {
         };
 
         // Flat style menu
-        auto flatMenuBtn = std::make_shared<UltraCanvasButton>("FlatMenuBtn", 200, 225, 170, 35);
-        flatMenuBtn->SetText("Flat Style Menu");
-        container->AddChild(flatMenuBtn);
+        auto flatMenuBtn = MakeMenuDemoButton("FlatMenuBtn", "Flat Style Menu", 170);
+        DemoKit::Add(styledRow, flatMenuBtn);
 
         auto flatMenu = std::make_shared<UltraCanvasMenu>("FlatMenu", 0, 0, 200, 0);
         flatMenu->SetMenuType(MenuType::PopupMenu);
@@ -282,39 +286,27 @@ namespace UltraCanvas {
         };
 
         // Info label about menu features
-        auto infoLabel = std::make_shared<UltraCanvasLabel>("InfoLabel", 20, 270, 960, 140);
-        infoLabel->SetText("Menu Features:\n"
-                           "• Context menus with right-click\n"
-                           "• Main menu bar with dropdowns\n"
-                           "• Submenus and nested navigation\n"
-                           "• Checkbox and radio button items\n"
-                           "• Keyboard shortcuts and flat icons, in the label's colour on the dark menu\n"
-                           "• Multiple visual styles (Default, Dark, Flat)");
-        infoLabel->SetFontSize(11);
-        infoLabel->SetTextColor(Color(80, 80, 80, 255));
-        container->AddChild(infoLabel);
-
         // Popup menu example
-        auto popupLabel = std::make_shared<UltraCanvasLabel>("PopupLabel", 20, 425, 400, 30);
-        popupLabel->SetText("Popup Menu Example:");
-        popupLabel->SetFontSize(14);
-        popupLabel->SetFontWeight(FontWeight::Bold);
-        container->AddChild(popupLabel);
+        auto popupCard = DemoKit::AddCard(container, "PopupLabel", "Popup Menu Example:");
 
-        // Create a sample list for popup menu
-        auto listContainer = std::make_shared<UltraCanvasContainer>("ListContainer", 20, 460, 300, 150);
+        // Create a sample list for popup menu: a column as wide as its
+        // longest item (at least the 300 px it had), each item as tall as
+        // its text.
+        auto listContainer = DemoKit::CreateColumn("ListContainer", 5);
         listContainer->SetBackgroundColor(Color(255, 255, 255, 255));
         listContainer->SetBorders(1, Color(200, 200, 200, 255));
-        container->AddChild(listContainer);
+        listContainer->SetPadding(10);
+        DemoKit::AddFixed(popupCard, listContainer);
+        {
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(300);
+            listContainer->boxConstraints = limits;
+        }
 
         // Add sample items to list
         for (int i = 0; i < 5; i++) {
-            auto itemLabel = std::make_shared<UltraCanvasLabel>(
-                    "ListItem" + std::to_string(i),
-                    
-                    10, 10 + i * 25, 280, 20
-            );
-            itemLabel->SetText("Item " + std::to_string(i + 1) + " - Right-click for options");
+            auto itemLabel = DemoKit::CreateText("ListItem" + std::to_string(i),
+                    "Item " + std::to_string(i + 1) + " - Right-click for options");
             itemLabel->SetBackgroundColor(Color(250, 250, 250, 255));
 
             // Create item-specific popup menu
@@ -368,8 +360,17 @@ namespace UltraCanvas {
                 }
             };
 
-            listContainer->AddChild(itemLabel);
+            DemoKit::Add(listContainer, itemLabel);
         }
+
+        // Info about menu features
+        DemoKit::AddNotes(container, "InfoLabel", "Menu Features:", {
+                "Context menus with right-click",
+                "Main menu bar with dropdowns",
+                "Submenus and nested navigation",
+                "Checkbox and radio button items",
+                "Keyboard shortcuts and flat icons, in the label's colour on the dark menu",
+                "Multiple visual styles (Default, Dark, Flat)"});
 
         debugOutput << "✓ Menu examples created" << std::endl;
         return container;

@@ -756,7 +756,7 @@ static void TestNameTable() {
     CHECK(heard.empty(), "and not after it is removed");
 
     CHECK(std::string(NetworkMonitor_NameSourceName(NameSource::DnsProxy)) == "DNS proxy" &&
-          std::string(NetworkMonitor_NameSourceName(NameSource::None)) == "none" &&
+          std::string(NetworkMonitor_NameSourceName(NameSource::NoSource)) == "none" &&
           NetworkMonitor_NameIsObserved(NameSource::EtwDnsClient) && !NetworkMonitor_NameIsObserved(NameSource::Inferred),
           "source names and the observed / weak split");
 
@@ -1065,7 +1065,7 @@ static void TestStoreNames() {
           NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows[0].remoteName == "www.example.com",
           "but a weak name never replaces an observed one");
     snapshot[0].remoteName.clear();
-    snapshot[0].nameSource = NameSource::None;
+    snapshot[0].nameSource = NameSource::NoSource;
     CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0 + 3) &&
           NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows[0].remoteName == "www.example.com",
           "and a sighting without a name keeps the one recorded");
@@ -1181,8 +1181,8 @@ static void TestStoreNames() {
     CHECK(reopened, ("the version-1 file opens: " + reopened.message).c_str());
     if (reopened) {
         CHECK(NetworkMonitor_QueryFlows(migrated, ActivityQuery(), flows) && flows.size() == 1 &&
-              flows[0].remoteName.empty() && flows[0].nameSource == NameSource::None &&
-              flows[0].loopbackRole == LoopbackRole::None && flows[0].localPeer.empty() &&
+              flows[0].remoteName.empty() && flows[0].nameSource == NameSource::NoSource &&
+              flows[0].loopbackRole == LoopbackRole::NotLoopback && flows[0].localPeer.empty() &&
               flows[0].forProcesses.empty(),
               "its old flow reads back without a name or a chain");
         snapshot[0].remoteName = "www.example.com";
@@ -1341,10 +1341,10 @@ static void TestEventRegistry() {
         // Both ends are ours, so the chain names this process on the
         // other end, with the role of whichever socket matched.
         const std::string self = attributed ? recent[0].process->Label() : std::string();
-        CHECK(!recent.empty() && recent[0].chainDecoded && recent[0].loopbackRole != LoopbackRole::None &&
+        CHECK(!recent.empty() && recent[0].chainDecoded && recent[0].loopbackRole != LoopbackRole::NotLoopback &&
               recent[0].localPeer == self,
               "and the loopback chain names the process on the other end");
-        const LoopbackRole openedRole = recent.empty() ? LoopbackRole::None : recent[0].loopbackRole;
+        const LoopbackRole openedRole = recent.empty() ? LoopbackRole::NotLoopback : recent[0].loopbackRole;
 
         NetworkConnectionEvent closing = bare;
         closing.kind = NetworkEventKind::Closed;
@@ -1504,7 +1504,7 @@ static void TestStoreEvents() {
           "with counters, name, process and the millisecond");
     CHECK(!events[0].event.process && !events[0].event.bytesSent, "and absent stays absent");
     CHECK(events[0].event.loopbackRole == LoopbackRole::Server && events[0].event.localPeer == "ssh (4321)" &&
-          events[0].event.chainDecoded && events[2].event.loopbackRole == LoopbackRole::None &&
+          events[0].event.chainDecoded && events[2].event.loopbackRole == LoopbackRole::NotLoopback &&
           events[2].event.localPeer.empty() && events[2].event.forProcesses.empty(),
           "the loopback chain reads back where an event had one, and stays empty where not");
     ActivityQuery byPeer;
@@ -1646,8 +1646,8 @@ static void TestLoopbackDecode() {
           "the client's connection points at the proxy");
     CHECK(table[2].loopbackRole == LoopbackRole::Server && table[2].localPeer && table[2].localPeer->pid == 1,
           "the proxy's accepted socket points back at the client");
-    CHECK(table[1].loopbackRole == LoopbackRole::None && !table[1].localPeer, "the listener itself is not a chain");
-    CHECK(table[3].loopbackRole == LoopbackRole::None && table[3].forProcesses.size() == 1 &&
+    CHECK(table[1].loopbackRole == LoopbackRole::NotLoopback && !table[1].localPeer, "the listener itself is not a chain");
+    CHECK(table[3].loopbackRole == LoopbackRole::NotLoopback && table[3].forProcesses.size() == 1 &&
           table[3].forProcesses[0] == "thunderbird (1)",
           "the proxy's outbound connection is marked as for the client it serves");
     CHECK(table[4].forProcesses.empty() && !table[4].localPeer, "an application with no proxy carries nothing");
@@ -1655,7 +1655,7 @@ static void TestLoopbackDecode() {
           table[6].loopbackRole == LoopbackRole::Server && table[6].localPeer && table[6].localPeer->pid == 1,
           "an IPv4-mapped peer pairs with its plain IPv4 mirror");
     CHECK(std::string(NetworkMonitor_LoopbackRoleName(LoopbackRole::Server)) == "server" &&
-          std::string(NetworkMonitor_LoopbackRoleName(LoopbackRole::None)).empty(), "roles have names");
+          std::string(NetworkMonitor_LoopbackRoleName(LoopbackRole::NotLoopback)).empty(), "roles have names");
 
     const auto groups = NetworkMonitor_SummarizeByProcess(table);
     const ProcessTrafficSummary* proxy = nullptr;
@@ -1741,10 +1741,10 @@ static void TestStoreChains() {
           "the client's flow records the proxy it went through");
     CHECK(acceptedFlow && acceptedFlow->loopbackRole == LoopbackRole::Server &&
           acceptedFlow->localPeer == "thunderbird (1)", "the proxy's accepted flow records its client");
-    CHECK(outboundFlow && outboundFlow->loopbackRole == LoopbackRole::None && outboundFlow->localPeer.empty() &&
+    CHECK(outboundFlow && outboundFlow->loopbackRole == LoopbackRole::NotLoopback && outboundFlow->localPeer.empty() &&
           outboundFlow->forProcesses.size() == 1 && outboundFlow->forProcesses[0] == "thunderbird (1)",
           "the proxy's outbound flow records whom it was for");
-    CHECK(directFlow && directFlow->loopbackRole == LoopbackRole::None && directFlow->forProcesses.empty(),
+    CHECK(directFlow && directFlow->loopbackRole == LoopbackRole::NotLoopback && directFlow->forProcesses.empty(),
           "a direct flow carries no chain");
 
     // A later sighting without the chain (the client's socket already

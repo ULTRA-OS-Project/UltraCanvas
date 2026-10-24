@@ -54,7 +54,7 @@ void TestDefaultEcho() {
     EXPECT_TRUE(llm != nullptr);
 
     auto resp = llm->Chat(BuildSimpleRequest("hello world"));
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.text, std::string("Mock reply: hello world"));
     EXPECT_EQ(resp.finishReason, FinishReason::Stop);
 }
@@ -172,7 +172,7 @@ void TestUnknownProvider() {
     Error err;
     auto llm = CreateTextLLM(cfg, &err);
     EXPECT_TRUE(llm == nullptr);
-    EXPECT_TRUE(err.code != ErrorCode::None);
+    EXPECT_TRUE(err.code != ErrorCode::Ok);
 }
 
 void TestCountTokens() {

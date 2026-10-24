@@ -37,6 +37,7 @@ state of the selection** rather than two asterisks in a buffer.
 - [Input methods](#input-methods)
 - [Right-to-left text](#right-to-left-text)
 - [Fonts for other scripts](#fonts-for-other-scripts)
+  - [Missing fonts](#missing-fonts)
 - [Accessibility](#accessibility)
 - [Drag and drop](#drag-and-drop)
 - [Find and replace](#find-and-replace)
@@ -259,6 +260,7 @@ editor->ToggleSuperscript();
 editor->SetFontFamily("Georgia");
 editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
+editor->SetHighlightColor("#FFF59D");  // the background behind the text; "" removes it
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
 
@@ -695,6 +697,69 @@ text is laid out, and names that family on the runs. The demo's
 *WYSIWYG — Chinese, Arabic & Myanmar* page does this with Noto Sans Myanmar
 (`media/textsamples/fonts`, SIL OFL 1.1). Keep such fonts out of
 `media/fonts`, which every application loads at start-up.
+
+### Missing fonts
+
+The element tells the reader which fonts the document needs and the
+computer lacks. While anything is missing, a notice along the element's top
+names it, and each font in it is a link to the page it is downloaded from.
+The notice reports two kinds of font:
+
+- **Scripts no font covers.** These characters are drawn as boxes of hex
+  digits. Each script is named with a free Noto font that covers it, linked
+  to its page on Google Fonts. For example, "Chinese text needs Noto Sans
+  SC".
+- **Families the document names that are not installed.** Pango draws this
+  text in a substitute. Each family is linked to a search for it on Google
+  Fonts.
+
+The notice's x hides it until the report changes. The text, the scrollbars
+and the comment pane start below the notice.
+
+```cpp
+auto edit = std::make_shared<UltraCanvasRichTextEdit>("doc", 0, 0, 800, 600);
+edit->onFontReportChanged = [](const UltraCanvasRichTextEdit::FontReport& report) {
+    for (const MissingScriptFont& script : report.missingScripts) {
+        // script.script "Arabic", script.suggestedFont "Noto Sans Arabic",
+        // script.downloadUrl, script.characters
+    }
+    for (const std::string& family : report.missingFamilies) {
+        // FontDownloadUrl(family) is where the notice links it
+    }
+};
+edit->onFontLinkClicked = [](const std::string& url) {
+    return false;   // false: the element opens the page in the browser
+};
+edit->SetShowFontNotice(true);   // the default; false keeps the report only
+```
+
+| | |
+|---|---|
+| `const FontReport& GetFontReport()` | The fonts missing now: `missingFamilies` and `missingScripts`. It is worked out on the spot if the document changed. |
+| `void SetShowFontNotice(bool)` / `IsShowingFontNotice()` | Turns the notice on or off. On by default. |
+| `bool IsFontNoticeVisible()` | Whether the notice is on screen now. |
+| `void DismissFontNotice()` | Hides the notice, as its x does, until the report changes. |
+| `onFontReportChanged` | Called when the report changes, including when it becomes empty. |
+| `onFontLinkClicked` | A link in the notice was clicked. Return true to handle it yourself; otherwise the element opens the page in the browser. The URLs are the element's own, never the document's. |
+| `style.fontNoticeColor` / `fontNoticeBorderColor` / `fontNoticeTextColor` | The notice's colours. |
+
+The report covers the body, the headers and footers, the notes and the table
+cells. Pictures and formulas don't count. A code block's font is the
+element's own style, not the document's, so it is never reported as
+missing.
+
+The report is worked out again:
+
+- when a document is set;
+- a second after an edit, so typing doesn't lay the whole document out on
+  every key;
+- when the fonts change. Registering a font file and Windows' system fonts
+  arriving after a cold start both run
+  `UltraCanvasWindowBase::RefreshAfterFontChange()`, which reaches the
+  element through `InvalidateLayout()`.
+
+The checks behind it are in `UltraCanvasFontCoverage.h`, for use outside the
+editor; see [UltraCanvasFontFile](UltraCanvasFontFile.md#is-there-a-font-for-this-text).
 
 ## Accessibility
 

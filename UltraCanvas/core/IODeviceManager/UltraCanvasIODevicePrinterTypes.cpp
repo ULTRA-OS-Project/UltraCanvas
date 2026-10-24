@@ -292,7 +292,7 @@ const char* IOPrinterColorModeToString(IOPrinterColorMode mode) {
 
 const char* IODuplexModeToString(IODuplexMode mode) {
     switch (mode) {
-        case IODuplexMode::None:      return "None";
+        case IODuplexMode::OneSided:      return "None";
         case IODuplexMode::LongEdge:  return "LongEdge";
         case IODuplexMode::ShortEdge: return "ShortEdge";
     }
@@ -406,7 +406,7 @@ const char* IOSupplyColorToString(IOSupplyColor color) {
         case IOSupplyColor::Gray:         return "Gray";
         case IOSupplyColor::PhotoBlack:   return "Photo Black";
         case IOSupplyColor::MatteBlack:   return "Matte Black";
-        case IOSupplyColor::None:         break;
+        case IOSupplyColor::NoColor:         break;
     }
     return "None";
 }
@@ -470,7 +470,7 @@ IOSupplyColor SupplyColorFromBidi(const std::string& name) {
     if (colour == "blue")         return IOSupplyColor::Blue;
     if (colour == "photoblack")   return IOSupplyColor::PhotoBlack;
     if (colour == "matteblack")   return IOSupplyColor::MatteBlack;
-    return IOSupplyColor::None;
+    return IOSupplyColor::NoColor;
 }
 
 } // namespace
@@ -718,9 +718,9 @@ IOPrintOptions ResolvePrintOptions(const IOPrintOptions& requested,
     }
 
     // --- 6. Duplex -----------------------------------------------------
-    if (resolved.duplex != IODuplexMode::None && Denies(capabilities.supportsDuplex)) {
+    if (resolved.duplex != IODuplexMode::OneSided && Denies(capabilities.supportsDuplex)) {
         Note(changes, "This printer has no duplex unit, printing single-sided");
-        resolved.duplex = IODuplexMode::None;
+        resolved.duplex = IODuplexMode::OneSided;
     }
 
     // --- Remaining independent settings --------------------------------

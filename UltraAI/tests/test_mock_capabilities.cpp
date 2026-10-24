@@ -43,7 +43,7 @@ void TestEmbeddings() {
     req.input = { "alpha", "alpha", "beta" };
 
     auto resp = emb->Embed(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.embeddings.size(), size_t{3});
     EXPECT_TRUE(!resp.embeddings[0].values.empty());
 
@@ -87,7 +87,7 @@ void TestSpeechToText() {
     req.language = "en";
 
     auto resp = stt->Transcribe(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_TRUE(!resp.text.empty());
     EXPECT_TRUE(!resp.segments.empty());
     EXPECT_EQ(resp.detectedLanguage, std::string("en"));
@@ -140,7 +140,7 @@ void TestTextToSpeech() {
     req.format = TtsAudioFormat::Wav;
 
     auto resp = tts->Speak(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.audio.bytes.size(), req.text.size());
     EXPECT_EQ(resp.audio.mimeType, std::string("audio/wav"));
 
@@ -190,7 +190,7 @@ void TestImageGen() {
     req.count = 3;
 
     auto resp = img->Generate(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_EQ(resp.images.size(), size_t{3});
     for (const auto& g : resp.images) {
         EXPECT_TRUE(g.image.bytes.size() > 8);                  // PNG header + meta
@@ -244,7 +244,7 @@ void TestVisionAnalyzer() {
     req.prompt = "What is in the image?";
 
     auto resp = vis->Analyze(req);
-    EXPECT_EQ(resp.error.code, ErrorCode::None);
+    EXPECT_EQ(resp.error.code, ErrorCode::Ok);
     EXPECT_TRUE(!resp.caption.empty());
     EXPECT_TRUE(!resp.tags.empty());
     EXPECT_TRUE(!resp.objects.empty());

@@ -50,11 +50,12 @@ cryptography:
 
 # ===== DATABASE (UltraDatabase) =====
 #
-# UltraDatabase wraps SQLite as its embedded engine (Stage 1); the networked
-# drivers (PostgreSQL, MySQL / MariaDB) are the Stage 2 plan and are not wired
-# yet. SQLite is taken from the system: the build prefers pkg-config, falls
-# back to a plain find_library, and simply skips the UltraDatabase target when
-# neither finds it — the rest of the tree configures unchanged.
+# UltraDatabase wraps SQLite as its embedded engine (Stage 1), with the
+# PostgreSQL and MySQL / MariaDB drivers built in wherever their client
+# libraries are found. SQLite is taken from the system: the build prefers
+# pkg-config, falls back to a plain find_library, and simply skips the
+# UltraDatabase target when neither finds it — the rest of the tree
+# configures unchanged. The server drivers are optional the same way.
 database:
   core:
     sqlite3:
@@ -68,6 +69,29 @@ database:
       brew: "sqlite"
       msys2: "mingw-w64-x86_64-sqlite3"
       vcpkg: "sqlite3"
+  drivers:
+    libpq:
+      min_version: ""
+      purpose: "The PostgreSQL driver (UltraDatabasePostgresDriver.cpp)"
+      required: false                 # without it "postgresql" reports the driver missing
+      platforms: ["all"]
+      pkg_config: "libpq"
+      apt: "libpq-dev"
+      brew: "libpq"
+      msys2: "mingw-w64-x86_64-postgresql"
+      vcpkg: "libpq"
+      license: "PostgreSQL"
+    libmariadb:
+      min_version: "3.1"              # caching_sha2_password for MySQL 8 servers
+      purpose: "The MySQL / MariaDB driver (UltraDatabaseMysqlDriver.cpp), MariaDB Connector/C"
+      required: false                 # without it "mysql" reports the driver missing
+      platforms: ["all"]
+      pkg_config: "libmariadb"
+      apt: "libmariadb-dev"
+      brew: "mariadb-connector-c"
+      msys2: "mingw-w64-x86_64-libmariadbclient"
+      vcpkg: "libmariadb"
+      license: "LGPL-2.1-or-later"    # linked dynamically only: CMake asks for the shared library by name
 
 networking:
   core:

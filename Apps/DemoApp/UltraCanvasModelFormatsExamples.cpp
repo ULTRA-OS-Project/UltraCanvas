@@ -24,11 +24,16 @@
 // the page names the large ones it skips rather than pretending they are
 // unsupported. See kSamples below.
 //
+// Version: 1.2.0 - the shared page look (UltraCanvasDemoPageKit): the viewer
+//                  and the two report panels as cards that wrap under each
+//                  other, panels that grow with their text instead of
+//                  scrolling, buttons as wide as their text
 // Version: 1.1.0
-// Last Modified: 2026-09-17
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "UltraCanvasPathUtf8.h"
 
 #ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
@@ -36,7 +41,6 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
-#include "UltraCanvasDemoScrollText.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 
@@ -393,11 +397,14 @@ namespace {
         return "." + extension + " 3D Models";
     }
 
-    std::shared_ptr<UltraCanvasButton> MakeToolButton(const std::string& id, int x, int y, int w,
+    // As wide as its text, at least `minWidth` (the width it had).
+    std::shared_ptr<UltraCanvasButton> MakeToolButton(const std::string& id, float minWidth,
                                                       const std::string& text,
                                                       std::function<void()> action) {
-        auto btn = std::make_shared<UltraCanvasButton>(id, x, y, w, 30);
-        btn->SetText(text);
+        auto btn = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 30, text);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(minWidth);
+        btn->boxConstraints = limits;
         btn->SetColors(Color(60, 60, 65, 255));
         btn->SetTextColors(Colors::White);
         btn->onClick = std::move(action);
@@ -412,35 +419,26 @@ namespace {
 // discover that .step and .3ds are both supported. Empty shows them all.
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFormatsExamples(
         const std::string& extension) {
-    auto container = std::make_shared<UltraCanvasContainer>("ModelFormatsExamples", 0, 0, 1000, 780);
-    container->SetBackgroundColor(Color(245, 245, 245, 255));
-
-    auto title = std::make_shared<UltraCanvasLabel>("MFTitle", 10, 10, 800, 30);
-    title->SetText(extension.empty()
-                   ? std::string("3D Model Formats - One Document Structure, Nine Readers")
-                   : FormatTitle(extension));
-    title->SetFontSize(16);
-    title->SetFontWeight(FontWeight::Bold);
-    container->AddChild(title);
-
-    auto description = std::make_shared<UltraCanvasLabel>("MFDescription", 10, 45, 960, 44);
-    description->SetText(
+    auto container = DemoKit::CreatePage("ModelFormatsExamples",
+            extension.empty()
+            ? std::string("3D Model Formats - One Document Structure, Nine Readers")
+            : FormatTitle(extension),
             extension.empty()
             ? std::string(
-                "Every sample is read into the same ModelStorage::ModelDocument, so the panels on the right show where the\n"
+                "Every sample is read into the same ModelStorage::ModelDocument, so the panels on the right show where the "
                 "formats genuinely differ - scene graph, materials, units, up-axis, exact solids - rather than nine of the same row.")
             : std::string(
-                "Read into a ModelStorage::ModelDocument by the Models plugin's dispatch - the same universal structure every\n"
+                "Read into a ModelStorage::ModelDocument by the Models plugin's dispatch - the same universal structure every "
                 "other 3D format lands in, so the panels on the right say what this one carried and what the format can carry."));
-    description->SetFontSize(12);
-    description->SetTextColor(Color(80, 80, 80, 255));
-    container->AddChild(description);
 
-    auto statusLabel = std::make_shared<UltraCanvasLabel>("MFStatus", 10, 740, 980, 30);
-    statusLabel->SetFontSize(11);
-    statusLabel->SetTextColor(Color(60, 60, 60, 255));
-    statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
-    container->AddChild(statusLabel);
+    // The viewer beside the two report panels while both fit; the panels
+    // move under it when they do not.
+    auto mainRow = DemoKit::AddRow(container, "MFMainRow");
+    auto viewerPanel = DemoKit::AddCard(mainRow, "MFViewerPanel", "", "",
+                                        600 + 2 * DemoKit::kCardPadding + 2);
+    auto infoColumn = DemoKit::CreateColumn("MFInfoColumn", DemoKit::kPageGap);
+    DemoKit::Add(mainRow, infoColumn, 1);
+    infoColumn->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(320));
 
     // ===== SAMPLE TABLE =====
     const std::string modelsDir = NormalizePath(GetResourcesDir() + "media/3D/");
@@ -459,56 +457,50 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     }
 
     // ===== STATS PANEL =====
-    auto statsContainer = std::make_shared<UltraCanvasContainer>("MFStatsPanel", 660, 100, 320, 390);
-    statsContainer->SetBackgroundColor(Colors::White);
-    statsContainer->SetBorders(2, Color(180, 180, 180, 255));
-
-    auto statsTitle = std::make_shared<UltraCanvasLabel>("MFStatsTitle", 10, 10, 300, 25);
-    statsTitle->SetText("What the reader found");
-    statsTitle->SetFontWeight(FontWeight::Bold);
-    statsTitle->SetFontSize(13);
-    statsContainer->AddChild(statsTitle);
-
-    // Scrolled rather than plain: a COLLADA scene fills this panel and then
-    // some, while a STEP solid leaves it half empty.
-    auto statsText = demoui::MakeScrollingText("MFStatsText", 10, 38, 300, 344);
-    statsContainer->AddChild(statsText.View);
-    container->AddChild(statsContainer);
+    // The panel grows with the report: a COLLADA scene says a great deal
+    // more than a STEP solid.
+    auto statsContainer = DemoKit::AddCard(infoColumn, "MFStatsPanel", "What the reader found");
+    auto statsText = DemoKit::AddText(statsContainer, "MFStatsText", "");
+    statsText->SetFontSize(11);
+    statsText->SetTextColor(Color(50, 50, 50, 255));
 
     // ===== CAPABILITY PANEL =====
-    auto capsContainer = std::make_shared<UltraCanvasContainer>("MFCapsPanel", 660, 500, 320, 230);
-    capsContainer->SetBackgroundColor(Color(240, 248, 255, 255));
-    capsContainer->SetBorders(2, Color(100, 149, 237, 255));
-
-    auto capsTitle = std::make_shared<UltraCanvasLabel>("MFCapsTitle", 10, 8, 300, 22);
-    capsTitle->SetText("What the format can carry");
-    capsTitle->SetFontWeight(FontWeight::Bold);
-    capsTitle->SetFontSize(13);
-    capsContainer->AddChild(capsTitle);
-
     // The capability grid is a fixed twelve lines, but the per-sample note
     // under it is not - and it is a paragraph when the build has no converter.
-    auto capsText = demoui::MakeScrollingText("MFCapsText", 10, 34, 300, 190);
-    capsContainer->AddChild(capsText.View);
-    container->AddChild(capsContainer);
+    auto capsContainer = DemoKit::AddCard(infoColumn, "MFCapsPanel", "What the format can carry");
+    auto capsText = DemoKit::AddText(capsContainer, "MFCapsText", "");
+    capsText->SetFontSize(11);
+    capsText->SetTextColor(Color(50, 50, 50, 255));
 
     // ===== VIEWER PANEL =====
-    auto viewerPanel = std::make_shared<UltraCanvasContainer>("MFViewerPanel", 20, 100, 620, 520);
-    viewerPanel->SetBackgroundColor(Colors::White);
-    viewerPanel->SetBorders(2, Color(180, 180, 180, 255));
-    container->AddChild(viewerPanel);
-
     // Named for STL, but it takes a Mesh3D and knows nothing about where the
     // mesh came from - a GL-orbited view where there is GL, a shaded software
     // still where there is not.
-    auto viewer = std::make_shared<UltraCanvasSTLElement>("MFViewer", 10, 10, 600, 430);
-    viewerPanel->AddChild(viewer);
+    auto viewer = std::make_shared<UltraCanvasSTLElement>("MFViewer", 0, 0, 600, 430);
+    DemoKit::AddFixed(viewerPanel, viewer);
 
-    auto nameLabel = std::make_shared<UltraCanvasLabel>("MFName", 10, 486, 600, 24);
+    auto toolRow = DemoKit::AddRow(viewerPanel, "MFToolRow", 10);
+
+    auto nameLabel = DemoKit::AddText(viewerPanel, "MFName", "");
     nameLabel->SetFontSize(11);
-    nameLabel->SetAlignment(TextAlignment::Center);
+    nameLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Top);
     nameLabel->SetTextColor(Color(60, 60, 60, 255));
-    viewerPanel->AddChild(nameLabel);
+
+    // ===== HOW IT WORKS =====
+    auto howContainer = DemoKit::AddCard(container, "MFHowPanel");
+    auto howText = DemoKit::AddText(howContainer, "MFHowText",
+            std::string("ConversionOptions o; o.TriangulateOnImport = o.TessellateOnImport = true;\n") +
+            "auto doc = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, o);\n"
+            "Mesh3D mesh = ModelDocumentToMesh3D(*doc);\n"
+            "\n" + kOmittedNote);
+    howText->SetFontSize(11);
+    howText->SetTextColor(Color(50, 50, 50, 255));
+
+    auto statusLabel = DemoKit::AddText(container, "MFStatus", "");
+    statusLabel->SetFontSize(11);
+    statusLabel->SetTextColor(Color(60, 60, 60, 255));
+    statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+    statusLabel->SetPadding(4.0f);
 
     auto currentIndex = std::make_shared<size_t>(0);
     auto colorIndex = std::make_shared<size_t>(0);
@@ -531,8 +523,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
         char counter[64];
         std::snprintf(counter, sizeof(counter), "  (%zu of %zu)", index + 1, samples->size());
         nameLabel->SetText(sample.formatName + " - " + sample.fileName + counter);
-        statsText.SetText(DescribeDocument(sample));
-        capsText.SetText(DescribeCapabilities(sample));
+        statsText->SetText(DescribeDocument(sample));
+        capsText->SetText(DescribeCapabilities(sample));
         statusLabel->SetText(SummariseSample(sample));
     };
 
@@ -541,55 +533,41 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     viewer->SetAutoRotate(*autoRotate);
 
     // ===== VIEWER CONTROLS =====
-    auto rotateBtn = MakeToolButton("MFRotate", 10, 450, 130, "Auto-rotate: on", nullptr);
+    auto rotateBtn = MakeToolButton("MFRotate", 130, "Auto-rotate: on", nullptr);
     rotateBtn->onClick = [viewer, rotateBtn = rotateBtn.get(), autoRotate]() {
         *autoRotate = !*autoRotate;
         viewer->SetAutoRotate(*autoRotate);
         rotateBtn->SetText(*autoRotate ? "Auto-rotate: on" : "Auto-rotate: off");
     };
-    viewerPanel->AddChild(rotateBtn);
+    DemoKit::Add(toolRow, rotateBtn);
 
-    auto materialBtn = MakeToolButton("MFMaterial", 150, 450, 130,
+    auto materialBtn = MakeToolButton("MFMaterial", 130,
                                       "Material: " + ModelColors()[0].first, nullptr);
     materialBtn->onClick = [viewer, materialBtn = materialBtn.get(), colorIndex]() {
         *colorIndex = (*colorIndex + 1) % ModelColors().size();
         viewer->SetModelColor(ModelColors()[*colorIndex].second);
         materialBtn->SetText("Material: " + ModelColors()[*colorIndex].first);
     };
-    viewerPanel->AddChild(materialBtn);
+    DemoKit::Add(toolRow, materialBtn);
 
     // A format page with one sample has nothing to page through, so it says so
     // by not offering the buttons at all rather than by two that do nothing.
     const size_t sampleCount = samples->size();
     if (sampleCount > 1) {
-        auto prevBtn = MakeToolButton("MFPrev", 300, 450, 100, "Prev",
+        auto prevBtn = MakeToolButton("MFPrev", 100, "Prev",
                                       [showSample, currentIndex, sampleCount]() {
                                           showSample((*currentIndex + sampleCount - 1) % sampleCount);
                                       });
         SetFlatButtonIcon(*prevBtn, "menu/chevron-left.svg");
-        viewerPanel->AddChild(prevBtn);
+        DemoKit::Add(toolRow, prevBtn);
 
-        auto nextBtn = MakeToolButton("MFNext", 410, 450, 100, "Next",
+        auto nextBtn = MakeToolButton("MFNext", 100, "Next",
                                       [showSample, currentIndex, sampleCount]() {
                                           showSample((*currentIndex + 1) % sampleCount);
                                       });
         SetFlatButtonIcon(*nextBtn, "menu/chevron-right.svg", ButtonIconPosition::Right);
-        viewerPanel->AddChild(nextBtn);
+        DemoKit::Add(toolRow, nextBtn);
     }
-
-    // ===== HOW IT WORKS =====
-    auto howContainer = std::make_shared<UltraCanvasContainer>("MFHowPanel", 20, 630, 620, 100);
-    howContainer->SetBackgroundColor(Color(255, 250, 240, 255));
-    howContainer->SetBorders(2, Color(222, 184, 135, 255));
-
-    auto howText = demoui::MakeScrollingText("MFHowText", 10, 8, 600, 88);
-    howText.SetText(
-            std::string("ConversionOptions o; o.TriangulateOnImport = o.TessellateOnImport = true;\n") +
-            "auto doc = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, o);\n"
-            "Mesh3D mesh = ModelDocumentToMesh3D(*doc);\n"
-            "\n" + kOmittedNote);
-    howContainer->AddChild(howText.View);
-    container->AddChild(howContainer);
 
     return container;
 }

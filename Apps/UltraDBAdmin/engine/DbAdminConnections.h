@@ -3,10 +3,14 @@
 // directory, never with a password in it. A password goes into the app's own
 // vault (UltraVault::DeviceKeyVault, encrypted at rest) under a key made from
 // the connection's id, and the connection hands UltraDatabase only that key -
-// the PostgreSQL driver reads it from the vault when it connects.
+// the PostgreSQL and MySQL drivers read it from the vault when they connect.
+// Version: 0.3.0 - MySQL / MariaDB connections; EngineOf
+// Version: 0.2.0 - auto-commit per connection
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "DbAdminEngine.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 
@@ -21,18 +25,26 @@ namespace UltraDBAdmin {
 struct ConnectionSpec {
     std::string id;                 // generated; ASCII, so it can name a vault key
     std::string name;               // what the tree shows
-    std::string driver = "sqlite";  // "sqlite" or "postgresql"
-    std::string database;           // SQLite: the file; PostgreSQL: the database
-    std::string host;               // PostgreSQL only; a socket directory works too
+    std::string driver = "sqlite";  // "sqlite", "postgresql" or "mysql" (MariaDB too)
+    std::string database;           // SQLite: the file; a server: the database
+    std::string host;               // a server only; a socket directory (PostgreSQL) or socket file (MySQL) works too
     int         port = 0;           // 0: the driver's default
     std::string user;
     bool        hasPassword = false;   // a password is in the vault for this id
     UltraDbTls  tls = UltraDbTls::VerifyFull;
     bool        readOnly = false;
     bool        production = false;    // shown in red, so a slip is visible
+    // Browse writes a row change as soon as it is made, as phpMyAdmin does,
+    // instead of staging it for Commit. A deletion and anything on a
+    // production connection still ask first.
+    bool        autoCommit = false;
 
     bool IsSqlite() const { return driver == "sqlite" || driver == "sqlite3"; }
+    bool IsMysql() const { return driver == "mysql" || driver == "mariadb"; }
 };
+
+// The dialect `spec` speaks.
+SqlEngine EngineOf(const ConnectionSpec& spec);
 
 // The name a spec is registered under in UltraDatabase: the session the
 // tree, Browse and Structure use.
@@ -43,6 +55,10 @@ std::string RegisteredName(const ConnectionSpec& spec);
 // connection), so on a session of its own it never holds up the tree or a
 // Browse page - and Stop cancels exactly the console's statement.
 std::string ConsoleName(const ConnectionSpec& spec);
+
+// The connection id a registered name - RegisteredName's or ConsoleName's -
+// is for; "" for a name that is not the app's. The SQL log's filter.
+std::string ConnectionIdOf(const std::string& registeredName);
 
 // A one-line description for the tree's tooltip and the window title:
 // "notes.db" or "alice@db.example.com:5432/crm".

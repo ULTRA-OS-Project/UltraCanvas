@@ -194,9 +194,9 @@ std::optional<NetworkParameters> ReadNetworkParameters(const std::vector<uint8_t
 std::optional<NetworkParametersResponse> DecodeNetworkParametersResponse(const std::vector<uint8_t>& p) {
     if (p.size() < 2) return std::nullopt;
     NetworkParametersResponse r;
-    r.Status = p[0];
+    r.StatusCode = p[0];
     r.NodeType = p[1];
-    if (r.Status != kEmberSuccess) return r;
+    if (r.StatusCode != kEmberSuccess) return r;
     auto n = ReadNetworkParameters(p, 2);
     if (!n) return std::nullopt;
     r.Parameters = *n;
@@ -219,7 +219,7 @@ std::optional<TrustCenterJoin> DecodeTrustCenterJoin(const std::vector<uint8_t>&
     TrustCenterJoin j;
     j.NodeId = ReadU16(p, 0);
     j.Eui64 = ReadU64(p, 2);
-    j.Status = p[10];
+    j.StatusCode = p[10];
     j.Decision = p[11];
     j.ParentNodeId = ReadU16(p, 12);
     return j;
@@ -339,7 +339,7 @@ std::optional<MessageSent> DecodeMessageSent(const std::vector<uint8_t>& p) {
     m.Aps = *aps;
     size_t o = 3 + kApsFrameSize;
     m.MessageTag = p[o++];
-    m.Status = p[o++];
+    m.StatusCode = p[o++];
     const size_t length = p[o++];
     if (o + length > p.size()) return std::nullopt;
     m.Contents.assign(p.begin() + static_cast<long>(o),
@@ -419,7 +419,7 @@ std::vector<uint8_t> EncodeMgmtNwkUpdateChannelChange(uint8_t tsn, uint32_t chan
 std::optional<ActiveEpRsp> DecodeActiveEpRsp(const std::vector<uint8_t>& f) {
     if (f.size() < 5) return std::nullopt;
     ActiveEpRsp r;
-    r.Tsn = f[0]; r.Status = f[1]; r.Nwk = ReadU16(f, 2);
+    r.Tsn = f[0]; r.StatusCode = f[1]; r.Nwk = ReadU16(f, 2);
     const size_t count = f[4];
     if (5 + count > f.size()) return std::nullopt;
     r.Endpoints.assign(f.begin() + 5, f.begin() + 5 + static_cast<long>(count));
@@ -429,9 +429,9 @@ std::optional<ActiveEpRsp> DecodeActiveEpRsp(const std::vector<uint8_t>& f) {
 std::optional<SimpleDescRsp> DecodeSimpleDescRsp(const std::vector<uint8_t>& f) {
     if (f.size() < 5) return std::nullopt;
     SimpleDescRsp r;
-    r.Tsn = f[0]; r.Status = f[1]; r.Nwk = ReadU16(f, 2);
+    r.Tsn = f[0]; r.StatusCode = f[1]; r.Nwk = ReadU16(f, 2);
     const size_t length = f[4];
-    if (r.Status != kStatusSuccess) {
+    if (r.StatusCode != kStatusSuccess) {
         // A failure carries no descriptor; return the status and nothing else.
         r.Endpoint = 0; r.ProfileId = 0; r.DeviceId = 0; r.DeviceVersion = 0;
         return r;
@@ -455,9 +455,9 @@ std::optional<SimpleDescRsp> DecodeSimpleDescRsp(const std::vector<uint8_t>& f) 
 std::optional<NodeDescRsp> DecodeNodeDescRsp(const std::vector<uint8_t>& f) {
     if (f.size() < 4) return std::nullopt;
     NodeDescRsp r;
-    r.Tsn = f[0]; r.Status = f[1]; r.Nwk = ReadU16(f, 2);
+    r.Tsn = f[0]; r.StatusCode = f[1]; r.Nwk = ReadU16(f, 2);
     r.LogicalType = 0xFF; r.ManufacturerCode = 0;
-    if (r.Status != kStatusSuccess) return r;
+    if (r.StatusCode != kStatusSuccess) return r;
     // Node descriptor is 13 bytes: byte 0 low three bits are the logical type,
     // manufacturer code is at bytes 3-4.
     if (f.size() < 4 + 13) return std::nullopt;
@@ -469,8 +469,8 @@ std::optional<NodeDescRsp> DecodeNodeDescRsp(const std::vector<uint8_t>& f) {
 std::optional<IeeeAddrRsp> DecodeIeeeAddrRsp(const std::vector<uint8_t>& f) {
     if (f.size() < 2) return std::nullopt;
     IeeeAddrRsp r;
-    r.Tsn = f[0]; r.Status = f[1]; r.Ieee = 0; r.Nwk = 0;
-    if (r.Status != kStatusSuccess) return r;
+    r.Tsn = f[0]; r.StatusCode = f[1]; r.Ieee = 0; r.Nwk = 0;
+    if (r.StatusCode != kStatusSuccess) return r;
     if (f.size() < 12) return std::nullopt;
     r.Ieee = ReadU64(f, 2);
     r.Nwk = ReadU16(f, 10);
@@ -550,9 +550,9 @@ std::vector<Attribute> DecodeAttributes(const std::vector<uint8_t>& f, size_t o,
         a.Id = ReadU16(f, o); o += 2;
         if (withStatus) {
             if (o >= f.size()) break;
-            a.Status = f[o++];
+            a.StatusCode = f[o++];
             // An unsuccessful record carries no type or value.
-            if (a.Status != 0x00) { out.push_back(a); continue; }
+            if (a.StatusCode != 0x00) { out.push_back(a); continue; }
         }
         if (o >= f.size()) break;
         a.DataType = f[o++];

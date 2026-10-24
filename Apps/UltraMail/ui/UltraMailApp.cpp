@@ -1,4 +1,14 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.39 - the compose window opens wide enough for its toolbar in
+//                  one row; Settings > Reading > Attachments reaches the reading
+//                  pane and the compose windows
+// Version: 0.9.38 - a recipient suggestion's menu: Edit contact, Delete address,
+//                  Set as SPAM; blocked senders are not suggested; Edit contact
+//                  (here and for a message's sender) edits that address; a
+//                  deleted address is forgotten; a known service is collected
+//                  only with its domain proven; Contacts > Other > Remove
+//                  collected contacts; services collected also from bodies
+//                  downloaded later (CollectServices, CollectServiceOf)
 // Version: 0.9.37 - the new-mail notification carries where its click leads
 //                   (launch), and UltraMail is the activator of its Windows
 //                   toasts, so a click opens the mail after the broker host
@@ -486,6 +496,44 @@ void UltraMailApp::FinishStartup() {
         src.date = "Tue, 14 Jan 2026 14:02:00 +0000";
         OpenComposer(Composer::Reply(src, "Erika Example", "erika@example.com", false));
     }
+    // Demo path: one dialog on its own, to look at it (wizard, password,
+    // password-new, oauth, wait, account - the last one on the demo account
+    // seeded by ULTRAMAIL_DEMO_MAIL=1 - outbox, settings, and compose: a
+    // formatted message with two attachments).
+    if (const char* dd = std::getenv("ULTRAMAIL_DEMO_DIALOG"); dd && *dd) {
+        const std::string which = dd;
+        UltraCanvas::UltraCanvasWindowBase* parent = window_.get();
+        if (which == "wizard") AccountWizard::Show(parent, [](const AccountDraft&) {});
+        else if (which == "password" || which == "password-new")
+            PassphraseDialog::Show(parent, which == "password-new", "",
+                                   [](const std::string&) {});
+        else if (which == "oauth")
+            OAuthCodeDialog::Show(parent, "Google", "erika@gmail.com",
+                                  [](const std::string&) {});
+        else if (which == "wait")
+            WaitDialog::Show(parent, "Looking up server settings",
+                "UltraMail is asking example.com and the Thunderbird provider database "
+                "for the mail servers of erika@example.com\xE2\x80\xA6", nullptr, "server");
+        else if (which == "account" && !accounts_.empty())
+            HandleAccountSettings(accounts_.front().accountId);
+        else if (which == "outbox") OpenOutbox();
+        else if (which == "settings") OpenSettings();
+        else if (which == "compose") {
+            // A formatted message with two attachments: where they are shown.
+            Draft d = Composer::NewMessage("Erika Example", "erika@example.com");
+            d.to = {"anna@example.com"};
+            d.subject = "Quarterly figures";
+            d.richBody = PlainBodyToRichDocument("Hi Anna,\n\nthe figures are attached.\n\nErika");
+            for (const char* name : {"Q3-figures.pdf", "Notes.txt"}) {
+                Attachment a;
+                a.filename = name;
+                a.mediaType = "application/octet-stream";
+                a.data.assign(2048, 'x');
+                d.attachments.push_back(std::move(a));
+            }
+            OpenComposer(d);
+        }
+    }
     // Demo path: the account signature. =1 opens the signature editor on a
     // designed HTML signature; =2 a new message from the demo account (seeded
     // by ULTRAMAIL_DEMO_MAIL=1) signed with it.
@@ -739,6 +787,7 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // Apply the remembered reading-pane choice (default on; a rebuild only when off).
     mailView_.SetReadingPane(prefs_.showReadingPane);
     mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+    mailView_.SetAttachmentsRight(prefs_.AttachmentsRight());
     mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                  prefs_.folderTreeWidth);
 
@@ -1122,8 +1171,9 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     FinishStartup();   // the cloud accounts and the vault, before the first frame was done
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
-    cfg.width  = 640;
-    cfg.height = 560;   // two toolbar rows above the body
+    // Wide enough for every formatting tool in one row.
+    cfg.width  = ComposeView::kPreferredWidth;
+    cfg.height = 600;
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
     GuardQuitDuringTransfers(win);
@@ -1134,6 +1184,7 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     view->SetDraft(draft);
     view->SetParentWindow(win.get());
     view->SetCloud(cloud_);
+    view->SetAttachmentsRight(prefs_.AttachmentsRight());
     // To / Cc / Bcc complete from the address book as it is when the window
     // opens (one read, then matched in memory as the writer types), the
     // addresses written to most - by the mail in the Sent folders, recent
@@ -1142,11 +1193,89 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     if (contacts_.IsOpen()) contacts_.ListAll(*book);
     auto written = std::make_shared<std::map<std::string, double>>();
     store_.WeighSentRecipients(*written, static_cast<int64_t>(std::time(nullptr)));
+    // A blocked sender ("Set as SPAM", "Block this sender") is not offered:
+    // the lists as they are at each keystroke.
     view->suggestRecipients = [book, written](const std::string& query,
                                               const std::string& fieldText) {
-        return SuggestRecipients(*book, query, fieldText, 8, written.get());
+        const SenderLists lists = GetSenderLists();
+        return SuggestRecipients(*book, query, fieldText, 8, written.get(),
+                                 [&lists](const std::string& address) {
+                                     return !lists.BlockedBy(address).empty();
+                                 });
     };
     UltraCanvasWindow* raw = win.get();
+    // A suggestion's right-click menu. Each change re-reads the address book
+    // into `book`, so the field's next suggestions follow it.
+    view->editRecipientContact = [this, raw, book](const std::string& address,
+                                                   std::function<void()> done) {
+        Contact contact;
+        bool found = false;
+        if (!contacts_.IsOpen() || !contacts_.FindByEmail(address, contact, found) || !found)
+            return;
+        contactsView_.SetStore(&contacts_);
+        contactsView_.EditContact(contact, /*isNew=*/false, raw,
+            [this, book, done](const Contact&) {
+                book->clear();
+                contacts_.ListAll(*book);
+                RefreshContactIndex();
+                Refresh();   // badges
+                done();
+            },
+            address);   // the address right-clicked, whichever of the contact's it is
+    };
+    view->deleteRecipientAddress = [this, raw, book](const std::string& address,
+                                                     std::function<void()> done) {
+        Contact contact;
+        bool found = false;
+        if (!contacts_.IsOpen() || !contacts_.FindByEmail(address, contact, found) || !found)
+            return;
+        // Only this address: a contact with others keeps them, one without is
+        // deleted.
+        const std::string lower = ToLowerCase(address);
+        const bool others = std::any_of(contact.emails.begin(), contact.emails.end(),
+            [&lower](const ContactEmail& e) { return ToLowerCase(e.address) != lower; });
+        const std::string name = contact.displayName.empty() ? address : contact.displayName;
+        const std::string question = others
+            ? "Delete " + address + " from the contact \"" + name + "\"?"
+            : "Delete \"" + name + "\" <" + address + "> from the address book?";
+        UltraCanvasAlert::Confirm(question, "Delete address",
+            [this, raw, book, contact, lower, others, done](bool yes) mutable {
+                if (!yes) return;
+                UltraDbResult r;
+                if (others) {
+                    auto& emails = contact.emails;
+                    emails.erase(std::remove_if(emails.begin(), emails.end(),
+                        [&lower](const ContactEmail& e) { return ToLowerCase(e.address) == lower; }),
+                        emails.end());
+                    if (std::none_of(emails.begin(), emails.end(),
+                                     [](const ContactEmail& e) { return e.primary; }))
+                        emails.front().primary = true;
+                    r = contacts_.Save(contact);
+                } else {
+                    r = contacts_.Remove(contact.id);
+                }
+                if (!r) {
+                    AlertError(raw, "The address could not be deleted.", DetailLine(r));
+                    return;
+                }
+                contacts_.Forget({lower});   // incoming mail does not add it back
+                book->clear();
+                contacts_.ListAll(*book);
+                RefreshContactIndex();
+                contactsView_.Refresh();   // no-op unless the Contacts window is open
+                Refresh();                 // badges
+                done();
+            },
+            raw);
+    };
+    // Spam: the sender goes on the blocked list, as the sender menu's "Block
+    // this sender" does - its mail is judged again, and it is not suggested.
+    view->markRecipientSpam = [this](const std::string& address, std::function<void()> done) {
+        const std::string entry = SenderLists::Entry(address, /*blockList=*/true);
+        if (entry.empty()) return;
+        HandleSenderListChange(entry, /*blockList=*/true, /*add=*/true);
+        done();
+    };
     // Sent, or safely queued in the outbox: the window has done its job. It
     // stays open when the message was not queued (no recipient, no outbox),
     // so nothing typed is lost. The send's own result (sent / waiting in the
@@ -1337,7 +1466,7 @@ void UltraMailApp::RunMailboxAction(
                          "No incoming mail server is known for this account.");
             return;
         }
-        if (vault_.MethodFor(accountId) == SignInMethod::None) {
+        if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) {
             AlertWarning(parent, actionName + " could not be completed.",
                          "No password or sign-in is stored for this account in the "
                          "credential vault.");
@@ -1364,7 +1493,7 @@ void UltraMailApp::RunMailboxAction(
             // Default Success: only a credential failure carries an auth code the
             // UI thread can turn into a re-sign-in offer; a mailbox-op failure
             // keeps Success here and falls through to the plain error alert.
-            UltraNetResultCode credCode = UltraNetResultCode::Success;
+            UltraNetResultCode credCode = UltraNetResultCode::Ok;
             if (!cred) {
                 outcome = SyncOutcome::Fail(cred);
                 credCode = cred.code;
@@ -1411,7 +1540,7 @@ void UltraMailApp::RunMailboxActionQuiet(
     if (serverUrl.empty() || !settings.found) return;
     IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
     if (!mailbox) return;                    // quiet: no plug-in, nothing to push
-    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) return;
 
     UltraNetMailOptions opts;
     ApplyConnection(settings.imap, opts);
@@ -1457,6 +1586,7 @@ void UltraMailApp::FetchMissingBody(const MessageEnvelope& env) {
         [this, env, key](const SyncOutcome& outcome) {
             bodyFetchInFlight_.erase(key);
             if (outcome) {
+                CollectServiceOf(env);        // its sender's domain may be proven now
                 mailView_.BodyArrived(env);   // shown, if it is still the one being read
                 return;
             }
@@ -1753,6 +1883,7 @@ void UltraMailApp::HandleUnsubscribe(const MessageEnvelope& env) {
         },
         "Unsubscribe",
         [this, env, path]() {
+            CollectServiceOf(env);   // its sender's domain may be proven now
             auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
             UnsubscribeWith(env, loaded.success
                 ? std::string(loaded.bytes.begin(), loaded.bytes.end()) : std::string());
@@ -2333,11 +2464,34 @@ void UltraMailApp::CollectContacts(const std::string& accountId, const std::stri
     if (!contacts_.IsOpen()) return;
     std::vector<MessageEnvelope> msgs;
     store_.ListMessages(accountId, folder, 0, msgs);
-    // CollectSender, not Collect: a sender in the known-sender registry is
-    // filed under Services as a business contact (with the service's name as
-    // the organization), everything else lands in Other as before.
-    for (const auto& m : msgs)
-        ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr);
+    // Only the known services whose domain the scan proved, as after a sync.
+    CollectServices(accountId, folder, msgs);
+}
+
+void UltraMailApp::CollectServices(const std::string& accountId, const std::string& folder,
+                                   const std::vector<MessageEnvelope>& mail) {
+    if (!contacts_.IsOpen() || mail.empty()) return;
+    // A known service is filed only when the server proved its domain: the
+    // verdict stored with the body when it was downloaded and scanned.
+    std::map<int64_t, MessageSecurity> verdicts;
+    store_.ListSecurity(accountId, folder, verdicts);
+    std::vector<SenderSeen> senders;
+    senders.reserve(mail.size());
+    for (const MessageEnvelope& m : mail) {
+        const auto v = verdicts.find(m.uid);
+        if (v == verdicts.end() || v->second.verifiedDomain.empty()) continue;
+        senders.push_back({m.fromName, m.fromAddr, v->second.verifiedDomain});
+    }
+    ContactCollector::CollectSenders(contacts_, senders);
+}
+
+void UltraMailApp::CollectServiceOf(const MessageEnvelope& m) {
+    if (!contacts_.IsOpen() || m.folder != "INBOX") return;
+    MessageSecurity sec;
+    if (!store_.GetSecurity(m.accountId, m.folder, m.uid, sec) || sec.verifiedDomain.empty())
+        return;
+    if (ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr, sec.verifiedDomain))
+        RefreshContactIndex();
 }
 
 void UltraMailApp::StartBackgroundSync() {
@@ -2439,7 +2593,7 @@ void UltraMailApp::MaintainPushWatches() {
         if (!jmap) break;
         const DiscoveryResult d = SettingsFor(a);
         if (!d.found || d.imap.protocol != MailProtocol::Jmap) continue;
-        if (vault_.MethodFor(a.accountId) == SignInMethod::None) continue;
+        if (vault_.MethodFor(a.accountId) == SignInMethod::NoSignIn) continue;
         const std::string url = AutoDiscovery::IncomingServerUrl(d.imap);
         if (url.empty()) continue;
         wanted.insert(a.accountId);
@@ -2675,7 +2829,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
     if (serverUrl.empty() || !settings.found) return;
     IMailboxProtocolPlugin* mailbox = MailboxPluginFor(settings.imap.protocol);
     if (!mailbox) return;
-    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::NoSignIn) return;
 
     UltraNetMailOptions opts;
     ApplyConnection(settings.imap, opts);
@@ -2833,7 +2987,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The password — or the Google sign-in — lives in the vault. Without
         // either the login would be rejected anyway, so report the real reason
         // instead of a bad-password error from the server.
-        if (vault_.MethodFor(acc.accountId) == SignInMethod::None) {
+        if (vault_.MethodFor(acc.accountId) == SignInMethod::NoSignIn) {
             if (userInitiated)
                 AlertWarning(parent, "New mail cannot be fetched for " + who + ".",
                              "No password or sign-in is stored for this account "
@@ -2881,10 +3035,12 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The senders of the mail this sync brought, for the address book's
         // collector on the UI thread afterwards. Filled on the worker, read
         // once it has finished (onDone runs after the last progress call).
-        auto arrived = std::make_shared<std::vector<std::pair<std::string, std::string>>>();
+        // Only their identity: what the scan proved of each sender is read from
+        // the store then, once its body has been downloaded and scanned.
+        auto arrived = std::make_shared<std::vector<MessageEnvelope>>();
         // Stash the credential-resolve code so the UI thread can tell an expired
         // OAuth sign-in (offer re-sign-in) from an ordinary sync failure.
-        auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Success);
+        auto credCode = std::make_shared<UltraNetResultCode>(UltraNetResultCode::Ok);
         svc->SyncInBackground(aid, acc.serverUrl, opts,
                               [this, aid, username, provider, credCode](UltraNetMailOptions& o) {
                                   UltraNetResult r = ResolveCredentials(aid, username, provider,
@@ -2973,7 +3129,15 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 if (contacts_.IsOpen()) {
                     Trace::Stage step("Address book: the senders of " +
                                       std::to_string(arrived->size()) + " new message(s)", 0);
-                    ContactCollector::CollectSenders(contacts_, *arrived);
+                    // With the newest mail held already: a body an earlier
+                    // sync did not get may have come now (the sync fetches
+                    // those for the newest 100), and with it the proof of
+                    // its sender's domain.
+                    std::vector<MessageEnvelope> mail = *arrived;
+                    std::vector<MessageEnvelope> newest;
+                    store_.ListMessages(aid, "INBOX", kCollectNewest, newest);
+                    mail.insert(mail.end(), newest.begin(), newest.end());
+                    CollectServices(aid, "INBOX", mail);
                 }
                 Refresh();   // authoritative, correctly sorted final list
             });
@@ -2985,7 +3149,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             // Sender icons are not fetched here: a download held the sync
             // for its whole round trip. The list asks for the icons of the
             // rows it paints, and the icon cache's own threads fetch them.
-            if (m.folder == "INBOX") arrived->emplace_back(m.fromName, m.fromAddr);
+            if (m.folder == "INBOX") arrived->push_back(m);
             feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             newMail_.Note(m);   // and the notification on screen, when the sync ends
             progressBuf->push_back(m);
@@ -3096,7 +3260,7 @@ void UltraMailApp::EditSenderContact(const MessageEnvelope& m, bool isNew) {
     contactsView_.EditContact(contact, /*isNew=*/!found, parent, [this](const Contact&) {
         RefreshContactIndex();
         Refresh();   // badges: the sender is (still) in the address book
-    });
+    }, m.fromAddr);   // the sender's address, whichever of the contact's it is
 }
 
 void UltraMailApp::AddSenderToContactGroup(const MessageEnvelope& m,
@@ -3155,6 +3319,13 @@ void UltraMailApp::OpenContacts() {
 
     contactsView_.SetStore(&contacts_);
     contactsView_.onChanged = [this]() { RefreshContactIndex(); Refresh(); };
+    // Who the user writes to (the Sent folders), for "Remove collected
+    // contacts…": read when asked, so it is as current as the mail.
+    contactsView_.writtenTo = [this]() {
+        std::map<std::string, double> written;
+        store_.WeighSentRecipients(written, static_cast<int64_t>(std::time(nullptr)));
+        return written;
+    };
     win->AddChild(contactsView_.Build());
     contactsView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
     win->onWindowResize = [this](int cw, int ch) {
@@ -3798,7 +3969,7 @@ void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
         "Looking up server settings",
         "UltraMail is asking " + domain + " and the Thunderbird provider database "
         "for the mail servers of " + draft.email + "…",
-        [cancelled]() { cancelled->store(true); });
+        [cancelled]() { cancelled->store(true); }, "server");
 
     std::thread([this, draft, parent, cancelled, waiting]() {
         AutoDiscovery discovery;
@@ -3856,7 +4027,7 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     EnsureVaultUnlocked([this, account, current, parent]() {
         const std::string accountId = account.accountId;
         ServerSettingsDialog::Verifier verify;
-        if (vault_.MethodFor(accountId) != SignInMethod::None) {
+        if (vault_.MethodFor(accountId) != SignInMethod::NoSignIn) {
             verify = LoginVerifier([this, accountId, current](
                     const ServerSettingsDialog::Result&,
                     const std::string& username, UltraNetCredentials& c) {
@@ -3893,6 +4064,11 @@ void UltraMailApp::OpenSettings() {
         prefs_.Save(prefsPath_);
         mailView_.SetReadingPane(prefs_.showReadingPane);
         mailView_.SetBodyOptions(prefs_.showHtml, static_cast<float>(prefs_.messageTextSize));
+        // Settings > Reading > Attachments: the reading pane and every open
+        // compose window.
+        mailView_.SetAttachmentsRight(prefs_.AttachmentsRight());
+        for (auto& c : composers_)
+            if (c.view) c.view->SetAttachmentsRight(prefs_.AttachmentsRight());
         mailView_.SetFolderTreeWidth(prefs_.folderTreeWidthMode == FolderTreeWidthMode::FitToText,
                                      prefs_.folderTreeWidth);
         mailView_.SetTreeCurrentAccountOnly(prefs_.folderTreeContent ==
@@ -3953,6 +4129,9 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.canOAuth        = !provider.empty();
         fields.providerName    = provider.empty() ? std::string()
                                                    : OAuthProviderDisplayName(provider);
+        // A password account must retype its password when the protocol
+        // changes; one on OAuth2 tokens keeps signing in with them.
+        fields.signedInWithOAuth = vault_.HasOAuthTokens(accountId);
         // The red "Delete account" button in the settings dialog's bottom row.
         // It closes the page, then HandleDeleteAccount runs the confirm-and-remove.
         fields.onDelete = [this, accountId]() { HandleDeleteAccount(accountId); };

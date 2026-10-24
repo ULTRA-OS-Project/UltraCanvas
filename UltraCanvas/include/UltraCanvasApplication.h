@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
 // Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS for a test that must end
 // Version: 1.10.0 - GenerateFontAliasConfig: the generic family aliases as a fontconfig document
 // Version: 1.9.0 - ClosingEndsApplication: whether a window's close ends Run()
@@ -56,6 +57,12 @@ namespace UltraCanvas {
     // where the system has none carries the same aliases; a configuration
     // made another way loads this into it (FcConfigParseAndLoadFromMemory).
     std::string GenerateFontAliasConfig();
+    // fontconfig's bitmap-font scaling (its 10-scale-bitmap-fonts.conf) as a
+    // <fontconfig> document: a bitmap font - the colour emoji fonts among
+    // them - is scaled to the size asked for instead of drawn at its
+    // bitmaps' size. The generated fonts.conf carries it on Windows and
+    // Android; a config made another way without a conf.d loads this.
+    std::string GenerateBitmapScalingConfig();
 #endif
 
     // Every font family this process can set text in: the fonts installed on

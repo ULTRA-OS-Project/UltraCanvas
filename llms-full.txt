@@ -967,7 +967,12 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   and `UltraCanvasWindowBase::RefreshAfterFontChange()` on every window (a new
   layout and a full repaint, popups too; also run when the Windows system
   fonts arrive after a cold start). Process-private and permanent: there is
-  no unregister.
+  no unregister. `UltraCanvasFontCoverage.h` (`core/UltraCanvasFontCoverage.cpp`):
+  `CountCharactersWithoutFont` / `FindScriptsWithoutFont` - the characters of
+  a text no font covers (drawn as hex boxes), by script, each with a free Noto
+  font and its download page - plus `FontDownloadUrl` and
+  `IsFontFamilyAvailable`. `UltraCanvasRichTextEdit::GetFontReport` and its
+  notice use them (`FontCoverageTest`, `RichTextEditElementTest`).
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
   Emoji come from a bundled font the emoji setting picks
@@ -1580,7 +1585,11 @@ through any text LLM (`UltraAITextLLMTranslator.h`: `CreateTextLLMTranslator`,
 engine and a model on demand and supervises the engine as a loopback
 process shared between applications; the `local` provider
 (`UltraAILocal.h`: `CreateLocalTextLLM`, `CreateLocalEmbeddings`) serves
-chat and embeddings through it. `Docs/Modules/UltraAI/LocalRuntime.md`.
+chat and embeddings through it; the module's one library that draws,
+`UltraAI_UI` (`UltraAI/ui/`, `UltraAILocalModelDialog.h`:
+`UltraAILocalModelDialog::Show`, `NeedsInstall`), is the "Get a local model"
+dialog an application shows when a service needs a model that is not on
+this computer. `Docs/Modules/UltraAI/LocalRuntime.md`.
 
 ### **3. FileLoader**
 
@@ -1752,7 +1761,10 @@ worker (`UltraNet_HttpRequestAsync` with chunked `onDataChunk` streaming,
 `UltraNet_ResumeRequest`), SSE (`UltraNet_SseStream[Async]` +
 `UltraNetSseParser`), WebSocket (on libcurl ≥ 7.86 with ws support),
 sessions/cookies, TLS layering, DNS, and the URL utilities are implemented
-on libcurl. Remaining gaps are per-function and environment-dependent —
+on libcurl. `UltraNetCookieJar` (`UltraNet/UltraNetCookieJar.h`) is a
+browser's cookie jar with the rules in the open (RFC 6265bis: `Store`,
+`HeaderFor`, `Classify`, `SiteOf`, `ParseCookieDate`, kept in a text file),
+for a client that follows redirects itself; UltraWeb uses it. Remaining gaps are per-function and environment-dependent —
 build and run the `UltraNetApiStatus` probe tool for ground truth on a
 given machine. See `Docs/Modules/UltraNet/README.md`.
 
@@ -1790,6 +1802,8 @@ extended or replaced without changing callers.
   a time; server-side cursors on PostgreSQL)
 - `UltraDb_ExecBatch` (every statement of a script with its own result)
 - `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
+- `UltraDb_AddStatementObserver`, `UltraDb_RemoveStatementObserver` (every
+  statement reported as it ends: text, bound-value count, rows, time, outcome)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
 - `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
   `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
@@ -1809,16 +1823,20 @@ networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
 **Implementation status (this branch):** Stage 1 implemented, and the
-PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
-parameterized queries, prepared statements, transactions and versioned
-migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
-`Tests/UltraDatabase`); the PostgreSQL driver
-(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
-found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+PostgreSQL and MySQL / MariaDB drivers from Stage 2. The SQLite core, the
+connection registry, parameterized queries, prepared statements,
+transactions and versioned migrations are built and tested
+(`UltraCanvas/{include,core}/UltraDatabase/`, `Tests/UltraDatabase`); the
+PostgreSQL driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built
+wherever libpq is found, the MySQL / MariaDB driver
+(`UltraDatabaseMysqlDriver.cpp`, over MariaDB Connector/C, LGPL-2.1, linked
+dynamically) wherever libmariadb is; both verify TLS by default and read
+their password from UltraVault, and UltraFIBU's multi-user mode runs on
+PostgreSQL. Also built: schema introspection, server administration
+(`UltraDatabaseServer.h`: sessions, settings, sizes, stopping a session),
 streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
-plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
-DuckDB), async queries, pooling and at-rest encryption. Details in
+plan: the other drivers (MSSQL, Redis, MongoDB, DuckDB), async queries,
+pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
@@ -3646,7 +3664,7 @@ their *License* is likewise marked **—** (OS component).
 | miniz | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
-| MySQL / MariaDB (planned) | [mysql.com](https://www.mysql.com/) | [github.com/mysql/mysql-server](https://github.com/mysql/mysql-server) | — |
+| MariaDB Connector/C (libmariadb; the MySQL / MariaDB driver) | [mariadb.com](https://mariadb.com/docs/connectors/mariadb-connector-c/) | [github.com/mariadb-corporation/mariadb-connector-c](https://github.com/mariadb-corporation/mariadb-connector-c) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
@@ -3659,7 +3677,7 @@ their *License* is likewise marked **—** (OS component).
 | Opus (libopus) | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opus](https://github.com/xiph/opus) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | opusfile | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opusfile](https://github.com/xiph/opusfile) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | Pango | [pango.gnome.org](https://pango.gnome.org/) | [gitlab.gnome.org/GNOME/pango](https://gitlab.gnome.org/GNOME/pango) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
-| PostgreSQL (planned) | [postgresql.org](https://www.postgresql.org/) | [github.com/postgres/postgres](https://github.com/postgres/postgres) | — |
+| PostgreSQL client library (libpq) | [postgresql.org](https://www.postgresql.org/) | [github.com/postgres/postgres](https://github.com/postgres/postgres) | [PostgreSQL](https://spdx.org/licenses/PostgreSQL.html) |
 | PulseAudio | [freedesktop.org/wiki/Software/PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) | [gitlab.freedesktop.org/pulseaudio/pulseaudio](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | QEMU (runtime, not linked) | [qemu.org](https://www.qemu.org/) | [gitlab.com/qemu-project/qemu](https://gitlab.com/qemu-project/qemu) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | qrcodegen | [nayuki.io](https://www.nayuki.io/page/qr-code-generator-library) | [github.com/nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -4002,11 +4020,16 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Embedded SQL engine (Stage 1) | SQLite (system libsqlite3) | SQLite (system libsqlite3) | SQLite (system libsqlite3) |
-| Networked drivers (Stage 2) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) |
+| PostgreSQL driver | libpq (`libpq-dev`) | libpq when found (not in CI's vcpkg set) | libpq when found (not in CI's MSYS2 set) |
+| MySQL / MariaDB driver | MariaDB Connector/C (`libmariadb-dev`), the shared library | Connector/C when found (not in CI's vcpkg set) | Connector/C when found (not in CI's MSYS2 set) |
 
 > The build prefers the system libsqlite3 (pkg-config, then a plain
 > `find_library`); when it is missing the `UltraDatabase` target is simply not
-> built and the rest of the tree configures unchanged.
+> built and the rest of the tree configures unchanged. The two server drivers
+> are optional the same way: without libpq or libmariadb a connection to that
+> engine reports its driver missing. Connector/C is LGPL-2.1 and linked only as
+> the shared library - CMake asks for it by name and leaves the driver out
+> when only `libmariadb.a` is there (`THIRD_PARTY_LICENSES.md`).
 
 ### Ultra Net module
 
@@ -4799,7 +4822,7 @@ python3 scripts/check_ui_reuse.py --strict    # no hand-painted controls
 python3 scripts/check_callback_cycles.py      # no shared_ptr cycles in callbacks
 python3 scripts/check_path_string.py          # UTF-8 paths only
 python3 scripts/check_locale_numbers.py       # dot-decimal in file formats
-python3 scripts/check_win32_names.py          # no A/W macro collisions
+python3 scripts/check_platform_names.py       # no Win32 A/W, X11 or Objective-C name collisions
 python3 scripts/check_element_catalogue.py    # every element is on the catalogue page
 git fetch origin main && python3 scripts/check_changelog.py --base origin/main
 ```
@@ -5578,6 +5601,7 @@ first lines as of 2026-10-18.
 | [UltraFIBU](#ultrafibu) | German double-entry bookkeeping | 0.24.5 | UltraDatabase, UltraCrypt |
 | **Desktop and system** | | | |
 | [UltraDesktop](#ultradesktop) | The ULTRA OS desktop | 0.4.1 | DesktopShell, ClipboardHistory, UltraMessage |
+| [UltraStore](#ultrastore) | The app store: signed catalog, per-user installs, updates | 0.1.0 | UltraNet, UltraCrypt, UltraDatabase |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
@@ -5986,6 +6010,29 @@ file for manual upload; the ERiC library is not included.
 ---
 
 ## Desktop and system
+
+### UltraStore
+
+**Purpose:** the ULTRA OS app store: lists the UltraCanvas applications
+from a signed catalog, installs the build for the machine with the shared
+libraries it needs, keeps everything up to date and removes it again. One
+program, `ultrastore`: the window when started plainly, the commands when
+given one.
+
+**Capabilities (0.1.0, the core and the command line):**
+- Knows the machine: os, processor, OS version, glibc, distribution, Rosetta.
+- Reads the catalog of apps and the runtime / library components they run
+  on, each release with a package per target and the exact component
+  versions it was built against, plus the admin backend's settings:
+  minimum OS version, pricing, update period, visibility, lifecycle, flags.
+- Checks the catalog's Ed25519 signature against the trusted keys and refuses
+  a catalog older than the one already seen; checks packages by SHA-256.
+- Picks the package for the machine and lays out the install plan with the
+  shared components first, skipping what is installed.
+- Fetches the catalog from the first mirror that answers and caches it for
+  offline use.
+- Next: UltraInstaller (download, unpack, registry), the window, the admin
+  backend, payment. Design: `Docs/UltraStore/README.md`.
 
 ### UltraDesktop
 
@@ -10241,7 +10288,7 @@ Like the slideshow it paints all tiles, captions, badges and action buttons
 directly in `Render()` — there are no child UI elements — so a large album stays
 cheap and the whole look can be swapped by a single enum.
 
-**Version:** 1.9.0
+**Version:** 1.11.0
 **Header:** `include/UltraCanvasAlbum.h`
 **Source:** `core/UltraCanvasAlbum.cpp`
 **Namespace:** `UltraCanvas`
@@ -10581,9 +10628,9 @@ album->onLinkClicked = [album](size_t i){
 
 ```cpp
 std::function<void(size_t)> onItemClicked;       // single click / tap
+std::function<void(size_t)> onItemPressed;       // the left button down on a tile, before anything is decided
 std::function<void(size_t)> onItemActivated;     // double click: open / play
 std::function<void(size_t,size_t)> onItemsReordered;  // (from, to) — edit modes
-std::function<void(size_t, const Point2Di& windowPos)> onItemDraggedOut;  // a tile dragged past the edge (edit modes)
 std::function<void(size_t)> onItemRemoved;       // after RemoveItem
 std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 ```
@@ -10594,12 +10641,21 @@ std::function<void(const std::vector<size_t>&)> onSelectionChanged;
 - **Double-click** → `onItemActivated` (open / play).
 - **Right-click** (or the kebab icon) → per-item action menu.
 - **Drag** a tile (edit / admin) → reorder; fires `onItemsReordered`.
-- **Drag** a tile past the album's edge (edit / admin) → the reorder ends
-  and `onItemDraggedOut(index, windowPos)` fires once, with the pointer's
-  window position. The app carries the item on from there with the window's
-  own mouse events - a media bin hands its file to a timeline's drop path,
-  say. Set the callback only where that is wanted; without it a drag that
-  leaves the album is simply a reorder that ends where the pointer returns.
+- **Press** a tile → `onItemPressed(index)`, before a click or a reorder
+  is decided, in every mode. An app that carries the tile's drag itself -
+  a media bin whose tiles land on a timeline, the way the app carries a
+  drag from a button's press - arms it here and, once its drag has
+  started, calls `ReleaseDrag()`: the album forgets the press, so neither
+  a click nor a reorder follows it. (The album's own hand-over,
+  `onItemDraggedOut`, went in 1.11.0: it needed an edit mode and the
+  album's reorder to run first.)
+
+  ```cpp
+  size_t pressedTile = 0;   // the app's own drag is armed from here
+  album->onItemPressed = [&](size_t index) { pressedTile = index; };
+  // ... and where the app's drag starts, after the pointer moved away:
+  album->ReleaseDrag();
+  ```
 - **Mouse wheel** → scroll (vertical for grids, horizontal for the filmstrip).
 
 ## Demo
@@ -11136,14 +11192,14 @@ UltraCanvasUIElement
 
 ```cpp
 enum class ArcEdgeType {
-    Above,     // Arc curves above the baseline (forward, default)
-    Below,     // Arc curves below the baseline (back/secondary)
+    AboveBaseline, // Arc curves above the baseline (forward, default)
+    BelowBaseline, // Arc curves below the baseline (back/secondary)
     Auto       // Above when source < target index, else below
 };
 
 enum class ArcLabelSide {
-    Below,         // Default
-    Above,
+    BelowBaseline, // Default
+    AboveBaseline,
     Alternating,   // Alternates by node index
     Vertical       // Rotated 90° descending below baseline
 };
@@ -11166,7 +11222,7 @@ enum class ArcNodeSizeMode {
 };
 
 enum class ArcValueDisplay {
-    None,          // No auto-generated apex label (default)
+    NoLabel,          // No auto-generated apex label (default)
     Value,         // Show edge weight as numeric value at apex
     Percentage     // Show edge weight as percentage of total at apex
 };
@@ -11226,7 +11282,7 @@ struct ArcDiagramStyle {
     // Labels
     float        labelFontSize = 11.0f;
     Color        labelColor    = Color(40, 40, 40, 255);
-    ArcLabelSide labelSide     = ArcLabelSide::Below;
+    ArcLabelSide labelSide     = ArcLabelSide::BelowBaseline;
 
     // Arcs
     float          arcMinWidth     = 0.5f;
@@ -11269,7 +11325,7 @@ struct ArcDiagramStyle {
     bool  emphasizeActiveLabel = true;   // bold weight on active node label
 
     // Auto value/percentage label drawn at arc apex (zenit)
-    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::None;
+    ArcValueDisplay arcValueDisplay  = ArcValueDisplay::NoLabel;
     int             arcValueDecimals = 1;
     float           arcValueFontSize = 10.0f;
     Color           arcValueLabelColor  = Color(40, 40, 40, 230);
@@ -11387,7 +11443,7 @@ for (const auto& e : edges) {
     ae.targetId = e.b;
     ae.weight   = e.w;
     ae.color    = Color(160, 160, 160, static_cast<uint8_t>(60 + e.w * 15));
-    ae.side     = ArcEdgeType::Above;
+    ae.side     = ArcEdgeType::AboveBaseline;
     diagram->AddEdge(ae);
 }
 
@@ -11441,7 +11497,7 @@ for (const auto& e : catEdges) {
     ArcEdge ae;
     ae.sourceId = e.a; ae.targetId = e.b;
     ae.weight   = e.w; ae.color    = e.col;
-    ae.side     = ArcEdgeType::Above;
+    ae.side     = ArcEdgeType::AboveBaseline;
     diagram->AddEdge(ae);
 }
 
@@ -11449,7 +11505,7 @@ ArcDiagramStyle s;
 s.arcHeightMode = ArcHeightMode::Semicircle;
 s.arcMinWidth   = 1.0f;
 s.arcMaxWidth   = 6.0f;
-s.labelSide     = ArcLabelSide::Below;
+s.labelSide     = ArcLabelSide::BelowBaseline;
 s.labelFontSize = 13.0f;
 s.nodeBaseSize  = 10.0f;
 s.nodePadding   = 90.0f;
@@ -11500,16 +11556,16 @@ Color green (80, 180, 80, 200);
 Color gray  (150, 150, 150, 180);
 Color violet(160, 80, 200, 180);
 
-diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true, ArcEdgeType::Above, "10"));
-diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true, ArcEdgeType::Above, "13"));
-diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true, ArcEdgeType::Above, "10"));
-diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true, ArcEdgeType::Above, "5"));
-diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true, ArcEdgeType::Above, "5"));
-diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true, ArcEdgeType::Above, "5"));
+diagram->AddEdge(makeEdge("home",  "fleet",   10.0f, green, true, ArcEdgeType::AboveBaseline, "10"));
+diagram->AddEdge(makeEdge("fleet", "special", 13.0f, green, true, ArcEdgeType::AboveBaseline, "13"));
+diagram->AddEdge(makeEdge("home",  "marco",   10.0f, green, true, ArcEdgeType::AboveBaseline, "10"));
+diagram->AddEdge(makeEdge("fleet", "train",    5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
+diagram->AddEdge(makeEdge("fleet", "weNavy",   5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
+diagram->AddEdge(makeEdge("fleet", "marco",    5.0f, gray,  true, ArcEdgeType::AboveBaseline, "5"));
 
 // Self-loop drawn below the baseline
 ArcEdge selfLoop = makeEdge("special","special", 3.0f, violet, true,
-                             ArcEdgeType::Below, "3");
+                             ArcEdgeType::BelowBaseline, "3");
 diagram->AddEdge(selfLoop);
 
 ArcDiagramStyle s;
@@ -11520,7 +11576,7 @@ s.arcMaxWidth      = 7.0f;
 s.showArrows       = true;
 s.arrowPosition    = ArcArrowPosition::AtMidArc;   // Arrow at apex, not at target
 s.arrowSize        = 9.0f;
-s.labelSide        = ArcLabelSide::Below;
+s.labelSide        = ArcLabelSide::BelowBaseline;
 s.labelFontSize    = 11.0f;
 s.arcLabelFontSize = 11.0f;
 s.nodeSizeMode     = ArcNodeSizeMode::Fixed;
@@ -11563,7 +11619,7 @@ for (const auto& p : knownPairs) {
     ArcEdge e;
     e.sourceId = idA; e.targetId = idB;
     e.weight = 1.0f;  e.color    = p.c;
-    e.side  = ArcEdgeType::Above;    // Known pairs above
+    e.side  = ArcEdgeType::AboveBaseline;    // Known pairs above
     diagram->AddEdge(e);
 }
 
@@ -11578,7 +11634,7 @@ for (const auto& p : novelPairs) {
     ArcEdge e;
     e.sourceId = idA; e.targetId = idB;
     e.weight = 1.0f;  e.color    = p.c;
-    e.side  = ArcEdgeType::Below;    // Novel pairs below
+    e.side  = ArcEdgeType::BelowBaseline;    // Novel pairs below
     diagram->AddEdge(e);
 }
 
@@ -11588,7 +11644,7 @@ s.arcMinWidth      = 0.8f;
 s.arcMaxWidth      = 2.0f;
 s.bundleHeightStep = 6.0f;    // Stack parallel arcs by this delta
 s.sortBySpan       = true;
-s.labelSide        = ArcLabelSide::Below;
+s.labelSide        = ArcLabelSide::BelowBaseline;
 s.labelFontSize    = 10.0f;
 s.nodeBaseSize     = 5.0f;
 s.nodePadding      = 30.0f;
@@ -12446,6 +12502,7 @@ FILE: Docs/UltraCanvas/UltraCanvasAutoCompleteExamples.md
 - [Events and Callbacks](#events-and-callbacks)
 - [Usage Examples](#usage-examples)
   - [Basic Static AutoComplete](#basic-static-autocomplete)
+  - [A Menu on a Suggestion](#a-menu-on-a-suggestion)
   - [Display Text vs. Programmatic Value (Country Codes)](#display-text-vs-programmatic-value-country-codes)
   - [Dynamic Suggestion Provider](#dynamic-suggestion-provider)
   - [Large List with Automatic Scrollbar](#large-list-with-automatic-scrollbar)
@@ -12600,6 +12657,10 @@ std::function<void()> onAutocompletePopupClosed;
 // Dynamic suggestion provider: called with current text,
 // should return filtered suggestions for the popup
 std::function<std::vector<AutoCompleteItem>(const std::string&)> onRequestSuggestions;
+
+// A right press on a suggestion: its index, the item and the event.
+// Unset, a right press picks the row like a left one.
+std::function<void(int, const AutoCompleteItem&, const UCEvent&)> onItemContextMenu;
 ```
 
 In addition, callbacks inherited from `UltraCanvasTextInput` (such as `onTextChanged`) remain available.
@@ -12635,6 +12696,33 @@ fruitAC->onItemSelected = [](int index, const AutoCompleteItem& item) {
 };
 
 container->AddChild(fruitAC);
+```
+
+### A Menu on a Suggestion
+
+`onItemContextMenu` lets the user act on a suggestion without picking it -
+UltraMail's recipient fields offer *Edit contact* and *Delete address* this
+way. The popup closes as the press takes the focus; when the handler changes
+what would be suggested, call `RefreshSuggestions()` afterwards.
+
+<!-- doc-check: UltraCanvasWindowBase* MainWindow(); -->
+```cpp
+auto peopleAC = CreateAutoComplete("PeopleAC", 30, 160, 280);
+peopleAC->AddItem("Anna Schmidt", "anna@example.com");
+peopleAC->AddItem("Hans Annaberg", "hans@example.com");
+
+// Held by the handler, so it outlives the call that opens it.
+auto menu = std::make_shared<UltraCanvasMenu>("PeopleMenu", 0, 0, 180, 0);
+menu->SetMenuType(MenuType::PopupMenu);
+peopleAC->onItemContextMenu = [menu](int index, const AutoCompleteItem& item, const UCEvent& event) {
+    menu->Clear();
+    const std::string address = item.value;
+    menu->AddItem(MenuItemData::Action("Forget " + address, [address]() {
+        std::cerr << "Forget " << address << std::endl;
+    }));
+    PopupElementSettings settings;
+    menu->OpenMenu(event.pointerWindow, *MainWindow(), settings);
+};
 ```
 
 ### Display Text vs. Programmatic Value (Country Codes)
@@ -17391,8 +17479,9 @@ axis `ChartAxisRole::Value`.
 ## Highlights (slot 200 wash / slot 700 overlay)
 
 `AddHighlight(ChartHighlight)` / `ClearHighlights()` — the proposal's §8.2
-layer (`Engine/UltraCanvasChartHighlights.h`), clipped to the plot. Seven
-shapes: explicit `Rectangle`/`Ellipse` in value space, a `ValueBand` on one
+layer (`Engine/UltraCanvasChartHighlights.h`), clipped to the plot. Eight
+shapes: explicit `Rectangle`/`Ellipse` in value space, an explicit `Polygon`
+(its outline in `members`, in order), a `ValueBand` on one
 axis, and the computed group shapes — `ConfidenceEllipse` (covariance eigen
 decomposition at a `confidence` level, the 50%/95%-around-grouped-dots
 convention, with a mean marker), `Hull` (padded convex hull), `Blob`
@@ -17406,6 +17495,24 @@ content. A highlight's `label` rides the label plan as
 `SmoothPolygonChaikin`) are UI-free and unit-tested. Pair a confidence-
 ellipse highlight with the legend's ellipse custom key (`SetCustomArea`) —
 a key describes marks the chart actually draws.
+
+A `Polygon` is rounded by `smoothing` the way a `Blob` is (`smoothing * 4`
+Chaikin passes), but **in value space, before the mapping**. A caller that
+smooths the same outline the same way therefore tests exactly the shape on
+screen. That is how the importance–performance chart classifies factors into
+its zones ([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)).
+Set `smoothing = 0` for the outline as given, since the field's default
+rounds it. Under the Polar projection each edge is sampled along the rings.
+
+```cpp
+ChartHighlight target;
+target.shape = ChartHighlightShape::Polygon;
+target.members = {{2.0, 10.0}, {6.0, 10.0}, {6.0, 30.0}, {2.0, 30.0}};   // value space
+target.smoothing = 0.0;
+target.xAxisIndex = 1;
+target.yAxisIndex = 0;
+target.label = "Target window";
+```
 
 ## Phase-1 services
 
@@ -19050,7 +19157,7 @@ void SetValueFormatter(std::function<std::string(double)> f);
 
 ```cpp
 enum class ChordLabelPlacement {
-    None,        // No labels
+    NoLabels,        // No labels
     Outside,     // Horizontal text just beyond the ring
     Radial       // Text runs along the radius, flipped on the left half
 };
@@ -19061,7 +19168,7 @@ enum class ChordLabelPlacement {
 - `Radial` — names run along the radius and are flipped on the left half so
   they read outward. Suits many categories or long names; the chart reserves
   the full label room above and below the ring for them.
-- `SetShowLabels(true/false)` is shorthand for `Outside` / `None`.
+- `SetShowLabels(true/false)` is shorthand for `Outside` / `NoLabels`.
 
 `SetLabelDistance` is the gap between the ring and the text (default 12 px).
 `SetLabelFont` defaults to Arial 11 normal; `SetLabelColor` to dark grey
@@ -19284,8 +19391,8 @@ chart->SetRibbonBorder(Color(255, 255, 255, 140), 1.0f);
 - `ChordFlow::isVisible` is honoured when drawing and hit testing, but the
   chart builds its flow list itself, so there is no public way to hide one
   ribbon; filter by value with `SetMinFlowValue` or set the cell to 0.
-- The X11 headers define a `None` macro; the chord chart header undefines it
-  so `ChordLabelPlacement::None` compiles.
+- No enumerator is named `None`: the X11 headers define a `None` macro, so
+  the placement that shows no label is `ChordLabelPlacement::NoLabels`.
 
 ## See also
 
@@ -19690,9 +19797,9 @@ struct CircularConnection {
 
 ```cpp
 enum class CircularTextStyle      { Horizontal, Circular, Radial, StarStyle };
-enum class ValueVisualizationType { None, Bars, CircularLine, CircularBar };
-enum class DecorativeRingType     { None, ColorHighlight, Graphics, Pattern, Gradient };
-enum class ConnectionLineType     { None, InsideCenter, OutsideRing, DirectCurve };
+enum class ValueVisualizationType { NoVisualization, Bars, CircularLine, CircularBar };
+enum class DecorativeRingType     { NoRing, ColorHighlight, Graphics, Pattern, Gradient };
+enum class ConnectionLineType     { NoLine, InsideCenter, OutsideRing, DirectCurve };
 ```
 
 ## Public API
@@ -19728,7 +19835,7 @@ enum class ConnectionLineType     { None, InsideCenter, OutsideRing, DirectCurve
 ### Connections
 | Method | Description |
 |---|---|
-| `SetConnectionLineType(type)` | Routing: `InsideCenter`, `OutsideRing`, `DirectCurve`, `None` |
+| `SetConnectionLineType(type)` | Routing: `InsideCenter`, `OutsideRing`, `DirectCurve`, `NoLine` |
 | `AddConnection(fromRing, fromCell, toRing, toCell, value)` | Add a link |
 | `SetConnectionStyle(i, style)` / `SetDefaultConnectionStyle(style)` | Styling |
 | `ClearConnections()` / `GetConnectionCount()` | Management |
@@ -24400,7 +24507,7 @@ struct DendrogramStyle {
     double defaultBranchWidth        = 1.5f;
     DendrogramLinkStyle linkStyle   = DendrogramLinkStyle::Rectangular;
 
-    ConfidenceDisplayMode confidenceMode = ConfidenceDisplayMode::None;
+    ConfidenceDisplayMode confidenceMode = ConfidenceDisplayMode::Hidden;
     double confidenceHighThreshold       = 0.80f;
     double confidenceLowThreshold        = 0.40f;
     double branchWidthMin = 0.5f, branchWidthMax = 3.5f;
@@ -24487,15 +24594,15 @@ enum class BranchColorMode {
 };
 
 enum class GroupLabelPlacement {
-    None, SidebarBracket, FloatingBadge, ArcText, LeaderCallout
+    NoLabels, SidebarBracket, FloatingBadge, ArcText, LeaderCallout
 };
 
 enum class GroupFillMode {
-    None, BandFill, SectorFill, ConvexHull
+    NoFill, BandFill, SectorFill, ConvexHull
 };
 
 enum class ConfidenceDisplayMode {
-    None, LineThickness, LineDash, NodeDot, LineThicknessAndDot
+    Hidden, LineThickness, LineDash, NodeDot, LineThicknessAndDot
 };
 
 // NEW in 1.5.0 - how a node dot's radius is derived
@@ -28958,6 +29065,15 @@ rule:
   weighs above the family - otherwise an installed colour font would still
   win.
 
+Noto Color Emoji is a bitmap font: its glyphs are 109 px pictures that
+fontconfig has to scale to the size of the text. A system `fonts.conf` does
+that through its `conf.d/10-scale-bitmap-fonts.conf`; the `fonts.conf` the
+framework writes where there is none (the packaged Windows and Android
+builds) carries the same rules, and `GenerateBitmapScalingConfig()`
+(`UltraCanvasApplication.h`) hands them to a configuration made another way.
+Without them every colour emoji is drawn 109 px high, whatever the size of
+the text around it.
+
 A change applies to the applications started after it. Where the text engine
 is not fontconfig the call does nothing: macOS draws Apple Color Emoji (its
 bundles leave `media/emoji/` out), and the WebAssembly pages do not preload
@@ -29128,6 +29244,14 @@ chart->SetAxisTitles("Marketing spend", "Sales");
 chart->SetShowTrendLine(true);                   // least squares, with r and r^2
 chart->SetShowConfidenceEllipses(true, 0.95);    // engine highlight per group
 ```
+
+Every data, theme and legend change clears the highlights and rebuilds the
+chart's own. A chart derived from the scatter chart adds its own highlights in
+the protected `AddChartHighlights()`, which that rebuild calls first, so
+they are not wiped. It calls `RefreshHighlights()` when only its own
+highlights changed. The importance–performance chart
+([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md))
+draws its zones this way.
 
 A point with a finite `size` turns the chart into a bubble chart: radii are
 area-proportional (`SetSizeScale(EngineBubbleScale::Diameter)` for the other
@@ -32054,7 +32178,17 @@ Display > Icon-Menu), a small icon strip appears at the top-right of the hovered
 item with Copy, Cut, Rename and Delete buttons. The framework's file dialog
 turns it off in its listing ([UltraCanvasFileDialog.md](UltraCanvasFileDialog.md),
 `FileDialogConfig::hoverIconMenu`). The glyphs are drawn as vectors,
-so no icon assets are required.
+so no icon assets are required; Rename is a serif *T* beside a text caret, as
+it edits the name rather than the file. Each button's tooltip says what it does
+and gives its shortcut - *Copy to clipboard (Ctrl+C)*, *Cut to clipboard
+(Ctrl+X)*, *Rename (F2)*, *Delete (Del)*. Pressing Copy or Cut answers on the button: it
+flashes green (`FilerStyle::iconMenuDoneColor`) with a checkmark that pops in,
+then fades back to its glyph within 0.7 s - a copy changes nothing else on
+screen. On a drive Cut is greyed out and does nothing,
+as it is in the context menu - its tooltip says to copy, then delete. On a drive
+whose host did not wire `remoteRename` / `remoteDelete`, Rename / Delete are
+greyed out the same way, in the hover strip and in the context menu (F2 and Del
+still report why).
 
 A button acts on the hovered entry — or on the **whole selection** when the
 hovered entry is part of it — and, like a drag, **never changes the selection**:
@@ -33968,7 +34102,7 @@ UltraCanvasUIElement
 
 - **Rich shape vocabulary:** Rectangle, RoundedRectangle, Diamond, Oval, Circle, Parallelogram, Hexagon, Triangle, Star, Ellipse, Process, Decision, ManualInput, Document, Database, Cloud, StickyNote, Actor.
 - **Connection styles:** `Straight`, `Orthogonal` (A* obstacle-aware), `Curved`.
-- **Arrow heads:** `None`, `Arrow`, `ArrowFilled`, `Diamond`.
+- **Arrow heads:** `NoArrow`, `Arrow`, `ArrowFilled`, `Diamond`.
 - **Line styles:** `Solid`, `Dashed`, `Dotted`, `DashDot`.
 - **Themes:** `Default`, `Professional`, `Colorful`, `Minimal`, `Dark`.
 - **Edit modes:** Select / move / connect / create / pan with built-in mode switching.
@@ -34184,7 +34318,7 @@ enum class FlowChartShape {
 };
 
 enum class FlowChartConnectionStyle { Straight, Orthogonal, Curved };
-enum class FlowChartArrowStyle      { None, Arrow, ArrowFilled, Diamond };
+enum class FlowChartArrowStyle      { NoArrow, Arrow, ArrowFilled, Diamond };
 enum class FlowChartLineStyle       { Solid, Dashed, Dotted, DashDot };
 enum class FlowChartTheme           { Default, Professional, Colorful, Minimal, Dark };
 ```
@@ -34241,7 +34375,7 @@ chart->SetConnectionColor("c5", Color(220, 120, 80, 255));
 
 chart->AddConnection("c6", "process3", "note1",
                      FlowChartConnectionStyle::Straight,
-                     FlowChartArrowStyle::None);
+                     FlowChartArrowStyle::NoArrow);
 chart->SetConnectionLineStyle("c6", FlowChartLineStyle::Dotted);
 chart->SetConnectionColor("c6", Color(180, 180, 180, 255));
 chart->SetConnectionWidth("c6", 1.5f);
@@ -34829,6 +34963,43 @@ at once rather than when that spot next happens to be repainted. On macOS,
 and on any build without PangoFT2, there is no such signal: the default font
 map is dropped instead, and contexts that already exist pick the font up when
 their surface is next recreated.
+
+## Is there a font for this text?
+
+`UltraCanvasFontCoverage.h` asks the text engine which characters of a text
+no font in the process covers: the system's fonts, the bundled ones and any
+registered with `RegisterFontFile()`. Those are the characters drawn as a box
+of hex digits. The text is set in `fontFamily` (the system UI font when it is
+empty), with every other font as the fallback, the same way any text is
+drawn. `UltraCanvasRichTextEdit` uses these checks for its
+[missing-fonts notice](UltraCanvasRichTextEdit.md#missing-fonts).
+
+```cpp
+for (const MissingScriptFont& missing : FindScriptsWithoutFont("你好 مرحبا")) {
+    // missing.script "Chinese", missing.isoCode "Hani",
+    // missing.suggestedFont "Noto Sans SC", missing.characters 2,
+    // missing.downloadUrl "https://fonts.google.com/noto/specimen/Noto+Sans+SC"
+}
+if (CountCharactersWithoutFont("你好") > 0) {
+    // no font covers Chinese here
+}
+if (!IsFontFamilyAvailable("Georgia")) {
+    std::string where = FontDownloadUrl("Georgia");   // a search on Google Fonts
+}
+```
+
+| | |
+|---|---|
+| `int CountCharactersWithoutFont(text, family = "")` | How many characters have no font: 0 when all of them do (and for an empty text), -1 when there is no text engine to ask. |
+| `std::vector<MissingScriptFont> FindScriptsWithoutFont(text, family = "")` | The same characters grouped by script, in the order the text first uses them. Each comes with a free font that covers it (the Noto family, SIL Open Font License) and its download page. The common scripts have names of their own ("Chinese", "Arabic", "Devanagari", ...). Any other is named by its ISO 15924 code and pointed at the whole Noto family. |
+| `std::string FontDownloadUrl(family)` | A search for the family on Google Fonts. |
+| `bool IsFontFamilyAvailable(family)` | Whether the text engine knows the family, ignoring case. A family it doesn't know is drawn in a substitute. |
+
+Each call asks afresh, so a font installed or registered since the last call
+counts. Call them from the UI thread. On Windows after a cold start the
+system fonts can still be loading in the background
+(`GetSystemFontScanStatus()`). Until they arrive, only the bundled fonts
+count.
 
 ## In the filer
 
@@ -38910,6 +39081,13 @@ passes UltraNet's), so it is framework-independent and runs offline in tests.
   its address and its history.
 - **Rules:** an http(s) page loads http(s) and `data:` resources, an https
   page no http ones, and only a `file:` page loads `file:` resources.
+  `AllowsResource(url, why)` answers the same question for an address the
+  page loads outside the loader - a `<video>`'s stream.
+- **Whose page:** a style sheet or a picture is fetched through
+  `PageLoaderServices::fetchResource` with the address of the page it is
+  for, when the host sets it (else through `fetch`). A browser keeps its
+  cookie rules there: UltraWeb sends a page's cookies only to the page's own
+  site.
 - **Limits:** 16 MB per document, 32 style sheets, 512 resources a page.
 - **Threading:** the loader is used from one thread, and `fetch` calls its
   `done` back on it. A newer `Load` or `Cancel` drops the answers of the
@@ -39033,6 +39211,51 @@ width, pictures arriving) keeps what was typed and the focus. Mail keeps
 as text on a line of its own. The view passes its own `onChooseFiles` on to
 file inputs; UltraWeb answers it with the file dialog.
 
+### Video and audio
+
+`<video>` and `<audio>` are players the host makes: the builder asks
+`BuildOptions::mediaFactory` with an `HTML::MediaRequest` - the element
+(`node`, the same pointer on every build of one parsed document), its
+addresses in order (`src=""`, then each `<source>` with its `type`), the
+`poster`, `controls`, `autoplay`, `loop` and `muted` - and places what comes
+back as a picture is placed: on a line of its own, by the text-align it
+inherits, never wider than the line. The size is a browser's: CSS `width` /
+`height` (a percentage of the box it is in), else the `width` and `height`
+attributes, else 640 x 360 for a video (one side given, the other at 16:9)
+and 300 x 40 for an audio player. A player inside an inline element breaks
+its line, as a block does, and in a flex or grid container it is an item.
+
+Without a factory, when the factory answers null (it cannot play any of the
+addresses), and for a `<video>` without a source, the element's fallback
+content - the text and links between its tags - is shown, as a browser that
+cannot play it shows it. An `<audio>` without `controls` that does not play
+by itself shows nothing.
+
+```cpp
+HTML::BuildOptions options;
+options.mediaFactory = [](const HTML::MediaRequest& request) -> std::shared_ptr<UltraCanvasUIElement> {
+    if (request.sources.empty()) return nullptr;
+    auto player = CreateVideoPlayer("player", 0, 0, static_cast<long>(request.width),
+                                    static_cast<long>(request.height));
+    if (!player->LoadFromUrl(request.sources.front().src)) return nullptr;   // the fallback, then
+    return player;
+};
+```
+
+`UltraCanvasWebView` sets the factory itself (`SetMediaPlayback`, on by
+default): each `<video>` and `<audio>` is an `UltraCanvasVideoPlayerElement`
+(which plays sound too) on the first address the page may load - http(s)
+streamed by the platform's media framework, mixed content refused, a local
+file from a local page, no `data:` - at most 16 a page. The view keeps a
+player for as long as its page: a rebuild (a new width, pictures arriving)
+hands the same one back, so playback goes on, and another page stops it.
+`autoplay` plays only a muted element, as browsers allow; a sound waits for
+the reader's click. A video without `controls` that cannot play by itself
+shows them anyway. `GetMediaPlayers()` lists the page's players.
+`Tests/HTMLMediaTest.cpp` covers the builder against a fake factory and the
+view with a WAV it writes (played when the build has a media backend and
+GStreamer's base plugins, else its fallback).
+
 ## HTML into an editable document
 
 `ImportHTMLToRichDocument(html, options)` and `AppendHTMLToRichDocument`
@@ -39108,13 +39331,13 @@ blocks new ones.
 | `include/HTMLReader/HTMLParser.h` | `Parser`, `ParseOptions` |
 | `include/HTMLReader/CSSStyleSheet.h` | `CssColor`, `CssLength`, `Declaration`, `Selector`, `Rule`, `StyleSheet`, the matcher templates |
 | `include/HTMLReader/HTMLStyleResolver.h` | `ComputedStyle`, `ResolverOptions`, `StyleResolver`, `NodeSelectorTraits`, `Matches` |
-| `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML` |
+| `include/HTMLReader/HTMLElementBuilder.h` | `BuildOptions`, `BuildResult`, `ElementBuilder`, `BuildElementsFromHTML`, `MediaRequest`, `MediaSource` |
 | `include/HTMLReader/HTMLRichDocumentImporter.h` | `ImportHTMLToRichDocument`, `AppendHTMLToRichDocument`, `HTMLRichImportOptions` |
 | `include/HTMLReader/HTMLPageLoader.h` | `PageLoader`, `PageLoaderServices`, `PageLoaderLimits`, `FetchResult`, `LoadedPage`, `PageKind` |
 | `include/HTMLReader/HTMLForms.h` | `FormSubmission`, `FormController` (forms with real widgets) |
 | `include/UltraCanvasWebView.h` | `UltraCanvasWebView`, the element that shows pages from URLs |
 | `Tests/HTMLReaderTest.cpp` | parser, CSS, matcher and resolver, without the UI library |
-| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, the viewer |
+| `Tests/HTMLRichImportTest.cpp`, `HTMLTableLayoutTest.cpp`, `HTMLImageAlignTest.cpp`, `HTMLFlexGridLayoutTest.cpp`, `HTMLInlineBoxTest.cpp`, `HTMLFormsTest.cpp`, `HTMLMediaTest.cpp`, `EBookViewerTest.cpp` | importer, tables, images, flex and grid, inline boxes, forms, video and audio, the viewer |
 | `Tests/Fuzz/` | fuzz targets for the parser, the CSS, and the builder with the layout ([README](../../Tests/Fuzz/README.md)) |
 
 ## Fuzzing
@@ -40622,6 +40845,246 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 - [UltraCanvasButton](UltraCanvasButtonExamples.md) — "Choose Image..." button
 - [UltraCanvasCheckbox](UltraCanvasCheckbox.md) — "Include BMP" toggle
 - [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md
+==============================================================================
+
+# UltraCanvasImportancePerformanceChart
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> container; -->
+
+The importance–performance chart plots the *factors* of a product or service
+(price, delivery speed, after-sales support…) by two scores: how much
+customers care about each one, and how it compares with competitors. The
+plane is cut into authored **zones** that name the action: in Slack's form
+(1994) *Urgent action*, *Improve*, *Appropriate* and *Excess?*. The answer the
+chart gives is which factors land in which zone.
+
+- Header: `include/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceChart.h`
+- Model: `include/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceModel.h` (UI-free)
+- Base class: `UltraCanvasEngineScatterChart`, on the chart engine
+- Demo: **Charts → Importance-Performance Chart**
+- Design: [`UltraCanvasImportancePerformanceChartProposal.md`](UltraCanvasImportancePerformanceChartProposal.md)
+
+## Contents
+
+- [Which element do I want?](#which-element-do-i-want)
+- [Quick start](#quick-start)
+- [The model](#the-model)
+  - [Axes and level ranges](#axes-and-level-ranges)
+  - [Zones](#zones)
+  - [Bands](#bands)
+  - [Factors](#factors)
+- [Classification](#classification)
+- [The Slack preset](#the-slack-preset)
+- [Display options](#display-options)
+- [Interaction](#interaction)
+- [What is not built yet](#what-is-not-built-yet)
+
+## Which element do I want?
+
+| You want | Use |
+|---|---|
+| Factors over zones with curved or stepped edges (Slack), or more than four regions | This chart |
+| The classic four quadrants split at the means (Martilla & James), or any 2×2 matrix | `UltraCanvasQuadrantChart` with `QuadrantType::Custom` and `xCenter` / `yCenter` at the means |
+| A grid of people rated on performance and potential (a 9-box) | Not this chart: see `UltraCanvasPerformanceMatrixProposal.md` |
+| A scatter plot with a hand-drawn region on it | `UltraCanvasEngineScatterChart` and an `AddHighlight` of `ChartHighlightShape::Polygon` |
+
+## Quick start
+
+```cpp
+#include "Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceChart.h"
+using namespace UltraCanvas;
+
+ImportancePerformanceModel model = ImportancePerformanceSamples::SlackZones(true);   // smooth zones
+model.title = "Parcel service";
+model.factors = {
+    {"Delivery reliability", "Delivery", 2.0, 8.0},   // label, group, importance, performance
+    {"Price",                "Delivery", 1.4, 5.0},
+    {"Tracking app",         "Service",  5.0, 3.0},
+    {"Gift wrapping",        "Service",  8.4, 2.0},
+};
+
+auto chart = CreateImportancePerformanceChart("ipm", 0, 0, 840, 600);
+chart->SetModel(model);
+container->AddChild(chart);
+```
+
+The Slack preset uses Slack's nine-point scales, on which **1 is the best
+grade** (strongly order-winning, far better than competitors). Both axes are
+therefore inverted, so the most important factors are on the right and the
+best performance at the top, as readers expect.
+
+## The model
+
+`ImportancePerformanceModel` is plain data. `SetModel` takes a copy, so
+change the model and set it again to update the chart.
+
+### Axes and level ranges
+
+`importance` (x) and `performance` (y) are `ImportancePerformanceAxis`:
+
+| Field | Meaning |
+|---|---|
+| `title` | Axis title (one line) |
+| `min`, `max` | The range in score units. The Slack preset uses 0.5 .. 9.5 |
+| `inverted` | Draw `min` at the far end (right / top): Slack's "1 = best" |
+| `levels` | Named ranges in value order: `{"Order winning", 0.5, 3.5}` |
+| `lowCaption`, `highCaption` | Captions at the screen's low and high ends ("Low" / "High", "Bad" / "Good"). They stay with the screen ends whatever `inverted` says |
+
+The chart labels each level at the centre of its range and puts a tick mark
+without a label at each boundary between levels. `LevelOf(axis, value)`
+returns the level a score falls in: ranges are half-open, and the last level
+keeps its upper edge.
+
+```cpp
+ImportancePerformanceAxis importance;
+importance.title = "Importance for customers";
+importance.min = 1.0;
+importance.max = 5.0;
+importance.lowCaption = "Low";
+importance.highCaption = "High";
+importance.levels = {{"Nice to have", 1.0, 3.0}, {"Must have", 3.0, 5.0}};
+int level = ImportancePerformanceModel::LevelOf(importance, 4.2);   // 1, "Must have"
+```
+
+### Zones
+
+An `ImportancePerformanceZone` is a closed `outline` in value space with a
+`title`, an `action` (shown in tooltips), an optional `iconPath` (drawn above
+the title), a `fill` and a `textColor`. **Later zones cover earlier ones**,
+both in the drawing and in classification. That makes a zone list easy to
+write: start with one zone covering the whole plane, then lay the
+exceptions over it.
+
+`smoothing` rounds the outline with Chaikin corner cutting (0 = as given,
+up to 6 passes). An outline may run past the axis ranges, because the chart
+clips to the plot. Let it: rounding cuts corners, and a corner that lies
+outside the plot cannot leave a gap inside it.
+
+```cpp
+ImportancePerformanceZone focus;
+focus.id = "focus";
+focus.title = "Concentrate here";
+focus.action = "Important and underperforming";
+focus.fill = Color(214, 34, 76, 255);
+focus.outline = {{3.0, 0.0}, {6.0, 0.0}, {6.0, 3.0}, {3.0, 3.0}};
+focus.smoothing = 0;
+```
+
+Each zone title is drawn at the zone's *pole of inaccessibility*: the
+point of the zone's visible part (what later zones leave uncovered, inside
+the plot) that lies farthest from every edge. That is not the centroid,
+which can fall outside a concave zone or under a later one. A title that
+does not fit is left out, and so is an icon. The title still shows in the
+zone's tooltip.
+
+### Bands
+
+An `ImportancePerformanceBand` is a labelled thick line along an open
+polyline, such as Slack's *lower bound of acceptability*. It is drawn over
+the zones, with `width` in y-axis units, and its `smoothing` keeps the two
+end points. A band takes no part in classification.
+
+Its label runs along the longest straight stretch of the band inside the
+plot, turned with it and never upside down. On a band thinner than about
+12 px the label sits beside the line instead. Factor names steer around
+both the band labels and the zone titles.
+
+### Factors
+
+`ImportancePerformanceFactor` has `id`, `label`, `group`, the two scores
+`importance` and `performance`, and a `note` added to the tooltip. Each
+distinct `group` becomes one scatter group, in order of first appearance,
+with its own legend entry. Clicking an entry hides the group.
+
+Group marks default to dark colours with a white outline, so they read on
+any zone colour, and to a different shape per group (circle, square,
+diamond, triangle), so a group never depends on colour alone. Change them
+with `SetGroupStyles`:
+
+```cpp
+chart->SetGroupStyles({Color(20, 20, 20, 255), Color(255, 255, 255, 255)},
+                      {ChartMarkerShape::Circle, ChartMarkerShape::Square});
+```
+
+## Classification
+
+```cpp
+std::vector<int> zones = model.ClassifyFactors();   // one zone index per factor, -1 = none
+int zone = model.ZoneOf(2.0, 8.0);                  // the zone of one point
+std::vector<std::string> problems = model.Validate();
+```
+
+The chart draws exactly the polygon that classification tests:
+`ZoneShape(i)` is the outline after its smoothing, in value space. The chart
+maps that polygon to the screen and does not smooth again. A factor drawn
+inside *Improve* is therefore always reported in *Improve*.
+`GetFactorZones()` on the chart returns the same list as `ClassifyFactors()`
+on the model it was given.
+
+`Validate()` reports an empty or reversed axis range, levels that overlap
+or run outside the range, zones with fewer than three points, bands with
+fewer than two, and factors that are missing a score or lie outside the
+axis ranges.
+
+## The Slack preset
+
+`ImportancePerformanceSamples::SlackZones(bool smooth)` builds Slack's
+matrix: nine-point inverted scales read in thirds (*order winning /
+qualifying / less important*; *better than / same as / worse than*), the four
+zones, and the lower bound of acceptability as a band.
+
+- `SlackZones(false)` is the textbook form: the boundaries are staircases
+  on the 9×9 grid, and the band is a thin line.
+- `SlackZones(true)` is the slide form: the boundaries are smooth curves
+  through a thinned set of the same corners, and the band is wide with its
+  label inside.
+
+`ImportancePerformanceSamples::SampleFactors()` returns twelve invented
+factors of a parcel carrier that land in all four zones, in both forms.
+
+## Display options
+
+| Call | Effect |
+|---|---|
+| `SetShowZoneTitles(bool)` / `SetShowZoneIcons(bool)` | Zone titles and icons (on) |
+| `SetShowBandLabels(bool)` | Band labels (on) |
+| `SetShowLevelRanges(bool)` | Level names, boundary ticks and end captions on the axes (on); off = plain numbers |
+| `SetShowGrid(bool)` | Grid lines over the zones (off: the zones are the grid) |
+| `SetZoneTitleFontSize(float)` | Zone title size (14) |
+| `SetPointLabelMode(EngineScatterLabelMode)` | Factor names, from the scatter chart: `Outside` (the default here) or `Hidden` |
+
+The title is `model.title`. Everything else the scatter chart offers (theme,
+legend position, marker radius and outline, animation) still applies.
+
+```cpp
+chart->SetShowGrid(true);
+chart->SetShowLevelRanges(false);
+chart->SetPointLabelMode(EngineScatterLabelMode::Hidden);
+chart->SetMarkerRadius(7.0f);
+```
+
+## Interaction
+
+Hovering a factor shows its label, group, both scores with their level
+names, its zone and the zone's action. Hovering a bare stretch of a zone
+shows the zone's title, action and how many factors it holds. Clicking a
+legend entry hides that group, and its factors stop answering the
+pointer.
+
+## What is not built yet
+
+This is Phase 1 of the proposal. Still to come:
+
+- **Phase 2:** a zone legend, emphasising a hovered zone's factors, a list
+  of factors per zone as an API (the demo builds one from
+  `GetFactorZones()`), Martilla & James and diagonal presets, and JSON and
+  CSV interchange through `UltraCanvasFileLoader`.
+- **Phase 3:** arrows showing how a factor moved since an earlier survey.
+- Axis titles are one line. A two-line title such as "Performance / Digital
+  Competition" is not supported yet.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasInstanceLock.md
@@ -42247,6 +42710,7 @@ FILE: Docs/UltraCanvas/UltraCanvasLabelExamples.md
   - [The theme and the label's variant](#the-theme-and-the-labels-variant)
 - [Methods](#methods)
   - [Text](#text)
+  - [Where the text ends](#where-the-text-ends)
   - [Style and font](#style-and-font)
   - [From UltraCanvasUIElement](#from-ultracanvasuielement)
   - [Text links](#text-links)
@@ -42389,6 +42853,36 @@ void SetTextIsMarkup(bool markup);          // the text is Pango markup (<b>, <s
 ```
 
 To clear a label, `SetText("")`; to append, `SetText(label->GetText() + more)`.
+
+### Where the text ends
+
+```cpp
+float GetNaturalTextWidth();   // the text's own width in px, without padding or border
+```
+
+A label given a fixed box is usually wider than its text, and something meant
+to sit *after the text* - a copy button after a code, a badge after a name -
+belongs where the text ends, not where the box does. `GetNaturalTextWidth`
+measures the text as the label lays it out (its font, markup and inline
+images; line breaks kept, the widest line counted), so the answer holds for
+any font the platform substitutes. In a left-aligned label the text starts at
+the border and padding:
+
+```cpp
+auto code = std::make_shared<UltraCanvasLabel>("code", 20, 20, 240, 36, "123 456");
+window->AddChild(code);   // measured through the window's render context
+auto copy = std::make_shared<UltraCanvasButton>("copy", 0, 23, 30, 30);
+window->AddChild(copy);
+
+// After the text, not after the 240 px box.
+const float textEnd = code->GetX() + code->GetBorderLeftWidth() +
+                      code->GetPaddingLeft() + code->GetNaturalTextWidth();
+copy->SetPosition(textEnd + 8, 23);
+```
+
+It returns 0 for an empty text and for a label that cannot reach a render
+context yet (not in a window), so measure after `AddChild`, and again after a
+`SetText` whose width can change.
 
 ### Style and font
 
@@ -44287,6 +44781,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
   - [Styling](#styling)
   - [Column widths](#column-widths)
   - [Scrolling](#scrolling)
+  - [Where a cell is](#where-a-cell-is)
   - [Tooltips](#tooltips)
 - [Model Reference](#model-reference)
   - [Data roles](#data-roles)
@@ -44298,6 +44793,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
   - [UltraCanvasDefaultListDelegate](#ultracanvasdefaultlistdelegate)
 - [Selection Reference](#selection-reference)
 - [Events / Callbacks](#events--callbacks)
+  - [Editing a cell in place](#editing-a-cell-in-place)
 - [Usage Examples](#usage-examples)
   - [Simple single-selection list](#simple-single-selection-list)
   - [Multi-column list with header](#multi-column-list-with-header)
@@ -44317,7 +44813,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 
 Every call goes through the view: none of the three pieces holds a reference to another, so swapping one leaves the other two untouched. The delegate sees the selection only as `ListItemStyleOption::isSelected`, and reads cell data through the model pointer `RenderItem` passes in.
 
-**Version:** 1.0.2
+**Version:** 1.1.0 - `onCellDoubleClicked`, `GetCellRect`: an editor over a cell
 **Headers:**
 - `include/UltraCanvasListView.h`
 - `include/UltraCanvasListModel.h`
@@ -44335,8 +44831,8 @@ Every call goes through the view: none of the three pieces holds a reference to 
 - **Sort indicator** in the sorted column's header (▲ ascending / ▼ descending, drawn as geometry in the header text colour) and a header-click callback to drive it
 - **Single and multi-selection** modes via swappable selection objects
 - **Optional grid lines and alternating row colors**
-- **Built-in vertical scrollbar** with mouse wheel support
-- **Keyboard navigation** (arrow keys, Page Up/Down, Home/End)
+- **Built-in scrollbars**: vertical for the rows, horizontal when the columns are wider than the view (the header scrolls with them); the wheel scrolls rows, Shift+wheel columns
+- **Keyboard navigation** (Up/Down and Page Up/Down, Home/End over the rows; Left/Right over the columns)
 - **Per-row icon support** through `DecorationRole`
 - **Hover tooltips** per cell, per row, and per column header
 - **Custom delegates** for fully bespoke row rendering
@@ -44499,6 +44995,39 @@ and remembered, so a column of thousands of dates costs a few hundred
 measurements. UltraMail fits its Date column this way: the widest date in bold
 plus the 6 px its delegate leaves before the text, and at least the header.
 
+Every column at once, with no subclass:
+
+```cpp
+struct ColumnFitting {
+    bool      enabled = false;
+    FontStyle font;          // the rows' font (the default delegate's is 12 pt)
+    int       padding = 12;  // what the delegate leaves beside the text, both sides
+    int       minWidth = 40;
+    int       maxWidth = 0;  // 0: no cap
+};
+void SetColumnFitting(const ColumnFitting& fitting);
+const ColumnFitting& GetColumnFitting() const;
+```
+
+With `enabled`, every column is fitted at the next paint after the model's
+rows or columns change - the one moment a render context is at hand: its
+widest `DisplayRole` text in `font` plus `padding`, never narrower than its
+header's title and sort triangle, within `[minWidth, maxWidth]`, so one long
+text does not take the whole grid. The fit stops once the user drags a border
+(`ColumnsUserAdjusted`). UltraDBAdmin's result grids use it with a 360 px cap;
+the model gives only an estimate from the title for the paint before the
+first fit.
+
+```cpp
+UltraCanvasListView::ColumnFitting fitting;
+fitting.enabled = true;
+fitting.font.fontSize = 12;
+fitting.maxWidth = 360;
+list->SetColumnFitting(fitting);
+```
+
+One column by hand, where the others are laid out from it:
+
 ```cpp
 // A Date column (column 3) as wide as its widest date plus a 6 px gap, never
 // narrower than its header - measured where a render context is at hand.
@@ -44534,17 +45063,57 @@ remembers the row and reveals it once the view has its size, so a list filled
 and selected while its window is still being built opens with that row in view.
 
 ```cpp
+void ScrollToColumn(int column);
+void EnsureColumnVisible(int column);
+int  GetHorizontalScrollOffset() const;
+```
+
+Sideways, in multi-column mode: when the columns (`GetColumnWidth` summed) are
+wider than the rows area, a horizontal scrollbar shows along the bottom and
+the header and the cells scroll together under the view - the rightmost
+columns of a wide table are reachable. The user moves them with the scrollbar,
+with Shift+wheel, and with the Left / Right keys (a step each). The view
+consumes those two keys whether or not the columns fit: a key pressed in a
+focused table belongs to the table, and bubbling it on switched the tab the
+table sat in. `ScrollToColumn` puts a column's left edge at the view's left;
+`EnsureColumnVisible` scrolls only as far as it takes to show the whole
+column, or its left edge when it is wider than the view - call it before
+`GetCellRect` to lay an editor over a cell that may be half off the edge.
+`GetHorizontalScrollOffset` is the pixels scrolled; `GetCellRect`,
+`GetColumnAt` and `GetHeaderColumnAt` already account for it. When both
+scrollbars show, each stops short of the other's track, and the rows area
+loses a track in each direction. A single-column list never scrolls sideways:
+its one column is as wide as the view.
+
+```cpp
 ScrollMetrics GetScrollMetrics() const;
 ```
 
-The numbers the scrollbar is built from at this moment: `rows`, `rowHeight`
+The numbers the scrollbars are built from at this moment: `rows`, `rowHeight`
 (0 when the delegate sizes rows), `contentHeight`, `viewportHeight` (the
-rows area, header excluded), `maxScroll`, `scrollOffset`,
-`scrollbarVisible`, `scrollbarBounds` (0,0 0x0 while the scrollbar is
-hidden), and the element's `width` and `height`. For diagnostics and tests. The view also recomputes them before
-every paint and, if the scrollbar disagrees (a model that grew between an
+rows area: header and horizontal scrollbar excluded), `maxScroll`,
+`scrollOffset`, `scrollbarVisible`, `scrollbarBounds` (0,0 0x0 while the
+scrollbar is hidden); sideways, `contentWidth` (the columns' total width, 0 in
+single-column mode), `viewportWidth` (the rows area beside the vertical
+scrollbar), `maxScrollX`, `scrollOffsetX`, `horizontalScrollbarVisible` and
+`horizontalScrollbarBounds`; and the element's `width` and `height`. For
+diagnostics and tests. The view also recomputes them before
+every paint and, if a scrollbar disagrees (a model that grew between an
 arrange and the paint), logs `scrollbar was stale at paint` to
 `debugOutput` and refreshes it first.
+
+### Where a cell is
+
+```cpp
+int GetColumnAt(int x, int* columnStartX = nullptr) const;
+Rect2Di GetCellRect(int row, int column) const;
+```
+
+`GetColumnAt` names the column under an element-local x - the column a
+right-click (`onContextMenu`'s `event.pointer`) landed in. `GetCellRect` is a
+cell's box, element-local and as scrolled now: its column's left edge and
+width, its row's top and height; empty for a row or column that does not
+exist (see [Editing a cell in place](#editing-a-cell-in-place)).
 
 ### Tooltips
 
@@ -44795,6 +45364,9 @@ std::function<bool(const UCEvent&)> onKeyDown;
 // the pointer, so a preview hung on them follows the scroll too.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+// A double-click on a cell, after onItemDoubleClicked: the column it hit,
+// for an owner that edits the cell in place.
+std::function<void(int row, int column, const Point2Di& posInCell)> onCellDoubleClicked;
 
 // A click (press and release in the same cell) on a column header. A press
 // on a resize border starts a drag instead and never reports a click.
@@ -44806,7 +45378,53 @@ std::function<void(int column)> onHeaderClicked;
 std::function<void(int row, const UCEvent& event)> onContextMenu;
 ```
 
-`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
+`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second; `onItemDoubleClicked` and `onCellDoubleClicked` likewise on a double-click.
+
+### Editing a cell in place
+
+The view draws its cells and edits none: an owner that edits a cell lays a
+text field over it. `GetCellRect(row, column)` says where the cell is,
+element-local and as scrolled now; `GetPositionInWindow()` turns it into the
+window's coordinates. A field absolutely positioned in the container the
+list sits in covers the cell:
+
+```cpp
+class GridEditor {
+public:
+    GridEditor(std::shared_ptr<UltraCanvasContainer> page, std::shared_ptr<UltraCanvasListView> list)
+        : page_(std::move(page)), list_(std::move(list)) {
+        editor_ = CreateTextInput("cellEditor", 0, 0, 100, 24);
+        editor_->layoutItem.position = CSSLayout::Position();
+        editor_->layoutItem.SetPositionType(CSSLayout::PositionType::Absolute);
+        editor_->SetVisible(false);
+        editor_->onEnterPressed = [this](const std::string& text) { Store(text); return true; };
+        editor_->onEscapePressed = [this]() { editor_->SetVisible(false); return true; };
+        page_->AddChild(editor_);
+        list_->onCellDoubleClicked = [this](int row, int column, const Point2Di&) { Edit(row, column); };
+    }
+
+private:
+    void Edit(int row, int column) {
+        const Rect2Di cell = list_->GetCellRect(row, column);
+        const Point2Df at = list_->GetPositionInWindow();
+        const Point2Df origin = page_->GetPositionInWindow();
+        editor_->layoutItem.position->left = CSSLayout::Dimension::Px(at.x + cell.x - origin.x);
+        editor_->layoutItem.position->top = CSSLayout::Dimension::Px(at.y + cell.y - origin.y);
+        editor_->SetElementSize(CSSLayout::Dimension::Px(static_cast<float>(cell.width)),
+                                CSSLayout::Dimension::Px(static_cast<float>(cell.height)));
+        editor_->SetVisible(true);
+        editor_->SetFocus(true);
+        page_->InvalidateLayout();
+    }
+    void Store(const std::string& text);             // your model's update
+    std::shared_ptr<UltraCanvasContainer> page_;
+    std::shared_ptr<UltraCanvasListView> list_;
+    std::shared_ptr<UltraCanvasTextInput> editor_;
+};
+```
+
+UltraDBAdmin's Browse grid edits its cells this way
+(`Apps/UltraDBAdmin/ui/DbAdminWindow.cpp`, `BeginCellEdit`).
 
 `onHeaderClicked` is where sorting is wired up: re-order the rows by the
 column, toggling the direction when it is already the sort column, then tell
@@ -45168,6 +45786,7 @@ field, a slider), use a container of elements instead, for a short list.
 | Page Up / Page Down| Move by one viewport page           |
 | Home               | Jump to the first row               |
 | End                | Jump to the last row                |
+| Left / Right Arrow | Scroll the columns a step (consumed even when they fit) |
 | Enter              | Activate the focused row            |
 | Space              | Toggle selection on the focused row |
 | Ctrl + Click       | Toggle row in multi-selection mode  |
@@ -50068,7 +50687,7 @@ enum class NestedAreaLabelPosition {
     Inside,         // Label inside the shape (default)
     Outside,        // Label outside the shape
     Tooltip,        // Label shown on hover only
-    None            // No labels
+    NoLabels            // No labels
 };
 
 enum class NestedAreaColorTheme {
@@ -54566,7 +55185,7 @@ Controls where slice labels are drawn.
 
 ```cpp
 enum class LabelPosition {
-    None,
+    NoLabels,
     Inside,
     Outside,
     Edge,
@@ -54927,7 +55546,7 @@ labelPosDropdown->onSelectionChanged = [pieChart1, pieChart2](int index, const D
         case 1: pos = LabelPosition::Inside; break;
         case 2: pos = LabelPosition::Outside; break;
         case 3: pos = LabelPosition::Edge; break;
-        case 4: pos = LabelPosition::None; break;
+        case 4: pos = LabelPosition::NoLabels; break;
         default: pos = LabelPosition::Auto;
     }
     pieChart1->SetLabelPosition(pos);
@@ -56688,9 +57307,9 @@ enum class QRPointStyle {
 
 enum class QRFinderStyle { Standard = 0, Rounded, Circle, RoundedCircle, Diamond };
 
-enum class QRLogoStyle { None = 0, Center, CenterWithBorder, CenterRounded, CenterCircle };
+enum class QRLogoStyle { NoLogo = 0, Center, CenterWithBorder, CenterRounded, CenterCircle };
 
-enum class QRGradientType { None = 0, Linear, Radial, Diagonal };
+enum class QRGradientType { NoGradient = 0, Linear, Radial, Diagonal };
 
 enum class QRImageFormat { PNG = 0, JPEG, QOI, WebP, AVIF };
 ```
@@ -56708,11 +57327,11 @@ struct QRStyleConfig {
     Color backgroundColor = Colors::White;
     Color finderColor     = Color(0, 0, 0, 0);   // transparent => use foreground
 
-    QRGradientType gradientType       = QRGradientType::None;
+    QRGradientType gradientType       = QRGradientType::NoGradient;
     Color          gradientStartColor = Colors::Black;
     Color          gradientEndColor   = Color(0, 102, 204);
 
-    QRLogoStyle              logoStyle        = QRLogoStyle::None;
+    QRLogoStyle              logoStyle        = QRLogoStyle::NoLogo;
     std::shared_ptr<UCImage> logoImage;
     float                    logoScale        = 0.20f;
     float                    logoBorderWidth  = 4.0f;
@@ -57126,6 +57745,12 @@ FILE: Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md
 ## Overview
 
 `UltraCanvasQuadrantChart` renders interactive 2x2 strategic-analysis matrices. Data points are placed on a two-axis plane that is divided into four quadrants by a configurable center point. The element ships with presets for the most common business frameworks — **SWOT**, **BCG matrix**, **Ansoff growth matrix**, **Eisenhower decision matrix**, **Gartner-style magic quadrant**, **risk matrix** (probability vs impact) and **priority matrix** (impact vs effort) — plus a fully custom mode where every quadrant label, color and axis caption is user-defined.
+
+For regions that are not four quadrants, such as Slack's importance–performance
+zones with curved or stepped edges, use `UltraCanvasImportancePerformanceChart`
+([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)).
+The classic four-quadrant importance–performance analysis (Martilla & James)
+is this element with `QuadrantType::Custom` and the centre at the means.
 
 Points support per-point color, radius (e.g. BCG revenue bubbles), shape (circle, square, triangle, diamond) and outline. The element handles hover highlighting with tooltips, click selection (single or multi), double-click callbacks, and exposes quadrant utilities (which quadrant a point falls into, per-quadrant counts) for building statistics panels.
 
@@ -59644,6 +60269,7 @@ state of the selection** rather than two asterisks in a buffer.
 - [Input methods](#input-methods)
 - [Right-to-left text](#right-to-left-text)
 - [Fonts for other scripts](#fonts-for-other-scripts)
+  - [Missing fonts](#missing-fonts)
 - [Accessibility](#accessibility)
 - [Drag and drop](#drag-and-drop)
 - [Find and replace](#find-and-replace)
@@ -59866,6 +60492,7 @@ editor->ToggleSuperscript();
 editor->SetFontFamily("Georgia");
 editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
+editor->SetHighlightColor("#FFF59D");  // the background behind the text; "" removes it
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
 
@@ -60302,6 +60929,69 @@ text is laid out, and names that family on the runs. The demo's
 *WYSIWYG — Chinese, Arabic & Myanmar* page does this with Noto Sans Myanmar
 (`media/textsamples/fonts`, SIL OFL 1.1). Keep such fonts out of
 `media/fonts`, which every application loads at start-up.
+
+### Missing fonts
+
+The element tells the reader which fonts the document needs and the
+computer lacks. While anything is missing, a notice along the element's top
+names it, and each font in it is a link to the page it is downloaded from.
+The notice reports two kinds of font:
+
+- **Scripts no font covers.** These characters are drawn as boxes of hex
+  digits. Each script is named with a free Noto font that covers it, linked
+  to its page on Google Fonts. For example, "Chinese text needs Noto Sans
+  SC".
+- **Families the document names that are not installed.** Pango draws this
+  text in a substitute. Each family is linked to a search for it on Google
+  Fonts.
+
+The notice's x hides it until the report changes. The text, the scrollbars
+and the comment pane start below the notice.
+
+```cpp
+auto edit = std::make_shared<UltraCanvasRichTextEdit>("doc", 0, 0, 800, 600);
+edit->onFontReportChanged = [](const UltraCanvasRichTextEdit::FontReport& report) {
+    for (const MissingScriptFont& script : report.missingScripts) {
+        // script.script "Arabic", script.suggestedFont "Noto Sans Arabic",
+        // script.downloadUrl, script.characters
+    }
+    for (const std::string& family : report.missingFamilies) {
+        // FontDownloadUrl(family) is where the notice links it
+    }
+};
+edit->onFontLinkClicked = [](const std::string& url) {
+    return false;   // false: the element opens the page in the browser
+};
+edit->SetShowFontNotice(true);   // the default; false keeps the report only
+```
+
+| | |
+|---|---|
+| `const FontReport& GetFontReport()` | The fonts missing now: `missingFamilies` and `missingScripts`. It is worked out on the spot if the document changed. |
+| `void SetShowFontNotice(bool)` / `IsShowingFontNotice()` | Turns the notice on or off. On by default. |
+| `bool IsFontNoticeVisible()` | Whether the notice is on screen now. |
+| `void DismissFontNotice()` | Hides the notice, as its x does, until the report changes. |
+| `onFontReportChanged` | Called when the report changes, including when it becomes empty. |
+| `onFontLinkClicked` | A link in the notice was clicked. Return true to handle it yourself; otherwise the element opens the page in the browser. The URLs are the element's own, never the document's. |
+| `style.fontNoticeColor` / `fontNoticeBorderColor` / `fontNoticeTextColor` | The notice's colours. |
+
+The report covers the body, the headers and footers, the notes and the table
+cells. Pictures and formulas don't count. A code block's font is the
+element's own style, not the document's, so it is never reported as
+missing.
+
+The report is worked out again:
+
+- when a document is set;
+- a second after an edit, so typing doesn't lay the whole document out on
+  every key;
+- when the fonts change. Registering a font file and Windows' system fonts
+  arriving after a cold start both run
+  `UltraCanvasWindowBase::RefreshAfterFontChange()`, which reaches the
+  element through `InvalidateLayout()`.
+
+The checks behind it are in `UltraCanvasFontCoverage.h`, for use outside the
+editor; see [UltraCanvasFontFile](UltraCanvasFontFile.md#is-there-a-font-for-this-text).
 
 ## Accessibility
 
@@ -63226,6 +63916,7 @@ struct SegmentedControlStyle {
 
     // Icons
     int iconSize = 16;
+    bool iconAsMask = false;   // tint one-colour icons with the segment's text colour
 
     // Presets
     static SegmentedControlStyle Default();
@@ -68315,7 +69006,7 @@ The root node itself is not drawn — its children form the innermost ring.
 ### SunburstLabelContent
 ```cpp
 enum class SunburstLabelContent {
-    None, Name, Value, Percentage, NameValue, NamePercentage
+    NoLabel, Name, Value, Percentage, NameValue, NamePercentage
 };
 ```
 
@@ -68331,7 +69022,7 @@ enum class SunburstLabelOrientation {
 ### SunburstShadeMode
 ```cpp
 enum class SunburstShadeMode {
-    None, LightenByDepth, DarkenByDepth
+    NoShade, LightenByDepth, DarkenByDepth
 };
 ```
 
@@ -75080,6 +75771,11 @@ enum class TreeLineStyle {
     Solid = 2         // Solid lines
 };
 
+enum class TreeExpanderStyle {
+    Box = 0,          // + or - in a square (the default)
+    Chevron = 1       // An arrow: pointing right when closed, down when open
+};
+
 enum class TreeCheckState {
     Unchecked = 0,
     Checked = 1,
@@ -75526,6 +76222,28 @@ come below. The stub ends at the child's expand button, or reaches its icon
 when the child has none. Lines are drawn over the row background, so they stay
 visible on the selected row, and take `SetLineColor` (default gray).
 
+#### Expander Style
+```cpp
+void SetExpanderStyle(TreeExpanderStyle style);
+TreeExpanderStyle GetExpanderStyle() const;
+void SetExpanderArrowColor(const Color& color);
+const Color& GetExpanderArrowColor() const;
+```
+How the expand button of a row with children looks. `TreeExpanderStyle::Box`
+(the default) is the `+` / `-` in a square, coloured by
+`SetExpandButtonColor`. `TreeExpanderStyle::Chevron` is an arrow instead,
+pointing right on a closed row and down on an open one, drawn with a 1.5 px
+round stroke in `SetExpanderArrowColor` (default a mid grey,
+`Color(0x70, 0x70, 0x78)`). It takes the same place and the same click as the
+box, so switching changes no row's layout. A modern tree without connectors:
+
+```cpp
+auto tree = std::make_shared<UltraCanvasTreeView>("schemaTree");
+tree->SetLineStyle(TreeLineStyle::NoLine);
+tree->SetExpanderStyle(TreeExpanderStyle::Chevron);
+tree->SetExpanderArrowColor(Color(88, 96, 110));
+```
+
 #### Root Lines
 ```cpp
 void SetShowRootLines(bool show);
@@ -75731,6 +76449,7 @@ void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
+void SetExpanderArrowColor(const Color& color);
 void SetCheckboxColors(const Color& background, const Color& border, const Color& check);
 ```
 Sets various color properties for the tree view. `SetBackgroundColor` is
@@ -75738,6 +76457,8 @@ inherited from `UltraCanvasUIElement`.
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
+`SetExpanderArrowColor` is the arrow's colour under `TreeExpanderStyle::Chevron`
+(see [Expander Style](#expander-style)).
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
 `SetLoadingBarColor` sets the bar a loading row slides along its foot (default
@@ -76108,6 +76829,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 | 1.1.0 | 2026-08-08 | Floating scroll-to-top button for long trees |
 | 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 | 1.2.1 | 2026-10-07 | Docs: columns API (`SetColumns`, `TreeViewColumn`, `data.cells`), real constructors and builder calls |
+| 1.3.0 | 2026-10-22 | `SetExpanderStyle`: the expand button as an arrow (`TreeExpanderStyle::Chevron`), `SetExpanderArrowColor` |
 
 ## See Also
 
@@ -76444,6 +77166,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | The page an application shows with nothing open yet - title, why this page, the entries opened last as buttons, the open action, a section of the app's own fields for a new thing, a status line; `PreferredHeight()` sizes the window ([doc](UltraCanvasStartPage.md)) | `UltraCanvasStartPage` | `UltraCanvasStartPage.h` |
 | Pick a file type to create, from a filterable list | `UltraCanvasNewDocumentDialog` (`CreateNewDocumentDialog`; call `Initialize()` after constructing) | `UltraCanvasNewDocumentDialog.h` |
 | Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
+| A service needs an AI model that is not on this computer: offer the local runtime's models that fit, download the chosen one with its engine, progress, then carry on (the UltraAI module's dialog; link `UltraAI_UI`) | `UltraAI::UltraAILocalModelDialog` (`Show`, `NeedsInstall`) | `UltraAI/ui/include/UltraAILocalModelDialog.h` |
 | "Working on it" with no percentage — a turning ring, two counter-turning rings, swelling dots, a sliding bar, a pulsing circle or a ring of circling dots (`BusyIndicatorKind`) for a status line, a row or a button (not a spin box: that is `UltraCanvasSpinner`) | `UltraCanvasBusyIndicator` (`CreateBusyIndicator`) | `UltraCanvasBusyIndicator.h` |
 | A gauge: speedometer, ring, battery, thermometer, LED/segmented bar — and `GaugeMode::LinearBar`, the progress bar for a status line, a row or a panel footer | `UltraCanvasGaugeDiagramElement` (`CreateGaugeDiagramElement`) | `Plugins/Diagrams/UltraCanvasGaugeDiagramElement.h` |
 | Open / save a file or pick a folder (filters as a dropdown or as toggle buttons), prompt for a value | `UltraCanvasFileDialog` ([doc](UltraCanvasFileDialog.md)), `UltraCanvasInputDialog` — the ULTRA OS system dialogs ([doc](UltraCanvasSystemDialogs.md)) | `UltraCanvasModalDialog.h` |
@@ -83120,6 +83843,18 @@ if (photo.success) {
 }
 ```
 
+Its counterpart writes bytes to a local file as they are, for content no
+format writer stands for - a database blob, a download kept as it came. The
+file is written beside its name and moved there when complete, so a write
+that fails never leaves half a file in place of the one that was there:
+
+```cpp
+std::string error;
+if (!UltraCanvasFileLoader::SaveFile("photo copy.heic", photo.bytes, error)) {
+    // error says why: the folder cannot be written, the disk is full
+}
+```
+
 ### Typed Object Loaders
 
 Beyond raw bytes, FileLoader can open a file straight into the matching
@@ -84893,6 +85628,28 @@ FILE: Docs/Modules/IODeviceManager/README.md
 
 # IODeviceManager - One API for the Devices an Application Operates
 
+## Contents
+
+- [Scanners, Cameras and Printers Behind a Single Interface](#scanners-cameras-and-printers-behind-a-single-interface)
+- [Purpose](#purpose)
+- [Key Functionality](#key-functionality)
+  - [Device Enumeration](#device-enumeration)
+  - [Scanning](#scanning)
+  - [Cameras](#cameras)
+  - [Printing](#printing)
+  - [Network Scanners](#network-scanners)
+  - [Network Printers](#network-printers)
+  - [Printer Status](#printer-status)
+  - [Your Own Devices](#your-own-devices)
+- [Device Categories](#device-categories)
+- [Backends by Platform](#backends-by-platform)
+- [Why IODeviceManager?](#why-iodevicemanager)
+  - [For Developers](#for-developers)
+  - [For Applications](#for-applications)
+- [Architecture Highlights](#architecture-highlights)
+- [Get Started](#get-started)
+- [See It: DeviceExplorer](#see-it-deviceexplorer)
+
 ## Scanners, Cameras and Printers Behind a Single Interface
 
 > **API contract and design: [Architecture.md](Architecture.md). What is and
@@ -85351,7 +86108,7 @@ for (const auto& app : NetworkMonitor_SummarizeByProcess(connections)) { /* … 
 
 | Type | Holds |
 |---|---|
-| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `None` until a source has named the peer) |
+| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `NoSource` until a source has named the peer) |
 | `ProcessIdentity` | `pid`, `executablePath`, `displayName` (the kernel's comm), `userName` |
 | `NetworkConnectionState` | the TCP state machine, plus `Unconnected` for a UDP socket without a fixed peer |
 | `NetworkMonitorCapabilities` | `socketTable`, `processAttribution`, `allUsers`, `connectionEvents`, `perConnectionBytes`, `dnsWithProcess`, `backendName`, `notes` |
@@ -87660,9 +88417,11 @@ against that hash only. `requires` drives the fit; without it, 1.2 x the
 files' size stands in. `tags` holding `recommended` puts a model first in
 `Recommend()` for its capability.
 
-The built-in catalogue (2026-10-20): Qwen3 4B, 1.7B and 8B for chat,
+The built-in catalogue (2026-10-21): Qwen3 4B, 1.7B and 8B for chat,
 Gemma 3 4B with vision, Qwen3 Embedding 0.6B and Nomic Embed Text v1.5 for
-embeddings.
+embeddings. Its file names and sizes were checked against the Hugging Face
+repositories on that date; the hashes are still read from the tree API at
+install time.
 
 ---
 
@@ -87762,12 +88521,17 @@ LocalRuntime::Instance().SetSettings(s);
   upstream archives are built for 13.3 and later, and a downloaded
   executable runs as it is (UltraNet sets no quarantine attribute).
 - The catalogue's hashes are taken from Hugging Face at install time until
-  they are pinned; sizes are approximate until then.
+  they are pinned; the file names and sizes were checked against the
+  repositories on 2026-10-21.
 - The gallery index is not yet signed; it is fetched over TLS from a URL
   the settings control.
-- No framework dialog and no dashboard page yet (phase 2 of the plan): an
-  application reads `"needs-install"` and asks with its own UI, or sets
-  `allow_download` after asking once.
+- The *Get a local model* dialog is the module's (`UltraAI/ui/`,
+  `UltraAILocalModelDialog.h`, library `UltraAI_UI`): an application links
+  `UltraAI_UI` beside `UltraAI_Core`, tests an error with
+  `UltraAILocalModelDialog::NeedsInstall(error)` and calls `Show(window,
+  serviceName, capability, preferredModelId, onReady)`; the dashboard's Chat
+  and Texter's Translate Selection do. The *Local models* settings page is
+  the dashboard's (`Apps/UltraAIApp/UltraAILocalModelsPage`).
 
 ==============================================================================
 FILE: Docs/Modules/UltraAI/README.md
@@ -87884,6 +88648,7 @@ UltraAI/
 │   └── UltraAICodeAssist.h
 ├── src/                           # Capability factories (registry)
 ├── runtime/                       # The local runtime: engine gallery, model catalogue, installs, supervision
+├── ui/                            # UltraAI_UI: the "Get a local model" dialog every application shows (in-tree, on the UltraCanvas core)
 ├── adapters/
 │   ├── _shared/                   # Credentials, error mapping, retry, transport seam (HTTP/SSE/byte stream/WebSocket), base64, multipart, job polling, cassettes
 │   ├── mock/                      # In-process mocks for every capability
@@ -89013,7 +89778,7 @@ so calls stay readable and extensible; **nothing throws**.
 
 ```cpp
 enum class UltraCryptResultCode : uint8_t {
-    Success,
+    Ok,
     NotSupported,          // algorithm not available in this build
     InvalidArgument,
     InvalidKeySize,
@@ -89754,20 +90519,24 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
-> introspection, streaming cursors, per-statement scripts and cancelling.**
+> Status: **Stage 1 implemented, the PostgreSQL and MySQL / MariaDB drivers
+> from Stage 2, schema introspection, server administration, streaming
+> cursors, per-statement scripts, cancelling and statement observers.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 56 tests, the PostgreSQL ones
-> against a live server where one is configured). The **PostgreSQL** driver
-> (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
-> found at configure time; it takes `?` placeholders, verifies TLS by default
-> and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
-> it, and CI tests it against a real server (`Tests/UltraFIBU`). The other
-> networked drivers (MySQL, …), async queries and pooling described below
-> are still the Stage 2/3 plan.
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 84 tests, the PostgreSQL and MySQL
+> ones against a live server where one is configured). The **PostgreSQL**
+> driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
+> libpq is found at configure time; it takes `?` placeholders, verifies TLS by
+> default and reads the password from UltraVault. UltraFIBU's multi-user mode
+> runs on it, and CI tests it against a real server (`Tests/UltraFIBU`). The
+> **MySQL / MariaDB** driver (`UltraDatabaseMysqlDriver.cpp`, over MariaDB
+> Connector/C) is built whenever libmariadb is found, and speaks to MariaDB
+> and MySQL servers alike: the same `?` placeholders, as server-side prepared
+> statements, TLS verified by default, the password from UltraVault. Async
+> queries and pooling described below are still the Stage 2/3 plan.
 
 ---
 
@@ -89866,8 +90635,8 @@ persistence with no external server and no extra dependency.
 
 | Engine | Category | Backing library |
 |---|---|---|
-| PostgreSQL | Relational (SQL) | `libpq` |
-| MySQL / MariaDB | Relational (SQL) | `libmariadb` |
+| PostgreSQL | Relational (SQL) | `libpq` - built into the module when found |
+| MySQL / MariaDB | Relational (SQL) | `libmariadb` (MariaDB Connector/C, LGPL-2.1, linked dynamically) - built into the module when found |
 | Microsoft SQL Server | Relational (SQL) | ODBC / FreeTDS |
 | DuckDB | Embedded analytics (OLAP) | bundled/optional |
 | Redis / Valkey | Key-value cache | `hiredis` |
@@ -89981,9 +90750,30 @@ PostgreSQL they are server-side - `WITH HOLD` outside a transaction, so the
 connection is free for other statements between pages, `WITHOUT HOLD`
 inside one, where they end with it. **Scripts** are split as psql splits
 them on PostgreSQL (semicolons outside text, comments and `BEGIN ATOMIC`
-bodies) and by SQLite itself on SQLite; each statement reports its text,
-outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
+bodies), by SQLite itself on SQLite, and as the mysql client splits them on
+MySQL / MariaDB (`DELIMITER` lines, `BEGIN ... END` bodies, `#` comments,
+backslash escapes); each statement reports its text, outcome and rows.
+`UltraDb_MysqlScriptStatements(script)` gives the same MySQL split as byte
+offsets - where each statement begins, ends and its terminator ends - for
+an editor that runs the statement under the caret or counts a file's
+statements before it imports them. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
 both safe from another thread while the statement holds the connection.
+
+**Watching statements.** `UltraDb_AddStatementObserver` reports every
+statement that runs through the calls above, on any connection, once it has
+ended: its kind (query, exec, transaction, a script's statement, a cursor,
+introspection), its text, how many values were bound - never the values -
+the rows it returned, whether it ran in a transaction, its time and its
+outcome. An admin tool's SQL log is one observer (UltraDBAdmin's); a debug
+trace another. With no observer added nothing is timed or copied.
+
+```cpp
+const int id = UltraDb_AddStatementObserver([](const UltraDbStatementEvent& e) {
+    // On the thread that ran it, outside every lock of the module: quick and thread-safe.
+    std::fprintf(stderr, "%s: %zu rows, %s\n", e.connection.c_str(), e.rows, e.sql.c_str());
+});
+UltraDb_RemoveStatementObserver(id);
+```
 
 **Values.** `UltraDbValue` is a small variant: null, bool, int64,
 double, text (UTF-8), blob (bytes), and timestamp. Typed accessors
@@ -90026,6 +90816,13 @@ for (const UltraDbColumnInfo& c : rs.ColumnInfo())
     ;  // c.declaredType ("numeric(12,2)"), c.sourceSchema / sourceTable / sourceColumn
 ```
 
+On MySQL and MariaDB a schema is a database: one connection lists every
+database its user may see (but the server's own: `mysql`,
+`information_schema`, `performance_schema`, `sys`), read from
+`information_schema`; a column's default comes back as it would be written
+in the DDL on both servers (`'none'`, `0`, `current_timestamp()`), whatever
+each reports. Names are quoted with backticks.
+
 `UltraDb_ListConnections()` lists the registered connection names. A driver
 that cannot introspect answers `Unsupported`. On PostgreSQL the column
 metadata costs one catalog query per table the first time and nothing after
@@ -90039,7 +90836,35 @@ has `SQLITE_ENABLE_COLUMN_METADATA` (checked at configure time).
 and `float4` as `Double`. Numbers cross the driver dot-decimal in both
 directions whatever the process's locale, and `AsString()` of a `Double` is
 dot-decimal too: the shortest text that reads back exactly (`3.14`, not
-`3,140000`).
+`3,140000`). MySQL's `DECIMAL` is `Text` too, and so is an unsigned
+`BIGINT` too large for an `Int`; a BIT column is the `Int` its bits make, a
+`BINARY` / `VARBINARY` / `BLOB` column a `Blob`, a date or time its text.
+
+### Server administration
+
+`UltraDatabaseServer.h` is what a server is doing and how it is set up - the
+Server tab of UltraDBAdmin (the proposal's G10). One shape for PostgreSQL
+and MySQL / MariaDB, fixed column names whatever the engine; SQLite has no
+server and answers `Unsupported`.
+
+```cpp
+UltraDbResultSet rows;
+UltraDb_ServerSessions("crm", rows);          // id, user, database, application, client,
+                                              // state, running (s), waiting, query, this_session
+UltraDb_ServerSettings("crm", "mem", rows);   // name, value, unit, category, description, source
+UltraDb_ServerSizes("crm", "public", rows);   // kind, name, bytes, data_bytes, index_bytes
+
+std::string sql;                              // what a confirmation shows first:
+UltraDb_StopSessionSql("crm", id, false, sql);  // SELECT pg_cancel_backend(42) / KILL QUERY 42
+bool stopped = false;
+UltraDb_StopSession("crm", id, false, stopped); // false: gone, or not this user's to stop
+```
+
+The asking session is never stopped from itself. A settings filter matches
+the name or the description in any case, `%` and `_` typed in it taken as
+themselves. MySQL's settings come from `performance_schema` (with where each
+value came from), MariaDB's from `information_schema.SYSTEM_VARIABLES` (with
+a description for each).
 
 ---
 
@@ -90073,8 +90898,13 @@ idea* above).
   (`UltraVault::Initialize`, with its own file and passphrase) before it
   connects; the driver only reads from it, and reports "UltraVault is not
   open" rather than quietly opening an empty one. The password is wiped
-  from the driver's memory once libpq has it. Empty `credentials` means
-  libpq's own methods (peer / trust / `.pgpass`).
+  from the driver's memory once the client library has it. Empty
+  `credentials` means the server's own ways of knowing the user: libpq's
+  peer / trust / `.pgpass`, MariaDB's `unix_socket` and MySQL's
+  `auth_socket` over the server's socket file (a `host` that is a path).
+- **No client files for the server.** The MySQL driver turns `LOAD DATA
+  LOCAL` off: with it on, a server could ask for any file the program can
+  read.
 - **TLS for networked engines.** `UltraDbTls::{Disable,Prefer,Require,
   VerifyFull}` with verification on by default; certificate handling
   reuses the platform trust store (and UltraNet's TLS stack where a
@@ -90098,12 +90928,16 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseValue.h          UltraDbValue, UltraDbRow, UltraDbResultSet
 │   ├── UltraDatabaseTransaction.h    Begin / Commit / Rollback
 │   ├── UltraDatabaseMigrate.h        versioned schema migrations
+│   ├── UltraDatabaseSchema.h         introspection, quoting names
+│   ├── UltraDatabaseServer.h         sessions, settings, sizes, stopping a session
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
-├── core/UltraDatabase/               (.cpp implementations + bundled SQLite)
+├── core/UltraDatabase/               (.cpp implementations)
+│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver and its introspection
+│   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
+│   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
+│   └── UltraDatabaseServerViews.cpp  server administration for both server engines
 ├── OS/<Platform>/UltraDatabaseSupport.cpp
-└── Plugins/UltraDatabase/
-    ├── postgresql/
-    ├── mysql/
+└── Plugins/UltraDatabase/            (later drivers as loadable plug-ins)
     ├── mssql/
     ├── redis/
     └── ...
@@ -90162,12 +90996,14 @@ headless data module usable from any ULTRA OS process.
 | Connection registry (lazy open) | Implemented |
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
-| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
-| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
-| Test suite (56 tests) | Passing |
+| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
+| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
+| Server administration (`UltraDatabaseServer.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
+| Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
+| Test suite (84 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
-| MySQL / MariaDB driver | Planned (Stage 2) |
+| MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |
 | Async queries | Planned (Stage 2) |
 | Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
@@ -90175,9 +91011,9 @@ headless data module usable from any ULTRA OS process.
 1. **Stage 1** — SQLite core, connection registry, `Query`/`Exec`/
    `Prepare`/values/transactions/migrations. Enough for every app's
    local storage (and all of UltraMail).
-2. **Stage 2** — async queries + worker pool, streaming cursors, the
-   driver-plugin manager, the MySQL/MariaDB driver. (The PostgreSQL
-   driver, with its UltraVault and TLS wiring, is done.)
+2. **Stage 2** — async queries + worker pool, the driver-plugin manager.
+   (The PostgreSQL and MySQL / MariaDB drivers, with their UltraVault and
+   TLS wiring, and streaming cursors are done.)
 3. **Stage 3** — remaining drivers (MSSQL, Redis, MongoDB, DuckDB),
    at-rest encryption, read-replica/failover options.
 
@@ -91560,6 +92396,7 @@ planned (see the status table below).
 | Security | TLS 1.2 / 1.3, custom CA bundles | `UltraNet/UltraNetTls.h` |
 | Resolution | DNS (A, AAAA, MX, TXT, SRV, PTR, …); per-call name servers and deadline (`UltraNetDnsOptions`) | `UltraNet/UltraNetDns.h` |
 | Sessions | Cookies, connection reuse - safe from several threads at once (the cookies are shared; each connection is used by one request at a time) | `UltraNet/UltraNetCookies.h` |
+| Cookies | A browser's cookie jar with the rules in the open (RFC 6265bis): what `Set-Cookie` stores and the `Cookie` header a request carries, `Domain` / `Path` / `Secure` / `SameSite` / prefixes, expiry, no third-party cookies, kept in a text file - for a client that follows redirects itself and must apply each hop's cookies (UltraWeb) | `UltraNet/UltraNetCookieJar.h` |
 | Auth | OAuth 2.0 authorization-code + PKCE, loopback redirect, token refresh | `UltraNet/UltraNetOAuth2.h` |
 | Auth | The process-wide OAuth2 *app registry*: the client id / secret / redirect URI per provider, from code, the environment, an INI file or a baked-in default, with aliases — and the sign-in service's address through the same tiers, built in as `ULTRANET_OAUTH_SERVICE_URL`; shared by UltraMail and UltraCloud | `UltraNet/UltraNetOAuth2Apps.h` |
 | Auth | The client of an OAuth2 *sign-in service* (Server/OAuthCallback): a web service that holds the client registrations and receives the providers' redirects, so the application ships no secret and a provider that refuses loopback redirects (Yahoo) redirects like any other; PKCE end to end | `UltraNet/UltraNetOAuth2Service.h` |
@@ -91807,6 +92644,7 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetTls.h
 │   ├── UltraNetDns.h
 │   ├── UltraNetCookies.h
+│   ├── UltraNetCookieJar.h
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetOAuth2Apps.h
 │   ├── UltraNetOAuth2Service.h
@@ -94867,7 +95705,7 @@ provides.
 
 VirtualFSRamDisk disk;
 if (VirtualFS_CreateRamDisk("scratch", 256 * 1024 * 1024, disk)
-        == VirtualFSResult::Success) {
+        == VirtualFSResult::Ok) {
 
     // A real path: any process, any API, not just VirtualFS_*
     std::ofstream out(disk.mountPath + "/frame.raw", std::ios::binary);
@@ -95124,6 +95962,28 @@ cryptography is [UltraCrypt](../Modules/UltraCrypt/README.md).
   moves that folder into place, whole). `--vault PATH` uses another vault
   file; its settings live beside it.
 
+## The window
+
+- **The band at the top** names the app and how many accounts it holds, with
+  *Settings* (the sliders) and **Lock** at its right.
+- **Under it**, the ways to add an account — **Scan QR code**, then *Enter
+  key* — and, to the right, what acts on the whole vault: *Password…*
+  (change the master password), *Back up…* and *Restore…*.
+- **One card per account**: a coloured circle with the service's first
+  letter — in the service's own brand colour for about eighty well-known
+  services (the colour only: their logos are trademarks and are not shown;
+  Google's is a blue G on white, as Google shows it),
+  otherwise a colour picked from the name, so a service keeps its colour — the
+  service and account name, and the current code in large digits. A ring
+  beside it empties as the code's 30 seconds run out, with the seconds left
+  in its centre; it turns amber at 10 and red at 5. A counter-based (HOTP)
+  card has a *Next code* button instead. The copy button right after the
+  code puts it on the clipboard (see *Copying a code* below). The pencil
+  (*Edit*), the eye (*Show key*) and the bin (*Remove*) are the card's
+  actions; hover over one for its name.
+- **The line at the foot** reports what the last action did, or what went
+  wrong.
+
 ## What the secret is
 
 When a service shows you a QR code to enrol, the QR contains a **seed**: a
@@ -95178,10 +96038,22 @@ clicked* replaces every code with dots; clicking a card shows its code for
 15 seconds. Hidden cards are not even computed. This is for working where
 someone may be looking over your shoulder.
 
+**Copying a code.** The copy button beside a code puts that code on the
+clipboard, and the button shows a tick for a moment. The app takes it off
+the clipboard again **30 seconds later** — one time step, after which the
+code is no longer valid anyway — and at once when the app locks or closes;
+in each case only if the clipboard still holds that code, so something you
+copied since is never touched. The copy is marked as a secret (the marker
+KDE, Windows and macOS clipboard histories honour, as does UltraClipboard),
+so those histories do not keep it. With *Hide codes* on, copying works
+without showing the code. On a counter-based (HOTP) card it copies the code
+*Next code* last produced and never spends a new one. The setup key is never
+offered for copying.
+
 **Getting a seed back out.** Moving to a new phone means reading the seed
 again, and an app that could never do that would push people into keeping
 the original QR code in a photo album — far worse than this vault. So *Show
-key* exists, and it is fenced: it asks for the master password again even
+key* (the eye on a card) exists, and it is fenced: it asks for the master password again even
 though the vault is open, shows the key and the `otpauth://` URI as text on
 screen only, renders no QR code and writes nothing to disk, and wipes its
 own widgets when closed.
@@ -95215,6 +96087,12 @@ own; each is stated here so the app is not credited with more than it does.
   in the same session see what you see. Prefer Wayland or a native ULTRA OS
   build, keep *Show key* open only as long as the other device needs, and
   use *Hide codes* on a shared screen.
+- **Programs reading the clipboard.** For the 30 seconds a copied code is
+  on the clipboard, any program in your session can read it, and a
+  clipboard history that ignores the secret marker keeps it after the app
+  has cleared the clipboard. A code is only good for its 30 seconds and
+  only together with your password, which is why copying it is offered at
+  all; the setup key never is.
 - **Other programs running as you.** On a standard Linux host, a process
   running under your user account can read your files and, unless the
   kernel restricts `ptrace`, your programs' memory. The encryption defends
@@ -95728,10 +96606,16 @@ things the app does do.
 
 ### 3.7 Clipboard and UI leakage (medium)
 
-- Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
+- ~~Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is
   readable by every app, and clipboard managers persist history. Auto-clear
   the clipboard ~30 s after copy (only if it still holds our value), and
-  never offer copy for the *secret*.
+  never offer copy for the *secret*.~~ — **DONE** (`AuthenticatorWindow::
+  CopyCode` / `ClearClipboardIfOurs`). A copy button on every card copies
+  the code with `ClipboardHint::Secret` (the platforms' clipboard-history
+  markers) and clears the clipboard 30 s later, and at once on lock and on
+  close, each time only if it still holds that code. An HOTP card copies
+  the code its last "Next code" produced, never advancing the counter. The
+  secret is still never offered for copying.
 - ~~App lock (PIN or the master password) with exponential back-off, and
   auto-lock on minimize/idle.~~ — **DONE** (`LockScreenDialog`,
   `AccountStore::Lock`/`Unlock`, `LockPolicy.h`). The vault locks on the
@@ -96360,7 +97244,10 @@ the filter shows), and whether changes are being watched for.
 
 The first scan starts when the window opens and runs on a worker thread —
 SANE and CUPS can each take seconds to answer, and the window never waits for
-them. After it, DeviceExplorer turns on IODeviceManager's hot-plug watcher.
+them. While a scan runs (this one, or one *Rescan* started), a row at the
+bottom of the tree reads *Scanning for devices…* beside a sliding bar; it goes
+away when the devices are in. After the first scan, DeviceExplorer turns on
+IODeviceManager's hot-plug watcher.
 While the watcher runs, a device plugged in or removed appears or disappears by
 itself, and the selection stays on the device you were looking at.
 
@@ -97744,7 +98631,7 @@ point an existing build elsewhere without a rebuild, in decreasing priority
 
 The value `off` (or `none`) at any of these turns the service off. The
 wizard's hint says when a provider cannot be signed in to at all. The same
-setting serves the composer's *Attach cloud link…* sign-ins: Google Drive,
+setting serves the composer's *Cloud link…* sign-ins: Google Drive,
 OneDrive and Dropbox go through the service too (UltraCloud, under the
 service's `google`, `microsoft` and `dropbox`), unless a client of their own
 is configured.
@@ -97953,7 +98840,12 @@ account's own identity; the server files the sent message in Sent); an
 SMTP server entered next to it is used to send instead. Switching an
 existing account between the protocols drops the mail held for it and
 fetches it anew: the same mailbox read over the other protocol numbers its
-messages differently. The choice is stored with the other server settings
+messages differently. Switching a password account also asks for its
+password again: the page warns as soon as the other protocol is chosen, the
+password field turns *Required*, and *Save* (and *Save anyway*) wait for it -
+the stored password belonged to the old server, and a JMAP server often wants
+its own app password or API token. An account signed in with OAuth2 keeps its
+tokens and is not asked. The choice is stored with the other server settings
 of the account and shown again on its Settings page.
 
 **JMAP is found by itself.** Before the autoconfig documents (which only
@@ -98288,16 +99180,20 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 
 - **To/Cc/Bcc** rows using `CreateEmailInput` with autocomplete fed by
   the collected-addresses book (3.2); recipients render as removable
-  chips; Cc/Bcc rows hidden until requested.
+  chips; Cc/Bcc rows hidden until requested. No-reply and blocked
+  addresses are never offered; a suggestion's right-click menu edits its
+  contact, deletes the address or sets the sender as spam (blocked).
 - **Body** — `UltraCanvasTextArea` in `MarkdownHybrid` mode: the user
   writes comfortable rich text (bold, lists, links, quoting) and
   UltraMail sends `multipart/alternative` with a generated HTML part
   (via the existing Markdown→HTML serializer of `UCRichDocument`) plus
   the plain-text source. A "plain text only" toggle is one click.
 - **Attachments** — "Attach file…" (file dialog; drag & drop later) and
-  "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
+  "Cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
-  shown as a chip strip with sizes and a total-size warning.
+  shown as a chip strip with sizes and a total-size warning - under the
+  message, or in a column at its right (*Settings > Reading > Attachments*,
+  for reading and writing alike).
 - **Signatures** — per account, in *Account Settings > Signature*: none,
   plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
   (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
@@ -98307,7 +99203,10 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
 - **Formatting** — a *Plain text | Formatted* switch on every message, and in
   formatted mode the same toolbar as the signature editor (character
-  formatting, font, size, colour, alignment, lists, a rule, links, pictures).
+  formatting, font, size, text or background colour, alignment, lists, a
+  rule, links, pictures), as icons on a strip framed together with the body -
+  in one row in the compose window, whose Send row is on top; each tool's
+  tooltip names it, and Font and Size show the text at the cursor.
   *(Implemented in UltraMail 0.10.12.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the
@@ -98334,8 +99233,11 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 - Mark read/unread, star/flag, move to folder (drag & drop onto tree)
 - Junk folder support; delete-to-Trash with empty-trash command
 - Fast local search (from/subject/body) over the message index
-- Collected address book: every address the user writes to or receives
-  from is remembered for autocomplete (explicit contacts app and
+- Collected address book: every address the user writes to is
+  remembered for autocomplete; from incoming mail only senders in the
+  known-sender registry whose domain the server proved are added (under
+  Services) - never a stranger, a
+  blocked sender or an address the user deleted (explicit contacts app and
   LDAP/CardDAV integration come later, see roadmap)
 - Multiple accounts + unified inbox
 - New-mail notifications (window badge + system notification) and
@@ -98790,14 +99692,22 @@ used twice:
 * **In the badge.** A registry sender that is not (yet) in the address book
   reads as a **business contact** — blue — rather than as an unknown sender,
   with the tooltip naming the service and what kind of service it is.
-* **In the address book.** `ContactCollector::CollectSender()` — which the app
-  runs over each synced folder — files a registry sender under **Services**,
-  carrying the service's name as the contact's `organization` and a note
+* **In the address book.** `ContactCollector::CollectSenders()` — which the
+  app runs over each sync's new inbox mail — files a registry sender under
+  **Services**, but only when the receiving server proved its domain (DKIM or
+  DMARC: the scan's `verifiedDomain`, `DomainProven`): the registry knows a
+  service by its address, and anyone can write that address in a From line.
+  It files it carrying the service's name as the contact's `organization` and a note
   saying what it is and that UltraMail added it. A robot display name is
   replaced by the service's own name only when the header carries none
-  ("Kickstarter" beats an empty From name). Everything else still lands in
-  Other, exactly as before, and a personal mailbox address never counts as a
-  service however large its provider.
+  ("Kickstarter" beats an empty From name). Any other sender is **not**
+  added: a stranger who writes - and every spammer whose mail reaches the
+  inbox - would otherwise read as someone in the address book and lose the
+  "New sender" badge. People join the address book when the user writes to
+  them (`ContactCollector::Collect`). A personal mailbox address never counts
+  as a service however large its provider, and a blocked sender or an address
+  the user deleted from the address book (`ContactStore::Forget`) is never
+  collected.
 
 One rule guards it: **an existing contact is never modified or reclassified.**
 An address the user has filed under Friends themselves stays there, whatever

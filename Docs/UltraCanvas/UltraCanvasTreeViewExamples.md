@@ -116,6 +116,11 @@ enum class TreeLineStyle {
     Solid = 2         // Solid lines
 };
 
+enum class TreeExpanderStyle {
+    Box = 0,          // + or - in a square (the default)
+    Chevron = 1       // An arrow: pointing right when closed, down when open
+};
+
 enum class TreeCheckState {
     Unchecked = 0,
     Checked = 1,
@@ -562,6 +567,28 @@ come below. The stub ends at the child's expand button, or reaches its icon
 when the child has none. Lines are drawn over the row background, so they stay
 visible on the selected row, and take `SetLineColor` (default gray).
 
+#### Expander Style
+```cpp
+void SetExpanderStyle(TreeExpanderStyle style);
+TreeExpanderStyle GetExpanderStyle() const;
+void SetExpanderArrowColor(const Color& color);
+const Color& GetExpanderArrowColor() const;
+```
+How the expand button of a row with children looks. `TreeExpanderStyle::Box`
+(the default) is the `+` / `-` in a square, coloured by
+`SetExpandButtonColor`. `TreeExpanderStyle::Chevron` is an arrow instead,
+pointing right on a closed row and down on an open one, drawn with a 1.5 px
+round stroke in `SetExpanderArrowColor` (default a mid grey,
+`Color(0x70, 0x70, 0x78)`). It takes the same place and the same click as the
+box, so switching changes no row's layout. A modern tree without connectors:
+
+```cpp
+auto tree = std::make_shared<UltraCanvasTreeView>("schemaTree");
+tree->SetLineStyle(TreeLineStyle::NoLine);
+tree->SetExpanderStyle(TreeExpanderStyle::Chevron);
+tree->SetExpanderArrowColor(Color(88, 96, 110));
+```
+
 #### Root Lines
 ```cpp
 void SetShowRootLines(bool show);
@@ -767,6 +794,7 @@ void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
+void SetExpanderArrowColor(const Color& color);
 void SetCheckboxColors(const Color& background, const Color& border, const Color& check);
 ```
 Sets various color properties for the tree view. `SetBackgroundColor` is
@@ -774,6 +802,8 @@ inherited from `UltraCanvasUIElement`.
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
 (default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
+`SetExpanderArrowColor` is the arrow's colour under `TreeExpanderStyle::Chevron`
+(see [Expander Style](#expander-style)).
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
 colour of both the tick and the Mixed square.
 `SetLoadingBarColor` sets the bar a loading row slides along its foot (default
@@ -1144,6 +1174,7 @@ The UltraCanvasTreeView integrates seamlessly with the UltraCanvas framework:
 | 1.1.0 | 2026-08-08 | Floating scroll-to-top button for long trees |
 | 1.2.0 | 2026-10-02 | `GetRequiredWidth` - the width the widest row on show needs |
 | 1.2.1 | 2026-10-07 | Docs: columns API (`SetColumns`, `TreeViewColumn`, `data.cells`), real constructors and builder calls |
+| 1.3.0 | 2026-10-22 | `SetExpanderStyle`: the expand button as an arrow (`TreeExpanderStyle::Chevron`), `SetExpanderArrowColor` |
 
 ## See Also
 

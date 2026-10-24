@@ -1,10 +1,14 @@
 // Apps/DemoApp/UltraCanvasSequenceDiagramExamples.cpp
 // Sequence diagram examples: one tab per sample interaction, with live controls
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the controls
+//                  and the tabs in cards side by side, every label and button
+//                  sized to its text
 // Version: 1.0.0
-// Last Modified: 2026-08-07
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Diagrams/UltraCanvasSequenceDiagram.h"
 #include "Plugins/Diagrams/UltraCanvasSequenceTextExport.h"
 #include "UltraCanvasTabbedContainer.h"
@@ -19,60 +23,48 @@
 namespace UltraCanvas {
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateSequenceDiagramExamples() {
-        // Children placed directly inside a sidebar/panel container are inset
-        // explicitly instead of using SetPadding() - the same pattern the
-        // SWOT/Venn/Timeline demos use - so absolutely-positioned children are
-        // not clipped by the container's content area.
-        const int PAD = 15;
+        auto mainContainer = DemoKit::CreatePage("seqMainContainer", "UML Sequence Diagram",
+                "Lifelines, execution bars, combined fragments and notes - "
+                "drag to pan, wheel to zoom, click to inspect");
 
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("seqMainContainer", 0, 0, 1140, 800);
-        mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
-
-        auto headerContainer = std::make_shared<UltraCanvasContainer>("seqHeader", 0, 0, 1140, 90);
-        headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
-        mainContainer->AddChild(headerContainer);
-
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("seqMainTitle", 30, 15, 1080, 35);
-        mainTitle->SetText("UML Sequence Diagram");
-        mainTitle->SetFontSize(22);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetAlignment(TextAlignment::Left);
-        mainTitle->SetTextColor(Color(33, 37, 41, 255));
-        headerContainer->AddChild(mainTitle);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("seqSubtitle", 30, 52, 1000, 30);
-        subtitle->SetText("Lifelines, execution bars, combined fragments and notes - "
-                          "drag to pan, wheel to zoom, click to inspect");
-        subtitle->SetFontSize(13);
-        subtitle->SetAlignment(TextAlignment::Left);
-        subtitle->SetTextColor(Color(108, 117, 125, 255));
-        headerContainer->AddChild(subtitle);
-
-        auto contentContainer = std::make_shared<UltraCanvasContainer>("seqContent", 0, 90, 1140, 710);
-        mainContainer->AddChild(contentContainer);
+        // The controls beside the tabs; under them when the window is narrow.
+        auto contentContainer = DemoKit::AddRow(mainContainer, "seqContent");
 
         // ===== LEFT SIDEBAR (controls) =====
-        auto leftSidebar = std::make_shared<UltraCanvasContainer>("seqSidebar", 20, 20, 200, 670);
-        leftSidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(leftSidebar);
-
         const int SIDEBAR_W = 170;
+        auto leftSidebar = DemoKit::AddCard(contentContainer, "seqSidebar", "", "",
+                                            SIDEBAR_W + 2 * DemoKit::kCardPadding + 2);
+        leftSidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        auto controlsTitle = std::make_shared<UltraCanvasLabel>("seqControlsTitle", PAD, PAD, SIDEBAR_W, 22);
-        controlsTitle->SetText("CONTROLS");
+        auto controlsTitle = DemoKit::AddText(leftSidebar, "seqControlsTitle", "CONTROLS");
         controlsTitle->SetFontSize(11);
         controlsTitle->SetFontWeight(FontWeight::Bold);
         controlsTitle->SetTextColor(Color(73, 80, 87, 255));
-        controlsTitle->SetAlignment(TextAlignment::Left);
-        leftSidebar->AddChild(controlsTitle);
 
-        auto themeLabel = std::make_shared<UltraCanvasLabel>("seqThemeLabel", PAD, 55, SIDEBAR_W, 20);
-        themeLabel->SetText("Theme");
-        themeLabel->SetFontSize(10);
-        themeLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(themeLabel);
+        // A bold caption over a dropdown that takes the sidebar's width.
+        auto addCaption = [&](const std::string& id, const std::string& text) {
+            auto label = DemoKit::AddText(leftSidebar, id, text);
+            label->SetFontSize(10);
+            label->SetFontWeight(FontWeight::Bold);
+        };
+        auto addDropdown = [&](const std::string& id) {
+            auto dropdown = std::make_shared<UltraCanvasDropdown>(id, 0, 0, SIDEBAR_W, 28);
+            DemoKit::AddStretched(leftSidebar, dropdown);
+            return dropdown;
+        };
+        // A button as wide as its text, at least the sidebar's width.
+        auto addButton = [&](const std::string& id, const std::string& text, const Color& color) {
+            auto button = std::make_shared<UltraCanvasButton>(id, 0, 0, 0, 32, text);
+            CSSLayout::BoxConstraints limits;
+            limits.minWidth = CSSLayout::Dimension::Px(SIDEBAR_W);
+            button->boxConstraints = limits;
+            button->SetBackgroundColor(color);
+            DemoKit::Add(leftSidebar, button);
+            return button;
+        };
 
-        auto themeSelector = std::make_shared<UltraCanvasDropdown>("seqThemeSelector", PAD, 78, SIDEBAR_W, 28);
+        addCaption("seqThemeLabel", "Theme");
+        auto themeSelector = addDropdown("seqThemeSelector");
         themeSelector->AddItem("Default", "default");
         themeSelector->AddItem("Classic", "classic");
         themeSelector->AddItem("Professional", "professional");
@@ -80,59 +72,35 @@ namespace UltraCanvas {
         themeSelector->AddItem("Minimal", "minimal");
         themeSelector->AddItem("Dark", "dark");
         themeSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(themeSelector);
 
-        auto numberingLabel = std::make_shared<UltraCanvasLabel>("seqNumberingLabel", PAD, 118, SIDEBAR_W, 20);
-        numberingLabel->SetText("Message Numbering");
-        numberingLabel->SetFontSize(10);
-        numberingLabel->SetFontWeight(FontWeight::Bold);
-        leftSidebar->AddChild(numberingLabel);
-
-        auto numberingSelector = std::make_shared<UltraCanvasDropdown>("seqNumberingSelector", PAD, 141, SIDEBAR_W, 28);
+        addCaption("seqNumberingLabel", "Message Numbering");
+        auto numberingSelector = addDropdown("seqNumberingSelector");
         numberingSelector->AddItem("Hidden", "hidden");
         numberingSelector->AddItem("Sequential (1, 2, 3)", "sequential");
         numberingSelector->AddItem("Hierarchical (1.1.2)", "hierarchical");
         numberingSelector->SetSelectedIndex(0);
-        leftSidebar->AddChild(numberingSelector);
 
-        auto btnFrame = std::make_shared<UltraCanvasButton>("seqBtnFrame", PAD, 185, SIDEBAR_W, 32);
-        btnFrame->SetText("Toggle sd Frame");
-        btnFrame->SetBackgroundColor(Color(13, 110, 253, 255));
-        leftSidebar->AddChild(btnFrame);
+        auto btnFrame = addButton("seqBtnFrame", "Toggle sd Frame", Color(13, 110, 253, 255));
+        auto btnFeet = addButton("seqBtnFeet", "Toggle Foot Boxes", Color(13, 110, 253, 255));
+        auto btnFit = addButton("seqBtnFit", "Fit View", Color(25, 135, 84, 255));
+        auto btnReset = addButton("seqBtnReset", "Reset View", Color(108, 117, 125, 255));
+        auto btnExport = addButton("seqBtnExport", "Print PlantUML", Color(111, 66, 193, 255));
 
-        auto btnFeet = std::make_shared<UltraCanvasButton>("seqBtnFeet", PAD, 222, SIDEBAR_W, 32);
-        btnFeet->SetText("Toggle Foot Boxes");
-        btnFeet->SetBackgroundColor(Color(13, 110, 253, 255));
-        leftSidebar->AddChild(btnFeet);
-
-        auto btnFit = std::make_shared<UltraCanvasButton>("seqBtnFit", PAD, 259, SIDEBAR_W, 32);
-        btnFit->SetText("Fit View");
-        btnFit->SetBackgroundColor(Color(25, 135, 84, 255));
-        leftSidebar->AddChild(btnFit);
-
-        auto btnReset = std::make_shared<UltraCanvasButton>("seqBtnReset", PAD, 296, SIDEBAR_W, 32);
-        btnReset->SetText("Reset View");
-        btnReset->SetBackgroundColor(Color(108, 117, 125, 255));
-        leftSidebar->AddChild(btnReset);
-
-        auto btnExport = std::make_shared<UltraCanvasButton>("seqBtnExport", PAD, 333, SIDEBAR_W, 32);
-        btnExport->SetText("Print PlantUML");
-        btnExport->SetBackgroundColor(Color(111, 66, 193, 255));
-        leftSidebar->AddChild(btnExport);
-
-        auto helpBox = std::make_shared<UltraCanvasLabel>("seqHelpBox", PAD, 385, SIDEBAR_W, 130);
-        helpBox->SetText("INTERACTION TIPS\n\n"
+        auto helpBox = DemoKit::AddCaption(leftSidebar, "seqHelpBox",
+                         "INTERACTION TIPS\n\n"
                          "- Wheel zooms at cursor\n"
                          "- Drag empty canvas to pan\n"
                          "- Click arrows or heads\n"
-                         "- Event Flow tab shows the\n"
-                         "  framework's own pipeline");
+                         "- Event Flow tab shows the framework's own pipeline");
         helpBox->SetFontSize(9);
         helpBox->SetTextColor(Color(108, 117, 125, 255));
-        leftSidebar->AddChild(helpBox);
 
         // ===== TABS (one sample interaction each) =====
-        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("seqTabs", 240, 20, 880, 600);
+        // The diagrams have a fixed size; the card is at least as wide as the
+        // tabs and takes the width the controls leave.
+        auto centerCard = DemoKit::AddCard(contentContainer, "seqCenter", "", "",
+                                           880 + 2 * DemoKit::kCardPadding + 2);
+        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("seqTabs", 0, 0, 880, 600);
 
         struct SampleTab {
             const char* tabId;
@@ -147,8 +115,7 @@ namespace UltraCanvas {
         samples.push_back({"seqLifecycle", "Lifecycle", SequenceDiagramSamples::ObjectLifecycle()});
         samples.push_back({"seqEventFlow", "Event Flow", SequenceDiagramSamples::UltraCanvasEventFlow()});
 
-        auto statusBar = std::make_shared<UltraCanvasLabel>("seqStatus", 240, 630, 880, 24);
-        statusBar->SetText("Click a message or lifeline to inspect it");
+        auto statusBar = DemoKit::CreateText("seqStatus", "Click a message or lifeline to inspect it");
         statusBar->SetFontSize(11);
         statusBar->SetTextColor(Color(90, 98, 106, 255));
 
@@ -186,8 +153,8 @@ namespace UltraCanvas {
         allDiagrams.back()->SetNumbering(SequenceNumbering::Hierarchical);
         allDiagrams.back()->SetShowFrame(true);
 
-        contentContainer->AddChild(tabbedContainer);
-        contentContainer->AddChild(statusBar);
+        DemoKit::AddFixed(centerCard, tabbedContainer);
+        DemoKit::Add(centerCard, statusBar);
 
         // ===== CONTROL WIRING =====
         themeSelector->onSelectionChanged =

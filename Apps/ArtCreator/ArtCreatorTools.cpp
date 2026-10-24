@@ -3,6 +3,13 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.5.0 - the Selector's sections each in a rounded framed group box, captioned
+//                 small at the right of its top line; Scale / Rotate with icons; 1 px
+//                 above and below the icon bars
+// Version: 1.4.0 - the Selector's panel: a Scale / Rotate switch that follows the handles,
+//                 Arrange, Align and Distribute as flat icon bars greyed until the
+//                 selection is large enough; quieter captions with air above them, and
+//                 text buttons sharing their row's width equally
 // Version: 1.3.0 - the selector's handles keep the aspect ratio under the transform bar's lock
 //                 (an edge handle scales both ways about its middle; shift frees a corner)
 // Version: 1.2.2 - the arrow keys nudge by one icon pixel in icon mode
@@ -16,6 +23,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasGroupBox.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasSlider.h"
@@ -37,10 +45,12 @@ namespace ArtOptionWidgets {
 
 namespace {
     constexpr float kRowH = 24.0f;
+    constexpr float kButtonH = 26.0f;
+    constexpr float kIconButton = 28.0f;   // a 24 px icon and 2 px around it
     constexpr float kLabelW = 70.0f;
 
-    std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id) {
-        auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, 0, kRowH);
+    std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id, float height = kRowH) {
+        auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, 0, height);
         row->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         return row;
@@ -111,27 +121,129 @@ void AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::
 }
 
 void AddCaption(UltraCanvasContainer& panel, const std::string& id, const std::string& text) {
-    auto lbl = CreateLabel(id, 0, 0, 0, 20, text);
+    // A section heading inside a card: the card caption's grey, so the
+    // controls under it are what reads first, and a little air above it
+    // when it starts a new section rather than the card.
+    auto lbl = CreateLabel(id, 0, 0, 0, 18, text);
     lbl->SetFontSize(11);
     lbl->SetFontWeight(FontWeight::Bold);
+    lbl->SetTextColor(Colors::SectionCardCaption);
+    if (!panel.GetChildren().empty()) lbl->SetMargin(5, 0, 0, 0);
     lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     panel.AddChild(lbl);
 }
 
 void AddButtonRow(UltraCanvasContainer& panel, const std::string& id,
                   const std::vector<std::pair<std::string, std::function<void()>>>& buttons) {
-    auto row = MakeRow(id + "-row");
+    auto row = MakeRow(id + "-row", kButtonH);
     int i = 0;
     for (const auto& b : buttons) {
-        auto btn = std::make_shared<UltraCanvasButton>(id + "-" + std::to_string(i++), 0, 0, 0, kRowH, b.first);
+        auto btn = std::make_shared<UltraCanvasButton>(id + "-" + std::to_string(i++), 0, 0, 0, kButtonH, b.first);
         ButtonStyle st = btn->GetStyle();
         st.fontSize = 11.0f;
+        st.cornerRadius = 5.0f;
         btn->SetStyle(st);
         btn->onClick = b.second;
-        btn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        // From a zero basis, so the row's buttons are equally wide whatever
+        // their captions, not each its text's width plus a share.
+        btn->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0));
         row->AddChild(btn);
     }
     panel.AddChild(row);
+}
+
+std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer& panel, const std::string& id,
+                                                           const std::vector<IconAction>& items) {
+    auto bar = std::make_shared<UltraCanvasToolbar>(id, 0, 0, 0, kIconButton);
+    ToolbarAppearance app = bar->GetAppearance();
+    app.showIconLabels = false;
+    app.style = ToolbarStyle::Flat;
+    app.itemSpacing = 2.0f;
+    // The card's own white behind the buttons.
+    auto* card = dynamic_cast<UltraCanvasGroupBox*>(&panel);
+    app.backgroundColor = card ? card->GetVisualStyle().backgroundColor : Colors::SectionCardBackground;
+    app.hoverBackgroundColor = Colors::ListRowHover;
+    app.activeBackgroundColor = Colors::ListRowSelected;
+    bar->SetAppearance(app);
+    // 1 px above and below the buttons rather than the toolbar's 3: the
+    // section around the bar already gives it room.
+    bar->SetPadding(1, 5);
+    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    std::vector<std::shared_ptr<UltraCanvasButton>> buttons;
+    int i = 0;
+    for (const auto& item : items) {
+        if (item.icon.empty()) {
+            // A divider between two groups, with room on either side.
+            bar->AddSpacer(3);
+            bar->AddSeparator(id + "-sep" + std::to_string(i++));
+            bar->AddSpacer(3);
+            continue;
+        }
+        auto b = bar->AddButton(id + "-" + std::to_string(i++), "", item.icon, item.action);
+        b->SetTooltip(item.tooltip);
+        // Flat, as UltraPaint's and the Layers card's, and just round their
+        // 24 px icons, which stay on whole pixels at that size.
+        b->SetPadding(2);
+        b->SetElementSize(Size2Df(kIconButton, kIconButton));
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        ButtonStyle flat = b->GetStyle();
+        flat.cornerRadius = 6.0f;
+        flat.pressedColor = Colors::ListRowSelected;
+        b->SetStyle(flat);
+        buttons.push_back(b);
+    }
+    panel.AddChild(bar);
+    return buttons;
+}
+
+std::shared_ptr<UltraCanvasContainer> AddSection(UltraCanvasContainer& panel, const std::string& id,
+                                                 const std::string& title) {
+    auto box = CreateGroupBox(id, 0, 0, 0, 0, title);
+    GroupBoxVisualStyle st = GroupBoxVisualStyle::SectionCard();
+    // Small, regular-weight grey: the caption names the section, the
+    // buttons in it are what reads first.
+    st.titleFont.fontSize = 9.5f;
+    st.titleFont.fontWeight = FontWeight::Normal;
+    st.titleColor = Colors::SectionCardCaption;
+    st.contentPadding = 6.0f;
+    // A rounded frame on a light fill, the caption in the top line at the
+    // right.
+    box->SetFrameStyle(GroupBoxFrameStyle::Framed);
+    box->SetTitleAlignment(GroupBoxTitleAlignment::Right);
+    st.cornerRadius = 10.0f;
+    st.backgroundColor = Colors::SectionPage;
+    st.titleIndent = 10.0f;
+    st.titleGap = 3.0f;
+    st.titleVerticalPadding = 0.0f;
+    box->SetVisualStyle(st);
+    box->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    box->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    panel.AddChild(box);
+    return box;
+}
+
+std::shared_ptr<UltraCanvasSegmentedControl> AddSwitch(UltraCanvasContainer& panel, const std::string& id,
+                                                       const std::vector<std::string>& items, int selected,
+                                                       const std::function<void(int)>& onChange,
+                                                       const std::vector<std::string>& icons) {
+    auto sw = CreateSegmentedControl(id, 0, 0, 0, kButtonH);
+    SegmentedControlStyle st = sw->GetStyle();
+    st.fontSize = 11.0f;
+    st.cornerRadius = 5.0f;
+    st.paddingVertical = 3;
+    st.iconAsMask = true;
+    st.iconSpacing = 5;
+    sw->SetStyle(st);
+    sw->SetWidthMode(SegmentWidthMode::Equal);
+    for (size_t i = 0; i < items.size(); ++i) {
+        if (i < icons.size() && !icons[i].empty()) sw->AddSegment(items[i], icons[i]);
+        else sw->AddSegment(items[i]);
+    }
+    sw->SetSelectedIndex(std::clamp(selected, 0, static_cast<int>(items.size()) - 1));
+    sw->onSegmentSelected = [onChange](int index) { if (onChange) onChange(index); };
+    sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    panel.AddChild(sw);
+    return sw;
 }
 
 } // namespace ArtOptionWidgets
@@ -381,6 +493,7 @@ public:
         } else {
             if (!e.shift) ctx.selection->Clear();
             canvas->SetHandleMode(VectorHandleMode::Scale);
+            SyncModeSwitch(ctx);
             marquee = true;
         }
     }
@@ -410,9 +523,11 @@ public:
             if (dragged) ctx.history->EndEdit();
             else {
                 ctx.history->CancelEdit();
-                if (toggleModePending)
+                if (toggleModePending) {
                     canvas->SetHandleMode(canvas->GetHandleMode() == VectorHandleMode::Scale
                                           ? VectorHandleMode::Rotate : VectorHandleMode::Scale);
+                    SyncModeSwitch(ctx);
+                }
             }
             toggleModePending = false;
         } else if (marquee) {
@@ -479,37 +594,104 @@ public:
     }
 
     void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
-        AddCaption(panel, "ac-sel-cap", "Selection");
-        AddButtonRow(panel, "ac-sel-mode", {
-            {"Scale handles", [&ctx]() { ctx.canvas->SetHandleMode(VectorHandleMode::Scale); }},
-            {"Rotate / skew", [&ctx]() { ctx.canvas->SetHandleMode(VectorHandleMode::Rotate); }},
+        const auto icon = [&ctx](const char* file) { return ctx.iconPath ? ctx.iconPath(file) : std::string(file); };
+        const auto menuIcon = [&icon](const char* file) { return icon((std::string("16/") + file).c_str()); };
+        // Which handles a click on the selection shows; a second click on it
+        // switches them too, and the switch follows (SyncModeSwitch).
+        auto handles = AddSection(panel, "ac-sel-handles", "Handles");
+        // Rotate mode's edge handles skew; the switch only names the corners'.
+        modeSwitch = AddSwitch(*handles, "ac-sel-mode", { "Scale", "Rotate" },
+                               ctx.canvas->GetHandleMode() == VectorHandleMode::Rotate ? 1 : 0,
+                               [&ctx](int i) { ctx.canvas->SetHandleMode(i == 1 ? VectorHandleMode::Rotate : VectorHandleMode::Scale); },
+                               { menuIcon("scale.svg"), menuIcon("rotate.svg") });
+        auto arrange = AddSection(panel, "ac-sel-arrange", "Arrange");
+        arrangeButtons = AddIconBar(*arrange, "ac-sel-z", {
+            { icon("to-front.svg"), "Bring to front", [&ctx]() { Reorder(ctx, ZOrderMove::ToFront, "Bring to Front"); } },
+            { icon("forward.svg"), "Bring forward", [&ctx]() { Reorder(ctx, ZOrderMove::Forward, "Bring Forward"); } },
+            { icon("backward.svg"), "Send backward", [&ctx]() { Reorder(ctx, ZOrderMove::Backward, "Send Backward"); } },
+            { icon("to-back.svg"), "Send to back", [&ctx]() { Reorder(ctx, ZOrderMove::ToBack, "Send to Back"); } },
         });
-        AddCaption(panel, "ac-sel-cap2", "Arrange");
-        AddButtonRow(panel, "ac-sel-z", {
-            {"To front", [&ctx]() { if (!ctx.selection->Empty()) ctx.history->Record("To Front", [&]() { ReorderElements(ctx.selection->Elements(), ZOrderMove::ToFront); }); }},
-            {"Forward", [&ctx]() { if (!ctx.selection->Empty()) ctx.history->Record("Forward", [&]() { ReorderElements(ctx.selection->Elements(), ZOrderMove::Forward); }); }},
+        auto alignBox = AddSection(panel, "ac-sel-align", "Align");
+        auto align = AddIconBar(*alignBox, "ac-sel-al", {
+            { icon("align-left.svg"), "Align left edges", [&ctx]() { Align(ctx, AlignMode::Left); } },
+            { icon("align-hcentre.svg"), "Align horizontal centres", [&ctx]() { Align(ctx, AlignMode::HorizontalCenter); } },
+            { icon("align-right.svg"), "Align right edges", [&ctx]() { Align(ctx, AlignMode::Right); } },
+            { "", "", nullptr },
+            { icon("align-top.svg"), "Align top edges", [&ctx]() { Align(ctx, AlignMode::Top); } },
+            { icon("align-vcentre.svg"), "Align vertical centres", [&ctx]() { Align(ctx, AlignMode::VerticalCenter); } },
+            { icon("align-bottom.svg"), "Align bottom edges", [&ctx]() { Align(ctx, AlignMode::Bottom); } },
+            { "", "", nullptr },
+            { icon("align-page.svg"), "Centre on page", [&ctx]() { CentreOnPage(ctx); } },
         });
-        AddButtonRow(panel, "ac-sel-z2", {
-            {"Backward", [&ctx]() { if (!ctx.selection->Empty()) ctx.history->Record("Backward", [&]() { ReorderElements(ctx.selection->Elements(), ZOrderMove::Backward); }); }},
-            {"To back", [&ctx]() { if (!ctx.selection->Empty()) ctx.history->Record("To Back", [&]() { ReorderElements(ctx.selection->Elements(), ZOrderMove::ToBack); }); }},
+        // The page centres a single object too; the edges need two.
+        pageButton = align.back();
+        align.pop_back();
+        alignButtons = align;
+        auto distribute = AddSection(panel, "ac-sel-distribute", "Distribute");
+        distributeButtons = AddIconBar(*distribute, "ac-sel-di", {
+            { icon("distribute-h.svg"), "Horizontal centres evenly", [&ctx]() { Distribute(ctx, DistributeMode::HorizontalCenters); } },
+            { icon("distribute-v.svg"), "Vertical centres evenly", [&ctx]() { Distribute(ctx, DistributeMode::VerticalCenters); } },
+            { "", "", nullptr },
+            { icon("space-h.svg"), "Equal horizontal gaps", [&ctx]() { Distribute(ctx, DistributeMode::HorizontalGaps); } },
+            { icon("space-v.svg"), "Equal vertical gaps", [&ctx]() { Distribute(ctx, DistributeMode::VerticalGaps); } },
         });
-        AddCaption(panel, "ac-sel-cap3", "Align to selection");
-        AddButtonRow(panel, "ac-sel-al", {
-            {"Left", [&ctx]() { Align(ctx, AlignMode::Left); }},
-            {"Centre", [&ctx]() { Align(ctx, AlignMode::HorizontalCenter); }},
-            {"Right", [&ctx]() { Align(ctx, AlignMode::Right); }},
-        });
-        AddButtonRow(panel, "ac-sel-al2", {
-            {"Top", [&ctx]() { Align(ctx, AlignMode::Top); }},
-            {"Middle", [&ctx]() { Align(ctx, AlignMode::VerticalCenter); }},
-            {"Bottom", [&ctx]() { Align(ctx, AlignMode::Bottom); }},
-        });
+        UpdateButtons(ctx);
     }
 
+    void OnSelectionChanged(ArtToolContext& ctx) override { UpdateButtons(ctx); }
+
 private:
+    // Arrange needs one object, Align two and Distribute three: until the
+    // selection has them the buttons are greyed rather than doing nothing.
+    void UpdateButtons(ArtToolContext& ctx) {
+        const size_t n = ctx.selection ? ctx.selection->Count() : 0;
+        auto enable = [](const std::vector<std::shared_ptr<UltraCanvasButton>>& buttons, bool on) {
+            for (const auto& b : buttons) if (b && b->IsDisabled() == on) b->SetDisabled(!on);
+        };
+        enable(arrangeButtons, n >= 1);
+        enable({ pageButton }, n >= 1);
+        enable(alignButtons, n >= 2);
+        enable(distributeButtons, n >= 3);
+    }
+
+    void SyncModeSwitch(ArtToolContext& ctx) {
+        const int index = ctx.canvas->GetHandleMode() == VectorHandleMode::Rotate ? 1 : 0;
+        if (modeSwitch && modeSwitch->GetSelectedIndex() != index) modeSwitch->SetSelectedIndex(index);
+    }
+
+    // As the Arrange menu's: inside one history edit, the selection found
+    // again in the snapshot afterwards.
+    static void Reorder(ArtToolContext& ctx, ZOrderMove move, const char* label) {
+        if (ctx.selection->Empty()) return;
+        auto ids = ctx.selection->Ids();
+        ctx.history->Record(label, [&]() { ReorderElements(ctx.selection->Elements(), move); });
+        ReselectByIds(ctx, ids);
+    }
+
     static void Align(ArtToolContext& ctx, AlignMode mode) {
         if (ctx.selection->Count() < 2) return;
+        auto ids = ctx.selection->Ids();
         ctx.history->Record("Align", [&]() { AlignElements(ctx.selection->Elements(), mode); });
+        ReselectByIds(ctx, ids);
+    }
+
+    static void CentreOnPage(ArtToolContext& ctx) {
+        auto doc = ctx.getDocument ? ctx.getDocument() : nullptr;
+        if (ctx.selection->Empty() || !doc) return;
+        auto ids = ctx.selection->Ids();
+        const Rect2Dd page(0, 0, doc->Size.width, doc->Size.height);
+        ctx.history->Record("Centre on Page", [&]() {
+            AlignElements(ctx.selection->Elements(), AlignMode::HorizontalCenter, page);
+            AlignElements(ctx.selection->Elements(), AlignMode::VerticalCenter, page);
+        });
+        ReselectByIds(ctx, ids);
+    }
+
+    static void Distribute(ArtToolContext& ctx, DistributeMode mode) {
+        if (ctx.selection->Count() < 3) return;
+        auto ids = ctx.selection->Ids();
+        ctx.history->Record("Distribute", [&]() { DistributeElements(ctx.selection->Elements(), mode); });
+        ReselectByIds(ctx, ids);
     }
 
     void DragHandle(ArtToolContext& ctx, const VectorPointerEvent& e) {
@@ -578,6 +760,10 @@ private:
 
     bool moving = false, marquee = false, dragged = false, toggleModePending = false;
     VectorHandle activeHandle = VectorHandle::NoHandle;
+    // The panel's widgets from the last BuildOptions (the panel owns them too).
+    std::shared_ptr<UltraCanvasSegmentedControl> modeSwitch;
+    std::vector<std::shared_ptr<UltraCanvasButton>> arrangeButtons, alignButtons, distributeButtons;
+    std::shared_ptr<UltraCanvasButton> pageButton;
     double accumulated = 0;
     Point2Dd pressDoc, lastDoc, currentDoc;
 };

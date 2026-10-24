@@ -76,6 +76,7 @@ void NewVaultDialog::CreateNewVaultDialog() {
     y += 20;
 
     passwordInput_ = CreatePasswordInput("nv-pw", margin, y, fieldWidth, 28);
+    Theme::StyleInput(passwordInput_);
     AddChild(passwordInput_);
     y += 34;
 
@@ -103,6 +104,7 @@ void NewVaultDialog::CreateNewVaultDialog() {
         Accept();
         return true;
     };
+    Theme::StyleInput(confirmInput_);
     AddChild(confirmInput_);
     y += 38;
 
@@ -116,12 +118,14 @@ void NewVaultDialog::CreateNewVaultDialog() {
     auto createBtn = std::make_shared<UltraCanvasButton>(
         "nv-create", kDialogWidth - margin - 210, kDialogHeight - 54, 100, 32);
     createBtn->SetText("Create");
+    Theme::StylePrimary(createBtn);
     createBtn->onClick = [this]() { Accept(); };
     AddChild(createBtn);
 
     auto quitBtn = std::make_shared<UltraCanvasButton>(
         "nv-quit", kDialogWidth - margin - 100, kDialogHeight - 54, 100, 32);
     quitBtn->SetText("Quit");
+    Theme::StyleSecondary(quitBtn);
     quitBtn->onClick = [this]() {
         quitting_ = true;
         if (passwordInput_) passwordInput_->SetText("");

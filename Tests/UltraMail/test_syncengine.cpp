@@ -84,13 +84,13 @@ public:
     // Set to fail every envelope fetch with this UltraNet code — the way the
     // IMAP plug-in fails when the server cannot be reached (HostNotFound) or
     // refuses the sign-in (AuthenticationFailed).
-    UltraNetResultCode fetchEnvelopesFail = UltraNetResultCode::Success;
+    UltraNetResultCode fetchEnvelopesFail = UltraNetResultCode::Ok;
     UltraNetResult FetchEnvelopes(const std::string&, const std::string& folder,
                                   uint32_t sinceUid, std::vector<UltraNetMailEnvelope>& out,
                                   const UltraNetMailOptions&) override {
         out.clear();
         ++fetchEnvelopesCalls;
-        if (fetchEnvelopesFail != UltraNetResultCode::Success) {
+        if (fetchEnvelopesFail != UltraNetResultCode::Ok) {
             UltraNetResult r = UltraNetResult::Error(fetchEnvelopesFail, "could not fetch");
             r.diagnostics = "Server: imaps://x/";
             return r;
@@ -227,7 +227,7 @@ struct Fixture {
 
         fake.folders = { MakeFolder("INBOX", "inbox"), MakeFolder("Sent", "sent") };
         fake.envelopes["INBOX"] = {
-            Env(1, "Boss <boss@acme.com>",  {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+            Env(1, "Boss <boss@acme.com>",  {"erika@example.com"}, "Please reply", UltraNetMailFlags::NoFlags),
             Env(2, "Ann <ann@x.com>",       {"erika@example.com"}, "Re: thanks",   UltraNetMailFlags::Answered),
             Env(3, "List <list@x.com>",     {"other@x.com"},       "Newsletter",   UltraNetMailFlags::Seen),
         };
@@ -297,10 +297,10 @@ TEST(sync_now_keeps_the_inbox_failure_code_and_details) {
     REQUIRE(!r.ok);
     REQUIRE(!r.NetworkUnreachable());
 
-    fx.fake.fetchEnvelopesFail = UltraNetResultCode::Success;
+    fx.fake.fetchEnvelopesFail = UltraNetResultCode::Ok;
     r = svc.SyncNow("erika", "imaps://x/", opts);
     REQUIRE(r.ok);
-    REQUIRE(r.code == UltraNetResultCode::Success);
+    REQUIRE(r.code == UltraNetResultCode::Ok);
 }
 
 TEST(sync_folders_populates_store) {
@@ -387,7 +387,7 @@ TEST(sync_messages_is_incremental) {
 
     // A new message arrives.
     fx.fake.envelopes["INBOX"].push_back(
-        Env(4, "New <new@x.com>", {"erika@example.com"}, "Question", UltraNetMailFlags::None));
+        Env(4, "New <new@x.com>", {"erika@example.com"}, "Question", UltraNetMailFlags::NoFlags));
 
     SyncOutcome r = engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
     REQUIRE(r.ok);
@@ -582,7 +582,7 @@ TEST(sync_messages_resets_the_folder_when_uidvalidity_changes) {
     // max uid would miss them. The engine must drop the stale cache and refetch.
     fx.fake.uidValidity = 200;
     fx.fake.envelopes["INBOX"] = {
-        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::NoFlags),
         Env(11, "Ann <ann@x.com>",      {"erika@example.com"}, "Re: thanks",   UltraNetMailFlags::Seen),
     };
     engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
@@ -685,7 +685,7 @@ TEST(a_uidvalidity_reset_deletes_the_folders_old_bodies) {
 
     fx.fake.uidValidity = 200;
     fx.fake.envelopes["INBOX"] = {
-        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None),
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::NoFlags),
     };
     fx.fake.bodies["INBOX/10"] = fx.fake.bodies["INBOX/1"];
     engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
@@ -781,9 +781,9 @@ TEST(sync_messages_drops_a_cache_ahead_of_the_servers_uidnext) {
     fx.fake.uidNext = 3;
     fx.fake.envelopes["INBOX"] = {
         Env(1, "Reddit <noreply@redditmail.com>", {"erika@example.com"}, "gpt6.1 sol",
-            UltraNetMailFlags::None),
+            UltraNetMailFlags::NoFlags),
         Env(2, "Hetzner <noreply@hetzner.com>",   {"erika@example.com"}, "Verification code",
-            UltraNetMailFlags::None),
+            UltraNetMailFlags::NoFlags),
     };
     SyncOutcome r = engine.SyncMessages("erika", "INBOX", "imaps://x/", opts);
     REQUIRE(r.ok);
@@ -840,9 +840,9 @@ TEST(sync_now_follows_mail_deleted_and_read_elsewhere) {
 TEST(fetch_envelopes_by_uid_default_serves_only_the_uids_asked_for) {
     FakeMailbox fake;
     fake.envelopes["INBOX"] = {
-        Env(5, "a <a@x.com>", {"erika@example.com"}, "five",  UltraNetMailFlags::None),
-        Env(7, "b <b@x.com>", {"erika@example.com"}, "seven", UltraNetMailFlags::None),
-        Env(9, "c <c@x.com>", {"erika@example.com"}, "nine",  UltraNetMailFlags::None),
+        Env(5, "a <a@x.com>", {"erika@example.com"}, "five",  UltraNetMailFlags::NoFlags),
+        Env(7, "b <b@x.com>", {"erika@example.com"}, "seven", UltraNetMailFlags::NoFlags),
+        Env(9, "c <c@x.com>", {"erika@example.com"}, "nine",  UltraNetMailFlags::NoFlags),
     };
     std::vector<uint32_t> got;
     UltraNetMailOptions opts;
@@ -963,7 +963,7 @@ TEST(sync_folders_keeps_the_separator_and_the_numbering) {
 
     fx.fake.uidValidity = 200;   // renumbered: the same mail under new UIDs
     fx.fake.envelopes["INBOX"] = {
-        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::None) };
+        Env(10, "Boss <boss@acme.com>", {"erika@example.com"}, "Please reply", UltraNetMailFlags::NoFlags) };
     SyncOutcome r = svc.SyncNow("erika", "imaps://x/", opts);
     REQUIRE(r.ok);
     REQUIRE(r.stats.cacheReset);

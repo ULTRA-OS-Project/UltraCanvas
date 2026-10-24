@@ -53,7 +53,7 @@ struct UltraCanvasWebMVideo::WebMVideoImpl {
     WebMPlaybackState CurrentState = WebMPlaybackState::Stopped;
     
     // Timing and playback
-    double CurrentTime = 0.0;
+    double CurrentTimeSeconds = 0.0;
     uint32_t CurrentFrameNumber = 0;
     std::chrono::steady_clock::time_point PlaybackStartTime;
     std::chrono::steady_clock::time_point LastFrameTime;
@@ -234,7 +234,7 @@ void UltraCanvasWebMVideo::UnloadVideo() {
     m_Impl->VideoData.reset();
     m_Impl->VideoDataSize = 0;
     m_Impl->FilePath.clear();
-    m_Impl->CurrentTime = 0.0;
+    m_Impl->CurrentTimeSeconds = 0.0;
     m_Impl->CurrentFrameNumber = 0;
     
     // Reset video info
@@ -283,7 +283,7 @@ bool UltraCanvasWebMVideo::Stop() {
     std::lock_guard<std::mutex> lock(m_Impl->StateMutex);
     
     NotifyStateChange(WebMPlaybackState::Stopped);
-    m_Impl->CurrentTime = 0.0;
+    m_Impl->CurrentTimeSeconds = 0.0;
     m_Impl->CurrentFrameNumber = 0;
     
     return true;
@@ -295,7 +295,7 @@ bool UltraCanvasWebMVideo::SeekToTime(double timeSeconds) {
     }
     
     std::lock_guard<std::mutex> lock(m_Impl->StateMutex);
-    m_Impl->CurrentTime = timeSeconds;
+    m_Impl->CurrentTimeSeconds = timeSeconds;
     m_Impl->CurrentFrameNumber = static_cast<uint32_t>(timeSeconds * m_Impl->VideoInfo.FrameRate);
     
     // Seek implementation would go here
@@ -322,7 +322,7 @@ WebMPlaybackState UltraCanvasWebMVideo::GetPlaybackState() const {
 }
 
 double UltraCanvasWebMVideo::GetCurrentTime() const {
-    return m_Impl->CurrentTime;
+    return m_Impl->CurrentTimeSeconds;
 }
 
 double UltraCanvasWebMVideo::GetDuration() const {
@@ -404,7 +404,7 @@ bool UltraCanvasWebMVideo::ExtractFrameAtTime(double timeSeconds, UltraCanvasDra
     }
     
     // Seek to specific time and extract frame
-    double originalTime = m_Impl->CurrentTime;
+    double originalTime = m_Impl->CurrentTimeSeconds;
     if (SeekToTime(timeSeconds)) {
         bool result = ExtractCurrentFrame(outputSurface);
         SeekToTime(originalTime); // Restore original position
@@ -518,7 +518,7 @@ void UltraCanvasWebMVideo::PlaybackThreadFunction() {
         
         // Update frame and timing
         if (UpdateVideoFrame()) {
-            NotifyProgress(m_Impl->CurrentTime);
+            NotifyProgress(m_Impl->CurrentTimeSeconds);
         }
         
         // Sleep until next frame
@@ -533,13 +533,13 @@ bool UltraCanvasWebMVideo::UpdateVideoFrame() {
     // Decode next frame using VPX
     // This is a simplified placeholder
     
-    m_Impl->CurrentTime += 1.0 / m_Impl->VideoInfo.FrameRate;
+    m_Impl->CurrentTimeSeconds += 1.0 / m_Impl->VideoInfo.FrameRate;
     m_Impl->CurrentFrameNumber++;
     
     // Check for end of video
-    if (m_Impl->CurrentTime >= m_Impl->VideoInfo.Duration) {
+    if (m_Impl->CurrentTimeSeconds >= m_Impl->VideoInfo.Duration) {
         if (m_Impl->PlaybackOptions.Loop) {
-            m_Impl->CurrentTime = 0.0;
+            m_Impl->CurrentTimeSeconds = 0.0;
             m_Impl->CurrentFrameNumber = 0;
         } else {
             NotifyStateChange(WebMPlaybackState::Stopped);

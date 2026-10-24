@@ -7,8 +7,10 @@
 // layout text and the editor's byte offsets are the same string, hit testing,
 // caret geometry and selection painting need no translation layer.
 //
+// Version: 1.3.0 - the font report and its notice: the fonts the document needs that the
+//                  computer lacks, each a link to its download page
 // Version: 1.2.1 - list bullets "•" "◦" "▪" are drawn as shapes
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-23
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasRichTextEdit.h"
@@ -18,8 +20,10 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPdfSurface.h"
+#include "UltraCanvasUtils.h"           // OpenURL
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <ctime>
 #include <cmath>
@@ -122,6 +126,7 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
         AnnounceAccessibility(AccessibilityEventType::TextChanged);
         // Editing a header or footer changes the document as it goes.
         if (furnitureEdit) SyncFurnitureToDocument();
+        ScheduleFontReport();
         if (onDocumentChanged) onDocumentChanged();
     };
     editor.onSelectionChanged = [this]() {
@@ -148,6 +153,9 @@ UltraCanvasRichTextEdit::~UltraCanvasRichTextEdit() {
     if (spellContextId != 0) {
         UltraCanvasSpellChecker::Instance().CancelContext(spellContextId);
     }
+    if (fontReportTimer != 0) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(fontReportTimer);
+    }
 }
 
 // ===== DOCUMENT =====
@@ -160,6 +168,11 @@ void UltraCanvasRichTextEdit::SetDocument(std::shared_ptr<UCRichDocument> docume
     visibleAreaDirty = true;          // another page size
     scrollOffset = 0.0f;
     layoutsDirty = true;
+    // Another document: the fonts it needs are looked at before it is drawn,
+    // and a notice dismissed for the last one shows again.
+    fontReportDirty = true;
+    fontReportDue = true;
+    fontNoticeDismissed = false;
     RequestRedraw();
 }
 
@@ -221,7 +234,7 @@ void UltraCanvasRichTextEdit::Arrange(const Rect2Df& finalRect, const CSSLayout:
 // by the zoom - which is the space everything is laid out and hit-tested in.
 // Its origin is the same in both spaces; drawing scales about it.
 void UltraCanvasRichTextEdit::RecalculateVisibleArea() {
-    Rect2Df bounds = GetLocalBounds();
+    Rect2Df bounds = TextBounds();
     const float bar = style.scrollbarWidth;
     float availableHeight = bounds.height - 2 * style.padding;
     const float vertical = (contentHeight * zoom > availableHeight) ? bar : 0.0f;
@@ -1887,6 +1900,15 @@ void UltraCanvasRichTextEdit::EnsureLayouts(IRenderContext* ctx) {
 void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
     if (!IsVisible()) return;
 
+    // The fonts the document needs, and the notice naming the missing ones,
+    // which takes its strip off the top before the text is placed.
+    if (fontReportDirty && fontReportDue) RefreshFontReport();
+    const float noticeHeight = LayoutFontNotice(ctx);
+    if (std::abs(noticeHeight - fontNoticeHeight) > 0.5f) {
+        fontNoticeHeight = noticeHeight;
+        visibleAreaDirty = true;
+    }
+
     if (visibleAreaDirty) RecalculateVisibleArea();
     EnsureLayouts(ctx);
     // The scrollbar appearing or disappearing changes the wrap width, so the
@@ -1957,6 +1979,7 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
     if (commentPaneShown) RenderCommentPane(ctx);
     DrawScrollbar(ctx);
     DrawHorizontalScrollbar(ctx);
+    if (fontNoticeHeight > 0.0f) RenderFontNotice(ctx);
 }
 
 // Draws the pictures sitting inside a laid-out text. The layout reserved a box
@@ -2327,7 +2350,7 @@ void UltraCanvasRichTextEdit::DrawScrollbar(IRenderContext* ctx) {
         thumbRect = Rect2Df(0, 0, 0, 0);
         return;
     }
-    Rect2Df bounds = GetLocalBounds();
+    Rect2Df bounds = TextBounds();
     float trackX = bounds.x + bounds.width - style.scrollbarWidth;
     Rect2Dd track(trackX, bounds.y, style.scrollbarWidth, bounds.height);
     ctx->DrawFilledRectangle(track, Color(245, 245, 245), 0.0f, Colors::Transparent);
@@ -2348,7 +2371,7 @@ void UltraCanvasRichTextEdit::DrawHorizontalScrollbar(IRenderContext* ctx) {
         hThumbRect = Rect2Df(0, 0, 0, 0);
         return;
     }
-    Rect2Df bounds = GetLocalBounds();
+    Rect2Df bounds = TextBounds();
     const float bar = style.scrollbarWidth;
     const float trackWidth = bounds.width - (thumbRect.width > 0 ? bar : 0.0f);
     const float trackY = bounds.y + bounds.height - bar;
@@ -3536,6 +3559,12 @@ bool UltraCanvasRichTextEdit::HandleFileDrop(const UCEvent& event) {
 bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
 
+    // The font notice is not text: a link opens, the x hides it.
+    if (FontNoticeContains(event.pointer)) {
+        PressFontNotice(event.pointer);
+        return true;
+    }
+
     // The comment pane: a click on a comment selects its text; the pane
     // itself is not text.
     if (commentPaneShown && static_cast<float>(event.pointer.x) >= CommentPaneLeft()
@@ -3722,7 +3751,7 @@ bool UltraCanvasRichTextEdit::HandleMouseUp(const UCEvent& event) {
 
 bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
     if (draggingThumb) {
-        Rect2Df bounds = GetLocalBounds();
+        Rect2Df bounds = TextBounds();
         float thumbHeight = std::max(24.0f, thumbRect.height);
         float travel = std::max(1.0f, bounds.height - thumbHeight);
         float maxScroll = std::max(0.0f, contentHeight - visibleArea.height);
@@ -3733,7 +3762,7 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
         return true;
     }
     if (draggingHThumb) {
-        Rect2Df bounds = GetLocalBounds();
+        Rect2Df bounds = TextBounds();
         const float trackWidth = bounds.width - (thumbRect.width > 0 ? style.scrollbarWidth : 0.0f);
         const float travel = std::max(1.0f, trackWidth - hThumbRect.width);
         const float thumbX = std::clamp(static_cast<float>(event.pointer.x) - hThumbGrabOffset - bounds.x, 0.0f, travel);
@@ -3744,6 +3773,23 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
         resizePreview = ResizedImageRect(ToDocument(event.pointer));
         RequestRedraw();
         return true;
+    }
+    // Over the font notice: a hand on its links and its x, an arrow elsewhere.
+    if (!selecting && !dragArmed) {
+        const bool overNotice = FontNoticeContains(event.pointer);
+        if (overNotice) {
+            const Point2Df point(static_cast<float>(event.pointer.x), static_cast<float>(event.pointer.y));
+            bool overLink = fontNoticeCloseRect.Contains(point);
+            for (const FontNoticePiece& piece : fontNoticePieces)
+                if (!piece.url.empty() && piece.rect.Contains(point)) overLink = true;
+            SetMouseCursor(overLink ? UCMouseCursor::Hand : UCMouseCursor::Arrow);
+            fontNoticeHover = true;
+            return true;
+        }
+        if (fontNoticeHover) {
+            fontNoticeHover = false;
+            SetMouseCursor(UCMouseCursor::Text);
+        }
     }
     // Over a selected picture's handle, the cursor says which way it resizes.
     if (!selecting && HasSelectedImage() && !readOnly) {
@@ -3783,6 +3829,7 @@ bool UltraCanvasRichTextEdit::HandleMouseMove(const UCEvent& event) {
 
 bool UltraCanvasRichTextEdit::HandleDoubleClick(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
+    if (FontNoticeContains(event.pointer)) return true;
     if (commentPaneShown && static_cast<float>(event.pointer.x) >= CommentPaneLeft()) {
         const int index = CommentBoxAt(event.pointer);
         if (index >= 0 && onCommentActivated) onCommentActivated(index);
@@ -4127,6 +4174,7 @@ UC_RTE_FORMAT_ACTION(ClearFormatting(), editor.ClearFormatting())
 UC_RTE_FORMAT_ACTION(SetFontFamily(const std::string& family), editor.SetFontFamily(family))
 UC_RTE_FORMAT_ACTION(SetFontSize(float pt), editor.SetFontSize(pt))
 UC_RTE_FORMAT_ACTION(SetTextColor(const std::string& hexColor), editor.SetTextColor(hexColor))
+UC_RTE_FORMAT_ACTION(SetHighlightColor(const std::string& hexColor), editor.SetHighlightColor(hexColor))
 UC_RTE_FORMAT_ACTION(ApplyCharFormat(const RichCharFormatDelta& delta), editor.ApplyCharFormat(delta))
 UC_RTE_FORMAT_ACTION(SetLink(const std::string& target), editor.SetLink(target))
 UC_RTE_FORMAT_ACTION(SetHeadingLevel(int level), editor.SetHeadingLevel(level))
@@ -5026,7 +5074,7 @@ float UltraCanvasRichTextEdit::CommentPaneLeft() const {
 // just below the box above it), joined to the text by a line.
 void UltraCanvasRichTextEdit::RenderCommentPane(IRenderContext* ctx) {
     commentBoxes.clear();
-    const Rect2Df bounds = GetLocalBounds();
+    const Rect2Df bounds = TextBounds();
     const float left = CommentPaneLeft();
     const float width = style.commentPaneWidth;
     const float top = bounds.y, bottom = bounds.y + bounds.height;
@@ -5102,6 +5150,301 @@ int UltraCanvasRichTextEdit::CommentBoxAt(const Point2Di& elementPoint) const {
         if (box.rect.Contains(point)) return box.index;
     }
     return -1;
+}
+
+// ===== FONTS THE DOCUMENT NEEDS =====
+
+bool UltraCanvasRichTextEdit::FontReport::operator==(const FontReport& other) const {
+    if (missingFamilies != other.missingFamilies || missingScripts.size() != other.missingScripts.size()) return false;
+    for (size_t i = 0; i < missingScripts.size(); ++i) {
+        const MissingScriptFont& a = missingScripts[i];
+        const MissingScriptFont& b = other.missingScripts[i];
+        if (a.script != b.script || a.suggestedFont != b.suggestedFont || a.characters != b.characters) return false;
+    }
+    return true;
+}
+
+namespace {
+
+std::string LowerAscii(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return std::tolower(c); });
+    return text;
+}
+
+// The notice's type: the text's, a size smaller.
+FontStyle FontNoticeFont(const RichTextEditStyle& style) {
+    FontStyle font = style.baseFont;
+    font.fontSize = std::max(9.0, style.baseFont.fontSize * 0.85);
+    font.fontWeight = FontWeight::Normal;
+    font.fontSlant = FontSlant::Normal;
+    return font;
+}
+
+constexpr float kFontNoticePadding = 6.0f;
+constexpr float kFontNoticeCloseSize = 16.0f;
+constexpr int kFontNoticeMaxLines = 4;
+
+} // namespace
+
+void UltraCanvasRichTextEdit::RefreshFontReport() {
+    fontReportDirty = false;
+    fontReportDue = false;
+
+    FontReport report;
+    const std::shared_ptr<UCRichDocument> document = editor.GetDocument();
+    if (document) {
+        // The text by the family it is set in ("" the base font), and the
+        // families the document itself names, each once.
+        std::map<std::string, std::string> textByFamily;
+        std::vector<std::string> named;
+        auto name = [&named](const std::string& family) {
+            if (family.empty()) return;
+            const std::string key = LowerAscii(family);
+            for (const std::string& known : named)
+                if (LowerAscii(known) == key) return;
+            named.push_back(family);
+        };
+        auto addRuns = [&](const std::vector<RichTextRun>& runs, const std::string& blockFamily) {
+            for (const RichTextRun& run : runs) {
+                if (run.mediaIndex >= 0 || run.math || run.text.empty()) continue;
+                name(run.fontFamily);
+                const std::string family = !run.fontFamily.empty() ? run.fontFamily
+                                         : run.code ? style.codeFontFamily : blockFamily;
+                std::string& text = textByFamily[family];
+                text += run.text;
+                text += '\n';
+            }
+        };
+        auto addBlocks = [&](const std::vector<RichDocBlock>& blocks) {
+            for (const RichDocBlock& block : blocks) {
+                name(block.paragraphFontFamily);
+                const std::string family = block.type == RichBlockType::CodeBlock ? style.codeFontFamily
+                                                                                  : block.paragraphFontFamily;
+                addRuns(block.runs, family);
+                for (const RichTableRow& row : block.tableRows)
+                    for (const RichTableCell& cell : row.cells) addRuns(cell.runs, family);
+            }
+        };
+        addBlocks(document->blocks);
+        for (const RichNote& note : document->notes) addBlocks(note.blocks);
+        for (const RichPageFurniture* furniture : {&document->pageFurniture, &document->firstPageFurniture}) {
+            addBlocks(furniture->header);
+            addBlocks(furniture->footer);
+        }
+
+        if (!named.empty()) {
+            std::vector<std::string> installed = GetInstalledFontFamilies();
+            for (std::string& family : installed) family = LowerAscii(family);
+            for (const std::string& family : named) {
+                if (std::find(installed.begin(), installed.end(), LowerAscii(family)) == installed.end())
+                    report.missingFamilies.push_back(family);
+            }
+        }
+        for (const auto& [family, text] : textByFamily) {
+            for (const MissingScriptFont& missing :
+                     FindScriptsWithoutFont(text, family.empty() ? style.baseFont.fontFamily : family)) {
+                auto same = std::find_if(report.missingScripts.begin(), report.missingScripts.end(),
+                    [&](const MissingScriptFont& known) {
+                        return known.script == missing.script && known.suggestedFont == missing.suggestedFont;
+                    });
+                if (same == report.missingScripts.end()) report.missingScripts.push_back(missing);
+                else same->characters += missing.characters;
+            }
+        }
+    }
+
+    if (report == fontReport) return;
+    fontReport = std::move(report);
+    fontNoticeDismissed = false;      // something else is missing now
+    BuildFontNoticePieces();
+    RequestRedraw();
+    if (onFontReportChanged) onFontReportChanged(fontReport);
+}
+
+const UltraCanvasRichTextEdit::FontReport& UltraCanvasRichTextEdit::GetFontReport() {
+    if (fontReportDirty) RefreshFontReport();
+    return fontReport;
+}
+
+// An edit: looked at again a second after the first edit since the last look,
+// so typing does not lay the whole document out at every key.
+void UltraCanvasRichTextEdit::ScheduleFontReport() {
+    fontReportDirty = true;
+    if (fontReportTimer != 0) return;
+    auto* app = UltraCanvasApplication::GetInstance();
+    std::weak_ptr<UltraCanvasUIElement> weak = weak_from_this();
+    if (!app || weak.expired()) {
+        fontReportDue = true;         // no timer to wait for: the next frame
+        return;
+    }
+    fontReportTimer = app->StartTimer(1000, false, [weak](TimerId) {
+        auto self = std::static_pointer_cast<UltraCanvasRichTextEdit>(weak.lock());
+        if (!self) return;
+        self->fontReportTimer = 0;
+        self->fontReportDue = true;
+        self->RequestRedraw();
+    });
+}
+
+void UltraCanvasRichTextEdit::InvalidateLayout() {
+    UltraCanvasUIElement::InvalidateLayout();
+    fontReportDirty = true;
+    fontReportDue = true;
+}
+
+void UltraCanvasRichTextEdit::SetShowFontNotice(bool show) {
+    if (showFontNotice == show) return;
+    showFontNotice = show;
+    RequestRedraw();
+}
+
+bool UltraCanvasRichTextEdit::IsFontNoticeVisible() const {
+    return showFontNotice && !fontNoticeDismissed && !printing && !fontReport.IsEmpty();
+}
+
+void UltraCanvasRichTextEdit::DismissFontNotice() {
+    if (fontNoticeDismissed) return;
+    fontNoticeDismissed = true;
+    RequestRedraw();
+}
+
+// "Missing fonts: Chinese text needs Noto Sans SC, Arabic text needs Noto
+// Sans Arabic (until then it shows as boxes). Not installed, drawn in a
+// substitute: Georgia." - word by word, so it wraps; the fonts are links.
+void UltraCanvasRichTextEdit::BuildFontNoticePieces() {
+    fontNoticePieces.clear();
+    auto words = [this](const std::string& text, bool spaceBefore = true) {
+        size_t start = 0;
+        while (start < text.size()) {
+            size_t end = text.find(' ', start);
+            if (end == std::string::npos) end = text.size();
+            if (end > start) {
+                fontNoticePieces.push_back({text.substr(start, end - start), {}, spaceBefore});
+                spaceBefore = true;
+            }
+            start = end + 1;
+        }
+    };
+    auto link = [this](const std::string& text, const std::string& url) {
+        fontNoticePieces.push_back({text, url, true});
+    };
+    const std::vector<MissingScriptFont>& scripts = fontReport.missingScripts;
+    if (!scripts.empty()) {
+        words("Missing fonts:");
+        for (size_t i = 0; i < scripts.size(); ++i) {
+            words(scripts[i].script + " text needs");
+            link(scripts[i].suggestedFont, scripts[i].downloadUrl);
+            if (i + 1 < scripts.size()) words(",", false);
+        }
+        words("(until then it shows as boxes).");
+    }
+    const std::vector<std::string>& families = fontReport.missingFamilies;
+    if (!families.empty()) {
+        words("Not installed, drawn in a substitute:");
+        for (size_t i = 0; i < families.size(); ++i) {
+            link(families[i], FontDownloadUrl(families[i]));
+            words(i + 1 < families.size() ? "," : ".", false);
+        }
+    }
+    if (!fontNoticePieces.empty()) fontNoticePieces.front().spaceBefore = false;
+}
+
+float UltraCanvasRichTextEdit::LayoutFontNotice(IRenderContext* ctx) {
+    fontNoticeCloseRect = Rect2Df(0, 0, 0, 0);
+    if (!ctx || !IsFontNoticeVisible()) return 0.0f;
+    if (fontNoticePieces.empty()) BuildFontNoticePieces();
+    const Rect2Df bounds = GetLocalBounds();
+    ctx->PushState();
+    ctx->SetFontStyle(FontNoticeFont(style));
+    const float lineHeight = static_cast<float>(ctx->GetTextDimensions("Ag", Size2Di(0, 0)).height);
+    const float space = static_cast<float>(FontNoticeFont(style).fontSize) * 0.3f;
+    const float left = bounds.x + 8.0f;
+    const float right = bounds.x + bounds.width - 12.0f - kFontNoticeCloseSize;
+    float x = left;
+    float y = bounds.y + kFontNoticePadding;
+    int line = 0;
+    for (FontNoticePiece& piece : fontNoticePieces) {
+        const float width = static_cast<float>(ctx->GetTextDimensions(piece.text, Size2Di(0, 0)).width);
+        float gap = (piece.spaceBefore && x > left) ? space : 0.0f;
+        if (x > left && x + gap + width > right && piece.spaceBefore) {
+            x = left;
+            y += lineHeight;
+            gap = 0.0f;
+            ++line;
+        }
+        // A notice longer than its lines leaves the rest out.
+        if (line >= kFontNoticeMaxLines) {
+            piece.rect = Rect2Df(0, 0, 0, 0);
+            continue;
+        }
+        piece.rect = Rect2Df(x + gap, y, width, lineHeight);
+        x += gap + width;
+    }
+    ctx->PopState();
+    const int lines = std::min(line + 1, kFontNoticeMaxLines);
+    const float height = 2.0f * kFontNoticePadding + lineHeight * static_cast<float>(lines);
+    fontNoticeCloseRect = Rect2Df(bounds.x + bounds.width - 8.0f - kFontNoticeCloseSize,
+                                  bounds.y + kFontNoticePadding + (lineHeight - kFontNoticeCloseSize) * 0.5f,
+                                  kFontNoticeCloseSize, kFontNoticeCloseSize);
+    return std::min(height, bounds.height * 0.5f);
+}
+
+void UltraCanvasRichTextEdit::RenderFontNotice(IRenderContext* ctx) {
+    const Rect2Df bounds = GetLocalBounds();
+    ctx->PushState();
+    ctx->ClipRect(Rect2Dd(bounds.x, bounds.y, bounds.width, fontNoticeHeight));
+    ctx->DrawFilledRectangle(Rect2Dd(bounds.x, bounds.y, bounds.width, fontNoticeHeight),
+                             style.fontNoticeColor, 0.0f, Colors::Transparent);
+    const double bottom = bounds.y + fontNoticeHeight - 0.5;
+    ctx->DrawLine(Point2Dd(bounds.x, bottom), Point2Dd(bounds.x + bounds.width, bottom), style.fontNoticeBorderColor);
+    ctx->SetFontStyle(FontNoticeFont(style));
+    for (const FontNoticePiece& piece : fontNoticePieces) {
+        if (piece.rect.width <= 0.0f) continue;
+        const bool isLink = !piece.url.empty();
+        ctx->SetTextPaint(isLink ? style.linkColor : style.fontNoticeTextColor);
+        ctx->DrawText(piece.text, Point2Dd(piece.rect.x, piece.rect.y));
+        if (isLink) {
+            const double underline = piece.rect.y + piece.rect.height - 1.5;
+            ctx->DrawLine(Point2Dd(piece.rect.x, underline),
+                          Point2Dd(piece.rect.x + piece.rect.width, underline), style.linkColor);
+        }
+    }
+    // The x that hides it.
+    const Rect2Df& close = fontNoticeCloseRect;
+    const float inset = 4.0f;
+    ctx->SetStrokeWidth(1.5);
+    ctx->DrawLine(Point2Dd(close.x + inset, close.y + inset),
+                  Point2Dd(close.x + close.width - inset, close.y + close.height - inset), style.fontNoticeTextColor);
+    ctx->DrawLine(Point2Dd(close.x + close.width - inset, close.y + inset),
+                  Point2Dd(close.x + inset, close.y + close.height - inset), style.fontNoticeTextColor);
+    ctx->PopState();
+}
+
+bool UltraCanvasRichTextEdit::FontNoticeContains(const Point2Di& elementPoint) const {
+    if (fontNoticeHeight <= 0.0f) return false;
+    const Rect2Df bounds = GetLocalBounds();
+    return Rect2Df(bounds.x, bounds.y, bounds.width, fontNoticeHeight)
+        .Contains(Point2Df(static_cast<float>(elementPoint.x), static_cast<float>(elementPoint.y)));
+}
+
+void UltraCanvasRichTextEdit::PressFontNotice(const Point2Di& elementPoint) {
+    const Point2Df point(static_cast<float>(elementPoint.x), static_cast<float>(elementPoint.y));
+    if (fontNoticeCloseRect.Contains(point)) {
+        DismissFontNotice();
+        return;
+    }
+    for (const FontNoticePiece& piece : fontNoticePieces) {
+        if (piece.url.empty() || !piece.rect.Contains(point)) continue;
+        if (!onFontLinkClicked || !onFontLinkClicked(piece.url)) OpenURL(piece.url);
+        return;
+    }
+}
+
+Rect2Df UltraCanvasRichTextEdit::TextBounds() const {
+    Rect2Df bounds = GetLocalBounds();
+    bounds.y += fontNoticeHeight;
+    bounds.height = std::max(0.0f, bounds.height - fontNoticeHeight);
+    return bounds;
 }
 
 // ===== PDF =====
