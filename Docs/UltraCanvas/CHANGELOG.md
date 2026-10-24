@@ -1,3 +1,75 @@
+#### 2026-10-24 *0.9.400*
+- **New design proposal: an importance–performance chart, and the performance
+  matrix proposal gives up the image that needed it.** The fourth reference
+  image of the performance matrix proposal turned out to be Slack's
+  importance–performance matrix. That is a chart from operations strategy:
+  competitive factors are plotted as points over authored zones (*Urgent
+  action*, *Improve*, *Appropriate*, *Excess?*). It is not a talent grid. No
+  existing chart draws it: the quadrant chart has only two straight dividers,
+  and the engine scatter chart's highlights are computed from points, with no
+  outline of your own.
+  `Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md` proposes
+  `UltraCanvasImportancePerformanceChart`, derived from
+  `UltraCanvasEngineScatterChart`, with one general engine addition: an
+  explicit `ChartHighlightShape::Polygon`. It covers zones that are stepped or
+  smoothed, a labelled boundary band, named level ranges on the axes,
+  classification that uses the same geometry as the drawing, and Slack,
+  Martilla & James and diagonal presets, in three phases.
+  `UltraCanvasPerformanceMatrixProposal.md` revision 2 drops its `Zones`
+  design and its fourth phase accordingly.
+- **New chart: the importance–performance chart (Phase 1).**
+  `UltraCanvasImportancePerformanceChart` plots the factors of a service, by
+  how much customers care about each one and how it compares with
+  competitors, over authored zones that name the action. It is built on
+  `UltraCanvasEngineScatterChart`, so groups, markers, point labels, the
+  legend and hover come from there. The chart adds:
+  - filled zones, stepped or smoothed, each with a title and an optional
+    icon. A title is placed at the zone's pole of inaccessibility in the part
+    later zones leave visible, and is left out when it does not fit.
+  - labelled bands, such as Slack's lower bound of acceptability. The label
+    is turned along the band's longest straight stretch, and factor names
+    steer around it and around the zone titles.
+  - named level ranges on both axes, with the end captions at the screen's
+    ends even when an axis is inverted for Slack's "1 = best" scales.
+  - the zone of each factor in its tooltip, and a zone's title, action and
+    factor count on a bare stretch of it.
+
+  The model (`UltraCanvasImportancePerformanceModel.h`) is UI-free.
+  `ZoneOf` and `ClassifyFactors` test the same smoothed polygon the chart
+  draws, so a factor drawn in a zone is always reported in it. It also has
+  `Validate()` and the `SlackZones(smooth)` and `SampleFactors()` presets.
+  On the demo page **Charts → Importance-Performance Chart**, the two Slack
+  forms list the factors by zone.
+  `Tests/ImportancePerformanceModelTest.cpp` and
+  `Tests/ImportancePerformanceChartRenderTest.cpp` cover the model and the
+  drawing; the render test writes PNGs when `ULTRACANVAS_SCREENSHOT_DIR` is
+  set. Guide: `Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md`.
+- **Chart engine: `ChartHighlightShape::Polygon`.** An explicit outline in
+  value space, taken from `members`. It is rounded by `smoothing` the way a
+  `Blob` is, but in value space before the mapping, so a caller that smooths
+  the same outline tests exactly the drawn shape. Under Polar its edges are
+  sampled along the rings.
+- **Engine scatter chart: a derived chart can keep highlights of its own.**
+  Every data, theme and legend change clears *all* highlights before it
+  rebuilds the confidence ellipses, so a subclass's highlights would have been
+  wiped on the first change. The rebuild now calls the protected
+  `AddChartHighlights()` first, and `RefreshHighlights()` reruns it.
+- **New design proposal: a performance matrix element.** The demo app has
+  listed *Performance Matrix* under Info Graphics as a "planned" placeholder
+  with no design behind it.
+  `Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md` now is that
+  design, worked out from reference images of the 9-box talent grid, the
+  performance management matrix with coloured header tabs, coded
+  performance-vs-potential tiles and bordered talent-review cards. It argues why none of the
+  quadrant chart, matrix diagram, heatmap or SWOT diagram can absorb these,
+  and proposes one UI-free `PerformanceMatrixModel` (named-level axes, cells
+  and an optional population placed by cell or by score) under an
+  `UltraCanvasPerformanceMatrix` element with four designs (`Grid`, `Tiles`,
+  `HeaderTabs`, `Cards`). It also covers text fitting, crowded cells,
+  colour-blind safety and personal data, and sets out its open questions and
+  three phases. Its sketched API is recorded in
+  `scripts/doc_examples_baseline.txt` until it is written.
+
 #### 2026-10-24 *0.9.399*
 - **Segmented controls and the spreadsheet centre their text on its capitals.**
   Both centred a line of text by its line box (ascent plus descent), which
