@@ -1,7 +1,8 @@
 // Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.cpp
 // Scatter and bubble charts on the chart engine.
+// Version: 1.1.0 - RebuildHighlights() asks AddChartHighlights() first
 // Version: 1.0.0
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "Plugins/Charts/Engine/Charts/UltraCanvasEngineScatterChart.h"
@@ -413,6 +414,7 @@ void UltraCanvasEngineScatterChart::RefreshLegend() {
 
 void UltraCanvasEngineScatterChart::RebuildHighlights() {
     ClearHighlights();
+    AddChartHighlights();
     if (!showEllipses) return;
     for (size_t g = 0; g < groups.size(); ++g) {
         if (!Visible(g) || groups[g].points.size() < 3) continue;

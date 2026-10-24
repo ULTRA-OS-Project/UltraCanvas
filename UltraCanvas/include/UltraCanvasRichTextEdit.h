@@ -18,6 +18,7 @@
 // UltraCanvasDropdown, UltraCanvasButton and UltraCanvasColorPicker, and drive
 // them from GetFormatState() plus the formatting methods below.
 //
+// Version: 1.5.0 - SetHighlightColor: the background behind the selected text
 // Version: 1.4.0 - GetFontReport and the font notice: the fonts a document needs that the
 //                  computer lacks, each a link to the page it is downloaded from
 // Version: 1.3.0 - SetZoomRange: follow a canvas zoom beyond 0.25 to 5;
@@ -257,6 +258,9 @@ public:
     void SetFontFamily(const std::string& family);
     void SetFontSize(float pt);
     void SetTextColor(const std::string& hexColor);
+    // The background behind the text, as a highlighter marks it ("#RRGGBB";
+    // empty removes it). Written to HTML as background-color.
+    void SetHighlightColor(const std::string& hexColor);
     // Sets what `delta` names exactly - bold on, italic off - where the
     // toggles flip it: a checkbox's state, applied as it reads. Like the
     // others, to the selection, or armed for what is typed next.

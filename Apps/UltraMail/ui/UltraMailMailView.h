@@ -4,6 +4,7 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.18.0 - SetAttachmentsRight (Settings > Reading > Attachments)
 // Version: 0.17.1 - CellTooltip: a list cell's tooltip only when it cut its text off
 // Version: 0.17.0 - the folder tree's right-click menu (onAddFolder,
 //                  onDeleteFolder) and SetTreeCurrentAccountOnly
@@ -148,6 +149,9 @@ public:
     // Settings > Reading > Messages: HTML mail formatted or as plain text, and
     // the body text size (CSS px). The message on screen is shown again.
     void SetBodyOptions(bool showHtml, float textSizePx);
+    // Settings > Reading > Attachments: the reading pane's attachments in a
+    // column at the right of the message (true) or a row under it.
+    void SetAttachmentsRight(bool right) { preview_.SetAttachmentsRight(right); }
     // Settings > Display > Links: a link's address as a tooltip over the link
     // (false: only reported through onLinkHovered, for the status line). The
     // message on screen is shown again.

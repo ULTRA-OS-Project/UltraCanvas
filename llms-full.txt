@@ -1823,16 +1823,20 @@ networked storage. It depends on UltraVault for credentials and,
 optionally, on UltraNet for TLS transport to networked engines.
 
 **Implementation status (this branch):** Stage 1 implemented, and the
-PostgreSQL driver from Stage 2. The SQLite core, the connection registry,
-parameterized queries, prepared statements, transactions and versioned
-migrations are built and tested (`UltraCanvas/{include,core}/UltraDatabase/`,
-`Tests/UltraDatabase`); the PostgreSQL driver
-(`UltraDatabasePostgresDriver.cpp`, over libpq) is built wherever libpq is
-found, verifies TLS by default and reads its password from UltraVault, and
-UltraFIBU's multi-user mode runs on it. Also built: schema introspection,
+PostgreSQL and MySQL / MariaDB drivers from Stage 2. The SQLite core, the
+connection registry, parameterized queries, prepared statements,
+transactions and versioned migrations are built and tested
+(`UltraCanvas/{include,core}/UltraDatabase/`, `Tests/UltraDatabase`); the
+PostgreSQL driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built
+wherever libpq is found, the MySQL / MariaDB driver
+(`UltraDatabaseMysqlDriver.cpp`, over MariaDB Connector/C, LGPL-2.1, linked
+dynamically) wherever libmariadb is; both verify TLS by default and read
+their password from UltraVault, and UltraFIBU's multi-user mode runs on
+PostgreSQL. Also built: schema introspection, server administration
+(`UltraDatabaseServer.h`: sessions, settings, sizes, stopping a session),
 streaming cursors, per-statement scripts and cancelling. Still the Stage 2/3
-plan: the other networked drivers (MySQL / MariaDB, MSSQL, Redis, MongoDB,
-DuckDB), async queries, pooling and at-rest encryption. Details in
+plan: the other drivers (MSSQL, Redis, MongoDB, DuckDB), async queries,
+pooling and at-rest encryption. Details in
 `Docs/Modules/UltraDatabase/README.md`.
 
 ### **7. UltraWin**
@@ -3660,7 +3664,7 @@ their *License* is likewise marked **—** (OS component).
 | miniz | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [github.com/richgel999/miniz](https://github.com/richgel999/miniz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | mujs | [mujs.com](https://mujs.com/) | [codeberg.org/ccxvii/mujs](https://codeberg.org/ccxvii/mujs) | [ISC](https://spdx.org/licenses/ISC.html) |
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
-| MySQL / MariaDB (planned) | [mysql.com](https://www.mysql.com/) | [github.com/mysql/mysql-server](https://github.com/mysql/mysql-server) | — |
+| MariaDB Connector/C (libmariadb; the MySQL / MariaDB driver) | [mariadb.com](https://mariadb.com/docs/connectors/mariadb-connector-c/) | [github.com/mariadb-corporation/mariadb-connector-c](https://github.com/mariadb-corporation/mariadb-connector-c) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
@@ -3673,7 +3677,7 @@ their *License* is likewise marked **—** (OS component).
 | Opus (libopus) | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opus](https://github.com/xiph/opus) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | opusfile | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/opusfile](https://github.com/xiph/opusfile) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | Pango | [pango.gnome.org](https://pango.gnome.org/) | [gitlab.gnome.org/GNOME/pango](https://gitlab.gnome.org/GNOME/pango) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
-| PostgreSQL (planned) | [postgresql.org](https://www.postgresql.org/) | [github.com/postgres/postgres](https://github.com/postgres/postgres) | — |
+| PostgreSQL client library (libpq) | [postgresql.org](https://www.postgresql.org/) | [github.com/postgres/postgres](https://github.com/postgres/postgres) | [PostgreSQL](https://spdx.org/licenses/PostgreSQL.html) |
 | PulseAudio | [freedesktop.org/wiki/Software/PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/) | [gitlab.freedesktop.org/pulseaudio/pulseaudio](https://gitlab.freedesktop.org/pulseaudio/pulseaudio) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | QEMU (runtime, not linked) | [qemu.org](https://www.qemu.org/) | [gitlab.com/qemu-project/qemu](https://gitlab.com/qemu-project/qemu) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | qrcodegen | [nayuki.io](https://www.nayuki.io/page/qr-code-generator-library) | [github.com/nayuki/QR-Code-generator](https://github.com/nayuki/QR-Code-generator) | [MIT](https://spdx.org/licenses/MIT.html) |
@@ -4016,11 +4020,16 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Embedded SQL engine (Stage 1) | SQLite (system libsqlite3) | SQLite (system libsqlite3) | SQLite (system libsqlite3) |
-| Networked drivers (Stage 2) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) | PostgreSQL, MySQL / MariaDB (planned, not yet wired) |
+| PostgreSQL driver | libpq (`libpq-dev`) | libpq when found (not in CI's vcpkg set) | libpq when found (not in CI's MSYS2 set) |
+| MySQL / MariaDB driver | MariaDB Connector/C (`libmariadb-dev`), the shared library | Connector/C when found (not in CI's vcpkg set) | Connector/C when found (not in CI's MSYS2 set) |
 
 > The build prefers the system libsqlite3 (pkg-config, then a plain
 > `find_library`); when it is missing the `UltraDatabase` target is simply not
-> built and the rest of the tree configures unchanged.
+> built and the rest of the tree configures unchanged. The two server drivers
+> are optional the same way: without libpq or libmariadb a connection to that
+> engine reports its driver missing. Connector/C is LGPL-2.1 and linked only as
+> the shared library - CMake asks for it by name and leaves the driver out
+> when only `libmariadb.a` is there (`THIRD_PARTY_LICENSES.md`).
 
 ### Ultra Net module
 
@@ -17446,8 +17455,9 @@ axis `ChartAxisRole::Value`.
 ## Highlights (slot 200 wash / slot 700 overlay)
 
 `AddHighlight(ChartHighlight)` / `ClearHighlights()` — the proposal's §8.2
-layer (`Engine/UltraCanvasChartHighlights.h`), clipped to the plot. Seven
-shapes: explicit `Rectangle`/`Ellipse` in value space, a `ValueBand` on one
+layer (`Engine/UltraCanvasChartHighlights.h`), clipped to the plot. Eight
+shapes: explicit `Rectangle`/`Ellipse` in value space, an explicit `Polygon`
+(its outline in `members`, in order), a `ValueBand` on one
 axis, and the computed group shapes — `ConfidenceEllipse` (covariance eigen
 decomposition at a `confidence` level, the 50%/95%-around-grouped-dots
 convention, with a mean marker), `Hull` (padded convex hull), `Blob`
@@ -17461,6 +17471,24 @@ content. A highlight's `label` rides the label plan as
 `SmoothPolygonChaikin`) are UI-free and unit-tested. Pair a confidence-
 ellipse highlight with the legend's ellipse custom key (`SetCustomArea`) —
 a key describes marks the chart actually draws.
+
+A `Polygon` is rounded by `smoothing` the way a `Blob` is (`smoothing * 4`
+Chaikin passes), but **in value space, before the mapping**. A caller that
+smooths the same outline the same way therefore tests exactly the shape on
+screen. That is how the importance–performance chart classifies factors into
+its zones ([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)).
+Set `smoothing = 0` for the outline as given, since the field's default
+rounds it. Under the Polar projection each edge is sampled along the rings.
+
+```cpp
+ChartHighlight target;
+target.shape = ChartHighlightShape::Polygon;
+target.members = {{2.0, 10.0}, {6.0, 10.0}, {6.0, 30.0}, {2.0, 30.0}};   // value space
+target.smoothing = 0.0;
+target.xAxisIndex = 1;
+target.yAxisIndex = 0;
+target.label = "Target window";
+```
 
 ## Phase-1 services
 
@@ -29193,6 +29221,14 @@ chart->SetShowTrendLine(true);                   // least squares, with r and r^
 chart->SetShowConfidenceEllipses(true, 0.95);    // engine highlight per group
 ```
 
+Every data, theme and legend change clears the highlights and rebuilds the
+chart's own. A chart derived from the scatter chart adds its own highlights in
+the protected `AddChartHighlights()`, which that rebuild calls first, so
+they are not wiped. It calls `RefreshHighlights()` when only its own
+highlights changed. The importance–performance chart
+([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md))
+draws its zones this way.
+
 A point with a finite `size` turns the chart into a bubble chart: radii are
 area-proportional (`SetSizeScale(EngineBubbleScale::Diameter)` for the other
 convention) and `SetShowSizeLegend(true, "Health")` keys them with the engine
@@ -40785,6 +40821,246 @@ Calling `copy_memory()` walks the full libvips pipeline (decompress, color conve
 - [UltraCanvasButton](UltraCanvasButtonExamples.md) — "Choose Image..." button
 - [UltraCanvasCheckbox](UltraCanvasCheckbox.md) — "Include BMP" toggle
 - [UltraCanvasContainer](UltraCanvasContainer.md) — Layout root for the benchmark
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md
+==============================================================================
+
+# UltraCanvasImportancePerformanceChart
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> container; -->
+
+The importance–performance chart plots the *factors* of a product or service
+(price, delivery speed, after-sales support…) by two scores: how much
+customers care about each one, and how it compares with competitors. The
+plane is cut into authored **zones** that name the action: in Slack's form
+(1994) *Urgent action*, *Improve*, *Appropriate* and *Excess?*. The answer the
+chart gives is which factors land in which zone.
+
+- Header: `include/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceChart.h`
+- Model: `include/Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceModel.h` (UI-free)
+- Base class: `UltraCanvasEngineScatterChart`, on the chart engine
+- Demo: **Charts → Importance-Performance Chart**
+- Design: [`UltraCanvasImportancePerformanceChartProposal.md`](UltraCanvasImportancePerformanceChartProposal.md)
+
+## Contents
+
+- [Which element do I want?](#which-element-do-i-want)
+- [Quick start](#quick-start)
+- [The model](#the-model)
+  - [Axes and level ranges](#axes-and-level-ranges)
+  - [Zones](#zones)
+  - [Bands](#bands)
+  - [Factors](#factors)
+- [Classification](#classification)
+- [The Slack preset](#the-slack-preset)
+- [Display options](#display-options)
+- [Interaction](#interaction)
+- [What is not built yet](#what-is-not-built-yet)
+
+## Which element do I want?
+
+| You want | Use |
+|---|---|
+| Factors over zones with curved or stepped edges (Slack), or more than four regions | This chart |
+| The classic four quadrants split at the means (Martilla & James), or any 2×2 matrix | `UltraCanvasQuadrantChart` with `QuadrantType::Custom` and `xCenter` / `yCenter` at the means |
+| A grid of people rated on performance and potential (a 9-box) | Not this chart: see `UltraCanvasPerformanceMatrixProposal.md` |
+| A scatter plot with a hand-drawn region on it | `UltraCanvasEngineScatterChart` and an `AddHighlight` of `ChartHighlightShape::Polygon` |
+
+## Quick start
+
+```cpp
+#include "Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceChart.h"
+using namespace UltraCanvas;
+
+ImportancePerformanceModel model = ImportancePerformanceSamples::SlackZones(true);   // smooth zones
+model.title = "Parcel service";
+model.factors = {
+    {"Delivery reliability", "Delivery", 2.0, 8.0},   // label, group, importance, performance
+    {"Price",                "Delivery", 1.4, 5.0},
+    {"Tracking app",         "Service",  5.0, 3.0},
+    {"Gift wrapping",        "Service",  8.4, 2.0},
+};
+
+auto chart = CreateImportancePerformanceChart("ipm", 0, 0, 840, 600);
+chart->SetModel(model);
+container->AddChild(chart);
+```
+
+The Slack preset uses Slack's nine-point scales, on which **1 is the best
+grade** (strongly order-winning, far better than competitors). Both axes are
+therefore inverted, so the most important factors are on the right and the
+best performance at the top, as readers expect.
+
+## The model
+
+`ImportancePerformanceModel` is plain data. `SetModel` takes a copy, so
+change the model and set it again to update the chart.
+
+### Axes and level ranges
+
+`importance` (x) and `performance` (y) are `ImportancePerformanceAxis`:
+
+| Field | Meaning |
+|---|---|
+| `title` | Axis title (one line) |
+| `min`, `max` | The range in score units. The Slack preset uses 0.5 .. 9.5 |
+| `inverted` | Draw `min` at the far end (right / top): Slack's "1 = best" |
+| `levels` | Named ranges in value order: `{"Order winning", 0.5, 3.5}` |
+| `lowCaption`, `highCaption` | Captions at the screen's low and high ends ("Low" / "High", "Bad" / "Good"). They stay with the screen ends whatever `inverted` says |
+
+The chart labels each level at the centre of its range and puts a tick mark
+without a label at each boundary between levels. `LevelOf(axis, value)`
+returns the level a score falls in: ranges are half-open, and the last level
+keeps its upper edge.
+
+```cpp
+ImportancePerformanceAxis importance;
+importance.title = "Importance for customers";
+importance.min = 1.0;
+importance.max = 5.0;
+importance.lowCaption = "Low";
+importance.highCaption = "High";
+importance.levels = {{"Nice to have", 1.0, 3.0}, {"Must have", 3.0, 5.0}};
+int level = ImportancePerformanceModel::LevelOf(importance, 4.2);   // 1, "Must have"
+```
+
+### Zones
+
+An `ImportancePerformanceZone` is a closed `outline` in value space with a
+`title`, an `action` (shown in tooltips), an optional `iconPath` (drawn above
+the title), a `fill` and a `textColor`. **Later zones cover earlier ones**,
+both in the drawing and in classification. That makes a zone list easy to
+write: start with one zone covering the whole plane, then lay the
+exceptions over it.
+
+`smoothing` rounds the outline with Chaikin corner cutting (0 = as given,
+up to 6 passes). An outline may run past the axis ranges, because the chart
+clips to the plot. Let it: rounding cuts corners, and a corner that lies
+outside the plot cannot leave a gap inside it.
+
+```cpp
+ImportancePerformanceZone focus;
+focus.id = "focus";
+focus.title = "Concentrate here";
+focus.action = "Important and underperforming";
+focus.fill = Color(214, 34, 76, 255);
+focus.outline = {{3.0, 0.0}, {6.0, 0.0}, {6.0, 3.0}, {3.0, 3.0}};
+focus.smoothing = 0;
+```
+
+Each zone title is drawn at the zone's *pole of inaccessibility*: the
+point of the zone's visible part (what later zones leave uncovered, inside
+the plot) that lies farthest from every edge. That is not the centroid,
+which can fall outside a concave zone or under a later one. A title that
+does not fit is left out, and so is an icon. The title still shows in the
+zone's tooltip.
+
+### Bands
+
+An `ImportancePerformanceBand` is a labelled thick line along an open
+polyline, such as Slack's *lower bound of acceptability*. It is drawn over
+the zones, with `width` in y-axis units, and its `smoothing` keeps the two
+end points. A band takes no part in classification.
+
+Its label runs along the longest straight stretch of the band inside the
+plot, turned with it and never upside down. On a band thinner than about
+12 px the label sits beside the line instead. Factor names steer around
+both the band labels and the zone titles.
+
+### Factors
+
+`ImportancePerformanceFactor` has `id`, `label`, `group`, the two scores
+`importance` and `performance`, and a `note` added to the tooltip. Each
+distinct `group` becomes one scatter group, in order of first appearance,
+with its own legend entry. Clicking an entry hides the group.
+
+Group marks default to dark colours with a white outline, so they read on
+any zone colour, and to a different shape per group (circle, square,
+diamond, triangle), so a group never depends on colour alone. Change them
+with `SetGroupStyles`:
+
+```cpp
+chart->SetGroupStyles({Color(20, 20, 20, 255), Color(255, 255, 255, 255)},
+                      {ChartMarkerShape::Circle, ChartMarkerShape::Square});
+```
+
+## Classification
+
+```cpp
+std::vector<int> zones = model.ClassifyFactors();   // one zone index per factor, -1 = none
+int zone = model.ZoneOf(2.0, 8.0);                  // the zone of one point
+std::vector<std::string> problems = model.Validate();
+```
+
+The chart draws exactly the polygon that classification tests:
+`ZoneShape(i)` is the outline after its smoothing, in value space. The chart
+maps that polygon to the screen and does not smooth again. A factor drawn
+inside *Improve* is therefore always reported in *Improve*.
+`GetFactorZones()` on the chart returns the same list as `ClassifyFactors()`
+on the model it was given.
+
+`Validate()` reports an empty or reversed axis range, levels that overlap
+or run outside the range, zones with fewer than three points, bands with
+fewer than two, and factors that are missing a score or lie outside the
+axis ranges.
+
+## The Slack preset
+
+`ImportancePerformanceSamples::SlackZones(bool smooth)` builds Slack's
+matrix: nine-point inverted scales read in thirds (*order winning /
+qualifying / less important*; *better than / same as / worse than*), the four
+zones, and the lower bound of acceptability as a band.
+
+- `SlackZones(false)` is the textbook form: the boundaries are staircases
+  on the 9×9 grid, and the band is a thin line.
+- `SlackZones(true)` is the slide form: the boundaries are smooth curves
+  through a thinned set of the same corners, and the band is wide with its
+  label inside.
+
+`ImportancePerformanceSamples::SampleFactors()` returns twelve invented
+factors of a parcel carrier that land in all four zones, in both forms.
+
+## Display options
+
+| Call | Effect |
+|---|---|
+| `SetShowZoneTitles(bool)` / `SetShowZoneIcons(bool)` | Zone titles and icons (on) |
+| `SetShowBandLabels(bool)` | Band labels (on) |
+| `SetShowLevelRanges(bool)` | Level names, boundary ticks and end captions on the axes (on); off = plain numbers |
+| `SetShowGrid(bool)` | Grid lines over the zones (off: the zones are the grid) |
+| `SetZoneTitleFontSize(float)` | Zone title size (14) |
+| `SetPointLabelMode(EngineScatterLabelMode)` | Factor names, from the scatter chart: `Outside` (the default here) or `Hidden` |
+
+The title is `model.title`. Everything else the scatter chart offers (theme,
+legend position, marker radius and outline, animation) still applies.
+
+```cpp
+chart->SetShowGrid(true);
+chart->SetShowLevelRanges(false);
+chart->SetPointLabelMode(EngineScatterLabelMode::Hidden);
+chart->SetMarkerRadius(7.0f);
+```
+
+## Interaction
+
+Hovering a factor shows its label, group, both scores with their level
+names, its zone and the zone's action. Hovering a bare stretch of a zone
+shows the zone's title, action and how many factors it holds. Clicking a
+legend entry hides that group, and its factors stop answering the
+pointer.
+
+## What is not built yet
+
+This is Phase 1 of the proposal. Still to come:
+
+- **Phase 2:** a zone legend, emphasising a hovered zone's factors, a list
+  of factors per zone as an API (the demo builds one from
+  `GetFactorZones()`), Martilla & James and diagonal presets, and JSON and
+  CSV interchange through `UltraCanvasFileLoader`.
+- **Phase 3:** arrows showing how a factor moved since an earlier survey.
+- Axis titles are one line. A two-line title such as "Performance / Digital
+  Competition" is not supported yet.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasInstanceLock.md
@@ -57446,6 +57722,12 @@ FILE: Docs/UltraCanvas/UltraCanvasQuadrantChartExamples.md
 
 `UltraCanvasQuadrantChart` renders interactive 2x2 strategic-analysis matrices. Data points are placed on a two-axis plane that is divided into four quadrants by a configurable center point. The element ships with presets for the most common business frameworks — **SWOT**, **BCG matrix**, **Ansoff growth matrix**, **Eisenhower decision matrix**, **Gartner-style magic quadrant**, **risk matrix** (probability vs impact) and **priority matrix** (impact vs effort) — plus a fully custom mode where every quadrant label, color and axis caption is user-defined.
 
+For regions that are not four quadrants, such as Slack's importance–performance
+zones with curved or stepped edges, use `UltraCanvasImportancePerformanceChart`
+([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)).
+The classic four-quadrant importance–performance analysis (Martilla & James)
+is this element with `QuadrantType::Custom` and the centre at the means.
+
 Points support per-point color, radius (e.g. BCG revenue bubbles), shape (circle, square, triangle, diamond) and outline. The element handles hover highlighting with tooltips, click selection (single or multi), double-click callbacks, and exposes quadrant utilities (which quadrant a point falls into, per-quadrant counts) for building statistics panels.
 
 **Namespace:** `UltraCanvas`
@@ -60186,6 +60468,7 @@ editor->ToggleSuperscript();
 editor->SetFontFamily("Georgia");
 editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
+editor->SetHighlightColor("#FFF59D");  // the background behind the text; "" removes it
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
 
@@ -90212,21 +90495,24 @@ from anywhere; which engine actually backs that connection (SQLite,
 PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
-> Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
-> introspection, streaming cursors, per-statement scripts, cancelling and
-> statement observers.**
+> Status: **Stage 1 implemented, the PostgreSQL and MySQL / MariaDB drivers
+> from Stage 2, schema introspection, server administration, streaming
+> cursors, per-statement scripts, cancelling and statement observers.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 69 tests, the PostgreSQL ones
-> against a live server where one is configured). The **PostgreSQL** driver
-> (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
-> found at configure time; it takes `?` placeholders, verifies TLS by default
-> and reads the password from UltraVault. UltraFIBU's multi-user mode runs on
-> it, and CI tests it against a real server (`Tests/UltraFIBU`). The other
-> networked drivers (MySQL, …), async queries and pooling described below
-> are still the Stage 2/3 plan.
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 84 tests, the PostgreSQL and MySQL
+> ones against a live server where one is configured). The **PostgreSQL**
+> driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
+> libpq is found at configure time; it takes `?` placeholders, verifies TLS by
+> default and reads the password from UltraVault. UltraFIBU's multi-user mode
+> runs on it, and CI tests it against a real server (`Tests/UltraFIBU`). The
+> **MySQL / MariaDB** driver (`UltraDatabaseMysqlDriver.cpp`, over MariaDB
+> Connector/C) is built whenever libmariadb is found, and speaks to MariaDB
+> and MySQL servers alike: the same `?` placeholders, as server-side prepared
+> statements, TLS verified by default, the password from UltraVault. Async
+> queries and pooling described below are still the Stage 2/3 plan.
 
 ---
 
@@ -90325,8 +90611,8 @@ persistence with no external server and no extra dependency.
 
 | Engine | Category | Backing library |
 |---|---|---|
-| PostgreSQL | Relational (SQL) | `libpq` |
-| MySQL / MariaDB | Relational (SQL) | `libmariadb` |
+| PostgreSQL | Relational (SQL) | `libpq` - built into the module when found |
+| MySQL / MariaDB | Relational (SQL) | `libmariadb` (MariaDB Connector/C, LGPL-2.1, linked dynamically) - built into the module when found |
 | Microsoft SQL Server | Relational (SQL) | ODBC / FreeTDS |
 | DuckDB | Embedded analytics (OLAP) | bundled/optional |
 | Redis / Valkey | Key-value cache | `hiredis` |
@@ -90440,8 +90726,13 @@ PostgreSQL they are server-side - `WITH HOLD` outside a transaction, so the
 connection is free for other statements between pages, `WITHOUT HOLD`
 inside one, where they end with it. **Scripts** are split as psql splits
 them on PostgreSQL (semicolons outside text, comments and `BEGIN ATOMIC`
-bodies) and by SQLite itself on SQLite; each statement reports its text,
-outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
+bodies), by SQLite itself on SQLite, and as the mysql client splits them on
+MySQL / MariaDB (`DELIMITER` lines, `BEGIN ... END` bodies, `#` comments,
+backslash escapes); each statement reports its text, outcome and rows.
+`UltraDb_MysqlScriptStatements(script)` gives the same MySQL split as byte
+offsets - where each statement begins, ends and its terminator ends - for
+an editor that runs the statement under the caret or counts a file's
+statements before it imports them. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
 both safe from another thread while the statement holds the connection.
 
 **Watching statements.** `UltraDb_AddStatementObserver` reports every
@@ -90501,6 +90792,13 @@ for (const UltraDbColumnInfo& c : rs.ColumnInfo())
     ;  // c.declaredType ("numeric(12,2)"), c.sourceSchema / sourceTable / sourceColumn
 ```
 
+On MySQL and MariaDB a schema is a database: one connection lists every
+database its user may see (but the server's own: `mysql`,
+`information_schema`, `performance_schema`, `sys`), read from
+`information_schema`; a column's default comes back as it would be written
+in the DDL on both servers (`'none'`, `0`, `current_timestamp()`), whatever
+each reports. Names are quoted with backticks.
+
 `UltraDb_ListConnections()` lists the registered connection names. A driver
 that cannot introspect answers `Unsupported`. On PostgreSQL the column
 metadata costs one catalog query per table the first time and nothing after
@@ -90514,7 +90812,35 @@ has `SQLITE_ENABLE_COLUMN_METADATA` (checked at configure time).
 and `float4` as `Double`. Numbers cross the driver dot-decimal in both
 directions whatever the process's locale, and `AsString()` of a `Double` is
 dot-decimal too: the shortest text that reads back exactly (`3.14`, not
-`3,140000`).
+`3,140000`). MySQL's `DECIMAL` is `Text` too, and so is an unsigned
+`BIGINT` too large for an `Int`; a BIT column is the `Int` its bits make, a
+`BINARY` / `VARBINARY` / `BLOB` column a `Blob`, a date or time its text.
+
+### Server administration
+
+`UltraDatabaseServer.h` is what a server is doing and how it is set up - the
+Server tab of UltraDBAdmin (the proposal's G10). One shape for PostgreSQL
+and MySQL / MariaDB, fixed column names whatever the engine; SQLite has no
+server and answers `Unsupported`.
+
+```cpp
+UltraDbResultSet rows;
+UltraDb_ServerSessions("crm", rows);          // id, user, database, application, client,
+                                              // state, running (s), waiting, query, this_session
+UltraDb_ServerSettings("crm", "mem", rows);   // name, value, unit, category, description, source
+UltraDb_ServerSizes("crm", "public", rows);   // kind, name, bytes, data_bytes, index_bytes
+
+std::string sql;                              // what a confirmation shows first:
+UltraDb_StopSessionSql("crm", id, false, sql);  // SELECT pg_cancel_backend(42) / KILL QUERY 42
+bool stopped = false;
+UltraDb_StopSession("crm", id, false, stopped); // false: gone, or not this user's to stop
+```
+
+The asking session is never stopped from itself. A settings filter matches
+the name or the description in any case, `%` and `_` typed in it taken as
+themselves. MySQL's settings come from `performance_schema` (with where each
+value came from), MariaDB's from `information_schema.SYSTEM_VARIABLES` (with
+a description for each).
 
 ---
 
@@ -90548,8 +90874,13 @@ idea* above).
   (`UltraVault::Initialize`, with its own file and passphrase) before it
   connects; the driver only reads from it, and reports "UltraVault is not
   open" rather than quietly opening an empty one. The password is wiped
-  from the driver's memory once libpq has it. Empty `credentials` means
-  libpq's own methods (peer / trust / `.pgpass`).
+  from the driver's memory once the client library has it. Empty
+  `credentials` means the server's own ways of knowing the user: libpq's
+  peer / trust / `.pgpass`, MariaDB's `unix_socket` and MySQL's
+  `auth_socket` over the server's socket file (a `host` that is a path).
+- **No client files for the server.** The MySQL driver turns `LOAD DATA
+  LOCAL` off: with it on, a server could ask for any file the program can
+  read.
 - **TLS for networked engines.** `UltraDbTls::{Disable,Prefer,Require,
   VerifyFull}` with verification on by default; certificate handling
   reuses the platform trust store (and UltraNet's TLS stack where a
@@ -90573,12 +90904,16 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseValue.h          UltraDbValue, UltraDbRow, UltraDbResultSet
 │   ├── UltraDatabaseTransaction.h    Begin / Commit / Rollback
 │   ├── UltraDatabaseMigrate.h        versioned schema migrations
+│   ├── UltraDatabaseSchema.h         introspection, quoting names
+│   ├── UltraDatabaseServer.h         sessions, settings, sizes, stopping a session
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
-├── core/UltraDatabase/               (.cpp implementations + bundled SQLite)
+├── core/UltraDatabase/               (.cpp implementations)
+│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver and its introspection
+│   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
+│   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
+│   └── UltraDatabaseServerViews.cpp  server administration for both server engines
 ├── OS/<Platform>/UltraDatabaseSupport.cpp
-└── Plugins/UltraDatabase/
-    ├── postgresql/
-    ├── mysql/
+└── Plugins/UltraDatabase/            (later drivers as loadable plug-ins)
     ├── mssql/
     ├── redis/
     └── ...
@@ -90637,13 +90972,14 @@ headless data module usable from any ULTRA OS process.
 | Connection registry (lazy open) | Implemented |
 | Query / Exec / Prepare / values | Implemented |
 | Transactions + versioned migrations | Implemented |
-| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
-| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
+| Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
+| Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
+| Server administration (`UltraDatabaseServer.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
-| Test suite (69 tests) | Passing |
+| Test suite (84 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
-| MySQL / MariaDB driver | Planned (Stage 2) |
+| MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |
 | Async queries | Planned (Stage 2) |
 | Other drivers (MSSQL, Redis, Mongo, DuckDB) | Tracked separately (Stage 3) |
 
@@ -90651,9 +90987,9 @@ headless data module usable from any ULTRA OS process.
 1. **Stage 1** — SQLite core, connection registry, `Query`/`Exec`/
    `Prepare`/values/transactions/migrations. Enough for every app's
    local storage (and all of UltraMail).
-2. **Stage 2** — async queries + worker pool, streaming cursors, the
-   driver-plugin manager, the MySQL/MariaDB driver. (The PostgreSQL
-   driver, with its UltraVault and TLS wiring, is done.)
+2. **Stage 2** — async queries + worker pool, the driver-plugin manager.
+   (The PostgreSQL and MySQL / MariaDB drivers, with their UltraVault and
+   TLS wiring, and streaming cursors are done.)
 3. **Stage 3** — remaining drivers (MSSQL, Redis, MongoDB, DuckDB),
    at-rest encryption, read-replica/failover options.
 
@@ -96389,20 +96725,6 @@ honestly and ultimately solved by ULTRA OS's per-app isolation and a
 secure-window compositor hint, for which this app is an ideal first customer.
 
 ==============================================================================
-FILE: Docs/UltraAuthenticator/changelog.d/copy-button-measured.md
-==============================================================================
-
-- **The copy button sits right after the code on every platform.** Its place
-  was worked out from a character width measured for one Linux font, so with
-  another monospaced face - Consolas on Windows is narrower - it stood off
-  from the digits, and after the dots of a hidden code it could crowd them.
-  It is placed from the code label's own measurement now
-  (`UltraCanvasLabel::GetNaturalTextWidth`, framework changelog:
-  `label-natural-text-width`), and follows the text whenever it changes
-  between digits, dots and the dashes before a counter-based card's first
-  code.
-
-==============================================================================
 FILE: Docs/UltraPassword/README.md
 ==============================================================================
 
@@ -98285,7 +98607,7 @@ point an existing build elsewhere without a rebuild, in decreasing priority
 
 The value `off` (or `none`) at any of these turns the service off. The
 wizard's hint says when a provider cannot be signed in to at all. The same
-setting serves the composer's *Attach cloud link…* sign-ins: Google Drive,
+setting serves the composer's *Cloud link…* sign-ins: Google Drive,
 OneDrive and Dropbox go through the service too (UltraCloud, under the
 service's `google`, `microsoft` and `dropbox`), unless a client of their own
 is configured.
@@ -98843,9 +99165,11 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   (via the existing Markdown→HTML serializer of `UCRichDocument`) plus
   the plain-text source. A "plain text only" toggle is one click.
 - **Attachments** — "Attach file…" (file dialog; drag & drop later) and
-  "Attach cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
+  "Cloud link…" (UltraCloud picker: upload to, or pick from, a cloud
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
-  shown as a chip strip with sizes and a total-size warning.
+  shown as a chip strip with sizes and a total-size warning - under the
+  message, or in a column at its right (*Settings > Reading > Attachments*,
+  for reading and writing alike).
 - **Signatures** — per account, in *Account Settings > Signature*: none,
   plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
   (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
@@ -98855,7 +99179,10 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   the message a formatted one. *(Implemented in UltraMail 0.10.11.)*
 - **Formatting** — a *Plain text | Formatted* switch on every message, and in
   formatted mode the same toolbar as the signature editor (character
-  formatting, font, size, colour, alignment, lists, a rule, links, pictures).
+  formatting, font, size, text or background colour, alignment, lists, a
+  rule, links, pictures), as icons on a strip framed together with the body -
+  in one row in the compose window, whose Send row is on top; each tool's
+  tooltip names it, and Font and Size show the text at the cursor.
   *(Implemented in UltraMail 0.10.12.)*
 - **Drafts** — autosaved to the local store every few seconds and on
   close; **Send** puts the message into the **Outbox** queue, which the

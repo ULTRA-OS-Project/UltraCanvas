@@ -191,8 +191,9 @@ axis `ChartAxisRole::Value`.
 ## Highlights (slot 200 wash / slot 700 overlay)
 
 `AddHighlight(ChartHighlight)` / `ClearHighlights()` — the proposal's §8.2
-layer (`Engine/UltraCanvasChartHighlights.h`), clipped to the plot. Seven
-shapes: explicit `Rectangle`/`Ellipse` in value space, a `ValueBand` on one
+layer (`Engine/UltraCanvasChartHighlights.h`), clipped to the plot. Eight
+shapes: explicit `Rectangle`/`Ellipse` in value space, an explicit `Polygon`
+(its outline in `members`, in order), a `ValueBand` on one
 axis, and the computed group shapes — `ConfidenceEllipse` (covariance eigen
 decomposition at a `confidence` level, the 50%/95%-around-grouped-dots
 convention, with a mean marker), `Hull` (padded convex hull), `Blob`
@@ -206,6 +207,24 @@ content. A highlight's `label` rides the label plan as
 `SmoothPolygonChaikin`) are UI-free and unit-tested. Pair a confidence-
 ellipse highlight with the legend's ellipse custom key (`SetCustomArea`) —
 a key describes marks the chart actually draws.
+
+A `Polygon` is rounded by `smoothing` the way a `Blob` is (`smoothing * 4`
+Chaikin passes), but **in value space, before the mapping**. A caller that
+smooths the same outline the same way therefore tests exactly the shape on
+screen. That is how the importance–performance chart classifies factors into
+its zones ([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)).
+Set `smoothing = 0` for the outline as given, since the field's default
+rounds it. Under the Polar projection each edge is sampled along the rings.
+
+```cpp
+ChartHighlight target;
+target.shape = ChartHighlightShape::Polygon;
+target.members = {{2.0, 10.0}, {6.0, 10.0}, {6.0, 30.0}, {2.0, 30.0}};   // value space
+target.smoothing = 0.0;
+target.xAxisIndex = 1;
+target.yAxisIndex = 0;
+target.label = "Target window";
+```
 
 ## Phase-1 services
 

@@ -250,7 +250,7 @@ point an existing build elsewhere without a rebuild, in decreasing priority
 
 The value `off` (or `none`) at any of these turns the service off. The
 wizard's hint says when a provider cannot be signed in to at all. The same
-setting serves the composer's *Attach cloud link…* sign-ins: Google Drive,
+setting serves the composer's *Cloud link…* sign-ins: Google Drive,
 OneDrive and Dropbox go through the service too (UltraCloud, under the
 service's `google`, `microsoft` and `dropbox`), unless a client of their own
 is configured.

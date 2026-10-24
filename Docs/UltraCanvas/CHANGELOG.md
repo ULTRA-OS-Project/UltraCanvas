@@ -1,3 +1,139 @@
+#### 2026-10-24 *0.9.400*
+- **New design proposal: an importance–performance chart, and the performance
+  matrix proposal gives up the image that needed it.** The fourth reference
+  image of the performance matrix proposal turned out to be Slack's
+  importance–performance matrix. That is a chart from operations strategy:
+  competitive factors are plotted as points over authored zones (*Urgent
+  action*, *Improve*, *Appropriate*, *Excess?*). It is not a talent grid. No
+  existing chart draws it: the quadrant chart has only two straight dividers,
+  and the engine scatter chart's highlights are computed from points, with no
+  outline of your own.
+  `Docs/UltraCanvas/UltraCanvasImportancePerformanceChartProposal.md` proposes
+  `UltraCanvasImportancePerformanceChart`, derived from
+  `UltraCanvasEngineScatterChart`, with one general engine addition: an
+  explicit `ChartHighlightShape::Polygon`. It covers zones that are stepped or
+  smoothed, a labelled boundary band, named level ranges on the axes,
+  classification that uses the same geometry as the drawing, and Slack,
+  Martilla & James and diagonal presets, in three phases.
+  `UltraCanvasPerformanceMatrixProposal.md` revision 2 drops its `Zones`
+  design and its fourth phase accordingly.
+- **New chart: the importance–performance chart (Phase 1).**
+  `UltraCanvasImportancePerformanceChart` plots the factors of a service, by
+  how much customers care about each one and how it compares with
+  competitors, over authored zones that name the action. It is built on
+  `UltraCanvasEngineScatterChart`, so groups, markers, point labels, the
+  legend and hover come from there. The chart adds:
+  - filled zones, stepped or smoothed, each with a title and an optional
+    icon. A title is placed at the zone's pole of inaccessibility in the part
+    later zones leave visible, and is left out when it does not fit.
+  - labelled bands, such as Slack's lower bound of acceptability. The label
+    is turned along the band's longest straight stretch, and factor names
+    steer around it and around the zone titles.
+  - named level ranges on both axes, with the end captions at the screen's
+    ends even when an axis is inverted for Slack's "1 = best" scales.
+  - the zone of each factor in its tooltip, and a zone's title, action and
+    factor count on a bare stretch of it.
+
+  The model (`UltraCanvasImportancePerformanceModel.h`) is UI-free.
+  `ZoneOf` and `ClassifyFactors` test the same smoothed polygon the chart
+  draws, so a factor drawn in a zone is always reported in it. It also has
+  `Validate()` and the `SlackZones(smooth)` and `SampleFactors()` presets.
+  On the demo page **Charts → Importance-Performance Chart**, the two Slack
+  forms list the factors by zone.
+  `Tests/ImportancePerformanceModelTest.cpp` and
+  `Tests/ImportancePerformanceChartRenderTest.cpp` cover the model and the
+  drawing; the render test writes PNGs when `ULTRACANVAS_SCREENSHOT_DIR` is
+  set. Guide: `Docs/UltraCanvas/UltraCanvasImportancePerformanceChart.md`.
+- **Chart engine: `ChartHighlightShape::Polygon`.** An explicit outline in
+  value space, taken from `members`. It is rounded by `smoothing` the way a
+  `Blob` is, but in value space before the mapping, so a caller that smooths
+  the same outline tests exactly the drawn shape. Under Polar its edges are
+  sampled along the rings.
+- **Engine scatter chart: a derived chart can keep highlights of its own.**
+  Every data, theme and legend change clears *all* highlights before it
+  rebuilds the confidence ellipses, so a subclass's highlights would have been
+  wiped on the first change. The rebuild now calls the protected
+  `AddChartHighlights()` first, and `RefreshHighlights()` reruns it.
+- **New design proposal: a performance matrix element.** The demo app has
+  listed *Performance Matrix* under Info Graphics as a "planned" placeholder
+  with no design behind it.
+  `Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md` now is that
+  design, worked out from reference images of the 9-box talent grid, the
+  performance management matrix with coloured header tabs, coded
+  performance-vs-potential tiles and bordered talent-review cards. It argues why none of the
+  quadrant chart, matrix diagram, heatmap or SWOT diagram can absorb these,
+  and proposes one UI-free `PerformanceMatrixModel` (named-level axes, cells
+  and an optional population placed by cell or by score) under an
+  `UltraCanvasPerformanceMatrix` element with four designs (`Grid`, `Tiles`,
+  `HeaderTabs`, `Cards`). It also covers text fitting, crowded cells,
+  colour-blind safety and personal data, and sets out its open questions and
+  three phases. Its sketched API is recorded in
+  `scripts/doc_examples_baseline.txt` until it is written.
+
+#### 2026-10-24 *0.9.399*
+- **Segmented controls and the spreadsheet centre their text on its capitals.**
+  Both centred a line of text by its line box (ascent plus descent), which
+  sits wherever the font's metrics put it, so the Windows demo drew every
+  segmented control's captions a couple of pixels high and every spreadsheet
+  cell low enough to cut the descenders off. They now centre the middle of a
+  capital letter on the middle of the segment or row, as buttons and labels
+  already do:
+  - `UltraCanvasSegmentedControl` gives each caption's layout the segment's
+    height and its font as the layout's own (`SetFontStyle`) rather than as
+    font attributes, which the layout's cap-height measurement ignored.
+  - `UltraCanvasSpreadsheet` places cells, the row and column headers, the
+    formula bar, the sheet tabs and the add-sheet button with
+    `TextTopCentredOnCaps`.
+  - `TextCentredOnCapsTest` draws both offscreen in the bundled
+    Ubuntu font, and in FreeSans and Carlito where installed (line boxes that
+    put the capitals 2.5 px high and 1.5 px low), and checks the capitals'
+    middle is within a pixel of the middle.
+
+#### 2026-10-24 *0.9.398*
+- **The rich text editor sets a background colour behind text.**
+  `UltraCanvasRichTextEdit::SetHighlightColor("#RRGGBB")` (and
+  `UCRichDocumentEditor::SetHighlightColor`) colours the background of the
+  selection, or of what is typed next, as a highlighter does; an empty
+  colour removes it. Runs always had `highlightColor`, drawn on screen and
+  written to HTML as `background-color`, but nothing could set it while
+  editing. `RichCharFormatDelta::setHighlight` / `highlightColor` carry it,
+  `RichCharFormatState::highlightColor` / `highlightMixed` report it for a
+  toolbar, and `ClearFormatting` takes it away with the rest. UltraMail's
+  compose window uses it for its Text | Background colour switch.
+
+#### 2026-10-24 *0.9.397*
+- **CI keeps the Linux packages it downloaded.** On 2026-10-23 the Ubuntu
+  mirror served the x64 Linux build so slowly that its dependency step ran
+  out of its 45 minutes twice in a row, downloading the same packages as the
+  run before. The Linux build legs now restore the `.deb` files the last run
+  on `main` downloaded into apt's cache before they install anything, so apt
+  fetches only what changed since (`scripts/ci-apt.sh cache-in`). `main`
+  saves them after the last install, pruned to the versions installed
+  (`cache-out`), keyed by the set of files, one cache per runner image and
+  architecture; a pull request saves none, as with ccache.
+- **UltraDatabase 0.5.0: the MySQL / MariaDB driver.** A `mysql` (or
+  `mariadb`) connection reaches a MariaDB or a MySQL server through MariaDB
+  Connector/C (libmariadb, LGPL-2.1, linked as the shared library), built in
+  wherever the library is found. Parameters are bound to server-side
+  prepared statements, never written into the SQL; the integer types come
+  back as Int, FLOAT and DOUBLE as Double, binary columns as Blob, DECIMAL
+  exact as text; each result column names its source table. TLS is verified
+  by default, the password comes from UltraVault, `LOAD DATA LOCAL` is off.
+  Scripts are cut as the mysql client cuts them, DELIMITER included
+  (UltraDb_ExecBatch), and `UltraDb_MysqlScriptStatements` says where each
+  statement of a script is, for an editor; a cursor streams from a session of its own, or inside
+  a transaction reads what the transaction wrote; UltraDb_CancelQuery sends
+  KILL QUERY. Schema introspection reads information_schema - a schema is a
+  database - with each column's default as the DDL writes it on both
+  servers.
+- **UltraDatabase: server administration** (`UltraDatabaseServer.h`, the
+  design proposal's G10). `UltraDb_ServerSessions`, `UltraDb_ServerSettings`,
+  `UltraDb_ServerSizes`, `UltraDb_StopSessionSql` and `UltraDb_StopSession`
+  give PostgreSQL's and MySQL's sessions, settings and sizes in one shape,
+  and stop a session's query or the session - never the asking one. SQLite
+  answers Unsupported. Tested against PostgreSQL, MariaDB and (in CI) MySQL 8
+  in `Tests/UltraDatabase` (test_mysql.cpp, test_server.cpp).
+
 #### 2026-10-24 *0.9.396*
 - **`UltraCanvasLabel::GetNaturalTextWidth()`: where a label's text ends.** A
   label given a fixed box is usually wider than its text, and something meant

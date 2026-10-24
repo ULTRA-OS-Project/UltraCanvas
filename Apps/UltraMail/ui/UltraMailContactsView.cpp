@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailContactsView.cpp
+// Version: 0.5.1 - Add contact, Add group and the editor's Save carry icons
 // Version: 0.5.0 - Other's menu: "Remove collected contacts…" (the
 //                  strangers the old collector added); a deleted contact's addresses are forgotten (not collected
 //                  again); EditContact edits the address it is opened for (a
@@ -214,6 +215,10 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
                                  "Add group");
     Theme::FitToLabel(addGroup, 120);
     Theme::StyleSecondary(addGroup);
+    Theme::SetButtonIcon(addGroup, "group-add");
+    // The sidebar stretches it: icon and label start together at the left,
+    // as the places above it do, instead of the label centred apart.
+    addGroup->SetTextAlign(TextAlignment::Left);
     addGroup->onClick = [this]() { AskNewGroup(); };
     sidebar_->AddChild(addGroup);
 
@@ -239,6 +244,7 @@ std::shared_ptr<UltraCanvasContainer> ContactsView::Build() {
     auto addBtn = CreateButton("contactsAdd", 0, 0, 130, Theme::kControlHeight, "Add contact");
     Theme::FitToLabel(addBtn, 130);
     Theme::StylePrimary(addBtn);
+    Theme::SetButtonIcon(addBtn, "user-add");
     addBtn->onClick = [this]() {
         Contact c;
         if (current_.isGroup) c.group = current_.group;
@@ -717,6 +723,7 @@ void ContactsView::EditContact(Contact contact, bool isNew, UltraCanvasWindowBas
     auto saveBtn = CreateButton("cSave", 0, 0, 100, Theme::kControlHeight, "Save");
     Theme::FitToLabel(saveBtn, 100);
     Theme::StylePrimary(saveBtn);
+    Theme::SetButtonIcon(saveBtn, "check");
     saveBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
     buttonRow->AddChild(saveBtn);
 
