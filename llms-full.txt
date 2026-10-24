@@ -1802,6 +1802,8 @@ extended or replaced without changing callers.
   a time; server-side cursors on PostgreSQL)
 - `UltraDb_ExecBatch` (every statement of a script with its own result)
 - `UltraDb_Migrate`, `UltraDb_CancelQuery(connection)` (from any thread)
+- `UltraDb_AddStatementObserver`, `UltraDb_RemoveStatementObserver` (every
+  statement reported as it ends: text, bound-value count, rows, time, outcome)
 - `UltraDb_RegisterDriver`, `UltraDb_GetSupportedDrivers`
 - `UltraDb_ListConnections`, `UltraDb_ListSchemas`, `UltraDb_ListObjects`,
   `UltraDb_DescribeTable` (`UltraDatabaseSchema.h`: tables, columns, keys,
@@ -90180,12 +90182,13 @@ PostgreSQL, MySQL/MariaDB, …) is a configuration detail, not something
 the app code hard-codes.
 
 > Status: **Stage 1 implemented, the PostgreSQL driver from Stage 2, schema
-> introspection, streaming cursors, per-statement scripts and cancelling.**
+> introspection, streaming cursors, per-statement scripts, cancelling and
+> statement observers.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 56 tests, the PostgreSQL ones
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 69 tests, the PostgreSQL ones
 > against a live server where one is configured). The **PostgreSQL** driver
 > (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever libpq is
 > found at configure time; it takes `?` placeholders, verifies TLS by default
@@ -90410,6 +90413,22 @@ bodies) and by SQLite itself on SQLite; each statement reports its text,
 outcome and rows. **Cancelling** uses `sqlite3_interrupt` and `PQcancel`,
 both safe from another thread while the statement holds the connection.
 
+**Watching statements.** `UltraDb_AddStatementObserver` reports every
+statement that runs through the calls above, on any connection, once it has
+ended: its kind (query, exec, transaction, a script's statement, a cursor,
+introspection), its text, how many values were bound - never the values -
+the rows it returned, whether it ran in a transaction, its time and its
+outcome. An admin tool's SQL log is one observer (UltraDBAdmin's); a debug
+trace another. With no observer added nothing is timed or copied.
+
+```cpp
+const int id = UltraDb_AddStatementObserver([](const UltraDbStatementEvent& e) {
+    // On the thread that ran it, outside every lock of the module: quick and thread-safe.
+    std::fprintf(stderr, "%s: %zu rows, %s\n", e.connection.c_str(), e.rows, e.sql.c_str());
+});
+UltraDb_RemoveStatementObserver(id);
+```
+
 **Values.** `UltraDbValue` is a small variant: null, bool, int64,
 double, text (UTF-8), blob (bytes), and timestamp. Typed accessors
 (`AsU32`, `AsString`, `AsBlob`, `IsNull`, …) with defined coercion
@@ -90589,7 +90608,8 @@ headless data module usable from any ULTRA OS process.
 | Transactions + versioned migrations | Implemented |
 | Schema introspection, identifier quoting, result-column metadata | Implemented (SQLite, PostgreSQL) |
 | Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL) |
-| Test suite (56 tests) | Passing |
+| Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
+| Test suite (69 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver | Planned (Stage 2) |
