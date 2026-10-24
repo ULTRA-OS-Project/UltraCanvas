@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailSignatureDialog.cpp
+// Version: 0.3.0 - a header with the signature icon; the HTML editor's tools
+//                  and page share one framed card; HTML source / Design and
+//                  Save carry icons
 // Version: 0.2.1 - the editor shows no missing-fonts notice, as in the composer
 // Version: 0.2.0 - the formatting tools moved to UltraMailFormatBar (shared with
 //                  the compose window)
@@ -63,6 +66,7 @@ struct EditorState {
     UltraCanvasTextArea*         text      = nullptr;
     UltraCanvasContainer*        htmlPane  = nullptr;
     UltraCanvasContainer*        formatRows = nullptr;
+    UltraCanvasContainer*        formatRule = nullptr;   // under the tools
     UltraCanvasRichTextEdit*     rich      = nullptr;
     UltraCanvasTextArea*         source    = nullptr;
     UltraCanvasButton*           sourceBtn = nullptr;
@@ -115,7 +119,9 @@ void SetSourceMode(EditorState& s, bool on) {
     s.rich->SetVisible(!on);
     s.source->SetVisible(on);
     s.formatRows->SetVisible(!on);
+    s.formatRule->SetVisible(!on);
     s.sourceBtn->SetText(on ? "Design" : "HTML source");
+    s.sourceBtn->SetIcon(Theme::MailIcon(on ? "edit" : "code"));
     s.sourceBtn->SetTooltip(on ? "Back to the editor"
                                : "Write or paste the signature as HTML");
     (on ? static_cast<UltraCanvasUIElement*>(s.source) : s.rich)->SetFocus(true);
@@ -164,11 +170,8 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
 
     auto state = std::make_shared<EditorState>();
 
-    auto intro = Theme::MakeLine("sigIntro",
-        "The signature is added below what you write in new messages from " + email + ".",
-        Theme::kControlHeight, Theme::kSizeBody, Theme::kTextSecondary);
-    intro->SetWrap(TextWrap::WrapWord);
-    dialog->AddChild(intro);
+    dialog->AddChild(Theme::MakeDialogHeader("sigHeader", "signature", "Signature",
+        "Added below what you write in new messages from " + email + ".", 18.0f));
 
     // ----- Kind: None | Plain text | HTML -----
     auto kindRow = MakeRow("sigKindRow", Theme::kInnerGap);
@@ -203,9 +206,13 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->text = text.get();
 
+    // The HTML editor: the formatting strip on top of the page, in one frame
+    // (as in the compose window).
     auto htmlPane = CreateContainer("sigHtmlPane", 0, 0, 0, 0);
+    Theme::ApplyCard(htmlPane, Theme::kControlRadius);
+    htmlPane->SetPadding(1.0f);
     htmlPane->layout.SetFlexColumn()
-                    .SetFlexGap(Theme::kInnerGap)
+                    .SetFlexGap(0)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     {
         ContainerStyle style;
@@ -226,12 +233,17 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     };
     FormatBar bar = FormatBar::Build(barOptions);
     htmlPane->AddChild(bar.root);
+    bar.root->layoutItem.SetFlexShrink(0);
+    auto barRule = Theme::MakeDivider("sigBarRule");
+    htmlPane->AddChild(barRule);
     state->formatRows = bar.root.get();
+    state->formatRule = barRule.get();
 
     auto rich = CreateRichTextEdit("sigRich", 0, 0, 0, 0);
     {
         RichTextEditStyle style = rich->GetStyle();
         style.baseFont.fontSize = Theme::kSizeBody + 1.0f;   // as the composer
+        style.drawBorder = false;                            // the card is the frame
         rich->SetStyle(style);
     }
     rich->SetShowFontNotice(false);   // as the composer
@@ -243,8 +255,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     auto source = std::make_shared<UltraCanvasTextArea>("sigSource", 0, 0, 0, 0);
     source->SetEditingMode(TextAreaEditingMode::PlainText);
     source->SetWordWrap(true);
-    Theme::StyleTextArea(source);
-    source->SetBorders(1.0f, Theme::kCardBorder);
+    Theme::StyleTextArea(source, /*bordered=*/false);   // the card is the frame
     // Coloured as HTML, as the mail source viewer is.
     source->SetHighlightSyntax(true);
     source->SetProgrammingLanguage("HTML");
@@ -278,6 +289,7 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     auto sourceBtn = CreateButton("sigSourceBtn", 0, 0, 110, Theme::kControlHeight, "HTML source");
     Theme::FitToLabel(sourceBtn, 110);
     Theme::StyleSecondary(sourceBtn);
+    Theme::SetButtonIcon(sourceBtn, "code");
     sourceBtn->SetTooltip("Write or paste the signature as HTML");
     sourceBtn->onClick = [state]() { SetSourceMode(*state, !state->sourceMode); };
     buttonRow->AddChild(sourceBtn);
@@ -294,12 +306,17 @@ void SignatureDialog::Show(UltraCanvasWindowBase* parent, const std::string& ema
     auto saveBtn = CreateButton("sigSave", 0, 0, 90, Theme::kControlHeight, "Save");
     Theme::FitToLabel(saveBtn, 90);
     Theme::StylePrimary(saveBtn);
+    Theme::SetButtonIcon(saveBtn, "check");
     saveBtn->onClick = [dlg, state, result]() {
         *result = Collect(*state);
         dlg->CloseDialog(DialogResult::OK);
     };
     buttonRow->AddChild(saveBtn);
     dialog->AddChild(buttonRow);
+    // Stretched by name: the row was sized (0 x toolbar height) above, and an
+    // explicit width keeps the column from stretching it - at width 0 its
+    // buttons, Save among them, were never drawn.
+    buttonRow->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // The source switch belongs to the HTML editor only.
     kind->onSegmentSelected = [state](int segment) {

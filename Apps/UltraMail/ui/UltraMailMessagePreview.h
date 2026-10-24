@@ -3,6 +3,8 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.14.0 - SetAttachmentsRight: the attachments in a column at the
+//                  right of the body (Settings > Reading > Attachments)
 // Version: 0.13.0 - senderMenuItems: a right-click on the sender's name or badge
 //                   opens the sender's menu
 // Version: 0.12.0 - the message's text can be selected and copied: the HTML body
@@ -161,6 +163,10 @@ public:
     // link (false: the status line shows it, through onLinkHovered).
     bool  linkTooltips = false;
     void  ReRender();
+    // Settings > Reading > Attachments: the attachments in a column at the
+    // right of the body (true) or a row under it (false). Before or after
+    // Build().
+    void  SetAttachmentsRight(bool right);
 
     // The one-time codes of the message shown (UltraMailOneTimeCode.h): each
     // has a copy button - on the code itself when it stands in a box of its
@@ -261,6 +267,12 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningTitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningText_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyHost_;
+    // The body and, with the attachments at the right, their column.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyRow_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachColumn_;   // scrolls the column
+    bool attachmentsRight_ = false;
+    void PlaceAttachments();
+    void SyncAttachmentColumn();   // the column shown only with chips in it
     // The selectable text: the header's labels share one selection, the HTML
     // body's labels another (made with the body, null for plain text, which
     // its text area selects).

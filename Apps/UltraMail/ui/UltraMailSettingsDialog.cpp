@@ -10,7 +10,8 @@
 // the folder tree's width - fitted to its names or a fixed number of pixels),
 // Reading > Messages (HTML mail formatted or as plain text, and the size of
 // the message text), Reading > Waiting for reply (which unanswered mail
-// counts: how old it may be, and whether only people written to), Privacy > Images (when pictures on the web are loaded:
+// counts: how old it may be, and whether only people written to), Reading >
+// Attachments (under the message or at its right, reading and writing), Privacy > Images (when pictures on the web are loaded:
 // always, only from trusted senders / websites / the address book, or never
 // by themselves - plus the lists of trusted websites and senders) and
 // Privacy > Sender icons (whether the known senders' icons are downloaded),
@@ -25,6 +26,9 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.15.0 - Reading > Attachments: at the bottom or on the right side
+// Version: 1.14.0 - the sections in the tree carry icons (media/icons/ultramail/
+//                   section-*)
 // Version: 1.13.0 - Spam/scam warnings: a switch of its own for loan and credit offers
 // Version: 1.12.0 - Mail > Connection: how long alerts about failed mail checks
 //                   wait after the computer was switched on (a dropdown, off
@@ -106,6 +110,7 @@ namespace {
     constexpr const char* kPageLayout      = "reading/layout";
     constexpr const char* kPageMessages    = "reading/messages";
     constexpr const char* kPageWaiting     = "reading/waiting";
+    constexpr const char* kPageAttachments = "reading/attachments";
     constexpr const char* kPagePrivacy     = "privacy";
     constexpr const char* kPageImages      = "privacy/images";
     constexpr const char* kPageSenderIcons = "privacy/sender-icons";
@@ -158,6 +163,10 @@ namespace {
         std::shared_ptr<UltraCanvasRadio> paneBesideRadio;
         std::shared_ptr<UltraCanvasRadio> paneInPlaceRadio;
         UltraCanvasRadioGroup             paneGroup;
+        // Reading > Attachments
+        std::shared_ptr<UltraCanvasRadio> attachBottomRadio;
+        std::shared_ptr<UltraCanvasRadio> attachRightRadio;
+        UltraCanvasRadioGroup             attachGroup;
         std::shared_ptr<UltraCanvasRadio>   treeFitRadio;
         std::shared_ptr<UltraCanvasRadio>   treeFixedRadio;
         UltraCanvasRadioGroup               treeWidthGroup;
@@ -413,6 +422,9 @@ namespace {
         }
         if (d->paneBesideRadio)
             d->paneGroup.SelectButton(p.showReadingPane ? d->paneBesideRadio : d->paneInPlaceRadio);
+        if (d->attachBottomRadio)
+            d->attachGroup.SelectButton(p.AttachmentsRight() ? d->attachRightRadio
+                                                             : d->attachBottomRadio);
         if (d->treeFitRadio)
             d->treeWidthGroup.SelectButton(p.folderTreeWidthMode == FolderTreeWidthMode::FitToText
                                            ? d->treeFitRadio : d->treeFixedRadio);
@@ -643,6 +655,44 @@ namespace {
                 "Auto fits the folder list to the account and folder names it "
                 "shows, and fits it again as folders arrive. Dragging the divider "
                 "still resizes the list for the moment.");
+        return parts.page;
+    }
+
+    // ===== READING > ATTACHMENTS =====
+    std::shared_ptr<UltraCanvasContainer> BuildAttachmentsPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-attachments", "Attachments",
+                "Where the attachments of a message are shown:");
+
+        const bool right = d->prefs->AttachmentsRight();
+        d->attachBottomRadio = MakeChoice("um-set-attach-bottom",
+                "At the bottom, in a row under the message", !right);
+        d->attachRightRadio = MakeChoice("um-set-attach-right",
+                "On the right side, in a column beside the message", right);
+        d->attachGroup.AddRadioButton(d->attachBottomRadio);
+        d->attachGroup.AddRadioButton(d->attachRightRadio);
+        d->attachGroup.onSelectionChanged = [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->prefs) return;
+            d->prefs->attachmentPlacement = selected == d->attachRightRadio
+                    ? AttachmentPlacement::Right : AttachmentPlacement::Bottom;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->attachBottomRadio);
+        parts.body->AddChild(d->attachRightRadio);
+
+        d->resets[kPageAttachments] = PageReset{ "Restore default", 140, [d]() {
+            if (!d->prefs) return;
+            d->prefs->attachmentPlacement = AttachmentPlacement::Bottom;
+            SyncControls(d);
+            ApplyAndSave(d);
+        } };
+
+        AddNote(parts, "um-set-attach-note1",
+                "This is for reading a message and for writing one: the compose "
+                "window puts the files you attach in the same place.");
+        AddNote(parts, "um-set-attach-note2",
+                "On the right side, the message keeps its whole height, and a "
+                "message with many attachments lists them all one under the "
+                "other; at the bottom, the message keeps its whole width.");
         return parts.page;
     }
 
@@ -1170,7 +1220,8 @@ namespace {
         AddNote(parts, "um-set-start-note1",
                 "Reading - where a message opens, how wide the folder list is, "
                 "whether HTML mail is shown formatted or as plain text, the size "
-                "of its text, and which mail counts as waiting for your reply.");
+                "of its text, which mail counts as waiting for your reply, and "
+                "where a message's attachments are shown.");
         AddNote(parts, "um-set-start-note2",
                 "Privacy - when pictures on the web are downloaded (always, only "
                 "from websites and senders you trust and your contacts, or never "
@@ -1223,10 +1274,16 @@ namespace {
         d->pageArea->AddChild(page);
     }
 
-    void AddTreeNode(DialogState* d, const char* parentId, const char* id, const char* text) {
+    // `icon`: a section's mark, a name in media/icons/ultramail/ (the pages
+    // under a section have none).
+    void AddTreeNode(DialogState* d, const char* parentId, const char* id, const char* text,
+                     const char* icon = nullptr) {
         TreeNodeData data;
         data.nodeId = id;
         data.text = text;
+        if (icon)
+            data.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/ultramail/"
+                                                       + icon + ".svg"), 16, 16);
         d->tree->AddNode(parentId, data);
     }
 
@@ -1268,21 +1325,22 @@ namespace {
         rootData.nodeId = "settings";
         rootData.text = "Settings";
         d->tree->SetRootNode(rootData);
-        AddTreeNode(d, "settings", kPageMail, "Mail");
+        AddTreeNode(d, "settings", kPageMail, "Mail", "section-mail");
         AddTreeNode(d, kPageMail, kPageNewMail, "New mail");
         AddTreeNode(d, kPageMail, kPageConnection, "Connection");
-        AddTreeNode(d, "settings", kPageReading, "Reading");
+        AddTreeNode(d, "settings", kPageReading, "Reading", "section-reading");
         AddTreeNode(d, kPageReading, kPageLayout, "Layout");
         AddTreeNode(d, kPageReading, kPageMessages, "Messages");
         AddTreeNode(d, kPageReading, kPageWaiting, "Waiting for reply");
-        AddTreeNode(d, "settings", kPagePrivacy, "Privacy");
+        AddTreeNode(d, kPageReading, kPageAttachments, "Attachments");
+        AddTreeNode(d, "settings", kPagePrivacy, "Privacy", "section-privacy");
         AddTreeNode(d, kPagePrivacy, kPageImages, "Images");
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
-        AddTreeNode(d, "settings", kPageDisplay, "Display");
+        AddTreeNode(d, "settings", kPageDisplay, "Display", "section-display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
-        AddTreeNode(d, "settings", kPageWarnings, "Warnings");
+        AddTreeNode(d, "settings", kPageWarnings, "Warnings", "section-warnings");
         AddTreeNode(d, kPageWarnings, kPageScamWarnings, "Spam/scam warnings");
         // The page's title is "Trusted and blocked senders"; the tree has
         // room for less.
@@ -1303,6 +1361,7 @@ namespace {
         AddPage(d, kPageLayout, BuildLayoutPage(d));
         AddPage(d, kPageMessages, BuildMessagesPage(d));
         AddPage(d, kPageWaiting, BuildWaitingPage(d));
+        AddPage(d, kPageAttachments, BuildAttachmentsPage(d));
         AddPage(d, kPageImages, BuildImagesPage(d));
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
         AddPage(d, kPageLinks, BuildLinksPage(d));

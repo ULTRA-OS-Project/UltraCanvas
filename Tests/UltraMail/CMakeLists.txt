@@ -128,3 +128,22 @@ if(ULTRACANVAS_LIBRARY)
     endif()
     add_test(NAME UltraMailMessagePreview COMMAND UltraMailMessagePreviewTest)
 endif()
+
+# The formatting bar: one row, Font and Size following the cursor, and the
+# Text | Background colour switch, on a real rich text editor. Runs under
+# Xvfb and skips itself without a DISPLAY.
+if(ULTRACANVAS_LIBRARY)
+    add_executable(UltraMailFormatBarTest
+        FormatBarTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailFormatBar.cpp
+    )
+    target_compile_features(UltraMailFormatBarTest PRIVATE cxx_std_20)
+    target_include_directories(UltraMailFormatBarTest PRIVATE
+                               ${ULTRACANVAS_INCLUDE_DIRS}
+                               ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui)
+    target_link_libraries(UltraMailFormatBarTest PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
+    if(TARGET fmt::fmt)
+        target_link_libraries(UltraMailFormatBarTest PRIVATE fmt::fmt)
+    endif()
+    add_test(NAME UltraMailFormatBar COMMAND UltraMailFormatBarTest)
+endif()

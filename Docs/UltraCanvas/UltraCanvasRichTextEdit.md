@@ -260,6 +260,7 @@ editor->ToggleSuperscript();
 editor->SetFontFamily("Georgia");
 editor->SetFontSize(14.0f);
 editor->SetTextColor("#CC0000");
+editor->SetHighlightColor("#FFF59D");  // the background behind the text; "" removes it
 editor->SetLink("https://example.com");
 editor->ClearFormatting();
 
