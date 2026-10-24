@@ -50,6 +50,9 @@ TEST(catalog_round_trips_through_json) {
     REQUIRE_EQ(video->ageRating, std::string("3"));
     REQUIRE(video->openSource && !video->requiresAccount);
     REQUIRE_EQ(video->tags.size(), size_t(2));
+    REQUIRE_EQ(video->sourceLanguage, std::string("de"));
+    REQUIRE(video->machineTranslated == std::vector<std::string>{"en"});
+    REQUIRE(c.FindApp("org.ultraos.linuxtool")->sourceLanguage.empty());
     const Component* intel = c.FindApp("org.ultraos.intelonly");
     REQUIRE(intel->visibility == Visibility::Unlisted);
     REQUIRE(intel->lifecycle == Lifecycle::Deprecated);
@@ -96,6 +99,9 @@ TEST(the_store_refuses_what_it_cannot_rely_on) {
     refuse(R"({"schema": 1, "sequence": 1, "apps": [{"id": "org.x.a", "releases": [{"version": "1", "packages": [
               {"os": "linux", "arch": "x86_64", "format": "zip", "url": "https://x/y", "sha256": "abc"}]}]}]})",
            "a short sha256");
+    refuse(R"({"schema": 1, "sequence": 1, "apps": [{"id": "org.x.a", "releases": [{"version": "1", "packages": [
+              {"os": "linux", "arch": "x86_64", "format": "zip", "url": "https://x/y", "sha256": ")" + std::string(64, 'z') + R"("}]}]}]})",
+           "a sha256 that is not hex");
     refuse(R"({"schema": 1, "sequence": 1, "apps": [{"id": "org.x.a", "releases": [{"version": "1", "packages": [
               {"os": "amiga", "arch": "x86_64", "format": "zip", "url": "https://x/y", "sha256": ")" + Hash('a') + R"("}]}]}]})",
            "an unknown os");

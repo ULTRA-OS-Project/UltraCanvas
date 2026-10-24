@@ -14,7 +14,9 @@
 
 namespace ultrastore_test {
 
-inline std::string Hash(char fill) { return std::string(64, fill); }
+// A 64-digit hash from one letter: the letter's position in the alphabet as a
+// hex digit, so 'a'..'p' give sixteen distinct valid hashes.
+inline std::string Hash(char fill) { return std::string(64, "0123456789abcdef"[(fill - 'a') & 15]); }
 
 inline UltraStore::Package Pkg(UltraStore::OS os, UltraStore::Arch arch, const std::string& format,
                                const std::string& name, uint64_t size, char hash,
@@ -46,7 +48,7 @@ inline UltraStore::Catalog FixtureCatalog() {
     runtime.id = "org.ultraos.runtime";
     runtime.name = "UltraCanvas runtime";
     runtime.summary.byLanguage["en"] = "The shared libraries every app runs on";
-    for (const char* v : {"0.9.400", "0.9.410"}) {
+    for (const char* v : {"0.9.410", "0.9.400"}) {   // newest first, as after parsing
         Release r;
         r.version = v;
         r.channel = "stable";
@@ -87,6 +89,8 @@ inline UltraStore::Catalog FixtureCatalog() {
     video.name = "UltraVideo";
     video.summary.byLanguage["en"] = "The video editor";
     video.summary.byLanguage["de"] = "Der Videoeditor";
+    video.sourceLanguage = "de";
+    video.machineTranslated = {"en"};
     video.categories = {"video"};
     video.tags = {"editor", "nle"};
     video.pricing.model = PricingModel::OneTime;
@@ -109,13 +113,12 @@ inline UltraStore::Catalog FixtureCatalog() {
             Pkg(OS::Windows, Arch::X86_64, "zip", "ultravideo-0.2.1-windows-x86_64.zip", 2500000, 'j', {}, "UltraVideo.exe"),
             Pkg(OS::MacOS, Arch::Universal, "zip", "ultravideo-0.2.1-macos-universal.zip", 6000000, 'k', {}, "UltraVideo.app"),
         };
-        video.releases.push_back(r);
         Release beta;
         beta.version = "0.3.0-beta.1";
         beta.channel = "beta";
         beta.depends = {{"org.ultraos.runtime", "0.9.410"}, {"org.ultraos.lib.videofx", "0.12.0"}};
         beta.packages = {Pkg(OS::Linux, Arch::X86_64, "7z", "ultravideo-0.3.0-beta.1-linux-x86_64.7z", 3100000, 'l', {}, "UltraVideo")};
-        video.releases.push_back(beta);
+        video.releases = {beta, r};   // newest first, as after parsing
     }
     c.apps.push_back(video);
 

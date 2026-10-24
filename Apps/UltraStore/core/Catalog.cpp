@@ -156,6 +156,8 @@ Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, c
     c.icon = v.Get("icon").GetString();
     c.summary = ReadText(v.Get("summary"));
     c.description = ReadText(v.Get("description"));
+    c.sourceLanguage = v.Get("source_language").GetString();
+    c.machineTranslated = ReadStrings(v.Get("machine_translated"));
     c.categories = ReadStrings(v.Get("categories"));
     c.screenshots = ReadStrings(v.Get("screenshots"));
     c.tags = ReadStrings(v.Get("tags"));
@@ -259,6 +261,8 @@ JSONValue WriteComponent(const Component& c) {
     o.Set("name", c.name);
     if (!c.summary.Empty()) o.Set("summary", WriteText(c.summary));
     if (!c.description.Empty()) o.Set("description", WriteText(c.description));
+    if (!c.sourceLanguage.empty()) o.Set("source_language", c.sourceLanguage);
+    if (!c.machineTranslated.empty()) o.Set("machine_translated", WriteStrings(c.machineTranslated));
     if (!c.categories.empty()) o.Set("categories", WriteStrings(c.categories));
     if (!c.license.empty()) o.Set("license", c.license);
     if (!c.homepage.empty()) o.Set("homepage", c.homepage);

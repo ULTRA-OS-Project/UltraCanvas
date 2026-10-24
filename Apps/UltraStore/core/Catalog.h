@@ -104,6 +104,11 @@ struct Component {
     std::string homepage;
     std::string icon;                     // relative to the catalog URL
     LocalizedText summary, description;
+    // The language the creator wrote the texts in ("de"), and the languages
+    // the server's local UltraAI translated them into: the store shows those
+    // with an "automatically translated" note and offers the original.
+    std::string sourceLanguage;
+    std::vector<std::string> machineTranslated;
     std::vector<std::string> categories;
     std::vector<std::string> screenshots; // relative to the catalog URL
     // The admin backend's settings beyond the builds (apps; components keep

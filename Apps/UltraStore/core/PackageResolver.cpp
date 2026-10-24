@@ -154,6 +154,13 @@ Result<InstallPlan> PackageResolver::Plan(const Catalog& catalog, const Componen
             return true;
         };
 
+    // The app's own package first: "not available for your system" is the
+    // answer when the app has no build for the machine, whatever its
+    // dependencies have.
+    if (!ResolveRelease(release, platform).Available()) {
+        return Result<InstallPlan>::Failure(ErrorCode::NotAvailable, app.name + " is not available for your system",
+                                            "available for " + SupportedSystems(release));
+    }
     if (!visit(app, release, true)) {
         return Result<InstallPlan>::Failure(failureCode, failure);
     }

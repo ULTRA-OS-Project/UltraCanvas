@@ -39,7 +39,7 @@ TEST(every_platform_row_gets_its_package) {
         REQUIRE(r.release != nullptr);   // the newest release, for the systems it supports
     }
     REQUIRE_EQ(PackageResolver::SupportedSystems(video->releases[1]),
-               std::string("linuxPc/x86_64, macos/universal, windows/x86_64"));
+               std::string("linux/x86_64, macos/universal, windows/x86_64"));
 }
 
 TEST(an_x86_64_package_runs_under_rosetta_only_with_rosetta) {

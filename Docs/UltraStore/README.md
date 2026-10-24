@@ -21,6 +21,7 @@ The brief's open questions, answered on 2026-10-24:
 | Where does the code live? | `Apps/UltraStore`, with `ultrastore_core` as a static library in v1. |
 | Signature and hash primitives | Ed25519 added to UltraCrypt 0.2.0 (framework 0.9.272); the store target **requires** libsodium and SQLite and stops the configure without them. |
 | Management | **UltraStore admin backend**, a local application (next pull requests, `Apps/UltraStoreAdmin`), adding and removing apps with every setting the catalog carries: see *The admin backend*. |
+| Translations | Creators supply at least one language; the admin backend translates with the server's local UltraAI into every official language and marks what it translated (`source_language`, `machine_translated`); ULTRA OS apps' own localisation folders get the same. |
 | Signing key | Generated and kept **in the admin backend's database**, encrypted; the public key reaches the store through the repository and the signed catalog: see *Keys*. |
 | UltraInstaller | **To be created.** v1 fixes the seam (`PackageInstaller.h`: `IPackageInstaller`, `IInstallRegistry`, the registry row) and the on-disk layout; the implementation is the second pull request. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
@@ -149,13 +150,27 @@ Per app, what the admin backend offers and the catalog carries:
 | Source | `open_source`, `source_url` | shown as a badge with the link |
 | Links | `homepage`, `support_url`, `privacy_url` | |
 | Search | `categories`, `tags` | categories from the fixed list the store's sidebar shows; tags free-form |
-| Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback |
+| Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback; `source_language` names what the creator wrote, `machine_translated` the languages the server's UltraAI added (see *Translations*) |
 | Media | `icon`, `screenshots` | relative to the catalog URL, served from the same place |
 
 Pricing is **shown** by the store from 0.1.0 on; the purchase itself (a
 payment provider, the licence that the app checks, the receipt) is a later
 milestone with its own design, and until then the store installs the free
 apps and the trial of a paid one, and sends *Buy* to the publisher's page.
+
+### Translations
+
+The creator writes the texts in at least one language, which the catalog
+records as `source_language`. The admin backend translates them into every
+official language of the countries the store serves with the **local UltraAI
+on the server** at publish time, lists those under `machine_translated`,
+and the store shows such a text with an *automatically translated* note and
+the original a click away; a translation the creator later supplies replaces
+the machine's and leaves the list. For ULTRA OS apps the same service reads
+the app's own localisation folder, so the app's strings get the same
+treatment as its description. The store's own interface strings are not in
+the catalog; they follow the framework's translation facility when it
+exists (none does today) and a local table in the app until then.
 
 ### Verifier (`Verifier`)
 
