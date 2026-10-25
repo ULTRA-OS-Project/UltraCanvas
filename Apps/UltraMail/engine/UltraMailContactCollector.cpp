@@ -1,4 +1,5 @@
 // Apps/UltraMail/engine/UltraMailContactCollector.cpp
+// Version: 0.6.0 - incoming mail never adds a no-reply address; CollectedNoReply
 // Version: 0.5.0 - a service only with its domain proven; NeverWrittenTo
 // Version: 0.4.0 - incoming mail adds only known services, and never a
 //                  blocked or forgotten address; Collect reads "Name <address>"
@@ -30,6 +31,10 @@ std::string Lower(const std::string& s) {
 
 namespace {
 
+// What every contact ContactForService files says in its notes, between the
+// kind of service and its name - how CollectedNoReply knows the collector's.
+const char* const kCollectedNote = " — collected automatically from mail from ";
+
 // Shared by both entry points: the contact, or nothing when that address is
 // already in the book.
 bool SaveIfNew(ContactStore& store, const Contact& contact, const std::string& email) {
@@ -51,23 +56,25 @@ Contact ContactForService(const SenderBrand& brand, const std::string& name,
     Contact c;
     ContactEmail e; e.address = email; e.primary = true; e.label = "work";
     // The service's own name is the more useful label for a contact whose
-    // display name is a no-reply robot ("Kickstarter" beats "notifications").
+    // display name is a robot's ("Kickstarter" beats "notifications").
     c.displayName  = name.empty() ? brand.name : name;
     c.organization = brand.name;
     c.section      = ContactSection::Services;
-    c.notes        = DisplayName(brand.category) +
-                     " — collected automatically from mail from " + brand.name + ".";
+    c.notes        = DisplayName(brand.category) + kCollectedNote + brand.name + ".";
     c.emails.push_back(e);
     return c;
 }
 
 // The registry's entry for a sender incoming mail may add, or null: only a
-// known service whose domain the receiving server proved, and not one the
-// user blocked. (Forgotten addresses are checked by the callers, who have the
-// list.)
+// known service whose domain the receiving server proved, not one the user
+// blocked, and not a no-reply address - nobody writes to it, and a service
+// that sends from "no-reply-<code>@..." with a new code in every message
+// filled Services with a contact per message. (Forgotten addresses are
+// checked by the callers, who have the list.)
 const SenderBrand* CollectableService(const std::string& email,
                                       const std::string& verifiedDomain) {
-    if (email.empty() || !DomainProven(email, verifiedDomain)) return nullptr;
+    if (email.empty() || IsNoReplyAddress(email)) return nullptr;
+    if (!DomainProven(email, verifiedDomain)) return nullptr;
     const SenderBrand* brand = BrandForAddress(email);
     if (!brand) return nullptr;
     if (!GetSenderLists().BlockedBy(email).empty()) return nullptr;
@@ -165,6 +172,18 @@ std::vector<Contact> ContactCollector::NeverWrittenTo(
         if (c.emails.size() != 1 || !c.phones.empty()) continue;
         if (!c.organization.empty() || !c.notes.empty()) continue;
         if (writtenTo.count(Lower(c.emails.front().address))) continue;
+        out.push_back(c);
+    }
+    return out;
+}
+
+std::vector<Contact> ContactCollector::CollectedNoReply(const std::vector<Contact>& contacts) {
+    std::vector<Contact> out;
+    for (const Contact& c : contacts) {
+        if (c.section != ContactSection::Services || !c.group.empty()) continue;
+        if (c.emails.size() != 1 || !c.phones.empty()) continue;
+        if (!IsNoReplyAddress(c.emails.front().address)) continue;
+        if (c.notes.find(kCollectedNote) == std::string::npos) continue;
         out.push_back(c);
     }
     return out;

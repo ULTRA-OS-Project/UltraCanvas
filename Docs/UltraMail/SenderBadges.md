@@ -221,9 +221,13 @@ used twice:
   inbox - would otherwise read as someone in the address book and lose the
   "New sender" badge. People join the address book when the user writes to
   them (`ContactCollector::Collect`). A personal mailbox address never counts
-  as a service however large its provider, and a blocked sender or an address
-  the user deleted from the address book (`ContactStore::Forget`) is never
-  collected.
+  as a service however large its provider, and a blocked sender, an address
+  the user deleted from the address book (`ContactStore::Forget`) and a
+  no-reply address (`IsNoReplyAddress`) are never collected - some services
+  send from a new `no-reply-<code>@...` address in every message, which
+  filed a contact per message. Services' right-click menu, *Remove no-reply
+  contacts…*, clears what the older rule filed
+  (`ContactCollector::CollectedNoReply`).
 
 One rule guards it: **an existing contact is never modified or reclassified.**
 An address the user has filed under Friends themselves stays there, whatever
