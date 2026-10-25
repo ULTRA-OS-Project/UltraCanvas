@@ -2470,6 +2470,26 @@ set_source_files_properties(
         COMPILE_DEFINITIONS ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
 )
 
+# Every Windows program that links the shared core checks, before main(), that
+# the libUltraCanvas.dll it loaded is the version it was built for
+# (OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp): a folder of
+# programs from different builds shares one DLL, and a program built for
+# another version crashed at its first call instead of saying so. The version
+# goes into a three-line wrapper written here - rewritten only when the version
+# changes, so a changelog edit recompiles that file in each program and
+# nothing else - which every executable linking the core compiles (an
+# INTERFACE source, for executables only: a DLL may not show a message box
+# from its initialisers). In-tree builds only; the SDK's consumers build
+# their own way.
+if(WIN32 AND ULTRACANVAS_BUILD_SHARED)
+    set(_uc_core_dll_name "${CMAKE_SHARED_LIBRARY_PREFIX}UltraCanvas${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    set(_uc_library_check "${CMAKE_BINARY_DIR}/generated/UltraCanvasLibraryCheck.cpp")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/AppEntry/UltraCanvasLibraryCheck.cpp.in"
+                   "${_uc_library_check}" @ONLY)
+    target_sources(${ULTRACANVAS_LIB_NAME} INTERFACE
+        "$<BUILD_INTERFACE:$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_uc_library_check}>>")
+endif()
+
 # ULTRACANVAS_VERSION is deliberately NOT here. It changes every time anyone
 # adds a changelog entry, and as a PUBLIC definition on this library it sat on
 # the compile command line of 621 of the build's 1136 objects - every source in

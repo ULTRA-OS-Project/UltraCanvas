@@ -596,6 +596,43 @@ certificate from a trusted CA. `package-win.sh` signs only `Texter.exe` and
 passes `--no-sign`. The PowerShell signing scripts can create only a
 self-signed certificate, which does not help against AV or SmartScreen.
 
+## A crash at start, or "from another build", beside other programs' DLLs
+
+A program is compiled against the framework's headers - the size of every
+class, the place of every member - and runs against the `libUltraCanvas.dll`
+Windows finds first, which is the one beside the `.exe`. A folder that
+collects programs from several packages keeps one DLL for all of them, from
+whichever was copied last. While every function a program names is still in
+that DLL the loader says nothing, and the program crashed at its first call
+whose classes had changed: *"ChatCube crashed: exception 0xC0000005 ...
+ChatCube.exe+0x1463D"*, with nothing that points at the DLL.
+
+Every Windows program that links the shared core now checks before `main()`
+- before its own static objects - that the DLL reports the version it was
+built for (`UltraCanvas_LibraryVersion()`, plain C, so it can be asked
+whatever the classes look like). When it does not, the program says so and
+exits with `0xC0000139`:
+
+```
+ChatCube.exe cannot start: the UltraCanvas library it loaded is from another build.
+
+Loaded: C:\Users\me\Downloads\ULTRA OS Apps\libUltraCanvas.dll (version 0.9.380)
+Needed: version 0.9.402
+```
+
+A DLL from before the check reads *"an older version, which does not report
+its number"*. The cure is the same either way: keep each program with the
+DLLs it was shipped with - unpack every package into a folder of its own - or
+copy the DLLs of the newest package over the folder's. The check is compiled
+into each program from `OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp`
+through a wrapper the build writes (an `INTERFACE` source of the core, for
+executables only), so an application's CMake needs nothing for it; with
+`ULTRACANVAS_NO_ERROR_DIALOG=1` the text goes to stderr instead of a box.
+
+It compares the core library only. The other DLLs of a package - VirtualFS,
+VideoFX, the C++ runtime, cairo and the rest - can mismatch in the same way
+and are not checked; the same cure applies.
+
 ## "Entry point not found" in a Windows DLL
 
 While the application is running - not at start - a box titled with the
@@ -728,7 +765,7 @@ which is why the decimal column looks the way it does.
 | Hex | Decimal | Meaning |
 |---|---|---|
 | `0xC0000135` | -1073741515 | `STATUS_DLL_NOT_FOUND` — a required DLL is missing from the package. |
-| `0xC0000139` | -1073741511 | `STATUS_ENTRYPOINT_NOT_FOUND` — a DLL was found but is the wrong version; usually an older copy earlier on `PATH`. |
+| `0xC0000139` | -1073741511 | `STATUS_ENTRYPOINT_NOT_FOUND` — a DLL was found but is the wrong version; usually an older copy earlier on `PATH`, or beside the `.exe` from another package. Also what a program exits with when `libUltraCanvas.dll` is not the version it was built for (see *A crash at start ... beside other programs' DLLs*). |
 | `0xC0000142` | -1073741502 | `STATUS_DLL_INIT_FAILED` — a DLL loaded but its initialiser failed. |
 | `0xC000007B` | -1073741701 | `STATUS_INVALID_IMAGE_FORMAT` — 32/64-bit mismatch between the EXE and a DLL. |
 | `0xC0000005` | -1073741819 | `ACCESS_VIOLATION` — crash; the log names the faulting module. |
