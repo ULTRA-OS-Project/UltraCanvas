@@ -7,11 +7,14 @@
 // hand-off needs UltraMessage, a separate module the core does not link, and
 // the function defines ULTRACANVAS_SINGLE_INSTANCE_HAVE_ULTRAMESSAGE where
 // the build has it.
+// Version: 1.3.0 - a start that cannot hand over retries the lock while it
+//                  waits: a copy whose window has closed but whose process is
+//                  still ending no longer makes it say "already running"
 // Version: 1.2.0 - the answer goes out from the bus thread, so a busy window
 //                  no longer makes the other start wait and give up
 // Version: 1.1.0 - MakeOpenRequest / RequestPaths / ListenOpen
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSingleInstance.h"
@@ -80,11 +83,19 @@ namespace UltraCanvas {
 
     } // namespace
 
-    bool UltraCanvasSingleInstance::HandOff(const JSONValue& request) {
+    UltraCanvasSingleInstance::Start UltraCanvasSingleInstance::HandOff(const JSONValue& request,
+                                                                        const std::string& lockPath) {
         const JSONValue body = request.IsObject() ? request : JSONValue::MakeObject();
         bool firstTry = true;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(kStartingGraceMs);
         do {
+            // The copy holding the lock may be on its way out - its window
+            // closed, its process still ending - and no longer answers. Once
+            // it is gone the lock is free, and this start is the application.
+            if (!firstTry && lock_.Acquire(lockPath) == InstanceLockResult::Acquired) {
+                debugOutput << displayName_ << ": the running copy has ended; starting" << std::endl;
+                return Start::First;
+            }
             // The running copy hosts the bus once it listens, so this start
             // never hosts one of its own.
             if (endpoint_ == 0) {
@@ -100,14 +111,15 @@ namespace UltraCanvas {
                         if (instance == self.instanceId) continue;
                         UltraMsgMessage reply;
                         if (UltraMsg_Request(endpoint_, instance, ShowTopic(appId_), body, kAnswerTimeoutMs, reply))
-                            return true;
+                            return Start::HandedOff;
                     }
                 }
             }
             firstTry = false;
             std::this_thread::sleep_for(std::chrono::milliseconds(kRetryPauseMs));
         } while (std::chrono::steady_clock::now() < deadline);
-        return false;
+        if (lock_.Acquire(lockPath) == InstanceLockResult::Acquired) return Start::First;
+        return Start::AlreadyRunning;
     }
 
     void UltraCanvasSingleInstance::Listen(Handler handler) {
@@ -154,7 +166,11 @@ namespace UltraCanvas {
         live_.reset();
     }
 #else
-    bool UltraCanvasSingleInstance::HandOff(const JSONValue&) { return false; }
+    UltraCanvasSingleInstance::Start UltraCanvasSingleInstance::HandOff(const JSONValue&,
+                                                                        const std::string& lockPath) {
+        // Nothing to hand to: the lock alone decides, once more.
+        return lock_.Acquire(lockPath) == InstanceLockResult::Acquired ? Start::First : Start::AlreadyRunning;
+    }
     void UltraCanvasSingleInstance::Listen(Handler) {}
     void UltraCanvasSingleInstance::Close() {}
 #endif
@@ -168,7 +184,8 @@ namespace UltraCanvas {
             directory = PathToUtf8(settings / "instances");
         }
         std::string error;
-        switch (lock_.Acquire(directory + "/" + appId_ + ".lock", &error)) {
+        const std::string lockPath = directory + "/" + appId_ + ".lock";
+        switch (lock_.Acquire(lockPath, &error)) {
             case InstanceLockResult::Acquired:
             case InstanceLockResult::Unsupported:
                 return Start::First;
@@ -181,9 +198,9 @@ namespace UltraCanvas {
                 break;
         }
         debugOutput << displayName_ << " is already running; asking it to come forward" << std::endl;
-        const bool handedOff = HandOff(request);
+        const Start start = HandOff(request, lockPath);
         Close();
-        return handedOff ? Start::HandedOff : Start::AlreadyRunning;
+        return start;
     }
 
     void UltraCanvasSingleInstance::ListenRaise() {

@@ -93,6 +93,17 @@ every later one connects to it. When the hosting process exits, the next
 `Connect` elects a new host (a lock file beside the socket decides; no two
 processes ever both win). On ULTRA OS the shell will host it permanently.
 
+At exit the module stops what the process still has open - its endpoints, and
+the broker with its adapters when it hosts one - unless Windows is already
+ending the process. In the shared core that clean-up is a DLL's at-exit
+handler, which Windows runs at `DLL_PROCESS_DETACH`, after every other thread
+has been killed wherever it was: locking, joining or leaving a COM apartment
+there can wait for ever, and a host that did kept running with no window
+(UltraFiler then held its single-instance lock, so the next start said it was
+already running). So the handler does nothing then; the system closes the
+pipe and the journal file with the process. A program that wants the broker's
+clients told first calls `UltraMsg_Shutdown()` itself before `main` returns.
+
 ## 3. The API
 
 Everything is a free function with the `UltraMsg_` prefix; blocking calls

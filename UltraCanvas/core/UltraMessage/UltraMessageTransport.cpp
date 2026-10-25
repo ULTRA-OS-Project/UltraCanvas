@@ -2,6 +2,7 @@
 // Local stream transport: Unix domain sockets (Linux, macOS, BSD) and Windows
 // named pipes behind one Connection / Listener pair. Every blocking wait also
 // watches a private wake-up object so Close() from another thread returns it.
+// Version: 0.1.1 - ProcessIsTerminating
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -596,6 +597,21 @@ ConnectionPtr ConnectToBus(const std::string& busPath, int timeoutMs, std::strin
 }
 
 #endif
+
+bool ProcessIsTerminating() {
+#ifdef _WIN32
+    using ShutdownInProgress = BOOLEAN(WINAPI*)();
+    static const ShutdownInProgress query = [] {
+        HMODULE ntdll = ::GetModuleHandleW(L"ntdll.dll");
+        return ntdll ? reinterpret_cast<ShutdownInProgress>(
+                               reinterpret_cast<void (*)()>(::GetProcAddress(ntdll, "RtlDllShutdownInProgress")))
+                     : nullptr;
+    }();
+    return query && query();
+#else
+    return false;
+#endif
+}
 
 // ===========================================================================
 // Shared: frames over the stream

@@ -10,6 +10,7 @@
 // asked of Windows by the poster's process, which the broker saw on the
 // connection - and nothing is written under HKEY_CURRENT_USER, where a
 // packaged program's writes stay in the package anyway.
+// Version: 0.3.1 - the apartment is left only on the thread that entered it
 // Version: 0.3.0 - from an MSIX package: under the poster's package
 //                 AppUserModelID, nothing registered
 // Version: 0.2.0 - the activations carry the notification's id and launch
@@ -163,7 +164,8 @@ struct ToastState {
 class WinRTToasts final : public WindowsToasts {
 public:
     WinRTToasts(ResponseHandler onResponse, bool ownsApartment)
-        : state_(std::make_shared<ToastState>()), ownsApartment_(ownsApartment) {
+        : state_(std::make_shared<ToastState>()), ownsApartment_(ownsApartment),
+          apartmentThread_(GetCurrentThreadId()) {
         state_->onResponse = std::move(onResponse);
     }
 
@@ -175,7 +177,10 @@ public:
             state_->tagById.clear();
             state_->order.clear();
         }
-        if (ownsApartment_) winrt::uninit_apartment();
+        // Only on the thread that entered it: one destroyed anywhere else -
+        // at process exit, after Windows killed the presenter's thread - would
+        // take down that thread's apartment instead.
+        if (ownsApartment_ && GetCurrentThreadId() == apartmentThread_) winrt::uninit_apartment();
     }
 
     bool Show(const PresentedContent& content) override {
@@ -316,6 +321,7 @@ private:
     std::shared_ptr<ToastState> state_;
     std::set<std::string> registered_;   // the IDs registered by this process
     bool ownsApartment_ = false;
+    DWORD apartmentThread_ = 0;   // the thread init_apartment ran on
 };
 
 } // namespace
