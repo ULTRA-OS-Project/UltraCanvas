@@ -100362,15 +100362,6 @@ clean, and each of those is a test in
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
 
 ==============================================================================
-FILE: Docs/UltraMail/changelog.d/copy-link-pictures.md
-==============================================================================
-
-- **Copy link over a linked picture.** A right-click on a picture that is a
-  link - a newsletter's "Buy now" or "Read more" button - offers *Copy link*
-  as a text link does, above *Copy* and *Select All*, and no longer opens the
-  link in the browser. `UltraMailMessagePreviewTest` checks it.
-
-==============================================================================
 FILE: Docs/UltraVideo/README.md
 ==============================================================================
 
