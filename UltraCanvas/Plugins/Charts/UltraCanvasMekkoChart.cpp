@@ -1,7 +1,8 @@
 // Plugins/Charts/UltraCanvasMekkoChart.cpp
 // Mekko (Marimekko / mosaic) chart element implementation
+// Version: 1.1.1 - a segment's label is centred on its capitals, not its line box
 // Version: 1.1.0
-// Last Modified: 2026-08-20
+// Last Modified: 2026-10-25
 // V1.1.0: legend: migrated to the shared ChartLegend component
 // Author: UltraCanvas Framework
 
@@ -541,9 +542,11 @@ namespace UltraCanvas {
             }
             ctx->SetTextPaint(textColor);
 
+            // Centred on its capitals, not its line box, which sits high or
+            // low with the font.
             ctx->DrawText(text, {
                     segment.rect.x + (segment.rect.width - textSize.width) / 2.0,
-                    segment.rect.y + (segment.rect.height - textSize.height) / 2.0
+                    static_cast<double>(ctx->TextTopCentredOnCaps(segment.rect))
             });
         }
     }

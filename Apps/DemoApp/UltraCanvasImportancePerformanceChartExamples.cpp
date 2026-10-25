@@ -1,8 +1,9 @@
 // Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
 // Importance-performance chart examples: Slack's zones, smooth and stepped,
 // over the service factors of an invented parcel carrier
+// Version: 1.0.1 - the subtitle fits its line
 // Version: 1.0.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -66,8 +67,9 @@ namespace UltraCanvas {
         headerContainer->AddChild(mainTitle);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("ipcSubtitle", 30, 52, 1080, 30);
-        subtitle->SetText("Slack's matrix: each factor of a service, by how much customers care about it and "
-                          "how it compares with competitors - the zone it lands in names the action");
+        // One line in the header's 1080 px (the longer sentence needed 1203).
+        subtitle->SetText("Slack's matrix: each service factor by its importance to customers and its "
+                          "performance against competitors - its zone names the action");
         subtitle->SetFontSize(13);
         subtitle->SetAlignment(TextAlignment::Left);
         subtitle->SetTextColor(Color(108, 117, 125, 255));
