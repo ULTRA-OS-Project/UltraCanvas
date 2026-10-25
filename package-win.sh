@@ -439,14 +439,19 @@ echo "  done"
 # from the package stopped at start with "libVideoFX.dll was not found". Here
 # that fails the build with the importer and the DLL named. One objdump per
 # file and one awk at the end: a grep per import costs minutes under MSYS2.
+# A DLL beside its importer counts as packaged too: tdjson.dll imports the
+# OpenSSL, zlib and MSVC runtime DLLs shipped next to it in
+# Plugins/UltraIM/tdlib under their hashed names, and the Telegram provider
+# puts that folder on the search path when it loads them.
 echo ""
 echo "Checking that every DLL of this build that the package imports is in it..."
 UNPACKAGED=$(
     find "$DIST_DIR" \( -iname '*.exe' -o -iname '*.dll' \) | while IFS= read -r bin; do
         bin_name=${bin##*/}
+        bin_dir=${bin%/*}
         "$OBJDUMP" -p "$bin" 2>/dev/null | sed -n 's/.*DLL Name:[[:space:]]*//p' | tr -d '\r' \
             | while IFS= read -r name; do
-                [ -f "$DIST_DIR/$name" ] || printf '%s\t%s\n' "$bin_name" "$name"
+                [ -f "$DIST_DIR/$name" ] || [ -f "$bin_dir/$name" ] || printf '%s\t%s\n' "$bin_name" "$name"
             done
     done | awk -F'\t' 'FNR == NR { built[tolower($0)] = 1; next }
                        built[tolower($2)] { print "  " $1 " imports " $2 }' \
