@@ -861,6 +861,10 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasRatingExamples.cpp
             Apps/DemoApp/UltraCanvasStepperExamples.cpp
             Apps/DemoApp/UltraCanvasChipExamples.cpp
+            Apps/DemoApp/UltraCanvasChipGroupExamples.cpp
+            Apps/DemoApp/UltraCanvasCardExamples.cpp
+            Apps/DemoApp/UltraCanvasCollapsiblePanelExamples.cpp
+            Apps/DemoApp/UltraCanvasSidebarNavigationExamples.cpp
             Apps/DemoApp/UltraCanvasMessageCenterExamples.cpp
             Apps/DemoApp/UltraCanvasBadgeExamples.cpp
             Apps/DemoApp/UltraCanvasBusyIndicatorExamples.cpp
@@ -2288,6 +2292,19 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME UIElementBoxSizingTest COMMAND UIElementBoxSizingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The chip group, the card, the collapsible panel and the sidebar
+    # navigation: selection rules, structure, folding and geometry, laid out
+    # by the CSSLayout engine and fed events, no window.
+    add_executable(UIWidgetsTest Tests/UIWidgetsTest.cpp)
+    target_include_directories(UIWidgetsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIRS})
+    target_link_libraries(UIWidgetsTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(UIWidgetsTest PRIVATE cxx_std_20)
+    set_target_properties(UIWidgetsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UIWidgetsTest COMMAND UIWidgetsTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraCanvasJSON unit tests (DataFormats section). Compiles only the JSON
