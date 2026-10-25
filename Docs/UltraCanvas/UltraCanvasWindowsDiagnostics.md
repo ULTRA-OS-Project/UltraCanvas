@@ -607,7 +607,7 @@ that DLL the loader says nothing, and the program crashed at its first call
 whose classes had changed: *"ChatCube crashed: exception 0xC0000005 ...
 ChatCube.exe+0x1463D"*, with nothing that points at the DLL.
 
-Every Windows program that links the shared core now checks before `main()`
+Every Windows program that links the framework now checks before `main()`
 - before its own static objects - that the DLL reports the version it was
 built for (`UltraCanvas_LibraryVersion()`, plain C, so it can be asked
 whatever the classes look like). When it does not, the program says so and
@@ -629,9 +629,27 @@ through a wrapper the build writes (an `INTERFACE` source of the core, for
 executables only), so an application's CMake needs nothing for it; with
 `ULTRACANVAS_NO_ERROR_DIALOG=1` the text goes to stderr instead of a box.
 
-It compares the core library only. The other DLLs of a package - VirtualFS,
-VideoFX, the C++ runtime, cairo and the rest - can mismatch in the same way
-and are not checked; the same cure applies.
+The same check covers every framework DLL that says which build it is:
+`libVideoFX.dll`, and VirtualFS when it is built as a DLL of its own (by
+default it is inside `libUltraCanvas.dll`). Their versions are not bumped for
+every change, so they answer a **build id** instead - the version and a hash of
+their public headers, `0.16.0+da8e16e4d19c` - which changes whenever a class a
+program compiles against does, and not with line endings. A framework library
+added as a DLL gets the same with one call after its `add_library`:
+
+```cmake
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasLibraryBuildId.cmake" OPTIONAL)
+if(COMMAND ultracanvas_library_build_id)
+    ultracanvas_library_build_id(MyLib "MyLib" "${PROJECT_VERSION}"
+                                 "${CMAKE_CURRENT_SOURCE_DIR}/include" MyLib_LibraryBuild)
+endif()
+```
+
+The hash is taken when CMake configures: a header edited without a reconfigure
+keeps the old id on both sides, so nothing is refused that should not be, and
+a packaging build always configures afresh. Third-party DLLs - the C++
+runtime, cairo, FFmpeg and the rest - are not checked; the same cure applies to
+them.
 
 ## "Entry point not found" in a Windows DLL
 

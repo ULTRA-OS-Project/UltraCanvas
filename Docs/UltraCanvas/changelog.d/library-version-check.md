@@ -11,3 +11,10 @@
   check is an `INTERFACE` source of the core for executables only; the version
   sits in a three-line wrapper the build writes, so a changelog edit
   recompiles that file in each program and nothing else.
+- **`libVideoFX.dll` is checked too**, and VirtualFS when it is built as a
+  DLL. Their versions are not bumped for every change, so they report a build
+  id - the version and a hash of their public headers, line endings
+  normalised - through a C function the new
+  `ultracanvas_library_build_id()` (`cmake/UltraCanvasLibraryBuildId.cmake`)
+  compiles in; the program-side check walks every framework DLL it has
+  loaded and names the one from another build.

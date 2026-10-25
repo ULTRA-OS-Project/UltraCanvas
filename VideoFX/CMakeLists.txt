@@ -166,6 +166,15 @@ if(VIDEOFX_BUILD_SHARED)
     endif()
 endif()
 
+# Which build this DLL is (VideoFX_LibraryBuild), so a program refuses a
+# libVideoFX.dll from another build at start instead of crashing on it
+# (cmake/UltraCanvasLibraryBuildId.cmake). Inside the UltraCanvas tree only.
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasLibraryBuildId.cmake" OPTIONAL)
+if(COMMAND ultracanvas_library_build_id)
+    ultracanvas_library_build_id(VideoFX "VideoFX" "${PROJECT_VERSION}"
+                                 "${CMAKE_CURRENT_SOURCE_DIR}/include" VideoFX_LibraryBuild)
+endif()
+
 find_package(Threads REQUIRED)
 target_link_libraries(VideoFX PUBLIC Threads::Threads)
 if(VIDEOFX_FFMPEG_FOUND)

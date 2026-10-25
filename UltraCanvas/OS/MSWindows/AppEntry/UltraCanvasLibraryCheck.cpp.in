@@ -1,5 +1,0 @@
-// Written by UltraCanvas/CMakeLists.txt; compiled into every Windows program
-// that links the shared core. See UltraCanvasWindowsLibraryCheck.cpp.
-#define ULTRACANVAS_EXPECTED_VERSION "@ULTRACANVAS_VERSION@"
-#define ULTRACANVAS_CORE_DLL_NAME L"@_uc_core_dll_name@"
-#include "@CMAKE_CURRENT_SOURCE_DIR@/OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp"
