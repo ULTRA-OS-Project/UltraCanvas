@@ -1746,6 +1746,25 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^SmartHomeWidgets$"
 
+      # The demo's layout audit (Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp)
+      # opens every page and fails on a label or button narrower than its
+      # text, or content cut off with no scrollbar to reach it. The second run
+      # makes every text ~40% longer first, as a translation is, so a page
+      # that only just fits in English fails here rather than in German. The
+      # log keeps the failing pages and the count, not a line per page that
+      # passed. Run it locally the same way: UltraCanvasDemo --audit-layout
+      # [--pseudo-loc] [--audit-page <id>].
+      - name: Demo layout audit on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        shell: bash
+        run: |
+          for form in "" "--pseudo-loc"; do
+            echo "UltraCanvasDemo --audit-layout $form"
+            timeout 600 xvfb-run -a -s "-screen 0 1600x1000x24" \
+              ./UltraCanvasDemo --audit-layout $form | grep -v '^\[ OK \]'
+          done
+
       # ULTRAFIBU_TEST_PG_REQUIRED above turns a skip into a failure, so ctest
       # already covers "it ran". What it cannot cover is the test not existing
       # at all, which is what happens when libpq is missing at configure time.
