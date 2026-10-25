@@ -1,3 +1,15 @@
+#### 2026-10-25 *1.93.0*
+- **Starting UltraFiler after closing it said "UltraFiler is already
+  running"** on Windows, and the old copy - no window, still in Task Manager -
+  had to be ended by hand. UltraFiler hosts the per-user message bus when it is
+  started first, and the bus's clean-up at exit could wait for ever inside
+  Windows' process shutdown, holding the lock that lets only one UltraFiler
+  run; that clean-up no longer runs there. Whatever else keeps a closed
+  UltraFiler from ending, the framework's exit watchdog now ends it ten
+  seconds after its window closed and leaves `UltraFiler-exit-*.txt` in
+  `%LOCALAPPDATA%\UltraCanvas\CrashDumps` naming the step it was stuck in, and
+  a start made meanwhile waits for it and opens.
+
 #### 2026-10-24 *1.92.0*
 - **The status bar and the info bar agree on a selection's size.** The status
   bar said `103.59 KB` where the info bar and the preview said `103.6 KB`; it

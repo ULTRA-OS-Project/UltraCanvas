@@ -1,3 +1,84 @@
+#### 2026-10-25 *0.9.411*
+- **A Windows crash report names the functions of the application's own
+  `.exe`.** The function beside each frame came from the module's export
+  table, and an application's `.exe` exports nothing, so its frames were bare
+  offsets: ArtCreator's crash on picking the Shape Editor read
+  `ArtCreator.exe+0x60B98` five times over and could not be traced without
+  the matching binary. The reporter now also reads the COFF symbol table that
+  a MinGW link (GNU ld or lld) keeps in every unstripped `.exe` and `.dll`,
+  from the module's file and only once the file's header shows it is still the
+  loaded module, and takes the nearer of the two names. That names every
+  function of an `.exe` and, in any module, code with internal linkage the
+  export table never had: lambdas (`ArtCreatorWindow::BuildToolPalette::{lambda}`),
+  classes in an anonymous namespace (`(anonymous namespace)::ShapeEditorTool::Load`),
+  `static` functions. A stripped binary still gives the module and offset.
+- **Windows: a program that does not end after its last window closed is
+  ended, and says why.** Something in a program's shutdown that waits for
+  ever - a joined thread that never finishes, a lock nobody gives back - left
+  a process with no window that held its files and its single-instance lock:
+  UltraFiler and UltraTexter answered the next start with "already running"
+  until the old copy was ended in Task Manager. Once the main loop has ended
+  the Windows backend arms an exit watchdog (`ArmWindowsExitWatchdog`, from
+  the new `UltraCanvasApplicationBase::RunAfterMainLoop()`); still running ten
+  seconds later, the process writes where its main thread stood - the call
+  stack, named as in a crash report - to `<app>-exit-<date>-<time>-<pid>.txt`
+  beside a minidump in the crash-dump folder (and to `ULTRACANVAS_DEBUG_LOG`),
+  and ends with exit code 124. `ULTRACANVAS_EXIT_WATCHDOG_SECONDS` sets the
+  wait, `0` turns it off. A single-instance start now keeps trying for fifteen
+  seconds instead of ten, so a start made just after closing outlasts such a
+  copy and opens.
+- **Windows: a program refuses to start against a framework DLL from another
+  build, and says which.** A folder that collects programs from several
+  packages keeps one `libUltraCanvas.dll`, from whichever was copied last;
+  a program built for another version loaded it without a word and crashed at
+  its first call whose classes had changed - ChatCube and UltraAI did, with
+  only "ChatCube.exe+0x1463D" in the report. Every Windows program linking the
+  shared core now compares, before `main()` and before its own static
+  objects, the version it was built for with the one the DLL reports
+  (`UltraCanvas_LibraryVersion()`, new, with C linkage), and on a difference
+  shows the DLL's path and both versions and exits with `0xC0000139`. The
+  check is an `INTERFACE` source of the core for executables only; the version
+  sits in a three-line wrapper the build writes, so a changelog edit
+  recompiles that file in each program and nothing else.
+- **`libVideoFX.dll` is checked too**, and VirtualFS when it is built as a
+  DLL. Their versions are not bumped for every change, so they report a build
+  id - the version and a hash of their public headers, line endings
+  normalised - through a C function the new
+  `ultracanvas_library_build_id()` (`cmake/UltraCanvasLibraryBuildId.cmake`)
+  compiles in; the program-side check walks every framework DLL it has
+  loaded and names the one from another build.
+- **Windows packages keep to a folder of their own.** The ZIP holds one
+  folder named after it (`UCDemo-Windows-<version>-<arch>\`) instead of its
+  files at the top, so extracting it into a collection of programs no longer
+  lays its DLLs over another package's - the mix that crashed ChatCube and
+  UltraAI at start. Every package carries `UltraCanvas-Package.ini` (product,
+  version, architecture). The installer's folder page reads it: a folder that
+  already holds `libUltraCanvas.dll` or `libVideoFX.dll` from another version
+  or package asks before anything is copied ("Install into this folder
+  anyway?", *No* by default), while the installation's own folder and one
+  holding the same version update without a question. A program refused for a
+  DLL from another build also names the package that filled that folder.
+- **A Windows program hosting the UltraMessage bus could stay running with no
+  window after it was closed.** In the shared core the module's at-exit
+  clean-up is a handler of `libUltraCanvas.dll`, which Windows runs at
+  `DLL_PROCESS_DETACH`, after it has killed every other thread wherever it
+  was. Stopping the broker there locked mutexes those threads may have held,
+  joined them, and let the toast presenter leave a COM apartment under the
+  loader lock - for the toasts, from a thread that had never
+  entered it. A process that hung there kept its single-instance lock, so
+  the next start said "*<App>* is already running" until the old one was
+  ended in Task Manager. The handler now does nothing while Windows ends
+  the process (`RtlDllShutdownInProgress`); the system closes the pipe and the
+  journal with it. Elsewhere, and in a static core, it shuts down as before.
+  Reproduced under Wine: a DLL's at-exit handler that locks a mutex a killed
+  thread held keeps the process alive; with the check it ends at once.
+- **A start waiting on a copy that is closing takes over once it has gone.**
+  `UltraCanvasSingleInstance::Claim` tries the lock again between its
+  hand-off attempts, so a copy whose window has closed but whose process is
+  still ending no longer makes the next start give up with "already running".
+- The toast presenter leaves its COM apartment only on the thread that
+  entered it.
+
 #### 2026-10-25 *0.9.410*
 - **Four elements for application windows: `UltraCanvasChipGroup`,
   `UltraCanvasCard`, `UltraCanvasCollapsiblePanel`, `UltraCanvasSidebarNavigation`.**

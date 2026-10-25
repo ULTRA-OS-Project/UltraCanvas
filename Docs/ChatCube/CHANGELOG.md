@@ -1,3 +1,9 @@
+#### 2026-10-25 *0.1.3*
+- **ChatCube crashed at start in a folder holding older UltraCanvas DLLs**
+  (Windows). It now says that the `libUltraCanvas.dll` it loaded is from
+  another build - with its path and both versions - and exits instead of
+  crashing; keep ChatCube with the DLLs from its own package.
+
 #### 2026-10-22 *0.1.2*
 - **ChatCube from the Windows package started without its networks.** The
   package left out `Plugins/UltraIM`, so the sign-in page said "The
