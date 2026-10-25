@@ -73,6 +73,15 @@ public:
         return UltraIMResult::Ok();
     }
 
+    void FetchSharedCredentials(const std::string& forProviderId, UltraIMSharedCredentialsCallback onResult) override {
+        if (forProviderId != "telegram")
+            return onResult(UltraIMResult::Error(UltraIMResultCode::NotFound, "none for " + forProviderId), {});
+        UltraIMCredentials c;
+        c.apiId = "1017053";
+        c.apiHash = "0123456789abcdef0123456789abcdef";
+        onResult(UltraIMResult::Ok(), c);
+    }
+
     void Raise(const UltraIMEvent& event) {
         if (sink_) sink_(event);
     }

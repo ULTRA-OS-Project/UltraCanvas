@@ -1,7 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -589,10 +590,35 @@ void ChatCubeWindow::SignIn() {
         if (UltraIM_GetProviderInfo(matrixProviderId_, matrixInfo) && matrixInfo.hasStoredSession &&
             matrixInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToMatrix(true);
-        UltraIMProviderInfo telegramInfo;
-        if (UltraIM_GetProviderInfo(telegramProviderId_, telegramInfo) && telegramInfo.hasStoredSession &&
-            telegramInfo.connectionState == UltraIMConnectionState::Disconnected)
-            SignInToTelegram(true);
+        // The relay's Telegram keys first: a stored Telegram session resumes
+        // with them, so a change of keys on the relay reaches it.
+        FetchTelegramCredentials([this]() {
+            UltraIMProviderInfo telegramInfo;
+            if (UltraIM_GetProviderInfo(telegramProviderId_, telegramInfo) && telegramInfo.hasStoredSession &&
+                telegramInfo.connectionState == UltraIMConnectionState::Disconnected)
+                SignInToTelegram(true);
+        });
+    });
+}
+
+void ChatCubeWindow::FetchTelegramCredentials(std::function<void()> then) {
+    UltraIMProviderInfo telegramInfo;
+    if (!UltraIM_GetProviderInfo(telegramProviderId_, telegramInfo)) {
+        if (then) then();
+        return;
+    }
+    UltraIM_FetchSharedCredentials(providerId_, telegramProviderId_,
+                                   [this, then](const UltraIMResult& r, const UltraIMCredentials& c) {
+        if (r) {
+            telegramRelayApiId_ = c.apiId;
+            telegramRelayApiHash_ = c.apiHash;
+        } else {
+            // No relay, or one without the keys: the user types them.
+            telegramRelayApiId_.clear();
+            telegramRelayApiHash_.clear();
+        }
+        if (telegramForm_->IsVisible()) UpdateTelegramForm();
+        if (then) then();
     });
 }
 
@@ -673,9 +699,12 @@ void ChatCubeWindow::UpdateTelegramForm() {
     UltraIM_GetProviderInfo(telegramProviderId_, info);
     const UltraIMAuthStep step = info.authStep;
     const bool start = step == UltraIMAuthStep::Idle || step == UltraIMAuthStep::PhoneNumber;
+    // The application's keys come from the relay when it has them; the
+    // fields are for a relay without, or a ChatCube with no relay.
+    const bool keysFromRelay = !telegramRelayApiId_.empty() && !telegramRelayApiHash_.empty();
     telegramPhone_->SetVisible(start);
-    telegramApiId_->SetVisible(start);
-    telegramApiHash_->SetVisible(start);
+    telegramApiId_->SetVisible(start && !keysFromRelay);
+    telegramApiHash_->SetVisible(start && !keysFromRelay);
     telegramCode_->SetVisible(step == UltraIMAuthStep::Code);
     telegramPassword_->SetVisible(step == UltraIMAuthStep::Password);
     telegramName_->SetVisible(step == UltraIMAuthStep::Registration);
@@ -706,6 +735,12 @@ void ChatCubeWindow::SignInToTelegram(bool stored) {
                 break;
         }
         telegramNext_->SetDisabled(true);
+    }
+    // The relay's keys, unless the user typed a pair (a relay without them,
+    // or their own application).
+    if (credentials.apiId.empty() || credentials.apiHash.empty()) {
+        credentials.apiId = telegramRelayApiId_;
+        credentials.apiHash = telegramRelayApiHash_;
     }
     SetStatus("Telegram: signing in\xE2\x80\xA6");
     UltraIM_SignIn(telegramProviderId_, credentials, [this, stored](const UltraIMResult& r) {
@@ -1229,8 +1264,12 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetStatus("Telegram: " + e.errorText);
+                    telegramNext_->SetDisabled(false);
                 } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
                     SetStatus("Telegram: " + (e.errorText.empty() ? std::string("reconnecting\xE2\x80\xA6") : e.errorText));
+                } else if (e.connectionState == UltraIMConnectionState::Connecting) {
+                    // What TDLib is doing while the sign-in waits on it.
+                    SetStatus("Telegram: " + (e.errorText.empty() ? std::string("signing in") : e.errorText) + "\xE2\x80\xA6");
                 } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
                     telegramToggle_->SetText("Telegram account");
                 }

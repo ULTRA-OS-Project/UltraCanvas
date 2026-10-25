@@ -37,7 +37,12 @@ The first ChatCube draft, which this replaces, is kept under
    **Telegram account** signs in with your phone number: ChatCube asks for
    the code Telegram sends, then your two-step password if you have one (a
    new number asks for your name). Telegram also wants this application's
-   API ID and hash from my.telegram.org, unless the build has them. Your
+   API ID and hash from my.telegram.org: your relay hands them out when it
+   has them (`CHATCUBE_RELAY_TELEGRAM_API_ID` / `_HASH` in its `.env`), and
+   the two fields appear only when it does not, or when there is no relay.
+   The status line says what Telegram is doing while you wait (connecting,
+   waiting for the network), and a step Telegram does not answer within
+   45 seconds says so instead of waiting forever. Your
    Telegram chats join the list; `@username`, `t.me/name` or `+phone` in
    *Add* or *New group* goes to Telegram.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
@@ -58,9 +63,13 @@ ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
 UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider modules are built next
 to it in `<build>/Plugins/UltraIM/`. Matrix encryption needs a Rust toolchain
 (cargo) at build time; without one the Matrix module cannot open encrypted
-rooms. Telegram needs TDLib's `libtdjson` at run time, not at build time: in
-`Plugins/UltraIM/tdlib/`, on the system's library path, or named by
-`ULTRAIM_TDJSON_PATH`. To try the Telegram side without Telegram, point
+rooms. Telegram needs TDLib's `libtdjson` at run time, not at build time:
+the configure step fetches TDLib 1.8.69 prebuilt into
+`<build>/Plugins/UltraIM/tdlib/` (`cmake/UltraCanvasTdlib.cmake`; Linux
+x86_64 and aarch64, macOS arm64, Windows x64; `ULTRAIM_TDJSON_FILE` for one
+of your own, `ULTRAIM_FETCH_TDLIB=OFF` to skip) and the packages ship it;
+elsewhere ChatCube looks on the system's library path, or where
+`ULTRAIM_TDJSON_PATH` points. To try the Telegram side without Telegram, point
 `ULTRAIM_TDJSON_PATH` at the test build's `libfaketdjson`
 (`<build>/Tests/UltraIM/fake-tdjson/`): any number, code `12345`, and
 `FAKE_TDJSON_ACCOUNTS="15550001:Echo:echobot:"` gives you someone who
@@ -68,6 +77,13 @@ answers. `CHATCUBE_PLUGIN_DIR` points it elsewhere.
 Its data - the identity's key vault, contacts, history - is in the per-user
 data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
+
+When a sign-in does not go through, `ChatCube --debug` says on stderr what
+the networks do - the relay's answers, every object sent to and received
+from TDLib (types and errors, never a number, code, password or message) -
+and `ChatCube --log <file>` appends the same to a file
+(`ULTRACANVAS_DEBUG_LOG` does either without the option). TDLib's own log
+is `telegram/tdlib.log` in the data folder, always.
 
 ### Trying it alone
 

@@ -3,8 +3,9 @@
 // key-pair identity, end-to-end encrypted messages peer to peer over WebRTC
 // data channels, the relay for rendezvous, the offline queue and groups, and
 // the local network for all of that between two ChatCubes with no relay
+// Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -77,6 +78,9 @@ public:
     void AddContact(const std::string& address, UltraIMConversationCallback onResult) override;
     void CreateGroup(const std::string& title, const std::vector<std::string>& memberIds,
                      UltraIMConversationCallback onResult) override;
+    // "telegram": the Telegram application's API ID and hash the relay keeps
+    // (GET /v1/telegram-credentials; NotFound when it keeps none).
+    void FetchSharedCredentials(const std::string& forProviderId, UltraIMSharedCredentialsCallback onResult) override;
 
     // ---- sending ------------------------------------------------------------
     UltraIMResult SendText(const std::string& conversationId, const std::string& text,

@@ -43,8 +43,9 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -103,6 +104,9 @@ private:
     void ToggleTelegramForm();
     void SignInToTelegram(bool stored);
     void UpdateTelegramForm();
+    // The Telegram application's API ID and hash the relay keeps, so nobody
+    // types them; then `then` (the stored Telegram session resumed, say).
+    void FetchTelegramCredentials(std::function<void()> then);
     // The provider an address belongs to: @name:server Matrix, +phone /
     // @username / t.me/... Telegram, anything else a ChatCube ID.
     std::string ProviderOfAddress(const std::string& address) const;
@@ -170,6 +174,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramName_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramNext_;
     std::string telegramProviderId_ = "telegram";
+    std::string telegramRelayApiId_;        // from the relay; "" = the user types them
+    std::string telegramRelayApiHash_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
     std::string matrixProviderId_ = "matrix";
     std::string activeProvider_;    // the open conversation's provider

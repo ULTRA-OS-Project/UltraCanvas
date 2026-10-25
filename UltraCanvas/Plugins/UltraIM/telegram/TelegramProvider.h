@@ -7,8 +7,10 @@
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
 // username or phone number, new groups.
+// Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
+//                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -18,11 +20,14 @@
 #include "UltraVault/UltraVaultDeviceKeyVault.h"
 
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace UltraIMTelegram {
@@ -78,6 +83,9 @@ public:
     // ---- for tests ----------------------------------------------------------------
     // Where libtdjson is (tried before the usual places).
     void SetLibraryPath(const std::string& path) { libraryPath_ = path; }
+    // How long a sign-in step waits for TDLib's answer before it fails with
+    // Timeout (the network is down, say, and TDLib keeps trying in silence).
+    void SetStepTimeout(int ms) { stepTimeoutMs_ = ms; }
 
 private:
     enum class ChatKind { Private, BasicGroup, Supergroup, Channel, Secret };
@@ -115,6 +123,15 @@ private:
     void SetState(UltraIMConnectionState state, const std::string& error = std::string());
     // Resolves the SignIn waiting for an answer.
     void Finish(const UltraIMResult& result);
+    // The watchdog over a sign-in step: armed with what is waited for, it
+    // fails the pending SignIn with Timeout when TDLib has not answered by
+    // stepTimeoutMs_; every Finish disarms it.
+    void ArmStep(const std::string& what);
+    void DisarmStep();
+    void WatchdogLoop();
+    void OnStepTimeout(const std::string& what);
+    // TDLib's connection, in words for the status line.
+    std::string ConnectionText() const;
     bool SaveSession(int64_t userId);
     bool LoadSession(int32_t& apiId, std::string& apiHash, bool& testDc, std::string& phone) const;
     std::string DatabaseKey();
@@ -136,6 +153,15 @@ private:
     UltraIMEventSink sink_;
     std::string     libraryPath_;
     std::atomic<UltraIMConnectionState> state_{UltraIMConnectionState::Disconnected};
+    int             stepTimeoutMs_ = 45000;
+
+    std::thread     watchdog_;
+    std::mutex      watchMutex_;
+    std::condition_variable watchCv_;
+    bool            watchStop_ = false;
+    bool            watchArmed_ = false;
+    std::chrono::steady_clock::time_point watchDeadline_;
+    std::string     watchWhat_;
 
     mutable UltraVault::DeviceKeyVault vault_;
     bool            vaultReady_ = false;
@@ -152,6 +178,7 @@ private:
     std::string     authHint_;
     bool            ready_ = false;
     bool            closing_ = false;
+    std::string     connection_;     // TDLib's connectionState* while not ready, "" = none yet
     std::string     phone_;
     int32_t         apiId_ = 0;
     std::string     apiHash_;

@@ -105,6 +105,15 @@ if [ -d ./build/Plugins/UltraIM ]; then
     cp ./build/Plugins/UltraIM/*.dll "$DIST_DIR/Plugins/UltraIM/" 2>/dev/null || true
     echo "Copied UltraIM providers"
 fi
+# TDLib for the Telegram provider (cmake/UltraCanvasTdlib.cmake fetched it):
+# tdjson.dll with the OpenSSL, zlib and MSVC runtime DLLs it imports under
+# their hashed names, loaded from <exe>/Plugins/UltraIM/tdlib at run time.
+# Not linked, so the DLL closure never sees it - copied whole.
+if [ -f ./build/Plugins/UltraIM/tdlib/tdjson.dll ]; then
+    mkdir -p "$DIST_DIR/Plugins/UltraIM/tdlib"
+    cp ./build/Plugins/UltraIM/tdlib/* "$DIST_DIR/Plugins/UltraIM/tdlib/"
+    echo "Copied TDLib (Plugins/UltraIM/tdlib)"
+fi
 if [ -f "$DIST_DIR/ChatCube.exe" ] && [ ! -f "$DIST_DIR/Plugins/UltraIM/ultraim_direct.dll" ]; then
     echo "Error: ChatCube.exe is packaged without Plugins/UltraIM/ultraim_direct.dll, its ChatCube Direct provider" >&2
     exit 1

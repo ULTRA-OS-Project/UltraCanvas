@@ -27,6 +27,11 @@ class Settings:
     turn_urls: list[str] = field(default_factory=list)
     turn_secret: str = ""                # coturn static-auth-secret (use-auth-secret)
     turn_ttl_seconds: int = 12 * 3600
+    # This ChatCube's Telegram application (my.telegram.org), handed to signed-in
+    # clients by GET /v1/telegram-credentials so the keys live here, not in the
+    # application: 0 / "" = not configured.
+    telegram_api_id: int = 0
+    telegram_api_hash: str = ""
 
     @classmethod
     def from_environment(cls) -> "Settings":
@@ -38,4 +43,6 @@ class Settings:
         s.stun_urls = _list("CHATCUBE_RELAY_STUN_URLS")
         s.turn_urls = _list("CHATCUBE_RELAY_TURN_URLS")
         s.turn_secret = os.environ.get("CHATCUBE_RELAY_TURN_SECRET", "")
+        s.telegram_api_id = int(os.environ.get("CHATCUBE_RELAY_TELEGRAM_API_ID", "0") or 0)
+        s.telegram_api_hash = os.environ.get("CHATCUBE_RELAY_TELEGRAM_API_HASH", "").strip()
         return s

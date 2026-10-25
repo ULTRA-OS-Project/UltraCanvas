@@ -37,6 +37,28 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## TDLib (Telegram client library)
+
+- **Used by:** the UltraIM Telegram provider
+  (`UltraCanvas/Plugins/UltraIM/telegram/`), and through it ChatCube's
+  Telegram account.
+- **Upstream:** https://github.com/tdlib/td
+- **Downloaded, not vendored, and loaded at run time, not linked:**
+  `cmake/UltraCanvasTdlib.cmake` fetches the prebuilt libtdjson 1.8.69 for
+  the build platform from the `tdjson` wheel on PyPI
+  (https://pypi.org/project/tdjson/), checks its SHA-256, and puts it in
+  `Plugins/UltraIM/tdlib/`, which the packages ship next to the provider
+  modules; the provider dlopens it through its JSON interface. No TDLib
+  source is carried in this repository, and no TDLib type appears in any
+  UltraCanvas public header. On macOS and Windows the wheel's OpenSSL 1.1
+  (Apache License 2.0 / OpenSSL License) and zlib (zlib License) libraries
+  ship beside it; the Windows wheel also carries the MSVC runtime
+  `msvcp140.dll` (Microsoft's redistribution terms).
+- **License:** Boost Software License 1.0 (`BSL-1.0`) — Copyright Aliaksei
+  Levin and Arseny Smirnov.
+
+---
+
 ## mbedTLS (crypto backend for the Smart Home protocol SDKs)
 
 - **Used by:** the Smart Home module's Matter and Thread backends (both

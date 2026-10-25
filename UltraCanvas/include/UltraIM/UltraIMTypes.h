@@ -1,7 +1,8 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -354,3 +355,8 @@ using UltraIMStickerPacksCallback = std::function<void(const UltraIMResult& resu
                                                        const std::vector<UltraIMStickerPack>& packs)>;
 using UltraIMKeyExportCallback    = std::function<void(const UltraIMResult& result, const std::string& data)>;
 using UltraIMKeyImportCallback    = std::function<void(const UltraIMResult& result, int imported)>;
+// Credentials a provider's service keeps for another provider (the ChatCube
+// relay: the Telegram application's API ID and hash), to hand that
+// provider's SignIn.
+using UltraIMSharedCredentialsCallback = std::function<void(const UltraIMResult& result,
+                                                            const UltraIMCredentials& credentials)>;

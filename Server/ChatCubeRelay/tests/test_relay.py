@@ -53,7 +53,8 @@ class Person:
 def client(tmp_path):
     settings = Settings(database=str(tmp_path / "relay.sqlite3"),
                         stun_urls=["stun:stun.example.org:3478"],
-                        turn_urls=["turn:turn.example.org:3478"], turn_secret="s3cret")
+                        turn_urls=["turn:turn.example.org:3478"], turn_secret="s3cret",
+                        telegram_api_id=1017053, telegram_api_hash="0123456789abcdef0123456789abcdef")
     with TestClient(create_app(settings)) as c:
         yield c
 
@@ -218,3 +219,27 @@ def test_turn_credentials_are_short_lived_hmac(client):
     assert turn["username"].endswith(":" + alice.user_id)
     expected = base64.b64encode(hmac.new(b"s3cret", turn["username"].encode(), hashlib.sha1).digest()).decode()
     assert turn["credential"] == expected and r["ttl"] > 0
+
+
+def test_telegram_credentials_go_to_signed_in_users_only(client, tmp_path):
+    alice = Person(client, "Alice").join()
+    assert client.get("/v1/telegram-credentials").status_code == 401
+    r = client.get("/v1/telegram-credentials", headers=alice.auth)
+    assert r.status_code == 200
+    assert r.json() == {"api_id": 1017053, "api_hash": "0123456789abcdef0123456789abcdef"}
+
+    # A relay without them says so, and does not hand out half a pair.
+    bare = Settings(database=str(tmp_path / "bare.sqlite3"), telegram_api_id=1017053)
+    with TestClient(create_app(bare)) as c:
+        bob = Person(c, "Bob").join()
+        r = c.get("/v1/telegram-credentials", headers=bob.auth)
+        assert r.status_code == 404 and r.json()["error"] == "not_configured"
+
+
+def test_telegram_credentials_come_from_the_environment(monkeypatch):
+    monkeypatch.setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "1017053")
+    monkeypatch.setenv("CHATCUBE_RELAY_TELEGRAM_API_HASH", " 0123456789abcdef0123456789abcdef ")
+    s = Settings.from_environment()
+    assert s.telegram_api_id == 1017053 and s.telegram_api_hash == "0123456789abcdef0123456789abcdef"
+    monkeypatch.setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "")
+    assert Settings.from_environment().telegram_api_id == 0

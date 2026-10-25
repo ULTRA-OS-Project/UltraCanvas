@@ -4,9 +4,11 @@
 // two-step password, registering a new number), finding people by username
 // and phone number, a private chat (delivery, the echo, read receipts,
 // typing, edit, deletion, a reply), a group, history paged back, presence,
-// and the stored session resumed with nothing asked.
+// the stored session resumed with nothing asked, and a step Telegram never
+// answers failing with Timeout instead of hanging.
+// Version: 0.1.1 - the step timeout
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
@@ -353,6 +355,20 @@ void TestTelegram() {
         return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == group.conversationId;
     }));
     resumed->Shutdown();
+
+    // A step Telegram never answers (the network is down): the sign-in
+    // fails with Timeout and says what TDLib was doing, instead of leaving
+    // the application waiting forever.
+    Events daveEvents;
+    auto dave = Device(base / "dave", daveEvents);
+    dave->SetStepTimeout(1500);
+    r = SignIn(*dave, Phone("+1 555 9999"));
+    CHECK(!r && r.code == UltraIMResultCode::Timeout);
+    CHECK(r.message.find("has not answered") != std::string::npos);
+    CHECK(daveEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConnectionStateChange && e.connectionState == UltraIMConnectionState::Error;
+    }));
+    dave->Shutdown();
 
     carol->Shutdown();
     fs::remove_all(base, ec);

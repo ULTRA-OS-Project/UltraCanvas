@@ -237,6 +237,9 @@ struct Relay {
             if (chdir(ULTRAIM_RELAY_DIR) != 0) _exit(127);
             setenv("CHATCUBE_RELAY_PORT", std::to_string(port).c_str(), 1);
             setenv("CHATCUBE_RELAY_DB", UltraCanvas::PathToUtf8(dataDir / "relay.sqlite3").c_str(), 1);
+            // The Telegram application's keys a relay hands its users.
+            setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "1017053", 1);
+            setenv("CHATCUBE_RELAY_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef", 1);
             execlp("python3", "python3", "-m", "chatcube_relay", static_cast<char*>(nullptr));
             _exit(127);
         }
@@ -764,6 +767,32 @@ void TestEndToEnd() {
     const std::string aliceId = alice->GetLocalUserId();
     const std::string bobId = bob->GetLocalUserId();
     CHECK(aliceId.size() == 32 && bobId.size() == 32 && aliceId != bobId);
+
+    // The relay keeps the Telegram application's keys for its users.
+    {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        UltraIMResult got;
+        UltraIMCredentials keys;
+        auto fetch = [&](const std::string& forProvider) {
+            done = false;
+            alice->FetchSharedCredentials(forProvider, [&](const UltraIMResult& r, const UltraIMCredentials& c) {
+                std::lock_guard<std::mutex> lock(mutex);
+                got = r;
+                keys = c;
+                done = true;
+                cv.notify_all();
+            });
+            std::unique_lock<std::mutex> lock(mutex);
+            return cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; });
+        };
+        CHECK(fetch("telegram"));
+        CHECK(got && keys.apiId == "1017053" && keys.apiHash == "0123456789abcdef0123456789abcdef");
+        CHECK(keys.loginType == UltraIMLoginType::PhoneOTP);
+        CHECK(fetch("xmpp"));
+        CHECK(!got && got.code == UltraIMResultCode::CapabilityMissing);
+    }
 
     UltraIMConversation withBob, withAlice;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->AddContact(bobId, cb); }, withBob));

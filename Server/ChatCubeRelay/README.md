@@ -12,7 +12,10 @@ what two peers cannot do for themselves over the internet:
 - the **offline queue**: a 1:1 message for someone who is offline waits here
   until their device fetches and acknowledges it;
 - **groups**: membership, and fan-out of group messages;
-- short-lived **TURN credentials** for coturn.
+- short-lived **TURN credentials** for coturn;
+- the **Telegram application's keys** (API ID and hash from my.telegram.org)
+  for ChatCube's Telegram account, so they are set here once and never built
+  into the application or typed by the user.
 
 It **cannot read a message.** Every message is end-to-end encrypted by the
 clients (X25519 + XChaCha20-Poly1305, `Docs/Research/ChatCubeDirectPlan.md`
@@ -61,6 +64,7 @@ too, in its upgrade request).
 | `GET /v1/messages?since=<id>` | `{messages: [{id, from, message_id, conversation, envelope, created_at}]}` |
 | `POST /v1/messages/ack` | `{ids}` — deletes them |
 | `GET /v1/turn-credentials` | `{ice_servers: [{url, username?, credential?}], ttl}` — coturn `use-auth-secret` |
+| `GET /v1/telegram-credentials` | `{api_id, api_hash}` — this ChatCube's Telegram application, from `CHATCUBE_RELAY_TELEGRAM_API_ID` / `_HASH`; 404 `not_configured` when the relay has none |
 | `GET /healthz` | `{status, version}` |
 
 WebSocket `/v1/ws`, JSON frames:

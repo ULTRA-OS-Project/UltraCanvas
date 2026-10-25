@@ -194,6 +194,20 @@ void TestSendingAndCalls() {
     CHECK(UltraIM_StartCall("a", "direct", false, callId) && callId == "call-direct");
     CHECK(UltraIM_StartCall("a", "group", true, callId).code == UltraIMResultCode::CapabilityMissing);
 
+    // What one provider's service keeps for another: through the dispatcher
+    // like every callback, and the default answer for a provider without one.
+    UltraIMCredentials shared;
+    UltraIMResult sharedResult;
+    UltraIM_FetchSharedCredentials("a", "telegram", [&](const UltraIMResult& r, const UltraIMCredentials& c) {
+        sharedResult = r;
+        shared = c;
+    });
+    CHECK(sharedResult && shared.apiId == "1017053" && shared.apiHash == "0123456789abcdef0123456789abcdef");
+    UltraIM_FetchSharedCredentials("a", "xmpp", [&](const UltraIMResult& r, const UltraIMCredentials&) { sharedResult = r; });
+    CHECK(!sharedResult && sharedResult.code == UltraIMResultCode::NotFound);
+    UltraIM_FetchSharedCredentials("nobody", "telegram", [&](const UltraIMResult& r, const UltraIMCredentials&) { sharedResult = r; });
+    CHECK(sharedResult.code == UltraIMResultCode::ProviderNotFound);
+
     const std::string id1 = UltraIM_NewClientMessageId();
     const std::string id2 = UltraIM_NewClientMessageId();
     CHECK(id1.size() == 36 && id1 != id2);

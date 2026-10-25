@@ -3968,8 +3968,12 @@ endif()
 # On TDLib through its JSON interface (Plugins/UltraIM/telegram/), loaded at
 # run time: nothing of TDLib is linked, so the provider builds everywhere and
 # signs in wherever a libtdjson is found (next to the plugins in tdlib/, or
-# ULTRAIM_TDJSON_PATH, or the system's). The application's API credentials
-# from my.telegram.org can be built in; otherwise the user gives them.
+# ULTRAIM_TDJSON_PATH, or the system's). The one in tdlib/ is fetched at
+# configure time from the pinned tdjson wheel (cmake/UltraCanvasTdlib.cmake;
+# ULTRAIM_FETCH_TDLIB, ULTRAIM_TDJSON_FILE), so a build ships with it where
+# a prebuilt one exists. The application's API credentials from
+# my.telegram.org can be built in; otherwise the relay hands them out
+# (ChatCube), or the user gives them.
 # Not in WebAssembly: there is no libtdjson to load there, and no loadable
 # provider module either.
 set(ULTRAIM_TELEGRAM_API_ID "" CACHE STRING "Telegram API ID (my.telegram.org) built into the Telegram provider")
@@ -4003,7 +4007,9 @@ elseif(TARGET UltraIM AND TARGET UltraVault AND TARGET UltraCrypt)
         PREFIX ""
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraIM)
     target_link_libraries(UltraIMTelegramPlugin PRIVATE UltraIMTelegramCore)
-    message(STATUS "  [✓] UltraIM provider Telegram - ENABLED (TDLib loaded at run time; API credentials ${_ultraim_telegram_keys})")
+    # The libtdjson the provider loads, into <build>/Plugins/UltraIM/tdlib.
+    include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/UltraCanvasTdlib.cmake)
+    message(STATUS "  [✓] UltraIM provider Telegram - ENABLED (TDLib loaded at run time: ${ULTRAIM_TDLIB_STATUS}; API credentials ${_ultraim_telegram_keys})")
 else()
     message(STATUS "  [−] UltraIM provider Telegram - DISABLED (needs UltraIM, UltraVault, UltraCrypt)")
 endif()

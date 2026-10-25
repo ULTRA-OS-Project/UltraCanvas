@@ -1,7 +1,8 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "UltraIM/UltraIMCore.h"
@@ -683,6 +684,22 @@ UltraIMResult UltraIM_SetCallVideoSinks(const std::string& providerId, const std
     ProviderPtr provider = FindProvider(providerId);
     if (!provider) return NotFound(providerId);
     return provider->SetCallVideoSinks(callId, std::move(remote), std::move(local));
+}
+
+// ============================================================================
+// SHARED CREDENTIALS
+// ============================================================================
+
+void UltraIM_FetchSharedCredentials(const std::string& providerId, const std::string& forProviderId,
+                                    UltraIMSharedCredentialsCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMCredentials>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMCredentials());
+        return;
+    }
+    provider->FetchSharedCredentials(forProviderId,
+                                     callback ? callback : [](const UltraIMResult&, const UltraIMCredentials&) {});
 }
 
 // ============================================================================

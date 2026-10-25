@@ -1,7 +1,8 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "DirectProvider.h"
@@ -666,6 +667,36 @@ void DirectProvider::FetchContacts(UltraIMContactsCallback onResult) {
         out.push_back(contact);
     }
     onResult(UltraIMResult::Ok(), out);
+}
+
+void DirectProvider::FetchSharedCredentials(const std::string& forProviderId,
+                                            UltraIMSharedCredentialsCallback onResult) {
+    if (forProviderId != "telegram") {
+        onResult(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                      "The relay keeps no credentials for '" + forProviderId + "'"),
+                 UltraIMCredentials());
+        return;
+    }
+    std::shared_ptr<RelayClient> relay = Relay();
+    if (!relay) {
+        onResult(UltraIMResult::Error(UltraIMResultCode::NotConnected,
+                                      "Not signed in to a relay - the Telegram keys come from it"),
+                 UltraIMCredentials());
+        return;
+    }
+    relay->Request("GET", "/v1/telegram-credentials", nullptr, [onResult](const RelayResponse& r) {
+        if (!r.Ok()) return onResult(RelayError(r, UltraIMResultCode::Unknown), UltraIMCredentials());
+        UltraIMCredentials credentials;
+        credentials.loginType = UltraIMLoginType::PhoneOTP;
+        credentials.apiId = std::to_string(r.body["api_id"].GetInteger(0));
+        credentials.apiHash = r.body["api_hash"].GetString();
+        if (credentials.apiId == "0" || credentials.apiHash.empty()) {
+            return onResult(UltraIMResult::Error(UltraIMResultCode::NotFound,
+                                                 "The relay keeps no Telegram application keys"),
+                            UltraIMCredentials());
+        }
+        onResult(UltraIMResult::Ok(), credentials);
+    });
 }
 
 void DirectProvider::AddContact(const std::string& address, UltraIMConversationCallback onResult) {

@@ -1,12 +1,15 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
+//                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "TelegramProvider.h"
 #include "TelegramRequests.h"
 
+#include "UltraCanvasDebug.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
@@ -148,12 +151,100 @@ UltraIMResult TelegramProvider::Initialize(const UltraIMConfig& config, UltraIME
     std::filesystem::create_directories(dir, ec);
     vault_ = UltraVault::DeviceKeyVault(UltraCanvas::PathToUtf8(dir), {"telegram.vault", config.appId + "." + providerId_ + "."});
     vaultReady_ = true;
+    {
+        std::lock_guard<std::mutex> lock(watchMutex_);
+        watchStop_ = false;
+        watchArmed_ = false;
+    }
+    if (!watchdog_.joinable()) watchdog_ = std::thread([this]() { WatchdogLoop(); });
+    debugOutput << "[Telegram] provider '" << providerId_ << "' initialised; data in " << DataPath("") << std::endl;
     return UltraIMResult::Ok();
 }
 
 void TelegramProvider::Shutdown() {
     SignOut();
+    {
+        std::lock_guard<std::mutex> lock(watchMutex_);
+        watchStop_ = true;
+        watchArmed_ = false;
+    }
+    watchCv_.notify_all();
+    if (watchdog_.joinable()) watchdog_.join();
     sink_ = nullptr;
+}
+
+// ============================================================================
+// THE WATCHDOG OVER A SIGN-IN STEP
+// TDLib answers a step only once Telegram's servers have: with no network it
+// retries in silence for as long as it takes, and the application would
+// wait forever with its button disabled. So every step is timed, and one
+// that gets no answer fails with Timeout and says what TDLib's connection
+// was doing - the step itself may still complete later, and then its state
+// change reaches the application as an event.
+// ============================================================================
+
+void TelegramProvider::ArmStep(const std::string& what) {
+    {
+        std::lock_guard<std::mutex> lock(watchMutex_);
+        watchArmed_ = true;
+        watchWhat_ = what;
+        watchDeadline_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(stepTimeoutMs_);
+    }
+    watchCv_.notify_all();
+    debugOutput << "[Telegram] waiting for TDLib: " << what << " (up to " << stepTimeoutMs_ << " ms)" << std::endl;
+}
+
+void TelegramProvider::DisarmStep() {
+    {
+        std::lock_guard<std::mutex> lock(watchMutex_);
+        watchArmed_ = false;
+    }
+    watchCv_.notify_all();
+}
+
+void TelegramProvider::WatchdogLoop() {
+    std::unique_lock<std::mutex> lock(watchMutex_);
+    while (!watchStop_) {
+        if (!watchArmed_) {
+            watchCv_.wait(lock, [this]() { return watchStop_ || watchArmed_; });
+            continue;
+        }
+        if (watchCv_.wait_until(lock, watchDeadline_, [this]() { return watchStop_ || !watchArmed_; })) continue;
+        // Still armed and the deadline has passed.
+        const std::string what = watchWhat_;
+        watchArmed_ = false;
+        lock.unlock();
+        OnStepTimeout(what);
+        lock.lock();
+    }
+}
+
+std::string TelegramProvider::ConnectionText() const {
+    std::string connection;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        connection = connection_;
+    }
+    if (connection == "connectionStateWaitingForNetwork") return "TDLib is waiting for the network";
+    if (connection == "connectionStateConnectingToProxy") return "TDLib is connecting to the proxy";
+    if (connection == "connectionStateConnecting") return "TDLib is still connecting to Telegram's servers";
+    if (connection == "connectionStateUpdating") return "TDLib is fetching updates";
+    if (connection == "connectionStateReady") return "TDLib is connected to Telegram";
+    return "TDLib has not reported its connection yet";
+}
+
+void TelegramProvider::OnStepTimeout(const std::string& what) {
+    bool pending = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending = pendingSignIn_ != nullptr;
+    }
+    const std::string why = "Telegram has not answered in " + std::to_string(stepTimeoutMs_ / 1000) + " s (" + what +
+                            "): " + ConnectionText() + ". Check the connection and try again.";
+    debugOutput << "[Telegram] " << why << (pending ? "" : " (nobody waiting)") << std::endl;
+    if (!pending) return;
+    Finish(UltraIMResult::Error(UltraIMResultCode::Timeout, why));
+    SetState(UltraIMConnectionState::Error, why);
 }
 
 std::string TelegramProvider::DataPath(const std::string& name) const {
@@ -168,6 +259,7 @@ void TelegramProvider::Emit(const UltraIMEvent& event) {
 
 void TelegramProvider::SetState(UltraIMConnectionState state, const std::string& error) {
     if (state_.exchange(state) == state && error.empty()) return;
+    debugOutput << "[Telegram] state " << static_cast<int>(state) << (error.empty() ? "" : ": " + error) << std::endl;
     UltraIMEvent event;
     event.type = UltraIMEventType::ConnectionStateChange;
     event.providerId = providerId_;
@@ -177,13 +269,18 @@ void TelegramProvider::SetState(UltraIMConnectionState state, const std::string&
 }
 
 void TelegramProvider::Finish(const UltraIMResult& result) {
+    DisarmStep();
     UltraIMResultCallback done;
     {
         std::lock_guard<std::mutex> lock(mutex_);
         done = std::move(pendingSignIn_);
         pendingSignIn_ = nullptr;
     }
-    if (done) done(result);
+    if (done) {
+        debugOutput << "[Telegram] sign-in step answered: " << (result ? "ok" : result.message)
+                    << " (code " << static_cast<int>(result.code) << ")" << std::endl;
+        done(result);
+    }
 }
 
 std::shared_ptr<TdClient> TelegramProvider::Client() const {
@@ -301,6 +398,8 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
             pendingSignIn_ = onResult;
             lock.unlock();
             if (earlier) earlier(UltraIMResult::Error(UltraIMResultCode::InvalidState, "Superseded by a newer sign-in"));
+            debugOutput << "[Telegram] sign-in step " << static_cast<int>(step) << ": sending " << TdType(request) << std::endl;
+            ArmStep(TdType(request));
             Client()->Send(request, [this](const TdObject& answer) { OnAuthAnswer(answer); });
             return;
         }
@@ -337,6 +436,10 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
         finish(UltraIMResult::Error(UltraIMResultCode::NotAuthenticated, "Sign in to Telegram with your phone number"));
         return;
     }
+    debugOutput << "[Telegram] sign-in: " << (phone.empty() ? "resuming the stored session" : "a phone number given")
+                << ", API ID " << apiId << " (" << (credentials.apiId.empty() ? "" : "given, ")
+                << (stored ? "stored, " : "") << (ULTRAIM_TELEGRAM_API_ID ? "built in" : "not built in") << ")"
+                << (credentials.server == "test" ? ", test servers" : "") << std::endl;
 
     std::string error;
     std::vector<std::string> candidates;
@@ -350,6 +453,10 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
         finish(UltraIMResult::Error(UltraIMResultCode::PluginError, error));
         return;
     }
+    // TDLib's own log, next to its database: warnings and errors, or more
+    // when the framework's debug stream is on (ULTRACANVAS_DEBUG_LOG,
+    // ChatCube --debug).
+    TdJsonLibrary::Instance().SetLogFile(DataPath("tdlib.log"), UltraCanvas::IsDebugOutputEnabled() ? 3 : 2);
     auto client = std::make_shared<TdClient>();
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -361,6 +468,7 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
         authHint_.clear();
         ready_ = false;
         closing_ = false;
+        connection_.clear();
         pendingSignIn_ = onResult;
     }
     if (!client->Open([this](const TdObject& update) { OnUpdate(update); }, error)) {
@@ -371,13 +479,15 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
         std::lock_guard<std::mutex> lock(clientMutex_);
         client_ = client;
     }
-    SetState(UltraIMConnectionState::Connecting);
+    SetState(UltraIMConnectionState::Connecting, "Starting TDLib");
     // The first request starts the client; its first update asks for the
     // parameters.
+    ArmStep("starting TDLib");
     Client()->Send(Request::GetVersion());
 }
 
 void TelegramProvider::SignOut() {
+    DisarmStep();
     std::shared_ptr<TdClient> client;
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -421,11 +531,16 @@ void TelegramProvider::SetStep(UltraIMAuthStep step, const std::string& hint) {
 
 void TelegramProvider::OnAuthAnswer(const TdObject& answer) {
     // Ok answers say nothing: the next state does. An error is this step's.
-    if (IsError(answer)) Finish(UltraIMResult::Error(UltraIMResultCode::AuthFailed, ErrorText(answer)));
+    if (IsError(answer)) {
+        debugOutput << "[Telegram] the step was refused: " << answer["code"].GetInteger(0) << " " << ErrorText(answer)
+                    << std::endl;
+        Finish(UltraIMResult::Error(UltraIMResultCode::AuthFailed, ErrorText(answer)));
+    }
 }
 
 void TelegramProvider::OnAuthorizationState(const TdObject& state) {
     const std::string type = TdType(state);
+    debugOutput << "[Telegram] authorization state: " << type << std::endl;
     if (type == "authorizationStateWaitTdlibParameters") {
         Request::Parameters p;
         {
@@ -444,6 +559,9 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
             SetState(UltraIMConnectionState::Error, "The vault does not keep Telegram's key");
             return;
         }
+        debugOutput << "[Telegram] setTdlibParameters: database " << p.databaseDirectory
+                    << (p.useTestDc ? " (test servers)" : "") << std::endl;
+        ArmStep("setTdlibParameters");
         Client()->Send(Request::SetTdlibParameters(p), [this](const TdObject& answer) {
             if (!IsError(answer)) return;
             Finish(UltraIMResult::Error(UltraIMResultCode::PluginError, ErrorText(answer)));
@@ -466,6 +584,7 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
             authStep_ = UltraIMAuthStep::PhoneNumber;
             authHint_ = "Your phone number, with the country code";
         }
+        ArmStep("setAuthenticationPhoneNumber - Telegram sending the code");
         Client()->Send(Request::SetPhoneNumber(phone), [this](const TdObject& answer) { OnAuthAnswer(answer); });
     } else if (type == "authorizationStateWaitCode") {
         const TdObject& info = state["code_info"];
@@ -497,6 +616,7 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
             authHint_.clear();
             ready_ = true;
         }
+        ArmStep("getMe");
         Client()->Send(Request::GetMe(), [this](const TdObject& me) {
             if (IsError(me)) {
                 Finish(UltraIMResult::Error(UltraIMResultCode::NetworkError, ErrorText(me)));
@@ -564,8 +684,14 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             ready = ready_ && myId_ != 0;
+            connection_ = s;
         }
-        if (!ready) return;
+        if (!ready) {
+            // Still signing in: say what TDLib is doing, so a sign-in that
+            // waits on the network is seen to wait rather than hang.
+            if (state_ == UltraIMConnectionState::Connecting) SetState(UltraIMConnectionState::Connecting, ConnectionText());
+            return;
+        }
         if (s == "connectionStateReady") SetState(UltraIMConnectionState::Connected);
         else if (s == "connectionStateWaitingForNetwork") SetState(UltraIMConnectionState::Reconnecting, "Waiting for the network");
         else SetState(UltraIMConnectionState::Reconnecting);

@@ -579,6 +579,28 @@ webassembly:
       # MSYS2 CLANG64 (gnullvm); that needs the c-api crate built with
       # Corrosion. ULTRACANVAS_ENABLE_WASM_HOST switches it.
 
+# ===== INSTANT MESSAGING (UltraIM) =====
+#
+# UltraIM's Telegram provider is a client of TDLib through its JSON
+# interface, loaded at run time with dlopen / LoadLibrary - nothing of TDLib
+# is linked, so the provider builds everywhere. The library it loads is the
+# prebuilt libtdjson from the tdjson wheel on PyPI, fetched at configure time
+# and checked against a pinned SHA-256 (cmake/UltraCanvasTdlib.cmake) into
+# <build>/Plugins/UltraIM/tdlib, which the packages ship. Absence is
+# tolerated: the provider then signs in wherever a libtdjson is found
+# (ULTRAIM_TDJSON_PATH, the system's) and says so otherwise.
+instant_messaging:
+  core:
+    tdlib:
+      min_version: "1.7"              # td_create_client_id; 1.8.69 is what is fetched
+      purpose: "Telegram client library for the UltraIM Telegram provider (BSL-1.0), loaded at run time"
+      required: false
+      platforms: ["linux", "macos", "windows"]
+      # Not a system package: the tdjson wheel's libtdjson, downloaded at
+      # configure time (Linux x86_64 / aarch64, macOS arm64, Windows x64), or
+      # a libtdjson of your own via ULTRAIM_TDJSON_FILE. ULTRAIM_FETCH_TDLIB
+      # switches the download.
+
 # ===== REAL-TIME COMMUNICATION (UltraRTC) =====
 #
 # UltraRTC wraps libdatachannel (WebRTC: ICE, DTLS, SCTP data channels,

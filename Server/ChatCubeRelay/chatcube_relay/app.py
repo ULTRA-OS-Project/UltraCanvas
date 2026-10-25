@@ -1,7 +1,7 @@
 """The HTTP and WebSocket API of the ChatCube relay.
 
 REST for everything that is a request (accounts, contacts, groups, the
-offline queue, TURN credentials); one WebSocket per signed-in device for
+offline queue, TURN credentials, the Telegram application's keys); one WebSocket per signed-in device for
 what is pushed (presence, typing, P2P signalling, new queued messages).
 The relay forwards signalling payloads and stores envelopes without reading
 either: both are end-to-end protected by the clients."""
@@ -379,6 +379,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 hmac.new(settings.turn_secret.encode(), username.encode(), hashlib.sha1).digest()).decode()
             servers += [{"url": u, "username": username, "credential": credential} for u in settings.turn_urls]
         return {"ice_servers": servers, "ttl": ttl}
+
+    # ---- Telegram ------------------------------------------------------------
+
+    @app.get("/v1/telegram-credentials")
+    async def telegram_credentials(user_id: str = Depends(current_user)):
+        # The API ID and hash of this ChatCube's Telegram application
+        # (my.telegram.org), kept in the relay's settings so they are changed
+        # here, not built into the application or typed by the user. They are
+        # not a secret from the signed-in user - every Telegram client carries
+        # its application's keys - but only a signed-in one gets them.
+        if not settings.telegram_api_id or not settings.telegram_api_hash:
+            raise error(404, "not_configured", "This relay has no Telegram application keys")
+        return {"api_id": settings.telegram_api_id, "api_hash": settings.telegram_api_hash}
 
     # ---- WebSocket -----------------------------------------------------------
 

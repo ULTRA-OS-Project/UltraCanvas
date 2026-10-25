@@ -57,7 +57,8 @@ endif()
 
 # Telegram: the provider against FakeTdJson (a libtdjson stand-in holding a
 # small Telegram in memory, built here), and its requests against the real
-# TDLib when ULTRAIM_TDJSON_PATH names one (TelegramTdlibTests skips without).
+# TDLib - the one the configure step fetched into Plugins/UltraIM/tdlib, or
+# the one ULTRAIM_TDJSON_PATH names (TelegramTdlibTests skips with neither).
 if(TARGET UltraIMTelegramCore)
     add_library(FakeTdJson SHARED FakeTdJson.cpp)
     target_compile_features(FakeTdJson PRIVATE cxx_std_20)
@@ -79,6 +80,7 @@ if(TARGET UltraIMTelegramCore)
     add_executable(TelegramTdlibTests TelegramTdlibTests.cpp)
     target_compile_features(TelegramTdlibTests PRIVATE cxx_std_20)
     target_link_libraries(TelegramTdlibTests PRIVATE UltraIMTelegramCore)
+    target_compile_definitions(TelegramTdlibTests PRIVATE ULTRAIM_TEST_TDJSON_DEFAULT="${ULTRAIM_TDLIB_LIBRARY}")
     add_test(NAME TelegramTdlibTests COMMAND TelegramTdlibTests)
     set_tests_properties(TelegramTdlibTests PROPERTIES TIMEOUT 180)
 endif()
