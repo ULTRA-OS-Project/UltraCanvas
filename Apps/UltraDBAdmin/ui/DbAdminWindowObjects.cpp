@@ -24,6 +24,8 @@
 #include <filesystem>
 #include <set>
 #include <utility>
+#include <algorithm>
+#include <cctype>
 
 using namespace UltraCanvas;
 
@@ -386,6 +388,8 @@ void DbAdminWindow::ShowTreeMenu(TreeNode* node, const UCEvent& event) {
         menu_->AddItem(MenuItemData::Action("Copy name", IconPath("copy"), [this, ref]() { CopyName(ref); }));
         menu_->AddItem(MenuItemData::Separator());
         if (table) menu_->AddItem(writing(MenuItemData::Action("Copy table", IconPath("copy"), [this, ref]() { CopyTable(ref); })));
+        if (table)
+            menu_->AddItem(MenuItemData::Action("Compare data…", IconPath("compare"), [this, ref]() { CompareData(ref); }));
         if (table || !sqlite)
             menu_->AddItem(writing(MenuItemData::Action("Rename", IconPath("rename"), [this, ref]() { RenameObject(ref); })));
         if (table) {
@@ -492,6 +496,96 @@ void DbAdminWindow::NewTable(const NodeRef& ref) {
                 SetStatus("Table " + schema + "." + name + " created. Its structure can be changed in Structure.");
             });
             return std::string();
+        });
+}
+
+void DbAdminWindow::CompareData(const NodeRef& ref) {
+    const ConnectionSpec* spec = store_.Find(ref.connectionId);
+    if (!spec) return;
+    CompareDialogSpec dialog;
+    dialog.title = "Compare " + ref.schema + "." + ref.name;
+    dialog.intro = "The rows of " + ref.name + " on " + spec->name +
+                   " (here) beside another table's on any connection (there) - matched by its primary key, the "
+                   "columns both have compared. Nothing is changed unless you ask.";
+    std::vector<std::string> ids;
+    for (const ConnectionSpec& c : store_.All()) {
+        if (c.id == spec->id) dialog.connection = static_cast<int>(ids.size());
+        dialog.connections.push_back(c.name);
+        ids.push_back(c.id);
+    }
+    dialog.schema = ref.schema;
+    dialog.table = ref.name;
+    const CompareSide left{ RegisteredName(*spec), EngineOf(*spec), ref.schema, ref.name };
+    const std::string here = "here";
+    // The last compare: the other table's connection and side, and what it found.
+    struct Last {
+        std::string connectionId;
+        CompareSide right;
+        CompareResult result;
+    };
+    auto last = std::make_shared<Last>();
+    auto trim = [](std::string s) {
+        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
+        while (!s.empty() && std::isspace(static_cast<unsigned char>(s.front()))) s.erase(0, 1);
+        return s;
+    };
+    ShowCompareDialog(
+        window_.get(), dialog,
+        [this, ids, left, here, last, trim](const CompareChoice& choice, CompareShown shown) {
+            const ConnectionSpec* other = choice.connection >= 0 && static_cast<size_t>(choice.connection) < ids.size()
+                                              ? store_.Find(ids[static_cast<size_t>(choice.connection)])
+                                              : nullptr;
+            const CompareSide right{ other ? RegisteredName(*other) : std::string(),
+                                     other ? EngineOf(*other) : SqlEngine::Sqlite, trim(choice.schema),
+                                     trim(choice.table) };
+            if (!other || right.table.empty()) {
+                shown("Pick the other table's connection and name it.", "", UltraDbResultSet(), false);
+                return;
+            }
+            const std::string there = "there";
+            const std::string otherId = other->id;
+            Background([left, right, here, there, otherId, last, shown]() -> std::function<void()> {
+                auto result = std::make_shared<CompareResult>();
+                const UltraDbResult compared = CompareTables(left, right, CompareLimits(), *result);
+                auto rows = std::make_shared<UltraDbResultSet>(compared ? DifferenceRows(*result) : UltraDbResultSet());
+                return [compared, result, rows, right, here, there, otherId, last, shown]() {
+                    if (!compared) {
+                        shown("Not compared: " + OneLine(compared.message), "", UltraDbResultSet(), false);
+                        return;
+                    }
+                    last->connectionId = otherId;
+                    last->right = right;
+                    last->result = *result;
+                    shown("", CompareSummary(*result, here, there), *rows,
+                          result->Differences() > 0 && !result->truncated);
+                };
+            });
+        },
+        [this, last](const CompareChoice&, std::function<void()> again) {
+            const ConnectionSpec* target = store_.Find(last->connectionId);
+            if (!target) return;
+            const std::string blocked = WriteBlockReason(*target);
+            if (!blocked.empty()) {
+                SetStatus(blocked, true);
+                return;
+            }
+            OperationPlan plan;
+            std::string error;
+            if (!SyncPlan(last->right, last->result, plan, error)) {
+                SetStatus(error, true);
+                return;
+            }
+            const std::string table = last->right.table + " on " + target->name;
+            ConfirmOperation(target->id, "Make " + table + " the same",
+                             "These statements make " + table + " hold what the compared table holds, as one "
+                             "transaction" + (target->IsSqlite() || EngineOf(*target) == SqlEngine::Postgres
+                                                  ? "."
+                                                  : " (InnoDB tables; others keep what ran before a failure)."),
+                             plan, "Make it the same", ButtonRole::Danger,
+                             [this, table, again](const UltraDbResult& result, const UltraDbResultSet&) {
+                                 if (result) SetStatus(table + " now holds the same rows.");
+                                 if (again) again();
+                             });
         });
 }
 

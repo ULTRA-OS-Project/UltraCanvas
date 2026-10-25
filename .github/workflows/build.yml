@@ -774,6 +774,12 @@ jobs:
           # a header is missing - and a silently disabled database layer
           # takes the whole UltraFIBU bookkeeping suite out of CI with it.
           scripts/ci-apt.sh install libsqlite3-dev libpq-dev libmariadb-dev
+          # libarchive: VirtualFS's archive provider, which UltraFiler's
+          # archive browsing and UltraStore's installer unpack with. Named
+          # rather than relied on from the image for the same reason: without
+          # it VirtualFS builds with no provider and the store's install
+          # tests skip instead of running.
+          scripts/ci-apt.sh install libarchive-dev
           # c-ares: UltraNet's async DNS uses the event-thread API
           # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
           # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
@@ -1320,6 +1326,7 @@ jobs:
           [ "${{ runner.os }}" = "Windows" ] && store="$store.exe"
           "$store" --version
           "$store" platform
+          "$store" installed --root "$RUNNER_TEMP/ultrastore-smoke"
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
@@ -1425,6 +1432,64 @@ jobs:
           echo "ULTRADB_TEST_MYSQL_USER=$USER_NAME" >> "$GITHUB_ENV"
           # The connection the tests make, made here, where an error names its cause.
           mysql --protocol=socket -S "$SOCKET" -u "$USER_NAME" ultradb_ci -e 'SELECT VERSION()'
+
+      # SSH tunnels - UltraNet's SSH plug-in forwarding a port, and
+      # UltraDBAdmin's connections reaching PostgreSQL and MySQL through it
+      # (Tests/UltraNet test_extra_plugins, Tests/UltraDBAdmin
+      # UltraDBAdminTunnelTests) - against a real sshd: one of the runner's
+      # own, on 127.0.0.1:2222, with a host key and a client key made here,
+      # key logins only. Not root and no PAM, so it signs in only the user it
+      # runs as - which is the user the tests sign in as. Through the tunnel
+      # the databases are reached over TCP, which takes a password: a login
+      # role for each, with a password made here and masked in the log.
+      - name: Start an SSH server for the tunnel tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          if [ ! -x /usr/sbin/sshd ]; then
+            scripts/ci-apt.sh install openssh-server
+          fi
+          D="$RUNNER_TEMP/sshd"
+          mkdir -p "$D"
+          ssh-keygen -q -t ed25519 -N '' -f "$D/hostkey"
+          ssh-keygen -q -t ed25519 -N '' -f "$D/clientkey"
+          cp "$D/clientkey.pub" "$D/authorized_keys"
+          chmod 600 "$D/authorized_keys"
+          cat > "$D/sshd_config" <<EOF
+          Port 2222
+          ListenAddress 127.0.0.1
+          HostKey $D/hostkey
+          AuthorizedKeysFile $D/authorized_keys
+          PasswordAuthentication no
+          KbdInteractiveAuthentication no
+          PubkeyAuthentication yes
+          AllowTcpForwarding yes
+          StrictModes no
+          UsePAM no
+          PidFile $D/sshd.pid
+          EOF
+          sudo mkdir -p /run/sshd
+          /usr/sbin/sshd -f "$D/sshd_config" -E "$D/sshd.log"
+          USER_NAME="$(whoami)"
+          # The login the tests make, made here, where an error names its cause.
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes \
+              -i "$D/clientkey" -p 2222 "$USER_NAME@127.0.0.1" true || { cat "$D/sshd.log"; exit 1; }
+          echo "ULTRANET_TEST_SSH_URL=ssh://$USER_NAME@127.0.0.1:2222" >> "$GITHUB_ENV"
+          echo "ULTRANET_TEST_SSH_KEY=$D/clientkey" >> "$GITHUB_ENV"
+          PW="$(openssl rand -hex 16)"
+          echo "::add-mask::$PW"
+          sudo -u postgres psql -q -c "CREATE ROLE ultradb_tunnel LOGIN PASSWORD '$PW'"
+          root_sql() { sudo mysql -uroot -proot "$@" 2>/dev/null || sudo mysql -uroot "$@"; }
+          root_sql -e "CREATE USER IF NOT EXISTS 'ultradb_tunnel'@'127.0.0.1' IDENTIFIED BY '$PW';
+                       GRANT SELECT ON ultradb_ci.* TO 'ultradb_tunnel'@'127.0.0.1';"
+          {
+            echo "ULTRADB_TEST_TUNNEL_PG_USER=ultradb_tunnel"
+            echo "ULTRADB_TEST_TUNNEL_PG_PASSWORD=$PW"
+            echo "ULTRADB_TEST_TUNNEL_PG_DB=ultrafibu_ci"
+            echo "ULTRADB_TEST_TUNNEL_MYSQL_USER=ultradb_tunnel"
+            echo "ULTRADB_TEST_TUNNEL_MYSQL_PASSWORD=$PW"
+            echo "ULTRADB_TEST_TUNNEL_MYSQL_DB=ultradb_ci"
+          } >> "$GITHUB_ENV"
 
       # macOS and Windows build no full test suite (BUILD_TESTS is Linux-only);
       # ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS builds these two anyway, so the
@@ -1714,6 +1779,10 @@ jobs:
           # _HOST and _USER come from that step via GITHUB_ENV.
           ULTRADB_TEST_MYSQL_DB: ultradb_ci
           ULTRADB_TEST_MYSQL_REQUIRED: 1
+          # The sshd and the TCP logins of "Start an SSH server for the
+          # tunnel tests"; the rest comes from that step via GITHUB_ENV.
+          ULTRANET_TEST_SSH_REQUIRED: 1
+          ULTRADB_TEST_TUNNEL_REQUIRED: 1
         run: ctest --output-on-failure 2>&1 | tee ctest.log
 
       # "Run unit tests" runs DesktopShellTest with no display, where the X11
@@ -1745,6 +1814,25 @@ jobs:
         run: >-
           xvfb-run -a -s "-screen 0 1280x800x24"
           ctest --output-on-failure --no-tests=error --timeout 300 -R "^SmartHomeWidgets$"
+
+      # The demo's layout audit (Apps/DemoApp/UltraCanvasDemoLayoutAudit.cpp)
+      # opens every page and fails on a label or button narrower than its
+      # text, or content cut off with no scrollbar to reach it. The second run
+      # makes every text ~40% longer first, as a translation is, so a page
+      # that only just fits in English fails here rather than in German. The
+      # log keeps the failing pages and the count, not a line per page that
+      # passed. Run it locally the same way: UltraCanvasDemo --audit-layout
+      # [--pseudo-loc] [--audit-page <id>].
+      - name: Demo layout audit on a virtual display (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        shell: bash
+        run: |
+          for form in "" "--pseudo-loc"; do
+            echo "UltraCanvasDemo --audit-layout $form"
+            timeout 600 xvfb-run -a -s "-screen 0 1600x1000x24" \
+              ./UltraCanvasDemo --audit-layout $form | grep -v '^\[ OK \]'
+          done
 
       # ULTRAFIBU_TEST_PG_REQUIRED above turns a skip into a failure, so ctest
       # already covers "it ran". What it cannot cover is the test not existing

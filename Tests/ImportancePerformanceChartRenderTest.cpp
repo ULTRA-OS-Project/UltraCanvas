@@ -7,11 +7,13 @@
 // chart's answer. Every factor must be hit where it is drawn, and a pointer
 // on a bare stretch of zone must hit that zone. The axes must carry the
 // level names and the end captions, and a group hidden from the legend must
-// stop answering the pointer.
+// stop answering the pointer. Every factor's name must fit the box it was
+// placed in, in the face it is drawn with.
 //
 // With ULTRACANVAS_SCREENSHOT_DIR set, each form is also written there as a
 // PNG for a person to look at.
 //
+// Version: 1.0.1 - every factor's name fits its box (the legend left its face behind)
 // Version: 1.0.0
 // Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
@@ -103,6 +105,30 @@ void CheckForm(bool smooth) {
     chart->SetAnimateOnDataChange(false);   // one frame: the marks at full size
     chart->SetModel(model);
     chart->Render(canvas.ctx.get(), Rect2Df(0, 0, kWidth, kHeight));
+
+    // ---- every factor's name fits its box -------------------------------------
+    // The boxes are solved on the first frame, the one that lays the legend
+    // out too, and drawn on every later one in the chart's own face: the
+    // context's (the default here) at the engine's label size, 11.
+    {
+        Canvas probe(kWidth, kHeight);
+        bool allFit = probe.ctx != nullptr;
+        size_t names = 0;
+        if (probe.ctx) {
+            probe.ctx->SetFontSize(11.0);
+            for (const PlacedChartLabel& label : chart->GetLabelPlan().labels) {
+                if (label.suppressed || label.klass != ChartLabelClass::ValueLabel) continue;
+                ++names;
+                const int drawn = probe.ctx->GetTextLineDimensions(label.text).width;
+                if (label.bounds.width + 0.5 < drawn) {
+                    std::cout << "    \"" << label.text << "\": box " << label.bounds.width
+                              << " px, drawn " << drawn << " px\n";
+                    allFit = false;
+                }
+            }
+        }
+        Check(allFit && names > 0, "every factor's name fits the box it was placed in");
+    }
 
     const ChartEngineFrame& frame = chart->Frame();
     Check(frame.axes && frame.axes->Count() == 2 && frame.projection, "the chart lays out two axes");

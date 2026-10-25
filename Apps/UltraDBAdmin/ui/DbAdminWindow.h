@@ -28,6 +28,8 @@
 //               whole script), Run statement (Ctrl+Shift+Enter: the one under
 //               the caret), Explain, Stop, the history and saved snippets,
 //               what each statement did, and the rows of the one selected;
+//               completion of tables, columns and keywords as they are typed
+//               or on Ctrl+Space (DbAdminCompletion);
 //   Search    - a text in every table and view of a schema, a count per
 //               column; a hit opens the table filtered on that column;
 //   Relations - the schema's tables and the foreign keys between them as an
@@ -36,8 +38,12 @@
 //   Routines  - its triggers, and on PostgreSQL its functions, procedures
 //               and aggregates, each with its statement: edited in the SQL
 //               tab and run again, dropped, or a new one from a template;
+// A table's menu also compares its rows with another table's - on any
+// connection - and can make the other the same (DbAdminCompare).
 //   Server    - PostgreSQL's sessions (a query cancelled, a session ended),
-//               its settings and the sizes of its databases and tables;
+//               its settings and the sizes of its databases and tables, and
+//               a monitor: charts of its sessions, statements, rows, cache
+//               and traffic, read every 2 seconds while they are shown;
 //               SQLite's file: its pages, journal mode, encoding, versions.
 // Search, Relations and Routines work on the schema the tree's selection is
 // in, Server on its connection; the last three read it when they are shown.
@@ -57,6 +63,8 @@
 // PostToUIThread, guarded by a token that dies with the window. A result for
 // something no longer shown - another table was picked meanwhile - is
 // recognised by its generation number and dropped.
+// Version: 0.5.0 - the Server tab's monitor charts; completion in the SQL editor; data compare;
+//                  connections through a relay, and the browser build that has nothing else
 // Version: 0.4.0 - the Relations, Routines and Server tabs
 // Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log,
 //                 Run statement, Explain, snippets, auto-commit, the typed row form
@@ -77,6 +85,9 @@
 #include "DbAdminRoutines.h"
 #include "DbAdminSearch.h"
 #include "DbAdminServer.h"
+#include "DbAdminCompare.h"
+#include "DbAdminCompletion.h"
+#include "DbAdminMonitor.h"
 #include "DbAdminSnippets.h"
 #include "DbAdminSqlLog.h"
 #include "DbAdminSqlRunner.h"
@@ -111,6 +122,7 @@
 
 namespace UltraCanvas {
 class UltraCanvasERDiagram;
+class UltraCanvasEngineLineChart;
 }
 
 namespace UltraDBAdmin {
@@ -164,16 +176,33 @@ private:
     void ApplyObjects(const std::string& nodeId, const UltraDbResult& result,
                       const std::vector<UltraDbObjectSummary>& objects);
     void ShowLoadError(const std::string& nodeId, const UltraDbResult& result);
+    // An SSH bastion's host key not known yet: shown, and kept with the
+    // connection once the user trusts it; then `nodeId` is read again.
+    void TrustHostKey(const std::string& nodeId, const std::string& fingerprint);
     void ResetNode(const std::string& nodeId);   // forget the children; load again on expand
     void OnNodeSelected(UltraCanvas::TreeNode* node);
     const NodeRef* RefOf(const std::string& nodeId) const;
     const ConnectionSpec* SelectedConnection() const;
     void AddConnection();
+    // An UltraDBAdmin relay's connections (UltraDatabaseRelay.h): its
+    // address and the user's token asked for, then every connection it
+    // offers added to the tree - or updated, when already there. The browser
+    // build starts here.
+    void ConnectRelay();
+    // The relay's connections for `token` - a user's token or a ticket of its
+    // sign-in - added to the tree; `done` hears "" or why not.
+    void ConnectWithToken(const std::string& url, const std::string& token, std::function<void(const std::string&)> done);
+    // The relay's own sign-in (Apps/UltraDBAdmin/relay/RelaySignIn.h): in the
+    // browser the page goes there and comes back with a ticket; on a desktop
+    // the system browser goes there and the ticket comes to a loopback
+    // address of the app's own.
+    void SignInToRelay(const std::string& url, std::function<void(const std::string&)> done);
+    void AddRelayConnections(const std::string& url, const std::string& token,
+                             const std::vector<UltraDbRelayConnection>& offered);
     void EditConnection();
     void RemoveConnection();
     void RefreshSelected();
-    std::string SaveConnection(const ConnectionSpec& spec, const std::string& password,
-                               bool clearPassword);
+    std::string SaveConnection(const ConnectionSpec& spec, const ConnectionStore::SecretChanges& secrets);
 
     // ===== OPEN OBJECTS =====
     // An object open in a tab of its own. The tab shown is the window's
@@ -339,6 +368,9 @@ private:
     void ReloadSchemaNode(const std::string& connectionId, const std::string& schema);
     void NewTable(const NodeRef& ref);
     void CopyTable(const NodeRef& ref);
+    // The table's rows beside another table's (DbAdminCompare), and the
+    // other made the same on request.
+    void CompareData(const NodeRef& ref);
     void RenameObject(const NodeRef& ref);
     void EmptyTable(const NodeRef& ref);
     void DropObject(const NodeRef& ref);
@@ -382,6 +414,8 @@ private:
     void StopServerSession(bool terminate); // the selected session's query, or the session
     void UpdateServerBar();
     ServerView ChosenServerView() const;
+    void ReadMonitor(bool restart);         // one reading of the status, on a worker
+    void ShowMonitor();                     // the charts, from monitor_
 
     // ===== SQL LOG =====
     void RefreshLog();                      // what is new, from log_ (a timer calls it)
@@ -393,6 +427,12 @@ private:
     SqlRunner* RunnerFor(const ConnectionSpec& spec);
     enum class RunScope { Script, Statement, Explain };
     void RunSql(RunScope scope = RunScope::Script);
+    // The completion list for the word at the caret: as it is typed (from
+    // two letters, or after a '.'), or asked for with Ctrl+Space.
+    void Complete(bool asked);
+    // The catalog completion reads for the tree's connection and schema;
+    // nullptr while it is being read (on the job queue).
+    const CompletionCatalog* CompletionCatalogFor(const ConnectionSpec& spec, bool asked);
     // The caret's place in the editor's text, as a byte offset.
     size_t CaretOffset() const;
     void ShowSnippetsMenu();
@@ -405,6 +445,7 @@ private:
 
     ConnectionStore store_;
     std::string storeNote_;          // why the list is in memory only, if it is
+    std::string relayUrl_;           // the relay connected to last
     SnippetStore snippets_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
@@ -545,6 +586,11 @@ private:
     std::map<std::string, std::unique_ptr<SqlRunner>> runners_;   // by connection id
     std::vector<std::string> historyShown_;   // the dropdown's scripts, in its order
     std::string sqlConnectionId_;        // the console's connection: the tree's, when Run was pressed
+    // Completion: a catalog per connection and default schema ("id/schema"),
+    // read the first time it is needed, forgotten by Refresh and after a run.
+    std::map<std::string, std::shared_ptr<const CompletionCatalog>> completionCatalogs_;
+    std::set<std::string> completionLoading_;
+    bool completionTyped_ = false;       // the editor's last change was a key typed
 
     // Search
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
@@ -607,6 +653,19 @@ private:
     std::string serverSummary_;
     bool serverLoading_ = false;
     uint64_t serverGen_ = 0;
+    // The monitor: a card per chart, made when the first reading names them.
+    struct MonitorCard {
+        std::string key;
+        std::shared_ptr<UltraCanvas::UltraCanvasLabel> value;
+        std::shared_ptr<UltraCanvas::UltraCanvasEngineLineChart> chart;
+    };
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> serverMonitorBox_;
+    std::vector<MonitorCard> monitorCards_;
+    ServerMonitor monitor_;
+    std::string monitorConnectionId_;    // whose readings monitor_ holds
+    bool monitorReading_ = false;
+    uint64_t monitorGen_ = 0;
+    UltraCanvas::TimerId monitorTimer_ = 0;
 
     // SQL log
     std::shared_ptr<SqlLog> log_ = std::make_shared<SqlLog>(2000);

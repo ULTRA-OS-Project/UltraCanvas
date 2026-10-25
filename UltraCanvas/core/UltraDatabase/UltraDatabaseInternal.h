@@ -30,6 +30,10 @@ IUltraDbDriverPlugin* BuiltinPostgresDriver();
 // otherwise.
 IUltraDbDriverPlugin* BuiltinMysqlDriver();
 
+// The "relay" driver (UltraDatabaseRelay.h), always built: it needs no
+// library, only the transport an application installs.
+IUltraDbDriverPlugin* BuiltinRelayDriver();
+
 // What MySQL treats as text or a comment, starting at `i` - a '...' or "..."
 // string (a backslash escapes in it), a `name`, a # or "-- " comment, a
 // /* */ comment (not nested) - and the index just past it, or `i` itself when
@@ -120,12 +124,14 @@ UltraDbResult MysqlDescribeTable(IUltraDbConnection& conn, const std::string& sc
 UltraDbResult PostgresServerSessions(IUltraDbConnection& conn, UltraDbResultSet& out);
 UltraDbResult PostgresServerSettings(IUltraDbConnection& conn, const std::string& filter, UltraDbResultSet& out);
 UltraDbResult PostgresServerSizes(IUltraDbConnection& conn, const std::string& schema, UltraDbResultSet& out);
+UltraDbResult PostgresServerStatus(IUltraDbConnection& conn, UltraDbResultSet& out);
 std::string PostgresStopSessionSql(int64_t id, bool endSession);
 UltraDbResult PostgresStopSession(IUltraDbConnection& conn, int64_t id, bool endSession, bool& stopped);
 
 UltraDbResult MysqlServerSessions(IUltraDbConnection& conn, UltraDbResultSet& out);
 UltraDbResult MysqlServerSettings(IUltraDbConnection& conn, const std::string& filter, UltraDbResultSet& out);
 UltraDbResult MysqlServerSizes(IUltraDbConnection& conn, const std::string& schema, UltraDbResultSet& out);
+UltraDbResult MysqlServerStatus(IUltraDbConnection& conn, UltraDbResultSet& out);
 std::string MysqlStopSessionSql(int64_t id, bool endSession);
 // `ownSession` is the asking connection's thread id, refused as a target.
 UltraDbResult MysqlStopSession(IUltraDbConnection& conn, int64_t id, bool endSession, int64_t ownSession,

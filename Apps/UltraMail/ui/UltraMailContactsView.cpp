@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailContactsView.cpp
+// Version: 0.6.0 - Services' menu: "Remove no-reply contacts…" (what the
+//                  collector filed for no-reply senders, one per message for
+//                  some services)
 // Version: 0.5.1 - Add contact, Add group and the editor's Save carry icons
 // Version: 0.5.0 - Other's menu: "Remove collected contacts…" (the
 //                  strangers the old collector added); a deleted contact's addresses are forgotten (not collected
@@ -181,6 +184,19 @@ private:
 void Later(std::function<void()> task) {
     if (auto* app = UltraCanvasApplicationBase::GetCurrent()) app->PostToUIThread(std::move(task));
     else task();
+}
+
+// The first five of `found`, a bullet line each, and how many more: the
+// examples a "Remove … contacts" question shows.
+std::string FirstFew(const std::vector<Contact>& found) {
+    std::string examples;
+    for (std::size_t i = 0; i < found.size() && i < 5; ++i) {
+        const Contact& c = found[i];
+        examples += "\n  \xE2\x80\xA2 " + (c.displayName.empty() ? c.PrimaryEmail()
+                                                           : c.displayName + " <" + c.PrimaryEmail() + ">");
+    }
+    if (found.size() > 5) examples += "\n  \xE2\x80\xA6 and " + std::to_string(found.size() - 5) + " more";
+    return examples;
 }
 
 } // namespace
@@ -534,6 +550,12 @@ void ContactsView::ShowPlaceMenu(const ContactPlace& place, const UCEvent& event
         menu_->AddItem(MenuItemData::Action("Remove collected contacts\xE2\x80\xA6",
                                             [this]() { ConfirmRemoveCollected(); }));
     }
+    // What the collector filed for no-reply senders until 0.6.0.
+    if (!place.isGroup && place.section == ContactSection::Services) {
+        menu_->AddItem(MenuItemData::Separator());
+        menu_->AddItem(MenuItemData::Action("Remove no-reply contacts\xE2\x80\xA6",
+                                            [this]() { ConfirmRemoveNoReply(); }));
+    }
     PopupElementSettings settings;
     menu_->OpenMenu(event.pointerWindow, *window, settings);
 }
@@ -552,13 +574,7 @@ void ContactsView::ConfirmRemoveCollected() {
                                "Remove collected contacts", nullptr, Window());
         return;
     }
-    std::string examples;
-    for (std::size_t i = 0; i < found.size() && i < 5; ++i) {
-        const Contact& c = found[i];
-        examples += "\n  \xE2\x80\xA2 " + (c.displayName.empty() ? c.PrimaryEmail()
-                                                           : c.displayName + " <" + c.PrimaryEmail() + ">");
-    }
-    if (found.size() > 5) examples += "\n  \xE2\x80\xA6 and " + std::to_string(found.size() - 5) + " more";
+    const std::string examples = FirstFew(found);
     std::vector<int64_t> ids;
     for (const Contact& c : found) ids.push_back(c.id);
     const std::string question =
@@ -568,6 +584,41 @@ void ContactsView::ConfirmRemoveCollected() {
         "the inbox, spam included:" + examples +
         "\n\nWriting to one of them later adds it again.";
     UltraCanvasAlert::Confirm(question, "Remove collected contacts",
+        [this, ids](bool yes) {
+            if (!yes || !store_) return;
+            if (UltraDbResult r = store_->RemoveAll(ids); !r) {
+                AlertError(Window(), "The contacts could not be removed.", DetailLine(r));
+                return;
+            }
+            Changed();
+        },
+        Window());
+}
+
+void ContactsView::ConfirmRemoveNoReply() {
+    if (!store_) return;
+    std::vector<Contact> services;
+    if (UltraDbResult r = store_->ListBySection(ContactSection::Services, services); !r) {
+        AlertError(Window(), "The contacts could not be read.", DetailLine(r));
+        return;
+    }
+    const std::vector<Contact> found = ContactCollector::CollectedNoReply(services);
+    if (found.empty()) {
+        UltraCanvasAlert::Info("Nothing to remove: no contact in Services is a no-reply address "
+                               "UltraMail added by itself.",
+                               "Remove no-reply contacts", nullptr, Window());
+        return;
+    }
+    const std::string examples = FirstFew(found);
+    std::vector<int64_t> ids;
+    for (const Contact& c : found) ids.push_back(c.id);
+    const std::string question =
+        "Remove " + std::to_string(found.size()) + " contact" + (found.size() == 1 ? "" : "s") +
+        " from Services?\n\nEach is a no-reply address UltraMail added from incoming mail - "
+        "nobody reads what is sent there, and some services use a new one for every "
+        "message:" + examples +
+        "\n\nUltraMail no longer adds no-reply addresses.";
+    UltraCanvasAlert::Confirm(question, "Remove no-reply contacts",
         [this, ids](bool yes) {
             if (!yes || !store_) return;
             if (UltraDbResult r = store_->RemoveAll(ids); !r) {

@@ -1,3 +1,67 @@
+#### 2026-10-25 *0.12*
+- **The browser build.** UltraDBAdmin compiles to WebAssembly
+  (`UltraDBAdmin.html`) and reaches its databases through
+  **ultradbadmin-relay** on the server: the page holds no password and names
+  no host, the relay offers the connections configured on its side to the
+  users its tokens name, with read or write access each. The page opens its
+  relay at start-up (`?relay=` in its address, else `/relay` on its own
+  host).
+- **Relay connections on the desktop too.** **Relay** in the header asks for
+  a relay's address and a token and adds a connection for each name the
+  relay offers; every tab works through it. The token is kept in the vault,
+  where a password goes.
+- **ultradbadmin-relay**: an INI configuration (connections, users by token
+  hash, limits), passwords in its own vault (`--set-secret`),
+  `--hash-token`, `--check`, an audit log of every statement with its user
+  and address, and a WebSocket listener on loopback for the TLS proxy in
+  front, with `/health`. A plain password in the file, a network address
+  without TLS and an SSH option are refused.
+- **Data compare.** **Compare data…** in a table's menu sets its rows beside
+  another table's on any connection, another engine too, matched by its
+  primary key: the rows that are the same, only here, only there or changed,
+  a changed value shown as `here -> there`. **Make the other the same…**
+  shows the INSERTs, UPDATEs and DELETEs that make the other table hold these
+  rows, and runs them as one transaction.
+- **Signing in with an account.** The relay can sign its users in with an
+  OpenID Connect provider (`[signin]`: Keycloak, Entra ID, Google...): the
+  relay is the provider's client - PKCE, the ID token's signature, issuer,
+  audience, expiry and nonce checked - finds the user by verified email or
+  subject, and hands the page a short-lived ticket. **Sign in** appears
+  beside the token in the page and in the desktop app, which signs in
+  through the system browser.
+- **A statement time-out on the relay** (`statement_timeout`, 300 s unless
+  set): a query still running then is stopped on the database and the page
+  told why.
+- **The relay dialog** is titled "Connect to a DB relay", with the address,
+  the token and the buttons first and what a relay is under them; in the
+  browser it has a title bar to move it by, as every dialog there now has.
+- **Forms first, notes after.** In the row form, the column and index forms,
+  New table and Compare the fields and buttons come first and how the form
+  works is a quieter note under them; dialogs that say what is about to
+  happen (the SQL before an operation, Import SQL's warnings, the import's
+  mapping, the integrity check's findings) keep it on top.
+- **Monitor charts on the Server tab.** **Monitor**, beside Sessions,
+  Settings and Sizes, charts a PostgreSQL or MySQL / MariaDB server read
+  every two seconds while it is shown: sessions connected and running a
+  statement, transactions, rows read and written a second, the share of
+  reads the buffer cache served, and on MySQL / MariaDB statements a second
+  and the traffic received and sent. The last four minutes are kept; Refresh
+  starts the charts again.
+- **Completion in the SQL tab.** As a name is typed, or on Ctrl+Space, a
+  list under the caret offers what fits there: the tables and views after
+  `FROM` and `JOIN`, the columns of the statement's tables after `SELECT` and
+  `WHERE`, an alias's or a table's columns after `alias.`, a schema's tables
+  after `schema.`, and the keywords. Names are offered as they must be
+  written - quoted where the engine needs it - and nothing is offered inside
+  a string or a comment.
+- **SSH tunnels.** A PostgreSQL or MySQL / MariaDB server behind a bastion
+  is reached through an SSH tunnel: **Through an SSH tunnel** in the
+  connection dialog, the SSH server, its user and how to sign in there - the
+  SSH agent, a password, or a private key file with its passphrase, all kept
+  in the vault. On the first connection the bastion's host key is shown and
+  trusted only when you agree; a bastion that presents another key later is
+  refused. The tree, Browse and the SQL console all go through the tunnel.
+
 #### 2026-10-24 *0.11*
 - **MySQL and MariaDB.** A connection can be a MySQL or MariaDB server:
   host or the socket file, port 3306 by default, database, user, password

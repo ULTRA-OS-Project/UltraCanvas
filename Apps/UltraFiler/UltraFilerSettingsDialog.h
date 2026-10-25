@@ -26,7 +26,10 @@ public:
     // on; the others let a caller point straight at a setting - the file
     // display's Display > Thumbnails / Detail view submenus open the matching
     // list of files this way.
-    enum class Page { Default, Thumbnails, DetailView, FileExtensions, Cache };
+    // HomeFolder / IgnoredFiles are what the gear of the file display's
+    // hidden-items notice opens: the settings that decided what it holds back.
+    enum class Page { Default, Thumbnails, DetailView, FileExtensions, Cache,
+                      HomeFolder, IgnoredFiles };
 
     // What the Extras > Cache page needs from the running application. The
     // disk cache is process-wide and the page reads it directly; the memory

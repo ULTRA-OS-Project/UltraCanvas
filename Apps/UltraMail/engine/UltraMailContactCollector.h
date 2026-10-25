@@ -17,13 +17,22 @@
 //    showed as a suggestion when writing and lost its "New sender" badge,
 //    reading as someone the user knows. It joins the address book when the
 //    user writes to it or adds it.
+//  - Never a no-reply address (IsNoReplyAddress), service or not: nobody
+//    writes to it, so it is never a recipient suggestion either, and a
+//    service that sends from "no-reply-<code>@..." with a new code in every
+//    message filed a contact per message. A known service still reads as a
+//    business sender without one (SenderTrust).
 //  - Never a sender the user blocked (SenderLists), nor an address they
 //    deleted from the address book (ContactStore::Forget) - before, a deleted
 //    sender was back after its next message.
 //  - A contact that exists is never modified or reclassified.
 //  - NeverWrittenTo finds what the old rules left behind: contacts in Other
 //    that are a name and an address and nothing else, never written to.
+//  - CollectedNoReply finds what the rules before 0.6.0 filed for no-reply
+//    senders under Services.
 //
+// Version: 0.6.0 - never a no-reply address from incoming mail;
+//                  CollectedNoReply
 // Version: 0.5.0 - a service only with its domain proven (SenderSeen,
 //                  verifiedDomain); NeverWrittenTo
 // Version: 0.4.0 - incoming mail adds only known services, never a blocked
@@ -73,8 +82,8 @@ public:
     // Collect one message's sender: added only when it is a known service
     // (filed under Services, carrying the service's name as the organization
     // and a note saying what kind of service it is and that UltraMail added
-    // it), its domain proven (`verifiedDomain`), not blocked, not forgotten
-    // and not in the address book. Returns
+    // it), its domain proven (`verifiedDomain`), not a no-reply address, not
+    // blocked, not forgotten and not in the address book. Returns
     // true if a new contact was created. A sender the user has already filed
     // stays where they put it, whatever the registry says.
     static bool CollectSender(ContactStore& store, const std::string& name,
@@ -97,6 +106,12 @@ public:
     // every sender of inbox mail - spam included.
     static std::vector<Contact> NeverWrittenTo(const std::vector<Contact>& contacts,
                                                const std::map<std::string, double>& writtenTo);
+
+    // The contacts of `contacts` the collector filed for a no-reply sender
+    // before 0.6.0: in Services and in no group, with one address - a no-reply
+    // one (IsNoReplyAddress) - no phone, and the collector's note. One per
+    // message for a service that puts a new code in every no-reply address.
+    static std::vector<Contact> CollectedNoReply(const std::vector<Contact>& contacts);
 };
 
 } // namespace UltraMail

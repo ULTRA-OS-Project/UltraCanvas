@@ -16,7 +16,11 @@
 // on SQLite and refills one on PostgreSQL, and a stopped export leaving the
 // file that was there. And Browse's filters (bound values, LIKE escaped,
 // ILIKE on PostgreSQL), a blob staged and written, rows copied as CSV, JSON
-// and INSERTs, a blob's kind and hex dump, the table a SELECT reads.
+// and INSERTs, a blob's kind and hex dump, the table a SELECT reads. A
+// connection through an SSH tunnel as the store keeps it and UltraDatabase
+// is asked for it. The Server tab's monitor: rates, the cache's hit ratio, a
+// server restart, the charts a server's measures give.
+// Version: 0.3.0 - SSH tunnels; the server monitor
 // Version: 0.2.0 - filters, blobs, rows as text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -27,6 +31,7 @@
 #include "DbAdminFormat.h"
 #include "DbAdminImport.h"
 #include "DbAdminJobQueue.h"
+#include "DbAdminMonitor.h"
 #include "DbAdminSqlRunner.h"
 #include "DbAdminSqlScript.h"
 #include "DbAdminSqliteTable.h"
@@ -190,6 +195,83 @@ void TestConnectionStoreOnDisk() {
     Check(back.name == "Server" && back.host == "db.internal" && back.user == "bob" &&
           back.hasPassword && back.production && back.tls == UltraDbTls::Require,
           "every field read back as written");
+}
+
+void TestConnectionTunnel() {
+    Section("Connections through an SSH tunnel");
+    TempDir dir;
+    std::string error;
+    std::string id;
+    const std::string key = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjE=\n-----END OPENSSH PRIVATE KEY-----\n";
+    {
+        ConnectionStore store;
+        if (!store.Open(dir.Utf8(), error)) {
+            std::printf("  [SKIP] %s\n", error.c_str());
+            return;
+        }
+        ConnectionSpec spec;
+        spec.name = "Behind the bastion";
+        spec.driver = "postgresql";
+        spec.host = "db.internal";
+        spec.database = "crm";
+        spec.sshHost = "bastion.example.com";
+        spec.sshPort = 2200;
+        spec.sshUser = "deploy";
+        spec.sshAuth = "key";
+        spec.sshHostKey = "SHA256:trusted";
+        ConnectionStore::SecretChanges secrets;
+        secrets.password = "db-Pa55";
+        secrets.sshSecret = key;
+        secrets.sshPassphrase = "key-Pa55";
+        id = store.Put(spec, secrets, error);
+        Check(!id.empty() && store.Find(id)->hasSshSecret && store.Find(id)->hasSshPassphrase,
+              "a tunnelled connection keeps its key and passphrase in the vault (" + error + ")");
+        Check(Describe(*store.Find(id)) == "db.internal/crm via deploy@bastion.example.com:2200",
+              "described with its bastion: " + Describe(*store.Find(id)));
+
+        // What UltraDatabase is handed: recorded by an opener that opens nothing.
+        static UltraDbTunnelRequest seen;
+        UltraDb_SetTunnelOpener([](const UltraDbTunnelRequest& request, UltraDbResult& failure) {
+            seen = request;
+            failure = UltraDbResult::Error(UltraDbResultCode::HostKeyUnknown, "recorded");
+            return std::unique_ptr<IUltraDbTunnel>();
+        });
+        store.Register(*store.Find(id));
+        const UltraDbResult opened = UltraDb_OpenConnection(RegisteredName(*store.Find(id)));
+        if (opened.code == UltraDbResultCode::HostKeyUnknown) {
+            Check(seen.sshHost == "bastion.example.com" && seen.sshPort == 2200 && seen.sshUser == "deploy" &&
+                      seen.hostKeyFingerprint == "SHA256:trusted" && seen.targetHost == "db.internal" &&
+                      seen.targetPort == 5432,
+                  "the bastion, its port, user and host key, and the database as it reaches it");
+            Check(std::string(seen.privateKey.begin(), seen.privateKey.end()) == key && seen.password.empty() &&
+                      seen.keyPassphrase == "key-Pa55",
+                  "the key and its passphrase read from the vault, the key as a key");
+        } else {
+            std::printf("  [SKIP] the opener was not reached here: %s\n", opened.message.c_str());
+        }
+        UltraDb_SetTunnelOpener(nullptr);
+        UltraDb_CloseConnection(RegisteredName(*store.Find(id)));
+        UltraDb_CloseConnection(ConsoleName(*store.Find(id)));
+    }
+    const std::string json = ReadFile(dir.path / "connections.json");
+    Check(json.find("bastion.example.com") != std::string::npos && json.find("SHA256:trusted") != std::string::npos,
+          "the bastion and its host key are in the list");
+    Check(json.find("OPENSSH") == std::string::npos && json.find("key-Pa55") == std::string::npos,
+          "the key and its passphrase are not");
+
+    ConnectionStore again;
+    Check(again.Open(dir.Utf8(), error), "the store opens again");
+    ConnectionSpec back = *again.Find(id);
+    Check(back.sshHost == "bastion.example.com" && back.sshPort == 2200 && back.sshUser == "deploy" &&
+              back.sshAuth == "key" && back.sshHostKey == "SHA256:trusted" && back.hasSshSecret,
+          "every tunnel field read back as written");
+    // The tunnel taken away: its secrets go from the vault with it.
+    back.sshHost.clear();
+    Check(!again.Put(back, ConnectionStore::SecretChanges(), error).empty() && !again.Find(id)->hasSshSecret &&
+              !again.Find(id)->hasSshPassphrase,
+          "without a tunnel no SSH secret is kept");
+    UltraVault::SecretValue secret;
+    Check(!UltraVault::Get("dbadmin.connection." + id + ".ssh", secret).IsOk(), "and the vault no longer holds it");
 }
 
 void TestCellText() {
@@ -1513,16 +1595,72 @@ void TestJobQueue() {
     Check(ran == 1 && queue.Outstanding() == 0, "a job posted after Stop is ignored");
 }
 
+// A status as UltraDb_ServerStatus gives it.
+UltraDbResultSet StatusRows(std::initializer_list<std::pair<const char*, int64_t>> values) {
+    UltraDbResultSet rows;
+    rows.SetColumns({ "name", "value", "counter" });
+    for (const auto& [name, value] : values)
+        rows.AddRow({ UltraDbValue(name), UltraDbValue(value), UltraDbValue(std::string(name) != "connections") });
+    return rows;
+}
+
+const MonitorChart* ChartOf(const ServerMonitor& monitor, const std::string& key) {
+    for (const auto& chart : monitor.Charts())
+        if (chart.key == key) return &chart;
+    return nullptr;
+}
+
+void TestMonitor() {
+    Section("Server monitor");
+    ServerMonitor monitor;
+    monitor.Add(100.0, StatusRows({ { "connections", 4 }, { "transactions", 1000 }, { "cache_reads", 5000 },
+                                { "disk_reads", 100 }, { "bytes_sent", 0 } }));
+    std::vector<std::string> keys;
+    for (const auto& chart : monitor.Charts()) keys.push_back(chart.key);
+    Check(keys == std::vector<std::string>({ "sessions", "transactions", "cache_hits", "sent" }),
+          "a chart per measure kept, in the tab's order");
+    Check(ChartOf(monitor, "sessions")->points.size() == 1 && ChartOf(monitor, "transactions")->points.empty(),
+          "the first reading: a gauge's value, no rate yet");
+    monitor.Add(102.0, StatusRows({ { "connections", 6 }, { "transactions", 1050 }, { "cache_reads", 6000 },
+                                { "disk_reads", 150 }, { "bytes_sent", 4096 } }));
+    const MonitorChart* xacts = ChartOf(monitor, "transactions");
+    Check(xacts->points.size() == 1 && xacts->points[0].value == 25.0 && xacts->points[0].seconds == 2.0,
+          "50 transactions in 2 s: 25 a second, at 2 s");
+    Check(ChartOf(monitor, "cache_hits")->points.back().value == 95.0, "50 of 1000 reads from disk: 95 % hits");
+    Check(ChartOf(monitor, "sent")->points.back().value == 2.0, "4096 bytes in 2 s: 2 KB a second");
+    Check(ChartOf(monitor, "sessions")->points.back().value == 6.0, "a gauge as it is");
+    // The server restarted: its counters start again, and so does the rate.
+    monitor.Add(104.0, StatusRows({ { "connections", 1 }, { "transactions", 10 }, { "cache_reads", 10 },
+                                { "disk_reads", 10 }, { "bytes_sent", 10 } }));
+    Check(xacts->points.size() == 1, "a counter that went back draws no point");
+    monitor.Add(106.0, StatusRows({ { "connections", 1 }, { "transactions", 30 }, { "cache_reads", 10 },
+                                { "disk_reads", 10 }, { "bytes_sent", 10 } }));
+    Check(xacts->points.size() == 2 && xacts->points.back().value == 10.0, "and the next one does, from the new value");
+    Check(ChartOf(monitor, "cache_hits")->points.back().value == 100.0, "nothing read: nothing missed");
+    monitor.Add(106.0, StatusRows({ { "connections", 9 } }));
+    Check(ChartOf(monitor, "sessions")->points.back().value == 1.0, "a reading no later than the last is ignored");
+    for (int i = 0; i < 200; ++i) monitor.Add(108.0 + i, StatusRows({ { "connections", i } }));
+    Check(ChartOf(monitor, "sessions")->points.size() == kMonitorPoints, "a chart keeps its last points");
+    monitor.Clear();
+    Check(monitor.Charts().empty() && monitor.Readings() == 0, "cleared");
+
+    Check(MonitorValueText(0.5, "/s") == "0.5 /s" && MonitorValueText(1234567, "") == "1,234,567" &&
+              MonitorValueText(95.04, "%") == "95%" && MonitorValueText(3, "KB/s") == "3 KB/s",
+          "a value as the title shows it");
+}
+
 } // namespace
 
 int main() {
     std::printf("UltraDBAdmin engine tests\n\n");
     TestConnectionStoreInMemory();
     TestConnectionStoreOnDisk();
+    TestConnectionTunnel();
     TestCellText();
     TestPager();
     TestSqlRunner();
     TestJobQueue();
+    TestMonitor();
     TestEditBuffer();
     TestSqliteTable();
     TestStructureEditSqlite();

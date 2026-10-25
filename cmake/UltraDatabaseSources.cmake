@@ -10,6 +10,7 @@
 # holding core/ and include/). The Postgres and MySQL files are always in the
 # list: without ULTRADATABASE_HAS_POSTGRES / ULTRADATABASE_HAS_MYSQL they
 # compile to the stubs the manager's EnsureBuiltins() links against.
+# Version: 0.3.0 - the relay (UltraDatabaseRelay.h): its wire format, driver and server
 # Version: 0.2.0 - the MySQL / MariaDB driver, the server views
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -27,6 +28,9 @@ function(ultradatabase_sources out_var ultracanvas_dir)
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseMysqlSql.cpp
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseMysqlSchema.cpp
         ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseServerViews.cpp
+        ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseRelayJson.cpp
+        ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseRelayClient.cpp
+        ${ultracanvas_dir}/core/UltraDatabase/UltraDatabaseRelayServer.cpp
         PARENT_SCOPE)
 endfunction()
 

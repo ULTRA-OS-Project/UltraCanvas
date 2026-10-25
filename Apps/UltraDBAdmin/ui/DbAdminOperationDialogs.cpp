@@ -1,18 +1,26 @@
 // Apps/UltraDBAdmin/ui/DbAdminOperationDialogs.cpp
+// Version: 0.4.0 - the relay dialog: Sign in, titled "Connect to a DB relay"; the new table's and the compare's notes under their buttons (Note)
+// Version: 0.3.0 - the data compare dialog
 // Version: 0.2.0 - MySQL / MariaDB types
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "DbAdminOperationDialogs.h"
 
+#include "DbAdminModels.h"
+
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasListView.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSpacer.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasTextInput.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -41,6 +49,15 @@ std::shared_ptr<UltraCanvasLabel> Intro(const std::string& id, const std::string
     auto label = CreateLabel(id, 0, 0, 0, height, text);
     label->SetWrap(TextWrap::WrapWord);
     label->layoutItem.SetFlexShrink(0);
+    return label;
+}
+
+// How a form works, under its buttons and quieter than the form: for the
+// dialogs whose fields come first (a warning of what is about to happen
+// stays on top, as Intro).
+std::shared_ptr<UltraCanvasLabel> Note(const std::string& id, const std::string& text, float height = 40) {
+    auto label = Intro(id, text, height);
+    label->SetTextColor(StatusColor());
     return label;
 }
 
@@ -310,10 +327,6 @@ void ShowNewTableDialog(UltraCanvasWindowBase* parent, SqlEngine engine, const s
     auto dialog = MakeDialog("New table in " + schema, 820, 600);
     if (!dialog) return;
     form->dialog = dialog.get();
-    dialog->AddChild(Intro("dbnIntro",
-                           "A line per column; an empty line is left out. A type and a default are SQL, as the "
-                           "database writes them. More columns, indexes and keys can follow in Structure.",
-                           40));
 
     auto nameRow = ButtonRow("dbnNameRow");
     auto nameLabel = CreateLabel("dbnNameLabel", 0, 0, 60, 24, "Name");
@@ -382,6 +395,10 @@ void ShowNewTableDialog(UltraCanvasWindowBase* parent, SqlEngine engine, const s
     });
     buttons->AddChild(create);
     dialog->AddChild(buttons);
+    dialog->AddChild(Note("dbnIntro",
+                          "A line per column; an empty line is left out. A type and a default are SQL, as the "
+                          "database writes them. More columns, indexes and keys can follow in Structure.",
+                          40));
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }
 
@@ -407,6 +424,260 @@ void ShowTextDialog(UltraCanvasWindowBase* parent, const std::string& title, con
     ok->SetOnClick([raw]() { raw->CloseDialog(DialogResult::OK); });
     buttons->AddChild(ok);
     dialog->AddChild(buttons);
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
+}
+
+namespace {
+
+struct CompareForm {
+    UltraCanvasModalDialog* dialog = nullptr;
+    UltraCanvasDropdown* connection = nullptr;
+    UltraCanvasTextInput* schema = nullptr;
+    UltraCanvasTextInput* table = nullptr;
+    UltraCanvasLabel* summary = nullptr;
+    UltraCanvasButton* compare = nullptr;
+    UltraCanvasButton* sync = nullptr;
+    std::shared_ptr<ResultSetModel> model;
+    UltraCanvasListView* grid = nullptr;
+    bool busy = false;
+    std::function<void(const CompareChoice&, CompareShown)> onCompare;
+    std::function<void(const CompareChoice&, std::function<void()>)> onSync;
+
+    CompareChoice Choice() const {
+        CompareChoice choice;
+        choice.connection = connection->GetSelectedIndex();
+        choice.schema = schema->GetText();
+        choice.table = table->GetText();
+        return choice;
+    }
+};
+
+void RunCompare(const std::shared_ptr<CompareForm>& form) {
+    if (form->busy || !form->onCompare) return;
+    form->busy = true;
+    form->compare->SetDisabled(true);
+    form->sync->SetDisabled(true);
+    form->summary->SetText("Comparing…");
+    form->summary->SetTextColor(StatusColor());
+    // The dialog may be closed before the answer comes.
+    std::weak_ptr<CompareForm> weak = form;
+    form->onCompare(form->Choice(), [weak](const std::string& error, const std::string& summary,
+                                           const UltraDbResultSet& rows, bool canSync) {
+        auto form = weak.lock();
+        if (!form) return;
+        form->busy = false;
+        form->compare->SetDisabled(false);
+        form->sync->SetDisabled(!error.empty() || !canSync);
+        form->summary->SetText(error.empty() ? summary : error);
+        form->summary->SetTextColor(error.empty() ? StatusColor() : ErrorColor());
+        form->model->Replace(rows);
+        FitResultColumns(*form->grid);
+    });
+}
+
+} // namespace
+
+void ShowCompareDialog(UltraCanvasWindowBase* parent, const CompareDialogSpec& spec,
+                       std::function<void(const CompareChoice&, CompareShown)> onCompare,
+                       std::function<void(const CompareChoice&, std::function<void()>)> onSync) {
+    auto form = std::make_shared<CompareForm>();
+    form->onCompare = std::move(onCompare);
+    form->onSync = std::move(onSync);
+    auto dialog = MakeDialog(spec.title, 860, 600);
+    if (!dialog) return;
+    form->dialog = dialog.get();
+
+    auto grid = CreateFormGrid("dbdForm", 8.0f, 10.0f);
+    grid->layoutItem.SetFlexShrink(0);
+    auto connection = CreateDropdown("dbdConnection", 0, 0, 0, kLineHeight);
+    for (const std::string& name : spec.connections) connection->AddItem(name);
+    if (!spec.connections.empty())
+        connection->SetSelectedIndex(std::clamp(spec.connection, 0, static_cast<int>(spec.connections.size()) - 1), false);
+    form->connection = connection.get();
+    AddFormRow(grid, "dbdConnectionRow", "Compare with", connection);
+    auto schema = CreateTextInput("dbdSchema", 0, 0, 0, kLineHeight);
+    schema->SetText(spec.schema);
+    schema->SetPlaceholder("the schema (\"main\" for a SQLite file)");
+    form->schema = schema.get();
+    AddFormRow(grid, "dbdSchemaRow", "Schema", schema);
+    auto table = CreateTextInput("dbdTable", 0, 0, 0, kLineHeight);
+    table->SetText(spec.table);
+    form->table = table.get();
+    AddFormRow(grid, "dbdTableRow", "Table", table);
+    dialog->AddChild(grid);
+
+    auto summary = CreateLabel("dbdSummary", 0, 0, 0, 40, "Pick the other table, then Compare.");
+    summary->SetWrap(TextWrap::WrapWord);
+    summary->SetTextColor(StatusColor());
+    summary->layoutItem.SetFlexShrink(0);
+    form->summary = summary.get();
+    dialog->AddChild(summary);
+
+    form->model = std::make_shared<ResultSetModel>();
+    auto rows = std::make_shared<UltraCanvasListView>("dbdRows", -1, -1, 400, 200);
+    rows->SetModel(form->model);
+    rows->SetShowHeader(true);
+    rows->SetShowItemTooltips(true);
+    StyleList(*rows);
+    FitResultColumns(*rows);
+    rows->layoutItem.SetFlexBasis(CSSLayout::Dimension::Px(0)).SetFlexGrow(1).SetFlexShrink(1);
+    rows->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    form->grid = rows.get();
+    dialog->AddChild(rows);
+
+    auto buttons = ButtonRow("dbdButtons");
+    auto sync = MakeDialogButton("dbdSync", "Make the other the same…", 200);
+    sync->SetTooltip("Insert, update and delete rows of the other table until it holds what this one holds - "
+                     "the SQL is shown first");
+    sync->SetDisabled(true);
+    form->sync = sync.get();
+    // The buttons hold the form, so it lives as long as the dialog; what
+    // comes back later holds it weakly.
+    std::weak_ptr<CompareForm> weak = form;
+    sync->SetOnClick([form, weak]() {
+        if (!form->onSync || form->busy) return;
+        form->onSync(form->Choice(), [weak]() {
+            if (auto again = weak.lock()) RunCompare(again);
+        });
+    });
+    buttons->AddChild(sync);
+    buttons->AddStretchSpacer(1);
+    auto close = MakeDialogButton("dbdClose", "Close", 90);
+    close->SetOnClick([form]() { form->dialog->CloseDialog(DialogResult::Cancel); });
+    buttons->AddChild(close);
+    auto compare = MakeDialogButton("dbdCompare", "Compare", 110, ButtonRole::Primary);
+    form->compare = compare.get();
+    compare->SetOnClick([form]() { RunCompare(form); });
+    buttons->AddChild(compare);
+    dialog->AddChild(buttons);
+    dialog->AddChild(Note("dbdIntro", spec.intro, 40));
+    table->onEnterPressed = [form](const std::string&) {
+        RunCompare(form);
+        return true;
+    };
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
+}
+
+void ShowRelayDialog(UltraCanvasWindowBase* parent, const std::string& url, bool cancellable,
+                     std::function<void(const std::string&, const std::string&,
+                                        std::function<void(const std::string&)>)> onConnect,
+                     std::function<void(const std::string&, std::function<void(const std::string&)>)> onSignIn) {
+    struct RelayForm {
+        UltraCanvasModalDialog* dialog = nullptr;
+        UltraCanvasTextInput* url = nullptr;
+        UltraCanvasTextInput* token = nullptr;
+        UltraCanvasLabel* error = nullptr;
+        UltraCanvasButton* connect = nullptr;
+        UltraCanvasButton* signIn = nullptr;
+        bool busy = false;
+        std::function<void(const std::string&, const std::string&, std::function<void(const std::string&)>)> onConnect;
+        std::function<void(const std::string&, std::function<void(const std::string&)>)> onSignIn;
+    };
+    auto form = std::make_shared<RelayForm>();
+    form->onConnect = std::move(onConnect);
+    form->onSignIn = std::move(onSignIn);
+    // Its title is the window's: the title bar on a desktop, and in a browser
+    // the one the WebAssembly backend draws above a dialog.
+    auto dialog = MakeDialog("Connect to a DB relay", 560, 310);
+    if (!dialog) return;
+    form->dialog = dialog.get();
+    auto grid = CreateFormGrid("dbrForm", 8.0f, 10.0f);
+    grid->layoutItem.SetFlexShrink(0);
+    auto address = CreateTextInput("dbrUrl", 0, 0, 0, kLineHeight);
+    address->SetText(url);
+    address->SetPlaceholder("wss://db.example.com/relay");
+    form->url = address.get();
+    AddFormRow(grid, "dbrUrlRow", "Relay", address);
+    auto token = CreatePasswordInput("dbrToken", 0, 0, 0, kLineHeight);
+    token->SetPlaceholder("the token the relay's administrator gave you");
+    form->token = token.get();
+    AddFormRow(grid, "dbrTokenRow", "Token", token);
+    dialog->AddChild(grid);
+    auto error = ErrorLine("dbrError");
+    form->error = error.get();
+    dialog->AddChild(error);
+
+    auto buttons = ButtonRow("dbrButtons");
+    buttons->AddStretchSpacer(1);
+    if (cancellable) {
+        auto cancel = MakeDialogButton("dbrCancel", "Cancel", 90);
+        cancel->SetOnClick([form]() { form->dialog->CloseDialog(DialogResult::Cancel); });
+        buttons->AddChild(cancel);
+    }
+    auto connect = MakeDialogButton("dbrConnect", "Connect", 110, ButtonRole::Primary);
+    form->connect = connect.get();
+    std::weak_ptr<RelayForm> weak = form;
+    // The answer to Connect or Sign in: "" closes the dialog.
+    auto done = [weak](const std::string& failed) {
+        auto form = weak.lock();
+        if (!form) return;
+        form->busy = false;
+        form->connect->SetDisabled(false);
+        if (form->signIn) form->signIn->SetDisabled(false);
+        if (failed.empty()) {
+            form->dialog->CloseDialog(DialogResult::OK);
+            return;
+        }
+        form->error->SetTextColor(ErrorColor());
+        form->error->SetText(failed);
+    };
+    // The address, checked; "" when it is not one.
+    auto checkedUrl = [form]() -> std::string {
+        const std::string text = form->url->GetText();
+        if (text.rfind("ws://", 0) != 0 && text.rfind("wss://", 0) != 0) {
+            form->error->SetTextColor(ErrorColor());
+            form->error->SetText("The relay's address begins wss:// (or ws:// on this computer).");
+            return std::string();
+        }
+        return text;
+    };
+    auto start = [form](const char* what) {
+        form->busy = true;
+        form->connect->SetDisabled(true);
+        if (form->signIn) form->signIn->SetDisabled(true);
+        form->error->SetTextColor(StatusColor());
+        form->error->SetText(what);
+    };
+    auto run = [form, checkedUrl, start, done]() {
+        if (form->busy || !form->onConnect) return;
+        const std::string url = checkedUrl();
+        if (url.empty()) return;
+        const std::string secret = form->token->GetText();
+        if (secret.empty()) {
+            form->error->SetTextColor(ErrorColor());
+            form->error->SetText(form->onSignIn ? "Type your token, or sign in." : "Type your token.");
+            return;
+        }
+        start("Asking the relay…");
+        form->onConnect(url, secret, done);
+    };
+    connect->SetOnClick(run);
+    if (form->onSignIn) {
+        auto signIn = MakeDialogButton("dbrSignIn", "Sign in", 110);
+        signIn->SetTooltip("Sign in with the account the relay's administrator set up for you (OpenID Connect)");
+        form->signIn = signIn.get();
+        signIn->SetOnClick([form, checkedUrl, start, done]() {
+            if (form->busy) return;
+            const std::string url = checkedUrl();
+            if (url.empty()) return;
+            start("Signing in…");
+            form->onSignIn(url, done);
+        });
+        buttons->AddChild(signIn);
+    }
+    token->onEnterPressed = [run](const std::string&) {
+        run();
+        return true;
+    };
+    buttons->AddChild(connect);
+    dialog->AddChild(buttons);
+    // What a relay is, under the buttons, for whoever wants to know.
+    dialog->AddChild(Note("dbrIntro",
+                          "An UltraDBAdmin relay runs your queries on the databases its administrator set up, "
+                          "with passwords that stay on the relay. Your token - or signing in, where the relay "
+                          "offers it - says who you are and what you may read or change.",
+                          78));
+    dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }
 

@@ -22,6 +22,4 @@
   stay centred.
 - `TextCentredOnCapsTest` also checks a checkbox's label and the cap height
   of a layout sized by a font attribute.
-- The Mekko chart's segment labels are centred on their capitals too, and the
-  importance-performance demo page's subtitle fits its line (the layout
-  audit found its end cut off).
+- The Mekko chart's segment labels are centred on their capitals too.

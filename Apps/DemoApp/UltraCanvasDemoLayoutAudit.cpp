@@ -6,10 +6,12 @@
 // an element its parent cuts off without a scrollbar to reach the rest. With
 // --pseudo-loc every label and button text is first made ~40% longer, the way
 // a translation into German or Finnish is, so a page that only just fits in
-// English shows where it would break. Exits 0 when nothing was found, 1 when
-// something was.
+// English shows where it would break; text without a letter (a time readout,
+// a "+" button) is no language's and stays as it is. Exits 0 when nothing was
+// found, 1 when something was. CI runs both forms on Linux (build.yml).
+// Version: 1.1.0 - --pseudo-loc leaves text without a letter as it is
 // Version: 1.0.0 (--pseudo-loc with --component: the page shown with the longer texts)
-// Last Modified: 2026-10-23
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -21,7 +23,9 @@
 #include "UltraCanvasWindow.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <set>
 #include <sstream>
@@ -44,10 +48,39 @@ namespace UltraCanvas {
             return out;
         }
 
+        // Whether `text` has a letter in it. Text without one - a time
+        // readout "0:00 / 2:08", a "+" or "−" button, a "–" between two
+        // dates - reads the same in every language. A code point counts as
+        // a letter when it is an ASCII letter or lies in the scripts' blocks:
+        // Latin-1 letters to Greek extended, and CJK onwards; the
+        // punctuation, arrows, maths and box symbols between (U+2000 -
+        // U+2FFF) and emoji do not.
+        bool HasLetter(const std::string& text) {
+            for (size_t i = 0; i < text.size();) {
+                const auto c = static_cast<unsigned char>(text[i]);
+                if (c < 0x80) {
+                    if (std::isalpha(c)) return true;
+                    ++i;
+                    continue;
+                }
+                const int len = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+                uint32_t cp = len == 4 ? (c & 0x07) : len == 3 ? (c & 0x0F) : (c & 0x1F);
+                for (int k = 1; k < len && i + k < text.size(); ++k)
+                    cp = (cp << 6) | (static_cast<unsigned char>(text[i + k]) & 0x3F);
+                i += len;
+                if (cp == 0xD7 || cp == 0xF7) continue;   // × ÷
+                if ((cp >= 0xC0 && cp < 0x2000) || (cp >= 0x3040 && cp < 0xE000) ||
+                    (cp >= 0xF900 && cp < 0xFE00) || (cp >= 0x20000 && cp < 0x30000))
+                    return true;
+            }
+            return false;
+        }
+
         // ~40% more text, added as whole words at the end so markup stays
         // well formed and a wrapping label can still break between them.
+        // Text without a letter is not translated, so it stays as it is.
         std::string PseudoLocalize(const std::string& text) {
-            if (text.empty()) return text;
+            if (!HasLetter(text)) return text;
             size_t extra = static_cast<size_t>(std::ceil(text.size() * 0.4));
             std::string out = text;
             while (extra > 0) {
