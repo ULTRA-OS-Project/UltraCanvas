@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsDiagnostics.h
 // Startup and crash diagnostics for Windows builds.
+// Version: 1.1.0 - the crash report names functions from the COFF symbol table too
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 //
@@ -80,8 +81,10 @@ namespace UltraCanvas {
     // appends one line to the ULTRACANVAS_DEBUG_LOG file naming the exception
     // code, the faulting address, the module that address belongs to, the
     // offset into it and the function (the nearest name in the module's export
-    // table), then - on x64 - the call stack, one module+offset and function
-    // per caller, and shows a message box with the same text and the dump's
+    // table or, nearer, in the COFF symbol table of its file - which names an
+    // application's .exe and code with internal linkage too), then - on x64 -
+    // the call stack, one module+offset and function per caller, and shows a
+    // message box with the same text and the dump's
     // path. The log write goes straight to the file with the Win32 API -- no
     // allocation, no C++ stream, no lock -- because the process is already in
     // an undefined state and the normal sink may be mid-write; the dump writer

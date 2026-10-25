@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp
 // Startup and crash diagnostics for Windows builds. See the header for why.
+// Version: 1.1.0 - the crash report's function names also come from the module file's COFF
+//                  symbol table: an application's .exe, lambdas, anonymous namespaces
 // Version: 1.0.1 - the crash dump folder, FONTCONFIG_FILE and the debug log path read
 //                  as UTF-8 (GetEnvUtf8); Widen then sees the UTF-8 it expects
 // Version: 1.0.0
@@ -527,14 +529,25 @@ namespace UltraCanvas {
         // caller on the stack, the module, the offset inside it - the same on
         // every start - and the function.
         //
-        // The function comes from the module's export table. The framework DLL
-        // is linked with WINDOWS_EXPORT_ALL_SYMBOLS, so every function with
-        // external linkage is in it: the nearest export at or below an address
-        // is the function the address is in - or, for code with internal
-        // linkage (a lambda, a helper in an anonymous namespace), the exported
-        // function compiled just before it, which is still the right file. No
-        // dbghelp, no symbol file and no heap: only the module's own headers,
-        // which stay mapped while the module is loaded.
+        // The function comes from two places, and the nearer of the two names
+        // at or below the address wins:
+        //
+        //   The module's export table. The framework DLL is linked with
+        //   WINDOWS_EXPORT_ALL_SYMBOLS, so every function with external linkage
+        //   is in it. It stays mapped while the module is loaded.
+        //
+        //   The COFF symbol table of the module's file. A MinGW link (GNU ld
+        //   or lld) keeps it unless the binary is stripped (-s), and it names
+        //   what no export table does: every function of an application's
+        //   .exe, which exports nothing, and in any module the code with
+        //   internal linkage - a lambda, a class or helper in an anonymous
+        //   namespace, a static function. ArtCreator's tools are such classes:
+        //   with exports alone a crash in one was "ArtCreator.exe+0x60B98" and
+        //   no more. The table is not mapped, so it is read from the file the
+        //   module was loaded from, through static buffers, after checking
+        //   that the file is still that module.
+        //
+        // No dbghelp, no symbol file and no heap.
 
         // Appends at most `length` characters of `text`; `out` stays terminated.
         size_t AppendText(char* out, size_t capacity, size_t used, const char* text, size_t length) {
@@ -546,25 +559,39 @@ namespace UltraCanvas {
         // "_ZN11UltraCanvas20UltraCanvasTextInput5PasteEv" ->
         // "UltraCanvas::UltraCanvasTextInput::Paste". The name only: the
         // parameters are dropped, and where the mangling goes beyond nested
-        // names (template arguments, operators) the name ends in "...". Anything
+        // names (template arguments, operators) the name ends in "...". An
+        // anonymous namespace reads "(anonymous namespace)", and a lambda (or
+        // another local entity) is named after the function it is in:
+        // "UltraCanvas::ArtCreatorWindow::BuildToolPalette::{lambda}". Anything
         // that is not an Itanium name (a C function, an MSVC "?" name) is kept
         // as it is.
         void DemangledName(const char* mangled, char* out, size_t capacity) {
             if (!capacity) return;
             out[0] = '\0';
             const char* p = mangled;
-            bool nested = false;
-            if (std::strncmp(p, "_ZN", 3) == 0) {
+            // _ZZ <the enclosing function> E <the local entity>
+            bool local = false;
+            if (std::strncmp(p, "_ZZ", 3) == 0) {
                 p += 3;
-                nested = true;
-                while (*p == 'r' || *p == 'V' || *p == 'K' || *p == 'R' || *p == 'O') ++p;
-            } else if (std::strncmp(p, "_Z", 2) == 0 && p[2] >= '1' && p[2] <= '9') {
+                local = true;
+            } else if (std::strncmp(p, "_Z", 2) == 0) {
                 p += 2;
             } else {
                 AppendText(out, capacity, 0, mangled, std::strlen(mangled));
                 return;
             }
+            if (*p == 'L') ++p;   // internal linkage: a static function
+            bool nested = false;
+            if (*p == 'N') {
+                ++p;
+                nested = true;
+                while (*p == 'r' || *p == 'V' || *p == 'K' || *p == 'R' || *p == 'O') ++p;
+            } else if (*p < '1' || *p > '9') {
+                AppendText(out, capacity, 0, mangled, std::strlen(mangled));
+                return;
+            }
             size_t used = 0;
+            bool complete = false;
             const char* last = nullptr;      // the enclosing class, for "Class::Class"
             size_t lastLength = 0;
             while (*p) {
@@ -573,11 +600,20 @@ namespace UltraCanvas {
                     while (*p >= '0' && *p <= '9') length = length * 10 + static_cast<size_t>(*p++ - '0');
                     if (length == 0 || std::strlen(p) < length) break;
                     if (used) used = AppendText(out, capacity, used, "::", 2);
-                    used = AppendText(out, capacity, used, p, length);
+                    if (length >= 10 && std::strncmp(p, "_GLOBAL__N", 10) == 0) {
+                        used = AppendText(out, capacity, used, "(anonymous namespace)", 21);
+                    } else {
+                        used = AppendText(out, capacity, used, p, length);
+                    }
                     last = p;
                     lastLength = length;
                     p += length;
-                    if (!nested) return;
+                    if (!nested) {
+                        complete = true;
+                        break;
+                    }
+                } else if (nested && *p == 'L' && p[1] >= '1' && p[1] <= '9') {
+                    ++p;   // a static function inside a namespace or class
                 } else if (nested && *p == 'S' && p[1] == 't') {
                     used = AppendText(out, capacity, used, "std", 3);
                     p += 2;
@@ -586,7 +622,9 @@ namespace UltraCanvas {
                     used = AppendText(out, capacity, used, last, lastLength);
                     p += 2;
                 } else if (nested && *p == 'E') {
-                    return;
+                    ++p;
+                    complete = true;
+                    break;
                 } else {
                     break;
                 }
@@ -595,28 +633,44 @@ namespace UltraCanvas {
                 AppendText(out, capacity, 0, mangled, std::strlen(mangled));
                 return;
             }
-            AppendText(out, capacity, used, "...", 3);
+            if (!complete) {
+                AppendText(out, capacity, used, "...", 3);
+            } else if (local) {
+                // GCC names a lambda "Ul...", Clang "$_<n>".
+                const bool lambda = std::strstr(p, "Ul") || std::strchr(p, '$');
+                AppendText(out, capacity, used, lambda ? "::{lambda}" : "::{local}", lambda ? 10 : 9);
+            }
+        }
+
+        // The module's NT headers, or null when `base` is not a PE image.
+        const IMAGE_NT_HEADERS* ImageHeaders(const BYTE* base) {
+            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
+            if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
+            const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
+            return nt->Signature == IMAGE_NT_SIGNATURE ? nt : nullptr;
+        }
+
+        // The section that holds `rva` when it is code, else null: an address
+        // in data has no function to name.
+        const IMAGE_SECTION_HEADER* CodeSectionOf(const IMAGE_NT_HEADERS* nt, DWORD rva) {
+            const IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(nt);
+            for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
+                const DWORD size = section->Misc.VirtualSize ? section->Misc.VirtualSize
+                                                             : section->SizeOfRawData;
+                if (rva >= section->VirtualAddress && rva - section->VirtualAddress < size) {
+                    return (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) ? section : nullptr;
+                }
+            }
+            return nullptr;
         }
 
         // The exported name nearest at or below `rva` inside the code section
         // that holds `rva`, and that export's own RVA. Null when the module has
         // no export table or `rva` is not code.
         const char* NearestExport(const BYTE* base, DWORD rva, DWORD& exportRva) {
-            const auto* dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(base);
-            if (dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
-            const auto* nt = reinterpret_cast<const IMAGE_NT_HEADERS*>(base + dos->e_lfanew);
-            if (nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
-
-            const IMAGE_SECTION_HEADER* section = IMAGE_FIRST_SECTION(nt);
-            const IMAGE_SECTION_HEADER* code = nullptr;
-            for (WORD i = 0; i < nt->FileHeader.NumberOfSections; ++i, ++section) {
-                const DWORD size = section->Misc.VirtualSize ? section->Misc.VirtualSize
-                                                             : section->SizeOfRawData;
-                if (rva >= section->VirtualAddress && rva - section->VirtualAddress < size) {
-                    if (section->Characteristics & IMAGE_SCN_MEM_EXECUTE) code = section;
-                    break;
-                }
-            }
+            const IMAGE_NT_HEADERS* nt = ImageHeaders(base);
+            if (!nt) return nullptr;
+            const IMAGE_SECTION_HEADER* code = CodeSectionOf(nt, rva);
             if (!code) return nullptr;
 
             const IMAGE_DATA_DIRECTORY& directory =
@@ -644,6 +698,126 @@ namespace UltraCanvas {
             return best;
         }
 
+        // Reads `size` bytes at `offset` of `file`; false unless all of them came.
+        bool ReadFileAt(HANDLE file, DWORD offset, void* buffer, DWORD size) {
+            OVERLAPPED at = {};
+            at.Offset = offset;
+            DWORD read = 0;
+            return ReadFile(file, buffer, size, &read, &at) && read == size;
+        }
+
+        // One record of a COFF symbol table (IMAGE_SYMBOL, read as bytes: the
+        // table is packed to 18 bytes a record).
+        constexpr DWORD kCoffSymbolSize = 18;
+        // A chunk of the table per read: 3640 records, about 64 KB.
+        constexpr DWORD kCoffSymbolsPerRead = 3640;
+
+        // The function nearest at or below `rva` in the COFF symbol table of
+        // the file `module` was loaded from, in the same code section, with its
+        // RVA; the name is the raw (mangled) one, cut to `capacity`. False when
+        // the binary is stripped, `rva` is not code, the file cannot be read or
+        // is no longer the loaded module (rebuilt or replaced while it ran).
+        bool NearestFileSymbol(HMODULE module, DWORD rva, char* name, size_t capacity, DWORD& symbolRva) {
+            const auto* base = reinterpret_cast<const BYTE*>(module);
+            const IMAGE_NT_HEADERS* nt = ImageHeaders(base);
+            if (!nt || !capacity) return false;
+            const IMAGE_FILE_HEADER& header = nt->FileHeader;
+            if (!header.PointerToSymbolTable || !header.NumberOfSymbols) return false;
+            const IMAGE_SECTION_HEADER* code = CodeSectionOf(nt, rva);
+            if (!code) return false;
+            const IMAGE_SECTION_HEADER* sections = IMAGE_FIRST_SECTION(nt);
+            const int codeNumber = static_cast<int>(code - sections) + 1;   // 1-based, as in the table
+
+            static wchar_t path[MAX_PATH * 2];
+            const DWORD pathLength = GetModuleFileNameW(module, path, MAX_PATH * 2);
+            if (pathLength == 0 || pathLength >= MAX_PATH * 2) return false;
+            HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                      nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (file == INVALID_HANDLE_VALUE) return false;
+
+            bool found = false;
+            BYTE bestName[8] = {};        // a short name, or 0000 + the string table offset
+            DWORD bestRva = 0;
+            // The file must still be the module: its file header (time stamp,
+            // symbol table position and count) as loaded.
+            IMAGE_FILE_HEADER onDisk = {};
+            const DWORD headerOffset = static_cast<DWORD>(
+                    reinterpret_cast<const BYTE*>(&header) - base);
+            const DWORD tableEnd = header.PointerToSymbolTable + header.NumberOfSymbols * kCoffSymbolSize;
+            if (ReadFileAt(file, headerOffset, &onDisk, sizeof(onDisk)) &&
+                std::memcmp(&onDisk, &header, sizeof(onDisk)) == 0 &&
+                header.NumberOfSymbols < 0x10000000u && tableEnd > header.PointerToSymbolTable) {
+                static BYTE chunk[kCoffSymbolsPerRead * kCoffSymbolSize];
+                DWORD auxiliaryLeft = 0;   // records after a symbol that describe it
+                for (DWORD first = 0; first < header.NumberOfSymbols; first += kCoffSymbolsPerRead) {
+                    const DWORD count = header.NumberOfSymbols - first < kCoffSymbolsPerRead
+                                        ? header.NumberOfSymbols - first : kCoffSymbolsPerRead;
+                    if (!ReadFileAt(file, header.PointerToSymbolTable + first * kCoffSymbolSize,
+                                    chunk, count * kCoffSymbolSize)) {
+                        break;
+                    }
+                    for (DWORD i = 0; i < count; ++i) {
+                        if (auxiliaryLeft) {
+                            --auxiliaryLeft;
+                            continue;
+                        }
+                        const BYTE* symbol = chunk + i * kCoffSymbolSize;
+                        DWORD value;
+                        std::memcpy(&value, symbol + 8, 4);
+                        SHORT section;
+                        std::memcpy(&section, symbol + 12, 2);
+                        WORD type;
+                        std::memcpy(&type, symbol + 14, 2);
+                        const BYTE storageClass = symbol[16];
+                        auxiliaryLeft = symbol[17];
+                        // Functions in rva's section; section names (".text",
+                        // ".text$<function>") and other dot-names are not.
+                        if (section != codeNumber || symbol[0] == '.') continue;
+                        if (storageClass != IMAGE_SYM_CLASS_EXTERNAL &&
+                            !(storageClass == IMAGE_SYM_CLASS_STATIC &&
+                              (type & 0xF0) == (IMAGE_SYM_DTYPE_FUNCTION << 4))) {
+                            continue;
+                        }
+                        const DWORD at = code->VirtualAddress + value;
+                        if (at > rva || at < code->VirtualAddress || (found && at <= bestRva)) continue;
+                        found = true;
+                        bestRva = at;
+                        std::memcpy(bestName, symbol, 8);
+                    }
+                }
+            }
+
+            if (found) {
+                DWORD stringOffset = 0;
+                std::memcpy(&stringOffset, bestName + 4, 4);
+                if (bestName[0] || bestName[1] || bestName[2] || bestName[3]) {
+                    // Up to eight characters in the record itself.
+                    size_t n = 0;
+                    while (n < 8 && n + 1 < capacity && bestName[n]) {
+                        name[n] = static_cast<char>(bestName[n]);
+                        ++n;
+                    }
+                    name[n] = '\0';
+                } else {
+                    // The string table follows the symbols; its first four
+                    // bytes are its size, so a real offset is at least 4.
+                    const DWORD want = capacity - 1 < 0xFFFFu ? static_cast<DWORD>(capacity - 1) : 0xFFFFu;
+                    DWORD read = 0;
+                    OVERLAPPED stringAt = {};
+                    stringAt.Offset = tableEnd + stringOffset;
+                    found = stringOffset >= 4 && want > 0 &&
+                            ReadFile(file, name, want, &read, &stringAt) && read > 0;
+                    if (found) {
+                        name[read] = '\0';
+                        found = name[0] != '\0';
+                    }
+                }
+                symbolRva = bestRva;
+            }
+            CloseHandle(file);
+            return found;
+        }
+
         // "libUltraCanvas.dll+0x12C86D UltraCanvas::UltraCanvasTextInput::Paste+0x3D",
         // or the bare address when no module holds it. A return address is
         // looked up one byte back, inside the call it returns from: a call can
@@ -669,9 +843,18 @@ namespace UltraCanvas {
 
             const auto* base = reinterpret_cast<const BYTE*>(module);
             const auto offset = static_cast<unsigned long>(address - reinterpret_cast<DWORD64>(base));
-            DWORD exportRva = 0;
-            const char* symbol =
-                    NearestExport(base, static_cast<DWORD>(lookup - reinterpret_cast<DWORD64>(base)), exportRva);
+            const auto lookupRva = static_cast<DWORD>(lookup - reinterpret_cast<DWORD64>(base));
+            DWORD symbolRva = 0;
+            const char* symbol = NearestExport(base, lookupRva, symbolRva);
+            // The symbol table names what the exports do not; the nearer of
+            // the two is the function the address is in.
+            static char fileSymbol[512];
+            DWORD fileSymbolRva = 0;
+            if (NearestFileSymbol(module, lookupRva, fileSymbol, sizeof(fileSymbol), fileSymbolRva) &&
+                (!symbol || fileSymbolRva > symbolRva)) {
+                symbol = fileSymbol;
+                symbolRva = fileSymbolRva;
+            }
             if (!symbol) {
                 std::snprintf(out, capacity, "%s+0x%lX", file, offset);
                 return;
@@ -679,7 +862,7 @@ namespace UltraCanvas {
             char name[160];
             DemangledName(symbol, name, sizeof(name));
             std::snprintf(out, capacity, "%s+0x%lX %s+0x%lX", file, offset, name,
-                          offset - static_cast<unsigned long>(exportRva));
+                          offset - static_cast<unsigned long>(symbolRva));
         }
 
         // Room for the call stack's text: sixteen lines of module, offset and

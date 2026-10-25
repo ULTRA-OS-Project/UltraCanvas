@@ -190,12 +190,25 @@ the victim, not the cause.
 **Where in our code, and how it got there.** The address alone cannot be
 traced back to a function: a DLL loads at a different address on every start.
 So the line also gives the offset into the module, which is the same on every
-start, and the function — the nearest name in the module's export table.
-`libUltraCanvas.dll` is linked with `WINDOWS_EXPORT_ALL_SYMBOLS`, so every
-function of the framework with external linkage is in that table; for code
-with internal linkage (a lambda, a helper in an anonymous namespace) the name
-is that of the function compiled just before it, which is still the right
-file. On x64 the box and the log then list the call stack, one caller per
+start, and the function. The name comes from two places, and the nearer of
+the two at or below the address wins:
+
+- **The module's export table.** `libUltraCanvas.dll` is linked with
+  `WINDOWS_EXPORT_ALL_SYMBOLS`, so every function of the framework with
+  external linkage is in it.
+- **The COFF symbol table of the module's file.** A MinGW link (GNU ld or
+  lld) keeps it unless the binary is stripped with `-s`, and it names what
+  no export table does: every function of an application's `.exe`, which
+  exports nothing, and code with internal linkage in any module — a lambda
+  (`ArtCreatorWindow::BuildToolPalette::{lambda}`), a class or helper in an
+  anonymous namespace (`(anonymous namespace)::ShapeEditorTool::Load`), a
+  `static` function. The table is not loaded with the module, so the
+  reporter reads it from the file the module was loaded from, after checking
+  that the file is still that module: a binary rebuilt or replaced while the
+  program ran gives offsets without names rather than names from another
+  build.
+
+On x64 the box and the log then list the call stack, one caller per
 line, walked with the same unwind tables Windows' own exception dispatch uses.
 The shape of it (the names and numbers are made up):
 
@@ -206,14 +219,14 @@ in C:\Apps\MyApp\libUltraCanvas.dll. Windows 11 (10.0 build 26200)
 Call stack:
   #0 libUltraCanvas.dll+0x12C86D UltraCanvas::UltraCanvasExample::Update+0x3D
   #1 libUltraCanvas.dll+0x12F0A2 UltraCanvas::UltraCanvasExample::OnEvent+0x5B2
-  #2 MyApp.exe+0x1C40
+  #2 MyApp.exe+0x1C40 UltraCanvas::MyAppWindow::BuildToolbar::{lambda}+0x30
   #3 kernel32.dll+0x17374 BaseThreadInitThunk+0x14
   #4 ntdll.dll+0x4CC91 RtlUserThreadStart+0x21
 ```
 
 The names are demangled to the qualified name only, without the parameters.
-A frame in a module that exports nothing (an application's `.exe`) has the
-offset alone. A first frame that is a bare address in no module — the
+A frame in a stripped module that exports nothing (an application's `.exe`
+linked with `-s`) has the offset alone. A first frame that is a bare address in no module — the
 program called through a freed object — is followed by the caller that made
 that call. The walk stops at a frame it cannot unwind, and is skipped for a
 stack overflow, whose filter runs on what is left of the exhausted stack;
