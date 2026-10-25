@@ -7,6 +7,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.12.0 - the user's own palettes kept (picker.userpalettes); a hovered palette
+//                  swatch floods the picker
 // Version: 1.11.0 - the palette rows under the picker (UltraCanvasColorPaletteManager):
 //                   palettes added from a gallery, an entry set with a right click
 // Version: 1.10.0 - the right panel in SectionCard group boxes with small captions, as
@@ -23,7 +25,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 

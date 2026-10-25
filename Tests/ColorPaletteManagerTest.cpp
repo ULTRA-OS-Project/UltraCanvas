@@ -10,13 +10,23 @@
 //  - "+" opens the gallery; adding a preset adds a row; "-" removes one.
 //  - A right click on a swatch opens the entry editor: a picker with no
 //    background colour that sets that one entry.
+//  - The popups have a title bar ("Palette manager") that drags them.
+//  - "Add palette" opens the creator; Create keeps the palette among the
+//    user's own and adds it as a row; the gallery's x deletes it again.
+//  - The pointer on a swatch floods the rows and reports the colour, which
+//    floods the picker; leaving the rows ends both.
+//  - The small presets fill a row (16 colours or more), a 256-colour one is
+//    eight full lines, and a preset saved short comes back whole.
 //
 // Every press goes through the application's own dispatch. Opens a real
 // window, so it runs under Xvfb (xvfb-run -a) and skips the window part
 // without a DISPLAY. With ULTRACANVAS_SCREENSHOT_DIR set it writes the
-// window with the gallery and with the entry editor open as PPM files.
+// window with the gallery, the creator, a hovered swatch and the entry editor
+// as PPM files.
+// Version: 1.1.0 - the title bar, the creator, the user's own palettes, the
+//                  hover flood and the fuller presets
 // Version: 1.0.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "DisplayTestSupport.h"
@@ -25,6 +35,8 @@
 #include "UltraCanvasColorPaletteManager.h"
 #include "UltraCanvasColorPicker.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasLabel.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
 
 #include <cmath>
@@ -80,6 +92,19 @@ void Click(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>
         e.pointer = e.pointerWindow;
         app.DispatchEvent(e);
     }
+}
+
+void Pointer(UltraCanvasApplication& app, const std::shared_ptr<UltraCanvasWindow>& window,
+             UCEventType type, float windowX, float windowY) {
+    UCEvent e;
+    e.type = type;
+    e.button = (type == UCEventType::MouseMove) ? UCMouseButton::NoneButton : UCMouseButton::Left;
+    e.targetWindow = window;
+    e.nativeWindowHandle = window->GetNativeHandle();
+    e.pointerWindow = Point2Di(static_cast<int>(std::lround(windowX)),
+                               static_cast<int>(std::lround(windowY)));
+    e.pointer = e.pointerWindow;
+    app.DispatchEvent(e);
 }
 
 void Frames(const std::shared_ptr<UltraCanvasWindow>& window,
@@ -144,6 +169,46 @@ int main() {
         few.SetWrap(true);
         TEST("a few colours stay on one line at the preferred size",
              std::fabs(few.HeightForWidth(230) - (2.0f + 16.0f)) < 0.5f);
+
+        // Room for 37 a line: seven lines would leave a short last one, so
+        // the bar takes eight of 32.
+        UltraCanvasColorSwatchBar whole("whole", 266, 10);
+        ColorSwatchBarStyle ws = s;
+        ws.minSwatchSize = 6.0f;
+        whole.SetStyle(ws);
+        whole.SetColors(std::vector<Color>(256, Colors::Black));
+        whole.SetWrap(true);
+        const float wh = whole.HeightForWidth(266);
+        whole.SetElementSize(Size2Df(266, wh));
+        whole.SetBounds(Rect2Df(0, 0, 266, wh));
+        const float ss = whole.GetEffectiveSwatchSize();
+        TEST("256 colours with room for 37 a line are eight full lines",
+             std::fabs(wh - (2.0f + 8.0f * ss + 7.0f)) < 0.5f);
+    }
+
+    // ===== Presets =====
+    {
+        bool retired = false;
+        bool allFill = true;
+        for (const auto& p : UltraCanvasColorPaletteManager::PresetPalettes()) {
+            if (p.name == "Game Boy" || p.name == "PICO-8" || p.name == "VGA 16") retired = true;
+            if (p.colors.size() < 16) {
+                allFill = false;
+                std::cerr << "  short: " << p.name << " (" << p.colors.size() << ")" << std::endl;
+            }
+        }
+        TEST("Game Boy, PICO-8 and VGA 16 are gone", !retired);
+        TEST("every preset has a row's worth of colours", allFill);
+
+        // Ocean as it was saved before it grew to sixteen.
+        const std::string oldOcean = "Ocean|03045E,023E8A,0077B6,0096C7,00B4D8,48CAE4,90E0EF,CAF0F8";
+        std::vector<NamedColorPalette> back;
+        UltraCanvasColorPaletteManager::ParsePalettes(oldOcean, back);
+        TEST("a preset saved short comes back whole", back.size() == 1 && back[0].colors.size() == 16);
+        const std::string edited = "Ocean|03045E,023E8A,0077B6,0096C7,00B4D8,48CAE4,90E0EF,FFFFFF";
+        back.clear();
+        UltraCanvasColorPaletteManager::ParsePalettes(edited, back);
+        TEST("but one with a changed entry stays as it was", back.size() == 1 && back[0].colors.size() == 8);
     }
 
     // ===== Settings line =====
@@ -213,6 +278,19 @@ int main() {
     manager->onPalettesChanged = [&changes]() { ++changes; };
     Color picked = Colors::Transparent;
     manager->onColorSelected = [&picked](const Color& c) { picked = c; };
+    int userChanges = 0;
+    manager->onUserPalettesChanged = [&userChanges]() { ++userChanges; };
+    // As the applications wire it: the hovered swatch floods the picker.
+    Color hovered = Colors::Transparent;
+    int hoverEnds = 0;
+    manager->onColorHovered = [&hovered, picker = picker.get()](const Color& c) {
+        hovered = c;
+        picker->SetSurfacePreview(c);
+    };
+    manager->onColorHoverEnded = [&hoverEnds, picker = picker.get()]() {
+        ++hoverEnds;
+        picker->ClearSurfacePreview();
+    };
     const std::vector<std::shared_ptr<UltraCanvasUIElement>> all = {toolbox, picker, manager};
     Frames(window, all);
 
@@ -235,6 +313,24 @@ int main() {
     TEST("a click on the seventh swatch picks red",
          picked.r == 229 && picked.g == 57 && picked.b == 53);
 
+    // ===== Hovering a swatch =====
+    if (bar0) {
+        const float s = bar0->GetEffectiveSwatchSize();
+        const Rect2Df b = bar0->GetBoundsInWindow();
+        Pointer(app, window, UCEventType::MouseMove, b.x + 1.0f + 7 * (s + 2.0f) + s * 0.5f,
+                b.y + 1.0f + s * 0.5f);
+    }
+    Frames(window, all);
+    TEST("the pointer on the eighth swatch reports orange",
+         hovered.r == 244 && hovered.g == 124 && hovered.b == 32);
+    TEST("and floods the picker with it", picker->HasSurfacePreview());
+    if (const char* dir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+        WritePpm(window, std::string(dir) + "/palette-hover.ppm");
+    }
+    Pointer(app, window, UCEventType::MouseMove, 20.0f, 20.0f);
+    Frames(window, all);
+    TEST("leaving the rows ends it", hoverEnds == 1 && !picker->HasSurfacePreview());
+
     // ===== The gallery =====
     if (add0) Click(app, window, *add0, 7, 7);
     Frames(window, all);
@@ -245,6 +341,78 @@ int main() {
         WritePpm(window, std::string(dir) + "/palette-gallery.ppm");
     }
     UltraCanvasUIElement* gallery = active ? active->element : nullptr;
+    auto* caption = dynamic_cast<UltraCanvasLabel*>(Find(gallery, "pal-gallery-titlebar-caption"));
+    TEST("the gallery's title bar says Palette manager",
+         caption && caption->GetText() == "Palette manager");
+
+    // ===== Dragging it by the title bar =====
+    auto* titleBar = Find(gallery, "pal-gallery-titlebar");
+    if (gallery && titleBar) {
+        const Point2Df before = gallery->GetPositionInWindow();
+        const Rect2Df t = titleBar->GetBoundsInWindow();
+        Pointer(app, window, UCEventType::MouseDown, t.x + 40.0f, t.y + 10.0f);
+        // Up and to the left: it opened as low as the window lets it.
+        Pointer(app, window, UCEventType::MouseMove, t.x + 10.0f, t.y - 20.0f);
+        Pointer(app, window, UCEventType::MouseUp, t.x + 10.0f, t.y - 20.0f);
+        Frames(window, all);
+        const Point2Df after = gallery->GetPositionInWindow();
+        TEST("dragging the title bar moves the popup",
+             std::fabs(after.x - (before.x - 30.0f)) < 1.5f && std::fabs(after.y - (before.y - 30.0f)) < 1.5f);
+        if (std::fabs(after.y - (before.y - 30.0f)) >= 1.5f) {
+            std::cerr << "  from " << before.x << "," << before.y << " to " << after.x << "," << after.y << std::endl;
+        }
+    } else {
+        TEST("the gallery has a title bar", false);
+    }
+
+    // ===== Making a palette =====
+    auto* addPalette = dynamic_cast<UltraCanvasButton*>(Find(gallery, "pal-gallery-addpalette"));
+    TEST("the gallery's foot has Add palette", addPalette && addPalette->GetText() == "Add palette");
+    if (addPalette) Click(app, window, *addPalette, 10, 10);
+    Frames(window, all);
+    active = window->GetActivePopupElement();
+    UltraCanvasUIElement* creator = active ? active->element : nullptr;
+    TEST("Add palette opens the creator over it",
+         creator && creator->GetIdentifier() == "pal-creator" && gallery && gallery->IsPopupElement());
+    auto* creatorPicker = dynamic_cast<UltraCanvasColorPicker*>(Find(creator, "pal-creator-picker"));
+    auto* addColour = dynamic_cast<UltraCanvasButton*>(Find(creator, "pal-creator-addcolour"));
+    auto* nameInput = dynamic_cast<UltraCanvasTextInput*>(Find(creator, "pal-creator-name"));
+    if (creatorPicker && addColour && nameInput) {
+        nameInput->SetText("Test colours");
+        for (const Color& c : {Color(200, 10, 10, 255), Color(10, 200, 10, 255), Color(10, 10, 200, 255)}) {
+            creatorPicker->SetColor(c, true);
+            addColour->onClick();
+        }
+    }
+    Frames(window, all);
+    if (const char* dir = std::getenv("ULTRACANVAS_SCREENSHOT_DIR")) {
+        WritePpm(window, std::string(dir) + "/palette-creator.ppm");
+    }
+    auto* create = dynamic_cast<UltraCanvasButton*>(Find(creator, "pal-creator-create"));
+    if (create) create->onClick();
+    Frames(window, all);
+    TEST("Create keeps it among the user's own", manager->GetUserPalettes().size() == 1 &&
+         manager->GetUserPalettes()[0].name == "Test colours" &&
+         manager->GetUserPalettes()[0].colors.size() == 3 && userChanges == 1);
+    TEST("and adds it as a row", manager->GetPaletteCount() == 2 &&
+         manager->GetPalettes()[1].name == "Test colours");
+    TEST("the creator closes, the gallery stays", creator && !creator->IsPopupElement() &&
+         window->GetActivePopupElement() && window->GetActivePopupElement()->element == gallery);
+    auto* ownAdd = dynamic_cast<UltraCanvasButton*>(Find(gallery, "pal-gallery-u0-add"));
+    TEST("the gallery lists it under My palettes, added", ownAdd && ownAdd->GetText() != "+");
+    TEST("a second one of that name gets another",
+         manager->UniquePaletteName("Test colours") == "Test colours 2");
+    auto* ownDelete = dynamic_cast<UltraCanvasButton*>(Find(gallery, "pal-gallery-u0-delete"));
+    if (ownDelete) ownDelete->onClick();
+    Frames(window, all);
+    TEST("its x deletes it from the user's own", manager->GetUserPalettes().empty() && userChanges == 2 &&
+         Find(gallery, "pal-gallery-u0-add") == nullptr);
+    TEST("the row stays", manager->GetPaletteCount() == 2);
+    auto* removeOwnRow = Find(manager.get(), "pal-row1-remove");
+    if (removeOwnRow) Click(app, window, *removeOwnRow, 7, 7);
+    Frames(window, all);
+    TEST("and goes with its -", manager->GetPaletteCount() == 1);
+    changes = 0;
     // The Web-safe preset's own + (the gallery's cards are numbered in order).
     int webIndex = -1;
     const auto& presets = UltraCanvasColorPaletteManager::PresetPalettes();
@@ -270,7 +438,10 @@ int main() {
     TEST("the last row has - and +", Find(manager.get(), "pal-row1-remove") != nullptr &&
                                      Find(manager.get(), "pal-row1-add") != nullptr);
     auto* bar1 = Find(manager.get(), "pal-row1-bar");
-    TEST("the GIF row wraps into a block", bar1 && bar1->GetHeight() > 60.0f);
+    TEST("the GIF row wraps into a block", bar1 && bar1->GetHeight() > 40.0f);
+    auto* gifBar = dynamic_cast<UltraCanvasColorSwatchBar*>(bar1);
+    TEST("of eight full lines", gifBar && std::fabs(gifBar->GetHeight() -
+         (2.0f + 8.0f * gifBar->GetEffectiveSwatchSize() + 7.0f)) < 0.5f);
     TEST("and the element grew for it",
          std::fabs(manager->GetHeight() - manager->HeightForWidth(kManagerW)) < 0.5f &&
          manager->GetHeight() > 70.0f);

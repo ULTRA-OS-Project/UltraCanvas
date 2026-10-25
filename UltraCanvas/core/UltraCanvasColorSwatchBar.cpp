@@ -1,7 +1,8 @@
 // core/UltraCanvasColorSwatchBar.cpp
 // Platform-independent colour swatch strip implementation.
+// Version: 1.3.0 - onColorHovered; full wrapped lines where they fit
 // Version: 1.2.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorSwatchBar.h"
@@ -214,6 +215,16 @@ void UltraCanvasColorSwatchBar::WrapMetrics(float width, int n, float& size,
     const int maxPerLine = std::max(1, static_cast<int>(std::floor((availW + sp) / (minSize + sp))));
     lines = (n + maxPerLine - 1) / maxPerLine;
     perLine = (n + lines - 1) / lines;
+    // A line or two more is worth it when it leaves no short last line:
+    // 256 colours with room for 37 a line go 8 x 32, not six lines of 37
+    // and a seventh of 34.
+    for (int more = 0; more <= 2 && lines > 1; ++more) {
+        if (n % (lines + more) == 0) {
+            lines += more;
+            perLine = n / lines;
+            break;
+        }
+    }
     const float fit = (availW - (perLine - 1) * sp) / static_cast<float>(perLine);
     size = std::max(1.0f, std::floor(std::min(style_.swatchSize, fit)));
 }
@@ -395,6 +406,12 @@ bool UltraCanvasColorSwatchBar::OnEvent(const UCEvent& event) {
                 }
                 RequestRedraw();
             }
+            // In a gap the last swatch stays the hovered one for the host.
+            const int hoveredColor = ColorIndexOfSlot(slot);
+            if (hoveredColor >= 0 && hoveredColor != hoverReported_) {
+                hoverReported_ = hoveredColor;
+                if (onColorHovered) onColorHovered(hoveredColor);
+            }
             return slot >= 0;
         }
 
@@ -403,6 +420,10 @@ bool UltraCanvasColorSwatchBar::OnEvent(const UCEvent& event) {
                 hoverSlot_ = -1;
                 SetTooltip("");
                 RequestRedraw();
+            }
+            if (hoverReported_ >= 0) {
+                hoverReported_ = -1;
+                if (onColorHovered) onColorHovered(-1);
             }
             return false;
         }

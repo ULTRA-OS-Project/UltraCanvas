@@ -8,6 +8,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and "Open new window" on a dropped image add
 // to it and the application exits with the last of them.
+// Version: 1.9.0 - the user's own palettes kept (picker.userpalettes); a hovered palette
+//                  swatch floods the picker
 // Version: 1.8.5 - DropPasswords forgets its passwords when the desktop session locks
 //                  (UltraCanvasSessionLock); a drop's first file then asks again
 // Version: 1.8.4 - DropPasswords: every password given in a drop (up to eight, newest
@@ -40,7 +42,7 @@
 // Version: 1.1.2 - ScheduleLayerPanelRebuild: the layer list is rebuilt after the event that changed it
 // Version: 1.1.1 - ToolIconPath / MenuIconPath: the palette's 28 px and the menus' 16 px icons
 // Version: 1.1.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
