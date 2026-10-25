@@ -43,6 +43,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
 // Last Modified: 2026-10-25
@@ -55,6 +56,7 @@
 #include "UltraIM/UltraIMTypes.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -118,7 +120,12 @@ private:
     void OpenConversation(const std::string& conversationId);
     void SendCurrentMessage();
     void UpdateHeader();
-    void SetStatus(const std::string& text);
+    // The status line: what the last action said, then every network's own
+    // state - "Added Bob · ChatCube: connected · Telegram: waiting for the
+    // network…" - so one network's news never hides another's.
+    void SetStatus(const std::string& text);                                      // the action's part
+    void SetProviderStatus(const std::string& providerId, const std::string& text);   // "" removes the entry
+    void RenderStatus();
     void SetSignInStatus(const std::string& text);
     void RefreshConversations();
     void ScrollToEnd();
@@ -193,6 +200,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    send_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
+    std::string actionStatus_;
+    std::map<std::string, std::string> providerStatus_;   // provider id -> its state
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> callBar_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     callText_;

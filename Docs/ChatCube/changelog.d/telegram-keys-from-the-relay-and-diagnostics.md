@@ -7,6 +7,10 @@
   networks do - the relay's answers, every object sent to and received from
   TDLib, never your number, code or password. TDLib's own log is
   `telegram/tdlib.log` in the data folder.
+- **The status line keeps one entry per network.** *ChatCube: connected ·
+  Matrix: signed in as @you:matrix.org · Telegram: waiting for the network…*
+  sits beside what your last action said, so the relay reconnecting no
+  longer wipes out what Telegram or Matrix was saying.
 - **The Telegram application's API ID and hash come from your relay.** Set
   `CHATCUBE_RELAY_TELEGRAM_API_ID` / `_HASH` in the relay's `.env` and
   ChatCube takes them after it signs in to the relay; the two fields in the

@@ -40,9 +40,11 @@ The first ChatCube draft, which this replaces, is kept under
    API ID and hash from my.telegram.org: your relay hands them out when it
    has them (`CHATCUBE_RELAY_TELEGRAM_API_ID` / `_HASH` in its `.env`), and
    the two fields appear only when it does not, or when there is no relay.
-   The status line says what Telegram is doing while you wait (connecting,
-   waiting for the network), and a step Telegram does not answer within
-   45 seconds says so instead of waiting forever. Your
+   The status line at the bottom keeps one entry per network - *ChatCube:
+   connected · Matrix: signed in as @you:matrix.org · Telegram: waiting for
+   the network…* - beside what your last action said, so it shows what
+   Telegram is doing while you wait, and a step Telegram does not answer
+   within 45 seconds says so instead of waiting forever. Your
    Telegram chats join the list; `@username`, `t.me/name` or `+phone` in
    *Add* or *New group* goes to Telegram.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
