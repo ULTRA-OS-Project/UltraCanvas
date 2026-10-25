@@ -819,12 +819,19 @@ void UltraPaintWindow::BuildRightPanel() {
     palettes->SetManagerStyle(paletteStyle);
     std::vector<NamedColorPalette> saved;
     if (UltraCanvasColorPaletteManager::ParsePalettes(settings.palettes, saved)) palettes->SetPalettes(saved);
+    std::vector<NamedColorPalette> own;
+    if (UltraCanvasColorPaletteManager::ParsePalettes(settings.userPalettes, own)) palettes->SetUserPalettes(own);
     palettes->onColorSelected = [this](const Color& c) {
         foreground = RasterPixel(c);
         colorPicker->SetForegroundColor(c, false);
         ApplyTextOption("colour");   // as the picker does
     };
     palettes->onPalettesChanged = [this]() { RememberPalettes(); };
+    palettes->onUserPalettesChanged = [this]() { RememberPalettes(); };
+    // A swatch under the pointer floods the picker too, as the rows, so the
+    // colour is seen on the whole of the card.
+    palettes->onColorHovered = [this](const Color& c) { colorPicker->SetSurfacePreview(c); };
+    palettes->onColorHoverEnded = [this]() { colorPicker->ClearSurfacePreview(); };
     colourPanel->AddChild(palettes);
     rightPanel->AddChild(colourPanel);
 
@@ -1758,9 +1765,13 @@ void UltraPaintWindow::RememberColourPicker() {
 
 void UltraPaintWindow::RememberPalettes() {
     settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
+    settings.userPalettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
     // As the picker: the other editors' copies too, so whichever saves its
     // settings next does not write back the rows it opened with.
-    for (const auto& editor : OpenWindows()) editor->settings.palettes = settings.palettes;
+    for (const auto& editor : OpenWindows()) {
+        editor->settings.palettes = settings.palettes;
+        editor->settings.userPalettes = settings.userPalettes;
+    }
     settings.SavePalettes();
 }
 

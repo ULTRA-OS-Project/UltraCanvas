@@ -37,6 +37,8 @@ colours nobody can reach.
   GIF palette as a compact block; `HeightForWidth` sizes the element
 - ✅ `SetColorAt` edits one entry; `onColorContextClicked` reports a right
   click with the entry's index, for a host that edits it in a popup
+- ✅ `onColorHovered` reports the entry under the pointer, for a host that
+  previews it (the palette manager floods its rows and the picker with it)
 - ✅ Never takes the keyboard focus, so a host keeps its own arrow-key handling
 
 ## Quick Start
@@ -145,7 +147,9 @@ gif->SetElementSize(Size2Df(230, gif->HeightForWidth(230)));
 In wrap mode the swatches stay at least `minSwatchSize`; the bar takes as many
 lines as that needs, shares the colours out evenly over them (16 on two lines
 are 8 + 8), and makes each swatch as large as the line's width allows up to
-`swatchSize`. The block starts at the top-left corner. `HeightForWidth(w)` is
+`swatchSize`. When a line or two more than the fewest divides the colours
+exactly, it takes that many, so no line is short: 256 colours with room for
+37 a line are 8 lines of 32. The block starts at the top-left corner. `HeightForWidth(w)` is
 the height all the lines take at width `w`.
 `UltraCanvasColorPaletteManager` ([doc](UltraCanvasColorPaletteManager.md))
 uses it for its palette rows.
@@ -162,6 +166,9 @@ std::function<void()>             onCheckeredSelected;
 // right click with the entry's index and the window position; when set it
 // takes the right click instead of onColorAdjustSelected
 std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
+// The pointer came onto a colour swatch (its index), or left the bar (-1);
+// crossing the gap between two swatches reports nothing.
+std::function<void(int index)> onColorHovered;
 ```
 
 A right click does not move the selection outline (that tracks left clicks)

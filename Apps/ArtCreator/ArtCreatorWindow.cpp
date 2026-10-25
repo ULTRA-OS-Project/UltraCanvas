@@ -1073,6 +1073,8 @@ void ArtCreatorWindow::BuildRightPanel() {
     palettes->SetManagerStyle(paletteStyle);
     std::vector<NamedColorPalette> saved;
     if (UltraCanvasColorPaletteManager::ParsePalettes(settings.palettes, saved)) palettes->SetPalettes(saved);
+    std::vector<NamedColorPalette> own;
+    if (UltraCanvasColorPaletteManager::ParsePalettes(settings.userPalettes, own)) palettes->SetUserPalettes(own);
     palettes->onColorSelected = [this](const Color& c) {
         fillColour = c;
         colorPicker->SetForegroundColor(c, false);
@@ -1083,6 +1085,14 @@ void ArtCreatorWindow::BuildRightPanel() {
         settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
         settings.Save();
     };
+    palettes->onUserPalettesChanged = [this]() {
+        settings.userPalettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
+        settings.Save();
+    };
+    // A swatch under the pointer floods the picker too, as the rows, so the
+    // colour is seen on the whole of the card.
+    palettes->onColorHovered = [this](const Color& c) { colorPicker->SetSurfacePreview(c); };
+    palettes->onColorHoverEnded = [this]() { colorPicker->ClearSurfacePreview(); };
     colourPanel->AddChild(palettes);
     rightPanel->AddChild(colourPanel);
 

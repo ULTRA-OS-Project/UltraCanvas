@@ -10,6 +10,9 @@
 // background (right/Adjust mouse) colour — the button used on the icon selects
 // the target swatch, which live-previews the pixel under the pointer as the
 // mouse moves.
+// Version: 1.10.0 - SetSurfacePreview / ClearSurfacePreview: a colour hovered
+//                  elsewhere (a palette swatch) floods the surface, as hovering
+//                  the picker's own swatches does
 // Version: 1.9.0 - SetShowBackgroundColor(false): a foreground-only picker - one
 //                  swatch, no swap arrow, the right button edits the same colour
 // Version: 1.8.1 - ColorPickerWheelStyleName / ColorPickerWheelStyleFromName: the designs
@@ -25,7 +28,7 @@
 // Version: 1.5.1 - the SV / hue x lightness marker is grabbed where it
 //                  overhangs the area; every drag captures the mouse
 // Version: 1.5.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -370,6 +373,14 @@ namespace UltraCanvas {
         void SetShowBackgroundColor(bool show);
         bool GetShowBackgroundColor() const { return showBackground; }
 
+        // A colour the pointer is over somewhere else - a palette swatch under
+        // the picker - floods the picker's surface, as hovering its own
+        // foreground or background swatch does, until ClearSurfacePreview.
+        // Hovering one of the picker's own swatches still shows that one.
+        void SetSurfacePreview(const Color& c);
+        void ClearSurfacePreview();
+        bool HasSurfacePreview() const { return surfacePreviewActive; }
+
         // The height at which a picker `width` wide draws its hue ring at the
         // full width the padding leaves - the biggest the wheel can be. Below
         // it the wheel shrinks to whatever vertical space is left over, so a
@@ -546,6 +557,10 @@ namespace UltraCanvas {
         // preview (the whole widget background is flooded with that colour).
         enum class HoverSwatch { NoneSwatch, Foreground, Background };
         HoverSwatch hoverSwatch = HoverSwatch::NoneSwatch;
+        // The same flood for a colour hovered outside the picker
+        // (SetSurfacePreview); a hovered swatch of its own goes first.
+        bool surfacePreviewActive = false;
+        Color surfacePreview;
 
         // ----- Cached layout (recomputed on resize) -----
         bool layoutValid = false;

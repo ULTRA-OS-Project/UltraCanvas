@@ -1,3 +1,15 @@
+#### 2026-10-25 *0.8.5*
+- **The Palette manager.** The "+" under the colour palettes opens a window
+  with a title bar to drag it by; *Add palette* at its foot makes a palette
+  of your own - a name and the colours picked for it - kept under *My
+  palettes* between starts (`picker.userpalettes`) and added as a row.
+- **A palette swatch under the pointer floods the colour picker and the
+  palette rows with its colour**, as the picker's own foreground and
+  background swatches do.
+- The small palettes have more colours, so each fills its row; a 256-colour
+  one is eight full lines. Game Boy, PICO-8 and VGA 16 are gone from the
+  list.
+
 #### 2026-10-23 *0.8.4*
 - **The Selector's sections in boxes of their own**: Handles, Arrange,
   Align and Distribute are each a rounded, lightly filled frame with a

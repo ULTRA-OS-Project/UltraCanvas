@@ -23,31 +23,43 @@ Colour card.
 - With **one** palette, its row ends in a **+** button.
 - With **several**, every row ends in a **−** that takes that palette away,
   and the **last** row has the **+** under its **−**.
-- **+** opens the **palette gallery**: a popup of ready-made schemes, grouped
-  by kind (basics, moods, design systems, retro machines, indexed / GIF), each
+- **+** opens the **Palette manager** (the gallery): a popup with a title bar
+  it is dragged about the window by, listing ready-made schemes grouped by
+  kind (basics, moods, design systems, retro machines, indexed / GIF), each
   with a preview of its colours, the number of colours and its own **+** that
   adds it as a new row. A scheme already among the rows shows a check mark.
   Clicking a preview adds it too.
+- **Add palette** at its foot opens the **palette creator** over it: a name,
+  a picker, *Add colour* / *Remove* and the colours added so far - a click on
+  one of them lets the picker change it. *Create* keeps the palette among the
+  user's own, listed first in the Palette manager under **My palettes** with
+  a **×** that deletes it, and adds it as a row.
 - A **left click** on a swatch picks its colour (`onColorSelected`); one
   swatch is marked across all the rows.
 - A **right click** on a swatch opens a small **foreground-only** colour
   picker next to it that sets that one entry of the palette, live, as it is
   dragged. *Revert* puts the colour back; *Done*, Escape or a click outside
   keep it.
+- The pointer on a swatch **floods the rows' background** with its colour and
+  reports it (`onColorHovered`, then `onColorHoverEnded`), so the host can
+  flood its picker too with `UltraCanvasColorPicker::SetSurfacePreview` - the
+  same preview the picker gives its own foreground and background swatches.
 
 Palettes run from a few colours to a whole **256-colour GIF palette**; large
 ones wrap into a compact block (`UltraCanvasColorSwatchBar::SetWrap`) instead
-of shrinking to hairlines. The element sets its own height to its rows', so in
+of shrinking to hairlines; a 256-colour one is eight full lines of 32. The
+element sets its own height to its rows', so in
 a flex column what is below it moves as rows come and go.
 
 It is built from framework elements only: the rows are
 [`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md)s, the buttons
-`UltraCanvasButton`s, the captions `UltraCanvasLabel`s and the entry editor an
-`UltraCanvasColorPicker` with `SetShowBackgroundColor(false)`.
+`UltraCanvasButton`s, the captions `UltraCanvasLabel`s, the creator's name an
+`UltraCanvasTextInput` and the pickers `UltraCanvasColorPicker`s with
+`SetShowBackgroundColor(false)`.
 
 **File Location**: `include/UltraCanvasColorPaletteManager.h`
 **Implementation**: `core/UltraCanvasColorPaletteManager.cpp`
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Author**: UltraCanvas Framework
 
 ## Quick Start
@@ -63,6 +75,9 @@ palettes->onColorSelected = [](const Color& c) {
     // the host's foreground colour, e.g. picker->SetForegroundColor(c, false)
     (void)c;
 };
+// The swatch under the pointer floods the picker above as well.
+palettes->onColorHovered = [p = picker.get()](const Color& c) { p->SetSurfacePreview(c); };
+palettes->onColorHoverEnded = [p = picker.get()]() { p->ClearSurfacePreview(); };
 card->AddChild(palettes);
 ```
 
@@ -82,7 +97,20 @@ if (UltraCanvasColorPaletteManager::ParsePalettes(savedLine, saved)) palettes->S
 ```
 
 The line is `Name|RRGGBB,RRGGBB,...;Name|...`. `ParsePalettes` returns false,
-and leaves its output alone, for text that holds no palette.
+and leaves its output alone, for text that holds no palette. A preset saved
+with fewer colours than it has now - the presets grew to fill their rows -
+comes back with all of them, unless one of its entries was changed.
+
+The user's own palettes are kept the same way, in a line of their own:
+
+```cpp
+palettes->onUserPalettesChanged = [m = palettes.get()]() {
+    SaveSetting(UltraCanvasColorPaletteManager::SerializePalettes(m->GetUserPalettes()));
+};
+
+std::vector<NamedColorPalette> own;
+if (UltraCanvasColorPaletteManager::ParsePalettes(savedLine, own)) palettes->SetUserPalettes(own);
+```
 
 ## The palettes
 
@@ -103,19 +131,28 @@ void SetEntryColor(int palette, int entry, const Color& c, bool notify = true);
 
 static NamedColorPalette DefaultPalette();                       // six greys and twelve colours
 static const std::vector<NamedColorPalette>& PresetPalettes();   // what the gallery offers
+
+// The user's own, made with the palette creator ("My palettes")
+void SetUserPalettes(const std::vector<NamedColorPalette>& palettes);   // no callback
+const std::vector<NamedColorPalette>& GetUserPalettes() const;
+std::string AddUserPalette(const NamedColorPalette& palette);   // kept and added as a row; its name
+void RemoveUserPalette(const std::string& name);                // a row of it stays
+std::string UniquePaletteName(const std::string& wanted) const; // "wanted", "wanted 2", ...
+static const char* UserPaletteCategory();                       // "My palettes"
 ```
 
-There is always at least one row: setting no palettes, or a list of empty
+Every preset has at least sixteen colours, which fill a row under a picker
+and in the gallery. There is always at least one row: setting no palettes, or a list of empty
 ones, leaves `DefaultPalette()`.
 
 The gallery's schemes:
 
 | Group | Palettes |
 |---|---|
-| Basics | Basic (18), Greys (16), Rainbow (24) |
-| Moods | Pastel, Earth, Skin tones, Sunset, Ocean, Forest, Neon |
+| Basics | Basic (18), Greys (16), Rainbow (32) |
+| Moods | Pastel, Earth, Skin tones, Sunset, Ocean, Forest, Neon (16 each) |
 | Design systems | Material (19), Nord (16), Solarized (16) |
-| Retro | Game Boy (4), PICO-8 (16), Commodore 64 (16), VGA 16 |
+| Retro | Commodore 64 (16) |
 | Indexed (GIF) | Web-safe 216, GIF 256 (RGB 3-3-2), GIF 256 greys |
 
 ## Selection and popups
@@ -126,11 +163,15 @@ void ClearSelection();
 
 void OpenPaletteGallery(const Rect2Df& anchorWindow);   // what "+" does
 void OpenEntryEditor(int palette, int entry, const Point2Di& windowPos);   // a right click
+void OpenPaletteCreator(const Rect2Df& anchorWindow);   // what "Add palette" opens
 void ClosePopups();
 ```
 
-The gallery opens below its anchor (window coordinates), right-aligned with
-it, or above it when the window has no room below.
+A popup opens below its anchor (window coordinates), right-aligned with it,
+or above it when the window has no room below. Each has a title bar - "Palette
+manager", "Colour 3 of Basic", "New palette" - that the user drags it about
+the window by. *Add palette* opens the creator over the Palette manager, which
+stays open under it.
 
 ## Style
 
@@ -152,4 +193,7 @@ editor's picker style and scale.
 ```cpp
 std::function<void(const Color&)> onColorSelected;   // a swatch was clicked
 std::function<void()>             onPalettesChanged; // added, removed, an entry set
+std::function<void()>             onUserPalettesChanged; // one made or deleted
+std::function<void(const Color&)> onColorHovered;    // the pointer onto a swatch
+std::function<void()>             onColorHoverEnded; // and off the rows again
 ```
