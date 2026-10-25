@@ -758,7 +758,11 @@ and never introduce a new literal copy of one:
    `LoadImage`, `SendMessage`), nor after an X11 macro (`None`, `Success`,
    `Status`, `Bool`, `Above`), nor `YES` / `NO` / `nil`, nor `id` / `Class` /
    `BOOL` at file scope — run `python3 scripts/check_platform_names.py`; CI
-   runs that too. Reading HTML, CSS or an `&entity;`? Through the
+   runs that too. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
+   the Windows builds compile it against libc++, which refuses what libstdc++
+   lets through (`std::to_string` of a file time's tick count, say), and the
+   script type-checks the module against libc++ in seconds. Reading HTML,
+   CSS or an `&entity;`? Through the
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
