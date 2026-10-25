@@ -56,8 +56,10 @@ namespace UltraCanvas {
         // The running copy answers from its UI thread, before it acts.
         constexpr int kAnswerTimeoutMs = 3000;
         // A copy started a moment earlier may still be opening and not listen
-        // yet; a later start keeps asking for this long.
-        constexpr int kStartingGraceMs = 10000;
+        // yet; a later start keeps asking for this long. Longer than the
+        // Windows exit watchdog's 10 s, so a start made just after a close
+        // outlasts a copy that never finishes ending, and then starts.
+        constexpr int kStartingGraceMs = 15000;
         constexpr int kRetryPauseMs = 250;
 
         // Each application's endpoint has an app id of its own, ".instance"

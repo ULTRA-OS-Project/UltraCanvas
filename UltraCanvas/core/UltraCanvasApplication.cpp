@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.14.0 - RunAfterMainLoop() at the end of Run()
 // Version: 1.13.1 - the generated fonts.conf (Windows, Android) scales bitmap fonts to the
 //                  size asked for, as fontconfig's 10-scale-bitmap-fonts.conf does: the
 //                  bundled Noto Color Emoji (109 px bitmaps) was drawn eight times too big;
@@ -1169,6 +1170,7 @@ namespace UltraCanvas {
         ShutdownNative();
 
         UCImage::ShutdownImageSubsysterm();
+        RunAfterMainLoop();
     }
 
     bool UltraCanvasApplicationBase::RequestExit() {

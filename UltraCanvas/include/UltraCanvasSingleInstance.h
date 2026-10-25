@@ -79,7 +79,7 @@ namespace UltraCanvas {
 
         // Takes the lock - in `lockDirectory` when given, else in the per-user
         // settings folder. When another copy holds it, offers it `request`
-        // (an object; empty means "just come forward"), waiting up to ten
+        // (an object; empty means "just come forward"), waiting up to fifteen
         // seconds for a copy that is still starting. Meanwhile it tries the
         // lock again: a copy whose window has closed but whose process is
         // still ending does not answer, and once it has gone this start is

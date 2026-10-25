@@ -674,6 +674,51 @@ of how often they bite:
    This is logged, not fatal, but it is worth ruling out on a VM or a machine
    running on the Microsoft Basic Display Adapter.
 
+## Still running after its window closed
+
+A program whose last window has closed ends its main loop and shuts down. If
+something in that shutdown waits for ever - a thread joined that never
+finishes, a lock nobody gives back - the process stays: no window, no
+taskbar button, still in Task Manager, still holding its files. A
+single-instance application then answers every new start with *"<App> is
+already running"*, because the old copy holds the lock.
+
+The **exit watchdog** ends that. When the main loop has ended,
+`UltraCanvasWindowsApplication` arms it (`ArmWindowsExitWatchdog()`); if the
+process is still there ten seconds later, it writes where the main thread
+stood and ends the process with exit code 124. The report goes to the
+`ULTRACANVAS_DEBUG_LOG` file when one is set, and always beside a minidump of
+every thread in the crash-dump folder:
+
+```
+%LOCALAPPDATA%\UltraCanvas\CrashDumps\UltraFiler-exit-20261025-090836-264.txt
+%LOCALAPPDATA%\UltraCanvas\CrashDumps\UltraFiler-exit-20261025-090836-264.dmp
+```
+
+```
+UltraFiler was still running 10 s after its main loop ended (its last window had
+closed), so it has been ended. Windows 11 (10.0 build 26200)
+Main thread:
+  #0 ntdll.dll+0x55624 NtWaitForMultipleObjects+0x14
+  #1 kernelbase.dll+0x74374 WaitForSingleObject+0x34
+  #2 UltraFiler.exe+0x3D66C pthread_join+0xBC
+  #3 UltraFiler.exe+0xD0FB7 std::thread::join+0x17
+  #4 UltraFiler.exe+0x167D UltraCanvas::UltraFilerWindow::~UltraFilerWindow+0xD
+```
+
+The frames are named as in a crash report (see *Where in our code* above), so
+the `.txt` alone says which step of the shutdown never finished; attach it,
+and the `.dmp`, to the bug report. A single-instance start keeps trying for
+fifteen seconds, longer than the watchdog's ten, so a start made just after
+the close opens once the old copy has been ended.
+
+`ULTRACANVAS_EXIT_WATCHDOG_SECONDS` sets the wait in whole seconds; `0` arms
+no watchdog. The watchdog cannot act once `ExitProcess` has begun (Windows
+kills every other thread, the watchdog with them), which is why code that runs
+then - a DLL's at-exit handlers, at `DLL_PROCESS_DETACH` - must not wait on
+anything: UltraMessage's at-exit shutdown does nothing at that point for that
+reason.
+
 ## Exit codes
 
 `uc-diagnose.bat` decodes these; the table is here for the cases where you run
@@ -691,6 +736,7 @@ which is why the decimal column looks the way it does.
 | `0xC00000FD` | -1073741571 | `STATUS_STACK_OVERFLOW`. |
 | `0xC0000409` | -1073740791 | `STATUS_STACK_BUFFER_OVERRUN` — a security check aborted the process. |
 | `0xC0000022` | -1073741790 | `STATUS_ACCESS_DENIED` — something refused to let the process run. On Windows 11, suspect Smart App Control first. |
+| `0x7C` | 124 | Ended by the exit watchdog: still running ten seconds after its main loop ended. The `-exit-*.txt` beside the dump says where it stood (see *Still running after its window closed*). |
 
 ## Writing a launcher that does not hide failures
 
@@ -748,6 +794,8 @@ void        LogWindowsStartupBanner(const std::string& appName);
 void        InstallWindowsCrashReporter(const std::string& appName);   // the filter, the log line and the minidump
 void        ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
 std::string DescribeWin32Error(unsigned long error);
+void        ArmWindowsExitWatchdog();      // RunAfterMainLoop(): end the process if it does not end
+void        DisarmWindowsExitWatchdog();   // InitializeNative(): initialised again
 ```
 
 `InitializeNative()` attaches as the window opens, which is after `main()`

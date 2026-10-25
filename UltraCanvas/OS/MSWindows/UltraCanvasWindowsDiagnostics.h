@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsDiagnostics.h
 // Startup and crash diagnostics for Windows builds.
+// Version: 1.2.0 - ArmWindowsExitWatchdog / DisarmWindowsExitWatchdog
 // Version: 1.1.0 - the crash report names functions from the COFF symbol table too
 // Version: 1.0.0
 // Author: UltraCanvas Framework
@@ -28,8 +29,11 @@
 //                                  message box.
 //   ReportWindowsStartupFailure()  reports a fatal init failure to the log and
 //                                  to the user instead of exiting quietly.
+//   ArmWindowsExitWatchdog()       ends a process whose main loop has ended but
+//                                  which does not, and says where it stood.
 //
-// Every one of them but ReleaseOwnConsole() is diagnostic only: nothing else
+// Every one of them but ReleaseOwnConsole() and ArmWindowsExitWatchdog() is
+// diagnostic only: nothing else
 // here changes what the app does when it starts successfully. Message boxes
 // are suppressed by setting
 // ULTRACANVAS_NO_ERROR_DIALOG=1, which is what a helper/child process
@@ -92,6 +96,21 @@ namespace UltraCanvas {
     // ULTRACANVAS_CRASH_DUMP_DIR names another folder for the dump;
     // ULTRACANVAS_NO_CRASH_DUMP=1 writes none.
     void InstallWindowsCrashReporter(const std::string& appName);
+
+    // Arms the exit watchdog. Called by the Windows backend once the main
+    // loop has ended. If the process is still running
+    // ULTRACANVAS_EXIT_WATCHDOG_SECONDS later (10 by default; 0 arms none),
+    // something in its shutdown waits for ever - a join, a lock - and it would
+    // stay without a window, holding its files and its single-instance lock,
+    // until ended in Task Manager. The watchdog then writes where the main
+    // thread stood (on x64: its call stack, named as in a crash report) to the
+    // ULTRACANVAS_DEBUG_LOG file and to <app>-exit-<date>-<time>-<pid>.txt
+    // beside a minidump of every thread in the crash-dump folder, and ends the
+    // process with exit code 124. Once ExitProcess has begun it can do
+    // nothing: Windows kills every other thread first.
+    void ArmWindowsExitWatchdog();
+    // Lets an armed watchdog go: the application is initialised again.
+    void DisarmWindowsExitWatchdog();
 
     // Logs `stage` + `detail` as a fatal startup failure and shows it in a
     // message box. Call before returning false from an initialisation step, so

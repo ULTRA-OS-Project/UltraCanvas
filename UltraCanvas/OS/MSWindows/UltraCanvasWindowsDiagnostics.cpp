@@ -1,5 +1,7 @@
 // OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp
 // Startup and crash diagnostics for Windows builds. See the header for why.
+// Version: 1.2.0 - the exit watchdog: a process whose main loop ended but which does not
+//                  end is reported and ended
 // Version: 1.1.0 - the crash report's function names also come from the module file's COFF
 //                  symbol table: an application's .exe, lambdas, anonymous namespaces
 // Version: 1.0.1 - the crash dump folder, FONTCONFIG_FILE and the debug log path read
@@ -454,15 +456,17 @@ namespace UltraCanvas {
         // path in gCrashDumpPath. False (and an empty path) when there is
         // no writer, no folder, or the write failed: the report then says
         // so instead of naming a file that is not there.
-        bool WriteCrashDump(EXCEPTION_POINTERS* info) {
+        // `kind` goes after the application's name: "-exit" for the exit
+        // watchdog's dump, empty for a crash.
+        bool WriteCrashDump(EXCEPTION_POINTERS* info, const wchar_t* kind = L"") {
             gCrashDumpPath[0] = L'\0';
             if (!gMiniDumpWriteDump || !gCrashDumpDir[0]) return false;
 
             SYSTEMTIME now = {};
             GetLocalTime(&now);
             // wsprintfW: a kernel-side formatter that allocates nothing.
-            const int n = wsprintfW(gCrashDumpPath, L"%s\\%s-%04u%02u%02u-%02u%02u%02u-%lu.dmp",
-                                    gCrashDumpDir, gCrashDumpBaseName,
+            const int n = wsprintfW(gCrashDumpPath, L"%s\\%s%s-%04u%02u%02u-%02u%02u%02u-%lu.dmp",
+                                    gCrashDumpDir, gCrashDumpBaseName, kind,
                                     static_cast<unsigned>(now.wYear),
                                     static_cast<unsigned>(now.wMonth),
                                     static_cast<unsigned>(now.wDay),
@@ -883,9 +887,11 @@ namespace UltraCanvas {
         // Stops after `capacity` frames, at a frame with no unwind data past the
         // first, when the stack pointer stops moving up, or when it leaves this
         // thread's stack: a smashed stack ends the list instead of being read.
+        int CaptureCallStack(const CONTEXT& fault, DWORD64 stackLow, DWORD64 stackHigh,
+                             DWORD64* frames, int capacity);
+
+        // The calling thread's stack.
         int CaptureCallStack(const CONTEXT& fault, DWORD64* frames, int capacity) {
-            static CONTEXT context;   // static: 1.2 KB of stack the filter may not have
-            context = fault;
             // MinGW's NtCurrentTeb() reads %gs:0x30 through an inline-asm
             // memory operand, which GCC's bounds check takes for a read of
             // address 0x30 ("array subscript 0 is outside array bounds").
@@ -898,9 +904,15 @@ namespace UltraCanvas {
 #if defined(__GNUC__) && !defined(__clang__)
     #pragma GCC diagnostic pop
 #endif
-            const auto stackLow  = reinterpret_cast<DWORD64>(tib->StackLimit);
-            const auto stackHigh = reinterpret_cast<DWORD64>(tib->StackBase);
+            return CaptureCallStack(fault, reinterpret_cast<DWORD64>(tib->StackLimit),
+                                    reinterpret_cast<DWORD64>(tib->StackBase), frames, capacity);
+        }
 
+        // Any thread's stack, between `stackLow` and `stackHigh`.
+        int CaptureCallStack(const CONTEXT& fault, DWORD64 stackLow, DWORD64 stackHigh,
+                             DWORD64* frames, int capacity) {
+            static CONTEXT context;   // static: 1.2 KB of stack the filter may not have
+            context = fault;
             int count = 0;
             while (count < capacity && context.Rip) {
                 frames[count++] = context.Rip;
@@ -933,6 +945,21 @@ namespace UltraCanvas {
         // process back into this filter; finding the flag set, it reports
         // without walking again instead of recursing.
         std::atomic<bool> gWalkingCallStack{false};
+
+        // "<heading>" and one line per frame, "  #<n> <module>+<offset> <function>";
+        // empty when there are no frames.
+        void FormatCallStack(const char* heading, const DWORD64* frames, int count, char* out, size_t capacity) {
+            out[0] = '\0';
+            if (count <= 0) return;
+            size_t used = AppendText(out, capacity, 0, heading, std::strlen(heading));
+            for (int i = 0; i < count; ++i) {
+                char frame[320];
+                char line[340];
+                DescribeCodeAddress(frames[i], i > 0, frame, sizeof(frame));
+                std::snprintf(line, sizeof(line), "\n  #%d %s", i, frame);
+                used = AppendText(out, capacity, used, line, sizeof(line));
+            }
+        }
 #endif
 
         LONG WINAPI UnhandledExceptionReporter(EXCEPTION_POINTERS* info) {
@@ -1030,15 +1057,7 @@ namespace UltraCanvas {
                 DWORD64 frames[kCrashStackFrames] = {};
                 const int count = CaptureCallStack(*info->ContextRecord, frames, kCrashStackFrames);
                 gWalkingCallStack = false;
-                size_t used = AppendText(callStack, sizeof(callStack), 0, "Call stack:", 11);
-                for (int i = 0; i < count; ++i) {
-                    char frame[320];
-                    char line[340];
-                    DescribeCodeAddress(frames[i], i > 0, frame, sizeof(frame));
-                    std::snprintf(line, sizeof(line), "\n  #%d %s", i, frame);
-                    used = AppendText(callStack, sizeof(callStack), used, line, sizeof(line));
-                }
-                if (count == 0) callStack[0] = '\0';
+                FormatCallStack("Call stack:", frames, count, callStack, sizeof(callStack));
             }
 #endif
 
@@ -1059,6 +1078,124 @@ namespace UltraCanvas {
             // Let the default handler run so a configured WER dump is still
             // produced; we only wanted the process to say something first.
             return EXCEPTION_CONTINUE_SEARCH;
+        }
+
+        // ===== THE EXIT WATCHDOG =====
+        // A program whose last window has closed and whose main loop has
+        // ended, but which then never finishes ending - a join that waits for
+        // ever, a lock nobody gives back - is a process with no window that
+        // keeps its files, its single-instance lock and its bus open: the next
+        // start of a single-instance application says it is "already running"
+        // until the old one is ended in Task Manager. Once the main loop has
+        // ended, a thread waits; if the process is still there when the time is
+        // up, it writes where the main thread stood (the log, a text file and a
+        // minidump in the crash-dump folder) and ends the process.
+        //
+        // It cannot help after ExitProcess has begun: Windows kills every
+        // other thread first, the watchdog with them.
+        constexpr DWORD kExitWatchdogDefaultSeconds = 10;
+        // The exit code of a process the watchdog ended, as `timeout` uses.
+        constexpr UINT kExitWatchdogExitCode = 124;
+        // Bumped by every arm and disarm: a watchdog whose generation is no
+        // longer current lets the process be.
+        std::atomic<unsigned> gExitWatchdogGeneration{0};
+
+        struct ExitWatch {
+            HANDLE mainThread = nullptr;   // the thread whose main loop ended
+            unsigned generation = 0;
+            DWORD seconds = 0;
+        };
+
+        // ULTRACANVAS_EXIT_WATCHDOG_SECONDS: whole seconds, 0 for none; the
+        // default when unset or not a number.
+        DWORD ExitWatchdogSeconds() {
+            const std::string value = UltraCanvas::GetEnvUtf8("ULTRACANVAS_EXIT_WATCHDOG_SECONDS");
+            if (value.empty()) return kExitWatchdogDefaultSeconds;
+            DWORD seconds = 0;
+            for (const char c : value) {
+                if (c < '0' || c > '9' || seconds > 86400) return kExitWatchdogDefaultSeconds;
+                seconds = seconds * 10 + static_cast<DWORD>(c - '0');
+            }
+            return seconds;
+        }
+
+        void ReportExitHang(const ExitWatch& watch) {
+            char message[512];
+            std::snprintf(message, sizeof(message),
+                          "%s was still running %lu s after its main loop ended (its last window had "
+                          "closed), so it has been ended. %s",
+                          gCrashAppName, static_cast<unsigned long>(watch.seconds), gCrashOsVersion);
+
+            // Where the main thread stood: the step of the shutdown that
+            // never finished.
+            static char stack[kCrashCallStackText] = "";
+            stack[0] = '\0';
+#if defined(ULTRACANVAS_CRASH_CALL_STACK)
+            if (watch.mainThread && SuspendThread(watch.mainThread) != static_cast<DWORD>(-1)) {
+                static CONTEXT context;
+                std::memset(&context, 0, sizeof(context));
+                context.ContextFlags = CONTEXT_FULL;
+                MEMORY_BASIC_INFORMATION region = {};
+                if (GetThreadContext(watch.mainThread, &context) &&
+                    VirtualQuery(reinterpret_cast<const void*>(context.Rsp), &region, sizeof(region))) {
+                    // The stack's reservation, up to the end of the committed
+                    // part that holds the stack pointer: the stack's base.
+                    const auto low = reinterpret_cast<DWORD64>(region.AllocationBase);
+                    const auto high = reinterpret_cast<DWORD64>(region.BaseAddress) + region.RegionSize;
+                    DWORD64 frames[kCrashStackFrames] = {};
+                    const int count = CaptureCallStack(context, low, high, frames, kCrashStackFrames);
+                    FormatCallStack("Main thread:", frames, count, stack, sizeof(stack));
+                }
+                // Left suspended: the process ends next, and the dump shows
+                // it where it stood.
+            }
+#endif
+            const bool dumped = WriteCrashDump(nullptr, L"-exit");
+            char dumpLine[MAX_PATH * 2 + 64] = "";
+            if (dumped) {
+                char dumpPath[MAX_PATH * 2] = "";
+                WideCharToMultiByte(CP_ACP, 0, gCrashDumpPath, -1, dumpPath, sizeof(dumpPath), nullptr, nullptr);
+                std::snprintf(dumpLine, sizeof(dumpLine), "Dump: %s", dumpPath);
+            }
+
+            CrashLogLine(message);
+            if (stack[0]) CrashLogLine(stack);
+            if (dumpLine[0]) CrashLogLine(dumpLine);
+
+            // The same text beside the dump, for a user without a log: the
+            // dump's name with .txt.
+            if (dumped) {
+                wchar_t textPath[MAX_PATH * 2];
+                const size_t length = std::wcslen(gCrashDumpPath);
+                if (length > 4 && length < MAX_PATH * 2) {
+                    std::wmemcpy(textPath, gCrashDumpPath, length + 1);
+                    std::wmemcpy(textPath + length - 4, L".txt", 5);
+                    HANDLE file = CreateFileW(textPath, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS,
+                                              FILE_ATTRIBUTE_NORMAL, nullptr);
+                    if (file != INVALID_HANDLE_VALUE) {
+                        DWORD written = 0;
+                        WriteFile(file, message, static_cast<DWORD>(std::strlen(message)), &written, nullptr);
+                        if (stack[0]) {
+                            WriteFile(file, "\r\n", 2, &written, nullptr);
+                            WriteFile(file, stack, static_cast<DWORD>(std::strlen(stack)), &written, nullptr);
+                        }
+                        WriteFile(file, "\r\n", 2, &written, nullptr);
+                        CloseHandle(file);
+                    }
+                }
+            }
+        }
+
+        DWORD WINAPI ExitWatchdogMain(void* parameter) {
+            const ExitWatch watch = *static_cast<ExitWatch*>(parameter);
+            delete static_cast<ExitWatch*>(parameter);
+            Sleep(watch.seconds * 1000);
+            if (gExitWatchdogGeneration.load() == watch.generation) {
+                ReportExitHang(watch);
+                TerminateProcess(GetCurrentProcess(), kExitWatchdogExitCode);
+            }
+            if (watch.mainThread) CloseHandle(watch.mainThread);
+            return 0;
         }
 
         void CopyToFixedBuffer(char* dest, size_t capacity, const std::string& source) {
@@ -1272,6 +1409,28 @@ namespace UltraCanvas {
         }
 
         SetUnhandledExceptionFilter(UnhandledExceptionReporter);
+    }
+
+    void ArmWindowsExitWatchdog() {
+        const unsigned generation = ++gExitWatchdogGeneration;
+        const DWORD seconds = ExitWatchdogSeconds();
+        if (seconds == 0) return;
+        auto* watch = new ExitWatch;
+        watch->generation = generation;
+        watch->seconds = seconds;
+        DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &watch->mainThread,
+                        THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0);
+        HANDLE thread = CreateThread(nullptr, 0, ExitWatchdogMain, watch, 0, nullptr);
+        if (thread) {
+            CloseHandle(thread);
+        } else {
+            if (watch->mainThread) CloseHandle(watch->mainThread);
+            delete watch;
+        }
+    }
+
+    void DisarmWindowsExitWatchdog() {
+        ++gExitWatchdogGeneration;
     }
 
     void ReportWindowsEventException(const std::string& where, const std::string& what) {

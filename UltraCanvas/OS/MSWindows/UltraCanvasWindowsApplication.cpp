@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
+// Version: 1.8.0 - the exit watchdog is armed when the main loop has ended
 // Version: 1.7.1 - the inline config for an empty fontconfig scales bitmap fonts
 //                 (GenerateBitmapScalingConfig): colour emoji at the text's size
 // Version: 1.7.0 - the inline config for an empty fontconfig carries the generic aliases
@@ -74,6 +75,9 @@ namespace UltraCanvas {
         AttachParentConsole();
         InstallWindowsCrashReporter(appName);
         LogWindowsStartupBanner(appName);
+        // Initialised again after a main loop: that loop's end no longer
+        // means the process is ending.
+        DisarmWindowsExitWatchdog();
 
         // A console-subsystem app (one that keeps its command-line modes
         // printing into the prompt) gets here only when it opens its window:
@@ -171,6 +175,12 @@ namespace UltraCanvas {
 
         hInstance = nullptr;
         debugOutput << "UltraCanvas: Windows Application shut down" << std::endl;
+    }
+
+    void UltraCanvasWindowsApplication::RunAfterMainLoop() {
+        // The windows are gone; what is left is the program's own shutdown,
+        // which must not keep the process alive without a window.
+        ArmWindowsExitWatchdog();
     }
 
     bool UltraCanvasWindowsApplication::RegisterWindowClass() {
