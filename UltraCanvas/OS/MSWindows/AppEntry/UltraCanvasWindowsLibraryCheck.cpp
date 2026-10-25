@@ -1,5 +1,6 @@
 // OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp
 // Refuses to start a program against a framework DLL from another build.
+// Version: 1.2.0 - names the package that filled the DLL's folder (UltraCanvas-Package.ini)
 // Version: 1.1.0 - every framework DLL that says which build it is, not only
 //                  libUltraCanvas.dll: libVideoFX.dll, and VirtualFS as a DLL
 // Version: 1.0.0
@@ -94,15 +95,34 @@ namespace {
         MultiByteToWideChar(CP_UTF8, 0, check.expected, -1, expected, 80);
         expected[79] = L'\0';
 
+        // The package that filled the DLL's folder, from the marker every
+        // package carries (package-win.sh): "UltraCanvas 0.9.380 (x86_64)".
+        wchar_t package[160] = L"";
+        {
+            wchar_t marker[MAX_PATH * 2];
+            std::wcscpy(marker, libraryPath);
+            wchar_t* slash = std::wcsrchr(marker, L'\\');
+            if (slash && (slash - marker) + 25 < MAX_PATH * 2) {
+                std::wcscpy(slash + 1, L"UltraCanvas-Package.ini");
+                wchar_t name[48] = L"", version[48] = L"", arch[24] = L"";
+                GetPrivateProfileStringW(L"Package", L"Name", L"", name, 48, marker);
+                GetPrivateProfileStringW(L"Package", L"Version", L"", version, 48, marker);
+                GetPrivateProfileStringW(L"Package", L"Arch", L"", arch, 24, marker);
+                if (version[0])
+                    std::swprintf(package, 160, L"That folder holds the %ls %ls package (%ls).\n",
+                                  name[0] ? name : L"UltraCanvas", version, arch);
+            }
+        }
+
         static wchar_t message[2048];
         std::swprintf(message, sizeof(message) / sizeof(message[0]),
                       L"%ls cannot start: the %ls library it loaded is from another build.\n\n"
                       L"Loaded: %ls (%ls)\n"
-                      L"Needed: version %ls\n\n"
+                      L"Needed: version %ls\n%ls\n"
                       L"The folder holds DLLs that came with a different program or version. Keep each "
                       L"program together with the DLLs it was shipped with - unpack every package into a "
                       L"folder of its own, or replace this folder's DLLs with the ones from %ls's package.",
-                      programName, check.name, libraryPath, foundVersion, expected, programName);
+                      programName, check.name, libraryPath, foundVersion, expected, package, programName);
         if (DialogsSuppressed()) {
             std::fwprintf(stderr, L"%ls\n", message);
         } else {

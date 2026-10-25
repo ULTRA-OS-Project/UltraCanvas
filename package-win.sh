@@ -499,9 +499,33 @@ echo "  Added uc-diagnose.bat + uc-diagnose.ps1 (startup troubleshooting launche
 sed 's/$/\r/' "$SCRIPT_DIR/scripts/uc-remove-registrations.cmd" > "$DIST_DIR/uc-remove-registrations.cmd"
 echo "  Added uc-remove-registrations.cmd (removes the notification registrations; the ZIP has no uninstaller)"
 
-cd $DIST_DIR
-zip -r ../$PACKAGE_ZIP *
-cd ..
+# Which package filled this folder. The installer reads it before it installs
+# over a folder that already holds framework DLLs (Windows/Installer/
+# UltraCanvasSetup.nsi, CheckInstallFolder), and a program refused for a DLL
+# from another build names the package it came from
+# (UltraCanvasWindowsLibraryCheck.cpp). INI, CRLF: both read it with the
+# Windows profile functions.
+printf '[Package]\r\nName=UltraCanvas\r\nVersion=%s\r\nArch=%s\r\n' "$VERSION" "$ARCH" \
+    > "$DIST_DIR/UltraCanvas-Package.ini"
+echo "  Added UltraCanvas-Package.ini (which package this folder holds)"
+
+# The ZIP holds one folder named after it, not the files themselves: extracted
+# into a folder that already holds programs - "Extract here", or into a
+# collection of apps - it makes a folder of its own instead of laying its
+# DLLs over another package's. One libUltraCanvas.dll shared by programs from
+# two builds crashed the older ones at start (ChatCube, UltraAI). dist/ is
+# renamed for the zip and back: CI reads dist/ after this.
+PACKAGE_FOLDER="$(basename "$PACKAGE_ZIP" .zip)"
+if [ -e "$PACKAGE_FOLDER" ]; then
+    echo "Error: '$PACKAGE_FOLDER' exists already; move it away (dist/ is renamed to it for the zip)" >&2
+    exit 1
+fi
+rm -f "$PACKAGE_ZIP"   # zip -r would add to an old one, beside its old layout
+mv "$DIST_DIR" "$PACKAGE_FOLDER"
+trap 'mv "$PACKAGE_FOLDER" "$DIST_DIR" 2>/dev/null || true' EXIT
+zip -r "$PACKAGE_ZIP" "$PACKAGE_FOLDER"
+mv "$PACKAGE_FOLDER" "$DIST_DIR"
+trap - EXIT
 echo ""
 TOTAL_DLLS=$(find "$DIST_DIR" -maxdepth 1 -name '*.dll' | wc -l)
 echo "=== Package complete ==="

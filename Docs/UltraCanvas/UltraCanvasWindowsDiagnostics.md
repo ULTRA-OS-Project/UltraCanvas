@@ -621,13 +621,26 @@ Needed: version 0.9.402
 ```
 
 A DLL from before the check reads *"an older version, which does not report
-its number"*. The cure is the same either way: keep each program with the
+its number"*. When the DLL's folder carries `UltraCanvas-Package.ini` - every
+package does, naming its product, version and architecture - a line says which
+package filled it: *"That folder holds the UltraCanvas 0.9.380 package
+(x86_64)."* The cure is the same either way: keep each program with the
 DLLs it was shipped with - unpack every package into a folder of its own - or
 copy the DLLs of the newest package over the folder's. The check is compiled
 into each program from `OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp`
 through a wrapper the build writes (an `INTERFACE` source of the core, for
 executables only), so an application's CMake needs nothing for it; with
 `ULTRACANVAS_NO_ERROR_DIALOG=1` the text goes to stderr instead of a box.
+
+Two things keep packages apart in the first place. The ZIP (`package-win.sh`)
+holds one folder named after it - `UCDemo-Windows-<version>-<arch>\` - instead
+of the files themselves, so extracting it into a folder of programs makes a
+folder of its own. And the installer's folder page reads the marker: a folder
+that holds `libUltraCanvas.dll` or `libVideoFX.dll` from another version or
+another package (or without a marker) gets a question before anything is
+copied - *"This folder already holds UltraCanvas 0.9.380 (x86_64) ... Install
+into this folder anyway?"*, *No* by default. Its own earlier installation and a
+folder holding this very version are updates and pass without one.
 
 The same check covers every framework DLL that says which build it is:
 `libVideoFX.dll`, and VirtualFS when it is built as a DLL of its own (by
