@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- UltraStore: a blue tile, a white storefront awning over a box with a download arrow. -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+  <!-- awning -->
+  <path d="M48 92 L64 56 H192 L208 92 Z" fill="#ffffff"/>
+  <path d="M48 92 h32 a16 16 0 0 1 -32 0 Z M80 92 h32 a16 16 0 0 1 -32 0 Z M112 92 h32 a16 16 0 0 1 -32 0 Z M144 92 h32 a16 16 0 0 1 -32 0 Z M176 92 h32 a16 16 0 0 1 -32 0 Z" fill="#dbeafe"/>
+  <!-- shop body -->
+  <rect x="64" y="108" width="128" height="92" rx="10" fill="#ffffff"/>
+  <!-- download arrow -->
+  <rect x="120" y="124" width="16" height="40" rx="4" fill="#2563eb"/>
+  <path d="M100 160 L128 188 L156 160 Z" fill="#2563eb"/>
+</svg>

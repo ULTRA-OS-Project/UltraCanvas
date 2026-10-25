@@ -2,6 +2,7 @@
 // Container with scrollbars and child management. Child storage lives on
 // CSSLayout::Element (via UltraCanvasUIElement); we iterate it through
 // Children() and static_pointer_cast each element to UltraCanvasUIElement.
+// Version: 4.8.1 - the wheel scrolls a container whose bar autoShowScrollbars showed, not only a forced one
 // Version: 4.7.0 - with a vertical scrollbar showing, the children are laid out
 //                 a track narrower: they were laid out across the full width
 //                 and clipped a track short, so the right edge of every row
@@ -318,10 +319,19 @@ namespace UltraCanvas {
         int contentH = GetHeight() - (GetTotalBorderVertical()   + GetTotalPaddingVertical());
         if (!Rect2Di(contentX, contentY, contentW, contentH).Contains(event.pointer)) return false;
 
-        if (event.shift && style.forceShowHorizontalScrollbar) {
+        // The wheel moves an axis that has a bar: forced, or shown by
+        // autoShowScrollbars because the content is taller than the box.
+        // Until 4.8.1 only the forced one answered, so an auto-shown list
+        // (the store's pages, a settings form) could be dragged by its bar
+        // but not rolled.
+        const bool scrollsX = style.forceShowHorizontalScrollbar ||
+                              (style.autoShowScrollbars && horizontalScrollbar->IsVisible());
+        const bool scrollsY = style.forceShowVerticalScrollbar ||
+                              (style.autoShowScrollbars && verticalScrollbar->IsVisible());
+        if (event.shift && scrollsX) {
             horizontalScrollbar->ScrollByWheel(event.wheelDelta);
             return true;
-        } else if (style.forceShowVerticalScrollbar) {
+        } else if (scrollsY) {
             verticalScrollbar->ScrollByWheel(event.wheelDelta);
             return true;
         }

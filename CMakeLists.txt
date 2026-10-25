@@ -797,8 +797,8 @@ endif()
 # ===== ULTRASTORE =====
 # The ULTRA OS app store: a signed catalog of apps and the shared-library
 # components they run on, the package for this machine, per-user installs
-# and updates (Docs/UltraStore/README.md). The core and the `ultrastore`
-# command line come first; the window follows. It requires UltraCrypt with
+# and updates (Docs/UltraStore/README.md): one program, `ultrastore`, the
+# window when started plainly and the commands when given one. It requires UltraCrypt with
 # libsodium and UltraDatabase with SQLite and stops the configure without
 # them - Apps/UltraStore/CMakeLists.txt says which and how to turn it off.
 option(BUILD_ULTRASTORE "Build the UltraStore application" ON)
