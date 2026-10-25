@@ -925,8 +925,11 @@ text on older Claude Code builds). A reply whose last non-blank line is not
 `Code needs to be PRed (N lines)` with the measured `N` is blocked once, with
 the line it found and the line it expected; surrounding backticks or bold and
 the ` — open as PR #<n>` suffix are accepted. The `Stop` form does not
-fetch, so it measures against `origin/main` as the clone last saw it — fetch
-before measuring and the two agree. The `SessionStart --brief` message
+fetch `main`, so it measures against `origin/main` as the clone last saw it -
+fetch before measuring and the two agree. (It does fetch the branch's own
+copy once when the clone lacks it: a cloud clone is shallow and single-branch,
+so a branch pushed with `-u` had no `origin/<branch>` and every commit on it
+read as unpushed although the remote held them all.) The `SessionStart --brief` message
 fetches the default branch first (a clone can arrive with an `origin/main`
 older than the commit its branch was cut from, which counts all of main's
 newer commits as this checkout's), then states the rule and the current `N`;
