@@ -1,3 +1,83 @@
+#### 2026-10-25 *0.9.407*
+- **UltraDatabase: connections through a relay** (`UltraDatabaseRelay.h`).
+  The `relay` driver sends every call of a connection - queries, scripts,
+  cursors, cancelling, introspection, server administration - to a relay on
+  the database's side, as JSON over a transport the application gives
+  (`UltraDb_SetRelayConnector`), so a program that cannot reach a database
+  itself, such as a page in a browser, works against UltraDatabase
+  unchanged. `UltraDb_RelayConnections` asks a relay what a token may open.
+  `UltraDbRelayServer` is the other side: it offers connections by name
+  only, knows its users by the SHA-256 of their tokens with read or write
+  access to each connection (read is the driver's read-only mode), caps
+  rows, requests and sessions, and reports every statement with the user
+  and address that ran it. `UltraDatabaseRelayUltraNet.h`, header-only, is a
+  transport over UltraNet's WebSocket.
+- **UltraDatabase: closing a connection no longer holds the registry lock
+  while the driver closes it.** A driver whose close waits on another
+  connection - a relay in the same process - deadlocked.
+- **WebAssembly: UltraDatabase with SQLite in a browser build.** With
+  `BUILD_ULTRADBADMIN`, an Emscripten build links Emscripten's sqlite3 port
+  into UltraDatabase.
+- **The WebAssembly workflow also builds UltraDBAdmin's browser page** (the
+  baseline variant) and adds it to the uploaded pages.
+- **UltraDatabase relay: a statement time-out.** `UltraDbRelayLimits::statementTimeoutSeconds`
+  (300 by default): a query, a script or a cursor's page still running then
+  is cancelled on the session's own connection - every engine - and answered
+  `Cancelled`, saying why.
+- **UltraDatabase relay: a sign-in of the program's own.** `UltraDbRelayServer::SetSignIn`
+  takes a label and a callback that knows tokens no user's hash matches (the
+  tickets of a program's own sign-in); `UltraDb_RelaySignInOffer` asks a
+  relay what sign-in it offers.
+- **The WebAssembly workflow tests UltraDBAdmin's page end to end**: a new
+  `dbadmin-browser` job runs the baseline's page in Chrome against a relay
+  it builds natively and a test OpenID provider, and checks the relay's
+  audit log for the sign-in, a table browsed and a query stopped.
+- **UltraDatabase: the server's status, for a monitor.**
+  `UltraDb_ServerStatus` (`UltraDatabaseServer.h`) gives a row per measure a
+  PostgreSQL or MySQL / MariaDB server keeps - the sessions connected and
+  running, and counters of statements, transactions, rows read and written,
+  buffer cache reads and misses and client traffic - to be read every few
+  seconds and charted as rates.
+- **Chart engine: `UltraCanvasEngineLineChart::SetValueAtLeast`.** The value
+  axis reaches at least the value given whatever the data, so a live chart of
+  small counts or rates at rest reads 0 to that value instead of an axis
+  fitted to a flat zero.
+- **UltraNet: SSH tunnels.** `UltraNet_OpenSshTunnel` (`UltraNetSsh.h`)
+  forwards a free port of 127.0.0.1, through an SSH server, to a host and
+  port that server reaches - each connection on a channel of its own - and
+  `UltraNet_CloseSshTunnel` ends it. The `ssh` plug-in (libssh) serves it
+  and is loaded on first use.
+- **UltraNet's SSH plug-in checks host keys.** The shell and the tunnel
+  alike refuse a server whose key is unknown (`SshHostKeyUnknown`, with the
+  key's fingerprint for the user to compare and trust) or differs from the
+  one known (`SshHostKeyChanged`); `UltraNetRemoteOptions` takes the trusted
+  fingerprint or a known_hosts file. Before, any key was accepted. A private
+  key is also read as the text libssh expects (it was passed without its
+  terminator).
+- **UltraDatabase 0.6.0: connections through an SSH bastion**
+  (`UltraDatabaseTunnel.h`). A connection whose options name an `ssh_host`
+  opens its tunnel first, with the password or key and passphrase read from
+  UltraVault, and closes it with the connection; every session of the
+  connection goes through it. An unknown or changed bastion key fails with
+  `HostKeyUnknown` / `HostKeyChanged` and `UltraDbResult::hostKeyFingerprint`.
+  PostgreSQL still checks the database's certificate against its host name
+  through the tunnel; MySQL, which can only check the address it connects to,
+  refuses `VerifyFull` there with that reason. The module opens no socket
+  itself: `UltraDb_UseUltraNetSshTunnels()` (`UltraDatabaseSshTunnel.h`,
+  header-only) opens the tunnels through UltraNet.
+- **UltraCanvasTextArea: auto-completion.** `ShowAutoComplete(suggestions)`
+  opens a list under the caret - it did nothing before. Up, Down and the page
+  keys move in it, Enter or Tab (or a click) puts the suggestion in place of
+  the word before the caret (`GetAutoCompletePrefix()`), Escape closes it;
+  other keys edit as usual, so the host narrows the list as the word is typed.
+  `IsAutoCompleteOpen()` says whether it is shown.
+- **WebAssembly: dialogs have a title bar and can be moved.** A browser
+  draws no window frames, so every dialog (`WindowType::Dialog`) was a bare
+  canvas with no title and no way to move it. The backend now draws a title
+  bar above it - the window's title, an outline and a shadow - which moves
+  the dialog when dragged and reports the new place to the window
+  (`WindowMove`). A dialog's title no longer replaces the page's title.
+
 #### 2026-10-25 *0.9.406*
 - **`scripts/check_libcxx_syntax.sh`: VideoFX type-checked against libc++
   before a push.** The Windows builds compile the module with MSYS2's
