@@ -99341,7 +99341,7 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 - Collected address book: every address the user writes to is
   remembered for autocomplete; from incoming mail only senders in the
   known-sender registry whose domain the server proved are added (under
-  Services) - never a stranger, a
+  Services) - never a stranger, a no-reply address, a
   blocked sender or an address the user deleted (explicit contacts app and
   LDAP/CardDAV integration come later, see roadmap)
 - Multiple accounts + unified inbox
@@ -99810,9 +99810,13 @@ used twice:
   inbox - would otherwise read as someone in the address book and lose the
   "New sender" badge. People join the address book when the user writes to
   them (`ContactCollector::Collect`). A personal mailbox address never counts
-  as a service however large its provider, and a blocked sender or an address
-  the user deleted from the address book (`ContactStore::Forget`) is never
-  collected.
+  as a service however large its provider, and a blocked sender, an address
+  the user deleted from the address book (`ContactStore::Forget`) and a
+  no-reply address (`IsNoReplyAddress`) are never collected - some services
+  send from a new `no-reply-<code>@...` address in every message, which
+  filed a contact per message. Services' right-click menu, *Remove no-reply
+  contacts…*, clears what the older rule filed
+  (`ContactCollector::CollectedNoReply`).
 
 One rule guards it: **an existing contact is never modified or reclassified.**
 An address the user has filed under Friends themselves stays there, whatever
@@ -100125,6 +100129,26 @@ clean, and each of those is a test in
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/no-reply-contacts.md
+==============================================================================
+
+- **Incoming mail never adds a no-reply address to the contacts.** A known
+  service was filed under Services for whatever address it wrote from, and
+  some services send from a new `no-reply-<code>@...` address in every
+  message - Anthropic's mail had put 77 "Anthropic" contacts in Services,
+  one per message. Nobody writes to a no-reply address (it was already never
+  offered as a recipient suggestion), so the collector now skips it, known
+  service or not; the service still reads as a business sender without a
+  contact. Writing to such an address yourself still adds it.
+- **Services > right-click > *Remove no-reply contacts…*** removes what the
+  old rule left behind: the no-reply contacts UltraMail filed by itself -
+  one address, no phone, no group, and the "collected automatically" note -
+  after a confirmation that lists the first few. A no-reply contact you
+  filed yourself is kept.
+- `test_contacts` checks that a no-reply sender is not collected and what
+  `ContactCollector::CollectedNoReply` finds.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
