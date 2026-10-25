@@ -1,3 +1,44 @@
+#### 2026-10-25 *0.9.413*
+- **The delivery hook no longer reports a pushed branch as unpushed.** A
+  cloud session's clone is shallow and single-branch, so a branch pushed
+  with `git push -u` never got its `origin/<branch>` copy, and the Stop and
+  SessionStart hook (`.claude/hooks/check-delivery.sh`) counted every commit
+  on it as unpushed - a session was told twice to push what the remote
+  already held. The hook now fetches the branch's copy once when it is
+  missing and adds it to the fetch refspec, so later pushes keep it current;
+  a branch the remote does not have is checked as before.
+- **Several credential vaults in one program no longer write into each
+  other.** UltraVault holds one open store per process, and a
+  `DeviceKeyVault` unlocked once and used directly (UltraMail's way) had
+  its store silently replaced whenever another vault took a `Use()` turn -
+  ChatCube's three messenger providers do, from their own threads. Its next
+  `Store()` then went into the other vault's file, its own file lost the
+  secret, and its `Lock()` closed the other vault under its user. Every
+  call now takes one process-wide lock, the vault that holds the store is
+  remembered, and a vault re-opens its own file before every read or write;
+  `UltraVaultTests` drives four vaults from four threads to hold this.
+- **The Telegram provider ships with TDLib.** `libtdjson` no longer has to
+  be found on the machine: the configure step fetches TDLib 1.8.69 prebuilt
+  (the pinned `tdjson` wheel, checked by SHA-256; Linux x86_64 and aarch64,
+  macOS arm64, Windows x64) into `Plugins/UltraIM/tdlib/`, the packages ship
+  that folder, and `TelegramTdlibTests` runs against it by default.
+  `ULTRAIM_TDJSON_FILE` ships a library of your own, `ULTRAIM_FETCH_TDLIB=OFF`
+  skips the download, and a platform with no prebuilt one says so.
+- **A provider's service can keep another provider's sign-in keys.**
+  `UltraIM_FetchSharedCredentials(provider, forProvider, cb)` and
+  `IUltraIMProviderPlugin::FetchSharedCredentials`: ChatCube Direct asks its
+  relay for the Telegram application's API ID and hash
+  (`GET /v1/telegram-credentials`), so they are set on the server once.
+- **A Telegram sign-in no longer hangs in silence.** TDLib answers a step
+  only once Telegram's servers have, and with no network it kept trying
+  without a word while the application waited forever. The provider now
+  reports TDLib's connection state while it signs in, and a step TDLib does
+  not answer within 45 s fails with `Timeout` saying what TDLib was doing.
+  What is sent and received goes to the framework's debug stream (types and
+  errors, never a number, code, password or message), TDLib's own log to
+  `telegram/tdlib.log` in the data directory, and on Windows the wheel's
+  OpenSSL and zlib DLLs next to `tdjson.dll` are found when it is loaded.
+
 #### 2026-10-25 *0.9.412*
 - **The rest of the controls centre their text on its capitals too.** After
   the segmented control and the spreadsheet, the last controls that centred a
