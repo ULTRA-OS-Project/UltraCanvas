@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
 // Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS for a test that must end
 // Version: 1.10.0 - GenerateFontAliasConfig: the generic family aliases as a fontconfig document
@@ -496,6 +497,9 @@ namespace UltraCanvas {
         virtual void ShutdownNative() = 0;
         virtual void RunInEventLoop() {};
         virtual void RunBeforeMainLoop() {};
+        // At the end of Run(), once the main loop has ended and the windows
+        // are gone.
+        virtual void RunAfterMainLoop() {};
         virtual void CaptureMouseNative() = 0;
         virtual void ReleaseMouseNative() = 0;
 

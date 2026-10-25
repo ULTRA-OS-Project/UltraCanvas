@@ -1,8 +1,9 @@
 // core/UltraCanvasUtils.h
 // Utils
+// Version: 1.1.0 - UltraCanvas_LibraryVersion(): the version, with C linkage
 // Version: 1.0.1 - NormalizePath: a '\' at the end is a separator only on Windows
 // Version: 1.0.0
-// Last Modified: 2026-10-16
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #if defined(_WIN32) || defined(_WIN64)
@@ -58,6 +59,13 @@
 #ifndef ULTRACANVAS_VERSION
 #define ULTRACANVAS_VERSION "0.0.0-dev"
 #endif
+
+// The library's version for a program that cannot trust the classes yet:
+// plain C, a constant string. OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp
+// asks it before main() and refuses to start against another version.
+extern "C" const char* UltraCanvas_LibraryVersion() {
+    return ULTRACANVAS_VERSION;
+}
 
 namespace UltraCanvas {
     const char* versionString = ULTRACANVAS_VERSION;

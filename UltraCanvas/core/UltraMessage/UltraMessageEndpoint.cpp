@@ -5,6 +5,8 @@
 // journal calls forwarded to the broker as control RPCs.
 // Version: 0.1.1 - a delivery queued for the UI thread is dropped once its
 //   subscription ends (UltraMsg_Unsubscribe / UltraMsg_Disconnect)
+// Version: 0.1.1 - the at-exit shutdown does nothing while Windows ends the process
+//                  (a DLL's handler then runs with every other thread killed)
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -134,7 +136,22 @@ Module& GetModule() {
         // destroyed, and the broker's journal closes on a live manager.
         UltraDb_HasConnection("ultramessage.bootstrap");
         auto* m = new Module();
-        std::atexit([] { UltraMsg_Shutdown(); });
+        // Resolved now, while the process is healthy, not inside the handler.
+        (void)ProcessIsTerminating();
+        std::atexit([] {
+            // In the shared core on Windows this is a DLL's at-exit handler,
+            // which runs at DLL_PROCESS_DETACH: every other thread is gone,
+            // killed wherever it was. Stopping the broker there locked
+            // mutexes those threads may have held, joined them and tore
+            // down the toast presenter's COM apartment under the loader
+            // lock - and could wait for ever, leaving a process with no
+            // window that kept the single-instance lock, so the next start
+            // said "already running". The system closes the pipe, the
+            // sockets and the journal (SQLite recovers its own) with the
+            // process.
+            if (ProcessIsTerminating()) return;
+            UltraMsg_Shutdown();
+        });
         return m;
     }();
     return *module;

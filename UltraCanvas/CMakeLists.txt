@@ -2474,6 +2474,50 @@ set_source_files_properties(
         COMPILE_DEFINITIONS ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
 )
 
+# Every Windows program that links the framework checks, before main(), that
+# each framework DLL it loaded is the build it was compiled for
+# (OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp): a folder of
+# programs from different packages shares one copy of each DLL, and a program
+# built for another one crashed at its first call instead of saying so. The
+# libraries checked are libUltraCanvas.dll, by its version, and every DLL that
+# registered with ultracanvas_library_build_id (cmake/UltraCanvasLibraryBuildId.cmake:
+# libVideoFX.dll, and VirtualFS when it is built as a DLL), by a build id. Their
+# names and ids go into a small wrapper written here - rewritten only when one
+# changes, so a changelog edit recompiles that file in each program and nothing
+# else - which every executable linking the core compiles (an INTERFACE source,
+# for executables only: a DLL may not show a message box from its
+# initialisers). In-tree builds only; the SDK's consumers build their own way.
+if(WIN32)
+    set(_uc_checks "")
+    if(ULTRACANVAS_BUILD_SHARED)
+        list(APPEND _uc_checks
+             "${CMAKE_SHARED_LIBRARY_PREFIX}UltraCanvas${CMAKE_SHARED_LIBRARY_SUFFIX}|UltraCanvas_LibraryVersion|UltraCanvas|${ULTRACANVAS_VERSION}")
+    endif()
+    get_property(_uc_registered GLOBAL PROPERTY ULTRACANVAS_LIBRARY_CHECKS)
+    list(APPEND _uc_checks ${_uc_registered})
+    if(_uc_checks)
+        set(_uc_table "")
+        foreach(_uc_check IN LISTS _uc_checks)
+            string(REPLACE "|" ";" _uc_fields "${_uc_check}")
+            list(GET _uc_fields 0 _uc_dll)
+            list(GET _uc_fields 1 _uc_function)
+            list(GET _uc_fields 2 _uc_name)
+            list(GET _uc_fields 3 _uc_id)
+            string(APPEND _uc_table
+                   "    ULTRACANVAS_LIBRARY_CHECK(L\"${_uc_dll}\", \"${_uc_function}\", L\"${_uc_name}\", \"${_uc_id}\") \\\n")
+        endforeach()
+        set(_uc_library_check "${CMAKE_BINARY_DIR}/generated/UltraCanvasLibraryCheck.cpp")
+        file(WRITE "${_uc_library_check}.tmp"
+             "// Written by UltraCanvas/CMakeLists.txt; compiled into every Windows program\n"
+             "// that links the framework. See UltraCanvasWindowsLibraryCheck.cpp.\n"
+             "#define ULTRACANVAS_LIBRARY_CHECKS \\\n${_uc_table}\n"
+             "#include \"${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp\"\n")
+        configure_file("${_uc_library_check}.tmp" "${_uc_library_check}" COPYONLY)
+        target_sources(${ULTRACANVAS_LIB_NAME} INTERFACE
+            "$<BUILD_INTERFACE:$<$<STREQUAL:$<TARGET_PROPERTY:TYPE>,EXECUTABLE>:${_uc_library_check}>>")
+    endif()
+endif()
+
 # ULTRACANVAS_VERSION is deliberately NOT here. It changes every time anyone
 # adds a changelog entry, and as a PUBLIC definition on this library it sat on
 # the compile command line of 621 of the build's 1136 objects - every source in

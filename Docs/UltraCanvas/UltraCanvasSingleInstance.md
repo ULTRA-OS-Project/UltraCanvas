@@ -60,7 +60,14 @@ both stay, and a crash never blocks the next start.
 request on the topic `<appId>.show` to the running copy's endpoint
 `<appId>.instance`, which answers before it acts. The first copy hosts the bus
 when nothing else does. A copy started a moment earlier may not listen yet, so
-a later start keeps asking for up to ten seconds.
+a later start keeps asking for up to fifteen seconds. Between the tries it takes
+the lock again: a copy whose window has closed but whose process is still
+ending answers nothing, and once it has gone the lock is free and the new
+start simply runs (`First`) instead of saying it is already running. On
+Windows a copy that never finishes ending is ended by the exit watchdog ten
+seconds after its main loop (see
+[UltraCanvasWindowsDiagnostics](UltraCanvasWindowsDiagnostics.md)), inside
+those fifteen.
 
 The running copy **answers from the bus thread at once** and only then queues
 the request for its UI thread. A window that is busy - a native dialog that
@@ -77,7 +84,7 @@ being built when `Listen` is called.
 |---|---|
 | `First` | This process holds the lock: carry on. Also the answer when the lock cannot be taken for any other reason (an unwritable folder, a platform without locks) — better two copies than none. |
 | `HandedOff` | Another copy runs and took the request: quit. |
-| `AlreadyRunning` | Another copy holds the lock but did not answer (busy, or a build without UltraMessage): say so with `RunAlreadyRunningAlert`, then quit. |
+| `AlreadyRunning` | Another copy held the lock for the whole fifteen seconds without answering (busy, or a build without UltraMessage): say so with `RunAlreadyRunningAlert`, then quit. |
 
 ## API
 

@@ -190,12 +190,25 @@ the victim, not the cause.
 **Where in our code, and how it got there.** The address alone cannot be
 traced back to a function: a DLL loads at a different address on every start.
 So the line also gives the offset into the module, which is the same on every
-start, and the function — the nearest name in the module's export table.
-`libUltraCanvas.dll` is linked with `WINDOWS_EXPORT_ALL_SYMBOLS`, so every
-function of the framework with external linkage is in that table; for code
-with internal linkage (a lambda, a helper in an anonymous namespace) the name
-is that of the function compiled just before it, which is still the right
-file. On x64 the box and the log then list the call stack, one caller per
+start, and the function. The name comes from two places, and the nearer of
+the two at or below the address wins:
+
+- **The module's export table.** `libUltraCanvas.dll` is linked with
+  `WINDOWS_EXPORT_ALL_SYMBOLS`, so every function of the framework with
+  external linkage is in it.
+- **The COFF symbol table of the module's file.** A MinGW link (GNU ld or
+  lld) keeps it unless the binary is stripped with `-s`, and it names what
+  no export table does: every function of an application's `.exe`, which
+  exports nothing, and code with internal linkage in any module — a lambda
+  (`ArtCreatorWindow::BuildToolPalette::{lambda}`), a class or helper in an
+  anonymous namespace (`(anonymous namespace)::ShapeEditorTool::Load`), a
+  `static` function. The table is not loaded with the module, so the
+  reporter reads it from the file the module was loaded from, after checking
+  that the file is still that module: a binary rebuilt or replaced while the
+  program ran gives offsets without names rather than names from another
+  build.
+
+On x64 the box and the log then list the call stack, one caller per
 line, walked with the same unwind tables Windows' own exception dispatch uses.
 The shape of it (the names and numbers are made up):
 
@@ -206,14 +219,14 @@ in C:\Apps\MyApp\libUltraCanvas.dll. Windows 11 (10.0 build 26200)
 Call stack:
   #0 libUltraCanvas.dll+0x12C86D UltraCanvas::UltraCanvasExample::Update+0x3D
   #1 libUltraCanvas.dll+0x12F0A2 UltraCanvas::UltraCanvasExample::OnEvent+0x5B2
-  #2 MyApp.exe+0x1C40
+  #2 MyApp.exe+0x1C40 UltraCanvas::MyAppWindow::BuildToolbar::{lambda}+0x30
   #3 kernel32.dll+0x17374 BaseThreadInitThunk+0x14
   #4 ntdll.dll+0x4CC91 RtlUserThreadStart+0x21
 ```
 
 The names are demangled to the qualified name only, without the parameters.
-A frame in a module that exports nothing (an application's `.exe`) has the
-offset alone. A first frame that is a bare address in no module — the
+A frame in a stripped module that exports nothing (an application's `.exe`
+linked with `-s`) has the offset alone. A first frame that is a bare address in no module — the
 program called through a freed object — is followed by the caller that made
 that call. The walk stops at a frame it cannot unwind, and is skipped for a
 stack overflow, whose filter runs on what is left of the exhausted stack;
@@ -583,6 +596,74 @@ certificate from a trusted CA. `package-win.sh` signs only `Texter.exe` and
 passes `--no-sign`. The PowerShell signing scripts can create only a
 self-signed certificate, which does not help against AV or SmartScreen.
 
+## A crash at start, or "from another build", beside other programs' DLLs
+
+A program is compiled against the framework's headers - the size of every
+class, the place of every member - and runs against the `libUltraCanvas.dll`
+Windows finds first, which is the one beside the `.exe`. A folder that
+collects programs from several packages keeps one DLL for all of them, from
+whichever was copied last. While every function a program names is still in
+that DLL the loader says nothing, and the program crashed at its first call
+whose classes had changed: *"ChatCube crashed: exception 0xC0000005 ...
+ChatCube.exe+0x1463D"*, with nothing that points at the DLL.
+
+Every Windows program that links the framework now checks before `main()`
+- before its own static objects - that the DLL reports the version it was
+built for (`UltraCanvas_LibraryVersion()`, plain C, so it can be asked
+whatever the classes look like). When it does not, the program says so and
+exits with `0xC0000139`:
+
+```
+ChatCube.exe cannot start: the UltraCanvas library it loaded is from another build.
+
+Loaded: C:\Users\me\Downloads\ULTRA OS Apps\libUltraCanvas.dll (version 0.9.380)
+Needed: version 0.9.402
+```
+
+A DLL from before the check reads *"an older version, which does not report
+its number"*. When the DLL's folder carries `UltraCanvas-Package.ini` - every
+package does, naming its product, version and architecture - a line says which
+package filled it: *"That folder holds the UltraCanvas 0.9.380 package
+(x86_64)."* The cure is the same either way: keep each program with the
+DLLs it was shipped with - unpack every package into a folder of its own - or
+copy the DLLs of the newest package over the folder's. The check is compiled
+into each program from `OS/MSWindows/AppEntry/UltraCanvasWindowsLibraryCheck.cpp`
+through a wrapper the build writes (an `INTERFACE` source of the core, for
+executables only), so an application's CMake needs nothing for it; with
+`ULTRACANVAS_NO_ERROR_DIALOG=1` the text goes to stderr instead of a box.
+
+Two things keep packages apart in the first place. The ZIP (`package-win.sh`)
+holds one folder named after it - `UCDemo-Windows-<version>-<arch>\` - instead
+of the files themselves, so extracting it into a folder of programs makes a
+folder of its own. And the installer's folder page reads the marker: a folder
+that holds `libUltraCanvas.dll` or `libVideoFX.dll` from another version or
+another package (or without a marker) gets a question before anything is
+copied - *"This folder already holds UltraCanvas 0.9.380 (x86_64) ... Install
+into this folder anyway?"*, *No* by default. Its own earlier installation and a
+folder holding this very version are updates and pass without one.
+
+The same check covers every framework DLL that says which build it is:
+`libVideoFX.dll`, and VirtualFS when it is built as a DLL of its own (by
+default it is inside `libUltraCanvas.dll`). Their versions are not bumped for
+every change, so they answer a **build id** instead - the version and a hash of
+their public headers, `0.16.0+da8e16e4d19c` - which changes whenever a class a
+program compiles against does, and not with line endings. A framework library
+added as a DLL gets the same with one call after its `add_library`:
+
+```cmake
+include("${CMAKE_CURRENT_LIST_DIR}/../cmake/UltraCanvasLibraryBuildId.cmake" OPTIONAL)
+if(COMMAND ultracanvas_library_build_id)
+    ultracanvas_library_build_id(MyLib "MyLib" "${PROJECT_VERSION}"
+                                 "${CMAKE_CURRENT_SOURCE_DIR}/include" MyLib_LibraryBuild)
+endif()
+```
+
+The hash is taken when CMake configures: a header edited without a reconfigure
+keeps the old id on both sides, so nothing is refused that should not be, and
+a packaging build always configures afresh. Third-party DLLs - the C++
+runtime, cairo, FFmpeg and the rest - are not checked; the same cure applies to
+them.
+
 ## "Entry point not found" in a Windows DLL
 
 While the application is running - not at start - a box titled with the
@@ -661,6 +742,51 @@ of how often they bite:
    This is logged, not fatal, but it is worth ruling out on a VM or a machine
    running on the Microsoft Basic Display Adapter.
 
+## Still running after its window closed
+
+A program whose last window has closed ends its main loop and shuts down. If
+something in that shutdown waits for ever - a thread joined that never
+finishes, a lock nobody gives back - the process stays: no window, no
+taskbar button, still in Task Manager, still holding its files. A
+single-instance application then answers every new start with *"<App> is
+already running"*, because the old copy holds the lock.
+
+The **exit watchdog** ends that. When the main loop has ended,
+`UltraCanvasWindowsApplication` arms it (`ArmWindowsExitWatchdog()`); if the
+process is still there ten seconds later, it writes where the main thread
+stood and ends the process with exit code 124. The report goes to the
+`ULTRACANVAS_DEBUG_LOG` file when one is set, and always beside a minidump of
+every thread in the crash-dump folder:
+
+```
+%LOCALAPPDATA%\UltraCanvas\CrashDumps\UltraFiler-exit-20261025-090836-264.txt
+%LOCALAPPDATA%\UltraCanvas\CrashDumps\UltraFiler-exit-20261025-090836-264.dmp
+```
+
+```
+UltraFiler was still running 10 s after its main loop ended (its last window had
+closed), so it has been ended. Windows 11 (10.0 build 26200)
+Main thread:
+  #0 ntdll.dll+0x55624 NtWaitForMultipleObjects+0x14
+  #1 kernelbase.dll+0x74374 WaitForSingleObject+0x34
+  #2 UltraFiler.exe+0x3D66C pthread_join+0xBC
+  #3 UltraFiler.exe+0xD0FB7 std::thread::join+0x17
+  #4 UltraFiler.exe+0x167D UltraCanvas::UltraFilerWindow::~UltraFilerWindow+0xD
+```
+
+The frames are named as in a crash report (see *Where in our code* above), so
+the `.txt` alone says which step of the shutdown never finished; attach it,
+and the `.dmp`, to the bug report. A single-instance start keeps trying for
+fifteen seconds, longer than the watchdog's ten, so a start made just after
+the close opens once the old copy has been ended.
+
+`ULTRACANVAS_EXIT_WATCHDOG_SECONDS` sets the wait in whole seconds; `0` arms
+no watchdog. The watchdog cannot act once `ExitProcess` has begun (Windows
+kills every other thread, the watchdog with them), which is why code that runs
+then - a DLL's at-exit handlers, at `DLL_PROCESS_DETACH` - must not wait on
+anything: UltraMessage's at-exit shutdown does nothing at that point for that
+reason.
+
 ## Exit codes
 
 `uc-diagnose.bat` decodes these; the table is here for the cases where you run
@@ -670,7 +796,7 @@ which is why the decimal column looks the way it does.
 | Hex | Decimal | Meaning |
 |---|---|---|
 | `0xC0000135` | -1073741515 | `STATUS_DLL_NOT_FOUND` — a required DLL is missing from the package. |
-| `0xC0000139` | -1073741511 | `STATUS_ENTRYPOINT_NOT_FOUND` — a DLL was found but is the wrong version; usually an older copy earlier on `PATH`. |
+| `0xC0000139` | -1073741511 | `STATUS_ENTRYPOINT_NOT_FOUND` — a DLL was found but is the wrong version; usually an older copy earlier on `PATH`, or beside the `.exe` from another package. Also what a program exits with when `libUltraCanvas.dll` is not the version it was built for (see *A crash at start ... beside other programs' DLLs*). |
 | `0xC0000142` | -1073741502 | `STATUS_DLL_INIT_FAILED` — a DLL loaded but its initialiser failed. |
 | `0xC000007B` | -1073741701 | `STATUS_INVALID_IMAGE_FORMAT` — 32/64-bit mismatch between the EXE and a DLL. |
 | `0xC0000005` | -1073741819 | `ACCESS_VIOLATION` — crash; the log names the faulting module. |
@@ -678,6 +804,7 @@ which is why the decimal column looks the way it does.
 | `0xC00000FD` | -1073741571 | `STATUS_STACK_OVERFLOW`. |
 | `0xC0000409` | -1073740791 | `STATUS_STACK_BUFFER_OVERRUN` — a security check aborted the process. |
 | `0xC0000022` | -1073741790 | `STATUS_ACCESS_DENIED` — something refused to let the process run. On Windows 11, suspect Smart App Control first. |
+| `0x7C` | 124 | Ended by the exit watchdog: still running ten seconds after its main loop ended. The `-exit-*.txt` beside the dump says where it stood (see *Still running after its window closed*). |
 
 ## Writing a launcher that does not hide failures
 
@@ -735,6 +862,8 @@ void        LogWindowsStartupBanner(const std::string& appName);
 void        InstallWindowsCrashReporter(const std::string& appName);   // the filter, the log line and the minidump
 void        ReportWindowsStartupFailure(const std::string& stage, const std::string& detail);
 std::string DescribeWin32Error(unsigned long error);
+void        ArmWindowsExitWatchdog();      // RunAfterMainLoop(): end the process if it does not end
+void        DisarmWindowsExitWatchdog();   // InitializeNative(): initialised again
 ```
 
 `InitializeNative()` attaches as the window opens, which is after `main()`

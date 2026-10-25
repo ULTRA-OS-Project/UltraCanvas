@@ -1,5 +1,6 @@
 // include/UltraCanvasUtils.h
 // Utils
+// Version: 1.3.0 - UltraCanvas_LibraryVersion()
 // Version: 1.2.1 - GetWellKnownUserFolders: its paths are UTF-8 (comment)
 // Version: 1.2.0 - RunProcessCaptured takes an onOutput callback: the output as it comes
 // Version: 1.1.1 - NormalizePath: '\' is a separator only on Windows (comment)
@@ -26,6 +27,10 @@
 #include <mutex>
 #include <unordered_map>
 #include "UltraCanvasDebug.h"
+
+// The library's version ("0.9.402"), with C linkage: a program asks it before
+// it trusts the library's classes (UltraCanvasWindowsLibraryCheck.cpp).
+extern "C" const char* UltraCanvas_LibraryVersion();
 
 namespace UltraCanvas {
     extern const char* versionString;
