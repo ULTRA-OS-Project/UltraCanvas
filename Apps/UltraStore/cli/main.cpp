@@ -19,14 +19,26 @@
 //   ultrastore sign <catalog.json> <seed-hex> [-o catalog.json.sig]
 //                                             signs a catalog (the admin side)
 //   ultrastore sha256 <file>                  a package's hash for the catalog
+//   ultrastore install <catalog.json> <app-id> [--channel beta] [--root <dir>]
+//                                             downloads, verifies and unpacks the app
+//                                             with the components it needs
+//   ultrastore update <catalog.json> [<app-id>] [--root <dir>]
+//                                             moves an app (or every app) to its newest release
+//   ultrastore remove <app-id> [--root <dir>] removes an app and what only it needed
+//   ultrastore installed [--root <dir>]       what is installed
+//   ultrastore gc [--root <dir>]              removes components nothing depends on
 //   ultrastore --version | --help
 //
+// --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
+//
+// Version: 0.2.0 - install, update, remove, installed, gc (UltraInstaller)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Catalog.h"
 #include "CatalogClient.h"
 #include "PackageResolver.h"
 #include "PlatformInfo.h"
+#include "StoreEngine.h"
 #include "Verifier.h"
 
 #include "UltraCanvasDataFolder.h"
@@ -59,6 +71,11 @@ int Usage(FILE* to) {
         "  ultrastore pubkey <seed-hex>\n"
         "  ultrastore sign <catalog.json> <seed-hex> [-o <catalog.json.sig>]\n"
         "  ultrastore sha256 <file>\n"
+        "  ultrastore install <catalog.json> <app-id> [--channel stable|beta] [--root <dir>]\n"
+        "  ultrastore update <catalog.json> [<app-id>] [--root <dir>]\n"
+        "  ultrastore remove <app-id> [--root <dir>]\n"
+        "  ultrastore installed [--root <dir>]\n"
+        "  ultrastore gc [--root <dir>]\n"
         "  ultrastore --version | --help\n",
         ULTRASTORE_VERSION);
     return to == stdout ? 0 : 2;
@@ -301,6 +318,130 @@ int CmdSha256(const std::vector<std::string>& args) {
     return 0;
 }
 
+// ===== INSTALLING =====
+
+std::string StoreRoot(const std::vector<std::string>& args) {
+    const std::string root = Option(args, "--root");
+    if (!root.empty()) return root;
+    return UltraCanvas::PathToUtf8(UltraCanvas::UltraCanvasLocalDataFolderRoot() / "UltraStore");
+}
+
+bool LoadCatalog(const std::string& path, Catalog& out) {
+    std::string text;
+    if (!ReadFile(path, text)) { Fail("cannot read " + path); return false; }
+    const Result<Catalog> parsed = ParseCatalog(text);
+    if (!parsed) { Fail(parsed.error); return false; }
+    out = parsed.Value();
+    return true;
+}
+
+// Progress on stderr: one line per step, rewritten as the bytes come.
+EngineCallbacks ConsoleCallbacks() {
+    EngineCallbacks cb;
+    cb.onStep = [](const InstallStep& step) {
+        std::fprintf(stderr, "%s %s %s (%s)\n", step.alreadyInstalled ? "have" : "get",
+                     step.component->id.c_str(), step.release->version.c_str(), HumanSize(step.package->size).c_str());
+    };
+    cb.onDownload = [](const InstallStep&, int64_t done, int64_t total) {
+        if (total > 0) std::fprintf(stderr, "\r  downloading %s of %s   ", HumanSize(uint64_t(done)).c_str(), HumanSize(uint64_t(total)).c_str());
+        else std::fprintf(stderr, "\r  downloading %s   ", HumanSize(uint64_t(done)).c_str());
+        return true;
+    };
+    cb.onUnpack = [](const InstallStep&, uint64_t, uint64_t, const std::string& file) {
+        if (!file.empty()) std::fprintf(stderr, "\r  unpacking %-60.60s", file.c_str());
+        return true;
+    };
+    return cb;
+}
+
+void PrintOutcome(const InstallOutcome& outcome) {
+    std::fprintf(stderr, "\r%-70s\r", "");
+    for (const InstallStep& step : outcome.plan.steps) {
+        std::printf("%-9s %s %s%s\n", ComponentKindName(step.component->kind).c_str(), step.component->id.c_str(),
+                    step.release->version.c_str(), step.alreadyInstalled ? "  (was installed)" : "  installed");
+    }
+    if (outcome.installed.empty()) std::printf("nothing to do\n");
+    else std::printf("downloaded %s\n", HumanSize(outcome.bytesDownloaded).c_str());
+}
+
+int CmdInstall(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 3) return Usage(stderr);
+    Catalog catalog;
+    if (!LoadCatalog(pos[1], catalog)) return 1;
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const auto outcome = engine.Install(catalog, pos[2], PlatformInfo::Detect(), Option(args, "--channel", "stable"), ConsoleCallbacks());
+    if (!outcome) { std::fprintf(stderr, "\n"); return Fail(outcome.error); }
+    PrintOutcome(outcome.Value());
+    return 0;
+}
+
+int CmdUpdate(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    Catalog catalog;
+    if (!LoadCatalog(pos[1], catalog)) return 1;
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const PlatformInfo platform = PlatformInfo::Detect();
+    if (pos.size() >= 3) {
+        const auto outcome = engine.Update(catalog, pos[2], platform, Option(args, "--channel"), ConsoleCallbacks());
+        if (!outcome) { std::fprintf(stderr, "\n"); return Fail(outcome.error); }
+        PrintOutcome(outcome.Value());
+        return 0;
+    }
+    const auto all = engine.UpdateAll(catalog, platform, ConsoleCallbacks());
+    if (!all) return Fail(all.error);
+    int rc = 0;
+    for (const auto& [id, outcome] : all.Value()) {
+        std::printf("%s:\n", id.c_str());
+        if (!outcome) { Fail(outcome.error); rc = 1; continue; }
+        PrintOutcome(outcome.Value());
+    }
+    if (all.Value().empty()) std::printf("no app is installed\n");
+    return rc;
+}
+
+int CmdRemove(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const auto removed = engine.Remove(pos[1]);
+    if (!removed) return Fail(removed.error);
+    for (const InstalledRecord& r : removed.Value()) {
+        std::printf("removed %-9s %s %s\n", ComponentKindName(r.kind).c_str(), r.id.c_str(), r.version.c_str());
+    }
+    return 0;
+}
+
+int CmdInstalled(const std::vector<std::string>& args) {
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const auto all = engine.Installed();
+    if (!all) return Fail(all.error);
+    std::printf("store at %s\n", engine.Root().c_str());
+    if (all.Value().empty()) { std::printf("nothing is installed\n"); return 0; }
+    for (const InstalledRecord& r : all.Value()) {
+        std::printf("%-9s %s %s%s  %s\n", ComponentKindName(r.kind).c_str(), r.id.c_str(), r.version.c_str(),
+                    r.current ? "  (current)" : "", r.installedAt.c_str());
+    }
+    return 0;
+}
+
+int CmdGc(const std::vector<std::string>& args) {
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const auto removed = engine.CollectGarbage();
+    if (!removed) return Fail(removed.error);
+    for (const InstalledRecord& r : removed.Value()) {
+        std::printf("removed %-9s %s %s\n", ComponentKindName(r.kind).c_str(), r.id.c_str(), r.version.c_str());
+    }
+    if (removed.Value().empty()) std::printf("nothing to remove\n");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -318,6 +459,11 @@ int main(int argc, char** argv) {
     if (cmd == "pubkey")   return CmdPubkey(args);
     if (cmd == "sign")     return CmdSign(args);
     if (cmd == "sha256")   return CmdSha256(args);
+    if (cmd == "install")  return CmdInstall(args);
+    if (cmd == "update")   return CmdUpdate(args);
+    if (cmd == "remove")   return CmdRemove(args);
+    if (cmd == "installed") return CmdInstalled(args);
+    if (cmd == "gc")       return CmdGc(args);
     std::fprintf(stderr, "ultrastore: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }

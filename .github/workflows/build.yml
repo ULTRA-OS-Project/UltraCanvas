@@ -774,6 +774,12 @@ jobs:
           # a header is missing - and a silently disabled database layer
           # takes the whole UltraFIBU bookkeeping suite out of CI with it.
           scripts/ci-apt.sh install libsqlite3-dev libpq-dev libmariadb-dev
+          # libarchive: VirtualFS's archive provider, which UltraFiler's
+          # archive browsing and UltraStore's installer unpack with. Named
+          # rather than relied on from the image for the same reason: without
+          # it VirtualFS builds with no provider and the store's install
+          # tests skip instead of running.
+          scripts/ci-apt.sh install libarchive-dev
           # c-ares: UltraNet's async DNS uses the event-thread API
           # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
           # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
@@ -1320,6 +1326,7 @@ jobs:
           [ "${{ runner.os }}" = "Windows" ] && store="$store.exe"
           "$store" --version
           "$store" platform
+          "$store" installed --root "$RUNNER_TEMP/ultrastore-smoke"
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
