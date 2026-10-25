@@ -95527,6 +95527,15 @@ on Android).
 The test suite is `Tests/VideoFXTest.cpp` (`VideoFXTest` under ctest); it
 generates its own clips, so it needs no media files.
 
+The Windows builds compile the module against **libc++** (MSYS2's CLANG64
+toolchain), Linux against libstdc++, and the two disagree on details a Linux
+build never shows - libc++ gives `std::filesystem::file_time_type` a 128-bit
+tick count, which `std::to_string` has no overload for. Before pushing a
+change to the module, run `scripts/check_libcxx_syntax.sh`: it type-checks
+the engine's sources, the tool and the test with `clang++ -stdlib=libc++
+-fsyntax-only` in a few seconds (`apt install clang libc++-dev
+libc++abi-dev` on Ubuntu) and prints only the errors.
+
 ---
 
 ## Roadmap
@@ -100129,26 +100138,6 @@ clean, and each of those is a test in
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
-
-==============================================================================
-FILE: Docs/UltraMail/changelog.d/no-reply-contacts.md
-==============================================================================
-
-- **Incoming mail never adds a no-reply address to the contacts.** A known
-  service was filed under Services for whatever address it wrote from, and
-  some services send from a new `no-reply-<code>@...` address in every
-  message - Anthropic's mail had put 77 "Anthropic" contacts in Services,
-  one per message. Nobody writes to a no-reply address (it was already never
-  offered as a recipient suggestion), so the collector now skips it, known
-  service or not; the service still reads as a business sender without a
-  contact. Writing to such an address yourself still adds it.
-- **Services > right-click > *Remove no-reply contacts…*** removes what the
-  old rule left behind: the no-reply contacts UltraMail filed by itself -
-  one address, no phone, no group, and the "collected automatically" note -
-  after a confirmation that lists the first few. A no-reply contact you
-  filed yourself is kept.
-- `test_contacts` checks that a no-reply sender is not collected and what
-  `ContactCollector::CollectedNoReply` finds.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
