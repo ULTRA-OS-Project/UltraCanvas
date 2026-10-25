@@ -202,6 +202,12 @@ NumberFormat         GetActiveCellNumberFormat() const;
 bool                 GetActiveCellWrapText() const;
 ```
 
+A cell's text is drawn centred in its row, on the middle of its capitals,
+whatever the font. `VerticalAlignment::Top` draws it at the top of the row
+instead. `Bottom` is every cell's default (as in .xlsx and .ods, which store
+no alignment for it), so a cell set to it cannot be told from an untouched
+one and is drawn centred like `Middle`.
+
 ### Rows, Columns, Merge, and Freeze
 
 ```cpp

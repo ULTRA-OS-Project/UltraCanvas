@@ -3,8 +3,9 @@
 // highlighted and the leading zeros dimmed, the entry buffer that fills from
 // the right, relative entries, stepping, validation and the keys.
 // ui-reuse-exempt: UltraCanvasTimecodeField is the timecode input itself - four segments, no caret.
+// Version: 1.0.1 - the digits are centred on their capitals, not their line box
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #include "UltraCanvasTimecodeField.h"
 #include "UltraCanvasEvent.h"
@@ -258,8 +259,11 @@ void UltraCanvasTimecodeField::Render(IRenderContext* ctx, const Rect2Df& /*dirt
     }
 
     const float size = readout ? style.readoutSize : style.fontSize;
-    ctx->SetFontFace(style.fontFamily, readout ? FontWeight::Bold : FontWeight::Normal, FontSlant::Normal);
-    ctx->SetFontSize(size * 0.75f);   // pixels to points
+    FontStyle font;
+    font.fontFamily = style.fontFamily;
+    font.fontSize = size * 0.75f;   // pixels to points
+    font.fontWeight = readout ? FontWeight::Bold : FontWeight::Normal;
+    ctx->SetFontStyle(font);
     const Size2Di zero = ctx->GetTextDimensions("0", Size2Di(0, 0));
     charAdvance = static_cast<float>(zero.width);
     textHeight = static_cast<float>(zero.height);
@@ -269,7 +273,8 @@ void UltraCanvasTimecodeField::Render(IRenderContext* ctx, const Rect2Df& /*dirt
     const float width = charAdvance * (11.0f + (signed_ ? 1.0f : 0.0f));
     float left = readout ? b.x + (b.width - width) / 2.0f : b.x + style.paddingX;
     if (!readout && b.width - 2.0f * style.paddingX > width) left = b.x + (b.width - width) / 2.0f;
-    const float top = b.y + (b.height - textHeight) / 2.0f;
+    // The digits' middle on the field's middle, not the line box's.
+    const float top = static_cast<float>(ctx->TextTopCentredOnCaps(Rect2Dd(b.x, b.y, b.width, b.height), font));
     textTop = top;
     if (signed_) {
         ctx->SetTextPaint(style.sign);

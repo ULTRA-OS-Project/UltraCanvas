@@ -1,10 +1,11 @@
 // Apps/DemoApp/UltraCanvasSegmentedControlExamples.cpp
 // Segmented Control component demonstration for main demo app
+// Version: 1.1.1 - the disabled-segments control is wide enough for its captions
 // Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): one card per
 //                  example, each control beside its notes, the feedback and the
 //                  notes sized to their text
 // Version: 1.0.0
-// Last Modified: 2026-10-23
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -230,7 +231,9 @@ namespace UltraCanvas {
         // ========================================
         auto row7 = addSection("Section7", "7. Disabled Segments Demonstration");
 
-        auto disabledControl = CreateSegmentedControl("disabled", 0, 0, 600, 35);
+        // Five equal segments: wide enough for "Also Disabled" on one line
+        // (a caption too wide for its segment is shortened with an ellipsis).
+        auto disabledControl = CreateSegmentedControl("disabled", 0, 0, 660, 35);
         disabledControl->AddSegment("Enabled 1");
         disabledControl->AddSegment("Disabled");
         disabledControl->AddSegment("Enabled 2");

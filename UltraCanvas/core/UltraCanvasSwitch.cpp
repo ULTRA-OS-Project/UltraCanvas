@@ -1,15 +1,27 @@
 // UltraCanvasSwitch.cpp
 // Toggle switch rendering with optional orientation, thumb icons, and state labels.
+// Version: 1.6.0 - state and side labels are centred on their capitals, not their line box
 // Version: 1.5.0 - switch.thumb, switch.thumb-border
 // Version: 1.4.0 - SwitchVisualStyle::FromTheme
 // Version: 1.3.0
-// Last Modified: 2026-08-04
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSwitch.h"
 #include <algorithm>
 
 namespace UltraCanvas {
+
+    namespace {
+        // The font of the ON / OFF state label.
+        FontStyle StateLabelFont(const SwitchVisualStyle& style) {
+            FontStyle font;
+            font.fontFamily = style.stateLabelFontFamily;
+            font.fontSize = style.stateLabelFontSize;
+            font.fontWeight = style.stateLabelFontWeight;
+            return font;
+        }
+    }
 
     UltraCanvasSwitch::UltraCanvasSwitch(const std::string& identifier,
                                          float x, float y, float w, float h,
@@ -249,10 +261,8 @@ namespace UltraCanvas {
 
         const Color color = IsChecked() ? visualStyle.onTextColor : visualStyle.offTextColor;
 
-        ctx->SetFontFace(visualStyle.stateLabelFontFamily,
-                         visualStyle.stateLabelFontWeight,
-                         FontSlant::Normal);
-        ctx->SetFontSize(visualStyle.stateLabelFontSize);
+        const FontStyle font = StateLabelFont(visualStyle);
+        ctx->SetFontStyle(font);
         ctx->SetTextPaint(color);
 
         const Size2Di textSize = ctx->GetTextLineDimensions(text);
@@ -266,13 +276,15 @@ namespace UltraCanvas {
             } else {
                 pos.x = track.x + track.width - (textSize.width + pad);
             }
-            pos.y = track.y + (track.height - textSize.height) / 2.0f;
+            // Labels are centred on their capitals, as a button's caption is,
+            // not on the line box, which sits high or low with the font.
+            pos.y = ctx->TextTopCentredOnCaps(Rect2Dd(track.x, track.y, track.width, track.height), font);
         } else {
             // Vertical: ON at top, label sits in bottom half; OFF at bottom, label sits in top half.
             const float halfHeight = track.height / 2.0f;
             const float regionY = IsChecked() ? (track.y + halfHeight) : track.y;
             pos.x = track.x + (track.width - textSize.width) / 2.0f;
-            pos.y = regionY + (halfHeight - textSize.height) / 2.0f;
+            pos.y = ctx->TextTopCentredOnCaps(Rect2Dd(track.x, regionY, track.width, halfHeight), font);
             pos.y = std::max<double>(pos.y, regionY + pad);
         }
         ctx->DrawText(text, pos);
@@ -284,10 +296,8 @@ namespace UltraCanvas {
 
         const Color color = IsChecked() ? visualStyle.onTextColor : visualStyle.offTextColor;
 
-        ctx->SetFontFace(visualStyle.stateLabelFontFamily,
-                         visualStyle.stateLabelFontWeight,
-                         FontSlant::Normal);
-        ctx->SetFontSize(visualStyle.stateLabelFontSize);
+        const FontStyle font = StateLabelFont(visualStyle);
+        ctx->SetFontStyle(font);
         ctx->SetTextPaint(color);
 
         const Size2Di textSize = ctx->GetTextLineDimensions(text);
@@ -296,7 +306,7 @@ namespace UltraCanvas {
         Point2Df pos;
         if (horizontal) {
             pos.x = track.x + track.width + visualStyle.stateLabelOutsidePadding;
-            pos.y = track.y + (track.height - textSize.height) / 2.0f;
+            pos.y = ctx->TextTopCentredOnCaps(Rect2Dd(track.x, track.y, track.width, track.height), font);
         } else {
             pos.x = track.x + (track.width - textSize.width) / 2.0f;
             pos.y = track.y + track.height + visualStyle.stateLabelOutsidePadding;
@@ -313,11 +323,12 @@ namespace UltraCanvas {
         auto drawLabel = [&](const std::string& text, bool active, bool leading) {
             if (text.empty()) return;
 
-            ctx->SetFontFace(visualStyle.sideLabelFontFamily,
-                             active ? visualStyle.sideLabelActiveWeight
-                                    : visualStyle.sideLabelInactiveWeight,
-                             FontSlant::Normal);
-            ctx->SetFontSize(visualStyle.sideLabelFontSize);
+            FontStyle font;
+            font.fontFamily = visualStyle.sideLabelFontFamily;
+            font.fontSize = visualStyle.sideLabelFontSize;
+            font.fontWeight = active ? visualStyle.sideLabelActiveWeight
+                                     : visualStyle.sideLabelInactiveWeight;
+            ctx->SetFontStyle(font);
             ctx->SetTextPaint(disabled
                     ? visualStyle.sideLabelDisabledColor
                     : (active ? visualStyle.sideLabelActiveColor
@@ -328,7 +339,7 @@ namespace UltraCanvas {
             if (horizontal) {
                 pos.x = leading ? (track.x - pad - textSize.width)
                                 : (track.x + track.width + pad);
-                pos.y = track.y + (track.height - textSize.height) / 2.0f;
+                pos.y = ctx->TextTopCentredOnCaps(Rect2Dd(track.x, track.y, track.width, track.height), font);
             } else {
                 pos.x = track.x + (track.width - textSize.width) / 2.0f;
                 pos.y = leading ? (track.y - pad - textSize.height)

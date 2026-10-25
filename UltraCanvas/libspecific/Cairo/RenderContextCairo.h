@@ -186,6 +186,7 @@ namespace UltraCanvas {
         //void SetDrawingStyle(const DrawingStyle &style) override;
         void SetTextStyle(const TextStyle &style) override;
         const TextStyle &GetTextStyle() const override;
+        const FontStyle &GetFontStyle() const override;
         void SetStrokeWidth(double width) override;
         //void SetLineWidth(float width) override;
         void SetLineCap(LineCap cap) override;

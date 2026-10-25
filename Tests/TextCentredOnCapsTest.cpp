@@ -1,12 +1,14 @@
 // Tests/TextCentredOnCapsTest.cpp
-// A segmented control and a spreadsheet cell centre their text vertically on
-// its capitals: the middle of a capital letter sits on the middle of the
-// segment or row, as a button's caption and a label's text do. Both used to
-// centre the text's line box - ascent plus descent - which sits wherever the
-// font's metrics put it: FreeSans' line box puts its capitals 2.5 px above
-// the middle of an 80 px segment, Carlito's 1.5 px below, and the Windows
-// build drew the demo's segmented controls high and the spreadsheet's cells
-// low enough to cut their descenders off.
+// A segmented control, a spreadsheet cell and a checkbox's label centre their
+// text vertically on its capitals: the middle of a capital letter sits on
+// the middle of the segment, row or control, as a button's caption and a
+// label's text do. They used to centre the text's line box - ascent plus
+// descent - which sits wherever the font's metrics put it: FreeSans' line
+// box puts its capitals 2.5 px above the middle of an 80 px segment,
+// Carlito's 1.5 px below, and the Windows build drew the demo's segmented
+// controls high and the spreadsheet's cells low enough to cut their
+// descenders off. A layout sized by a font attribute must also measure the
+// capitals of that size, which the centring relies on.
 //
 // A caption of capitals only ("HHHH": their ink is the cap height, nothing
 // above or below it) is drawn offscreen in black on white and read back: the
@@ -15,10 +17,12 @@
 //
 // Usage: TextCentredOnCapsTest
 // Exit code is the number of failed checks.
+// Version: 1.1.0 - a checkbox's label; the cap height of a layout sized by a font attribute
 // Version: 1.0.0
 // Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasSegmentedControl.h"
 #include "UltraCanvasSpreadsheet.h"
 #include "UltraCanvasApplication.h"
@@ -153,6 +157,49 @@ void CheckCell(float fontSize, const std::string& family, int rowHeight = 0) {
     CheckRows(rows, cell.y + cell.height / 2.0, what);
 }
 
+// A checkbox's label beside its box: the label's capitals on the middle.
+void CheckCheckbox(float fontSize, const std::string& family) {
+    const int width = 400;
+    const int height = 80;
+    auto checkbox = std::make_shared<UltraCanvasCheckbox>("check", 0, 0, width, height, "HHHHHH");
+    CheckboxVisualStyle style = checkbox->GetVisualStyle();
+    style.base.fontFamily = family;
+    style.base.fontSize = fontSize;
+    style.base.textColor = Colors::Black;
+    checkbox->SetVisualStyle(style);
+    CSSLayout::LayoutContext layoutContext;
+    checkbox->Arrange(Rect2Df(0, 0, width, height), layoutContext);
+    // Right of the box: the label's ink alone.
+    const InkRows rows = DrawAndMeasure(*checkbox, width, height, Rect2Di(width / 3, 0, width - width / 3, height));
+    char what[128];
+    std::snprintf(what, sizeof what, "%s %.0f pt: a checkbox %d px high centres its label's capitals",
+                  family.c_str(), fontSize, height);
+    CheckRows(rows, height / 2.0, what);
+}
+
+// A layout sized by a font attribute measures the capitals of that size, as
+// one given the font as its own does - not those of its 12 pt base font.
+void CheckCapHeightOfAttributes(const std::string& family) {
+    auto ctx = CreateRenderContext(Size2Di(10, 10), nullptr);
+    FontStyle base;
+    base.fontFamily = family;
+    base.fontSize = 12;
+    FontStyle large = base;
+    large.fontSize = 36;
+    auto byAttribute = ctx->CreateTextLayout("<span>HH</span>", true);
+    byAttribute->SetFontStyle(base);
+    byAttribute->ChangeAttribute(TextAttributeFactory::CreateFontSize(36));
+    auto byFont = ctx->CreateTextLayout("HH", false);
+    byFont->SetFontStyle(large);
+    const double a = byAttribute->GetCapHeight();
+    const double b = byFont->GetCapHeight();
+    char what[160];
+    std::snprintf(what, sizeof what,
+                  "%s: a layout sized to 36 pt by an attribute measures 36 pt capitals (%.1f px; its own font %.1f px)",
+                  family.c_str(), a, b);
+    Check(b > 0 && std::fabs(a - b) <= 0.5, what);
+}
+
 } // namespace
 
 int main() {
@@ -173,6 +220,8 @@ int main() {
         CheckCell(11.0f, family);
         CheckCell(14.0f, family);
         CheckCell(36.0f, family, 80);
+        CheckCheckbox(36.0f, family);
+        CheckCapHeightOfAttributes(family);
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

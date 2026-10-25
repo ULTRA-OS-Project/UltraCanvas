@@ -218,6 +218,8 @@ breaks anywhere; `WrapNone` keeps one line per paragraph and ellipsizes it.
 ```cpp
 double GetCapCentreOffset(const FontStyle& font);                    // layout top → middle of a capital
 int    TextTopCentredOnCaps(const Rect2Dd& row, const FontStyle& font);
+int    TextTopCentredOnCaps(const Rect2Dd& row);                     // in the current font (GetFontStyle)
+const FontStyle& GetFontStyle();                                     // the font DrawText draws in now
 double ITextLayout::GetCapHeight();                                  // baseline → cap top, pixels
 ```
 
@@ -235,6 +237,16 @@ ctx->SetFontStyle(font);
 int y = ctx->TextTopCentredOnCaps(rowRect, font);   // same centre line as a box centred on rowRect
 ctx->DrawText(label, Point2Di(x, y));
 ```
+
+Code that only set a size or weight (`SetFontSize`, `SetFontWeight`) and
+draws in whatever family the context holds asks in the current font:
+`ctx->TextTopCentredOnCaps(rowRect)` measures `ctx->GetFontStyle()`.
+
+`GetCapHeight` measures the font the layout's text starts in: the layout's
+own font, with any family, size, weight or style attribute over its first
+character (`ChangeAttribute`). A layout sized by an attribute used to be
+measured in its base font - 12 pt - so a larger caption centred with
+`VerticalAlignment::Middle` sat high.
 
 The cap height is measured once per font from the ink of a capital H and
 cached, so asking per row costs a map lookup. The caches belong to the
