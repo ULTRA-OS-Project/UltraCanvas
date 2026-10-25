@@ -43,8 +43,10 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
+// Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -54,6 +56,7 @@
 #include "UltraIM/UltraIMTypes.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -103,6 +106,9 @@ private:
     void ToggleTelegramForm();
     void SignInToTelegram(bool stored);
     void UpdateTelegramForm();
+    // The Telegram application's API ID and hash the relay keeps, so nobody
+    // types them; then `then` (the stored Telegram session resumed, say).
+    void FetchTelegramCredentials(std::function<void()> then);
     // The provider an address belongs to: @name:server Matrix, +phone /
     // @username / t.me/... Telegram, anything else a ChatCube ID.
     std::string ProviderOfAddress(const std::string& address) const;
@@ -114,7 +120,12 @@ private:
     void OpenConversation(const std::string& conversationId);
     void SendCurrentMessage();
     void UpdateHeader();
-    void SetStatus(const std::string& text);
+    // The status line: what the last action said, then every network's own
+    // state - "Added Bob · ChatCube: connected · Telegram: waiting for the
+    // network…" - so one network's news never hides another's.
+    void SetStatus(const std::string& text);                                      // the action's part
+    void SetProviderStatus(const std::string& providerId, const std::string& text);   // "" removes the entry
+    void RenderStatus();
     void SetSignInStatus(const std::string& text);
     void RefreshConversations();
     void ScrollToEnd();
@@ -170,6 +181,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramName_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramNext_;
     std::string telegramProviderId_ = "telegram";
+    std::string telegramRelayApiId_;        // from the relay; "" = the user types them
+    std::string telegramRelayApiHash_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    matrixToggle_;
     std::string matrixProviderId_ = "matrix";
     std::string activeProvider_;    // the open conversation's provider
@@ -187,6 +200,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    send_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
+    std::string actionStatus_;
+    std::map<std::string, std::string> providerStatus_;   // provider id -> its state
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> callBar_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     callText_;

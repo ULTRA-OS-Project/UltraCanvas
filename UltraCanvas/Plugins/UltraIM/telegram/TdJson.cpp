@@ -1,16 +1,26 @@
 // Plugins/UltraIM/telegram/TdJson.cpp
 // Telegram provider - TDLib's JSON interface, loaded at run time
+// Version: 0.1.1 - SetLogFile (TDLib's own log); what is sent and received on the debug stream
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
 
+#include "UltraCanvasDebug.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasPluginLoader.h"
 
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
+
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace UltraIMTelegram {
 
@@ -29,6 +39,38 @@ const char* PlatformName() {
 TdObject Parse(const char* text) {
     UltraCanvas::JSONParseResult parsed;
     return UltraCanvas::JSON::Parse(text ? std::string(text) : std::string(), &parsed);
+}
+
+// One line about an object for the debug stream: its type, the request it
+// answers, and an error's code and message. Never the payload - a request
+// carries the phone number, the code, the password and the messages.
+std::string Describe(const TdObject& o) {
+    std::string line = TdType(o);
+    const std::string extra = o["@extra"].GetString();
+    if (!extra.empty()) line += " (" + extra + ")";
+    if (line.rfind("error", 0) == 0)
+        line += " " + std::to_string(o["code"].GetInteger(0)) + " \"" + o["message"].GetString() + "\"";
+    else if (TdType(o) == "updateAuthorizationState")
+        line += " -> " + TdType(o["authorization_state"]);
+    else if (TdType(o) == "updateConnectionState")
+        line += " -> " + TdType(o["state"]);
+    return line;
+}
+
+// Opens the library. On Windows a DLL loaded by its full path does not find
+// the DLLs next to it (OpenSSL and zlib ship beside tdjson.dll), so its folder
+// joins the search path for the duration of the load.
+UltraCanvas::UCPluginLibHandle OpenLibrary(const std::string& path, std::string* why) {
+#if defined(_WIN32)
+    const std::filesystem::path full = UltraCanvas::PathFromUtf8(path);
+    if (full.has_parent_path() && full.is_absolute()) {
+        SetDllDirectoryW(full.parent_path().c_str());   // path-string-ok: wide path
+        UltraCanvas::UCPluginLibHandle handle = UltraCanvas::UCPluginOpen(path, why);
+        SetDllDirectoryW(nullptr);
+        return handle;
+    }
+#endif
+    return UltraCanvas::UCPluginOpen(path, why);
 }
 
 } // namespace
@@ -72,8 +114,9 @@ bool TdJsonLibrary::Load(const std::vector<std::string>& candidates, std::string
     for (const auto& path : paths) {
         if (path.empty()) continue;
         std::string why;
-        UltraCanvas::UCPluginLibHandle handle = UltraCanvas::UCPluginOpen(path, &why);
+        UltraCanvas::UCPluginLibHandle handle = OpenLibrary(path, &why);
         if (!handle) {
+            debugOutput << "[Telegram] libtdjson not at " << path << ": " << why << std::endl;
             reasons += "\n  " + path + ": " + why;
             continue;
         }
@@ -84,6 +127,7 @@ bool TdJsonLibrary::Load(const std::vector<std::string>& candidates, std::string
         api.execute = reinterpret_cast<const char* (*)(const char*)>(UltraCanvas::UCPluginSymbol(handle, "td_execute"));
         if (!api.createClientId || !api.send || !api.receive || !api.execute) {
             // Too old a TDLib (before 1.7, no td_create_client_id) or not TDLib.
+            debugOutput << "[Telegram] " << path << " is not TDLib's JSON interface (1.7 or later)" << std::endl;
             reasons += "\n  " + path + ": not TDLib's JSON interface (1.7 or later)";
             UltraCanvas::UCPluginClose(handle);
             continue;
@@ -93,10 +137,40 @@ bool TdJsonLibrary::Load(const std::vector<std::string>& candidates, std::string
         // Quiet: TDLib logs to stderr at level 1 and up otherwise.
         const char* ok = api_.execute("{\"@type\":\"setLogVerbosityLevel\",\"new_verbosity_level\":1}");
         (void)ok;
+        const char* version = api_.execute("{\"@type\":\"getOption\",\"name\":\"version\"}");
+        debugOutput << "[Telegram] loaded " << path << ": TDLib "
+                    << Parse(version)["value"].GetString("?") << std::endl;
         return true;
     }
     error = "TDLib (libtdjson) was not found - install it, or set ULTRAIM_TDJSON_PATH" + reasons;
+    debugOutput << "[Telegram] " << error << std::endl;
     return false;
+}
+
+bool TdJsonLibrary::SetLogFile(const std::string& path, int verbosity, int64_t maxBytes) {
+    if (!IsLoaded()) return false;
+    TdObject stream = TdObject::MakeObject();
+    if (path.empty()) {
+        stream.Set("@type", TdObject("logStreamDefault"));
+    } else {
+        stream.Set("@type", TdObject("logStreamFile"));
+        stream.Set("path", TdObject(path));
+        stream.Set("max_file_size", TdObject(maxBytes));
+        stream.Set("redirect_stderr", TdObject(false));
+    }
+    TdObject setStream = TdObject::MakeObject();
+    setStream.Set("@type", TdObject("setLogStream"));
+    setStream.Set("log_stream", stream);
+    const TdObject streamAnswer = Execute(setStream);
+    TdObject setLevel = TdObject::MakeObject();
+    setLevel.Set("@type", TdObject("setLogVerbosityLevel"));
+    setLevel.Set("new_verbosity_level", TdObject(static_cast<int64_t>(verbosity)));
+    const TdObject levelAnswer = Execute(setLevel);
+    const bool ok = TdType(streamAnswer) == "ok" && TdType(levelAnswer) == "ok";
+    debugOutput << "[Telegram] TDLib's log: " << (path.empty() ? std::string("stderr") : path)
+                << " at level " << verbosity << (ok ? "" : " - refused: " + Describe(streamAnswer) + " / " + Describe(levelAnswer))
+                << std::endl;
+    return ok;
 }
 
 bool TdJsonLibrary::IsLoaded() const {
@@ -151,7 +225,10 @@ void TdJsonLibrary::Send(int clientId, const TdObject& request) {
         std::lock_guard<std::mutex> lock(mutex_);
         send = api_.send;
     }
-    if (send && clientId) send(clientId, UltraCanvas::JSON::Serialize(request).c_str());
+    if (!send || !clientId) return;
+    if (UltraCanvas::IsDebugOutputEnabled())
+        debugOutput << "[Telegram] -> client " << clientId << ": " << Describe(request) << std::endl;
+    send(clientId, UltraCanvas::JSON::Serialize(request).c_str());
 }
 
 void TdJsonLibrary::Unregister(int clientId) {
@@ -182,6 +259,8 @@ void TdJsonLibrary::ReceiveLoop() {
         if (!text) continue;
         const TdObject object = Parse(text);       // td_receive's text lives until its next call
         const int clientId = static_cast<int>(object["@client_id"].GetInteger(0));
+        if (UltraCanvas::IsDebugOutputEnabled())
+            debugOutput << "[Telegram] <- client " << clientId << ": " << Describe(object) << std::endl;
         TdHandler handler;
         {
             std::lock_guard<std::mutex> lock(mutex_);

@@ -148,7 +148,7 @@ vault.Lock();                                       // wipes the derived key
 
 | Group | Members |
 |---|---|
-| Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under a lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) must each `Use()` theirs: one opened directly stays open until another opens, and reads the other's secrets after that |
+| Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under the lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) take turns in it; a vault unlocked directly keeps working too - it re-opens its own file before each read or write when another vault took the store meanwhile (see below) |
 | Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
@@ -166,9 +166,20 @@ the applications used before UltraVault (secrets XOR-ed against a `vault.key`
 sidecar, one line per account in `creds.dat`) is carried across on the first
 successful unlock and its files removed.
 
-UltraVault itself is one store per process: `Unlock()` closes whatever
-UltraVault had open and opens this vault, so a process works with one
-`DeviceKeyVault` at a time.
+UltraVault itself is one store per process, so several `DeviceKeyVault`s
+in one program - ChatCube's three messenger providers, each with its own
+vault on its own network thread - take turns in it. Every call takes one
+lock the whole process shares, the vault whose file the store holds is
+remembered, and a vault that finds another's file open re-opens its own
+(with its device key) before it reads or writes: `Store()` never lands in
+another vault's file and `Retrieve()` never answers from one, whether the
+vault is used through `Use()` or unlocked once and used directly. Until
+0.3.0 a direct user's secrets went into whichever vault held the store at
+that moment, its own file lost them, and its `Lock()` closed the other
+vault under its user; `Tests/UltraVaultTests.cpp` now drives four vaults
+from four threads to hold this. A vault unlocked with a passphrase of its
+own (no device key) cannot re-open silently: its calls then fail with
+`Locked` rather than touch the wrong file.
 
 ## Consumers
 

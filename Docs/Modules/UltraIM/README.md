@@ -97,6 +97,15 @@ says what comes next (`PhoneNumber`, `Code`, `Password`, `Registration`) and
 one field set (`otpCode`, `password`, `displayName`); the rest of the
 credentials need not be repeated.
 
+What one provider's service keeps for another provider's sign-in comes
+through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
+Direct's relay keeps the Telegram application's API ID and hash
+(`GET /v1/telegram-credentials`), so `UltraIM_FetchSharedCredentials("direct",
+"telegram", ...)` answers a `UltraIMCredentials` with `apiId` and `apiHash` to
+hand `UltraIM_SignIn("telegram", ...)` - set once on the server, never built
+into the application or typed by the user. `NotFound` when the service keeps
+none, `CapabilityMissing` from a provider without a service.
+
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
 `UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
@@ -181,6 +190,10 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   relay a message waits in the outbox until the other side is back, and
   groups (which the relay keeps) are refused. `AddLanAddress(host, port)`
   reaches a ChatCube by address where multicast does not get through.
+- **For the Telegram provider:** `FetchSharedCredentials("telegram")` asks
+  the relay for the Telegram application's API ID and hash
+  (`GET /v1/telegram-credentials`, from the relay's
+  `CHATCUBE_RELAY_TELEGRAM_API_ID` / `_HASH`); `NotFound` when it keeps none.
 - **Not yet:** group calls, files and images, several devices per identity,
   groups without a relay.
 
@@ -279,19 +292,42 @@ its JSON interface (`td_create_client_id` / `td_send` / `td_receive` /
 provider builds on every platform but WebAssembly (which loads no native
 library) and works wherever a libtdjson is found - the
 `tdlib/` folder next to the provider modules, `ULTRAIM_TDJSON_PATH`, or the
-system's `libtdjson.so` / `.dylib` / `tdjson.dll` (TDLib 1.7 or later; 1.8.69
-is what the tests use). One thread receives for every client in the process.
+system's `libtdjson.so` / `.dylib` / `tdjson.dll` (TDLib 1.7 or later). The
+one in `tdlib/` is put there by the build: `cmake/UltraCanvasTdlib.cmake`
+fetches TDLib 1.8.69 prebuilt at configure time (the `tdjson` wheel on PyPI,
+pinned by SHA-256; Linux x86_64 and aarch64, macOS arm64, Windows x64 - on
+macOS and Windows with the OpenSSL and zlib libraries it needs beside it)
+into `<build>/Plugins/UltraIM/tdlib/`, and the packages ship that folder.
+`ULTRAIM_TDJSON_FILE` ships a libtdjson of your own instead,
+`ULTRAIM_FETCH_TDLIB=OFF` skips it, and a platform with no prebuilt one
+(macOS Intel, Windows ARM) says so at configure time and relies on a
+libtdjson found at run time. One thread receives for every client in the
+process.
 
 - **Sign-in:** `UltraIMLoginType::PhoneOTP`, in steps (above): the phone
   number with its country code, the code, the two-step password when the
   account has one, a name for a new number. Telegram also needs the
   *application's* API ID and hash (my.telegram.org): `credentials.apiId` /
-  `apiHash`, or built in (CMake `ULTRAIM_TELEGRAM_API_ID` /
+  `apiHash` - ChatCube takes them from its relay through
+  `UltraIM_FetchSharedCredentials` (above) - or the ones kept with the last
+  session, or built in (CMake `ULTRAIM_TELEGRAM_API_ID` /
   `ULTRAIM_TELEGRAM_API_HASH`), or `ULTRAIM_TELEGRAM_API_ID` / `_HASH` in the
-  environment; they are kept with the session. `server = "test"` uses
+  environment; a pair given wins over the kept one, so a change on the relay
+  reaches a stored session. `server = "test"` uses
   Telegram's test servers. TDLib keeps the session, the chats and the history
   in its own database under the provider's data directory, encrypted with a
   key the vault holds; a later `SignIn` with nothing given resumes it.
+- **While it signs in**, TDLib's connection state is reported as
+  `ConnectionStateChange` with `Connecting` and a text (waiting for the
+  network, connecting to Telegram's servers, ...), and a step TDLib does not
+  answer within 45 s (`SetStepTimeout` for tests) fails with `Timeout`
+  saying what TDLib was doing, instead of leaving the application waiting;
+  the step's state change still arrives as an event if it completes later.
+- **Diagnostics:** the provider writes what it sends and receives (object
+  types and TDLib's errors, never a phone number, code, password or message)
+  to the framework's debug stream (`ULTRACANVAS_DEBUG_LOG`, ChatCube
+  `--debug` / `--log`), and TDLib's own log goes to `telegram/tdlib.log` in
+  the data directory (warnings and errors; more when the debug stream is on).
 - **Chats:** the main chat list (`loadChats`, in TDLib's order, pinned first);
   private chats, basic groups and supergroups, channels. A conversation's id
   is the chat id, a message's the message id, a contact's the user id.
@@ -313,8 +349,9 @@ in one process talk through it; `FAKE_TDJSON_ACCOUNTS` and an `echobot`
 account for trying ChatCube on it); `Tests/UltraIM/TelegramTdlibTests.cpp`
 hands every request the provider builds to the real TDLib, offline - it
 answers a request it cannot parse at once, so anything else means TDLib's
-names and fields are right. `ULTRAIM_TDJSON_PATH` names the library; CI
-takes it from the `tdjson` wheel and sets `ULTRAIM_TEST_TDLIB_REQUIRED`.
+names and fields are right. The library is the one the configure step
+fetched, or the one `ULTRAIM_TDJSON_PATH` names; CI sets
+`ULTRAIM_TEST_TDLIB_REQUIRED`, so no library there is a failure.
 
 ## Status
 

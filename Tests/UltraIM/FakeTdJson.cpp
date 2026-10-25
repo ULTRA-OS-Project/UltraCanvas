@@ -10,8 +10,11 @@
 // application on it, FAKE_TDJSON_ACCOUNTS seeds accounts
 // ("phone:First:username:password;..."), and an account called "echobot"
 // answers every message with "echo: <text>". The code is always 12345.
+// The number +1 555 9999 is never answered (a network that is down), for the
+// provider's step timeout.
+// Version: 0.1.1 - a phone number whose code never comes
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasJSON.h"
@@ -424,6 +427,7 @@ void Handle(Client& c, const JSONValue& r) {
         if (c.state != "authorizationStateWaitPhoneNumber") return fail(400, "Unexpected setAuthenticationPhoneNumber");
         c.phone = Digits(r["phone_number"].GetString());
         if (c.phone.size() < 5) return fail(400, "PHONE_NUMBER_INVALID");
+        if (c.phone == "15559999") return;      // no answer, ever: the network is down
         ok();
         JSONValue info = Obj("authenticationCodeInfo");
         info.Set("phone_number", JSONValue("+" + c.phone));

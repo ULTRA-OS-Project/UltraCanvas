@@ -191,6 +191,14 @@ if compgen -G "$BUILDDIR/Plugins/UltraIM/*.so" > /dev/null; then
     cp -a "$BUILDDIR"/Plugins/UltraIM/*.so "$PKG/bin/Plugins/UltraIM/"
     log "  plugins UltraIM ($(ls -1 "$PKG/bin/Plugins/UltraIM"/*.so | wc -l) DSOs)"
 fi
+# TDLib for the Telegram provider (fetched at configure time by
+# cmake/UltraCanvasTdlib.cmake): loaded from <exe>/Plugins/UltraIM/tdlib at
+# run time, not linked, so the bundler below never sees it - copied as is.
+if [ -f "$BUILDDIR/Plugins/UltraIM/tdlib/libtdjson.so" ]; then
+    mkdir -p "$PKG/bin/Plugins/UltraIM/tdlib"
+    cp -a "$BUILDDIR"/Plugins/UltraIM/tdlib/. "$PKG/bin/Plugins/UltraIM/tdlib/"
+    log "  TDLib (Plugins/UltraIM/tdlib/libtdjson.so)"
+fi
 if [ -x "$PKG/bin/ChatCube" ] && [ ! -f "$PKG/bin/Plugins/UltraIM/ultraim_direct.so" ]; then
     echo "Error: ChatCube is packaged without bin/Plugins/UltraIM/ultraim_direct.so, its ChatCube Direct provider" >&2
     exit 1

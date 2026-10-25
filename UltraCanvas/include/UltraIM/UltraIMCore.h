@@ -1,7 +1,8 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -121,6 +122,15 @@ void UltraIM_ExportEncryptionKeys(const std::string& providerId, const std::stri
                                   UltraIMKeyExportCallback onResult);
 void UltraIM_ImportEncryptionKeys(const std::string& providerId, const std::string& data,
                                   const std::string& passphrase, UltraIMKeyImportCallback onResult);
+
+// ---- Credentials one provider's service keeps for another ---------------------
+// What providerId's service (ChatCube Direct: the relay) keeps for
+// forProviderId's sign-in - "telegram": the application's API ID and hash
+// (credentials.apiId / apiHash) - to pass to UltraIM_SignIn(forProviderId,
+// ...). NotFound when the service keeps none, CapabilityMissing when the
+// provider has no such service; providerId must be signed in.
+void UltraIM_FetchSharedCredentials(const std::string& providerId, const std::string& forProviderId,
+                                    UltraIMSharedCredentialsCallback onResult);
 
 // ---- Helpers -----------------------------------------------------------------
 // A fresh client message id (a UUID v4).

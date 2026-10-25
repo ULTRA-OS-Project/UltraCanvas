@@ -1,7 +1,9 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
+// Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -546,7 +548,29 @@ void ChatCubeWindow::ShowChatView() {
 }
 
 void ChatCubeWindow::SetStatus(const std::string& text) {
-    if (status_) status_->SetText(text);
+    actionStatus_ = text;
+    RenderStatus();
+}
+
+void ChatCubeWindow::SetProviderStatus(const std::string& providerId, const std::string& text) {
+    if (text.empty()) providerStatus_.erase(providerId);
+    else providerStatus_[providerId] = text;
+    RenderStatus();
+}
+
+void ChatCubeWindow::RenderStatus() {
+    if (!status_) return;
+    std::string line = actionStatus_;
+    // The networks in a fixed order, each under the name the sidebar uses.
+    const std::pair<std::string, const char*> networks[] = {
+        {providerId_, "ChatCube"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"}};
+    for (const auto& network : networks) {
+        auto it = providerStatus_.find(network.first);
+        if (it == providerStatus_.end()) continue;
+        if (!line.empty()) line += " \xC2\xB7 ";       // a middle dot
+        line += std::string(network.second) + ": " + it->second;
+    }
+    status_->SetText(line);
 }
 
 void ChatCubeWindow::SetSignInStatus(const std::string& text) {
@@ -582,17 +606,42 @@ void ChatCubeWindow::SignIn() {
         if (UltraIM_GetProviderInfo(providerId_, info))
             myId_->SetText("My ID  " + GroupUserId(info.localUserId));
         ShowChatView();
-        SetStatus("Connected");
+        SetProviderStatus(providerId_, "connected");
         RefreshConversations();
         RefreshNearby();
         UltraIMProviderInfo matrixInfo;
         if (UltraIM_GetProviderInfo(matrixProviderId_, matrixInfo) && matrixInfo.hasStoredSession &&
             matrixInfo.connectionState == UltraIMConnectionState::Disconnected)
             SignInToMatrix(true);
-        UltraIMProviderInfo telegramInfo;
-        if (UltraIM_GetProviderInfo(telegramProviderId_, telegramInfo) && telegramInfo.hasStoredSession &&
-            telegramInfo.connectionState == UltraIMConnectionState::Disconnected)
-            SignInToTelegram(true);
+        // The relay's Telegram keys first: a stored Telegram session resumes
+        // with them, so a change of keys on the relay reaches it.
+        FetchTelegramCredentials([this]() {
+            UltraIMProviderInfo telegramInfo;
+            if (UltraIM_GetProviderInfo(telegramProviderId_, telegramInfo) && telegramInfo.hasStoredSession &&
+                telegramInfo.connectionState == UltraIMConnectionState::Disconnected)
+                SignInToTelegram(true);
+        });
+    });
+}
+
+void ChatCubeWindow::FetchTelegramCredentials(std::function<void()> then) {
+    UltraIMProviderInfo telegramInfo;
+    if (!UltraIM_GetProviderInfo(telegramProviderId_, telegramInfo)) {
+        if (then) then();
+        return;
+    }
+    UltraIM_FetchSharedCredentials(providerId_, telegramProviderId_,
+                                   [this, then](const UltraIMResult& r, const UltraIMCredentials& c) {
+        if (r) {
+            telegramRelayApiId_ = c.apiId;
+            telegramRelayApiHash_ = c.apiHash;
+        } else {
+            // No relay, or one without the keys: the user types them.
+            telegramRelayApiId_.clear();
+            telegramRelayApiHash_.clear();
+        }
+        if (telegramForm_->IsVisible()) UpdateTelegramForm();
+        if (then) then();
     });
 }
 
@@ -659,10 +708,7 @@ void ChatCubeWindow::ToggleTelegramForm() {
         SetStatus("The Telegram module was not found (Plugins/UltraIM).");
         return;
     }
-    if (info.connectionState == UltraIMConnectionState::Connected) {
-        SetStatus("Telegram: signed in");
-        return;
-    }
+    if (info.connectionState == UltraIMConnectionState::Connected) return;    // the status line says so
     telegramForm_->SetVisible(!telegramForm_->IsVisible());
     UpdateTelegramForm();
     if (window_) window_->RequestRedraw();
@@ -673,9 +719,12 @@ void ChatCubeWindow::UpdateTelegramForm() {
     UltraIM_GetProviderInfo(telegramProviderId_, info);
     const UltraIMAuthStep step = info.authStep;
     const bool start = step == UltraIMAuthStep::Idle || step == UltraIMAuthStep::PhoneNumber;
+    // The application's keys come from the relay when it has them; the
+    // fields are for a relay without, or a ChatCube with no relay.
+    const bool keysFromRelay = !telegramRelayApiId_.empty() && !telegramRelayApiHash_.empty();
     telegramPhone_->SetVisible(start);
-    telegramApiId_->SetVisible(start);
-    telegramApiHash_->SetVisible(start);
+    telegramApiId_->SetVisible(start && !keysFromRelay);
+    telegramApiHash_->SetVisible(start && !keysFromRelay);
     telegramCode_->SetVisible(step == UltraIMAuthStep::Code);
     telegramPassword_->SetVisible(step == UltraIMAuthStep::Password);
     telegramName_->SetVisible(step == UltraIMAuthStep::Registration);
@@ -707,17 +756,23 @@ void ChatCubeWindow::SignInToTelegram(bool stored) {
         }
         telegramNext_->SetDisabled(true);
     }
-    SetStatus("Telegram: signing in\xE2\x80\xA6");
+    // The relay's keys, unless the user typed a pair (a relay without them,
+    // or their own application).
+    if (credentials.apiId.empty() || credentials.apiHash.empty()) {
+        credentials.apiId = telegramRelayApiId_;
+        credentials.apiHash = telegramRelayApiHash_;
+    }
+    SetProviderStatus(telegramProviderId_, "signing in\xE2\x80\xA6");
     UltraIM_SignIn(telegramProviderId_, credentials, [this, stored](const UltraIMResult& r) {
         telegramNext_->SetDisabled(false);
         if (r.code == UltraIMResultCode::NeedsInput) {
             telegramForm_->SetVisible(true);
             UpdateTelegramForm();
-            SetStatus("Telegram: " + r.message);
+            SetProviderStatus(telegramProviderId_, r.message);
             return;
         }
         if (!r) {
-            SetStatus("Telegram: " + r.message);
+            SetProviderStatus(telegramProviderId_, r.message);
             if (stored) telegramForm_->SetVisible(true);
             UpdateTelegramForm();
             return;
@@ -796,11 +851,11 @@ void ChatCubeWindow::SignInToMatrix(bool stored) {
         }
         matrixSignIn_->SetDisabled(true);
     }
-    SetStatus("Matrix: signing in\xE2\x80\xA6");
+    SetProviderStatus(matrixProviderId_, "signing in\xE2\x80\xA6");
     UltraIM_SignIn(matrixProviderId_, credentials, [this, stored](const UltraIMResult& r) {
         if (!stored) matrixSignIn_->SetDisabled(false);
         if (!r) {
-            SetStatus("Matrix: " + r.message);
+            SetProviderStatus(matrixProviderId_, r.message);
             return;
         }
         matrixPassword_->SetText("");      // not kept: the session token is
@@ -1224,14 +1279,19 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
         case UltraIMEventType::ConnectionStateChange:
             if (telegram) {
                 if (e.connectionState == UltraIMConnectionState::Connected) {
-                    SetStatus("Telegram: signed in");
+                    SetProviderStatus(telegramProviderId_, "signed in");
                     telegramToggle_->SetText("Telegram: signed in");
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
-                    SetStatus("Telegram: " + e.errorText);
+                    SetProviderStatus(telegramProviderId_, e.errorText);
+                    telegramNext_->SetDisabled(false);
                 } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
-                    SetStatus("Telegram: " + (e.errorText.empty() ? std::string("reconnecting\xE2\x80\xA6") : e.errorText));
+                    SetProviderStatus(telegramProviderId_, e.errorText.empty() ? std::string("reconnecting\xE2\x80\xA6") : e.errorText);
+                } else if (e.connectionState == UltraIMConnectionState::Connecting) {
+                    // What TDLib is doing while the sign-in waits on it.
+                    SetProviderStatus(telegramProviderId_, (e.errorText.empty() ? std::string("signing in") : e.errorText) + "\xE2\x80\xA6");
                 } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
+                    SetProviderStatus(telegramProviderId_, "signed out");
                     telegramToggle_->SetText("Telegram account");
                 }
                 break;
@@ -1241,25 +1301,29 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 if (e.connectionState == UltraIMConnectionState::Connected) {
                     UltraIMProviderInfo info;
                     UltraIM_GetProviderInfo(matrixProviderId_, info);
-                    SetStatus("Matrix: signed in as " + info.localUserId);
+                    SetProviderStatus(matrixProviderId_, "signed in as " + info.localUserId);
                     matrixToggle_->SetText("Matrix: " + info.localUserId);
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
-                    SetStatus("Matrix: " + e.errorText);
+                    SetProviderStatus(matrixProviderId_, e.errorText);
                 } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
-                    SetStatus("Matrix: connection lost - reconnecting\xE2\x80\xA6");
+                    SetProviderStatus(matrixProviderId_, "connection lost - reconnecting\xE2\x80\xA6");
+                } else if (e.connectionState == UltraIMConnectionState::Connecting) {
+                    SetProviderStatus(matrixProviderId_, "signing in\xE2\x80\xA6");
+                } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
+                    SetProviderStatus(matrixProviderId_, "signed out");
                 }
                 break;
             }
             switch (e.connectionState) {
-                case UltraIMConnectionState::Connected:    SetStatus("Connected"); break;
-                case UltraIMConnectionState::Connecting:   SetStatus("Connecting\xE2\x80\xA6"); break;
-                case UltraIMConnectionState::Reconnecting: SetStatus("Connection lost - reconnecting\xE2\x80\xA6"); break;
+                case UltraIMConnectionState::Connected:    SetProviderStatus(providerId_, "connected"); break;
+                case UltraIMConnectionState::Connecting:   SetProviderStatus(providerId_, "connecting\xE2\x80\xA6"); break;
+                case UltraIMConnectionState::Reconnecting: SetProviderStatus(providerId_, "connection lost - reconnecting\xE2\x80\xA6"); break;
                 case UltraIMConnectionState::Error:
-                    SetStatus("Connection error: " + e.errorText);
+                    SetProviderStatus(providerId_, "error: " + e.errorText);
                     SetSignInStatus(e.errorText);
                     break;
-                case UltraIMConnectionState::Disconnected: SetStatus("Signed out"); break;
+                case UltraIMConnectionState::Disconnected: SetProviderStatus(providerId_, "signed out"); break;
             }
             UpdateHeader();         // whether a call can be placed follows the connection
             break;
@@ -1276,14 +1340,14 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             break;
         case UltraIMEventType::AuthRequire:
             if (telegram) {
-                SetStatus("Telegram: the session ended - sign in again");
+                SetProviderStatus(telegramProviderId_, "the session ended - sign in again");
                 telegramForm_->SetVisible(true);
                 telegramToggle_->SetText("Telegram account");
                 UpdateTelegramForm();
                 break;
             }
             if (matrix) {
-                SetStatus("Matrix: the session ended - sign in again");
+                SetProviderStatus(matrixProviderId_, "the session ended - sign in again");
                 matrixForm_->SetVisible(true);
                 matrixToggle_->SetText("Matrix account");
                 break;

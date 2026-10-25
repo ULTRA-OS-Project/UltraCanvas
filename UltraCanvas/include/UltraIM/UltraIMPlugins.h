@@ -1,7 +1,8 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -180,6 +181,19 @@ public:
                                             UltraIMVideoFrameCallback local) {
         (void)callId; (void)remote; (void)local;
         return Unsupported("video calls");
+    }
+
+    // ---- Credentials kept for another provider ---------------------------------
+    // A provider with a service of its own (ChatCube Direct: the relay) may
+    // keep what another provider needs to sign in - the application's
+    // Telegram API ID and hash, say - so they are set on the server once and
+    // neither built into the application nor typed by the user. Answers the
+    // credentials for forProviderId ("telegram": apiId and apiHash), NotFound
+    // when the service keeps none, CapabilityMissing when the provider has no
+    // such service. Needs a signed-in session.
+    virtual void FetchSharedCredentials(const std::string& forProviderId, UltraIMSharedCredentialsCallback onResult) {
+        (void)forProviderId;
+        if (onResult) onResult(Unsupported("credentials for other providers"), UltraIMCredentials());
     }
 
     // ---- Stickers ------------------------------------------------------------

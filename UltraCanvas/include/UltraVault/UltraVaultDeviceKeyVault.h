@@ -19,14 +19,26 @@
 // sidecar, one base64 line per account in `creds.dat`) are migrated on the
 // first successful unlock and the old files removed.
 //
-// UltraVault itself is one store per process: Unlock() closes whatever
-// UltraVault had open and opens this vault instead, so a process works with
-// one DeviceKeyVault at a time (a second instance on the same directory is
-// fine — it re-opens the same file).
+// UltraVault itself is one store per process, so several DeviceKeyVaults in
+// one program - ChatCube's three messenger providers, each on its own
+// thread - take turns in it: every call takes one lock the whole process
+// shares, the vault whose file the store holds is remembered, and a vault
+// that finds another's file open re-opens its own (with its device key)
+// before it reads or writes. So Store() never lands in another vault's file
+// and Retrieve() never answers from one, whether the vault is used through
+// Use() or unlocked once and used directly - until 0.3.0 a direct user's
+// secrets went into whichever vault held the store at that moment, and its
+// Lock() closed that other vault under its user. A vault unlocked with a
+// passphrase of its own (no device key) cannot re-open silently: its calls
+// then fail with Locked instead of touching the wrong file. A second
+// instance on the same directory is fine - it re-opens the same file.
 //
 // The directory is a UTF-8 path on every platform (UltraCanvasPathUtf8.h): a
 // profile folder named in Thai or Cyrillic opens the same as an ASCII one.
 //
+// Version: 0.3.0 - several vaults in one process, from any thread: one lock,
+//                  the store's owner remembered, a vault re-opens its own file
+//                  before every access
 // Version: 0.2.0 - GetLastUnlockStatus / DescribeUnlockStatus: why the vault
 //                  stayed closed; UTF-8 paths throughout
 // Previous: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
@@ -115,15 +127,18 @@ public:
     // The process holds one open UltraVault store, so several vaults - one per
     // module, say two messenger providers - take turns: this opens this
     // vault's own file (with the device key, as TryAutoUnlock), runs `use`,
-    // and closes it again, under a lock every DeviceKeyVault in the process
-    // shares. False (and `use` not run) when the vault cannot be opened.
+    // and closes it again, under the lock every DeviceKeyVault in the
+    // process shares (every other call takes it too, and a vault used
+    // directly re-opens its own file when a Use() took the store meanwhile).
+    // False (and `use` not run) when the vault cannot be opened.
     bool Use(const std::function<void(DeviceKeyVault& vault)>& use);
 
     // Write `passphrase` as the device key (owner-only perms), so the next
     // launch unlocks silently. Call after a manual Unlock() succeeds.
     bool PersistDeviceKey(const std::string& passphrase);
 
-    // True once Unlock() has succeeded.
+    // True once Unlock() has succeeded (and until Lock()): the vault has its
+    // key, whether or not the process's one store holds its file right now.
     bool IsUnlocked() const { return unlocked_; }
 
     // Why the last Unlock() or TryAutoUnlock() left the vault closed; Ok
@@ -179,11 +194,16 @@ private:
 
     // Path of the device key file (the random passphrase, owner-only).
     std::string DeviceKeyPath() const;
+    // Before a read or write: the vault is unlocked and the process's store
+    // holds its file - re-opened with the device key when another vault took
+    // the store since. False, with lastStatus_ saying why, otherwise.
+    bool HoldTheStore() const;
+    bool ReopenWithDeviceKey();
 
     std::string           dir_;
     DeviceKeyVaultProfile profile_;
     bool                  unlocked_ = false;
-    UnlockStatus          lastStatus_ = UnlockStatus::Locked;
+    mutable UnlockStatus  lastStatus_ = UnlockStatus::Locked;   // a read may re-open, and say why it could not
 };
 
 } // namespace UltraVault

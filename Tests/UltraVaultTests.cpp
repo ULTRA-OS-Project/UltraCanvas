@@ -12,8 +12,10 @@
 //  - DeviceKeyVault (same skip rule): locked until unlocked, device-key
 //    auto-unlock creates key + vault and a second instance reopens them,
 //    profile-prefixed keys, no plaintext on disk, wrong / empty passphrase,
-//    OAuth token sets beside the password slot, 0.1-format migration, and
-//    the "vault exists but no device key" case that must prompt
+//    OAuth token sets beside the password slot, 0.1-format migration, the
+//    "vault exists but no device key" case that must prompt, two vaults
+//    taking turns, and four vaults used at once from four threads - one of
+//    them the direct way - each reading back only its own
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraVault/UltraVault.h"
@@ -21,12 +23,14 @@
 #include "UltraCrypt/UltraCryptCore.h"
 #include "UltraCanvasPathUtf8.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 #include <vector>
 
 static int g_failures = 0;
@@ -256,6 +260,90 @@ static void TestDeviceKeyVaultTurns(const fs::path& dir) {
     fs::remove_all(dir, ec);
 }
 
+// Several vaults used at once from several threads - ChatCube's three
+// messenger providers, each with its own vault, each on its own network
+// thread - and one of them used the old direct way (unlocked once, then
+// Store / Retrieve) while the others take Use() turns. Every vault must read
+// back only what it wrote, and nothing of one vault may land in another's
+// file: the process has one open UltraVault store, so without an owner check
+// a direct user's writes went into whichever vault had the store at that
+// moment.
+static void TestDeviceKeyVaultConcurrent(const fs::path& dir) {
+    using UltraVault::DeviceKeyVault;
+    std::printf("device-key vaults used at once\n");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    constexpr int kRounds = 40;
+    const char* names[] = {"a", "b", "c"};
+    std::atomic<int> wrongReads{0}, failedWrites{0}, failedUses{0};
+    std::vector<std::thread> threads;
+    for (const char* name : names) {
+        threads.emplace_back([&, name]() {
+            DeviceKeyVault vault(UltraCanvas::PathToUtf8(dir / name),
+                                 {std::string(name) + ".vault", "test." + std::string(name) + "."});
+            for (int i = 0; i < kRounds; ++i) {
+                const std::string value = std::string(name) + std::to_string(i);
+                bool stored = false;
+                std::string back;
+                const bool used = vault.Use([&](DeviceKeyVault& v) {
+                    stored = v.Store("session", value);
+                    v.Retrieve("session", back);
+                });
+                if (!used) ++failedUses;
+                else if (!stored) ++failedWrites;
+                else if (back != value) ++wrongReads;
+                // And read again in a turn of its own, after the others had theirs.
+                back.clear();
+                if (vault.Use([&](DeviceKeyVault& v) { v.Retrieve("session", back); }) && back != value) ++wrongReads;
+            }
+        });
+    }
+    // The direct user: opened once, then used as UltraMail uses its vault.
+    std::atomic<int> directWrongReads{0}, directFailedWrites{0};
+    threads.emplace_back([&]() {
+        DeviceKeyVault vault(UltraCanvas::PathToUtf8(dir / "d"), {"d.vault", "test.d."});
+        if (!vault.TryAutoUnlock()) {
+            ++directFailedWrites;
+            return;
+        }
+        for (int i = 0; i < kRounds; ++i) {
+            const std::string value = "d" + std::to_string(i);
+            if (!vault.Store("session", value)) { ++directFailedWrites; continue; }
+            std::string back;
+            if (!vault.Retrieve("session", back) || back != value) ++directWrongReads;
+            std::this_thread::yield();
+        }
+        vault.Lock();
+    });
+    for (auto& t : threads) t.join();
+    Check(failedUses == 0, "every Use() turn opened its vault (" + std::to_string(failedUses) + " did not)");
+    Check(failedWrites == 0, "every Store() in a turn succeeded (" + std::to_string(failedWrites) + " failed)");
+    Check(wrongReads == 0, "every turn read back its own value (" + std::to_string(wrongReads) + " wrong)");
+    Check(directFailedWrites == 0, "the direct user's every Store() succeeded (" +
+                                       std::to_string(directFailedWrites) + " failed)");
+    Check(directWrongReads == 0, "the direct user read back its own value every time (" +
+                                     std::to_string(directWrongReads) + " wrong)");
+
+    // Afterwards, each file holds its own last value and nothing of the others.
+    const std::string last = std::to_string(kRounds - 1);
+    for (const char* name : {"a", "b", "c", "d"}) {
+        DeviceKeyVault vault(UltraCanvas::PathToUtf8(dir / name),
+                             {std::string(name) + ".vault", "test." + std::string(name) + "."});
+        std::string back;
+        std::vector<std::string> keys;
+        Check(vault.Use([&](DeviceKeyVault& v) {
+                  v.Retrieve("session", back);
+                  keys = UltraVault::List("test.");
+              }), std::string("vault ") + name + " opens afterwards");
+        Check(back == name + last, std::string("vault ") + name + " kept its last value (got \"" + back + "\")");
+        bool onlyOwn = true;
+        for (const auto& key : keys) onlyOwn = onlyOwn && key.rfind("test." + std::string(name) + ".", 0) == 0;
+        Check(onlyOwn && keys.size() == 1,
+              std::string("vault ") + name + " holds only its own secret (" + std::to_string(keys.size()) + " keys)");
+    }
+    fs::remove_all(dir, ec);
+}
+
 static void TestDeviceKeyVault(const fs::path& dir) {
     using UltraVault::DeviceKeyVault;
     using UltraVault::UnlockStatus;
@@ -466,6 +554,7 @@ int main() {
         TestFileBackend("ultravault_test.vault");
         TestDeviceKeyVault(fs::temp_directory_path() / "ultravault_devicekey_test");
         TestDeviceKeyVaultTurns(fs::temp_directory_path() / "ultravault_devicekey_turns");
+        TestDeviceKeyVaultConcurrent(fs::temp_directory_path() / "ultravault_devicekey_concurrent");
         TestDeviceKeyVaultInUtf8Folder(fs::temp_directory_path() / "ultravault_utf8_test");
     } else {
         std::printf("file backend: SKIPPED (UltraCrypt backend "

@@ -4,10 +4,12 @@
 // step), and every request the provider builds (TelegramRequests.h) handed
 // to it - TDLib answers a request it cannot parse at once ("Failed to parse
 // JSON object as TDLib request"), so any other answer, or none yet, means
-// the names and fields are TDLib's. The library: ULTRAIM_TDJSON_PATH; skips
-// without it unless ULTRAIM_TEST_TDLIB_REQUIRED is set (CI).
+// the names and fields are TDLib's. The library: ULTRAIM_TDJSON_PATH, else
+// the one the configure step fetched into Plugins/UltraIM/tdlib; skips with
+// neither unless ULTRAIM_TEST_TDLIB_REQUIRED is set (CI).
+// Version: 0.1.1 - the fetched libtdjson by default
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
@@ -46,12 +48,13 @@ bool Parses(const TdObject& answer) {
 }
 
 void TestRequests() {
-    const std::string path = UltraCanvas::GetEnvUtf8("ULTRAIM_TDJSON_PATH");
+    std::string path = UltraCanvas::GetEnvUtf8("ULTRAIM_TDJSON_PATH");
+    if (path.empty()) path = ULTRAIM_TEST_TDJSON_DEFAULT;
     const bool required = !UltraCanvas::GetEnvUtf8("ULTRAIM_TEST_TDLIB_REQUIRED").empty();
     std::string error;
     if (path.empty() || !TdJsonLibrary::Instance().Load({path}, error)) {
-        std::printf("TelegramTdlibTests: %s (set ULTRAIM_TDJSON_PATH to a libtdjson)%s%s\n", required ? "FAIL" : "SKIP",
-                    error.empty() ? "" : "\n", error.c_str());
+        std::printf("TelegramTdlibTests: %s (no libtdjson fetched at configure time; set ULTRAIM_TDJSON_PATH to one)%s%s\n",
+                    required ? "FAIL" : "SKIP", error.empty() ? "" : "\n", error.c_str());
         CHECK(!required);
         return;
     }

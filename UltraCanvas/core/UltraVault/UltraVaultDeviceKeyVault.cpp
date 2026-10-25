@@ -8,6 +8,9 @@
 // is read in the ANSI code page, so a profile folder the code page cannot
 // spell (a Thai or Cyrillic user name under code page 1252) could not find,
 // write or protect its device key, and the vault did not open.
+// Version: 0.3.0 - several vaults in one process, from any thread: one lock,
+//                  the store's owner remembered, a vault re-opens its own file
+//                  before every access
 // Version: 0.2.0 - GetLastUnlockStatus / DescribeUnlockStatus; UTF-8 paths
 // Previous: 0.1.0 - moved here from UltraMail's CredentialVault 0.6.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -34,6 +37,23 @@ namespace fs = std::filesystem;
 namespace UltraVault {
 
 namespace {
+
+// The process has one open UltraVault store. Every DeviceKeyVault call takes
+// this lock (recursive: the data operations nest, and Use() runs its
+// function under it), and the vault whose file the store holds is
+// remembered, so a vault that finds another's file open re-opens its own
+// before it reads or writes, and never closes another vault's store.
+std::recursive_mutex& Turns() {
+    static std::recursive_mutex turns;
+    return turns;
+}
+
+const DeviceKeyVault*& StoreOwner() {
+    static const DeviceKeyVault* owner = nullptr;
+    return owner;
+}
+
+using Turn = std::lock_guard<std::recursive_mutex>;
 
 // The device key holds a random passphrase so the vault unlocks without a
 // prompt (see the header). NOT "vault.key" — that name belongs to the 0.1
@@ -154,6 +174,7 @@ bool DeviceKeyVault::Exists() const {
 }
 
 UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
+    Turn turn(Turns());
     // An empty passphrase derives a key anyone could reproduce, which would
     // put us back where the 0.1 vault was. Refuse it outright. A vault with
     // no directory or no file name has nowhere to go.
@@ -166,8 +187,11 @@ UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
     if (ec) return lastStatus_ = UnlockStatus::IoError;
 
     // Initialize() is idempotent per process and will not reconfigure an open
-    // vault, so close any previous one before adopting this passphrase.
+    // vault, so close any previous one before adopting this passphrase. The
+    // vault that held it stays unlocked and re-opens its file on its next
+    // access.
     Shutdown();
+    StoreOwner() = nullptr;
 
     Config config;
     config.backend    = Backend::File;
@@ -180,6 +204,7 @@ UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
         return lastStatus_ = StatusFor(r);
     }
     unlocked_ = true;
+    StoreOwner() = this;
 
     MigrateLegacy();
     return lastStatus_ = UnlockStatus::Ok;
@@ -187,8 +212,7 @@ UnlockStatus DeviceKeyVault::Unlock(const std::string& passphrase) {
 
 bool DeviceKeyVault::Use(const std::function<void(DeviceKeyVault& vault)>& use) {
     // One per process (the core library), whichever module the vault is in.
-    static std::mutex turns;
-    std::lock_guard<std::mutex> lock(turns);
+    Turn turn(Turns());
     // Another vault may have opened its own file since: open ours again.
     if (unlocked_) Lock();
     if (!TryAutoUnlock()) return false;
@@ -198,9 +222,46 @@ bool DeviceKeyVault::Use(const std::function<void(DeviceKeyVault& vault)>& use) 
 }
 
 void DeviceKeyVault::Lock() {
+    Turn turn(Turns());
     if (!unlocked_) return;
-    Shutdown();   // wipes the decrypted store and derived key
+    // Only the store this vault holds is closed: another vault's open file
+    // is its own to close.
+    if (StoreOwner() == this) {
+        Shutdown();   // wipes the decrypted store and derived key
+        StoreOwner() = nullptr;
+    }
     unlocked_ = false;
+}
+
+bool DeviceKeyVault::HoldTheStore() const {
+    if (!unlocked_) {
+        lastStatus_ = UnlockStatus::Locked;
+        return false;
+    }
+    if (StoreOwner() == this) return true;
+    // Another vault took the one store since this one was unlocked: back to
+    // our own file before touching anything - never the other vault's.
+    return const_cast<DeviceKeyVault*>(this)->ReopenWithDeviceKey();
+}
+
+bool DeviceKeyVault::ReopenWithDeviceKey() {
+    const fs::path keyFile = PathFromUtf8(DeviceKeyPath());
+    std::error_code ec;
+    if (dir_.empty() || !fs::exists(keyFile, ec)) {
+        // Unlocked with a passphrase of its own, which is not kept: this
+        // vault cannot re-open silently. Its calls fail rather than reach
+        // into the other vault's file.
+        lastStatus_ = UnlockStatus::Locked;
+        return false;
+    }
+    std::ifstream in(keyFile, std::ios::binary);
+    std::string pass((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    while (!pass.empty() && (pass.back() == '\n' || pass.back() == '\r')) pass.pop_back();
+    if (pass.empty()) {
+        lastStatus_ = UnlockStatus::IoError;
+        return false;
+    }
+    return Unlock(pass) == UnlockStatus::Ok;
 }
 
 std::string DeviceKeyVault::DeviceKeyPath() const {
@@ -208,10 +269,12 @@ std::string DeviceKeyVault::DeviceKeyPath() const {
 }
 
 bool DeviceKeyVault::TryAutoUnlock() {
-    if (unlocked_) {
+    Turn turn(Turns());
+    if (unlocked_ && StoreOwner() == this) {
         lastStatus_ = UnlockStatus::Ok;
         return true;
     }
+    unlocked_ = false;      // another vault took the store: open ours afresh
     if (dir_.empty()) {
         lastStatus_ = UnlockStatus::IoError;
         return false;
@@ -323,7 +386,8 @@ int DeviceKeyVault::MigrateLegacy() {
 }
 
 bool DeviceKeyVault::Store(const std::string& account, const std::string& secret) {
-    if (account.empty() || !unlocked_) return false;
+    Turn turn(Turns());
+    if (account.empty() || !HoldTheStore()) return false;
     if (!Put(KeyFor(account), SecretValue::FromString(secret)).IsOk())
         return false;
     RemoveOAuthTokens(account);   // one sign-in method per account
@@ -331,7 +395,8 @@ bool DeviceKeyVault::Store(const std::string& account, const std::string& secret
 }
 
 bool DeviceKeyVault::StoreOAuthTokens(const std::string& account, const OAuthTokens& tokens) {
-    if (account.empty() || !unlocked_ || tokens.Empty()) return false;
+    Turn turn(Turns());
+    if (account.empty() || tokens.Empty() || !HoldTheStore()) return false;
     const std::string base = KeyFor(account);
     auto put = [&](const char* suffix, const std::string& value) {
         return Put(base + suffix, SecretValue::FromString(value)).IsOk();
@@ -345,8 +410,9 @@ bool DeviceKeyVault::StoreOAuthTokens(const std::string& account, const OAuthTok
 }
 
 bool DeviceKeyVault::RetrieveOAuthTokens(const std::string& account, OAuthTokens& out) const {
+    Turn turn(Turns());
     out = OAuthTokens{};
-    if (account.empty() || !unlocked_) return false;
+    if (account.empty() || !HoldTheStore()) return false;
     const std::string base = KeyFor(account);
     SecretValue v;
     if (!Get(base + kAccessSuffix, v).IsOk()) return false;
@@ -363,7 +429,8 @@ bool DeviceKeyVault::HasOAuthTokens(const std::string& account) const {
 }
 
 bool DeviceKeyVault::RemoveOAuthTokens(const std::string& account) {
-    if (account.empty() || !unlocked_) return false;
+    Turn turn(Turns());
+    if (account.empty() || !HoldTheStore()) return false;
     const std::string base = KeyFor(account);
     const bool had = Delete(base + kAccessSuffix).IsOk();
     Delete(base + kRefreshSuffix);
@@ -372,14 +439,16 @@ bool DeviceKeyVault::RemoveOAuthTokens(const std::string& account) {
 }
 
 SignInMethod DeviceKeyVault::MethodFor(const std::string& account) const {
+    Turn turn(Turns());
     if (HasOAuthTokens(account)) return SignInMethod::OAuth2;
     if (Has(account)) return SignInMethod::Password;
     return SignInMethod::NoSignIn;
 }
 
 bool DeviceKeyVault::Retrieve(const std::string& account, std::string& out) const {
+    Turn turn(Turns());
     out.clear();
-    if (account.empty() || !unlocked_) return false;
+    if (account.empty() || !HoldTheStore()) return false;
     SecretValue value;
     if (!Get(KeyFor(account), value).IsOk()) return false;
     out = value.AsString();
@@ -392,7 +461,8 @@ bool DeviceKeyVault::Has(const std::string& account) const {
 }
 
 bool DeviceKeyVault::Remove(const std::string& account) {
-    if (account.empty() || !unlocked_) return false;
+    Turn turn(Turns());
+    if (account.empty() || !HoldTheStore()) return false;
     return Delete(KeyFor(account)).IsOk();
 }
 

@@ -1732,21 +1732,9 @@ jobs:
           echo "ULTRAIM_MATRIX_PYTHON=$RUNNER_TEMP/synapse/bin/python" >> "$GITHUB_ENV"
 
       # TelegramTdlibTests hands every request the Telegram provider builds to
-      # the real TDLib (no network needed): its libtdjson, from the tdjson
-      # wheel (pinned; a plain shared library inside, any Python), for this
-      # runner's architecture.
-      - name: Fetch TDLib for the Telegram request test (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          set -eu
-          dir="$RUNNER_TEMP/tdlib"
-          mkdir -p "$dir"
-          python3 -m pip download -q --no-deps --only-binary=:all: --python-version 3.13 \
-            --platform "manylinux2014_$(uname -m)" "tdjson==1.8.69" -d "$dir"
-          python3 -m zipfile -e "$dir"/tdjson-*.whl "$dir/wheel"
-          lib=$(ls "$dir"/wheel/tdjson.libs/libtdjson-*.so* | head -n 1)
-          echo "ULTRAIM_TDJSON_PATH=$lib" >> "$GITHUB_ENV"
-
+      # the real TDLib (no network needed): the libtdjson the configure step
+      # fetched into build/Plugins/UltraIM/tdlib (cmake/UltraCanvasTdlib.cmake,
+      # the pinned tdjson wheel) - the one the packages ship.
       - name: Run unit tests
         if: runner.os == 'Linux'
         working-directory: build
@@ -1760,7 +1748,8 @@ jobs:
           # no matrix-nio for the encrypted room with another client.
           ULTRAIM_TEST_MATRIX_REQUIRED: 1
           ULTRAIM_TEST_MATRIX_NIO_REQUIRED: 1
-          # TelegramTdlibTests: no TDLib is a failure, not a skip.
+          # TelegramTdlibTests: no TDLib (the configure step fetches it) is a
+          # failure, not a skip.
           ULTRAIM_TEST_TDLIB_REQUIRED: 1
           # IODevicePrinterIPPLiveTest prints to a real ippeveprinter; a skip
           # would look like a pass, so forbid it, as for the database test.

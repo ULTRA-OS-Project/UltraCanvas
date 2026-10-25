@@ -4,8 +4,9 @@
 // wherever a libtdjson is found. One thread receives for every client in the
 // process (td_receive serves them all) and hands each its answers and
 // updates.
+// Version: 0.1.1 - SetLogFile (TDLib's own log); what is sent and received on the debug stream
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -38,6 +39,10 @@ public:
     bool IsLoaded() const;
     std::string GetPath() const;
     std::string GetVersion();       // TDLib's, through td_execute
+    // TDLib's own log (setLogStream / setLogVerbosityLevel): to `path`,
+    // kept under maxBytes, at `verbosity` (0 fatal, 1 errors, 2 warnings,
+    // 3 info, 4 debug). An empty path sends it back to stderr.
+    bool SetLogFile(const std::string& path, int verbosity, int64_t maxBytes = 10 * 1024 * 1024);
 
     // A synchronous request (td_execute): only the methods TDLib marks so.
     TdObject Execute(const TdObject& request);

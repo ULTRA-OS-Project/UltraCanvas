@@ -7,16 +7,20 @@
 // Telegram and others follow as further providers.
 //
 //   ChatCube                     open the window
+//   ChatCube --debug             and say what the networks do, on stderr
+//   ChatCube --log <file>        the same, appended to a file
 //   ChatCube --version / --help
 //
+// Version: 0.1.1 - --debug and --log
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-25
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ui/ChatCubeWindow.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDataFolder.h"
+#include "UltraCanvasDebug.h"
 #include "UltraCanvasPathUtf8.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
@@ -69,9 +73,15 @@ std::string ResolvePluginDirectory() {
 
 void PrintUsage(const char* program) {
     std::printf("ChatCube %s - the ULTRA OS messenger\n\n"
-                "Usage: %s [--version | --help]\n\n"
+                "Usage: %s [--debug | --log <file>] [--version | --help]\n\n"
+                "  --debug               say what the networks do (sign-ins, TDLib's answers,\n"
+                "                        the relay) on stderr; Telegram's own log goes to\n"
+                "                        telegram/tdlib.log in the data folder either way\n"
+                "  --log <file>          the same, appended to <file>\n\n"
                 "Environment:\n"
-                "  CHATCUBE_PLUGIN_DIR   where the UltraIM provider modules are\n",
+                "  CHATCUBE_PLUGIN_DIR   where the UltraIM provider modules are\n"
+                "  ULTRACANVAS_DEBUG_LOG 1, or a file: what --debug / --log set\n"
+                "  ULTRAIM_TDJSON_PATH   a libtdjson to use instead of the one in Plugins/UltraIM/tdlib\n",
                 CHATCUBE_VERSION, program);
 }
 
@@ -86,6 +96,18 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
+        }
+        if (std::strcmp(argv[i], "--debug") == 0) {
+            UltraCanvas::SetDebugOutputEnabled(true);
+            continue;
+        }
+        if (std::strcmp(argv[i], "--log") == 0) {
+            if (i + 1 >= argc) {
+                std::fprintf(stderr, "ChatCube: --log needs a file\n");
+                return EXIT_FAILURE;
+            }
+            UltraCanvas::SetDebugOutputFile(argv[++i]);     // enables the stream too
+            continue;
         }
         std::fprintf(stderr, "ChatCube: unknown option %s\n\n", argv[i]);
         PrintUsage(argv[0]);
