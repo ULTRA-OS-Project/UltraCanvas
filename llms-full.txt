@@ -17298,6 +17298,128 @@ to force it. Hovering a cell shows its value via the heatmap tooltip.
   years.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCard.md
+==============================================================================
+
+# UltraCanvas Card Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Structure](#structure)
+- [States](#states)
+- [Key API](#key-api)
+- [Notes](#notes)
+
+## Overview
+
+`UltraCanvasCard` is a raised surface with a **header** (icon, title, subtitle
+and a trailing element such as a badge), a **content** area for the caller's
+elements and a row of **actions** - real `UltraCanvasButton` children,
+right-aligned - at the foot. The surface itself can be clicked (`onClick`
+fires for a press no child took), hovered, highlighted and selected. A store's
+app tile, a password vault's entry, a settings page's section with Save beside
+it.
+
+Built on `UltraCanvasContainer`: the children are the framework's labels and
+buttons laid out as a flex column; the card adds the structure, the states and
+the surface.
+
+**File Location**: `include/UltraCanvasCard.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+---
+
+## Quick Start
+```cpp
+#include "UltraCanvasCard.h"
+#include "UltraCanvasBadge.h"
+#include "UltraCanvasLabel.h"
+using namespace UltraCanvas;
+
+auto card = CreateCard("tile", "UltraVideo", "The video editor");
+card->SetIcon("media/icons/ultravideo.svg");
+card->SetTrailing(CreateBadge("tile.price", 0, 0, "29.90 EUR"));
+card->AddContent(CreateLabel("tile.summary", 0, 0, 0, 40, "Cut, trim and export in one window."));
+card->AddActionButton("tile.install", "Install", [] { /* install */ });
+card->AddActionButton("tile.details", "Details", [] { /* open */ });
+card->onClick = [] { /* the surface was clicked: open the details page */ };
+column->AddChild(card);
+```
+
+The card is as tall as its parts. In a flex column of cards give the column a
+gap; in a scroll pane leave the card a margin on the side the border would
+otherwise be clipped on.
+
+## Structure
+
+```
++--------------------------------------------------------+
+| [icon]  Title                               [trailing] |   header
+|         Subtitle                                       |
+|  content: whatever was added with AddContent           |
+|                                   [Action] [Action]    |   actions
++--------------------------------------------------------+
+```
+
+- The header shows when there is a title, a subtitle, an icon or a trailing
+  element; the content area when it has children; the actions row when it
+  has children.
+- The icon is drawn by the card at the header's left (`CardStyle::iconSize`);
+  the titles move over by that much.
+- `GetContent()` is a flex column the caller may lay out as it likes;
+  `GetActions()` is a right-aligned flex row.
+
+## States
+
+| Call | Look |
+|---|---|
+| `onClick` set, or `SetClickable(true)` | hand cursor; hover tints the surface; a press and release on the surface fires `onClick` |
+| `SetHighlighted(true)` | the accent border (`highlightBorderColor`, `highlightBorderWidth`) |
+| `SetSelected(true)` | the accent border and the selected surface tint |
+
+A press a child took - a button, a chip in the trailing slot - never reaches
+the card, so the actions work as buttons do and the surface stays a surface.
+
+## Key API
+```cpp
+void SetTitle(const std::string& text);
+void SetSubtitle(const std::string& text);
+void SetIcon(const std::string& path);
+void SetTrailing(std::shared_ptr<UltraCanvasUIElement> element);
+void AddContent(std::shared_ptr<UltraCanvasUIElement> element);
+void ClearContent();
+void AddAction(std::shared_ptr<UltraCanvasUIElement> element);
+std::shared_ptr<UltraCanvasButton> AddActionButton(const std::string& id, const std::string& text,
+                                                   std::function<void()> onClick, float minWidth = 72.0f);
+void ClearActions();
+void SetClickable(bool clickable);
+void SetHighlighted(bool on);
+void SetSelected(bool on);
+void SetStyle(const CardStyle& newStyle);
+```
+
+```cpp
+std::function<void()> onClick;
+std::function<void()> onDoubleClick;
+```
+
+`CardStyle` holds the colours (surface, hover, selected, border, accent), the
+corner radius, the padding and gaps, the icon size and the title / subtitle
+fonts and colours; `CardStyle::Default()` is white on a light border with a
+14 pt bold title.
+
+## Notes
+
+- `UltraCanvasGroupBox` with `GroupBoxVisualStyle::Card()` frames a *section*
+  of a window under a caption; this card is an *item* - one of many, with its
+  own actions and a clickable surface.
+- The card does not scroll its content; put long content in a container of
+  its own inside it, or the card in a scrolling pane.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasChartEngine.md
 ==============================================================================
 
@@ -18905,6 +19027,107 @@ std::function<bool(const std::string&)> validator;   // return false to reject
   `Render` with real text measurement and reused for hit-testing.
 - For transient, non-editable label pills, use `UltraCanvasChip` directly; for
   free-form multi-value entry, use `UltraCanvasTagInput`.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasChipGroup.md
+==============================================================================
+
+# UltraCanvas Chip Group Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Selection rules](#selection-rules)
+- [Key API](#key-api)
+- [Notes](#notes)
+
+## Overview
+
+`UltraCanvasChipGroup` holds a row of chips with one selection rule: **single**
+(one chip at a time - a row of categories, a filter bar) or **multiple** (any
+number - a set of tags to match). The chips are real `UltraCanvasChip` children
+laid out in a wrapping flex row, so each keeps its own hover, focus, keyboard
+(Space / Return) and theming; the group decides what a click means for the
+others and tells the caller what is selected now.
+
+**File Location**: `include/UltraCanvasChipGroup.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+---
+
+## Quick Start
+```cpp
+#include "UltraCanvasChipGroup.h"
+using namespace UltraCanvas;
+
+auto group = CreateChipGroup("categories");
+group->AddChip("All");
+group->AddChip("Video", "media/icons/film.svg");
+group->AddChip("Audio");
+group->SetSelectedIndex(0);
+group->onSelectionChanged = [](int index) {
+    // -1 when nothing is selected (only with SetAllowNoSelection(true))
+};
+container->AddChild(group);
+```
+
+The group is a container: it takes the width its parent gives it and grows in
+height as the chips wrap onto further rows.
+
+## Selection rules
+
+| Mode | A click on an unselected chip | A click on the selected chip |
+|---|---|---|
+| `Single` (default) | selects it and deselects the other | keeps it selected; with `SetAllowNoSelection(true)` deselects it, leaving none |
+| `Multiple` | adds it | removes it |
+
+`onSelectionChanged(int)` fires with the selected index (-1 for none) and is
+meant for single mode; `onSelectedIndicesChanged(const std::vector<int>&)`
+fires in either mode with every selected index, ascending. Both fire for a
+click and for `SetSelectedIndex` / `SetSelectedIndices` / `ClearSelection`
+when the selection changed.
+
+## Key API
+```cpp
+int  AddChip(const std::string& label, const std::string& iconPath = "", const std::string& chipId = "");
+int  AddChip(std::shared_ptr<UltraCanvasChip> chip);
+void RemoveChip(int index);
+void ClearChips();
+int  GetChipCount() const;
+std::shared_ptr<UltraCanvasChip> GetChip(int index) const;
+int  IndexOf(const std::string& label) const;
+
+void SetSelectionMode(ChipGroupSelectionMode mode);
+void SetAllowNoSelection(bool allow);
+void SetSelectedIndex(int index);
+int  GetSelectedIndex() const;
+void SetSelectedIndices(const std::vector<int>& indices);
+std::vector<int> GetSelectedIndices() const;
+bool IsSelected(int index) const;
+void ClearSelection();
+
+void SetChipStyle(const ChipStyle& style);
+void SetChipVariant(ChipVariant variant);
+void SetSpacing(float spacing);
+```
+
+```cpp
+std::function<void(int index)> onSelectionChanged;
+std::function<void(const std::vector<int>&)> onSelectedIndicesChanged;
+```
+
+## Notes
+
+- A chip the caller adds with `AddChip(std::shared_ptr<UltraCanvasChip>)` is
+  made selectable and auto-width here; its own `onSelectedChanged` is taken
+  over by the group.
+- Styling goes through `SetChipStyle` / `SetChipVariant`, applied to every
+  chip now and later; the chips' own `ChipStyle` fields say what can be set.
+- For a few mutually exclusive options that should look like one control,
+  `UltraCanvasSegmentedControl` is the element; the chip group is for
+  categories and tags that wrap and can be many.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasChordChartExamples.md
@@ -20729,6 +20952,106 @@ what the test drives on any platform.
 ## Version
 
 - 1.0.0 (2026-10-01): first version.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasCollapsiblePanel.md
+==============================================================================
+
+# UltraCanvas Collapsible Panel Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Folding and height](#folding-and-height)
+- [Key API](#key-api)
+- [Notes](#notes)
+
+## Overview
+
+`UltraCanvasCollapsiblePanel` folds to its header: a strip with a disclosure
+chevron, a title, a detail text ("3 downloads") and real buttons at the right,
+over a **body** the caller fills. Collapsed, only the header shows; expanded,
+the body below it at the expanded height, or as tall as its content. Docked at
+the bottom of a flex column it is a download queue, a log or a problems list,
+and its top edge can be dragged to resize it.
+
+Built on `UltraCanvasContainer`: the header's label and buttons and the body's
+children are framework elements; the panel adds the fold, the chevron, the
+separator and the resize grip.
+
+**File Location**: `include/UltraCanvasCollapsiblePanel.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+---
+
+## Quick Start
+```cpp
+#include "UltraCanvasCollapsiblePanel.h"
+using namespace UltraCanvas;
+
+auto panel = CreateCollapsiblePanel("downloads", "Downloads");
+panel->SetDetail("2 running");
+panel->AddHeaderButton("downloads.clear", "Clear finished", [] { /* clear */ });
+panel->GetBody()->AddChild(queueList);
+panel->SetExpandedHeight(220);
+panel->onExpandedChanged = [](bool expanded) { /* remember it */ };
+column->AddChild(panel);   // the parent is a flex column; the panel keeps its height
+```
+
+## Folding and height
+
+| State | Height |
+|---|---|
+| collapsed | the header strip (`headerHeight`) and the border |
+| expanded, `SetExpandedHeight(h)` | `h`, never below `minExpandedHeight` |
+| expanded, expanded height 0 (the default) | as tall as the body's content |
+
+A press on the header strip toggles the fold (a press on a header button is the
+button's and does not). `SetCollapsible(false)` makes the header inert for a
+fixed panel with a header strip. With `SetResizable` on (the default) a drag
+that starts in the `gripSize` band along the top edge changes the expanded
+height - dragging up makes a bottom-docked panel taller - and
+`onExpandedHeightChanged` reports the result when the drag ends.
+
+## Key API
+```cpp
+void SetTitle(const std::string& text);
+void SetDetail(const std::string& text);
+void AddHeaderAction(std::shared_ptr<UltraCanvasUIElement> element);
+std::shared_ptr<UltraCanvasButton> AddHeaderButton(const std::string& id, const std::string& text,
+                                                   std::function<void()> onClick, float minWidth = 64.0f);
+void ClearHeaderActions();
+std::shared_ptr<UltraCanvasContainer> GetBody() const;
+void SetExpanded(bool expanded);
+bool IsExpanded() const;
+void Toggle();
+void SetExpandedHeight(float height);
+float GetExpandedHeight() const;
+void SetResizable(bool resizable);
+void SetCollapsible(bool collapsible);
+void SetStyle(const CollapsiblePanelStyle& newStyle);
+Rect2Df HeaderRect() const;
+```
+
+```cpp
+std::function<void(bool expanded)> onExpandedChanged;
+std::function<void(float height)> onExpandedHeightChanged;
+```
+
+`CollapsiblePanelStyle` holds the surface, header, separator, chevron and grip
+colours, the header height, paddings, chevron size, grip size, the minimum
+expanded height and the title / detail fonts; `CollapsiblePanelStyle::Default()`
+is a light header strip over white with a 13 pt bold title.
+
+## Notes
+
+- `UltraCanvasGroupBox` with `SetCollapsible(true)` folds a framed *section*
+  under its caption; this panel is a *dock*: a header strip with buttons, a
+  detail text, a resizable height, and a body that is a plain container.
+- The panel does not scroll its body; a list in the body scrolls itself, or
+  the body gets a scrolling container.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasColorPaletteManager.md
@@ -64794,6 +65117,134 @@ the files that end in `.lnk` without being links.
 and checks the entries the file display produces from them.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSidebarNavigation.md
+==============================================================================
+
+# UltraCanvas Sidebar Navigation Documentation
+
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Sections, items and badges](#sections-items-and-badges)
+- [Keyboard and mouse](#keyboard-and-mouse)
+- [Compact mode](#compact-mode)
+- [Key API](#key-api)
+- [Notes](#notes)
+
+## Overview
+
+`UltraCanvasSidebarNavigation` is the navigation column of an application
+window: sections of items, each an icon, a label and an optional badge, one of
+them selected. Up / Down, Home / End and Return on the keyboard; the wheel
+scrolls when the list is taller than the element; a compact mode shows the
+icons alone with the label as a tooltip. A store's Discover / Categories /
+Installed / Updates, a mail client's folders, a settings window's pages.
+
+Self-rendered (no child widgets), like `UltraCanvasToolbar` and the chips.
+
+**File Location**: `include/UltraCanvasSidebarNavigation.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+---
+
+## Quick Start
+```cpp
+#include "UltraCanvasSidebarNavigation.h"
+using namespace UltraCanvas;
+
+auto nav = CreateSidebarNavigation("nav");
+nav->AddItem("discover", "Discover", "media/icons/compass.svg");
+nav->AddItem("categories", "Categories", "media/icons/grid.svg");
+int library = nav->AddSection("Library");
+nav->AddItem(library, "installed", "Installed", "media/icons/box.svg");
+nav->AddItem(library, "updates", "Updates", "media/icons/arrow-up.svg");
+nav->SetBadge("updates", 3);
+nav->Select("discover");
+nav->onSelectionChanged = [](const std::string& id) { /* show that page */ };
+row->AddChild(nav);   // the parent is a flex row; the sidebar is PreferredWidth() wide
+```
+
+## Sections, items and badges
+
+- Items added without a section go into an untitled first section, made on
+  demand; `AddSection` adds a titled one and returns its index.
+- An item's `id` is what every callback and setter names; adding an item
+  whose id exists replaces that item in place.
+- `SetBadge(id, count)` shows a count pill at the item's right (0 clears);
+  `SetBadgeText` any short text. In compact mode a badge is a dot at the
+  icon's corner.
+- `SetItemEnabled(id, false)` greys an item out; it cannot be selected by
+  click or keyboard.
+
+## Keyboard and mouse
+
+| Input | Effect |
+|---|---|
+| click | selects the item; the sidebar takes the focus |
+| double-click, Return, Space | `onItemActivated` for the selected item |
+| Up / Down | the previous / next enabled item, across sections |
+| Home / End | the first / last enabled item |
+| wheel | scrolls when the content is taller than the element |
+
+`onSelectionChanged` fires once per change, for a click, the keyboard and
+`Select`; `Select(id, false)` changes the selection silently (restoring a
+saved state).
+
+## Compact mode
+
+`SetCompact(true)` shows the icons alone, centred, with each item's label (or
+`SidebarItem::tooltip`) as a tooltip on hover, and the element becomes
+`compactWidth` wide; section headers shrink to a thin separator.
+`onCompactChanged` reports the switch, so a window can remember it.
+
+## Key API
+```cpp
+int  AddSection(const std::string& title);
+std::string AddItem(int sectionIndex, const SidebarItem& item);
+std::string AddItem(int sectionIndex, const std::string& id, const std::string& label, const std::string& iconPath = "");
+std::string AddItem(const std::string& id, const std::string& label, const std::string& iconPath = "");
+bool RemoveItem(const std::string& id);
+void Clear();
+void SetBadge(const std::string& id, int count);
+void SetBadgeText(const std::string& id, const std::string& text);
+void SetItemEnabled(const std::string& id, bool enabled);
+void SetItemLabel(const std::string& id, const std::string& label);
+void SetItemIcon(const std::string& id, const std::string& iconPath);
+void SetItemTooltip(const std::string& id, const std::string& tooltip);
+bool Select(const std::string& id, bool fireCallback = true);
+const std::string& GetSelectedId() const;
+bool SelectNext();
+bool SelectPrevious();
+void SetCompact(bool compact);
+bool IsCompact() const;
+float PreferredWidth() const;
+float ContentHeight() const;
+void SetStyle(const SidebarStyle& newStyle);
+Rect2Df ItemRect(const std::string& id) const;
+```
+
+```cpp
+std::function<void(const std::string& id)> onSelectionChanged;
+std::function<void(const std::string& id)> onItemActivated;
+std::function<void(bool compact)> onCompactChanged;
+```
+
+`SidebarStyle` holds the colours (background, text, section text, hover,
+selected, the indicator bar, the badge), the row heights and paddings, the
+icon size, the corner radius, the expanded and compact widths and the item /
+section / badge fonts; `SidebarStyle::Default()` is a light grey column with a
+blue indicator bar at the selected item.
+
+## Notes
+
+- `UltraCanvasToolbar` in its vertical orientation is a strip of tools, each
+  an action; the sidebar is a list of places, one of which is current.
+- `UltraCanvasTreeView` is the element when the places nest; the sidebar has
+  one level under section headers.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasSingleInstance.md
 ==============================================================================
 
@@ -77317,6 +77768,7 @@ from an external "Show password" checkbox. See
 | On-off switch | `UltraCanvasSwitch` | `UltraCanvasSwitch.h` |
 | Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
+| Pick one (or several) of a row of chips - categories, filters, tags ([doc](UltraCanvasChipGroup.md)) | `UltraCanvasChipGroup` | `UltraCanvasChipGroup.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
 | Which point of a box stays put - a 3 x 3 grid of corners, edge midpoints and centre, for a transform bar's scale / rotate / move ([doc](UltraCanvasReferencePointPicker.md)) | `UltraCanvasReferencePointPicker` | `UltraCanvasReferencePointPicker.h` |
 | A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
@@ -77362,6 +77814,8 @@ formats, and does not re-decode on every frame the way an ad-hoc
 
 | You need | Element | Header |
 |---|---|---|
+| A card: header with icon, title, subtitle and a trailing badge, a content area, a row of real buttons at the foot, a clickable surface ([doc](UltraCanvasCard.md)) | `UltraCanvasCard` | `UltraCanvasCard.h` |
+| A panel that folds to its header - a download queue, a log, a problems list docked at the bottom, with a chevron, a detail text, header buttons and a resizable top edge ([doc](UltraCanvasCollapsiblePanel.md)) | `UltraCanvasCollapsiblePanel` | `UltraCanvasCollapsiblePanel.h` |
 | Group children, scroll them | `UltraCanvasContainer` (scrolling is built in) | `UltraCanvasContainer.h` |
 | A standalone scrollbar | `UltraCanvasScrollbar` | `UltraCanvasScrollbar.h` |
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
@@ -77380,6 +77834,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 
 | You need | Element | Header |
 |---|---|---|
+| The navigation column of a window: sections of items with icon, label and badge, one selected, keyboard and wheel, a compact icons-only mode ([doc](UltraCanvasSidebarNavigation.md)) | `UltraCanvasSidebarNavigation` | `UltraCanvasSidebarNavigation.h` |
 | Menu bar, popup and context menus | `UltraCanvasMenu` (+ `MenuBuilder`, `MenuItemData`) | `UltraCanvasMenu.h` |
 | Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
