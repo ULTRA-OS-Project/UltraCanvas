@@ -302,7 +302,7 @@ A separate window (`CreateWindow`) per draft, Texter-style:
 - Collected address book: every address the user writes to is
   remembered for autocomplete; from incoming mail only senders in the
   known-sender registry whose domain the server proved are added (under
-  Services) - never a stranger, a
+  Services) - never a stranger, a no-reply address, a
   blocked sender or an address the user deleted (explicit contacts app and
   LDAP/CardDAV integration come later, see roadmap)
 - Multiple accounts + unified inbox

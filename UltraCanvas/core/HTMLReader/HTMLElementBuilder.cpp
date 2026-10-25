@@ -1,5 +1,6 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
+// Version: 1.36.0 - a right-click on a linked picture: onLinkedImageContextMenu
 // Version: 1.35.0 - <video> and <audio> through BuildOptions::mediaFactory
 //                  (BuildMedia), placed and sized as browsers place them
 // Version: 1.34.0 - target="_blank" (and named targets, <base target>): such a
@@ -104,7 +105,7 @@
 //                  block is looked through; nowrap; borders keep their colour.
 // Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
 //                  colors are flattened to opaque so body text is not invisible.
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -2170,6 +2171,10 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildImage(Node& element,
             image->onHoverEnter = [hover = opts.onLinkHovered, linkHref]() { hover(linkHref); };
             image->onHoverLeave = [hover = opts.onLinkHovered]() { hover(std::string()); };
         }
+        if (opts.onLinkedImageContextMenu)
+            image->onContextMenu = [menu = opts.onLinkedImageContextMenu, linkHref](const UCEvent& event) {
+                menu(linkHref, event);
+            };
         if (opts.linkTooltips) image->SetTooltip(linkHref);
     }
 

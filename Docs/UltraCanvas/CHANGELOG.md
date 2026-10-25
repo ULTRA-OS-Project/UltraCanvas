@@ -1,3 +1,171 @@
+#### 2026-10-25 *0.9.408*
+- **A right-click on a linked picture no longer opens the link.**
+  `UltraCanvasImageElement` sent every mouse button to `onClick`, so a
+  right-click on `<a><img></a>` in an HTML view opened the link. A right-click
+  now goes to the new `onContextMenu` (with the event) and never to `onClick`.
+- **`HTML::BuildOptions::onLinkedImageContextMenu`**: a right-click on a linked
+  picture, with its raw href and the event, for the host's menu (Copy link).
+  Text links are reached as before, through the selection's `onContextMenu`
+  and `UltraCanvasLabel::LinkIndexAtPoint`. Documented in
+  `UltraCanvasHTMLReader.md`.
+
+#### 2026-10-25 *0.9.407*
+- **UltraDatabase: connections through a relay** (`UltraDatabaseRelay.h`).
+  The `relay` driver sends every call of a connection - queries, scripts,
+  cursors, cancelling, introspection, server administration - to a relay on
+  the database's side, as JSON over a transport the application gives
+  (`UltraDb_SetRelayConnector`), so a program that cannot reach a database
+  itself, such as a page in a browser, works against UltraDatabase
+  unchanged. `UltraDb_RelayConnections` asks a relay what a token may open.
+  `UltraDbRelayServer` is the other side: it offers connections by name
+  only, knows its users by the SHA-256 of their tokens with read or write
+  access to each connection (read is the driver's read-only mode), caps
+  rows, requests and sessions, and reports every statement with the user
+  and address that ran it. `UltraDatabaseRelayUltraNet.h`, header-only, is a
+  transport over UltraNet's WebSocket.
+- **UltraDatabase: closing a connection no longer holds the registry lock
+  while the driver closes it.** A driver whose close waits on another
+  connection - a relay in the same process - deadlocked.
+- **WebAssembly: UltraDatabase with SQLite in a browser build.** With
+  `BUILD_ULTRADBADMIN`, an Emscripten build links Emscripten's sqlite3 port
+  into UltraDatabase.
+- **The WebAssembly workflow also builds UltraDBAdmin's browser page** (the
+  baseline variant) and adds it to the uploaded pages.
+- **UltraDatabase relay: a statement time-out.** `UltraDbRelayLimits::statementTimeoutSeconds`
+  (300 by default): a query, a script or a cursor's page still running then
+  is cancelled on the session's own connection - every engine - and answered
+  `Cancelled`, saying why.
+- **UltraDatabase relay: a sign-in of the program's own.** `UltraDbRelayServer::SetSignIn`
+  takes a label and a callback that knows tokens no user's hash matches (the
+  tickets of a program's own sign-in); `UltraDb_RelaySignInOffer` asks a
+  relay what sign-in it offers.
+- **The WebAssembly workflow tests UltraDBAdmin's page end to end**: a new
+  `dbadmin-browser` job runs the baseline's page in Chrome against a relay
+  it builds natively and a test OpenID provider, and checks the relay's
+  audit log for the sign-in, a table browsed and a query stopped.
+- **UltraDatabase: the server's status, for a monitor.**
+  `UltraDb_ServerStatus` (`UltraDatabaseServer.h`) gives a row per measure a
+  PostgreSQL or MySQL / MariaDB server keeps - the sessions connected and
+  running, and counters of statements, transactions, rows read and written,
+  buffer cache reads and misses and client traffic - to be read every few
+  seconds and charted as rates.
+- **Chart engine: `UltraCanvasEngineLineChart::SetValueAtLeast`.** The value
+  axis reaches at least the value given whatever the data, so a live chart of
+  small counts or rates at rest reads 0 to that value instead of an axis
+  fitted to a flat zero.
+- **UltraNet: SSH tunnels.** `UltraNet_OpenSshTunnel` (`UltraNetSsh.h`)
+  forwards a free port of 127.0.0.1, through an SSH server, to a host and
+  port that server reaches - each connection on a channel of its own - and
+  `UltraNet_CloseSshTunnel` ends it. The `ssh` plug-in (libssh) serves it
+  and is loaded on first use.
+- **UltraNet's SSH plug-in checks host keys.** The shell and the tunnel
+  alike refuse a server whose key is unknown (`SshHostKeyUnknown`, with the
+  key's fingerprint for the user to compare and trust) or differs from the
+  one known (`SshHostKeyChanged`); `UltraNetRemoteOptions` takes the trusted
+  fingerprint or a known_hosts file. Before, any key was accepted. A private
+  key is also read as the text libssh expects (it was passed without its
+  terminator).
+- **UltraDatabase 0.6.0: connections through an SSH bastion**
+  (`UltraDatabaseTunnel.h`). A connection whose options name an `ssh_host`
+  opens its tunnel first, with the password or key and passphrase read from
+  UltraVault, and closes it with the connection; every session of the
+  connection goes through it. An unknown or changed bastion key fails with
+  `HostKeyUnknown` / `HostKeyChanged` and `UltraDbResult::hostKeyFingerprint`.
+  PostgreSQL still checks the database's certificate against its host name
+  through the tunnel; MySQL, which can only check the address it connects to,
+  refuses `VerifyFull` there with that reason. The module opens no socket
+  itself: `UltraDb_UseUltraNetSshTunnels()` (`UltraDatabaseSshTunnel.h`,
+  header-only) opens the tunnels through UltraNet.
+- **UltraCanvasTextArea: auto-completion.** `ShowAutoComplete(suggestions)`
+  opens a list under the caret - it did nothing before. Up, Down and the page
+  keys move in it, Enter or Tab (or a click) puts the suggestion in place of
+  the word before the caret (`GetAutoCompletePrefix()`), Escape closes it;
+  other keys edit as usual, so the host narrows the list as the word is typed.
+  `IsAutoCompleteOpen()` says whether it is shown.
+- **WebAssembly: dialogs have a title bar and can be moved.** A browser
+  draws no window frames, so every dialog (`WindowType::Dialog`) was a bare
+  canvas with no title and no way to move it. The backend now draws a title
+  bar above it - the window's title, an outline and a shadow - which moves
+  the dialog when dragged and reports the new place to the window
+  (`WindowMove`). A dialog's title no longer replaces the page's title.
+
+#### 2026-10-25 *0.9.406*
+- **`scripts/check_libcxx_syntax.sh`: VideoFX type-checked against libc++
+  before a push.** The Windows builds compile the module with MSYS2's
+  CLANG64 toolchain and its libc++, which refuses what Linux's libstdc++
+  lets through: #973's first Windows build failed on `std::to_string` of a
+  file time's tick count, a 128-bit integer there, fifteen minutes into the
+  job. The script runs `clang++ -stdlib=libc++ -fsyntax-only` over the
+  engine's sources, the tool and the test with the module's own flags, in
+  parallel, and prints only the errors; with the old key put back it
+  reports exactly that ambiguity. AGENTS.md and the VideoFX README name it.
+
+#### 2026-10-25 *0.9.405*
+- **Demo app: the layout audit runs in CI.** Linux CI runs
+  `UltraCanvasDemo --audit-layout` on a virtual display, then again with
+  `--pseudo-loc` (every text about 40% longer, as a translation is). A page
+  with a label or button narrower than its text, or with content cut off and
+  no scrollbar to reach it, fails the build. Both runs find nothing on all 167
+  pages. `--pseudo-loc` now leaves text without a letter as it is: a time
+  readout ("0:00 / 2:08"), a "+" or "−" button or a "–" between two dates is
+  not translated, so it was never going to grow. The Importance-Performance
+  chart page uses the shared page look: the chart and its controls are in
+  cards, and every text wraps. The badge page's bell tile carries a two-letter
+  mark like the other tiles.
+- **Charts: the legend restores the font it changes.** While measuring
+  itself, the shared chart legend set its own font family (Arial) and size on
+  the context and left them there. A chart lays out its legend only on its
+  first frame, so on that frame it measured its point labels in the legend's
+  face. On every later frame it drew them in its own, wider face, so a name
+  ran past its box: "Delivery reliabilit|y" on the Importance-Performance
+  chart. The legend now restores the context's font before it returns.
+  The legend's own default face is now the default font (empty family), the
+  one the chart's text is in, instead of "Arial" and whatever the system
+  substituted for it. The polar and circular-progress charts still pass their
+  own `legendFontFamily`, which is Arial as their other text is.
+
+#### 2026-10-24 *0.9.404*
+- **Spelling marks no longer flicker below the caret while typing.**
+  `UltraCanvasTextArea` and `UltraCanvasRichTextEdit` dropped every spell error
+  whose bytes no longer matched after an edit - which, since an edit shifts
+  everything after it, was every mark from the caret to the end of the
+  document. They vanished at each keystroke and came back with the next
+  result. The new `SpellCheckText::RebaseErrors(errors, before, after)` carries
+  them across the edit instead: errors after it shift (byte, codepoint, line
+  and column), errors it touched are dropped, and one merely adjacent survives
+  unless the edit extended its word. The elements also ignore a result for an
+  older job than the last one queued, whose offsets describe text that no
+  longer exists.
+- **Automatic spelling language detection.**
+  `UltraCanvasSpellChecker::DetectLanguage(text)` checks a sample of a text's
+  words against each installed language (one dictionary per base language,
+  the current one first) and returns the best fit with its error rate, leaving
+  the active language as it was. With `SetLanguageDetectionOptions({enabled =
+  true})` the worker runs it by itself when a check flags more than 70% of at
+  least 10 words, and a dictionary flagging fewer than 15% comes back as
+  `SpellCheckResult::suggestedLanguage`; both thresholds are options. The
+  service never switches by itself: `UltraCanvasTextArea::onSpellLanguageSuggested`
+  and `UltraCanvasRichTextEdit::onSpellLanguageSuggested` hand the suggestion
+  to the host. Results now also carry `checkedWordCount` and
+  `misspelledCount`. Off by default.
+
+#### 2026-10-24 *0.9.403*
+- **Filer widget: the hidden-items notice sits in the file area.** "45 items
+  are hidden here" and its blue **Show hidden files** button are now one
+  centred line on the display's own background, instead of a grey strip that
+  read as one more status bar under the files.
+- **Filer widget: `onHiddenNoticeSettings`.** Set it and a gear button sits
+  right of **Show hidden files**; a click runs the callback, so a host can open
+  the settings that decide what the display holds back.
+- **Filer widget: `FormatSizeText(bytes)`.** The display's own size
+  formatting (`103.6 KB`), public and static, so a host's status bar rounds a
+  selection the same way as the info bar under the files.
+- **Filer widget: a host can show the info bar's line in its own status
+  bar.** `GetSelectionInfo(primary, secondary)` returns the line whether or
+  not the bar is up, `onSelectionInfoChanged` fires (posted) when it changes -
+  including when background folder sizes or media details arrive - and
+  `SetInfoBarMenuItemVisible(false)` drops the Display > Info-Bar switch.
+
 #### 2026-10-24 *0.9.402*
 - **UltraStore joins the tree.** `Apps/UltraStore` (0.1.0): the store's core
   as a static library and the `ultrastore` command line, built with

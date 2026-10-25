@@ -1,7 +1,10 @@
 // Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp
 // Spell checking and the editor context menu for UltraTexter
+// Version: 1.2.0 - automatic language detection (Spelling > Detect Language
+//                  Automatically): a document mostly flagged in the current
+//                  dictionary switches to the installed language that fits it
 // Version: 1.1.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 //
 // The checking itself lives in the framework (UltraCanvasSpellChecker plus the
@@ -138,7 +141,36 @@ bool UltraCanvasTextEditor::EnsureSpellDictionariesAvailable() {
         // desktop locale, so the choice is stable across restarts.
         config.spellCheckLanguage = service.GetLanguage();
     }
+    ApplySpellLanguageDetection();
     return true;
+}
+
+void UltraCanvasTextEditor::ApplySpellLanguageDetection() {
+    UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
+    SpellLanguageDetectionOptions options = service.GetLanguageDetectionOptions();
+    if (options.enabled == config.spellCheckAutoLanguage) return;
+    options.enabled = config.spellCheckAutoLanguage;
+    service.SetLanguageDetectionOptions(options);
+}
+
+// The dictionary is shared by every document and window, so only the document
+// the user is working in may change it. Two tabs in different languages would
+// otherwise take turns switching it back and forth, each re-check of one
+// finding the other's language wrong.
+void UltraCanvasTextEditor::OnSpellLanguageSuggested(const DocumentTab* doc,
+                                                     const std::string& languageCode) {
+    if (!config.spellCheckEnabled || !config.spellCheckAutoLanguage) return;
+    if (!doc || doc != GetActiveDocument()) return;
+
+    UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
+    if (languageCode.empty() || languageCode == service.GetLanguage()) return;
+
+    debugOutput << "UltraTexter: switching spell check from '" << service.GetLanguage()
+                << "' to detected language '" << languageCode << "'" << std::endl;
+
+    // Raises onSpellLanguageChange, which stores the choice and re-checks every
+    // open document - the same path as picking it from the Dictionary menu.
+    service.SetLanguage(languageCode);
 }
 
 bool UltraCanvasTextEditor::EnsureSpellServiceReady() {
@@ -177,6 +209,10 @@ void UltraCanvasTextEditor::ApplySpellCheckToDocument(int docIndex) {
     // needs no prepare hook.
     if (doc->IsRichDocument()) {
         if (!doc->richEdit) return;
+        const DocumentTab* tab = doc.get();
+        doc->richEdit->onSpellLanguageSuggested = [this, tab](const std::string& languageCode) {
+            OnSpellLanguageSuggested(tab, languageCode);
+        };
         const bool wasChecking = doc->richEdit->IsSpellCheckEnabled();
         doc->richEdit->SetSpellCheckEnabled(enabled);
         if (enabled && wasChecking) {
@@ -203,6 +239,14 @@ void UltraCanvasTextEditor::ApplySpellCheckToDocument(int docIndex) {
     } else {
         doc->textArea->onPrepareSpellCheck = nullptr;
     }
+
+    // The tab is identified by address, not captured: it may be closed before
+    // a suggestion arrives, and OnSpellLanguageSuggested only compares it with
+    // the active one.
+    const DocumentTab* tab = doc.get();
+    doc->textArea->onSpellLanguageSuggested = [this, tab](const std::string& languageCode) {
+        OnSpellLanguageSuggested(tab, languageCode);
+    };
 
     doc->textArea->SetSpellCheckEnabled(enabled);
 
@@ -331,6 +375,17 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildSpellingMenuItems() {
     items.push_back(MenuItemData::Submenu("Dictionary", [this]() {
         return BuildDictionaryMenuItems();
     }));
+
+    items.push_back(MenuItemData::Checkbox("Detect Language Automatically",
+        config.spellCheckAutoLanguage,
+        [this](bool checked) {
+            config.spellCheckAutoLanguage = checked;
+            if (UltraCanvasSpellChecker::Instance().IsInitialized()) {
+                ApplySpellLanguageDetection();
+                if (checked) RecheckAllDocuments();
+            }
+            SaveConfig();
+        }));
 
     // Re-checking with checking switched off would have nothing to draw on, so
     // the entry follows the toggle.

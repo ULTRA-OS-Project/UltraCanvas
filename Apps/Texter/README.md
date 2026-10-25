@@ -32,7 +32,9 @@ This app versions itself: [`Docs/Texter/CHANGELOG.md`](../../Docs/Texter/CHANGEL
 - **Find and replace.** *Find…*, *Replace…*, a search-as-you-type bar and
   *Go to Line…*, in text and word-processing tabs alike.
 - **Spell checking** (*Edit → Spelling*), following the language chosen in
-  the status bar. Skipped in the hex view.
+  the status bar. A document mostly flagged in that language switches to the
+  installed dictionary that fits it (*Detect Language Automatically*).
+  Skipped in the hex view.
 - **Encodings and line ends.** The character encoding and the line ending
   (LF, CRLF, CR) of every file are shown and can be converted, through iconv.
   Binary files open in a **Hex/Binary** view.

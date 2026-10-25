@@ -8,6 +8,8 @@
 // (BuildOptions::mediaFactory).
 // The CSSLayout engine then does all measurement and layout natively —
 // there is no separate HTML layout engine.
+// Version: 1.20.0 - BuildOptions::onLinkedImageContextMenu: a right-click on a
+//                   linked picture, with its href (Copy link)
 // Version: 1.19.0 - BuildOptions::mediaFactory and MediaRequest: <video> and
 //                   <audio> as players the host builds, sized as a browser
 //                   sizes them; their fallback content without one
@@ -39,7 +41,7 @@
 // Version: 1.3.0 - background-position
 // Version: 1.2.0 - viewport width for @media; background images; margin: auto
 // Version: 1.1.0 - tables on the CSSLayout table engine; inline-block boxes
-// Last Modified: 2026-10-22
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -121,6 +123,11 @@ struct BuildOptions {
     // The link under the pointer, as it moves onto one (its href) and off it
     // (""): text links and linked pictures alike.
     std::function<void(const std::string& href)> onLinkHovered;
+    // A right-click on a linked picture (<a><img></a>): its raw href and the
+    // event, for the host's menu (Copy link). A text link's right-click goes
+    // to the labels' selection instead (selectableText). A right-click never
+    // opens the link.
+    std::function<void(const std::string& href, const UCEvent& event)> onLinkedImageContextMenu;
     // Show a link's href as a tooltip while the pointer rests on it (text
     // links and linked pictures). An app that shows the address elsewhere -
     // a status line fed by onLinkHovered - turns it off.

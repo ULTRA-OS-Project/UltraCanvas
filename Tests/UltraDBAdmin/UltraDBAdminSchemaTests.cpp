@@ -7,16 +7,27 @@
 // dropped, and a new one made from its template) and the Server tab
 // (SQLite's file; PostgreSQL's sessions with this one among them, a running
 // query cancelled from another session, the settings filter with LIKE's
-// characters typed, the sizes).
+// characters typed, the sizes; the monitor's charts from two readings of a
+// live server), and the SQL tab's completion: the catalog read from each
+// engine, and what is offered where - tables after FROM, a statement's
+// columns after SELECT, an alias's or a schema's after "name.", names quoted
+// as the engine needs, nothing in a string or a comment. And data compare:
+// two tables matched by key, on one engine and across two, the rows only on
+// one side and the columns that differ, the SQL that makes them the same
+// and, run, the second table equal to the first.
 // SQLite in temporary folders; PostgreSQL where the tests of UltraDatabase
 // find one (ULTRAFIBU_TEST_PG_*; REQUIRED makes a missing server a failure).
+// Version: 0.2.0 - the monitor; completion; data compare
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "DbAdminCompare.h"
+#include "DbAdminCompletion.h"
 #include "DbAdminConnections.h"
 #include "DbAdminExport.h"
 #include "DbAdminOperations.h"
 #include "DbAdminRelations.h"
 #include "DbAdminRoutines.h"
+#include "DbAdminMonitor.h"
 #include "DbAdminServer.h"
 #include "DbAdminSqlScript.h"
 
@@ -561,10 +572,47 @@ void TestRoutinesMysql() {
 
 // ===== Server =====
 
+// The monitor over a live server: its charts from two readings with rows
+// written between them - the rows written per second above zero. `table`
+// (qualified) has an integer id and a text t; `traffic` for MySQL, which
+// counts its clients' bytes.
+void CheckMonitor(const std::string& c, SqlEngine engine, const std::string& table, bool traffic) {
+    UltraDbResultSet status;
+    Check(ReadServerView(c, engine, ServerView::Monitor, "", "", status).success && status.Size() >= 7,
+          "the server's status");
+    ServerMonitor monitor;
+    const auto start = std::chrono::steady_clock::now();
+    monitor.Add(0.0, status);
+    Check(UltraDb_Exec(c, "INSERT INTO " + table + " (id, t) VALUES (900001, 'a'), (900002, 'b'), (900003, 'c')") &&
+              UltraDb_Exec(c, "DELETE FROM " + table + " WHERE id > 900000"),
+          "rows written between the readings");
+    // PostgreSQL's statistics arrive within a second or so.
+    double written = 0;
+    for (int i = 0; i < 30 && written <= 0; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        ReadServerView(c, engine, ServerView::Monitor, "", "", status);
+        ServerMonitor again = monitor;
+        again.Add(std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count(), status);
+        for (const auto& chart : again.Charts())
+            if (chart.key == "rows_written" && !chart.points.empty()) written = chart.points.back().value;
+        if (written > 0) monitor = again;
+    }
+    Check(written > 0, "rows written per second, above zero");
+    std::vector<std::string> keys;
+    for (const auto& chart : monitor.Charts()) keys.push_back(chart.key);
+    const bool hasTraffic = std::find(keys.begin(), keys.end(), "received") != keys.end();
+    Check(keys.size() >= 6 && keys.front() == "sessions" && hasTraffic == traffic,
+          "a chart per measure the server keeps (" + std::to_string(keys.size()) + ")");
+    for (const auto& chart : monitor.Charts())
+        if (chart.key == "cache_hits")
+            Check(!chart.points.empty() && chart.points.back().value >= 0 && chart.points.back().value <= 100,
+                  "the cache's hit ratio, a percentage");
+}
+
 void TestServerSqlite() {
     Section("Server (SQLite)");
     Check(ServerViews(SqlEngine::Sqlite) == std::vector<ServerView>{ServerView::FileInfo}, "SQLite has its file");
-    Check(ServerViews(SqlEngine::Postgres).size() == 3, "PostgreSQL has sessions, settings and sizes");
+    Check(ServerViews(SqlEngine::Postgres).size() == 4, "PostgreSQL has sessions, a monitor, settings and sizes");
     TempDir dir;
     const std::string file = dir.File("info.db");
     const std::string c = SqliteFile("dbadmin-server", file);
@@ -657,6 +705,7 @@ void TestServerPostgres() {
         UltraDb_CloseConnection(sleeper);
     }
     Check(Stop(c, 1, true) == 0, "no such session: nothing stopped");
+    CheckMonitor(c, SqlEngine::Postgres, QualifiedName(SqlEngine::Postgres, schema, "big"), false);
     UltraDb_Exec(c, "DROP SCHEMA " + QuotedName(SqlEngine::Postgres, schema) + " CASCADE");
     UltraDb_CloseConnection(c);
 }
@@ -668,7 +717,8 @@ void TestServerMysql() {
     const std::string c = MysqlConnection("dbadmin-server-my");
     if (c.empty()) return;
     constexpr SqlEngine my = SqlEngine::MySql;
-    Check(ServerViews(my) == std::vector<ServerView>{ServerView::Sessions, ServerView::Settings, ServerView::Sizes},
+    Check(ServerViews(my) == std::vector<ServerView>{ServerView::Sessions, ServerView::Monitor, ServerView::Settings,
+                                                     ServerView::Sizes},
           "a MySQL server's views");
     const std::string schema = "dbadmin_" + ConnectionStore::NewId();
     const std::string s = QuotedName(my, schema);
@@ -727,7 +777,214 @@ void TestServerMysql() {
         UltraDb_CloseConnection(sleeper);
     }
     Check(Stop(c, 2000000000, true) == 0, "no such session: nothing stopped");
+    CheckMonitor(c, my, s + ".big", true);
     UltraDb_Exec(c, "DROP DATABASE " + s);
+    UltraDb_CloseConnection(c);
+}
+
+// ===== Completion =====
+
+bool Offers(const std::vector<std::string>& list, const std::string& item) {
+    return std::find(list.begin(), list.end(), item) != list.end();
+}
+
+// What is offered at the '|' of `script` (the bar taken out).
+std::vector<std::string> At(SqlEngine engine, const std::string& script, const CompletionCatalog& catalog) {
+    const size_t bar = script.find('|');
+    std::string text = script;
+    text.erase(bar, 1);
+    return CompletionsAt(engine, text, bar, catalog);
+}
+
+void TestCompletionSqlite() {
+    Section("Completion (SQLite)");
+    TempDir dir;
+    const std::string c = SqliteFile("dbadmin-complete", dir.File("complete.db"));
+    Check(RunScript(c, "CREATE TABLE orders(id INTEGER PRIMARY KEY, customer_id INTEGER, total REAL);"
+                       "CREATE TABLE customers(id INTEGER PRIMARY KEY, name TEXT, \"Order Note\" TEXT);"
+                       "CREATE VIEW big_orders AS SELECT * FROM orders WHERE total > 100;"),
+          "two tables and a view");
+    CompletionCatalog catalog;
+    Check(LoadCompletionCatalog(c, SqlEngine::Sqlite, "main", catalog).success, "the catalog");
+    Check(catalog.schemas.count("main") && catalog.schemas["main"].size() == 3 &&
+              catalog.schemas["main"]["customers"] == std::vector<std::string>({ "id", "name", "Order Note" }),
+          "its tables, a view and their columns in order");
+    const SqlEngine e = SqlEngine::Sqlite;
+    auto list = At(e, "SELECT * FROM or|", catalog);
+    Check(!list.empty() && list.front() == "orders", "after FROM: the table that begins so, first");
+    Check(Offers(At(e, "SELECT * FROM |", catalog), "big_orders"), "a view among the tables");
+    list = At(e, "SELECT cu| FROM orders", catalog);
+    Check(Offers(list, "customer_id") && !Offers(list, "name"), "after SELECT: the columns of the table named after it");
+    list = At(e, "SELECT o.| FROM orders o JOIN customers c ON c.id = o.customer_id", catalog);
+    Check(Offers(list, "total") && !Offers(list, "name"), "an alias's columns");
+    list = At(e, "SELECT c.| FROM orders o JOIN customers c ON c.id = o.customer_id", catalog);
+    Check(Offers(list, "\"Order Note\"") && Offers(list, "name"), "a name with a space, quoted");
+    list = At(e, "SELECT * FROM orders WHERE to|", catalog);
+    Check(!list.empty() && list.front() == "total", "after WHERE: the columns");
+    list = At(e, "sel|", catalog);
+    Check(Offers(list, "select") && !Offers(list, "SELECT"), "a keyword in the case it is typed in");
+    list = At(e, "SELECT * FROM orders WHERE cu|", catalog);
+    Check(Offers(list, "customer_id") && !Offers(list, "vacuum") && !Offers(list, "VACUUM"),
+          "a keyword only for the letters it begins with");
+    list = At(e, "SELECT * FROM main.|", catalog);
+    Check(Offers(list, "orders") && Offers(list, "customers"), "after schema. its tables");
+    Check(At(e, "SELECT 'or|", catalog).empty(), "nothing inside a string");
+    Check(At(e, "SELECT 1 -- or|", catalog).empty(), "nothing inside a comment");
+    list = At(e, "SELECT 1; SELECT * FROM customers WHERE na|", catalog);
+    Check(!list.empty() && list.front() == "name", "the statement the caret is in, not the one before");
+    Check(CompletionPrefix("SELECT nam", 10) == "nam", "the word a suggestion replaces");
+    UltraDb_CloseConnection(c);
+}
+
+void TestCompletionServer(const char* label, SqlEngine engine, const std::string& c, const std::string& schema) {
+    Section(label);
+    const std::string s = QuotedName(engine, schema);
+    Check(RunScript(c, std::string(engine == SqlEngine::MySql ? "CREATE DATABASE " : "CREATE SCHEMA ") + s + ";"
+                       "CREATE TABLE " + s + ".invoices(id integer PRIMARY KEY, amount numeric(10,2));"
+                       "CREATE TABLE " + s + "." + QuotedName(engine, "MixedCase") + "(" + QuotedName(engine, "Id") +
+                       " integer);"),
+          "a schema with two tables");
+    CompletionCatalog catalog;
+    Check(LoadCompletionCatalog(c, engine, schema, catalog).success, "the catalog");
+    Check(catalog.schemas.count(schema) && catalog.schemas[schema].count("invoices") &&
+              catalog.schemas[schema]["invoices"] == std::vector<std::string>({ "id", "amount" }),
+          "the schema's tables and columns");
+    auto list = At(engine, "SELECT * FROM inv|", catalog);
+    Check(!list.empty() && list.front() == "invoices", "after FROM, the default schema's table");
+    list = At(engine, "SELECT * FROM |", catalog);
+    Check(Offers(list, QuotedName(engine, "MixedCase")) == (engine == SqlEngine::Postgres) &&
+              Offers(list, "MixedCase") == (engine != SqlEngine::Postgres),
+          "an upper-case name quoted where the engine folds it");
+    list = At(engine, "SELECT am| FROM invoices", catalog);
+    Check(Offers(list, "amount"), "a column after SELECT");
+    UltraDb_Exec(c, std::string(engine == SqlEngine::MySql ? "DROP DATABASE " : "DROP SCHEMA ") + s +
+                        (engine == SqlEngine::MySql ? "" : " CASCADE"));
+}
+
+void TestCompletionPostgres() {
+    const std::string c = PostgresConnection("dbadmin-complete-pg");
+    if (c.empty()) return;
+    TestCompletionServer("Completion (PostgreSQL)", SqlEngine::Postgres, c, "dbadmin_" + ConnectionStore::NewId());
+    UltraDb_CloseConnection(c);
+}
+
+void TestCompletionMysql() {
+    const std::string c = MysqlConnection("dbadmin-complete-my");
+    if (c.empty()) return;
+    TestCompletionServer("Completion (MySQL / MariaDB)", SqlEngine::MySql, c, "dbadmin_" + ConnectionStore::NewId());
+    UltraDb_CloseConnection(c);
+}
+
+// ===== Data compare =====
+
+// Rows of `table` on `c`, as one text: to see two tables hold the same.
+const RowDifference* FindDifference(const CompareResult& r, RowDifference::Kind kind, const std::string& id) {
+    for (const auto& d : r.differences) {
+        const auto& values = kind == RowDifference::Kind::OnlyRight ? d.right : d.left;
+        if (d.kind == kind && !values.empty() && CompareText(values[0]) == id) return &d;
+    }
+    return nullptr;
+}
+
+// `left` and `right` hold the same five products but for: 4 only left, 5
+// only right, 2's price and 3's name changed; right has a column of its own.
+void CheckCompare(const char* label, const CompareSide& left, const CompareSide& right) {
+    CompareResult r;
+    const UltraDbResult compared = CompareTables(left, right, CompareLimits(), r);
+    Check(compared.success, std::string(label) + ": compared (" + compared.message + ")");
+    Check(r.key == std::vector<std::string>({ "id" }) && r.columns.size() == 4, "matched by the key, four columns");
+    Check(r.onlyRightColumns == std::vector<std::string>({ "note" }), "the right's own column, not compared");
+    Check(r.leftRows == 4 && r.rightRows == 4, "four rows each side");
+    Check(r.same == 1 && r.onlyLeft == 1 && r.onlyRight == 1 && r.changed == 2,
+          "one the same, one only left, one only right, two changed");
+    const RowDifference* price = FindDifference(r, RowDifference::Kind::Changed, "2");
+    Check(price && price->changed.size() == 1 && r.columns[price->changed[0]] == "price",
+          "2: its price alone differs (10.50 on one side is 10.5 on the other)");
+    Check(FindDifference(r, RowDifference::Kind::OnlyLeft, "4") && FindDifference(r, RowDifference::Kind::OnlyRight, "5"),
+          "4 only left, 5 only right");
+    const UltraDbResultSet rows = DifferenceRows(r);
+    bool arrow = false;
+    for (const auto& row : rows) arrow = arrow || row["price"].AsString().rfind("10.5 -> 11", 0) == 0;
+    Check(rows.Size() == 4 && rows.Columns().front() == "difference" && arrow,
+          "as the grid shows them: a changed value as here -> there");
+    Check(CompareSummary(r, "in a", "in b").find("1 the same, 2 changed, 1 only in a, 1 only in b") != std::string::npos,
+          "the summary");
+    OperationPlan plan;
+    std::string error;
+    Check(SyncPlan(right, r, plan, error) && plan.statements.size() == 4 && plan.transaction,
+          "the SQL: an insert, two updates, a delete, as one transaction");
+    size_t failed = 0;
+    const UltraDbResult ran = RunPlan(right.connection, plan, nullptr, failed);
+    Check(ran.success, "run on the right (" + ran.message + ")");
+    CompareResult after;
+    Check(CompareTables(left, right, CompareLimits(), after).success && after.Differences() == 0 && after.same == 4,
+          "and then the two hold the same");
+}
+
+const char* kCompareLeft =
+    "CREATE TABLE products(id integer PRIMARY KEY, name varchar(40), price numeric(10,2), active boolean);"
+    "INSERT INTO products VALUES (1, 'apple', 1.25, TRUE), (2, 'pear', 10.50, TRUE), (3, 'plum', 3.00, FALSE),"
+    " (4, 'fig', 7.00, TRUE);";
+const char* kCompareRight =
+    "CREATE TABLE products(id integer PRIMARY KEY, name varchar(40), price numeric(10,2), active boolean, note text);"
+    "INSERT INTO products VALUES (1, 'apple', 1.25, TRUE, 'x'), (2, 'pear', 11.00, TRUE, NULL),"
+    " (3, 'plum!', 3.0, FALSE, NULL), (5, 'kiwi', 2.00, TRUE, NULL);";
+
+void TestCompareSqlite() {
+    Section("Data compare (SQLite)");
+    TempDir dir;
+    const std::string a = SqliteFile("dbadmin-compare-a", dir.File("a.db"));
+    const std::string b = SqliteFile("dbadmin-compare-b", dir.File("b.db"));
+    Check(RunScript(a, kCompareLeft) && RunScript(b, kCompareRight), "two files");
+    CheckCompare("SQLite", { a, SqlEngine::Sqlite, "main", "products" }, { b, SqlEngine::Sqlite, "main", "products" });
+    CompareResult r;
+    Check(RunScript(a, "CREATE TABLE nokey(x integer);") &&
+              CompareTables({ a, SqlEngine::Sqlite, "main", "nokey" }, { b, SqlEngine::Sqlite, "main", "products" },
+                            CompareLimits(), r).code == UltraDbResultCode::InvalidArgument,
+          "a table without a key is refused");
+    CompareLimits small;
+    small.maxRows = 2;
+    Check(!CompareTables({ a, SqlEngine::Sqlite, "main", "products" }, { b, SqlEngine::Sqlite, "main", "products" },
+                         small, r).success,
+          "a table over the limit is refused");
+    Check(CompareText(UltraDbValue("10.50")) == CompareText(UltraDbValue(10.5)) &&
+              CompareText(UltraDbValue("007")) != CompareText(UltraDbValue(int64_t(7))) &&
+              CompareText(UltraDbValue(true)) == CompareText(UltraDbValue(int64_t(1))) &&
+              CompareText(UltraDbValue()) != CompareText(UltraDbValue("")),
+          "values read alike across engines, a code with leading zeros and NULL kept apart");
+    UltraDb_CloseConnection(a);
+    UltraDb_CloseConnection(b);
+}
+
+void TestCompareServer(const char* label, SqlEngine engine, const std::string& c) {
+    Section(label);
+    const std::string schema = "dbadmin_" + ConnectionStore::NewId();
+    const std::string s = QuotedName(engine, schema);
+    const bool mysql = engine == SqlEngine::MySql;
+    Check(RunScript(c, std::string(mysql ? "CREATE DATABASE " : "CREATE SCHEMA ") + s + ";"), "a schema");
+    std::string script = kCompareRight;
+    // Into the new schema; MySQL's boolean is a tinyint, and TRUE / FALSE are 1 / 0 there.
+    for (size_t at; (at = script.find("products")) != std::string::npos;) script.replace(at, 8, s + ".prod_r");
+    Check(RunScript(c, script), "the right table on the server");
+    TempDir dir;
+    const std::string a = SqliteFile("dbadmin-compare-x", dir.File("x.db"));
+    Check(RunScript(a, kCompareLeft), "the left table in a SQLite file");
+    CheckCompare(label, { a, SqlEngine::Sqlite, "main", "products" }, { c, engine, schema, "prod_r" });
+    UltraDb_Exec(c, std::string(mysql ? "DROP DATABASE " : "DROP SCHEMA ") + s + (mysql ? "" : " CASCADE"));
+    UltraDb_CloseConnection(a);
+}
+
+void TestComparePostgres() {
+    const std::string c = PostgresConnection("dbadmin-compare-pg");
+    if (c.empty()) return;
+    TestCompareServer("Data compare (SQLite against PostgreSQL)", SqlEngine::Postgres, c);
+    UltraDb_CloseConnection(c);
+}
+
+void TestCompareMysql() {
+    const std::string c = MysqlConnection("dbadmin-compare-my");
+    if (c.empty()) return;
+    TestCompareServer("Data compare (SQLite against MySQL / MariaDB)", SqlEngine::MySql, c);
     UltraDb_CloseConnection(c);
 }
 
@@ -742,6 +999,12 @@ int main() {
     TestServerSqlite();
     TestServerPostgres();
     TestServerMysql();
+    TestCompletionSqlite();
+    TestCompletionPostgres();
+    TestCompletionMysql();
+    TestCompareSqlite();
+    TestComparePostgres();
+    TestCompareMysql();
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
 }

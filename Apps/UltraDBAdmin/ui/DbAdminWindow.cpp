@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminWindow.cpp
+// Version: 0.4.0 - the relay: its sign-in, a ticket brought back to the page
 // Version: 0.3.0 - tabs of open objects, the tree's operations, Search, the SQL log, Run statement,
 //                 Explain, snippets, auto-commit, the typed row form; the cell editor follows the grid
 // Version: 0.2.0 - filters, editing in the cell, blobs, rows copied as text
@@ -17,6 +18,15 @@
 #include "DbAdminStructureDialog.h"
 #include "DbAdminTheme.h"
 #include "DbAdminWindowParts.h"
+#if defined(ULTRADBADMIN_WEB)
+#include "web/DbAdminRelayWeb.h"
+#else
+#include "UltraCanvasUtils.h"
+#include <UltraNet/UltraNetOAuth2.h>
+#include <UltraNet/UltraNetSocket.h>
+#include <UltraNet/UltraNetUrl.h>
+#include <thread>
+#endif
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasClipboard.h"
@@ -51,6 +61,7 @@ DbAdminWindow::~DbAdminWindow() {
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         if (logTimer_) app->StopTimer(logTimer_);
         if (cellTimer_) app->StopTimer(cellTimer_);
+        if (monitorTimer_) app->StopTimer(monitorTimer_);
     }
     if (logObserver_) UltraDb_RemoveStatementObserver(logObserver_);
     alive_.reset();
@@ -62,7 +73,10 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     std::string error;
     if (dataDirectory.empty()) {
         store_.OpenInMemory();
+#if !defined(ULTRADBADMIN_WEB)
+        // A page keeps nothing by design: the relay is its list.
         storeNote_ = "No data folder: connections are kept until the app closes.";
+#endif
     } else if (!store_.Open(dataDirectory, error)) {
         store_.OpenInMemory();
         storeNote_ = "Connections cannot be saved (" + error + "); they are kept until the app closes.";
@@ -196,8 +210,13 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
     UpdateRelationsBar();
     UpdateRoutinesBar();
     UpdateServerBar();
-    if (auto* app = UltraCanvasApplication::GetInstance())
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
         logTimer_ = app->StartTimer(kLogRefreshMs, true, [this](TimerId) { RefreshLog(); });
+        // The monitor reads only while its charts are in sight.
+        monitorTimer_ = app->StartTimer(kMonitorIntervalMs, true, [this](TimerId) {
+            if (tabs_->GetActiveTab() == kServerTab && serverShown_ == ServerView::Monitor) ReadMonitor(false);
+        });
+    }
     if (!storeNote_.empty()) SetStatus(storeNote_, true);
     else if (store_.All().empty()) SetStatus("No connections yet - Add connection names a SQLite file, a PostgreSQL or a MySQL / MariaDB server.");
     else SetStatus(std::to_string(store_.All().size()) + " connections. Expand one to see its tables.");
@@ -205,7 +224,27 @@ bool DbAdminWindow::Initialize(const std::string& dataDirectory) {
 }
 
 void DbAdminWindow::Show() {
+#if defined(ULTRADBADMIN_WEB)
+    // The page is the screen: the window fills the browser's viewport.
+    if (window_) window_->Maximize();
+#endif
     if (window_) window_->Show();
+#if defined(ULTRADBADMIN_WEB)
+    // The browser has its databases through the relay alone: back from its
+    // sign-in with a ticket, or asked for it first.
+    const std::string ticket = TakeRelayTicket();
+    if (!ticket.empty()) {
+        const std::string url = DefaultRelayUrl();
+        SetStatus("Signed in - asking the relay at " + url + "…");
+        ConnectWithToken(url, ticket, [this](const std::string& failed) {
+            if (failed.empty()) return;
+            SetStatus(failed, true);
+            ConnectRelay();
+        });
+    } else if (store_.All().empty()) {
+        ConnectRelay();
+    }
+#endif
 }
 
 void DbAdminWindow::LayoutForSize(float width, float height) {
@@ -249,6 +288,18 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildToolbar() {
                                      ButtonRole::Danger);
     removeButton_->SetOnClick([this]() { RemoveConnection(); });
     bar->AddChild(removeButton_);
+
+    auto relay = MakeActionButton("dbaRelay", "Relay", "relay",
+                                  "The connections an UltraDBAdmin relay offers you - the databases behind it, "
+                                  "with passwords that stay there");
+    relay->SetOnClick([this]() { ConnectRelay(); });
+    bar->AddChild(relay);
+#if defined(ULTRADBADMIN_WEB)
+    // In the browser a database is reached through the relay alone: there is
+    // no file to open and no server to name.
+    add->SetVisible(false);
+    editButton_->SetVisible(false);
+#endif
 
     auto refresh = MakeActionButton("dbaRefresh", "Refresh", "refresh",
                                     "Read the selected connection's schemas and tables again");
@@ -639,8 +690,22 @@ std::shared_ptr<UltraCanvasContainer> DbAdminWindow::BuildSqlPage() {
             RunSql(event.shift ? RunScope::Statement : RunScope::Script);
             return true;
         }
+        if (event.virtualKey == UCKeys::Space && event.ctrl) {
+            Complete(true);
+            return true;
+        }
+        // A letter typed, or one taken back, may change the list; a paste or
+        // a script loaded does not open one.
+        completionTyped_ = !event.ctrl && !event.meta && !event.alt &&
+                           (!event.text.empty() || event.virtualKey == UCKeys::Backspace);
         return false;
     };
+    sqlEditor_->SetOnTextChanged([this](const std::string&) {
+        const bool typed = completionTyped_;
+        completionTyped_ = false;
+        if (typed) Complete(false);
+        else sqlEditor_->HideAutoComplete();
+    });
     FillWith(editorPane, sqlEditor_);
 
     auto results = CreateHorizontalSplitPane("dbaResultsSplit", 0, 0, 0, 0);
@@ -823,6 +888,38 @@ void DbAdminWindow::ShowLoadError(const std::string& nodeId, const UltraDbResult
     }
     SetStatus(result.message, true);
     tree_->RequestRedraw();
+    if (result.code == UltraDbResultCode::HostKeyUnknown && !result.hostKeyFingerprint.empty())
+        TrustHostKey(nodeId, result.hostKeyFingerprint);
+}
+
+void DbAdminWindow::TrustHostKey(const std::string& nodeId, const std::string& fingerprint) {
+    const NodeRef* ref = RefOf(nodeId);
+    const ConnectionSpec* spec = ref ? store_.Find(ref->connectionId) : nullptr;
+    if (!spec || !spec->UsesTunnel()) return;
+    const std::string id = spec->id;
+    // As ssh asks on a first connection: the user compares the key with the
+    // one the bastion's administrator gave them, and only then trusts it.
+    UltraCanvasDialogManager::ShowConfirmation(
+        spec->name + " reaches its database through " + spec->sshHost +
+            ", whose host key is not known yet:\n\n" + fingerprint +
+            "\n\nTrust it only if it is the key the bastion's administrator gave you (ssh-keygen -l on the "
+            "bastion shows it). Once trusted, a bastion that presents another key is refused.",
+        "Trust the SSH host key",
+        [this, id, fingerprint, nodeId](bool confirmed) {
+            if (!confirmed) return;
+            const ConnectionSpec* current = store_.Find(id);
+            if (!current) return;
+            ConnectionSpec trusted = *current;
+            trusted.sshHostKey = fingerprint;
+            std::string error;
+            if (store_.Put(trusted, ConnectionStore::SecretChanges(), error).empty()) {
+                SetStatus("The host key could not be kept: " + error, true);
+                return;
+            }
+            store_.Register(trusted);
+            SetStatus("Trusted " + trusted.sshHost + "'s host key; connecting again…");
+            if (tree_->FindNode(nodeId)) LoadChildren(nodeId);
+        });
 }
 
 void DbAdminWindow::ApplySchemas(const std::string& nodeId, const UltraDbResult& result,
@@ -915,22 +1012,166 @@ void DbAdminWindow::OnNodeSelected(TreeNode* node) {
 
 void DbAdminWindow::AddConnection() {
     ShowConnectionDialog(window_.get(), nullptr,
-                         [this](const ConnectionSpec& spec, const std::string& password, bool clearPassword) {
-                             return SaveConnection(spec, password, clearPassword);
+                         [this](const ConnectionSpec& spec, const ConnectionStore::SecretChanges& secrets) {
+                             return SaveConnection(spec, secrets);
                          });
+}
+
+void DbAdminWindow::ConnectRelay() {
+    std::string url = relayUrl_;
+#if defined(ULTRADBADMIN_WEB)
+    if (url.empty()) url = DefaultRelayUrl();
+#endif
+    if (url.empty())
+        for (const ConnectionSpec& spec : store_.All())
+            if (spec.IsRelay()) url = spec.host;
+#if defined(ULTRADBADMIN_WEB)
+    const bool cancellable = !store_.All().empty();
+#else
+    const bool cancellable = true;
+#endif
+    ShowRelayDialog(
+        window_.get(), url, cancellable,
+        [this](const std::string& url, const std::string& token, std::function<void(const std::string&)> done) {
+            ConnectWithToken(url, token, std::move(done));
+        },
+        [this](const std::string& url, std::function<void(const std::string&)> done) {
+            SignInToRelay(url, std::move(done));
+        });
+}
+
+void DbAdminWindow::ConnectWithToken(const std::string& url, const std::string& token,
+                                     std::function<void(const std::string&)> done) {
+    Background([this, url, token, done]() -> std::function<void()> {
+        std::vector<UltraDbRelayConnection> offered;
+        const UltraDbResult result = UltraDb_RelayConnections(url, token, offered);
+        return [this, result, offered, url, token, done]() {
+            if (!result) {
+                done(result.code == UltraDbResultCode::CredentialsUnavailable
+                         ? std::string("The relay does not know this token, or the sign-in has run out.")
+                         : "Not connected: " + OneLine(result.message));
+                return;
+            }
+            if (offered.empty()) {
+                done("The relay offers you no connection.");
+                return;
+            }
+            relayUrl_ = url;
+            AddRelayConnections(url, token, offered);
+            done(std::string());
+        };
+    });
+}
+
+void DbAdminWindow::SignInToRelay(const std::string& url, std::function<void(const std::string&)> done) {
+    Background([this, url, done]() -> std::function<void()> {
+        std::string label;
+        const UltraDbResult asked = UltraDb_RelaySignInOffer(url, label);
+        return [this, url, done, asked, label]() {
+            if (!asked) {
+                done("Not connected: " + OneLine(asked.message));
+                return;
+            }
+            if (label.empty()) {
+                done("This relay takes tokens only: ask its administrator for one.");
+                return;
+            }
+#if defined(ULTRADBADMIN_WEB)
+            // The page leaves for the relay's sign-in and comes back with a ticket (Show).
+            SetStatus("Signing in with " + label + "…");
+            StartRelaySignIn(url);
+#else
+            SetStatus("Signing in with " + label + " in your web browser…");
+            // Not on the window's worker: the wait for the browser can take
+            // minutes, and the tree's and Browse's queries go on meanwhile.
+            std::weak_ptr<char> alive = alive_;
+            std::thread([this, url, done, alive]() {
+                // A loopback address of the app's own for the ticket, on a free port.
+                UltraNetSocketOptions options;
+                options.bindAddress = "127.0.0.1";
+                options.reuseAddress = true;
+                const UltraNetHandle probe = UltraNet_TcpListen(0, options);
+                UltraNetEndpoint local;
+                const bool bound = probe != UltraNetInvalidHandle && UltraNet_SocketLocalEndpoint(probe, local);
+                if (probe != UltraNetInvalidHandle) UltraNet_SocketClose(probe);
+                std::string failed, ticket;
+                if (!bound) {
+                    failed = "No free port on this computer for the sign-in's return.";
+                } else {
+                    const std::string back = "http://127.0.0.1:" + std::to_string(local.port) + "/relay-signin";
+                    const std::string state = UltraNet_OAuth2GenerateState();
+                    std::string page = url;
+                    page.replace(0, page.find(':'), page.rfind("wss", 0) == 0 ? "https" : "http");
+                    page += "/signin?return=" + UltraNet_UrlEncode(back) + "&state=" + state;
+                    if (auto* app = UltraCanvasApplicationBase::GetCurrent())
+                        app->PostToUIThread([page, alive]() {
+                            if (!alive.expired()) UltraCanvas::OpenURL(page);
+                        });
+                    UltraNetOAuth2CallbackResult result;
+                    const UltraNetResult waited = UltraNet_OAuth2WaitForCallback(
+                        back, result, 300000,
+                        "<!doctype html><meta charset=\"utf-8\"><body style=\"font-family:sans-serif;margin:3em\">"
+                        "<h1>Signed in</h1><p>UltraDBAdmin has your sign-in. You can close this tab.</p></body>",
+                        [alive]() { return alive.expired(); });
+                    if (!waited) failed = "Not signed in: " + OneLine(waited.message);
+                    else if (!result.error.empty()) failed = "Not signed in: " + result.error;
+                    else if (result.state != state || result.code.empty()) failed = "The sign-in came back for someone else.";
+                    else ticket = result.code;
+                }
+                auto* app = UltraCanvasApplicationBase::GetCurrent();
+                if (!app || alive.expired()) return;
+                app->PostToUIThread([this, url, done, alive, failed, ticket]() {
+                    if (alive.expired()) return;
+                    if (!failed.empty()) done(failed);
+                    else ConnectWithToken(url, ticket, done);
+                });
+            }).detach();
+#endif
+        };
+    });
+}
+
+void DbAdminWindow::AddRelayConnections(const std::string& url, const std::string& token,
+                                        const std::vector<UltraDbRelayConnection>& offered) {
+    size_t added = 0;
+    for (const UltraDbRelayConnection& connection : offered) {
+        // The same relay's same connection is brought up to date, not doubled.
+        ConnectionSpec spec;
+        for (const ConnectionSpec& existing : store_.All())
+            if (existing.IsRelay() && existing.host == url && existing.database == connection.name) spec = existing;
+        if (spec.id.empty()) spec.name = connection.name;
+        spec.driver = "relay";
+        spec.host = url;
+        spec.database = connection.name;
+        spec.relayEngine = connection.engine;
+        spec.readOnly = connection.readOnly;   // the relay enforces it; the app says so
+        std::string error;
+        const std::string id = store_.Put(spec, token, false, error);
+        const ConnectionSpec* stored = id.empty() ? nullptr : store_.Find(id);
+        if (!stored) {
+            SetStatus("Not added: " + error, true);
+            continue;
+        }
+        store_.Register(*stored);
+        ++added;
+    }
+    RebuildTree();
+    SetStatus(std::to_string(added) + (added == 1 ? " connection" : " connections") + " from the relay at " + url +
+              ". Expand one to see its tables.");
 }
 
 void DbAdminWindow::EditConnection() {
     const ConnectionSpec* spec = SelectedConnection();
     if (!spec) { SetStatus("Select a connection in the tree to edit it."); return; }
+    // A relay's connections are the relay's: signing in again brings them up to date.
+    if (spec->IsRelay()) { ConnectRelay(); return; }
     ShowConnectionDialog(window_.get(), spec,
-                         [this](const ConnectionSpec& edited, const std::string& password, bool clearPassword) {
-                             return SaveConnection(edited, password, clearPassword);
+                         [this](const ConnectionSpec& edited, const ConnectionStore::SecretChanges& secrets) {
+                             return SaveConnection(edited, secrets);
                          });
 }
 
-std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std::string& password,
-                                          bool clearPassword) {
+std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const ConnectionStore::SecretChanges& secrets) {
     const bool edited = !spec.id.empty();
     // A change to how the database is reached closes its tables' tabs - they
     // were read through the old session - but never drops changes staged in
@@ -939,7 +1180,11 @@ std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std:
     const bool sessionChanges =
         before && (before->driver != spec.driver || before->database != spec.database || before->host != spec.host ||
                    before->port != spec.port || before->user != spec.user || before->tls != spec.tls ||
-                   before->readOnly != spec.readOnly || !password.empty() || clearPassword);
+                   before->readOnly != spec.readOnly || !secrets.password.empty() || secrets.clearPassword ||
+                   before->sshHost != spec.sshHost || before->sshPort != spec.sshPort ||
+                   before->sshUser != spec.sshUser || before->sshAuth != spec.sshAuth ||
+                   before->sshHostKey != spec.sshHostKey || !secrets.sshSecret.empty() ||
+                   !secrets.sshPassphrase.empty());
     if (sessionChanges) {
         StashActiveTab();
         size_t staged = 0;
@@ -950,7 +1195,7 @@ std::string DbAdminWindow::SaveConnection(const ConnectionSpec& spec, const std:
                    " staged to its tables first: they were read through the connection as it is now.";
     }
     std::string error;
-    const std::string id = store_.Put(spec, password, clearPassword, error);
+    const std::string id = store_.Put(spec, secrets, error);
     if (id.empty()) return "Not saved: " + error;
     const ConnectionSpec saved = *store_.Find(id);
     if (sessionChanges) CloseTabsOf(id);
@@ -999,6 +1244,7 @@ void DbAdminWindow::RemoveConnection() {
 }
 
 void DbAdminWindow::RefreshSelected() {
+    completionCatalogs_.clear();          // tables may have come or gone
     const NodeRef* ref = RefOf(selectedNode_);
     if (!ref) { SetStatus("Select a connection or schema to read it again."); return; }
     // An object row refreshes its schema; the schema row is its parent.
@@ -2805,6 +3051,55 @@ void DbAdminWindow::RunSql(RunScope scope) {
     FillHistory();
 }
 
+const CompletionCatalog* DbAdminWindow::CompletionCatalogFor(const ConnectionSpec& spec, bool asked) {
+    // An unqualified name is in the schema picked in the tree, else the
+    // engine's default one.
+    std::string connectionId, schema;
+    if (!SchemaScope(connectionId, schema) || connectionId != spec.id || schema.empty())
+        schema = spec.IsSqlite() ? "main" : EngineOf(spec) == SqlEngine::MySql ? spec.database : "public";
+    const std::string key = spec.id + "/" + schema;
+    const auto found = completionCatalogs_.find(key);
+    if (found != completionCatalogs_.end()) return found->second.get();
+    if (completionLoading_.insert(key).second) {
+        const std::string connection = RegisteredName(spec);
+        const SqlEngine engine = EngineOf(spec);
+        Background([this, connection, engine, schema, key, asked]() -> std::function<void()> {
+            auto catalog = std::make_shared<CompletionCatalog>();
+            const UltraDbResult result = LoadCompletionCatalog(connection, engine, schema, *catalog);
+            return [this, catalog, result, key, asked]() {
+                completionLoading_.erase(key);
+                // Not read: keywords only, and asked again next time.
+                if (!result) return;
+                completionCatalogs_[key] = catalog;
+                if (asked || sqlEditor_->IsAutoCompleteOpen()) Complete(true);
+            };
+        });
+    }
+    return nullptr;
+}
+
+void DbAdminWindow::Complete(bool asked) {
+    const ConnectionSpec* spec = SelectedConnection();
+    if (!spec) {
+        sqlEditor_->HideAutoComplete();
+        return;
+    }
+    const std::string text = sqlEditor_->GetText();
+    const size_t offset = CaretOffset();
+    const std::string prefix = CompletionPrefix(text, offset);
+    const bool afterDot = offset > prefix.size() && text[offset - prefix.size() - 1] == '.';
+    // As it is typed: from the second letter, or just after a '.'.
+    if (!asked && !afterDot && prefix.size() < 2) {
+        sqlEditor_->HideAutoComplete();
+        return;
+    }
+    static const CompletionCatalog kNone;
+    const CompletionCatalog* catalog = CompletionCatalogFor(*spec, asked);
+    const std::vector<std::string> list = CompletionsAt(EngineOf(*spec), text, offset, catalog ? *catalog : kNone);
+    if (list.empty()) sqlEditor_->HideAutoComplete();
+    else sqlEditor_->ShowAutoComplete(list);
+}
+
 void DbAdminWindow::StopSql() {
     auto runner = runners_.find(sqlConnectionId_);
     if (runner == runners_.end() || !runner->second->IsRunning()) return;
@@ -2813,6 +3108,9 @@ void DbAdminWindow::StopSql() {
 }
 
 void DbAdminWindow::ApplyOutcome(const std::string& connectionId, const RunOutcome& outcome) {
+    // The script may have made or dropped tables: completion reads them again.
+    for (auto it = completionCatalogs_.begin(); it != completionCatalogs_.end();)
+        it = it->first.rfind(connectionId + "/", 0) == 0 ? completionCatalogs_.erase(it) : std::next(it);
     const ConnectionSpec* spec = store_.Find(connectionId);
     const std::string where = spec ? spec->name : std::string("the connection");
     statementModel_->Replace(outcome.statements);

@@ -23,7 +23,7 @@ The brief's open questions, answered on 2026-10-24:
 | Management | **UltraStore admin backend**, a local application (next pull requests, `Apps/UltraStoreAdmin`), adding and removing apps with every setting the catalog carries: see *The admin backend*. |
 | Translations | Creators supply at least one language; the admin backend translates with the server's local UltraAI into every official language and marks what it translated (`source_language`, `machine_translated`); ULTRA OS apps' own localisation folders get the same. |
 | Signing key | Generated and kept **in the admin backend's database**, encrypted; the public key reaches the store through the repository and the signed catalog: see *Keys*. |
-| UltraInstaller | **To be created.** v1 fixes the seam (`PackageInstaller.h`: `IPackageInstaller`, `IInstallRegistry`, the registry row) and the on-disk layout; the implementation is the second pull request. |
+| UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
 What the brief listed as the first catalog's apps, the final name, the
@@ -45,7 +45,11 @@ Apps/UltraStore/
     Verifier.h/.cpp             Ed25519 over the catalog bytes, SHA-256 over packages, signing
     PackageResolver.h/.cpp      the package for the machine, the install plan
     CatalogClient.h/.cpp        fetch (UltraNet), verify, sequence, cache, mirrors
-    PackageInstaller.h          the UltraInstaller seam (interface only in v1)
+    PackageInstaller.h          the UltraInstaller seam: IPackageInstaller, IInstallRegistry, InstalledRecord
+    Downloader.h/.cpp           a package onto the disk through UltraNet, resumed, hash-checked
+    Registry.h/.cpp             SqliteRegistry: what is installed, on UltraDatabase
+    Installer.h/.cpp            ArchiveInstaller: unpack through VirtualFS, the tree, the collector
+    StoreEngine.h/.cpp          install / update / remove / gc for the command line and the window
   cli/main.cpp                  ultrastore <command>
 Tests/UltraStore/               the core's tests (ctest: UltraStoreCore)
 Docs/UltraStore/                this page, CHANGELOG.md, changelog.d/
@@ -247,7 +251,38 @@ binary, and the catalog itself is public). The resolver and the client do
 not care: `Package::url` is whatever the catalog says, and
 `UltraNetHttpOptions::headers` takes the token if there is one.
 
-## On disk (*later*, UltraInstaller)
+## UltraInstaller
+
+The part that turns a plan into installed software, behind the interfaces of
+`PackageInstaller.h`:
+
+- **`Downloader`** - one package at a time into `downloads/<sha256>.<format>`:
+  UltraNet streams it (`outputFilePath`, no whole-transfer timeout, the
+  stall timeout, HTTPS-only redirects), a `.part` left by an interrupted run
+  is continued with a Range request, the finished file is checked against
+  the catalog's SHA-256 and renamed into place, a mismatch deletes it. `Pause`,
+  `Resume` and `Cancel` act on the running transfer from any thread; a
+  complete file from an earlier run is reused without a request.
+- **`SqliteRegistry`** - `registry.sqlite` on UltraDatabase, the table below;
+  refuses a database a newer store wrote (`SchemaTooNew`).
+- **`ArchiveInstaller`** - zip, 7z and tar.* through the framework's
+  VirtualFS bridge (libarchive), an AppImage copied; into
+  `<kind>/<id>/<version>.installing` beside the destination, renamed into
+  place when complete, so a failure leaves nothing half installed; the
+  entry made executable (a zip made on Windows records no execute bit);
+  `apps/<id>/current` a relative symlink to the version, or a file naming it
+  where no symlink can be made. `Remove` takes a version away and moves
+  `current` to the newest remaining one; `CollectGarbage` removes every app
+  version that is not current and every component no current app needs,
+  following the exact dependencies each row was installed with.
+- **`StoreEngine`** - `Install` resolves, plans against the registry, fetches
+  and unpacks each missing step and deletes the download once unpacked;
+  `Update` installs the newer release, removes the older app versions and
+  collects; `UpdateAll` does that for every installed app; `Remove` takes
+  every version of an app and collects. Callbacks report each step, the
+  bytes of its download and the files of its unpacking.
+
+## On disk
 
 The brief's `~/.local/share/ultrastore` predates the framework's rule; the
 store follows the rule (`UltraCanvasDataFolder.h`, `UltraCanvasSettingsFolder.h`)
@@ -285,17 +320,17 @@ The registry's one table, `installed`:
 | `folder`, `entry` | where, and what to launch |
 | `sha256` | of the package it came from |
 | `installed_at`, `channel` | |
-| `depends` | JSON, the exact versions it was installed with: what the garbage collector follows |
+| `depends` | the exact versions it was installed with, `id@version` separated by spaces: what the garbage collector follows |
 | `current` | the version the launcher starts |
 
 An install is: resolve, plan, download each missing package to
 `downloads/` (UltraNet, `outputFilePath`, `resumeOutputFile`, the stall
 timeout, paused and resumed by the user), check its SHA-256, unpack it into
-a temporary folder beside its destination and rename it into place, add the
-registry row, move `current`. An update is an install of the new version
-followed by a `current` move; the old version stays until the garbage
-collector removes versions no `current` and no app depends on. Nothing is
-ever written where a failure would leave a half-installed folder in place.
+a staging folder beside its destination and rename it into place, add the
+registry row, move `current`, delete the download. An update is an install
+of the new version followed by a `current` move, the older app versions
+removed and the components only they needed collected. Nothing is ever
+written where a failure would leave a half-installed folder in place.
 
 ## The admin backend (*later*, `Apps/UltraStoreAdmin`)
 
@@ -334,6 +369,11 @@ ultrastore resolve <catalog.json> <app-id> [--installed <id>@<version> ...]
 ultrastore verify <catalog.json> <catalog.json.sig> --key <hex> [--key <hex>]
 ultrastore fetch <base-url> --key <hex> [--cache <dir>]
 ultrastore keygen | pubkey <seed-hex> | sign <catalog.json> <seed-hex> [-o <sig>] | sha256 <file>
+ultrastore install <catalog.json> <app-id> [--channel beta] [--root <dir>]
+ultrastore update <catalog.json> [<app-id>] [--root <dir>]
+ultrastore remove <app-id> [--root <dir>]
+ultrastore installed [--root <dir>]
+ultrastore gc [--root <dir>]
 ultrastore --version | --help
 ```
 
@@ -352,9 +392,9 @@ the package to install, or `-DBUILD_ULTRASTORE=OFF`.
 ## Milestones
 
 1. **0.1.0** core and command line (this page).
-2. **UltraInstaller**: download manager on UltraNet, unpacking through
+2. **0.2.0** UltraInstaller: download manager on UltraNet, unpacking through
    VirtualFS / libarchive, the registry on UltraDatabase, garbage collection;
-   `ultrastore install / remove / update / gc`.
+   `ultrastore install / update / remove / installed / gc`.
 3. **The framework's missing widgets** (card with button child, sidebar
    navigation, collapsible bottom panel, single-select chip group), with
    component docs.

@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/engine/DbAdminServer.cpp
+// Version: 0.3.0 - Monitor
 // Version: 0.2.0 - the server engines through UltraDatabase
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -68,12 +69,13 @@ UltraDbResult SqliteFileInfo(const std::string& connection, const std::string& s
 
 std::vector<ServerView> ServerViews(SqlEngine engine) {
     if (engine == SqlEngine::Sqlite) return {ServerView::FileInfo};
-    return {ServerView::Sessions, ServerView::Settings, ServerView::Sizes};
+    return {ServerView::Sessions, ServerView::Monitor, ServerView::Settings, ServerView::Sizes};
 }
 
 const char* ServerViewText(ServerView view) {
     switch (view) {
         case ServerView::Sessions: return "Sessions";
+        case ServerView::Monitor:  return "Monitor";
         case ServerView::Settings: return "Settings";
         case ServerView::Sizes:    return "Sizes";
         case ServerView::FileInfo: return "The file";
@@ -89,7 +91,7 @@ namespace {
 // readable (the bytes kept for sorting). Other columns as they come.
 void Shown(const UltraDbResultSet& rows, ServerView view, UltraDbResultSet& out) {
     out.Clear();
-    if (view == ServerView::Settings) { out = rows; return; }
+    if (view == ServerView::Settings || view == ServerView::Monitor) { out = rows; return; }
     std::vector<std::string> columns = rows.Columns();
     if (view == ServerView::Sizes)
         columns = {"kind", "name", "total", "data", "indexes", "bytes"};
@@ -130,6 +132,7 @@ UltraDbResult ReadServerView(const std::string& connection, SqlEngine engine, Se
         case ServerView::Sessions: result = UltraDb_ServerSessions(connection, rows); break;
         case ServerView::Settings: result = UltraDb_ServerSettings(connection, filter, rows); break;
         case ServerView::Sizes:    result = UltraDb_ServerSizes(connection, schema, rows); break;
+        case ServerView::Monitor:  result = UltraDb_ServerStatus(connection, rows); break;
         case ServerView::FileInfo: break;
     }
     if (!result) return result;

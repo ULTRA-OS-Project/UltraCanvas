@@ -1,7 +1,10 @@
 // core/UltraCanvasTextArea_SpellCheck.cpp
 // Spell check integration and character-range geometry for UltraCanvasTextArea
+// Version: 1.2.0 - marks are moved across an edit instead of dropped (no more
+//                  flicker below the caret); stale results are discarded by job
+//                  id; onSpellLanguageSuggested relays automatic detection
 // Version: 1.1.1
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 //
 // Split out of UltraCanvasTextArea.cpp for the same reason as the _Markdown and
@@ -215,6 +218,8 @@ void UltraCanvasTextArea::SetSpellCheckEnabled(bool enabled) {
     } else {
         UltraCanvasSpellChecker::Instance().CancelContext(spellContextId);
         spellErrors.clear();
+        std::string().swap(spellErrorsText);
+        spellPendingJobId = 0;
         RequestRedraw();
     }
 }
@@ -259,14 +264,19 @@ void UltraCanvasTextArea::RunSpellCheck() {
 void UltraCanvasTextArea::QueueSpellCheck() {
     if (!spellCheckEnabled) return;
 
+    // First, whether or not a check can be queued: the marks on hand are drawn
+    // against the current text either way.
+    RebaseSpellErrors();
+
     UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
-    if (!service.IsEnabled()) return;
+    if (!service.IsEnabled()) {
+        spellPendingJobId = 0;
+        return;
+    }
 
     if (spellContextId == 0) {
         spellContextId = reinterpret_cast<uint64_t>(this);
     }
-
-    DropStaleSpellErrors();
 
     // Options that depend on the text itself - shouldSkipRange above all - have
     // to be rebuilt from the text this check will actually run on, so the host
@@ -278,32 +288,31 @@ void UltraCanvasTextArea::QueueSpellCheck() {
 
     // Queuing replaces any job still pending for this element, so holding a key
     // down builds no backlog.
-    service.QueueCheckText(spellContextId, textContent, options);
+    spellPendingJobId = service.QueueCheckText(spellContextId, textContent, options);
 }
 
-// The errors on hand describe the text as it was when the check ran. Until the
-// next result arrives they would be painted against the edited text, so any
-// whose span no longer holds the word they were raised for is dropped now.
+// The errors on hand describe spellErrorsText. Until the next result arrives
+// they are painted against textContent, so they are carried across the edit
+// that separates the two (SpellCheckText::RebaseErrors: the marks after it
+// move, the ones it touched go).
 //
-// Keeping the ones that still match matters: typing at the end of a document
-// leaves every earlier mark in place, so squiggles stay put instead of blinking
-// off and back on at every keystroke.
-void UltraCanvasTextArea::DropStaleSpellErrors() {
-    if (spellErrors.empty()) return;
+// Dropping every mark whose bytes no longer matched, as this did up to 1.1.1,
+// removed all of them below the caret at each keystroke: the squiggles in the
+// rest of the document blinked off and back on with every letter typed.
+void UltraCanvasTextArea::RebaseSpellErrors() {
+    if (spellErrors.empty()) {
+        std::string().swap(spellErrorsText);
+        return;
+    }
+    if (spellErrorsText == textContent) return;
 
-    const size_t sizeBefore = spellErrors.size();
-    spellErrors.erase(
-        std::remove_if(spellErrors.begin(), spellErrors.end(),
-                       [this](const SpellError& error) {
-                           if (error.startByte + error.byteLength > textContent.size()) {
-                               return true;
-                           }
-                           return textContent.compare(error.startByte, error.byteLength,
-                                                      error.word) != 0;
-                       }),
-        spellErrors.end());
-
-    if (spellErrors.size() != sizeBefore) RequestRedraw();
+    const bool dropped = SpellCheckText::RebaseErrors(spellErrors, spellErrorsText, textContent);
+    if (spellErrors.empty()) {
+        std::string().swap(spellErrorsText);
+    } else {
+        spellErrorsText = textContent;
+    }
+    if (dropped) RequestRedraw();
 }
 
 const SpellError* UltraCanvasTextArea::GetSpellErrorAtPosition(int x, int y) {
@@ -379,14 +388,38 @@ void UltraCanvasTextArea::DrawSpellErrorMarks(IRenderContext* ctx) {
     // Drain anything the worker finished since the last frame. Stale results are
     // already dropped service-side, so whatever arrives matches current text.
     SpellCheckResult fresh;
-    if (service.TryTakeResult(spellContextId, fresh)) {
+    if (service.TryTakeResult(spellContextId, fresh) && fresh.jobId == spellPendingJobId) {
+        // Every edit queues a job of its own, so the latest job's result
+        // describes textContent exactly. An older one - published just before
+        // the next keystroke queued its job - is ignored: its offsets belong to
+        // text that no longer exists, and the marks already on hand have been
+        // moved onto the current text.
         spellErrors = std::move(fresh.errors);
+        if (spellErrors.empty()) {
+            std::string().swap(spellErrorsText);
+        } else {
+            spellErrorsText = textContent;
+        }
         // One line per completed check, not per frame. "0 errors" against a
         // document full of typos is the signature of a backend that loaded no
         // dictionary and is answering "correct" to everything.
         debugOutput << "TextArea: spell check of " << textContent.size()
                     << " bytes returned " << spellErrors.size()
                     << " error(s), language '" << fresh.languageCode << "'" << std::endl;
+
+        // Switching the language re-checks every element, this one included,
+        // so it is not done from inside the render pass.
+        if (!fresh.suggestedLanguage.empty() && onSpellLanguageSuggested) {
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (app) {
+                std::shared_ptr<std::atomic<bool>> alive = spellAlive;
+                const std::string languageCode = fresh.suggestedLanguage;
+                app->PostToUIThread([this, alive, languageCode]() {
+                    if (!alive->load()) return;   // element destroyed meanwhile
+                    if (onSpellLanguageSuggested) onSpellLanguageSuggested(languageCode);
+                });
+            }
+        }
     }
     if (spellErrors.empty()) return;
 
