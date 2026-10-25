@@ -10,15 +10,24 @@
 // information_schema.SYSTEM_VARIABLES with a description for each, MySQL's
 // performance_schema.global_variables with where each value came from.
 //
+// The status a monitor samples: PostgreSQL's pg_stat_activity and
+// pg_stat_database summed over the databases; MySQL's and MariaDB's SHOW
+// GLOBAL STATUS (performance_schema may be off), its counters added up.
+//
 // Plain SQL over the connection interface, every value bound, so this file
 // compiles - and stays compiled - in a build with neither client library.
+// Version: 0.2.0 - the server's status (UltraDb_ServerStatus)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabaseInternal.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <initializer_list>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace ultradb_internal {
 
@@ -94,6 +103,25 @@ UltraDbResult PostgresServerSizes(IUltraDbConnection& conn, const std::string& s
         " WHERE n.nspname = ? AND c.relkind IN ('r', 'm', 'p')"
         " ORDER BY kind, bytes DESC",
         { schema }, out);
+}
+
+UltraDbResult PostgresServerStatus(IUltraDbConnection& conn, UltraDbResultSet& out) {
+    return conn.ExecuteDirect(
+        "WITH a AS (SELECT COUNT(*) AS n,"
+        "                  COUNT(*) FILTER (WHERE state = 'active' AND pid <> pg_backend_pid()) AS running"
+        "             FROM pg_catalog.pg_stat_activity WHERE backend_type = 'client backend'),"
+        "     d AS (SELECT COALESCE(SUM(xact_commit + xact_rollback), 0) AS xacts,"
+        "                  COALESCE(SUM(tup_returned), 0) AS rows_read,"
+        "                  COALESCE(SUM(tup_inserted + tup_updated + tup_deleted), 0) AS rows_written,"
+        "                  COALESCE(SUM(blks_hit + blks_read), 0) AS cache_reads,"
+        "                  COALESCE(SUM(blks_read), 0) AS disk_reads"
+        "             FROM pg_catalog.pg_stat_database)"
+        "SELECT v.name, v.value::bigint AS value, v.counter"
+        "  FROM a, d, LATERAL (VALUES ('connections', a.n::numeric, false), ('active', a.running::numeric, false),"
+        "                             ('transactions', d.xacts, true), ('rows_read', d.rows_read, true),"
+        "                             ('rows_written', d.rows_written, true), ('cache_reads', d.cache_reads, true),"
+        "                             ('disk_reads', d.disk_reads, true)) AS v(name, value, counter)",
+        {}, out);
 }
 
 std::string PostgresStopSessionSql(int64_t id, bool endSession) {
@@ -177,6 +205,62 @@ UltraDbResult MysqlServerSizes(IUltraDbConnection& conn, const std::string& sche
         "  FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'"
         " ORDER BY `kind`, `bytes` DESC",
         { schema }, out);
+}
+
+UltraDbResult MysqlServerStatus(IUltraDbConnection& conn, UltraDbResultSet& out) {
+    UltraDbResultSet shown;
+    UltraDbResult r = conn.ExecuteDirect(
+        "SHOW GLOBAL STATUS WHERE Variable_name IN ('Threads_connected', 'Threads_running', 'Questions',"
+        " 'Handler_commit', 'Handler_rollback', 'Innodb_rows_read', 'Innodb_rows_inserted', 'Innodb_rows_updated',"
+        " 'Innodb_rows_deleted', 'Rows_read', 'Handler_write', 'Handler_update', 'Handler_delete',"
+        " 'Innodb_buffer_pool_read_requests', 'Innodb_buffer_pool_reads', 'Bytes_received', 'Bytes_sent')",
+        {}, shown);
+    if (!r) return r;
+    // The values come as text; a name the server does not keep is left out.
+    std::vector<std::pair<std::string, int64_t>> status;
+    for (const auto& row : shown) {
+        const std::string text = row[size_t(1)].AsString();
+        // Within int64_t; a counter past that would have taken centuries.
+        if (text.empty() || text.size() > 18 || text.find_first_not_of("0123456789") != std::string::npos) continue;
+        status.emplace_back(row[size_t(0)].AsString(), std::stoll(text));
+    }
+    // The sum of `names`, when the server keeps the first of them.
+    auto sum = [&status](std::initializer_list<const char*> names, int64_t& value) {
+        value = 0;
+        bool first = false;
+        for (const char* name : names)
+            for (const auto& [key, v] : status)
+                if (key == name) {
+                    value += v;
+                    first = first || name == *names.begin();
+                }
+        return first;
+    };
+    out.Clear();
+    out.SetColumns({ "name", "value", "counter" });
+    // `name` from the first of `sources` the server keeps.
+    auto add = [&out, &sum](const char* name, std::initializer_list<std::initializer_list<const char*>> sources,
+                            bool counter, int64_t less = 0) {
+        for (const auto& from : sources) {
+            int64_t value = 0;
+            if (!sum(from, value)) continue;
+            out.AddRow({ UltraDbValue(name), UltraDbValue(std::max<int64_t>(0, value - less)), UltraDbValue(counter) });
+            return;
+        }
+    };
+    add("connections", { { "Threads_connected" } }, false);
+    add("active", { { "Threads_running" } }, false, 1);        // the thread asking runs too
+    add("queries", { { "Questions" } }, true);
+    add("transactions", { { "Handler_commit", "Handler_rollback" } }, true);
+    // InnoDB's own counts; MariaDB 10.6 and later keep only the handler's.
+    add("rows_read", { { "Innodb_rows_read" }, { "Rows_read" } }, true);
+    add("rows_written", { { "Innodb_rows_inserted", "Innodb_rows_updated", "Innodb_rows_deleted" },
+                          { "Handler_write", "Handler_update", "Handler_delete" } }, true);
+    add("cache_reads", { { "Innodb_buffer_pool_read_requests" } }, true);
+    add("disk_reads", { { "Innodb_buffer_pool_reads" } }, true);
+    add("bytes_received", { { "Bytes_received" } }, true);
+    add("bytes_sent", { { "Bytes_sent" } }, true);
+    return UltraDbResult::Ok();
 }
 
 std::string MysqlStopSessionSql(int64_t id, bool endSession) {

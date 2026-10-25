@@ -1,5 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.11.0 - auto-completion: a list of suggestions at the caret, chosen with the keys
+//                 or a click, replacing the word before the caret
 // Version: 3.10.0 - search matches marked in the line layouts and on the scrollbar,
 //                 re-found after edits (deferred in large documents)
 // Version: 3.9.1 - onFocusGained / onFocusLost fired after the area's own focus handling
@@ -28,11 +30,19 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include "UltraCanvasListView.h"
+#include "UltraCanvasListModel.h"
+#include "UltraCanvasListDelegate.h"
+#include "UltraCanvasListSelection.h"
+#include "UltraCanvasTheme.h"
+#include "UltraCanvasWindow.h"
 #include <algorithm>
 #include <sstream>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
+#include <cctype>
+#include <cstdlib>
 #include "UltraCanvasPathUtf8.h"
 
 namespace UltraCanvas {
@@ -1477,7 +1487,9 @@ namespace UltraCanvas {
         if (event.type == UCEventType::KeyDown && !preeditText.empty() && !event.text.empty())
             ClearComposition();
 
-        // The host sees the key first (onBeforeKeyDown in the header).
+        // An open completion list takes its keys first, then the host sees
+        // the key (onBeforeKeyDown in the header).
+        if (HandleAutoCompleteKey(event)) return true;
         if (event.type == UCEventType::KeyDown && onBeforeKeyDown && onBeforeKeyDown(event))
             return true;
 
@@ -3266,16 +3278,168 @@ namespace UltraCanvas {
 
 // ===== AUTO-COMPLETE =====
 
+    namespace {
+        // Part of a word a suggestion replaces: an identifier's characters,
+        // and any codepoint beyond ASCII (a name in another script).
+        bool IsCompletionWordChar(uint32_t c) {
+            return c >= 0x80 || std::isalnum(static_cast<int>(c)) || c == '_' || c == '$';
+        }
+
+        // The codepoints of a UTF-8 line (a malformed byte is taken alone).
+        std::vector<uint32_t> LineCodepoints(const std::string& text) {
+            std::vector<uint32_t> out;
+            for (size_t i = 0; i < text.size();) {
+                const unsigned char b = static_cast<unsigned char>(text[i]);
+                const int length = b < 0x80 ? 1 : (b >> 5) == 0x6 ? 2 : (b >> 4) == 0xE ? 3 : (b >> 3) == 0x1E ? 4 : 1;
+                uint32_t c = length == 1 ? b : b & (0xFF >> (length + 1));
+                for (int k = 1; k < length && i + k < text.size(); ++k)
+                    c = (c << 6) | (static_cast<unsigned char>(text[i + k]) & 0x3F);
+                out.push_back(c);
+                i += static_cast<size_t>(length);
+            }
+            return out;
+        }
+    } // namespace
+
+    int UltraCanvasTextArea::AutoCompleteWordStart() const {
+        if (cursorPosition.lineIndex < 0 || cursorPosition.lineIndex >= static_cast<int>(lines.size())) return -1;
+        const std::vector<uint32_t> points = LineCodepoints(lines[cursorPosition.lineIndex]);
+        int start = std::min(cursorPosition.columnIndex, static_cast<int>(points.size()));
+        while (start > 0 && IsCompletionWordChar(points[start - 1])) --start;
+        return start;
+    }
+
+    std::string UltraCanvasTextArea::GetAutoCompletePrefix() const {
+        const int start = AutoCompleteWordStart();
+        if (start < 0) return std::string();
+        const std::string& line = lines[cursorPosition.lineIndex];
+        const std::vector<uint32_t> points = LineCodepoints(line);
+        // Byte offsets of the word's first codepoint and of the caret.
+        size_t from = 0, to = 0, at = 0;
+        for (int i = 0; i <= static_cast<int>(points.size()) && at <= line.size(); ++i) {
+            if (i == start) from = at;
+            if (i == cursorPosition.columnIndex) { to = at; break; }
+            if (i == static_cast<int>(points.size())) { to = at; break; }
+            const unsigned char b = static_cast<unsigned char>(line[at]);
+            at += b < 0x80 ? 1 : (b >> 5) == 0x6 ? 2 : (b >> 4) == 0xE ? 3 : (b >> 3) == 0x1E ? 4 : 1;
+        }
+        return to > from ? line.substr(from, to - from) : std::string();
+    }
+
     void UltraCanvasTextArea::ShowAutoComplete(const std::vector<std::string>& suggestions) {
-        // Implementation placeholder
+        if (suggestions.empty() || isReadOnly || !GetWindow()) {
+            HideAutoComplete();
+            return;
+        }
+        const UltraCanvasTheme& theme = UltraCanvasTheme::Current();
+        if (!autoCompleteList) {
+            autoCompleteModel = std::make_shared<UltraCanvasSimpleListModel>();
+            autoCompleteList = std::make_shared<UltraCanvasListView>(GetIdentifier() + "_completion", 0, 0, 240, 100);
+            autoCompleteList->SetModel(autoCompleteModel);
+            autoCompleteList->SetShowHeader(false);
+            auto delegate = std::make_shared<UltraCanvasDefaultListDelegate>();
+            delegate->SetTextPadding(8);
+            delegate->SetFontSize(style.fontStyle.fontSize);
+            delegate->SetTextColor(theme.roles.ink);
+            delegate->SetSelectedTextColor(theme.roles.ink);
+            autoCompleteList->SetDelegate(delegate);
+            autoCompleteList->SetSelection(std::make_shared<UltraCanvasSingleSelection>());
+            ListViewStyle listStyle;
+            listStyle.backgroundColor = theme.roles.raised;
+            listStyle.rowHeight = static_cast<int>(std::ceil(style.fontStyle.fontSize * 1.9f));
+            listStyle.selectionBackgroundColor = theme.roles.accentSoft;
+            listStyle.hoverBackgroundColor = theme.roles.hover;
+            autoCompleteList->SetStyle(listStyle);
+            autoCompleteList->SetBorders(1, theme.roles.lineStrong);
+            autoCompleteList->onItemClicked = [this](int row) { AcceptAutoCompleteRow(row); };
+            autoCompleteList->onItemActivated = [this](int row) { AcceptAutoCompleteRow(row); };
+            autoCompleteList->onPopupClosed = [this](ClosePopupReason) { autoCompleteOpen = false; };
+        }
+        autoCompleteList->SetWindow(GetWindow());
+        autoCompleteItems = suggestions;
+        std::vector<ListItem> rows;
+        rows.reserve(suggestions.size());
+        for (const std::string& suggestion : suggestions) rows.emplace_back(suggestion);
+        autoCompleteModel->SetItems(rows);
+
+        // As wide as the longest suggestion (an estimate from its length), at
+        // most ten rows tall; under the caret's line, or above it near the
+        // window's bottom.
+        size_t longest = 0;
+        for (const std::string& suggestion : suggestions) longest = std::max(longest, suggestion.size());
+        const int rowHeight = autoCompleteList->GetStyle().rowHeight;
+        const int width = std::clamp(static_cast<int>(longest * style.fontStyle.fontSize * 0.62f) + 24, 160, 420);
+        const int height = static_cast<int>(std::min<size_t>(suggestions.size(), 10)) * rowHeight + 2;
+        autoCompleteList->SetElementSize(Size2Df(static_cast<float>(width), static_cast<float>(height)));
+        const Rect2Di caret = LineColumnToCursorPos(cursorPosition);
+        const Point2Df origin = GetPositionInWindow();
+        auto* window = GetWindow();
+        int x = static_cast<int>(origin.x) + std::max(0, caret.x);
+        int y = static_cast<int>(origin.y) + caret.y + std::max(caret.height, 1) + 2;
+        if (y + height > static_cast<int>(window->GetHeight())) y = std::max(0, static_cast<int>(origin.y) + caret.y - height - 2);
+        x = std::max(0, std::min(x, static_cast<int>(window->GetWidth()) - width));
+
+        if (autoCompleteOpen) window->ClosePopup(*autoCompleteList);
+        PopupElementSettings settings;
+        settings.popupOwner = shared_from_this();
+        settings.closeByEscapeKey = true;
+        settings.closeByClickOutside = true;
+        window->OpenPopup(Point2Di(x, y), *autoCompleteList, settings);
+        autoCompleteOpen = true;
+        autoCompleteList->ResetSelection();
+        UCEvent down;
+        down.type = UCEventType::KeyDown;
+        down.virtualKey = UCKeys::Down;
+        autoCompleteList->OnEvent(down);       // the first suggestion highlighted
+        RequestRedraw();
     }
 
     void UltraCanvasTextArea::HideAutoComplete() {
-        // Implementation placeholder
+        if (!autoCompleteOpen) return;
+        autoCompleteOpen = false;
+        if (autoCompleteList && GetWindow()) GetWindow()->ClosePopup(*autoCompleteList);
     }
 
     void UltraCanvasTextArea::AcceptAutoComplete() {
-        // Implementation placeholder
+        if (!autoCompleteOpen || !autoCompleteList) return;
+        const IListSelection* selection = autoCompleteList->GetSelection();
+        const std::vector<int> rows = selection ? selection->GetSelectedRows() : std::vector<int>();
+        AcceptAutoCompleteRow(rows.empty() ? 0 : rows.front());
+    }
+
+    void UltraCanvasTextArea::AcceptAutoCompleteRow(int row) {
+        if (row < 0 || row >= static_cast<int>(autoCompleteItems.size())) return;
+        // A copy: the edit below calls onTextChanged, which may show a new list.
+        const std::string chosen = autoCompleteItems[static_cast<size_t>(row)];
+        HideAutoComplete();
+        const int start = AutoCompleteWordStart();
+        if (start < 0) return;
+        SetSelection(LineColumnIndex{cursorPosition.lineIndex, start}, cursorPosition);
+        InsertText(chosen);
+        SetFocus(true);
+        RequestRedraw();
+    }
+
+    bool UltraCanvasTextArea::HandleAutoCompleteKey(const UCEvent& event) {
+        if (!autoCompleteOpen || event.type != UCEventType::KeyDown || event.ctrl || event.alt) return false;
+        switch (event.virtualKey) {
+            case UCKeys::Up:
+            case UCKeys::Down:
+            case UCKeys::PageUp:
+            case UCKeys::PageDown:
+                if (autoCompleteList) autoCompleteList->OnEvent(event);
+                return true;
+            case UCKeys::Return:
+            case UCKeys::Tab:
+                if (event.shift) return false;
+                AcceptAutoComplete();
+                return true;
+            case UCKeys::Escape:
+                HideAutoComplete();
+                return true;
+            default:
+                return false;
+        }
     }
 
 // ===== BRACKET MATCHING =====

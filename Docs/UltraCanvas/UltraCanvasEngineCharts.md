@@ -45,8 +45,8 @@ compared before the switch.
   usual `(id, x, y, w, h)` constructor (position and size default to 0, for a
   chart sized by its layout).
 
-**Version:** 1.0.0
-**Last Modified:** 2026-10-20
+**Version:** 1.1.0 (`SetValueAtLeast` on the line family)
+**Last Modified:** 2026-10-24
 **Author:** UltraCanvas Framework
 **Namespace:** `UltraCanvas`
 
@@ -105,7 +105,11 @@ chart->SetMode(EngineLineChartMode::Area);       // Line, Area, StackedArea, Per
 ```
 
 `SetXValues` replaces the categories with a numeric domain. A NaN value is a
-gap (`SetBridgeGaps(true)` joins across it). Under `ChartProjectionKind::Polar`
+gap (`SetBridgeGaps(true)` joins across it). `SetValueAtLeast(5)` keeps the
+value axis reaching at least 5 whatever the data - a live chart of a quiet
+server's rates then reads 0 to 5 rather than an axis fitted to a flat zero; a
+live chart also turns off the rise from the base on every update
+(`SetAnimateOnDataChange(false)`). Under `ChartProjectionKind::Polar`
 the categories go round the circle and the series closes into a loop.
 
 A cumulative flow diagram is the `StackedArea` mode with the first series on

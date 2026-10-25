@@ -21,6 +21,21 @@
 //             engine knows of each; "" where it keeps nothing.
 //   Sizes     kind ("database" or "table"), name (a table as schema.table),
 //             bytes, data_bytes, index_bytes (Int; NULL where unknown).
+//   Status    name, value (Int), counter (Boolean) - one row per measure
+//             the engine keeps, for a monitor to sample: a counter only
+//             grows from the server's start (its rate is what to chart), a
+//             gauge is what it is now. The names:
+//               connections    sessions connected (gauge)
+//               active         sessions running a statement, not counting
+//                              the one asking (gauge)
+//               queries        statements clients sent (MySQL / MariaDB)
+//               transactions   commits and rollbacks
+//               rows_read      rows read - PostgreSQL's returned, InnoDB's
+//                              read (MariaDB 10.6 and later: every engine's)
+//               rows_written   rows inserted, updated and deleted (likewise)
+//               cache_reads    pages asked of the buffer cache
+//               disk_reads     those of them read from disk
+//               bytes_received / bytes_sent  client traffic (MySQL / MariaDB)
 //
 // doc-check: example
 //   #include <UltraDatabase/UltraDatabase.h>
@@ -36,6 +51,7 @@
 //           }
 //   }
 //
+// Version: 0.2.0 - the server's status, for a monitor (UltraDb_ServerStatus)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -58,6 +74,10 @@ UltraDbResult UltraDb_ServerSettings(const std::string& connection, const std::s
 // largest first.
 UltraDbResult UltraDb_ServerSizes(const std::string& connection, const std::string& schema,
                                   UltraDbResultSet& out);
+
+// The server's status now: one row per measure it keeps (Status above).
+// Sampled every few seconds, the counters' differences are its load.
+UltraDbResult UltraDb_ServerStatus(const std::string& connection, UltraDbResultSet& out);
 
 // The statement that stops session `id`'s running query - or, with
 // `endSession`, ends the session - as UltraDb_StopSession runs it: for a

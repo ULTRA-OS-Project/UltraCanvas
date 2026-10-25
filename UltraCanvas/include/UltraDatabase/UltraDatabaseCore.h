@@ -2,6 +2,7 @@
 // Stage 1 subset of the UltraDatabase module: handles, result type,
 // connection configuration, and the version/driver-registry entrypoints.
 // Full surface specified in Docs/Modules/UltraDatabase/README.md.
+// Version: 0.2.0 - HostKeyUnknown, HostKeyChanged, UltraDbResult::hostKeyFingerprint (SSH tunnels)
 // Version: 0.1.0 (Stage 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -36,7 +37,12 @@ enum class UltraDbResultCode {
     Unsupported,
     Internal,
     Unknown,
-    Cancelled                 // stopped by UltraDb_CancelQuery
+    Cancelled,                // stopped by UltraDb_CancelQuery
+    // An SSH tunnel's bastion (UltraDatabaseTunnel.h) whose host key nobody
+    // trusted yet - UltraDbResult::hostKeyFingerprint is the key, for the user
+    // to accept - or one that differs from the key trusted, never accepted.
+    HostKeyUnknown,
+    HostKeyChanged
 };
 
 // Returned by every blocking UltraDb_* call. Operator bool() reports success
@@ -51,6 +57,7 @@ struct UltraDbResult {
     int64_t           affectedRows = 0; // rows this INSERT/UPDATE/DELETE changed (not its triggers'); 0 for any other statement
     int64_t           lastInsertId = 0; // the row id this INSERT gave, if any; 0 when the statement inserted nothing
     double            processingTimeMs = 0.0;
+    std::string       hostKeyFingerprint; // HostKeyUnknown / HostKeyChanged: the bastion's key, "SHA256:..."
 
     explicit operator bool() const { return success; }
 

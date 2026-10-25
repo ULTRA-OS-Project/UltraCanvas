@@ -29,6 +29,7 @@
 // Built only when libmariadb is present (ULTRADATABASE_HAS_MYSQL); without it
 // the driver is not registered, and opening a "mysql" connection says the
 // driver is missing.
+// Version: 0.2.0 - through an SSH tunnel (VerifyFull refused there: Connector/C checks the address)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -643,6 +644,9 @@ public:
     UltraDbResult ServerSizes(const std::string& schema, UltraDbResultSet& out) override {
         return ultradb_internal::MysqlServerSizes(*this, schema, out);
     }
+    UltraDbResult ServerStatus(UltraDbResultSet& out) override {
+        return ultradb_internal::MysqlServerStatus(*this, out);
+    }
     UltraDbResult StopSessionSql(int64_t id, bool endSession, std::string& sql) override {
         sql = ultradb_internal::MysqlStopSessionSql(id, endSession);
         return UltraDbResult::Ok();
@@ -884,6 +888,22 @@ class MysqlDriver : public IUltraDbDriverPlugin {
 public:
     std::string GetName() const override { return "MySQL / MariaDB (MariaDB Connector/C)"; }
     std::vector<std::string> GetDriverIds() const override { return { "mysql", "mariadb" }; }
+
+    int DefaultPort() const override { return 3306; }
+
+    // Connector/C checks a certificate against the address it connects to -
+    // 127.0.0.1 through a tunnel - and has no way to name another: VerifyFull
+    // would fail on every certificate issued for the database's name.
+    UltraDbResult ThroughTunnel(UltraDbConnectionConfig& config, int localPort) const override {
+        if (config.tls == UltraDbTls::VerifyFull)
+            return UltraDbResult::Error(UltraDbResultCode::Unsupported,
+                                        "through an SSH tunnel MySQL can check no certificate against the "
+                                        "database's name: choose TLS without verification (Require), or none",
+                                        kDriverId);
+        config.host = "127.0.0.1";
+        config.port = localPort;
+        return UltraDbResult::Ok();
+    }
 
     std::unique_ptr<IUltraDbConnection> Open(const UltraDbConnectionConfig& config, UltraDbResult& error) override {
         MYSQL* conn = OpenSession(config, true, error);

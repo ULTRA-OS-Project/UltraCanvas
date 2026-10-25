@@ -18,7 +18,7 @@ the app code hard-codes.
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 84 tests, the PostgreSQL and MySQL
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 87 tests, the PostgreSQL and MySQL
 > ones against a live server where one is configured). The **PostgreSQL**
 > driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
 > libpq is found at configure time; it takes `?` placeholders, verifies TLS by
@@ -345,6 +345,7 @@ UltraDb_ServerSessions("crm", rows);          // id, user, database, application
                                               // state, running (s), waiting, query, this_session
 UltraDb_ServerSettings("crm", "mem", rows);   // name, value, unit, category, description, source
 UltraDb_ServerSizes("crm", "public", rows);   // kind, name, bytes, data_bytes, index_bytes
+UltraDb_ServerStatus("crm", rows);            // name, value, counter - for a monitor to sample
 
 std::string sql;                              // what a confirmation shows first:
 UltraDb_StopSessionSql("crm", id, false, sql);  // SELECT pg_cancel_backend(42) / KILL QUERY 42
@@ -357,6 +358,109 @@ the name or the description in any case, `%` and `_` typed in it taken as
 themselves. MySQL's settings come from `performance_schema` (with where each
 value came from), MariaDB's from `information_schema.SYSTEM_VARIABLES` (with
 a description for each).
+
+`UltraDb_ServerStatus` is what a monitor samples every few seconds: a row per
+measure the engine keeps, each a gauge (`connections`, `active` - not
+counting the asking session) or a counter that only grows (`queries`,
+`transactions`, `rows_read`, `rows_written`, `cache_reads`, `disk_reads`,
+`bytes_received`, `bytes_sent`); the differences of two readings are the
+server's load. PostgreSQL's come from `pg_stat_activity` and
+`pg_stat_database` summed over its databases (no statement count or traffic
+there), MySQL's and MariaDB's from `SHOW GLOBAL STATUS` - InnoDB's row
+counts, or on MariaDB 10.6 and later, which keeps none, the handler's.
+
+### SSH tunnels
+
+A server behind a bastion - only the bastion's SSH port open - is reached
+through an SSH tunnel (`UltraDatabaseTunnel.h`, the proposal's G9). The
+connection's options name the bastion; `host` and `port` stay the
+database's, as the bastion reaches it. When the connection opens, the tunnel
+opens first, and the driver connects through it; every session the driver
+opens for the connection (a MySQL cursor's, a cancel's) goes through the same
+tunnel, and the tunnel closes with the connection.
+
+```cpp
+UltraDb_UseUltraNetSshTunnels();                       // once: UltraDatabaseSshTunnel.h
+
+cfg.host = "db.internal";                              // as the bastion reaches it
+cfg.options["ssh_host"] = "bastion.example.com";
+cfg.options["ssh_user"] = "deploy";
+cfg.options["ssh_credentials"] = "vault:crm.ssh";      // a password or a private key, in UltraVault
+cfg.options["ssh_key_passphrase"] = "vault:crm.ssh-passphrase";
+cfg.options["ssh_host_key"] = "SHA256:Rf5Z...";        // trusted; "": known_hosts decides
+```
+
+The module opens no socket itself: the application installs an opener once
+(`UltraDb_SetTunnelOpener`). `UltraDatabaseSshTunnel.h` is one over UltraNet's
+SSH plug-in, header-only, so UltraDatabase links no network library and only
+a program that includes it carries the bridge. The secrets are read from
+UltraVault by the module, handed to the opener and wiped. An unknown bastion
+key fails the connection with `HostKeyUnknown` and the key in
+`UltraDbResult::hostKeyFingerprint` - for the user to compare and trust - and
+a changed one with `HostKeyChanged`; neither is ever accepted on its own.
+
+Through the tunnel the driver connects to 127.0.0.1 (`ThroughTunnel` on the
+driver): PostgreSQL as `hostaddr`, with the certificate still checked against
+`host`; MySQL's Connector/C can check a certificate only against the address
+it connects to, so `VerifyFull` through a tunnel is refused with that reason
+(`Require`, or no TLS, is the choice there - the SSH tunnel itself encrypts
+the way to the bastion). A tunnel to SQLite, or to a socket, is refused.
+
+### Through a relay
+
+An application that cannot reach a database itself - a page in a browser,
+which opens no TCP connection and must hold no password - reaches it
+through a relay on the database's side (`UltraDatabaseRelay.h`): the
+`relay` driver sends every call of a connection there, and the relay runs
+it on a connection configured on its own side and answers. Queries,
+scripts, cursors, cancelling, introspection and server administration all
+go through it unchanged, so an application written against UltraDatabase
+works through a relay as it is.
+
+```cpp
+UltraDb_UseUltraNetRelay();                            // once: UltraDatabaseRelayUltraNet.h
+
+UltraDbConnectionConfig cfg;
+cfg.name = "crm";
+cfg.driver = "relay";
+cfg.host = "wss://db.example.com/relay";               // the relay
+cfg.database = "crm";                                  // a connection it offers, by name
+cfg.options["relay_token"] = token;                    // the user's token
+UltraDb_RegisterConnection(cfg);
+
+std::vector<UltraDbRelayConnection> offered;           // what this token may open
+UltraDb_RelayConnections("wss://db.example.com/relay", token, offered);
+```
+
+The transport is the application's (`UltraDb_SetRelayConnector`):
+`UltraDatabaseRelayUltraNet.h`, header-only, is one over UltraNet's
+WebSocket (it needs a libcurl built with WebSocket support - 7.86 or later,
+`ws` among its protocols); a browser build passes one over Emscripten's
+WebSocket. The wire format is JSON text, one request and one answer per
+message, matched by `id`, so a cancel goes out while a query waits.
+
+The other side is `UltraDbRelayServer`: it is given the connections it
+offers by name - the client cannot name a host, so the relay is no proxy
+into the network - and its users by the SHA-256 of their tokens
+(`UltraDb_RelayTokenHash`), each with *read* or *write* access to each
+connection; *read* opens the connection in the driver's read-only mode, so
+the database refuses a change whatever the client sends. Its limits
+(`UltraDbRelayLimits`) cap the rows of a page and of a result, the requests
+a minute and the sessions of a user, and how long a request may run: a
+query, a script or a cursor's page still running after
+`statementTimeoutSeconds` (300 by default) is stopped - a watchdog thread
+cancels the session's own connection, which works on every engine - and
+answered `Cancelled`, saying why. Every statement it runs reaches the audit
+callback with the user and the address that ran it. It answers requests and
+opens no socket: the listener and TLS around it are the program's
+(`Apps/UltraDBAdmin/relay`).
+
+Besides the tokens, a program may sign its users in its own way:
+`SetSignIn(label, check)` gives the server a callback asked about a token no
+user's hash matches - the relay program's OpenID Connect sign-in hands out
+tickets and knows them - and a label clients show; a client asks
+`UltraDb_RelaySignInOffer(url, label)` what sign-in a relay offers before it
+has any token.
 
 ---
 
@@ -421,13 +525,18 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseTransaction.h    Begin / Commit / Rollback
 │   ├── UltraDatabaseMigrate.h        versioned schema migrations
 │   ├── UltraDatabaseSchema.h         introspection, quoting names
-│   ├── UltraDatabaseServer.h         sessions, settings, sizes, stopping a session
+│   ├── UltraDatabaseServer.h         sessions, settings, sizes, status, stopping a session
+│   ├── UltraDatabaseTunnel.h         SSH tunnels: the options, the opener seam
+│   ├── UltraDatabaseSshTunnel.h      the opener over UltraNet's SSH plug-in (header-only)
+│   ├── UltraDatabaseRelay.h          the relay driver's seam, UltraDbRelayServer
+│   ├── UltraDatabaseRelayUltraNet.h  the relay's transport over UltraNet's WebSocket (header-only)
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
 ├── core/UltraDatabase/               (.cpp implementations)
 │   ├── UltraDatabaseSqlite*.cpp      the SQLite driver and its introspection
 │   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
 │   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
-│   └── UltraDatabaseServerViews.cpp  server administration for both server engines
+│   ├── UltraDatabaseServerViews.cpp  server administration for both server engines
+│   └── UltraDatabaseRelay*.cpp       the relay: its JSON wire format, the client driver, the server
 ├── OS/<Platform>/UltraDatabaseSupport.cpp
 └── Plugins/UltraDatabase/            (later drivers as loadable plug-ins)
     ├── mssql/
@@ -492,7 +601,9 @@ headless data module usable from any ULTRA OS process.
 | Streaming cursors, per-statement scripts, cancelling | Implemented (SQLite, PostgreSQL, MySQL / MariaDB) |
 | Server administration (`UltraDatabaseServer.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
-| Test suite (84 tests) | Passing |
+| SSH tunnels (`UltraDatabaseTunnel.h`, `UltraDatabaseSshTunnel.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
+| Relay (`UltraDatabaseRelay.h`: the `relay` driver, `UltraDbRelayServer` with its limits and statement time-out, a program's own sign-in, `UltraDatabaseRelayUltraNet.h`) | Implemented |
+| Test suite (94 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |

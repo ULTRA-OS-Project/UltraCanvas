@@ -13,6 +13,8 @@ set(ULTRADATABASE_TEST_SOURCES
     test_observer.cpp
     test_mysql.cpp
     test_server.cpp
+    test_tunnel.cpp
+    test_relay.cpp
 )
 
 add_executable(UltraDatabaseTests ${ULTRADATABASE_TEST_SOURCES})

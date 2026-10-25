@@ -1,12 +1,20 @@
 // Apps/UltraDBAdmin/main.cpp
 // UltraDBAdmin - browse and query the databases UltraDatabase reaches, SQLite
-// files and PostgreSQL servers, in the spirit of phpMyAdmin
+// files, PostgreSQL and MySQL / MariaDB servers - directly or through an SSH
+// tunnel - in the spirit of phpMyAdmin
 // (Docs/Research/UltraDBAdminDesignProposal.md). This is the application:
 // the single-instance claim, the window, the event loop. The window is
 // ui/DbAdminWindow; what needs no window is in engine/.
 //
 // One window per user: a second start brings the running one forward and
 // quits (UltraCanvasSingleInstance.h).
+//
+// Built for the browser (Emscripten, ULTRADBADMIN_WEB) the same window is a
+// page: it reaches its databases through the relay the page came from
+// (web/DbAdminRelayWeb.h) and asks for the user's token first; no file, no
+// server and no password of its own.
+// Version: 0.3.0 - relay connections (UltraDatabaseRelayUltraNet.h); the browser build
+// Version: 0.2.0 - SSH tunnels through UltraNet (UltraDatabaseSshTunnel.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/DbAdminTheme.h"
@@ -20,6 +28,15 @@
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasSingleInstance.h"
 #include "UltraCanvasUtils.h"
+#if defined(ULTRADBADMIN_WEB)
+#include "web/DbAdminRelayWeb.h"
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+#include "UltraCanvasVectorFormatsPlugin.h"
+#endif
+#else
+#include <UltraDatabase/UltraDatabaseRelayUltraNet.h>
+#include <UltraDatabase/UltraDatabaseSshTunnel.h>
+#endif
 
 #include <csignal>
 #include <cstdio>
@@ -42,6 +59,7 @@
 
 using namespace UltraCanvas;
 
+#if !defined(ULTRADBADMIN_WEB)
 namespace {
 
 // Ctrl-C and SIGTERM: one flag store, nothing else - a handler may not log,
@@ -51,7 +69,7 @@ void SignalHandler(int) { UltraCanvasApplicationBase::RequestExitFromSignal(); }
 
 void PrintUsage(const char* programName) {
     std::printf(
-        "UltraDBAdmin - browse and query SQLite files and PostgreSQL servers\n"
+        "UltraDBAdmin - browse and query SQLite files, PostgreSQL and MySQL / MariaDB servers\n"
         "Powered by the UltraCanvas framework\n"
         "\n"
         "Usage: %s [options]\n"
@@ -66,7 +84,34 @@ void PrintUsage(const char* programName) {
 }
 
 } // namespace
+#endif
 
+#if defined(ULTRADBADMIN_WEB)
+int main(int, char*[]) {
+    // Static lifetimes: in the browser Run() hands the loop to the page and
+    // never returns, and the window must outlive main().
+    static UltraCanvasApplication app;
+    if (!app.Initialize("UltraDBAdmin")) {
+        debugOutput << "Failed to initialize the UltraCanvas application" << std::endl;
+        return EXIT_FAILURE;
+    }
+    // The icons are SVG, which the browser's libvips cannot read: the Vector
+    // plugin reads them.
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+    RegisterVectorFormatsPlugin();
+#endif
+    UltraCanvasTheme::SetCurrent(UltraDBAdmin::AppTheme());
+    UltraDBAdmin::UseBrowserRelay();
+    static UltraDBAdmin::DbAdminWindow window;
+    if (!window.Initialize(std::string())) {   // nothing kept: the relay is the list
+        debugOutput << "Failed to create the UltraDBAdmin window" << std::endl;
+        return EXIT_FAILURE;
+    }
+    window.Show();
+    app.Run();
+    return EXIT_SUCCESS;
+}
+#else
 int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "-h") || !std::strcmp(argv[i], "--help")) {
@@ -112,6 +157,10 @@ int main(int argc, char* argv[]) {
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
         // Before the window: its elements are styled from the theme as they are made.
         UltraCanvasTheme::SetCurrent(UltraDBAdmin::AppTheme());
+        // A connection behind a bastion reaches its server through UltraNet's
+        // SSH plug-in, and a relay's connections through its WebSocket.
+        UltraDb_UseUltraNetSshTunnels();
+        UltraDb_UseUltraNetRelay();
 
         UltraDBAdmin::DbAdminWindow window;
         if (!window.Initialize(UltraDBAdmin::DataDirectory())) {
@@ -128,3 +177,4 @@ int main(int argc, char* argv[]) {
     }
     return EXIT_SUCCESS;
 }
+#endif

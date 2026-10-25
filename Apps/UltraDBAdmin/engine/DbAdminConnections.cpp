@@ -1,4 +1,6 @@
 // Apps/UltraDBAdmin/engine/DbAdminConnections.cpp
+// Version: 0.5.0 - relay connections (UltraDatabaseRelay.h); without a vault, secrets in memory
+// Version: 0.4.0 - SSH tunnels: the bastion in the list, its secrets in the vault
 // Version: 0.3.0 - EngineOf
 // Version: 0.2.0 - auto-commit per connection
 // Version: 0.1.0
@@ -7,10 +9,14 @@
 
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraCanvasPathUtf8.h"
+#if !defined(ULTRADBADMIN_NO_VAULT)
 #include <UltraVault/UltraVault.h>
 #include <UltraVault/UltraVaultDeviceKeyVault.h>
+#endif
 
 #include <algorithm>
+#include <map>
+#include <mutex>
 #include <cstdio>
 #include <filesystem>
 #include <random>
@@ -59,6 +65,16 @@ JSONValue ToJson(const ConnectionSpec& s) {
     o.Set("readOnly", s.readOnly);
     o.Set("production", s.production);
     o.Set("autoCommit", s.autoCommit);
+    if (s.IsRelay()) o.Set("relayEngine", s.relayEngine);
+    if (s.UsesTunnel()) {
+        o.Set("sshHost", s.sshHost);
+        o.Set("sshPort", s.sshPort);
+        o.Set("sshUser", s.sshUser);
+        o.Set("sshAuth", s.sshAuth);
+        o.Set("hasSshSecret", s.hasSshSecret);
+        o.Set("hasSshPassphrase", s.hasSshPassphrase);
+        o.Set("sshHostKey", s.sshHostKey);
+    }
     return o;
 }
 
@@ -76,8 +92,53 @@ ConnectionSpec FromJson(const JSONValue& o) {
     s.readOnly    = o["readOnly"].GetBoolean(false);
     s.production  = o["production"].GetBoolean(false);
     s.autoCommit  = o["autoCommit"].GetBoolean(false);
+    s.sshHost          = o["sshHost"].GetString();
+    s.sshPort          = static_cast<int>(o["sshPort"].GetInteger(0));
+    s.sshUser          = o["sshUser"].GetString();
+    s.sshAuth          = o["sshAuth"].GetString("agent");
+    s.hasSshSecret     = o["hasSshSecret"].GetBoolean(false);
+    s.hasSshPassphrase = o["hasSshPassphrase"].GetBoolean(false);
+    s.sshHostKey       = o["sshHostKey"].GetString();
+    s.relayEngine      = o["relayEngine"].GetString();
     return s;
 }
+
+// The vault entries of one connection, after kKeyPrefix: the database
+// password under its id, the SSH secrets beside it.
+std::string SshSecretId(const std::string& id) { return id + ".ssh"; }
+std::string SshPassphraseId(const std::string& id) { return id + ".ssh-passphrase"; }
+
+// The secrets, by their full key (kKeyPrefix + entry): in UltraVault, or -
+// built without one - in memory for the session.
+#if defined(ULTRADBADMIN_NO_VAULT)
+std::mutex& SecretsMutex() { static std::mutex m; return m; }
+std::map<std::string, std::string>& Secrets() { static std::map<std::string, std::string> s; return s; }
+bool SecretPut(const std::string& key, const std::string& value) {
+    std::lock_guard<std::mutex> lock(SecretsMutex());
+    Secrets()[key] = value;
+    return true;
+}
+void SecretDelete(const std::string& key) {
+    std::lock_guard<std::mutex> lock(SecretsMutex());
+    Secrets().erase(key);
+}
+bool SecretGet(const std::string& key, std::string& out) {
+    std::lock_guard<std::mutex> lock(SecretsMutex());
+    const auto it = Secrets().find(key);
+    if (it == Secrets().end()) return false;
+    out = it->second;
+    return true;
+}
+#else
+bool SecretGet(const std::string& key, std::string& out) {
+    UltraVault::SecretValue secret;
+    if (!UltraVault::Get(key, secret)) return false;
+    out.assign(secret.bytes.begin(), secret.bytes.end());
+    volatile uint8_t* b = secret.bytes.data();
+    for (size_t i = 0; i < secret.bytes.size(); ++i) b[i] = 0;
+    return true;
+}
+#endif
 
 } // namespace
 
@@ -104,6 +165,7 @@ SqlEngine EngineOf(const ConnectionSpec& spec) {
 }
 
 std::string Describe(const ConnectionSpec& spec) {
+    if (spec.IsRelay()) return spec.database + " on " + spec.host;
     if (spec.IsSqlite()) {
         const std::string file = PathToUtf8(PathFromUtf8(spec.database).filename());
         return file.empty() ? spec.database : file;
@@ -113,6 +175,9 @@ std::string Describe(const ConnectionSpec& spec) {
     text += spec.host.empty() ? std::string("localhost") : spec.host;
     if (spec.port > 0) text += ":" + std::to_string(spec.port);
     text += "/" + spec.database;
+    if (spec.UsesTunnel())
+        text += " via " + (spec.sshUser.empty() ? std::string() : spec.sshUser + "@") + spec.sshHost +
+                (spec.sshPort > 0 && spec.sshPort != 22 ? ":" + std::to_string(spec.sshPort) : std::string());
     return text;
 }
 
@@ -136,6 +201,9 @@ bool ConnectionStore::Open(const std::string& directory, std::string& error) {
             if (!spec.id.empty()) specs_.push_back(std::move(spec));
         }
     }
+#if defined(ULTRADBADMIN_NO_VAULT)
+    memoryVault_ = true;
+#else
     // The vault: an encrypted file in a directory of its own, unlocked by a
     // device key next to it (no prompt), as UltraMail and UltraPress keep theirs.
     vault_ = std::make_unique<UltraVault::DeviceKeyVault>(
@@ -146,15 +214,18 @@ bool ConnectionStore::Open(const std::string& directory, std::string& error) {
                 UltraVault::DeviceKeyVault::DescribeUnlockStatus(vault_->GetLastUnlockStatus());
         return false;
     }
+#endif
     return true;
 }
 
 void ConnectionStore::OpenInMemory() {
     file_.clear();
     specs_.clear();
-    vault_.reset();
     memoryVault_ = true;
+#if !defined(ULTRADBADMIN_NO_VAULT)
+    vault_.reset();
     UltraVault::Initialize();   // the memory backend, unless the process already has one
+#endif
 }
 
 const ConnectionSpec* ConnectionStore::Find(const std::string& id) const {
@@ -173,21 +244,49 @@ std::string ConnectionStore::NewId() {
 
 std::string ConnectionStore::Put(ConnectionSpec spec, const std::string& password,
                                  bool clearPassword, std::string& error) {
+    SecretChanges secrets;
+    secrets.password = password;
+    secrets.clearPassword = clearPassword;
+    return Put(std::move(spec), secrets, error);
+}
+
+std::string ConnectionStore::Put(ConnectionSpec spec, const SecretChanges& secrets, std::string& error) {
     if (spec.id.empty()) spec.id = NewId();
-    const std::string key = kKeyPrefix + spec.id;
-    if (!password.empty()) {
-        const bool stored = vault_ ? vault_->Store(spec.id, password)
-                                   : UltraVault::Put(key, UltraVault::SecretValue::FromString(password)).IsOk();
-        if (!stored) {
-            error = "the password could not be stored in the vault";
-            return std::string();
+    // One vault entry: stored, removed or left as it is; `has` follows.
+    auto change = [&](const std::string& id, const std::string& value, bool clear, bool& has,
+                      const char* what) {
+        if (!value.empty()) {
+#if defined(ULTRADBADMIN_NO_VAULT)
+            const bool stored = SecretPut(kKeyPrefix + id, value);
+#else
+            const bool stored = vault_ ? vault_->Store(id, value)
+                                       : UltraVault::Put(kKeyPrefix + id, UltraVault::SecretValue::FromString(value)).IsOk();
+#endif
+            if (!stored) {
+                error = std::string("the ") + what + " could not be stored in the vault";
+                return false;
+            }
+            has = true;
+        } else if (clear) {
+#if defined(ULTRADBADMIN_NO_VAULT)
+            SecretDelete(kKeyPrefix + id);
+#else
+            if (vault_) vault_->Remove(id);
+            else UltraVault::Delete(kKeyPrefix + id);
+#endif
+            has = false;
         }
-        spec.hasPassword = true;
-    } else if (clearPassword) {
-        if (vault_) vault_->Remove(spec.id);
-        else UltraVault::Delete(key);
-        spec.hasPassword = false;
-    }
+        return true;
+    };
+    // No tunnel: no SSH secrets kept for one.
+    const bool tunnel = spec.UsesTunnel();
+    if (!change(spec.id, secrets.password, secrets.clearPassword, spec.hasPassword, "password") ||
+        !change(SshSecretId(spec.id), tunnel ? secrets.sshSecret : std::string(),
+                tunnel ? secrets.clearSshSecret : spec.hasSshSecret, spec.hasSshSecret, "SSH password or key") ||
+        !change(SshPassphraseId(spec.id), tunnel ? secrets.sshPassphrase : std::string(),
+                tunnel ? secrets.clearSshPassphrase : spec.hasSshPassphrase, spec.hasSshPassphrase,
+                "SSH key's passphrase"))
+        return std::string();
     auto it = std::find_if(specs_.begin(), specs_.end(),
                            [&](const ConnectionSpec& s) { return s.id == spec.id; });
     if (it != specs_.end()) *it = spec;
@@ -200,8 +299,14 @@ bool ConnectionStore::Remove(const std::string& id, std::string& error) {
     auto it = std::find_if(specs_.begin(), specs_.end(),
                            [&](const ConnectionSpec& s) { return s.id == id; });
     if (it == specs_.end()) return true;
-    if (vault_) vault_->Remove(id);
-    else UltraVault::Delete(kKeyPrefix + id);
+    for (const std::string& entry : {id, SshSecretId(id), SshPassphraseId(id)}) {
+#if defined(ULTRADBADMIN_NO_VAULT)
+        SecretDelete(kKeyPrefix + entry);
+#else
+        if (vault_) vault_->Remove(entry);
+        else UltraVault::Delete(kKeyPrefix + entry);
+#endif
+    }
     UltraDb_CloseConnection(RegisteredName(*it));
     UltraDb_CloseConnection(ConsoleName(*it));
     specs_.erase(it);
@@ -214,6 +319,17 @@ namespace {
 UltraDbResult RegisterSession(const ConnectionSpec& spec, const std::string& name) {
     UltraDbConnectionConfig cfg;
     cfg.name     = name;
+    if (spec.IsRelay()) {
+        // The relay holds the database's password; the app holds only the
+        // token, which goes with the registration (the relay driver reads
+        // no vault).
+        cfg.driver = "relay";
+        cfg.host = spec.host;
+        cfg.database = spec.database;
+        std::string token;
+        if (spec.hasPassword && SecretGet(kKeyPrefix + spec.id, token)) cfg.options["relay_token"] = token;
+        return UltraDb_RegisterConnection(cfg);
+    }
     cfg.driver   = spec.driver;
     cfg.database = spec.database;
     cfg.host     = spec.host;
@@ -223,6 +339,15 @@ UltraDbResult RegisterSession(const ConnectionSpec& spec, const std::string& nam
     cfg.readOnly = spec.readOnly;
     // Only the vault key travels; the driver reads the password itself.
     if (spec.hasPassword) cfg.credentials = std::string("vault:") + kKeyPrefix + spec.id;
+    if (spec.UsesTunnel()) {
+        cfg.options["ssh_host"] = spec.sshHost;
+        if (spec.sshPort > 0) cfg.options["ssh_port"] = std::to_string(spec.sshPort);
+        if (!spec.sshUser.empty()) cfg.options["ssh_user"] = spec.sshUser;
+        if (spec.hasSshSecret) cfg.options["ssh_credentials"] = std::string("vault:") + kKeyPrefix + SshSecretId(spec.id);
+        if (spec.hasSshPassphrase)
+            cfg.options["ssh_key_passphrase"] = std::string("vault:") + kKeyPrefix + SshPassphraseId(spec.id);
+        if (!spec.sshHostKey.empty()) cfg.options["ssh_host_key"] = spec.sshHostKey;
+    }
     return UltraDb_RegisterConnection(cfg);
 }
 
