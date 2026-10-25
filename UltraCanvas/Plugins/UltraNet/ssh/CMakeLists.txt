@@ -25,6 +25,10 @@ target_include_directories(UltraNetSshPlugin PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
     ${LIBSSH_INCLUDE})
 target_link_libraries(UltraNetSshPlugin PRIVATE ${LIBSSH_LIB})
+# The tunnel listens and copies bytes on sockets of its own (Winsock on Windows).
+if(WIN32)
+    target_link_libraries(UltraNetSshPlugin PRIVATE ws2_32)
+endif()
 
 set_target_properties(UltraNetSshPlugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/Plugins/UltraNet)

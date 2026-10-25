@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminRowDialog.cpp
+// Version: 0.4.0 - how the form works under its buttons
 // Version: 0.3.0 - a staged new row opened again with its values
 // Version: 0.2.0 - a field per type, NULL / Default / a value function per column, checked before staging
 // Version: 0.1.0
@@ -129,12 +130,6 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
     dialog->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
 
-    auto intro = CreateLabel("dbrIntro", 0, 0, 0, 36,
-                             adding ? "Each column takes a value, NULL, its default or one of the database's "
-                                      "functions. An empty field is empty text."
-                                    : "The change is staged: Commit in Browse writes it, Revert drops it.");
-    intro->SetWrap(TextWrap::WrapWord);
-    dialog->AddChild(intro);
 
     // The form scrolls when the table has more columns than fit.
     auto scroll = CreateContainer("dbrScroll", 0, 0, 0, 0);
@@ -266,6 +261,15 @@ void ShowRowDialog(UltraCanvasWindowBase* parent, const UltraDbTableSchema& tabl
     save->SetOnClick([form]() { Save(*form); });
     buttons->AddChild(save);
     dialog->AddChild(buttons);
+    // How the form works, under the buttons: the fields come first.
+    auto intro = CreateLabel("dbrIntro", 0, 0, 0, 36,
+                             adding ? "Each column takes a value, NULL, its default or one of the database's "
+                                      "functions. An empty field is empty text."
+                                    : "The change is staged: Commit in Browse writes it, Revert drops it.");
+    intro->SetWrap(TextWrap::WrapWord);
+    intro->SetTextColor(StatusColor());
+    intro->layoutItem.SetFlexShrink(0);
+    dialog->AddChild(intro);
 
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }

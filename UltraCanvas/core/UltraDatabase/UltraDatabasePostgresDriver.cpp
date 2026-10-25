@@ -28,6 +28,7 @@
 // the driver is simply not registered and an attempt to open a "postgresql"
 // connection reports that the driver is missing, which is a true answer rather
 // than a link error.
+// Version: 0.5.0 - through an SSH tunnel: hostaddr 127.0.0.1, the certificate checked against host
 // Version: 0.4.0 - server administration (sessions, settings, sizes)
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -344,6 +345,9 @@ public:
     }
     UltraDbResult ServerSizes(const std::string& schema, UltraDbResultSet& out) override {
         return ultradb_internal::PostgresServerSizes(*this, schema, out);
+    }
+    UltraDbResult ServerStatus(UltraDbResultSet& out) override {
+        return ultradb_internal::PostgresServerStatus(*this, out);
     }
     UltraDbResult StopSessionSql(int64_t id, bool endSession, std::string& sql) override {
         sql = ultradb_internal::PostgresStopSessionSql(id, endSession);
@@ -838,6 +842,17 @@ public:
 
     std::vector<std::string> GetDriverIds() const override {
         return { "postgresql", "postgres", "pgsql" };
+    }
+
+    int DefaultPort() const override { return 5432; }
+
+    // libpq connects to `hostaddr` and checks the certificate against `host`:
+    // through a tunnel, the database's own name stays the one verified.
+    UltraDbResult ThroughTunnel(UltraDbConnectionConfig& config, int localPort) const override {
+        if (config.host.empty()) config.host = "127.0.0.1";
+        else config.options["hostaddr"] = "127.0.0.1";
+        config.port = localPort;
+        return UltraDbResult::Ok();
     }
 
     std::unique_ptr<IUltraDbConnection> Open(const UltraDbConnectionConfig& config,

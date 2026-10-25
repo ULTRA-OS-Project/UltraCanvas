@@ -1637,7 +1637,8 @@ namespace {
                 "Display > Files > Show hidden files - and the file display's "
                 "own Display > Hidden files entry - always reveal everything. "
                 "While the Home folder is holding something back, it says so "
-                "along its foot, with a button that shows it.");
+                "along its foot, with a button that shows it and a gear that "
+                "opens this page.");
         return parts.page;
     }
 
@@ -2772,6 +2773,8 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
         case Page::DetailView: pageId = kPageDetailView; break;
         case Page::FileExtensions: pageId = kPageFileExtensions; break;
         case Page::Cache: pageId = kPageCache; break;
+        case Page::HomeFolder: pageId = kPageHomeFolder; break;
+        case Page::IgnoredFiles: pageId = kPageIgnoredFiles; break;
         default: break;
     }
     // Raise the already open window instead of opening a second one - on the

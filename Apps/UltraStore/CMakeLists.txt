@@ -5,9 +5,12 @@
 #
 # Two targets:
 #   UltraStoreCore   a static library: the platform, the catalog, the verifier,
-#                    the resolver and the catalog client. Links the UltraCanvas
-#                    core for UltraCanvasJSON, UltraNet and UltraCrypt but opens
-#                    no window, so the command line and the tests use it headless.
+#                    the resolver, the catalog client, and UltraInstaller (the
+#                    downloader, the registry on UltraDatabase, the archive
+#                    installer, the engine). Links the UltraCanvas core for
+#                    UltraCanvasJSON and the VirtualFS bridge, UltraNet,
+#                    UltraCrypt and UltraDatabase, but opens no window, so the
+#                    command line and the tests use it headless.
 #   ultrastore       the program: the commands now, the window later (one
 #                    program, since a case-insensitive file system cannot tell
 #                    `ultrastore` from `UltraStore`).
@@ -18,6 +21,7 @@
 # that cannot verify or cannot remember: -DBUILD_ULTRASTORE=OFF builds the
 # rest of the tree without it.
 #
+# Version: 0.2.0 - UltraInstaller
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -50,6 +54,10 @@ add_library(UltraStoreCore STATIC
     core/Verifier.cpp
     core/PackageResolver.cpp
     core/CatalogClient.cpp
+    core/Registry.cpp
+    core/Downloader.cpp
+    core/Installer.cpp
+    core/StoreEngine.cpp
 )
 set_target_properties(UltraStoreCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON

@@ -2996,6 +2996,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::UpdateHiddenNoticeButton() {
         if (!HiddenNoticeVisible()) {
             if (hiddenNoticeButton) hiddenNoticeButton->SetVisible(false);
+            if (hiddenNoticeSettingsButton) hiddenNoticeSettingsButton->SetVisible(false);
             return;
         }
         if (!hiddenNoticeButton) {
@@ -3025,35 +3026,80 @@ namespace UltraCanvas {
             AddChild(hiddenNoticeButton);
         }
         hiddenNoticeButton->SetVisible(true);
+        // The gear beside it: only for a host that has settings deciding what
+        // is held back (onHiddenNoticeSettings), and it opens those.
+        if (onHiddenNoticeSettings && !hiddenNoticeSettingsButton) {
+            hiddenNoticeSettingsButton = CreateButton(
+                    GetIdentifier() + "-hidden-notice-settings", 0, 0, 24, 24, "");
+            ButtonStyle gs;
+            gs.normalColor  = Colors::Transparent;
+            gs.hoverColor   = Color(232, 232, 236, 255);
+            gs.pressedColor = Color(218, 218, 224, 255);
+            gs.borderWidth = 0.0f;
+            gs.cornerRadius = 4.0f;
+            gs.useIconAsMask = true;
+            gs.iconMaskColor = Color(85, 85, 92, 255);
+            hiddenNoticeSettingsButton->SetStyle(gs);
+            hiddenNoticeSettingsButton->SetIcon(
+                    NormalizePath(GetResourcesDir() + "media/icons/settings.svg"));
+            hiddenNoticeSettingsButton->SetIconSize(15, 15);
+            hiddenNoticeSettingsButton->SetIconSpacing(0);
+            hiddenNoticeSettingsButton->SetTooltip("Settings for what is hidden here");
+            hiddenNoticeSettingsButton->SetAcceptsFocus(false);
+            hiddenNoticeSettingsButton->SetOnClick([this]() {
+                if (onHiddenNoticeSettings) onHiddenNoticeSettings();
+            });
+            AddChild(hiddenNoticeSettingsButton);
+        }
+        if (hiddenNoticeSettingsButton)
+            hiddenNoticeSettingsButton->SetVisible(
+                    static_cast<bool>(onHiddenNoticeSettings));
         RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::PositionHiddenNoticeButton(IRenderContext* ctx) {
         if (!hiddenNoticeButton || !hiddenNoticeButton->IsVisible()) return;
         const Rect2Di bar = HiddenNoticeBar();
+        const bool gear = hiddenNoticeSettingsButton &&
+                          hiddenNoticeSettingsButton->IsVisible();
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
         fsty.fontSize = style.smallFontSize;
+        fsty.fontWeight = FontWeight::Normal;
+        ctx->SetFontStyle(fsty);
+        const int countW = ctx->GetTextLineDimensions(HiddenNoticeText()).width;
         fsty.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fsty);
         Size2Di ts = ctx->GetTextLineDimensions(hiddenNoticeButton->GetText());
         const int h = std::max(18, bar.height - 6);
         const int w = std::min(std::max(60, bar.width / 2), ts.width + 24);
+        const int gearW = gear ? h : 0;
+        const int gap = 10, gearGap = gear ? 4 : 0;
+        // Count, button and gear make one group centred in the file area;
+        // in a pane too narrow for the group it keeps to the right edge and
+        // the count is ellipsized.
+        const int buttonsW = w + gearGap + gearW;
+        const int left = bar.x + (bar.width - (countW + gap + buttonsW)) / 2;
+        const int buttonX = std::max(bar.x + 8,
+                std::min(left + countW + gap, bar.x + bar.width - 8 - buttonsW));
+        const int y = bar.y + (bar.height - h) / 2;
         PlaceChildAt(hiddenNoticeButton,
-                     Rect2Df(static_cast<float>(bar.x + bar.width - w - 8),
-                             static_cast<float>(bar.y + (bar.height - h) / 2),
+                     Rect2Df(static_cast<float>(buttonX), static_cast<float>(y),
                              static_cast<float>(w), static_cast<float>(h)));
+        if (gear)
+            PlaceChildAt(hiddenNoticeSettingsButton,
+                         Rect2Df(static_cast<float>(buttonX + w + gearGap),
+                                 static_cast<float>(y),
+                                 static_cast<float>(gearW), static_cast<float>(h)));
     }
 
     void UltraCanvasFilerWidget::DrawHiddenItemsNotice(IRenderContext* ctx) {
         const Rect2Di bar = HiddenNoticeBar();
         if (bar.height <= 0 || bar.width <= 0) return;
-        ctx->SetFillPaint(style.infoBarBackground);
+        // Part of the folder display, not a strip of its own: the display's
+        // background, no rule above it.
+        ctx->SetFillPaint(style.backgroundColor);
         ctx->FillRectangle(Rect2Dd(bar));
-        ctx->SetStrokePaint(style.gridLineColor);
-        ctx->SetStrokeWidth(1.0f);
-        ctx->DrawLine(Point2Dd(bar.x, bar.y),
-                      Point2Dd(bar.x + bar.width, bar.y));
 
         FontStyle fsty;
         fsty.fontFamily = style.fontFamily;
@@ -3061,17 +3107,21 @@ namespace UltraCanvas {
         fsty.fontWeight = FontWeight::Normal;
         ctx->SetFontStyle(fsty);
         const int pad = 8;
-        // Whatever the button leaves: the count is the less important half of
-        // the strip, and is ellipsized rather than drawn under the button.
-        int avail = bar.width - 2 * pad;
-        if (hiddenNoticeButton && hiddenNoticeButton->IsVisible())
-            avail = static_cast<int>(hiddenNoticeButton->GetBounds().x)
-                    - bar.x - 2 * pad;
+        // The count ends just left of the button; it is the less important
+        // half of the line, and is ellipsized rather than drawn under it.
+        const bool button = hiddenNoticeButton && hiddenNoticeButton->IsVisible();
+        const std::string text = HiddenNoticeText();
+        int right = bar.x + bar.width - pad;
+        if (button) right = static_cast<int>(hiddenNoticeButton->GetBounds().x) - 10;
+        Size2Di full = ctx->GetTextLineDimensions(text);
+        int avail = right - bar.x - pad;
         if (avail <= 12) return;
-        std::string shown = EllipsizeText(ctx, HiddenNoticeText(), avail);
+        std::string shown = EllipsizeText(ctx, text, avail);
         Size2Di ts = ctx->GetTextLineDimensions(shown);
+        const int x = button ? right - ts.width
+                             : bar.x + (bar.width - full.width) / 2;
         ctx->SetTextPaint(style.secondaryTextColor);
-        ctx->DrawText(shown, Point2Dd(bar.x + pad,
+        ctx->DrawText(shown, Point2Dd(std::max(bar.x + pad, x),
                                       bar.y + (bar.height - ts.height) / 2.0));
     }
 
@@ -4446,6 +4496,10 @@ namespace UltraCanvas {
         RefreshHostFileIcons();
         DropHostIconCache();
         RequestRedraw();
+    }
+
+    std::string UltraCanvasFilerWidget::FormatSizeText(uint64_t bytes) {
+        return FormatSize(bytes);
     }
 
     std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
@@ -9934,8 +9988,13 @@ namespace UltraCanvas {
         // The hidden-items strip stands down in a display too short to hold
         // both it and the files, so its button follows the display's height -
         // which changes with no rescan to hang the update on.
-        if (HiddenNoticeVisible() !=
-            (hiddenNoticeButton && hiddenNoticeButton->IsVisible()))
+        // The gear follows onHiddenNoticeSettings, which a host may set after
+        // the notice is already up.
+        const bool noticeUp = HiddenNoticeVisible();
+        const bool gearWanted = noticeUp && static_cast<bool>(onHiddenNoticeSettings);
+        if (noticeUp != (hiddenNoticeButton && hiddenNoticeButton->IsVisible()) ||
+            gearWanted != (hiddenNoticeSettingsButton &&
+                           hiddenNoticeSettingsButton->IsVisible()))
             UpdateHiddenNoticeButton();
         // A reveal requested while a resize was still in flight (see
         // EnsureSelectionVisible) is applied here, against the settled layout.
@@ -10508,6 +10567,7 @@ namespace UltraCanvas {
                        static_cast<int>(lb.width), static_cast<int>(lb.height));
 
         DrawViewContent(ctx, bounds);
+        ReportSelectionInfoChange();
 
         // The name filter's "no matches" action button is a real child
         // element this self-rendered view must draw itself; placed fresh each
@@ -10522,17 +10582,20 @@ namespace UltraCanvas {
             ctx->PopState();
         }
 
-        // The hidden-items strip along the foot: its own chrome, drawn like
-        // the info bar, plus a real button child placed and drawn here.
+        // The hidden-items line along the foot of the file area: the count as
+        // text, plus the real button children (Show hidden files, and the
+        // gear when the host has settings for it) placed and drawn here.
         if (HiddenNoticeVisible()) {
             PositionHiddenNoticeButton(ctx);
             DrawHiddenItemsNotice(ctx);
-            if (hiddenNoticeButton && hiddenNoticeButton->IsVisible()) {
-                Rect2Df hb = hiddenNoticeButton->GetBounds();
+            for (UltraCanvasButton* nb : { hiddenNoticeButton.get(),
+                                           hiddenNoticeSettingsButton.get() }) {
+                if (!nb || !nb->IsVisible()) continue;
+                Rect2Df hb = nb->GetBounds();
                 ctx->PushState();
                 ctx->ClipRect(Rect2Dd(lb.x, lb.y, lb.width, lb.height));
                 ctx->Translate(Point2Df(hb.x, hb.y));
-                hiddenNoticeButton->Render(ctx, Rect2Df(0, 0, hb.width, hb.height));
+                nb->Render(ctx, Rect2Df(0, 0, hb.width, hb.height));
                 ctx->PopState();
             }
         }
@@ -14932,6 +14995,29 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasFilerWidget::GetSelectionInfo(std::string& primary,
+                                                  std::string& secondary) {
+        BuildSelectionInfoText(primary, secondary);
+    }
+
+    void UltraCanvasFilerWidget::ReportSelectionInfoChange() {
+        if (!onSelectionInfoChanged) return;
+        std::string primary, secondary;
+        BuildSelectionInfoText(primary, secondary);
+        std::string key = primary + '\x1f' + secondary;
+        if (key == reportedSelectionInfo) return;
+        reportedSelectionInfo = std::move(key);
+        // Posted, not called: this runs inside the paint, and a host that
+        // answers by setting a label's text should not do it mid-frame.
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            if (onSelectionInfoChanged) onSelectionInfoChanged();
+        });
+    }
+
     bool UltraCanvasFilerWidget::IsInInfoBar(const Point2Di& localPoint) const {
         int h = InfoBarHeight();
         if (h <= 0) return false;
@@ -15823,8 +15909,12 @@ namespace UltraCanvas {
             // The first pictures inside a folder peeking out of its icon.
             addSwitch("Folder previews", "folder-previews.svg", folderPreviews,
                       [this](bool on) { SetFolderPreviewsEnabled(on); });
-            addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
-                      [this](bool on) { SetSelectionInfoVisible(on); });
+            // Left out where the host shows the same line in its own status
+            // bar (SetInfoBarMenuItemVisible) - switching the bar back on
+            // there would only say it twice.
+            if (showInfoBarMenuItem)
+                addSwitch("Info-Bar", "info-bar.svg", showSelectionInfo,
+                          [this](bool on) { SetSelectionInfoVisible(on); });
             // "Show me everything": hidden entries, and the full physical
             // listing of a curated home folder (SetCuratedHomeFolder).
             addSwitch("Hidden files", "hidden-files.svg", showHiddenFiles,

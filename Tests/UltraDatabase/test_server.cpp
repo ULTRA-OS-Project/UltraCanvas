@@ -5,6 +5,9 @@
 // literally, report the sizes of their databases and of a schema's tables,
 // and stop a running query from another session - not the asking session
 // itself, and a session that is not there is "not stopped", not an error.
+// Their status: the measures each keeps, a counter growing as work is done
+// and the asking session not counted as running.
+// Version: 0.2.0 - the server's status
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -59,6 +62,30 @@ void CheckServer(const std::string& c, const std::string& sleeper, const std::st
     REQUIRE(database);
     REQUIRE(!Find(rows, "name", schema + "." + table, "bytes").empty());
 
+    // The status: the measures every server keeps, counters marked so; the
+    // rows written go up as rows are written.
+    REQUIRE(UltraDb_ServerStatus(c, rows).success);
+    for (const char* name : { "connections", "active", "transactions", "rows_read", "rows_written", "cache_reads",
+                              "disk_reads" })
+        REQUIRE(!Find(rows, "name", name, "value").empty());
+    REQUIRE(std::stoll(Find(rows, "name", "connections", "value")) >= 2);    // c and the sleeper
+    REQUIRE_EQ(Find(rows, "name", "active", "counter"), std::string("false"));
+    REQUIRE_EQ(Find(rows, "name", "rows_written", "counter"), std::string("true"));
+    const long long written = std::stoll(Find(rows, "name", "rows_written", "value"));
+    const long long active = std::stoll(Find(rows, "name", "active", "value"));
+    REQUIRE(active >= 0);
+    REQUIRE(UltraDb_Exec(c, "INSERT INTO " + table + " (id) VALUES (1), (2), (3)").success);
+    REQUIRE(UltraDb_Exec(c, "DELETE FROM " + table).success);
+    // PostgreSQL's statistics reach pg_stat_database when a session reports
+    // them - at most every second, and at the latest when it goes idle.
+    long long after = written;
+    for (int i = 0; i < 40 && after < written + 6; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        REQUIRE(UltraDb_ServerStatus(c, rows).success);
+        after = std::stoll(Find(rows, "name", "rows_written", "value"));
+    }
+    REQUIRE(after >= written + 6);
+
     std::string sql;
     REQUIRE(UltraDb_StopSessionSql(c, 42, false, sql).success);
     REQUIRE(!sql.empty());
@@ -104,6 +131,7 @@ TEST(server_sqlite_has_none) {
     UltraDbResultSet rows;
     REQUIRE(UltraDb_ServerSessions(cfg.name, rows).code == UltraDbResultCode::Unsupported);
     REQUIRE(UltraDb_ServerSettings(cfg.name, "", rows).code == UltraDbResultCode::Unsupported);
+    REQUIRE(UltraDb_ServerStatus(cfg.name, rows).code == UltraDbResultCode::Unsupported);
     bool stopped = true;
     REQUIRE(UltraDb_StopSession(cfg.name, 1, false, stopped).code == UltraDbResultCode::Unsupported);
     REQUIRE(!stopped);

@@ -20,6 +20,7 @@
   - [Styling](#styling)
   - [Theme Application](#theme-application)
   - [Scrolling](#scrolling)
+  - [Auto-Completion](#auto-completion)
 - [Callbacks](#callbacks)
 - [Event Handling](#event-handling)
   - [Keyboard Events](#keyboard-events)
@@ -51,8 +52,8 @@ The **UltraCanvasTextArea** is an advanced multi-line text editing control withi
 
 **Header:** `UltraCanvasTextArea.h`  
 **Implementation:** `UltraCanvasTextArea.cpp`  
-**Version:** 2.1.0 - `ApplyTheme`  
-**Last Modified:** 2026-10-10  
+**Version:** 3.15.0 - auto-completion  
+**Last Modified:** 2026-10-24  
 **Author:** UltraCanvas Framework  
 
 <!-- doc-check: void SendChatText(); void SaveNote(const std::string& text); std::vector<std::pair<size_t, size_t>> FindNoSpellRanges(const std::string& text); bool RangesOverlap(const std::vector<std::pair<size_t, size_t>>& ranges, size_t startByte, size_t byteLength); std::vector<std::string> lines; std::vector<size_t> matchOffsets; std::string term; -->
@@ -579,6 +580,40 @@ void EnsureCursorVisible();
 ```
 Automatically scrolls to make cursor visible.
 
+### Auto-Completion
+
+```cpp
+void ShowAutoComplete(const std::vector<std::string>& suggestions);
+void HideAutoComplete();
+void AcceptAutoComplete();
+bool IsAutoCompleteOpen() const;
+std::string GetAutoCompletePrefix() const;
+```
+
+`ShowAutoComplete` opens a list of suggestions just under the caret (above
+it near the window's bottom), the first one highlighted; an empty list hides
+it. While it is open, Up, Down, Page Up and Page Down move in it; Enter or Tab
+puts the highlighted suggestion in place of the word before the caret
+(`GetAutoCompletePrefix()`: letters, digits, `_`, `$` and any character beyond
+ASCII) and closes it, as a click on a suggestion does; Escape closes it. Every
+other key edits as usual and leaves the list alone, so the host narrows it
+from `onTextChanged`:
+
+```cpp
+auto editor = std::make_shared<UltraCanvasTextArea>("code");
+const std::vector<std::string> names = { "customers", "customer_id", "orders" };
+editor->SetOnTextChanged([editor, names](const std::string&) {
+    const std::string typed = editor->GetAutoCompletePrefix();
+    std::vector<std::string> matches;
+    for (const std::string& name : names)
+        if (typed.size() >= 2 && name.rfind(typed, 0) == 0) matches.push_back(name);
+    editor->ShowAutoComplete(matches);        // none: the list closes
+});
+```
+
+UltraDBAdmin's SQL tab builds its suggestions from the connection's tables and
+columns (`Apps/UltraDBAdmin/engine/DbAdminCompletion`).
+
 ## Callbacks
 
 The text area supports various event callbacks:
@@ -1048,6 +1083,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`
 - **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
 - **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
 - **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`

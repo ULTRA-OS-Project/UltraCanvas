@@ -12,6 +12,9 @@ add_executable(UltraStoreCoreTests
     test_verifier.cpp
     test_resolver.cpp
     test_client.cpp
+    test_registry.cpp
+    test_installer.cpp
+    test_engine.cpp
 )
 target_compile_features(UltraStoreCoreTests PRIVATE cxx_std_20)
 target_include_directories(UltraStoreCoreTests PRIVATE

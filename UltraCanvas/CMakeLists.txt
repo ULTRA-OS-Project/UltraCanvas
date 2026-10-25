@@ -3373,10 +3373,21 @@ if(ULTRACANVAS_ENABLE_DATABASE)
     # SQLite is the bundled/default engine. Prefer the system library; the
     # amalgamation can be vendored later without touching callers.
     find_package(PkgConfig QUIET)
-    if(PkgConfig_FOUND)
+    if(EMSCRIPTEN)
+        # In the browser SQLite is Emscripten's own port, and only for a page
+        # that uses the module - UltraDBAdmin's (it reaches its databases
+        # through a relay, and the core carries the module); every other page
+        # stays without the ~0.6 MB it would add.
+        if(BUILD_ULTRADBADMIN)
+            set(SQLITE3_LIBRARIES "--use-port=sqlite3")
+            set(SQLITE3_INCLUDE_DIRS "")
+            set(SQLITE3_VERSION "(Emscripten port)")
+            set(ULTRADATABASE_EMSCRIPTEN_SQLITE ON)
+        endif()
+    elseif(PkgConfig_FOUND)
         pkg_check_modules(SQLITE3 sqlite3)
     endif()
-    if(NOT SQLITE3_FOUND)
+    if(NOT SQLITE3_FOUND AND NOT EMSCRIPTEN)
         find_path(SQLITE3_INCLUDE_DIRS sqlite3.h)
         find_library(SQLITE3_LIBRARIES NAMES sqlite3)
     endif()
@@ -3439,9 +3450,15 @@ if(ULTRACANVAS_ENABLE_DATABASE)
                 $<INSTALL_INTERFACE:include/ultracanvas/include>)
         target_include_directories(uc-database PRIVATE ${SQLITE3_INCLUDE_DIRS})
         target_link_libraries(uc-database PUBLIC Threads::Threads)
-        target_link_libraries(uc-database PRIVATE ${SQLITE3_LIBRARIES})
-        ultradatabase_sqlite_features(uc-database "${SQLITE3_INCLUDE_DIRS}"
-                                      "${SQLITE3_LIBRARIES}" "${SQLITE3_LIBRARY_DIRS}")
+        if(ULTRADATABASE_EMSCRIPTEN_SQLITE)
+            # The port's header comes with the flag; the page links it too.
+            target_compile_options(uc-database PRIVATE --use-port=sqlite3)
+            target_link_options(uc-database PUBLIC --use-port=sqlite3)
+        else()
+            target_link_libraries(uc-database PRIVATE ${SQLITE3_LIBRARIES})
+            ultradatabase_sqlite_features(uc-database "${SQLITE3_INCLUDE_DIRS}"
+                                          "${SQLITE3_LIBRARIES}" "${SQLITE3_LIBRARY_DIRS}")
+        endif()
         if(LIBPQ_LIBRARIES)
             target_include_directories(uc-database PRIVATE ${LIBPQ_INCLUDE_DIRS})
             target_link_libraries(uc-database PRIVATE ${LIBPQ_LIBRARIES})

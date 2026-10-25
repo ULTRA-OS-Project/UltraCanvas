@@ -1,4 +1,5 @@
 // Apps/UltraDBAdmin/ui/DbAdminStructureDialog.cpp
+// Version: 0.3.0 - how a form works under its buttons
 // Version: 0.2.0 - MySQL / MariaDB types
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -55,9 +56,11 @@ std::shared_ptr<UltraCanvasModalDialog> MakeDialog(const std::string& title, int
     return dialog;
 }
 
+// How a form works, put under its buttons: the fields come first.
 std::shared_ptr<UltraCanvasLabel> MakeIntro(const std::string& id, const std::string& text) {
     auto intro = CreateLabel(id, 0, 0, 0, 36, text);
     intro->SetWrap(TextWrap::WrapWord);
+    intro->SetTextColor(StatusColor());
     intro->layoutItem.SetFlexShrink(0);
     return intro;
 }
@@ -176,7 +179,6 @@ void ShowColumnDialog(UltraCanvasWindowBase* parent, const StructureEdit& edit, 
     if (form->generated) intro = "Computed by the database: only its name can change here.";
     else if (!adding && sqlite) intro = "SQLite changes a type, NOT NULL or default by rebuilding the table, which "
                                         "Apply does for you, keeping its rows, indexes and triggers.";
-    dialog->AddChild(MakeIntro("dbcIntro", intro));
 
     auto grid = CreateFormGrid("dbcForm", 8.0f, 10.0f);
     grid->layoutItem.SetFlexShrink(0);
@@ -247,6 +249,7 @@ void ShowColumnDialog(UltraCanvasWindowBase* parent, const StructureEdit& edit, 
     form->error = error.get();
     dialog->AddChild(error);
     AddButtons(dialog.get(), "dbcButtons", adding ? "Add column" : "Stage change", [form]() { SaveColumn(*form); });
+    dialog->AddChild(MakeIntro("dbcIntro", intro));
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }
 
@@ -265,8 +268,6 @@ void ShowIndexDialog(UltraCanvasWindowBase* parent, const StructureEdit& edit, c
     auto dialog = MakeDialog("New index on " + edit.Table().name, 300 + listHeight);
     if (!dialog) return;
     form->dialog = dialog.get();
-    dialog->AddChild(MakeIntro("dbiIntro", "The index is staged: Apply in Structure creates it. The key is in the "
-                                           "order you tick the columns."));
 
     auto grid = CreateFormGrid("dbiForm", 8.0f, 10.0f);
     grid->layoutItem.SetFlexShrink(0);
@@ -313,6 +314,8 @@ void ShowIndexDialog(UltraCanvasWindowBase* parent, const StructureEdit& edit, c
     form->error = error.get();
     dialog->AddChild(error);
     AddButtons(dialog.get(), "dbiButtons", "Add index", [form]() { SaveIndex(*form); });
+    dialog->AddChild(MakeIntro("dbiIntro", "The index is staged: Apply in Structure creates it. The key is in the "
+                                           "order you tick the columns."));
     UltraCanvasDialogManager::ShowDialog(dialog, nullptr, parent);
 }
 

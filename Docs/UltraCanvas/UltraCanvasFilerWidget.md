@@ -54,6 +54,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [macOS shortcuts and application bundles](#macos-shortcuts-and-application-bundles)
   - [What the host sees](#what-the-host-sees)
 - [Selection info bar](#selection-info-bar)
+  - [Showing the line in the host's status bar](#showing-the-line-in-the-hosts-status-bar)
 - [Files in use](#files-in-use)
 - [Remote folders](#remote-folders)
   - [Showing that a folder is on its way](#showing-that-a-folder-is-on-its-way)
@@ -1114,6 +1115,44 @@ also toggled by Display > Info-Bar) describes the current selection:
   (folders counted recursively).
 - **No selection** — a summary of the displayed folder (entry counts + size).
 
+Sizes are written with one decimal below a gigabyte and two from there on
+(`103.6 KB`, `2.41 GB`). A host that describes the same entries elsewhere - a
+status bar, a tooltip of its own - formats them with the static
+`UltraCanvasFilerWidget::FormatSizeText(bytes)`, so the two never round one
+selection two ways:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; uint64_t bytes = 0; -->
+```cpp
+statusLabel->SetText("1 item selected (" +
+                     UltraCanvasFilerWidget::FormatSizeText(bytes) + ")");
+```
+
+### Showing the line in the host's status bar
+
+A host with a status bar of its own can show the info bar's line there and
+turn the bar off, so the window does not say the same thing twice. The display
+keeps working the line out: `GetSelectionInfo(primary, secondary)` returns it
+whether or not the bar is up - `primary` is the bold lead (the selected
+entry's name, or *"3 items selected"*; empty when nothing is selected),
+`secondary` the details or the folder summary. Folder sizes and media details
+arrive from the background worker after the selection, so the line grows on
+its own; `onSelectionInfoChanged` says when (posted to the UI thread after the
+paint that noticed it, so setting a label from it is safe).
+`SetInfoBarMenuItemVisible(false)` takes the Display > Info-Bar switch out of
+the context menu, where turning the bar back on would only repeat the status
+bar. UltraFiler does this for every file display of the window.
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel; -->
+```cpp
+filer->SetSelectionInfoVisible(false);
+filer->SetInfoBarMenuItemVisible(false);
+filer->onSelectionInfoChanged = [filer, statusLabel] {
+    std::string primary, secondary;
+    filer->GetSelectionInfo(primary, secondary);
+    statusLabel->SetText(primary.empty() ? secondary : primary + "  ·  " + secondary);
+};
+```
+
 Recursive folder statistics are computed **asynchronously** on a background
 worker: selecting a folder shows `…` (or a `≥` lower bound for multi
 selections) immediately and the exact counts fill in when the subtree walk
@@ -1459,12 +1498,24 @@ silently. (`None` and `Always` are X11 macros, hence the spelled-out
 enumerators — the same reason `FilerExtensionBadge::NoneBadge` is spelled that
 way.)
 
-While something IS held back, a strip across the foot of the display reads
-*"3 items are hidden here"* and carries a **Show hidden files** button that
-does exactly what the `Display > Hidden files` context-menu entry does — for
-this display, leaving `SetShowHiddenFiles` elsewhere alone. The strip
-disappears as soon as nothing is held back (including the moment its own
-button is pressed).
+While something IS held back, one centred line at the foot of the file area
+reads *"3 items are hidden here"* next to a blue **Show hidden files** button.
+It sits on the display's own background with no rule or fill of its own, so it
+reads as part of the folder, not as another status bar. The button does
+exactly what the `Display > Hidden files` context-menu entry does — for this
+display, leaving `SetShowHiddenFiles` elsewhere alone. The line disappears as
+soon as nothing is held back (including the moment its own button is
+pressed).
+
+A host whose settings decide what is held back sets `onHiddenNoticeSettings`;
+a gear button then sits right of **Show hidden files** and a click on it runs
+the callback. Unset, there is no gear. It may be set at any time - the gear
+follows on the next paint:
+
+<!-- doc-check: std::shared_ptr<UltraCanvas::UltraCanvasFilerWidget> filer; void OpenHomeFolderSettings(); -->
+```cpp
+filer->onHiddenNoticeSettings = [] { OpenHomeFolderSettings(); };
+```
 
 `GetHiddenItemCount()` counts what the current listing leaves out: the hidden
 entries, the names the ignore patterns drop, and the subfolders a curated home
@@ -1476,9 +1527,8 @@ listing is built — after it, the dropped entries are gone.
 The strip takes its height out of the file area, exactly as the selection info
 bar does (it sits directly above it), so no entry is ever drawn under it, and
 it is left out of the whole-area views (`GourceTree`, `View3D`) and of a pane
-too short to hold both files and strip. Its colours come from the same
-`FilerStyle` fields as the info bar (`infoBarBackground`, `gridLineColor`,
-`secondaryTextColor`).
+too short to hold both files and strip. The count is drawn in
+`secondaryTextColor` on `backgroundColor`.
 
 Hosts pick the mode per folder. The UltraFiler uses `WhenAnyHidden` in the home
 folder — the one folder where every filter bites at once: the profile's hidden

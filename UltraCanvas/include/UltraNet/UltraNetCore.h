@@ -3,6 +3,7 @@
 // configuration, credentials, proxy descriptor, transfer stats, and the
 // initialize/shutdown/version entrypoints. Full surface defined in the
 // UltraNet Master Registry v1.0.0.
+// Version: 0.2.2 - SshHostKeyUnknown, SshHostKeyChanged (UltraNetSsh.h)
 // Version: 0.2.1 - the abort check is asked by every FTP call, and is the
 //                  thread's only one (UltraNet_SetThreadFtpCancel is gone)
 // Version: 0.2.0 - UltraNet_SetThreadAbortCheck: a running HTTP or FTP
@@ -71,7 +72,14 @@ enum class UltraNetResultCode {
     // A redirect the request was not allowed to follow: with
     // UltraNetHttpOptions::httpsOnlyRedirects, one to a URL that is not
     // https://. UltraNetResult::httpStatus is the 3xx.
-    RedirectRefused
+    RedirectRefused,
+    // An SSH server's host key that neither known_hosts nor the fingerprint
+    // the caller trusted knows: shown to the user, and trusted only if they
+    // agree (UltraNetSsh.h). A key that differs from the one known is
+    // SshHostKeyChanged - another machine, or a reinstalled one - and is
+    // never accepted on its own.
+    SshHostKeyUnknown,
+    SshHostKeyChanged
 };
 
 // ============================================================================

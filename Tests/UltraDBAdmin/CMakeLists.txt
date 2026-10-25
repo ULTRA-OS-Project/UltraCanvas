@@ -3,6 +3,9 @@
 # formatting, the Browse pager, the SQL runner - without a window. Compiles
 # the engine sources directly, as Tests/UltraFIBU does, so it runs where the
 # UI library cannot be built. Enabled by ULTRACANVAS_BUILD_ULTRADBADMIN_TESTS.
+# Version: 0.6.0 - the relay's sign-in in UltraDBAdminRelayTests
+# Version: 0.5.0 - the relay program (its listener, UltraNet's WebSocket, the engine through it)
+# Version: 0.4.0 - the SSH tunnel program (UltraNet's SSH plug-in, a bastion, both servers)
 # Version: 0.3.0 - the schema suite (relations, routines, server), a third
 # Version: 0.2.0 - the operations suite, a second program
 # Version: 0.1.0
@@ -14,6 +17,8 @@ enable_language(C)
 set(_dbadmin ${CMAKE_SOURCE_DIR}/Apps/UltraDBAdmin)
 set(_dbadmin_engine
     ${_dbadmin}/engine/DbAdminBlob.cpp
+    ${_dbadmin}/engine/DbAdminCompletion.cpp
+    ${_dbadmin}/engine/DbAdminCompare.cpp
     ${_dbadmin}/engine/DbAdminConnections.cpp
     ${_dbadmin}/engine/DbAdminDump.cpp
     ${_dbadmin}/engine/DbAdminEditBuffer.cpp
@@ -21,6 +26,7 @@ set(_dbadmin_engine
     ${_dbadmin}/engine/DbAdminFormat.cpp
     ${_dbadmin}/engine/DbAdminImport.cpp
     ${_dbadmin}/engine/DbAdminJobQueue.cpp
+    ${_dbadmin}/engine/DbAdminMonitor.cpp
     ${_dbadmin}/engine/DbAdminOperations.cpp
     ${_dbadmin}/engine/DbAdminPaths.cpp
     ${_dbadmin}/engine/DbAdminRelations.cpp
@@ -63,3 +69,51 @@ add_test(NAME UltraDBAdminOperations COMMAND UltraDBAdminOperationsTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 add_test(NAME UltraDBAdminSchema COMMAND UltraDBAdminSchemaTests
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+# Connections through a real SSH tunnel: the store, UltraDatabase's tunnel
+# and UltraNet's SSH plug-in together, so it links UltraNet and runs where the
+# plug-in is built. Against a bastion and two servers named by the
+# environment (UltraDBAdminTunnelTests.cpp); without them it skips.
+if(TARGET UltraNet AND TARGET UltraNetSshPlugin)
+    add_executable(UltraDBAdminTunnelTests UltraDBAdminTunnelTests.cpp ${_dbadmin_engine})
+    target_compile_features(UltraDBAdminTunnelTests PRIVATE cxx_std_20)
+    target_include_directories(UltraDBAdminTunnelTests PRIVATE
+        ${_dbadmin}/engine
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
+    target_link_libraries(UltraDBAdminTunnelTests PRIVATE UltraDatabase UltraVault UltraNet Threads::Threads)
+    add_dependencies(UltraDBAdminTunnelTests UltraNetSshPlugin)
+    target_compile_definitions(UltraDBAdminTunnelTests PRIVATE
+        ULTRADBADMIN_TEST_SSH_PLUGIN_DIR="$<TARGET_FILE_DIR:UltraNetSshPlugin>")
+    set_target_properties(UltraDBAdminTunnelTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME UltraDBAdminTunnel COMMAND UltraDBAdminTunnelTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
+
+# Through the relay end to end (UltraDBAdminRelayTests.cpp): the relay's
+# configuration and WebSocket listener (Apps/UltraDBAdmin/relay) on a free
+# port, a WebSocket client of the test's own as the transport (UltraNet's
+# needs a libcurl with WebSockets, which not every runner has), the engine on
+# a relay connection; PostgreSQL where the environment names one.
+if(TARGET UltraNet AND UNIX AND NOT EMSCRIPTEN)
+    add_executable(UltraDBAdminRelayTests UltraDBAdminRelayTests.cpp
+        ${_dbadmin}/relay/RelayConfig.cpp
+        ${_dbadmin}/relay/RelayWebSocket.cpp
+        ${_dbadmin_engine})
+    target_compile_features(UltraDBAdminRelayTests PRIVATE cxx_std_20)
+    target_include_directories(UltraDBAdminRelayTests PRIVATE
+        ${_dbadmin}/engine
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+        ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
+    target_link_libraries(UltraDBAdminRelayTests PRIVATE UltraDatabase UltraVault UltraNet Threads::Threads)
+    set_target_properties(UltraDBAdminRelayTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # The OpenID Connect sign-in, where the relay itself has it.
+    find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
+    if(OpenSSL_FOUND AND TARGET uc-yyjson)
+        target_sources(UltraDBAdminRelayTests PRIVATE ${_dbadmin}/relay/RelaySignIn.cpp)
+        target_link_libraries(UltraDBAdminRelayTests PRIVATE OpenSSL::Crypto uc-yyjson)
+        target_compile_definitions(UltraDBAdminRelayTests PRIVATE ULTRADBADMIN_RELAY_SIGNIN=1)
+    endif()
+    add_test(NAME UltraDBAdminRelay COMMAND UltraDBAdminRelayTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()

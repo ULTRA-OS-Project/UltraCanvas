@@ -3,7 +3,8 @@
 // ones directly, DSOs through the host table UltraNet_RefreshPlugins hands to
 // their UltraNet_PluginInit. The registry maintains two indexes: by plug-in
 // name and by URL scheme.
-// Version: 0.5.1 - plug-ins are loaded RTLD_LOCAL. 0.5.0: only
+// Version: 0.5.2 - UltraNet_OpenSshTunnel / UltraNet_CloseSshTunnel, through the ssh plug-in.
+//                  0.5.1: plug-ins are loaded RTLD_LOCAL. 0.5.0: only
 //                  UltraNet_PluginInit is loaded (the POSIX-only v1 entry is
 //                  gone). 0.4.0: host ABI 2 - the core functions a plug-in
 //                  calls travel in the host table.
@@ -325,4 +326,42 @@ std::vector<std::string> UltraNet_GetSupportedSchemes() {
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
+}
+
+// ---- SSH tunnels (UltraNetSsh.h) -------------------------------------------
+
+namespace {
+
+// The "ssh" plug-in's tunnel interface, the plug-ins loaded first if it is
+// not registered yet.
+std::shared_ptr<IUltraNetPlugin> SshTunnelPlugin(ISshTunnelPlugin*& tunnels) {
+    std::shared_ptr<IUltraNetPlugin> plugin = UltraNet_GetPlugin("ssh");
+    if (!plugin) {
+        UltraNet_RefreshPlugins();
+        plugin = UltraNet_GetPlugin("ssh");
+    }
+    tunnels = plugin ? dynamic_cast<ISshTunnelPlugin*>(plugin.get()) : nullptr;
+    return plugin;
+}
+
+} // namespace
+
+UltraNetResult UltraNet_OpenSshTunnel(const UltraNetSshTunnelOptions& options, UltraNetHandle& outHandle,
+                                      UltraNetSshTunnelInfo& outInfo) {
+    outHandle = UltraNetInvalidHandle;
+    outInfo = UltraNetSshTunnelInfo();
+    ISshTunnelPlugin* tunnels = nullptr;
+    const std::shared_ptr<IUltraNetPlugin> plugin = SshTunnelPlugin(tunnels);
+    if (!tunnels)
+        return UltraNetResult::Error(UltraNetResultCode::PluginNotFound,
+                                     plugin ? "the ssh plug-in cannot forward ports (an older build)"
+                                            : "no ssh plug-in is installed (Plugins/UltraNet/ultranet_ssh)");
+    return tunnels->OpenTunnel(options, outHandle, outInfo);
+}
+
+UltraNetResult UltraNet_CloseSshTunnel(UltraNetHandle handle) {
+    ISshTunnelPlugin* tunnels = nullptr;
+    const std::shared_ptr<IUltraNetPlugin> plugin = SshTunnelPlugin(tunnels);
+    if (!tunnels) return UltraNetResult::Error(UltraNetResultCode::PluginNotFound, "no ssh plug-in is installed");
+    return tunnels->CloseTunnel(handle);
 }

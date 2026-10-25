@@ -3,6 +3,7 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.5.2 - ISshTunnelPlugin; UltraNetRemoteOptions moved to UltraNetSsh.h, with the host key
 // Version: 0.5.1 - IServiceDiscoveryPlugin (mDNS / DNS-SD advertising)
 // Version: 0.5.0 - IMailboxProtocolPlugin::WatchMailbox / StopWatching (push);
 //                  host ABI 3: SSE streaming, request cancel, the mail-message builder
@@ -15,6 +16,7 @@
 #include "UltraNetCore.h"
 #include "UltraNetFtp.h"      // UltraNetFtpEntry reused by IFileShareProtocolPlugin
 #include "UltraNetHttp.h"     // UltraNetHttpHeaders used by IRpcProtocolPlugin
+#include "UltraNetSsh.h"      // UltraNetRemoteOptions, the SSH tunnel
 
 #include <algorithm>
 #include <cstdint>
@@ -87,16 +89,6 @@ struct UltraNetMessagingOptions {
     int keepAliveSeconds = 60;
     bool useTls = false;
     int connectTimeoutMs = 10000;
-};
-
-struct UltraNetRemoteOptions {
-    UltraNetCredentials credentials;
-    std::vector<uint8_t> privateKeyPem;
-    std::string privateKeyPassword;
-    int connectTimeoutMs = 10000;
-    int idleTimeoutMs = 0;              // 0 = no idle timeout
-    bool requestPty = false;
-    std::string term;                   // e.g. "xterm-256color"
 };
 
 struct UltraNetDirectoryQuery {
@@ -494,6 +486,15 @@ public:
         std::string& outStdOut,
         std::string& outStdErr,
         int& outExitCode) = 0;
+};
+
+// SSH local port forwarding (UltraNetSsh.h): reach it by dynamic_cast from
+// the "ssh" plug-in; UltraNet_OpenSshTunnel does.
+class ISshTunnelPlugin : public IRemoteAccessPlugin {
+public:
+    virtual UltraNetResult OpenTunnel(const UltraNetSshTunnelOptions& options, UltraNetHandle& outHandle,
+                                      UltraNetSshTunnelInfo& outInfo) = 0;
+    virtual UltraNetResult CloseTunnel(UltraNetHandle handle) = 0;
 };
 
 // LDAP.

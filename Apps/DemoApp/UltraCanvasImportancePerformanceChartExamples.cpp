@@ -1,11 +1,14 @@
 // Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
 // Importance-performance chart examples: Slack's zones, smooth and stepped,
 // over the service factors of an invented parcel carrier
+// Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): the chart and its
+//                  controls in cards, every text wraps, the listing as tall as it needs
 // Version: 1.0.0
 // Last Modified: 2026-10-24
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
+#include "UltraCanvasDemoPageKit.h"
 #include "Plugins/Charts/Engine/Charts/UltraCanvasImportancePerformanceChart.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
@@ -48,38 +51,18 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateImportancePerformanceChartExamples() {
-        const int PAD = 15;
+        auto page = DemoKit::CreatePage("ipcMainContainer", "Importance-Performance Chart",
+                "Slack's matrix: each factor of a service, by how much customers care about it and "
+                "how it compares with competitors - the zone it lands in names the action");
 
-        auto mainContainer = std::make_shared<UltraCanvasContainer>("ipcMainContainer", 0, 0, 1140, 800);
-        mainContainer->SetBackgroundColor(Color(248, 249, 250, 255));
-
-        auto headerContainer = std::make_shared<UltraCanvasContainer>("ipcHeader", 0, 0, 1140, 90);
-        headerContainer->SetBackgroundColor(Color(255, 255, 255, 255));
-        mainContainer->AddChild(headerContainer);
-
-        auto mainTitle = std::make_shared<UltraCanvasLabel>("ipcMainTitle", 30, 15, 1080, 35);
-        mainTitle->SetText("Importance-Performance Chart");
-        mainTitle->SetFontSize(22);
-        mainTitle->SetFontWeight(FontWeight::Bold);
-        mainTitle->SetAlignment(TextAlignment::Left);
-        mainTitle->SetTextColor(Color(33, 37, 41, 255));
-        headerContainer->AddChild(mainTitle);
-
-        auto subtitle = std::make_shared<UltraCanvasLabel>("ipcSubtitle", 30, 52, 1080, 30);
-        subtitle->SetText("Slack's matrix: each factor of a service, by how much customers care about it and "
-                          "how it compares with competitors - the zone it lands in names the action");
-        subtitle->SetFontSize(13);
-        subtitle->SetAlignment(TextAlignment::Left);
-        subtitle->SetTextColor(Color(108, 117, 125, 255));
-        headerContainer->AddChild(subtitle);
-
-        auto contentContainer = std::make_shared<UltraCanvasContainer>("ipcContent", 0, 90, 1140, 710);
-        mainContainer->AddChild(contentContainer);
+        // The chart beside its controls; a narrow window puts the controls under it.
+        auto row = DemoKit::AddRow(page, "ipcContent");
 
         // ===== TABS (the two forms of Slack's zones) =====
-        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ipcTabs", 20, 20, 860, 670);
+        auto chartCard = DemoKit::AddCard(row, "ipcChartCard");
+        auto tabbedContainer = std::make_shared<UltraCanvasTabbedContainer>("ipcTabs", 0, 0, 860, 670);
         tabbedContainer->SetTabPosition(TabPosition::Top);
-        contentContainer->AddChild(tabbedContainer);
+        DemoKit::AddFixed(chartCard, tabbedContainer);
 
         const int CHART_W = 840, CHART_H = 610;
         std::vector<std::shared_ptr<UltraCanvasImportancePerformanceChart>> charts;
@@ -109,51 +92,40 @@ namespace UltraCanvas {
             charts.push_back(chart);
         }
 
-        // ===== RIGHT SIDEBAR: controls and the reading =====
-        auto sidebar = std::make_shared<UltraCanvasContainer>("ipcSidebar", 900, 20, 220, 670);
-        sidebar->SetBackgroundColor(Color(255, 255, 255, 255));
-        contentContainer->AddChild(sidebar);
-        const int SIDEBAR_W = 190;
+        // ===== SIDEBAR: controls and the reading =====
+        auto sidebar = DemoKit::AddCard(row, "ipcSidebar", "", "", 240);
 
-        auto addCaption = [&](const std::string& id, const std::string& text, int y) {
-            auto caption = std::make_shared<UltraCanvasLabel>(id, PAD, y, SIDEBAR_W, 20);
-            caption->SetText(text);
-            caption->SetFontSize(10);
-            caption->SetFontWeight(FontWeight::Bold);
-            caption->SetTextColor(Color(73, 80, 87, 255));
-            caption->SetAlignment(TextAlignment::Left);
-            sidebar->AddChild(caption);
+        auto addCaption = [&](const std::string& id, const std::string& text) {
+            DemoKit::AddCaption(sidebar, id, text)->SetFontWeight(FontWeight::Bold);
         };
 
-        addCaption("ipcLabelsCaption", "Factor names", PAD);
-        auto labelsSelector = std::make_shared<UltraCanvasDropdown>("ipcLabelsSelector", PAD, PAD + 23, SIDEBAR_W, 28);
+        addCaption("ipcLabelsCaption", "Factor names");
+        auto labelsSelector = std::make_shared<UltraCanvasDropdown>("ipcLabelsSelector", 0, 0, 190, 28);
         labelsSelector->AddItem("Beside the marks", "outside");
         labelsSelector->AddItem("Hidden (hover for them)", "hidden");
         labelsSelector->SetSelectedIndex(0);
-        sidebar->AddChild(labelsSelector);
+        DemoKit::AddStretched(sidebar, labelsSelector);
 
-        addCaption("ipcAxesCaption", "Axis ticks", PAD + 63);
-        auto axesSelector = std::make_shared<UltraCanvasDropdown>("ipcAxesSelector", PAD, PAD + 86, SIDEBAR_W, 28);
+        addCaption("ipcAxesCaption", "Axis ticks");
+        auto axesSelector = std::make_shared<UltraCanvasDropdown>("ipcAxesSelector", 0, 0, 190, 28);
         axesSelector->AddItem("Named level ranges", "levels");
         axesSelector->AddItem("Numbers (1 = best)", "numbers");
         axesSelector->SetSelectedIndex(0);
-        sidebar->AddChild(axesSelector);
+        DemoKit::AddStretched(sidebar, axesSelector);
 
-        addCaption("ipcGridCaption", "Grid", PAD + 126);
-        auto gridSelector = std::make_shared<UltraCanvasDropdown>("ipcGridSelector", PAD, PAD + 149, SIDEBAR_W, 28);
+        addCaption("ipcGridCaption", "Grid");
+        auto gridSelector = std::make_shared<UltraCanvasDropdown>("ipcGridSelector", 0, 0, 190, 28);
         gridSelector->AddItem("Off", "off");
         gridSelector->AddItem("On", "on");
         gridSelector->SetSelectedIndex(0);
-        sidebar->AddChild(gridSelector);
+        DemoKit::AddStretched(sidebar, gridSelector);
 
-        addCaption("ipcListCaption", "FACTORS BY ZONE", PAD + 196);
-        auto listing = std::make_shared<UltraCanvasLabel>("ipcListing", PAD, PAD + 220, SIDEBAR_W, 420);
-        listing->SetFontSize(10);
-        listing->SetAlignment(TextAlignment::Left);
+        addCaption("ipcListCaption", "FACTORS BY ZONE");
+        // As tall as the zones and factors it lists: the card grows with it.
+        auto listing = DemoKit::AddCaption(sidebar, "ipcListing", ZoneListing(*charts.front()));
+        listing->SetTextColor(DemoKit::BodyText());
         listing->SetBackgroundColor(Color(248, 249, 250, 255));
         listing->SetPadding(10);
-        listing->SetText(ZoneListing(*charts.front()));
-        sidebar->AddChild(listing);
 
         // ===== CALLBACKS (raw pointers: no cycle through the elements) =====
         std::vector<UltraCanvasImportancePerformanceChart*> chartPtrs;
@@ -177,7 +149,7 @@ namespace UltraCanvas {
             for (auto* chart : chartPtrs) chart->SetShowGrid(item.value == "on");
         };
 
-        return mainContainer;
+        return page;
     }
 
 } // namespace UltraCanvas

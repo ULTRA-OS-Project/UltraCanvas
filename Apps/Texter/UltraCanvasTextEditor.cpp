@@ -6083,6 +6083,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.showMarkdownToolbar = configFile.GetBool("showMarkdownToolbar", config.showMarkdownToolbar);
         config.spellCheckEnabled = configFile.GetBool("spellCheck", config.spellCheckEnabled);
         config.spellCheckLanguage = configFile.GetString("spellCheckLanguage", config.spellCheckLanguage);
+        config.spellCheckAutoLanguage = configFile.GetBool("spellCheckAutoLanguage", config.spellCheckAutoLanguage);
     }
 
     void UltraCanvasTextEditor::SaveConfig() {
@@ -6100,6 +6101,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("showMarkdownToolbar", config.showMarkdownToolbar);
         configFile.SetBool("spellCheck", config.spellCheckEnabled);
         configFile.SetString("spellCheckLanguage", config.spellCheckLanguage);
+        configFile.SetBool("spellCheckAutoLanguage", config.spellCheckAutoLanguage);
         configFile.Save();
     }
 

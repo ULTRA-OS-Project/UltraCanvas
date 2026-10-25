@@ -8,10 +8,13 @@
 //                description; Sizes: the databases, then the tables of a
 //                schema with their data and indexes. Shown as the grid wants
 //                them: how long a query has run as h:mm:ss, a size readable.
+//                Monitor: the server's status (UltraDb_ServerStatus) as it
+//                comes, for DbAdminMonitor.h to chart.
 //   SQLite     - the file: page size and count, free pages, its size,
 //                journal mode, encoding, auto-vacuum, user_version,
 //                application_id, foreign_keys, the library's version.
 // Every view is a result set the window shows in a grid.
+// Version: 0.3.0 - Monitor, the server's status for its charts
 // Version: 0.2.0 - the server engines through UltraDatabase 0.5.0; MySQL / MariaDB
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -27,7 +30,7 @@
 
 namespace UltraDBAdmin {
 
-enum class ServerView { Sessions, Settings, Sizes, FileInfo };
+enum class ServerView { Sessions, Monitor, Settings, Sizes, FileInfo };
 
 // The views an engine has, in the order the tab offers them.
 std::vector<ServerView> ServerViews(SqlEngine engine);
