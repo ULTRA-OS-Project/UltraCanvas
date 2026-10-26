@@ -1,9 +1,9 @@
-// Apps/UltraStore/cli/main.cpp
-// ultrastore - the store from the command line. The core is finished and
-// proven here before any window exists; later the same program opens the
-// window when it is started without a command (one program, as UltraFIBU and
-// UltraPress are, because a case-insensitive file system cannot tell
-// `ultrastore` from `UltraStore`).
+// Apps/UltraStore/cli/Commands.cpp
+// ultrastore - the store from the command line. The same program opens the
+// window when it is started without a command (ui/main.cpp; one program, as
+// UltraFIBU and UltraPress are, because a case-insensitive file system cannot
+// tell `ultrastore` from `UltraStore`). The window's options are in the usage
+// below so `ultrastore --help` describes the whole program.
 //
 //   ultrastore platform                       what this machine is
 //   ultrastore list <catalog.json> [--channel beta] [--lang de]
@@ -29,16 +29,24 @@
 //   ultrastore gc [--root <dir>]              removes components nothing depends on
 //   ultrastore --version | --help
 //
+//   ultrastore [--catalog <catalog.json>] [--root <dir>] [--channel beta]
+//                                             the window (no command)
+//
 // --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
 //
+// Version: 0.3.0 - Run() and Usage() for ui/main.cpp; the window's options in the usage;
+//                  FormatBytes shared with the window (StoreQuery)
 // Version: 0.2.0 - install, update, remove, installed, gc (UltraInstaller)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "Commands.h"
+
 #include "Catalog.h"
 #include "CatalogClient.h"
 #include "PackageResolver.h"
 #include "PlatformInfo.h"
 #include "StoreEngine.h"
+#include "StoreQuery.h"
 #include "Verifier.h"
 
 #include "UltraCanvasDataFolder.h"
@@ -56,11 +64,12 @@
 
 using namespace UltraStore;
 
-namespace {
-
-int Usage(FILE* to) {
+int UltraStore::Cli::Usage(FILE* to) {
     std::fprintf(to,
-        "ultrastore %s - the ULTRA OS app store, from the command line\n"
+        "ultrastore %s - the ULTRA OS app store\n"
+        "\n"
+        "  ultrastore [--catalog <catalog.json>] [--root <dir>] [--channel stable|beta]\n"
+        "                                     the window; --catalog shows a local catalog instead of the servers'\n"
         "\n"
         "  ultrastore platform\n"
         "  ultrastore list <catalog.json> [--channel stable|beta] [--lang en|de]\n"
@@ -80,6 +89,10 @@ int Usage(FILE* to) {
         ULTRASTORE_VERSION);
     return to == stdout ? 0 : 2;
 }
+
+namespace {
+
+int Usage(FILE* to) { return UltraStore::Cli::Usage(to); }
 
 bool ReadFile(const std::string& path, std::string& out) {
     std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
@@ -142,15 +155,6 @@ bool KeysFrom(const std::vector<std::string>& args, PublicKeys& keys) {
     return true;
 }
 
-std::string HumanSize(uint64_t bytes) {
-    char buffer[32];
-    if (bytes >= (uint64_t(1) << 30)) std::snprintf(buffer, sizeof(buffer), "%.1f GB", bytes / double(uint64_t(1) << 30));
-    else if (bytes >= (uint64_t(1) << 20)) std::snprintf(buffer, sizeof(buffer), "%.1f MB", bytes / double(uint64_t(1) << 20));
-    else if (bytes >= 1024) std::snprintf(buffer, sizeof(buffer), "%llu KB", static_cast<unsigned long long>(bytes / 1024));
-    else std::snprintf(buffer, sizeof(buffer), "%llu bytes", static_cast<unsigned long long>(bytes));
-    return buffer;
-}
-
 int CmdPlatform() {
     const PlatformInfo info = PlatformInfo::Detect();
     std::printf("%s\n", info.Describe().c_str());
@@ -182,7 +186,7 @@ int CmdList(const std::vector<std::string>& args) {
         if (res.Available()) {
             std::printf("  %s for this machine: %s %s, %s%s\n", res.release->version.c_str(),
                         OSName(res.package->target.os).c_str(), ArchName(res.package->target.arch).c_str(),
-                        HumanSize(res.package->size).c_str(),
+                        FormatBytes(res.package->size).c_str(),
                         res.kind == MatchKind::Emulated ? " (runs under Rosetta)" : "");
             for (const Dependency& d : res.release->depends) std::printf("  needs %s %s\n", d.id.c_str(), d.version.c_str());
         } else if (res.release) {
@@ -223,10 +227,10 @@ int CmdResolve(const std::vector<std::string>& args) {
         std::printf("%-9s %s %s", ComponentKindName(step.component->kind).c_str(), step.component->id.c_str(),
                     step.release->version.c_str());
         if (step.alreadyInstalled) std::printf("  (installed)\n");
-        else std::printf("  %s  %s  %s\n", HumanSize(step.package->size).c_str(),
+        else std::printf("  %s  %s  %s\n", FormatBytes(step.package->size).c_str(),
                          MatchKindName(step.match).c_str(), step.package->url.c_str());
     }
-    std::printf("to download: %s\n", HumanSize(plan.Value().bytesToDownload).c_str());
+    std::printf("to download: %s\n", FormatBytes(plan.Value().bytesToDownload).c_str());
     return 0;
 }
 
@@ -340,11 +344,11 @@ EngineCallbacks ConsoleCallbacks() {
     EngineCallbacks cb;
     cb.onStep = [](const InstallStep& step) {
         std::fprintf(stderr, "%s %s %s (%s)\n", step.alreadyInstalled ? "have" : "get",
-                     step.component->id.c_str(), step.release->version.c_str(), HumanSize(step.package->size).c_str());
+                     step.component->id.c_str(), step.release->version.c_str(), FormatBytes(step.package->size).c_str());
     };
     cb.onDownload = [](const InstallStep&, int64_t done, int64_t total) {
-        if (total > 0) std::fprintf(stderr, "\r  downloading %s of %s   ", HumanSize(uint64_t(done)).c_str(), HumanSize(uint64_t(total)).c_str());
-        else std::fprintf(stderr, "\r  downloading %s   ", HumanSize(uint64_t(done)).c_str());
+        if (total > 0) std::fprintf(stderr, "\r  downloading %s of %s   ", FormatBytes(uint64_t(done)).c_str(), FormatBytes(uint64_t(total)).c_str());
+        else std::fprintf(stderr, "\r  downloading %s   ", FormatBytes(uint64_t(done)).c_str());
         return true;
     };
     cb.onUnpack = [](const InstallStep&, uint64_t, uint64_t, const std::string& file) {
@@ -361,7 +365,7 @@ void PrintOutcome(const InstallOutcome& outcome) {
                     step.release->version.c_str(), step.alreadyInstalled ? "  (was installed)" : "  installed");
     }
     if (outcome.installed.empty()) std::printf("nothing to do\n");
-    else std::printf("downloaded %s\n", HumanSize(outcome.bytesDownloaded).c_str());
+    else std::printf("downloaded %s\n", FormatBytes(outcome.bytesDownloaded).c_str());
 }
 
 int CmdInstall(const std::vector<std::string>& args) {
@@ -444,8 +448,7 @@ int CmdGc(const std::vector<std::string>& args) {
 
 } // namespace
 
-int main(int argc, char** argv) {
-    std::vector<std::string> args(argv + 1, argv + argc);
+int UltraStore::Cli::Run(const std::vector<std::string>& args) {
     if (args.empty()) return Usage(stderr);
     const std::string& cmd = args[0];
     if (cmd == "--help" || cmd == "-h" || cmd == "help") return Usage(stdout);

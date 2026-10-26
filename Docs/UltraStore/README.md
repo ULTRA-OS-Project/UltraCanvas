@@ -6,9 +6,10 @@ keeps everything up to date and takes it away again. One program,
 `ultrastore`: the window when started plainly, the commands below when given
 one.
 
-This page is the design and the record of the decisions behind it. The first
-pull request (0.1.0) delivers the core and the command line; the sections
-marked *later* name what the following ones add, in order.
+This page is the design and the record of the decisions behind it. 0.1.0
+delivered the core and the command line, 0.1.1 UltraInstaller, the next
+release the window; the sections marked *later* name what the following
+ones add, in order.
 
 ## Decisions
 
@@ -50,7 +51,14 @@ Apps/UltraStore/
     Registry.h/.cpp             SqliteRegistry: what is installed, on UltraDatabase
     Installer.h/.cpp            ArchiveInstaller: unpack through VirtualFS, the tree, the collector
     StoreEngine.h/.cpp          install / update / remove / gc for the command line and the window
-  cli/main.cpp                  ultrastore <command>
+    StoreQuery.h/.cpp           what the pages list: the catalog joined with what is installed, filtered
+    AssetCache.h/.cpp           icons and screenshots, fetched once into the cache
+    StoreSettings.h/.cpp        channel, language, servers, trusted keys, the window's size (UltraCanvasAppSettings)
+    UltraStoreBuiltin.h.in      -> the compiled-in keys (keys/*.pub) and servers (ULTRASTORE_SERVERS)
+  cli/Commands.h/.cpp           ultrastore <command>
+  ui/                           the window: StoreWindow (shell, pages, details), StoreJobs (the
+                                worker thread and the Downloads panel), StoreSettingsPage, StoreTheme, main
+  keys/                         the public keys a build trusts out of the box (README.md there)
 Tests/UltraStore/               the core's tests (ctest: UltraStoreCore)
 Docs/UltraStore/                this page, CHANGELOG.md, changelog.d/
 ```
@@ -293,7 +301,7 @@ one is for settings several apps read together):
 | What | Root | Linux | macOS | Windows |
 |---|---|---|---|---|
 | installed apps and components, the registry, the catalog cache, downloads | `UltraCanvasLocalDataFolderRoot() / "UltraStore"` | `~/.local/share/UltraStore` | `~/Library/Application Support/UltraStore` | `%LOCALAPPDATA%\UltraStore` |
-| settings: channel, mirrors, trusted keys | `UltraCanvasSettingsFolderRoot() / "UltraStore"` | `~/.config/UltraStore` | `~/Library/Application Support/UltraStore` | `%APPDATA%\UltraStore` |
+| settings: channel, language, servers, trusted keys, the window's size | `UltraCanvasAppSettings("UltraStore")`: the framework's one place for an application's preferences, `<settings root>/UltraCanvas/UltraStore/settings.json` | `~/.config/UltraCanvas/UltraStore/settings.json` | `~/Library/Application Support/UltraCanvas/UltraStore/settings.json` | `%APPDATA%\UltraCanvas\UltraStore\settings.json` |
 
 The *local* data root because installed binaries are machine-specific and
 large: on Windows that is `%LOCALAPPDATA%`, which does not roam with the
@@ -345,24 +353,65 @@ sign`, `sha256`, `keygen` and `pubkey` are its stand-ins until it exists,
 and its tests will run the same `ParseCatalog` the store runs, so what it
 writes is what the store reads.
 
-## The window (*later*)
+## The window
 
-Pages: Discover, Categories, Installed, Updates, Settings (channel, mirrors,
-the keys it trusts, the platform it detected). Every operation goes through
-the core, so the window and the command line never disagree.
+`ultrastore` started plainly (or with `--catalog`, `--root`, `--channel`)
+opens the window; `Apps/UltraStore/ui/`. A sidebar
+(`UltraCanvasSidebarNavigation`) selects the page, the download queue sits
+in a collapsible panel along the bottom (`UltraCanvasCollapsiblePanel`),
+a status line under it. Every operation goes through the core - the same
+`StoreEngine`, `CatalogClient`, `PackageResolver` the command line uses -
+so the window and the command line never disagree; the pages are
+`StoreQuery::ListApps` with four filters.
 
-The widgets the pages need and the framework lacks - a card element with a
-real button child, a sidebar navigation, a collapsible bottom panel (the
-download queue) and a single-select chip group (the categories) - are
-**added to the framework as proper elements**, each with its component doc
-under `Docs/UltraCanvas/` and its row in `Masterfile_modules.md`, in a
-framework pull request before the window's. Composing them from containers
-in the app, as UltraPassword does, was the alternative and is not taken: the
-next application would compose them again.
+| Page | Shows | Does |
+|---|---|---|
+| Discover | every app of the catalog as a card (`UltraCanvasCard`): icon, publisher, summary, its state (installed version, update available, not for this system, price) | search over name, id, publisher, summary, tags and categories; Install / Try, Buy… (the publisher's page, until payment lands), Open, Update, Remove, Details; Refresh fetches the catalog |
+| Categories | the catalog's categories as a single-select chip group (`UltraCanvasChipGroup`) over the same cards | |
+| Installed | the installed apps, then the runtimes and libraries under them | Open, Remove, Reload, Clean up (the garbage collector) |
+| Updates | the installed apps a newer release has a package for; the count as the sidebar's badge | Update one, Update all |
+| Details | one app: icon, name, publisher, licence, id, state, the badges (price, age rating, open source, needs an account, update period, deprecated / withdrawn, translated automatically), the description, the screenshots side by side, the release's notes and what it needs, the package for this machine, the links (homepage, support, privacy, source) | the same actions; Back |
+| Settings | channel, the texts' language, the servers, the keys trusted beside the compiled-in ones, fetch at start; this machine, the store folder, the settings file, the catalog's state, what is installed | Save, Revert, Refresh catalog now, Clean up, Reload installed |
+
+What is shown follows the admin backend's settings (`StoreQuery`): a
+*listed* app always; an *unlisted* one when it is installed or searched for
+by its exact id; a *hidden* one only when it is installed (it is served for
+updates); a *withdrawn* one only when it is installed. An installed app is
+always shown, whatever the catalog says now, so it can be updated and
+removed; one the catalog no longer knows is listed by its id under
+Installed, with Open and Remove.
+
+**Jobs.** Install, Update, Update all, Remove, Clean up, Refresh and Reload
+line up and run one at a time on a worker thread; the engine and the client
+are touched by the worker only while a job runs and by the UI thread only
+while none does. Each visible job is a row of the Downloads panel with its
+progress bar (`UltraCanvasGaugeDiagramElement`, LinearBar; indeterminate
+while the size is unknown), Pause / Resume (the downloader's, from any
+thread) and Cancel (a waiting job is dropped; a running one stops at the
+next chunk or file, and nothing is left half installed). Progress reaches
+the window through `UltraCanvasApplication::PostToUIThread`; the worker
+never touches an element. Closing the window while a job runs asks first.
+
+**Pictures.** An app's icon and screenshots are URLs relative to the
+catalog's (`ResolveCatalogUrl`); `AssetCache` fetches each once into
+`cache/assets/<sha256 of the url><extension>` on a second thread and the
+cards get them when they arrive; offline, from the cache.
+
+**A local catalog.** `ultrastore --catalog <catalog.json>` shows that file
+instead of the servers' (no signature check, Refresh does nothing), with
+`--root <dir>` for a store folder of its own: how the window is tried
+against a catalog served from `python3 -m http.server`, and how a creator
+previews an entry before it is published.
+
+**Nothing configured yet.** Until the admin backend publishes the first
+catalog, no server and no key are compiled in (`Apps/UltraStore/keys/`,
+`ULTRASTORE_SERVERS`), and Discover says so and points at Settings, where a
+server and a key are entered by hand.
 
 ## The command line
 
 ```
+ultrastore [--catalog <catalog.json>] [--root <dir>] [--channel beta]   the window
 ultrastore platform                                      what this machine is
 ultrastore list <catalog.json> [--channel beta] [--lang de]
 ultrastore resolve <catalog.json> <app-id> [--installed <id>@<version> ...]
@@ -387,7 +436,16 @@ cmake --build build --target ultrastore UltraStoreCoreTests
 
 The target requires libsodium (UltraCrypt's Ed25519) and SQLite
 (UltraDatabase, the registry); without either the configure stops and names
-the package to install, or `-DBUILD_ULTRASTORE=OFF`.
+the package to install, or `-DBUILD_ULTRASTORE=OFF`. `-DULTRASTORE_SERVERS=
+"https://a.example/store;https://b.example/store"` compiles the catalog
+servers in; every `Apps/UltraStore/keys/*.pub` is compiled in as a trusted
+key (the generated `UltraStoreBuiltin.h`).
+
+The window is tried end to end against a catalog of one's own: zip a small
+program, `ultrastore sha256` it, write a catalog.json with
+`http://127.0.0.1:8765/...` URLs, serve the folder with
+`python3 -m http.server 8765`, and start
+`ultrastore --catalog catalog.json --root /tmp/store`.
 
 ## Milestones
 
@@ -397,8 +455,8 @@ the package to install, or `-DBUILD_ULTRASTORE=OFF`.
    `ultrastore install / update / remove / installed / gc`.
 3. **The framework's missing widgets** (card with button child, sidebar
    navigation, collapsible bottom panel, single-select chip group), with
-   component docs.
-4. **The window.**
+   component docs (framework 0.9.409).
+4. **The window** (this page's *The window*).
 5. **The admin backend** (`Apps/UltraStoreAdmin`), the packages server's
    access scheme, key rotation through the catalog (schema 2).
 6. **Payment.**

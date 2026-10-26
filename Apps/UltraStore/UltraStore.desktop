@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraStore. `Icon=UltraStore` is resolved
+# through the icon themes; the install rules put media/appicon/UltraStore.png
+# and .svg into share/icons/hicolor so the lookup lands on them.
+Type=Application
+Version=1.5
+Name=UltraStore
+GenericName=App Store
+Comment=Install, update and remove the ULTRA OS applications
+Exec=ultrastore
+TryExec=ultrastore
+Icon=UltraStore
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraStore
+Categories=System;PackageManager;
+Keywords=store;apps;install;update;software;

@@ -2,6 +2,7 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
+// Version: 4.8.1 - the wheel scrolls a container whose bar autoShowScrollbars showed, not only a forced one
 // Version: 4.8.0 - the corner between two showing scrollbars is painted in the
 //                  track's colour, not left to whatever is beneath
 // Version: 4.7.0 - children are laid out clear of a showing vertical scrollbar
