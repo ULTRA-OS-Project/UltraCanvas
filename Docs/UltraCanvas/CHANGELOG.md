@@ -1,3 +1,6 @@
+#### 2026-10-26 *0.9.414*
+- **UltraCanvasContainer 4.8.1: the mouse wheel scrolls a container whose scrollbar `autoShowScrollbars` showed.** The wheel handler answered only a *forced* scrollbar (`forceShowVerticalScrollbar`), so a list that showed its bar because the content was taller than the box could be dragged by the bar but not rolled: the store's pages, a settings form. The wheel now moves any axis that has a bar, forced or shown.
+
 #### 2026-10-25 *0.9.413*
 - **The delivery hook no longer reports a pushed branch as unpushed.** A
   cloud session's clone is shallow and single-branch, so a branch pushed
