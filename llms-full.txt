@@ -5616,7 +5616,7 @@ first lines as of 2026-10-18.
 | [UltraFIBU](#ultrafibu) | German double-entry bookkeeping | 0.24.5 | UltraDatabase, UltraCrypt |
 | **Desktop and system** | | | |
 | [UltraDesktop](#ultradesktop) | The ULTRA OS desktop | 0.4.1 | DesktopShell, ClipboardHistory, UltraMessage |
-| [UltraStore](#ultrastore) | The app store: signed catalog, per-user installs, updates | 0.1.0 | UltraNet, UltraCrypt, UltraDatabase |
+| [UltraStore](#ultrastore) | The app store: the window, a signed catalog, per-user installs, updates | 0.1.1 | UltraNet, UltraCrypt, UltraDatabase |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
@@ -6034,7 +6034,12 @@ libraries it needs, keeps everything up to date and removes it again. One
 program, `ultrastore`: the window when started plainly, the commands when
 given one.
 
-**Capabilities (0.1.0, the core and the command line):**
+**Capabilities:**
+- The window: Discover (search, cards with Install / Open / Update /
+  Remove), Categories, Installed (with the shared runtimes and the clean-up),
+  Updates (one or all), an app's details with screenshots and release notes,
+  Settings (channel, language, servers, trusted keys); the download queue
+  with progress, pause and cancel in a panel along the bottom.
 - Knows the machine: os, processor, OS version, glibc, distribution, Rosetta.
 - Reads the catalog of apps and the runtime / library components they run
   on, each release with a package per target and the exact component
@@ -6046,8 +6051,10 @@ given one.
   shared components first, skipping what is installed.
 - Fetches the catalog from the first mirror that answers and caches it for
   offline use.
-- Next: UltraInstaller (download, unpack, registry), the window, the admin
-  backend, payment. Design: `Docs/UltraStore/README.md`.
+- Installs: downloads through UltraNet (resumed, hash-checked), unpacks
+  through VirtualFS into a per-user tree, remembers every version in a
+  registry on UltraDatabase, updates, removes, collects what nothing needs.
+- Next: the admin backend, payment. Design: `Docs/UltraStore/README.md`.
 
 ### UltraDesktop
 
