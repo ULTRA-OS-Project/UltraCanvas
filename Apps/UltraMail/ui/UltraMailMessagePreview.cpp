@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.20.2 - an attached web page (attachment-web-page / -active-page) is named
+//                   in the warning strip as phishing, with advice not to open it
 // Version: 0.20.1 - Copy link over a linked picture too (a newsletter's button)
 // Version: 0.20.0 - "Copy link" in the right-click menu over a link of the body
 //                  (HTML and plain text), above Copy and Select All
@@ -1177,6 +1179,9 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     const bool loan = security.HasFinding("loan-offer-fraud");
     const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
                            security.HasFinding("government-impersonation");
+    // An .html "invoice": the page opens in the browser, outside the reader.
+    const bool webPage = security.HasFinding("attachment-web-page") ||
+                         security.HasFinding("attachment-active-page");
     const bool cryptoScam = security.HasFinding("crypto-wallet-secret") ||
                             security.HasFinding("crypto-payment-demand") ||
                             security.HasFinding("crypto-investment-lure");
@@ -1226,7 +1231,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
     const char* what = romance                ? "romance scam"
-                     : phishing || lookalike  ? "phishing"
+                     : phishing || lookalike || webPage ? "phishing"
                      : cryptoScam ? "cryptocurrency scam"
                      : loan       ? "loan scam"
                      : nullptr;
@@ -1258,6 +1263,10 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         text += "\nDo not pay any fee, insurance or charge to receive a loan, and do not "
                 "send copies of your passport or bank details. Ask your own bank if you need "
                 "credit.";
+    else if (webPage && !romance)
+        text += "\nDo not open the attached web page, and do not sign in or pay on a page it "
+                "opens. If you are unsure whether you owe something, contact the company at an "
+                "address you already know.";
     else if (romance)
         text += "\nDo not send money, gift cards or crypto to someone you only know from "
                 "email or the internet, and do not sign up or give card details on a site "
@@ -1272,7 +1281,7 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                 "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
                 "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
                 "search of the photo often finds it under another name.";
-    else if (phishing || lookalike)
+    else if (phishing || lookalike || webPage)
         text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
                 "to hack your accounts on other websites.";
     else if (loan && !cryptoScam)
