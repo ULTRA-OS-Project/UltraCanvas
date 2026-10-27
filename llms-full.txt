@@ -65538,6 +65538,12 @@ enum class SliderValueDisplay {
 };
 ```
 
+A slider that shows a value keeps its bar at the far edge of its box - the
+foot of a horizontal one, the left of a vertical one - so the value has room
+above or beside it. With `NoDisplay` (the default) the bar is centred across
+the box instead, so a slider in a row of labels sits on their line whatever
+height it is given.
+
 ### SliderOrientation
 Defines the slider orientation:
 ```cpp
@@ -98239,6 +98245,14 @@ Listed so the next session does not rediscover them:
 - **Animation frames** (GIF / WebP animation as a frame timeline).
 - **Plugins.** A filter-plugin interface so third parties can add entries to
   `PaintFilterCatalogue()` without recompiling the app.
+
+==============================================================================
+FILE: Docs/ArtCreator/changelog.d/quality-slider-centering.md
+==============================================================================
+
+- **The toolbar's *Quality* slider sat below its caption and value.** It now
+  sits on their line, with the framework's slider centring a bar that shows
+  no value.
 
 ==============================================================================
 FILE: Docs/DeviceExplorer/README.md
