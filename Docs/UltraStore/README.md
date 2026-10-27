@@ -96,9 +96,10 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "sequence": 42,
   "generated": "2026-10-24T12:00:00Z",
+  "trusted_keys": ["0415eff8…fba970e", "9c2b…"],
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -137,6 +138,10 @@ framework versions, so an app built on runtime 0.9.410 gets 0.9.410, and two
 runtimes live side by side until the garbage collector finds one unused.
 Releases are sorted newest first on read; `channel` is `stable` or `beta`
 (the beta channel sees both).
+
+`trusted_keys` (schema 2) lists the public keys that may sign the catalogs
+after this one: see *Keys*. A schema 1 catalog has none and is read as
+before.
 
 Strict where the store relies on it (ids reverse-DNS and unique, versions,
 channel, each package's os / arch / format / absolute http(s) url / 64-hex
@@ -205,15 +210,25 @@ the admin backend until it exists: `GenerateSigningKey`, `PublicKeyOfSeed`,
 - **How the public keys reach the store.** Two ways, both needed. The public
   key is committed to the repository (`Apps/UltraStore/keys/<name>.pub`,
   hex) and compiled into `ultrastore`, so a fresh install trusts the right
-  key with nothing fetched. And the catalog carries `trusted_keys` (*later*,
-  schema 2): the public keys that will sign future catalogs, signed by the
-  current one, so a key can be rotated by publishing with the old key once
-  and the new key from then on, and a store that has seen that catalog
-  accepts the new key before the binary that carries it ships. A key that
-  was never announced that way is refused whatever the catalog says.
+  key with nothing fetched. And the catalog carries `trusted_keys` (schema
+  2): the public keys that may sign the catalogs after it, signed along
+  with everything else. `CatalogClient` keeps the list of the last accepted
+  catalog in its cache (`state.json`, `announcedKeys`) and verifies the
+  next one against the compiled-in keys, the ones the person added in the
+  settings, and that list (`KeysTrustedNow()`). So a key is rotated by
+  publishing once with the old key and the new one listed - the admin
+  backend lists every active key on every publish - and with the new key
+  from then on: a store that has seen that catalog accepts the new key
+  before the binary that carries it ships. A key that no accepted catalog
+  announced is refused whatever the catalog it signs claims: an
+  announcement only counts from a catalog already trusted, and each
+  accepted catalog's list replaces the previous one (a schema 1 catalog
+  announces nothing).
 - **A compromised key** is retired by a release of the store without it;
   the `trusted_keys` list cannot remove a compiled-in key, by design, since
-  the catalog is what an attacker with the key controls.
+  the catalog is what an attacker with the key controls. The announced
+  keys live in the cache folder beside the catalog they came from, with the
+  same trust as the settings file next to it.
 
 ### Resolver (`PackageResolver`)
 
@@ -242,7 +257,8 @@ verifies the signature, parses, checks the sequence, then replaces the
 cache atomically (`catalog.json`, `catalog.json.sig`, `state.json`, written
 beside and renamed over). A 304 answers from the cache; a failed refresh
 leaves the cache untouched, so `LoadCached()` works offline, and verifies
-the cached bytes again before trusting them. The fetch is a function
+the cached bytes again before trusting them. The keys the accepted catalog
+announced are kept in `state.json` and trusted for the next one (*Keys*). The fetch is a function
 injected at construction: the default is UltraNet with HTTPS-only redirects
 and a 64 MB cap, the tests hand in a map.
 
@@ -465,5 +481,5 @@ program, `ultrastore sha256` it, write a catalog.json with
 5. **The admin backend** (`Apps/UltraStoreAdmin`: the core, the command
    line and the window), the packages server's access scheme
    (decided: *Where the server is reached*); key rotation through the
-   catalog (schema 2) still to come.
+   catalog (schema 2, `trusted_keys`, see *Keys*).
 6. **Payment.**
