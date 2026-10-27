@@ -13,6 +13,7 @@
 //   <out>/restricted/<sha256>.<format>      the packages of paid apps - the server hands
 //                                           these out only through a buyer's short-lived
 //                                           signed URL (the access scheme, see the README)
+// Version: 0.3.0 - the codes in the catalog, their landing pages under go/
 // Version: 0.2.0 - trusted_keys from the active keys
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -43,6 +44,7 @@ struct PublishReport {
     std::string signaturePath;
     std::string publicKeyHex;
     size_t apps = 0, components = 0, packagesCopied = 0, mediaCopied = 0;
+    size_t codePages = 0;            // go/<CODE>.html written, one per code in the catalog
     std::vector<std::string> warnings;
 };
 

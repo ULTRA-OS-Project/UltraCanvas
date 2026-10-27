@@ -21,6 +21,7 @@ store itself is [`Docs/UltraStore/README.md`](../UltraStore/README.md).
 | Where is the signing key? | **Generated on the publishing machine, its seed sealed in the database** with a passphrase: Argon2id derives the key, XChaCha20-Poly1305 seals the 32-byte seed with the cost and the salt in the authenticated header (UltraPassword's vault scheme, through UltraCrypt). The seed is in memory for the moment of signing. The public half is exported as a `.pub` file for `Apps/UltraStore/keys/`. A second machine means a second key, which the store trusts beside the first; a key is retired here and dropped from the store's next release. Every publish lists the active keys in the catalog's `trusted_keys` (schema 2), so a new key is announced by the first publish after `key new` and signs from the next one on, and the stores that saw that catalog accept it before the binary that carries it ships; a retired key drops out of the list. |
 | How is the packages server reached? (the store's open question) | **By what the catalog says, with the paid packages behind the server.** The publish folder has `packages/` for the packages of free apps - plain files, fetched by URL, which is what a signed catalog needs and no more - and `restricted/` for the packages of paid apps. The web server serves `packages/` and `media/` to everyone and `restricted/` to nobody directly: a buyer's store gets a **short-lived signed URL** for a restricted file from the payment service (the payment milestone), the way the other stores do it (a CDN with signed URLs per user and download, tokens that expire). No bearer token in the binary: there is nothing to leak, and a leaked signed URL dies in minutes. The catalog itself, the media and the free packages are public and need no secret. |
 | How do the files reach the server? | **`upload`, from the publish folder, over what UltraNet speaks**: SFTP (a password or a key file), FTPS, FTP, or HTTPS with one PUT per file (a WebDAV folder). What changed since the last upload to that server goes up - `upload-state.json` in the store folder keeps each file's SHA-256 per target - the packages and the media first, the signature, and `catalog.json` last, so a store fetching in between sees the old catalog whole or the new one whole. An upload that breaks off goes on from where it stopped. A file gone from the folder is named, not deleted on the server: a store half-way through a download needs it. The publish folder can still be the server's document root, or be copied by other means. |
+| Affiliates and codes | **Two tiers, no more.** A partner has codes (in the catalog, with what they take off) and a share of each sale made with them; a partner recruited by another names the recruiter, who earns a recruit share of the recruit's sales, once, one level up - the recruiter's recruiter nothing; a partner may use their own code. The shares, the contact and who recruited whom stay in `admin.sqlite`; the catalog carries only the codes. Sales are recorded by hand until the payment service reports them, and `affiliate report` says what each partner is owed. QR codes encode `<catalog base>/go/<CODE>` (a page the publish folder carries) and `<catalog base>/join/<affiliate>`. The store's README, *Affiliates and codes*. |
 | Translations | **UltraAI**, the `ITranslator` of the module, with the provider the settings name (`ai.provider`: `qwen`, `llama-cpp`, a configured endpoint; empty follows the routing policy, local first). The creator writes at least one language; `translate` fills every language of `texts.languages` (the official languages, by default) the component lacks, from its `source_language`, and lists them under `machine_translated`. A text a person wrote is never overwritten; a machine one is redone on `--redo`. |
 | Which languages? | The EU's 24 official languages, the EFTA countries' and the UK's, then the other markets the apps ship to (Ukrainian, Turkish, Serbian, Russian, Arabic, Hebrew, Hindi, Indonesian, Japanese, Korean, Thai, Vietnamese, Chinese simplified and traditional, Brazilian Portuguese): `Translation.cpp`, narrowed or widened by the setting. |
 
@@ -35,6 +36,7 @@ Apps/UltraStoreAdmin/
     CatalogPublisher.h/.cpp      the catalog from the database, laid out, signed, verified; the publish folder
     Translation.h/.cpp           the official languages; TranslateComponent over an ITextTranslator; the UltraAI one
     Uploader.h/.cpp              the publish folder onto the host: what changed, catalog.json last; SFTP/FTPS/FTP and HTTPS PUT on UltraNet
+    Affiliates.h/.cpp            the partners' credits (two tiers), the sales ledger and report, the links, QR codes as SVG, the go/ pages
   cli/Commands.h/.cpp            ultrastoreadmin <command>: Cli::Run(args)
   ui/AdminWindow.h/.cpp          the window's shell and its store pages (Overview, Publish, Keys, Settings); the jobs
   ui/AdminComponentPage.cpp      the form of one app or component: every setting, the texts, the pictures, the releases
@@ -63,6 +65,7 @@ app and every runtime or library the database has, an item marked
 | An app or component | The form: every setting of the table in the store's README - identity (id, kind, name, publisher, license, homepage, support, privacy, open source, source, categories, tags), the store settings (visibility, lifecycle and successor, age rating, account, monetary model with price, currency and trial days, free update period with its date), the texts per language (the source language, the language shown, *Add language*, *Translate the missing languages* through UltraAI, the machine ones marked), the pictures (the icon and the screenshots copied into `media/<id>/` by `ImportMedia`), the releases newest first with their packages, an inline editor for a new release and for a new package (the build's file into the package store, OS, processor, variants, minimum OS version, the entry suggested from the archive, public or restricted). Save writes the draft through `PutComponent`, which reads it back the way the store does; Revert reloads; Delete asks first. Leaving a form with unsaved edits asks. |
 | Publish | The publish folder, the key, the passphrase, whether to copy the packages and media; *Check* builds the catalog and lists the warnings; *Publish* runs `Publish()` on a worker thread and reports the sequence, the counts and the warnings. Below it the upload: the server, the user, the password or the key file, *Upload* sends what changed (the status line names each file as it goes) and reports what went and what the server still has. |
 | Keys | The keys with their public halves, *Export .pub…* and *Retire*; a new key from a name and a passphrase typed twice. |
+| Affiliates and codes | The partners with their shares, who recruited them and what the ledger owes them; add or change one, switch one off, the join QR code. The codes with what they take off, the apps and the validity; a new code, its QR code, switch off, remove. A sale recorded by hand with what it credits. |
 | Settings | The store's settings (the URLs, the languages, the UltraAI provider) and the publishers. |
 
 The slow operations (a key's Argon2id seal, a publish, a translation) run
@@ -121,6 +124,11 @@ translate [<id>] [--languages <l> ...] [--redo]
 build [-o <catalog.json>]                                the catalog, unsigned, for a look
 publish <outdir> --key <id> [--passphrase <p>] [--no-copy]
 upload <outdir> [--to <url>] [--user <name>] [--password <p>] [--key-file <pem>] [--all]
+affiliate add <id> <name> [--contact <c>] [--share <percent>] [--recruit-share <percent>] [--recruited-by <id>]
+affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report | qr <id> <file.svg>
+code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]
+code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>
+sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list
 ```
 
 A passphrase comes from `--passphrase`, else `ULTRASTOREADMIN_PASSPHRASE`,
@@ -147,6 +155,12 @@ ultrastoreadmin package add org.ultraos.hello 1.0.0 hello-1.0.0-linux-x86_64.zip
 ultrastoreadmin translate
 ultrastoreadmin publish /srv/store/v1 --key 1
 ultrastoreadmin upload /srv/store/v1 --to sftp://deploy@store.example/srv/store/v1 --key-file ~/.ssh/id_ed25519
+ultrastoreadmin affiliate add aff-super "Super Partner" --share 10 --recruit-share 5
+ultrastoreadmin affiliate add aff-anna "Anna" --share 20 --recruited-by aff-super
+ultrastoreadmin code new ANNA-20 --affiliate aff-anna --percent 20 --apps org.ultraos.hello
+ultrastoreadmin code qr ANNA-20 anna.svg                 # the QR code of https://store.example/v1/go/ANNA-20
+ultrastoreadmin sale add ANNA-20 org.ultraos.hello 23.92 EUR   # Anna earns 4.78, Super 1.20
+ultrastoreadmin affiliate report
 ```
 
 `publish` builds the catalog with the next sequence, copies the packages
@@ -165,6 +179,9 @@ Hello.
   publisher the database does not know, a missing picture: warnings.
 - The signature verifies with the key's public half; a retired key does not
   sign; a wrong passphrase stops before anything is written.
+- The codes in the catalog are the enabled ones whose partner, when they
+  have one, is enabled too; a code naming an app the catalog does not list
+  is warned about. A page per code is written under `go/`.
 - The catalog is schema 2 and announces every active key (`trusted_keys`):
   to rotate, `key new`, publish once with the old key, then with the new
   one; `key retire` the old one afterwards.
@@ -181,4 +198,8 @@ Hello.
 3. **Upload** to the host: `upload` and the Publish page's *Upload*,
    SFTP / FTPS / FTP / HTTPS PUT through UltraNet (*Decisions*, *How do the
    files reach the server?*).
-4. **Payment**, with the signed URLs for `restricted/` (the store's milestone 6).
+4. **Affiliates and codes** (*Decisions*): the partners, two tiers, the
+   codes in the catalog, QR codes and links, the ledger and the report.
+5. **Payment**: Paysafe with Skrill Quick Checkout (the store's README,
+   *Payment*), the signed URLs for `restricted/`, the sales reported into
+   the ledger instead of `sale add` by hand.

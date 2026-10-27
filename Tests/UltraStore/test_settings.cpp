@@ -81,3 +81,21 @@ TEST(lines_trim_and_skip_comments) {
     REQUIRE_EQ(lines[1], std::string("https://b.example"));
     REQUIRE(Lines("").empty());
 }
+
+TEST(the_code_stays_in_force_for_thirty_days) {
+    StoreSettings s;
+    REQUIRE(s.CodeInForce("2026-10-27").empty());
+    s.code = "ANNA-20";
+    s.codeEnteredAt = "2026-10-01";
+    REQUIRE_EQ(s.CodeInForce("2026-10-01"), std::string("ANNA-20"));
+    REQUIRE_EQ(s.CodeInForce("2026-10-31"), std::string("ANNA-20"));   // day 30
+    REQUIRE(s.CodeInForce("2026-11-01").empty());                       // day 31
+    REQUIRE(s.CodeInForce("2026-09-30").empty());                       // before it was entered: a clock set back
+    // Through the file.
+    const std::string dir = TempRoot("settings-code");
+    auto file = UltraCanvas::UltraCanvasAppSettings::AtFile(UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "settings.json"));
+    s.WriteTo(file);
+    const StoreSettings back = StoreSettings::From(file);
+    REQUIRE_EQ(back.code, std::string("ANNA-20"));
+    REQUIRE_EQ(back.codeEnteredAt, std::string("2026-10-01"));
+}

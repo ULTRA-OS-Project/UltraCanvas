@@ -169,11 +169,26 @@ Per app, what the admin backend offers and the catalog carries:
 | Search | `categories`, `tags` | categories from the fixed list the store's sidebar shows; tags free-form |
 | Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback; `source_language` names what the creator wrote, `machine_translated` the languages the server's UltraAI added (see *Translations*) |
 | Media | `icon`, `screenshots` | relative to the catalog URL, served from the same place |
+| Codes | `codes[]` (catalog-wide) | the discount and affiliate codes in force: see *Affiliates and codes* |
 
-Pricing is **shown** by the store from 0.1.0 on; the purchase itself (a
-payment provider, the licence that the app checks, the receipt) is a later
-milestone with its own design, and until then the store installs the free
-apps and the trial of a paid one, and sends *Buy* to the publisher's page.
+Pricing is **shown** by the store from 0.1.0 on; the purchase itself is
+milestone 7, with its own design (*Payment*), and until then the store
+installs the free apps and the trial of a paid one, and sends *Buy* to the
+publisher's page.
+
+### Payment
+
+Decided: the provider is **Paysafe, with Skrill Quick Checkout** as the
+checkout. The buyer pays on Skrill's hosted page (cards, Skrill wallet,
+the local methods Quick Checkout offers), the store never sees a card
+number, and Paysafe's server-to-server status report is what the payment
+service trusts, not the browser's return. The design to come: the payment
+service that holds the merchant credentials (never the store binary),
+opens a Quick Checkout session for an app, a price and the code in force,
+receives the status report, redeems the code (the sale into the ledger
+with its credits, one level up and no further - *Affiliates and codes*),
+issues the licence the app checks and the receipt, and signs the
+short-lived URLs for `restricted/` (*Where the server is reached*).
 
 ### Translations
 
@@ -188,6 +203,52 @@ the app's own localisation folder, so the app's strings get the same
 treatment as its description. The store's own interface strings are not in
 the catalog; they follow the framework's translation facility when it
 exists (none does today) and a local table in the app until then.
+
+### Affiliates and codes
+
+A partner brings buyers with a **code** - typed into the store's Discover
+page, or carried by the partner's **QR code** and link - and earns a share
+of each sale made with it; a **discount code** without a partner takes
+something off the price. The scheme is decided as follows.
+
+- **Two tiers and no more.** An affiliate recorded as recruited by another
+  credits that recruiter a *recruit share* of each sale made with the
+  affiliate's codes, once, one level up. The recruiter's own recruiter earns
+  nothing from those sales: a referral bonus for bringing a partner in, not
+  a pyramid. `CreditsFor` in the admin backend is the one place the rule
+  lives, and its test shows the third level getting nothing.
+- **What is public.** The catalog carries `codes`: the code, its kind
+  (`discount` or `affiliate`), what it takes off (`discount_percent` or
+  `discount_amount` with `currency`), the apps it applies to (none listed:
+  every app), its validity (`valid_from`, `valid_until`) and, for an
+  affiliate code, the partner's id - an opaque handle. A code is made to be
+  passed around, so listing it costs nothing; what a partner earns, their
+  contact and who recruited them stay in the admin database and never
+  reach the catalog.
+- **In the store.** `CheckCode` tells whether a code is known and in force
+  today and what it is for; `DiscountedPrice` and `PriceLabel` show the
+  price with it ("23.92 EUR (was 29.90)"), to the cent, never below 0.00,
+  only in the app's currency. The code entered is kept in the settings
+  (`code.value`, `code.enteredAt`) and stays **in force for 30 days**
+  (`StoreSettings::kCodeDays`): a buyer who arrived through a partner's
+  link and buys within that time credits the partner. `ultrastore code
+  <CODE>` does the same from the command line; `code clear` forgets it.
+- **Links.** `ultrastore://code/<CODE>` opens the store with the code and
+  `ultrastore://app/<id>?code=<CODE>` an app's details with it; the store
+  registers the scheme (`MimeType=x-scheme-handler/ultrastore`), and a
+  second start hands the link to the running copy. The partner's QR code
+  encodes `https://<catalog base>/go/<CODE>`, a page the publish folder
+  carries (`go/<CODE>.html`: what the code gives and the `ultrastore://`
+  link), so a phone that scans it lands somewhere useful; a future partner
+  scans `https://<catalog base>/join/<affiliate>` and names the recruiter
+  when the admin signs them up.
+- **A partner may use their own code.** Nothing distinguishes a partner's
+  purchase from any other, and the share they earn on it is theirs by the
+  same rule; the admin backend does not try to tell them apart.
+- **The redemption** - the purchase, a limit on uses, the payout - is the
+  payment service's (milestone 7, *Payment*). Until it reports sales, the admin
+  backend records them by hand (`sale add`) and its report says what each
+  partner is owed, so the scheme works from the first sale.
 
 ### Verifier (`Verifier`)
 
@@ -482,4 +543,9 @@ program, `ultrastore sha256` it, write a catalog.json with
    line and the window), the packages server's access scheme
    (decided: *Where the server is reached*); key rotation through the
    catalog (schema 2, `trusted_keys`, see *Keys*).
-6. **Payment.**
+6. **Affiliates and codes** (*Affiliates and codes*): discount and
+   affiliate codes in the catalog, QR codes and links, two-tier partners in
+   the admin backend with the sales ledger and the report.
+7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout, the
+   payment service, the redemption of the codes, the licence, the receipt,
+   the signed URLs for `restricted/`.

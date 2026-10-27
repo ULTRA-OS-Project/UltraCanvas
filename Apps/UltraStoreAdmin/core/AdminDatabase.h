@@ -11,6 +11,7 @@
 // setting the catalog grows is kept without a schema change. The tables that
 // are queried on their own - package files by hash, keys, settings - are
 // tables.
+// Version: 0.2.0 - affiliates, codes, sales (schema 2)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -31,7 +32,7 @@ using UltraStore::ErrorCode;
 using UltraStore::Publisher;
 using UltraStore::Result;
 
-inline constexpr int kAdminSchemaVersion = 1;
+inline constexpr int kAdminSchemaVersion = 2;   // 2: affiliates, codes, sales
 
 // A signing key: the public half in the open, the seed sealed (KeyVault.h).
 struct KeyRecord {
@@ -52,6 +53,47 @@ struct PackageFile {
     std::string access = "public";
     uint64_t size = 0;
     std::string format;
+};
+
+// ===== AFFILIATES AND CODES =====
+// A partner who brings buyers: a share of each sale made with one of their
+// codes. Two tiers and no more: an affiliate recruited by another names
+// them in recruitedBy, and the recruiter earns recruitSharePercent of the
+// sales the recruit's codes make - the recruiter's own recruiter earns
+// nothing from those (Docs/UltraStore/README.md, *Affiliates and codes*).
+struct Affiliate {
+    std::string id;                  // "aff-anna", reverse-DNS-free, an opaque handle in the catalog
+    std::string name;
+    std::string contact;             // an email, a page
+    int sharePercent = 0;            // of a sale made with the affiliate's code
+    int recruitSharePercent = 0;     // of a sale made with a recruit's code, to this affiliate
+    std::string recruitedBy;         // the affiliate who brought this one in, or ""
+    bool enabled = true;
+    std::string createdAt;
+};
+
+// A code as the admin keeps it: the catalog's PromoCode, plus whether it is
+// in use. A disabled code is left out of the catalog.
+struct CodeRecord {
+    UltraStore::PromoCode code;
+    bool enabled = true;
+    std::string createdAt;
+};
+
+// A sale as the payment service reports it (or the admin records it by
+// hand until then), with what it credits: the affiliate whose code was used
+// and, one level up, their recruiter. Amounts are decimals in the currency.
+struct SaleRecord {
+    int64_t id = 0;
+    std::string at;                  // ISO 8601
+    std::string code;                // as used, normalized
+    std::string app;
+    std::string amount;              // what the buyer paid, after the discount
+    std::string currency;
+    std::string affiliate;           // credited for the code, or ""
+    std::string recruiter;           // the affiliate's recruiter, credited one level up, or ""
+    std::string affiliateCredit;     // sharePercent of amount
+    std::string recruiterCredit;     // recruitSharePercent of amount
 };
 
 class AdminDatabase {
@@ -94,6 +136,18 @@ public:
     Result<KeyRecord> GetKey(int64_t id) const;
     Result<std::vector<uint8_t>> SealedSeed(int64_t id) const;
     Result<void> RetireKey(int64_t id);
+
+    // ----- affiliates, codes, sales -----
+    Result<void> PutAffiliate(const Affiliate& affiliate);    // adds or replaces; recruitedBy must exist and not form a chain to itself
+    Result<Affiliate> GetAffiliate(const std::string& id) const;
+    Result<std::vector<Affiliate>> Affiliates() const;
+    Result<void> RemoveAffiliate(const std::string& id);      // refused while a code or a recruit names it
+    Result<void> PutCode(const CodeRecord& record);           // adds or replaces; an affiliate code's affiliate must exist
+    Result<CodeRecord> GetCode(const std::string& code) const;
+    Result<std::vector<CodeRecord>> Codes() const;
+    Result<void> RemoveCode(const std::string& code);
+    Result<SaleRecord> AddSale(const SaleRecord& sale);       // as given; the credits are the caller's (Affiliates.h, RecordSale)
+    Result<std::vector<SaleRecord>> Sales() const;
 
     // ----- the catalog's sequence -----
     uint64_t Sequence() const;                 // the last published; 0 before the first

@@ -1,8 +1,11 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
+// Version: 0.3.0 - the codes, their landing pages
 // Version: 0.2.0 - trusted_keys from the active keys
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "CatalogPublisher.h"
+
+#include "Affiliates.h"
 
 #include "KeyVault.h"
 #include "Verifier.h"
@@ -134,6 +137,27 @@ Result<Catalog> BuildCatalog(const AdminDatabase& db, const PublishOptions& opti
         if (c.kind == ComponentKind::App) catalog.apps.push_back(std::move(c));
         else catalog.components.push_back(std::move(c));
     }
+    // The codes in use: every enabled code whose affiliate, when it has one,
+    // is enabled too. What a partner earns stays here; the catalog carries
+    // only what the store needs to show the discount and name the partner.
+    const auto codes = db.Codes();
+    if (!codes) return R::Failure(codes.error.code, codes.error.message, codes.error.detail);
+    for (const CodeRecord& record : codes.Value()) {
+        if (!record.enabled) continue;
+        if (!record.code.affiliate.empty()) {
+            const auto affiliate = db.GetAffiliate(record.code.affiliate);
+            if (!affiliate || !affiliate.Value().enabled) {
+                warn.push_back("code " + record.code.code + ": its affiliate " + record.code.affiliate + (affiliate ? " is switched off" : " does not exist") + ", left out");
+                continue;
+            }
+        }
+        for (const std::string& appId : record.code.apps) {
+            bool known = false;
+            for (const Component& c : catalog.apps) if (c.id == appId) known = true;
+            if (!known) warn.push_back("code " + record.code.code + ": names " + appId + ", which the catalog does not list");
+        }
+        catalog.codes.push_back(record.code);
+    }
     // What the store reads: the bytes must parse as a catalog before they
     // are offered to anyone.
     const auto check = UltraStore::ParseCatalog(UltraStore::SerializeCatalog(catalog));
@@ -210,6 +234,17 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
                 if (!copyMedia(c, c.icon)) return R::Failure(ErrorCode::IoError, error);
                 for (const std::string& s : c.screenshots) if (!copyMedia(c, s)) return R::Failure(ErrorCode::IoError, error);
             }
+        }
+    }
+    // A landing page per code, go/<CODE>.html: what a partner's QR code and
+    // link open on a phone, with the ultrastore:// link for the store.
+    if (!catalog.codes.empty()) {
+        const std::string catalogBase = TrimSlash(options.catalogBaseUrl.empty() ? db.Setting("catalog.base_url") : options.catalogBaseUrl);
+        fs::create_directories(out / "go", ec);
+        for (const UltraStore::PromoCode& code : catalog.codes) {
+            const fs::path page = out / "go" / UltraCanvas::PathFromUtf8(UltraStore::NormalizeCode(code.code) + ".html");
+            if (!WriteFileAtomically(page, CodeLandingPage(code, catalog.apps, catalogBase), error)) return R::Failure(ErrorCode::IoError, error);
+            ++report.codePages;
         }
     }
 
