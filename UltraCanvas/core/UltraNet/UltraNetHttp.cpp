@@ -2,6 +2,9 @@
 // Synchronous HTTP verbs + UltraNetHttpHeaders. Uses ultranet_internal helpers
 // from UltraNetHttpEasy.h to keep option-setting logic in one place.
 // Async lives in UltraNetHttpAsync.cpp.
+// Version: 0.5.0 - every synchronous transfer attaches this thread's
+//                  connection pool (ThreadHttpShare), so a run of calls reuses
+//                  the connection instead of a handshake each
 // Version: 0.4.0 - a body sent from a file as it goes (bodyFilePath)
 // Version: 0.3.0 (Stage 2)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -88,6 +91,12 @@ namespace {
             return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
                                          "curl_easy_init() failed");
         }
+
+        // This thread's connection pool, so a run of calls (a mailbox sync, a
+        // cloud-drive listing) reuses one connection instead of a fresh TCP+TLS
+        // handshake each. Null when libcurl cannot make one — then no reuse.
+        if (CURLSH* share = ultranet_internal::ThreadHttpShare())
+            curl_easy_setopt(easy.get(), CURLOPT_SHARE, share);
 
         // The body goes to the file when the options name one, not to
         // response.body as well; the file is closed before this returns.
@@ -241,6 +250,8 @@ UltraNetResult UltraNet_HttpUploadFile(const std::string& url,
         return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
                                      "curl_easy_init() failed");
     }
+    if (CURLSH* share = ultranet_internal::ThreadHttpShare())
+        curl_easy_setopt(easy.get(), CURLOPT_SHARE, share);
 
     ultranet_internal::WriteSink sink;
     sink.body = &outResponse.body;
