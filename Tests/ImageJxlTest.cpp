@@ -52,7 +52,9 @@ namespace {
 int g_failures = 0;
 
 void Check(bool condition, const std::string& what) {
-    std::cout << (condition ? "  [ OK ] " : "  [FAIL] ") << what << "\n";
+    // Flushed: a crash in the next step still leaves every check before it
+    // in the log, so CI shows which step it was in.
+    std::cout << (condition ? "  [ OK ] " : "  [FAIL] ") << what << std::endl;
     if (!condition) ++g_failures;
 }
 
@@ -234,6 +236,8 @@ int main() {
         Check(opaque && colours.size() > 10000,
               label + ": ... to a picture: opaque, " + std::to_string(colours.size()) + " distinct colours");
 
+        std::cout << "  ... " << label << ": lossless round trip (UCImageRaster::Save, RemoveFromCache, Load)"
+                  << std::endl;
         UCImageSave::ImageExportOptions lossless;
         lossless.format = UCImageSaveFormat::JXL;
         lossless.jxl.lossless = true;
