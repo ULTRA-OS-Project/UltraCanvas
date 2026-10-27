@@ -44,7 +44,11 @@ The first ChatCube draft, which this replaces, is kept under
    connected · Matrix: signed in as @you:matrix.org · Telegram: waiting for
    the network…* - beside what your last action said, so it shows what
    Telegram is doing while you wait, and a step Telegram does not answer
-   within 45 seconds says so instead of waiting forever. Your
+   within 45 seconds says so instead of waiting forever. The form says where the code went: as a
+   rule Telegram sends it as a message to the Telegram apps where your
+   number is already signed in - look in the "Telegram" chat on your phone,
+   not for an SMS - and only offers SMS or a call for some numbers; when it
+   does, a button under the code field asks for it that way. Your
    Telegram chats join the list; `@username`, `t.me/name` or `+phone` in
    *Add* or *New group* goes to Telegram.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
