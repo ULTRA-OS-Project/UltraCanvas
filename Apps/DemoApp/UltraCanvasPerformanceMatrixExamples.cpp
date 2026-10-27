@@ -36,9 +36,9 @@ namespace UltraCanvas {
         headerContainer->AddChild(mainTitle);
 
         auto subtitle = std::make_shared<UltraCanvasLabel>("pmSubtitle", 30, 52, 1080, 30);
-        subtitle->SetText("Two rated axes cross into named categories: the 9-box, performance vs potential, "
-                          "the performance management matrix, talent review cards, skill / will");
+        subtitle->SetText("Named categories where two rated axes cross, in four designs and palettes");
         subtitle->SetFontSize(13);
+        subtitle->SetWrap(TextWrap::WrapWord);
         subtitle->SetAlignment(TextAlignment::Left);
         subtitle->SetTextColor(Color(108, 117, 125, 255));
         headerContainer->AddChild(subtitle);
@@ -115,7 +115,7 @@ namespace UltraCanvas {
             sidebar->AddChild(caption);
         };
 
-        addCaption("pmDesignCaption", "Design (this tab)", PAD);
+        addCaption("pmDesignCaption", "Design", PAD);
         auto designSelector = std::make_shared<UltraCanvasDropdown>("pmDesignSelector", PAD, PAD + 23, SIDEBAR_W, 28);
         designSelector->AddItem("Grid", "grid");
         designSelector->AddItem("Tiles", "tiles");
@@ -124,7 +124,7 @@ namespace UltraCanvas {
         designSelector->SetSelectedIndex(0);
         sidebar->AddChild(designSelector);
 
-        addCaption("pmColoringCaption", "Cell colours (this tab)", PAD + 63);
+        addCaption("pmColoringCaption", "Cell colours", PAD + 63);
         auto coloringSelector = std::make_shared<UltraCanvasDropdown>("pmColoringSelector", PAD, PAD + 86, SIDEBAR_W, 28);
         coloringSelector->AddItem("By rank from the best corner", "rank");
         coloringSelector->AddItem("By row", "row");
@@ -133,7 +133,7 @@ namespace UltraCanvas {
         coloringSelector->SetSelectedIndex(0);
         sidebar->AddChild(coloringSelector);
 
-        addCaption("pmPaletteCaption", "Palette (this tab)", PAD + 126);
+        addCaption("pmPaletteCaption", "Palette", PAD + 126);
         auto paletteSelector = std::make_shared<UltraCanvasDropdown>("pmPaletteSelector", PAD, PAD + 149, SIDEBAR_W, 28);
         paletteSelector->AddItem("Traffic light", "traffic");
         paletteSelector->AddItem("Vivid", "vivid");
@@ -145,11 +145,13 @@ namespace UltraCanvas {
         addCaption("pmSelectionCaption", "SELECTED CELL", PAD + 196);
         auto selection = std::make_shared<UltraCanvasLabel>("pmSelection", PAD, PAD + 220, SIDEBAR_W, 250);
         selection->SetFontSize(10);
+        selection->SetWrap(TextWrap::WrapWord);   // tooltips and the hint are sentences, not lines
         selection->SetAlignment(TextAlignment::Left);
         selection->SetBackgroundColor(Color(248, 249, 250, 255));
         selection->SetPadding(10);
-        selection->SetText("Click a cell. Hover for its full text: a cell too small for its "
-                           "content keeps the rest in its tooltip.");
+        selection->SetText("The controls above change the tab shown. Click a cell to see it here; "
+                           "hover for its full text - a cell too small for its content keeps the "
+                           "rest in its tooltip.");
         sidebar->AddChild(selection);
 
         // ===== CALLBACKS (raw pointers: no cycle through the elements) =====
