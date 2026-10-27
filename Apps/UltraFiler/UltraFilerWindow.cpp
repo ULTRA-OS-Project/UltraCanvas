@@ -22,7 +22,11 @@
 // text", an Export submenu - "Folder content" / "Folder tree content" / "Folder
 // tree as CSV" open a text window with the folder written out as a listing,
 // as a tree drawn with line characters or as a CSV table, and save it
-// (UltraFilerFolderExport) - "Open prompt", then "Set folder icon" / "Remove folder icon", then Pin / Unpin
+// (UltraFilerFolderExport) - "Open prompt", the "Open location" submenu - the
+// UltraCanvas folders (crash dumps, settings, cache) and the system's
+// (application data, temporary files, logs, startup, ...), then "Enter
+// location…" (Ctrl+L), which opens a typed path with its %VAR% / $VAR / ~
+// expanded (UltraFilerLocations) - then "Set folder icon" / "Remove folder icon", then Pin / Unpin
 // submenus whose "To Treeview" / "To Favorites" flags follow the current
 // selection. Folder icons: the main user folders carry one of their own
 // (media/icons), and any folder can be given a picture through "Set folder
@@ -95,6 +99,7 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasDiskCache.h"         // the cache entry of Extras > Open location
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
@@ -107,6 +112,7 @@
 #include "UltraFilerShare.h"
 #include "UltraFilerPrompt.h"
 #include "UltraFilerRamDiskDialog.h"
+#include "UltraFilerLocations.h"           // Extras > Open location
 #include "UltraFilerRamDisks.h"
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 // UltraCloudUI's shared "add account" dialog - the same one UltraMail uses
@@ -1134,6 +1140,16 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
         return f->SelectNextEntryStartingWith(e.character);
     }, { UCEventType::KeyDown });
 
+    // Ctrl+L: Extras > Open location > Enter location…, wherever the focus
+    // is - the key a browser and Explorer use to go to a typed address.
+    window->InstallEventFilter("ufl-open-location",
+            [this](const UCEvent& e) -> bool {
+        if (!e.ctrl || e.alt || e.shift || e.virtualKey != UCKeys::L) return false;
+        if (window->GetActivePopupElement()) return false;
+        PromptForLocation();
+        return true;
+    }, { UCEventType::KeyDown });
+
     preview = CreateMediaViewer("ufl-preview", 0, 0, 0, 0);
     // The pane is added / removed as the selection changes; the viewer must
     // not steal the keyboard focus from the filer on every appearance.
@@ -1992,6 +2008,9 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             findText,
             MenuItemData::Submenu("Export", {exportContent, exportTree, exportCsv}),
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
+            // Built on open, so a folder that appeared since (a first crash
+            // dump) lights up without a restart.
+            MenuItemData::Submenu("Open location", BuildOpenLocationItems()),
             MenuItemData::Separator(),
             setIcon,
             removeIcon,
@@ -1999,6 +2018,113 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             MenuItemData::Submenu("Pin", {pinTree, pinFavorites}),
             MenuItemData::Submenu("Unpin", {unpinTree, unpinFavorites}),
     };
+}
+
+// ===== EXTRAS EXTENSION: OPEN LOCATION =====
+
+std::vector<MenuItemData> UltraFilerWindow::BuildOpenLocationItems() {
+    std::vector<MenuItemData> items;
+    const std::vector<FilerLocation> locations = FilerOsLocations(
+            DiskCache::Root(), UltraFilerSettings::GetConfigDirectory());
+    for (size_t i = 0; i < locations.size(); ++i) {
+        const FilerLocation& location = locations[i];
+        if (i == 0 || location.group != locations[i - 1].group) {
+            if (i > 0) items.push_back(MenuItemData::Separator());
+            items.push_back(MenuItemData::Header(
+                    location.group == FilerLocationGroup::UltraCanvas ? "UltraCanvas" : "System"));
+        }
+        const std::string path = location.path;
+        MenuItemData item = MenuItemData::Action(location.label,
+                [this, path]() { OpenLocation(path); });
+        // A folder that is not there (no crash dump yet, no autostart entry)
+        // stays in the list, disabled: that it does not exist is the answer.
+        std::error_code ec;
+        item.enabled = fs::is_directory(PathFromUtf8(path), ec) && !ec;
+        items.push_back(std::move(item));
+    }
+
+    items.push_back(MenuItemData::Separator());
+    items.push_back(MenuItemData::ActionWithShortcut("Enter location…", "Ctrl+L",
+            [this]() { PromptForLocation(); }));
+
+    if (!settings.recentLocations.empty()) {
+        items.push_back(MenuItemData::Separator());
+        items.push_back(MenuItemData::Header("Recent"));
+        for (const std::string& typed : settings.recentLocations)
+            items.push_back(MenuItemData::Action(typed,
+                    [this, typed]() { OpenTypedLocation(typed); }));
+        items.push_back(MenuItemData::Action("Clear recent locations", [this]() {
+            settings.recentLocations.clear();
+            settings.Save();
+        }));
+    }
+    return items;
+}
+
+void UltraFilerWindow::OpenLocation(const std::string& path) {
+    if (path.empty()) return;
+    std::error_code ec;
+    const bool isFolder = fs::is_directory(PathFromUtf8(path), ec) && !ec;
+    OpenHistoryEntry(path, isFolder);
+}
+
+void UltraFilerWindow::PromptForLocation() {
+    // Pre-filled with the last location typed: the usual next step is the
+    // same place again, or a folder beside it.
+    const std::string last = settings.recentLocations.empty()
+                                     ? std::string() : settings.recentLocations.front();
+    const std::string prompt =
+            CurrentDataFolderPlatform() == DataFolderPlatform::Windows
+                    ? "Folder or file to open, e.g. %LOCALAPPDATA%\\UltraCanvas\\CrashDumps:"
+                    : "Folder or file to open, e.g. ~/.config or $XDG_DATA_HOME/fonts:";
+    UltraCanvasDialogManager::ShowInputDialog(
+            prompt, "Enter location", last, InputType::Text,
+            [this](DialogResult result, const std::string& typed) {
+                if (result != DialogResult::OK) return;
+                OpenTypedLocation(typed);
+            },
+            window.get());
+}
+
+void UltraFilerWindow::OpenTypedLocation(const std::string& typed) {
+    const size_t first = typed.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return;
+    const std::string entry = typed.substr(first, typed.find_last_not_of(" \t\r\n") - first + 1);
+
+    const std::string expanded = ExpandFilerLocationText(
+            entry, CurrentDataFolderPlatform(),
+            [](const std::string& name) { return GetEnvUtf8(name.c_str()); });
+    if (expanded.empty()) return;
+
+    // A remote drive's address is opened as it is: it is not a path on this
+    // file system, and the drive itself says whether it is there.
+    if (IsRemoteFilerPath(expanded)) {
+        RememberFilerLocation(settings.recentLocations, entry,
+                              UltraFilerSettings::kMaxRecentLocations);
+        settings.Save();
+        NavigateTo(expanded);
+        return;
+    }
+
+    // A relative location is read from the folder the active tab shows, as a
+    // shell would; from the home folder when that is no local folder.
+    std::string base = filer ? filer->GetPath() : std::string();
+    if (base.empty() || IsRemoteFilerPath(base)) base = UserHomeDir();
+    const std::string path = ResolveFilerLocation(expanded, base);
+
+    std::error_code ec;
+    if (path.empty() || !fs::exists(PathFromUtf8(path), ec) || ec) {
+        std::string message = "The location \"" + entry + "\" was not found.";
+        // Say what it expanded to: an unset or misspelt variable is the
+        // usual reason, and it shows there.
+        if (!path.empty() && path != entry) message += "\n\nIt names: " + path;
+        UltraCanvasAlert::Error(message, "Open location", nullptr, window.get());
+        return;
+    }
+
+    RememberFilerLocation(settings.recentLocations, entry, UltraFilerSettings::kMaxRecentLocations);
+    settings.Save();
+    OpenLocation(path);
 }
 
 // ===== EXTRAS EXTENSION: FOLDER ICONS =====

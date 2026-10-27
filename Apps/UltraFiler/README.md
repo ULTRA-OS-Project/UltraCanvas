@@ -546,6 +546,37 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   manager leaves the terminal running). Without configuration it uses the
   platform default — `%COMSPEC%` (cmd.exe) on Windows, Terminal.app on macOS,
   `$TERMINAL` or the first installed terminal emulator on Linux.
+- **Extras > Open location** (in the file context menu's Extras submenu):
+  opens, in the active tab, the folders a user is sent to and cannot easily
+  find. The list is built per platform (`UltraFilerLocations.h`), in two
+  blocks:
+  - *UltraCanvas*: **Crash dumps** (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`,
+    or `ULTRACANVAS_CRASH_DUMP_DIR`; Windows only, where the crash reporter
+    writes minidumps), **Settings**, **UltraFiler settings** and **Cache**.
+  - *System*: application data, temporary files, the system's crash reports,
+    logs, startup programs, programs, fonts and the network configuration.
+    On Windows that includes `%LOCALAPPDATA%\CrashDumps`, the WER report
+    archive and the Start menu's Startup folder; on macOS
+    `~/Library/Logs/DiagnosticReports` and `~/Library/LaunchAgents`; on Linux
+    the XDG folders, `/var/crash`, `/var/lib/systemd/coredump` and
+    `~/.config/autostart`.
+
+  A folder that does not exist is listed disabled: "no crash dumps yet" is
+  an answer too.
+  **Enter location…** (also **Ctrl+L**, wherever the focus is) asks for a
+  folder or file:
+  - It expands `%VAR%` on Windows (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`),
+    `$VAR` / `${VAR}` on macOS and Linux (`$XDG_CONFIG_HOME/autostart`), and
+    a leading `~`. Each convention applies only on its own system: `$` is
+    part of a Windows name (`\\server\C$`), `%` of a Linux one.
+  - It strips the quotes "Copy as path" puts around a path. A relative path
+    is read from the folder on screen, and a file opens its folder with the
+    file selected.
+  - When nothing is there, the message shows the path the text expanded to,
+    so a variable that is not set stands out.
+  - The last ten locations that opened are kept as typed (variables
+    unexpanded) in the submenu's *Recent* block, with **Clear recent
+    locations**. The dialog starts with the newest.
 
 ## Settings
 
