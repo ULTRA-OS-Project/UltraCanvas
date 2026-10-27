@@ -9,8 +9,9 @@
 // of the account. With the current account only, the tree lists that one and
 // follows the account bar to the next.
 //
-// The account bar's counters: the inbox under New today, Unread before today
-// or Waiting for reply shows exactly the messages the counter counts, and the
+// The account bar's counters: the inbox under New today or Waiting for reply
+// shows exactly the messages the counter counts, under Unread all unread mail
+// (the counter counts the part from before today), and the
 // filter is reported (onFilterChanged) until a folder switch clears it.
 //
 // Builds the mail view on an in-memory store in a real window, so it runs
@@ -256,10 +257,10 @@ int main() {
     TEST("the filter is reported for the account",
          reported.size() == 1 && reported[0].first == "erika" &&
          reported[0].second.kind == MessageFilterKind::NewToday);
-    view.ShowInbox("erika", {MessageFilterKind::UnreadOlder, ""});
-    TEST("Unread before today: the counter's messages",
-         static_cast<int>(view.ShownMessages().size()) == erika.unreadOlder &&
-         erika.unreadOlder == 3);
+    view.ShowInbox("erika", {MessageFilterKind::Unread, ""});
+    TEST("Unread: all unread mail, today's too",
+         static_cast<int>(view.ShownMessages().size()) == erika.unread &&
+         erika.unread == 5 && erika.unreadOlder == 3);
     view.ShowInbox("erika", {MessageFilterKind::NeedsAnswer, ""});
     TEST("Waiting for reply: the counter's messages",
          static_cast<int>(view.ShownMessages().size()) == erika.needsAnswer &&

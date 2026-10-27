@@ -43,12 +43,12 @@ constexpr float kCountSize    = 11.0f;
 // A counter's colours, by the filter it applies.
 const Color& CounterTint(MessageFilterKind kind) {
     return kind == MessageFilterKind::NewToday    ? Theme::kNewTodayTint
-         : kind == MessageFilterKind::UnreadOlder ? Theme::kUnreadTint
+         : kind == MessageFilterKind::Unread      ? Theme::kUnreadTint
                                                   : Theme::kWaitingTint;
 }
 const Color& CounterText(MessageFilterKind kind) {
     return kind == MessageFilterKind::NewToday    ? Theme::kNewTodayText
-         : kind == MessageFilterKind::UnreadOlder ? Theme::kUnreadText
+         : kind == MessageFilterKind::Unread      ? Theme::kUnreadText
                                                   : Theme::kWaitingText;
 }
 
@@ -184,7 +184,7 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::MakeCounter(const std::string&
                                                               float height) {
     const std::string acc = accountId;
     const char* id = kind == MessageFilterKind::NewToday    ? "acctPill_today_"
-                   : kind == MessageFilterKind::UnreadOlder ? "acctPill_older_"
+                   : kind == MessageFilterKind::Unread      ? "acctPill_older_"
                                                             : "acctPill_waiting_";
     // A click target of its own on the card: it filters, the card around it
     // shows everything. Its number and caption take no pointer.
@@ -207,11 +207,16 @@ std::shared_ptr<UltraCanvasContainer> AccountBar::MakeCounter(const std::string&
         pill->AddChild(Theme::MakeText(id + acc + ".c", caption, Theme::kSizeSecondary,
                                        CounterText(kind)));
     pill->PassPointerThroughContent();
-    const std::string what = kind == MessageFilterKind::NewToday ? "unread messages from today"
-                           : kind == MessageFilterKind::UnreadOlder
-                               ? "unread messages from before today"
-                               : "messages waiting for your reply";
-    pill->SetTooltip(std::to_string(count) + " " + what + " - click to show only these");
+    // "Unread" counts the unread mail from before today (today's is the
+    // first counter), but a click shows all of it, today's too.
+    pill->SetTooltip(
+        kind == MessageFilterKind::NewToday
+            ? std::to_string(count) + " unread messages from today - click to show only these"
+        : kind == MessageFilterKind::Unread
+            ? std::to_string(count) + " unread messages from before today - click to show "
+              "all unread mail"
+            : std::to_string(count) + " messages waiting for your reply - click to show only "
+              "these");
     counters_[{acc, kind}] = pill;
     return pill;
 }
@@ -314,7 +319,7 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
 
     card->AddChild(MakeCounter(acc, MessageFilterKind::NewToday, status.unreadToday,
                                "New today", kPillHeight));
-    card->AddChild(MakeCounter(acc, MessageFilterKind::UnreadOlder, status.unreadOlder,
+    card->AddChild(MakeCounter(acc, MessageFilterKind::Unread, status.unreadOlder,
                                "Unread", kPillHeight));
     card->AddChild(MakeCounter(acc, MessageFilterKind::NeedsAnswer, status.needsAnswer,
                                "Waiting for reply", kPillHeight));
@@ -408,7 +413,7 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         counters->AddChild(MakeCounter(acc, MessageFilterKind::NewToday, st.unreadToday, "",
                                        kTilePill));
-        counters->AddChild(MakeCounter(acc, MessageFilterKind::UnreadOlder, st.unreadOlder, "",
+        counters->AddChild(MakeCounter(acc, MessageFilterKind::Unread, st.unreadOlder, "",
                                        kTilePill));
         counters->AddChild(MakeCounter(acc, MessageFilterKind::NeedsAnswer, st.needsAnswer, "",
                                        kTilePill));

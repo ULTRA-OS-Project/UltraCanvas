@@ -4,7 +4,7 @@
 // payments and invoices. The list computes each message's facts from what it
 // already holds (flags, the needs-answer list, the sender badge, the brand
 // registry); this decides which messages a filter keeps. Headless.
-// Version: 0.2.0 - NewToday and UnreadOlder (the account bar's counters, clicked);
+// Version: 0.2.0 - NewToday (the account bar's first counter, clicked);
 //                  MessageFacts::today; MessageFilter ==
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -27,8 +27,7 @@ enum class MessageFilterKind {
     SocialMedia,    // from a social network or messaging service
     Payments,       // a payment service, bank or crypto exchange, or an invoice /
                     // receipt / payment subject
-    NewToday,       // unread and dated today - the account bar's "New today"
-    UnreadOlder     // unread and dated before today - the account bar's "Unread"
+    NewToday        // unread and dated today - the account bar's "New today"
 };
 
 struct MessageFilter {

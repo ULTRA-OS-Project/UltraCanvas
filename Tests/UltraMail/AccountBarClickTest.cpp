@@ -213,7 +213,7 @@ int main() {
     // Each counter, and whatever inside it is under the pointer: that
     // account, that filter - and no plain selection.
     const std::vector<std::pair<MessageFilterKind, std::string>> kinds = {
-        {MessageFilterKind::NewToday, "today"}, {MessageFilterKind::UnreadOlder, "older"},
+        {MessageFilterKind::NewToday, "today"}, {MessageFilterKind::Unread, "unread"},
         {MessageFilterKind::NeedsAnswer, "waiting"}};
     for (const auto& [kind, name] : kinds) {
         const auto counter = bar.Counter(accounts[1].accountId, kind);
@@ -230,7 +230,9 @@ int main() {
                  filtered == accounts[1].accountId && filteredKind == kind && selected.empty());
         }
         TEST("the " + name + " counter says what a click does",
-             counter->GetTooltip().find("click to show only") != std::string::npos);
+             counter->GetTooltip().find(kind == MessageFilterKind::Unread
+                                            ? "click to show all unread mail"
+                                            : "click to show only") != std::string::npos);
     }
 
     // And back: the first tile answers the same way.
@@ -250,7 +252,7 @@ int main() {
                c->GetParentContainer()->IsVisible();
     };
     TEST("no filter, no filter card", bar.FilterCard() && !shown());
-    bar.ShowFilter(accounts[1].accountId, {MessageFilterKind::UnreadOlder, ""});
+    bar.ShowFilter(accounts[1].accountId, {MessageFilterKind::Unread, ""});
     frames(4);
     const auto card = bar.FilterCard();
     TEST("a filter shows its card", card && shown());
@@ -259,7 +261,7 @@ int main() {
                                          tiles[1]->GetBoundsInWindow().height);
     TEST("the card starts under the second tile",
          std::abs(card->GetBoundsInWindow().x - tiles[1]->GetBoundsInWindow().x) < 1.0f);
-    const auto older = bar.Counter(accounts[1].accountId, MessageFilterKind::UnreadOlder);
+    const auto older = bar.Counter(accounts[1].accountId, MessageFilterKind::Unread);
     const auto today = bar.Counter(accounts[1].accountId, MessageFilterKind::NewToday);
     TEST("the active counter is framed", older && older->GetBorderLeftWidth() > 0.0f);
     TEST("the others are not", today && today->GetBorderLeftWidth() == 0.0f);

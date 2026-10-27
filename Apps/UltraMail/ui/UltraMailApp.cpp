@@ -1,6 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.9.40 - the account bar's counters filter the list (New today, Unread
-//                  before today, Waiting for reply); a click on the rest of the
+// Version: 0.9.40 - the account bar's counters filter the list (New today, all
+//                  unread mail, Waiting for reply); a click on the rest of the
 //                  card, or "Show all emails" under it, shows all mail again
 // Version: 0.9.39 - the compose window opens wide enough for its toolbar in
 //                  one row; Settings > Reading > Attachments reaches the reading

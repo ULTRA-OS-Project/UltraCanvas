@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailMessageFilter.cpp
-// Version: 0.2.0 - NewToday, UnreadOlder
+// Version: 0.2.0 - NewToday
 // Version: 0.1.1 - Payments also takes banks and crypto exchanges
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -119,7 +119,6 @@ bool FilterMatches(const MessageFilter& filter, const MessageEnvelope& message,
                                     *facts.brand == BrandCategory::Crypto)) ||
                    LooksLikePaymentSubject(message.subject);
         case MessageFilterKind::NewToday:    return facts.unread && facts.today;
-        case MessageFilterKind::UnreadOlder: return facts.unread && !facts.today;
     }
     return true;
 }
@@ -134,7 +133,6 @@ std::string Describe(const MessageFilter& filter) {
         case MessageFilterKind::SocialMedia: return "Social media";
         case MessageFilterKind::Payments:    return "Payments & invoices";
         case MessageFilterKind::NewToday:    return "New today";
-        case MessageFilterKind::UnreadOlder: return "Unread before today";
     }
     return "All";
 }

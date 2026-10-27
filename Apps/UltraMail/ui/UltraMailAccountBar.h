@@ -73,7 +73,8 @@ public:
     // show the account, all of its mail (a tile, or the single summary card).
     std::function<void(const std::string& accountId)> onSelectAccount;
     // Fired when a counter is clicked: show the account's inbox narrowed to
-    // what the counter counts - NewToday, UnreadOlder or NeedsAnswer.
+    // what the counter stands for - NewToday, Unread (all unread mail,
+    // not only what the counter counts before today) or NeedsAnswer.
     std::function<void(const std::string& accountId, MessageFilterKind kind)> onFilterAccount;
     // Fired by the filter card's "Show all emails" button.
     std::function<void()> onShowAll;
