@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/ui/AdminWindow.cpp
 // The shell, the store's pages (Overview, Settings, Keys, Publish) and the
 // worker thread; the component form is in AdminComponentPage.cpp.
+// Version: 0.2.0 - the upload to the host on the Publish page
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "AdminWindow.h"
@@ -8,6 +9,7 @@
 #include "AdminTheme.h"
 #include "CatalogPublisher.h"
 #include "KeyVault.h"
+#include "Uploader.h"
 #include "Translation.h"
 
 #include "UltraCanvasAlert.h"
@@ -388,6 +390,11 @@ void AdminWindow::BuildSettingsPage() {
 
 void AdminWindow::LoadSettingsPage() {
     for (auto& [key, input] : settingInputs_) input->SetText(db_.Setting(key));
+    if (uploadUrl_ && uploadUrl_->GetText().empty()) {   // the Publish page's upload fields, kept by the last upload
+        uploadUrl_->SetText(db_.Setting("upload.url"));
+        uploadUser_->SetText(db_.Setting("upload.user"));
+        uploadKeyFile_->SetText(db_.Setting("upload.key_file"));
+    }
     std::string list;
     for (const UltraStore::Publisher& p : publishers_) list += (list.empty() ? "" : "\n") + p.id + "  " + p.name + (p.url.empty() ? "" : "  " + p.url);
     if (settingsInfo_) settingsInfo_->SetText(list.empty() ? "No publisher yet: every app names one." : list);
@@ -544,6 +551,45 @@ void AdminWindow::BuildPublishPage() {
     buttons->AddChild(publish);
     surface->AddChild(buttons);
     body->AddChild(surface);
+
+    // The publish folder onto the host.
+    auto upload = Theme::Surface("uaU.form", Theme::kGap);
+    upload->AddChild(Theme::Text("uaU.title", "Upload the publish folder to the server", 14.0f, FontWeight::Bold));
+    upload->AddChild(Theme::Caption("uaU.hint",
+        "What changed since the last upload to this server goes up - the packages and the media first, the signature, and catalog.json "
+        "last, so a store fetching in between sees the old catalog whole or the new one whole. SFTP (sftp://user@host/path, a password "
+        "or a key file), FTPS, FTP, or HTTPS with one PUT per file (a WebDAV folder). The password is never kept."));
+    uploadUrl_ = Theme::Pin(CreateTextInput("uaU.url", 0, 0, 480, Theme::kControlHeight));
+    uploadUrl_->SetPlaceholder("sftp://deploy@store.example/srv/store/v1");
+    upload->AddChild(Theme::Field("uaU.urlRow", "Server", uploadUrl_));
+    uploadUser_ = Theme::Pin(CreateTextInput("uaU.user", 0, 0, 260, Theme::kControlHeight));
+    uploadUser_->SetPlaceholder("when the URL names none");
+    upload->AddChild(Theme::Field("uaU.userRow", "User", uploadUser_));
+    uploadPass_ = Theme::Pin(CreatePasswordInput("uaU.pass", 0, 0, 260, Theme::kControlHeight));
+    upload->AddChild(Theme::Field("uaU.passRow", "Password", uploadPass_));
+    uploadKeyFile_ = Theme::Pin(CreateTextInput("uaU.keyFile", 0, 0, 480, Theme::kControlHeight));
+    uploadKeyFile_->SetPlaceholder("~/.ssh/id_ed25519 (SFTP with a key; the password is its passphrase then)");
+    auto keyRow = Theme::Row("uaU.keyRow", Theme::kInnerGap);
+    keyRow->AddChild(uploadKeyFile_);
+    auto pickKey = Theme::Button("uaU.pickKey", "Choose…", 90);
+    pickKey->onClick = [this]() {
+        FileDialogOptions opts;
+        opts.SetTitle("The SSH private key").SetParentWindow(window_.get());
+        UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
+            if (result == DialogResult::OK && !path.empty()) uploadKeyFile_->SetText(path);
+        });
+    };
+    keyRow->AddChild(pickKey);
+    upload->AddChild(Theme::Field("uaU.keyField", "Key file", keyRow, true));
+    uploadAll_ = Theme::Pin(UltraCanvasCheckbox::CreateCheckbox("uaU.all", 0, 0, 420, Theme::kControlHeight, "Send every file, not only what changed", false));
+    upload->AddChild(uploadAll_);
+    auto uploadButtons = Theme::Row("uaU.buttons", Theme::kGap);
+    auto send = Theme::Button("uaU.upload", "Upload", 100, Theme::ButtonKind::Primary);
+    send->onClick = [this]() { UploadNow(); };
+    uploadButtons->AddChild(send);
+    upload->AddChild(uploadButtons);
+    body->AddChild(upload);
+
     auto report = Theme::Surface("uaP.report", Theme::kInnerGap);
     report->AddChild(Theme::Text("uaP.report.title", "Report", 13.0f, FontWeight::Bold));
     publishReport_ = Theme::Caption("uaP.report.text", "Nothing yet.");
@@ -596,6 +642,49 @@ void AdminWindow::PublishNow() {
         publishReport_->SetText(out.message + (out.lines.empty() ? "" : "\n" + Joined(out.lines)));
         publishPass_->SetText("");
         RefreshOverview();
+    });
+}
+
+void AdminWindow::UploadNow() {
+    UploadTarget target;
+    target.url = uploadUrl_->GetText();
+    target.username = uploadUser_->GetText();
+    target.privateKeyFileUtf8 = uploadKeyFile_->GetText();
+    if (target.privateKeyFileUtf8.empty()) target.password = uploadPass_->GetText();
+    else target.keyPassphrase = uploadPass_->GetText();
+    if (target.url.empty()) { SetStatus("Enter the server to upload to", true); return; }
+    UploadOptions options;
+    options.publishDirUtf8 = publishDir_->GetText();
+    if (options.publishDirUtf8.empty()) { SetStatus("Choose the publish folder", true); return; }
+    options.stateFileUtf8 = UploadStatePath(store_.dir);
+    options.everything = uploadAll_->IsChecked();
+    auto transport = CreateUltraNetTransport(target);
+    if (!transport) { SetStatus(transport.error.message + " (" + transport.error.detail + ")", true); return; }
+    // The server, the user and the key file are kept for next time; the password is not.
+    db_.SetSetting("upload.url", target.url);
+    db_.SetSetting("upload.user", target.username);
+    db_.SetSetting("upload.key_file", target.privateKeyFileUtf8);
+    std::shared_ptr<IUploadTransport> shared = std::move(transport.Value());
+    std::weak_ptr<int> token = alive_;
+    options.onProgress = [this, token](const UploadProgress& p) {
+        const std::string text = p.currentFile.empty()
+            ? std::string()
+            : "Uploading " + std::to_string(p.filesDone + 1) + "/" + std::to_string(p.filesTotal) + ": " + p.currentFile;
+        if (text.empty()) return;
+        app_.PostToUIThread([this, token, text]() { if (token.lock()) SetStatus(text); });
+    };
+    const std::string url = target.url;
+    RunJob("Uploading", [shared, url, options]() {
+        JobOutcome out;
+        const auto report = UploadPublishFolder(*shared, url, options);
+        if (!report) { out.ok = false; out.message = report.error.message + (report.error.detail.empty() ? "" : " (" + report.error.detail + ")"); return out; }
+        const UploadReport& r = report.Value();
+        out.message = "Uploaded " + std::to_string(r.filesSent) + " file(s), " + std::to_string(r.bytesSent) + " bytes, to " + url +
+                      " (" + SchemeName(SchemeOf(url)) + "); " + std::to_string(r.filesSkipped) + " unchanged";
+        for (const std::string& w : r.warnings) out.lines.push_back("warning: " + w);
+        return out;
+    }, [this](const JobOutcome& out) {
+        publishReport_->SetText(out.message + (out.lines.empty() ? "" : "\n" + Joined(out.lines)));
     });
 }
 

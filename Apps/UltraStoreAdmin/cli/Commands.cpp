@@ -28,6 +28,7 @@
 // A passphrase comes from --passphrase, else ULTRASTOREADMIN_PASSPHRASE, else
 // a line on standard input.
 //
+// Version: 0.3.0 - upload
 // Version: 0.2.0 - Run() and Usage() for ui/main.cpp; the window in the usage
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -38,6 +39,7 @@
 #include "KeyVault.h"
 #include "PackageStore.h"
 #include "Translation.h"
+#include "Uploader.h"
 
 #include "Catalog.h"
 #include "UltraStoreTypes.h"
@@ -92,6 +94,7 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "  translate [<id>] [--languages <l> ...] [--redo]\n"
         "  build [-o <catalog.json>]\n"
         "  publish <outdir> --key <id> [--passphrase <p>] [--no-copy]\n"
+        "  upload <outdir> [--to <url>] [--user <name>] [--password <p>] [--key-file <pem>] [--all]\n"
         "  --version | --help\n"
         "\n"
         "Fields for `app set`: name publisher license homepage support_url privacy_url source_url icon\n"
@@ -242,7 +245,7 @@ int CmdSettings(Store& store, const std::vector<std::string>& args) {
     if (!all) return Fail(all.error);
     if (all.Value().empty()) std::printf("no settings yet\n");
     for (const auto& [k, v] : all.Value()) std::printf("%-24s %s\n", k.c_str(), v.c_str());
-    std::printf("\nkeys the store reads: catalog.base_url packages.base_url texts.languages ai.provider ai.base_url ai.model\n");
+    std::printf("\nkeys the store reads: catalog.base_url packages.base_url texts.languages ai.provider ai.base_url ai.model upload.url upload.user upload.key_file\n");
     return 0;
 }
 
@@ -622,6 +625,48 @@ int CmdPublish(Store& store, const std::vector<std::string>& args) {
     return 0;
 }
 
+// upload <outdir> [--to <url>] [--user <name>] [--password <p>] [--key-file <pem>] [--all]
+// The target and the user come from the settings (upload.url, upload.user,
+// upload.key_file) unless given; the password from --password, else
+// ULTRASTOREADMIN_UPLOAD_PASSWORD, else a line on standard input when the
+// target has a user and no key.
+int CmdUpload(Store& store, const std::vector<std::string>& args) {
+    if (!store.Open(false)) return 1;
+    const auto pos = Positional(args, {"--all"});
+    if (pos.size() < 2) return Usage(stderr);
+    UploadTarget target;
+    target.url = Option(args, "--to", store.db.Setting("upload.url"));
+    if (target.url.empty()) return Fail("upload needs --to <url> or the setting upload.url (sftp://user@host/path, ftps://, https://)");
+    target.username = Option(args, "--user", store.db.Setting("upload.user"));
+    target.privateKeyFileUtf8 = Option(args, "--key-file", store.db.Setting("upload.key_file"));
+    target.keyPassphrase = Option(args, "--key-passphrase");
+    target.password = Option(args, "--password");
+    if (target.password.empty()) target.password = UltraCanvas::GetEnvUtf8("ULTRASTOREADMIN_UPLOAD_PASSWORD");   // path-string-ok: GetEnvUtf8 is the UTF-8 read
+    const bool urlHasUser = target.url.find('@') != std::string::npos && target.url.find('@') < target.url.find('/', 8);
+    if (target.password.empty() && target.privateKeyFileUtf8.empty() && (urlHasUser || !target.username.empty())) {
+        std::fprintf(stderr, "Password for %s: ", target.url.c_str());
+        std::fflush(stderr);
+        std::getline(std::cin, target.password);
+    }
+    auto transport = CreateUltraNetTransport(target);
+    if (!transport) return Fail(transport.error);
+    UploadOptions options;
+    options.publishDirUtf8 = pos[1];
+    options.stateFileUtf8 = UploadStatePath(store.dir);
+    options.everything = Flag(args, "--all");
+    options.onProgress = [](const UploadProgress& p) {
+        if (p.currentFile.empty()) return;
+        std::fprintf(stderr, "[%zu/%zu] %s\n", p.filesDone + 1, p.filesTotal, p.currentFile.c_str());
+    };
+    const auto report = UploadPublishFolder(*transport.Value(), target.url, options);
+    if (!report) return Fail(report.error);
+    for (const std::string& w : report.Value().warnings) std::fprintf(stderr, "warning: %s\n", w.c_str());
+    std::printf("uploaded %zu file(s), %llu bytes, to %s (%s); %zu unchanged\n", report.Value().filesSent,
+                static_cast<unsigned long long>(report.Value().bytesSent), target.url.c_str(),
+                SchemeName(SchemeOf(target.url)).c_str(), report.Value().filesSkipped);
+    return 0;
+}
+
 } // namespace
 
 int UltraStoreAdmin::Cli::Run(const std::vector<std::string>& argsIn) {
@@ -649,6 +694,7 @@ int UltraStoreAdmin::Cli::Run(const std::vector<std::string>& argsIn) {
     if (cmd == "translate") return CmdTranslate(store, args);
     if (cmd == "build")     return CmdBuild(store, args);
     if (cmd == "publish")   return CmdPublish(store, args);
+    if (cmd == "upload")    return CmdUpload(store, args);
     std::fprintf(stderr, "ultrastoreadmin: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }
