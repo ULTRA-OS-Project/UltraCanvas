@@ -2,6 +2,7 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.3 - the relay's port probed free, three tries
 // Version: 0.1.2 - the plaintext check on the sealed bytes
 // Version: 0.1.1 - TestRelayRedirect: the relay behind a redirector
 // Last Modified: 2026-10-22
@@ -34,7 +35,10 @@
 #if defined(_WIN32)
 #include <process.h>
 #else
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -230,33 +234,59 @@ bool WaitConversation(const std::function<void(UltraIMConversationCallback)>& st
 }
 
 #if !defined(_WIN32)
+// A loopback port nobody listens on, from the one given upwards. The pid
+// alone chose the port before, and a build's test rows run several suites
+// at once: another process held the port now and then, the relay's bind
+// failed, and the end-to-end part failed with it.
+int FreePort(int from) {
+    for (int port = from; port < from + 100; ++port) {
+        const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) return port;
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(static_cast<uint16_t>(port));
+        const bool isFree = ::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) == 0;
+        ::close(fd);
+        if (isFree) return port;
+    }
+    return from;
+}
+
 struct Relay {
     pid_t pid = -1;
     std::string url;
 
     bool Start(const fs::path& dataDir) {
         if (std::system("python3 -c 'import fastapi, uvicorn, cryptography' >/dev/null 2>&1") != 0) return false;
-        const int port = 20000 + static_cast<int>(::getpid() % 20000);
-        url = "http://127.0.0.1:" + std::to_string(port);
-        pid = fork();
-        if (pid == 0) {
-            if (chdir(ULTRAIM_RELAY_DIR) != 0) _exit(127);
-            setenv("CHATCUBE_RELAY_PORT", std::to_string(port).c_str(), 1);
-            setenv("CHATCUBE_RELAY_DB", UltraCanvas::PathToUtf8(dataDir / "relay.sqlite3").c_str(), 1);
-            // The Telegram application's keys a relay hands its users.
-            setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "1017053", 1);
-            setenv("CHATCUBE_RELAY_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef", 1);
-            execlp("python3", "python3", "-m", "chatcube_relay", static_cast<char*>(nullptr));
-            _exit(127);
+        // Three tries: the port is probed free, but another process can
+        // still take it between the probe and the relay's bind.
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            const int port = FreePort(20000 + static_cast<int>(::getpid() % 20000) + attempt * 101);
+            url = "http://127.0.0.1:" + std::to_string(port);
+            pid = fork();
+            if (pid == 0) {
+                if (chdir(ULTRAIM_RELAY_DIR) != 0) _exit(127);
+                setenv("CHATCUBE_RELAY_PORT", std::to_string(port).c_str(), 1);
+                setenv("CHATCUBE_RELAY_DB", UltraCanvas::PathToUtf8(dataDir / "relay.sqlite3").c_str(), 1);
+                // The Telegram application's keys a relay hands its users.
+                setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "1017053", 1);
+                setenv("CHATCUBE_RELAY_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef", 1);
+                execlp("python3", "python3", "-m", "chatcube_relay", static_cast<char*>(nullptr));
+                _exit(127);
+            }
+            for (int i = 0; i < 100; ++i) {
+                UltraNetResponse response;
+                UltraNetHttpOptions options;
+                options.timeoutMs = 1000;
+                if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 200) return true;
+                int status = 0;
+                if (waitpid(pid, &status, WNOHANG) == pid) { pid = -1; break; }   // gone: the bind failed, or no module
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            Stop();
+            std::printf("DirectProviderTests: the relay did not come up on port %d (try %d)\n", port, attempt + 1);
         }
-        for (int i = 0; i < 100; ++i) {
-            UltraNetResponse response;
-            UltraNetHttpOptions options;
-            options.timeoutMs = 1000;
-            if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 200) return true;
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        Stop();
         return false;
     }
     void Stop() {
@@ -275,7 +305,7 @@ struct Redirector {
     std::string url;
 
     bool Start(const std::string& target) {
-        const int port = 40000 + static_cast<int>(::getpid() % 20000);
+        const int port = FreePort(40000 + static_cast<int>(::getpid() % 20000));
         url = "http://127.0.0.1:" + std::to_string(port);
         const std::string script =
             "import sys\n"
