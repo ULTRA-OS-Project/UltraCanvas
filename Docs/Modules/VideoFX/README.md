@@ -1134,10 +1134,11 @@ The Windows builds compile the module against **libc++** (MSYS2's CLANG64
 toolchain), Linux against libstdc++, and the two disagree on details a Linux
 build never shows - libc++ gives `std::filesystem::file_time_type` a 128-bit
 tick count, which `std::to_string` has no overload for. Before pushing a
-change to the module, run `scripts/check_libcxx_syntax.sh`: it type-checks
-the engine's sources, the tool and the test with `clang++ -stdlib=libc++
--fsyntax-only` in a few seconds (`apt install clang libc++-dev
-libc++abi-dev` on Ubuntu) and prints only the errors.
+change to the module, run `python3 scripts/check_libcxx_syntax.py VideoFX
+Tests/VideoFXTest.cpp`: it type-checks those translation units with `clang++
+-stdlib=libc++ -fsyntax-only` and the flags the build gave them, in a few
+seconds (`apt install clang libc++-dev libc++abi-dev` on Ubuntu), and
+prints only the errors.
 
 ---
 
