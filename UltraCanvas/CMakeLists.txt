@@ -1496,6 +1496,16 @@ if(_ultracanvas_networkmonitor_platform_srcs)
     list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_networkmonitor_platform_srcs})
 endif()
 
+# And the browser's WebAssembly engine (OS/WASM/UltraCanvasWASMWasmHost.cpp):
+# it is the WasmHost library's engine under Emscripten, compiled into that
+# library below, not into the core.
+file(GLOB _ultracanvas_wasmhost_platform_srcs
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*WasmHost*.cpp
+)
+if(_ultracanvas_wasmhost_platform_srcs)
+    list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_wasmhost_platform_srcs})
+endif()
+
 # The platform-dir glob above also matches the GL context managers
 # (GLContextManager{EGL,GLX,WGL,CGL}_*). Those are compiled ONLY when
 # ULTRACANVAS_ENABLE_GL is on (they are re-added explicitly, guarded, in the GL
@@ -2831,7 +2841,10 @@ _ultracanvas_module_home(NetworkMonitor uc-networkmonitor)
 # API (cmake/UltraCanvasWasmtime.cmake), private to this library: no
 # wasmtime header reaches its users. Without an engine - the option off, or
 # a platform with no prebuilt library - the library still builds and every
-# call reports that there is no engine, so its users link everywhere.
+# call reports that there is no engine, so its users link everywhere. In a
+# browser (Emscripten) the engine is the browser's own, through
+# OS/WASM/UltraCanvasWASMWasmHost.cpp: that is what runs UltraWeb apps in an
+# ordinary browser (Docs/UltraWeb/UltraWebInTheBrowser.md).
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MINGW)
     # Windows (MSYS2 CLANG64 / CLANGARM64): wasmtime's C API is built from
     # its source release with the native Rust toolchain.
@@ -2841,7 +2854,11 @@ else()
     set(_uc_wasm_host_default OFF)
 endif()
 option(ULTRACANVAS_ENABLE_WASM_HOST "Run WebAssembly modules through wasmtime (WasmHost, UltraWeb)" ${_uc_wasm_host_default})
-add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/WasmHost/UltraCanvasWasmHost.cpp)
+if(EMSCRIPTEN)
+    add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/OS/WASM/UltraCanvasWASMWasmHost.cpp)
+else()
+    add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/WasmHost/UltraCanvasWasmHost.cpp)
+endif()
 target_include_directories(WasmHost PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas/include>)
@@ -2856,6 +2873,12 @@ if(ULTRACANVAS_ENABLE_WASM_HOST AND NOT EMSCRIPTEN AND NOT ANDROID)
     else()
         message(STATUS "  [−] WasmHost - no engine (no wasmtime C API for this platform; set ULTRACANVAS_WASMTIME_DIR)")
     endif()
+elseif(EMSCRIPTEN)
+    # The core's threading and exception ABI (the WASM branch above), so the
+    # library links into a page with it - and on its own into a test.
+    target_compile_options(WasmHost PUBLIC ${_uc_wasm_thread_compile} -fwasm-exceptions)
+    target_link_options(WasmHost PUBLIC ${_uc_wasm_thread_compile} -fwasm-exceptions)
+    message(STATUS "  [✓] WasmHost - ENABLED (the browser's WebAssembly engine)")
 else()
     message(STATUS "  [−] WasmHost - no engine (ULTRACANVAS_ENABLE_WASM_HOST=OFF)")
 endif()

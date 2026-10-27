@@ -709,6 +709,19 @@ if(BUILD_ULTRAWEB)
     add_subdirectory(Apps/UltraWeb)
 endif()
 
+# The UltraWeb runtime for ordinary browsers: under emcmake, UltraWeb apps
+# run in Chrome or Firefox on UltraCanvas compiled to WebAssembly, installed
+# once by a browser extension or served by the site
+# (Docs/UltraWeb/UltraWebInTheBrowser.md).
+if(EMSCRIPTEN)
+    option(BUILD_ULTRAWEB_RUNTIME "Build the UltraWeb runtime, extension and sample site for browsers" ON)
+    if(BUILD_ULTRAWEB_RUNTIME)
+        message(STATUS "")
+        message(STATUS "── Building the UltraWeb runtime ──")
+        add_subdirectory(Apps/UltraWeb/browser)
+    endif()
+endif()
+
 # ===== ULTRADESKTOP =====
 # The ULTRA OS desktop: taskbar with the running applications, desktop
 # organiser (virtual desktops, Stickerboard, clipboard, screenshot) and the
