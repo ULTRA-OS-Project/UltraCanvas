@@ -6091,6 +6091,9 @@ the commands when given one.
   make and a recruit share one level down, discount codes, QR codes and
   links, the sales ledger and the report. Design:
   `Docs/UltraStoreAdmin/README.md`.
+- The payment service (`Server/UltraStorePay`): Skrill Quick Checkout, the
+  status report verified, the licence and the receipt, the signed download
+  URLs, the sales for the ledger.
 
 ### UltraDesktop
 
