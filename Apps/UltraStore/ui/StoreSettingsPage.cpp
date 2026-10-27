@@ -140,6 +140,10 @@ std::shared_ptr<UltraCanvasContainer> StoreWindow::BuildSettingsPage() {
     auto reload = Theme::Button("usS.reload", "Reload installed apps", 160);
     reload->onClick = [this]() { ReloadInstalled(); };
     maintenance->AddChild(reload);
+    auto forgetCode = Theme::Button("usS.forgetCode", "Forget the code", 130);
+    forgetCode->SetTooltip("The discount or partner code entered on Discover stops counting");
+    forgetCode->onClick = [this]() { ApplyCode(""); };
+    maintenance->AddChild(forgetCode);
     info->AddChild(maintenance);
     scroll->AddChild(info);
 
@@ -229,6 +233,11 @@ void StoreWindow::RefreshSettingsInfo() {
             text += "\n  announces " + std::to_string(catalog_->trustedKeys.size()) +
                     (catalog_->trustedKeys.size() == 1 ? " key" : " keys") + " that may sign the next catalogs";
         }
+    }
+    if (!settings_.code.empty()) {
+        const std::string inForce = settings_.CodeInForce(Today());
+        text += "\nCode: " + settings_.code + ", entered " + settings_.codeEnteredAt +
+                (inForce.empty() ? " (no longer in force)" : CodeInForce() ? " (in force)" : " (the catalog does not know it)");
     }
     const std::vector<InstalledRecord> apps = CurrentApps(installed_);
     const std::vector<InstalledRecord> comps = InstalledComponents(installed_);

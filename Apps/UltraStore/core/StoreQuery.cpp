@@ -1,4 +1,5 @@
 // Apps/UltraStore/core/StoreQuery.cpp
+// Version: 0.2.0 - codes
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreQuery.h"
@@ -134,12 +135,76 @@ std::vector<InstalledRecord> InstalledComponents(const std::vector<InstalledReco
     return out;
 }
 
-std::string PriceLabel(const Pricing& pricing) {
+CodeCheck CheckCode(const Catalog& catalog, const std::string& text, const std::string& today) {
+    CodeCheck out;
+    if (NormalizeCode(text).empty()) { out.message = "Enter a code"; return out; }
+    const PromoCode* code = catalog.FindCode(text);
+    if (!code) { out.message = "Unknown code"; return out; }
+    if (!code->validFrom.empty() && today < code->validFrom) { out.message = "Valid from " + code->validFrom; return out; }
+    if (!code->validUntil.empty() && today > code->validUntil) { out.message = "Expired on " + code->validUntil; return out; }
+    out.code = code;
+    std::string what = DiscountLabel(*code);
+    if (what.empty()) what = code->kind == CodeKind::Affiliate ? "Partner code" : "Code";
+    if (code->apps.empty()) what += " on every app";
+    else {
+        std::string names;
+        for (const std::string& id : code->apps) {
+            const Component* app = catalog.FindApp(id);
+            names += (names.empty() ? "" : ", ") + (app ? app->name : id);
+        }
+        what += " on " + names;
+    }
+    if (!code->validUntil.empty()) what += ", until " + code->validUntil;
+    out.message = what;
+    return out;
+}
+
+std::string DiscountedPrice(const Pricing& pricing, const PromoCode* code) {
+    if (pricing.model == PricingModel::Free || !code || !code->HasDiscount()) return pricing.price;
+    // The price is a decimal string; the arithmetic is on hundredths, so no
+    // float rounds a cent away.
+    auto cents = [](const std::string& decimal, int64_t& out) {
+        int64_t whole = 0, frac = 0;
+        int fracDigits = 0;
+        bool point = false;
+        for (char c : decimal) {
+            if (c == '.') { if (point) return false; point = true; continue; }
+            if (c < '0' || c > '9') return false;
+            if (!point) whole = whole * 10 + (c - '0');
+            else if (fracDigits < 2) { frac = frac * 10 + (c - '0'); ++fracDigits; }
+        }
+        if (fracDigits == 1) frac *= 10;
+        out = whole * 100 + frac;
+        return !decimal.empty();
+    };
+    int64_t price = 0;
+    if (!cents(pricing.price, price)) return pricing.price;
+    int64_t off = 0;
+    if (code->discountPercent > 0) off = (price * code->discountPercent + 50) / 100;
+    else {
+        if (!code->currency.empty() && code->currency != pricing.currency) return pricing.price;
+        if (!cents(code->discountAmount, off)) return pricing.price;
+    }
+    const int64_t result = std::max<int64_t>(0, price - off);
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%lld.%02lld", static_cast<long long>(result / 100), static_cast<long long>(result % 100));   // locale-ok: a decimal point, as the catalog writes prices
+    return buffer;
+}
+
+std::string DiscountLabel(const PromoCode& code) {
+    if (code.discountPercent > 0) return std::to_string(code.discountPercent) + "% off";
+    if (!code.discountAmount.empty()) return code.discountAmount + (code.currency.empty() ? "" : " " + code.currency) + " off";
+    return {};
+}
+
+std::string PriceLabel(const Pricing& pricing, const PromoCode* code) {
     if (pricing.model == PricingModel::Free) return "Free";
-    std::string label = pricing.price;
+    const std::string discounted = DiscountedPrice(pricing, code);
+    std::string label = discounted;
     if (!pricing.currency.empty()) label += " " + pricing.currency;
     if (pricing.model == PricingModel::Monthly) label += " / month";
     else if (pricing.model == PricingModel::Yearly) label += " / year";
+    if (discounted != pricing.price) label += " (was " + pricing.price + ")";
     if (pricing.trialDays > 0) label += " (" + std::to_string(pricing.trialDays) + "-day trial)";
     return label;
 }

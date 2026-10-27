@@ -177,3 +177,46 @@ TEST(trusted_keys_round_trip_as_schema_2_and_a_bad_one_is_refused) {
     REQUIRE(none);
     REQUIRE(none.Value().trustedKeys.empty());
 }
+
+TEST(codes_round_trip_and_the_wrong_ones_are_refused) {
+    Catalog c = FixtureCatalog();
+    PromoCode anna;
+    anna.code = "ANNA-20";
+    anna.kind = CodeKind::Affiliate;
+    anna.discountPercent = 20;
+    anna.apps = {"org.ultraos.ultravideo"};
+    anna.validUntil = "2027-06-30";
+    anna.affiliate = "aff-0001";
+    PromoCode five;
+    five.code = "five_off";
+    five.discountAmount = "5.00";
+    five.currency = "EUR";
+    c.codes = {anna, five};
+    const Result<Catalog> parsed = ParseCatalog(SerializeCatalog(c));
+    REQUIRE(parsed);
+    REQUIRE_EQ(parsed.Value().codes.size(), size_t(2));
+    const PromoCode* found = parsed.Value().FindCode("  anna-20 ");
+    REQUIRE(found != nullptr);
+    REQUIRE(found->kind == CodeKind::Affiliate);
+    REQUIRE_EQ(found->discountPercent, 20);
+    REQUIRE_EQ(found->affiliate, std::string("aff-0001"));
+    REQUIRE(found->AppliesTo("org.ultraos.ultravideo"));
+    REQUIRE(!found->AppliesTo("org.ultraos.notes"));
+    REQUIRE(found->ValidOn("2027-06-30"));
+    REQUIRE(!found->ValidOn("2027-07-01"));
+    REQUIRE(parsed.Value().FindCode("FIVE_OFF")->AppliesTo("anything"));
+    REQUIRE(parsed.Value().FindCode("nope") == nullptr);
+    REQUIRE_EQ(NormalizeCode(" an na "), std::string("ANNA"));
+    auto refuse = [](const char* json, const char* why) {
+        const Result<Catalog> r = ParseCatalog(json);
+        REQUIRE(!r);
+        REQUIRE(r.error.code == ErrorCode::ParseError);
+        (void)why;
+    };
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "x y"}], "apps": []})", "a space in a code");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "discount_percent": 120}], "apps": []})", "over 100 percent");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "discount_amount": "5,00"}], "apps": []})", "a comma");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "kind": "affiliate"}], "apps": []})", "no affiliate");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "valid_until": "soon"}], "apps": []})", "no date");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A"}, {"code": "a"}], "apps": []})", "twice");
+}

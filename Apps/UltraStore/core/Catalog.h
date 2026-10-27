@@ -4,6 +4,7 @@
 // one shape - releases with packages per target - and a release names the
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
+// Version: 0.4.0 - codes: the discount and affiliate codes the store applies
 // Version: 0.3.0 - schema 2: trusted_keys, the keys that may sign the next catalogs
 // Version: 0.2.0 - ParseComponent / SerializeComponent for the admin backend
 // Version: 0.1.0
@@ -139,6 +140,37 @@ struct Publisher {
     std::string id, name, url;
 };
 
+// ===== CODES =====
+// A code the buyer enters, or arrives with from an affiliate's QR code or
+// link (ultrastore://code/<CODE>): a discount code takes something off the
+// price; an affiliate code credits the partner it names when the purchase
+// goes through, and may take something off the price as well. What the
+// catalog carries is public by nature (a code is made to be passed around);
+// what a partner earns stays in the admin backend. The redemption itself,
+// its limits and the partner's credit are the payment service's
+// (Docs/UltraStore/README.md, *Affiliates and codes*).
+enum class CodeKind { Discount, Affiliate };
+CodeKind    ParseCodeKind(std::string_view text);   // "discount" / "affiliate"
+std::string CodeKindName(CodeKind kind);
+
+struct PromoCode {
+    std::string code;                  // as typed, case does not matter; letters, digits, '-'
+    CodeKind kind = CodeKind::Discount;
+    int discountPercent = 0;           // 0..100; or
+    std::string discountAmount;        // a decimal, in currency
+    std::string currency;              // ISO 4217; empty: the app's
+    std::vector<std::string> apps;     // the ids it applies to; empty: every app
+    std::string validFrom, validUntil; // "YYYY-MM-DD", either empty
+    std::string affiliate;             // the partner's id (an opaque handle), for affiliate codes
+
+    bool AppliesTo(std::string_view appId) const;
+    bool ValidOn(std::string_view date) const;   // "YYYY-MM-DD"
+    bool HasDiscount() const { return discountPercent > 0 || !discountAmount.empty(); }
+};
+
+// Codes compare without case and surrounding space: "anna-20" is "ANNA-20".
+std::string NormalizeCode(std::string_view code);
+
 struct Catalog {
     int schema = 0;
     uint64_t sequence = 0;
@@ -151,6 +183,7 @@ struct Catalog {
     // here, then with the new key. The list adds; it cannot drop a
     // compiled-in key (Docs/UltraStore/README.md, *Keys*).
     std::vector<std::string> trustedKeys;
+    std::vector<PromoCode> codes;       // the discount and affiliate codes in force
     std::vector<Publisher> publishers;
     std::vector<Component> apps;        // kind == App
     std::vector<Component> components;  // kind == Runtime or Library
@@ -159,6 +192,8 @@ struct Catalog {
     const Component* FindApp(std::string_view id) const;
     const Component* FindComponent(std::string_view id) const;
     const Component* FindAny(std::string_view id) const;
+    // A code, compared without case; nullptr when the catalog has none like it.
+    const PromoCode* FindCode(std::string_view code) const;
 };
 
 // Parses catalog.json. Strict about what the store relies on (ids, versions,

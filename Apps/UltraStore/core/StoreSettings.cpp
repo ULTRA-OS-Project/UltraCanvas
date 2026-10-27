@@ -1,4 +1,5 @@
 // Apps/UltraStore/core/StoreSettings.cpp
+// Version: 0.2.0 - the code in force
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreSettings.h"
@@ -9,6 +10,7 @@
 #include "UltraCanvasAppSettings.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cctype>
 
 namespace UltraStore {
@@ -82,6 +84,8 @@ StoreSettings StoreSettings::From(const UltraCanvas::UltraCanvasAppSettings& fil
     s.windowHeight = file.GetInt("window.height", s.windowHeight);
     s.downloadsExpanded = file.GetBool("window.downloadsExpanded", s.downloadsExpanded);
     s.downloadsHeight = file.GetInt("window.downloadsHeight", s.downloadsHeight);
+    s.code = file.GetString("code.value", s.code);
+    s.codeEnteredAt = file.GetString("code.enteredAt", s.codeEnteredAt);
     return s;
 }
 
@@ -95,6 +99,25 @@ void StoreSettings::WriteTo(UltraCanvas::UltraCanvasAppSettings& file) const {
     file.Set("window.height", windowHeight);
     file.Set("window.downloadsExpanded", downloadsExpanded);
     file.Set("window.downloadsHeight", downloadsHeight);
+    file.Set("code.value", code);
+    file.Set("code.enteredAt", codeEnteredAt);
+}
+
+std::string StoreSettings::CodeInForce(const std::string& today) const {
+    if (code.empty() || codeEnteredAt.size() != 10 || today.size() != 10) return {};
+    // Days between two ISO dates, through the days-from-civil count.
+    auto days = [](const std::string& d) {
+        const int y0 = std::atoi(d.substr(0, 4).c_str()), m = std::atoi(d.substr(5, 2).c_str()), day = std::atoi(d.substr(8, 2).c_str());   // locale-ok: digits only
+        const int y = y0 - (m <= 2);
+        const int era = (y >= 0 ? y : y - 399) / 400;
+        const int yoe = y - era * 400;
+        const int doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + day - 1;
+        const int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        return era * 146097 + doe - 719468;
+    };
+    const int elapsed = days(today) - days(codeEnteredAt);
+    if (elapsed < 0 || elapsed > kCodeDays) return {};
+    return code;
 }
 
 StoreSettings StoreSettings::Load() {
