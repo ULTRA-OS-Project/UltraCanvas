@@ -5,6 +5,7 @@
 // hash and size are measured, never typed. The entry an app is started by
 // is suggested from the archive's listing (VirtualFS) and confirmed by the
 // admin.
+// Version: 0.2.0 - ImportMedia, AdminStore, DefaultAdminStoreDir (shared by the commands and the window)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -38,6 +39,25 @@ Result<ImportedPackage> ImportPackage(const std::string& sourceUtf8, const std::
 // The archive's entries (VirtualFS); NotAvailable when this build has no
 // archive provider, IoError when the file does not list.
 Result<std::vector<std::string>> ListPackageEntries(const std::string& fileUtf8);
+
+// A picture into the media store: `<store>/media/<component id>/<file name>`,
+// overwritten when it is there; returns the path the catalog carries,
+// "media/<id>/<file>", relative to the store folder here and to the
+// catalog's URL once published.
+Result<std::string> ImportMedia(const std::string& sourceUtf8, const std::string& storeDirUtf8, const std::string& componentId);
+
+// The admin store folder: the database, the package store, the media store.
+struct AdminStore {
+    std::string dir;   // UTF-8
+    std::string DatabasePath() const;
+    std::string PackagesDir() const;
+    std::string MediaDir() const;
+    bool Exists() const;                // the database file is there
+    Result<void> CreateFolders() const; // the folder, packages/ and media/
+};
+
+// UltraCanvasDataFolderRoot()/UltraStoreAdmin.
+std::string DefaultAdminStoreDir();
 
 // The entry to start, guessed from the listing: on Windows the .exe at the
 // top or under bin/, on macOS the .app bundle, elsewhere a file under bin/

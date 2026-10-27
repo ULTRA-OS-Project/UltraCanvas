@@ -6,7 +6,8 @@ the publishers, the files behind the packages and the signing key; it
 translates the texts into every official language; and it generates the
 catalog, signs it and lays it out for the web server - verified with the
 store's own verifier before anything is called published. One program,
-`ultrastoreadmin`: the commands now, the window next.
+`ultrastoreadmin`: the window when started plainly, the commands when given
+one.
 
 This page is the design and the record of the decisions behind it. The
 store itself is [`Docs/UltraStore/README.md`](../UltraStore/README.md).
@@ -33,13 +34,40 @@ Apps/UltraStoreAdmin/
     PackageStore.h/.cpp          a build into the package store under its hash; the archive's listing; the entry
     CatalogPublisher.h/.cpp      the catalog from the database, laid out, signed, verified; the publish folder
     Translation.h/.cpp           the official languages; TranslateComponent over an ITextTranslator; the UltraAI one
-  cli/main.cpp                   ultrastoreadmin <command>
+  cli/Commands.h/.cpp            ultrastoreadmin <command>: Cli::Run(args)
+  ui/AdminWindow.h/.cpp          the window's shell and its store pages (Overview, Publish, Keys, Settings); the jobs
+  ui/AdminComponentPage.cpp      the form of one app or component: every setting, the texts, the pictures, the releases
+  ui/AdminTheme.h                the store window's theme, with Field (a labelled control)
+  ui/main.cpp                    the window, or the commands; one copy per user
 Tests/UltraStoreAdmin/           the core's tests (ctest: UltraStoreAdminCore)
 Docs/UltraStoreAdmin/            this page, CHANGELOG.md, changelog.d/
 ```
 
 The core opens no window, so the command line, the tests and a headless CI
-leg use it as it is.
+leg use it as it is; the window is a client of the same core, so what it
+does and what a command does never differ.
+
+## The window
+
+`ultrastoreadmin` alone, or `ultrastoreadmin --store <dir>` alone, opens
+the window on the store (the default store is
+`<data folder>/UltraStoreAdmin`, created on the first start). A sidebar
+(`UltraCanvasSidebarNavigation`) lists the store's pages and then every
+app and every runtime or library the database has, an item marked
+*no release* until it has one; the page on the right is one of:
+
+| Page | What it does |
+|---|---|
+| Overview | The store folder and database, the counts, the last publish; *Add an app or a component* (id, name, kind) creates the record and opens its form. |
+| An app or component | The form: every setting of the table in the store's README - identity (id, kind, name, publisher, license, homepage, support, privacy, open source, source, categories, tags), the store settings (visibility, lifecycle and successor, age rating, account, monetary model with price, currency and trial days, free update period with its date), the texts per language (the source language, the language shown, *Add language*, *Translate the missing languages* through UltraAI, the machine ones marked), the pictures (the icon and the screenshots copied into `media/<id>/` by `ImportMedia`), the releases newest first with their packages, an inline editor for a new release and for a new package (the build's file into the package store, OS, processor, variants, minimum OS version, the entry suggested from the archive, public or restricted). Save writes the draft through `PutComponent`, which reads it back the way the store does; Revert reloads; Delete asks first. Leaving a form with unsaved edits asks. |
+| Publish | The publish folder, the key, the passphrase, whether to copy the packages and media; *Check* builds the catalog and lists the warnings; *Publish* runs `Publish()` on a worker thread and reports the sequence, the counts and the warnings. |
+| Keys | The keys with their public halves, *Export .pub…* and *Retire*; a new key from a name and a passphrase typed twice. |
+| Settings | The store's settings (the URLs, the languages, the UltraAI provider) and the publishers. |
+
+The slow operations (a key's Argon2id seal, a publish, a translation) run
+on a worker thread and report through `PostToUIThread`; the window refuses
+to close while one runs. The status line at the bottom shows the outcome
+of the last action, red when it failed.
 
 ## On disk
 
@@ -136,10 +164,10 @@ Hello.
 ## Milestones
 
 1. **0.1.0** core and command line (this page).
-2. **The window:** the list of apps on the left, the settings form on the
-   right (every field of the table in the store's README), the releases and
-   packages, a publish button with the warnings, a keys dialog - on
-   `UltraStoreAdminCore`, so the window and the commands never disagree.
+2. **The window** (*The window* above): the apps on the left, the form with
+   every setting on the right, the releases and packages, publish with the
+   warnings, the keys - on `UltraStoreAdminCore`, so the window and the
+   commands never disagree.
 3. **Upload** to the host (UltraNet SFTP or HTTPS PUT), once the host is
    chosen.
 4. **Payment**, with the signed URLs for `restricted/` (the store's milestone 6).

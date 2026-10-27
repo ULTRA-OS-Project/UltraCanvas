@@ -489,7 +489,8 @@ given one.
 keeps the apps, runtimes and libraries with every setting the catalog
 carries, the publishers, the files behind the packages and the signing key;
 translates the texts; generates, signs and lays out the catalog for the web
-server. One program, `ultrastoreadmin`: the commands now, the window next.
+server. One program, `ultrastoreadmin`: the window when started plainly,
+the commands when given one.
 
 **Capabilities (0.1.0):**
 - Apps and components as the catalog's own objects in an UltraDatabase
@@ -506,8 +507,11 @@ server. One program, `ultrastoreadmin`: the commands now, the window next.
   `packages/`, paid ones under `restricted/` (served through short-lived
   signed URLs later), the media beside it, signed, and verified with the
   store's own reader and verifier before the sequence is recorded.
-- Next: the window, the upload to the host. Design:
-  `Docs/UltraStoreAdmin/README.md`.
+- The window: the apps and components in a sidebar, the form with every
+  setting, the texts per language with translation, the pictures, the
+  releases with their packages, the publish page with its warnings, the
+  keys and the settings.
+- Next: the upload to the host. Design: `Docs/UltraStoreAdmin/README.md`.
 
 ### UltraDesktop
 

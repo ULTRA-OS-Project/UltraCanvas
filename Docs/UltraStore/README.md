@@ -462,8 +462,8 @@ program, `ultrastore sha256` it, write a catalog.json with
    navigation, collapsible bottom panel, single-select chip group), with
    component docs (framework 0.9.409).
 4. **The window** (this page's *The window*).
-5. **The admin backend** (`Apps/UltraStoreAdmin`, 0.1.0: the core and the
-   command line; the window next), the packages server's access scheme
+5. **The admin backend** (`Apps/UltraStoreAdmin`: the core, the command
+   line and the window), the packages server's access scheme
    (decided: *Where the server is reached*); key rotation through the
    catalog (schema 2) still to come.
 6. **Payment.**
