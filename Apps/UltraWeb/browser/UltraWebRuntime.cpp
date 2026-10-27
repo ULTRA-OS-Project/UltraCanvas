@@ -283,8 +283,15 @@ int main(int, char* argv[]) {
     gWindow->Show();
 
     // Periodic, not per write: IndexedDB is asynchronous, and a store
-    // flushes on a later turn anyway (UltraWebGuest::StorageChanged).
+    // flushes on a later turn anyway (UltraWebGuest::StorageChanged). Once
+    // more when the page goes out of sight or away, so a change made just
+    // before the tab closes is kept.
     app.StartTimer(2000, true, [](TimerId) { WASMFileSystem::SyncToBrowser(); });
+    EM_ASM({
+        const save = () => { try { FS.syncfs(false, () => {}); } catch (e) {} };
+        addEventListener("pagehide", save);
+        document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") save(); });
+    });
 
     EM_ASM({ if (Module.onUltraWebReady) Module.onUltraWebReady(); });
     app.Run();   // never returns in the browser

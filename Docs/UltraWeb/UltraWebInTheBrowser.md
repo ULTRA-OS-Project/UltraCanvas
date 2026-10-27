@@ -138,7 +138,7 @@ the `WasmHost` library's engine under Emscripten.
 |---|---|---|
 | Timers | the application's timers | the same (`StartTimer`) |
 | Fetch | UltraNet, under `FetchRules` | the page's `fetch()` without credentials, under the same `FetchRules`. The browser applies CORS itself; a cross-origin answer that reached script is passed to the rules as allowed for this origin, since the browser hides that header from script. |
-| Storage | a JSON file per origin in the settings folder | the same file, in an IndexedDB-backed directory of the page's origin (synced every 2 s) |
+| Storage | a JSON file per origin in the settings folder | the same file, in an IndexedDB-backed directory of the page's origin (synced every 2 s, and when the page is hidden or closed) |
 | Clipboard | the system clipboard | `navigator.clipboard`, through the backend's `SetClipboardText` |
 
 The page's origin is the app's origin: an app loaded from
@@ -185,20 +185,19 @@ to `uw_runtime_start`. `<html>` then carries
 ## What a visitor downloads
 
 Measured by the end-to-end test below (Release, single-threaded, every
-bundled font):
+bundled font; gzip -9 as a server would compress it):
 
-| Visit | The site sends |
-|---|---|
-| First visit, no extension (`index.html`) | SIZE_SITE_FIRST |
-| With the extension, any visit | SIZE_SITE_EXT: the page, the loader, the 4 KB app and its `hello.txt` |
-| The extension itself, once | SIZE_EXT |
+| Visit | The site sends | gzip |
+|---|---|---|
+| No extension, the runtime from the site (`index.html`) | 8,979 KiB: the runtime (`.wasm` 4,556 KiB, fonts in `.data` 4,276 KiB, `.js` 139 KiB), the page, the loader, the app | 3.9 MB |
+| With the extension, any page | **8.4 KiB**: the page, the loader, the 4.3 KiB app and its `hello.txt` | 4 KB |
+| The extension itself, once | the same runtime, 8.9 MB unpacked | 3.9 MB zipped |
 
-For comparison, the smallest Emscripten page with UltraCanvas linked in
-(`wasm-demo`) is about the size of the runtime: the framework is the bulk
-either way. What changes is who downloads it, and how often: a site with
-ten apps, or ten sites with an app each, send it once with the extension and
-ten times without it. The browser's HTTP cache does not share it between
-sites, since it is kept per site.
+The framework is the bulk either way; what changes is who downloads it and
+how often. A site with ten apps, or ten sites with an app each, send it
+once with the extension and ten times without it: the browser's HTTP cache
+does not share the site's copy between sites, since it is kept per site.
+The fonts are half of it: all fourteen bundled faces are preloaded.
 
 ## Tests
 
@@ -232,6 +231,13 @@ The `wasm-build.yml` workflow runs both in its single-threaded variant.
   which the element ABI does not use yet.
 - **No time limit** on an app's call, and the memory cap after the call
   (see above).
+- **The app comes from the page's origin.** In a browser the page's origin
+  is what fetch and storage really run under, and the runtime takes the
+  app's address as the app's origin, as UltraWeb does; the two agree only
+  when the page and its `app.wasm` share an origin.
+- **The extension can be seen.** Any page can read
+  `data-ultraweb-runtime`, so a site can tell that a visitor has it - one
+  more bit for fingerprinting, as with any extension that announces itself.
 - **Firefox and Safari** are untried; the backend has been exercised in
   Chromium only.
 - **No integrity check.** The site's runtime and the extension's are

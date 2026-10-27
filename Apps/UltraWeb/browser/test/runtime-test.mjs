@@ -173,8 +173,11 @@ if (process.env.UWR_CHROME) launch.executablePath = process.env.UWR_CHROME;
 // ===== 3. The extension installed =====
 {
     const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'uwr-profile-'));
+    // The full Chromium, not Playwright's headless shell, which has no
+    // extensions.
     const context = await chromium.launchPersistentContext(profile, {
         ...launch,
+        ...(launch.executablePath ? {} : { channel: 'chromium' }),
         viewport: { width: 1000, height: 700 },
         args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
     });
