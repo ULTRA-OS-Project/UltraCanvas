@@ -27,6 +27,9 @@ if(TARGET UltraCanvas AND NOT EMSCRIPTEN)
     target_include_directories(ImageJxlTest PRIVATE ${_JXL_INCLUDE_DIR})
     target_compile_features(ImageJxlTest PRIVATE cxx_std_20)
     target_link_libraries(ImageJxlTest PRIVATE UltraCanvas)
+    # The JXL-art samples DemoApp's JPEG XL page shows (media/images).
+    target_compile_definitions(ImageJxlTest PRIVATE
+        UC_MEDIA_DIR="${CMAKE_CURRENT_LIST_DIR}/../media")
     set_target_properties(ImageJxlTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${_JXL_BIN_DIR}
     )

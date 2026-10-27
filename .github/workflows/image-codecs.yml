@@ -29,6 +29,7 @@ on:
       - 'UltraCanvas/**'
       - 'Tests/ImageJxlTest.cpp'
       - 'Tests/ImageJxlTests.cmake'
+      - 'media/images/jxl_art*.jxl'          # the samples ImageJxlTest reads
       - 'Tests/ImageIcoQoiTest.cpp'
       - 'Tests/ImageGifSaverTest.cpp'
       - 'Tests/MatrixDiagramRenderTest.cpp'
