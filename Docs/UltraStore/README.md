@@ -171,10 +171,24 @@ Per app, what the admin backend offers and the catalog carries:
 | Media | `icon`, `screenshots` | relative to the catalog URL, served from the same place |
 | Codes | `codes[]` (catalog-wide) | the discount and affiliate codes in force: see *Affiliates and codes* |
 
-Pricing is **shown** by the store from 0.1.0 on; the purchase itself (a
-payment provider, the licence that the app checks, the receipt) is a later
-milestone with its own design, and until then the store installs the free
-apps and the trial of a paid one, and sends *Buy* to the publisher's page.
+Pricing is **shown** by the store from 0.1.0 on; the purchase itself is
+milestone 7, with its own design (*Payment*), and until then the store
+installs the free apps and the trial of a paid one, and sends *Buy* to the
+publisher's page.
+
+### Payment
+
+Decided: the provider is **Paysafe, with Skrill Quick Checkout** as the
+checkout. The buyer pays on Skrill's hosted page (cards, Skrill wallet,
+the local methods Quick Checkout offers), the store never sees a card
+number, and Paysafe's server-to-server status report is what the payment
+service trusts, not the browser's return. The design to come: the payment
+service that holds the merchant credentials (never the store binary),
+opens a Quick Checkout session for an app, a price and the code in force,
+receives the status report, redeems the code (the sale into the ledger
+with its credits, one level up and no further - *Affiliates and codes*),
+issues the licence the app checks and the receipt, and signs the
+short-lived URLs for `restricted/` (*Where the server is reached*).
 
 ### Translations
 
@@ -228,8 +242,11 @@ something off the price. The scheme is decided as follows.
   link), so a phone that scans it lands somewhere useful; a future partner
   scans `https://<catalog base>/join/<affiliate>` and names the recruiter
   when the admin signs them up.
+- **A partner may use their own code.** Nothing distinguishes a partner's
+  purchase from any other, and the share they earn on it is theirs by the
+  same rule; the admin backend does not try to tell them apart.
 - **The redemption** - the purchase, a limit on uses, the payout - is the
-  payment service's (milestone 6). Until it reports sales, the admin
+  payment service's (milestone 7, *Payment*). Until it reports sales, the admin
   backend records them by hand (`sale add`) and its report says what each
   partner is owed, so the scheme works from the first sale.
 
@@ -529,4 +546,6 @@ program, `ultrastore sha256` it, write a catalog.json with
 6. **Affiliates and codes** (*Affiliates and codes*): discount and
    affiliate codes in the catalog, QR codes and links, two-tier partners in
    the admin backend with the sales ledger and the report.
-7. **Payment**, with the redemption of the codes.
+7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout, the
+   payment service, the redemption of the codes, the licence, the receipt,
+   the signed URLs for `restricted/`.
