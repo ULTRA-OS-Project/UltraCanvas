@@ -143,6 +143,11 @@ The zoom toolbar also drives the PDF view, the vector drawing view and, for
 e-books, the reading text scale (books reflow, so zoom is a text scale and "Fit"
 means a comfortable line measure across the pane).
 
+A drawing in the vector view or in a plugin's own element (CorelDRAW through
+libcdr) has no bitmap on the image surface; the info bar labels it
+`DRAWING (<EXT>)` with its file size and, in the vector view, its document size
+and zoom, and the Details panel calls it a *Vector drawing*.
+
 ## Zooming the shown page
 
 Images and PDF pages zoom the same way: the **mouse wheel** zooms about the

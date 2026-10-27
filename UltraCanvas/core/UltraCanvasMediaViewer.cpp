@@ -1,6 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.15.1 - a drawing in the vector view or a plugin's element (CorelDRAW) is
+//                   named in the info bar and Details, not reported as "No media"
 // Version: 1.15.0 - SetSettingsAction: a gear in the info bar for the host's settings
 // Version: 1.14.0 - Unlock's passwords are forgotten, and an unlocked file locked again,
 //                   when the session locks or the window has been idle (ten minutes by
@@ -1478,6 +1480,8 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         vv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         vv->SetVisible(false);
+        // The status bar carries the drawing's zoom, as it does a picture's.
+        vv->SetOnZoomChangeCallback([this](float) { UpdateInfoBar(); });
         vectorView = vv;
         AddChild(vectorView);
     }
@@ -3229,6 +3233,38 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
 
+    if (activeKind == MediaKind::Vector) {
+        // A drawing shown by the vector view or by a plugin's own element
+        // (CorelDRAW through libcdr): there is no bitmap on the image surface,
+        // so the branch below would call it "No media".
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   DRAWING";
+        std::string ext = LowerExt(path);
+        if (!ext.empty()) {
+            std::transform(ext.begin(), ext.end(), ext.begin(),
+                           [](unsigned char c) { return (char)std::toupper(c); });
+            os << " (" << ext << ")";
+        }
+        auto* vv = ActiveVectorView();
+        if (vv && vv->GetDocument()) {
+            const Size2Dd ds = vv->GetDocumentSize();
+            if (ds.width > 0 && ds.height > 0)
+                os << "   \xC2\xB7   " << static_cast<long>(std::lround(ds.width))
+                   << " x " << static_cast<long>(std::lround(ds.height));
+        }
+        std::error_code ec;
+        auto sz = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        if (vv && vv->GetDocument()) {
+            char zbuf[32];
+            snprintf(zbuf, sizeof(zbuf), "%.0f%%", vv->GetZoom() * 100.0);
+            os << "   \xC2\xB7   " << zbuf;
+        }
+        infoLabel->SetText(os.str());
+        return;
+    }
+
     if (surface && surface->HasDecodeFailure()) {
         // The header read (so the size is known) but the pixels did not.
         auto img = surface->GetImage();
@@ -3244,7 +3280,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         return;
     }
     if (!surface || !surface->GetImage() || !surface->GetImage()->IsValid()) {
-        infoLabel->SetText("No media");
+        // A drawing this build has no reader for and that stores no preview
+        // is a file that is there, not an absence of media.
+        infoLabel->SetText(IsVectorDocumentFile(path)
+                ? BaseName(path) + " - no preview stored in this vector document"
+                : std::string("No media"));
         return;
     }
     auto img = surface->GetImage();
@@ -3356,14 +3396,16 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
 
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
         activeKind == MediaKind::Text || activeKind == MediaKind::Video ||
-        activeKind == MediaKind::Audio) {
+        activeKind == MediaKind::Audio || activeKind == MediaKind::Vector) {
         const char* heading = activeKind == MediaKind::Video ? "Video information\n\n"
                             : activeKind == MediaKind::Audio ? "Audio information\n\n"
+                            : activeKind == MediaKind::Vector ? "Drawing information\n\n"
                             : activeKind == MediaKind::Model ? "3D model information\n\n"
                             : activeKind == MediaKind::Text  ? "Text information\n\n"
                                                              : "Spreadsheet information\n\n";
         const char* typeName = activeKind == MediaKind::Video ? "Video"
                              : activeKind == MediaKind::Audio ? "Audio"
+                             : activeKind == MediaKind::Vector ? "Vector drawing"
                              : activeKind == MediaKind::Model ? "3D model"
                              : activeKind == MediaKind::Text  ? "Text" : "Spreadsheet";
         std::ostringstream mos;
