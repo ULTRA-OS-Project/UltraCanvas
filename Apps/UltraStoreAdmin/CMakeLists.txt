@@ -29,6 +29,7 @@ add_library(UltraStoreAdminCore STATIC
     core/PackageStore.cpp
     core/CatalogPublisher.cpp
     core/Translation.cpp
+    core/Uploader.cpp
 )
 set_target_properties(UltraStoreAdminCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON

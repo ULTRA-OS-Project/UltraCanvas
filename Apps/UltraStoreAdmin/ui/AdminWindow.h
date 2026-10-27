@@ -8,6 +8,7 @@
 // use - so the window and the command line never disagree. The slow ones
 // (a new key's Argon2id seal, a publish, a translation) run on a worker
 // thread and report through UltraCanvasApplication::PostToUIThread.
+// Version: 0.2.0 - the upload to the host on the Publish page
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -78,6 +79,7 @@ private:
     void BuildPublishPage();
     void CheckCatalog();
     void PublishNow();
+    void UploadNow();
 
     // ----- the component form (AdminComponentPage.cpp) -----
     void BuildComponentPage();
@@ -144,6 +146,8 @@ private:
     std::shared_ptr<Dropdown> publishKey_;
     std::shared_ptr<Checkbox> publishCopy_;
     std::shared_ptr<Label> publishReport_;
+    std::shared_ptr<TextInput> uploadUrl_, uploadUser_, uploadPass_, uploadKeyFile_;
+    std::shared_ptr<Checkbox> uploadAll_;
     // the component form
     std::shared_ptr<Container> formBody_;
     std::shared_ptr<Label> formTitle_;
