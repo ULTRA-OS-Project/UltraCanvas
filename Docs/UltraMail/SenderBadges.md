@@ -40,12 +40,12 @@ class, the service, the reason and the scan's findings in words, and a
 suspicious or scam message also carries a warning strip above its body in the
 reading pane. When the scan's verdict is suspicious or worse and a button (or,
 failing that, a bare link) leads off the sender's domain, the strip is titled
-*"Warning: This is likely a phishing² email!"*, quotes both domains —
+*"Warning: This is likely a phishing\* email!"*, quotes both domains —
 `Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
 the footnote: phishing emails try to get your credentials to hack your
 accounts on other websites (`FindDomainMismatch` in the scan). A message the
 scan reads as a **romance scam** is titled *"Warning: This is likely a romance
-scam² email!"* instead ("may be" when the verdict is only suspicious), even
+scam\* email!"* instead ("may be" when the verdict is only suspicious), even
 when it also links elsewhere, and its footnote says what a romance scam is and
 that a reverse image search often finds the photo under another name; a
 **cryptocurrency scam** (a recovery phrase asked for, a wallet address to pay
