@@ -11,6 +11,11 @@ name: Image codecs
 # headless image tests there, runs them, and fails when ImageJxlTest skipped
 # instead of passing.
 #
+# HEIF / AVIF: the same runner with every libheif plug-in (libde265,
+# aomdec, aomenc, x265), so ImageHeifTest has to read and write both
+# (UC_HEIF_EXPECT); macOS and Windows hold their own libheif to what each
+# ships in build.yml.
+#
 # Charts off: the core is configured with ULTRACANVAS_ENABLE_CHARTS=OFF (and
 # every app and optional module off), the chart-free core no other job
 # builds. Until 2026-10 that core compiled and then failed to link anything
@@ -29,7 +34,11 @@ on:
       - 'UltraCanvas/**'
       - 'Tests/ImageJxlTest.cpp'
       - 'Tests/ImageJxlTests.cmake'
+      - 'Tests/ImageHeifTest.cpp'
+      - 'Tests/ImageHeifTests.cmake'
       - 'media/images/jxl_art*.jxl'          # the samples ImageJxlTest reads
+      - 'media/images/dice.heic'             # the samples ImageHeifTest reads
+      - 'media/images/dice.avif'
       - 'Tests/ImageIcoQoiTest.cpp'
       - 'Tests/ImageGifSaverTest.cpp'
       - 'Tests/MatrixDiagramRenderTest.cpp'
@@ -71,7 +80,9 @@ jobs:
             libcairo2-dev libpango1.0-dev libharfbuzz-dev libvips-dev \
             libglib2.0-dev libfreetype-dev libtinyxml2-dev libfmt-dev zlib1g-dev \
             libx11-dev libxcursor-dev libxrandr-dev libxfixes-dev \
-            libgl1-mesa-dev libgtk-3-dev
+            libgl1-mesa-dev libgtk-3-dev \
+            libheif-plugin-libde265 libheif-plugin-aomdec \
+            libheif-plugin-aomenc libheif-plugin-x265
 
       # Every BUILD_* option and every ULTRACANVAS_{PLUGIN,USE,ENABLE}_*
       # option off, read from the CMake files so a new app or module is off
@@ -86,13 +97,17 @@ jobs:
           grep -q 'Charts: DISABLED' configure.log
 
       - name: Build the core and the tests
-        run: cmake --build build --target ImageJxlTest ImageIcoQoiTest ImageGifSaverTest MatrixDiagramRenderTest
+        run: cmake --build build --target ImageJxlTest ImageHeifTest ImageIcoQoiTest ImageGifSaverTest MatrixDiagramRenderTest
 
+      # Every libheif plug-in is installed above, so this libheif has to read
+      # and write both HEIC and AVIF (Tests/ImageHeifTest.cpp).
       - name: Run the tests
+        env:
+          UC_HEIF_EXPECT: decode=heic,avif encode=heic,avif
         run: |
           cd build
           ctest --output-on-failure --no-tests=error -V \
-                -R '^(ImageJxlTest|ImageIcoQoiTest|ImageGifSaverTest|MatrixDiagramRenderTest)$' 2>&1 |
+                -R '^(ImageJxlTest|ImageHeifTest|ImageIcoQoiTest|ImageGifSaverTest|MatrixDiagramRenderTest)$' 2>&1 |
             tee ctest.log
           test "${PIPESTATUS[0]}" -eq 0
 

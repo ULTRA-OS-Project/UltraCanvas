@@ -6222,6 +6222,12 @@ endif()
 # Windows rows.
 include(${CMAKE_CURRENT_SOURCE_DIR}/ImageJxlTests.cmake)
 
+# ===== IMAGE HEIF / AVIF TEST =====
+# Defined in ImageHeifTests.cmake, which the top level also includes on its
+# own (ULTRACANVAS_BUILD_HEIF_TESTS) where BUILD_TESTS is off - the macOS and
+# Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/ImageHeifTests.cmake)
+
 # ===== IMAGE GIF SAVER TEST =====
 # The framework's GIF saver for libvips (VipsGifPlugin): registered, picked
 # for a .gif only where libvips has no gifsave, pixels and transparency read
