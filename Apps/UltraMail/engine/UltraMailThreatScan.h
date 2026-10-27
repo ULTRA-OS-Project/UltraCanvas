@@ -14,6 +14,12 @@
 // costs the user a second look, a missed phishing mail can cost them their
 // account. But it only ever *labels* a message — nothing here deletes, moves
 // or blocks mail, and the reasons are always shown so the user can disagree.
+// Version: 0.11.0 - fake invoices: a web page attached (attachment-web-page), one that
+//                   loads a script, sends a form or moves the browser on
+//                   (attachment-active-page; ScanInput::attachedPages), and a
+//                   display name's company whose own domain the mail gives while
+//                   it came from another (sender-company-mismatch);
+//                   kThreatRulesRevision 2026-10-27
 // Version: 0.10.0 - loan-offer-fraud (a loan, credit or project funding offered by
 //                   anyone but a proven bank; its own switch, loanOffers);
 //                   kThreatRulesRevision 2026-10-21
@@ -89,7 +95,8 @@ struct ThreatScanOptions {
     bool government    = true;   // government-impersonation
     bool cryptoScams   = true;   // crypto-wallet-secret, -payment-demand, -investment-lure
     bool cryptoCaution = true;   // crypto-content: the caution on any mail about crypto
-    bool attachments   = true;   // attachment-*: programs, disguised documents
+    bool attachments   = true;   // attachment-*: programs, disguised documents,
+                                 // web pages
     bool spamFlag      = true;   // spam-flag: the receiving server's own verdict
     bool operator==(const ThreatScanOptions&) const = default;
 };
@@ -176,6 +183,13 @@ std::vector<MessageLink> ExtractLinks(const std::string& body, bool isHtml);
 // what the plain-text view reports for the pointer.
 std::string PlainLinkAt(const std::string& text, std::size_t offset);
 
+// A web page that came as an attachment (.html, .htm, .svg ...): its file
+// name and its text, as the attachment holds it.
+struct AttachedPage {
+    std::string name;
+    std::string content;
+};
+
 // What the scan needs about a message. Everything is optional: a caller that
 // has only a body still gets the link rules.
 struct ScanInput {
@@ -199,6 +213,10 @@ struct ScanInput {
     // attached under a name that is not a picture's. An attachment named
     // like one ("IMG_942.jpg") counts from `attachmentNames` already.
     std::vector<std::string> pictureNames;
+    // The attachments that are web pages (HTML, XHTML, MHTML, SVG), with
+    // their text - what the page would do once opened in the browser. Their
+    // names are in `attachmentNames` too.
+    std::vector<AttachedPage> attachedPages;
     // Which kinds of warning to give: all of them unless the caller says
     // otherwise (ScanRawMessage passes GetThreatScanOptions()).
     ThreatScanOptions options;
@@ -213,7 +231,7 @@ struct ScanInput {
 // and the sync re-scans the stored bodies a batch at a time
 // (SyncEngine::RescanStaleVerdicts), so a phishing mail an earlier version let
 // through is caught, and a genuine one it flagged is cleared.
-constexpr long long kThreatRulesRevision = 1792540800;   // 2026-10-21 00:00 UTC
+constexpr long long kThreatRulesRevision = 1793059200;   // 2026-10-27 00:00 UTC
 
 // ---------------------------------------------------------------------------
 // Mail authentication

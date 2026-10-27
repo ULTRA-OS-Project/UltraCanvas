@@ -3,6 +3,7 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.12.10 - SwitchToAccount with a filter: the account bar's counters
 // Version: 0.12.9 - CollectServices / CollectServiceOf: a known service collected
 //                  once a later-downloaded body proves its domain
 // Version: 0.12.8 - OpenFromActivation: a notification's click that reaches
@@ -125,7 +126,10 @@ public:
     // every account's mail, re-reading the address book) runs here: nothing
     // it reads changed by looking at another account.
     // By value: the id a tile's click hands over lives in that tile.
-    void SwitchToAccount(std::string accountId);
+    // With `filter`, a counter of the account bar was clicked: the account's
+    // inbox under that filter (an empty filter shows all of it).
+    void SwitchToAccount(std::string accountId,
+                         std::optional<MessageFilter> filter = std::nullopt);
     // The unread total, published for the desktop's mail badge on every Refresh.
     void PublishUnreadNotice();
     // Re-count the account bar (unread, waiting for reply) from the store and
