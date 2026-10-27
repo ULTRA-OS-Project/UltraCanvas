@@ -100609,12 +100609,12 @@ class, the service, the reason and the scan's findings in words, and a
 suspicious or scam message also carries a warning strip above its body in the
 reading pane. When the scan's verdict is suspicious or worse and a button (or,
 failing that, a bare link) leads off the sender's domain, the strip is titled
-*"Warning: This is likely a phishing² email!"*, quotes both domains —
+*"Warning: This is likely a phishing\* email!"*, quotes both domains —
 `Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
 the footnote: phishing emails try to get your credentials to hack your
 accounts on other websites (`FindDomainMismatch` in the scan). A message the
 scan reads as a **romance scam** is titled *"Warning: This is likely a romance
-scam² email!"* instead ("may be" when the verdict is only suspicious), even
+scam\* email!"* instead ("may be" when the verdict is only suspicious), even
 when it also links elsewhere, and its footnote says what a romance scam is and
 that a reverse image search often finds the photo under another name; a
 **cryptocurrency scam** (a recovery phrase asked for, a wallet address to pay
@@ -100843,6 +100843,9 @@ cascade. The rules, with their weights:
 | `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
 | `attachment-double-extension` | 25 | `invoice.pdf.zip` |
+| `attachment-active-page` | 50 | An attached web page (or SVG picture) that, once opened, loads a script from a website, has a form, sends the browser on (`<meta http-equiv="refresh">`, `location=…`), shows another site in a frame, or runs a script that decodes or writes a hidden page (`atob(`, `eval(`, `document.write`) — read from the page itself, as it would run in the browser |
+| `attachment-web-page` | 25 / 40 | An `.html` / `.htm` / `.xhtml` / `.mht` file attached: it opens in the browser, outside the mail program. 40 when the mail or the file name speaks of an invoice, a reminder or a payment ("Mahnung", "Rechnung", "invoice", "overdue", `Rg-2608144.html`) — the fake invoice; real invoices come as PDFs |
+| `sender-company-mismatch` | 25 (12 from a proven domain) | The display name names a company whose own domain the message itself gives — `Luka Deveric \| BUG Rohrreinigung <no-reply@danpetersonmusic.net>` writing "questions to fibu@bug-rohrreinigung.de" — and the mail came from an unrelated domain. Matched when the domain's name is the display name's words (`bug-rohrreinigung`, `bugrohrreinigung`, or one long word of it); not from a free mailbox, not "… via …", not when the sender's domain carries the company's name; from a domain DKIM or DMARC proves (an invoicing service sending in a customer's name) only 12 |
 | `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |
 | `insecure-login-link` | 20 | A sign-in link over plain `http://` |
 | `link-brand-mismatch` | 20 | A button labelled with a brand that goes somewhere else |
@@ -100982,7 +100985,7 @@ from a domain of its own. Where the brand table already reported the claim
 
 | Switch | Findings |
 |---|---|
-| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
+| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `sender-company-mismatch`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
 | Romance scams | `romance-scam` |
 | Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
 | Loan and credit offers | `loan-offer-fraud` |
@@ -101029,7 +101032,8 @@ address under a blocked domain stays trusted — the exception to the block.
   trusted address), the lying-link rules (`link-target-mismatch`,
   `link-userinfo`, `link-ip-host`, `link-punycode`, `link-nonascii-host`,
   `link-brand-mismatch`, `link-brand-lookalike`, `link-domain-lookalike`),
-  `attachment-disguised-executable` and `crypto-wallet-secret`. The guessed
+  `attachment-disguised-executable`, `attachment-active-page` (a hijacked
+  mailbox's fake invoice) and `crypto-wallet-secret`. The guessed
   kinds — a romance or advance-fee letter, the crypto caution, spam markers,
   a brand's name in a domain — are the reader's call, and they made it. A
   trusted sender's pictures on the web also load like a contact's
@@ -101109,6 +101113,63 @@ clean, and each of those is a test in
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/account-bar-counter-filters.md
+==============================================================================
+
+- **The account bar's counters filter the message list.** A click on
+  *New today* shows the account's inbox with only its unread mail from today,
+  *Unread* all of its unread mail (today's too, though the number counts
+  only the mail from before today), and *Waiting for reply* only the mail
+  waiting for an answer. A click anywhere else on the account's card (tile or summary card)
+  shows all of its mail again. Each counter has its own tooltip, and the one
+  in use is outlined in its colour.
+- **A filter card under the account.** While the list is filtered, a second
+  row under the account bar holds a card in the look of the account tiles,
+  placed under the account's own tile (it follows the tile when it is dragged
+  to another place). It names the filter ("Showing: New today") and has a
+  **Show all emails** button. It also shows a filter chosen from the list's
+  *Show emails ▸* menu, and goes when switching folders clears the filter.
+- `UltraMailAccountBarTest` clicks every counter and checks the filter card's
+  place; `UltraMailFolderTreeTest` checks what each counter's filter shows;
+  `test_messagefilter` checks the new filter.
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/fake-invoice-web-page.md
+==============================================================================
+
+- **A payment reminder whose "invoice" is a web page is marked as a scam.**
+  A "Mahnung" with the invoice attached as `Rg-2608144_(563804).html`, sent
+  in a plumbing firm's name from a music site's address, was not flagged:
+  no rule looked at an `.html` attachment or at a company name over a
+  foreign domain. Three new findings:
+  - `attachment-web-page` - a web page attached (`.html`, `.htm`, `.xhtml`,
+    `.mht`) opens in the browser, outside the mail program: Suspicious, and
+    40 points when the mail or the file name speaks of an invoice, a reminder
+    or a payment, since real invoices come as PDFs.
+  - `attachment-active-page` - the attached page (or an SVG picture) is read
+    as the browser would run it: one that loads a script from a website, has
+    a form, sends the browser on or decodes a hidden page is a Scam on its
+    own. The reminder's page loaded a script from a hacked site. It still
+    counts for a sender you trust (their mailbox may be the one hijacked).
+  - `sender-company-mismatch` - the display name names a company whose own
+    domain the mail itself gives ("questions to fibu@bug-rohrreinigung.de")
+    while it came from an unrelated domain. Not for a free mailbox, "… via
+    …", or a sender domain carrying the company's name; a domain DKIM or
+    DMARC proves (an invoicing service) gets only a hint.
+- The reading pane names such a mail *phishing* and advises not to open the
+  attached page. The rules revision moves to 2026-10-27, so stored mail is
+  scanned again.
+
+==============================================================================
+FILE: Docs/UltraMail/changelog.d/warning-footnote-star.md
+==============================================================================
+
+- **The warning strip's footnote is marked with "*".** *"Warning: This is
+  likely a phishing\* email!"* and the explanation under it start with "*"
+  instead of "²" - each warning has a single footnote, so a "2" read like a
+  second one.
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md
