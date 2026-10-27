@@ -7,6 +7,8 @@
 
 #include "UltraDatabase/UltraDatabase.h"
 
+#include <cstdlib>
+
 namespace UltraStoreAdmin {
 
 namespace {
