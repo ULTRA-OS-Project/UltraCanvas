@@ -90,6 +90,7 @@
 #include "UltraMailHeaderText.h"
 
 #include "UltraMailAlerts.h"
+#include "UltraMailStorage.h"
 #include "UltraMailSettingsDialog.h"
 #include "UltraMailTheme.h"
 
@@ -199,6 +200,7 @@ std::string UltraMailApp::SlugFromEmail(const std::string& email) {
 UltraMailApp::~UltraMailApp() {
     feed_.SetOnNotificationAction(nullptr);   // a late click finds no app
     pushAlive_->store(false);                 // a late push callback finds no app
+    bodiesAlive_->store(false);               // the message files' encryption stops
     if (IMailboxProtocolPlugin* jmap = JmapPlugin())
         for (const auto& [accountId, watch] : pushWatches_) jmap->StopWatching(watch.handle);
     pushWatches_.clear();
@@ -219,9 +221,40 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     if (ec && outError) *outError = ec.message();
     const std::string dbPath = dataDir + "/mail.db";
 
+    // The mail kept here is encrypted at rest with the storage key in the
+    // vault (UltraMailStorage.h), so the vault comes first: opened by main()
+    // (OpenVault, with the Primary Password when one is set), or here with
+    // the device key. A plain database from an earlier version is encrypted
+    // in place, once; the message files follow in the background
+    // (FinishStartup). Without a vault (a build with no crypto backend) the
+    // mail stays as it is.
+    step.emplace("Storage key; encrypt an earlier version's databases", 0);
+    if (vault_.GetDirectory().empty()) vault_ = CredentialVault(dataDir + "/vault");
+    if (!vault_.IsUnlocked()) vault_.TryAutoUnlock();
+    if (vault_.IsUnlocked()) {
+        std::string why;
+        storageKey_ = LoadStorageKey(vault_, /*create=*/true, why);
+        if (!storageKey_) Trace::Line("The stored mail stays unencrypted: " + why);
+    } else {
+        Trace::Line("The vault is locked: the stored mail is opened unencrypted");
+    }
+    SetBodyKey(BodyKey(storageKey_));
+    if (storageKey_) {
+        for (const char* file : { "mail.db", "contacts.db", "outbox.db", "cloud.db" }) {
+            const UltraDbResult converted = EncryptDatabaseFile(dataDir + "/" + file, DatabaseKey(storageKey_, file));
+            if (converted)
+                continue;
+            Trace::Line(std::string("Could not encrypt ") + file + ": " + DetailLine(converted));
+            if (std::string(file) == "mail.db") {
+                if (outError) *outError = "The mailbox could not be encrypted: " + DetailLine(converted);
+                return false;
+            }
+        }
+    }
+
     step.emplace("Open the mail database (mail.db, two connections)", 0);
-    UltraDbResult opened = store_.Open("ultramail", dbPath);
-    if (opened) opened = workerStore_.Open("ultramail-worker", dbPath);
+    UltraDbResult opened = store_.Open("ultramail", dbPath, DatabaseKey(storageKey_, "mail.db"));
+    if (opened) opened = workerStore_.Open("ultramail-worker", dbPath, DatabaseKey(storageKey_, "mail.db"));
     if (!opened) {
         if (outError) *outError = DetailLine(opened);
         return false;
@@ -266,9 +299,11 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // must not be silent: remember it so the feature that needs the store can
     // say what went wrong instead of doing nothing.
     step.emplace("Open the address book and the outbox (contacts.db, outbox.db)", 0);
-    if (UltraDbResult c = contacts_.Open("ultramail-contacts", dataDir + "/contacts.db"); !c)
+    if (UltraDbResult c = contacts_.Open("ultramail-contacts", dataDir + "/contacts.db",
+                                         DatabaseKey(storageKey_, "contacts.db")); !c)
         contactsError_ = DetailLine(c);
-    if (UltraDbResult o = outbox_.Open("ultramail-outbox", dataDir + "/outbox.db"); !o)
+    if (UltraDbResult o = outbox_.Open("ultramail-outbox", dataDir + "/outbox.db",
+                                       DatabaseKey(storageKey_, "outbox.db")); !o)
         outboxError_ = DetailLine(o);
 
     // The networking library itself (curl's global setup), not its plug-ins:
@@ -373,17 +408,32 @@ void UltraMailApp::FinishStartup() {
     // keeps files (the sender icons have a folder of their own); those loose
     // files are cleared once. Files only, on a thread of its own: a large
     // cache on a slow disk does not hold the window.
-    std::thread([cacheDir = cacheDir_, attachmentDir = attachmentDir_]() {
+    // With the stored mail encrypted (UltraMailStorage.h) these copies are
+    // the one place an attachment lies on disk in the clear - the viewer it
+    // was handed to needs a plain file - so they do not outlive the run they
+    // were opened in: emptied at every start.
+    std::thread([cacheDir = cacheDir_, attachmentDir = attachmentDir_, sealed = GetBodyKey() != nullptr]() {
         Trace::Stage prune("Prune the attachment cache", 0);
         AttachmentCache(cacheDir).Prune(/*maxAgeSeconds=*/-1, /*maxBytes=*/0);
-        AttachmentCache(attachmentDir).Prune(/*maxAgeSeconds=*/7 * 24 * 3600,
+        AttachmentCache(attachmentDir).Prune(/*maxAgeSeconds=*/sealed ? -1 : 7 * 24 * 3600,
                                              /*maxBytes=*/256ull * 1024 * 1024);
     }).detach();
+
+    // Messages downloaded by an earlier version are plain files: sealed with
+    // the body key on a thread of their own, a file at a time, until UltraMail
+    // closes. Reading takes either kind meanwhile (and after an interruption).
+    if (GetBodyKey()) {
+        std::thread([mailDir = mailDir_, alive = bodiesAlive_]() {
+            Trace::Stage seal("Encrypt the message files of an earlier version", 0);
+            const size_t sealed = EncryptStoredBodies(mailDir, [alive]() { return !alive->load(); });
+            if (sealed > 0) Trace::Line(std::to_string(sealed) + " message file(s) encrypted");
+        }).detach();
+    }
 
     // Cloud storage accounts (UltraCloud) for "Attach cloud link".
     step.emplace("Cloud storage accounts (cloud.db)", 0);
     UltraCloud::RegisterBuiltInProviders();
-    cloudAccounts_->Open("ultramail-cloud", dataDir_ + "/cloud.db");
+    cloudAccounts_->Open("ultramail-cloud", dataDir_ + "/cloud.db", DatabaseKey(storageKey_, "cloud.db"));
     cloudSecrets_ = std::make_shared<UltraCloud::VaultSecretStore>();   // in vault_
     cloud_ = std::make_shared<UltraCloud::CloudService>(cloudAccounts_, cloudSecrets_);
 
@@ -1894,9 +1944,9 @@ void UltraMailApp::HandleUnsubscribe(const MessageEnvelope& env) {
     const std::string path = CachedBodyPath(mailDir_, env.accountId, env.folder, env.uid);
     std::error_code ec;
     if (std::filesystem::exists(PathFromUtf8(path), ec)) {
-        auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
-        if (loaded.success) {
-            UnsubscribeWith(env, std::string(loaded.bytes.begin(), loaded.bytes.end()));
+        std::string raw;
+        if (ReadBodyFile(path, raw)) {
+            UnsubscribeWith(env, raw);
             return;
         }
     }
@@ -1909,9 +1959,8 @@ void UltraMailApp::HandleUnsubscribe(const MessageEnvelope& env) {
         "Unsubscribe",
         [this, env, path]() {
             CollectServiceOf(env);   // its sender's domain may be proven now
-            auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
-            UnsubscribeWith(env, loaded.success
-                ? std::string(loaded.bytes.begin(), loaded.bytes.end()) : std::string());
+            std::string raw;
+            UnsubscribeWith(env, ReadBodyFile(path, raw) ? raw : std::string());
         });
 }
 
@@ -2428,8 +2477,7 @@ void UltraMailApp::SeedDemoMail() {
 
         fs::path p = PathFromUtf8(mailDir_) / "erika" / "INBOX" / (std::to_string(uid) + ".eml");
         std::error_code ec; fs::create_directories(p.parent_path(), ec);
-        std::ofstream(p, std::ios::binary).write(raw.data(),
-                                                 static_cast<std::streamsize>(raw.size()));
+        WriteBodyFile(PathToUtf8(p), raw);   // sealed as downloaded mail is
 
         MessageEnvelope m;
         m.accountId = "erika"; m.folder = "INBOX"; m.uid = uid;

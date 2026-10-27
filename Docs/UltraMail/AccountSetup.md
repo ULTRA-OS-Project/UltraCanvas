@@ -394,6 +394,16 @@ again to retry.
   so UltraMail never asks.
 - **The data folder is private.** UltraMail makes it owner-only at every start
   (on Linux and macOS; Windows' `%APPDATA%` already is).
+- **The stored mail is encrypted.** `mail.db`, `contacts.db`, `outbox.db`,
+  `cloud.db` and every downloaded message under `mail/` are ciphertext on
+  disk, encrypted with a key kept in the vault: copied elsewhere, or opened
+  with another program (the sqlite3 shell, UltraDBAdmin), they show nothing.
+  A mailbox from an earlier version is converted at the first start - the
+  databases before the window opens, the messages in the background. With a
+  Primary Password nobody without it can read them; without one, programs
+  running as you can open the vault the way UltraMail does. Attachments you
+  open are handed to their viewer as plain copies in `cache/attachments/`,
+  which are deleted at the next start.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.

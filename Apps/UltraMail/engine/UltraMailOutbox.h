@@ -7,6 +7,7 @@
 // on the server (ServerCopies): it is there on every device until the message
 // has gone out, and is deleted from Drafts once it has - when a copy goes to
 // the Sent folder instead (unless the server files sent mail itself).
+// Version: 0.11.0 - Open takes the key outbox.db is encrypted with
 // Version: 0.10.0 - Flush with a plug-in per account (PluginResolver): a JMAP
 //                   account sends through the JMAP plug-in, the rest through SMTP
 // Version: 0.9.0 - ServerFolders::mailbox: the copies of a JMAP account go
@@ -101,7 +102,8 @@ struct ServerCopies {
 // Persistent queue storage (contacts-style, on its own UltraDatabase connection).
 class OutboxStore {
 public:
-    UltraDbResult Open(const std::string& connectionName, const std::string& databasePath);
+    UltraDbResult Open(const std::string& connectionName, const std::string& databasePath,
+                       std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey = nullptr);
 
     // Mirrors LocalStore / ContactStore, so the UI can tell "the queue is
     // unavailable" from "the queue is empty" and say so.

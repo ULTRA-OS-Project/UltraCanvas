@@ -3,6 +3,7 @@
 // sections, each with any number of emails / phones. A global store (not
 // per-account) so contacts are shared across accounts, mirroring LocalStore's
 // UltraDatabase-backed design.
+// Version: 0.4.0 - Open takes the key contacts.db is encrypted with
 // Version: 0.3.0 - RemoveAll (many contacts in one transaction); Forget / ForgottenAddresses: addresses the user deleted,
 //                  which the collector does not add again
 // Version: 0.2.0 - SaveAll (a batch in one transaction), KnownAddresses; the
@@ -27,7 +28,8 @@ public:
     // Register an UltraDatabase connection and bring the schema up to date.
     // `databasePath` is a file path (created if absent) or ":memory:".
     UltraDbResult Open(const std::string& connectionName,
-                       const std::string& databasePath);
+                       const std::string& databasePath,
+                       std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey = nullptr);
 
     bool IsOpen() const { return !connection_.empty(); }
 

@@ -104,6 +104,11 @@ Apps/UltraMail/
                                   framework's UltraVault::DeviceKeyVault with
                                   UltraMail's profile (ultramail.vault,
                                   device.key, keys mail.ultramail.<account>)
+    UltraMailStorage.{h,cpp}      the stored mail encrypted at rest: the storage
+                                  key in the vault, a key per database file
+                                  (UltraDatabase's encrypted SQLite) and one for
+                                  the message files (sealed .eml); converting an
+                                  earlier version's plain files
     UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail, Outlook, Yahoo): provider
                                   table, the sign-in service, app registration
                                   (env / oauth.ini), sign-in +

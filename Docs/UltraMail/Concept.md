@@ -388,6 +388,15 @@ point the store at a networked engine without changing UltraMail's
 query code. The raw messages stay as `.eml` files on disk; only the
 index/metadata lives in the database.
 
+**At rest everything is encrypted** (`UltraMailStorage.h`): one random
+storage key in the vault, and keys derived from it with HKDF - one per
+database file, which UltraDatabase opens as encrypted SQLite
+(`UltraDatabaseEncryption.h`: every page of the file and its WAL sealed with
+XChaCha20-Poly1305), and one for the message files, each sealed whole
+(`UltraMail:eml:1` | nonce | ciphertext | tag). A Primary Password guards
+that key, since it guards the vault; changing it re-encrypts only the vault.
+An earlier version's plain files are converted at the first start.
+
 **Credentials** go into UltraMail's vault: the framework's
 `UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
 UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +

@@ -48,6 +48,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailTrace.cpp
     engine/UltraMailOneTimeCode.cpp
     engine/UltraMailPaths.cpp
+    engine/UltraMailStorage.cpp
     engine/UltraMailResultText.cpp
 )
 
@@ -63,6 +64,11 @@ target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
 # UltraCrypt), not in a format of UltraMail's own.
 if(TARGET UltraVault)
     target_link_libraries(UltraMailEngine PUBLIC UltraVault)
+endif()
+# The mail kept on the computer is encrypted at rest (UltraMailStorage.h):
+# the message files with UltraCrypt, the databases by UltraDatabase.
+if(TARGET UltraCrypt)
+    target_link_libraries(UltraMailEngine PUBLIC UltraCrypt)
 endif()
 # New mail goes to the desktop feed over UltraMessage (mail.message); the
 # publisher compiles to a no-op when the module is not in the build.

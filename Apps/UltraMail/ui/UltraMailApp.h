@@ -3,7 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
-// Version: 0.13.0 - the vault opens first (OpenVault / UnlockVault): with a
+// Version: 0.13.0 - the stored mail is encrypted at rest with the storage key in the
+//                  vault (UltraMailStorage.h); the vault opens first (OpenVault / UnlockVault): with a
 //                  Primary Password it is asked for before any stored mail is read;
 //                  Settings > Privacy > Primary Password sets, changes and removes it
 // Version: 0.12.10 - SwitchToAccount with a filter: the account bar's counters
@@ -632,6 +633,12 @@ private:
     // Session-lifetime: the master password is entered once, and the derived
     // key lives only while the app runs.
     CredentialVault vault_{""};
+    // The key the stored mail is encrypted with (UltraMailStorage.h); nullptr
+    // while there is no vault to keep it in.
+    std::shared_ptr<const UltraCryptSecureBuffer> storageKey_;
+    // Cleared when the app goes: the thread sealing an earlier version's
+    // message files stops at the next one.
+    std::shared_ptr<std::atomic<bool>> bodiesAlive_ = std::make_shared<std::atomic<bool>>(true);
     // OAuth2 sign-in + token refresh for providers that need it (Gmail).
     MailOAuth       oauth_;
 

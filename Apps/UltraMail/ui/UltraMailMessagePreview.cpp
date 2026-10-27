@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.20.4 - the body opened with the mailbox's body key (sealed at rest)
 // Version: 0.20.3 - the warning strip's footnote is marked "*" (it was a superscript 2)
 // Version: 0.20.2 - an attached web page (attachment-web-page / -active-page) is named
 //                   in the warning strip as phishing, with advice not to open it
@@ -65,6 +66,7 @@
 // Last Modified: 2026-10-24
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
+#include "UltraMailStorage.h"
 #include "UltraMailHeaderText.h"
 #include "UltraMailTrace.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
@@ -1423,6 +1425,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     // Read through the framework's file loader: a cached body is never
     // compressed, but unlike a bare ifstream it reports why a read failed, so an
     // unreadable file says so instead of looking as if it were never downloaded.
+    // Then opened with the mailbox's body key: stored mail is sealed at rest.
     std::error_code ec;
     bodyMissing_ = !fs::exists(path, ec);
     if (bodyMissing_) {
@@ -1441,8 +1444,16 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
+    } else if (!OpenBody(GetBodyKey(), std::string(loaded.bytes.begin(), loaded.bytes.end()), raw)) {
+        // Sealed with a key this mailbox does not have (UltraMailStorage.h):
+        // a file from another installation, or a damaged one.
+        RenderBody("(this message's body could not be decrypted)\n\n" + PathToUtf8(path), false);
+        attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
+        current_.body.clear();
+        current_.attachments.clear();
+        curRaw_.clear();
     } else {
-        raw.assign(loaded.bytes.begin(), loaded.bytes.end());
         curRaw_ = raw;   // kept for "View source"
         ParsedMessage pm = MimeCodec::Parse(raw);
         // Rendered below, once the verdict says whether remote images may load.

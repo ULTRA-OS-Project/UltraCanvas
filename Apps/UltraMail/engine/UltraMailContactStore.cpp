@@ -34,11 +34,13 @@ std::string LowerAscii(std::string s) {
 } // namespace
 
 UltraDbResult ContactStore::Open(const std::string& connectionName,
-                                 const std::string& databasePath) {
+                                 const std::string& databasePath,
+                                 std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey) {
     UltraDbConnectionConfig cfg;
     cfg.name = connectionName;
     cfg.driver = "sqlite";
     cfg.database = databasePath;
+    cfg.encryptionKey = std::move(encryptionKey);
     UltraDbResult reg = UltraDb_RegisterConnection(cfg);
     if (!reg) return reg;
     connection_ = connectionName;
