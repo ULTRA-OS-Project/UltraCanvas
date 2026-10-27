@@ -40,12 +40,12 @@ class, the service, the reason and the scan's findings in words, and a
 suspicious or scam message also carries a warning strip above its body in the
 reading pane. When the scan's verdict is suspicious or worse and a button (or,
 failing that, a bare link) leads off the sender's domain, the strip is titled
-*"Warning: This is likely a phishing² email!"*, quotes both domains —
+*"Warning: This is likely a phishing\* email!"*, quotes both domains —
 `Mismatch of domains` / `Sender domain: …` / `Button domain: …` — and explains
 the footnote: phishing emails try to get your credentials to hack your
 accounts on other websites (`FindDomainMismatch` in the scan). A message the
 scan reads as a **romance scam** is titled *"Warning: This is likely a romance
-scam² email!"* instead ("may be" when the verdict is only suspicious), even
+scam\* email!"* instead ("may be" when the verdict is only suspicious), even
 when it also links elsewhere, and its footnote says what a romance scam is and
 that a reverse image search often finds the photo under another name; a
 **cryptocurrency scam** (a recovery phrase asked for, a wallet address to pay
@@ -274,6 +274,9 @@ cascade. The rules, with their weights:
 | `crypto-investment-lure` | 35 | Crypto plus promised profit: "guaranteed returns", "30% daily", a "trading platform", "withdraw your balance"; not from a proven exchange |
 | `credential-request` | 30 | "Your account will be suspended" + a link off the sender's domain |
 | `attachment-double-extension` | 25 | `invoice.pdf.zip` |
+| `attachment-active-page` | 50 | An attached web page (or SVG picture) that, once opened, loads a script from a website, has a form, sends the browser on (`<meta http-equiv="refresh">`, `location=…`), shows another site in a frame, or runs a script that decodes or writes a hidden page (`atob(`, `eval(`, `document.write`) — read from the page itself, as it would run in the browser |
+| `attachment-web-page` | 25 / 40 | An `.html` / `.htm` / `.xhtml` / `.mht` file attached: it opens in the browser, outside the mail program. 40 when the mail or the file name speaks of an invoice, a reminder or a payment ("Mahnung", "Rechnung", "invoice", "overdue", `Rg-2608144.html`) — the fake invoice; real invoices come as PDFs |
+| `sender-company-mismatch` | 25 (12 from a proven domain) | The display name names a company whose own domain the message itself gives — `Luka Deveric \| BUG Rohrreinigung <no-reply@danpetersonmusic.net>` writing "questions to fibu@bug-rohrreinigung.de" — and the mail came from an unrelated domain. Matched when the domain's name is the display name's words (`bug-rohrreinigung`, `bugrohrreinigung`, or one long word of it); not from a free mailbox, not "… via …", not when the sender's domain carries the company's name; from a domain DKIM or DMARC proves (an invoicing service sending in a customer's name) only 12 |
 | `link-punycode`, `link-nonascii-host` | 25 | Hosts drawn to look like familiar names |
 | `insecure-login-link` | 20 | A sign-in link over plain `http://` |
 | `link-brand-mismatch` | 20 | A button labelled with a brand that goes somewhere else |
@@ -413,7 +416,7 @@ from a domain of its own. Where the brand table already reported the claim
 
 | Switch | Findings |
 |---|---|
-| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
+| Phishing | `link-*`, `brand-impersonation`, `sender-domain-lookalike`, `sender-company-mismatch`, `borrowed-brand-pictures`, `credential-request`, `insecure-login-link`, `auth-failure`, `reply-to-mismatch`, `many-foreign-domains` |
 | Romance scams | `romance-scam` |
 | Advance-fee letters | `advance-fee-fraud`, `reply-elsewhere` |
 | Loan and credit offers | `loan-offer-fraud` |
@@ -460,7 +463,8 @@ address under a blocked domain stays trusted — the exception to the block.
   trusted address), the lying-link rules (`link-target-mismatch`,
   `link-userinfo`, `link-ip-host`, `link-punycode`, `link-nonascii-host`,
   `link-brand-mismatch`, `link-brand-lookalike`, `link-domain-lookalike`),
-  `attachment-disguised-executable` and `crypto-wallet-secret`. The guessed
+  `attachment-disguised-executable`, `attachment-active-page` (a hijacked
+  mailbox's fake invoice) and `crypto-wallet-secret`. The guessed
   kinds — a romance or advance-fee letter, the crypto caution, spam markers,
   a brand's name in a domain — are the reader's call, and they made it. A
   trusted sender's pictures on the web also load like a contact's

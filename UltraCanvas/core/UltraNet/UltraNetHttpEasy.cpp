@@ -1,10 +1,17 @@
 // core/UltraNet/UltraNetHttpEasy.cpp
 // Shared libcurl easy-handle plumbing: callbacks, option-setting,
 // finalisation. Used by both the sync and the async HTTP code paths.
+// Version: 0.5.1 - the per-thread share is off unless UltraNetConfig::
+//                  reuseHttpConnections asks for it, and shares no TLS
+//                  sessions: a device whose key changed was reached on the
+//                  old session, and a server restarted between two calls on
+//                  the old connection
+// Version: 0.5.0 - ThreadHttpShare / CloseKeptHttpPools: a per-thread
+//                  connection pool so the synchronous verbs reuse connections
 // Version: 0.4.0 - OpenBodyFile / ApplyBodyFile: a request body read from a file as it is sent
 // Version: 0.3.2 - a synchronous transfer ends when its thread's abort check
 //                  says so (UltraNet_SetThreadAbortCheck)
-// Last Modified: 2026-10-20
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraNetHttpEasy.h"
@@ -17,8 +24,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 #include <vector>
 #include "../../include/UltraCanvasPathUtf8.h"
 
@@ -883,6 +892,105 @@ UltraNetTransferStats ReadTransferStats(CURL* easy) {
     s.averageSpeedBps = total > 0 ? static_cast<double>(bytesDl) / total : 0.0;
     s.redirectCount   = static_cast<int>(redirects);
     return s;
+}
+
+// ============================================================================
+// Per-thread HTTP connection pool. The synchronous verbs make a fresh easy
+// handle per call and free it, so the pooled connection libcurl keeps goes with
+// it. A share object (CURL_LOCK_DATA_CONNECT, plus DNS; not SSL_SESSION) outlives
+// the handles that attach it, so the next call on the same thread reuses the
+// connection — the difference between one TCP+TLS handshake and one per call.
+// One per thread, because libcurl does not support sharing a connection pool
+// between threads running transfers at once. Modelled on the FTP plug-in's
+// KeptPools / ThreadConnections; the async path needs none (its curl_multi
+// already pools connections across the easy handles added to it).
+// ============================================================================
+namespace {
+
+// Every thread's share, so CloseKeptHttpPools can close them at shutdown.
+// Never destroyed: a thread (and its t_httpShare) can end after static
+// destruction has begun.
+struct HttpPools {
+    std::mutex mutex;
+    std::unordered_set<CURLSH**> slots;   // each thread's HttpShare::share_
+};
+
+HttpPools& Pools() {
+    static HttpPools* pools = new HttpPools;
+    return *pools;
+}
+
+class HttpShare {
+public:
+    HttpShare() = default;
+    HttpShare(const HttpShare&) = delete;
+    HttpShare& operator=(const HttpShare&) = delete;
+    ~HttpShare() { Close(); }
+
+    // The share this thread's calls attach, made on first use; null when
+    // libcurl cannot make one, which costs the reuse and nothing else.
+    CURLSH* Get() {
+        HttpPools& pools = Pools();
+        std::lock_guard<std::mutex> lk(pools.mutex);
+        if (share_) return share_;
+        CURLSH* share = curl_share_init();
+        if (!share) return nullptr;
+        // No lock callbacks: only this thread ever attaches it. Connections
+        // and DNS answers are shared; TLS sessions are not: a resumed session
+        // skips the certificate, so a device whose key changed between two
+        // calls (a scanner trusted on first use, re-learned after its key was
+        // forgotten; a relay pinned by key) was reached on the old session and
+        // its new certificate never seen - IODeviceScannerESCLLiveTest failed
+        // on every Linux row. A pooled connection keeps its TLS state anyway,
+        // so what the session cache would add is an abbreviated handshake for
+        // a new connection to the same host, which is not worth that.
+        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
+        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
+        share_ = share;
+        pools.slots.insert(&share_);
+        return share_;
+    }
+
+    void Close() {
+        CURLSH* share = nullptr;
+        {
+            HttpPools& pools = Pools();
+            std::lock_guard<std::mutex> lk(pools.mutex);
+            pools.slots.erase(&share_);
+            share = share_;
+            share_ = nullptr;
+        }
+        if (share) curl_share_cleanup(share);   // the close is said outside the lock
+    }
+
+private:
+    CURLSH* share_ = nullptr;   // guarded by Pools().mutex
+};
+
+thread_local HttpShare t_httpShare;
+
+} // namespace
+
+CURLSH* ThreadHttpShare() {
+    // Off unless asked for: the pool outlives the call, which the devices
+    // and servers the live tests restart, re-key or pin between two calls
+    // do not expect (UltraNetConfig::reuseHttpConnections).
+    if (!UltraNet_GetConfig().reuseHttpConnections) return nullptr;
+    return t_httpShare.Get();
+}
+
+void CloseKeptHttpPools() {
+    std::vector<CURLSH*> shares;
+    {
+        HttpPools& pools = Pools();
+        std::lock_guard<std::mutex> lk(pools.mutex);
+        for (CURLSH** slot : pools.slots) {
+            if (*slot) shares.push_back(*slot);
+            *slot = nullptr;
+        }
+        pools.slots.clear();
+    }
+    for (CURLSH* share : shares) curl_share_cleanup(share);
 }
 
 } // namespace ultranet_internal

