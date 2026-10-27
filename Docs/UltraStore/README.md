@@ -21,9 +21,9 @@ The brief's open questions, answered on 2026-10-24:
 | Where do packages come from? | **Our own server.** The admin backend keeps the apps and their settings in a database; the packages are zip / 7z files on a server only the store reaches; the catalog is generated from the database and signed. |
 | Where does the code live? | `Apps/UltraStore`, with `ultrastore_core` as a static library in v1. |
 | Signature and hash primitives | Ed25519 added to UltraCrypt 0.2.0 (framework 0.9.272); the store target **requires** libsodium and SQLite and stops the configure without them. |
-| Management | **UltraStore admin backend**, a local application (next pull requests, `Apps/UltraStoreAdmin`), adding and removing apps with every setting the catalog carries: see *The admin backend*. |
+| Management | **UltraStore admin backend**, a local application (`Apps/UltraStoreAdmin`, its own README), adding and removing apps with every setting the catalog carries: see *The admin backend*. |
 | Translations | Creators supply at least one language; the admin backend translates with the server's local UltraAI into every official language and marks what it translated (`source_language`, `machine_translated`); ULTRA OS apps' own localisation folders get the same. |
-| Signing key | Generated and kept **in the admin backend's database**, encrypted; the public key reaches the store through the repository and the signed catalog: see *Keys*. |
+| Signing key | Generated and kept **in the admin backend's database**, the seed sealed with a passphrase (Argon2id, XChaCha20-Poly1305); the public key reaches the store through the repository and the signed catalog: see *Keys*. |
 | UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
@@ -251,13 +251,15 @@ UTF-8 paths through `PathToUtf8` / `PathFromUtf8`).
 
 ### Where the server is reached
 
-The packages' server is reachable only by the store. Open design question,
-to settle with the admin backend: a bearer token the store carries and the
-server checks (simple, rotatable, but in every binary) or unlisted URLs
-whose names are only in the signed catalog (nothing to leak from the
-binary, and the catalog itself is public). The resolver and the client do
-not care: `Package::url` is whatever the catalog says, and
-`UltraNetHttpOptions::headers` takes the token if there is one.
+Decided with the admin backend (its README, *Decisions*): the catalog, the
+media and the packages of free apps are plain public files - what a signed
+catalog needs and no more - under `packages/`; the packages of paid apps go
+to `restricted/`, which the web server serves to nobody directly. A buyer's
+store gets a short-lived signed URL for a restricted file from the payment
+service (milestone 6), the way the other stores do it; no bearer token in
+the binary, so there is nothing to leak, and a leaked URL dies in minutes.
+The resolver and the client do not care: `Package::url` is whatever the
+catalog says, and a signed URL is a URL.
 
 ## UltraInstaller
 
@@ -340,18 +342,21 @@ of the new version followed by a `current` move, the older app versions
 removed and the components only they needed collected. Nothing is ever
 written where a failure would leave a half-installed folder in place.
 
-## The admin backend (*later*, `Apps/UltraStoreAdmin`)
+## The admin backend (`Apps/UltraStoreAdmin`)
 
-A local application for the people who publish: adds and removes apps and
-components with every setting in the table above, per release the packages
-(the admin picks the files, the backend computes size and SHA-256 and
-uploads them to the packages server), raises the sequence, generates the
-catalog from its database, signs it with the key it keeps, and publishes
-catalog and signature. Its database is UltraDatabase (SQLite); its upload
-is UltraNet (SFTP or HTTPS PUT, to decide with the server). `ultrastore
-sign`, `sha256`, `keygen` and `pubkey` are its stand-ins until it exists,
-and its tests will run the same `ParseCatalog` the store runs, so what it
-writes is what the store reads.
+The program the people who publish run; its own page is
+[`Docs/UltraStoreAdmin/README.md`](../UltraStoreAdmin/README.md). It keeps
+the apps and components with every setting of the table above (each as the
+catalog's own component object, so what it keeps is what the store reads),
+the publishers, the files behind the packages under their hash, and the
+signing key with its seed sealed by a passphrase; it translates the texts
+with UltraAI into every official language; and `publish` builds the
+catalog with the next sequence, lays the packages and the media out beside
+it, signs the exact bytes and verifies them with this store's own
+`ParseCatalog` and `VerifyCatalogSignature` before recording the sequence.
+`ultrastore sign`, `sha256`, `keygen` and `pubkey` remain as the hand
+tools. Its upload to the host is a later step; the publish folder is the
+server's document root until then.
 
 ## The window
 
@@ -457,6 +462,8 @@ program, `ultrastore sha256` it, write a catalog.json with
    navigation, collapsible bottom panel, single-select chip group), with
    component docs (framework 0.9.409).
 4. **The window** (this page's *The window*).
-5. **The admin backend** (`Apps/UltraStoreAdmin`), the packages server's
-   access scheme, key rotation through the catalog (schema 2).
+5. **The admin backend** (`Apps/UltraStoreAdmin`, 0.1.0: the core and the
+   command line; the window next), the packages server's access scheme
+   (decided: *Where the server is reached*); key rotation through the
+   catalog (schema 2) still to come.
 6. **Payment.**

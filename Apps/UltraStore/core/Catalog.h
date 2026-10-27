@@ -4,6 +4,7 @@
 // one shape - releases with packages per target - and a release names the
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
+// Version: 0.2.0 - ParseComponent / SerializeComponent for the admin backend
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -161,5 +162,15 @@ Result<Catalog> ParseCatalog(const std::string& jsonText);
 // signs, and what the tests build their fixtures with. Releases are written
 // newest first.
 std::string SerializeCatalog(const Catalog& catalog);
+
+// One component as the catalog writes it (an object of the "apps" or
+// "components" array), for the admin backend's import and export: what it
+// keeps is what the store reads. The kind defaults when the object names
+// none. The admin backend keeps a package before it is published, when it
+// has no URL yet: requirePackageUrls = false lets that through; the catalog
+// itself always requires them.
+Result<Component> ParseComponent(const std::string& jsonText, ComponentKind defaultKind = ComponentKind::App,
+                                 bool requirePackageUrls = true);
+std::string SerializeComponent(const Component& component);
 
 } // namespace UltraStore

@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
+// Version: 0.2.0 - ParseComponent / SerializeComponent for the admin backend
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Catalog.h"
@@ -80,7 +81,7 @@ JSONValue WriteStrings(const std::vector<std::string>& items) {
 }
 
 // where: "apps[2].releases[0].packages[1]" for the error detail.
-Result<Package> ReadPackage(const JSONValue& v, const std::string& where) {
+Result<Package> ReadPackage(const JSONValue& v, const std::string& where, bool requireUrl) {
     if (!v.IsObject()) return Result<Package>::Failure(ErrorCode::ParseError, "A package entry is not an object", where);
     Package p;
     p.target.os = ParseOS(v.Get("os").GetString());
@@ -101,7 +102,7 @@ Result<Package> ReadPackage(const JSONValue& v, const std::string& where) {
     p.entry = v.Get("entry").GetString();
     p.size = static_cast<uint64_t>(std::max<int64_t>(0, v.Get("size").GetInteger()));
     if (p.url.rfind("https://", 0) != 0 && p.url.rfind("http://", 0) != 0) {
-        return Result<Package>::Failure(ErrorCode::ParseError, "A package has no absolute http(s) url", where + ": " + p.url);
+        if (requireUrl) return Result<Package>::Failure(ErrorCode::ParseError, "A package has no absolute http(s) url", where + ": " + p.url);
     }
     if (!IsHex64(p.sha256)) {
         return Result<Package>::Failure(ErrorCode::ParseError, "A package has no SHA-256 of 64 hex characters", where);
@@ -112,7 +113,7 @@ Result<Package> ReadPackage(const JSONValue& v, const std::string& where) {
     return Result<Package>::Succeed(std::move(p));
 }
 
-Result<Release> ReadRelease(const JSONValue& v, const std::string& where) {
+Result<Release> ReadRelease(const JSONValue& v, const std::string& where, bool requireUrls) {
     if (!v.IsObject()) return Result<Release>::Failure(ErrorCode::ParseError, "A release entry is not an object", where);
     Release r;
     r.version = v.Get("version").GetString();
@@ -134,14 +135,14 @@ Result<Release> ReadRelease(const JSONValue& v, const std::string& where) {
     }
     const JSONValue& packages = v.Get("packages");
     for (size_t i = 0; i < packages.GetSize(); ++i) {
-        auto p = ReadPackage(packages.At(i), where + ".packages[" + std::to_string(i) + "]");
+        auto p = ReadPackage(packages.At(i), where + ".packages[" + std::to_string(i) + "]", requireUrls);
         if (!p) return Result<Release>::Failure(p.error.code, p.error.message, p.error.detail);
         r.packages.push_back(std::move(p.Value()));
     }
     return Result<Release>::Succeed(std::move(r));
 }
 
-Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, const std::string& where) {
+Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, const std::string& where, bool requireUrls) {
     if (!v.IsObject()) return Result<Component>::Failure(ErrorCode::ParseError, "An entry is not an object", where);
     Component c;
     c.id = v.Get("id").GetString();
@@ -208,7 +209,7 @@ Result<Component> ReadComponent(const JSONValue& v, ComponentKind defaultKind, c
     c.privacyUrl = v.Get("privacy_url").GetString();
     const JSONValue& releases = v.Get("releases");
     for (size_t i = 0; i < releases.GetSize(); ++i) {
-        auto r = ReadRelease(releases.At(i), where + ".releases[" + std::to_string(i) + "]");
+        auto r = ReadRelease(releases.At(i), where + ".releases[" + std::to_string(i) + "]", requireUrls);
         if (!r) return Result<Component>::Failure(r.error.code, r.error.message, r.error.detail);
         c.releases.push_back(std::move(r.Value()));
     }
@@ -408,6 +409,23 @@ const Component* Catalog::FindAny(std::string_view id) const {
     return FindComponent(id);
 }
 
+Result<Component> ParseComponent(const std::string& jsonText, ComponentKind defaultKind, bool requirePackageUrls) {
+    UltraCanvas::JSONParseResult parse;
+    const JSONValue root = UltraCanvas::JSON::Parse(jsonText, &parse);
+    if (!parse.success || !root.IsObject()) {
+        return Result<Component>::Failure(ErrorCode::ParseError, "The component is not valid JSON",
+                                          parse.errorMessage + " at line " + std::to_string(parse.errorLine));
+    }
+    return ReadComponent(root, defaultKind, "component", requirePackageUrls);
+}
+
+std::string SerializeComponent(const Component& component) {
+    UltraCanvas::JSONSerializeOptions options;
+    options.pretty = true;
+    options.indentWidth = 2;
+    return UltraCanvas::JSON::Serialize(WriteComponent(component), options);
+}
+
 Result<Catalog> ParseCatalog(const std::string& jsonText) {
     UltraCanvas::JSONParseResult parse;
     const JSONValue root = UltraCanvas::JSON::Parse(jsonText, &parse);
@@ -439,7 +457,7 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
     }
     const JSONValue& apps = root.Get("apps");
     for (size_t i = 0; i < apps.GetSize(); ++i) {
-        auto c = ReadComponent(apps.At(i), ComponentKind::App, "apps[" + std::to_string(i) + "]");
+        auto c = ReadComponent(apps.At(i), ComponentKind::App, "apps[" + std::to_string(i) + "]", true);
         if (!c) return Result<Catalog>::Failure(c.error.code, c.error.message, c.error.detail);
         if (c.Value().kind != ComponentKind::App) {
             return Result<Catalog>::Failure(ErrorCode::ParseError, "A component is listed among the apps",
@@ -449,7 +467,7 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
     }
     const JSONValue& components = root.Get("components");
     for (size_t i = 0; i < components.GetSize(); ++i) {
-        auto c = ReadComponent(components.At(i), ComponentKind::Runtime, "components[" + std::to_string(i) + "]");
+        auto c = ReadComponent(components.At(i), ComponentKind::Runtime, "components[" + std::to_string(i) + "]", true);
         if (!c) return Result<Catalog>::Failure(c.error.code, c.error.message, c.error.detail);
         if (c.Value().kind == ComponentKind::App) {
             return Result<Catalog>::Failure(ErrorCode::ParseError, "An app is listed among the components",
