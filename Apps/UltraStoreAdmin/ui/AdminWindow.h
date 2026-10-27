@@ -8,6 +8,7 @@
 // use - so the window and the command line never disagree. The slow ones
 // (a new key's Argon2id seal, a publish, a translation) run on a worker
 // thread and report through UltraCanvasApplication::PostToUIThread.
+// Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -80,6 +81,8 @@ private:
     void CheckCatalog();
     void PublishNow();
     void UploadNow();
+    void BuildAffiliatesPage();
+    void RefreshAffiliatesPage();
 
     // ----- the component form (AdminComponentPage.cpp) -----
     void BuildComponentPage();
@@ -148,6 +151,14 @@ private:
     std::shared_ptr<Label> publishReport_;
     std::shared_ptr<TextInput> uploadUrl_, uploadUser_, uploadPass_, uploadKeyFile_;
     std::shared_ptr<Checkbox> uploadAll_;
+    // affiliates and codes
+    std::shared_ptr<Container> affiliatesList_, codesList_;
+    std::shared_ptr<Label> salesText_;
+    std::shared_ptr<TextInput> aId_, aName_, aContact_, aShare_, aRecruitShare_;
+    std::shared_ptr<Dropdown> aRecruitedBy_;
+    std::shared_ptr<TextInput> cCode_, cPercent_, cAmount_, cCurrency_, cApps_, cFrom_, cUntil_;
+    std::shared_ptr<Dropdown> cAffiliate_;
+    std::shared_ptr<TextInput> sCode_, sApp_, sAmount_, sCurrency_;
     // the component form
     std::shared_ptr<Container> formBody_;
     std::shared_ptr<Label> formTitle_;

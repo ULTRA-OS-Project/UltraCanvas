@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
+// Version: 0.4.0 - codes
 // Version: 0.3.0 - trusted_keys
 // Version: 0.2.0 - ParseComponent / SerializeComponent for the admin backend
 // Version: 0.1.0
@@ -39,6 +40,17 @@ bool IsIsoDate(const std::string& s) {
     if (s.size() != 10 || s[4] != '-' || s[7] != '-') return false;
     for (size_t i = 0; i < s.size(); ++i) {
         if (i == 4 || i == 7) continue;
+        if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
+    }
+    return true;
+}
+
+// "29.90", "5", ".5" is not: digits, at most one point with digits after it.
+bool IsDecimal(const std::string& s) {
+    if (s.empty() || s[0] == '.') return false;
+    bool point = false;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '.') { if (point || i + 1 == s.size()) return false; point = true; continue; }
         if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
     }
     return true;
@@ -427,6 +439,92 @@ std::string SerializeComponent(const Component& component) {
     return UltraCanvas::JSON::Serialize(WriteComponent(component), options);
 }
 
+// ===== codes =====
+CodeKind ParseCodeKind(std::string_view text) {
+    return text == "affiliate" ? CodeKind::Affiliate : CodeKind::Discount;
+}
+
+std::string CodeKindName(CodeKind kind) {
+    return kind == CodeKind::Affiliate ? "affiliate" : "discount";
+}
+
+std::string NormalizeCode(std::string_view code) {
+    std::string out;
+    for (char c : code) {
+        if (std::isspace(static_cast<unsigned char>(c))) continue;
+        out += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    }
+    return out;
+}
+
+bool PromoCode::AppliesTo(std::string_view appId) const {
+    if (apps.empty()) return true;
+    return std::find(apps.begin(), apps.end(), std::string(appId)) != apps.end();
+}
+
+bool PromoCode::ValidOn(std::string_view date) const {
+    // ISO dates compare as text.
+    if (!validFrom.empty() && date < validFrom) return false;
+    if (!validUntil.empty() && date > validUntil) return false;
+    return true;
+}
+
+const PromoCode* Catalog::FindCode(std::string_view code) const {
+    const std::string wanted = NormalizeCode(code);
+    if (wanted.empty()) return nullptr;
+    for (const PromoCode& c : codes) if (NormalizeCode(c.code) == wanted) return &c;
+    return nullptr;
+}
+
+namespace {
+
+Result<PromoCode> ReadCode(const JSONValue& v, const std::string& where) {
+    using R = Result<PromoCode>;
+    PromoCode c;
+    c.code = v.Get("code").GetString();
+    if (NormalizeCode(c.code).empty()) return R::Failure(ErrorCode::ParseError, "A code has no text", where);
+    for (char ch : c.code) {
+        if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != '_') {
+            return R::Failure(ErrorCode::ParseError, "A code is letters, digits, '-' and '_'", where + ": " + c.code);
+        }
+    }
+    c.kind = ParseCodeKind(v.Get("kind").GetString("discount"));
+    c.discountPercent = static_cast<int>(v.Get("discount_percent").GetInteger(0));
+    if (c.discountPercent < 0 || c.discountPercent > 100) return R::Failure(ErrorCode::ParseError, "A discount is 0 to 100 percent", where + ": " + c.code);
+    c.discountAmount = v.Get("discount_amount").GetString();
+    if (!c.discountAmount.empty() && !IsDecimal(c.discountAmount)) return R::Failure(ErrorCode::ParseError, "A discount amount is a decimal", where + ": " + c.discountAmount);
+    c.currency = v.Get("currency").GetString();
+    for (const JSONValue& a : v.Get("apps").GetElements()) if (!a.GetString().empty()) c.apps.push_back(a.GetString());
+    c.validFrom = v.Get("valid_from").GetString();
+    c.validUntil = v.Get("valid_until").GetString();
+    if ((!c.validFrom.empty() && !IsIsoDate(c.validFrom)) || (!c.validUntil.empty() && !IsIsoDate(c.validUntil))) {
+        return R::Failure(ErrorCode::ParseError, "A code's validity is YYYY-MM-DD", where + ": " + c.code);
+    }
+    c.affiliate = v.Get("affiliate").GetString();
+    if (c.kind == CodeKind::Affiliate && c.affiliate.empty()) return R::Failure(ErrorCode::ParseError, "An affiliate code names its affiliate", where + ": " + c.code);
+    return R::Succeed(std::move(c));
+}
+
+JSONValue WriteCode(const PromoCode& c) {
+    JSONValue o = JSONValue::MakeObject();
+    o.Set("code", c.code);
+    o.Set("kind", CodeKindName(c.kind));
+    if (c.discountPercent > 0) o.Set("discount_percent", static_cast<int64_t>(c.discountPercent));
+    if (!c.discountAmount.empty()) o.Set("discount_amount", c.discountAmount);
+    if (!c.currency.empty()) o.Set("currency", c.currency);
+    if (!c.apps.empty()) {
+        JSONValue apps = JSONValue::MakeArray();
+        for (const std::string& a : c.apps) apps.Append(a);
+        o.Set("apps", std::move(apps));
+    }
+    if (!c.validFrom.empty()) o.Set("valid_from", c.validFrom);
+    if (!c.validUntil.empty()) o.Set("valid_until", c.validUntil);
+    if (!c.affiliate.empty()) o.Set("affiliate", c.affiliate);
+    return o;
+}
+
+} // namespace
+
 Result<Catalog> ParseCatalog(const std::string& jsonText) {
     UltraCanvas::JSONParseResult parse;
     const JSONValue root = UltraCanvas::JSON::Parse(jsonText, &parse);
@@ -459,6 +557,13 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
         if (std::find(catalog.trustedKeys.begin(), catalog.trustedKeys.end(), hex) == catalog.trustedKeys.end()) {
             catalog.trustedKeys.push_back(std::move(hex));
         }
+    }
+    const JSONValue& codes = root.Get("codes");
+    for (size_t i = 0; i < codes.GetSize(); ++i) {
+        auto c = ReadCode(codes.At(i), "codes[" + std::to_string(i) + "]");
+        if (!c) return Result<Catalog>::Failure(c.error.code, c.error.message, c.error.detail);
+        if (catalog.FindCode(c.Value().code)) return Result<Catalog>::Failure(ErrorCode::ParseError, "Two codes read the same", c.Value().code);
+        catalog.codes.push_back(std::move(c.Value()));
     }
     for (const JSONValue& p : root.Get("publishers").GetElements()) {
         Publisher pub;
@@ -520,6 +625,11 @@ std::string SerializeCatalog(const Catalog& catalog) {
         publishers.Append(std::move(o));
     }
     root.Set("publishers", std::move(publishers));
+    if (!catalog.codes.empty()) {
+        JSONValue codes = JSONValue::MakeArray();
+        for (const PromoCode& c : catalog.codes) codes.Append(WriteCode(c));
+        root.Set("codes", std::move(codes));
+    }
     JSONValue components = JSONValue::MakeArray();
     for (const Component& c : catalog.components) components.Append(WriteComponent(c));
     root.Set("components", std::move(components));

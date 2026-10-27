@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/ui/AdminWindow.cpp
 // The shell, the store's pages (Overview, Settings, Keys, Publish) and the
 // worker thread; the component form is in AdminComponentPage.cpp.
+// Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -9,6 +10,8 @@
 #include "AdminTheme.h"
 #include "CatalogPublisher.h"
 #include "KeyVault.h"
+#include "Affiliates.h"
+#include "StoreQuery.h"
 #include "Uploader.h"
 #include "Translation.h"
 
@@ -18,6 +21,7 @@
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
+#include <sstream>
 #include <fstream>
 
 #ifndef ULTRASTOREADMIN_VERSION
@@ -33,6 +37,7 @@ namespace {
 constexpr const char* kOverview = "overview";
 constexpr const char* kPublish = "publish";
 constexpr const char* kKeys = "keys";
+constexpr const char* kAffiliates = "affiliates";
 constexpr const char* kSettings = "settings";
 constexpr const char* kComponent = "component";
 constexpr const char* kItemPrefix = "c:";
@@ -138,6 +143,7 @@ void AdminWindow::BuildShell() {
     sidebar_->AddItem(store, kOverview, "Overview", Theme::Icon("home.svg"));
     sidebar_->AddItem(store, kPublish, "Publish", Theme::Icon("folder-download.svg"));
     sidebar_->AddItem(store, kKeys, "Keys", Theme::Icon("list-check.svg"));
+    sidebar_->AddItem(store, kAffiliates, "Affiliates and codes", Theme::Icon("user-plus.svg"));
     sidebar_->AddItem(store, kSettings, "Settings", Theme::Icon("settings.svg"));
     appsSection_ = sidebar_->AddSection("Apps");
     componentsSection_ = sidebar_->AddSection("Runtimes and libraries");
@@ -156,6 +162,7 @@ void AdminWindow::BuildShell() {
     pageHost_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     BuildOverviewPage();
     BuildPublishPage();
+    BuildAffiliatesPage();
     BuildKeysPage();
     BuildSettingsPage();
     BuildComponentPage();
@@ -203,6 +210,7 @@ void AdminWindow::ShowPage(const std::string& id) {
     if (id == kOverview) RefreshOverview();
     if (id == kKeys) RefreshKeysPage();
     if (id == kPublish) RefreshKeysPage();
+    if (id == kAffiliates) RefreshAffiliatesPage();
     pageHost_->InvalidateLayout();
     pageHost_->RequestRedraw();
 }
@@ -686,6 +694,292 @@ void AdminWindow::UploadNow() {
     }, [this](const JobOutcome& out) {
         publishReport_->SetText(out.message + (out.lines.empty() ? "" : "\n" + Joined(out.lines)));
     });
+}
+
+// ===========================================================================
+// Affiliates and codes
+// ===========================================================================
+void AdminWindow::BuildAffiliatesPage() {
+    std::shared_ptr<Container> header, body;
+    BuildPage(kAffiliates, "Affiliates and codes", header, body);
+    body->AddChild(Theme::Caption("uaA.hint",
+        "A partner brings buyers with a code - typed into the store, or carried by a QR code and a link - and earns a share of each sale "
+        "made with it. Two tiers and no more: a partner recruited by another names them, and the recruiter earns a recruit share of the "
+        "recruit's sales; nobody above the recruiter earns from them. A discount code without a partner takes something off the price. "
+        "The catalog carries the codes and what they take off; the shares stay here. Until the payment service reports sales, they are "
+        "recorded below by hand."));
+
+    // ----- affiliates -----
+    auto affiliates = Theme::Surface("uaA.list", Theme::kInnerGap);
+    affiliates->AddChild(Theme::Text("uaA.list.title", "Partners", 14.0f, FontWeight::Bold));
+    affiliatesList_ = Theme::Column("uaA.items", Theme::kInnerGap);
+    affiliates->AddChild(affiliatesList_);
+    body->AddChild(affiliates);
+    auto addA = Theme::Surface("uaA.add", Theme::kInnerGap);
+    addA->AddChild(Theme::Text("uaA.add.title", "Add or change a partner", 13.0f, FontWeight::Bold));
+    aId_ = Theme::Pin(CreateTextInput("uaA.id", 0, 0, 200, Theme::kControlHeight));
+    aId_->SetPlaceholder("aff-anna");
+    addA->AddChild(Theme::Field("uaA.idRow", "Id", aId_));
+    aName_ = Theme::Pin(CreateTextInput("uaA.name", 0, 0, 300, Theme::kControlHeight));
+    addA->AddChild(Theme::Field("uaA.nameRow", "Name", aName_));
+    aContact_ = Theme::Pin(CreateTextInput("uaA.contact", 0, 0, 300, Theme::kControlHeight));
+    aContact_->SetPlaceholder("anna@example.org");
+    addA->AddChild(Theme::Field("uaA.contactRow", "Contact", aContact_));
+    aShare_ = Theme::Pin(CreateTextInput("uaA.share", 0, 0, 70, Theme::kControlHeight));
+    aShare_->SetPlaceholder("20");
+    addA->AddChild(Theme::Field("uaA.shareRow", "Share of a sale (%)", aShare_));
+    aRecruitShare_ = Theme::Pin(CreateTextInput("uaA.recruitShare", 0, 0, 70, Theme::kControlHeight));
+    aRecruitShare_->SetPlaceholder("5");
+    addA->AddChild(Theme::Field("uaA.recruitShareRow", "Share of a recruit's sale (%)", aRecruitShare_));
+    aRecruitedBy_ = Theme::Pin(CreateDropdown("uaA.recruitedBy", 0, 0, 260, Theme::kControlHeight));
+    addA->AddChild(Theme::Field("uaA.recruitedByRow", "Recruited by", aRecruitedBy_));
+    auto saveA = Theme::Button("uaA.save", "Save partner", 110, Theme::ButtonKind::Primary);
+    saveA->onClick = [this]() {
+        Affiliate a;
+        if (const auto existing = db_.GetAffiliate(aId_->GetText())) a = existing.Value();
+        a.id = aId_->GetText();
+        a.name = aName_->GetText();
+        a.contact = aContact_->GetText();
+        a.sharePercent = std::atoi(aShare_->GetText().c_str());                 // locale-ok: digits only
+        a.recruitSharePercent = std::atoi(aRecruitShare_->GetText().c_str());   // locale-ok: digits only
+        const int by = aRecruitedBy_->GetSelectedIndex();
+        a.recruitedBy = by > 0 ? aRecruitedBy_->GetItem(by)->value : std::string();
+        if (const auto r = db_.PutAffiliate(a); !r) { SetStatus(r.error.message + (r.error.detail.empty() ? "" : " (" + r.error.detail + ")"), true); return; }
+        SetStatus("Partner " + a.id + " saved; join link " + JoinLink(db_.Setting("catalog.base_url"), a.id));
+        RefreshAffiliatesPage();
+    };
+    auto aButtons = Theme::Row("uaA.buttons", Theme::kGap);
+    aButtons->AddChild(saveA);
+    addA->AddChild(aButtons);
+    body->AddChild(addA);
+
+    // ----- codes -----
+    auto codes = Theme::Surface("uaC2.list", Theme::kInnerGap);
+    codes->AddChild(Theme::Text("uaC2.list.title", "Codes", 14.0f, FontWeight::Bold));
+    codesList_ = Theme::Column("uaC2.items", Theme::kInnerGap);
+    codes->AddChild(codesList_);
+    body->AddChild(codes);
+    auto addC = Theme::Surface("uaC2.add", Theme::kInnerGap);
+    addC->AddChild(Theme::Text("uaC2.add.title", "New code", 13.0f, FontWeight::Bold));
+    cCode_ = Theme::Pin(CreateTextInput("uaC2.code", 0, 0, 200, Theme::kControlHeight));
+    cCode_->SetPlaceholder("ANNA-20");
+    addC->AddChild(Theme::Field("uaC2.codeRow", "Code", cCode_));
+    cAffiliate_ = Theme::Pin(CreateDropdown("uaC2.affiliate", 0, 0, 260, Theme::kControlHeight));
+    addC->AddChild(Theme::Field("uaC2.affiliateRow", "Partner (none: a discount code)", cAffiliate_));
+    auto off = Theme::Row("uaC2.off", Theme::kInnerGap);
+    cPercent_ = Theme::Pin(CreateTextInput("uaC2.percent", 0, 0, 70, Theme::kControlHeight));
+    cPercent_->SetPlaceholder("20");
+    off->AddChild(cPercent_);
+    off->AddChild(Theme::Caption("uaC2.offOr", "% off, or"));
+    cAmount_ = Theme::Pin(CreateTextInput("uaC2.amount", 0, 0, 90, Theme::kControlHeight));
+    cAmount_->SetPlaceholder("5.00");
+    off->AddChild(cAmount_);
+    cCurrency_ = Theme::Pin(CreateTextInput("uaC2.currency", 0, 0, 70, Theme::kControlHeight));
+    cCurrency_->SetPlaceholder("EUR");
+    off->AddChild(cCurrency_);
+    off->AddChild(Theme::Caption("uaC2.offAmount", "off"));
+    addC->AddChild(Theme::Field("uaC2.offRow", "Discount", off));
+    cApps_ = Theme::Pin(CreateTextInput("uaC2.apps", 0, 0, 420, Theme::kControlHeight));
+    cApps_->SetPlaceholder("every app; or ids separated by spaces");
+    addC->AddChild(Theme::Field("uaC2.appsRow", "Apps", cApps_));
+    auto dates = Theme::Row("uaC2.dates", Theme::kInnerGap);
+    cFrom_ = Theme::Pin(CreateTextInput("uaC2.from", 0, 0, 120, Theme::kControlHeight));
+    cFrom_->SetPlaceholder("from, optional");
+    dates->AddChild(cFrom_);
+    cUntil_ = Theme::Pin(CreateTextInput("uaC2.until", 0, 0, 120, Theme::kControlHeight));
+    cUntil_->SetPlaceholder("until, optional");
+    dates->AddChild(cUntil_);
+    addC->AddChild(Theme::Field("uaC2.datesRow", "Valid (YYYY-MM-DD)", dates));
+    auto saveC = Theme::Button("uaC2.save", "Create code", 110, Theme::ButtonKind::Primary);
+    saveC->onClick = [this]() {
+        CodeRecord r;
+        r.code.code = UltraStore::NormalizeCode(cCode_->GetText());
+        const int who = cAffiliate_->GetSelectedIndex();
+        r.code.affiliate = who > 0 ? cAffiliate_->GetItem(who)->value : std::string();
+        r.code.kind = r.code.affiliate.empty() ? UltraStore::CodeKind::Discount : UltraStore::CodeKind::Affiliate;
+        r.code.discountPercent = std::atoi(cPercent_->GetText().c_str());   // locale-ok: digits only
+        r.code.discountAmount = cAmount_->GetText();
+        r.code.currency = cCurrency_->GetText();
+        std::istringstream apps(cApps_->GetText());
+        for (std::string a; apps >> a;) r.code.apps.push_back(a);
+        r.code.validFrom = cFrom_->GetText();
+        r.code.validUntil = cUntil_->GetText();
+        if (const auto put = db_.PutCode(r); !put) { SetStatus(put.error.message + (put.error.detail.empty() ? "" : " (" + put.error.detail + ")"), true); return; }
+        cCode_->SetText("");
+        SetStatus("Code " + r.code.code + " created; it goes into the catalog with the next publish");
+        RefreshAffiliatesPage();
+    };
+    auto cButtons = Theme::Row("uaC2.buttons", Theme::kGap);
+    cButtons->AddChild(saveC);
+    addC->AddChild(cButtons);
+    body->AddChild(addC);
+
+    // ----- sales -----
+    auto sales = Theme::Surface("uaS2", Theme::kInnerGap);
+    sales->AddChild(Theme::Text("uaS2.title", "Sales and what they credit", 13.0f, FontWeight::Bold));
+    salesText_ = Theme::Caption("uaS2.text", "");
+    sales->AddChild(salesText_);
+    auto saleRow = Theme::Row("uaS2.add", Theme::kInnerGap, true);
+    sCode_ = Theme::Pin(CreateTextInput("uaS2.code", 0, 0, 120, Theme::kControlHeight));
+    sCode_->SetPlaceholder("code, or none");
+    saleRow->AddChild(sCode_);
+    sApp_ = Theme::Pin(CreateTextInput("uaS2.app", 0, 0, 220, Theme::kControlHeight));
+    sApp_->SetPlaceholder("org.ultraos.app");
+    saleRow->AddChild(sApp_);
+    sAmount_ = Theme::Pin(CreateTextInput("uaS2.amount", 0, 0, 90, Theme::kControlHeight));
+    sAmount_->SetPlaceholder("23.92");
+    saleRow->AddChild(sAmount_);
+    sCurrency_ = Theme::Pin(CreateTextInput("uaS2.currency", 0, 0, 70, Theme::kControlHeight));
+    sCurrency_->SetPlaceholder("EUR");
+    saleRow->AddChild(sCurrency_);
+    auto record = Theme::Button("uaS2.record", "Record sale", 110);
+    record->onClick = [this]() {
+        const auto sale = RecordSale(db_, sCode_->GetText(), sApp_->GetText(), sAmount_->GetText(), sCurrency_->GetText());
+        if (!sale) { SetStatus(sale.error.message + (sale.error.detail.empty() ? "" : " (" + sale.error.detail + ")"), true); return; }
+        const SaleRecord& s = sale.Value();
+        std::string text = "Sale recorded: " + s.amount + " " + s.currency;
+        if (!s.affiliate.empty()) text += "; " + s.affiliate + " earns " + s.affiliateCredit;
+        if (!s.recruiter.empty()) text += "; " + s.recruiter + " earns " + s.recruiterCredit + " for recruiting them";
+        SetStatus(text);
+        RefreshAffiliatesPage();
+    };
+    saleRow->AddChild(record);
+    sales->AddChild(saleRow);
+    body->AddChild(sales);
+}
+
+void AdminWindow::RefreshAffiliatesPage() {
+    if (!affiliatesList_ || !db_.IsOpen()) return;
+    const std::string base = db_.Setting("catalog.base_url");
+    const auto report = AffiliateReport(db_);
+    affiliatesList_->ClearChildren();
+    aRecruitedBy_->ClearItems();
+    aRecruitedBy_->AddItem("(nobody)", "");
+    cAffiliate_->ClearItems();
+    cAffiliate_->AddItem("(none: a discount code)", "");
+    if (report && report.Value().empty()) affiliatesList_->AddChild(Theme::Caption("uaA.none", "No partner yet."));
+    if (report) {
+        int n = 0;
+        for (const AffiliateTotals& t : report.Value()) {
+            const Affiliate& a = t.affiliate;
+            aRecruitedBy_->AddItem(a.name + " (" + a.id + ")", a.id);
+            cAffiliate_->AddItem(a.name + " (" + a.id + ")", a.id);
+            const std::string id = "uaA.item" + std::to_string(n++);
+            auto surface = Theme::Column(id, 2.0f);
+            surface->SetBackgroundColor(Theme::kPageBackground);
+            surface->SetBorders(1.0f, Theme::kBorder, 6.0f);
+            surface->SetPadding(8.0f);
+            auto head = Theme::Row(id + ".head", Theme::kInnerGap);
+            auto title = Theme::Text(id + ".title", a.name + "  " + a.id + (a.enabled ? "" : "  (off)"), 13.0f, FontWeight::Bold);
+            title->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            head->AddChild(title);
+            auto edit = Theme::Button(id + ".edit", "Edit", 60);
+            edit->onClick = [this, a]() {
+                aId_->SetText(a.id); aName_->SetText(a.name); aContact_->SetText(a.contact);
+                aShare_->SetText(std::to_string(a.sharePercent)); aRecruitShare_->SetText(std::to_string(a.recruitSharePercent));
+                for (int i = 0; i < aRecruitedBy_->GetItemCount(); ++i) if (aRecruitedBy_->GetItem(i)->value == a.recruitedBy) aRecruitedBy_->SetSelectedIndex(i, false);
+            };
+            head->AddChild(edit);
+            auto qr = Theme::Button(id + ".qr", "Join QR…", 90);
+            qr->SetTooltip("The QR code a future partner scans to join under this one: " + JoinLink(base, a.id));
+            const std::string affId = a.id;
+            qr->onClick = [this, affId, base]() {
+                if (base.empty()) { SetStatus("Set the catalog base URL first (Settings): the link needs it", true); return; }
+                FileDialogOptions opts;
+                opts.SetTitle("Save the join QR code").SetDefaultFileName("join-" + affId + ".svg").AddFilter("SVG", "svg").SetParentWindow(window_.get());
+                UltraCanvasFileLoader::SaveFileDialog(opts, [this, affId, base](DialogResult result, const std::string& path) {
+                    if (result != DialogResult::OK || path.empty()) return;
+                    if (const auto r = WriteQrCodeSvg(JoinLink(base, affId), path); !r) { SetStatus(r.error.message, true); return; }
+                    SetStatus("Wrote " + path + ": " + JoinLink(base, affId));
+                });
+            };
+            head->AddChild(qr);
+            auto toggle = Theme::Button(id + ".toggle", a.enabled ? "Switch off" : "Switch on", 90, a.enabled ? Theme::ButtonKind::Danger : Theme::ButtonKind::Secondary);
+            toggle->onClick = [this, a]() {
+                Affiliate changed = a;
+                changed.enabled = !a.enabled;
+                if (const auto r = db_.PutAffiliate(changed); !r) { SetStatus(r.error.message, true); return; }
+                RefreshAffiliatesPage();
+            };
+            head->AddChild(toggle);
+            surface->AddChild(head);
+            std::string line = std::to_string(a.sharePercent) + "% of a sale with their codes, " + std::to_string(a.recruitSharePercent) + "% of a recruit's sale";
+            if (!a.recruitedBy.empty()) line += " · recruited by " + a.recruitedBy;
+            if (!a.contact.empty()) line += " · " + a.contact;
+            surface->AddChild(Theme::Caption(id + ".line", line));
+            std::string own, recruits;
+            for (const auto& [cur, sum] : t.ownCredit) own += (own.empty() ? "" : ", ") + sum + " " + cur;
+            for (const auto& [cur, sum] : t.recruitCredit) recruits += (recruits.empty() ? "" : ", ") + sum + " " + cur;
+            surface->AddChild(Theme::Caption(id + ".totals", std::to_string(t.ownSales) + " sale(s) with their codes: " + (own.empty() ? "0.00" : own) +
+                                                             " · " + std::to_string(t.recruitSales) + " recruit sale(s): " + (recruits.empty() ? "0.00" : recruits)));
+            affiliatesList_->AddChild(surface);
+        }
+    }
+    aRecruitedBy_->SetSelectedIndex(0, false);
+    cAffiliate_->SetSelectedIndex(0, false);
+
+    codesList_->ClearChildren();
+    const auto codes = db_.Codes();
+    if (codes && codes.Value().empty()) codesList_->AddChild(Theme::Caption("uaC2.none", "No code yet."));
+    if (codes) {
+        int n = 0;
+        for (const CodeRecord& c : codes.Value()) {
+            const std::string id = "uaC2.item" + std::to_string(n++);
+            auto row = Theme::Row(id, Theme::kInnerGap, true);
+            std::string what = UltraStore::DiscountLabel(c.code);
+            std::string text = c.code.code + "  " + (what.empty() ? std::string("partner code") : what) + "  " +
+                               (c.code.affiliate.empty() ? std::string("discount") : "for " + c.code.affiliate) + "  " +
+                               (c.code.apps.empty() ? std::string("every app") : "on " + std::to_string(c.code.apps.size()) + " app(s)") +
+                               (c.code.validUntil.empty() ? "" : "  until " + c.code.validUntil) + (c.enabled ? "" : "  (off)");
+            auto label = Theme::Text(id + ".text", text, 12.0f);
+            label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+            row->AddChild(label);
+            const std::string code = c.code.code;
+            auto qr = Theme::Button(id + ".qr", "QR…", 60);
+            qr->SetTooltip(CodeLink(base, code) + "  -  " + StoreLink(code));
+            qr->onClick = [this, code, base]() {
+                if (base.empty()) { SetStatus("Set the catalog base URL first (Settings): the link needs it", true); return; }
+                FileDialogOptions opts;
+                opts.SetTitle("Save the code's QR code").SetDefaultFileName("code-" + code + ".svg").AddFilter("SVG", "svg").SetParentWindow(window_.get());
+                UltraCanvasFileLoader::SaveFileDialog(opts, [this, code, base](DialogResult result, const std::string& path) {
+                    if (result != DialogResult::OK || path.empty()) return;
+                    if (const auto r = WriteQrCodeSvg(CodeLink(base, code), path); !r) { SetStatus(r.error.message, true); return; }
+                    SetStatus("Wrote " + path + ": " + CodeLink(base, code));
+                });
+            };
+            row->AddChild(qr);
+            auto toggle = Theme::Button(id + ".toggle", c.enabled ? "Switch off" : "Switch on", 90);
+            toggle->onClick = [this, c]() {
+                CodeRecord changed = c;
+                changed.enabled = !c.enabled;
+                if (const auto r = db_.PutCode(changed); !r) { SetStatus(r.error.message, true); return; }
+                RefreshAffiliatesPage();
+            };
+            row->AddChild(toggle);
+            auto remove = Theme::Button(id + ".remove", "Remove", 72, Theme::ButtonKind::Danger);
+            remove->onClick = [this, code]() {
+                if (const auto r = db_.RemoveCode(code); !r) { SetStatus(r.error.message, true); return; }
+                RefreshAffiliatesPage();
+            };
+            row->AddChild(remove);
+            codesList_->AddChild(row);
+        }
+    }
+    const auto sales = db_.Sales();
+    if (sales) {
+        std::string text = std::to_string(sales.Value().size()) + " sale(s) recorded.";
+        size_t shown = 0;
+        for (auto it = sales.Value().rbegin(); it != sales.Value().rend() && shown < 5; ++it, ++shown) {
+            text += "\n" + it->at + "  " + (it->code.empty() ? "-" : it->code) + "  " + it->app + "  " + it->amount + " " + it->currency;
+            if (!it->affiliate.empty()) text += "  → " + it->affiliate + " " + it->affiliateCredit;
+            if (!it->recruiter.empty()) text += ", " + it->recruiter + " " + it->recruiterCredit;
+        }
+        salesText_->SetText(text);
+    }
+    affiliatesList_->InvalidateLayout();
+    codesList_->InvalidateLayout();
+    pageHost_->InvalidateLayout();
+    pageHost_->RequestRedraw();
 }
 
 // ===========================================================================

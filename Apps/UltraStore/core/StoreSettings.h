@@ -12,6 +12,7 @@
 // ULTRASTORE_SERVERS, through the generated UltraStoreBuiltin.h. Until the
 // admin backend publishes the first catalog both are empty, and the window
 // says so on its Discover page.
+// Version: 0.2.0 - the code in force
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -35,6 +36,16 @@ struct StoreSettings {
     int windowHeight = 760;
     bool downloadsExpanded = false;
     int downloadsHeight = 200;
+    // The discount or affiliate code the person entered or arrived with
+    // (ultrastore://code/<CODE>), and the day it was entered: it stays in
+    // force for kCodeDays, so a partner whose link brought the person is
+    // credited by a purchase made within that time, and the price shows the
+    // discount until then.
+    std::string code;
+    std::string codeEnteredAt;   // "YYYY-MM-DD"
+    static constexpr int kCodeDays = 30;
+    // The code when it was entered within kCodeDays of today, else "".
+    std::string CodeInForce(const std::string& today) const;
 
     // The texts' language: the setting, else the system's.
     std::string Language() const;

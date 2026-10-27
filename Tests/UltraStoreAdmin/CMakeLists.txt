@@ -12,6 +12,7 @@ add_executable(UltraStoreAdminCoreTests
     test_publish.cpp
     test_translation.cpp
     test_upload.cpp
+    test_affiliates.cpp
 )
 target_compile_features(UltraStoreAdminCoreTests PRIVATE cxx_std_20)
 target_include_directories(UltraStoreAdminCoreTests PRIVATE

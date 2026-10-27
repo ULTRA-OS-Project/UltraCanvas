@@ -30,6 +30,7 @@
 //
 // Pictures (icons, screenshots) come through AssetCache on a second thread
 // and are set on the cards when they arrive.
+// Version: 0.2.0 - codes and ultrastore:// links
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -90,6 +91,16 @@ public:
     bool Create();
     void Show();
 
+    // A link from a QR code or a page: ultrastore://code/<CODE> enters the
+    // code; ultrastore://app/<id>[?code=<CODE>] opens the app's details,
+    // with the code when it carries one. Anything else is said in the
+    // status line.
+    void OpenLink(const std::string& url);
+    // The code the person typed or arrived with: checked against the
+    // catalog, kept in force for StoreSettings::kCodeDays, shown in the
+    // prices. An empty text forgets the code.
+    void ApplyCode(const std::string& text);
+
 private:
     // ===== shell (StoreWindow.cpp) =====
     void BuildShell();
@@ -109,6 +120,9 @@ private:
     ListingFilter BaseFilter() const;
     std::string Lang() const { return lang_; }
     std::string ServerNote() const;         // why nothing can be fetched, or empty
+    std::string Today() const;              // "YYYY-MM-DD", UTC
+    const PromoCode* CodeInForce() const;   // the settings' code when the catalog knows it and it is valid today
+    const PromoCode* CodeFor(const Component& app) const;   // CodeInForce() when it applies to the app
 
     // ===== pages =====
     void RebuildAllPages();
@@ -230,6 +244,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> discoverList_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> discoverNote_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> codeInput_;
     std::string search_;
     // Categories
     std::shared_ptr<UltraCanvas::UltraCanvasChipGroup> categoryChips_;

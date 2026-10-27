@@ -1,7 +1,10 @@
 // Apps/UltraStoreAdmin/core/AdminDatabase.cpp
+// Version: 0.2.0 - affiliates, codes, sales
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "AdminDatabase.h"
+#include <sstream>
+#include <cctype>
 
 #include "CatalogClient.h"   // NowIso8601Utc
 
@@ -57,6 +60,20 @@ Result<void> AdminDatabase::Open(const std::string& databasePathUtf8) {
         "CREATE TABLE IF NOT EXISTS keys ("
         " id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, public_key TEXT NOT NULL,"
         " sealed BLOB NOT NULL, created_at TEXT NOT NULL, retired_at TEXT NOT NULL DEFAULT '')",
+        // schema 2
+        "CREATE TABLE IF NOT EXISTS affiliates ("
+        " id TEXT PRIMARY KEY, name TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '', share_percent INTEGER NOT NULL DEFAULT 0,"
+        " recruit_share_percent INTEGER NOT NULL DEFAULT 0, recruited_by TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,"
+        " created_at TEXT NOT NULL DEFAULT '')",
+        "CREATE TABLE IF NOT EXISTS codes ("
+        " code TEXT PRIMARY KEY, kind TEXT NOT NULL, affiliate TEXT NOT NULL DEFAULT '', discount_percent INTEGER NOT NULL DEFAULT 0,"
+        " discount_amount TEXT NOT NULL DEFAULT '', currency TEXT NOT NULL DEFAULT '', apps TEXT NOT NULL DEFAULT '',"
+        " valid_from TEXT NOT NULL DEFAULT '', valid_until TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL DEFAULT 1,"
+        " created_at TEXT NOT NULL DEFAULT '')",
+        "CREATE TABLE IF NOT EXISTS sales ("
+        " id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, code TEXT NOT NULL DEFAULT '', app TEXT NOT NULL DEFAULT '',"
+        " amount TEXT NOT NULL DEFAULT '0', currency TEXT NOT NULL DEFAULT '', affiliate TEXT NOT NULL DEFAULT '',"
+        " recruiter TEXT NOT NULL DEFAULT '', affiliate_credit TEXT NOT NULL DEFAULT '0', recruiter_credit TEXT NOT NULL DEFAULT '0')",
     };
     for (const char* sql : kTables) {
         if (const UltraDbResult r = UltraDb_Exec(connection_, sql); !r) {
@@ -284,6 +301,199 @@ Result<void> AdminDatabase::RetireKey(int64_t id) {
 }
 
 // ===== sequence =====
+// ===== affiliates =====
+Result<void> AdminDatabase::PutAffiliate(const Affiliate& a) {
+    if (a.id.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "An affiliate needs an id");
+    for (char c : a.id) {
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '-' && c != '_' && c != '.') {
+            return Result<void>::Failure(ErrorCode::InvalidArgument, "An affiliate id is letters, digits, '-', '_' and '.'", a.id);
+        }
+    }
+    if (a.sharePercent < 0 || a.sharePercent > 100 || a.recruitSharePercent < 0 || a.recruitSharePercent > 100) {
+        return Result<void>::Failure(ErrorCode::InvalidArgument, "A share is 0 to 100 percent", a.id);
+    }
+    if (!a.recruitedBy.empty()) {
+        if (a.recruitedBy == a.id) return Result<void>::Failure(ErrorCode::InvalidArgument, "An affiliate cannot recruit itself", a.id);
+        const auto recruiter = GetAffiliate(a.recruitedBy);
+        if (!recruiter) return Result<void>::Failure(ErrorCode::NotFound, "No affiliate " + a.recruitedBy + " to be recruited by");
+        // Two tiers: the recruiter earns from this one; this one's recruits
+        // credit it, never the recruiter. A loop of recruits is refused.
+        for (std::string up = recruiter.Value().recruitedBy; !up.empty();) {
+            if (up == a.id) return Result<void>::Failure(ErrorCode::InvalidArgument, "The recruits would form a loop", a.id);
+            const auto next = GetAffiliate(up);
+            if (!next) break;
+            up = next.Value().recruitedBy;
+        }
+    }
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT OR REPLACE INTO affiliates (id, name, contact, share_percent, recruit_share_percent, recruited_by, enabled, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM affiliates WHERE id = ?), ?))",
+        {UltraDbValue(a.id), UltraDbValue(a.name.empty() ? a.id : a.name), UltraDbValue(a.contact),
+         UltraDbValue(static_cast<int64_t>(a.sharePercent)), UltraDbValue(static_cast<int64_t>(a.recruitSharePercent)),
+         UltraDbValue(a.recruitedBy), UltraDbValue(static_cast<int64_t>(a.enabled ? 1 : 0)), UltraDbValue(a.id),
+         UltraDbValue(a.createdAt.empty() ? NowIso8601() : a.createdAt)});
+    if (!r) return DbFailure<void>(r, "write the affiliate " + a.id);
+    return Result<void>::Succeed();
+}
+
+Result<std::vector<Affiliate>> AdminDatabase::Affiliates() const {
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_,
+            "SELECT id, name, contact, share_percent, recruit_share_percent, recruited_by, enabled, created_at FROM affiliates ORDER BY id", rs); !r) {
+        return DbFailure<std::vector<Affiliate>>(r, "read its affiliates");
+    }
+    std::vector<Affiliate> out;
+    for (size_t i = 0; i < rs.Size(); ++i) {
+        const UltraDbRow& row = rs.Row(i);
+        Affiliate a;
+        a.id = Str(row, "id");
+        a.name = Str(row, "name");
+        a.contact = Str(row, "contact");
+        a.sharePercent = static_cast<int>(row["share_percent"].AsInt64());
+        a.recruitSharePercent = static_cast<int>(row["recruit_share_percent"].AsInt64());
+        a.recruitedBy = Str(row, "recruited_by");
+        a.enabled = row["enabled"].AsInt64() != 0;
+        a.createdAt = Str(row, "created_at");
+        out.push_back(std::move(a));
+    }
+    return Result<std::vector<Affiliate>>::Succeed(std::move(out));
+}
+
+Result<Affiliate> AdminDatabase::GetAffiliate(const std::string& id) const {
+    const auto all = Affiliates();
+    if (!all) return Result<Affiliate>::Failure(all.error.code, all.error.message, all.error.detail);
+    for (const Affiliate& a : all.Value()) if (a.id == id) return Result<Affiliate>::Succeed(a);
+    return Result<Affiliate>::Failure(ErrorCode::NotFound, "No affiliate " + id);
+}
+
+Result<void> AdminDatabase::RemoveAffiliate(const std::string& id) {
+    const auto codes = Codes();
+    if (!codes) return Result<void>::Failure(codes.error.code, codes.error.message, codes.error.detail);
+    for (const CodeRecord& c : codes.Value()) {
+        if (c.code.affiliate == id) return Result<void>::Failure(ErrorCode::InvalidArgument, "The code " + c.code.code + " names the affiliate: remove it first", id);
+    }
+    const auto all = Affiliates();
+    if (!all) return Result<void>::Failure(all.error.code, all.error.message, all.error.detail);
+    for (const Affiliate& a : all.Value()) {
+        if (a.recruitedBy == id) return Result<void>::Failure(ErrorCode::InvalidArgument, "The affiliate " + a.id + " was recruited by it: change that first", id);
+    }
+    const UltraDbResult r = UltraDb_Exec(connection_, "DELETE FROM affiliates WHERE id = ?", {UltraDbValue(id)});
+    if (!r) return DbFailure<void>(r, "remove the affiliate " + id);
+    if (r.affectedRows == 0) return Result<void>::Failure(ErrorCode::NotFound, "No affiliate " + id);
+    return Result<void>::Succeed();
+}
+
+// ===== codes =====
+Result<void> AdminDatabase::PutCode(const CodeRecord& record) {
+    const UltraStore::PromoCode& c = record.code;
+    const std::string normalized = UltraStore::NormalizeCode(c.code);
+    if (normalized.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "A code needs text");
+    for (char ch : normalized) {
+        if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != '_') {
+            return Result<void>::Failure(ErrorCode::InvalidArgument, "A code is letters, digits, '-' and '_'", c.code);
+        }
+    }
+    if (c.discountPercent < 0 || c.discountPercent > 100) return Result<void>::Failure(ErrorCode::InvalidArgument, "A discount is 0 to 100 percent", c.code);
+    if (c.discountPercent > 0 && !c.discountAmount.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "A code takes off a percentage or an amount, not both", c.code);
+    if (c.kind == UltraStore::CodeKind::Affiliate) {
+        if (c.affiliate.empty()) return Result<void>::Failure(ErrorCode::InvalidArgument, "An affiliate code names its affiliate", c.code);
+        if (const auto a = GetAffiliate(c.affiliate); !a) return a.error.code == ErrorCode::NotFound
+            ? Result<void>::Failure(ErrorCode::NotFound, "No affiliate " + c.affiliate + " for the code " + c.code)
+            : Result<void>::Failure(a.error.code, a.error.message, a.error.detail);
+    }
+    std::string apps;
+    for (const std::string& a : c.apps) apps += (apps.empty() ? "" : " ") + a;
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT OR REPLACE INTO codes (code, kind, affiliate, discount_percent, discount_amount, currency, apps, valid_from, valid_until, enabled, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM codes WHERE code = ?), ?))",
+        {UltraDbValue(normalized), UltraDbValue(UltraStore::CodeKindName(c.kind)), UltraDbValue(c.affiliate),
+         UltraDbValue(static_cast<int64_t>(c.discountPercent)), UltraDbValue(c.discountAmount), UltraDbValue(c.currency), UltraDbValue(apps),
+         UltraDbValue(c.validFrom), UltraDbValue(c.validUntil), UltraDbValue(static_cast<int64_t>(record.enabled ? 1 : 0)),
+         UltraDbValue(normalized), UltraDbValue(record.createdAt.empty() ? NowIso8601() : record.createdAt)});
+    if (!r) return DbFailure<void>(r, "write the code " + c.code);
+    return Result<void>::Succeed();
+}
+
+Result<std::vector<CodeRecord>> AdminDatabase::Codes() const {
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_,
+            "SELECT code, kind, affiliate, discount_percent, discount_amount, currency, apps, valid_from, valid_until, enabled, created_at FROM codes ORDER BY code", rs); !r) {
+        return DbFailure<std::vector<CodeRecord>>(r, "read its codes");
+    }
+    std::vector<CodeRecord> out;
+    for (size_t i = 0; i < rs.Size(); ++i) {
+        const UltraDbRow& row = rs.Row(i);
+        CodeRecord rec;
+        rec.code.code = Str(row, "code");
+        rec.code.kind = UltraStore::ParseCodeKind(Str(row, "kind"));
+        rec.code.affiliate = Str(row, "affiliate");
+        rec.code.discountPercent = static_cast<int>(row["discount_percent"].AsInt64());
+        rec.code.discountAmount = Str(row, "discount_amount");
+        rec.code.currency = Str(row, "currency");
+        std::istringstream apps(Str(row, "apps"));
+        for (std::string a; apps >> a;) rec.code.apps.push_back(a);
+        rec.code.validFrom = Str(row, "valid_from");
+        rec.code.validUntil = Str(row, "valid_until");
+        rec.enabled = row["enabled"].AsInt64() != 0;
+        rec.createdAt = Str(row, "created_at");
+        out.push_back(std::move(rec));
+    }
+    return Result<std::vector<CodeRecord>>::Succeed(std::move(out));
+}
+
+Result<CodeRecord> AdminDatabase::GetCode(const std::string& code) const {
+    const auto all = Codes();
+    if (!all) return Result<CodeRecord>::Failure(all.error.code, all.error.message, all.error.detail);
+    const std::string wanted = UltraStore::NormalizeCode(code);
+    for (const CodeRecord& c : all.Value()) if (c.code.code == wanted) return Result<CodeRecord>::Succeed(c);
+    return Result<CodeRecord>::Failure(ErrorCode::NotFound, "No code " + wanted);
+}
+
+Result<void> AdminDatabase::RemoveCode(const std::string& code) {
+    const UltraDbResult r = UltraDb_Exec(connection_, "DELETE FROM codes WHERE code = ?", {UltraDbValue(UltraStore::NormalizeCode(code))});
+    if (!r) return DbFailure<void>(r, "remove the code " + code);
+    if (r.affectedRows == 0) return Result<void>::Failure(ErrorCode::NotFound, "No code " + UltraStore::NormalizeCode(code));
+    return Result<void>::Succeed();
+}
+
+// ===== sales =====
+Result<SaleRecord> AdminDatabase::AddSale(const SaleRecord& sale) {
+    const UltraDbResult r = UltraDb_Exec(connection_,
+        "INSERT INTO sales (at, code, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        {UltraDbValue(sale.at.empty() ? NowIso8601() : sale.at), UltraDbValue(sale.code), UltraDbValue(sale.app), UltraDbValue(sale.amount),
+         UltraDbValue(sale.currency), UltraDbValue(sale.affiliate), UltraDbValue(sale.recruiter), UltraDbValue(sale.affiliateCredit), UltraDbValue(sale.recruiterCredit)});
+    if (!r) return DbFailure<SaleRecord>(r, "record the sale");
+    SaleRecord out = sale;
+    out.id = r.lastInsertId;
+    if (out.at.empty()) out.at = NowIso8601();
+    return Result<SaleRecord>::Succeed(std::move(out));
+}
+
+Result<std::vector<SaleRecord>> AdminDatabase::Sales() const {
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_,
+            "SELECT id, at, code, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit FROM sales ORDER BY id", rs); !r) {
+        return DbFailure<std::vector<SaleRecord>>(r, "read its sales");
+    }
+    std::vector<SaleRecord> out;
+    for (size_t i = 0; i < rs.Size(); ++i) {
+        const UltraDbRow& row = rs.Row(i);
+        SaleRecord sale;
+        sale.id = row["id"].AsInt64();
+        sale.at = Str(row, "at");
+        sale.code = Str(row, "code");
+        sale.app = Str(row, "app");
+        sale.amount = Str(row, "amount");
+        sale.currency = Str(row, "currency");
+        sale.affiliate = Str(row, "affiliate");
+        sale.recruiter = Str(row, "recruiter");
+        sale.affiliateCredit = Str(row, "affiliate_credit");
+        sale.recruiterCredit = Str(row, "recruiter_credit");
+        out.push_back(std::move(sale));
+    }
+    return Result<std::vector<SaleRecord>>::Succeed(std::move(out));
+}
+
 uint64_t AdminDatabase::Sequence() const {
     const std::string s = Setting("catalog.sequence", "0");
     return static_cast<uint64_t>(std::strtoull(s.c_str(), nullptr, 10));   // locale-ok: digits only
