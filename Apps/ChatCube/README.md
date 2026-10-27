@@ -80,6 +80,12 @@ Its data - the identity's key vault, contacts, history - is in the per-user
 data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
 
+`ChatCube --dark` is the dark look; the light one is the default. Both are
+one theme (`ui/ChatCubeTheme.h`: the ChatCube green on warm neutrals, the
+avatar palette, the bubble and presence colours), so every element of the
+window and everything the lists paint themselves take their colours from
+the same place.
+
 When a sign-in does not go through, `ChatCube --debug` says on stderr what
 the networks do - the relay's answers, every object sent to and received
 from TDLib (types and errors, never a number, code, password or message) -
@@ -111,6 +117,7 @@ Then add Bob's ID in ChatCube and write to him.
 | `main.cpp` | start-up: UltraNet, UltraRTC, UltraIM with the UI-thread dispatcher, provider modules |
 | `ui/ChatCubeWindow.*` | the window: sign-in page, sidebar, conversation pane, UltraIM events |
 | `ui/ChatCubeViews.*` | list models and delegates: conversation rows, chat bubbles, date separators |
+| `ui/ChatCubeTheme.*` | the look: the light and the dark theme, avatars, icons, the colours the views paint with |
 | `peer/main.cpp` | `chatcube-peer` |
 
 Version: `Docs/ChatCube/CHANGELOG.md` (first line).
