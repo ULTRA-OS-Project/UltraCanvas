@@ -9,6 +9,7 @@
 #include "helpers.h"
 #include "fixtures.h"
 
+#include "Purchase.h"
 #include "StoreEngine.h"
 #include "Verifier.h"
 
@@ -216,4 +217,43 @@ TEST(a_download_resumes_a_partial_file_and_reuses_a_complete_one) {
     downloader.Clear();
     const auto cancelled = downloader.Fetch(pkg, [&](int64_t, int64_t) { return false; });
     REQUIRE(!cancelled && cancelled.error.code == ErrorCode::NetworkError);
+}
+
+TEST(a_restricted_package_needs_the_signer_and_is_fetched_through_it) {
+    World w;
+    if (!w.ok) SKIP("no local server");
+    // The app's package is served from restricted/: the catalog's URL is
+    // refused by the web server, the signed one is the real file.
+    REQUIRE(MakeZip(w.site + "/paid.zip", {{"bin/paid", "paid 1.0"}}));
+    Component paid;
+    paid.kind = ComponentKind::App;
+    paid.id = "org.x.paid";
+    paid.name = "Paid";
+    paid.pricing.model = PricingModel::OneTime;
+    paid.pricing.price = "9.90";
+    paid.pricing.currency = "EUR";
+    Release r;
+    r.version = "1.0";
+    r.channel = "stable";
+    Package p = w.Served("paid.zip", "bin/paid");
+    p.url = w.server.baseUrl + "/restricted/" + p.sha256 + ".zip";   // nothing is served there
+    r.packages = {p};
+    paid.releases = {r};
+    w.catalog.apps.push_back(paid);
+    StoreEngine engine(w.root);
+    REQUIRE(engine.Open());
+    const auto refused = engine.Install(w.catalog, "org.x.paid", w.platform);
+    REQUIRE(!refused);
+    REQUIRE(refused.error.code == ErrorCode::NotAvailable);
+    REQUIRE(refused.error.message.find("buy it first") != std::string::npos);
+    // With a signer that knows the buyer: the real file, under its hash.
+    std::string askedFor;
+    engine.SetUrlSigner([&](const Package& package, const Component& app) {
+        askedFor = app.id + " " + RestrictedFileOf(package.url);
+        return w.server.baseUrl + "/paid.zip?md5=signed&expires=1";
+    });
+    const auto installed = engine.Install(w.catalog, "org.x.paid", w.platform);
+    REQUIRE(installed);
+    REQUIRE_EQ(askedFor, "org.x.paid restricted/" + p.sha256 + ".zip");
+    REQUIRE(engine.Registry().Current("org.x.paid"));
 }

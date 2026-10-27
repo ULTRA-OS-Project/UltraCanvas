@@ -100,6 +100,8 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
   "sequence": 42,
   "generated": "2026-10-24T12:00:00Z",
   "trusted_keys": ["0415eff8…fba970e", "9c2b…"],
+  "payment_url": "https://store.example",
+  "licence_key": "e52d4fca…40c1ab",
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -201,12 +203,36 @@ the order, the day and what the purchase includes, signed Ed25519 with the
 service's licence key, whose public half is `GET /v1/keys`; an app
 verifies it offline. **The receipt** is numbered per paid order.
 
-Still to come on the store's side: *Buy* opening the checkout instead of
-the publisher's page, the licence kept in the registry and shown on the
-details page, the restricted package fetched through the signed URL; on
-the admin's side `sale sync` pulling the sales instead of `sale add` by
-hand; and the catalog naming the payment service and its licence key
-(schema 3) so a store needs no setting for them.
+**The catalog names the service**: `payment_url` (the service's base,
+`https://store.example`) and `licence_key` (the public half of its licence
+key, hex) at the top level, from the admin backend's `payment.url` and
+`payment.licence_key` settings; both are optional within schema 2, and a
+catalog without `payment_url` sends *Buy* to the publisher's page as
+before. With them, the store's *Buy* is the five steps above: the order
+asked for with the code in force, the browser opened on the checkout, the
+order polled every five seconds for up to half an hour (the download panel
+shows the wait; *Cancel* leaves the order open on the service and nothing
+is installed), the licence verified against `licence_key` and kept in the
+registry (`licences` in `registry.sqlite`: the app, the licence, the
+order and its secret, the amount, the receipt number), and the app's
+restricted package fetched through the signed URL whenever it is
+installed or updated. A bought app shows a *Bought* badge, *Install*
+instead of *Buy*, and on its details page the receipt number, the day and
+a *Receipt* button that opens the receipt in the browser.
+`ultrastore buy <catalog.json> <app-id> [--code <CODE>]` does the same from
+the command line, and `ultrastore licences` lists what was bought.
+
+A paid app's **trial** installs the same package, so an app with a trial
+keeps its package public (the licence gates what the trial lacks) and only
+an app without one puts its package under `restricted/` (`package add
+--access`); a restricted package with a trial would make *Try* fail with
+"buy it first".
+
+On the admin's side, `sale sync` pulls the paid orders from the service
+(`GET /v1/sales?since=`, the `payment.token` setting or
+`ULTRASTORE_PAY_ADMIN_TOKEN` as the bearer token) and records each once in
+the ledger with the partners' credits; the sequence it reached is kept in
+`payment.sales_seq`, so a repeat records nothing twice.
 
 ### Translations
 
@@ -523,6 +549,9 @@ ultrastore update <catalog.json> [<app-id>] [--root <dir>]
 ultrastore remove <app-id> [--root <dir>]
 ultrastore installed [--root <dir>]
 ultrastore gc [--root <dir>]
+ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]   through the payment service
+ultrastore licences [--root <dir>]                        the apps bought here
+ultrastore code [<CODE> | clear] [--cache <dir>]          the code in force
 ultrastore --version | --help
 ```
 
@@ -567,5 +596,9 @@ program, `ultrastore sha256` it, write a catalog.json with
 7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout. The
    payment service (`Server/UltraStorePay`): the checkout, the status
    report, the licence, the receipt, the signed URLs for `restricted/`, the
-   sales for the admin backend. Next: the store's *Buy* through it, the
-   licence in the registry, `sale sync`, the catalog naming the service.
+   sales for the admin backend; the store's *Buy* through it, the licence
+   in the registry and on the details page, the restricted package through
+   the signed URL, `ultrastore buy` and `licences`; the admin's `sale
+   sync`; the catalog naming the service (`payment_url`, `licence_key`).
+   Next: a run against the Skrill sandbox once the credentials are in the
+   environment.
