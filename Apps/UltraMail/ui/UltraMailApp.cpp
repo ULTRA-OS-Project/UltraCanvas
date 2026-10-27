@@ -251,10 +251,11 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // the cache directory; it is safe to point at it before the folder exists.
     step.emplace("Sender icon cache", 0);
     ConfigureSenderIcons();
-    // The credential vault stays locked until FinishStartup unlocks it;
-    // nothing reads or writes a secret before then.
+    // The credential vault was opened by main() before this (OpenVault, with
+    // the Primary Password when one is set); a caller that did not gets one
+    // that stays locked until FinishStartup tries the device key.
     step.emplace("Credential vault and OAuth clients", 0);
-    vault_ = CredentialVault(dataDir + "/vault");
+    if (vault_.GetDirectory().empty()) vault_ = CredentialVault(dataDir + "/vault");
     // The browser sign-in runs through the ULTRA OS sign-in service by default
     // (README, "OAuth2 sign-in"); oauth.ini in the data folder may name another
     // service ([service] url) or a client of this installation's own.
@@ -395,10 +396,10 @@ void UltraMailApp::FinishStartup() {
     UltraNet_SetPluginDirectory(pluginDir_);
     UltraNet_RefreshPlugins();
 
-    // Unlock the credential vault with the local device key so the user is not
-    // prompted (Thunderbird-style; see CredentialVault). A brand-new vault is
-    // created here; an old master-password vault stays locked until the first
-    // action prompts once (then the key is persisted).
+    // The credential vault is open since the start (OpenVault, before the
+    // stored mail was read): this only confirms it, and opens it with the
+    // device key for a caller that did not open it first. A vault with a
+    // Primary Password nobody typed stays locked until an action asks.
     step.emplace("Unlock the credential vault with the device key", 0);
     if (vault_.TryAutoUnlock()) MigrateCloudSecrets();
     step.reset();
@@ -418,10 +419,8 @@ void UltraMailApp::FinishStartup() {
         outboxRetry_.RetryAt(NowMonotonicSec() + 20);
     step.reset();
 
-    // Migration: an existing vault made with a master password (before device
-    // keys) stays locked after the silent attempt above. Prompt once now so
-    // mail syncs; EnsureVaultUnlocked persists the entered password as the
-    // device key, so this is the only time it is asked.
+    // A vault with a Primary Password that is still locked here (main() was
+    // not the one that started this app): ask for it now, so mail syncs.
     if (!accounts_.empty() && !vault_.IsUnlocked()) {
         EnsureVaultUnlocked([this]() { RunSyncs(/*force=*/false); Refresh(); });
     } else if (!accounts_.empty() && AnyMailboxPlugin()) {
@@ -3850,8 +3849,8 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
     if (vault_.IsUnlocked()) { if (onUnlocked) onUnlocked(); return; }
 
     // Default path: unlock silently with the local device key (no prompt). This
-    // also creates a fresh vault on first run. Only an old master-password vault
-    // (device key not yet written) falls through to the dialog below.
+    // also creates a fresh vault on first run. A vault with a Primary Password
+    // (no device key) falls through to the dialog below.
     if (errorText.empty() && vault_.TryAutoUnlock()) {
         MigrateCloudSecrets();
         if (onUnlocked) onUnlocked();
@@ -3859,17 +3858,18 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
     }
 
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
-    // Reaching the dialog means an existing vault must be opened with the master
-    // password it was made with; ask the user to recall it (not choose one).
+    // Reaching the dialog means the vault must be opened with its Primary
+    // Password; ask the user to recall it (not choose one).
     const bool firstRun = false;
 
     PassphraseDialog::Show(parent, firstRun, errorText,
         [this, onUnlocked, parent](const std::string& passphrase) {
             switch (vault_.Unlock(passphrase)) {
                 case VaultStatus::Ok:
-                    // Persist the working passphrase as the device key so this
-                    // is the last time the user is asked (Thunderbird-style).
-                    vault_.PersistDeviceKey(passphrase);
+                    // The Primary Password stays the only key: a device key
+                    // still beside the vault is a stale one (a change that was
+                    // interrupted), and goes.
+                    if (!vault_.NeedsPassphrase()) vault_.ForgetDeviceKey();
                     MigrateCloudSecrets();
                     if (onUnlocked) onUnlocked();
                     return;
@@ -3878,7 +3878,7 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
                     // vault reports a wrong password and a tampered file
                     // identically, so the text covers both without guessing.
                     EnsureVaultUnlocked(onUnlocked,
-                        "That master password did not open the vault. If it is "
+                        "That Primary Password did not open the vault. If it is "
                         "correct, the vault file may have been altered.");
                     return;
                 case VaultStatus::Unavailable:
@@ -3900,6 +3900,148 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
                     return;
             }
         });
+}
+
+VaultStatus UltraMailApp::OpenVault(const std::string& dataDir) {
+    vault_ = CredentialVault(dataDir + "/vault");
+    if (vault_.TryAutoUnlock()) return VaultStatus::Ok;
+    const VaultStatus why = vault_.GetLastUnlockStatus();
+    Trace::Line("Credential vault not opened with the device key: " +
+                CredentialVault::DescribeUnlockStatus(why));
+    return why;
+}
+
+VaultStatus UltraMailApp::UnlockVault(const std::string& passphrase) {
+    const VaultStatus status = vault_.Unlock(passphrase);
+    // Opened by the typed password, so a device key beside it is a stale one.
+    if (status == VaultStatus::Ok && !vault_.NeedsPassphrase()) vault_.ForgetDeviceKey();
+    return status;
+}
+
+bool UltraMailApp::HasPrimaryPassword() const { return vault_.NeedsPassphrase(); }
+
+namespace {
+
+// What ChangePassphrase's answer means for the one who asked.
+void SayVaultFailure(UltraCanvas::UltraCanvasWindowBase* parent, VaultStatus status,
+                     const std::string& what, const std::string& vaultPath) {
+    AlertError(parent, what,
+               status == VaultStatus::IoError
+                   ? "UltraMail could not write " + vaultPath +
+                     ". Nothing was changed: the password that opened the vault still does."
+                   : "Nothing was changed: " + CredentialVault::DescribeUnlockStatus(status) + ".");
+}
+
+} // namespace
+
+void UltraMailApp::SetPrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+    if (!vault_.IsUnlocked() && !vault_.TryAutoUnlock()) {
+        SayVaultFailure(parent, vault_.GetLastUnlockStatus(), "The Primary Password could not be set.",
+                        vault_.VaultPath());
+        if (done) done();
+        return;
+    }
+    PassphrasePrompt prompt;
+    prompt.title       = "Set a Primary Password";
+    prompt.heading     = "Set a Primary Password";
+    prompt.text        = "UltraMail will ask for it at every start. It protects your mail "
+                         "passwords and the key your stored mail is encrypted with. It is "
+                         "not stored anywhere: forgotten, the mail kept on this computer "
+                         "has to be downloaded again and your mail passwords entered again.";
+    prompt.fieldLabel  = "New password";
+    prompt.placeholder = "Choose a Primary Password";
+    prompt.okLabel     = "Set password";
+    prompt.okIcon      = "check";
+    prompt.confirm     = true;
+    prompt.onCancel    = done;
+    PassphraseDialog::Show(parent, std::move(prompt), [this, parent, done](const std::string& chosen) {
+        const VaultStatus status = vault_.ChangePassphrase("", chosen, /*keepAsDeviceKey=*/false);
+        if (status == VaultStatus::Ok) {
+            Trace::Line("Primary Password set");
+            AlertSuccess(parent, "The Primary Password is set.",
+                      "UltraMail asks for it from the next start on.");
+        } else {
+            SayVaultFailure(parent, status, "The Primary Password could not be set.", vault_.VaultPath());
+        }
+        if (done) done();
+    });
+}
+
+void UltraMailApp::ChangePrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+    // The current one first; asked again in place when it is wrong.
+    auto askCurrent = std::make_shared<std::function<void(const std::string&)>>();
+    *askCurrent = [this, parent, done, askCurrent](const std::string& errorText) {
+        PassphrasePrompt prompt;
+        prompt.title     = "Change the Primary Password";
+        prompt.heading   = "Change the Primary Password";
+        prompt.text      = "Enter the Primary Password you use now.";
+        prompt.okLabel   = "Next";
+        prompt.okIcon    = "unlock";
+        prompt.errorText = errorText;
+        prompt.onCancel  = [askCurrent, done]() { *askCurrent = nullptr; if (done) done(); };
+        PassphraseDialog::Show(parent, std::move(prompt), [this, parent, done, askCurrent](const std::string& current) {
+            if (vault_.Unlock(current) != VaultStatus::Ok) {
+                (*askCurrent)("That is not the Primary Password.");
+                return;
+            }
+            *askCurrent = nullptr;
+            PassphrasePrompt next;
+            next.title       = "Change the Primary Password";
+            next.heading     = "Choose the new Primary Password";
+            next.text        = "From the next start on UltraMail asks for this one.";
+            next.fieldLabel  = "New password";
+            next.placeholder = "Choose a Primary Password";
+            next.okLabel     = "Change password";
+            next.okIcon      = "check";
+            next.confirm     = true;
+            next.onCancel    = done;
+            PassphraseDialog::Show(parent, std::move(next), [this, parent, done, current](const std::string& chosen) {
+                const VaultStatus status = vault_.ChangePassphrase(current, chosen, /*keepAsDeviceKey=*/false);
+                if (status == VaultStatus::Ok) {
+                    Trace::Line("Primary Password changed");
+                    AlertSuccess(parent, "The Primary Password is changed.", "UltraMail asks for the new one from the next start on.");
+                } else {
+                    SayVaultFailure(parent, status, "The Primary Password could not be changed.", vault_.VaultPath());
+                }
+                if (done) done();
+            });
+        });
+    };
+    (*askCurrent)("");
+}
+
+void UltraMailApp::RemovePrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+    auto ask = std::make_shared<std::function<void(const std::string&)>>();
+    *ask = [this, parent, done, ask](const std::string& errorText) {
+        PassphrasePrompt prompt;
+        prompt.title     = "Remove the Primary Password";
+        prompt.heading   = "Remove the Primary Password";
+        prompt.text      = "UltraMail will start without asking. The vault is then opened with "
+                           "a key kept beside it, so anyone using this computer account can "
+                           "read your mail and your mail passwords. Enter the Primary Password "
+                           "to remove it.";
+        prompt.okLabel   = "Remove password";
+        prompt.okIcon    = "unlock";
+        prompt.errorText = errorText;
+        prompt.onCancel  = [ask, done]() { *ask = nullptr; if (done) done(); };
+        PassphraseDialog::Show(parent, std::move(prompt), [this, parent, done, ask](const std::string& current) {
+            const VaultStatus status =
+                vault_.ChangePassphrase(current, CredentialVault::NewDeviceKey(), /*keepAsDeviceKey=*/true);
+            if (status == VaultStatus::WrongPassphrase) {
+                (*ask)("That is not the Primary Password.");
+                return;
+            }
+            *ask = nullptr;
+            if (status == VaultStatus::Ok) {
+                Trace::Line("Primary Password removed");
+                AlertSuccess(parent, "The Primary Password is removed.", "UltraMail starts without asking for it.");
+            } else {
+                SayVaultFailure(parent, status, "The Primary Password could not be removed.", vault_.VaultPath());
+            }
+            if (done) done();
+        });
+    };
+    (*ask)("");
 }
 
 void UltraMailApp::HandleAddAccount() {
@@ -4112,6 +4254,18 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
 }
 
 void UltraMailApp::OpenSettings() {
+    SettingsDialog::SecurityHooks security;
+    security.hasPrimaryPassword = [this]() { return HasPrimaryPassword(); };
+    security.setPrimaryPassword = [this](UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+        SetPrimaryPassword(parent, std::move(done));
+    };
+    security.changePrimaryPassword = [this](UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+        ChangePrimaryPassword(parent, std::move(done));
+    };
+    security.removePrimaryPassword = [this](UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done) {
+        RemovePrimaryPassword(parent, std::move(done));
+    };
+    SettingsDialog::SetSecurityHooks(std::move(security));
     SettingsDialog::Show(window_ ? window_.get() : nullptr, &prefs_, [this]() {
         // Every change is saved and applied at once.
         prefs_.Save(prefsPath_);

@@ -392,7 +392,10 @@ index/metadata lives in the database.
 `UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
 UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +
 XChaCha20-Poly1305 via UltraCrypt) unlocked without a prompt by an owner-only
-`device.key` beside it, the posture of Thunderbird with no Primary Password.
+`device.key` beside it, the posture of Thunderbird with no Primary Password -
+or, once the user sets one (*Settings > Privacy > Primary Password*), opened
+only with a Primary Password typed at every start, before anything stored is
+read (`DeviceKeyVault::ChangePassphrase`; the device key is then gone).
 `UltraMailCredentialVault.h` only names that profile. The OS keychains
 (libsecret, Windows Credential Manager, macOS Keychain) are planned as
 UltraVault backends behind the same surface, not as a seam of UltraMail's

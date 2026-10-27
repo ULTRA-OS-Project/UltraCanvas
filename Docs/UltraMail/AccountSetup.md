@@ -22,9 +22,9 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
    conventional host names, and you enter the servers from your provider's
    help page (section 5). Either way UltraMail shows the incoming (IMAP)
    and outgoing (SMTP) servers it will use, and stores them with the account.
-4. The first time, UltraMail asks you to **choose a master password**. It
-   encrypts your account passwords and sign-ins on disk and is never stored
-   itself — if you forget it, you enter your account passwords again.
+4. Your account passwords and sign-ins are stored encrypted in UltraMail's
+   vault; nothing is asked for. To have UltraMail ask for a password at every
+   start, set a **Primary Password** (*Settings > Privacy > Primary Password*).
 5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page;
    when it says *Signed in - you can close this tab*, come back to UltraMail.
 6. The inbox is fetched right away. Later, every account is synced every
@@ -384,10 +384,16 @@ again to retry.
 
 ## 4. On the machine
 
-- **Master password.** Asked for once per session, the first time a stored
-  password or sign-in is needed (adding an account, Update, sending). Nothing
-  syncs in the background while the vault is still locked; UltraMail says so
-  once, and Update asks for the password.
+- **Primary Password.** Optional (*Settings > Privacy > Primary Password*:
+  set, change, remove). Once set, UltraMail asks for it when it starts, before
+  it reads anything stored - the vault, and the key the stored mail is
+  encrypted with, open only with it; a wrong one is asked for again, Cancel
+  ends the start. It is not stored anywhere: forgotten, the mail kept on the
+  computer is downloaded again and the account passwords entered again.
+  Without one the vault opens with a key kept beside it (`vault/device.key`),
+  so UltraMail never asks.
+- **The data folder is private.** UltraMail makes it owner-only at every start
+  (on Linux and macOS; Windows' `%APPDATA%` already is).
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
@@ -545,4 +551,5 @@ Gmail, Outlook and Yahoo.
 | No alert right after the computer was switched on, though the pill says *Offline* or *Failed* | When UltraMail starts, or the computer wakes, more than ten minutes after it last reached a mail server, the computer was most likely switched off and its network may not be up yet. For two minutes then (*Settings > Mail > Connection*: not at all to 10 minutes) a background check that fails raises no alert, whatever the reason; the account is checked again when the time is up, and an alert follows if it still fails. Update reports at once. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days), or it was issued to a different OAuth client than the one this installation now signs in as - an account signed in with a build before the sign-in service cannot be refreshed through it. Add the account again, or use *Sign in with …* on its settings page, to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
-| *Your mail account passwords are locked* | Enter the master password — Update, sending, or adding an account asks for it. |
+| *Your mail account passwords are locked* | Enter the Primary Password — Update, sending, or adding an account asks for it. |
+| *UltraMail is locked* when it starts | A Primary Password is set (*Settings > Privacy > Primary Password*). Enter it; Cancel ends the start. |

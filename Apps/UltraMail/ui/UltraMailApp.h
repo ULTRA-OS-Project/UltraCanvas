@@ -3,6 +3,9 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
+// Version: 0.13.0 - the vault opens first (OpenVault / UnlockVault): with a
+//                  Primary Password it is asked for before any stored mail is read;
+//                  Settings > Privacy > Primary Password sets, changes and removes it
 // Version: 0.12.10 - SwitchToAccount with a filter: the account bar's counters
 // Version: 0.12.9 - CollectServices / CollectServiceOf: a known service collected
 //                  once a later-downloaded body proves its domain
@@ -109,6 +112,17 @@ public:
     // instead of exiting silently.
     bool Initialize(const std::string& dataDir, std::string* outError = nullptr);
 
+    // The credential vault under `dataDir`, opened before anything stored is
+    // read: with the device key when there is one. Ok when it is open;
+    // Locked (or WrongPassphrase, a device key that no longer opens it) when
+    // it has a Primary Password, which main() then asks for and hands to
+    // UnlockVault; Unavailable / IoError when no vault can be opened here -
+    // UltraMail starts without one and says so when a password is needed.
+    VaultStatus OpenVault(const std::string& dataDir);
+    // The vault opened with the Primary Password typed at the start; a stale
+    // device key beside it (a change interrupted) is forgotten.
+    VaultStatus UnlockVault(const std::string& passphrase);
+
     // Wipes the vault's derived key from memory when the app goes away.
     ~UltraMailApp();
 
@@ -189,6 +203,13 @@ private:
     void HandleAccountSettings(const std::string& accountId);
     // The Settings window (the toolbar's gear): app-wide options.
     void OpenSettings();
+    // Settings > Privacy > Primary Password: whether one is set, and setting,
+    // changing and removing it - each asks for the current one first, and
+    // runs `done` when it is over, whatever came of it.
+    bool HasPrimaryPassword() const;
+    void SetPrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done);
+    void ChangePrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done);
+    void RemovePrimaryPassword(UltraCanvas::UltraCanvasWindowBase* parent, std::function<void()> done);
     // The settings page's login check: resolves the credentials through
     // `credentials` (on the worker) and lists the incoming server once with
     // the plug-in for the protocol the page chose (IMAP or JMAP); the outcome
@@ -488,8 +509,8 @@ private:
     // UI thread, each account's server, Drafts and Sent folders and sign-in.
     ServerCopies MakeServerCopies();
 
-    // Run `onUnlocked` with the credential vault open, prompting for the master
-    // password first when it is still locked (and re-prompting on a wrong one).
+    // Run `onUnlocked` with the credential vault open, prompting for the Primary
+    // Password first when it is still locked (and re-prompting on a wrong one).
     // `onUnlocked` does not run if the user cancels or the vault cannot open.
     void EnsureVaultUnlocked(std::function<void()> onUnlocked,
                              const std::string& errorText = {});

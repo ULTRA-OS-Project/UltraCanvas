@@ -4,7 +4,8 @@
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop. One UltraMail per user: a second start brings the running one
 // forward and quits (UltraCanvasSingleInstance.h).
-// Version: 0.7.2 - the data folder made owner-only before anything is written to it
+// Version: 0.8.0 - the vault opens before the mailbox, and a Primary Password is asked
+//                  for first; the data folder made owner-only before anything is written
 // Version: 0.7.1 - the data folder is Application Support on macOS (UltraMailPaths.h),
 //                  and a folder left in ~/.local/share there is moved into place once
 // Version: 0.7.0 - one UltraMail per user: a second start brings the first
@@ -19,6 +20,7 @@
 #include "ui/UltraMailApp.h"
 #include "ui/UltraMailSettingsDialog.h"
 #include "ui/UltraMailAlerts.h"
+#include "ui/UltraMailPassphraseDialog.h"
 
 #include "UltraMailTrace.h"
 
@@ -152,42 +154,86 @@ int main() {
     }
 
     UltraMail::UltraMailApp mail;
-    std::string storeError;
-    step.emplace("Startup: open the mailbox, settings and vault (UltraMailApp::Initialize)");
-    const bool opened = mail.Initialize(UserDataDir(), &storeError);
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> window;
+    int exitCode = EXIT_SUCCESS;
+
+    // The mailbox, the settings and the main window - once the vault is open.
+    auto startMail = [&]() {
+        std::string storeError;
+        step.emplace("Startup: open the mailbox, settings and vault (UltraMailApp::Initialize)");
+        const bool opened = mail.Initialize(UserDataDir(), &storeError);
+        step.reset();
+        // Everything said so far goes into the file too.
+        if (Trace::Enabled()) Trace::SetLogFile(UserDataDir() + "/trace.log");
+        if (!opened) {
+            // The UltraCanvas application is up, so alert properly instead of
+            // exiting to a blank screen. Alerts are non-blocking and need the
+            // event loop to draw: it runs below, and ends when the alert goes.
+            UltraCanvas::AlertOptions opts;
+            opts.severity = UltraCanvas::AlertSeverity::Error;
+            opts.title    = "UltraMail";
+            opts.message  = "UltraMail could not open its mailbox database, so it "
+                            "cannot start.";
+            opts.details  = (storeError.empty()
+                                ? std::string("The data folder could not be opened.")
+                                : storeError)
+                            + "\n\nData folder: " + UserDataDir();
+            opts.onResult = [&app](UltraCanvas::DialogResult) { app.Exit(); };
+            UltraCanvas::UltraCanvasAlert::Show(opts);
+            exitCode = EXIT_FAILURE;
+            return;
+        }
+
+        step.emplace("Startup: build the main window (UltraMailApp::CreateMainWindow)");
+        window = mail.CreateMainWindow();
+        step.emplace("Startup: show the main window");
+        window->Show();
+        step.reset();
+        // A later start asks this window to come forward.
+        instance.Listen([](const UltraCanvas::JSONValue&) {
+            Trace::Line("Single instance: another start asked for the window; bringing it forward");
+            UltraCanvasSingleInstance::BringToFront();
+        });
+    };
+
+    // The vault before anything stored: the key the mail on disk is encrypted
+    // with is in it. With a Primary Password nothing is read until it is typed
+    // - asked again in place when wrong; Cancel ends the start.
+    step.emplace("Startup: open the credential vault (UltraMailApp::OpenVault)");
+    const UltraMail::VaultStatus vault = mail.OpenVault(UserDataDir());
     step.reset();
-    // Everything said so far goes into the file too.
-    if (Trace::Enabled()) Trace::SetLogFile(UserDataDir() + "/trace.log");
-    if (!opened) {
-        // The UltraCanvas application is up, so alert properly instead of
-        // exiting to a blank screen. Alerts are non-blocking and need the event
-        // loop to draw, so run it and leave when the alert is dismissed.
-        UltraCanvas::AlertOptions opts;
-        opts.severity = UltraCanvas::AlertSeverity::Error;
-        opts.title    = "UltraMail";
-        opts.message  = "UltraMail could not open its mailbox database, so it "
-                        "cannot start.";
-        opts.details  = (storeError.empty()
-                            ? std::string("The data folder could not be opened.")
-                            : storeError)
-                        + "\n\nData folder: " + UserDataDir();
-        opts.onResult = [&app](UltraCanvas::DialogResult) { app.Exit(); };
-        UltraCanvas::UltraCanvasAlert::Show(opts);
-        app.Run();
-        return EXIT_FAILURE;
+    if (vault == UltraMail::VaultStatus::Locked || vault == UltraMail::VaultStatus::WrongPassphrase) {
+        Trace::Line("Startup: the vault has a Primary Password; asking for it");
+        auto ask = std::make_shared<std::function<void(const std::string&)>>();
+        *ask = [&, ask](const std::string& errorText) {
+            UltraMail::PassphrasePrompt prompt;
+            prompt.heading   = "UltraMail is locked";
+            prompt.text      = "Enter your Primary Password to open your mail.";
+            prompt.errorText = errorText;
+            prompt.onCancel  = [&app, ask]() {
+                *ask = nullptr;
+                Trace::Line("Startup: the Primary Password was not given; UltraMail ends");
+                app.Exit();
+            };
+            UltraMail::PassphraseDialog::Show(nullptr, std::move(prompt),
+                [&, ask](const std::string& passphrase) {
+                    const UltraMail::VaultStatus status = mail.UnlockVault(passphrase);
+                    if (status == UltraMail::VaultStatus::WrongPassphrase) {
+                        Trace::Line("Startup: a wrong Primary Password; asking again");
+                        (*ask)("That is not the Primary Password.");
+                        return;
+                    }
+                    *ask = nullptr;
+                    if (status != UltraMail::VaultStatus::Ok)
+                        Trace::Line("Startup: the vault did not open: " +
+                                    UltraMail::CredentialVault::DescribeUnlockStatus(status));
+                    startMail();
+                });
+        };
+        (*ask)("");
+    } else {
+        startMail();
     }
-
-    step.emplace("Startup: build the main window (UltraMailApp::CreateMainWindow)");
-    auto window = mail.CreateMainWindow();
-    step.emplace("Startup: show the main window");
-    window->Show();
-    step.reset();
-    // A later start asks this window to come forward.
-    instance.Listen([](const UltraCanvas::JSONValue&) {
-        Trace::Line("Single instance: another start asked for the window; bringing it forward");
-        UltraCanvasSingleInstance::BringToFront();
-    });
-
     // From here the event loop runs: the first frame, the first mail check
     // and every account switch are reported by the app as they happen, and
     // the watchdog says when the window stops answering.
@@ -200,7 +246,7 @@ int main() {
     // The settings window's widgets go while the application is still alive,
     // not at static destruction after main() returns.
     UltraMail::SettingsDialog::Shutdown();
-    return EXIT_SUCCESS;
+    return exitCode;
 }
 
 // ===== WINDOWS ENTRY POINT =====
