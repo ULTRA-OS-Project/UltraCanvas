@@ -98,15 +98,12 @@ TEST(WildcardExpansionListsMatchingDirectories) {
 // A folder named outside the Windows code page - a Thai user name, an emoji -
 // is listed and named like any other. The parent of a wildcard used to reach
 // the filesystem as narrow text, which Windows reads in the ANSI code page,
-// so nothing under such a folder was found there. The folders are made with
-// PathFromUtf8 rather than TempTree's helpers, which take narrow text too.
+// so nothing under such a folder was found there.
 TEST(WildcardExpansionListsFoldersNamedOutsideTheCodePage) {
     TempTree tree;
-    const std::string parent = tree.Path() + "/ผู้ใช้";
-    std::error_code ec;
-    std::filesystem::create_directories(
-        UltraCanvas::PathFromUtf8(parent + "/โปรไฟล์ 😀/Cache"), ec);
-    REQUIRE(!ec);
+    const std::string parent = tree.Dir("ผู้ใช้");
+    tree.Dir("ผู้ใช้/โปรไฟล์ 😀/Cache");
+    REQUIRE(tree.Exists("ผู้ใช้/โปรไฟล์ 😀/Cache"));
 
     auto matches = ExpandWildcardDirectories(parent + "/*/Cache");
     REQUIRE_EQ(matches.size(), static_cast<size_t>(1));

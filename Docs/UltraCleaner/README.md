@@ -476,6 +476,7 @@ RemovalReport result = remover.Remove(report, options);
 | `BlockedAccessAdvice`, `BlockedAccessSettingsUrl` | What to tell the user about locations the system refused, and the settings page that lifts it (macOS: Full Disk Access) |
 | `CleanRule`, `RuleMode`, `BuiltinRules`, `RulesForPlatform`, `FindRule` | The rule table |
 | `HomeDir`, `UserCacheDir`, … , `ExpandTokens`, `ExpandWildcardDirectories`, `GlobMatch`, `IsPathInside` | Platform paths and pattern matching |
+| `WithForwardSlashes` | The engine's spelling of a path: '/' between the parts on every platform (only Windows has a second separator) |
 | `IsSystemRefusal`, `IsRefusedBySystem` | Telling the system's refusal (`EPERM`) from a folder's own permissions |
 | `PathGuard`, `SafetyCheck`, `SafetyVerdict`, `ProtectedPaths`, `IsProtectedPath` | The safety guard |
 | `Scanner`, `ScanOptions`, `ScanProgress` | Scanning, with progress and cancellation |

@@ -162,11 +162,14 @@ AlbumScanReport AlbumScanner::Scan(const std::string& folder,
 
     auto describeOne = [&](const fs::path& path) {
         ++progress.filesSeen;
-        if (!HasImageExtension(PathToUtf8(path))) return;
-        progress.currentPath = PathToUtf8(path);
+        // One separator per path (WithForwardSlashes): the walk joins the
+        // chosen folder and each name with a backslash on Windows.
+        const std::string text = WithForwardSlashes(PathToUtf8(path));
+        if (!HasImageExtension(text)) return;
+        progress.currentPath = text;
         if (onProgress) onProgress(progress);
 
-        ImageDescriptor descriptor = DescribeImage(PathToUtf8(path));
+        ImageDescriptor descriptor = DescribeImage(text);
         if (!descriptor.valid) return;
         if (descriptor.width < options.minimumEdgePixels ||
             descriptor.height < options.minimumEdgePixels) {

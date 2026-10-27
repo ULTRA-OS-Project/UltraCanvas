@@ -248,7 +248,7 @@ void Scanner::ScanClearContents(const CleanRule& rule, const std::string& root,
         if (minAge > 0 && modified > 0 && (now - modified) < minAge) continue;
 
         CleanItem item;
-        item.path = PathToUtf8(iterator->path());
+        item.path = WithForwardSlashes(PathToUtf8(iterator->path()));
         item.ruleId = rule.id;
         item.category = rule.category;
         item.isDirectory = isDirectory;
@@ -312,7 +312,7 @@ void Scanner::ScanMatchingFiles(const CleanRule& rule, const std::string& root,
         if (minAge > 0 && modified > 0 && (now - modified) < minAge) continue;
 
         CleanItem item;
-        item.path = PathToUtf8(iterator->path());
+        item.path = WithForwardSlashes(PathToUtf8(iterator->path()));
         item.ruleId = rule.id;
         item.category = rule.category;
         item.isDirectory = false;
@@ -362,7 +362,7 @@ void Scanner::ScanMatchingDirectories(const CleanRule& rule,
         if (minAge > 0 && modified > 0 && (now - modified) < minAge) continue;
 
         CleanItem item;
-        item.path = PathToUtf8(iterator->path());
+        item.path = WithForwardSlashes(PathToUtf8(iterator->path()));
         item.ruleId = rule.id;
         item.category = rule.category;
         item.isDirectory = true;
@@ -408,7 +408,7 @@ void Scanner::ScanDanglingSymlinks(const CleanRule& rule,
         if (!check.Allowed()) { ++report.skippedProtected; continue; }
 
         CleanItem item;
-        item.path = PathToUtf8(iterator->path());
+        item.path = WithForwardSlashes(PathToUtf8(iterator->path()));
         item.ruleId = rule.id;
         item.category = rule.category;
         item.isDirectory = false;
