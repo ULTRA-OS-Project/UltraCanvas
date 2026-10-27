@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.15 - Info Graphics > Performance Matrix: the element replaces the placeholder
 // Version: 1.0.14 - Charts > Importance-Performance Chart (UltraCanvasImportancePerformanceChart)
 // Version: 1.0.13 - gray, 8 px scrollbars; the status legend as rows sized to their text
 // Version: 1.0.12 - no status bar; a fixed-width page keeps its width (min-width), so the
@@ -1805,10 +1806,9 @@ namespace UltraCanvas {
                 .AddVariant("circlediagram", "Node Count Sweep")
                 .AddVariant("circlediagram", "Outside Labels");
 
-        // Nothing is built for either of these: no element, no plugin, no
-        // renderer — the demo page is the placeholder text itself. "Planned",
-        // like the specification-only modules below: there is nothing partial
-        // to show.
+        // Nothing is built for this one: no element, no plugin, no renderer —
+        // the demo page is the placeholder text itself. "Planned", like the
+        // specification-only modules below: there is nothing partial to show.
         infoBuilder.AddItem("wavesinfo", "Waves info graphic", "Waves info graphic",
                             ImplementationStatus::Planned,
                             [this]() { return CreatePartiallyImplementedExamples("Waves info graphic is not ready yet"); });
@@ -1816,9 +1816,18 @@ namespace UltraCanvas {
         // ("matrix" placeholder removed: the matrix diagram is implemented and
         // registered in the Diagrams section as "matrixdiagram".)
 
-        infoBuilder.AddItem("performancematrix", "Performance Matrix", "Performance Matrix",
-                            ImplementationStatus::Planned,
-                            [this]() { return CreatePartiallyImplementedExamples("Performance Matrix is not ready yet"); });
+        infoBuilder.AddItem("performancematrix", "Performance Matrix",
+                            "9-box, performance vs potential, performance management and talent "
+                            "review matrices: named categories where two rated axes cross",
+                            ImplementationStatus::PartiallyImplemented,
+                            [this]() { return CreatePerformanceMatrixExamples(); },
+                            "DemoApp/UltraCanvasPerformanceMatrixExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md")
+                .AddVariant("performancematrix", "9-Box (Grid)")
+                .AddVariant("performancematrix", "Performance vs Potential (Tiles)")
+                .AddVariant("performancematrix", "Performance Management (Header Tabs)")
+                .AddVariant("performancematrix", "Talent Review (Cards)")
+                .AddVariant("performancematrix", "Skill / Will");
 
 
         // ===== 3D ELEMENTS =====
