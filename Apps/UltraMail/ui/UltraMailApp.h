@@ -510,6 +510,13 @@ private:
     // UI thread, each account's server, Drafts and Sent folders and sign-in.
     ServerCopies MakeServerCopies();
 
+    // The keys for signed and encrypted mail (UltraMailSecureMime.h): the
+    // accounts' S/MIME identities in the vault, correspondents' certificates
+    // in the address book. OpenPGP's are GnuPG's own.
+    SecureKeys MakeSecureKeys();
+    // A certificate from a good, vouched-for signature of `address`: kept.
+    void LearnCertificate(const std::string& address, const std::string& certificatePem);
+
     // Run `onUnlocked` with the credential vault open, prompting for the Primary
     // Password first when it is still locked (and re-prompting on a wrong one).
     // `onUnlocked` does not run if the user cancels or the vault cannot open.

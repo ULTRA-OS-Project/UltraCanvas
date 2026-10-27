@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.21.0 - signed and encrypted mail: opened off the UI thread, its
+//                  signatures and encryption as pills that say what was found
 // Version: 0.20.4 - the body opened with the mailbox's body key (sealed at rest)
 // Version: 0.20.3 - the warning strip's footnote is marked "*" (it was a superscript 2)
 // Version: 0.20.2 - an attached web page (attachment-web-page / -active-page) is named
@@ -94,6 +96,7 @@
 #include <fstream>
 #include <optional>
 #include <string>
+#include <algorithm>
 #include <thread>
 
 namespace fs = std::filesystem;
@@ -1355,6 +1358,101 @@ void MessagePreview::Clear() {
     SyncAttachmentColumn();
 }
 
+namespace {
+
+std::string SecureCacheKey(const MessageEnvelope& env) {
+    return env.accountId + "\n" + env.folder + "\n" + std::to_string(env.uid);
+}
+
+std::shared_ptr<const SecureMessage> CachedSecure(
+        const std::map<std::string, std::shared_ptr<const SecureMessage>>& cache, const MessageEnvelope& env) {
+    auto it = cache.find(SecureCacheKey(env));
+    return it == cache.end() ? nullptr : it->second;
+}
+
+// The pills for a signed or encrypted message: what was found (`secure`), or
+// that it is being checked (null).
+std::vector<AuthCheck> SecureChecks(const std::string& received, const SecureMessage* secure,
+                                    const std::string& fromAddr) {
+    std::vector<AuthCheck> out;
+    bool encrypted = false;
+    const SecureMethod form = SecureFormOf(received, &encrypted);
+    const std::string method = SecureMethodName(form);
+    if (!secure) {
+        AuthCheck c;
+        c.label = method;
+        c.tooltip = encrypted ? "Encrypted with " + method + ": being decrypted."
+                              : "Signed with " + method + ": the signature is being checked.";
+        out.push_back(c);
+        return out;
+    }
+    if (secure->encrypted) {
+        AuthCheck c;
+        c.label = "Encrypted";
+        const std::string by = SecureMethodName(secure->encryption);
+        c.state = secure->decrypted ? AuthCheckState::Passed : AuthCheckState::Failed;
+        c.tooltip = secure->decrypted
+            ? "Encrypted with " + by + ": it travelled and is stored as ciphertext that only "
+              "its recipients' keys open. Opened here with yours."
+            : secure->problem;
+        out.push_back(c);
+    }
+    for (const SignatureCheck& sig : secure->signatures) {
+        AuthCheck c;
+        c.label = SecureMethodName(sig.method);
+        switch (sig.verdict) {
+            case SignatureVerdict::Valid:   c.state = sig.matchesFrom ? AuthCheckState::Passed : AuthCheckState::Neutral; break;
+            case SignatureVerdict::Invalid:
+            case SignatureVerdict::Revoked: c.state = AuthCheckState::Failed; break;
+            default:                        c.state = AuthCheckState::Neutral; break;
+        }
+        std::string who = sig.signerName;
+        if (!sig.signerEmail.empty()) who += (who.empty() ? "" : " ") + std::string("<") + sig.signerEmail + ">";
+        c.tooltip = (who.empty() ? std::string("Signed") : "Signed by " + who) + "\n" + sig.detail;
+        if (sig.verdict != SignatureVerdict::Invalid && !sig.matchesFrom && !sig.signerEmail.empty())
+            c.tooltip += "\nNot the sender's address: the message says it is from " + fromAddr + ".";
+        if (!sig.issuer.empty()) c.tooltip += "\nCertificate issued by " + sig.issuer + ".";
+        if (!sig.fingerprint.empty()) c.tooltip += "\nFingerprint " + sig.fingerprint;
+        out.push_back(c);
+    }
+    if (!secure->encrypted && secure->signatures.empty() && !secure->problem.empty()) {
+        AuthCheck c;
+        c.label = method;
+        c.tooltip = secure->problem;
+        out.push_back(c);
+    }
+    return out;
+}
+
+} // namespace
+
+void MessagePreview::OpenSecure(const MessageEnvelope& env, const std::string& raw) {
+    const std::string key = SecureCacheKey(env);
+    if (!securePending_.insert(key).second) return;   // already being opened
+    std::thread([this, alive = alive_, key, raw, keys = secureKeys_, env]() {
+        Trace::Stage open("Open a signed or encrypted message", 0);
+        auto opened = std::make_shared<const SecureMessage>(OpenSecureMessage(raw, keys));
+        auto* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, alive, key, opened, env]() {
+            if (!alive->load()) return;
+            securePending_.erase(key);
+            if (!secureCache_.count(key)) secureOrder_.push_back(key);
+            secureCache_[key] = opened;
+            while (secureOrder_.size() > 32) {
+                secureCache_.erase(secureOrder_.front());
+                secureOrder_.pop_front();
+            }
+            if (onCertificateLearnt)
+                for (const SignatureCheck& sig : opened->signatures)
+                    if (sig.method == SecureMethod::Smime && sig.verdict == SignatureVerdict::Valid &&
+                        sig.matchesFrom && !sig.certificatePem.empty())
+                        onCertificateLearnt(sig.signerEmail, sig.certificatePem);
+            if (Shows(env.accountId, env.folder, env.uid)) Show(curEnv_);
+        });
+    }).detach();
+}
+
 void MessagePreview::IconCached(const std::string& key) {
     if (!hasMessage_ || !avatarHost_ || !icons_ || key.empty() || shownBadge_.iconKey != key)
         return;
@@ -1417,6 +1515,11 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     std::string raw;
     std::string pendingBody;
     bool pendingHtml = false, havePending = false;
+    // Signed or encrypted: `received` is the message as it came, `raw` what
+    // it reads as once opened; `secure` what was found, null until then.
+    std::string received;
+    std::shared_ptr<const SecureMessage> secure;
+    bool securePending = false;
 
     // Load the cached body (.eml) and decode it.
     step.emplace("Load and decode the body (.eml)", 0);
@@ -1453,8 +1556,25 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         current_.body.clear();
         current_.attachments.clear();
         curRaw_.clear();
+    } else if (bool encryptedForm = false; SecureFormOf(raw, &encryptedForm) != SecureMethod::Plain
+               && !(secure = CachedSecure(secureCache_, env)) && (OpenSecure(env, raw), securePending = true)
+               && encryptedForm) {
+        // Encrypted and not opened yet: nothing to show until it is.
+        curRaw_ = raw;
+        received = raw;
+        RenderBody("Decrypting this message\xE2\x80\xA6", false);
+        attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
+        current_.body.clear();
+        current_.attachments.clear();
     } else {
         curRaw_ = raw;   // kept for "View source"
+        if (secure) {
+            received = raw;
+            raw = secure->raw;
+        } else if (securePending) {
+            received = raw;   // signed: readable now, checked meanwhile
+        }
         ParsedMessage pm = MimeCodec::Parse(raw);
         // Rendered below, once the verdict says whether remote images may load.
         pendingBody = pm.body;
@@ -1468,6 +1588,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
                                       : pm.body;
         current_.bodyHtml = pm.bodyIsHtml ? pm.body : std::string();
         current_.attachments = pm.attachments;
+        current_.encryptedWith = secure && secure->encrypted ? SecureMethodName(secure->encryption) : "";
     }
 
     // Who the message is from, in the same badge the list row wears, and the
@@ -1499,7 +1620,16 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         authRow_->ClearChildren();
         if (!raw.empty()) {
             int n = 0;
-            for (const AuthCheck& check : DescribeMessageAuthentication(raw))
+            std::vector<AuthCheck> checks = DescribeMessageAuthentication(received.empty() ? raw : received);
+            if (!received.empty()) {
+                // The signature in words of what was checked, not the neutral
+                // "signed" pill the headers alone give.
+                checks.erase(std::remove_if(checks.begin(), checks.end(), [](const AuthCheck& c) {
+                                 return c.label == "S/MIME" || c.label == "OpenPGP";
+                             }), checks.end());
+                for (AuthCheck& c : SecureChecks(received, secure.get(), env.fromAddr)) checks.push_back(std::move(c));
+            }
+            for (const AuthCheck& check : checks)
                 authRow_->AddChild(MakeAuthTag("prevAuth" + std::to_string(n++), check));
         }
     }

@@ -3,6 +3,9 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
+// Version: 0.16.0 - signed and encrypted mail: decrypted and its signatures checked
+//                  off the UI thread (SetSecureKeys), shown as [S/MIME] / [OpenPGP] and
+//                  [Encrypted] pills that say what was found
 // Version: 0.15.0 - "Copy link" in the body's right-click menu over a link
 // Version: 0.14.0 - SetAttachmentsRight: the attachments in a column at the
 //                  right of the body (Settings > Reading > Attachments)
@@ -51,8 +54,11 @@
 #include "UltraMailTypes.h"
 #include "UltraMailThreatScan.h"   // MessageLink
 #include "UltraMailOneTimeCode.h"
+#include "UltraMailSecureMime.h"
 
+#include <atomic>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <map>
 #include <memory>
@@ -67,7 +73,15 @@ std::string FormatShortDate(int64_t epoch);
 
 class MessagePreview {
 public:
+    ~MessagePreview() { alive_->store(false); }
+
     void SetMailDir(std::string dir) { mailDir_ = std::move(dir); }
+    // Signed and encrypted mail (UltraMailSecureMime.h): where the user's
+    // S/MIME identities and the certificates learnt are.
+    void SetSecureKeys(SecureKeys keys) { secureKeys_ = std::move(keys); }
+    // An S/MIME certificate from a signature that holds, is vouched for by a
+    // trusted authority and is the sender's: kept, to encrypt to them later.
+    std::function<void(const std::string& address, const std::string& certificatePem)> onCertificateLearnt;
     void SetAccounts(std::vector<Account> accounts) { accounts_ = std::move(accounts); }
 
     // The store the pane reads a message's scan verdict from — and writes it
@@ -295,6 +309,16 @@ private:
     SourceMessage   current_;   // the shown message, for Reply / Forward
     MessageEnvelope curEnv_;    // the shown message's identity, for Delete / Junk / Mark-Unread
     std::string     curRaw_;    // the shown message's raw .eml, for View source
+
+    // Signed and encrypted mail: opened on a thread of its own (a passphrase
+    // may be asked for), then shown again from here. The last few kept, so
+    // going back to one does not open it again.
+    void OpenSecure(const MessageEnvelope& env, const std::string& raw);
+    SecureKeys                                                   secureKeys_;
+    std::map<std::string, std::shared_ptr<const SecureMessage>> secureCache_;
+    std::deque<std::string>                                      secureOrder_;
+    std::set<std::string>                                        securePending_;
+    std::shared_ptr<std::atomic<bool>> alive_ = std::make_shared<std::atomic<bool>>(true);
 
     // Images of the shown HTML body.
     std::string          curHtml_;             // the body, for a re-render

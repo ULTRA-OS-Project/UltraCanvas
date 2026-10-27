@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailOutbox.cpp
+// Version: 0.8.0 - signed and encrypted mail (migration 5): made once per send, the
+//                  same bytes to Drafts, out and to Sent
 // Version: 0.7.0 - withdrawn messages (migration 4): a deleted or replaced
 //                  message whose Drafts copy is not deleted yet; the copy
 //                  is expunged (UID EXPUNGE) once flagged \Deleted
@@ -12,6 +14,7 @@
 //                  (migration 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOutbox.h"
+#include "UltraMailSecureMime.h"
 
 #include <UltraDatabase/UltraDatabase.h>
 #include <UltraNet/UltraNetMime.h>
@@ -68,6 +71,32 @@ std::string NewMessageId(const std::string& fromAddr) {
                   static_cast<unsigned long long>(now),
                   static_cast<unsigned long long>(random()));
     return "<" + std::string(buffer) + "@" + domain + ">";
+}
+
+bool IsSecureDraft(const Draft& d) {
+    return !d.secureMethod.empty() && (d.sign || d.encrypt);
+}
+
+bool BuildSecureMessage(const OutboxItem& item, const SecureKeys& keys, std::string& out, std::string& error) {
+    const Draft& d = item.draft;
+    SecureSendOptions options;
+    options.method = d.secureMethod == "OpenPGP" ? SecureMethod::OpenPgp
+                   : d.secureMethod == "S/MIME"  ? SecureMethod::Smime
+                                                 : SecureMethod::Plain;
+    options.sign = d.sign;
+    options.encrypt = d.encrypt;
+    options.from = d.fromAddr;
+    for (const auto* list : { &d.to, &d.cc, &d.bcc })
+        options.recipients.insert(options.recipients.end(), list->begin(), list->end());
+    if (options.method == SecureMethod::Plain) {
+        error = "\"" + d.secureMethod + "\" is not a way to sign or encrypt mail";
+        return false;
+    }
+    return SecureOutgoingMessage(BuildMessageCopy(item, /*waiting=*/false), options, keys, out, error);
+}
+
+std::string WaitingCopyOf(const std::string& sent) {
+    return "X-UltraMail-Outbox: waiting to be sent\r\n" + sent;
 }
 
 std::string BuildMessageCopy(const OutboxItem& item, bool waiting) {
@@ -171,6 +200,11 @@ UltraDbResult OutboxStore::Open(const std::string& connectionName,
         // until a later pass reaches the server and deletes the copy.
         { 4, "withdrawn messages",
           "ALTER TABLE outbox ADD COLUMN withdrawn INTEGER DEFAULT 0;" },
+        // Signed and/or encrypted when sent (UltraMailSecureMime.h).
+        { 5, "signed and encrypted mail",
+          "ALTER TABLE outbox ADD COLUMN secure_method TEXT DEFAULT '';"
+          "ALTER TABLE outbox ADD COLUMN secure_sign INTEGER DEFAULT 0;"
+          "ALTER TABLE outbox ADD COLUMN secure_encrypt INTEGER DEFAULT 0;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -184,11 +218,12 @@ UltraDbResult OutboxStore::Enqueue(const std::string& accountId, const std::stri
     UltraDbResult ins = UltraDb_ExecInTx(tx,
         "INSERT INTO outbox(account_id, server_url, from_name, from_addr, to_addrs, "
         "cc_addrs, bcc_addrs, subject, body, body_is_html, text_body, message_id, "
-        "in_reply_to, refs, attempts, created_at) "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))",
+        "in_reply_to, refs, secure_method, secure_sign, secure_encrypt, attempts, created_at) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, datetime('now'))",
         { accountId, serverUrl, d.fromName, d.fromAddr, Join(d.to, '\n'),
           Join(d.cc, '\n'), Join(d.bcc, '\n'), d.subject, d.body, d.bodyIsHtml ? 1 : 0,
-          d.textBody, NewMessageId(d.fromAddr), d.inReplyTo, d.references });
+          d.textBody, NewMessageId(d.fromAddr), d.inReplyTo, d.references,
+          d.secureMethod, d.sign ? 1 : 0, d.encrypt ? 1 : 0 });
     if (!ins) { UltraDb_Rollback(tx); return ins; }
     outId = ins.lastInsertId;
 
@@ -242,7 +277,7 @@ UltraDbResult OutboxStore::List(std::vector<OutboxItem>& out, bool withdrawn) co
     UltraDbResult q = UltraDb_Query(connection_,
         "SELECT id, account_id, server_url, from_name, from_addr, to_addrs, cc_addrs, "
         "bcc_addrs, subject, body, body_is_html, text_body, attempts, last_error, "
-        "message_id, drafts_folder, in_reply_to, refs "
+        "message_id, drafts_folder, in_reply_to, refs, secure_method, secure_sign, secure_encrypt "
         "FROM outbox WHERE withdrawn = ? ORDER BY id", { withdrawn ? 1 : 0 }, rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -263,6 +298,9 @@ UltraDbResult OutboxStore::List(std::vector<OutboxItem>& out, bool withdrawn) co
         it.draft.textBody = row["text_body"].AsString();
         it.draft.inReplyTo  = row["in_reply_to"].AsString();
         it.draft.references = row["refs"].AsString();
+        it.draft.secureMethod = row["secure_method"].AsString();
+        it.draft.sign    = row["secure_sign"].AsInt64() != 0;
+        it.draft.encrypt = row["secure_encrypt"].AsInt64() != 0;
         it.messageId    = row["message_id"].AsString();
         it.draft.messageId = it.messageId;   // sent with the ID its copies carry
         it.draftsFolder = row["drafts_folder"].AsString();
@@ -347,9 +385,13 @@ Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp,
     });
 }
 
-bool Outbox::SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushStats& stats) {
+bool Outbox::SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushStats& stats,
+                           const std::string* secured) {
     if (item.HasDraftCopy()) return true;
     if (!copies.imap || !copies.prepare) return false;
+    // A signed or encrypted message is kept on the server only as it will be
+    // sent: never its plain text. Until it has been made, it has no copy.
+    if (IsSecureDraft(item.draft) && !secured) return false;
     // A message queued before migration 3 has no Message-ID yet: give it one,
     // or its copy could never be found again to delete.
     if (item.messageId.empty()) {
@@ -361,7 +403,8 @@ bool Outbox::SaveDraftCopy(OutboxItem& item, const ServerCopies& copies, FlushSt
     UltraNetResult r = copies.prepare(item.accountId, where);
     if (r && where.draftsFolder.empty())
         r = UltraNetResult::Error(UltraNetResultCode::InvalidState, "no Drafts folder is known");
-    if (r) r = copies.MailboxFor(where).AppendMessage(where.serverUrl, where.draftsFolder, BuildDraftCopy(item),
+    if (r) r = copies.MailboxFor(where).AppendMessage(where.serverUrl, where.draftsFolder,
+                                          secured ? WaitingCopyOf(*secured) : BuildDraftCopy(item),
                                           UltraNetMailFlags::Draft | UltraNetMailFlags::Seen,
                                           where.options);
     if (r) r = store_.MarkDraftSaved(item.id, where.draftsFolder)
@@ -424,13 +467,14 @@ int Outbox::RemoveWithdrawnCopies(const ServerCopies& copies, FlushStats& stats)
     return done;
 }
 
-void Outbox::SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats) {
+void Outbox::SaveSentCopy(const OutboxItem& item, const ServerCopies& copies, FlushStats& stats,
+                          const std::string* secured) {
     if (!copies.imap || !copies.prepare) return;
     ServerFolders where;
     UltraNetResult r = copies.prepare(item.accountId, where);
     if (r && where.sentFolder.empty()) return;   // none wanted: the server files it
     if (r) r = copies.MailboxFor(where).AppendMessage(where.serverUrl, where.sentFolder,
-                                          BuildMessageCopy(item, /*waiting=*/false),
+                                          secured ? *secured : BuildMessageCopy(item, /*waiting=*/false),
                                           UltraNetMailFlags::Seen, where.options);
     if (r) {
         stats.sentCopies++;
@@ -445,7 +489,15 @@ Outbox::FlushStats Outbox::SaveDraftCopies(const ServerCopies& copies) {
     RemoveWithdrawnCopies(copies, stats);
     std::vector<OutboxItem> pending;
     if (!store_.ListPending(pending)) return stats;
-    for (auto& item : pending) SaveDraftCopy(item, copies, stats);
+    for (auto& item : pending) {
+        if (!IsSecureDraft(item.draft)) {
+            SaveDraftCopy(item, copies, stats);
+            continue;
+        }
+        // Its copy as it will be sent; made now when it can be, else at the send.
+        std::string secured, error;
+        if (BuildSecureMessage(item, secureKeys_, secured, error)) SaveDraftCopy(item, copies, stats, &secured);
+    }
     return stats;
 }
 
@@ -489,8 +541,27 @@ Outbox::FlushStats Outbox::Flush(const PluginResolver& pluginFor, const OptionsR
     for (auto& item : pending) {
         // Being corrected in a compose window: the new version replaces it.
         if (store_.IsHeld(item.id)) continue;
+        // Signed and/or encrypted: made once, here - one passphrase prompt at
+        // most - and that is what goes to Drafts, out, and to Sent. When it
+        // cannot be made (a recipient without a key, no passphrase), nothing
+        // is sent: never the plain text in its place.
+        std::string secured;
+        if (IsSecureDraft(item.draft)) {
+            std::string error;
+            if (!BuildSecureMessage(item, secureKeys_, secured, error)) {
+                const UltraNetResult r = UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                    "the message could not be " +
+                    std::string(item.draft.encrypt ? (item.draft.sign ? "signed and encrypted" : "encrypted")
+                                                   : "signed") + ": " + error);
+                store_.MarkFailed(item.id, r.message);
+                stats.failed++;
+                stats.lastFailure = r;
+                continue;
+            }
+        }
+        const std::string* securedPtr = secured.empty() ? nullptr : &secured;
         // The Drafts copy first: if the send fails, the message is in Drafts.
-        if (copies) SaveDraftCopy(item, *copies, stats);
+        if (copies) SaveDraftCopy(item, *copies, stats, securedPtr);
         UltraNetMailOptions opts;
         opts.useTls = true;   // the resolver may relax this for a plaintext server
         UltraNetResult r = prepare ? prepare(item.accountId, opts) : UltraNetResult::Ok();
@@ -504,11 +575,11 @@ Outbox::FlushStats Outbox::Flush(const PluginResolver& pluginFor, const OptionsR
                                       "no plug-in is loaded that can send for this account");
         if (r) {
             MailSender sender(*plugin);
-            r = sender.Send(item.draft, serverUrl, opts);
+            r = sender.Send(item.draft, serverUrl, opts, secured);
         }
         if (r) {
             if (copies) {
-                SaveSentCopy(item, *copies, stats);
+                SaveSentCopy(item, *copies, stats, securedPtr);
                 RemoveDraftCopy(item, *copies, stats);
             }
             store_.Remove(item.id);

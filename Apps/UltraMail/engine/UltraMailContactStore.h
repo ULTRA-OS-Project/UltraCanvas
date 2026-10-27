@@ -3,6 +3,8 @@
 // sections, each with any number of emails / phones. A global store (not
 // per-account) so contacts are shared across accounts, mirroring LocalStore's
 // UltraDatabase-backed design.
+// Version: 0.5.0 - schema 4: correspondents' S/MIME certificates (SaveCertificate,
+//                  FindCertificate, ForgetCertificate)
 // Version: 0.4.0 - Open takes the key contacts.db is encrypted with
 // Version: 0.3.0 - RemoveAll (many contacts in one transaction); Forget / ForgottenAddresses: addresses the user deleted,
 //                  which the collector does not add again
@@ -87,6 +89,14 @@ public:
     // emails. `found` is false - and the result still Ok - when no contact has
     // it; a failure is a database error.
     UltraDbResult FindByEmail(const std::string& address, Contact& out, bool& found) const;
+
+    // Correspondents' S/MIME certificates (PEM), by address (schema 4):
+    // learnt from their signed mail, what mail to them is encrypted to. A
+    // certificate ending sooner than the one kept does not replace it.
+    UltraDbResult SaveCertificate(const std::string& address, const std::string& certificatePem,
+                                  const std::string& fingerprint, int64_t validUntil);
+    UltraDbResult FindCertificate(const std::string& address, std::string& certificatePem, bool& found) const;
+    UltraDbResult ForgetCertificate(const std::string& address);
 
     // Per-section counts for the sidebar (every primary section present, even
     // when empty).

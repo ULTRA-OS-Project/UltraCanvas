@@ -91,6 +91,7 @@
 
 #include "UltraMailAlerts.h"
 #include "UltraMailStorage.h"
+#include "UltraMailSecureKeys.h"
 #include "UltraMailSettingsDialog.h"
 #include "UltraMailTheme.h"
 
@@ -710,6 +711,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     mailView_.SetStore(&store_);
     mailView_.SetMailDir(mailDir_);
     mailView_.onOpenAttachment = [this](const Attachment& a) { OpenAttachment(a); };
+    mailView_.onCertificateLearnt = [this](const std::string& address, const std::string& pem) {
+        LearnCertificate(address, pem);
+    };
     mailView_.onSaveAttachment = [this](const Attachment& a) { SaveAttachment(a); };
     // An HTML message is answered and forwarded with its formatting; a
     // plain-text one with "> "-quoted text.
@@ -1864,6 +1868,46 @@ void UltraMailApp::HandleDeleteFolder(const std::string& accountId, const std::s
 void UltraMailApp::LoadAccounts() {
     store_.ListAccounts(accounts_);
     prefs_.OrderAccounts(accounts_);
+    // The keys for signed and encrypted mail follow the accounts: an
+    // account's S/MIME identity is found by its address.
+    mailView_.SetSecureKeys(MakeSecureKeys());
+}
+
+SecureKeys UltraMailApp::MakeSecureKeys() {
+    // A snapshot of the accounts: the hooks run on the reading pane's thread.
+    std::vector<std::pair<std::string, std::string>> accounts;
+    for (const Account& a : accounts_) {
+        std::string email = a.email;
+        std::transform(email.begin(), email.end(), email.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        accounts.emplace_back(a.accountId, email);
+    }
+    SecureKeys keys;
+    keys.smimeIdentities = [this, accounts]() {
+        std::vector<SmimeIdentity> out;
+        for (const auto& [id, email] : accounts) {
+            SmimeIdentity identity;
+            if (LoadSmimeIdentity(vault_, id, identity)) out.push_back(std::move(identity));
+        }
+        return out;
+    };
+    keys.smimeIdentityFor = [this, accounts](const std::string& address, SmimeIdentity& out) {
+        for (const auto& [id, email] : accounts)
+            if (email == address && LoadSmimeIdentity(vault_, id, out)) return true;
+        return false;
+    };
+    keys.smimeCertificateFor = [this](const std::string& address, std::string& pem) {
+        bool found = false;
+        return contacts_.IsOpen() && contacts_.FindCertificate(address, pem, found) && found;
+    };
+    return keys;
+}
+
+void UltraMailApp::LearnCertificate(const std::string& address, const std::string& certificatePem) {
+    CertificateInfo info;
+    if (!contacts_.IsOpen() || !ReadCertificate(certificatePem, info)) return;
+    if (UltraDbResult saved = contacts_.SaveCertificate(address, certificatePem, info.fingerprint, info.validUntil); !saved)
+        Trace::Line("S/MIME certificate of " + address + " not kept: " + DetailLine(saved));
 }
 
 void UltraMailApp::HandleReorderAccounts(const std::vector<std::string>& order) {
@@ -2418,8 +2462,11 @@ void UltraMailApp::RunOutboxJob(OutboxJob job, const std::string& status,
     RefreshOutbox();   // the Outbox window says it is busy
     // Copied here, on the UI thread: the worker must not read accounts_.
     auto copies = std::make_shared<ServerCopies>(MakeServerCopies());
-    std::thread([this, job = std::move(job), copies, onDone = std::move(onDone)]() {
+    SecureKeys secureKeys = MakeSecureKeys();   // its account snapshot, taken here too
+    std::thread([this, job = std::move(job), copies, onDone = std::move(onDone),
+                 secureKeys = std::move(secureKeys)]() {
         Outbox ob(outbox_);
+        ob.SetSecureKeys(secureKeys);
         job(ob, copies->imap ? copies.get() : nullptr);
         auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
         if (!app) return;

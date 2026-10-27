@@ -49,6 +49,10 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailOneTimeCode.cpp
     engine/UltraMailPaths.cpp
     engine/UltraMailStorage.cpp
+    engine/UltraMailSecureMime.cpp
+    engine/UltraMailSmime.cpp
+    engine/UltraMailOpenPgp.cpp
+    engine/UltraMailSecureKeys.cpp
     engine/UltraMailResultText.cpp
 )
 
@@ -64,6 +68,29 @@ target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
 # UltraCrypt), not in a format of UltraMail's own.
 if(TARGET UltraVault)
     target_link_libraries(UltraMailEngine PUBLIC UltraVault)
+endif()
+# Signed and encrypted mail (UltraMailSecureMime.h): S/MIME on OpenSSL 3's
+# CMS, OpenPGP on GPGME (the user's GnuPG). Each is optional and soft-failing:
+# without its library the backend compiles to stubs that say so, and a
+# message in that form is shown as one this build cannot check.
+find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
+if(OpenSSL_FOUND)
+    target_link_libraries(UltraMailEngine PUBLIC OpenSSL::Crypto)
+    target_compile_definitions(UltraMailEngine PUBLIC ULTRAMAIL_HAVE_SMIME=1)
+    message(STATUS "  [✓] UltraMail S/MIME (OpenSSL ${OPENSSL_VERSION})")
+else()
+    message(STATUS "  [−] UltraMail S/MIME - no OpenSSL 3")
+endif()
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(GPGME QUIET IMPORTED_TARGET gpgme)
+endif()
+if(GPGME_FOUND)
+    target_link_libraries(UltraMailEngine PUBLIC PkgConfig::GPGME)
+    target_compile_definitions(UltraMailEngine PUBLIC ULTRAMAIL_HAVE_OPENPGP=1)
+    message(STATUS "  [✓] UltraMail OpenPGP (GPGME ${GPGME_VERSION})")
+else()
+    message(STATUS "  [−] UltraMail OpenPGP - no GPGME")
 endif()
 # The mail kept on the computer is encrypted at rest (UltraMailStorage.h):
 # the message files with UltraCrypt, the databases by UltraDatabase.

@@ -1,4 +1,5 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.20.0 - SetSecureKeys / onCertificateLearnt for signed and encrypted mail
 // Version: 0.19.1 - RescanSender reads the message files through UltraMailStorage
 // Version: 0.19.0 - ShowInbox: an account's inbox under a filter (the account bar's
 //                  counters); onFilterChanged; the "today" fact for New today
@@ -524,6 +525,9 @@ void MailView::BuildMessageBox() {
     messageBox_->SetVisualStyle(Theme::CardGroupBox(Theme::kPagePadding));
     preview_.onSaveAttachment = [this](const Attachment& a) {
         if (onSaveAttachment) onSaveAttachment(a);
+    };
+    preview_.onCertificateLearnt = [this](const std::string& address, const std::string& pem) {
+        if (onCertificateLearnt) onCertificateLearnt(address, pem);
     };
     preview_.onOpenAttachment = [this](const Attachment& a) {
         if (onOpenAttachment) onOpenAttachment(a);
