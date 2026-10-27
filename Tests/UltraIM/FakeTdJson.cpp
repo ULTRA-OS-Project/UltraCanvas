@@ -12,6 +12,7 @@
 // answers every message with "echo: <text>". The code is always 12345.
 // The number +1 555 9999 is never answered (a network that is down), for the
 // provider's step timeout.
+// Version: 0.1.2 - the code to the app first, by SMS on resendAuthenticationCode (as Telegram does)
 // Version: 0.1.1 - a phone number whose code never comes
 // Version: 0.1.0
 // Last Modified: 2026-10-25
@@ -77,6 +78,7 @@ struct Client {
     int         id = 0;
     bool        started = false;
     bool        closed = false;
+    bool        codeBySms = false;       // after resendAuthenticationCode
     std::string state;
     std::string databaseDir;
     std::string databaseKey;
@@ -381,6 +383,24 @@ void Deliver(ChatRec& chat, const Message& m, int64_t exceptClient) {
     }
 }
 
+// The code info Telegram sends: to the app the number is signed in on first,
+// with SMS as the next way; by SMS once asked for, with no way after that.
+void CodeSent(Client& c) {
+    JSONValue info = Obj("authenticationCodeInfo");
+    info.Set("phone_number", JSONValue("+" + c.phone));
+    JSONValue how = Obj(c.codeBySms ? "authenticationCodeTypeSms" : "authenticationCodeTypeTelegramMessage");
+    how.Set("length", JSONValue(5));
+    info.Set("type", how);
+    if (!c.codeBySms) {
+        JSONValue next = Obj("authenticationCodeTypeSms");
+        next.Set("length", JSONValue(5));
+        info.Set("next_type", next);
+    }
+    JSONValue extraState = JSONValue::MakeObject();
+    extraState.Set("code_info", info);
+    State(c, "authorizationStateWaitCode", extraState);
+}
+
 // ---- requests ----------------------------------------------------------------------
 
 void Handle(Client& c, const JSONValue& r) {
@@ -429,14 +449,15 @@ void Handle(Client& c, const JSONValue& r) {
         if (c.phone.size() < 5) return fail(400, "PHONE_NUMBER_INVALID");
         if (c.phone == "15559999") return;      // no answer, ever: the network is down
         ok();
-        JSONValue info = Obj("authenticationCodeInfo");
-        info.Set("phone_number", JSONValue("+" + c.phone));
-        JSONValue how = Obj("authenticationCodeTypeSms");
-        how.Set("length", JSONValue(5));
-        info.Set("type", how);
-        JSONValue extraState = JSONValue::MakeObject();
-        extraState.Set("code_info", info);
-        return State(c, "authorizationStateWaitCode", extraState);
+        c.codeBySms = false;
+        return CodeSent(c);
+    }
+    if (type == "resendAuthenticationCode") {
+        if (c.state != "authorizationStateWaitCode") return fail(400, "Unexpected resendAuthenticationCode");
+        if (c.codeBySms) return fail(400, "SEND_CODE_UNAVAILABLE");    // no next way left
+        ok();
+        c.codeBySms = true;
+        return CodeSent(c);
     }
     if (type == "checkAuthenticationCode") {
         if (c.state != "authorizationStateWaitCode") return fail(400, "Unexpected checkAuthenticationCode");

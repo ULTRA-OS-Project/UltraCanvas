@@ -1,3 +1,33 @@
+#### 2026-10-27 *0.9.419*
+- **Cloud sessions no longer see a pushed branch as unpushed.** The cloud
+  clone is shallow and single-branch, so a branch pushed with `git push -u`
+  had no `origin/<branch>` copy and both Stop hooks - the repository's and
+  the image's own, which the image rewrites every turn - counted every
+  commit on it as unpushed. `.claude/hooks/session-start.sh` now widens the
+  clone's fetch refspec to every branch, as a full clone has it, so a push
+  keeps the copy current for any branch, and fetches the session branch's
+  copy at the start.
+
+#### 2026-10-27 *0.9.418*
+- **A Telegram sign-in code can be asked for another way.**
+  `UltraIMProviderInfo::authResendHint` names the other way the service
+  offers ("Send it by SMS instead") and `UltraIM_ResendAuthCode` asks for it
+  (TDLib's `resendAuthenticationCode`); the Telegram provider's hint now says
+  where the code went - as a message to the Telegram apps the number is
+  signed in on, by SMS, in a call - and how many digits it has. A step's
+  `NeedsInput` answer now precedes its `AuthStepChange`, so a sign-in made
+  in answer to the event is no longer resolved by the step that raised it.
+
+#### 2026-10-27 *0.9.417*
+- **A slider that shows no value centres its bar across its box.** The bar
+  was always drawn at the foot of a horizontal slider's box (the left of a
+  vertical one) to leave room for a value above or beside it - even with
+  `SliderValueDisplay::NoDisplay`, the default, where nothing is drawn
+  there. A slider in a row of labels taller than its 16 px handle therefore
+  sat below their line (ArtCreator's *Quality*, the image-export and
+  save-settings dialogs, the font viewer, the media viewer's adjustments).
+  It is now centred; a slider that shows a value keeps the bar at the edge.
+
 #### 2026-10-27 *0.9.416*
 - **The synchronous HTTP verbs' connection pool is opt-in, and shares no
   TLS sessions.** UltraNet 0.5.0 gave every synchronous HTTP call a

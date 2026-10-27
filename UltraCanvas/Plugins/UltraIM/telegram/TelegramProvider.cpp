@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.1.2 - where the code went said plainly; the code asked for another way (resendAuthenticationCode)
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
 //                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
@@ -304,6 +305,34 @@ std::string TelegramProvider::GetAuthHint() const {
     return authHint_;
 }
 
+std::string TelegramProvider::GetAuthResendHint() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return authStep_ == UltraIMAuthStep::Code ? authResendHint_ : std::string();
+}
+
+void TelegramProvider::ResendAuthCode(UltraIMResultCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (authStep_ != UltraIMAuthStep::Code) {
+            finish(UltraIMResult::Error(UltraIMResultCode::InvalidState, "No code is being waited for"));
+            return;
+        }
+        if (authResendHint_.empty()) {
+            finish(UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                        "Telegram offers no other way to send the code to this number"));
+            return;
+        }
+    }
+    debugOutput << "[Telegram] asking for the code the next way" << std::endl;
+    // The new code info arrives as authorizationStateWaitCode again; the
+    // answer here is the request's own.
+    Client()->Send(Request::ResendCode(), [finish](const TdObject& answer) {
+        if (IsError(answer)) finish(UltraIMResult::Error(UltraIMResultCode::AuthFailed, ErrorText(answer)));
+        else finish(UltraIMResult::Ok());
+    });
+}
+
 // ============================================================================
 // SESSION
 // ============================================================================
@@ -515,12 +544,18 @@ void TelegramProvider::SignOut() {
     SetState(UltraIMConnectionState::Disconnected);
 }
 
-void TelegramProvider::SetStep(UltraIMAuthStep step, const std::string& hint) {
+// The next step, asked for: the step is set, the SignIn waiting is answered
+// NeedsInput, and only then is AuthStepChange raised - so an application
+// that answers the event with the next SignIn cannot have that SignIn
+// resolved by this step's own answer (it did, when the answer followed the
+// event: the step's NeedsInput landed on the SignIn that carried the code).
+void TelegramProvider::AskFor(UltraIMAuthStep step, const std::string& hint) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         authStep_ = step;
         authHint_ = hint;
     }
+    Finish(UltraIMResult::Error(UltraIMResultCode::NeedsInput, hint));
     UltraIMEvent event;
     event.type = UltraIMEventType::AuthStepChange;
     event.providerId = providerId_;
@@ -574,8 +609,7 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
             phone = phone_;
         }
         if (phone.empty()) {
-            SetStep(UltraIMAuthStep::PhoneNumber, "Your phone number, with the country code");
-            Finish(UltraIMResult::Error(UltraIMResultCode::NeedsInput, "Your phone number, with the country code"));
+            AskFor(UltraIMAuthStep::PhoneNumber, "Your phone number, with the country code");
             return;
         }
         // Asked for, as the step to come back to if Telegram refuses it.
@@ -587,23 +621,51 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
         ArmStep("setAuthenticationPhoneNumber - Telegram sending the code");
         Client()->Send(Request::SetPhoneNumber(phone), [this](const TdObject& answer) { OnAuthAnswer(answer); });
     } else if (type == "authorizationStateWaitCode") {
+        // Where the code went, said so that a person knows where to look:
+        // Telegram sends it to the apps the number is already signed in on
+        // whenever there are any, and by SMS only when it offers that (the
+        // code info's next_type, which may be none).
         const TdObject& info = state["code_info"];
         const std::string how = TdType(info["type"]);
-        std::string hint = "The code Telegram sent";
-        if (how == "authenticationCodeTypeTelegramMessage") hint = "The code Telegram sent to your Telegram app";
-        else if (how == "authenticationCodeTypeSms") hint = "The code sent by SMS to " + info["phone_number"].GetString();
-        else if (how == "authenticationCodeTypeCall") hint = "The code you are told in a call to " + info["phone_number"].GetString();
-        SetStep(UltraIMAuthStep::Code, hint);
-        Finish(UltraIMResult::Error(UltraIMResultCode::NeedsInput, hint));
+        const std::string number = info["phone_number"].GetString();
+        const int64_t length = info["type"]["length"].GetInteger(0);
+        const std::string digits = length > 0 ? std::to_string(length) + "-digit " : "";
+        std::string hint = "The " + digits + "code Telegram sent";
+        if (how == "authenticationCodeTypeTelegramMessage")
+            hint = "Telegram sent the " + digits + "code as a message to the Telegram apps where " + number +
+                   " is signed in (your phone's 'Telegram' chat) - type it here";
+        else if (how == "authenticationCodeTypeSms")
+            hint = "The " + digits + "code sent by SMS to " + number;
+        else if (how == "authenticationCodeTypeCall")
+            hint = "The " + digits + "code you are told in a call to " + number;
+        else if (how == "authenticationCodeTypeFlashCall" || how == "authenticationCodeTypeMissedCall")
+            hint = "The last digits of the number that calls " + number + " are the code";
+        else if (how == "authenticationCodeTypeFragment")
+            hint = "The code is in your Fragment account (fragment.com) for " + number;
+        else if (how == "authenticationCodeTypeFirebaseAndroid" || how == "authenticationCodeTypeFirebaseIos")
+            hint = "The " + digits + "code sent to the Telegram app on this phone";
+        const std::string next = TdType(info["next_type"]);
+        std::string resend;
+        if (next == "authenticationCodeTypeSms") resend = "Send it by SMS instead";
+        else if (next == "authenticationCodeTypeCall") resend = "Call me with the code instead";
+        else if (next == "authenticationCodeTypeTelegramMessage") resend = "Send it to my Telegram app instead";
+        else if (next == "authenticationCodeTypeFlashCall" || next == "authenticationCodeTypeMissedCall")
+            resend = "Send it by a call instead";
+        else if (!next.empty()) resend = "Send the code another way";
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            authResendHint_ = resend;
+        }
+        debugOutput << "[Telegram] code sent as " << how << (next.empty() ? " (no other way offered)" : ", next " + next)
+                    << std::endl;
+        AskFor(UltraIMAuthStep::Code, hint);
     } else if (type == "authorizationStateWaitPassword") {
         std::string hint = "Your two-step verification password";
         const std::string given = state["password_hint"].GetString();
         if (!given.empty()) hint += " (hint: " + given + ")";
-        SetStep(UltraIMAuthStep::Password, hint);
-        Finish(UltraIMResult::Error(UltraIMResultCode::NeedsInput, hint));
+        AskFor(UltraIMAuthStep::Password, hint);
     } else if (type == "authorizationStateWaitRegistration") {
-        SetStep(UltraIMAuthStep::Registration, "A new Telegram account: your name");
-        Finish(UltraIMResult::Error(UltraIMResultCode::NeedsInput, "A new Telegram account: your name"));
+        AskFor(UltraIMAuthStep::Registration, "A new Telegram account: your name");
     } else if (type == "authorizationStateWaitOtherDeviceConfirmation" || type == "authorizationStateWaitEmailAddress" ||
                type == "authorizationStateWaitEmailCode" || type == "authorizationStateWaitPremiumPurchase") {
         const std::string why = "Telegram asks for a sign-in step ChatCube cannot do yet (" + type.substr(18) + ")";

@@ -1,3 +1,7 @@
+#### 2026-10-27 *0.1.5*
+- The buttons that open a dialog or a page say what they do without a
+  trailing ellipsis: *Buy*, not *Buy…*.
+
 #### 2026-10-27 *0.1.4*
 - **Discount and affiliate codes.** The catalog carries `codes`: what a code
   takes off (a percentage or an amount), the apps it applies to, its
