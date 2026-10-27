@@ -435,6 +435,8 @@ again to retry.
   - S/MIME needs UltraCrypt built with OpenSSL 3 and OpenPGP GPGME (with
     GnuPG installed to use it); a build without one shows such mail as one
     it cannot check.
+  - **Not on Windows on Arm yet**: GPGME ended the process there in testing,
+    so that build shows OpenPGP mail as one it cannot check. S/MIME works.
   - **OpenPGP on macOS**: the app carries GPGME, not GnuPG. Install it with
     Homebrew - `brew install gnupg pinentry-mac`, then put
     `pinentry-program /opt/homebrew/bin/pinentry-mac` (`/usr/local/bin/...` on

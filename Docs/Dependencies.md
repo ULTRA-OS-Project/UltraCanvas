@@ -497,7 +497,7 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | S/MIME (sign, check, encrypt, decrypt; PKCS #12 import) | UltraCrypt's X.509 and CMS (OpenSSL 3, above) | UltraCrypt's X.509 and CMS | UltraCrypt's X.509 and CMS |
-| OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | GPGME from vcpkg (`MacOS/deps/vcpkg.json`, bundled with libassuan and libgpg-error); GnuPG the user's, from Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite | GPGME (MSYS2 `gpgme`, which brings GnuPG) |
+| OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | GPGME from vcpkg (`MacOS/deps/vcpkg.json`, bundled with libassuan and libgpg-error); GnuPG the user's, from Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite | GPGME (MSYS2 `gpgme`, which brings GnuPG); x64 only - not built on Windows on Arm, where GPGME ended the process |
 
 > Both are optional and soft-failing (`UltraCrypt_IsX509Available()`,
 > `ULTRAMAIL_HAVE_OPENPGP`): without one, a message in that form is shown as

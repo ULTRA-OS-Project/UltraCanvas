@@ -30,3 +30,6 @@
   macOS 14, with libassuan and libgpg-error); GnuPG is the user's, from
   Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite, and UltraMail
   finds it in their folders although a Finder-started app's `PATH` lacks them.
+- OpenPGP is not built on Windows on Arm: there GPGME's first operation ended
+  the process (CI's windows-11-arm, MSYS2 CLANGARM64), which in the app would
+  quit it on opening an OpenPGP message. S/MIME is unaffected.

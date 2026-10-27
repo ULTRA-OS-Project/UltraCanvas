@@ -74,14 +74,25 @@ endif()
 # was found), OpenPGP on GPGME (the user's GnuPG). Each is optional and
 # soft-failing: without its library a message in that form is shown as one
 # this build cannot check, and it is not offered for sending.
+# Not on Windows on Arm: there the first GPGME operation ended the process
+# (abort, no message) in CI's windows-11-arm leg (MSYS2 CLANGARM64), where
+# x64 Windows runs the same code - UltraMail would quit on opening an OpenPGP
+# message. OpenPGP mail is shown as one this build cannot check instead,
+# until GPGME on that platform is known to work.
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _ultramail_cpu)
+if(WIN32 AND _ultramail_cpu MATCHES "^(arm64|aarch64)$")
+    set(_ultramail_gpgme_unsafe TRUE)
+endif()
 find_package(PkgConfig QUIET)
-if(PkgConfig_FOUND)
+if(PkgConfig_FOUND AND NOT _ultramail_gpgme_unsafe)
     pkg_check_modules(GPGME QUIET IMPORTED_TARGET gpgme)
 endif()
 if(GPGME_FOUND)
     target_link_libraries(UltraMailEngine PUBLIC PkgConfig::GPGME)
     target_compile_definitions(UltraMailEngine PUBLIC ULTRAMAIL_HAVE_OPENPGP=1)
     message(STATUS "  [✓] UltraMail OpenPGP (GPGME ${GPGME_VERSION})")
+elseif(_ultramail_gpgme_unsafe)
+    message(STATUS "  [−] UltraMail OpenPGP - not on Windows on Arm (GPGME ends the process there)")
 else()
     message(STATUS "  [−] UltraMail OpenPGP - no GPGME")
 endif()
