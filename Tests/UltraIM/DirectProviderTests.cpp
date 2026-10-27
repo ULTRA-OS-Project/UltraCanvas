@@ -2,6 +2,7 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.2 - the plaintext check on the sealed bytes
 // Version: 0.1.1 - TestRelayRedirect: the relay behind a redirector
 // Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
@@ -86,7 +87,12 @@ void TestEnvelope() {
     Envelope envelope;
     CHECK(ring.Seal(alice, bob.signPublic, bob.userId, "dm", "id-1", 1234, "{\"type\":\"text\",\"text\":\"hi\"}",
                     envelope, error));
-    CHECK(envelope.ciphertext.find("hi") == std::string::npos);
+    // The plaintext is not in the sealed bytes. Checked on the bytes, not on
+    // the base64 text: base64 of random bytes contains any two letters, "hi"
+    // included, every few hundred runs.
+    const std::vector<uint8_t> sealed = FromBase64(envelope.ciphertext);
+    const std::string sealedBytes(sealed.begin(), sealed.end());
+    CHECK(!sealed.empty() && sealedBytes.find("{\"type\":\"text\",\"text\":\"hi\"}") == std::string::npos);
 
     Envelope parsed;
     CHECK(Envelope::FromJson(envelope.ToJson(), parsed));
