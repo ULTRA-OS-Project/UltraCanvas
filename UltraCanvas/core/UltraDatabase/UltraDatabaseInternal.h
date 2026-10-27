@@ -2,6 +2,7 @@
 // Internal shared declarations for the UltraDatabase core: the connection
 // manager (registry + handle tables) and the built-in SQLite driver
 // accessor. Not a public header.
+// Version: 0.4.0 - the encrypting SQLite VFS's internals (UltraDatabaseSqliteCipher.cpp)
 // Version: 0.3.0 - the MySQL / MariaDB driver's internals
 // Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,10 +14,26 @@
 #include "UltraDatabase/UltraDatabaseSchema.h"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
+struct sqlite3;
+
 namespace ultradb_internal {
+
+// The encrypting VFS (UltraDatabaseSqliteCipher.cpp, UltraDatabaseEncryption.h).
+// Its name, or nullptr when the build has no UltraCrypt or SQLite no VFS.
+const char* SqliteCipherVfsName();
+// The full path SQLite will hand the VFS's xOpen for `path`.
+std::string SqliteCipherFullPath(const std::string& path);
+// The key the next xOpen of `fullPath` as a database takes; nullptr removes it.
+void SqliteCipherSetPendingKey(const std::string& fullPath, std::shared_ptr<const UltraCryptSecureBuffer> key);
+// Before opening `path` with `key`: Ok when the file is missing or empty
+// (`isNew`) or encrypted and the key opens it; an error naming why not.
+UltraDbResult SqliteCipherPrepare(const std::string& path, const UltraCryptSecureBuffer& key, bool& isNew);
+// Right after opening: the page geometry of a new file, temporary data in memory.
+UltraDbResult SqliteCipherConfigure(sqlite3* db, bool isNew);
 
 // Returns the process-wide built-in SQLite driver singleton and guarantees it
 // is registered exactly once. Called by the manager before resolving drivers.
