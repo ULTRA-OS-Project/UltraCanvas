@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
+// Version: 0.2.0 - trusted_keys from the active keys
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "CatalogPublisher.h"
@@ -73,6 +74,15 @@ Result<Catalog> BuildCatalog(const AdminDatabase& db, const PublishOptions& opti
     catalog.schema = UltraStore::kSupportedSchema;
     catalog.sequence = options.sequence ? options.sequence : db.Sequence() + 1;
     catalog.generated = options.generatedAt.empty() ? NowIso8601() : options.generatedAt;
+    // Every active key may sign the next catalog (schema 2's trusted_keys):
+    // a new key is announced by the first publish after it is made and
+    // signs from the next one on; a retired key drops out of the list.
+    const auto keys = db.Keys();
+    if (!keys) return R::Failure(keys.error.code, keys.error.message, keys.error.detail);
+    for (const KeyRecord& k : keys.Value()) {
+        if (k.Active()) catalog.trustedKeys.push_back(k.publicKeyHex);
+    }
+    std::sort(catalog.trustedKeys.begin(), catalog.trustedKeys.end());
     const auto publishers = db.Publishers();
     if (!publishers) return R::Failure(publishers.error.code, publishers.error.message, publishers.error.detail);
     catalog.publishers = publishers.Value();

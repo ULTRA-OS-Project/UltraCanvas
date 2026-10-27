@@ -13,6 +13,7 @@
 //   <out>/restricted/<sha256>.<format>      the packages of paid apps - the server hands
 //                                           these out only through a buyer's short-lived
 //                                           signed URL (the access scheme, see the README)
+// Version: 0.2.0 - trusted_keys from the active keys
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

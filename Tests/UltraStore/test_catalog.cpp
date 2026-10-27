@@ -153,3 +153,27 @@ TEST(lenient_about_what_the_store_does_not_rely_on) {
     REQUIRE(a.releases[0].packages.empty());
     REQUIRE(a.publisher.empty());
 }
+
+TEST(trusted_keys_round_trip_as_schema_2_and_a_bad_one_is_refused) {
+    Catalog c = FixtureCatalog();
+    REQUIRE(c.trustedKeys.empty());   // the fixture is schema 1
+    c.trustedKeys = {std::string(64, 'B'), std::string(64, 'a'), std::string(64, 'b')};   // upper case, a duplicate
+    const std::string json = SerializeCatalog(c);
+    REQUIRE(json.find("\"schema\": 2") != std::string::npos);   // carrying trusted_keys makes it schema 2
+    const Result<Catalog> parsed = ParseCatalog(json);
+    REQUIRE(parsed);
+    REQUIRE_EQ(parsed.Value().schema, 2);
+    REQUIRE_EQ(parsed.Value().trustedKeys.size(), size_t(2));   // lower-cased, deduplicated, in order
+    REQUIRE_EQ(parsed.Value().trustedKeys[0], std::string(64, 'b'));
+    REQUIRE_EQ(parsed.Value().trustedKeys[1], std::string(64, 'a'));
+    // A schema 1 catalog has none, and the writer keeps it schema 1.
+    REQUIRE(SerializeCatalog(FixtureCatalog()).find("\"schema\": 1") != std::string::npos);
+    // Not a key: refused, the catalog with it.
+    const Result<Catalog> bad = ParseCatalog(R"({"schema": 2, "sequence": 1, "trusted_keys": ["abc"], "apps": []})");
+    REQUIRE(!bad);
+    REQUIRE(bad.error.code == ErrorCode::ParseError);
+    REQUIRE(bad.error.detail == "abc");
+    const Result<Catalog> none = ParseCatalog(R"({"schema": 2, "sequence": 1, "apps": []})");
+    REQUIRE(none);
+    REQUIRE(none.Value().trustedKeys.empty());
+}

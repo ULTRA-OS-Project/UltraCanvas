@@ -12,6 +12,7 @@
 
 #include "UltraCrypt/UltraCryptCore.h"
 
+#include <algorithm>
 #include <filesystem>
 
 using namespace UltraStoreAdmin;
@@ -128,14 +129,33 @@ TEST(publish_writes_what_the_store_reads_and_verifies) {
     REQUIRE_EQ(parsed.Value().sequence, uint64_t(1));
     REQUIRE_EQ(parsed.Value().apps[0].releases[0].packages[0].url, "https://store.example/v1/packages/" + f.sha256 + ".zip");
     REQUIRE_EQ(parsed.Value().apps[0].icon, std::string("media/org.ultraos.hello/icon.png"));
+    // Schema 2: the catalog announces every active key, so a store that
+    // accepted it trusts the next key before the binary carrying it ships.
+    REQUIRE_EQ(parsed.Value().schema, 2);
+    REQUIRE_EQ(parsed.Value().trustedKeys.size(), size_t(1));
+    REQUIRE_EQ(parsed.Value().trustedKeys[0], r.publicKeyHex);
     // Another key does not verify it.
     const auto other = NewSigningKey("x", KeyCost::Fast());
     std::vector<uint8_t> otherPk;
     REQUIRE(UltraStore::FromHex(other.Value().publicKeyHex, otherPk));
     REQUIRE(!UltraStore::VerifyCatalogSignature(bytes, signature, {otherPk}).Ok());
-    // The next publish is sequence 2; a retired key refuses.
-    REQUIRE_EQ(Publish(db, added.Value().id, "pass", options).Value().sequence, uint64_t(2));
+    // A second key, made for the rotation: the next publish (sequence 2,
+    // still signed by the first) announces both; once the first is retired
+    // it refuses to sign and drops out of the list, and the second signs.
+    const auto next = NewSigningKey("next", KeyCost::Fast());
+    const auto nextAdded = db.AddKey("next", next.Value().publicKeyHex, next.Value().sealed.Bytes());
+    REQUIRE(nextAdded.Ok());
+    const auto second = Publish(db, added.Value().id, "pass", options);
+    REQUIRE_EQ(second.Value().sequence, uint64_t(2));
+    const auto announced = UltraStore::ParseCatalog(ReadFile(second.Value().catalogPath)).Value().trustedKeys;
+    REQUIRE_EQ(announced.size(), size_t(2));
+    REQUIRE(std::find(announced.begin(), announced.end(), next.Value().publicKeyHex) != announced.end());
     REQUIRE(db.RetireKey(added.Value().id).Ok());
     REQUIRE(!Publish(db, added.Value().id, "pass", options).Ok());
+    const auto third = Publish(db, nextAdded.Value().id, "next", options);
+    REQUIRE(third.Ok());
+    const auto afterRetire = UltraStore::ParseCatalog(ReadFile(third.Value().catalogPath)).Value().trustedKeys;
+    REQUIRE_EQ(afterRetire.size(), size_t(1));
+    REQUIRE_EQ(afterRetire[0], next.Value().publicKeyHex);
     RemoveDir(dir);
 }

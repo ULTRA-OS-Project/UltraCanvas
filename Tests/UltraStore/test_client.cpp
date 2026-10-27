@@ -213,3 +213,71 @@ TEST(the_client_needs_a_key_and_a_base_url) {
     REQUIRE(!r && r.error.code == ErrorCode::InvalidArgument);
     std::filesystem::remove_all(config.cacheDir);
 }
+
+TEST(a_key_the_catalog_announced_signs_the_next_one_and_an_unannounced_key_never_does) {
+    std::vector<uint8_t> seedA, pkA, seedB, pkB, seedC, pkC;
+    REQUIRE(GenerateSigningKey(seedA, pkA));
+    REQUIRE(GenerateSigningKey(seedB, pkB));
+    REQUIRE(GenerateSigningKey(seedC, pkC));
+    FakeServer server;
+    CatalogClientConfig config;
+    config.baseUrls = {"https://store.example"};
+    config.trustedKeys = {pkA};   // what the binary carries
+    config.cacheDir = TempDir("rotation");
+    CatalogClient client(config, server.AsFetcher());
+
+    // A catalog signed by B that announces B itself: B is not trusted yet.
+    Catalog c = FixtureCatalog();
+    c.trustedKeys = {ToHex(pkB)};
+    server.Publish("https://store.example", c, seedB);
+    REQUIRE(!client.Refresh());
+    REQUIRE(client.Refresh().error.code == ErrorCode::SignatureInvalid);
+    REQUIRE(client.KeysTrustedNow().size() == size_t(1));
+
+    // Signed by A, announcing B: accepted, and B is trusted from now on.
+    server.Publish("https://store.example", c, seedA);
+    server.etag = "\"v2\"";
+    REQUIRE(client.Refresh());
+    REQUIRE_EQ(client.State().announcedKeys.size(), size_t(1));
+    REQUIRE_EQ(client.State().announcedKeys[0], ToHex(pkB));
+    REQUIRE_EQ(client.KeysTrustedNow().size(), size_t(2));
+
+    // The next catalog, signed by B, announcing only B: accepted, cached, and
+    // the cache reads back with the announced key.
+    c.sequence = 43;
+    server.Publish("https://store.example", c, seedB);
+    server.etag = "\"v3\"";
+    REQUIRE(client.Refresh());
+    REQUIRE_EQ(client.LoadCached().Value().sequence, uint64_t(43));
+    CatalogClient again(config, server.AsFetcher());   // a fresh client over the same cache remembers it too
+    REQUIRE(again.LoadCached());
+    REQUIRE_EQ(again.KeysTrustedNow().size(), size_t(2));
+
+    // A compiled-in key is never dropped by a catalog: A still signs.
+    c.sequence = 44;
+    server.Publish("https://store.example", c, seedA);
+    server.etag = "\"v4\"";
+    REQUIRE(client.Refresh());
+
+    // A key no accepted catalog announced is refused, whatever it claims.
+    c.sequence = 45;
+    c.trustedKeys = {ToHex(pkC)};
+    server.Publish("https://store.example", c, seedC);
+    server.etag = "\"v5\"";
+    const auto refused = client.Refresh();
+    REQUIRE(!refused);
+    REQUIRE(refused.error.code == ErrorCode::SignatureInvalid);
+    REQUIRE_EQ(client.LoadCached().Value().sequence, uint64_t(44));   // the cache is as it was
+
+    // A schema 1 catalog announces nothing: from then on only A signs.
+    c.sequence = 46;
+    c.trustedKeys.clear();
+    server.Publish("https://store.example", c, seedA);
+    server.etag = "\"v6\"";
+    REQUIRE(client.Refresh());
+    REQUIRE(client.State().announcedKeys.empty());
+    c.sequence = 47;
+    server.Publish("https://store.example", c, seedB);
+    server.etag = "\"v7\"";
+    REQUIRE(client.Refresh().error.code == ErrorCode::SignatureInvalid);
+}

@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
+// Version: 0.3.0 - trusted_keys
 // Version: 0.2.0 - ParseComponent / SerializeComponent for the admin backend
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -448,6 +449,17 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
     if (sequence < 0) return Result<Catalog>::Failure(ErrorCode::ParseError, "The catalog has no sequence number");
     catalog.sequence = static_cast<uint64_t>(sequence);
     catalog.generated = root.Get("generated").GetString();
+    for (const JSONValue& k : root.Get("trusted_keys").GetElements()) {
+        std::string hex = k.GetString();
+        std::vector<uint8_t> bytes;
+        if (!FromHex(hex, bytes) || bytes.size() != 32) {
+            return Result<Catalog>::Failure(ErrorCode::ParseError, "A trusted key is not a 32-byte hex public key", hex);
+        }
+        hex = ToHex(bytes);   // lower case, as the store compares them
+        if (std::find(catalog.trustedKeys.begin(), catalog.trustedKeys.end(), hex) == catalog.trustedKeys.end()) {
+            catalog.trustedKeys.push_back(std::move(hex));
+        }
+    }
     for (const JSONValue& p : root.Get("publishers").GetElements()) {
         Publisher pub;
         pub.id = p.Get("id").GetString();
@@ -489,9 +501,16 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
 
 std::string SerializeCatalog(const Catalog& catalog) {
     JSONValue root = JSONValue::MakeObject();
-    root.Set("schema", catalog.schema > 0 ? catalog.schema : kSupportedSchema);
+    // trusted_keys is a schema 2 member: a catalog that carries them says so.
+    const int schema = std::max(catalog.schema > 0 ? catalog.schema : kSupportedSchema, catalog.trustedKeys.empty() ? 1 : 2);
+    root.Set("schema", schema);
     if (!catalog.generated.empty()) root.Set("generated", catalog.generated);
     root.Set("sequence", static_cast<int64_t>(catalog.sequence));
+    if (!catalog.trustedKeys.empty()) {
+        JSONValue keys = JSONValue::MakeArray();
+        for (const std::string& k : catalog.trustedKeys) keys.Append(k);
+        root.Set("trusted_keys", std::move(keys));
+    }
     JSONValue publishers = JSONValue::MakeArray();
     for (const Publisher& p : catalog.publishers) {
         JSONValue o = JSONValue::MakeObject();
