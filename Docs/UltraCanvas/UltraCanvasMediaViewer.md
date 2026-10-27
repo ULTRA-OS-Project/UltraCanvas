@@ -141,7 +141,9 @@ the next bitmap while its toggle is still on.
 
 The zoom toolbar also drives the PDF view, the vector drawing view and, for
 e-books, the reading text scale (books reflow, so zoom is a text scale and "Fit"
-means a comfortable line measure across the pane).
+means a comfortable line measure across the pane). The zoom box reads the zoom
+on show: *Fit*, the step it is at (`200%`), or the percentage between steps
+(`137%`).
 
 A drawing in the vector view or in a plugin's own element (CorelDRAW through
 libcdr) has no bitmap on the image surface; the info bar labels it
@@ -163,12 +165,26 @@ viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
 
 ## Backdrop under transparent images
 
+By default every file gets a backdrop chosen for it
+(`TransparentImageBackground::Auto`): the viewer samples what is shown — a
+transparent picture's pixels, or the drawing in the vector view rasterized at
+64 px — and picks white, mid grey (153) or dark grey (51), whichever gives the
+most of the artwork a contrast of 4.5:1 or better
+(`UltraCanvasMediaViewer::ContrastingBackdropFor`). Black line art lands on
+white, a white logo on dark grey, artwork in both on mid grey; a tie goes to the
+brighter one. An opaque picture covers its backdrop, so it is not sampled.
+
 A file that really has transparency — an alpha channel that is used, or a
-vector document (SVG), which paints over whatever is behind it — gets a strip of
-colours directly under the picture: an
-[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
-swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
-clicking the checkerboard goes back to the transparency pattern. Files without
+vector document (SVG), which paints over whatever is behind it — and every
+drawing in the vector view (DXF, DWG, CorelDRAW, …) gets a strip of colours
+directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the auto
+swatch first, the checkered swatch next, then greys, then colours. Clicking a
+colour makes it the backdrop for this and the following files; the auto swatch
+goes back to a colour picked per file, and the checkerboard to the transparency
+pattern. The vector view paints its backdrop over the whole pane and cannot
+draw the pattern, so the strip offers no checkerboard there, and a drawing
+shown while it is chosen gets the Auto colour. Files without
 transparency never show the strip, so it costs no space where it would mean
 nothing — that check is `UCImage::HasTransparency` (the Cairo image,
 `libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
@@ -179,8 +195,10 @@ viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
 // Remember what the user picked:
 viewer->onTransparentBackgroundChanged =
         [&](TransparentImageBackground mode, const Color& color) {
+    settings.automatic = (mode == TransparentImageBackground::Auto);
     settings.checkered = (mode == TransparentImageBackground::Checkered);
-    settings.color = color;
+    // Auto reports the colour it picked for this file - not a preference.
+    if (mode == TransparentImageBackground::SolidColor) settings.color = color;
 };
 // Different colours, or different metrics:
 viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });

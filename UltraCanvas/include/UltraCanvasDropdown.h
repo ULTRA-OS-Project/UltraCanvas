@@ -1,5 +1,7 @@
 // include/UltraCanvasDropdown.h
 // Interactive dropdown/combobox component with icon support and multi-selection
+// Version: 1.2.0 - 2026-10-27 - SetPlaceholderText: what the button reads while no item is
+//                  selected (a zoom box showing a zoom that is none of its items)
 // Version: 1.1.0 - 2026-10-21 - the button's text and the rows' are shaped once and kept
 //                  (UltraCanvasTextLayoutCache)
 // Version: 1.0.4 - 2026-10-15 - type-ahead in the dropdown and its open list; takes the keyboard
@@ -202,6 +204,7 @@ namespace UltraCanvas {
         // Multi-selection support
         bool multiSelectEnabled = false;
         std::set<int> selectedIndices;
+        std::string placeholderText;   // shown while nothing is selected
 
         // Takes the keyboard focus (Tab, a click), as a button does.
         bool canAcceptFocus = true;
@@ -243,6 +246,12 @@ namespace UltraCanvas {
         }
 
         const DropdownItem* GetSelectedItem() const;
+
+        // What the button reads while no item is selected (single selection):
+        // a value the list does not hold, such as a zoom box's "137%" between
+        // its preset steps. Empty by default - the button is blank.
+        void SetPlaceholderText(const std::string& text);
+        const std::string& GetPlaceholderText() const { return placeholderText; }
 
         // Multi-selection management
         void SetMultiSelectEnabled(bool enabled);

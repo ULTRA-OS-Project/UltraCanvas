@@ -1,6 +1,10 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.16.0 - TransparentImageBackground::Auto (the default): a backdrop picked per
+//                   file from its pixels, under a picture and behind a drawing in the
+//                   vector view, which the backdrop strip now serves too; the zoom box
+//                   shows the zoom on show
 // Version: 1.15.1 - a drawing in the vector view or a plugin's element (CorelDRAW) is
 //                   named in the info bar and Details, not reported as "No media"
 // Version: 1.15.0 - SetSettingsAction: a gear in the info bar for the host's settings
@@ -102,6 +106,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -703,9 +708,11 @@ void UltraCanvasMediaSurface::DrawBackdrop(IRenderContext* ctx, const Rect2Df& b
 
     ctx->PushState();
     if (alpha < 0.999) ctx->SetAlpha(alpha);
-    if (transparentBackground == TransparentImageBackground::SolidColor) {
+    if (transparentBackground != TransparentImageBackground::Checkered) {
         ctx->DrawFilledRectangle(Rect2Dd(x0, y0, x1 - x0, y1 - y0),
-                                 transparentColor, 0.0f);
+                                 transparentBackground == TransparentImageBackground::Auto
+                                         ? autoBackdropColor : transparentColor,
+                                 0.0f);
     } else {
         constexpr double kCell = 12.0;                   // square size (px)
         const Color light(255, 255, 255, 255);
@@ -1360,6 +1367,9 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         HandleDroppedFiles(files);
     };
     surface->SetAdjustments(adjustments);
+    // Every file gets a backdrop that suits it until the user (or the host)
+    // picks one.
+    surface->SetTransparentBackground(TransparentImageBackground::Auto);
     AddChild(surface);
 
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -1480,8 +1490,17 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         vv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         vv->SetVisible(false);
-        // The status bar carries the drawing's zoom, as it does a picture's.
-        vv->SetOnZoomChangeCallback([this](float) { UpdateInfoBar(); });
+        // The status bar and the zoom box carry the drawing's zoom, as they do
+        // a picture's. The fit the view makes once it has its size is made
+        // from its Render(), after the toolbar above it was painted in that
+        // frame - so the refresh waits for the next turn of the loop, or the
+        // zoom box would keep showing the zoom from before the fit.
+        vv->SetOnZoomChangeCallback([this](float) {
+            auto* app = UltraCanvasApplicationBase::GetCurrent();
+            if (!app) { UpdateInfoBar(); return; }
+            std::weak_ptr<UltraCanvasUIElement> self = weak_from_this();
+            app->PostToUIThread([this, self]() { if (!self.expired()) UpdateInfoBar(); });
+        });
         vectorView = vv;
         AddChild(vectorView);
     }
@@ -1529,6 +1548,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     // colours. The strip sizes its own swatches to the width it gets, so it
     // fits a narrow preview pane as well as a full window.
     backdropBar = CreateBackdropSwatchBar("MV_Backdrop", 0, 0, 0, 28);
+    backdropBar->SetShowAutoEntry(true);
     {
         ColorSwatchBarStyle bs = backdropBar->GetStyle();
         bs.background     = Color(30, 30, 36, 255);
@@ -1545,6 +1565,13 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         SetTransparentColor(c);
         if (onTransparentBackgroundChanged) {
             onTransparentBackgroundChanged(TransparentImageBackground::SolidColor, c);
+        }
+    };
+    backdropBar->onAutoSelected = [this]() {
+        SetTransparentBackground(TransparentImageBackground::Auto);
+        if (onTransparentBackgroundChanged) {
+            onTransparentBackgroundChanged(TransparentImageBackground::Auto,
+                                           GetAutoBackdropColor());
         }
     };
     backdropBar->onCheckeredSelected = [this]() {
@@ -2159,6 +2186,9 @@ void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
 
 void UltraCanvasMediaViewer::SetTransparentBackground(TransparentImageBackground mode) {
     if (surface) surface->SetTransparentBackground(mode);
+    // Auto is worked out only while it is in force: chosen now, it is
+    // worked out for the file already on show.
+    RefreshAutoBackdrop();
     SyncBackdropSelection();
 }
 
@@ -2169,7 +2199,12 @@ TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() co
 
 void UltraCanvasMediaViewer::SetTransparentColor(const Color& c) {
     if (surface) surface->SetTransparentColor(c);
+    ApplyDrawingBackdrop();
     SyncBackdropSelection();
+}
+
+Color UltraCanvasMediaViewer::GetAutoBackdropColor() const {
+    return surface ? surface->GetAutoBackdropColor() : Color(255, 255, 255, 255);
 }
 
 void UltraCanvasMediaViewer::SetTransparencyPaletteVisible(bool visible) {
@@ -2185,8 +2220,14 @@ void UltraCanvasMediaViewer::SetTransparencyPaletteVisible(bool visible) {
 
 void UltraCanvasMediaViewer::SyncBackdropSelection() {
     if (!backdropBar || !surface) return;
-    if (surface->GetTransparentBackground() == TransparentImageBackground::Checkered) {
-        backdropBar->SelectCheckered();
+    const TransparentImageBackground mode = surface->GetTransparentBackground();
+    if (mode == TransparentImageBackground::Auto) {
+        backdropBar->SelectAuto();
+    } else if (mode == TransparentImageBackground::Checkered) {
+        // The drawing view has no checkered swatch to mark (it shows the
+        // Auto colour meanwhile).
+        if (backdropBar->GetShowCheckeredEntry()) backdropBar->SelectCheckered();
+        else backdropBar->ClearSelection();
     } else {
         // A colour the palette does not hold (one picked in a settings dialog)
         // simply leaves no swatch marked.
@@ -2196,12 +2237,18 @@ void UltraCanvasMediaViewer::SyncBackdropSelection() {
 
 void UltraCanvasMediaViewer::UpdateTransparencyPalette() {
     if (!backdropBar) return;
-    bool show = transparencyPaletteEnabled && activeKind == MediaKind::Image &&
-                surface != nullptr;
-    if (show) {
+    // A drawing in the vector view has nothing behind it but the backdrop,
+    // so it always takes one - but not the checkerboard, which that view
+    // cannot draw.
+    const UltraCanvasVectorElement* vv = ActiveVectorView();
+    const bool drawing = vv && vv->GetDocument();
+    bool show = transparencyPaletteEnabled && surface != nullptr &&
+                (drawing || activeKind == MediaKind::Image);
+    if (show && !drawing) {
         auto img = surface->GetImage();
         show = img && img->IsValid() && img->HasTransparency();
     }
+    backdropBar->SetShowCheckeredEntry(!drawing);
     if (show != backdropBar->IsVisible()) {
         backdropBar->SetVisible(show);
         RequestRedraw();
@@ -2562,7 +2609,9 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     // for a file the curves do not apply to).
     if (auto dlg = curvesDialog.lock()) FillCurveHistograms(*dlg);
     // The strip of backdrop colours belongs to the file just loaded: up for a
-    // transparent image, gone for everything else.
+    // transparent image or a drawing, gone for everything else - and Auto
+    // picks its colour for this file.
+    RefreshAutoBackdrop();
     UpdateTransparencyPalette();
     UpdateInfoBar();
     // The Details text costs a metadata read of the file; it is built only
@@ -3133,7 +3182,170 @@ void UltraCanvasMediaViewer::ZoomPercentAction(double percent) {
     if (activeKind == MediaKind::Image && surface) surface->SetZoomPercent(percent);
 }
 
+// ===== AUTOMATIC BACKDROP =====
+
+namespace {
+    // WCAG relative luminance of an sRGB colour, 0 (black) .. 1 (white).
+    double RelativeLuminance(const Color& c) {
+        static const auto linear = [] {
+            std::array<double, 256> t{};
+            for (int i = 0; i < 256; ++i) {
+                const double v = i / 255.0;
+                t[static_cast<size_t>(i)] = v <= 0.04045 ? v / 12.92
+                                                         : std::pow((v + 0.055) / 1.055, 2.4);
+            }
+            return t;
+        }();
+        return 0.2126 * linear[c.r] + 0.7152 * linear[c.g] + 0.0722 * linear[c.b];
+    }
+}
+
+Color UltraCanvasMediaViewer::ContrastingBackdropFor(const std::vector<Color>& pixels) {
+    // In the order a tie goes: the brighter backdrop first.
+    static const Color candidates[] = {
+        Color(255, 255, 255, 255), Color(153, 153, 153, 255), Color(51, 51, 51, 255)
+    };
+    constexpr int kCount = 3;
+    // A contrast of 4.5:1 reads clearly (the WCAG text threshold); more than
+    // that buys nothing, so a backdrop is judged by how much of the artwork
+    // reaches it - which is what makes artwork in black AND white land on mid
+    // grey rather than on white with its white half lost. The mean log
+    // contrast only breaks a tie (black line art reads on white and on mid
+    // grey alike; white shows it best).
+    constexpr double kEnough = 4.5;
+    double backdropL[kCount];
+    for (int i = 0; i < kCount; ++i) backdropL[i] = RelativeLuminance(candidates[i]);
+    double reached[kCount] = {0.0, 0.0, 0.0};
+    double logContrast[kCount] = {0.0, 0.0, 0.0};
+    double weight = 0.0;
+    for (const Color& p : pixels) {
+        if (p.a == 0) continue;
+        const double w = p.a / 255.0;
+        const double l = RelativeLuminance(p);
+        weight += w;
+        for (int i = 0; i < kCount; ++i) {
+            const double contrast = (std::max(l, backdropL[i]) + 0.05) /
+                                    (std::min(l, backdropL[i]) + 0.05);
+            reached[i] += w * std::min(contrast, kEnough) / kEnough;
+            logContrast[i] += w * std::log(contrast);
+        }
+    }
+    if (weight < 1.0) return candidates[0];
+    int best = 0;
+    for (int i = 1; i < kCount; ++i) {
+        const double a = reached[i] / weight, b = reached[best] / weight;
+        if (a > b + 1e-9 || (std::fabs(a - b) <= 1e-9 && logContrast[i] > logContrast[best]))
+            best = i;
+    }
+    return candidates[best];
+}
+
+void UltraCanvasMediaViewer::RefreshAutoBackdrop() {
+    if (!surface) return;
+    if (surface->GetTransparentBackground() == TransparentImageBackground::Auto) {
+        // A small copy of what is on show is enough to judge it by.
+        constexpr int kSample = 64;
+        std::vector<Color> pixels;
+        if (const UltraCanvasVectorElement* vv = ActiveVectorView()) {
+            if (auto doc = vv->GetDocument()) {
+                const Size2Dd page = vv->GetDocumentSize();
+                VectorRasterOptions opts;
+                if (page.width > 0 && page.height > 0) {
+                    const double s = kSample / std::max(page.width, page.height);
+                    opts.width  = std::max(1, static_cast<int>(std::lround(page.width * s)));
+                    opts.height = std::max(1, static_cast<int>(std::lround(page.height * s)));
+                } else {
+                    opts.width = opts.height = kSample;
+                }
+                std::string error;
+                if (auto layer = RasterizeVectorDocument(*doc, opts, error)) {
+                    pixels.reserve(static_cast<size_t>(layer->GetWidth()) * layer->GetHeight());
+                    for (int y = 0; y < layer->GetHeight(); ++y)
+                        for (int x = 0; x < layer->GetWidth(); ++x)
+                            pixels.push_back(layer->GetPixel(x, y).ToColor());
+                }
+            }
+        } else if (activeKind == MediaKind::Image) {
+            // An opaque picture covers its backdrop: nothing to judge.
+            auto img = surface->GetImage();
+            if (img && img->IsValid() && !surface->HasDecodeFailure() && img->HasTransparency()) {
+                if (auto pm = img->GetPixmap(kSample, kSample, ImageFitMode::Contain)) {
+                    const int w = pm->GetRawWidth(), h = pm->GetRawHeight();
+                    pixels.reserve(static_cast<size_t>(w) * h);
+                    for (int y = 0; y < h; ++y) {
+                        for (int x = 0; x < w; ++x) {
+                            // Cairo's premultiplied ARGB32, straightened.
+                            const uint32_t v = pm->GetPixel(x, y);
+                            const int a = static_cast<int>(v >> 24);
+                            if (a == 0) continue;
+                            auto un = [a](uint32_t c) {
+                                return static_cast<uint8_t>(std::min(255u, (c * 255u + a / 2) / a));
+                            };
+                            pixels.emplace_back(un((v >> 16) & 0xFF), un((v >> 8) & 0xFF),
+                                                un(v & 0xFF), static_cast<uint8_t>(a));
+                        }
+                    }
+                }
+            }
+        }
+        surface->SetAutoBackdropColor(ContrastingBackdropFor(pixels));
+    }
+    ApplyDrawingBackdrop();
+}
+
+void UltraCanvasMediaViewer::ApplyDrawingBackdrop() {
+    if (!vectorView || !surface) return;
+    auto* vv = static_cast<UltraCanvasVectorElement*>(vectorView.get());
+    // A solid colour picked in the strip is the user's; Auto, and the
+    // checkerboard the vector view cannot draw, take the Auto colour.
+    vv->SetBackgroundColor(
+            surface->GetTransparentBackground() == TransparentImageBackground::SolidColor
+                    ? surface->GetTransparentColor() : surface->GetAutoBackdropColor());
+}
+
+void UltraCanvasMediaViewer::UpdateZoomBox() {
+    if (!toolbar) return;
+    auto box = std::dynamic_pointer_cast<UltraCanvasDropdown>(toolbar->GetWidget("mv_zoom"));
+    if (!box) return;
+    double percent = -1.0;
+    bool fit = false;
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (activeKind == MediaKind::Document && pdfView) {
+        auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+        if (pv->HasDocument()) percent = pv->GetZoomPercent();
+    }
+#endif
+    if (activeKind == MediaKind::Book && bookView) {
+        auto* bv = static_cast<UltraCanvasEBookViewer*>(bookView.get());
+        if (bv->IsDocumentLoaded()) percent = bv->GetZoomPercent();
+    }
+    if (const UltraCanvasVectorElement* vv = ActiveVectorView()) {
+        if (vv->GetDocument()) {
+            percent = vv->GetZoom() * 100.0;
+            fit = vv->IsAtFit();
+        }
+    }
+    if (activeKind == MediaKind::Image && surface && tools.zoom) {
+        percent = surface->GetZoomPercent();
+        fit = surface->IsAutoFit();
+    }
+    // The box's items are "Fit" and whole percentages ("25%" ...).
+    int index = -1;
+    if (fit) {
+        index = 0;
+    } else if (percent > 0.0) {
+        const long rounded = std::lround(percent);
+        for (int i = 1; i < box->GetItemCount(); ++i)
+            if (std::lround(std::atof(box->GetItem(i)->text.c_str())) == rounded) index = i;
+    }
+    box->SetSelectedIndex(index, false);
+    char text[32] = "";
+    if (index < 0 && percent > 0.0) snprintf(text, sizeof(text), "%.0f%%", percent);
+    box->SetPlaceholderText(text);
+}
+
 void UltraCanvasMediaViewer::UpdateInfoBar() {
+    UpdateZoomBox();
     if (!infoLabel) return;
     if (playlist.empty()) {
         infoLabel->SetText("No media");
