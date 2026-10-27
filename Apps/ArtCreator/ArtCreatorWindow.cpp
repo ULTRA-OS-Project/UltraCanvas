@@ -584,7 +584,10 @@ void ArtCreatorWindow::BuildToolbar() {
     auto qualityCaption = toolbar->AddLabel("ac-tb-quality-caption", "Quality");
     qualityCaption->SetFontSize(11);
     qualityCaption->SetElementSize(Size2Df(48, 24));
-    qualitySlider = CreateHorizontalSlider("ac-tb-quality", 0, 0, 90, 24, 0, 2);
+    // As tall as its handle: a horizontal slider draws its bar at the foot
+    // of its box (the room above is for a value it does not show here), so
+    // only a box no taller than the bar lets the toolbar centre it.
+    qualitySlider = CreateHorizontalSlider("ac-tb-quality", 0, 0, 90, 16, 0, 2);
     qualitySlider->SetStep(1);
     qualitySlider->SetValue(static_cast<float>(VectorDisplayQuality::Normal));
     qualitySlider->SetValueDisplay(SliderValueDisplay::NoDisplay);
