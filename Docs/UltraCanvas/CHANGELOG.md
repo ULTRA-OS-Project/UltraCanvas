@@ -1,3 +1,13 @@
+#### 2026-10-27 *0.9.418*
+- **A Telegram sign-in code can be asked for another way.**
+  `UltraIMProviderInfo::authResendHint` names the other way the service
+  offers ("Send it by SMS instead") and `UltraIM_ResendAuthCode` asks for it
+  (TDLib's `resendAuthenticationCode`); the Telegram provider's hint now says
+  where the code went - as a message to the Telegram apps the number is
+  signed in on, by SMS, in a call - and how many digits it has. A step's
+  `NeedsInput` answer now precedes its `AuthStepChange`, so a sign-in made
+  in answer to the event is no longer resolved by the step that raised it.
+
 #### 2026-10-27 *0.9.417*
 - **A slider that shows no value centres its bar across its box.** The bar
   was always drawn at the foot of a horizontal slider's box (the left of a
