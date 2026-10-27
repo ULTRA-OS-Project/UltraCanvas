@@ -11,6 +11,9 @@
 // display-name row above the servers, and - for a password account - a
 // password row, or - for an OAuth account - a "Sign in again" button - and a
 // Signature row whose "Edit signature…" button opens the signature editor.
+// Version: 0.7.0 - askPassword / initialPassword / keepExisting: an editable
+//                  password field on the setup and server-re-entry pages, so a
+//                  failed sign-in can be fixed in place
 // Version: 0.6.1 - a password account switched between IMAP and JMAP must
 //                  enter its password again (AccountFields::signedInWithOAuth
 //                  exempts an OAuth2 account)
@@ -41,6 +44,16 @@ public:
         bool        edit = false;          // show the display-name + credential controls
         std::string displayName;           // prefill for the name field
         bool        acceptsPassword = true;// show the password field
+        // Show the password row on a page that is NOT the full `edit` settings
+        // page - the add-account setup and the "servers unknown, re-enter them"
+        // re-entry - so a wrong password can be fixed in place instead of
+        // leaving the user stuck on a failed sign-in. `initialPassword` prefills
+        // it (the password just typed in the add-account wizard); `keepExisting`
+        // picks the "leave blank to keep the current password" wording for an
+        // account that already has one stored (re-entry), rather than "Password".
+        bool        askPassword = false;
+        std::string initialPassword;
+        bool        keepExisting = false;
         bool        canOAuth = false;      // show the "Sign in with <provider>" button
         std::string providerName;          // OAuth button label, e.g. "Google"
         // The account signs in with stored OAuth2 tokens, not its password:
