@@ -76,6 +76,8 @@ class App:
     name: str
     pricing: Pricing
     restricted_files: list[str] = field(default_factory=list)   # restricted/<sha256>.<format>, from the package URLs
+    updates: str = "always"              # what a purchase includes: always, never (the bought version only), until
+    updates_until: str = ""              # the day, for "until"
 
 
 @dataclass
@@ -123,7 +125,12 @@ def parse_catalog(text: bytes) -> Catalog:
                 url = p.get("url", "")
                 if "/restricted/" in url:
                     files.append(url[url.index("/restricted/") + 1:])
-        apps[a["id"]] = App(id=a["id"], name=a.get("name", a["id"]), pricing=pricing, restricted_files=files)
+        up = a.get("updates") or {}
+        period = up.get("period", "always")
+        if period not in ("always", "never", "until"):
+            period = "always"
+        apps[a["id"]] = App(id=a["id"], name=a.get("name", a["id"]), pricing=pricing, restricted_files=files,
+                            updates=period, updates_until=str(up.get("until", "")) if period == "until" else "")
     codes: dict[str, Code] = {}
     for c in root.get("codes", []):
         code = Code(code=normalize_code(c["code"]), kind=c.get("kind", "discount"), discount_percent=int(c.get("discount_percent", 0) or 0),

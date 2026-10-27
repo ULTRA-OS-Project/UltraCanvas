@@ -203,6 +203,35 @@ the order, the day and what the purchase includes, signed Ed25519 with the
 service's licence key, whose public half is `GET /v1/keys`; an app
 verifies it offline. **The receipt** is numbered per paid order.
 
+**What the purchase includes** is the app's update period as the catalog
+had it when the order was paid (`updates` in the payload: `always`,
+`never` for the bought version only, `until` with `updates_until`). The
+store holds to it: an update to a release dated after the purchase's
+terms is refused by the engine ("not in your purchase"), the card and the
+Updates page show *Buy update* instead of *Update*, and *Update all*
+counts it as "to buy anew"; the new purchase replaces the licence, with
+the terms the catalog has then. The details page's *Bought* badge names
+the terms.
+
+**The licence reaches the app** as a file, `<root>/apps/<id>/licence.ulic`
+(the token, one line), written when the app is installed and when it is
+bought while its trial is installed, removed with the app's folder. The
+app finds it from its own executable and checks it with the licence key it
+compiles in (`Purchase.h`):
+
+```cpp
+#include "Purchase.h"   // Apps/UltraStore/core
+const std::string file = UltraStore::FindLicenceFile(UltraCanvas::PathToUtf8(executable));
+const auto licence = UltraStore::ReadLicenceFile(file, kLicenceKeyHex);
+const bool unlocked = licence && licence.Value().app == "org.example.app";
+```
+
+`FindLicenceFile` looks in the executable's folder and up to three above
+it (the version folder, then `apps/<id>/`); `ReadLicenceFile` fails
+`NotFound` without a file and `SignatureInvalid` for a token another key
+signed. `ultrastore licence <app-id> [--key <hex>]` shows one purchase and,
+with the key, verifies the file the way the app does.
+
 **The catalog names the service**: `payment_url` (the service's base,
 `https://store.example`) and `licence_key` (the public half of its licence
 key, hex) at the top level, from the admin backend's `payment.url` and
@@ -216,7 +245,11 @@ is installed), the licence verified against `licence_key` and kept in the
 registry (`licences` in `registry.sqlite`: the app, the licence, the
 order and its secret, the amount, the receipt number), and the app's
 restricted package fetched through the signed URL whenever it is
-installed or updated. A bought app shows a *Bought* badge, *Install*
+installed or updated. The order is remembered in the settings until it is
+over: a store closed during the payment asks the service about it at the
+next start (within two days) and, if it is paid meanwhile, keeps the
+licence; if it is still open, the browser opens on the checkout again and
+the wait resumes. A bought app shows a *Bought* badge, *Install*
 instead of *Buy*, and on its details page the receipt number, the day and
 a *Receipt* button that opens the receipt in the browser.
 `ultrastore buy <catalog.json> <app-id> [--code <CODE>]` does the same from
@@ -551,6 +584,7 @@ ultrastore installed [--root <dir>]
 ultrastore gc [--root <dir>]
 ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]   through the payment service
 ultrastore licences [--root <dir>]                        the apps bought here
+ultrastore licence <app-id> [--root <dir>] [--key <hex>]    one purchase's terms; with the key, the licence file verified
 ultrastore code [<CODE> | clear] [--cache <dir>]          the code in force
 ultrastore --version | --help
 ```
@@ -600,5 +634,8 @@ program, `ultrastore sha256` it, write a catalog.json with
    in the registry and on the details page, the restricted package through
    the signed URL, `ultrastore buy` and `licences`; the admin's `sale
    sync`; the catalog naming the service (`payment_url`, `licence_key`).
-   Next: a run against the Skrill sandbox once the credentials are in the
-   environment.
+   After the purchase: the update period in the licence and held to by the
+   store (*Buy update*), the licence file for the app (`FindLicenceFile`,
+   `ReadLicenceFile`, `ultrastore licence`), the open order resumed at
+   the next start. Next: a run against the Skrill sandbox once the
+   credentials are in the environment.

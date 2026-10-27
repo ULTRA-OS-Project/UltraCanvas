@@ -62,14 +62,44 @@ std::string RestrictedFileOf(const std::string& packageUrl);
 std::function<std::string(const Package&, const Component&)>
 LicensedUrlSigner(SqliteRegistry& registry, std::string paymentUrl, HttpCall http = UltraNetHttpCall());
 
-// What a licence says, once its signature checked out.
+// What a licence says, once its signature checked out: who bought what,
+// and what the purchase includes - `updates` is "always", "never" (the
+// bought version only) or "until" a day (`updatesUntil`), the catalog's
+// update period when the order was paid.
 struct Licence {
     std::string licenceId, app, orderId, issued, updates, updatesUntil;
+    // Whether a release dated so is in the purchase: always; never - no
+    // later than the day the licence was issued; until - no later than
+    // that day. An undated release is in.
+    bool Covers(const std::string& releaseDate) const;
+    // "updates included", "the bought version only (2026-10-27)", "updates until 2027-12-31"
+    std::string UpdateTerms() const;
 };
 // "ULIC1.<base64url payload>.<base64url signature>" against the hex Ed25519
 // key the catalog names (licence_key); SignatureInvalid when it is not that
 // key's, ParseError when it is not a licence at all.
 Result<Licence> VerifyLicence(const std::string& token, const std::string& publicKeyHex);
+// The payload alone, unverified: for what the store already verified when
+// it kept the token (the registry's record).
+Result<Licence> ParseLicence(const std::string& token);
+
+// ----- the licence file -----
+// The app gets its licence as a file beside its versions, <root>/apps/<id>/
+// licence.ulic, written when the app is installed or bought and removed with
+// the app. An app finds it from its own executable (FindLicenceFile walks
+// up from the executable's folder) and verifies it with the licence key it
+// compiles in:
+//   const std::string file = FindLicenceFile(PathToUtf8(executable));
+//   const auto licence = ReadLicenceFile(file, kLicenceKeyHex);
+//   if (licence && licence.Value().app == "org.example.app") ...unlocked...
+constexpr const char* kLicenceFileName = "licence.ulic";
+std::string LicenceFilePath(const std::string& storeRootUtf8, const std::string& appId);
+Result<void> WriteLicenceFile(const std::string& path, const std::string& token);
+// The nearest licence.ulic in the folder of the path given or up to three
+// folders above it, or "".
+std::string FindLicenceFile(const std::string& pathUtf8);
+// The file's token verified against the key: NotFound when there is no file.
+Result<Licence> ReadLicenceFile(const std::string& pathUtf8, const std::string& publicKeyHex);
 
 // The record the registry keeps of a paid order.
 LicenceRecord LicenceRecordOf(const Order& order, const Licence& licence);

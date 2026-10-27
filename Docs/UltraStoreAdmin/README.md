@@ -186,6 +186,9 @@ Hello.
   left out with a warning; a release left without a package, and a
   component left without a release, likewise. An app without a summary, a
   publisher the database does not know, a missing picture: warnings.
+- A restricted package on an app with a trial is warned about: *Try*
+  installs the same package and fails without a licence, so an app with a
+  trial keeps its package public.
 - The signature verifies with the key's public half; a retired key does not
   sign; a wrong passphrase stops before anything is written.
 - The codes in the catalog are the enabled ones whose partner, when they

@@ -1,9 +1,12 @@
 // Apps/UltraStore/core/StoreEngine.cpp
 // Install, update, remove, collect (StoreEngine.h).
+// Version: 0.3.0 - the update terms of a purchase, the licence file
 // Version: 0.2.0 - the URL signer for restricted packages
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreEngine.h"
+
+#include "Purchase.h"
 
 #include "UltraCanvasPathUtf8.h"
 
@@ -93,7 +96,23 @@ Result<InstallOutcome> StoreEngine::Run(const Catalog& catalog, const Component&
         fs::remove(PathFromUtf8(file.Value()), ec);   // unpacked: the download has done its work
         outcome.installed.push_back(step.component->id + " " + step.release->version);
     }
+    // A bought app gets its licence beside its versions; a failure to write
+    // it is not a failed install (the registry still has the licence).
+    if (registry_.GetLicence(app.id)) WriteLicenceFile(app.id);
     return R::Succeed(std::move(outcome));
+}
+
+bool StoreEngine::PurchaseCovers(std::string_view appId, const Release& release) const {
+    const auto licence = registry_.GetLicence(appId);
+    if (!licence) return true;
+    const auto terms = ParseLicence(licence.Value().token);
+    return !terms || terms.Value().Covers(release.date);
+}
+
+Result<void> StoreEngine::WriteLicenceFile(std::string_view appId) {
+    const auto licence = registry_.GetLicence(appId);
+    if (!licence) return Result<void>::Failure(licence.error.code, licence.error.message, licence.error.detail);
+    return UltraStore::WriteLicenceFile(LicenceFilePath(root_, std::string(appId)), licence.Value().token);
 }
 
 Result<InstallOutcome> StoreEngine::Install(const Catalog& catalog, std::string_view appId, const PlatformInfo& platform,
@@ -120,6 +139,12 @@ Result<InstallOutcome> StoreEngine::Update(const Catalog& catalog, std::string_v
     const Resolution res = PackageResolver::Resolve(*app, platform, useChannel);
     if (!res.Available()) {
         return R::Failure(ErrorCode::NotAvailable, app->name + " has no release for your system any more");
+    }
+    if (!PurchaseCovers(appId, *res.release)) {
+        const auto licence = registry_.GetLicence(appId);
+        const auto terms = licence ? ParseLicence(licence.Value().token) : Result<Licence>::Failure(ErrorCode::NotFound, "");
+        return R::Failure(ErrorCode::NotAvailable, app->name + " " + res.release->version + " is not in your purchase: buy the update to install it",
+                          terms ? terms.Value().UpdateTerms() : std::string());
     }
     if (!VersionLess(current.Value().version, res.release->version)) {
         // Up to date. The plan for the installed release says so with every

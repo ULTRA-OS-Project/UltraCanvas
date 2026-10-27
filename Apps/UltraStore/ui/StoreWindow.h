@@ -30,6 +30,7 @@
 //
 // Pictures (icons, screenshots) come through AssetCache on a second thread
 // and are set on the cards when they arrive.
+// Version: 0.4.0 - the open order resumed, the update terms
 // Version: 0.3.0 - Buy through the payment service; the licences
 // Version: 0.2.0 - codes and ultrastore:// links
 // Version: 0.1.0
@@ -166,6 +167,7 @@ private:
         std::string appId;
         std::string title;
         bool showInQueue = true;
+        bool resume = false;   // Buy: the settings' open order, not a new one
     };
     struct JobResult {
         bool ok = true;
@@ -230,6 +232,9 @@ private:
     std::vector<InstalledRecord> installed_;
     std::vector<LicenceRecord> licences_;      // the apps bought here
     const LicenceRecord* Bought(const std::string& appId) const;
+    // The licence's terms for an app bought here, else an empty Licence.
+    Licence PurchaseOf(const std::string& appId) const;
+    bool resumedOrder_ = false;                // the settings' open order was looked at once
     bool localCatalog_ = false;
     bool autoExpanding_ = false;            // the panel opening for a job, not the user's fold
 

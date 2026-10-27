@@ -65,7 +65,10 @@ Requests and answers are JSON unless said; errors are
 
 `ULIC1.<base64url payload>.<base64url signature>`: the payload names the
 licence, the app, the order, the day it was issued and what the purchase
-includes (`updates`); the signature is Ed25519 over the payload bytes with
+includes (`updates`: the app's update period as the catalog has it when
+the order is paid - `always`, `never` for the bought version only, or
+`until` with `updates_until`; the store holds to it on updates); the
+signature is Ed25519 over the payload bytes with
 the service's licence key (`ULTRASTORE_PAY_LICENCE_SEED`, or one made on
 the first start and kept in the database). The public half is
 `GET /v1/keys`; an app verifies a licence offline with it.

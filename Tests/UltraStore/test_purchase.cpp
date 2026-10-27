@@ -5,6 +5,7 @@
 // another key), the signed download URL, the restricted file of a package,
 // the registry's licences, the engine refusing a restricted package without
 // a signer and fetching it through one.
+// Version: 0.2.0 - the terms, the licence file
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
@@ -15,6 +16,8 @@
 #include "Registry.h"
 #include "StoreEngine.h"
 #include "Verifier.h"
+
+#include "UltraCanvasPathUtf8.h"
 
 #include "DataFormats/UltraCanvasJSON.h"
 
@@ -41,8 +44,10 @@ std::string B64Url(const std::string& bytes) {
     return out;
 }
 
-std::string MakeLicence(const std::vector<uint8_t>& seed, const std::string& app, const std::string& order) {
-    const std::string payload = R"({"app":")" + app + R"(","issued":"2026-10-27","licence":"lic-1","order":")" + order + R"(","updates":"per-catalog","v":1})";
+std::string MakeLicence(const std::vector<uint8_t>& seed, const std::string& app, const std::string& order,
+                        const std::string& updates = "always", const std::string& until = "") {
+    const std::string payload = R"({"app":")" + app + R"(","issued":"2026-10-27","licence":"lic-1","order":")" + order +
+                                R"(","updates":")" + updates + (until.empty() ? "" : R"(","updates_until":")" + until) + R"(","v":1})";
     const auto sig = SignCatalog(payload, seed);
     return "ULIC1." + B64Url(payload) + "." + B64Url(std::string(sig.Value().begin(), sig.Value().end()));
 }
@@ -167,4 +172,63 @@ TEST(the_registry_keeps_one_licence_per_app) {
     REQUIRE(registry.Licences());
     std::error_code ec;
     std::filesystem::remove_all(dir, ec);
+}
+
+TEST(what_the_purchase_includes_decides_which_releases_are_covered) {
+    Licence always;
+    always.updates = "always";
+    REQUIRE(always.Covers("2099-01-01"));
+    REQUIRE_EQ(always.UpdateTerms(), std::string("updates included"));
+    Licence never;
+    never.updates = "never";
+    never.issued = "2026-10-27";
+    REQUIRE(never.Covers("2026-10-27"));
+    REQUIRE(never.Covers(""));             // an undated release is in
+    REQUIRE(!never.Covers("2026-10-28"));
+    REQUIRE_EQ(never.UpdateTerms(), std::string("the bought version only (2026-10-27)"));
+    Licence until;
+    until.updates = "until";
+    until.updatesUntil = "2027-12-31";
+    REQUIRE(until.Covers("2027-12-31"));
+    REQUIRE(!until.Covers("2028-01-01"));
+    REQUIRE_EQ(until.UpdateTerms(), std::string("updates until 2027-12-31"));
+    Licence unknown;
+    unknown.updates = "something-newer";
+    REQUIRE(unknown.Covers("2099-01-01"));   // not this store's place to refuse
+    // The payload parsed without a key carries the same.
+    std::vector<uint8_t> seed, pk;
+    REQUIRE(GenerateSigningKey(seed, pk));
+    const std::string keyHex = ToHex(pk);
+    const auto parsed = ParseLicence(MakeLicence(seed, "org.x.app", "o-1", "until", "2027-12-31"));
+    REQUIRE(parsed);
+    REQUIRE_EQ(parsed.Value().updates, std::string("until"));
+    REQUIRE_EQ(parsed.Value().updatesUntil, std::string("2027-12-31"));
+    REQUIRE(!ParseLicence("not a licence"));
+}
+
+TEST(the_licence_file_is_found_from_the_app_and_verified_with_the_key) {
+    std::vector<uint8_t> seed, pk;
+    REQUIRE(GenerateSigningKey(seed, pk));
+    const std::string keyHex = ToHex(pk);
+    const std::string root = TempRoot("licence-file");
+    const std::string token = MakeLicence(seed, "org.x.app", "o-1", "never");
+    const std::string file = LicenceFilePath(root, "org.x.app");
+    REQUIRE(file.find("org.x.app") != std::string::npos && file.size() > std::string(kLicenceFileName).size() &&
+            file.compare(file.size() - std::string(kLicenceFileName).size(), std::string::npos, kLicenceFileName) == 0);
+    REQUIRE(WriteLicenceFile(file, token));
+    // The app's executable sits in apps/<id>/<version>/bin/: three folders below the file.
+    const std::string exe = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(root) / "apps" / "org.x.app" / "1.0" / "bin" / "app");
+    std::error_code ec;
+    std::filesystem::create_directories(UltraCanvas::PathFromUtf8(exe).parent_path(), ec);
+    REQUIRE_EQ(FindLicenceFile(exe), file);
+    REQUIRE_EQ(FindLicenceFile(root), std::string());   // nothing above apps/
+    const auto read = ReadLicenceFile(FindLicenceFile(exe), keyHex);
+    REQUIRE(read);
+    REQUIRE_EQ(read.Value().app, std::string("org.x.app"));
+    REQUIRE_EQ(read.Value().updates, std::string("never"));
+    std::vector<uint8_t> otherSeed, otherPk;
+    REQUIRE(GenerateSigningKey(otherSeed, otherPk));
+    REQUIRE(!ReadLicenceFile(file, ToHex(otherPk)));
+    REQUIRE(ReadLicenceFile("", keyHex).error.code == ErrorCode::NotFound);
+    std::filesystem::remove_all(UltraCanvas::PathFromUtf8(root), ec);
 }

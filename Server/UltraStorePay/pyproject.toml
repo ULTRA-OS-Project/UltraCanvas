@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ultrastore-pay"
-version = "0.1.0"
+version = "0.2.0"
 description = "The UltraStore payment service: a Skrill Quick Checkout session per purchase, the status report verified, the code redeemed, the licence and the receipt issued, the sales handed to the admin backend"
 readme = "README.md"
 requires-python = ">=3.11"
