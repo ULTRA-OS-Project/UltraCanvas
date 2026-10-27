@@ -1,5 +1,6 @@
 // Tests/UltraMail/test_messagefilter.cpp
 // "Show emails ▸" filters of the message list.
+// Version: 0.2.0 - the account bar's counters: New today, Unread before today
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -93,4 +94,29 @@ TEST(filter_social_media_without_the_registry) {
     // Ordinary mail stays out.
     REQUIRE(!FilterMatches(social, Mail("anna@example.com", "Lunch tomorrow?"), none));
     REQUIRE(!LooksLikeSocialMedia("", ""));
+}
+
+TEST(filter_by_the_account_bar_counters) {
+    // New today and Unread before today split the unread mail at midnight,
+    // as the account bar counts them; read mail is in neither.
+    const MessageEnvelope m = Mail("a@x.example", "hello");
+    const MessageFilter today{MessageFilterKind::NewToday, ""};
+    const MessageFilter older{MessageFilterKind::UnreadOlder, ""};
+    MessageFacts f;
+    f.unread = true;
+    f.today = true;
+    REQUIRE(FilterMatches(today, m, f));
+    REQUIRE(!FilterMatches(older, m, f));
+    f.today = false;
+    REQUIRE(!FilterMatches(today, m, f));
+    REQUIRE(FilterMatches(older, m, f));
+    f.unread = false;
+    REQUIRE(!FilterMatches(today, m, f));
+    REQUIRE(!FilterMatches(older, m, f));
+    f.today = true;
+    REQUIRE(!FilterMatches(today, m, f));
+    REQUIRE_EQ(Describe(today), std::string("New today"));
+    REQUIRE_EQ(Describe(older), std::string("Unread before today"));
+    REQUIRE((today == MessageFilter{MessageFilterKind::NewToday, ""}));
+    REQUIRE(!(today == older));
 }

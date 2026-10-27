@@ -1,4 +1,9 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
+// Version: 0.7.0 - the counters are click targets of their own that filter the
+//                  list (onFilterAccount), the active one framed in its colour;
+//                  the rest of a card shows all mail (onSelectAccount, the
+//                  summary card too); the filter's card in a second row under
+//                  the account's, with "Show all emails" (ShowFilter, onShowAll)
 // Version: 0.6.0 - the tiles sit in a toolbar that lets them be dragged into
 //                  another order (onReorderAccounts)
 // Version: 0.5.0 - a click anywhere on a tile selects its account (its text
@@ -18,7 +23,9 @@
 
 #include "UltraMailDiscovery.h"   // EmailLocalPart / EmailDomain
 
+#include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <string>
 
 using namespace UltraCanvas;
@@ -33,26 +40,31 @@ constexpr float kPillHeight   = 20.0f;
 constexpr float kTilePill     = 18.0f;
 constexpr float kCountSize    = 11.0f;
 
-// A tinted "count · caption" pill. With an empty caption it is a compact
-// count-only pill (the tiles, whose tooltip names each counter).
-std::shared_ptr<UltraCanvasContainer> MakePill(const std::string& id, int count,
-                                               const std::string& caption,
-                                               const Color& tint, const Color& text,
-                                               float height) {
-    auto pill = CreateContainer(id, 0, 0, 0, height);
-    pill->SetBackgroundColor(tint);
-    pill->SetBorders(0.0f, Colors::Transparent, height * 0.5f);
-    pill->SetPadding(0, 12);
-    pill->layout.SetFlexRow()
-                .SetFlexGap(6)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    auto number = Theme::MakeText(id + ".n", std::to_string(count), kCountSize, text,
-                                  FontWeight::Bold);
-    pill->AddChild(number);
-    if (!caption.empty())
-        pill->AddChild(Theme::MakeText(id + ".c", caption, Theme::kSizeSecondary, text));
-    return pill;
+// A counter's colours, by the filter it applies.
+const Color& CounterTint(MessageFilterKind kind) {
+    return kind == MessageFilterKind::NewToday    ? Theme::kNewTodayTint
+         : kind == MessageFilterKind::UnreadOlder ? Theme::kUnreadTint
+                                                  : Theme::kWaitingTint;
 }
+const Color& CounterText(MessageFilterKind kind) {
+    return kind == MessageFilterKind::NewToday    ? Theme::kNewTodayText
+         : kind == MessageFilterKind::UnreadOlder ? Theme::kUnreadText
+                                                  : Theme::kWaitingText;
+}
+
+// The second row. Where the account's card sits is known only once the bar
+// is laid out (the tiles are as wide as their content, and can be dragged
+// into another order), so before each paint the row measures it and moves
+// the filter card under it - a layout more when it moved, none otherwise.
+class AlignedRow : public UltraCanvasContainer {
+public:
+    using UltraCanvasContainer::UltraCanvasContainer;
+    std::function<void()> beforeRender;
+    void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override {
+        if (beforeRender) beforeRender();
+        UltraCanvasContainer::Render(ctx, dirtyRect);
+    }
+};
 
 std::shared_ptr<UltraCanvasLabel> MakeName(const std::string& id, const std::string& email,
                                            float size) {
@@ -73,11 +85,166 @@ std::string ProviderLetter(const std::string& email) {
 }
 
 std::shared_ptr<UltraCanvasContainer> AccountBar::Build() {
+    // A column: the account cards, and under them - while the list is
+    // filtered - the filter's card.
     root_ = CreateContainer("accountBar", 0, 0, 0, 0);
-    root_->layout.SetFlexRow()
+    root_->layout.SetFlexColumn()
                  .SetFlexGap(Theme::kGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    cardRow_ = CreateContainer("accountCards", 0, 0, 0, 0);
+    cardRow_->layout.SetFlexRow()
+                    .SetFlexGap(Theme::kGap)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    root_->AddChild(cardRow_);
+    cardRow_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    BuildFilterRow();
     return root_;
+}
+
+void AccountBar::BuildFilterRow() {
+    auto row = std::make_shared<AlignedRow>("acctFilterRow", 0, 0, 0, 0);
+    row->beforeRender = [this]() {
+        if (!filterRow_ || !filterRow_->IsVisible() || !filterSpacer_) return;
+        const float want = std::max(0.0f, CardOffset(filterAccountId_));
+        if (std::fabs(want - filterOffset_) < 0.5f) return;
+        filterOffset_ = want;
+        CSSLayout::BoxConstraints width;
+        width.minWidth = width.maxWidth = CSSLayout::Dimension::Px(want);
+        filterSpacer_->boxConstraints = width;
+        filterSpacer_->InvalidateLayout();
+        filterRow_->InvalidateLayout();
+        root_->InvalidateLayout();
+    };
+    filterRow_ = row;
+    filterRow_->layout.SetFlexRow()
+                      .SetFlexGap(0)
+                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    filterSpacer_ = CreateContainer("acctFilterSpacer", 0, 0, 0, 0);
+    filterSpacer_->SetInteractive(false);
+    filterSpacer_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    filterRow_->AddChild(filterSpacer_);
+
+    // The card: the look of an account tile, with what the list is showing
+    // and the way back to all of it.
+    filterCard_ = CreateContainer("acctFilterCard", 0, 0, 0, 0);
+    CSSLayout::BoxConstraints limits;
+    limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
+    filterCard_->boxConstraints = limits;
+    filterCard_->SetBackgroundColor(Theme::kCardBackground);
+    filterCard_->SetBorders(1.0f, Theme::kCardBorder, Theme::kCardRadius);
+    filterCard_->SetPadding(10, 14);
+    filterCard_->layout.SetFlexRow()
+                       .SetFlexGap(14)
+                       .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto what = CreateContainer("acctFilterWhat", 0, 0, 0, 0);
+    what->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    filterTitle_ = Theme::MakeText("acctFilterTitle", "", Theme::kSizeBody, Theme::kTextPrimary,
+                                   FontWeight::Bold);
+    filterAccount_ = Theme::MakeText("acctFilterAccount", "", Theme::kSizeSmall,
+                                     Theme::kTextSecondary);
+    what->AddChild(filterTitle_);
+    what->AddChild(filterAccount_);
+    filterCard_->AddChild(what);
+    showAll_ = CreateButton("acctFilterShowAll", 0, 0, 120, Theme::kControlHeight,
+                            "Show all emails");
+    Theme::FitToLabel(showAll_, 120);
+    Theme::StyleSecondary(showAll_);
+    showAll_->SetTooltip("Take the filter away and show every message of the folder");
+    showAll_->onClick = [this]() { if (onShowAll) onShowAll(); };
+    showAll_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    filterCard_->AddChild(showAll_);
+    filterRow_->AddChild(filterCard_);
+    filterCard_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+
+    root_->AddChild(filterRow_);
+    filterRow_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    filterRow_->SetVisible(false);
+}
+
+float AccountBar::CardOffset(const std::string& accountId) const {
+    if (!filterRow_) return 0.0f;
+    std::shared_ptr<UltraCanvasContainer> card;
+    if (const auto it = tiles_.find(accountId); it != tiles_.end()) card = it->second;
+    else card = summary_;
+    if (!card) return 0.0f;
+    return card->GetBoundsInWindow().x - filterRow_->GetBoundsInWindow().x;
+}
+
+std::shared_ptr<UltraCanvasContainer> AccountBar::Counter(const std::string& accountId,
+                                                          MessageFilterKind kind) const {
+    const auto it = counters_.find({accountId, kind});
+    return it == counters_.end() ? nullptr : it->second;
+}
+
+std::shared_ptr<UltraCanvasContainer> AccountBar::MakeCounter(const std::string& accountId,
+                                                              MessageFilterKind kind, int count,
+                                                              const std::string& caption,
+                                                              float height) {
+    const std::string acc = accountId;
+    const char* id = kind == MessageFilterKind::NewToday    ? "acctPill_today_"
+                   : kind == MessageFilterKind::UnreadOlder ? "acctPill_older_"
+                                                            : "acctPill_waiting_";
+    // A click target of its own on the card: it filters, the card around it
+    // shows everything. Its number and caption take no pointer.
+    auto pill = std::make_shared<Theme::ClickSurface>(id + acc, [this, acc, kind]() {
+        const std::string account = acc;   // a copy: see the tiles' handler
+        if (onFilterAccount) onFilterAccount(account, kind);
+    });
+    pill->SetBackgroundColor(CounterTint(kind));
+    pill->SetBorders(0.0f, Colors::Transparent, height * 0.5f);
+    pill->SetPadding(0, 12);
+    pill->layout.SetFlexRow()
+                .SetFlexGap(6)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    CSSLayout::BoxConstraints tall;
+    tall.minHeight = tall.maxHeight = CSSLayout::Dimension::Px(height);
+    pill->boxConstraints = tall;
+    pill->AddChild(Theme::MakeText(id + acc + ".n", std::to_string(count), kCountSize,
+                                   CounterText(kind), FontWeight::Bold));
+    if (!caption.empty())
+        pill->AddChild(Theme::MakeText(id + acc + ".c", caption, Theme::kSizeSecondary,
+                                       CounterText(kind)));
+    pill->PassPointerThroughContent();
+    const std::string what = kind == MessageFilterKind::NewToday ? "unread messages from today"
+                           : kind == MessageFilterKind::UnreadOlder
+                               ? "unread messages from before today"
+                               : "messages waiting for your reply";
+    pill->SetTooltip(std::to_string(count) + " " + what + " - click to show only these");
+    counters_[{acc, kind}] = pill;
+    return pill;
+}
+
+void AccountBar::MarkActiveCounter() {
+    for (const auto& [key, pill] : counters_) {
+        const bool active = filter_.Active() && key.first == filterAccountId_ &&
+                            key.second == filter_.kind;
+        const float radius = pill->GetHeight() > 0 ? pill->GetHeight() * 0.5f : kTilePill * 0.5f;
+        pill->SetBorders(active ? 1.5f : 0.0f,
+                         active ? CounterText(key.second) : Colors::Transparent, radius);
+        pill->RequestRedraw();
+    }
+}
+
+void AccountBar::ShowFilter(const std::string& accountId, const MessageFilter& filter) {
+    filter_ = filter;
+    filterAccountId_ = accountId;
+    const Account* account = nullptr;
+    for (const auto& a : accounts_) if (a.accountId == accountId) account = &a;
+    const bool show = filter.Active() && account != nullptr;
+    MarkActiveCounter();
+    if (!filterRow_) return;
+    if (show) {
+        filterTitle_->SetText("Showing: " + Describe(filter));
+        filterAccount_->SetText(account->email);
+        filterOffset_ = -1.0f;   // measured again before the next paint
+    }
+    if (filterRow_->IsVisible() != show) {
+        filterRow_->SetVisible(show);
+        root_->InvalidateLayout();
+    }
+    filterRow_->RequestRedraw();
 }
 
 const AccountStatus& AccountBar::StatusFor(const std::vector<AccountStatus>& status,
@@ -92,21 +259,31 @@ void AccountBar::Rebuild(const std::vector<Account>& accounts,
                          const std::vector<AccountStatus>& status,
                          const std::string& selectedAccountId) {
     if (!root_) Build();
-    root_->ClearChildren();
+    cardRow_->ClearChildren();
     tiles_.clear();
+    counters_.clear();
     tileRow_.reset();
-    if (accounts.empty()) return;
-    if (accounts.size() == 1)
-        BuildSummary(accounts.front(), StatusFor(status, accounts.front().accountId));
-    else
-        BuildTiles(accounts, status, selectedAccountId);
+    summary_.reset();
+    accounts_ = accounts;
+    if (!accounts.empty()) {
+        if (accounts.size() == 1)
+            BuildSummary(accounts.front(), StatusFor(status, accounts.front().accountId));
+        else
+            BuildTiles(accounts, status, selectedAccountId);
+    }
+    // The filter card stays, under the account's new card (or goes with it).
+    ShowFilter(filterAccountId_, filter_);
 }
 
 void AccountBar::BuildSummary(const Account& account, const AccountStatus& status) {
     const std::string& acc = account.accountId;
 
     // [avatar] name / address ............ [n New today] [n Unread] [n Waiting]
-    auto card = CreateContainer("acctSummary_" + acc, 0, 0, 0, 0);
+    // A click on the card but not on a counter: all of the account's mail.
+    auto card = std::make_shared<Theme::ClickSurface>("acctSummary_" + acc, [this, acc]() {
+        const std::string id = acc;
+        if (onSelectAccount) onSelectAccount(id);
+    });
     Theme::ApplyCard(card);
     card->SetPadding(10, 16);
     card->layout.SetFlexRow()
@@ -131,15 +308,20 @@ void AccountBar::BuildSummary(const Account& account, const AccountStatus& statu
 
     card->AddStretchSpacer(1);
 
-    card->AddChild(MakePill("acctPill_today_" + acc, status.unreadToday, "New today",
-                            Theme::kNewTodayTint, Theme::kNewTodayText, kPillHeight));
-    card->AddChild(MakePill("acctPill_older_" + acc, status.unreadOlder, "Unread",
-                            Theme::kUnreadTint, Theme::kUnreadText, kPillHeight));
-    card->AddChild(MakePill("acctPill_waiting_" + acc, status.needsAnswer, "Waiting for reply",
-                            Theme::kWaitingTint, Theme::kWaitingText, kPillHeight));
+    // The avatar and the name are the card's: one target with them.
+    avatar->SetInteractive(false);
+    who->SetInteractive(false);
 
-    root_->AddChild(card);
+    card->AddChild(MakeCounter(acc, MessageFilterKind::NewToday, status.unreadToday,
+                               "New today", kPillHeight));
+    card->AddChild(MakeCounter(acc, MessageFilterKind::UnreadOlder, status.unreadOlder,
+                               "Unread", kPillHeight));
+    card->AddChild(MakeCounter(acc, MessageFilterKind::NeedsAnswer, status.needsAnswer,
+                               "Waiting for reply", kPillHeight));
+
+    cardRow_->AddChild(card);
     card->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    summary_ = card;
 }
 
 void AccountBar::BuildTiles(const std::vector<Account>& accounts,
@@ -164,8 +346,9 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
             for (const auto& [acc, tile] : tiles_)
                 if (tile.get() == item.get()) order.push_back(acc);
         if (onReorderAccounts) onReorderAccounts(order);
+        if (filterRow_) filterRow_->RequestRedraw();   // its card follows the tile
     };
-    root_->AddChild(tileRow_);
+    cardRow_->AddChild(tileRow_);
     tileRow_->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -193,8 +376,9 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         tile->layout.SetFlexColumn()
                     .SetFlexGap(10)
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        // The whole tile is one target (see PassPointerThroughContent below),
-        // so its tooltip carries the address and what each counter counts.
+        // The tile is one target but for its counters, which filter (each
+        // with a tooltip of its own); its tooltip carries the address and
+        // what each counter counts.
         TooltipContent tip;
         tip.AddTitle(account.email);
         tip.AddRow(Theme::kNewTodayText, "New today", std::to_string(st.unreadToday));
@@ -217,22 +401,23 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         head->AddChild(who);
         tile->AddChild(head);
 
-        // Counters: compact pills, captions in the tile's tooltip.
+        // Counters: compact pills, each a filter; captions in the tooltips.
         auto counters = CreateContainer("acctCounters_" + acc, 0, 0, 0, 0);
         counters->layout.SetFlexRow()
                         .SetFlexGap(6)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        counters->AddChild(MakePill("acctPill_today_" + acc, st.unreadToday, "",
-                                    Theme::kNewTodayTint, Theme::kNewTodayText, kTilePill));
-        counters->AddChild(MakePill("acctPill_older_" + acc, st.unreadOlder, "",
-                                    Theme::kUnreadTint, Theme::kUnreadText, kTilePill));
-        counters->AddChild(MakePill("acctPill_waiting_" + acc, st.needsAnswer, "",
-                                    Theme::kWaitingTint, Theme::kWaitingText, kTilePill));
+        counters->AddChild(MakeCounter(acc, MessageFilterKind::NewToday, st.unreadToday, "",
+                                       kTilePill));
+        counters->AddChild(MakeCounter(acc, MessageFilterKind::UnreadOlder, st.unreadOlder, "",
+                                       kTilePill));
+        counters->AddChild(MakeCounter(acc, MessageFilterKind::NeedsAnswer, st.needsAnswer, "",
+                                       kTilePill));
         tile->AddChild(counters);
 
-        // A click or hover on the name, the avatar or a counter is the
-        // tile's: one target, with one tooltip that names the counters.
-        tile->PassPointerThroughContent();
+        // A click or hover on the name or the avatar is the tile's: one
+        // target, with one tooltip. (A press between two counters the row
+        // does not take reaches the tile too.)
+        head->SetInteractive(false);
 
         tileRow_->AddChild(tile);
         tiles_[acc] = tile;
