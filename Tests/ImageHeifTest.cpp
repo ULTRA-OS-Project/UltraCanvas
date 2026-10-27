@@ -67,11 +67,30 @@ std::vector<uint8_t> ReadBytes(const fs::path& path) {
     return std::vector<uint8_t>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
 }
 
-// An ISO BMFF file whose "ftyp" box names the brand: "heic" (or "heix",
-// "mif1") for HEIC, "avif" for AVIF.
-std::string Brand(const std::vector<uint8_t>& b) {
-    if (b.size() < 12 || b[4] != 'f' || b[5] != 't' || b[6] != 'y' || b[7] != 'p') return "";
-    return std::string(b.begin() + 8, b.begin() + 12);
+// The brands an ISO BMFF file's "ftyp" box names: its major brand and its
+// compatible ones. A HEIC is "heic", or "heix" for 4:4:4 or more than 8
+// bits (what libheif 1.23 writes for a lossless one), "heim" / "heis" for
+// multi-layer; an AVIF is "avif" (or "avis" for a sequence) - any of them
+// may be the major brand, with "mif1" beside it.
+std::vector<std::string> Brands(const std::vector<uint8_t>& b) {
+    std::vector<std::string> out;
+    if (b.size() < 16 || b[4] != 'f' || b[5] != 't' || b[6] != 'y' || b[7] != 'p') return out;
+    const size_t box = std::min<size_t>(b.size(), (size_t(b[0]) << 24) | (size_t(b[1]) << 16) |
+                                                          (size_t(b[2]) << 8) | size_t(b[3]));
+    out.emplace_back(b.begin() + 8, b.begin() + 12);   // major brand; 12..15 is its version
+    for (size_t at = 16; at + 4 <= box; at += 4) out.emplace_back(b.begin() + at, b.begin() + at + 4);
+    return out;
+}
+
+bool HasBrandOf(const std::vector<uint8_t>& bytes, const std::vector<std::string>& family) {
+    for (const std::string& brand : Brands(bytes))
+        if (std::find(family.begin(), family.end(), brand) != family.end()) return true;
+    return false;
+}
+
+std::string MajorBrand(const std::vector<uint8_t>& bytes) {
+    const auto brands = Brands(bytes);
+    return brands.empty() ? std::string("none") : brands.front();
 }
 
 // UC_HEIF_EXPECT: "decode=heic,avif encode=avif no-encode=heic".
@@ -113,11 +132,11 @@ int main() {
         const char* name;          // as UC_HEIF_EXPECT names it
         const char* extension;
         UCImageSaveFormat save;
-        const char* brand;         // the ftyp brand its files carry
+        std::vector<std::string> brands;   // ftyp brands its files may carry
     };
     const Format formats[] = {
-            {"heic", ".heic", UCImageSaveFormat::HEIF, "heic"},
-            {"avif", ".avif", UCImageSaveFormat::AVIF, "avif"},
+            {"heic", ".heic", UCImageSaveFormat::HEIF, {"heic", "heix", "heim", "heis"}},
+            {"avif", ".avif", UCImageSaveFormat::AVIF, {"avif", "avis"}},
     };
 
     if (!VipsCanLoad(".heic") && !VipsCanLoad(".avif")) {
@@ -240,14 +259,15 @@ int main() {
         options.avif.quality = options.heif.quality = 75;
         const fs::path lossy = dir / (std::string("lossy") + f.extension);
         std::string error = ExportVImage(picture, PathToUtf8(lossy), options);
-        Check(error.empty() && Brand(ReadBytes(lossy)) == f.brand,
-              name + ": the export encoder writes a lossy file, quality 75, brand " + Brand(ReadBytes(lossy)) +
+        Check(error.empty() && HasBrandOf(ReadBytes(lossy), f.brands),
+              name + ": the export encoder writes a lossy file, quality 75, brand " + MajorBrand(ReadBytes(lossy)) +
                       " " + error);
 
         options.avif.lossless = options.heif.lossless = true;
         const fs::path lossless = dir / (std::string("lossless") + f.extension);
         error = ExportVImage(picture, PathToUtf8(lossless), options);
-        Check(error.empty() && Brand(ReadBytes(lossless)) == f.brand, name + ": ... and a lossless one " + error);
+        Check(error.empty() && HasBrandOf(ReadBytes(lossless), f.brands),
+              name + ": ... and a lossless one, brand " + MajorBrand(ReadBytes(lossless)) + " " + error);
 
         auto source = UCImageRaster::Load(PathToUtf8(dir / "source.png"), false);
         UCImageSave::ImageExportOptions saveOptions;
@@ -255,7 +275,7 @@ int main() {
         saveOptions.avif.quality = saveOptions.heif.quality = 75;
         const fs::path saved = dir / (std::string("saved") + f.extension);
         error = source ? source->Save(PathToUtf8(saved), saveOptions) : "the PNG did not load";
-        Check(error.empty() && Brand(ReadBytes(saved)) == f.brand,
+        Check(error.empty() && HasBrandOf(ReadBytes(saved), f.brands),
               name + ": UCImageRaster::Save writes a loaded PNG as " + f.extension + " " + error);
 
         if (!decodes[name]) {
