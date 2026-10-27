@@ -479,7 +479,7 @@ void AdminWindow::RefreshKeysPage() {
             surface->AddChild(Theme::Text(id + ".name", std::to_string(k.id) + "  " + k.name + (k.Active() ? "" : "  (retired " + k.retiredAt + ")"), 13.0f, FontWeight::Bold));
             surface->AddChild(Theme::Caption(id + ".pk", "public " + k.publicKeyHex + "\ncreated " + k.createdAt));
             auto row = Theme::Row(id + ".row", Theme::kInnerGap, true);
-            auto exportButton = Theme::Button(id + ".export", "Export .pub…", 110);
+            auto exportButton = Theme::Button(id + ".export", "Export .pub", 110);
             const std::string hex = k.publicKeyHex, name = k.name;
             exportButton->onClick = [this, hex, name]() {
                 FileDialogOptions opts;
@@ -533,7 +533,7 @@ void AdminWindow::BuildPublishPage() {
     publishDir_->SetPlaceholder("/srv/store/v1");
     auto dirRow = Theme::Row("uaP.dirRow", Theme::kInnerGap);
     dirRow->AddChild(publishDir_);
-    auto pick = Theme::Button("uaP.pick", "Choose…", 90);
+    auto pick = Theme::Button("uaP.pick", "Choose", 90);
     pick->onClick = [this]() {
         FileDialogOptions opts;
         opts.SetTitle("The publish folder").SetParentWindow(window_.get());
@@ -579,7 +579,7 @@ void AdminWindow::BuildPublishPage() {
     uploadKeyFile_->SetPlaceholder("~/.ssh/id_ed25519 (SFTP with a key; the password is its passphrase then)");
     auto keyRow = Theme::Row("uaU.keyRow", Theme::kInnerGap);
     keyRow->AddChild(uploadKeyFile_);
-    auto pickKey = Theme::Button("uaU.pickKey", "Choose…", 90);
+    auto pickKey = Theme::Button("uaU.pickKey", "Choose", 90);
     pickKey->onClick = [this]() {
         FileDialogOptions opts;
         opts.SetTitle("The SSH private key").SetParentWindow(window_.get());
@@ -880,7 +880,7 @@ void AdminWindow::RefreshAffiliatesPage() {
                 for (int i = 0; i < aRecruitedBy_->GetItemCount(); ++i) if (aRecruitedBy_->GetItem(i)->value == a.recruitedBy) aRecruitedBy_->SetSelectedIndex(i, false);
             };
             head->AddChild(edit);
-            auto qr = Theme::Button(id + ".qr", "Join QR…", 90);
+            auto qr = Theme::Button(id + ".qr", "Join QR", 90);
             qr->SetTooltip("The QR code a future partner scans to join under this one: " + JoinLink(base, a.id));
             const std::string affId = a.id;
             qr->onClick = [this, affId, base]() {
@@ -935,7 +935,7 @@ void AdminWindow::RefreshAffiliatesPage() {
             label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
             row->AddChild(label);
             const std::string code = c.code.code;
-            auto qr = Theme::Button(id + ".qr", "QR…", 60);
+            auto qr = Theme::Button(id + ".qr", "QR", 60);
             qr->SetTooltip(CodeLink(base, code) + "  -  " + StoreLink(code));
             qr->onClick = [this, code, base]() {
                 if (base.empty()) { SetStatus("Set the catalog base URL first (Settings): the link needs it", true); return; }
