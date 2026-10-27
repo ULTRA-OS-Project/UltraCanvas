@@ -4,6 +4,8 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.19.0 - ShowInbox (an account's inbox under a filter: the account bar's
+//                  counters) and onFilterChanged
 // Version: 0.18.0 - SetAttachmentsRight (Settings > Reading > Attachments)
 // Version: 0.17.1 - CellTooltip: a list cell's tooltip only when it cut its text off
 // Version: 0.17.0 - the folder tree's right-click menu (onAddFolder,
@@ -115,6 +117,9 @@ public:
     // Show a specific folder of an account (a folder-tree click). Rebuilds the
     // list and raises onOpenFolder so the app can lazily fetch it.
     void ShowFolder(const std::string& accountId, const std::string& folder);
+    // Show an account's inbox narrowed by `filter` (kind All: all of it) - a
+    // click on a counter of the account bar. One rebuild of the list.
+    void ShowInbox(const std::string& accountId, MessageFilter filter);
     // Re-query the current account/folder (after a sync or a flag change).
     void Reload();
     // One message on screen as a click on its row would put it: its account
@@ -188,9 +193,14 @@ public:
     // account clears it.
     void SetFilter(MessageFilter filter);
     const MessageFilter& Filter() const { return filter_; }
+    // The filter changed - set from the menu or the account bar, or cleared
+    // by a switch of folder or account. The account bar shows it.
+    std::function<void(const std::string& accountId, const MessageFilter&)> onFilterChanged;
 
     // The folder currently shown (for Reload, which fetches it too).
     const std::string& CurrentFolder() const { return curFolder_; }
+    // The messages the list shows, in list order (after the filter).
+    const std::vector<MessageEnvelope>& ShownMessages() const { return messages_; }
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Container() const { return root_; }
 
@@ -374,6 +384,9 @@ private:
     // list rather than one per row.
     std::map<int64_t, MessageSecurity> security_;
     MessageFilter                filter_;
+    MessageFilter                reportedFilter_;   // the last onFilterChanged gave,
+    std::string                  reportedAccount_;  // and for which account
+    void ReportFilter();
     MessageSort                  sort_;
     // True while the list's selection is set by code (a rebuild, a re-sort):
     // the selection callback then neither shows the row nor marks it read -
@@ -386,7 +399,8 @@ private:
     std::string                  searchText_;
     bool SearchMatches(const MessageEnvelope& m) const;
     // What the filter needs to know about a message beyond its envelope.
-    MessageFacts FactsFor(const MessageEnvelope& m, const std::set<int64_t>& waitingUids) const;
+    MessageFacts FactsFor(const MessageEnvelope& m, const std::set<int64_t>& waitingUids,
+                          int64_t todayStart) const;
     // Drop the messages the filter does not keep (no-op without a filter).
     void ApplyFilter(std::vector<MessageEnvelope>& messages,
                      const std::set<int64_t>& waitingUids) const;
