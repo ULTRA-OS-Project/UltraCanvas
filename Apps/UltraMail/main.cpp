@@ -4,6 +4,7 @@
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop. One UltraMail per user: a second start brings the running one
 // forward and quits (UltraCanvasSingleInstance.h).
+// Version: 0.7.2 - the data folder made owner-only before anything is written to it
 // Version: 0.7.1 - the data folder is Application Support on macOS (UltraMailPaths.h),
 //                  and a folder left in ~/.local/share there is moved into place once
 // Version: 0.7.0 - one UltraMail per user: a second start brings the first
@@ -45,7 +46,7 @@ namespace {
 //
 // Worked out once: the first call also moves a folder an earlier version left
 // in ~/.local/share on macOS into place, whole, so the accounts and the vault
-// open as before.
+// open as before - and makes the folder owner-only (SecureDataDir).
 const std::string& UserDataDir() {
     static const std::string dir = [] {
         std::string resolved = UltraMail::DefaultDataDir();
@@ -60,6 +61,10 @@ const std::string& UserDataDir() {
             UltraMail::Trace::Line("Moved the mailbox, the settings and the credential vault from " +
                                    movedFrom + " to " + resolved);
         else if (!error.empty())
+            UltraMail::Trace::Line("Data folder: " + error);
+        // The user's alone before anything is written into it (the instance
+        // lock is the first).
+        if (!UltraMail::SecureDataDir(resolved, error))
             UltraMail::Trace::Line("Data folder: " + error);
         return resolved;
     }();
