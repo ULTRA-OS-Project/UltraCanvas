@@ -21,9 +21,9 @@ The brief's open questions, answered on 2026-10-24:
 | Where do packages come from? | **Our own server.** The admin backend keeps the apps and their settings in a database; the packages are zip / 7z files on a server only the store reaches; the catalog is generated from the database and signed. |
 | Where does the code live? | `Apps/UltraStore`, with `ultrastore_core` as a static library in v1. |
 | Signature and hash primitives | Ed25519 added to UltraCrypt 0.2.0 (framework 0.9.272); the store target **requires** libsodium and SQLite and stops the configure without them. |
-| Management | **UltraStore admin backend**, a local application (next pull requests, `Apps/UltraStoreAdmin`), adding and removing apps with every setting the catalog carries: see *The admin backend*. |
+| Management | **UltraStore admin backend**, a local application (`Apps/UltraStoreAdmin`, its own README), adding and removing apps with every setting the catalog carries: see *The admin backend*. |
 | Translations | Creators supply at least one language; the admin backend translates with the server's local UltraAI into every official language and marks what it translated (`source_language`, `machine_translated`); ULTRA OS apps' own localisation folders get the same. |
-| Signing key | Generated and kept **in the admin backend's database**, encrypted; the public key reaches the store through the repository and the signed catalog: see *Keys*. |
+| Signing key | Generated and kept **in the admin backend's database**, the seed sealed with a passphrase (Argon2id, XChaCha20-Poly1305); the public key reaches the store through the repository and the signed catalog: see *Keys*. |
 | UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
@@ -96,9 +96,10 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "sequence": 42,
   "generated": "2026-10-24T12:00:00Z",
+  "trusted_keys": ["0415eff8…fba970e", "9c2b…"],
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -137,6 +138,10 @@ framework versions, so an app built on runtime 0.9.410 gets 0.9.410, and two
 runtimes live side by side until the garbage collector finds one unused.
 Releases are sorted newest first on read; `channel` is `stable` or `beta`
 (the beta channel sees both).
+
+`trusted_keys` (schema 2) lists the public keys that may sign the catalogs
+after this one: see *Keys*. A schema 1 catalog has none and is read as
+before.
 
 Strict where the store relies on it (ids reverse-DNS and unique, versions,
 channel, each package's os / arch / format / absolute http(s) url / 64-hex
@@ -205,15 +210,25 @@ the admin backend until it exists: `GenerateSigningKey`, `PublicKeyOfSeed`,
 - **How the public keys reach the store.** Two ways, both needed. The public
   key is committed to the repository (`Apps/UltraStore/keys/<name>.pub`,
   hex) and compiled into `ultrastore`, so a fresh install trusts the right
-  key with nothing fetched. And the catalog carries `trusted_keys` (*later*,
-  schema 2): the public keys that will sign future catalogs, signed by the
-  current one, so a key can be rotated by publishing with the old key once
-  and the new key from then on, and a store that has seen that catalog
-  accepts the new key before the binary that carries it ships. A key that
-  was never announced that way is refused whatever the catalog says.
+  key with nothing fetched. And the catalog carries `trusted_keys` (schema
+  2): the public keys that may sign the catalogs after it, signed along
+  with everything else. `CatalogClient` keeps the list of the last accepted
+  catalog in its cache (`state.json`, `announcedKeys`) and verifies the
+  next one against the compiled-in keys, the ones the person added in the
+  settings, and that list (`KeysTrustedNow()`). So a key is rotated by
+  publishing once with the old key and the new one listed - the admin
+  backend lists every active key on every publish - and with the new key
+  from then on: a store that has seen that catalog accepts the new key
+  before the binary that carries it ships. A key that no accepted catalog
+  announced is refused whatever the catalog it signs claims: an
+  announcement only counts from a catalog already trusted, and each
+  accepted catalog's list replaces the previous one (a schema 1 catalog
+  announces nothing).
 - **A compromised key** is retired by a release of the store without it;
   the `trusted_keys` list cannot remove a compiled-in key, by design, since
-  the catalog is what an attacker with the key controls.
+  the catalog is what an attacker with the key controls. The announced
+  keys live in the cache folder beside the catalog they came from, with the
+  same trust as the settings file next to it.
 
 ### Resolver (`PackageResolver`)
 
@@ -242,7 +257,8 @@ verifies the signature, parses, checks the sequence, then replaces the
 cache atomically (`catalog.json`, `catalog.json.sig`, `state.json`, written
 beside and renamed over). A 304 answers from the cache; a failed refresh
 leaves the cache untouched, so `LoadCached()` works offline, and verifies
-the cached bytes again before trusting them. The fetch is a function
+the cached bytes again before trusting them. The keys the accepted catalog
+announced are kept in `state.json` and trusted for the next one (*Keys*). The fetch is a function
 injected at construction: the default is UltraNet with HTTPS-only redirects
 and a 64 MB cap, the tests hand in a map.
 
@@ -251,13 +267,15 @@ UTF-8 paths through `PathToUtf8` / `PathFromUtf8`).
 
 ### Where the server is reached
 
-The packages' server is reachable only by the store. Open design question,
-to settle with the admin backend: a bearer token the store carries and the
-server checks (simple, rotatable, but in every binary) or unlisted URLs
-whose names are only in the signed catalog (nothing to leak from the
-binary, and the catalog itself is public). The resolver and the client do
-not care: `Package::url` is whatever the catalog says, and
-`UltraNetHttpOptions::headers` takes the token if there is one.
+Decided with the admin backend (its README, *Decisions*): the catalog, the
+media and the packages of free apps are plain public files - what a signed
+catalog needs and no more - under `packages/`; the packages of paid apps go
+to `restricted/`, which the web server serves to nobody directly. A buyer's
+store gets a short-lived signed URL for a restricted file from the payment
+service (milestone 6), the way the other stores do it; no bearer token in
+the binary, so there is nothing to leak, and a leaked URL dies in minutes.
+The resolver and the client do not care: `Package::url` is whatever the
+catalog says, and a signed URL is a URL.
 
 ## UltraInstaller
 
@@ -340,18 +358,21 @@ of the new version followed by a `current` move, the older app versions
 removed and the components only they needed collected. Nothing is ever
 written where a failure would leave a half-installed folder in place.
 
-## The admin backend (*later*, `Apps/UltraStoreAdmin`)
+## The admin backend (`Apps/UltraStoreAdmin`)
 
-A local application for the people who publish: adds and removes apps and
-components with every setting in the table above, per release the packages
-(the admin picks the files, the backend computes size and SHA-256 and
-uploads them to the packages server), raises the sequence, generates the
-catalog from its database, signs it with the key it keeps, and publishes
-catalog and signature. Its database is UltraDatabase (SQLite); its upload
-is UltraNet (SFTP or HTTPS PUT, to decide with the server). `ultrastore
-sign`, `sha256`, `keygen` and `pubkey` are its stand-ins until it exists,
-and its tests will run the same `ParseCatalog` the store runs, so what it
-writes is what the store reads.
+The program the people who publish run; its own page is
+[`Docs/UltraStoreAdmin/README.md`](../UltraStoreAdmin/README.md). It keeps
+the apps and components with every setting of the table above (each as the
+catalog's own component object, so what it keeps is what the store reads),
+the publishers, the files behind the packages under their hash, and the
+signing key with its seed sealed by a passphrase; it translates the texts
+with UltraAI into every official language; and `publish` builds the
+catalog with the next sequence, lays the packages and the media out beside
+it, signs the exact bytes and verifies them with this store's own
+`ParseCatalog` and `VerifyCatalogSignature` before recording the sequence.
+`ultrastore sign`, `sha256`, `keygen` and `pubkey` remain as the hand
+tools. Its upload to the host is a later step; the publish folder is the
+server's document root until then.
 
 ## The window
 
@@ -457,6 +478,8 @@ program, `ultrastore sha256` it, write a catalog.json with
    navigation, collapsible bottom panel, single-select chip group), with
    component docs (framework 0.9.409).
 4. **The window** (this page's *The window*).
-5. **The admin backend** (`Apps/UltraStoreAdmin`), the packages server's
-   access scheme, key rotation through the catalog (schema 2).
+5. **The admin backend** (`Apps/UltraStoreAdmin`: the core, the command
+   line and the window), the packages server's access scheme
+   (decided: *Where the server is reached*); key rotation through the
+   catalog (schema 2, `trusted_keys`, see *Keys*).
 6. **Payment.**

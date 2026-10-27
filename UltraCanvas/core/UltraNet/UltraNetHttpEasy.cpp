@@ -1,6 +1,11 @@
 // core/UltraNet/UltraNetHttpEasy.cpp
 // Shared libcurl easy-handle plumbing: callbacks, option-setting,
 // finalisation. Used by both the sync and the async HTTP code paths.
+// Version: 0.5.1 - the per-thread share is off unless UltraNetConfig::
+//                  reuseHttpConnections asks for it, and shares no TLS
+//                  sessions: a device whose key changed was reached on the
+//                  old session, and a server restarted between two calls on
+//                  the old connection
 // Version: 0.5.0 - ThreadHttpShare / CloseKeptHttpPools: a per-thread
 //                  connection pool so the synchronous verbs reuse connections
 // Version: 0.4.0 - OpenBodyFile / ApplyBodyFile: a request body read from a file as it is sent
@@ -892,7 +897,7 @@ UltraNetTransferStats ReadTransferStats(CURL* easy) {
 // ============================================================================
 // Per-thread HTTP connection pool. The synchronous verbs make a fresh easy
 // handle per call and free it, so the pooled connection libcurl keeps goes with
-// it. A share object (CURL_LOCK_DATA_CONNECT, plus DNS and SSL_SESSION) outlives
+// it. A share object (CURL_LOCK_DATA_CONNECT, plus DNS; not SSL_SESSION) outlives
 // the handles that attach it, so the next call on the same thread reuses the
 // connection — the difference between one TCP+TLS handshake and one per call.
 // One per thread, because libcurl does not support sharing a connection pool
@@ -930,10 +935,17 @@ public:
         if (share_) return share_;
         CURLSH* share = curl_share_init();
         if (!share) return nullptr;
-        // No lock callbacks: only this thread ever attaches it.
+        // No lock callbacks: only this thread ever attaches it. Connections
+        // and DNS answers are shared; TLS sessions are not: a resumed session
+        // skips the certificate, so a device whose key changed between two
+        // calls (a scanner trusted on first use, re-learned after its key was
+        // forgotten; a relay pinned by key) was reached on the old session and
+        // its new certificate never seen - IODeviceScannerESCLLiveTest failed
+        // on every Linux row. A pooled connection keeps its TLS state anyway,
+        // so what the session cache would add is an abbreviated handshake for
+        // a new connection to the same host, which is not worth that.
         curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_CONNECT);
         curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_DNS);
-        curl_share_setopt(share, CURLSHOPT_SHARE, CURL_LOCK_DATA_SSL_SESSION);
         share_ = share;
         pools.slots.insert(&share_);
         return share_;
@@ -960,6 +972,10 @@ thread_local HttpShare t_httpShare;
 } // namespace
 
 CURLSH* ThreadHttpShare() {
+    // Off unless asked for: the pool outlives the call, which the devices
+    // and servers the live tests restart, re-key or pin between two calls
+    // do not expect (UltraNetConfig::reuseHttpConnections).
+    if (!UltraNet_GetConfig().reuseHttpConnections) return nullptr;
     return t_httpShare.Get();
 }
 

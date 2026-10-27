@@ -261,6 +261,18 @@ accounts, a tile of the account bar dragged sideways takes another place;
 the order is kept (`account_order` in `preferences.ini`) and the folder tree
 follows it.
 
+**The account bar's counters are filters.** A click on *New today* shows the
+account's inbox with only its unread mail from today, *Unread* all of its
+unread mail (today's too, though the number counts only what came before
+today), *Waiting for reply* only the mail waiting for an answer
+(`MessageFilterKind::NewToday`, `Unread`, `NeedsAnswer`; `MailView::ShowInbox`).
+The counter in use is framed in its colour, and a second row under the
+account's card - a card of the same look, under the tile it belongs to -
+names the filter ("Showing: Unread") with a **Show all emails** button. A
+click anywhere else on the account's card shows all of its mail again. The card also shows a
+filter chosen from the message list's *Show emails ▸* menu, and goes when a
+folder switch clears the filter (`MailView::onFilterChanged`).
+
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
 `UltraNet_MimeParse`); the attachment strip under the message body shows one
 chip per part: the paperclip, the file name and its size. A click on a chip

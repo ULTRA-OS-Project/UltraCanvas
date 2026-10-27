@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/CatalogClient.cpp
 // Fetching, verifying and caching the catalog (CatalogClient.h).
+// Version: 0.2.0 - the announced keys
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "CatalogClient.h"
@@ -9,6 +10,7 @@
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -120,7 +122,21 @@ CatalogState CatalogClient::State() const {
     state.etag = v.Get("etag").GetString();
     state.fetchedFrom = v.Get("fetchedFrom").GetString();
     state.fetchedAt = v.Get("fetchedAt").GetString();
+    for (const UltraCanvas::JSONValue& k : v.Get("announcedKeys").GetElements()) {
+        std::vector<uint8_t> bytes;
+        if (FromHex(k.GetString(), bytes) && bytes.size() == 32) state.announcedKeys.push_back(ToHex(bytes));
+    }
     return state;
+}
+
+PublicKeys CatalogClient::KeysTrustedNow() const {
+    PublicKeys keys = config_.trustedKeys;
+    for (const std::string& hex : State().announcedKeys) {
+        std::vector<uint8_t> bytes;
+        if (!FromHex(hex, bytes) || bytes.size() != 32) continue;
+        if (std::find(keys.begin(), keys.end(), bytes) == keys.end()) keys.push_back(std::move(bytes));
+    }
+    return keys;
 }
 
 bool CatalogClient::WriteCache(const std::string& catalogBytes, const std::vector<uint8_t>& signature,
@@ -133,12 +149,18 @@ bool CatalogClient::WriteCache(const std::string& catalogBytes, const std::vecto
     v.Set("etag", state.etag);
     v.Set("fetchedFrom", state.fetchedFrom);
     v.Set("fetchedAt", state.fetchedAt);
+    UltraCanvas::JSONValue announced = UltraCanvas::JSONValue::MakeArray();
+    for (const std::string& k : state.announcedKeys) announced.Append(k);
+    v.Set("announcedKeys", std::move(announced));
     return WriteFileAtomically(CachePath(config_.cacheDir, kStateFile), UltraCanvas::JSON::Serialize(v), error);
 }
 
 Result<Catalog> CatalogClient::Accept(const std::string& catalogBytes, const std::vector<uint8_t>& signature,
                                       const std::string& etag, const std::string& baseUrl) {
-    const Result<void> verified = VerifyCatalogSignature(catalogBytes, signature, config_.trustedKeys);
+    // The keys trusted now: the configured ones and what the catalog
+    // accepted before this one announced. A key only this catalog names
+    // cannot sign it - an announcement comes from a catalog already trusted.
+    const Result<void> verified = VerifyCatalogSignature(catalogBytes, signature, KeysTrustedNow());
     if (!verified) return Result<Catalog>::Failure(verified.error.code, verified.error.message, verified.error.detail);
     Result<Catalog> parsed = ParseCatalog(catalogBytes);
     if (!parsed) return parsed;
@@ -154,6 +176,7 @@ Result<Catalog> CatalogClient::Accept(const std::string& catalogBytes, const std
     state.etag = etag;
     state.fetchedFrom = baseUrl;
     state.fetchedAt = NowIso8601Utc();
+    state.announcedKeys = parsed.Value().trustedKeys;   // replaces the last list; empty after a schema 1 catalog
     std::string error;
     if (!WriteCache(catalogBytes, signature, state, error)) {
         return Result<Catalog>::Failure(ErrorCode::IoError, "The catalog could not be kept on disk", error);
@@ -234,7 +257,7 @@ Result<Catalog> CatalogClient::LoadCached() const {
     if (!ParseSignatureFile(signatureText, signature)) {
         return Result<Catalog>::Failure(ErrorCode::SignatureInvalid, "The cached catalog's signature file is not a signature");
     }
-    const Result<void> verified = VerifyCatalogSignature(catalogBytes, signature, config_.trustedKeys);
+    const Result<void> verified = VerifyCatalogSignature(catalogBytes, signature, KeysTrustedNow());
     if (!verified) return Result<Catalog>::Failure(verified.error.code, verified.error.message, verified.error.detail);
     return ParseCatalog(catalogBytes);
 }
