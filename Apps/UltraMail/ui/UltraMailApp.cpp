@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.40 - the account bar's counters filter the list (New today, all
+//                  unread mail, Waiting for reply); a click on the rest of the
+//                  card, or "Show all emails" under it, shows all mail again
 // Version: 0.9.39 - the compose window opens wide enough for its toolbar in
 //                  one row; Settings > Reading > Attachments reaches the reading
 //                  pane and the compose windows
@@ -272,6 +275,14 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // icon cache's threads. The mail plug-ins load in FinishStartup.
     step.emplace("Networking library (UltraNet)", 0);
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+    // A mailbox sync over JMAP is a long run of calls to one server: keep the
+    // connection between them (UltraNetConfig::reuseHttpConnections, off by
+    // default for the devices a pooled connection surprises).
+    {
+        UltraNetConfig net = UltraNet_GetConfig();
+        net.reuseHttpConnections = true;
+        UltraNet_SetConfig(net);
+    }
 
     step.emplace("Accounts", 0);
     LoadAccounts();
@@ -627,9 +638,15 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // ----- Account bar: one summary card, or a tile per account -----
     step.emplace("Account bar", 0);
     auto bar = accountBar_.Build();
+    // A click on an account's card: all of its mail - the filter goes.
     accountBar_.onSelectAccount = [this](const std::string& accountId) {
-        SwitchToAccount(accountId);
+        SwitchToAccount(accountId, MessageFilter{});
     };
+    // A click on one of its counters: its inbox, only what the counter counts.
+    accountBar_.onFilterAccount = [this](const std::string& accountId, MessageFilterKind kind) {
+        SwitchToAccount(accountId, MessageFilter{kind, ""});
+    };
+    accountBar_.onShowAll = [this]() { mailView_.SetFilter(MessageFilter{}); };
     accountBar_.onReorderAccounts = [this](const std::vector<std::string>& order) {
         HandleReorderAccounts(order);
     };
@@ -757,6 +774,11 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     // The folder tree switched to a folder under a different account: adopt that
     // account (and highlight its tile) without re-showing its inbox, so the
     // tree's chosen folder stays open.
+    // However the list's filter changed - a counter, the list's own menu, a
+    // switch of folder - the account bar's filter card follows it.
+    mailView_.onFilterChanged = [this](const std::string& accountId, const MessageFilter& filter) {
+        accountBar_.ShowFilter(accountId, filter);
+    };
     mailView_.onSelectAccount = [this](const std::string& accountId) {
         selectedAccount_ = accountId;
         ShowAccountStatus();
@@ -1610,12 +1632,13 @@ void UltraMailApp::RefreshFolderSoon(const std::string& accountId, const std::st
     SyncFolder(accountId, folder, /*userInitiated=*/false);
 }
 
-void UltraMailApp::SwitchToAccount(std::string accountId) {
+void UltraMailApp::SwitchToAccount(std::string accountId, std::optional<MessageFilter> filter) {
     // The timing trace: every step below, then the frames that put it on
     // screen and the inbox update, each timed from this click.
     Trace::Stage trace("Switch to account " + accountId);
     TraceNextFrames("the click on account " + accountId, Trace::NowSeconds());
     std::optional<Trace::Stage> step;
+    const std::string selectedAccountBefore = selectedAccount_;
     selectedAccount_ = accountId;
     // Its last failure, if any - replaced by "Opening …" while its inbox is
     // fetched below.
@@ -1629,7 +1652,18 @@ void UltraMailApp::SwitchToAccount(std::string accountId) {
     accountBar_.SetSelected(selectedAccount_);
     // The stored mail now; the reading pane fills in after the list is painted.
     step.emplace("Show its stored mail (MailView::ShowAccount)");
-    mailView_.ShowAccount(accountId);
+    if (!filter) {
+        mailView_.ShowAccount(accountId);
+    } else if (filter->Active() || accountId != selectedAccountBefore) {
+        // A counter: the inbox under its filter. Another account's card: its
+        // inbox, all of it.
+        mailView_.ShowInbox(accountId, *filter);
+    } else {
+        // The card of the account on screen: the folder open stays, its
+        // filter goes (a no-op without one).
+        if (mailView_.Filter().Active()) mailView_.SetFilter(MessageFilter{});
+        else mailView_.ShowAccount(accountId);
+    }
     // The update from the server runs in the background; when it brings
     // something, the list takes it in place (Refresh -> the list's diff).
     step.emplace("Start the inbox update from the server", 0);
@@ -3984,29 +4018,35 @@ void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
 
             // Nothing published for the domain: the manual page, seeded with
             // the conventional host names so most of it is already right. The
-            // typed password checks the sign-in before the page closes; with
-            // no password there is nothing to check.
-            const std::string password = draft.password;
-            ServerSettingsDialog::Verifier verify;
-            if (!password.empty()) {
-                verify = LoginVerifier([password](const ServerSettingsDialog::Result&,
-                                                  const std::string& username,
-                                                  UltraNetCredentials& c) {
+            // password typed in the wizard prefills an editable Password field
+            // on the page, so a wrong one can be fixed in place instead of
+            // leaving the user stuck on a failed sign-in; the check runs with
+            // whatever the field holds before the page closes.
+            ServerSettingsDialog::AccountFields fields;
+            fields.acceptsPassword = true;
+            fields.askPassword     = true;
+            fields.initialPassword = draft.password;
+            ServerSettingsDialog::Verifier verify = LoginVerifier(
+                [](const ServerSettingsDialog::Result& candidate,
+                   const std::string& username, UltraNetCredentials& c) {
                     c.type = UltraNetAuthType::Basic;
                     c.username = username;
-                    c.password = password;
+                    c.password = candidate.newPassword;
                     return UltraNetResult::Ok();
                 });
-            }
             ServerSettingsDialog::Show(parent, draft.email,
                 "No mail settings are published for " + EmailDomain(draft.email)
                 + ". Enter the servers from your provider's help page; the "
                   "sign-in is checked and the account added once they are saved.",
                 AutoDiscovery::GuessForDomain(draft.email),
                 [this, draft](const ServerSettingsDialog::Result& r) {
-                    CompleteAccountSetup(draft, r.settings);
+                    // The Password field is the source of truth now: it was
+                    // prefilled with the wizard password and may have been fixed.
+                    AccountDraft d = draft;
+                    d.password = r.newPassword;
+                    CompleteAccountSetup(d, r.settings);
                 },
-                verify);
+                verify, fields);
         });
     }).detach();
 }
@@ -4026,12 +4066,31 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     // resolved on the worker like a sync would.
     EnsureVaultUnlocked([this, account, current, parent]() {
         const std::string accountId = account.accountId;
+        const std::string provider  = OAuthProviderFor(current);
+        const bool hasStored = vault_.MethodFor(accountId) != SignInMethod::NoSignIn;
+
+        // Show an editable password field so a wrong stored password can be
+        // fixed here too (empty - the stored one is not revealed; "leave blank
+        // to keep" when one is stored). Hidden for an OAuth-only provider.
+        ServerSettingsDialog::AccountFields fields;
+        fields.acceptsPassword   = ProviderAcceptsPassword(current);
+        fields.askPassword       = fields.acceptsPassword;
+        fields.keepExisting      = hasStored;
+        fields.signedInWithOAuth = vault_.HasOAuthTokens(accountId);
+
         ServerSettingsDialog::Verifier verify;
-        if (vault_.MethodFor(accountId) != SignInMethod::NoSignIn) {
-            verify = LoginVerifier([this, accountId, current](
-                    const ServerSettingsDialog::Result&,
+        if (hasStored || fields.acceptsPassword) {
+            verify = LoginVerifier([this, accountId, provider](
+                    const ServerSettingsDialog::Result& r,
                     const std::string& username, UltraNetCredentials& c) {
-                return ResolveCredentials(accountId, username, OAuthProviderFor(current), c);
+                // A freshly typed password wins; otherwise the stored sign-in.
+                if (!r.newPassword.empty()) {
+                    c.type = UltraNetAuthType::Basic;
+                    c.username = username;
+                    c.password = r.newPassword;
+                    return UltraNetResult::Ok();
+                }
+                return ResolveCredentials(accountId, username, provider, c);
             });
         }
         ServerSettingsDialog::Show(parent, account.email,
@@ -4049,12 +4108,14 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
                                "The server settings could not be saved.", DetailLine(up));
                     return;
                 }
+                // A password typed here to fix the sign-in is stored in the vault.
+                if (!r.newPassword.empty()) vault_.Store(account.accountId, r.newPassword);
                 if (otherMailbox) ForgetDownloadedMail(account.accountId);
                 Refresh();
                 StartBackgroundSync();
                 SyncAccount(account.accountId);
             },
-            verify);
+            verify, fields);
     });
 }
 
