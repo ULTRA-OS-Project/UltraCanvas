@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.1.3 - the Telegram form says where the code went and asks for it another way
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
@@ -305,9 +306,27 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     telegramForm_->AddChild(telegramApiId_);
     telegramApiHash_ = MakeInput("cc-telegram-api-hash", "API hash", kSidebarWidth - 16);
     telegramForm_->AddChild(telegramApiHash_);
+    // Where the code went, in the form itself: the status line moves on,
+    // and a code that went to another Telegram app is easy to miss.
+    telegramHint_ = MakeLabel("cc-telegram-hint", "", 9.0f, kMutedText);
+    telegramHint_->SetWrap(TextWrap::WrapWord);
+    telegramHint_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    telegramForm_->AddChild(telegramHint_);
     telegramCode_ = MakeInput("cc-telegram-code", "The code Telegram sent", kSidebarWidth - 16);
     telegramCode_->onEnterPressed = next;
     telegramForm_->AddChild(telegramCode_);
+    // Telegram's other way of sending the code (SMS, a call), when it offers one.
+    telegramResend_ = MakeButton("cc-telegram-resend", "Send it another way", kSidebarWidth - 16);
+    telegramResend_->SetOnClick([this]() {
+        telegramResend_->SetDisabled(true);
+        SetProviderStatus(telegramProviderId_, "asking Telegram for the code another way\xE2\x80\xA6");
+        UltraIM_ResendAuthCode(telegramProviderId_, [this](const UltraIMResult& r) {
+            telegramResend_->SetDisabled(false);
+            if (!r) SetProviderStatus(telegramProviderId_, r.message);
+            UpdateTelegramForm();
+        });
+    });
+    telegramForm_->AddChild(telegramResend_);
     telegramPassword_ = MakeInput("cc-telegram-password", "Two-step verification password", kSidebarWidth - 16);
     telegramPassword_->SetInputType(TextInputType::Password);
     telegramPassword_->onEnterPressed = next;
@@ -726,9 +745,13 @@ void ChatCubeWindow::UpdateTelegramForm() {
     telegramApiId_->SetVisible(start && !keysFromRelay);
     telegramApiHash_->SetVisible(start && !keysFromRelay);
     telegramCode_->SetVisible(step == UltraIMAuthStep::Code);
+    telegramHint_->SetVisible(step == UltraIMAuthStep::Code && !info.authHint.empty());
+    telegramHint_->SetText(step == UltraIMAuthStep::Code ? info.authHint : std::string());
+    telegramResend_->SetVisible(step == UltraIMAuthStep::Code && !info.authResendHint.empty());
+    if (!info.authResendHint.empty()) telegramResend_->SetText(info.authResendHint);
     telegramPassword_->SetVisible(step == UltraIMAuthStep::Password);
     telegramName_->SetVisible(step == UltraIMAuthStep::Registration);
-    if (step == UltraIMAuthStep::Code && !info.authHint.empty()) telegramCode_->SetPlaceholder(info.authHint);
+    if (step == UltraIMAuthStep::Code) telegramCode_->SetPlaceholder("The code");
     if (step == UltraIMAuthStep::Password && !info.authHint.empty()) telegramPassword_->SetPlaceholder(info.authHint);
     telegramNext_->SetText(start ? "Send me the code" : "Sign in to Telegram");
     if (window_) window_->RequestRedraw();

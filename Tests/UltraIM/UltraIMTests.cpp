@@ -208,6 +208,10 @@ void TestSendingAndCalls() {
     UltraIM_FetchSharedCredentials("nobody", "telegram", [&](const UltraIMResult& r, const UltraIMCredentials&) { sharedResult = r; });
     CHECK(sharedResult.code == UltraIMResultCode::ProviderNotFound);
 
+    UltraIMResult resend;
+    UltraIM_ResendAuthCode("a", [&](const UltraIMResult& r) { resend = r; });
+    CHECK(!resend && resend.code == UltraIMResultCode::CapabilityMissing);
+
     const std::string id1 = UltraIM_NewClientMessageId();
     const std::string id2 = UltraIM_NewClientMessageId();
     CHECK(id1.size() == 36 && id1 != id2);
