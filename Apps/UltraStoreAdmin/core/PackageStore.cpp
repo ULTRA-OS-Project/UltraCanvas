@@ -5,6 +5,7 @@
 
 #include "Verifier.h"
 
+#include "UltraCanvasDataFolder.h"
 #include "UltraCanvasPathUtf8.h"
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
 #include "UltraCanvasVirtualFSBridge.h"
@@ -107,6 +108,45 @@ Result<std::vector<std::string>> ListPackageEntries(const std::string& fileUtf8)
     (void)fileUtf8;
     return R::Failure(ErrorCode::NotAvailable, "This build has no archive provider (VirtualFS / libarchive)");
 #endif
+}
+
+Result<std::string> ImportMedia(const std::string& sourceUtf8, const std::string& storeDirUtf8, const std::string& componentId) {
+    using R = Result<std::string>;
+    std::error_code ec;
+    const fs::path source = UltraCanvas::PathFromUtf8(sourceUtf8);
+    if (!fs::is_regular_file(source, ec)) return R::Failure(ErrorCode::NotFound, "No file at " + sourceUtf8);
+    if (componentId.empty()) return R::Failure(ErrorCode::InvalidArgument, "A picture belongs to a component");
+    const std::string relative = "media/" + componentId + "/" + UltraCanvas::PathToUtf8(source.filename());
+    const fs::path target = UltraCanvas::PathFromUtf8(storeDirUtf8) / UltraCanvas::PathFromUtf8(relative);
+    fs::create_directories(target.parent_path(), ec);
+    if (!fs::equivalent(source, target, ec)) {
+        ec.clear();
+        fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
+        if (ec) return R::Failure(ErrorCode::IoError, "Could not copy into the media store", ec.message());
+    }
+    return R::Succeed(relative);
+}
+
+std::string AdminStore::DatabasePath() const { return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "admin.sqlite"); }
+std::string AdminStore::PackagesDir() const { return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "packages"); }
+std::string AdminStore::MediaDir() const { return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "media"); }
+
+bool AdminStore::Exists() const {
+    std::error_code ec;
+    return fs::is_regular_file(UltraCanvas::PathFromUtf8(DatabasePath()), ec);
+}
+
+Result<void> AdminStore::CreateFolders() const {
+    std::error_code ec;
+    fs::create_directories(UltraCanvas::PathFromUtf8(PackagesDir()), ec);
+    if (ec) return Result<void>::Failure(ErrorCode::IoError, "Cannot create " + PackagesDir(), ec.message());
+    fs::create_directories(UltraCanvas::PathFromUtf8(MediaDir()), ec);
+    if (ec) return Result<void>::Failure(ErrorCode::IoError, "Cannot create " + MediaDir(), ec.message());
+    return Result<void>::Succeed();
+}
+
+std::string DefaultAdminStoreDir() {
+    return UltraCanvas::PathToUtf8(UltraCanvas::UltraCanvasDataFolderRoot() / "UltraStoreAdmin");
 }
 
 std::string SuggestEntry(const std::vector<std::string>& entries, UltraStore::OS os) {

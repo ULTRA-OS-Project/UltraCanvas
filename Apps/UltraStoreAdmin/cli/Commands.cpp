@@ -1,6 +1,7 @@
-// Apps/UltraStoreAdmin/cli/main.cpp
-// ultrastoreadmin - the store's admin backend from the command line: the
-// window follows. Every command works on the store folder (--store <dir>;
+// Apps/UltraStoreAdmin/cli/Commands.cpp
+// ultrastoreadmin - the store's admin backend from the command line; the
+// same program opens the window when started without a command
+// (ui/main.cpp). Every command works on the store folder (--store <dir>;
 // default UltraCanvasDataFolderRoot()/UltraStoreAdmin): admin.sqlite, the
 // package store packages/, the media store media/.
 //
@@ -27,8 +28,11 @@
 // A passphrase comes from --passphrase, else ULTRASTOREADMIN_PASSPHRASE, else
 // a line on standard input.
 //
+// Version: 0.2.0 - Run() and Usage() for ui/main.cpp; the window in the usage
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "Commands.h"
+
 #include "AdminDatabase.h"
 #include "CatalogPublisher.h"
 #include "KeyVault.h"
@@ -38,7 +42,6 @@
 #include "Catalog.h"
 #include "UltraStoreTypes.h"
 
-#include "UltraCanvasDataFolder.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
@@ -66,10 +69,13 @@ namespace {
 
 namespace fs = std::filesystem;
 
-int Usage(FILE* to) {
+} // namespace
+
+int UltraStoreAdmin::Cli::Usage(FILE* to) {
     std::fprintf(to,
         "ultrastoreadmin %s - the UltraStore admin backend\n"
         "\n"
+        "  ultrastoreadmin [--store <dir>]                the window\n"
         "  ultrastoreadmin [--store <dir>] <command>\n"
         "\n"
         "  init\n"
@@ -94,6 +100,10 @@ int Usage(FILE* to) {
         ULTRASTOREADMIN_VERSION);
     return to == stdout ? 0 : 2;
 }
+
+namespace {
+
+int Usage(FILE* to) { return UltraStoreAdmin::Cli::Usage(to); }
 
 int Fail(const Error& e) {
     std::fprintf(stderr, "ultrastoreadmin: %s", e.message.c_str());
@@ -189,18 +199,17 @@ std::string JoinWords(const std::vector<std::string>& words) {
 
 // ===== the store folder =====
 struct Store {
-    std::string dir;         // UTF-8
+    AdminStore paths;
     AdminDatabase db;
-    std::string DatabasePath() const { return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "admin.sqlite"); }
-    std::string PackagesDir() const { return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "packages"); }
-    std::string MediaDir() const { return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(dir) / "media"); }
+    std::string& dir = paths.dir;
+    std::string DatabasePath() const { return paths.DatabasePath(); }
+    std::string PackagesDir() const { return paths.PackagesDir(); }
+    std::string MediaDir() const { return paths.MediaDir(); }
 
     bool Open(bool create) {
-        std::error_code ec;
         if (create) {
-            fs::create_directories(UltraCanvas::PathFromUtf8(PackagesDir()), ec);
-            fs::create_directories(UltraCanvas::PathFromUtf8(MediaDir()), ec);
-        } else if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(DatabasePath()), ec)) {
+            if (const auto made = paths.CreateFolders(); !made) { Fail(made.error); return false; }
+        } else if (!paths.Exists()) {
             Fail("No admin database at " + DatabasePath() + ": run `ultrastoreadmin init` first");
             return false;
         }
@@ -209,10 +218,6 @@ struct Store {
         return true;
     }
 };
-
-std::string DefaultStoreDir() {
-    return UltraCanvas::PathToUtf8(UltraCanvas::UltraCanvasDataFolderRoot() / "UltraStoreAdmin");
-}
 
 // ===== commands =====
 int CmdInit(Store& store) {
@@ -432,14 +437,9 @@ int CmdApp(Store& store, const std::vector<std::string>& args) {
         if (pos.size() < 5) return Usage(stderr);
         const std::string what = pos[3];
         if (what != "icon" && what != "screenshot") return Fail("media is icon or screenshot");
-        std::error_code ec;
-        const fs::path source = UltraCanvas::PathFromUtf8(pos[4]);
-        if (!fs::is_regular_file(source, ec)) return Fail("no file at " + pos[4]);
-        const std::string relative = "media/" + id + "/" + UltraCanvas::PathToUtf8(source.filename());
-        const fs::path target = UltraCanvas::PathFromUtf8(store.dir) / UltraCanvas::PathFromUtf8(relative);
-        fs::create_directories(target.parent_path(), ec);
-        fs::copy_file(source, target, fs::copy_options::overwrite_existing, ec);
-        if (ec) return Fail("cannot copy into the media store: " + ec.message());
+        const auto imported = ImportMedia(pos[4], store.dir, id);
+        if (!imported) return Fail(imported.error);
+        const std::string& relative = imported.Value();
         if (what == "icon") c.icon = relative;
         else if (std::find(c.screenshots.begin(), c.screenshots.end(), relative) == c.screenshots.end()) c.screenshots.push_back(relative);
         std::printf("%s -> %s\n", pos[4].c_str(), relative.c_str());
@@ -624,10 +624,10 @@ int CmdPublish(Store& store, const std::vector<std::string>& args) {
 
 } // namespace
 
-int main(int argc, char** argv) {
-    std::vector<std::string> args(argv + 1, argv + argc);
+int UltraStoreAdmin::Cli::Run(const std::vector<std::string>& argsIn) {
+    std::vector<std::string> args = argsIn;
     Store store;
-    store.dir = DefaultStoreDir();
+    store.dir = DefaultAdminStoreDir();
     for (size_t i = 0; i + 1 < args.size(); ++i) {
         if (args[i] == "--store") {
             store.dir = args[i + 1];
