@@ -1252,6 +1252,19 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     view->SetParentWindow(win.get());
     view->SetCloud(cloud_);
     view->SetAttachmentsRight(prefs_.AttachmentsRight());
+    // Signing and encrypting: S/MIME once the account has a certificate,
+    // OpenPGP wherever GnuPG is.
+    {
+        std::vector<std::string> methods;
+        SmimeIdentity identity;
+        if (SmimeAvailable()) {
+            for (const Account& a : accounts_)
+                if (ToLowerCase(a.email) == ToLowerCase(draft.fromAddr) && LoadSmimeIdentity(vault_, a.accountId, identity))
+                    methods.push_back("S/MIME");
+        }
+        if (OpenPgpAvailable()) methods.push_back("OpenPGP");
+        view->SetSecureMethods(std::move(methods));
+    }
     // To / Cc / Bcc complete from the address book as it is when the window
     // opens (one read, then matched in memory as the writer types), the
     // addresses written to most - by the mail in the Sent folders, recent
@@ -1873,6 +1886,99 @@ void UltraMailApp::LoadAccounts() {
     mailView_.SetSecureKeys(MakeSecureKeys());
 }
 
+std::string UltraMailApp::SmimeSummary(const std::string& accountId) const {
+    SmimeIdentity identity;
+    CertificateInfo info;
+    if (!LoadSmimeIdentity(vault_, accountId, identity) || !ReadCertificate(identity.certificatePem, info))
+        return std::string();
+    std::string text = info.name.empty() ? std::string("Certificate") : info.name;
+    if (!info.issuer.empty()) text += ", from " + info.issuer;
+    if (info.validUntil > 0) {
+        const std::time_t until = static_cast<std::time_t>(info.validUntil);
+        char date[32] = {};
+        std::tm parts{};
+#if defined(_WIN32)
+        gmtime_s(&parts, &until);
+#else
+        gmtime_r(&until, &parts);
+#endif
+        std::strftime(date, sizeof date, "%Y-%m-%d", &parts);
+        text += std::string(", valid until ") + date;
+    }
+    return text;
+}
+
+void UltraMailApp::ImportSmimeCertificate(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
+                                          std::function<void(const std::string&)> done) {
+    std::string email;
+    for (const Account& a : accounts_)
+        if (a.accountId == accountId) email = ToLowerCase(a.email);
+    UltraCanvas::FileDialogOptions options;
+    options.title = "Import your S/MIME certificate";
+    options.parentWindow = parent;
+    options.filters = { UltraCanvas::FileFilter("Certificate with its key (PKCS #12)",
+                                               std::vector<std::string>{ "p12", "pfx" }) };
+    UltraCanvas::UltraCanvasFileLoader::OpenFileDialog(options,
+        [this, accountId, email, parent, done](UltraCanvas::DialogResult result, const std::string& path) {
+            if (result != UltraCanvas::DialogResult::OK || path.empty()) return;
+            auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path);
+            if (!loaded.success) {
+                AlertError(parent, "The certificate file could not be read.", loaded.error);
+                return;
+            }
+            auto bytes = std::make_shared<std::vector<uint8_t>>(loaded.bytes.begin(), loaded.bytes.end());
+            // Its password, asked for in place again when it is wrong.
+            auto ask = std::make_shared<std::function<void(const std::string&)>>();
+            *ask = [this, accountId, email, parent, done, bytes, ask](const std::string& errorText) {
+                PassphrasePrompt prompt;
+                prompt.title       = "Import your S/MIME certificate";
+                prompt.heading     = "The certificate file's password";
+                prompt.text        = "The password the .p12 file was saved with. The certificate and "
+                                     "its key are kept in UltraMail's vault; the file is not needed again.";
+                prompt.placeholder = "Password of the file";
+                prompt.okLabel     = "Import";
+                prompt.okIcon      = "check";
+                prompt.errorText   = errorText;
+                prompt.onCancel    = [ask]() { *ask = nullptr; };
+                PassphraseDialog::Show(parent, std::move(prompt),
+                    [this, accountId, email, parent, done, bytes, ask](const std::string& password) {
+                        SmimeIdentity identity;
+                        std::string error;
+                        if (!ImportPkcs12(*bytes, password, identity, error)) {
+                            if (error.find("password") != std::string::npos) {
+                                (*ask)("That password does not open the file.");
+                                return;
+                            }
+                            *ask = nullptr;
+                            AlertError(parent, "The certificate could not be imported.", error);
+                            return;
+                        }
+                        *ask = nullptr;
+                        CertificateInfo info;
+                        ReadCertificate(identity.certificatePem, info);
+                        if (!email.empty() &&
+                            std::find(info.emails.begin(), info.emails.end(), email) == info.emails.end()) {
+                            AlertWarning(parent, "This certificate is not for " + email + ".",
+                                         "It is for " + (info.emails.empty() ? std::string("no address")
+                                                                              : info.emails.front()) +
+                                         ". Mail from " + email + " cannot be signed with it, and readers "
+                                         "would see a signature by someone else. It was not imported.");
+                            return;
+                        }
+                        if (!vault_.IsUnlocked() || !StoreSmimeIdentity(vault_, accountId, identity)) {
+                            AlertError(parent, "The certificate could not be kept.",
+                                       "UltraMail's vault could not be written.");
+                            return;
+                        }
+                        Trace::Line("S/MIME certificate imported for " + accountId);
+                        mailView_.SetSecureKeys(MakeSecureKeys());
+                        if (done) done(SmimeSummary(accountId));
+                    });
+            };
+            (*ask)("");
+        });
+}
+
 SecureKeys UltraMailApp::MakeSecureKeys() {
     // A snapshot of the accounts: the hooks run on the reading pane's thread.
     std::vector<std::pair<std::string, std::string>> accounts;
@@ -2167,6 +2273,41 @@ bool UltraMailApp::HandleSendDraft(const Draft& draft, int64_t replacesOutboxId)
                        ? "UltraMail's outbox database is not available."
                        : outboxError_);
         return false;
+    }
+
+    // Signed or encrypted: whether it can be made, said now - before it is
+    // queued - rather than as a failed send later.
+    if (IsSecureDraft(draft)) {
+        const SecureMethod method = draft.secureMethod == "OpenPGP" ? SecureMethod::OpenPgp : SecureMethod::Smime;
+        const SecureKeys keys = MakeSecureKeys();
+        if (draft.sign && !CanSignAs(method, draft.fromAddr, keys)) {
+            AlertWarning(parent, "This message cannot be signed.",
+                         method == SecureMethod::Smime
+                             ? "There is no S/MIME certificate for " + draft.fromAddr +
+                               ". Import yours in Account Settings, or switch Sign off."
+                             : "There is no OpenPGP secret key for " + draft.fromAddr +
+                               " in your GnuPG keyring. Create or import one there, or switch Sign off.");
+            return false;
+        }
+        if (draft.encrypt) {
+            SecureSendOptions options;
+            options.method = method;
+            options.from = draft.fromAddr;
+            for (const auto* list : { &draft.to, &draft.cc, &draft.bcc })
+                options.recipients.insert(options.recipients.end(), list->begin(), list->end());
+            const std::vector<std::string> missing = MissingRecipientKeys(options, keys);
+            if (!missing.empty()) {
+                AlertWarning(parent, "This message cannot be encrypted to everyone.",
+                             std::string(method == SecureMethod::Smime ? "No S/MIME certificate is known for "
+                                                                       : "Your GnuPG keyring has no OpenPGP key for ") +
+                             join(missing) + "." +
+                             (method == SecureMethod::Smime
+                                  ? " UltraMail learns a certificate from a signed message its owner sends you."
+                                  : " Import their public key into GnuPG.") +
+                             " Remove them, or switch Encrypt off.");
+                return false;
+            }
+        }
     }
 
     DiscoveryResult disc = SettingsForEmail(draft.fromAddr);
@@ -3673,6 +3814,33 @@ void UltraMailApp::SeedDemoContacts() {
 void UltraMailApp::OpenAttachment(const Attachment& attachment) {
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
 
+    // Someone's OpenPGP public key (application/pgp-keys, or a .asc that
+    // holds one): offered to GnuPG, where encrypting to them looks for it.
+    const std::string text(attachment.data.begin(), attachment.data.end());
+    const bool isKey = text.find("-----BEGIN PGP PUBLIC KEY BLOCK-----") != std::string::npos &&
+                       (ToLowerCase(attachment.mediaType) == "application/pgp-keys" ||
+                        ToLowerCase(attachment.filename).find(".asc") != std::string::npos ||
+                        ToLowerCase(attachment.filename).find(".gpg") != std::string::npos ||
+                        ToLowerCase(attachment.filename).find(".pgp") != std::string::npos);
+    if (isKey && OpenPgpAvailable()) {
+        UltraCanvasDialogManager::ShowConfirmation(
+            "\"" + attachment.filename + "\" is an OpenPGP public key. Add it to your GnuPG keyring, so "
+            "mail to its owner can be encrypted? Compare its fingerprint with them before you rely on it.",
+            "Import OpenPGP key",
+            [this, text, parent](bool confirmed) {
+                if (!confirmed) return;
+                std::string error;
+                const int imported = ImportOpenPgpKeys(text, error);
+                if (imported > 0)
+                    AlertSuccess(parent, imported == 1 ? "The key is in your GnuPG keyring."
+                                                       : std::to_string(imported) + " keys are in your GnuPG keyring.");
+                else
+                    AlertError(parent, "The key could not be imported.", error);
+            },
+            parent);
+        return;
+    }
+
     AttachmentCache cache(attachmentDir_);
     const std::string path = cache.Write(attachment);
     if (path.empty()) {
@@ -4442,6 +4610,19 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.onSaveSignature = [this, accountId](const Signature& signature) {
             SaveSignature(accountId, signature);
         };
+        // S/MIME: the certificate this account signs and decrypts with.
+        if (SmimeAvailable()) {
+            fields.smimeSummary = SmimeSummary(accountId);
+            fields.onImportSmime = [this, accountId](UltraCanvas::UltraCanvasWindowBase* page,
+                                                     std::function<void(const std::string&)> done) {
+                ImportSmimeCertificate(accountId, page, std::move(done));
+            };
+            fields.onRemoveSmime = [this, accountId]() {
+                RemoveSmimeIdentity(vault_, accountId);
+                mailView_.SetSecureKeys(MakeSecureKeys());
+                return SmimeSummary(accountId);
+            };
+        }
 
         // The login check uses the typed new password when present, else the
         // account's stored credentials. It only runs on the password path; the

@@ -397,6 +397,20 @@ XChaCha20-Poly1305), and one for the message files, each sealed whole
 that key, since it guards the vault; changing it re-encrypts only the vault.
 An earlier version's plain files are converted at the first start.
 
+**Signed and encrypted mail** (`UltraMailSecureMime.h`) is S/MIME (RFC 8551,
+OpenSSL 3's CMS, `UltraMailSmime.cpp`) and OpenPGP (RFC 3156 PGP/MIME and
+inline PGP, GPGME over the user's GnuPG keyring, `UltraMailOpenPgp.cpp`), each
+built where its library is found. The stored message stays as it travelled:
+`OpenSecureMessage` decrypts and checks it on a thread when the reading pane
+shows it (a few results kept in memory), and nothing decrypted is written. On
+sending, `SecureOutgoingMessage` signs and/or encrypts the message UltraNet
+built - to every recipient and to the sender - and the outbox sends exactly
+those bytes (`UltraNetMailMessage::rawMessage`), filing the same ones in
+Drafts and Sent. The user's S/MIME identity is kept in the vault
+(`UltraMailSecureKeys.h`); correspondents' certificates are learnt from their
+vouched-for signatures into the address book (`ContactStore`'s
+`certificates`).
+
 **Credentials** go into UltraMail's vault: the framework's
 `UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
 UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +

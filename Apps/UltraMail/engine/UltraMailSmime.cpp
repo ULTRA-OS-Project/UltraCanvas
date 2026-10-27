@@ -180,8 +180,8 @@ void JudgeSigner(CMS_ContentInfo* cms, X509* signer, SignatureCheck& check) {
     ERR_clear_error();
     if (trusted) {
         check.verdict = SignatureVerdict::Valid;
-        check.detail = "The signature holds, and the certificate was issued by " +
-                       (info.issuer.empty() ? std::string("a trusted authority") : info.issuer) + ".";
+        check.detail = "The signature holds, and the certificate is vouched for by an authority "
+                       "this computer trusts.";
     } else if (error == X509_V_ERR_CERT_HAS_EXPIRED) {
         check.verdict = SignatureVerdict::Expired;
         check.detail = "The signature holds, but the certificate has expired.";

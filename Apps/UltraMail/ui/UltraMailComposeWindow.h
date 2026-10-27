@@ -16,6 +16,8 @@
 // held by a shared_ptr: the answers that can come after its window closed -
 // the file and cloud pickers, the plain-text question, a Link… or Picture…
 // dialog - hold it weakly and find nothing to change.
+// Version: 0.11.0 - the Security row: Off | S/MIME | OpenPGP, Sign, Encrypt
+//                  (SetSecureMethods; the draft's secureMethod, sign, encrypt)
 // Version: 0.10.0 - SetAttachmentsRight, kPreferredWidth; the action row on top
 // Version: 0.9.0 - a right click on a recipient suggestion: Edit contact,
 //                  Delete address, Set as SPAM (editRecipientContact,
@@ -37,6 +39,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSegmentedControl.h"
+#include "UltraCanvasCheckbox.h"
 #include "UltraCanvasRichTextEdit.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasAutoComplete.h"
@@ -67,6 +70,11 @@ public:
     // Shared: the cloud link picker hands it to its upload and sign-in
     // threads, which can outlast this window.
     void SetCloud(std::shared_ptr<UltraCloud::CloudService> cloud) { cloud_ = std::move(cloud); }
+    // Signing and encrypting (UltraMailSecureMime.h): the methods this build
+    // offers - "S/MIME", "OpenPGP" - set before Build(). Empty: no Security
+    // row. A draft already signed or encrypted with a method not offered
+    // keeps the row, so the choice is seen and can be undone.
+    void SetSecureMethods(std::vector<std::string> methods) { secureMethods_ = std::move(methods); }
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
     // The window width at which every formatting tool fits in one row.
@@ -139,6 +147,11 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  body_;       // plain drafts
     std::shared_ptr<UltraCanvas::UltraCanvasRichTextEdit> rich_;    // formatted drafts
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> mode_;  // Plain text | Formatted
+    // The Security row: Off and the methods offered; Sign, Encrypt.
+    std::vector<std::string>                                  secureMethods_;
+    std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> secureMethod_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>         signBox_;
+    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>         encryptBox_;
     FormatBar formatBar_;
     bool formatted_ = false;        // which of body_ / rich_ holds the message
     bool switchingMode_ = false;    // SetSelectedIndex from code, not a click

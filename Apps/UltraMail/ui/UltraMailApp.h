@@ -514,6 +514,11 @@ private:
     // accounts' S/MIME identities in the vault, correspondents' certificates
     // in the address book. OpenPGP's are GnuPG's own.
     SecureKeys MakeSecureKeys();
+    // The account's S/MIME certificate in a few words ("" for none), and
+    // importing one from a PKCS #12 file (Account Settings).
+    std::string SmimeSummary(const std::string& accountId) const;
+    void ImportSmimeCertificate(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
+                                std::function<void(const std::string& summary)> done);
     // A certificate from a good, vouched-for signature of `address`: kept.
     void LearnCertificate(const std::string& address, const std::string& certificatePem);
 

@@ -78,7 +78,9 @@ public:
     void SetMailDir(std::string dir) { mailDir_ = std::move(dir); }
     // Signed and encrypted mail (UltraMailSecureMime.h): where the user's
     // S/MIME identities and the certificates learnt are.
-    void SetSecureKeys(SecureKeys keys) { secureKeys_ = std::move(keys); }
+    // New keys (a certificate imported) may open what did not open before:
+    // those messages are opened again, the one shown at once.
+    void SetSecureKeys(SecureKeys keys);
     // An S/MIME certificate from a signature that holds, is vouched for by a
     // trusted authority and is the sender's: kept, to encrypt to them later.
     std::function<void(const std::string& address, const std::string& certificatePem)> onCertificateLearnt;

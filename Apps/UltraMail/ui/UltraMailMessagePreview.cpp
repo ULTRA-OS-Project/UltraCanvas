@@ -1426,6 +1426,23 @@ std::vector<AuthCheck> SecureChecks(const std::string& received, const SecureMes
 
 } // namespace
 
+void MessagePreview::SetSecureKeys(SecureKeys keys) {
+    secureKeys_ = std::move(keys);
+    bool shownForgotten = false;
+    const std::string shown = hasMessage_ ? SecureCacheKey(curEnv_) : std::string();
+    for (auto it = secureOrder_.begin(); it != secureOrder_.end();) {
+        auto entry = secureCache_.find(*it);
+        if (entry != secureCache_.end() && entry->second->encrypted && !entry->second->decrypted) {
+            shownForgotten = shownForgotten || *it == shown;
+            secureCache_.erase(entry);
+            it = secureOrder_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    if (shownForgotten) Show(curEnv_);
+}
+
 void MessagePreview::OpenSecure(const MessageEnvelope& env, const std::string& raw) {
     const std::string key = SecureCacheKey(env);
     if (!securePending_.insert(key).second) return;   // already being opened
@@ -1563,6 +1580,21 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         curRaw_ = raw;
         received = raw;
         RenderBody("Decrypting this message\xE2\x80\xA6", false);
+        attachmentStrip_.SetAttachments({});
+        SyncAttachmentColumn();
+        current_.body.clear();
+        current_.attachments.clear();
+    } else if (secure && secure->encrypted && !secure->decrypted) {
+        // Encrypted to a key that is not here: said instead of a blank body
+        // and a .p7m or .asc attachment nobody can open.
+        curRaw_ = raw;
+        received = raw;
+        RenderBody("This message is encrypted (" + std::string(SecureMethodName(secure->encryption)) +
+                   "), and it cannot be opened here.\n\n" + secure->problem +
+                   (secure->encryption == SecureMethod::Smime
+                        ? "\n\nIf it was sent to your certificate, import it in Account Settings (S/MIME)."
+                        : "\n\nIt needs the secret key it was encrypted to in your GnuPG keyring."),
+                   false);
         attachmentStrip_.SetAttachments({});
         SyncAttachmentColumn();
         current_.body.clear();

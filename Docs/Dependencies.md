@@ -47,6 +47,7 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
   - [Ultra AI module](#ultra-ai-module)
   - [UltraCloud module](#ultracloud-module)
   - [UltraCrypt module](#ultracrypt-module)
+  - [UltraMail: signed and encrypted mail](#ultramail-signed-and-encrypted-mail)
   - [UltraDatabase module](#ultradatabase-module)
   - [Ultra Net module](#ultra-net-module)
   - [UltraVault module](#ultravault-module)
@@ -139,6 +140,7 @@ their *License* is likewise marked **—** (OS component).
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
 | MariaDB Connector/C (libmariadb; the MySQL / MariaDB driver) | [mariadb.com](https://mariadb.com/docs/connectors/mariadb-connector-c/) | [github.com/mariadb-corporation/mariadb-connector-c](https://github.com/mariadb-corporation/mariadb-connector-c) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| GPGME (GnuPG Made Easy; UltraMail's OpenPGP) | [gnupg.org](https://www.gnupg.org/software/gpgme/) | [dev.gnupg.org/source/gpgme](https://dev.gnupg.org/source/gpgme/) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | Noto Color Emoji / Noto Emoji (fonts, bundled) | [fonts.google.com/noto](https://fonts.google.com/noto/specimen/Noto+Color+Emoji) | [github.com/googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) | [OFL 1.1](https://spdx.org/licenses/OFL-1.1.html) |
@@ -481,6 +483,20 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
+
+### UltraMail: signed and encrypted mail
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| S/MIME (sign, check, encrypt, decrypt; PKCS #12 import) | OpenSSL 3 libcrypto (`libssl-dev`) | OpenSSL 3 when found | OpenSSL 3 (MSYS2 `openssl`) |
+| OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | not built (no GPGME in CI's vcpkg set) | GPGME (MSYS2 `gpgme`, which brings GnuPG) |
+
+> Both are optional and soft-failing (`ULTRAMAIL_HAVE_SMIME`,
+> `ULTRAMAIL_HAVE_OPENPGP`): without one, a message in that form is shown as
+> one this build cannot check, and the compose window does not offer it.
+> GPGME is LGPL-2.1 and linked as the system's shared library; it starts the
+> user's GnuPG (`gpg`, `gpg-agent`) as programs, so GnuPG must be installed for
+> OpenPGP to work at run time (`OpenPgpAvailable()` says whether it is).
 
 > libsodium is optional to the *build* only: configure succeeds without it, but
 > UltraCrypt then reports `BackendUnavailable` from every operation, and the
