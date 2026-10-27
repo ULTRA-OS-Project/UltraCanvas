@@ -6,6 +6,7 @@
 // typing, edit, deletion, a reply), a group, history paged back, presence,
 // the stored session resumed with nothing asked, and a step Telegram never
 // answers failing with Timeout instead of hanging.
+// Version: 0.1.2 - the code asked for another way
 // Version: 0.1.1 - the step timeout
 // Version: 0.1.0
 // Last Modified: 2026-10-25
@@ -188,10 +189,36 @@ void TestTelegram() {
     r = SignIn(*alice, Phone("+1 555 0001"));
     CHECK(!r && r.code == UltraIMResultCode::NeedsInput);
     CHECK(alice->GetAuthStep() == UltraIMAuthStep::Code);
-    CHECK(alice->GetAuthHint().find("SMS") != std::string::npos);
+    // To the app the number is signed in on first, said so; SMS offered next.
+    CHECK(alice->GetAuthHint().find("Telegram apps") != std::string::npos);
+    CHECK(alice->GetAuthResendHint() == "Send it by SMS instead");
     CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
         return e.type == UltraIMEventType::AuthStepChange && e.authStep == UltraIMAuthStep::Code;
     }));
+    {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        UltraIMResult resent;
+        alice->ResendAuthCode([&](const UltraIMResult& rr) {
+            std::lock_guard<std::mutex> lock(mutex);
+            resent = rr;
+            done = true;
+            cv.notify_all();
+        });
+        std::unique_lock<std::mutex> lock(mutex);
+        CHECK(cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; }) && resent);
+    }
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::AuthStepChange && e.errorText.find("SMS") != std::string::npos;
+    }));
+    CHECK(alice->GetAuthHint().find("SMS") != std::string::npos);
+    CHECK(alice->GetAuthResendHint().empty());        // no way after SMS
+    {
+        UltraIMResult again;
+        alice->ResendAuthCode([&](const UltraIMResult& rr) { again = rr; });
+        CHECK(!again && again.code == UltraIMResultCode::CapabilityMissing);
+    }
     r = SignIn(*alice, Code("00000"));
     CHECK(!r && r.code == UltraIMResultCode::AuthFailed && r.message == "PHONE_CODE_INVALID");
     CHECK(alice->GetAuthStep() == UltraIMAuthStep::Code);            // still asking

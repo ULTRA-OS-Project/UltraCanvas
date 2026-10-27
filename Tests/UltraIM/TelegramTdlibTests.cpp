@@ -118,6 +118,7 @@ void TestRequests() {
         {"createPrivateChat", Request::CreatePrivateChat(777000)},
         {"createNewBasicGroupChat", Request::CreateBasicGroup({777000}, "Team")},
         {"checkAuthenticationCode", Request::CheckCode("12345")},
+        {"resendAuthenticationCode", Request::ResendCode()},
         {"checkAuthenticationPassword", Request::CheckPassword("x")},
         {"registerUser", Request::RegisterUser("Carol", "Smith")},
         {"setAuthenticationPhoneNumber", Request::SetPhoneNumber("+15550001")},

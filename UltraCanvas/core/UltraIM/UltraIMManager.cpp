@@ -1,5 +1,6 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
 // Last Modified: 2026-10-25
@@ -150,6 +151,7 @@ UltraIMProviderInfo DescribeProvider(const IUltraIMProviderPlugin& provider) {
     info.localUserId = provider.GetLocalUserId();
     info.authStep = provider.GetAuthStep();
     info.authHint = provider.GetAuthHint();
+    info.authResendHint = provider.GetAuthResendHint();
     info.hasStoredSession = provider.HasStoredSession();
     return info;
 }
@@ -404,6 +406,16 @@ void UltraIM_SignIn(const std::string& providerId,
         return;
     }
     provider->SignIn(credentials, callback ? callback : [](const UltraIMResult&) {});
+}
+
+void UltraIM_ResendAuthCode(const std::string& providerId, UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    provider->ResendAuthCode(callback ? callback : [](const UltraIMResult&) {});
 }
 
 void UltraIM_SignOut(const std::string& providerId) {

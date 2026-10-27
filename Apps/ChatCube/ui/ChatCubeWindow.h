@@ -44,6 +44,7 @@
 // other device, green ✓✓ read).
 //
 // Version: 0.2.0 - the look from ChatCubeTheme: avatars, icon buttons, a rounded composer, --dark
+// Version: 0.1.3 - the Telegram form says where the code went and asks for it another way
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
@@ -177,7 +178,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramPhone_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramApiId_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramApiHash_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     telegramHint_;     // where the code went, in the form
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramCode_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramResend_;   // the code another way, when offered
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramPassword_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramName_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramNext_;
