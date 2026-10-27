@@ -1,3 +1,13 @@
+#### 2026-10-27 *0.9.417*
+- **A slider that shows no value centres its bar across its box.** The bar
+  was always drawn at the foot of a horizontal slider's box (the left of a
+  vertical one) to leave room for a value above or beside it - even with
+  `SliderValueDisplay::NoDisplay`, the default, where nothing is drawn
+  there. A slider in a row of labels taller than its 16 px handle therefore
+  sat below their line (ArtCreator's *Quality*, the image-export and
+  save-settings dialogs, the font viewer, the media viewer's adjustments).
+  It is now centred; a slider that shows a value keeps the bar at the edge.
+
 #### 2026-10-27 *0.9.416*
 - **The synchronous HTTP verbs' connection pool is opt-in, and shares no
   TLS sessions.** UltraNet 0.5.0 gave every synchronous HTTP call a
