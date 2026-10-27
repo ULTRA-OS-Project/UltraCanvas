@@ -562,7 +562,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     `~/.config/autostart`.
 
   A folder that does not exist is listed disabled: "no crash dumps yet" is
-  an answer too.
+  an answer too. Hovering an entry shows the full path it opens, disabled
+  ones included; a *Recent* entry shows what its variables expand to.
   **Enter location…** (also **Ctrl+L**, wherever the focus is) asks for a
   folder or file:
   - It expands `%VAR%` on Windows (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`),

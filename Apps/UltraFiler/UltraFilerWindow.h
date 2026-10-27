@@ -1014,7 +1014,8 @@ private:
     // the system's (application data, temporary files, logs, startup, ...)
     // from FilerOsLocations - a folder that does not exist is listed
     // disabled - then "Enter location…" and the locations typed there
-    // before, with "Clear recent locations".
+    // before, with "Clear recent locations". Each entry's tooltip is the
+    // path it opens (a recent one's: what its variables expand to).
     std::vector<MenuItemData> BuildOpenLocationItems();
     // Shows `path` in the active tab: a folder is opened, a file is shown
     // selected in its folder (OpenHistoryEntry).

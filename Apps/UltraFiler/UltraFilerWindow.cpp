@@ -2038,8 +2038,11 @@ std::vector<MenuItemData> UltraFilerWindow::BuildOpenLocationItems() {
                 [this, path]() { OpenLocation(path); });
         // A folder that is not there (no crash dump yet, no autostart entry)
         // stays in the list, disabled: that it does not exist is the answer.
+        // The hover names the folder either way - where the dumps would go
+        // is worth knowing before there are any.
         std::error_code ec;
         item.enabled = fs::is_directory(PathFromUtf8(path), ec) && !ec;
+        item.tooltip = item.enabled ? path : path + "\n(does not exist yet)";
         items.push_back(std::move(item));
     }
 
@@ -2050,9 +2053,17 @@ std::vector<MenuItemData> UltraFilerWindow::BuildOpenLocationItems() {
     if (!settings.recentLocations.empty()) {
         items.push_back(MenuItemData::Separator());
         items.push_back(MenuItemData::Header("Recent"));
-        for (const std::string& typed : settings.recentLocations)
-            items.push_back(MenuItemData::Action(typed,
-                    [this, typed]() { OpenTypedLocation(typed); }));
+        for (const std::string& typed : settings.recentLocations) {
+            MenuItemData item = MenuItemData::Action(typed,
+                    [this, typed]() { OpenTypedLocation(typed); });
+            // The entry is kept as typed; the hover says what its variables
+            // name on this machine now.
+            const std::string expanded = ExpandFilerLocationText(
+                    typed, CurrentDataFolderPlatform(),
+                    [](const std::string& name) { return GetEnvUtf8(name.c_str()); });
+            if (expanded != typed) item.tooltip = expanded;
+            items.push_back(std::move(item));
+        }
         items.push_back(MenuItemData::Action("Clear recent locations", [this]() {
             settings.recentLocations.clear();
             settings.Save();

@@ -11,7 +11,8 @@
   - Linux: the XDG folders, `/var/crash`, the systemd core dumps.
 
   A folder that does not exist yet is listed greyed out, so "there are no
-  crash dumps" reads at a glance.
+  crash dumps" reads at a glance. Hovering an entry shows the full path it
+  opens, a greyed-out one included.
 - **Enter location…** (also **Ctrl+L**, wherever the focus is) opens a
   typed folder or file the way the system writes it. It expands `%VAR%` on
   Windows (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`), `$VAR` / `${VAR}`
