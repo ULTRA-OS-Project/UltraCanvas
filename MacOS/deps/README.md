@@ -22,6 +22,14 @@ Homebrew still provides the build tools (`cmake`, `pkg-config`, `ccache`,
 autotools, `nasm`), and remains the easy way to build locally - those apps run
 on the macOS they were built on and newer.
 
+It is also where most users get **GnuPG**, which UltraMail's OpenPGP runs as
+programs (`gpg`, `gpg-agent`): the bundle carries GPGME (built here, with
+libassuan and libgpg-error) but no GnuPG, which stays the user's own
+(`brew install gnupg pinentry-mac`, or GPG Suite). UltraMail looks for it in
+`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/local/MacGPG2/bin` and
+`/opt/local/bin`, since an app started from the Finder has none of them on its
+`PATH`.
+
 ## What is here
 
 | Path | Contents |

@@ -489,14 +489,18 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | S/MIME (sign, check, encrypt, decrypt; PKCS #12 import) | OpenSSL 3 libcrypto (`libssl-dev`) | OpenSSL 3 when found | OpenSSL 3 (MSYS2 `openssl`) |
-| OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | not built (no GPGME in CI's vcpkg set) | GPGME (MSYS2 `gpgme`, which brings GnuPG) |
+| OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | GPGME from vcpkg (`MacOS/deps/vcpkg.json`, bundled with libassuan and libgpg-error); GnuPG the user's, from Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite | GPGME (MSYS2 `gpgme`, which brings GnuPG) |
 
 > Both are optional and soft-failing (`ULTRAMAIL_HAVE_SMIME`,
 > `ULTRAMAIL_HAVE_OPENPGP`): without one, a message in that form is shown as
 > one this build cannot check, and the compose window does not offer it.
 > GPGME is LGPL-2.1 and linked as the system's shared library; it starts the
 > user's GnuPG (`gpg`, `gpg-agent`) as programs, so GnuPG must be installed for
-> OpenPGP to work at run time (`OpenPgpAvailable()` says whether it is).
+> OpenPGP to work at run time (`OpenPgpAvailable()` says whether it is). On
+> macOS it is looked for where Homebrew (Apple silicon and Intel), GPG Suite
+> and MacPorts install it, since a Finder-started app's `PATH` has none of
+> them; Homebrew's GnuPG also needs `pinentry-mac` named in
+> `~/.gnupg/gpg-agent.conf` to ask for a passphrase outside a terminal.
 
 > libsodium is optional to the *build* only: configure succeeds without it, but
 > UltraCrypt then reports `BackendUnavailable` from every operation, and the

@@ -412,7 +412,10 @@ their source is published here; UltraCanvas's own files are unaffected.
   Optional: a build without it has no OpenPGP and says so.
 - **Upstream:** https://dev.gnupg.org/source/gpgme/
 - **Linked, not vendored, and dynamically:** the system package is used
-  (`libgpgme-dev`; MSYS2's `gpgme`). GPGME runs GnuPG's own programs (`gpg`,
+  (`libgpgme-dev`; MSYS2's `gpgme`); on macOS vcpkg builds it
+  (`MacOS/deps/vcpkg.json`) and the suite bundles it as a dylib in its shared
+  `Frameworks/`, with its two libraries **libassuan** and **libgpg-error**
+  (both LGPL-2.1-or-later, the same terms). GPGME runs GnuPG's own programs (`gpg`,
   `gpg-agent`, `pinentry`) as separate processes; none of GnuPG is linked.
   No GPGME source is carried in this repository, and the code that calls it is
   not a modification of it: it stays MIT.

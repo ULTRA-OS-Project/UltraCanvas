@@ -435,6 +435,13 @@ again to retry.
   - S/MIME needs OpenSSL 3 at build time and OpenPGP GPGME (with GnuPG
     installed to use it); a build without one shows such mail as one it
     cannot check.
+  - **OpenPGP on macOS**: the app carries GPGME, not GnuPG. Install it with
+    Homebrew - `brew install gnupg pinentry-mac`, then put
+    `pinentry-program /opt/homebrew/bin/pinentry-mac` (`/usr/local/bin/...` on
+    Intel) in `~/.gnupg/gpg-agent.conf` and run `gpgconf --kill gpg-agent`, so
+    the passphrase is asked for in a window rather than a terminal - or with
+    GPG Suite, which sets that up itself. UltraMail finds either without
+    changing `PATH`.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.

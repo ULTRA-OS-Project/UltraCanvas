@@ -12,6 +12,13 @@
 // nobody vouched for as such.
 //
 // Without GPGME (ULTRAMAIL_HAVE_OPENPGP unset) every function says so.
+//
+// On macOS GPGME finds GnuPG (gpgconf, and through it gpg and gpg-agent) on
+// PATH alone, and an app started from the Finder or the Dock has only
+// /usr/bin:/bin:/usr/sbin:/sbin - none of where GnuPG is installed. So the
+// usual places (Homebrew on Apple silicon and on Intel, GPG Suite, MacPorts)
+// are added to PATH once, at load, when no gpgconf is on it already.
+// Version: 0.2.0 - macOS: GnuPG found where Homebrew, GPG Suite or MacPorts put it
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSecureBackends.h"
@@ -25,9 +32,40 @@
 #include <memory>
 #include <mutex>
 
+#if defined(__APPLE__)
+#include <cstdlib>
+#include <unistd.h>
+#endif
+
 namespace UltraMail::secure {
 
 namespace {
+
+#if defined(__APPLE__)
+bool HasGpgconf(const std::string& dir) {
+    return !dir.empty() && access((dir + "/gpgconf").c_str(), X_OK) == 0;
+}
+
+// At static initialisation: before any thread could read the environment, and
+// before GPGME (gpgme_check_version) looks for gpgconf.
+[[maybe_unused]] const bool g_gnupgOnPath = [] {
+    const char* current = std::getenv("PATH");
+    std::string path = current ? current : "/usr/bin:/bin:/usr/sbin:/sbin";
+    for (size_t start = 0; start <= path.size();) {
+        const size_t end = std::min(path.find(':', start), path.size());
+        if (HasGpgconf(path.substr(start, end - start))) return true;
+        start = end + 1;
+    }
+    bool added = false;
+    for (const char* dir : { "/opt/homebrew/bin", "/usr/local/bin", "/usr/local/MacGPG2/bin", "/opt/local/bin" }) {
+        if (!HasGpgconf(dir)) continue;
+        path += std::string(":") + dir;
+        added = true;
+    }
+    if (added) setenv("PATH", path.c_str(), 1);
+    return added;
+}();
+#endif
 
 std::once_flag g_init;
 bool g_ready = false;

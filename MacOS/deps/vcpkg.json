@@ -13,6 +13,7 @@
     "fontconfig",
     "freetype",
     "glib",
+    { "$comment": "UltraMail's OpenPGP (it brings libassuan and libgpg-error); GnuPG itself is the user's, at run time.", "name": "gpgme" },
     { "name": "harfbuzz", "features": [ "coretext", "glib" ] },
     "icu",
     "lcms",

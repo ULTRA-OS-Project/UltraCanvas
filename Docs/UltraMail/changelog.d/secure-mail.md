@@ -26,3 +26,7 @@
     encrypting and inline messages against a throw-away keyring.
 - The *S/MIME* / *OpenPGP* pill no longer says UltraMail does not check such
   signatures.
+- **OpenPGP on macOS.** The macOS suite bundles GPGME (built by vcpkg for
+  macOS 14, with libassuan and libgpg-error); GnuPG is the user's, from
+  Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite, and UltraMail
+  finds it in their folders although a Finder-started app's `PATH` lacks them.
