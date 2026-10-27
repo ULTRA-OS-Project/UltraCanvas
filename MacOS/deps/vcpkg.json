@@ -28,7 +28,7 @@
       "name": "libvips",
       "features": [
         "analyze", "archive", "cfitsio", "cplusplus", "deprecated", "exif", "fftw", "fontconfig",
-        "highway", "jpeg", "lcms", "matio", "nsgif", "openexr", "openjpeg", "pangocairo", "png",
+        "highway", "jpeg", "jpeg-xl", "lcms", "matio", "nsgif", "openexr", "openjpeg", "pangocairo", "png",
         "ppm", "radiance", "raw", "rsvg", "tiff", "webp", "zlib"
       ]
     },

@@ -28,6 +28,7 @@ on:
     paths: &paths
       - 'UltraCanvas/**'
       - 'Tests/ImageJxlTest.cpp'
+      - 'Tests/ImageJxlTests.cmake'
       - 'Tests/ImageIcoQoiTest.cpp'
       - 'Tests/ImageGifSaverTest.cpp'
       - 'Tests/MatrixDiagramRenderTest.cpp'

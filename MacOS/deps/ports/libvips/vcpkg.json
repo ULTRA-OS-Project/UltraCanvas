@@ -69,6 +69,12 @@
         "libjpeg-turbo"
       ]
     },
+    "jpeg-xl": {
+      "description": "JPEG XL loader and saver (libjxl).",
+      "dependencies": [
+        "libjxl"
+      ]
+    },
     "lcms": {
       "description": "Build with lcms support.",
       "dependencies": [
@@ -146,5 +152,5 @@
       ]
     }
   },
-  "port-version": 1
+  "port-version": 2
 }

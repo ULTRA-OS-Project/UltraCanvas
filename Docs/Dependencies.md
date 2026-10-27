@@ -102,6 +102,7 @@ their *License* is likewise marked **—** (OS component).
 | GutenPrint (runtime, not linked) | [gutenprint.sourceforge.net](http://gutenprint.sourceforge.net/) | [sourceforge.net/p/gimp-print/source](https://sourceforge.net/p/gimp-print/source/) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | gumbo | [github.com/google/gumbo-parser](https://github.com/google/gumbo-parser) | [github.com/google/gumbo-parser](https://github.com/google/gumbo-parser) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | HarfBuzz | [harfbuzz.github.io](https://harfbuzz.github.io/) | [github.com/harfbuzz/harfbuzz](https://github.com/harfbuzz/harfbuzz) | [MIT](https://spdx.org/licenses/MIT.html) |
+| Highway | [google.github.io/highway](https://google.github.io/highway/) | [github.com/google/highway](https://github.com/google/highway) | [Apache 2.0](https://spdx.org/licenses/Apache-2.0.html) or [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | ICA (ImageCaptureCore) | [developer.apple.com](https://developer.apple.com/documentation/imagecapturecore) | — | — |
 | ICU | [icu.unicode.org](https://icu.unicode.org/) | [github.com/unicode-org/icu](https://github.com/unicode-org/icu) | [Unicode](https://spdx.org/licenses/Unicode-3.0.html) |
 | ImageMagick | [imagemagick.org](https://imagemagick.org/) | [github.com/ImageMagick/ImageMagick](https://github.com/ImageMagick/ImageMagick) | [ImageMagick](https://spdx.org/licenses/ImageMagick.html) |
@@ -119,6 +120,7 @@ their *License* is likewise marked **—** (OS component).
 | libcurl | [curl.se/libcurl](https://curl.se/libcurl/) | [github.com/curl/curl](https://github.com/curl/curl) | [curl](https://spdx.org/licenses/curl.html) |
 | libheif | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libjpeg-turbo | [libjpeg-turbo.org](https://libjpeg-turbo.org/) | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
+| libjxl | [jpeg.org/jpegxl](https://jpeg.org/jpegxl/) | [github.com/libjxl/libjxl](https://github.com/libjxl/libjxl) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libmspack | [cabextract.org.uk/libmspack](https://www.cabextract.org.uk/libmspack/) | [github.com/kyz/libmspack](https://github.com/kyz/libmspack) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libogg | [xiph.org/ogg](https://xiph.org/ogg/) | [github.com/xiph/ogg](https://github.com/xiph/ogg) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libopusenc | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/libopusenc](https://github.com/xiph/libopusenc) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -201,6 +203,7 @@ their *License* is likewise marked **—** (OS component).
 | Image processing & resize | libvips | libvips | libvips |
 | Bitmap codecs (via libvips) | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp |
 | GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif | giflib, libheif |
+| JPEG XL (via libvips) | libjxl, where the distribution's libvips has it (Ubuntu 24.04 does, 22.04 does not) | libjxl (+ brotli, Highway) | libjxl (+ brotli, Highway), through libvips' `vips-jxl` module |
 | BMP / PCX coders (via libvips) | ImageMagick | ImageMagick | ImageMagick |
 | Audio playback & capture | miniaudio (bundled) → ALSA / PulseAudio | miniaudio (bundled) → CoreAudio | miniaudio (bundled) → WASAPI |
 | Audio encode FLAC / OGG / Opus / MP3, decode OGG / Opus | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) |

@@ -347,6 +347,7 @@ jobs:
             ${{ matrix.msys_prefix }}-fmt
             ${{ matrix.msys_prefix }}-imagemagick
             ${{ matrix.msys_prefix }}-libheif
+            ${{ matrix.msys_prefix }}-libjxl
             ${{ matrix.msys_prefix }}-zbar
             ${{ matrix.msys_prefix }}-libsodium
             ${{ matrix.msys_prefix }}-sqlite3
@@ -949,6 +950,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_EMOJI_TESTS=ON \
@@ -990,6 +992,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
@@ -1512,6 +1515,24 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
+
+      # JPEG XL in the libvips each package ships: vcpkg's, built with its
+      # jpeg-xl feature, on macOS, and MSYS2's on Windows, which has JPEG XL
+      # only through its vips-jxl module and libjxl. ImageJxlTest exits 0 when
+      # libvips has neither jxlload nor jxlsave, so the step fails unless the
+      # checks really ran. ULTRACANVAS_BUILD_JXL_TESTS builds it without
+      # BUILD_TESTS; Linux runs it in image-codecs.yml, on Ubuntu 24.04 -
+      # 22.04's libvips has no libjxl.
+      - name: Run JPEG XL test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: |
+          ctest --output-on-failure --no-tests=error -V -R "^ImageJxlTest$" 2>&1 | tee jxl-test.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if ! grep -q 'All JPEG XL checks passed' jxl-test.log; then
+            echo "::error::ImageJxlTest did not run its checks: this libvips has no JPEG XL"
+            exit 1
+          fi
 
       # UltraCleaner's engine suite: the path guard, the rule table, the
       # scanner, the remover and the album logic, over temporary trees only
