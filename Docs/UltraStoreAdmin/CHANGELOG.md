@@ -1,3 +1,8 @@
+#### 2026-10-27 *0.1.3*
+- The buttons that open a dialog say what they do without a trailing
+  ellipsis: *Choose*, *Export .pub*, *Add release*, *Add package*, *Add
+  screenshot*, *QR*, *Join QR*.
+
 #### 2026-10-27 *0.1.2*
 - **Affiliates and codes.** Partners with a share of each sale made with
   their codes; two tiers and no more: a partner recruited by another names

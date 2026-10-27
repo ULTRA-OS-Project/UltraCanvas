@@ -2,8 +2,9 @@
 // Telegram provider - the TDLib requests it sends, built in one place (td_api
 // names and fields), so the tests can hand every one of them to a real TDLib
 // and have it say whether it parses.
+// Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -33,6 +34,7 @@ TdObject GetVersion();          // getOption "version": what starts a client
 TdObject SetTdlibParameters(const Parameters& p);
 TdObject SetPhoneNumber(const std::string& phone);
 TdObject CheckCode(const std::string& code);
+TdObject ResendCode();          // the code by the next way (code_info.next_type)
 TdObject CheckPassword(const std::string& password);
 TdObject RegisterUser(const std::string& firstName, const std::string& lastName);
 TdObject GetMe();

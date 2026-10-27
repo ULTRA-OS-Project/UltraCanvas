@@ -1,7 +1,8 @@
 // Plugins/UltraIM/telegram/TelegramRequests.cpp
 // Telegram provider - the TDLib requests it sends
+// Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 
 #include "TelegramRequests.h"
@@ -72,6 +73,10 @@ TdObject CheckCode(const std::string& code) {
     TdObject o = Make("checkAuthenticationCode");
     o.Set("code", TdObject(code));
     return o;
+}
+
+TdObject ResendCode() {
+    return Make("resendAuthenticationCode");
 }
 
 TdObject CheckPassword(const std::string& password) {
