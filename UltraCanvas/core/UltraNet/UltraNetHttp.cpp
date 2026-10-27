@@ -2,6 +2,9 @@
 // Synchronous HTTP verbs + UltraNetHttpHeaders. Uses ultranet_internal helpers
 // from UltraNetHttpEasy.h to keep option-setting logic in one place.
 // Async lives in UltraNetHttpAsync.cpp.
+// Version: 0.5.1 - not for a request that pins a key or reads the server's
+//                  certificate (PoolFor): a TLS session resumed from the pool
+//                  shows no certificate, so trust on first use could not learn it
 // Version: 0.5.0 - every synchronous transfer attaches this thread's
 //                  connection pool (ThreadHttpShare), so a run of calls reuses
 //                  the connection instead of a handshake each
@@ -71,6 +74,17 @@ bool UltraNetHttpHeaders::Has(const std::string& name) const {
 // ============================================================================
 namespace {
 
+    // This thread's connection pool for a request - none for one that checks
+    // the server's certificate itself (a pinned key, or the certificate read
+    // back to trust it on first use): a connection or TLS session resumed
+    // from the pool shows no certificate, so a key could not be learned, and
+    // a pin is promised to be checked on every handshake. Such requests are
+    // one-offs to a device, which the pool would not speed up anyway.
+    CURLSH* PoolFor(const UltraNetHttpOptions& options) {
+        if (!options.pinnedPublicKey.empty() || options.capturePeerCertificate) return nullptr;
+        return ultranet_internal::ThreadHttpShare();
+    }
+
     UltraNetResult PerformSync(const UltraNetHttpRequest& request,
                                UltraNetResponse& outResponse,
                                ultranet_internal::WriteSink& sink,
@@ -94,8 +108,9 @@ namespace {
 
         // This thread's connection pool, so a run of calls (a mailbox sync, a
         // cloud-drive listing) reuses one connection instead of a fresh TCP+TLS
-        // handshake each. Null when libcurl cannot make one — then no reuse.
-        if (CURLSH* share = ultranet_internal::ThreadHttpShare())
+        // handshake each. Null when libcurl cannot make one — then no reuse —
+        // and for a request that checks the certificate itself (PoolFor).
+        if (CURLSH* share = PoolFor(request.options))
             curl_easy_setopt(easy.get(), CURLOPT_SHARE, share);
 
         // The body goes to the file when the options name one, not to
@@ -250,7 +265,7 @@ UltraNetResult UltraNet_HttpUploadFile(const std::string& url,
         return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory,
                                      "curl_easy_init() failed");
     }
-    if (CURLSH* share = ultranet_internal::ThreadHttpShare())
+    if (CURLSH* share = PoolFor(options))
         curl_easy_setopt(easy.get(), CURLOPT_SHARE, share);
 
     ultranet_internal::WriteSink sink;

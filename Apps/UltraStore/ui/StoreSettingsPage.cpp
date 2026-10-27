@@ -2,6 +2,7 @@
 // The Settings page: the channel, the texts' language, the servers, the keys
 // the user trusts beside the compiled-in ones, and what the store knows
 // about this machine, its folder and the catalog it has.
+// Version: 0.2.0 - the announced keys in the catalog state
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreWindow.h"
@@ -221,8 +222,14 @@ void StoreWindow::RefreshSettingsInfo() {
     if (!storeError_.empty()) text += "\n  could not be opened: " + storeError_;
     text += "\nSettings file: " + UltraCanvasAppSettings("UltraStore").File();
     text += "\nCatalog: " + (catalogNote_.empty() ? std::string("none") : catalogNote_);
-    if (catalog_) text += "\n  " + std::to_string(catalog_->apps.size()) + " apps, " +
-                          std::to_string(catalog_->components.size()) + " components, schema " + std::to_string(catalog_->schema);
+    if (catalog_) {
+        text += "\n  " + std::to_string(catalog_->apps.size()) + " apps, " +
+                std::to_string(catalog_->components.size()) + " components, schema " + std::to_string(catalog_->schema);
+        if (!catalog_->trustedKeys.empty()) {
+            text += "\n  announces " + std::to_string(catalog_->trustedKeys.size()) +
+                    (catalog_->trustedKeys.size() == 1 ? " key" : " keys") + " that may sign the next catalogs";
+        }
+    }
     const std::vector<InstalledRecord> apps = CurrentApps(installed_);
     const std::vector<InstalledRecord> comps = InstalledComponents(installed_);
     text += "\nInstalled: " + std::to_string(apps.size()) + (apps.size() == 1 ? " app, " : " apps, ") +

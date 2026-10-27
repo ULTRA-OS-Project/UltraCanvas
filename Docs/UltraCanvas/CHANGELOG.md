@@ -1,3 +1,13 @@
+#### 2026-10-27 *0.9.415*
+- **Trust on first use works again for printers and scanners.** Since the
+  synchronous HTTP verbs keep a connection pool per thread, a request to a
+  device whose key was just forgotten resumed the earlier TLS session, which
+  shows no certificate: the key could not be learned again, and
+  `IODevicePrinterIPPLiveTest` and `IODeviceScannerESCLLiveTest` failed on
+  Linux. A request that pins a public key or reads the server's certificate
+  (`pinnedPublicKey`, `capturePeerCertificate`) no longer uses the pool, so it
+  always makes a full handshake - which a pin promises anyway.
+
 #### 2026-10-26 *0.9.414*
 - **UltraCanvasContainer 4.8.1: the mouse wheel scrolls a container whose scrollbar `autoShowScrollbars` showed.** The wheel handler answered only a *forced* scrollbar (`forceShowVerticalScrollbar`), so a list that showed its bar because the content was taller than the box could be dragged by the bar but not rolled: the store's pages, a settings form. The wheel now moves any axis that has a bar, forced or shown.
 

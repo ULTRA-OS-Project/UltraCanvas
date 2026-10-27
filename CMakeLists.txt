@@ -267,6 +267,7 @@ if(ANDROID)
     # The desktop store; its hard requirement on libsodium and SQLite would
     # stop this configure, and the Android store is a later milestone.
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
+    set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
@@ -347,6 +348,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACLEANER OFF CACHE BOOL "Build the UltraCleaner application")
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
+    set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
@@ -813,6 +815,18 @@ if(BUILD_ULTRASTORE)
     else()
         add_subdirectory(Apps/UltraStore)
     endif()
+endif()
+
+# ===== ULTRASTOREADMIN =====
+# The store's admin backend: the apps and their settings in a database, the
+# packages, the signing key, the translations, the catalog generated and
+# signed (Docs/UltraStoreAdmin/README.md). On the store's core, so it is
+# built where the store is.
+option(BUILD_ULTRASTOREADMIN "Build the UltraStoreAdmin application" ON)
+if(BUILD_ULTRASTOREADMIN AND TARGET UltraStoreCore)
+    message(STATUS "")
+    message(STATUS "── Building UltraStoreAdmin ──")
+    add_subdirectory(Apps/UltraStoreAdmin)
 endif()
 
 # ===== ANCHORPOINT =====
@@ -1615,6 +1629,18 @@ if(ULTRACANVAS_BUILD_ULTRASTORE_TESTS AND TARGET UltraStoreCore)
     add_subdirectory(Tests/UltraStore)
     message(STATUS "")
     message(STATUS "── UltraStore core test suite enabled (target: UltraStoreCoreTests) ──")
+endif()
+
+# ===== ULTRASTOREADMIN CORE TESTS =====
+# The admin database, the sealed signing key, the package store, the catalog
+# published and verified the way the store verifies it, the translations
+# with a fake translator. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS "Build the UltraStoreAdmin core test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS AND TARGET UltraStoreAdminCore)
+    enable_testing()
+    add_subdirectory(Tests/UltraStoreAdmin)
+    message(STATUS "")
+    message(STATUS "── UltraStoreAdmin core test suite enabled (target: UltraStoreAdminCoreTests) ──")
 endif()
 
 # ===== DOCUMENTATION =====
