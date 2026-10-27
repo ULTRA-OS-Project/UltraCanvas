@@ -348,6 +348,47 @@ TEST(sync_messages_computes_needs_answer) {
     REQUIRE_EQ(UnreadFor(fx.store), 2);
 }
 
+TEST(sync_parses_rfc2822_and_iso8601_envelope_dates) {
+    // IMAP delivers an RFC 2822 Date header in the envelope's date field; JMAP
+    // delivers an ISO 8601 UTCDate (receivedAt) in the same field. Both must
+    // reach the store as the same epoch — otherwise a JMAP account's list shows
+    // blank dates (the date is stored as 0).
+    Fixture fx("dates");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+
+    auto env = [](uint32_t uid, const std::string& date) {
+        UltraNetMailEnvelope e;
+        e.uid = uid; e.from = "a@x.com"; e.to = {"erika@example.com"};
+        e.subject = "d"; e.messageId = "<" + std::to_string(uid) + "@x>";
+        e.date = date;
+        return e;
+    };
+    // The same instant, three ways: RFC 2822, ISO 8601 UTC, ISO 8601 +01:00.
+    fx.fake.envelopes["INBOX"] = {
+        env(10, "Fri, 17 Jul 2026 09:00:00 +0000"),
+        env(11, "2026-07-17T09:00:00Z"),
+        env(12, "2026-07-17T10:00:00+01:00"),
+    };
+
+    REQUIRE(engine.SyncMessages("erika", "INBOX", "imaps://x/", opts,
+                                /*fetchBodies=*/false).ok);
+
+    std::vector<MessageEnvelope> msgs;
+    fx.store.ListMessages("erika", "INBOX", 0, msgs);
+    int64_t dRfc = 0, dIso = 0, dOff = 0;
+    for (const auto& m : msgs) {
+        if (m.uid == 10) dRfc = m.date;
+        if (m.uid == 11) dIso = m.date;
+        if (m.uid == 12) dOff = m.date;
+    }
+    REQUIRE(dRfc > 0);          // RFC 2822 still parses (regression guard)
+    REQUIRE(dIso > 0);          // ISO 8601 now parses — the JMAP fix
+    REQUIRE_EQ(dIso, dRfc);     // same instant, UTC
+    REQUIRE_EQ(dOff, dRfc);     // 10:00 +01:00 is 09:00 UTC — the same instant
+}
+
 TEST(sync_messages_streams_each_header) {
     Fixture fx("stream");
     SyncEngine engine(fx.store, fx.fake, fx.emlDir);

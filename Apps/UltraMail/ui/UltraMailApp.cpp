@@ -4010,29 +4010,35 @@ void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
 
             // Nothing published for the domain: the manual page, seeded with
             // the conventional host names so most of it is already right. The
-            // typed password checks the sign-in before the page closes; with
-            // no password there is nothing to check.
-            const std::string password = draft.password;
-            ServerSettingsDialog::Verifier verify;
-            if (!password.empty()) {
-                verify = LoginVerifier([password](const ServerSettingsDialog::Result&,
-                                                  const std::string& username,
-                                                  UltraNetCredentials& c) {
+            // password typed in the wizard prefills an editable Password field
+            // on the page, so a wrong one can be fixed in place instead of
+            // leaving the user stuck on a failed sign-in; the check runs with
+            // whatever the field holds before the page closes.
+            ServerSettingsDialog::AccountFields fields;
+            fields.acceptsPassword = true;
+            fields.askPassword     = true;
+            fields.initialPassword = draft.password;
+            ServerSettingsDialog::Verifier verify = LoginVerifier(
+                [](const ServerSettingsDialog::Result& candidate,
+                   const std::string& username, UltraNetCredentials& c) {
                     c.type = UltraNetAuthType::Basic;
                     c.username = username;
-                    c.password = password;
+                    c.password = candidate.newPassword;
                     return UltraNetResult::Ok();
                 });
-            }
             ServerSettingsDialog::Show(parent, draft.email,
                 "No mail settings are published for " + EmailDomain(draft.email)
                 + ". Enter the servers from your provider's help page; the "
                   "sign-in is checked and the account added once they are saved.",
                 AutoDiscovery::GuessForDomain(draft.email),
                 [this, draft](const ServerSettingsDialog::Result& r) {
-                    CompleteAccountSetup(draft, r.settings);
+                    // The Password field is the source of truth now: it was
+                    // prefilled with the wizard password and may have been fixed.
+                    AccountDraft d = draft;
+                    d.password = r.newPassword;
+                    CompleteAccountSetup(d, r.settings);
                 },
-                verify);
+                verify, fields);
         });
     }).detach();
 }
@@ -4052,12 +4058,31 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     // resolved on the worker like a sync would.
     EnsureVaultUnlocked([this, account, current, parent]() {
         const std::string accountId = account.accountId;
+        const std::string provider  = OAuthProviderFor(current);
+        const bool hasStored = vault_.MethodFor(accountId) != SignInMethod::NoSignIn;
+
+        // Show an editable password field so a wrong stored password can be
+        // fixed here too (empty - the stored one is not revealed; "leave blank
+        // to keep" when one is stored). Hidden for an OAuth-only provider.
+        ServerSettingsDialog::AccountFields fields;
+        fields.acceptsPassword   = ProviderAcceptsPassword(current);
+        fields.askPassword       = fields.acceptsPassword;
+        fields.keepExisting      = hasStored;
+        fields.signedInWithOAuth = vault_.HasOAuthTokens(accountId);
+
         ServerSettingsDialog::Verifier verify;
-        if (vault_.MethodFor(accountId) != SignInMethod::NoSignIn) {
-            verify = LoginVerifier([this, accountId, current](
-                    const ServerSettingsDialog::Result&,
+        if (hasStored || fields.acceptsPassword) {
+            verify = LoginVerifier([this, accountId, provider](
+                    const ServerSettingsDialog::Result& r,
                     const std::string& username, UltraNetCredentials& c) {
-                return ResolveCredentials(accountId, username, OAuthProviderFor(current), c);
+                // A freshly typed password wins; otherwise the stored sign-in.
+                if (!r.newPassword.empty()) {
+                    c.type = UltraNetAuthType::Basic;
+                    c.username = username;
+                    c.password = r.newPassword;
+                    return UltraNetResult::Ok();
+                }
+                return ResolveCredentials(accountId, username, provider, c);
             });
         }
         ServerSettingsDialog::Show(parent, account.email,
@@ -4075,12 +4100,14 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
                                "The server settings could not be saved.", DetailLine(up));
                     return;
                 }
+                // A password typed here to fix the sign-in is stored in the vault.
+                if (!r.newPassword.empty()) vault_.Store(account.accountId, r.newPassword);
                 if (otherMailbox) ForgetDownloadedMail(account.accountId);
                 Refresh();
                 StartBackgroundSync();
                 SyncAccount(account.accountId);
             },
-            verify);
+            verify, fields);
     });
 }
 
