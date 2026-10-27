@@ -3,6 +3,8 @@
 // configuration, credentials, proxy descriptor, transfer stats, and the
 // initialize/shutdown/version entrypoints. Full surface defined in the
 // UltraNet Master Registry v1.0.0.
+// Version: 0.2.3 - UltraNetConfig::reuseHttpConnections: the synchronous verbs'
+//                  per-thread connection pool, off unless an application asks
 // Version: 0.2.2 - SshHostKeyUnknown, SshHostKeyChanged (UltraNetSsh.h)
 // Version: 0.2.1 - the abort check is asked by every FTP call, and is the
 //                  thread's only one (UltraNet_SetThreadFtpCancel is gone)
@@ -220,6 +222,15 @@ struct UltraNetConfig {
     // when HTTP/3 isn't negotiable. Maps to CURL_HTTP_VERSION_3ONLY.
     bool http3Only = false;
     bool enableCompression = true;
+    // The synchronous HTTP verbs keep a connection pool per thread, so a run
+    // of calls to one server (a mailbox sync over JMAP) reuses the connection
+    // instead of a TCP+TLS handshake each. Off by default: a pooled
+    // connection outlives the call that made it, which a device that is
+    // restarted, re-keyed or pinned between two calls (a scanner trusted on
+    // first use, a printer, a relay) does not expect - every such test went
+    // red when the pool was on for all. An application whose traffic is a
+    // long run of calls to one service turns it on (UltraMail does).
+    bool reuseHttpConnections = false;
     std::string pluginDirectory = "Plugins/UltraNet";
 
     static UltraNetConfig Default() { return {}; }

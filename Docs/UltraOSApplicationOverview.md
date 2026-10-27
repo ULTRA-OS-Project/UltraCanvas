@@ -512,7 +512,10 @@ the commands when given one.
   releases with their packages, the publish page with its warnings, the
   keys and the settings.
 - Upload of the publish folder to the host over SFTP, FTPS, FTP or HTTPS
-  PUT, what changed only, the catalog last. Design:
+  PUT, what changed only, the catalog last.
+- Affiliates and codes: partners with a share of the sales their codes
+  make and a recruit share one level down, discount codes, QR codes and
+  links, the sales ledger and the report. Design:
   `Docs/UltraStoreAdmin/README.md`.
 
 ### UltraDesktop

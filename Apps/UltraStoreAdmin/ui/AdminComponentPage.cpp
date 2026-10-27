@@ -240,13 +240,13 @@ void AdminWindow::BuildComponentPage() {
     fIcon_ = input("uaC.icon");
     fIcon_->SetPlaceholder("media/<id>/icon.png, or a URL");
     iconRow->AddChild(fIcon_);
-    auto pickIcon = Theme::Button("uaC.pickIcon", "Choose…", 90);
+    auto pickIcon = Theme::Button("uaC.pickIcon", "Choose", 90);
     pickIcon->onClick = [this]() { PickIcon(); };
     iconRow->AddChild(pickIcon);
     media->AddChild(Theme::Field("uaC.iconField", "Icon", iconRow));
     fScreenshots_ = Theme::Column("uaC.screenshots", 4.0f);
     media->AddChild(Theme::Field("uaC.screenshotsField", "Screenshots", fScreenshots_, true));
-    auto addShot = Theme::Button("uaC.addShot", "Add screenshot…", 140);
+    auto addShot = Theme::Button("uaC.addShot", "Add screenshot", 140);
     addShot->onClick = [this]() { PickScreenshot(); };
     auto shotRow = Theme::Row("uaC.shotRow", Theme::kInnerGap);
     shotRow->AddChild(addShot);
@@ -322,7 +322,7 @@ void AdminWindow::BuildComponentPage() {
     packageEditor_->AddChild(pButtons);
     packageEditor_->SetVisible(false);
     releases->AddChild(packageEditor_);
-    auto newRelease = Theme::Button("uaC.newRelease", "Add release…", 120);
+    auto newRelease = Theme::Button("uaC.newRelease", "Add release", 120);
     newRelease->onClick = [this]() {
         packageEditor_->SetVisible(false);
         releaseEditor_->SetVisible(true);
@@ -620,7 +620,7 @@ void AdminWindow::RebuildReleasesSection() {
         auto titleLabel = Theme::Text(id + ".title", title, 13.0f, FontWeight::Bold);
         titleLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
         head->AddChild(titleLabel);
-        auto addPackage = Theme::Button(id + ".addPackage", "Add package…", 120);
+        auto addPackage = Theme::Button(id + ".addPackage", "Add package", 120);
         const std::string version = r.version;
         addPackage->onClick = [this, version]() {
             FileDialogOptions opts;

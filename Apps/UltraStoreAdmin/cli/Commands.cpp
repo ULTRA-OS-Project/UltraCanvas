@@ -28,6 +28,7 @@
 // A passphrase comes from --passphrase, else ULTRASTOREADMIN_PASSPHRASE, else
 // a line on standard input.
 //
+// Version: 0.4.0 - affiliate, code, sale
 // Version: 0.3.0 - upload
 // Version: 0.2.0 - Run() and Usage() for ui/main.cpp; the window in the usage
 // Version: 0.1.0
@@ -39,6 +40,8 @@
 #include "KeyVault.h"
 #include "PackageStore.h"
 #include "Translation.h"
+#include "Affiliates.h"
+#include "StoreQuery.h"
 #include "Uploader.h"
 
 #include "Catalog.h"
@@ -95,6 +98,11 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "  build [-o <catalog.json>]\n"
         "  publish <outdir> --key <id> [--passphrase <p>] [--no-copy]\n"
         "  upload <outdir> [--to <url>] [--user <name>] [--password <p>] [--key-file <pem>] [--all]\n"
+        "  affiliate add <id> <name> [--contact <c>] [--share <percent>] [--recruit-share <percent>] [--recruited-by <id>]\n"
+        "  affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report | qr <id> <file.svg>\n"
+        "  code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]\n"
+        "  code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>\n"
+        "  sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list\n"
         "  --version | --help\n"
         "\n"
         "Fields for `app set`: name publisher license homepage support_url privacy_url source_url icon\n"
@@ -375,7 +383,7 @@ int CmdApp(Store& store, const std::vector<std::string>& args) {
         if (pos.size() < 3) return Usage(stderr);
         std::string text;
         if (!ReadFile(pos[2], text)) return Fail("cannot read " + pos[2]);
-        const auto parsed = UltraStore::ParseComponent(text);
+        const auto parsed = UltraStore::ParseComponent(text, UltraStore::ComponentKind::App, false);   // the admin keeps a package before it has a URL: its own export reads back
         if (!parsed) return Fail(parsed.error);
         if (const auto r = store.db.PutComponent(parsed.Value()); !r) return Fail(r.error);
         std::printf("%s %s (%s) stored\n", UltraStore::ComponentKindName(parsed.Value().kind).c_str(), parsed.Value().id.c_str(), parsed.Value().name.c_str());
@@ -667,6 +675,169 @@ int CmdUpload(Store& store, const std::vector<std::string>& args) {
     return 0;
 }
 
+// ===== affiliates, codes, sales =====
+std::string Base(Store& store) { return store.db.Setting("catalog.base_url"); }
+
+int CmdAffiliate(Store& store, const std::vector<std::string>& args) {
+    if (!store.Open(false)) return 1;
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    const std::string& sub = pos[1];
+    if (sub == "add") {
+        if (pos.size() < 4) return Usage(stderr);
+        Affiliate a;
+        if (const auto existing = store.db.GetAffiliate(pos[2])) a = existing.Value();
+        a.id = pos[2];
+        a.name = pos[3];
+        a.contact = Option(args, "--contact", a.contact);
+        a.sharePercent = std::atoi(Option(args, "--share", std::to_string(a.sharePercent)).c_str());                  // locale-ok: digits only
+        a.recruitSharePercent = std::atoi(Option(args, "--recruit-share", std::to_string(a.recruitSharePercent)).c_str());   // locale-ok: digits only
+        a.recruitedBy = Option(args, "--recruited-by", a.recruitedBy);
+        if (const auto r = store.db.PutAffiliate(a); !r) return Fail(r.error);
+        std::printf("affiliate %s: %s, %d%% of a sale with their code, %d%% of a recruit's sale%s\n  join link %s\n", a.id.c_str(), a.name.c_str(),
+                    a.sharePercent, a.recruitSharePercent, a.recruitedBy.empty() ? "" : (", recruited by " + a.recruitedBy).c_str(),
+                    JoinLink(Base(store), a.id).c_str());
+        return 0;
+    }
+    if (sub == "list" || sub == "report") {
+        const auto report = AffiliateReport(store.db);
+        if (!report) return Fail(report.error);
+        if (report.Value().empty()) { std::printf("no affiliate yet\n"); return 0; }
+        for (const AffiliateTotals& t : report.Value()) {
+            const Affiliate& a = t.affiliate;
+            std::printf("%-16s %-24s %3d%% / %3d%% recruits  %s%s\n", a.id.c_str(), a.name.c_str(), a.sharePercent, a.recruitSharePercent,
+                        a.recruitedBy.empty() ? "" : ("by " + a.recruitedBy).c_str(), a.enabled ? "" : "  (off)");
+            if (sub == "report") {
+                std::string own, recruits;
+                for (const auto& [cur, sum] : t.ownCredit) own += (own.empty() ? "" : ", ") + sum + " " + cur;
+                for (const auto& [cur, sum] : t.recruitCredit) recruits += (recruits.empty() ? "" : ", ") + sum + " " + cur;
+                std::printf("                 %zu sale(s) with their codes: %s; %zu recruit sale(s): %s\n", t.ownSales, own.empty() ? "0.00" : own.c_str(),
+                            t.recruitSales, recruits.empty() ? "0.00" : recruits.c_str());
+            }
+        }
+        return 0;
+    }
+    if (pos.size() < 3) return Usage(stderr);
+    if (sub == "show") {
+        const auto a = store.db.GetAffiliate(pos[2]);
+        if (!a) return Fail(a.error);
+        std::printf("%s  %s\ncontact %s\nshare %d%%, recruit share %d%%\nrecruited by %s\n%s\njoin link %s\n", a.Value().id.c_str(), a.Value().name.c_str(),
+                    a.Value().contact.c_str(), a.Value().sharePercent, a.Value().recruitSharePercent,
+                    a.Value().recruitedBy.empty() ? "-" : a.Value().recruitedBy.c_str(), a.Value().enabled ? "enabled" : "disabled", JoinLink(Base(store), a.Value().id).c_str());
+        return 0;
+    }
+    if (sub == "enable" || sub == "disable") {
+        auto a = store.db.GetAffiliate(pos[2]);
+        if (!a) return Fail(a.error);
+        a.Value().enabled = sub == "enable";
+        if (const auto r = store.db.PutAffiliate(a.Value()); !r) return Fail(r.error);
+        return 0;
+    }
+    if (sub == "remove") {
+        if (const auto r = store.db.RemoveAffiliate(pos[2]); !r) return Fail(r.error);
+        return 0;
+    }
+    if (sub == "qr") {
+        if (pos.size() < 4) return Usage(stderr);
+        if (const auto a = store.db.GetAffiliate(pos[2]); !a) return Fail(a.error);
+        if (Base(store).empty()) return Fail("set catalog.base_url first: the join link needs it");
+        if (const auto r = WriteQrCodeSvg(JoinLink(Base(store), pos[2]), pos[3]); !r) return Fail(r.error);
+        std::printf("wrote %s: %s\n", pos[3].c_str(), JoinLink(Base(store), pos[2]).c_str());
+        return 0;
+    }
+    return Usage(stderr);
+}
+
+int CmdCode(Store& store, const std::vector<std::string>& args) {
+    if (!store.Open(false)) return 1;
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    const std::string& sub = pos[1];
+    if (sub == "list") {
+        const auto all = store.db.Codes();
+        if (!all) return Fail(all.error);
+        if (all.Value().empty()) { std::printf("no code yet\n"); return 0; }
+        for (const CodeRecord& c : all.Value()) {
+            std::string what = UltraStore::DiscountLabel(c.code);
+            std::printf("%-16s %-9s %-16s %-14s %s%s%s\n", c.code.code.c_str(), UltraStore::CodeKindName(c.code.kind).c_str(), c.code.affiliate.c_str(),
+                        what.empty() ? "-" : what.c_str(), c.code.apps.empty() ? "every app" : JoinWords(c.code.apps).c_str(),
+                        c.code.validUntil.empty() ? "" : ("  until " + c.code.validUntil).c_str(), c.enabled ? "" : "  (off)");
+        }
+        return 0;
+    }
+    if (pos.size() < 3) return Usage(stderr);
+    const std::string code = UltraStore::NormalizeCode(pos[2]);
+    if (sub == "new") {
+        CodeRecord r;
+        r.code.code = code;
+        r.code.affiliate = Option(args, "--affiliate");
+        r.code.kind = r.code.affiliate.empty() ? UltraStore::CodeKind::Discount : UltraStore::CodeKind::Affiliate;
+        r.code.discountPercent = std::atoi(Option(args, "--percent", "0").c_str());   // locale-ok: digits only
+        r.code.discountAmount = Option(args, "--amount");
+        r.code.currency = Option(args, "--currency");
+        r.code.apps = ListOption(args, "--apps");
+        r.code.validFrom = Option(args, "--from");
+        r.code.validUntil = Option(args, "--until");
+        if (const auto put = store.db.PutCode(r); !put) return Fail(put.error);
+        std::printf("code %s: %s\n  link %s\n  store link %s\n", code.c_str(), UltraStore::DiscountLabel(r.code).empty() ? "partner code" : UltraStore::DiscountLabel(r.code).c_str(),
+                    CodeLink(Base(store), code).c_str(), StoreLink(code).c_str());
+        return 0;
+    }
+    if (sub == "enable" || sub == "disable") {
+        auto r = store.db.GetCode(code);
+        if (!r) return Fail(r.error);
+        r.Value().enabled = sub == "enable";
+        if (const auto put = store.db.PutCode(r.Value()); !put) return Fail(put.error);
+        return 0;
+    }
+    if (sub == "remove") {
+        if (const auto r = store.db.RemoveCode(code); !r) return Fail(r.error);
+        return 0;
+    }
+    if (sub == "link") {
+        if (const auto r = store.db.GetCode(code); !r) return Fail(r.error);
+        std::printf("%s\n%s\n", CodeLink(Base(store), code).c_str(), StoreLink(code).c_str());
+        return 0;
+    }
+    if (sub == "qr") {
+        if (pos.size() < 4) return Usage(stderr);
+        if (const auto r = store.db.GetCode(code); !r) return Fail(r.error);
+        if (Base(store).empty()) return Fail("set catalog.base_url first: the link needs it");
+        if (const auto r = WriteQrCodeSvg(CodeLink(Base(store), code), pos[3]); !r) return Fail(r.error);
+        std::printf("wrote %s: %s\n", pos[3].c_str(), CodeLink(Base(store), code).c_str());
+        return 0;
+    }
+    return Usage(stderr);
+}
+
+int CmdSale(Store& store, const std::vector<std::string>& args) {
+    if (!store.Open(false)) return 1;
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    if (pos[1] == "add") {
+        if (pos.size() < 6) return Usage(stderr);
+        const auto sale = RecordSale(store.db, pos[2] == "-" ? std::string() : pos[2], pos[3], pos[4], pos[5], Option(args, "--at"));
+        if (!sale) return Fail(sale.error);
+        const SaleRecord& s = sale.Value();
+        std::printf("sale %lld: %s %s %s", static_cast<long long>(s.id), s.app.c_str(), s.amount.c_str(), s.currency.c_str());
+        if (!s.affiliate.empty()) std::printf("; %s earns %s", s.affiliate.c_str(), s.affiliateCredit.c_str());
+        if (!s.recruiter.empty()) std::printf("; %s earns %s for recruiting them", s.recruiter.c_str(), s.recruiterCredit.c_str());
+        std::printf("\n");
+        return 0;
+    }
+    if (pos[1] == "list") {
+        const auto all = store.db.Sales();
+        if (!all) return Fail(all.error);
+        if (all.Value().empty()) { std::printf("no sale yet\n"); return 0; }
+        for (const SaleRecord& s : all.Value()) {
+            std::printf("%4lld  %s  %-12s %-24s %10s %s  %s %s  %s %s\n", static_cast<long long>(s.id), s.at.c_str(), s.code.c_str(), s.app.c_str(), s.amount.c_str(), s.currency.c_str(),
+                        s.affiliate.c_str(), s.affiliate.empty() ? "" : s.affiliateCredit.c_str(), s.recruiter.c_str(), s.recruiter.empty() ? "" : s.recruiterCredit.c_str());
+        }
+        return 0;
+    }
+    return Usage(stderr);
+}
+
 } // namespace
 
 int UltraStoreAdmin::Cli::Run(const std::vector<std::string>& argsIn) {
@@ -695,6 +866,9 @@ int UltraStoreAdmin::Cli::Run(const std::vector<std::string>& argsIn) {
     if (cmd == "build")     return CmdBuild(store, args);
     if (cmd == "publish")   return CmdPublish(store, args);
     if (cmd == "upload")    return CmdUpload(store, args);
+    if (cmd == "affiliate") return CmdAffiliate(store, args);
+    if (cmd == "code")      return CmdCode(store, args);
+    if (cmd == "sale")      return CmdSale(store, args);
     std::fprintf(stderr, "ultrastoreadmin: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }

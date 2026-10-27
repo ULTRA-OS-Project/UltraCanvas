@@ -220,3 +220,55 @@ TEST(language_from_locale) {
     REQUIRE_EQ(LanguageFromLocale("x"), std::string("en"));
     REQUIRE(!SystemLanguage().empty());
 }
+
+TEST(codes_check_and_discount_the_price) {
+    Catalog c = FixtureCatalog();
+    PromoCode anna;
+    anna.code = "ANNA-20";
+    anna.kind = CodeKind::Affiliate;
+    anna.discountPercent = 20;
+    anna.apps = {"org.ultraos.ultravideo"};
+    anna.validFrom = "2026-01-01";
+    anna.validUntil = "2026-12-31";
+    anna.affiliate = "aff-0001";
+    PromoCode five;
+    five.code = "FIVE";
+    five.discountAmount = "5";
+    five.currency = "EUR";
+    PromoCode usd;
+    usd.code = "USD";
+    usd.discountAmount = "5.00";
+    usd.currency = "USD";
+    PromoCode plain;
+    plain.code = "PARTNER";
+    plain.kind = CodeKind::Affiliate;
+    plain.affiliate = "aff-0002";
+    c.codes = {anna, five, usd, plain};
+
+    REQUIRE(!CheckCode(c, "", "2026-06-01").Ok());
+    REQUIRE_EQ(CheckCode(c, "nope", "2026-06-01").message, std::string("Unknown code"));
+    REQUIRE_EQ(CheckCode(c, "anna-20", "2025-12-31").message, std::string("Valid from 2026-01-01"));
+    REQUIRE_EQ(CheckCode(c, "anna-20", "2027-01-01").message, std::string("Expired on 2026-12-31"));
+    const CodeCheck ok = CheckCode(c, "anna-20", "2026-06-01");
+    REQUIRE(ok.Ok());
+    REQUIRE_EQ(ok.message, std::string("20% off on UltraVideo, until 2026-12-31"));
+    REQUIRE_EQ(CheckCode(c, "five", "2026-06-01").message, std::string("5 EUR off on every app"));
+    REQUIRE_EQ(CheckCode(c, "partner", "2026-06-01").message, std::string("Partner code on every app"));
+
+    const Pricing& video = c.FindApp("org.ultraos.ultravideo")->pricing;   // 29.90 EUR, 30-day trial
+    REQUIRE_EQ(DiscountedPrice(video, ok.code), std::string("23.92"));
+    REQUIRE_EQ(PriceLabel(video, ok.code), std::string("23.92 EUR (was 29.90) (30-day trial)"));
+    REQUIRE_EQ(PriceLabel(video), std::string("29.90 EUR (30-day trial)"));
+    REQUIRE_EQ(DiscountedPrice(video, c.FindCode("FIVE")), std::string("24.90"));
+    REQUIRE_EQ(DiscountedPrice(video, c.FindCode("USD")), std::string("29.90"));      // another currency: as it is
+    REQUIRE_EQ(DiscountedPrice(video, c.FindCode("PARTNER")), std::string("29.90"));  // no discount
+    Pricing cheap;
+    cheap.model = PricingModel::OneTime;
+    cheap.price = "3.50";
+    cheap.currency = "EUR";
+    REQUIRE_EQ(DiscountedPrice(cheap, c.FindCode("FIVE")), std::string("0.00"));     // never below zero
+    Pricing free;
+    REQUIRE_EQ(PriceLabel(free, ok.code), std::string("Free"));
+    REQUIRE_EQ(DiscountLabel(*c.FindCode("FIVE")), std::string("5 EUR off"));
+    REQUIRE(DiscountLabel(plain).empty());
+}

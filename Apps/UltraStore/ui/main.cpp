@@ -6,6 +6,7 @@
 // (UltraCanvasSingleInstance.h): a second start brings the running window
 // forward. The commands never initialise the application, so they run on a
 // headless machine and in CI as before.
+// Version: 0.2.0 - ultrastore:// links, handed to the running copy
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Commands.h"
@@ -40,10 +41,14 @@ void OnSignal(int) {
 #endif
 
 // A start with no command, or with the window's options only, opens the window.
+bool IsStoreLink(const std::string& arg) { return arg.rfind("ultrastore://", 0) == 0; }
+
+// A start with no command, with the window's options only, or with a link
+// (ultrastore://code/<CODE>, ultrastore://app/<id>) opens the window.
 bool WantsWindow(const std::vector<std::string>& args) {
     if (args.empty()) return true;
     const std::string& first = args[0];
-    return first == "--catalog" || first == "--root" || first == "--channel";
+    return first == "--catalog" || first == "--root" || first == "--channel" || IsStoreLink(first);
 }
 
 } // namespace
@@ -53,8 +58,10 @@ int main(int argc, char** argv) {
     if (!WantsWindow(args)) return UltraStore::Cli::Run(args);
 
     UltraStore::Ui::WindowOptions options;
+    std::vector<std::string> links;   // the links of this start, for the window - or the running copy's
     for (size_t i = 0; i < args.size(); ++i) {
         const std::string& a = args[i];
+        if (IsStoreLink(a)) { links.push_back(a); continue; }
         std::string* target = a == "--catalog" ? &options.catalogFile : a == "--root" ? &options.root
                             : a == "--channel" ? &options.channel : nullptr;
         if (!target || i + 1 >= args.size()) {
@@ -67,7 +74,7 @@ int main(int argc, char** argv) {
     // One copy per user: a second start brings the running one forward and
     // quits. Outlives app.Run(), so it sits outside the try.
     UltraCanvasSingleInstance instance("org.ultraos.ultrastore", "UltraStore");
-    const UltraCanvasSingleInstance::Start start = instance.Claim();
+    const UltraCanvasSingleInstance::Start start = instance.Claim(UltraCanvasSingleInstance::MakeOpenRequest(links));
     if (start == UltraCanvasSingleInstance::Start::HandedOff) return EXIT_SUCCESS;
 
 #ifdef __linux__
@@ -93,7 +100,14 @@ int main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         window->Show();
-        instance.ListenRaise();
+        for (const std::string& link : links) window->OpenLink(link);
+        // A later start with a link hands it to this window; without one it
+        // brings the window forward.
+        UltraStore::Ui::StoreWindow* raw = window.get();
+        instance.ListenOpen([raw](const std::vector<std::string>& paths) {
+            for (const std::string& p : paths) if (IsStoreLink(p)) raw->OpenLink(p);
+            UltraCanvasSingleInstance::BringToFront();
+        });
         app.Run();
         instance.Close();
     } catch (const std::exception& e) {

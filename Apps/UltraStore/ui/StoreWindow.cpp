@@ -1,11 +1,14 @@
 // Apps/UltraStore/ui/StoreWindow.cpp
 // The shell, the pages and the details view; the jobs are in StoreJobs.cpp,
 // the settings page in StoreSettingsPage.cpp.
+// Version: 0.2.0 - codes and ultrastore:// links
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreWindow.h"
 
 #include "StoreTheme.h"
+
+#include "CatalogClient.h"
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasBadge.h"
@@ -168,6 +171,13 @@ void StoreWindow::BuildShell() {
             RebuildDiscover();
         };
         header->AddChild(searchInput_);
+        codeInput_ = Theme::Pin(CreateTextInput("usCode", 0, 0, 150, Theme::kControlHeight));
+        codeInput_->SetPlaceholder("Discount or partner code");
+        codeInput_->SetTooltip("A code from a partner's QR code or page, or a discount code: the prices show what it takes off, for 30 days");
+        header->AddChild(codeInput_);
+        auto apply = Theme::Button("usCodeApply", "Apply", 60);
+        apply->onClick = [this]() { ApplyCode(codeInput_->GetText()); };
+        header->AddChild(apply);
         auto refresh = Theme::Button("usRefresh", "Refresh", 80);
         refresh->SetTooltip("Fetch the catalog from the store's servers");
         refresh->onClick = [this]() { RefreshCatalog(); };
@@ -418,6 +428,72 @@ std::string StoreWindow::ServerNote() const {
     return {};
 }
 
+std::string StoreWindow::Today() const {
+    return NowIso8601Utc().substr(0, 10);
+}
+
+const PromoCode* StoreWindow::CodeInForce() const {
+    if (!catalog_) return nullptr;
+    const std::string code = settings_.CodeInForce(Today());
+    if (code.empty()) return nullptr;
+    const PromoCode* found = catalog_->FindCode(code);
+    return found && found->ValidOn(Today()) ? found : nullptr;
+}
+
+const PromoCode* StoreWindow::CodeFor(const Component& app) const {
+    const PromoCode* code = CodeInForce();
+    return code && code->AppliesTo(app.id) ? code : nullptr;
+}
+
+void StoreWindow::ApplyCode(const std::string& text) {
+    if (NormalizeCode(text).empty()) {
+        if (settings_.code.empty()) { SetStatus("Enter a code"); return; }
+        settings_.code.clear();
+        settings_.codeEnteredAt.clear();
+        settings_.Save();
+        if (codeInput_) codeInput_->SetText("");
+        RebuildAllPages();
+        SetStatus("The code is forgotten");
+        return;
+    }
+    if (!catalog_) { SetStatus("No catalog yet to check the code against: press Refresh", true); return; }
+    const CodeCheck check = CheckCode(*catalog_, text, Today());
+    if (!check.Ok()) { SetStatus("Code " + NormalizeCode(text) + ": " + check.message, true); return; }
+    settings_.code = check.code->code;
+    settings_.codeEnteredAt = Today();
+    settings_.Save();
+    if (codeInput_) codeInput_->SetText(check.code->code);
+    RebuildAllPages();
+    SetStatus("Code " + check.code->code + ": " + check.message + " - in force for " + std::to_string(StoreSettings::kCodeDays) + " days");
+}
+
+void StoreWindow::OpenLink(const std::string& url) {
+    // ultrastore://code/<CODE>, ultrastore://app/<id>[?code=<CODE>]
+    const std::string prefix = "ultrastore://";
+    if (url.rfind(prefix, 0) != 0) { SetStatus("Not a store link: " + url, true); return; }
+    std::string rest = url.substr(prefix.size());
+    std::string query;
+    if (const size_t q = rest.find('?'); q != std::string::npos) { query = rest.substr(q + 1); rest = rest.substr(0, q); }
+    while (!rest.empty() && rest.back() == '/') rest.pop_back();
+    const size_t slash = rest.find('/');
+    const std::string what = rest.substr(0, slash);
+    const std::string value = slash == std::string::npos ? std::string() : rest.substr(slash + 1);
+    std::string code;
+    for (size_t at = 0; at < query.size();) {
+        size_t amp = query.find('&', at);
+        if (amp == std::string::npos) amp = query.size();
+        const std::string pair = query.substr(at, amp - at);
+        if (pair.rfind("code=", 0) == 0) code = pair.substr(5);
+        at = amp + 1;
+    }
+    if (what == "code") code = value;
+    else if (what == "app") {
+        if (!catalog_ || !catalog_->FindApp(value)) SetStatus("The catalog does not list " + value, true);
+        else { searchInput_->SetText(""); search_.clear(); ShowDetails(value); }
+    } else { SetStatus("Unknown store link: " + url, true); return; }
+    if (!code.empty()) ApplyCode(code);
+}
+
 void StoreWindow::SetCatalog(std::shared_ptr<const Catalog> catalog, const std::string& note) {
     catalog_ = std::move(catalog);
     catalogNote_ = note;
@@ -643,8 +719,9 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
     }
     if (paid) {
         // Payment is a later milestone: Buy goes to the publisher's page.
-        auto buy = Theme::Button(id + ".buy", "Buy…", 72, paid && pricing.trialDays == 0 ? Theme::ButtonKind::Primary : Theme::ButtonKind::Secondary);
-        buy->SetTooltip(PriceLabel(pricing) + " - opens the publisher's page");
+        auto buy = Theme::Button(id + ".buy", "Buy", 72, paid && pricing.trialDays == 0 ? Theme::ButtonKind::Primary : Theme::ButtonKind::Secondary);
+        buy->SetTooltip(PriceLabel(pricing, CodeFor(*l.app)) + " - opens the publisher's page" +
+                        (CodeFor(*l.app) ? ", the code " + CodeFor(*l.app)->code + " goes with the purchase" : ""));
         const std::string url = l.app->homepage;
         buy->onClick = [this, url]() {
             if (url.empty()) SetStatus("The publisher gave no page to buy from.", true);
@@ -672,7 +749,7 @@ std::shared_ptr<UltraCanvasCard> StoreWindow::MakeAppCard(const AppListing& l, c
     if (l.updateAvailable) card->SetTrailing(Badge(id + ".badge", "Update", BadgeVariant::Warning));
     else if (l.Installed()) card->SetTrailing(Badge(id + ".badge", "Installed", BadgeVariant::Successful));
     else if (!l.Available()) card->SetTrailing(Badge(id + ".badge", "Not for this system", BadgeVariant::Neutral));
-    else card->SetTrailing(Badge(id + ".badge", PriceLabel(app.pricing),
+    else card->SetTrailing(Badge(id + ".badge", PriceLabel(app.pricing, CodeFor(app)),
                                  app.pricing.model == PricingModel::Free ? BadgeVariant::Info : BadgeVariant::Primary));
 
     card->AddContent(Theme::Caption(id + ".state", StateLine(l)));
@@ -739,7 +816,12 @@ void StoreWindow::RebuildDetails() {
     titles->AddChild(Theme::Caption("usX.state", StateLine(l)));
     // Badges.
     auto badges = Theme::Row("usX.badges", Theme::kInnerGap, true);
-    badges->AddChild(Badge("usX.price", PriceLabel(app->pricing), app->pricing.model == PricingModel::Free ? BadgeVariant::Info : BadgeVariant::Primary));
+    badges->AddChild(Badge("usX.price", PriceLabel(app->pricing, CodeFor(*app)), app->pricing.model == PricingModel::Free ? BadgeVariant::Info : BadgeVariant::Primary));
+    if (const PromoCode* code = CodeFor(*app)) {
+        const std::string what = DiscountLabel(*code);
+        badges->AddChild(Badge("usX.code", "Code " + code->code + (what.empty() ? "" : ": " + what) +
+                               (code->validUntil.empty() ? "" : ", until " + code->validUntil), BadgeVariant::Successful));
+    }
     if (!app->ageRating.empty()) badges->AddChild(Badge("usX.age", "Age " + app->ageRating + "+", BadgeVariant::Neutral));
     if (app->openSource) badges->AddChild(Badge("usX.oss", "Open source", BadgeVariant::Successful));
     if (app->requiresAccount) badges->AddChild(Badge("usX.account", "Needs an account", BadgeVariant::Neutral));

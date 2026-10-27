@@ -34,6 +34,7 @@
 //
 // --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
 //
+// Version: 0.3.0 - code
 // Version: 0.3.0 - Run() and Usage() for ui/main.cpp; the window's options in the usage;
 //                  FormatBytes shared with the window (StoreQuery)
 // Version: 0.2.0 - install, update, remove, installed, gc (UltraInstaller)
@@ -47,6 +48,7 @@
 #include "PlatformInfo.h"
 #include "StoreEngine.h"
 #include "StoreQuery.h"
+#include "StoreSettings.h"
 #include "Verifier.h"
 
 #include "UltraCanvasDataFolder.h"
@@ -85,6 +87,9 @@ int UltraStore::Cli::Usage(FILE* to) {
         "  ultrastore remove <app-id> [--root <dir>]\n"
         "  ultrastore installed [--root <dir>]\n"
         "  ultrastore gc [--root <dir>]\n"
+        "  ultrastore code [<CODE> | clear] [--cache <dir>]\n"
+        "                                     the discount or partner code in force (30 days), checked against the cached catalog\n"
+        "  ultrastore ultrastore://code/<CODE>  the same, from a QR code or a page: opens the window with it\n"
         "  ultrastore --version | --help\n",
         ULTRASTORE_VERSION);
     return to == stdout ? 0 : 2;
@@ -446,6 +451,44 @@ int CmdGc(const std::vector<std::string>& args) {
     return 0;
 }
 
+// code [<CODE> | clear]: the code in force, checked against the cached
+// catalog with the settings' keys, kept in the settings file for 30 days.
+int CmdCode(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    StoreSettings settings = StoreSettings::Load();
+    const std::string today = NowIso8601Utc().substr(0, 10);
+    if (pos.size() < 2) {
+        const std::string inForce = settings.CodeInForce(today);
+        if (inForce.empty()) std::printf("no code in force\n");
+        else std::printf("code %s, entered %s, in force until %d days after that\n", inForce.c_str(), settings.codeEnteredAt.c_str(), StoreSettings::kCodeDays);
+        return 0;
+    }
+    if (pos[1] == "clear") {
+        settings.code.clear();
+        settings.codeEnteredAt.clear();
+        if (!settings.Save()) return Fail("cannot write the settings file");
+        std::printf("code cleared\n");
+        return 0;
+    }
+    CatalogClientConfig config;
+    config.baseUrls = settings.Servers();
+    config.trustedKeys = settings.TrustedKeys();
+    config.cacheDir = Option(args, "--cache");
+    if (config.cacheDir.empty()) {
+        config.cacheDir = UltraCanvas::PathToUtf8(UltraCanvas::UltraCanvasLocalDataFolderRoot() / "UltraStore" / "cache");
+    }
+    CatalogClient client(config);
+    const Result<Catalog> cached = client.LoadCached();
+    if (!cached) return Fail(Error{cached.error.code, "No catalog to check the code against: run `ultrastore fetch` first", cached.error.message});
+    const CodeCheck check = CheckCode(cached.Value(), pos[1], today);
+    if (!check.Ok()) return Fail(check.message);
+    settings.code = check.code->code;
+    settings.codeEnteredAt = today;
+    if (!settings.Save()) return Fail("cannot write the settings file");
+    std::printf("code %s: %s - in force for %d days\n", check.code->code.c_str(), check.message.c_str(), StoreSettings::kCodeDays);
+    return 0;
+}
+
 } // namespace
 
 int UltraStore::Cli::Run(const std::vector<std::string>& args) {
@@ -467,6 +510,7 @@ int UltraStore::Cli::Run(const std::vector<std::string>& args) {
     if (cmd == "remove")   return CmdRemove(args);
     if (cmd == "installed") return CmdInstalled(args);
     if (cmd == "gc")       return CmdGc(args);
+    if (cmd == "code")     return CmdCode(args);
     std::fprintf(stderr, "ultrastore: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }
