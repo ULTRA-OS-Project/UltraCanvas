@@ -72,6 +72,7 @@ their *License* is likewise marked **—** (OS component).
 | Library | Website | Source code | License |
 |---|---|---|---|
 | ALSA | [alsa-project.org](https://www.alsa-project.org/) | [github.com/alsa-project/alsa-lib](https://github.com/alsa-project/alsa-lib) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| aom (libaom) | [aomedia.org](https://aomedia.org/) | [aomedia.googlesource.com/aom](https://aomedia.googlesource.com/aom) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | AVFoundation | [developer.apple.com](https://developer.apple.com/documentation/avfoundation) | — | — |
 | brotli | [brotli.org](https://www.brotli.org/) | [github.com/google/brotli](https://github.com/google/brotli) | [MIT](https://spdx.org/licenses/MIT.html) |
 | Cairo | [cairographics.org](https://www.cairographics.org/) | [gitlab.freedesktop.org/cairo/cairo](https://gitlab.freedesktop.org/cairo/cairo) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
@@ -118,6 +119,7 @@ their *License* is likewise marked **—** (OS component).
 | libcdr | [wiki.documentfoundation.org](https://wiki.documentfoundation.org/DLP/Libraries/libcdr) | [github.com/LibreOffice/libcdr](https://github.com/LibreOffice/libcdr) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libdatachannel (+ libjuice, usrsctp, libsrtp, plog) | [libdatachannel.org](https://libdatachannel.org/) | [github.com/paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libcurl | [curl.se/libcurl](https://curl.se/libcurl/) | [github.com/curl/curl](https://github.com/curl/curl) | [curl](https://spdx.org/licenses/curl.html) |
+| libde265 | [github.com/strukturag/libde265](https://github.com/strukturag/libde265) | [github.com/strukturag/libde265](https://github.com/strukturag/libde265) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libheif | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libjpeg-turbo | [libjpeg-turbo.org](https://libjpeg-turbo.org/) | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libjxl | [jpeg.org/jpegxl](https://jpeg.org/jpegxl/) | [github.com/libjxl/libjxl](https://github.com/libjxl/libjxl) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -202,7 +204,7 @@ their *License* is likewise marked **—** (OS component).
 | String formatting | fmt | fmt | fmt |
 | Image processing & resize | libvips | libvips | libvips |
 | Bitmap codecs (via libvips) | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp |
-| GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif | giflib, libheif |
+| GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif (+ libde265, aom): reads HEIC, reads and writes AVIF; no HEIC writing - its encoder, x265, is GPL and kept out of the core | giflib, libheif (+ its codec plug-ins) |
 | JPEG XL (via libvips) | libjxl, where the distribution's libvips has it (Ubuntu 24.04 does, 22.04 does not) | libjxl (+ brotli, Highway) | libjxl (+ brotli, Highway), through libvips' `vips-jxl` module |
 | BMP / PCX coders (via libvips) | ImageMagick | ImageMagick | ImageMagick |
 | Audio playback & capture | miniaudio (bundled) → ALSA / PulseAudio | miniaudio (bundled) → CoreAudio | miniaudio (bundled) → WASAPI |

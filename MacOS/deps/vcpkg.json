@@ -18,6 +18,12 @@
     "lcms",
     "leptonica",
     "libarchive",
+    {
+      "$comment": "libvips' HEIF / AVIF codec: HEIC decoding through libde265 (LGPL), AVIF decoding and encoding through aom (BSD). Not its default hevc feature: that is x265, GPL-2.0, which libvips - and so every app linking the core - would carry. Without it the Mac apps read HEIC but do not write it.",
+      "name": "libheif",
+      "default-features": false,
+      "features": [ "aom" ]
+    },
     "libflac",
     "libogg",
     "libopusenc",
@@ -28,7 +34,7 @@
       "name": "libvips",
       "features": [
         "analyze", "archive", "cfitsio", "cplusplus", "deprecated", "exif", "fftw", "fontconfig",
-        "highway", "jpeg", "jpeg-xl", "lcms", "matio", "nsgif", "openexr", "openjpeg", "pangocairo", "png",
+        "heif", "highway", "jpeg", "jpeg-xl", "lcms", "matio", "nsgif", "openexr", "openjpeg", "pangocairo", "png",
         "ppm", "radiance", "raw", "rsvg", "tiff", "webp", "zlib"
       ]
     },

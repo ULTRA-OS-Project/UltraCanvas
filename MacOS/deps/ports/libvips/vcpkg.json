@@ -57,6 +57,15 @@
         "pango"
       ]
     },
+    "heif": {
+      "description": "HEIF / AVIF loader and saver (libheif).",
+      "dependencies": [
+        {
+          "name": "libheif",
+          "default-features": false
+        }
+      ]
+    },
     "highway": {
       "description": "SIMD paths (highway).",
       "dependencies": [
@@ -152,5 +161,5 @@
       ]
     }
   },
-  "port-version": 2
+  "port-version": 3
 }
