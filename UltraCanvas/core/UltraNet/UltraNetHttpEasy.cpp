@@ -1,8 +1,11 @@
 // core/UltraNet/UltraNetHttpEasy.cpp
 // Shared libcurl easy-handle plumbing: callbacks, option-setting,
 // finalisation. Used by both the sync and the async HTTP code paths.
-// Version: 0.5.1 - the per-thread share no longer shares TLS sessions: a device
-//                  whose key changed was reached on the old session
+// Version: 0.5.1 - the per-thread share is off unless UltraNetConfig::
+//                  reuseHttpConnections asks for it, and shares no TLS
+//                  sessions: a device whose key changed was reached on the
+//                  old session, and a server restarted between two calls on
+//                  the old connection
 // Version: 0.5.0 - ThreadHttpShare / CloseKeptHttpPools: a per-thread
 //                  connection pool so the synchronous verbs reuse connections
 // Version: 0.4.0 - OpenBodyFile / ApplyBodyFile: a request body read from a file as it is sent
@@ -969,6 +972,10 @@ thread_local HttpShare t_httpShare;
 } // namespace
 
 CURLSH* ThreadHttpShare() {
+    // Off unless asked for: the pool outlives the call, which the devices
+    // and servers the live tests restart, re-key or pin between two calls
+    // do not expect (UltraNetConfig::reuseHttpConnections).
+    if (!UltraNet_GetConfig().reuseHttpConnections) return nullptr;
     return t_httpShare.Get();
 }
 

@@ -272,6 +272,14 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // icon cache's threads. The mail plug-ins load in FinishStartup.
     step.emplace("Networking library (UltraNet)", 0);
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+    // A mailbox sync over JMAP is a long run of calls to one server: keep the
+    // connection between them (UltraNetConfig::reuseHttpConnections, off by
+    // default for the devices a pooled connection surprises).
+    {
+        UltraNetConfig net = UltraNet_GetConfig();
+        net.reuseHttpConnections = true;
+        UltraNet_SetConfig(net);
+    }
 
     step.emplace("Accounts", 0);
     LoadAccounts();
