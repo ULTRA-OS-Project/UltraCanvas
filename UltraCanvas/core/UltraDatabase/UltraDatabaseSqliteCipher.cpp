@@ -35,6 +35,7 @@
 // file - passes through untouched; temporary files are refused, since an
 // encrypted connection keeps them in memory (temp_store=MEMORY).
 //
+// Version: 0.1.1 - builds against SQLite 3.39 (no sqlite3_filename)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraDatabaseInternal.h"
@@ -404,7 +405,9 @@ Key TakePendingKey(const char* name) {
     return it == g_pending.end() ? nullptr : it->second;
 }
 
-int VfsOpen(sqlite3_vfs*, sqlite3_filename name, sqlite3_file* file, int flags, int* outFlags) {
+// `const char*`, not sqlite3_filename: that typedef is SQLite 3.41+, and
+// Emscripten's port (the WebAssembly build) is 3.39.
+int VfsOpen(sqlite3_vfs*, const char* name, sqlite3_file* file, int flags, int* outFlags) {
     CipherFile* f = new (file) CipherFile();
     f->real = reinterpret_cast<sqlite3_file*>(reinterpret_cast<char*>(file) + RealOffset());
     f->base.pMethods = nullptr;
