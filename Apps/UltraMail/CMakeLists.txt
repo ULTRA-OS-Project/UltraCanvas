@@ -69,18 +69,11 @@ target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
 if(TARGET UltraVault)
     target_link_libraries(UltraMailEngine PUBLIC UltraVault)
 endif()
-# Signed and encrypted mail (UltraMailSecureMime.h): S/MIME on OpenSSL 3's
-# CMS, OpenPGP on GPGME (the user's GnuPG). Each is optional and soft-failing:
-# without its library the backend compiles to stubs that say so, and a
-# message in that form is shown as one this build cannot check.
-find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
-if(OpenSSL_FOUND)
-    target_link_libraries(UltraMailEngine PUBLIC OpenSSL::Crypto)
-    target_compile_definitions(UltraMailEngine PUBLIC ULTRAMAIL_HAVE_SMIME=1)
-    message(STATUS "  [✓] UltraMail S/MIME (OpenSSL ${OPENSSL_VERSION})")
-else()
-    message(STATUS "  [−] UltraMail S/MIME - no OpenSSL 3")
-endif()
+# Signed and encrypted mail (UltraMailSecureMime.h): S/MIME on UltraCrypt's
+# X.509 and CMS (UltraCryptX509.h, linked below; it has them where OpenSSL 3
+# was found), OpenPGP on GPGME (the user's GnuPG). Each is optional and
+# soft-failing: without its library a message in that form is shown as one
+# this build cannot check, and it is not offered for sending.
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(GPGME QUIET IMPORTED_TARGET gpgme)

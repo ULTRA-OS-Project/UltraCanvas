@@ -1,9 +1,10 @@
 // Apps/UltraMail/engine/UltraMailSecureBackends.h
-// The two libraries behind UltraMailSecureMime.h, each in a file of its own
-// so a build without one compiles that file to stubs: S/MIME on OpenSSL's CMS
-// (UltraMailSmime.cpp, ULTRAMAIL_HAVE_SMIME) and OpenPGP on GPGME
-// (UltraMailOpenPgp.cpp, ULTRAMAIL_HAVE_OPENPGP). Only the byte work is
-// here; the MIME around it is UltraMailSecureMime.cpp's. Not a public header.
+// The two libraries behind UltraMailSecureMime.h, each in a file of its own:
+// S/MIME on UltraCrypt's X.509 and CMS (UltraMailSmime.cpp; UltraCrypt says
+// whether it has them) and OpenPGP on GPGME (UltraMailOpenPgp.cpp, stubs
+// without ULTRAMAIL_HAVE_OPENPGP). Only the byte work is here; the MIME
+// around it is UltraMailSecureMime.cpp's. Not a public header.
+// Version: 0.2.0 - S/MIME on UltraCrypt
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once

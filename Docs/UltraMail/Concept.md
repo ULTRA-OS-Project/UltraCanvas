@@ -398,7 +398,8 @@ that key, since it guards the vault; changing it re-encrypts only the vault.
 An earlier version's plain files are converted at the first start.
 
 **Signed and encrypted mail** (`UltraMailSecureMime.h`) is S/MIME (RFC 8551,
-OpenSSL 3's CMS, `UltraMailSmime.cpp`) and OpenPGP (RFC 3156 PGP/MIME and
+on UltraCrypt's X.509 and CMS - `UltraCryptX509.h`, OpenSSL 3 underneath -
+with `UltraMailSmime.cpp` saying what each finding means) and OpenPGP (RFC 3156 PGP/MIME and
 inline PGP, GPGME over the user's GnuPG keyring, `UltraMailOpenPgp.cpp`), each
 built where its library is found. The stored message stays as it travelled:
 `OpenSecureMessage` decrypts and checks it on a thread when the reading pane

@@ -37,6 +37,7 @@
     "lz4",
     "mp3lame",
     "mupdf",
+    { "$comment": "UltraCrypt's X.509 and CMS (S/MIME). tesseract's curl brings it too; named for UltraCrypt's own use.", "name": "openssl" },
     "opus",
     "opusfile",
     "pango",

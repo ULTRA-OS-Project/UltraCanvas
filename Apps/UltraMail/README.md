@@ -115,7 +115,8 @@ Apps/UltraMail/
                                   (sign / encrypt to recipients and sender),
                                   PKCS #12 import, the raw-MIME helpers
     UltraMailSecureBackends.h     the byte work behind it, one file per library:
-    UltraMailSmime.cpp              S/MIME on OpenSSL 3 CMS (ULTRAMAIL_HAVE_SMIME)
+    UltraMailSmime.cpp              S/MIME on UltraCrypt's X.509 and CMS
+                                    (UltraCryptX509.h); the verdicts in words
     UltraMailOpenPgp.cpp            OpenPGP on GPGME (ULTRAMAIL_HAVE_OPENPGP);
                                     stubs where the library is not found
     UltraMailSecureKeys.{h,cpp}   the account's S/MIME identity in the vault

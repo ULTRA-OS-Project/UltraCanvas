@@ -483,15 +483,23 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
+| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
+
+> OpenSSL is UltraCrypt's second backend, for the public-key infrastructure
+> libsodium has nothing of; libsodium stays the backend of everything
+> UltraCanvas encrypts of its own (`Docs/Modules/UltraCrypt/README.md` §5.11).
+> UltraCrypt links libcrypto privately, so the installed package names no
+> OpenSSL target for a consumer to find. Without OpenSSL 3 (the browser
+> build, a system without it) the X.509 calls answer `BackendUnavailable`.
 
 ### UltraMail: signed and encrypted mail
 
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| S/MIME (sign, check, encrypt, decrypt; PKCS #12 import) | OpenSSL 3 libcrypto (`libssl-dev`) | OpenSSL 3 when found | OpenSSL 3 (MSYS2 `openssl`) |
+| S/MIME (sign, check, encrypt, decrypt; PKCS #12 import) | UltraCrypt's X.509 and CMS (OpenSSL 3, above) | UltraCrypt's X.509 and CMS | UltraCrypt's X.509 and CMS |
 | OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | GPGME from vcpkg (`MacOS/deps/vcpkg.json`, bundled with libassuan and libgpg-error); GnuPG the user's, from Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite | GPGME (MSYS2 `gpgme`, which brings GnuPG) |
 
-> Both are optional and soft-failing (`ULTRAMAIL_HAVE_SMIME`,
+> Both are optional and soft-failing (`UltraCrypt_IsX509Available()`,
 > `ULTRAMAIL_HAVE_OPENPGP`): without one, a message in that form is shown as
 > one this build cannot check, and the compose window does not offer it.
 > GPGME is LGPL-2.1 and linked as the system's shared library; it starts the

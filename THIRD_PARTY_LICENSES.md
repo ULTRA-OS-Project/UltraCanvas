@@ -20,6 +20,23 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## OpenSSL 3 libcrypto (UltraCrypt's X.509 and CMS)
+
+- **Used by:** UltraCrypt's X.509 and CMS (`UltraCanvas/core/UltraCrypt/UltraCryptX509.cpp`,
+  `UltraCryptX509.h`), and through it UltraMail's S/MIME. Optional: without
+  OpenSSL 3 those calls answer `BackendUnavailable`. (UltraNet links OpenSSL
+  for TLS on Linux and Android, UltraRTC for DTLS; those are listed with them.)
+- **Upstream:** https://github.com/openssl/openssl
+- **Linked, not vendored:** the system package (`libssl-dev`; MSYS2's
+  `openssl`), on macOS vcpkg's build for macOS 14 (`MacOS/deps/vcpkg.json`),
+  bundled as a dylib in the suite's shared `Frameworks/`. No OpenSSL source is
+  carried in this repository, and no OpenSSL type appears in any UltraCanvas
+  public header.
+- **License:** Apache License 2.0 (OpenSSL 3.0 and later). A binary
+  distribution that carries the library carries its licence text.
+
+---
+
 ## wasmtime (WebAssembly engine)
 
 - **Used by:** the WasmHost module (`UltraCanvas/core/WasmHost/`), and through
