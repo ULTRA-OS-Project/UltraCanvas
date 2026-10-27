@@ -1889,6 +1889,15 @@ if (BUILD_ULTRAVIEWER_APP)
     )
     target_link_libraries(UltraViewer PRIVATE fmt::fmt)
 
+    # Every format plugin this build produced, registered before main(), as
+    # in UltraFiler: without it a CorelDRAW, Xara, DXF or DWG file showed only
+    # the preview bitmap stored inside it (or nothing), never the drawing,
+    # and the 3D formats past STL did not open.
+    if(TARGET UltraCanvasAllFormats)
+        target_link_libraries(UltraViewer PRIVATE
+                ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats)
+    endif()
+
     target_compile_features(UltraViewer PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraViewer PRIVATE

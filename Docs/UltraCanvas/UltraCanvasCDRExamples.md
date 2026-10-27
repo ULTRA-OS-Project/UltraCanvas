@@ -26,10 +26,11 @@
   - [Plugin Registration](#plugin-registration)
 - [Convenience Factories](#convenience-factories)
 - [Usage Examples](#usage-examples)
-  - [Example 1: Loading and Displaying a CDR File](#example-1-loading-and-displaying-a-cdr-file)
-  - [Example 2: Click-to-Fullscreen Handler](#example-2-click-to-fullscreen-handler)
-  - [Example 3: Hover Highlight + Click-to-Open](#example-3-hover-highlight--click-to-open)
-  - [Example 4: Inline Multi-Page Navigation](#example-4-inline-multi-page-navigation)
+  - [Example 1: Reading a drawing without freezing the window](#example-1-reading-a-drawing-without-freezing-the-window)
+  - [Example 2: Loading and Displaying a CDR File](#example-2-loading-and-displaying-a-cdr-file)
+  - [Example 3: Click-to-Fullscreen Handler](#example-3-click-to-fullscreen-handler)
+  - [Example 4: Hover Highlight + Click-to-Open](#example-4-hover-highlight--click-to-open)
+  - [Example 5: Inline Multi-Page Navigation](#example-5-inline-multi-page-navigation)
 - [Supported Features (Plugin Summary)](#supported-features-plugin-summary)
 - [Integration Checklist](#integration-checklist)
 - [Writing CDR files (`UltraCanvasCDRConverter.h`)](#writing-cdr-files-ultracanvascdrconverterh)
@@ -194,10 +195,22 @@ UltraCanvasCDRElement(const std::string& identifier,
 ```cpp
 bool LoadFromFile(const std::string& filePath);
 bool LoadFromMemory(const std::vector<uint8_t>& data);
+// Parses on a worker thread; onLoadComplete / onLoadError fire on the UI
+// thread when it is done. The element must be owned by a shared_ptr.
+void LoadFromFileAsync(const std::string& filePath);
 
 bool IsLoaded() const;
+bool IsLoading() const;   // an async load is running
 int  GetPageCount() const;
 ```
+
+`LoadFromFile` parses on the calling thread. A drawing with embedded photos
+takes a while to read (`media/vector/CDR/detailed.cdr`, 3.3 MB with six
+bitmaps, about 0.7 s in a debug build), so a window that shows one
+`LoadFromFileAsync`s it and puts a busy indicator up meanwhile; the element
+reads *Loading…* until the document arrives. A load started while another
+runs waits for that one to finish, and only the latest result is shown; an
+element destroyed mid-parse waits for the worker and drops its result.
 
 ### Page Navigation
 
@@ -344,9 +357,26 @@ std::shared_ptr<UltraCanvasCDRElement> LoadCDRFromFile(
 
 ## Usage Examples
 
-All examples below are drawn from `Apps/DemoApp/UltraCanvasCDRExamples.cpp`.
+The demo page (`Apps/DemoApp/UltraCanvasCDRExamples.cpp`) shows one drawing at
+a time, with a tab per file on the left; each drawing is read the first time
+its tab is shown.
 
-### Example 1: Loading and Displaying a CDR File
+### Example 1: Reading a drawing without freezing the window
+
+```cpp
+auto element = std::make_shared<UltraCanvasCDRElement>("CDRView", 0, 0, 0, 0);
+element->SetFitMode(CDRFitMode::FitPage);
+auto busy = CreateBusyIndicator("CDRBusy", 0, 0, 48.0f);
+
+UltraCanvasBusyIndicator* ring = busy.get();
+element->onLoadComplete = [ring]() { ring->Stop(); };
+element->onLoadError = [ring](const std::string& error) { ring->Stop(); };
+
+busy->Start();
+element->LoadFromFileAsync(NormalizePath(GetResourcesDir() + "media/vector/CDR/detailed.cdr"));
+```
+
+### Example 2: Loading and Displaying a CDR File
 
 ```cpp
 // Create a bordered container to host the CDR view
@@ -377,7 +407,7 @@ cdrContainer1->AddChild(cdrElement1);
 container->AddChild(cdrContainer1);
 ```
 
-### Example 2: Click-to-Fullscreen Handler
+### Example 3: Click-to-Fullscreen Handler
 
 The demo defines a small handler class that opens any clicked CDR file in a dedicated fullscreen window. Note the use of `onPageChanged` for live page-counter updates and `SetEventCallback()` for hover / click handling.
 
@@ -502,7 +532,7 @@ public:
 };
 ```
 
-### Example 3: Hover Highlight + Click-to-Open
+### Example 4: Hover Highlight + Click-to-Open
 
 Per-element `SetEventCallback()` wired to a `CDRDemoHandler`. Mouse-enter / leave swap the container's border colour for visual feedback; mouse-up triggers the fullscreen viewer.
 
@@ -528,7 +558,7 @@ cdrElement1->SetEventCallback(
     });
 ```
 
-### Example 4: Inline Multi-Page Navigation
+### Example 5: Inline Multi-Page Navigation
 
 Inline (non-fullscreen) prev / next buttons driving the `SetCurrentPage()` API and a label that follows `onPageChanged`.
 
