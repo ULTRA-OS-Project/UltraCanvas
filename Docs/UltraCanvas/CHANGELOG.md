@@ -1,3 +1,67 @@
+#### 2026-10-27 *0.9.420*
+- **The demo's CorelDRAW page opens at once and shows one drawing at a
+  time.** Opening it read all three sample drawings on the UI thread first -
+  over two seconds of a frozen window in a debug build, nearly all of it
+  `detailed.cdr`. The page now has a tab per file on the left; a drawing is
+  read the first time its tab is shown, on a worker thread, behind a turning
+  busy indicator, and the status line says how long it took.
+- **UltraCanvasCDRElement: `LoadFromFileAsync` / `IsLoading`** (CDR plugin
+  1.3.0). The file is parsed on a worker thread and the document handed to
+  the element on the UI thread; only the latest of several loads is shown,
+  and an element destroyed mid-parse waits for its worker. The element also
+  draws in its own coordinates now: it clipped the drawing with its
+  parent-relative content rect, which cut a strip the size of its offset off
+  any drawing not placed at its parent's top-left corner.
+- **libcdr: bitmap colours are converted once per colour, not once per
+  pixel** (third patch in `UltraCanvas/third_party/libcdr`, also offered
+  upstream as `upstream/0003-…`). Each pixel of an embedded bitmap went
+  through its own lcms transform call - 70% of the time `detailed.cdr` took
+  to read. The parse now takes 0.7 s instead of 2.3 s (debug build), with
+  byte-identical output.
+- **A CorelDRAW drawing's hairlines are drawn dark again.** Its thinnest
+  outlines (a quarter of a point) came out a fifth of a pixel wide at a page
+  fitted into a window, and antialiasing faded them to a pale grey: the
+  dubai-atlantis and door-panel samples were barely visible. An outline is
+  now at least one device pixel wide, as CorelDRAW draws it; the SVG export
+  is unchanged.
+- **UltraCanvasMediaViewer 1.18.0: a transparent picture or a drawing gets a
+  backdrop it can be seen on.** Dark line art in the vector view sat on the
+  viewer's near-black pane, and a white logo on the white backdrop - both
+  close to invisible. The new `TransparentImageBackground::Auto`, the viewer's
+  default, samples what is shown (a transparent picture's pixels, or the
+  drawing rasterized at 64 px) and picks white, mid grey or dark grey -
+  whichever gives the most of the artwork a 4.5:1 contrast
+  (`UltraCanvasMediaViewer::ContrastingBackdropFor`). The vector view now
+  takes its backdrop from the strip too (it had none), and the strip opens
+  with an auto swatch; a colour picked there still holds for the following
+  files. 3D models are unchanged: every model is drawn in one light grey on
+  a dark ground, which already contrasts.
+- **The media viewer's zoom box shows the zoom.** It stayed blank whatever the
+  zoom was; it now reads *Fit*, the step it is at, or the percentage between
+  steps (`137%`), for pictures, PDFs, e-books and drawings.
+- **UltraCanvasColorSwatchBar 1.4.0: an auto swatch** (`SetShowAutoEntry`,
+  `SelectAuto`, `onAutoSelected`), drawn half light and half dark before the
+  checkered one.
+- **UltraCanvasDropdown 1.2.0: `SetPlaceholderText`**, what the button reads
+  while no item is selected.
+- **UltraCanvasMediaViewer 1.15.1: a drawing on screen is no longer reported as "No media".**
+  The info bar and the Details panel had a branch for every view but the
+  drawing one, so a file shown by the vector view (DXF, DWG, EMF, ...) or by a
+  plugin's own element (CorelDRAW through libcdr) fell through to the picture
+  branch, found no bitmap and said *No media* under a drawing that was plainly
+  there. The info bar now reads `name · DRAWING (CDR) · size · n / m`, adding
+  the document size and zoom in the vector view (and following its zoom); the
+  Details panel calls it a *Vector drawing*. A drawing with no reader and no
+  stored preview keeps saying so instead of having it overwritten by
+  *No media*.
+- **A Xara drawing is no longer shifted and cut off by its own position.**
+  `UltraCanvasXARElement` (XAR plugin 2.3.1) placed the page by its position
+  in the parent although the parent had already moved the drawing context
+  there, so a drawing anywhere but its parent's top-left corner was drawn
+  that far down and to the right and lost its bottom and right edge - in the
+  demo's XAR tiles 12 px, enough to cut the last line of Backside.xar. It now
+  draws at its own origin, as the CDR element does since this branch.
+
 #### 2026-10-27 *0.9.419*
 - **Cloud sessions no longer see a pushed branch as unpushed.** The cloud
   clone is shallow and single-branch, so a branch pushed with `git push -u`

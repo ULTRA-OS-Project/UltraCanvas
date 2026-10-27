@@ -1,3 +1,10 @@
+#### 2026-10-27 *1.94.0*
+- **The preview pane picks a backdrop that suits each transparent picture or
+  drawing** (the media viewer's new Auto backdrop), and remembers the auto
+  swatch like any other choice (`preview.transparent.auto`). An existing
+  settings file with no such line starts on Auto; picking a colour or the
+  checkerboard in the strip under the preview switches it off again.
+
 #### 2026-10-25 *1.93.0*
 - **Starting UltraFiler after closing it said "UltraFiler is already
   running"** on Windows, and the old copy - no window, still in Task Manager -
