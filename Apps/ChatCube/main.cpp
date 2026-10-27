@@ -7,15 +7,18 @@
 // Telegram and others follow as further providers.
 //
 //   ChatCube                     open the window
+//   ChatCube --dark              in the dark look
 //   ChatCube --debug             and say what the networks do, on stderr
 //   ChatCube --log <file>        the same, appended to a file
 //   ChatCube --version / --help
 //
+// Version: 0.1.2 - --dark
 // Version: 0.1.1 - --debug and --log
 // Version: 0.1.0
 // Last Modified: 2026-10-25
 // Author: UltraCanvas Framework / ULTRA OS
 
+#include "ui/ChatCubeTheme.h"
 #include "ui/ChatCubeWindow.h"
 
 #include "UltraCanvasApplication.h"
@@ -73,7 +76,8 @@ std::string ResolvePluginDirectory() {
 
 void PrintUsage(const char* program) {
     std::printf("ChatCube %s - the ULTRA OS messenger\n\n"
-                "Usage: %s [--debug | --log <file>] [--version | --help]\n\n"
+                "Usage: %s [--dark] [--debug | --log <file>] [--version | --help]\n\n"
+                "  --dark                the dark look (the light one otherwise)\n"
                 "  --debug               say what the networks do (sign-ins, TDLib's answers,\n"
                 "                        the relay) on stderr; Telegram's own log goes to\n"
                 "                        telegram/tdlib.log in the data folder either way\n"
@@ -88,6 +92,7 @@ void PrintUsage(const char* program) {
 } // namespace
 
 int main(int argc, char** argv) {
+    bool dark = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--version") == 0) {
             std::printf("ChatCube %s\n", CHATCUBE_VERSION);
@@ -96,6 +101,10 @@ int main(int argc, char** argv) {
         if (std::strcmp(argv[i], "--help") == 0 || std::strcmp(argv[i], "-h") == 0) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
+        }
+        if (std::strcmp(argv[i], "--dark") == 0) {
+            dark = true;
+            continue;
         }
         if (std::strcmp(argv[i], "--debug") == 0) {
             UltraCanvas::SetDebugOutputEnabled(true);
@@ -128,6 +137,9 @@ int main(int argc, char** argv) {
     if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
         return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "ChatCube");
     app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/ChatCube.png"));
+    // The look, before any element is built: every element and the lists'
+    // own painting take their colours from it (ui/ChatCubeTheme.h).
+    UltraCanvas::UltraCanvasTheme::SetCurrent(ChatCube::ThemeFor(dark));
 
     UltraNet_Initialize();
     UltraRtc_Initialize();

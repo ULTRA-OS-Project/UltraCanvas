@@ -4,8 +4,9 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.0 - avatars, a rounded selection, the theme's colours
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -121,13 +122,14 @@ private:
     std::vector<UltraIMConversation> list_;
 };
 
-// One row: a presence dot, the title, the last message, its time and the
-// unread count.
+// One row: the avatar (initials on the person's colour, a presence dot at
+// its corner; a group mark for a group), the title, the last message, its
+// time and the unread count, on a rounded tint when selected or hovered.
 class ConversationDelegate : public UltraCanvas::IItemDelegate {
 public:
     void RenderItem(UltraCanvas::IRenderContext* ctx, const UltraCanvas::IListModel* model,
                     int row, int column, const UltraCanvas::ListItemStyleOption& option) override;
-    int GetRowHeight(const UltraCanvas::IListModel*, int) const override { return 56; }
+    int GetRowHeight(const UltraCanvas::IListModel*, int) const override;
 };
 
 } // namespace ChatCube
