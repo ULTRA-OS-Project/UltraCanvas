@@ -946,6 +946,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
@@ -985,6 +986,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
@@ -1327,6 +1329,15 @@ jobs:
           "$store" --version
           "$store" platform
           "$store" installed --root "$RUNNER_TEMP/ultrastore-smoke"
+          # The admin backend's core: the database, the sealed key, the
+          # package store, a catalog published and verified the way the
+          # store verifies it; then the program answers.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreAdminCore$")
+          admin=build/ultrastoreadmin
+          [ "${{ runner.os }}" = "Windows" ] && admin="$admin.exe"
+          "$admin" --version
+          "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" init
+          "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" app list
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version

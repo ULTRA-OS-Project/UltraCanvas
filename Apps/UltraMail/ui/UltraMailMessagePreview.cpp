@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.20.3 - the warning strip's footnote is marked "*" (it was a superscript 2)
+// Version: 0.20.2 - an attached web page (attachment-web-page / -active-page) is named
+//                   in the warning strip as phishing, with advice not to open it
 // Version: 0.20.1 - Copy link over a linked picture too (a newsletter's button)
 // Version: 0.20.0 - "Copy link" in the right-click menu over a link of the body
 //                  (HTML and plain text), above Copy and Select All
@@ -1177,6 +1180,9 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     const bool loan = security.HasFinding("loan-offer-fraud");
     const bool lookalike = security.HasFinding("sender-domain-lookalike") ||
                            security.HasFinding("government-impersonation");
+    // An .html "invoice": the page opens in the browser, outside the reader.
+    const bool webPage = security.HasFinding("attachment-web-page") ||
+                         security.HasFinding("attachment-active-page");
     const bool cryptoScam = security.HasFinding("crypto-wallet-secret") ||
                             security.HasFinding("crypto-payment-demand") ||
                             security.HasFinding("crypto-investment-lure");
@@ -1226,13 +1232,13 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
     warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
     warningTitle_->SetTextColor(accent);
     const char* what = romance                ? "romance scam"
-                     : phishing || lookalike  ? "phishing"
+                     : phishing || lookalike || webPage ? "phishing"
                      : cryptoScam ? "cryptocurrency scam"
                      : loan       ? "loan scam"
                      : nullptr;
     warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
         (what ? std::string(scam ? "Warning: This is likely a " : "Warning: This may be a ") +
-                    what + "\xC2\xB2 email!"
+                    what + "* email!"
          : status.cls == SenderClass::Scam
               ? std::string("This message looks like a scam or phishing attempt")
          : blocked ? std::string("You blocked this sender")
@@ -1258,6 +1264,10 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
         text += "\nDo not pay any fee, insurance or charge to receive a loan, and do not "
                 "send copies of your passport or bank details. Ask your own bank if you need "
                 "credit.";
+    else if (webPage && !romance)
+        text += "\nDo not open the attached web page, and do not sign in or pay on a page it "
+                "opens. If you are unsure whether you owe something, contact the company at an "
+                "address you already know.";
     else if (romance)
         text += "\nDo not send money, gift cards or crypto to someone you only know from "
                 "email or the internet, and do not sign up or give card details on a site "
@@ -1267,21 +1277,21 @@ void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
                 "you are sure who sent it.";
     if (crypto && !romance) text += std::string("\n") + cryptoAdvice;
     if (romance)
-        text += "\n\n\xC2\xB2 Romance scams are love letters from strangers - a made-up "
+        text += "\n\n* Romance scams are love letters from strangers - a made-up "
                 "profile, someone else's photos, \"destiny\" - written to win your trust "
                 "and then your money: for a ticket, a visa, the rent, a hospital bill, a "
                 "laptop for the webcam, or an \"investment\" in crypto. A reverse image "
                 "search of the photo often finds it under another name.";
-    else if (phishing || lookalike)
-        text += "\n\n\xC2\xB2 Phishing emails are emails that try to get your credentials "
+    else if (phishing || lookalike || webPage)
+        text += "\n\n* Phishing emails are emails that try to get your credentials "
                 "to hack your accounts on other websites.";
     else if (loan && !cryptoScam)
-        text += "\n\n\xC2\xB2 Loan scams offer credit or \"project funding\" - often "
+        text += "\n\n* Loan scams offer credit or \"project funding\" - often "
                 "millions at a few percent - to strangers by email. Only a bank may lend, and "
                 "banks do not write to people out of the blue: the \"lender\" collects a "
                 "processing fee, an insurance or a transfer charge, and the loan never comes.";
     else if (cryptoScam)
-        text += "\n\n\xC2\xB2 Cryptocurrency scams ask for a wallet's recovery phrase, "
+        text += "\n\n* Cryptocurrency scams ask for a wallet's recovery phrase, "
                 "demand payment to a wallet address (blackmail, fake invoices) or promise "
                 "profits on an \"investment platform\" that shows made-up gains and keeps "
                 "what is paid in.";
