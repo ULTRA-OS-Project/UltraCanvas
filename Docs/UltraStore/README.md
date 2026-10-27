@@ -181,14 +181,32 @@ publisher's page.
 Decided: the provider is **Paysafe, with Skrill Quick Checkout** as the
 checkout. The buyer pays on Skrill's hosted page (cards, Skrill wallet,
 the local methods Quick Checkout offers), the store never sees a card
-number, and Paysafe's server-to-server status report is what the payment
-service trusts, not the browser's return. The design to come: the payment
-service that holds the merchant credentials (never the store binary),
-opens a Quick Checkout session for an app, a price and the code in force,
-receives the status report, redeems the code (the sale into the ledger
-with its credits, one level up and no further - *Affiliates and codes*),
-issues the licence the app checks and the receipt, and signs the
-short-lived URLs for `restricted/` (*Where the server is reached*).
+number, and Skrill's server-to-server status report is what is trusted,
+not the browser's return.
+
+**The payment service** (`Server/UltraStorePay`, its own README) holds the
+merchant credentials - never the store binary, never the catalog - and
+does the purchase:
+
+| Step | Who | What |
+|---|---|---|
+| 1 | the store | `POST /v1/checkout {app, code}`: an order priced from the same signed catalog the stores read, with the code in force applied the way the store showed it (*Affiliates and codes*) |
+| 2 | the store | opens the order's `checkout_url` in the browser: the Quick Checkout form, submitted to `pay.skrill.com` with the order as `transaction_id` |
+| 3 | Skrill | posts the status report to the service, signed with the secret word (`md5sig`); the service checks the signature, the amount and the currency; status 2 pays the order, issues the licence and numbers the receipt - a repeat changes nothing, a forgery is refused |
+| 4 | the store | polls the order with its secret until it is paid, keeps the licence, and fetches the paid app's package through a signed URL that lives ten minutes (`restricted/`, *Where the server is reached*) |
+| 5 | the admin backend | fetches the sales (`GET /v1/sales?since=`) and records each in its ledger with the partners' credits, one level up and no further |
+
+**The licence** is `ULIC1.<payload>.<signature>`: the licence id, the app,
+the order, the day and what the purchase includes, signed Ed25519 with the
+service's licence key, whose public half is `GET /v1/keys`; an app
+verifies it offline. **The receipt** is numbered per paid order.
+
+Still to come on the store's side: *Buy* opening the checkout instead of
+the publisher's page, the licence kept in the registry and shown on the
+details page, the restricted package fetched through the signed URL; on
+the admin's side `sale sync` pulling the sales instead of `sale add` by
+hand; and the catalog naming the payment service and its licence key
+(schema 3) so a store needs no setting for them.
 
 ### Translations
 
@@ -546,6 +564,8 @@ program, `ultrastore sha256` it, write a catalog.json with
 6. **Affiliates and codes** (*Affiliates and codes*): discount and
    affiliate codes in the catalog, QR codes and links, two-tier partners in
    the admin backend with the sales ledger and the report.
-7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout, the
-   payment service, the redemption of the codes, the licence, the receipt,
-   the signed URLs for `restricted/`.
+7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout. The
+   payment service (`Server/UltraStorePay`): the checkout, the status
+   report, the licence, the receipt, the signed URLs for `restricted/`, the
+   sales for the admin backend. Next: the store's *Buy* through it, the
+   licence in the registry, `sale sync`, the catalog naming the service.
