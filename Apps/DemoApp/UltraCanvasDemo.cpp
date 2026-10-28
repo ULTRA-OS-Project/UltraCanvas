@@ -1,5 +1,6 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.16 - Bitmap Elements > JPEG XL Images (sample: media/images/jxl_art2.jxl)
 // Version: 1.0.15 - Info Graphics > Performance Matrix: the element replaces the placeholder
 // Version: 1.0.14 - Charts > Importance-Performance Chart (UltraCanvasImportancePerformanceChart)
 // Version: 1.0.13 - gray, 8 px scrollbars; the status legend as rows sized to their text
@@ -12,7 +13,7 @@
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-23
+// Last Modified: 2026-10-27
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -995,6 +996,17 @@ namespace UltraCanvas {
                               "HEIF high efficiency format with HEVC compression",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateBitmapFormatDemoPage("HEIC", NormalizePath(GetResourcesDir() + "media/images/dice.heic")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
+                .AddVariant("images", "Modern Formats");
+
+        // JPEG XL Images - the sample is JXL art (82 bytes, 2160 x 3840).
+        // A build whose libvips lacks libjxl shows the page with a notice
+        // in place of the picture.
+        bitmapBuilder.AddItem("jxlimages", "JPEG XL Images",
+                              "JPEG XL: lossy and lossless, HDR, and lossless JPEG recompression",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateBitmapFormatDemoPage("JXL", NormalizePath(GetResourcesDir() + "media/images/jxl_art2.jxl")); },
                               "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");

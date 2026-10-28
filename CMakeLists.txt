@@ -1331,6 +1331,27 @@ if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
 endif()
 
+# ===== JPEG XL TEST WITHOUT THE FULL SUITE =====
+# ImageJxlTest alone, for builds that leave BUILD_TESTS off (the macOS and
+# Windows CI rows): the libvips each of them ships - vcpkg's on macOS, MSYS2's
+# with its vips-jxl module on Windows - has to write and read JPEG XL.
+option(ULTRACANVAS_BUILD_JXL_TESTS "Build ImageJxlTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_JXL_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/ImageJxlTests.cmake)
+endif()
+
+# ===== HEIF / AVIF TEST WITHOUT THE FULL SUITE =====
+# ImageHeifTest alone, for builds that leave BUILD_TESTS off (the macOS and
+# Windows CI rows): the libheif each of them ships has to decode and encode
+# what UC_HEIF_EXPECT says it must - and on macOS, not encode HEIC (x265 is
+# GPL and stays out of the core).
+option(ULTRACANVAS_BUILD_HEIF_TESTS "Build ImageHeifTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_HEIF_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/ImageHeifTests.cmake)
+endif()
+
 # ===== START PAGE AND APP SETTINGS TESTS WITHOUT THE FULL SUITE =====
 # StartPageTest and AppSettingsTest alone, for builds that leave BUILD_TESTS
 # off (the macOS and Windows CI rows): every application's start page and its

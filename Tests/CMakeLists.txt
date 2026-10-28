@@ -6258,27 +6258,16 @@ else()
 endif()
 
 # ===== IMAGE JPEG XL TEST =====
-# JPEG XL through the framework's image pipeline: the format inventory, a
-# lossless and a lossy .jxl from the export encoder read back through
-# UCImageRaster, the quality option, and UCImageRaster::Save. Headless;
-# reports SKIP on a libvips built without libjxl.
-if(TARGET UltraCanvas)
-    message(STATUS "  Building ImageJxlTest...")
-    add_executable(ImageJxlTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/ImageJxlTest.cpp
-    )
-    target_include_directories(ImageJxlTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(ImageJxlTest PRIVATE cxx_std_20)
-    target_link_libraries(ImageJxlTest PRIVATE UltraCanvas)
-    set_target_properties(ImageJxlTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME ImageJxlTest COMMAND ImageJxlTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: ImageJxlTest")
-else()
-    message(STATUS "  ImageJxlTest skipped (UltraCanvas target not present)")
-endif()
+# Defined in ImageJxlTests.cmake, which the top level also includes on its own
+# (ULTRACANVAS_BUILD_JXL_TESTS) where BUILD_TESTS is off - the macOS and
+# Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/ImageJxlTests.cmake)
+
+# ===== IMAGE HEIF / AVIF TEST =====
+# Defined in ImageHeifTests.cmake, which the top level also includes on its
+# own (ULTRACANVAS_BUILD_HEIF_TESTS) where BUILD_TESTS is off - the macOS and
+# Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/ImageHeifTests.cmake)
 
 # ===== IMAGE GIF SAVER TEST =====
 # The framework's GIF saver for libvips (VipsGifPlugin): registered, picked
