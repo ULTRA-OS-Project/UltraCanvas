@@ -267,6 +267,7 @@ if(ANDROID)
     # The desktop store; its hard requirement on libsodium and SQLite would
     # stop this configure, and the Android store is a later milestone.
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
+    set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
     # AnchorPoint's GUI CMake takes Android for desktop Linux (UNIX, not
     # APPLE) and asks pkg-config for X11.
     set(BUILD_ANCHORPOINT OFF CACHE BOOL "Build the AnchorPoint application")
@@ -347,6 +348,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRACLEANER OFF CACHE BOOL "Build the UltraCleaner application")
     set(BUILD_ULTRACANVASSTART OFF CACHE BOOL "Build the UltraCanvasStart application")
     set(BUILD_ULTRASTORE OFF CACHE BOOL "Build the UltraStore application")
+    set(BUILD_ULTRASTOREADMIN OFF CACHE BOOL "Build the UltraStoreAdmin application")
     set(BUILD_UOS_SETTINGS OFF CACHE BOOL "Build the UOS-Settings application")
     set(BUILD_ULTRACLAUDE OFF CACHE BOOL "Build the UltraClaude application")
     set(BUILD_ULTRANETMONITOR OFF CACHE BOOL "Build the UltraNetMonitor application")
@@ -815,6 +817,18 @@ if(BUILD_ULTRASTORE)
     endif()
 endif()
 
+# ===== ULTRASTOREADMIN =====
+# The store's admin backend: the apps and their settings in a database, the
+# packages, the signing key, the translations, the catalog generated and
+# signed (Docs/UltraStoreAdmin/README.md). On the store's core, so it is
+# built where the store is.
+option(BUILD_ULTRASTOREADMIN "Build the UltraStoreAdmin application" ON)
+if(BUILD_ULTRASTOREADMIN AND TARGET UltraStoreCore)
+    message(STATUS "")
+    message(STATUS "── Building UltraStoreAdmin ──")
+    add_subdirectory(Apps/UltraStoreAdmin)
+endif()
+
 # ===== ANCHORPOINT =====
 # Peer-to-peer file sharing with no server file storage. Apps/AnchorPoint is
 # also its own CMake project (core + CLI build without the framework); here it
@@ -919,6 +933,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasPerformanceMatrixExamples.cpp
             Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTickerBoardExamples.cpp
@@ -1316,6 +1331,27 @@ if(ULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS AND NOT BUILD_TESTS)
     include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/VectorFormatsTests.cmake)
 endif()
 
+# ===== JPEG XL TEST WITHOUT THE FULL SUITE =====
+# ImageJxlTest alone, for builds that leave BUILD_TESTS off (the macOS and
+# Windows CI rows): the libvips each of them ships - vcpkg's on macOS, MSYS2's
+# with its vips-jxl module on Windows - has to write and read JPEG XL.
+option(ULTRACANVAS_BUILD_JXL_TESTS "Build ImageJxlTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_JXL_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/ImageJxlTests.cmake)
+endif()
+
+# ===== HEIF / AVIF TEST WITHOUT THE FULL SUITE =====
+# ImageHeifTest alone, for builds that leave BUILD_TESTS off (the macOS and
+# Windows CI rows): the libheif each of them ships has to decode and encode
+# what UC_HEIF_EXPECT says it must - and on macOS, not encode HEIC (x265 is
+# GPL and stays out of the core).
+option(ULTRACANVAS_BUILD_HEIF_TESTS "Build ImageHeifTest without BUILD_TESTS" OFF)
+if(ULTRACANVAS_BUILD_HEIF_TESTS AND NOT BUILD_TESTS)
+    enable_testing()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/Tests/ImageHeifTests.cmake)
+endif()
+
 # ===== START PAGE AND APP SETTINGS TESTS WITHOUT THE FULL SUITE =====
 # StartPageTest and AppSettingsTest alone, for builds that leave BUILD_TESTS
 # off (the macOS and Windows CI rows): every application's start page and its
@@ -1617,6 +1653,18 @@ if(ULTRACANVAS_BUILD_ULTRASTORE_TESTS AND TARGET UltraStoreCore)
     message(STATUS "── UltraStore core test suite enabled (target: UltraStoreCoreTests) ──")
 endif()
 
+# ===== ULTRASTOREADMIN CORE TESTS =====
+# The admin database, the sealed signing key, the package store, the catalog
+# published and verified the way the store verifies it, the translations
+# with a fake translator. Enabled on its own switch.
+option(ULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS "Build the UltraStoreAdmin core test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS AND TARGET UltraStoreAdminCore)
+    enable_testing()
+    add_subdirectory(Tests/UltraStoreAdmin)
+    message(STATUS "")
+    message(STATUS "── UltraStoreAdmin core test suite enabled (target: UltraStoreAdminCoreTests) ──")
+endif()
+
 # ===== DOCUMENTATION =====
 #find_package(Doxygen QUIET)
 #if(DOXYGEN_FOUND)
@@ -1862,6 +1910,15 @@ if (BUILD_ULTRAVIEWER_APP)
             ${ULTRACANVAS_LIBRARY}
     )
     target_link_libraries(UltraViewer PRIVATE fmt::fmt)
+
+    # Every format plugin this build produced, registered before main(), as
+    # in UltraFiler: without it a CorelDRAW, Xara, DXF or DWG file showed only
+    # the preview bitmap stored inside it (or nothing), never the drawing,
+    # and the 3D formats past STL did not open.
+    if(TARGET UltraCanvasAllFormats)
+        target_link_libraries(UltraViewer PRIVATE
+                ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats)
+    endif()
 
     target_compile_features(UltraViewer PRIVATE cxx_std_20)
 

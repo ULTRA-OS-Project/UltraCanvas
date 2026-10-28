@@ -42,7 +42,8 @@ first lines as of 2026-10-18.
 | [UltraFIBU](#ultrafibu) | German double-entry bookkeeping | 0.24.5 | UltraDatabase, UltraCrypt |
 | **Desktop and system** | | | |
 | [UltraDesktop](#ultradesktop) | The ULTRA OS desktop | 0.4.1 | DesktopShell, ClipboardHistory, UltraMessage |
-| [UltraStore](#ultrastore) | The app store: the window, a signed catalog, per-user installs, updates | 0.1.1 | UltraNet, UltraCrypt, UltraDatabase |
+| [UltraStore](#ultrastore) | The app store: the window, a signed catalog, per-user installs, updates | 0.1.2 | UltraNet, UltraCrypt, UltraDatabase |
+| [UltraStoreAdmin](#ultrastoreadmin) | The store's admin backend: apps and settings, packages, the signing key, translations, the signed catalog | 0.1.0 | UltraStore core, UltraDatabase, UltraCrypt, UltraAI |
 | [UOS-Settings](#uos-settings) | System settings | 0.5.0 | core |
 | [UltraClipboard](#ultraclipboard) | Clipboard history | 0.1.5 | ClipboardHistory |
 | [UltraCleaner](#ultracleaner) | Removes caches, temporary files and leftovers | 0.66 | core |
@@ -480,7 +481,45 @@ given one.
 - Installs: downloads through UltraNet (resumed, hash-checked), unpacks
   through VirtualFS into a per-user tree, remembers every version in a
   registry on UltraDatabase, updates, removes, collects what nothing needs.
-- Next: the admin backend, payment. Design: `Docs/UltraStore/README.md`.
+- Next: payment. Design: `Docs/UltraStore/README.md`.
+
+### UltraStoreAdmin
+
+**Purpose:** the store's admin backend, run by the people who publish:
+keeps the apps, runtimes and libraries with every setting the catalog
+carries, the publishers, the files behind the packages and the signing key;
+translates the texts; generates, signs and lays out the catalog for the web
+server. One program, `ultrastoreadmin`: the window when started plainly,
+the commands when given one.
+
+**Capabilities (0.1.0):**
+- Apps and components as the catalog's own objects in an UltraDatabase
+  file: imported from JSON or built up setting by setting, texts per
+  language, releases with their dependencies, packages per target.
+- Packages copied into a package store under their SHA-256, size and hash
+  measured, the entry to start suggested from the archive's listing.
+- The signing key generated on the machine, its seed sealed with a
+  passphrase (Argon2id, XChaCha20-Poly1305), the public half exported for
+  the store; retired keys do not sign.
+- Translation into every official language through UltraAI, what it
+  translated marked for the store.
+- `publish`: the catalog with the next sequence, free packages under
+  `packages/`, paid ones under `restricted/` (served through short-lived
+  signed URLs later), the media beside it, signed, and verified with the
+  store's own reader and verifier before the sequence is recorded.
+- The window: the apps and components in a sidebar, the form with every
+  setting, the texts per language with translation, the pictures, the
+  releases with their packages, the publish page with its warnings, the
+  keys and the settings.
+- Upload of the publish folder to the host over SFTP, FTPS, FTP or HTTPS
+  PUT, what changed only, the catalog last.
+- Affiliates and codes: partners with a share of the sales their codes
+  make and a recruit share one level down, discount codes, QR codes and
+  links, the sales ledger and the report. Design:
+  `Docs/UltraStoreAdmin/README.md`.
+- The payment service (`Server/UltraStorePay`): Skrill Quick Checkout, the
+  status report verified, the licence and the receipt, the signed download
+  URLs, the sales for the ledger.
 
 ### UltraDesktop
 

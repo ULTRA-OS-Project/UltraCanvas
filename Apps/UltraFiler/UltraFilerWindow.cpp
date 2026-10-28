@@ -1167,9 +1167,13 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // setting like any other: it is kept, so the next preview opens with it.
     preview->onTransparentBackgroundChanged =
             [this](TransparentImageBackground mode, const Color& color) {
+        settings.previewAutoBackground = (mode == TransparentImageBackground::Auto);
         settings.previewCheckeredBackground =
                 (mode == TransparentImageBackground::Checkered);
-        settings.previewTransparentColor = color;
+        // Auto reports the colour it picked for this file, which is no
+        // preference: the last colour chosen stays the one kept.
+        if (mode == TransparentImageBackground::SolidColor)
+            settings.previewTransparentColor = color;
         settings.Save();
     };
 
@@ -1656,10 +1660,12 @@ void UltraFilerWindow::ApplySettings() {
     // start-up; BuildTabbedContainer applies the style itself then.
     ApplyTabStripStyle();
     if (preview) {
-        preview->SetTransparentBackground(settings.previewCheckeredBackground
-                ? TransparentImageBackground::Checkered
-                : TransparentImageBackground::SolidColor);
         preview->SetTransparentColor(settings.previewTransparentColor);
+        preview->SetTransparentBackground(settings.previewAutoBackground
+                ? TransparentImageBackground::Auto
+                : settings.previewCheckeredBackground
+                        ? TransparentImageBackground::Checkered
+                        : TransparentImageBackground::SolidColor);
         // Display > PDF Inventory: the width of the page thumbnails beside a
         // shown PDF, either fixed or a share of the preview pane's width.
         if (settings.pdfThumbnailAbsoluteWidth)

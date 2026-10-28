@@ -1,0 +1,17 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraStoreAdmin. `Icon=UltraStoreAdmin` is
+# resolved through the icon themes; the install rules put
+# media/appicon/UltraStoreAdmin.png and .svg into share/icons/hicolor.
+Type=Application
+Version=1.5
+Name=UltraStoreAdmin
+GenericName=App Store Publisher
+Comment=Publish apps to the UltraStore: settings, packages, keys, the signed catalog
+Exec=ultrastoreadmin
+TryExec=ultrastoreadmin
+Icon=UltraStoreAdmin
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraStoreAdmin
+Categories=Development;System;
+Keywords=store;publish;catalog;packages;

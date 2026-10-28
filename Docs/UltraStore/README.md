@@ -21,9 +21,9 @@ The brief's open questions, answered on 2026-10-24:
 | Where do packages come from? | **Our own server.** The admin backend keeps the apps and their settings in a database; the packages are zip / 7z files on a server only the store reaches; the catalog is generated from the database and signed. |
 | Where does the code live? | `Apps/UltraStore`, with `ultrastore_core` as a static library in v1. |
 | Signature and hash primitives | Ed25519 added to UltraCrypt 0.2.0 (framework 0.9.272); the store target **requires** libsodium and SQLite and stops the configure without them. |
-| Management | **UltraStore admin backend**, a local application (next pull requests, `Apps/UltraStoreAdmin`), adding and removing apps with every setting the catalog carries: see *The admin backend*. |
+| Management | **UltraStore admin backend**, a local application (`Apps/UltraStoreAdmin`, its own README), adding and removing apps with every setting the catalog carries: see *The admin backend*. |
 | Translations | Creators supply at least one language; the admin backend translates with the server's local UltraAI into every official language and marks what it translated (`source_language`, `machine_translated`); ULTRA OS apps' own localisation folders get the same. |
-| Signing key | Generated and kept **in the admin backend's database**, encrypted; the public key reaches the store through the repository and the signed catalog: see *Keys*. |
+| Signing key | Generated and kept **in the admin backend's database**, the seed sealed with a passphrase (Argon2id, XChaCha20-Poly1305); the public key reaches the store through the repository and the signed catalog: see *Keys*. |
 | UltraInstaller | **Created** (0.2.0): `Downloader`, `SqliteRegistry`, `ArchiveInstaller`, `StoreEngine` behind the seam `PackageInstaller.h` fixed in 0.1.0; see *UltraInstaller* below. |
 | UltraNet download features | Already there: UltraNet 0.3.0 added Range resume, pause / resume, HTTPS-only redirects, an idle (stall) timeout instead of the whole-transfer one, and headers before the body. The store's download manager uses them and adds nothing of its own. |
 
@@ -96,9 +96,12 @@ so a mirror or a proxy serving yesterday's file cannot roll anyone back.
 
 ```json
 {
-  "schema": 1,
+  "schema": 2,
   "sequence": 42,
   "generated": "2026-10-24T12:00:00Z",
+  "trusted_keys": ["0415eff8…fba970e", "9c2b…"],
+  "payment_url": "https://store.example",
+  "licence_key": "e52d4fca…40c1ab",
   "publishers": [{ "id": "ultra-os-project", "name": "ULTRA OS Project", "url": "https://ultraos.eu" }],
   "components": [
     { "id": "org.ultraos.runtime", "kind": "runtime", "name": "UltraCanvas runtime",
@@ -138,6 +141,10 @@ runtimes live side by side until the garbage collector finds one unused.
 Releases are sorted newest first on read; `channel` is `stable` or `beta`
 (the beta channel sees both).
 
+`trusted_keys` (schema 2) lists the public keys that may sign the catalogs
+after this one: see *Keys*. A schema 1 catalog has none and is read as
+before.
+
 Strict where the store relies on it (ids reverse-DNS and unique, versions,
 channel, each package's os / arch / format / absolute http(s) url / 64-hex
 sha256, `min_os` a version, pricing with price and currency when not free,
@@ -164,11 +171,101 @@ Per app, what the admin backend offers and the catalog carries:
 | Search | `categories`, `tags` | categories from the fixed list the store's sidebar shows; tags free-form |
 | Texts | `summary`, `description`, `releases[].notes` | per language, `en` the fallback; `source_language` names what the creator wrote, `machine_translated` the languages the server's UltraAI added (see *Translations*) |
 | Media | `icon`, `screenshots` | relative to the catalog URL, served from the same place |
+| Codes | `codes[]` (catalog-wide) | the discount and affiliate codes in force: see *Affiliates and codes* |
 
-Pricing is **shown** by the store from 0.1.0 on; the purchase itself (a
-payment provider, the licence that the app checks, the receipt) is a later
-milestone with its own design, and until then the store installs the free
-apps and the trial of a paid one, and sends *Buy* to the publisher's page.
+Pricing is **shown** by the store from 0.1.0 on; the purchase itself is
+milestone 7, with its own design (*Payment*), and until then the store
+installs the free apps and the trial of a paid one, and sends *Buy* to the
+publisher's page.
+
+### Payment
+
+Decided: the provider is **Paysafe, with Skrill Quick Checkout** as the
+checkout. The buyer pays on Skrill's hosted page (cards, Skrill wallet,
+the local methods Quick Checkout offers), the store never sees a card
+number, and Skrill's server-to-server status report is what is trusted,
+not the browser's return.
+
+**The payment service** (`Server/UltraStorePay`, its own README) holds the
+merchant credentials - never the store binary, never the catalog - and
+does the purchase:
+
+| Step | Who | What |
+|---|---|---|
+| 1 | the store | `POST /v1/checkout {app, code}`: an order priced from the same signed catalog the stores read, with the code in force applied the way the store showed it (*Affiliates and codes*) |
+| 2 | the store | opens the order's `checkout_url` in the browser: the Quick Checkout form, submitted to `pay.skrill.com` with the order as `transaction_id` |
+| 3 | Skrill | posts the status report to the service, signed with the secret word (`md5sig`); the service checks the signature, the amount and the currency; status 2 pays the order, issues the licence and numbers the receipt - a repeat changes nothing, a forgery is refused |
+| 4 | the store | polls the order with its secret until it is paid, keeps the licence, and fetches the paid app's package through a signed URL that lives ten minutes (`restricted/`, *Where the server is reached*) |
+| 5 | the admin backend | fetches the sales (`GET /v1/sales?since=`) and records each in its ledger with the partners' credits, one level up and no further |
+
+**The licence** is `ULIC1.<payload>.<signature>`: the licence id, the app,
+the order, the day and what the purchase includes, signed Ed25519 with the
+service's licence key, whose public half is `GET /v1/keys`; an app
+verifies it offline. **The receipt** is numbered per paid order.
+
+**What the purchase includes** is the app's update period as the catalog
+had it when the order was paid (`updates` in the payload: `always`,
+`never` for the bought version only, `until` with `updates_until`). The
+store holds to it: an update to a release dated after the purchase's
+terms is refused by the engine ("not in your purchase"), the card and the
+Updates page show *Buy update* instead of *Update*, and *Update all*
+counts it as "to buy anew"; the new purchase replaces the licence, with
+the terms the catalog has then. The details page's *Bought* badge names
+the terms.
+
+**The licence reaches the app** as a file, `<root>/apps/<id>/licence.ulic`
+(the token, one line), written when the app is installed and when it is
+bought while its trial is installed, removed with the app's folder. The
+app finds it from its own executable and checks it with the licence key it
+compiles in (`Purchase.h`):
+
+```cpp
+#include "Purchase.h"   // Apps/UltraStore/core
+const std::string file = UltraStore::FindLicenceFile(UltraCanvas::PathToUtf8(executable));
+const auto licence = UltraStore::ReadLicenceFile(file, kLicenceKeyHex);
+const bool unlocked = licence && licence.Value().app == "org.example.app";
+```
+
+`FindLicenceFile` looks in the executable's folder and up to three above
+it (the version folder, then `apps/<id>/`); `ReadLicenceFile` fails
+`NotFound` without a file and `SignatureInvalid` for a token another key
+signed. `ultrastore licence <app-id> [--key <hex>]` shows one purchase and,
+with the key, verifies the file the way the app does.
+
+**The catalog names the service**: `payment_url` (the service's base,
+`https://store.example`) and `licence_key` (the public half of its licence
+key, hex) at the top level, from the admin backend's `payment.url` and
+`payment.licence_key` settings; both are optional within schema 2, and a
+catalog without `payment_url` sends *Buy* to the publisher's page as
+before. With them, the store's *Buy* is the five steps above: the order
+asked for with the code in force, the browser opened on the checkout, the
+order polled every five seconds for up to half an hour (the download panel
+shows the wait; *Cancel* leaves the order open on the service and nothing
+is installed), the licence verified against `licence_key` and kept in the
+registry (`licences` in `registry.sqlite`: the app, the licence, the
+order and its secret, the amount, the receipt number), and the app's
+restricted package fetched through the signed URL whenever it is
+installed or updated. The order is remembered in the settings until it is
+over: a store closed during the payment asks the service about it at the
+next start (within two days) and, if it is paid meanwhile, keeps the
+licence; if it is still open, the browser opens on the checkout again and
+the wait resumes. A bought app shows a *Bought* badge, *Install*
+instead of *Buy*, and on its details page the receipt number, the day and
+a *Receipt* button that opens the receipt in the browser.
+`ultrastore buy <catalog.json> <app-id> [--code <CODE>]` does the same from
+the command line, and `ultrastore licences` lists what was bought.
+
+A paid app's **trial** installs the same package, so an app with a trial
+keeps its package public (the licence gates what the trial lacks) and only
+an app without one puts its package under `restricted/` (`package add
+--access`); a restricted package with a trial would make *Try* fail with
+"buy it first".
+
+On the admin's side, `sale sync` pulls the paid orders from the service
+(`GET /v1/sales?since=`, the `payment.token` setting or
+`ULTRASTORE_PAY_ADMIN_TOKEN` as the bearer token) and records each once in
+the ledger with the partners' credits; the sequence it reached is kept in
+`payment.sales_seq`, so a repeat records nothing twice.
 
 ### Translations
 
@@ -183,6 +280,52 @@ the app's own localisation folder, so the app's strings get the same
 treatment as its description. The store's own interface strings are not in
 the catalog; they follow the framework's translation facility when it
 exists (none does today) and a local table in the app until then.
+
+### Affiliates and codes
+
+A partner brings buyers with a **code** - typed into the store's Discover
+page, or carried by the partner's **QR code** and link - and earns a share
+of each sale made with it; a **discount code** without a partner takes
+something off the price. The scheme is decided as follows.
+
+- **Two tiers and no more.** An affiliate recorded as recruited by another
+  credits that recruiter a *recruit share* of each sale made with the
+  affiliate's codes, once, one level up. The recruiter's own recruiter earns
+  nothing from those sales: a referral bonus for bringing a partner in, not
+  a pyramid. `CreditsFor` in the admin backend is the one place the rule
+  lives, and its test shows the third level getting nothing.
+- **What is public.** The catalog carries `codes`: the code, its kind
+  (`discount` or `affiliate`), what it takes off (`discount_percent` or
+  `discount_amount` with `currency`), the apps it applies to (none listed:
+  every app), its validity (`valid_from`, `valid_until`) and, for an
+  affiliate code, the partner's id - an opaque handle. A code is made to be
+  passed around, so listing it costs nothing; what a partner earns, their
+  contact and who recruited them stay in the admin database and never
+  reach the catalog.
+- **In the store.** `CheckCode` tells whether a code is known and in force
+  today and what it is for; `DiscountedPrice` and `PriceLabel` show the
+  price with it ("23.92 EUR (was 29.90)"), to the cent, never below 0.00,
+  only in the app's currency. The code entered is kept in the settings
+  (`code.value`, `code.enteredAt`) and stays **in force for 30 days**
+  (`StoreSettings::kCodeDays`): a buyer who arrived through a partner's
+  link and buys within that time credits the partner. `ultrastore code
+  <CODE>` does the same from the command line; `code clear` forgets it.
+- **Links.** `ultrastore://code/<CODE>` opens the store with the code and
+  `ultrastore://app/<id>?code=<CODE>` an app's details with it; the store
+  registers the scheme (`MimeType=x-scheme-handler/ultrastore`), and a
+  second start hands the link to the running copy. The partner's QR code
+  encodes `https://<catalog base>/go/<CODE>`, a page the publish folder
+  carries (`go/<CODE>.html`: what the code gives and the `ultrastore://`
+  link), so a phone that scans it lands somewhere useful; a future partner
+  scans `https://<catalog base>/join/<affiliate>` and names the recruiter
+  when the admin signs them up.
+- **A partner may use their own code.** Nothing distinguishes a partner's
+  purchase from any other, and the share they earn on it is theirs by the
+  same rule; the admin backend does not try to tell them apart.
+- **The redemption** - the purchase, a limit on uses, the payout - is the
+  payment service's (milestone 7, *Payment*). Until it reports sales, the admin
+  backend records them by hand (`sale add`) and its report says what each
+  partner is owed, so the scheme works from the first sale.
 
 ### Verifier (`Verifier`)
 
@@ -205,15 +348,25 @@ the admin backend until it exists: `GenerateSigningKey`, `PublicKeyOfSeed`,
 - **How the public keys reach the store.** Two ways, both needed. The public
   key is committed to the repository (`Apps/UltraStore/keys/<name>.pub`,
   hex) and compiled into `ultrastore`, so a fresh install trusts the right
-  key with nothing fetched. And the catalog carries `trusted_keys` (*later*,
-  schema 2): the public keys that will sign future catalogs, signed by the
-  current one, so a key can be rotated by publishing with the old key once
-  and the new key from then on, and a store that has seen that catalog
-  accepts the new key before the binary that carries it ships. A key that
-  was never announced that way is refused whatever the catalog says.
+  key with nothing fetched. And the catalog carries `trusted_keys` (schema
+  2): the public keys that may sign the catalogs after it, signed along
+  with everything else. `CatalogClient` keeps the list of the last accepted
+  catalog in its cache (`state.json`, `announcedKeys`) and verifies the
+  next one against the compiled-in keys, the ones the person added in the
+  settings, and that list (`KeysTrustedNow()`). So a key is rotated by
+  publishing once with the old key and the new one listed - the admin
+  backend lists every active key on every publish - and with the new key
+  from then on: a store that has seen that catalog accepts the new key
+  before the binary that carries it ships. A key that no accepted catalog
+  announced is refused whatever the catalog it signs claims: an
+  announcement only counts from a catalog already trusted, and each
+  accepted catalog's list replaces the previous one (a schema 1 catalog
+  announces nothing).
 - **A compromised key** is retired by a release of the store without it;
   the `trusted_keys` list cannot remove a compiled-in key, by design, since
-  the catalog is what an attacker with the key controls.
+  the catalog is what an attacker with the key controls. The announced
+  keys live in the cache folder beside the catalog they came from, with the
+  same trust as the settings file next to it.
 
 ### Resolver (`PackageResolver`)
 
@@ -242,7 +395,8 @@ verifies the signature, parses, checks the sequence, then replaces the
 cache atomically (`catalog.json`, `catalog.json.sig`, `state.json`, written
 beside and renamed over). A 304 answers from the cache; a failed refresh
 leaves the cache untouched, so `LoadCached()` works offline, and verifies
-the cached bytes again before trusting them. The fetch is a function
+the cached bytes again before trusting them. The keys the accepted catalog
+announced are kept in `state.json` and trusted for the next one (*Keys*). The fetch is a function
 injected at construction: the default is UltraNet with HTTPS-only redirects
 and a 64 MB cap, the tests hand in a map.
 
@@ -251,13 +405,15 @@ UTF-8 paths through `PathToUtf8` / `PathFromUtf8`).
 
 ### Where the server is reached
 
-The packages' server is reachable only by the store. Open design question,
-to settle with the admin backend: a bearer token the store carries and the
-server checks (simple, rotatable, but in every binary) or unlisted URLs
-whose names are only in the signed catalog (nothing to leak from the
-binary, and the catalog itself is public). The resolver and the client do
-not care: `Package::url` is whatever the catalog says, and
-`UltraNetHttpOptions::headers` takes the token if there is one.
+Decided with the admin backend (its README, *Decisions*): the catalog, the
+media and the packages of free apps are plain public files - what a signed
+catalog needs and no more - under `packages/`; the packages of paid apps go
+to `restricted/`, which the web server serves to nobody directly. A buyer's
+store gets a short-lived signed URL for a restricted file from the payment
+service (milestone 6), the way the other stores do it; no bearer token in
+the binary, so there is nothing to leak, and a leaked URL dies in minutes.
+The resolver and the client do not care: `Package::url` is whatever the
+catalog says, and a signed URL is a URL.
 
 ## UltraInstaller
 
@@ -340,18 +496,21 @@ of the new version followed by a `current` move, the older app versions
 removed and the components only they needed collected. Nothing is ever
 written where a failure would leave a half-installed folder in place.
 
-## The admin backend (*later*, `Apps/UltraStoreAdmin`)
+## The admin backend (`Apps/UltraStoreAdmin`)
 
-A local application for the people who publish: adds and removes apps and
-components with every setting in the table above, per release the packages
-(the admin picks the files, the backend computes size and SHA-256 and
-uploads them to the packages server), raises the sequence, generates the
-catalog from its database, signs it with the key it keeps, and publishes
-catalog and signature. Its database is UltraDatabase (SQLite); its upload
-is UltraNet (SFTP or HTTPS PUT, to decide with the server). `ultrastore
-sign`, `sha256`, `keygen` and `pubkey` are its stand-ins until it exists,
-and its tests will run the same `ParseCatalog` the store runs, so what it
-writes is what the store reads.
+The program the people who publish run; its own page is
+[`Docs/UltraStoreAdmin/README.md`](../UltraStoreAdmin/README.md). It keeps
+the apps and components with every setting of the table above (each as the
+catalog's own component object, so what it keeps is what the store reads),
+the publishers, the files behind the packages under their hash, and the
+signing key with its seed sealed by a passphrase; it translates the texts
+with UltraAI into every official language; and `publish` builds the
+catalog with the next sequence, lays the packages and the media out beside
+it, signs the exact bytes and verifies them with this store's own
+`ParseCatalog` and `VerifyCatalogSignature` before recording the sequence.
+`ultrastore sign`, `sha256`, `keygen` and `pubkey` remain as the hand
+tools. Its upload to the host is a later step; the publish folder is the
+server's document root until then.
 
 ## The window
 
@@ -423,6 +582,10 @@ ultrastore update <catalog.json> [<app-id>] [--root <dir>]
 ultrastore remove <app-id> [--root <dir>]
 ultrastore installed [--root <dir>]
 ultrastore gc [--root <dir>]
+ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]   through the payment service
+ultrastore licences [--root <dir>]                        the apps bought here
+ultrastore licence <app-id> [--root <dir>] [--key <hex>]    one purchase's terms; with the key, the licence file verified
+ultrastore code [<CODE> | clear] [--cache <dir>]          the code in force
 ultrastore --version | --help
 ```
 
@@ -457,6 +620,22 @@ program, `ultrastore sha256` it, write a catalog.json with
    navigation, collapsible bottom panel, single-select chip group), with
    component docs (framework 0.9.409).
 4. **The window** (this page's *The window*).
-5. **The admin backend** (`Apps/UltraStoreAdmin`), the packages server's
-   access scheme, key rotation through the catalog (schema 2).
-6. **Payment.**
+5. **The admin backend** (`Apps/UltraStoreAdmin`: the core, the command
+   line and the window), the packages server's access scheme
+   (decided: *Where the server is reached*); key rotation through the
+   catalog (schema 2, `trusted_keys`, see *Keys*).
+6. **Affiliates and codes** (*Affiliates and codes*): discount and
+   affiliate codes in the catalog, QR codes and links, two-tier partners in
+   the admin backend with the sales ledger and the report.
+7. **Payment** (*Payment*): Paysafe with Skrill Quick Checkout. The
+   payment service (`Server/UltraStorePay`): the checkout, the status
+   report, the licence, the receipt, the signed URLs for `restricted/`, the
+   sales for the admin backend; the store's *Buy* through it, the licence
+   in the registry and on the details page, the restricted package through
+   the signed URL, `ultrastore buy` and `licences`; the admin's `sale
+   sync`; the catalog naming the service (`payment_url`, `licence_key`).
+   After the purchase: the update period in the licence and held to by the
+   store (*Buy update*), the licence file for the app (`FindLicenceFile`,
+   `ReadLicenceFile`, `ultrastore licence`), the open order resumed at
+   the next start. Next: a run against the Skrill sandbox once the
+   credentials are in the environment.

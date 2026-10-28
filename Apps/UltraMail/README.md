@@ -104,6 +104,23 @@ Apps/UltraMail/
                                   framework's UltraVault::DeviceKeyVault with
                                   UltraMail's profile (ultramail.vault,
                                   device.key, keys mail.ultramail.<account>)
+    UltraMailStorage.{h,cpp}      the stored mail encrypted at rest: the storage
+                                  key in the vault, a key per database file
+                                  (UltraDatabase's encrypted SQLite) and one for
+                                  the message files (sealed .eml); converting an
+                                  earlier version's plain files
+    UltraMailSecureMime.{h,cpp}   signed and encrypted mail: OpenSecureMessage
+                                  (decrypt, check signatures, S/MIME and
+                                  OpenPGP, nested), SecureOutgoingMessage
+                                  (sign / encrypt to recipients and sender),
+                                  PKCS #12 import, the raw-MIME helpers
+    UltraMailSecureBackends.h     the byte work behind it, one file per library:
+    UltraMailSmime.cpp              S/MIME on UltraCrypt's X.509 and CMS
+                                    (UltraCryptX509.h); the verdicts in words
+    UltraMailOpenPgp.cpp            OpenPGP on GPGME (ULTRAMAIL_HAVE_OPENPGP);
+                                    stubs where the library is not found
+    UltraMailSecureKeys.{h,cpp}   the account's S/MIME identity in the vault
+                                  (<account>.smime.cert / .smime.key)
     UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail, Outlook, Yahoo): provider
                                   table, the sign-in service, app registration
                                   (env / oauth.ini), sign-in +
@@ -260,6 +277,18 @@ Trash, Junk, Archive) and a folder with folders inside it. With several
 accounts, a tile of the account bar dragged sideways takes another place;
 the order is kept (`account_order` in `preferences.ini`) and the folder tree
 follows it.
+
+**The account bar's counters are filters.** A click on *New today* shows the
+account's inbox with only its unread mail from today, *Unread* all of its
+unread mail (today's too, though the number counts only what came before
+today), *Waiting for reply* only the mail waiting for an answer
+(`MessageFilterKind::NewToday`, `Unread`, `NeedsAnswer`; `MailView::ShowInbox`).
+The counter in use is framed in its colour, and a second row under the
+account's card - a card of the same look, under the tile it belongs to -
+names the filter ("Showing: Unread") with a **Show all emails** button. A
+click anywhere else on the account's card shows all of its mail again. The card also shows a
+filter chosen from the message list's *Show emails ▸* menu, and goes when a
+folder switch clears the filter (`MailView::onFilterChanged`).
 
 **Attachments:** a message's MIME parts are decoded by `MimeCodec` (over
 `UltraNet_MimeParse`); the attachment strip under the message body shows one

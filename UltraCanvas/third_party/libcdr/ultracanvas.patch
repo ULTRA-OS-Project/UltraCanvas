@@ -1,7 +1,62 @@
+diff -ru a/CDRCollector.cpp b/CDRCollector.cpp
+--- a/src/lib/CDRCollector.cpp	2026-10-27 13:51:58.158750398 +0000
++++ b/src/lib/CDRCollector.cpp	2026-10-27 14:00:08.424960858 +0000
+@@ -46,6 +46,9 @@
+ {
+   if (profile.empty())
+     return;
++  // UltraCanvas: colours converted through the old transforms are stale.
++  m_bmpColorCache.clear();
++  m_lastBmpColorKey = ~0ULL;
+   cmsHPROFILE tmpProfile = cmsOpenProfileFromMem(&profile[0], cmsUInt32Number(profile.size()));
+   if (!tmpProfile)
+     return;
+@@ -89,6 +92,33 @@
+ 
+ unsigned libcdr::CDRParserState::getBMPColor(const CDRColor &color)
+ {
++  // UltraCanvas: a bitmap converts every pixel here, one lcms call each - most
++  // of the time it takes to open a drawing with a few embedded photos. Its
++  // pixels repeat their colours, so each conversion is kept (up to a million
++  // colours, then the cache starts again).
++  const unsigned long long key = ((unsigned long long)color.m_colorModel << 32) | color.m_colorValue;
++  if (key == m_lastBmpColorKey)
++    return m_lastBmpColor;
++  unsigned rgb;
++  const std::unordered_map<unsigned long long, unsigned>::const_iterator it = m_bmpColorCache.find(key);
++  if (it != m_bmpColorCache.end())
++  {
++    rgb = it->second;
++  }
++  else
++  {
++    rgb = _getBMPColor(color);
++    if (m_bmpColorCache.size() >= (1u << 20))
++      m_bmpColorCache.clear();
++    m_bmpColorCache[key] = rgb;
++  }
++  m_lastBmpColorKey = key;
++  m_lastBmpColor = rgb;
++  return rgb;
++}
++
++unsigned libcdr::CDRParserState::_getBMPColor(const CDRColor &color)
++{
+   switch (color.m_colorModel)
+   {
+   case 0:
 diff -ru a/CDRCollector.h b/CDRCollector.h
---- a/src/lib/CDRCollector.h	2026-09-26 12:24:13.719741441 +0000
-+++ b/src/lib/CDRCollector.h	2026-09-26 12:24:13.723995448 +0000
-@@ -35,6 +35,9 @@
+--- a/src/lib/CDRCollector.h	2026-10-27 13:51:58.171166200 +0000
++++ b/src/lib/CDRCollector.h	2026-10-27 14:00:08.425001138 +0000
+@@ -11,6 +11,7 @@
+ #define __CDRCOLLECTOR_H__
+ 
+ #include <map>
++#include <unordered_map>
+ #include <utility>
+ #include <vector>
+ 
+@@ -35,6 +36,9 @@
    std::map<unsigned, librevenge::RVNGBinaryData> m_bmps;
    std::map<unsigned, CDRPattern> m_patterns;
    std::map<unsigned, librevenge::RVNGBinaryData> m_vects;
@@ -11,7 +66,25 @@ diff -ru a/CDRCollector.h b/CDRCollector.h
    std::vector<CDRPage> m_pages;
    std::map<unsigned, CDRColor> m_documentPalette;
    std::map<unsigned, std::vector<CDRTextLine> > m_texts;
-@@ -94,6 +97,13 @@
+@@ -54,6 +58,17 @@
+   void getRecursedStyle(CDRStyle &style, unsigned styleId);
+ 
+ private:
++  // UltraCanvas: getBMPColor's answers, keyed by colour model and value.
++  // Every pixel of a bitmap goes through getBMPColor, and most models go
++  // through an lcms transform one pixel at a time; the answer depends only
++  // on the model, the value and the transforms (setColorTransform empties
++  // the cache).
++  std::unordered_map<unsigned long long, unsigned> m_bmpColorCache;
++  // ... and the last one, for the run of equal pixels most rows are.
++  unsigned long long m_lastBmpColorKey = ~0ULL;
++  unsigned m_lastBmpColor = 0;
++  unsigned _getBMPColor(const CDRColor &color);
++
+   CDRParserState(const CDRParserState &);
+   CDRParserState &operator=(const CDRParserState &);
+ };
+@@ -94,6 +109,13 @@
    virtual void collectBBox(double x0, double y0, double x1, double y1) = 0;
    virtual void collectSpnd(unsigned spnd) = 0;
    virtual void collectVectorPattern(unsigned id, const librevenge::RVNGBinaryData &data) = 0;
@@ -26,8 +99,8 @@ diff -ru a/CDRCollector.h b/CDRCollector.h
    virtual void collectText(unsigned textId, unsigned styleId, const std::vector<unsigned char> &data,
                             const std::vector<unsigned char> &charDescriptions, const std::map<unsigned, CDRStyle> &styleOverrides) = 0;
 diff -ru a/CDRContentCollector.cpp b/CDRContentCollector.cpp
---- a/src/lib/CDRContentCollector.cpp	2026-09-26 12:24:13.719271809 +0000
-+++ b/src/lib/CDRContentCollector.cpp	2026-09-26 12:24:13.723427997 +0000
+--- a/src/lib/CDRContentCollector.cpp	2026-10-27 13:51:58.171349672 +0000
++++ b/src/lib/CDRContentCollector.cpp	2026-10-27 14:00:08.425676335 +0000
 @@ -64,7 +64,7 @@
                                                   bool reverseOrder)
    : m_painter(painter), m_isDocumentStarted(false), m_isPageProperties(false), m_isPageStarted(false),
@@ -199,8 +272,8 @@ diff -ru a/CDRContentCollector.cpp b/CDRContentCollector.cpp
  {
    m_splineData = CDRSplineData(points, knotVector);
 diff -ru a/CDRContentCollector.h b/CDRContentCollector.h
---- a/src/lib/CDRContentCollector.h	2026-09-26 12:24:13.720727616 +0000
-+++ b/src/lib/CDRContentCollector.h	2026-09-26 12:24:13.724896604 +0000
+--- a/src/lib/CDRContentCollector.h	2026-10-27 13:51:58.171624745 +0000
++++ b/src/lib/CDRContentCollector.h	2026-10-27 14:00:08.425711052 +0000
 @@ -64,6 +64,7 @@
    void collectBBox(double x0, double y0, double x1, double y1) override;
    void collectSpnd(unsigned spnd) override;
@@ -227,8 +300,8 @@ diff -ru a/CDRContentCollector.h b/CDRContentCollector.h
    CDRImage m_currentImage;
    const std::vector<CDRTextLine> *m_currentText;
 diff -ru a/CDRParser.cpp b/CDRParser.cpp
---- a/src/lib/CDRParser.cpp	2026-09-26 12:24:13.719397029 +0000
-+++ b/src/lib/CDRParser.cpp	2026-09-26 12:24:13.723630261 +0000
+--- a/src/lib/CDRParser.cpp	2026-10-27 13:51:58.171887352 +0000
++++ b/src/lib/CDRParser.cpp	2026-10-27 14:00:08.426077812 +0000
 @@ -1827,6 +1827,15 @@
      }
      else if (argTypes[i] == 0x4aba)
@@ -280,8 +353,8 @@ diff -ru a/CDRParser.cpp b/CDRParser.cpp
  
  void libcdr::CDRParser::readOpacity(librevenge::RVNGInputStream *input, unsigned /* length */)
 diff -ru a/CDRStylesCollector.cpp b/CDRStylesCollector.cpp
---- a/src/lib/CDRStylesCollector.cpp	2026-09-26 12:24:13.719510979 +0000
-+++ b/src/lib/CDRStylesCollector.cpp	2026-09-26 12:24:13.723741374 +0000
+--- a/src/lib/CDRStylesCollector.cpp	2026-10-27 13:51:58.172272301 +0000
++++ b/src/lib/CDRStylesCollector.cpp	2026-10-27 14:00:08.426233456 +0000
 @@ -9,6 +9,8 @@
  
  #include "CDRStylesCollector.h"
@@ -386,8 +459,8 @@ diff -ru a/CDRStylesCollector.cpp b/CDRStylesCollector.cpp
  {
    librevenge::RVNGBinaryData image(&bitmap[0], bitmap.size());
 diff -ru a/CDRStylesCollector.h b/CDRStylesCollector.h
---- a/src/lib/CDRStylesCollector.h	2026-09-26 12:24:13.720975225 +0000
-+++ b/src/lib/CDRStylesCollector.h	2026-09-26 12:24:13.725090853 +0000
+--- a/src/lib/CDRStylesCollector.h	2026-10-27 13:51:58.172371002 +0000
++++ b/src/lib/CDRStylesCollector.h	2026-10-27 14:00:08.426268179 +0000
 @@ -51,6 +51,8 @@
    void collectBitmap(unsigned, double, double, double, double) override {}
    void collectBmp(unsigned imageId, unsigned colorModel, unsigned width, unsigned height, unsigned bpp, const std::vector<unsigned> &palette, const std::vector<unsigned char> &bitmap) override;

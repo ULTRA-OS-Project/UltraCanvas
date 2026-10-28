@@ -3,6 +3,7 @@
 # the window; the networks are UltraIM provider modules (ChatCube Direct:
 # UltraCanvas/Plugins/UltraIM/direct, built into <build>/Plugins/UltraIM).
 #
+# Version: 0.1.1 - ChatCubeTheme.cpp
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -17,6 +18,7 @@ endif()
 
 add_executable(ChatCube
     main.cpp
+    ui/ChatCubeTheme.cpp
     ui/ChatCubeViews.cpp
     ui/ChatCubeWindow.cpp
 )

@@ -153,3 +153,83 @@ TEST(lenient_about_what_the_store_does_not_rely_on) {
     REQUIRE(a.releases[0].packages.empty());
     REQUIRE(a.publisher.empty());
 }
+
+TEST(trusted_keys_round_trip_as_schema_2_and_a_bad_one_is_refused) {
+    Catalog c = FixtureCatalog();
+    REQUIRE(c.trustedKeys.empty());   // the fixture is schema 1
+    c.trustedKeys = {std::string(64, 'B'), std::string(64, 'a'), std::string(64, 'b')};   // upper case, a duplicate
+    const std::string json = SerializeCatalog(c);
+    REQUIRE(json.find("\"schema\": 2") != std::string::npos);   // carrying trusted_keys makes it schema 2
+    const Result<Catalog> parsed = ParseCatalog(json);
+    REQUIRE(parsed);
+    REQUIRE_EQ(parsed.Value().schema, 2);
+    REQUIRE_EQ(parsed.Value().trustedKeys.size(), size_t(2));   // lower-cased, deduplicated, in order
+    REQUIRE_EQ(parsed.Value().trustedKeys[0], std::string(64, 'b'));
+    REQUIRE_EQ(parsed.Value().trustedKeys[1], std::string(64, 'a'));
+    // A schema 1 catalog has none, and the writer keeps it schema 1.
+    REQUIRE(SerializeCatalog(FixtureCatalog()).find("\"schema\": 1") != std::string::npos);
+    // Not a key: refused, the catalog with it.
+    const Result<Catalog> bad = ParseCatalog(R"({"schema": 2, "sequence": 1, "trusted_keys": ["abc"], "apps": []})");
+    REQUIRE(!bad);
+    REQUIRE(bad.error.code == ErrorCode::ParseError);
+    REQUIRE(bad.error.detail == "abc");
+    const Result<Catalog> none = ParseCatalog(R"({"schema": 2, "sequence": 1, "apps": []})");
+    REQUIRE(none);
+    REQUIRE(none.Value().trustedKeys.empty());
+}
+
+TEST(codes_round_trip_and_the_wrong_ones_are_refused) {
+    Catalog c = FixtureCatalog();
+    PromoCode anna;
+    anna.code = "ANNA-20";
+    anna.kind = CodeKind::Affiliate;
+    anna.discountPercent = 20;
+    anna.apps = {"org.ultraos.ultravideo"};
+    anna.validUntil = "2027-06-30";
+    anna.affiliate = "aff-0001";
+    PromoCode five;
+    five.code = "five_off";
+    five.discountAmount = "5.00";
+    five.currency = "EUR";
+    c.codes = {anna, five};
+    const Result<Catalog> parsed = ParseCatalog(SerializeCatalog(c));
+    REQUIRE(parsed);
+    REQUIRE_EQ(parsed.Value().codes.size(), size_t(2));
+    const PromoCode* found = parsed.Value().FindCode("  anna-20 ");
+    REQUIRE(found != nullptr);
+    REQUIRE(found->kind == CodeKind::Affiliate);
+    REQUIRE_EQ(found->discountPercent, 20);
+    REQUIRE_EQ(found->affiliate, std::string("aff-0001"));
+    REQUIRE(found->AppliesTo("org.ultraos.ultravideo"));
+    REQUIRE(!found->AppliesTo("org.ultraos.notes"));
+    REQUIRE(found->ValidOn("2027-06-30"));
+    REQUIRE(!found->ValidOn("2027-07-01"));
+    REQUIRE(parsed.Value().FindCode("FIVE_OFF")->AppliesTo("anything"));
+    REQUIRE(parsed.Value().FindCode("nope") == nullptr);
+    REQUIRE_EQ(NormalizeCode(" an na "), std::string("ANNA"));
+    auto refuse = [](const char* json, const char* why) {
+        const Result<Catalog> r = ParseCatalog(json);
+        REQUIRE(!r);
+        REQUIRE(r.error.code == ErrorCode::ParseError);
+        (void)why;
+    };
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "x y"}], "apps": []})", "a space in a code");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "discount_percent": 120}], "apps": []})", "over 100 percent");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "discount_amount": "5,00"}], "apps": []})", "a comma");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "kind": "affiliate"}], "apps": []})", "no affiliate");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "valid_until": "soon"}], "apps": []})", "no date");
+    refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A"}, {"code": "a"}], "apps": []})", "twice");
+}
+
+TEST(the_catalog_names_the_payment_service_and_its_licence_key) {
+    Catalog c = FixtureCatalog();
+    c.paymentUrl = "https://pay.example";
+    c.licenceKey = std::string(64, 'A');
+    const Result<Catalog> parsed = ParseCatalog(SerializeCatalog(c));
+    REQUIRE(parsed);
+    REQUIRE_EQ(parsed.Value().paymentUrl, std::string("https://pay.example"));
+    REQUIRE_EQ(parsed.Value().licenceKey, std::string(64, 'a'));   // lower-cased
+    REQUIRE(ParseCatalog(SerializeCatalog(FixtureCatalog())).Value().paymentUrl.empty());
+    REQUIRE(!ParseCatalog(R"({"schema": 2, "sequence": 1, "payment_url": "ftp://x", "apps": []})"));
+    REQUIRE(!ParseCatalog(R"({"schema": 2, "sequence": 1, "licence_key": "abc", "apps": []})"));
+}

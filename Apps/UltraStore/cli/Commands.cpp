@@ -34,6 +34,9 @@
 //
 // --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
 //
+// Version: 0.5.0 - licence
+// Version: 0.4.0 - buy, licences
+// Version: 0.3.0 - code
 // Version: 0.3.0 - Run() and Usage() for ui/main.cpp; the window's options in the usage;
 //                  FormatBytes shared with the window (StoreQuery)
 // Version: 0.2.0 - install, update, remove, installed, gc (UltraInstaller)
@@ -45,14 +48,19 @@
 #include "CatalogClient.h"
 #include "PackageResolver.h"
 #include "PlatformInfo.h"
+#include "Purchase.h"
 #include "StoreEngine.h"
 #include "StoreQuery.h"
+#include "StoreSettings.h"
 #include "Verifier.h"
 
 #include "UltraCanvasDataFolder.h"
 #include "UltraCanvasPathUtf8.h"
+#include "UltraCanvasUtils.h"
 
 #include <cstdio>
+#include <thread>
+#include <chrono>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -85,6 +93,13 @@ int UltraStore::Cli::Usage(FILE* to) {
         "  ultrastore remove <app-id> [--root <dir>]\n"
         "  ultrastore installed [--root <dir>]\n"
         "  ultrastore gc [--root <dir>]\n"
+        "  ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]\n"
+        "                                     through the catalog's payment service: the browser pays, the licence is kept\n"
+        "  ultrastore licences [--root <dir>]  the apps bought here\n"        "  ultrastore licence <app-id> [--root <dir>] [--key <hex>]\n"
+        "                                     one purchase: its terms, and the licence file checked against the key\n"
+        "  ultrastore code [<CODE> | clear] [--cache <dir>]\n"
+        "                                     the discount or partner code in force (30 days), checked against the cached catalog\n"
+        "  ultrastore ultrastore://code/<CODE>  the same, from a QR code or a page: opens the window with it\n"
         "  ultrastore --version | --help\n",
         ULTRASTORE_VERSION);
     return to == stdout ? 0 : 2;
@@ -375,6 +390,7 @@ int CmdInstall(const std::vector<std::string>& args) {
     if (!LoadCatalog(pos[1], catalog)) return 1;
     StoreEngine engine(StoreRoot(args));
     if (const auto r = engine.Open(); !r) return Fail(r.error);
+    engine.SetUrlSigner(LicensedUrlSigner(engine.Registry(), catalog.paymentUrl));
     const auto outcome = engine.Install(catalog, pos[2], PlatformInfo::Detect(), Option(args, "--channel", "stable"), ConsoleCallbacks());
     if (!outcome) { std::fprintf(stderr, "\n"); return Fail(outcome.error); }
     PrintOutcome(outcome.Value());
@@ -388,6 +404,7 @@ int CmdUpdate(const std::vector<std::string>& args) {
     if (!LoadCatalog(pos[1], catalog)) return 1;
     StoreEngine engine(StoreRoot(args));
     if (const auto r = engine.Open(); !r) return Fail(r.error);
+    engine.SetUrlSigner(LicensedUrlSigner(engine.Registry(), catalog.paymentUrl));
     const PlatformInfo platform = PlatformInfo::Detect();
     if (pos.size() >= 3) {
         const auto outcome = engine.Update(catalog, pos[2], platform, Option(args, "--channel"), ConsoleCallbacks());
@@ -446,6 +463,130 @@ int CmdGc(const std::vector<std::string>& args) {
     return 0;
 }
 
+// buy <catalog.json> <app-id> [--code <CODE>]: the checkout asked for, the
+// browser opened on it, the order polled until paid, the licence verified
+// with the catalog's key and kept in the registry.
+int CmdBuy(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 3) return Usage(stderr);
+    Catalog catalog;
+    if (!LoadCatalog(pos[1], catalog)) return 1;
+    const Component* app = catalog.FindApp(pos[2]);
+    if (!app) return Fail("The catalog does not list " + pos[2]);
+    if (catalog.paymentUrl.empty()) return Fail("The catalog names no payment service" + (app->homepage.empty() ? std::string() : "; the publisher's page is " + app->homepage));
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    std::string code = Option(args, "--code");
+    if (code.empty()) code = StoreSettings::Load().CodeInForce(NowIso8601Utc().substr(0, 10));
+    const HttpCall http = UltraNetHttpCall();
+    const auto started = StartCheckout(catalog.paymentUrl, pos[2], code, http);
+    if (!started) return Fail(started.error);
+    Order order = started.Value();
+    std::printf("order %s: %s for %s %s%s\npay at %s\n", order.orderId.c_str(), app->name.c_str(), order.amount.c_str(), order.currency.c_str(),
+                order.codeApplied ? (" with the code " + order.code).c_str() : "", order.checkoutUrl.c_str());
+    std::fflush(stdout);
+    UltraCanvas::OpenURL(order.checkoutUrl);
+    std::fprintf(stderr, "waiting for the payment (Ctrl-C leaves the order open)");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(30);
+    while (!order.Over() && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::fprintf(stderr, ".");
+        std::fflush(stderr);
+        const auto now = OrderStatus(catalog.paymentUrl, order.orderId, order.secret, http);
+        if (now) order = now.Value();
+    }
+    std::fprintf(stderr, "\n");
+    if (!order.Paid()) return Fail("The purchase was " + order.status);
+    Licence licence;
+    if (catalog.licenceKey.empty()) {
+        licence.app = pos[2];
+        licence.licenceId = order.licenceId;
+        licence.orderId = order.orderId;
+        licence.issued = order.paidAt.substr(0, 10);
+        std::fprintf(stderr, "warning: the catalog names no licence key; the licence is kept unverified\n");
+    } else {
+        const auto verified = VerifyLicence(order.licence, catalog.licenceKey);
+        if (!verified) return Fail(verified.error);
+        licence = verified.Value();
+    }
+    if (const auto kept = engine.Registry().PutLicence(LicenceRecordOf(order, licence)); !kept) return Fail(kept.error);
+    std::printf("bought %s: receipt no. %d, licence %s\n", app->name.c_str(), order.receiptNo, licence.licenceId.c_str());
+    return 0;
+}
+
+// licence <app-id> [--key <hex>]: the registry's record and the terms the
+// token carries; with a key, the licence file verified the way the app does.
+int CmdLicence(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const auto rec = engine.Registry().GetLicence(pos[1]);
+    if (!rec) return Fail(rec.error);
+    const LicenceRecord& l = rec.Value();
+    const auto terms = ParseLicence(l.token);
+    std::printf("%s: receipt %d, %s %s, %s\norder %s, licence %s\nterms: %s\n", l.app.c_str(), l.receiptNo, l.amount.c_str(), l.currency.c_str(),
+                l.issuedAt.c_str(), l.orderId.c_str(), l.licenceId.c_str(), terms ? terms.Value().UpdateTerms().c_str() : "(not readable)");
+    const std::string file = LicenceFilePath(engine.Root(), pos[1]);
+    const std::string key = Option(args, "--key");
+    if (key.empty()) { std::printf("file: %s\n", file.c_str()); return 0; }
+    const auto read = ReadLicenceFile(FindLicenceFile(file), key);
+    if (!read) return Fail(read.error);
+    std::printf("file: %s verifies for %s\n", file.c_str(), read.Value().app.c_str());
+    return 0;
+}
+
+int CmdLicences(const std::vector<std::string>& args) {
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const auto all = engine.Registry().Licences();
+    if (!all) return Fail(all.error);
+    if (all.Value().empty()) { std::printf("nothing was bought here\n"); return 0; }
+    for (const LicenceRecord& l : all.Value()) {
+        std::printf("%-32s receipt %d  %s %s  %s  order %s  licence %s\n", l.app.c_str(), l.receiptNo, l.amount.c_str(), l.currency.c_str(),
+                    l.issuedAt.c_str(), l.orderId.c_str(), l.licenceId.c_str());
+    }
+    return 0;
+}
+
+// code [<CODE> | clear]: the code in force, checked against the cached
+// catalog with the settings' keys, kept in the settings file for 30 days.
+int CmdCode(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    StoreSettings settings = StoreSettings::Load();
+    const std::string today = NowIso8601Utc().substr(0, 10);
+    if (pos.size() < 2) {
+        const std::string inForce = settings.CodeInForce(today);
+        if (inForce.empty()) std::printf("no code in force\n");
+        else std::printf("code %s, entered %s, in force until %d days after that\n", inForce.c_str(), settings.codeEnteredAt.c_str(), StoreSettings::kCodeDays);
+        return 0;
+    }
+    if (pos[1] == "clear") {
+        settings.code.clear();
+        settings.codeEnteredAt.clear();
+        if (!settings.Save()) return Fail("cannot write the settings file");
+        std::printf("code cleared\n");
+        return 0;
+    }
+    CatalogClientConfig config;
+    config.baseUrls = settings.Servers();
+    config.trustedKeys = settings.TrustedKeys();
+    config.cacheDir = Option(args, "--cache");
+    if (config.cacheDir.empty()) {
+        config.cacheDir = UltraCanvas::PathToUtf8(UltraCanvas::UltraCanvasLocalDataFolderRoot() / "UltraStore" / "cache");
+    }
+    CatalogClient client(config);
+    const Result<Catalog> cached = client.LoadCached();
+    if (!cached) return Fail(Error{cached.error.code, "No catalog to check the code against: run `ultrastore fetch` first", cached.error.message});
+    const CodeCheck check = CheckCode(cached.Value(), pos[1], today);
+    if (!check.Ok()) return Fail(check.message);
+    settings.code = check.code->code;
+    settings.codeEnteredAt = today;
+    if (!settings.Save()) return Fail("cannot write the settings file");
+    std::printf("code %s: %s - in force for %d days\n", check.code->code.c_str(), check.message.c_str(), StoreSettings::kCodeDays);
+    return 0;
+}
+
 } // namespace
 
 int UltraStore::Cli::Run(const std::vector<std::string>& args) {
@@ -467,6 +608,10 @@ int UltraStore::Cli::Run(const std::vector<std::string>& args) {
     if (cmd == "remove")   return CmdRemove(args);
     if (cmd == "installed") return CmdInstalled(args);
     if (cmd == "gc")       return CmdGc(args);
+    if (cmd == "code")     return CmdCode(args);
+    if (cmd == "buy")      return CmdBuy(args);
+    if (cmd == "licences") return CmdLicences(args);
+    if (cmd == "licence")  return CmdLicence(args);
     std::fprintf(stderr, "ultrastore: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }

@@ -419,7 +419,11 @@ tests skip. A test that fails here but passes in CI because a library is
 missing is fixed by adding the package to that list, not by treating the
 failure as expected; re-run `cmake` on a build directory configured before
 the install. To build what CI builds, configure with the options of CI's
-*Configure CMake (macOS/Linux)* step.
+*Configure CMake (macOS/Linux)* step. The same hook widens the clone's fetch refspec to
+every branch and fetches the session branch's `origin/<branch>` copy: a cloud
+clone is shallow and single-branch, and without that copy both Stop hooks -
+the repository's and the image's own `~/.claude/stop-hook-git-check.sh`,
+which the image rewrites every turn - reported a pushed branch as unpushed.
 
 **Tests that need a display.** A few tests under `Tests/` open a real window
 and read the composited pixels back (`CaretStackingTest`,
@@ -600,6 +604,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraDBAdmin/CHANGELOG.md` | UltraDBAdmin — the database browser |
 | `Docs/UltraPassword/CHANGELOG.md` | UltraPassword — the password vault |
 | `Docs/UltraStore/CHANGELOG.md` | UltraStore — the app store |
+| `Docs/UltraStoreAdmin/CHANGELOG.md` | UltraStoreAdmin — the store's admin backend |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
@@ -660,6 +665,11 @@ and never introduce a new literal copy of one:
   it was published, so `Docs/UltraCanvas/CHANGELOG.md` remains the record of
   what shipped in each framework release. Do not backfill it into the app
   files — that would put one change in two places under two numbers.
+- **Button text never ends with an ellipsis.** A button that opens a dialog
+  or a page says what it does - *Choose*, *Export .pub*, *Buy*, *Add
+  release* - not *Choose…*. The trailing "…" belongs to a status line that
+  says something is still running ("Fetching the catalog…") and to a
+  shortened value ("0415eff860c9…"), never to a control's label.
 - **Pending entries: every product's number is assigned on `main`, not by
   you.** Line 1 of a shared file was the most contended line in the
   repository, and two open pull requests collided there every time, in one of

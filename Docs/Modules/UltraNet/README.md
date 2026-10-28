@@ -104,7 +104,8 @@ table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
 `UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
-format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+format of every mail plug-in that sends; a message whose `rawMessage` is set -
+one already signed or encrypted - is sent as those bytes, unchanged), `UltraNet_HttpGet` / `HttpRequest`,
 `UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
 plug-in's push), ... Plug-in sources
 call those functions as usual;

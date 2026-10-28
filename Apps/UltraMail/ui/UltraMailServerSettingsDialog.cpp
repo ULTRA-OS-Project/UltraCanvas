@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
+// Version: 0.8.4 - an editable password row on the setup and server-re-entry
+//                  pages (AccountFields::askPassword), prefilled with the typed
+//                  password, so a failed sign-in can be fixed in place
+// Version: 0.9.0 - the S/MIME row: the certificate, Import... (a .p12 file) and Remove
 // Version: 0.8.3 - a header (icon tile, title, the intro); Save, Details, Delete account, Edit signature and the
 //                  browser sign-in carry icons
 // Version: 0.8.2 - switching a password account between IMAP and JMAP asks
@@ -171,7 +175,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // A Protocol row sits above the server rows and two authentication rows
     // under them on both. The Signature row adds one more line.
     // The header (an icon tile, a title over the intro) is 56 high.
-    config.height     = account.edit ? (account.onSaveSignature ? 656 : 624) : 464;
+    config.height     = account.edit ? (account.onSaveSignature ? 656 : 624) + (account.onImportSmime ? 34 : 0) : 464;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -388,10 +392,19 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
 
     std::shared_ptr<UltraCanvasTextInput> passInput;
     std::shared_ptr<UltraCanvasButton>    oauthBtn;
-    if (account.edit && account.acceptsPassword) {
+    // The password row also appears on the non-edit pages (setup / server
+    // re-entry) when askPassword is set, so a failed sign-in can be corrected
+    // here instead of leaving the user stuck. It is prefilled with
+    // initialPassword (the password typed in the add-account wizard); an account
+    // that already has one stored says "leave blank to keep", a brand-new one
+    // says "Password".
+    if (account.acceptsPassword && (account.edit || account.askPassword)) {
         auto row = credRow("srvPassRow", "Password");
         passInput = CreatePasswordInput("srvPass", 0, 0, 0, Theme::kControlHeight);
-        passInput->SetPlaceholder("Leave blank to keep the current password");
+        passInput->SetPlaceholder(account.edit || account.keepExisting
+                                      ? "Leave blank to keep the current password"
+                                      : "Password");
+        if (!account.initialPassword.empty()) passInput->SetText(account.initialPassword);
         Theme::StyleInput(passInput);
         row->AddChild(passInput);
         passInput->layoutItem.SetFlexGrow(1);
@@ -439,6 +452,50 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->AddChild(editBtn);
     }
 
+    // S/MIME row (account settings only): the certificate the account signs
+    // and decrypts with. Imported from a PKCS #12 file into the vault at once.
+    if (account.edit && account.onImportSmime) {
+        auto row = credRow("srvSmimeRow", "S/MIME");
+        auto summary = Theme::MakeLine("srvSmimeSummary",
+                                       account.smimeSummary.empty() ? std::string("No certificate")
+                                                                    : account.smimeSummary,
+                                       Theme::kControlHeight, Theme::kSizeBody, Theme::kTextPrimary);
+        summary->SetTooltip(account.smimeSummary.empty()
+            ? std::string("Import your S/MIME certificate (a .p12 or .pfx file) to sign mail and to read mail "
+                          "encrypted to you")
+            : account.smimeSummary);
+        row->AddChild(summary);
+        summary->layoutItem.SetFlexGrow(1);
+        UltraCanvasLabel* summaryLabel = summary.get();   // a sibling in this dialog
+        auto removeBtn = CreateButton("srvSmimeRemove", 0, 0, 90, Theme::kControlHeight, "Remove");
+        Theme::FitToLabel(removeBtn, 90);
+        Theme::StyleSecondary(removeBtn);
+        removeBtn->SetVisible(!account.smimeSummary.empty());
+        UltraCanvasButton* removeRaw = removeBtn.get();
+        auto importBtn = CreateButton("srvSmimeImport", 0, 0, 110, Theme::kControlHeight,
+                                      "Import\xE2\x80\xA6");
+        Theme::FitToLabel(importBtn, 110);
+        Theme::StyleSecondary(importBtn);
+        Theme::SetButtonIcon(importBtn, "lock");
+        auto onImport = account.onImportSmime;
+        importBtn->onClick = [dlg, onImport, summaryLabel, removeRaw]() {
+            onImport(dlg, [summaryLabel, removeRaw](const std::string& now) {
+                summaryLabel->SetText(now.empty() ? std::string("No certificate") : now);
+                summaryLabel->SetTooltip(now);
+                removeRaw->SetVisible(!now.empty());
+            });
+        };
+        auto onRemove = account.onRemoveSmime;
+        removeBtn->onClick = [onRemove, summaryLabel, removeRaw]() {
+            const std::string now = onRemove ? onRemove() : std::string();
+            summaryLabel->SetText(now.empty() ? std::string("No certificate") : now);
+            summaryLabel->SetTooltip(now);
+            removeRaw->SetVisible(!now.empty());
+        };
+        row->AddChild(importBtn);
+        row->AddChild(removeBtn);
+    }
+
     auto note = Theme::MakeLine("srvNote", NoteFor(startProtocol), 0, Theme::kSizeBody,
                                 Theme::kTextSecondary);
     note->SetWrap(TextWrap::WrapWord);
@@ -459,7 +516,11 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // account cannot sign in. An account signed in with OAuth2 keeps its
     // tokens. The page says so on the switch and Save asks for it.
     const MailProtocol savedProtocol = prefill.imap.protocol;
-    const bool passwordAccount = passInput && !account.signedInWithOAuth;
+    // The "enter the password again after a protocol switch" prompt is for the
+    // account-settings page only: on setup / server re-entry the password field
+    // is prefilled or kept, and the stored-password-is-stale warning does not
+    // apply.
+    const bool passwordAccount = passInput && account.edit && !account.signedInWithOAuth;
     auto passwordWarning = std::make_shared<std::string>();
     auto needsPassword = [passwordAccount, savedProtocol](MailProtocol chosen) {
         return passwordAccount && chosen != savedProtocol;

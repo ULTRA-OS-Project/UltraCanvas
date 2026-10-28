@@ -1,3 +1,141 @@
+#### 2026-10-28 *0.10.79*
+- **S/MIME runs on UltraCrypt.** Certificates, their trust check, signing,
+  checking, encrypting, decrypting and PKCS #12 import are UltraCrypt's X.509
+  and CMS (`UltraCryptX509.h`); `UltraMailSmime.cpp` keeps only what each
+  finding means to the reader, and UltraMail links no OpenSSL of its own. A
+  certificate that holds but is not one for signing mail now says so.
+
+#### 2026-10-28 *0.10.78*
+- **The mail on the computer is encrypted.** The mailbox index (`mail.db`),
+  the address book, the outbox, the cloud accounts and every downloaded
+  message are ciphertext on disk, under a random storage key kept in the
+  vault (`UltraMailStorage.h`): each database is an encrypted SQLite file
+  with a key of its own derived from it, each message file is sealed whole
+  with XChaCha20-Poly1305. Copied off the computer, or opened with the sqlite3
+  shell or UltraDBAdmin, they show nothing; with a Primary Password nothing
+  on the computer opens them without it.
+  - An earlier version's mailbox is converted at the first start: the
+    databases before the window opens (17 ms for the demo mailbox), the
+    message files on a thread of their own. Reading takes a plain file as
+    it is meanwhile.
+  - Attachments opened for viewing are plain copies for the viewer, so they
+    are deleted at every start now (they were kept for a week).
+  - EmailCleaner reads UltraMail's mailbox with the same key, taken from the
+    vault with the device key; with a Primary Password set it says it cannot.
+  - `test_storage` checks the storage key, the derived keys, sealing and
+    opening (a changed byte and another key refused, a plain file read),
+    converting plain message files and the mailbox database in place.
+- **The data folder is yours alone.** UltraMail makes its data folder
+  owner-only at every start (`SecureDataDir`), before the instance lock is
+  written into it: the folder and the folders in it `rwx------`, the files
+  directly in it `rw-------`. An earlier version created it with the
+  system's default, which on many Linux systems let every other user of the
+  computer read the mail, the databases and the vault; that folder is
+  tightened the first time. Windows' per-user `%APPDATA%` was already
+  private and is left as it is.
+- **A Primary Password.** *Settings > Privacy > Primary Password* sets one,
+  changes it and removes it (each asks for the current one first). Once set,
+  UltraMail asks for it when it starts, before it reads anything stored: a
+  wrong one is asked for again in the same dialog, Cancel ends the start. It
+  protects the account passwords and sign-ins in the vault, whose device key
+  is then gone, so nothing on the computer opens the vault without it.
+  - The vault now opens at the start, before the mailbox (about 0.1 s, the
+    Argon2id key derivation), instead of after the window is up.
+  - A vault from an early version that was made with a master password and
+    never got a device key is now treated as having a Primary Password: it
+    is asked for at the start, and *Remove* turns it off. Before, typing it
+    once turned it into a device key without a word.
+  - The password dialog says *Primary Password* throughout; two passwords
+    that do not match, or none typed, ask again in place instead of closing
+    the dialog.
+- **Signed and encrypted mail: S/MIME and OpenPGP.** Mail on the computer is
+  now exactly as readable as it was on its way to the server: encrypted mail
+  stays encrypted on disk and is decrypted only for the reading pane.
+  - Reading: S/MIME (signed, opaque-signed, encrypted) and OpenPGP (PGP/MIME
+    signed and encrypted, inline and clear-signed PGP) are decrypted where a
+    key here opens them and their signatures checked; pills say what holds -
+    *Encrypted*, *S/MIME* / *OpenPGP* green (vouched for), amber (holds,
+    nobody vouches), red (changed after signing). An encrypted message no key
+    opens says why instead of showing ciphertext.
+  - Sending: the compose window's *Security* row (Off, S/MIME, OpenPGP; Sign,
+    Encrypt). Encrypted to every recipient and to the sender; Drafts, the send
+    and Sent use the same secured bytes; a missing recipient certificate or
+    key is named before anything is queued, and a message that cannot be
+    secured is never sent in plain text. Replies to encrypted mail start
+    encrypted.
+  - Keys: an S/MIME certificate and key imported from a `.p12` / `.pfx` in
+    *Account Settings* (kept in the vault; only for the account's address);
+    correspondents' certificates learnt from their vouched-for signatures
+    (address book schema 4); OpenPGP through the user's GnuPG keyring, with
+    `application/pgp-keys` attachments offered for import.
+  - Built with OpenSSL 3 (S/MIME) and GPGME (OpenPGP) where found; the
+    outbox gains schema 5 (the draft's security choice).
+  - `test_securemime` checks the MIME pieces, S/MIME signing (untrusted,
+    tampered, LF line ends), encrypting to recipient and sender, PKCS #12
+    import, the outbox filing only ciphertext, and OpenPGP signing,
+    encrypting and inline messages against a throw-away keyring.
+- The *S/MIME* / *OpenPGP* pill no longer says UltraMail does not check such
+  signatures.
+- **OpenPGP on macOS.** The macOS suite bundles GPGME (built by vcpkg for
+  macOS 14, with libassuan and libgpg-error); GnuPG is the user's, from
+  Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite, and UltraMail
+  finds it in their folders although a Finder-started app's `PATH` lacks them.
+- OpenPGP is not built on Windows on Arm: there GPGME's first operation ended
+  the process (CI's windows-11-arm, MSYS2 CLANGARM64), which in the app would
+  quit it on opening an OpenPGP message. S/MIME is unaffected.
+
+#### 2026-10-27 *0.10.77*
+- **A JMAP sync keeps its connection.** UltraMail asks UltraNet to pool
+  HTTP connections per thread (`UltraNetConfig::reuseHttpConnections`), so
+  a mailbox sync reuses one connection to the server instead of a fresh
+  TCP and TLS handshake for every call - what "Fix email dates in the JMAP"
+  set out to do, now switched on by UltraMail alone rather than for every
+  program.
+
+#### 2026-10-27 *0.10.76*
+- **The account bar's counters filter the message list.** A click on
+  *New today* shows the account's inbox with only its unread mail from today,
+  *Unread* all of its unread mail (today's too, though the number counts
+  only the mail from before today), and *Waiting for reply* only the mail
+  waiting for an answer. A click anywhere else on the account's card (tile or summary card)
+  shows all of its mail again. Each counter has its own tooltip, and the one
+  in use is outlined in its colour.
+- **A filter card under the account.** While the list is filtered, a second
+  row under the account bar holds a card in the look of the account tiles,
+  placed under the account's own tile (it follows the tile when it is dragged
+  to another place). It names the filter ("Showing: New today") and has a
+  **Show all emails** button. It also shows a filter chosen from the list's
+  *Show emails ▸* menu, and goes when switching folders clears the filter.
+- `UltraMailAccountBarTest` clicks every counter and checks the filter card's
+  place; `UltraMailFolderTreeTest` checks what each counter's filter shows;
+  `test_messagefilter` checks the new filter.
+- **A payment reminder whose "invoice" is a web page is marked as a scam.**
+  A "Mahnung" with the invoice attached as `Rg-2608144_(563804).html`, sent
+  in a plumbing firm's name from a music site's address, was not flagged:
+  no rule looked at an `.html` attachment or at a company name over a
+  foreign domain. Three new findings:
+  - `attachment-web-page` - a web page attached (`.html`, `.htm`, `.xhtml`,
+    `.mht`) opens in the browser, outside the mail program: Suspicious, and
+    40 points when the mail or the file name speaks of an invoice, a reminder
+    or a payment, since real invoices come as PDFs.
+  - `attachment-active-page` - the attached page (or an SVG picture) is read
+    as the browser would run it: one that loads a script from a website, has
+    a form, sends the browser on or decodes a hidden page is a Scam on its
+    own. The reminder's page loaded a script from a hacked site. It still
+    counts for a sender you trust (their mailbox may be the one hijacked).
+  - `sender-company-mismatch` - the display name names a company whose own
+    domain the mail itself gives ("questions to fibu@bug-rohrreinigung.de")
+    while it came from an unrelated domain. Not for a free mailbox, "… via
+    …", or a sender domain carrying the company's name; a domain DKIM or
+    DMARC proves (an invoicing service) gets only a hint.
+- The reading pane names such a mail *phishing* and advises not to open the
+  attached page. The rules revision moves to 2026-10-27, so stored mail is
+  scanned again.
+- **The warning strip's footnote is marked with "*".** *"Warning: This is
+  likely a phishing\* email!"* and the explanation under it start with "*"
+  instead of "²" - each warning has a single footnote, so a "2" read like a
+  second one.
+
 #### 2026-10-25 *0.10.75*
 - **Copy link over a linked picture.** A right-click on a picture that is a
   link - a newsletter's "Buy now" or "Read more" button - offers *Copy link*

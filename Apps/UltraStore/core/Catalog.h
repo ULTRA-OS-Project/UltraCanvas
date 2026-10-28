@@ -4,6 +4,10 @@
 // one shape - releases with packages per target - and a release names the
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
+// Version: 0.5.0 - payment_url and licence_key: the payment service the store buys through
+// Version: 0.4.0 - codes: the discount and affiliate codes the store applies
+// Version: 0.3.0 - schema 2: trusted_keys, the keys that may sign the next catalogs
+// Version: 0.2.0 - ParseComponent / SerializeComponent for the admin backend
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -17,8 +21,9 @@
 namespace UltraStore {
 
 // The newest catalog schema this build reads. A catalog with a higher
-// "schema" needs a newer UltraStore (SchemaTooNew).
-inline constexpr int kSupportedSchema = 1;
+// "schema" needs a newer UltraStore (SchemaTooNew). Schema 2 added
+// trusted_keys; a schema 1 catalog is read as one without them.
+inline constexpr int kSupportedSchema = 2;
 
 // What a catalog entry is. Apps are what the store shows; a runtime is the
 // general shared libraries every app needs (libUltraCanvas and what it
@@ -136,10 +141,55 @@ struct Publisher {
     std::string id, name, url;
 };
 
+// ===== CODES =====
+// A code the buyer enters, or arrives with from an affiliate's QR code or
+// link (ultrastore://code/<CODE>): a discount code takes something off the
+// price; an affiliate code credits the partner it names when the purchase
+// goes through, and may take something off the price as well. What the
+// catalog carries is public by nature (a code is made to be passed around);
+// what a partner earns stays in the admin backend. The redemption itself,
+// its limits and the partner's credit are the payment service's
+// (Docs/UltraStore/README.md, *Affiliates and codes*).
+enum class CodeKind { Discount, Affiliate };
+CodeKind    ParseCodeKind(std::string_view text);   // "discount" / "affiliate"
+std::string CodeKindName(CodeKind kind);
+
+struct PromoCode {
+    std::string code;                  // as typed, case does not matter; letters, digits, '-'
+    CodeKind kind = CodeKind::Discount;
+    int discountPercent = 0;           // 0..100; or
+    std::string discountAmount;        // a decimal, in currency
+    std::string currency;              // ISO 4217; empty: the app's
+    std::vector<std::string> apps;     // the ids it applies to; empty: every app
+    std::string validFrom, validUntil; // "YYYY-MM-DD", either empty
+    std::string affiliate;             // the partner's id (an opaque handle), for affiliate codes
+
+    bool AppliesTo(std::string_view appId) const;
+    bool ValidOn(std::string_view date) const;   // "YYYY-MM-DD"
+    bool HasDiscount() const { return discountPercent > 0 || !discountAmount.empty(); }
+};
+
+// Codes compare without case and surrounding space: "anna-20" is "ANNA-20".
+std::string NormalizeCode(std::string_view code);
+
 struct Catalog {
     int schema = 0;
     uint64_t sequence = 0;
     std::string generated;
+    // Schema 2: the public keys (32 bytes, lower-case hex) that may sign the
+    // catalogs after this one, signed along with everything else. A store
+    // that accepted this catalog trusts them beside its compiled-in keys
+    // until the next accepted catalog announces its own list, so a key is
+    // rotated by publishing once with the old key and the new one listed
+    // here, then with the new key. The list adds; it cannot drop a
+    // compiled-in key (Docs/UltraStore/README.md, *Keys*).
+    std::vector<std::string> trustedKeys;
+    std::vector<PromoCode> codes;       // the discount and affiliate codes in force
+    // The payment service (Server/UltraStorePay) the store buys through,
+    // and the hex Ed25519 key its licences are signed with; both empty when
+    // the store has none, and Buy goes to the publisher's page then.
+    std::string paymentUrl;
+    std::string licenceKey;
     std::vector<Publisher> publishers;
     std::vector<Component> apps;        // kind == App
     std::vector<Component> components;  // kind == Runtime or Library
@@ -148,6 +198,8 @@ struct Catalog {
     const Component* FindApp(std::string_view id) const;
     const Component* FindComponent(std::string_view id) const;
     const Component* FindAny(std::string_view id) const;
+    // A code, compared without case; nullptr when the catalog has none like it.
+    const PromoCode* FindCode(std::string_view code) const;
 };
 
 // Parses catalog.json. Strict about what the store relies on (ids, versions,
@@ -161,5 +213,15 @@ Result<Catalog> ParseCatalog(const std::string& jsonText);
 // signs, and what the tests build their fixtures with. Releases are written
 // newest first.
 std::string SerializeCatalog(const Catalog& catalog);
+
+// One component as the catalog writes it (an object of the "apps" or
+// "components" array), for the admin backend's import and export: what it
+// keeps is what the store reads. The kind defaults when the object names
+// none. The admin backend keeps a package before it is published, when it
+// has no URL yet: requirePackageUrls = false lets that through; the catalog
+// itself always requires them.
+Result<Component> ParseComponent(const std::string& jsonText, ComponentKind defaultKind = ComponentKind::App,
+                                 bool requirePackageUrls = true);
+std::string SerializeComponent(const Component& component);
 
 } // namespace UltraStore

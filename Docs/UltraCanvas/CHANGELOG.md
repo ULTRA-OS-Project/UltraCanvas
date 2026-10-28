@@ -1,3 +1,278 @@
+#### 2026-10-28 *0.9.424*
+- **UltraCrypt: X.509 certificates and CMS** (`UltraCrypt/UltraCryptX509.h`),
+  on OpenSSL 3's libcrypto as a second, optional backend - libsodium has no
+  public-key infrastructure, and it stays the backend of everything
+  UltraCanvas encrypts of its own.
+  - Certificates: `UltraCrypt_ReadCertificate` (name, addresses, issuer,
+    validity, SHA-256 fingerprint; PEM or DER) and
+    `UltraCrypt_CheckCertificate` - a chain to the system's roots and/or roots
+    given, through the intermediates given, for a purpose (any, mail signing,
+    mail encryption), at a time: Trusted, Untrusted, Expired, NotYetValid,
+    Revoked or WrongPurpose, with the reason.
+  - CMS: `UltraCrypt_CmsVerifyDetached` / `CmsVerifyAttached` (whether the
+    signature holds for exactly these bytes; who signed and the chain it
+    carries), `CmsSignDetached` (SHA-256, chain carried), `CmsEncrypt`
+    (AES-256-CBC, any number of recipients, RSA or EC) and `CmsDecrypt`
+    (into a secure buffer), `CmsTypeOf`.
+  - `UltraCrypt_ImportPkcs12`: a certificate, its chain and private key from
+    a `.p12` / `.pfx` and its password, older RC2 / 3DES files included.
+  - Wrapped completely: no OpenSSL type in a header, libcrypto linked
+    privately by file (the installed package names no OpenSSL target), every
+    call `BackendUnavailable` without OpenSSL 3 (`UltraCrypt_IsX509Available`).
+    The macOS build names `openssl` in `MacOS/deps/vcpkg.json`.
+  - `Tests/UltraCryptTests.cpp` checks them against a test authority made for
+    the suite: the six verdicts, both PKCS #12 encryptions and a wrong
+    password, signatures holding and refused, enveloped data opened and
+    refused.
+
+#### 2026-10-28 *0.9.423*
+- **`ImageHeifTest`: HEIF and AVIF are under test, on every platform.** The
+  libheif counterpart of `ImageJxlTest`. It asks what the build can do the
+  way the framework does (`VipsCanDecode` / `VipsCanEncode` - libheif reads
+  and writes each format only through a codec for it), decodes the
+  repository's `dice.heic` / `dice.avif` through `UCImageRaster` for each
+  format it reads, and for each it writes has the export encoder and
+  `UCImageRaster::Save` write a lossy (quality 75) and a lossless file that
+  must read back close to the picture, transparency kept.
+  `UC_HEIF_EXPECT` says what a platform must - and must not - do, and CI
+  sets it per row: Linux (Ubuntu 24.04 with every libheif plug-in) and
+  Windows (MSYS2's libheif links them all) read and write both; macOS reads
+  both and writes AVIF, and fails if it can encode HEIC, so x265 (GPL)
+  cannot enter the core every Mac app links unnoticed.
+  `ULTRACANVAS_BUILD_HEIF_TESTS` builds it without `BUILD_TESTS`, as the
+  macOS and Windows rows need.
+- **HEIF and AVIF on macOS, without GPL code in the core.** The macOS libvips
+  was built with `-Dheif=disabled` - the overlay port had no `heif` feature -
+  so the Mac apps could neither read nor write HEIC or AVIF. The port gains a
+  `heif` feature on vcpkg's `libheif`, and `MacOS/deps/vcpkg.json` asks for
+  libheif without its default `hevc` feature, which is x265 (GPL-2.0): libvips
+  is linked into the core every app links, and the framework is MIT. With
+  libde265 (LGPL) and aom (BSD) the Mac apps read HEIC and read and write
+  AVIF; they do not write HEIC.
+- **DemoApp's performance page charts HEIF and AVIF only where they encode.**
+  Like JPEG XL, each is left out of the chart unless `VipsCanEncode` and
+  `VipsCanLoad` say this build handles it - libheif can be present with no
+  encoder for a format (macOS for HEIC; a Linux without libheif's encoder
+  plug-ins for both), and the column then only ever showed a failure.
+  `Docs/Dependencies.md` lists libde265 and aom.
+- **DemoApp: a JPEG XL Images page.** Bitmap Elements had a page for every
+  format the framework reads but JPEG XL. It gets one, with its format
+  specification (ISO/IEC 18181: VarDCT and Modular, lossless JPEG
+  recompression, up to 32-bit float, alpha, animation, progressive), and a
+  JXL-art sample: `media/images/jxl_art2.jxl` draws a 2160 x 3840 picture
+  from 82 bytes. `media/images/jxl_art.jxl` (62 bytes, 1024 x 1024, 16 bits a
+  channel) joins it. A build whose libvips has no libjxl shows the page with
+  "This build cannot read JPEG XL files" in place of the picture.
+- **`ImageJxlTest` reads the two JXL-art samples.** Each has to open through
+  libvips' `jxlload` at its size and depth (16 bits a channel for
+  `jxl_art.jxl`), decode through `UCImageRaster` to an opaque picture of more
+  than 10,000 colours, and come back pixel for pixel from a lossless `.jxl`
+  that `UCImageRaster::Save` writes - on Linux (`image-codecs.yml`) and on the
+  macOS and Windows rows alike.
+- **JPEG XL on macOS and Windows.** Only a Linux build on a distribution
+  whose libvips has libjxl could read or write `.jxl`; neither package could,
+  so the apps offered no JPEG XL there and DemoApp's performance page left
+  its JXL column out.
+  - macOS: the libvips overlay port (`MacOS/deps/ports/libvips`) gains a
+    `jpeg-xl` feature on vcpkg's `libjxl`, and `MacOS/deps/vcpkg.json` selects
+    it - the port builds every libvips option it is not given as disabled.
+    The bundle picks up libjxl, brotli and Highway by its `otool` walk.
+  - Windows: MSYS2's libvips has JPEG XL only through its `vips-jxl` module,
+    which loads only with libjxl installed. CI now installs `libjxl`, and
+    `package-win.sh` ships `vips-jxl.dll` beside `vips-heif` and
+    `vips-magick`; its DLL walk brings libjxl and its dependencies.
+  - `ImageJxlTest` now runs on the macOS and Windows CI rows too (the new
+    `ULTRACANVAS_BUILD_JXL_TESTS` builds it without `BUILD_TESTS`), and the
+    step fails unless its checks ran rather than skipped.
+  - `Docs/Dependencies.md` lists libjxl and Highway.
+
+#### 2026-10-28 *0.9.422*
+- **UltraDatabase encrypts SQLite files at rest.** A connection with an
+  `encryptionKey` (32 bytes the application holds) reads and writes a file
+  that is ciphertext on disk: every page of the database, of its WAL and of
+  its rollback journal is sealed with XChaCha20-Poly1305 by a VFS in front of
+  the platform's, so it works on the system's own libsqlite3 everywhere and
+  no query changes (`UltraDatabaseEncryption.h`).
+  - A wrong key, a plain file opened with a key and a changed byte are each
+    refused as what they are; without the key the file is not a database to
+    SQLite, the sqlite3 shell or UltraDBAdmin.
+  - `UltraDb_SetSqliteFileEncryption` encrypts a plain file, decrypts one or
+    changes its key in place, its WAL included, and swaps the file only once
+    the new one has checked; `UltraDb_InspectSqliteFile` and
+    `UltraDb_SqliteKeyOpens` tell what a file is without opening it.
+  - Temporary data of an encrypted connection stays in memory; a WAL left by
+    a crash and a hot journal are recovered through the encryption.
+  - `UltraDatabaseTests` gains nine encryption tests (103 in all), among them
+    recovery from a WAL and a journal copied mid-write.
+- **UltraCloud's account store can be encrypted at rest.**
+  `AccountStore::Open` takes an optional key, handed to UltraDatabase as the
+  connection's `encryptionKey`; UltraMail opens its `cloud.db` with one.
+- **UltraNet: a mail message can be sent as it stands.**
+  `UltraNetMailMessage::rawMessage` (UltraNetPlugins.h 0.5.3): when set,
+  `UltraNet_MimeBuildMailMessage` returns it unchanged instead of building the
+  message from its fields, so the SMTP and JMAP plug-ins send exactly those
+  bytes - a message signed or encrypted (S/MIME, OpenPGP) after it was built.
+  The other fields still give the envelope (sender, recipients).
+- **A device-key vault can take a Primary Password.**
+  `DeviceKeyVault::ChangePassphrase(current, new, keepAsDeviceKey)`
+  re-encrypts the vault file under a new passphrase - every secret in it
+  carried over, whatever module wrote it - and swaps the file in only once it
+  is complete; without the device key (`keepAsDeviceKey` false) the vault
+  then opens only with the typed passphrase (`NeedsPassphrase`), and with a
+  fresh `NewDeviceKey()` it opens silently again. A kept device key is
+  written as `device.key.next` before the swap, which `TryAutoUnlock` also
+  tries, so an interruption never leaves the vault without a key that opens
+  it; `ForgetDeviceKey` drops one left stale. `UltraVaultTests` checks
+  setting, changing and removing one, another prefix's secret carried over,
+  and an interrupted swap.
+
+#### 2026-10-28 *0.9.421*
+- **New element: the performance matrix.** `UltraCanvasPerformanceMatrix`
+  draws named categories where two rated axes cross: the 9-box talent grid,
+  the performance management matrix, performance-vs-potential codes, talent
+  review cards and skill / will. It replaces the demo's *Performance Matrix
+  is not ready yet* placeholder (**Info Graphics → Performance Matrix**).
+  - Four designs: `Grid` (contiguous cells with level labels, axis arrows and
+    titles), `Tiles` (rounded tiles with a large code), `HeaderTabs` (rounded
+    level tabs with icons above and to the left of plain cells) and `Cards`
+    (bordered cards with a badge and bullets).
+  - Four palettes (`TrafficLight`, `Vivid`, `Monochrome(hue)`, `Pastel`), kept
+    separate from the design. The cell colourings are `Plain`, `Explicit`,
+    `DiagonalBands` (by rank from the best corner), `ByRow` and `ByColumn`.
+  - All cells share one font size, the largest at which every cell fits,
+    down to 9. Below that, a crowded cell drops bullets, then its
+    description, then its action. The tooltip keeps everything.
+  - Hover outlines the cell and marks its row and column. Click selects the
+    cell. `onCellHover` / `onCellClick` report it, with the cell geometry
+    (`GetCellRect`, `CellAt`) and the tooltip text alongside.
+  - The UI-free model (`UltraCanvasPerformanceMatrixModel.h`) stores levels
+    low to high on both axes whichever way they are drawn, with sparse cells,
+    `Rank` from a configurable best corner and `Validate()`. It ships five
+    samples.
+
+  `Tests/PerformanceMatrixModelTest.cpp` and
+  `Tests/PerformanceMatrixRenderTest.cpp` cover the model and the drawing; the
+  render test writes PNGs when `ULTRACANVAS_SCREENSHOT_DIR` is set. Guide:
+  `Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md`. Placing people in the
+  boxes and calibration are the proposal's next phases.
+
+#### 2026-10-27 *0.9.420*
+- **The demo's CorelDRAW page opens at once and shows one drawing at a
+  time.** Opening it read all three sample drawings on the UI thread first -
+  over two seconds of a frozen window in a debug build, nearly all of it
+  `detailed.cdr`. The page now has a tab per file on the left; a drawing is
+  read the first time its tab is shown, on a worker thread, behind a turning
+  busy indicator, and the status line says how long it took.
+- **UltraCanvasCDRElement: `LoadFromFileAsync` / `IsLoading`** (CDR plugin
+  1.3.0). The file is parsed on a worker thread and the document handed to
+  the element on the UI thread; only the latest of several loads is shown,
+  and an element destroyed mid-parse waits for its worker. The element also
+  draws in its own coordinates now: it clipped the drawing with its
+  parent-relative content rect, which cut a strip the size of its offset off
+  any drawing not placed at its parent's top-left corner.
+- **libcdr: bitmap colours are converted once per colour, not once per
+  pixel** (third patch in `UltraCanvas/third_party/libcdr`, also offered
+  upstream as `upstream/0003-…`). Each pixel of an embedded bitmap went
+  through its own lcms transform call - 70% of the time `detailed.cdr` took
+  to read. The parse now takes 0.7 s instead of 2.3 s (debug build), with
+  byte-identical output.
+- **A CorelDRAW drawing's hairlines are drawn dark again.** Its thinnest
+  outlines (a quarter of a point) came out a fifth of a pixel wide at a page
+  fitted into a window, and antialiasing faded them to a pale grey: the
+  dubai-atlantis and door-panel samples were barely visible. An outline is
+  now at least one device pixel wide, as CorelDRAW draws it; the SVG export
+  is unchanged.
+- **UltraCanvasMediaViewer 1.18.0: a transparent picture or a drawing gets a
+  backdrop it can be seen on.** Dark line art in the vector view sat on the
+  viewer's near-black pane, and a white logo on the white backdrop - both
+  close to invisible. The new `TransparentImageBackground::Auto`, the viewer's
+  default, samples what is shown (a transparent picture's pixels, or the
+  drawing rasterized at 64 px) and picks white, mid grey or dark grey -
+  whichever gives the most of the artwork a 4.5:1 contrast
+  (`UltraCanvasMediaViewer::ContrastingBackdropFor`). The vector view now
+  takes its backdrop from the strip too (it had none), and the strip opens
+  with an auto swatch; a colour picked there still holds for the following
+  files. 3D models are unchanged: every model is drawn in one light grey on
+  a dark ground, which already contrasts.
+- **The media viewer's zoom box shows the zoom.** It stayed blank whatever the
+  zoom was; it now reads *Fit*, the step it is at, or the percentage between
+  steps (`137%`), for pictures, PDFs, e-books and drawings.
+- **UltraCanvasColorSwatchBar 1.4.0: an auto swatch** (`SetShowAutoEntry`,
+  `SelectAuto`, `onAutoSelected`), drawn half light and half dark before the
+  checkered one.
+- **UltraCanvasDropdown 1.2.0: `SetPlaceholderText`**, what the button reads
+  while no item is selected.
+- **UltraCanvasMediaViewer 1.15.1: a drawing on screen is no longer reported as "No media".**
+  The info bar and the Details panel had a branch for every view but the
+  drawing one, so a file shown by the vector view (DXF, DWG, EMF, ...) or by a
+  plugin's own element (CorelDRAW through libcdr) fell through to the picture
+  branch, found no bitmap and said *No media* under a drawing that was plainly
+  there. The info bar now reads `name · DRAWING (CDR) · size · n / m`, adding
+  the document size and zoom in the vector view (and following its zoom); the
+  Details panel calls it a *Vector drawing*. A drawing with no reader and no
+  stored preview keeps saying so instead of having it overwritten by
+  *No media*.
+- **A Xara drawing is no longer shifted and cut off by its own position.**
+  `UltraCanvasXARElement` (XAR plugin 2.3.1) placed the page by its position
+  in the parent although the parent had already moved the drawing context
+  there, so a drawing anywhere but its parent's top-left corner was drawn
+  that far down and to the right and lost its bottom and right edge - in the
+  demo's XAR tiles 12 px, enough to cut the last line of Backside.xar. It now
+  draws at its own origin, as the CDR element does since this branch.
+
+#### 2026-10-27 *0.9.419*
+- **Cloud sessions no longer see a pushed branch as unpushed.** The cloud
+  clone is shallow and single-branch, so a branch pushed with `git push -u`
+  had no `origin/<branch>` copy and both Stop hooks - the repository's and
+  the image's own, which the image rewrites every turn - counted every
+  commit on it as unpushed. `.claude/hooks/session-start.sh` now widens the
+  clone's fetch refspec to every branch, as a full clone has it, so a push
+  keeps the copy current for any branch, and fetches the session branch's
+  copy at the start.
+
+#### 2026-10-27 *0.9.418*
+- **A Telegram sign-in code can be asked for another way.**
+  `UltraIMProviderInfo::authResendHint` names the other way the service
+  offers ("Send it by SMS instead") and `UltraIM_ResendAuthCode` asks for it
+  (TDLib's `resendAuthenticationCode`); the Telegram provider's hint now says
+  where the code went - as a message to the Telegram apps the number is
+  signed in on, by SMS, in a call - and how many digits it has. A step's
+  `NeedsInput` answer now precedes its `AuthStepChange`, so a sign-in made
+  in answer to the event is no longer resolved by the step that raised it.
+
+#### 2026-10-27 *0.9.417*
+- **A slider that shows no value centres its bar across its box.** The bar
+  was always drawn at the foot of a horizontal slider's box (the left of a
+  vertical one) to leave room for a value above or beside it - even with
+  `SliderValueDisplay::NoDisplay`, the default, where nothing is drawn
+  there. A slider in a row of labels taller than its 16 px handle therefore
+  sat below their line (ArtCreator's *Quality*, the image-export and
+  save-settings dialogs, the font viewer, the media viewer's adjustments).
+  It is now centred; a slider that shows a value keeps the bar at the edge.
+
+#### 2026-10-27 *0.9.416*
+- **The synchronous HTTP verbs' connection pool is opt-in, and shares no
+  TLS sessions.** UltraNet 0.5.0 gave every synchronous HTTP call a
+  per-thread libcurl share that pooled connections, DNS answers and TLS
+  sessions for all callers at once. A pooled connection outlives the call
+  that made it, and a resumed TLS session skips the certificate, so a
+  device restarted, re-keyed or pinned between two calls was reached on the
+  old connection or session: a scanner trusted on first use could not be
+  re-learned after its key was forgotten, and the Linux rows of CI went red
+  at "Run unit tests" from 0.9.414 on. The pool is now
+  `UltraNetConfig::reuseHttpConnections`, off unless an application asks
+  (UltraMail does, for its JMAP sync), and it never shares TLS sessions.
+
+#### 2026-10-27 *0.9.415*
+- **Trust on first use works again for printers and scanners.** Since the
+  synchronous HTTP verbs keep a connection pool per thread, a request to a
+  device whose key was just forgotten resumed the earlier TLS session, which
+  shows no certificate: the key could not be learned again, and
+  `IODevicePrinterIPPLiveTest` and `IODeviceScannerESCLLiveTest` failed on
+  Linux. A request that pins a public key or reads the server's certificate
+  (`pinnedPublicKey`, `capturePeerCertificate`) no longer uses the pool, so it
+  always makes a full handshake - which a pin promises anyway.
+
 #### 2026-10-26 *0.9.414*
 - **UltraCanvasContainer 4.8.1: the mouse wheel scrolls a container whose scrollbar `autoShowScrollbars` showed.** The wheel handler answered only a *forced* scrollbar (`forceShowVerticalScrollbar`), so a list that showed its bar because the content was taller than the box could be dragged by the bar but not rolled: the store's pages, a settings form. The wheel now moves any axis that has a bar, forced or shown.
 

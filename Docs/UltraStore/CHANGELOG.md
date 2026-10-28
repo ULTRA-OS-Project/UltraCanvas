@@ -1,3 +1,66 @@
+#### 2026-10-28 *0.1.7*
+- **After the purchase.** The licence carries the app's update period as
+  the catalog had it when the order was paid, and the store holds to it:
+  an update outside the purchase is refused, the card shows *Buy update*,
+  *Update all* counts it as "to buy anew", the *Bought* badge names the
+  terms. The licence reaches the app as `apps/<id>/licence.ulic`, written
+  at install and at purchase, found and verified by the app with
+  `FindLicenceFile` and `ReadLicenceFile` (`Purchase.h`); `ultrastore
+  licence <app-id>` shows a purchase and checks the file. An order the
+  store was closed in the middle of is remembered and picked up at the
+  next start: paid meanwhile, the licence is kept; still open, the checkout
+  opens again.
+- **Buy through the payment service.** A catalog that names one
+  (`payment_url`, `licence_key`) makes *Buy* ask it for the order with the
+  code in force, open the checkout in the browser, wait for the payment
+  (the download panel shows it; half an hour at most), verify the licence
+  against the catalog's key and keep it in the registry; a bought app
+  shows *Bought*, *Install* instead of *Buy*, its receipt number and a
+  *Receipt* button, and its restricted package is fetched through the URL
+  the service signs for the order, on every install and update. Without
+  a payment service *Buy* still goes to the publisher's page. `ultrastore
+  buy` and `licences` on the command line.
+
+#### 2026-10-27 *0.1.6*
+- **The payment service** (`Server/UltraStorePay`): a Skrill Quick Checkout
+  session per purchase, priced from the signed catalog with the code in
+  force; Skrill's status report verified (the signature, the amount, the
+  currency) before an order is paid; the licence an app checks offline
+  (Ed25519-signed), the numbered receipt, the signed ten-minute URLs for
+  the packages of paid apps, and the sales for the admin backend's ledger.
+  The store's *Buy* through it is the next step.
+
+#### 2026-10-27 *0.1.5*
+- The buttons that open a dialog or a page say what they do without a
+  trailing ellipsis: *Buy*, not *Buy…*.
+
+#### 2026-10-27 *0.1.4*
+- **Discount and affiliate codes.** The catalog carries `codes`: what a code
+  takes off (a percentage or an amount), the apps it applies to, its
+  validity, and the partner it credits. A code typed on Discover, or
+  arriving with an `ultrastore://code/<CODE>` link from a partner's QR code
+  or page (the store registers the scheme; a second start hands the link to
+  the running copy), is checked against the catalog and kept in force for
+  30 days: the prices show what it takes off ("23.92 EUR (was 29.90)"), the
+  details page names it, Settings shows it and forgets it. `ultrastore code
+  [<CODE> | clear]` does the same from the command line.
+  `ultrastore://app/<id>?code=<CODE>` opens an app's details with the code.
+
+#### 2026-10-27 *0.1.3*
+- **`ParseComponent` / `SerializeComponent`** (Catalog.h): one component as
+  the catalog writes it, for the admin backend's import and export - what
+  `ultrastoreadmin` keeps is what the store reads.
+- **Key rotation through the catalog (schema 2).** The catalog carries
+  `trusted_keys`, the public keys that may sign the catalogs after it;
+  `CatalogClient` keeps the last accepted catalog's list in its cache and
+  verifies the next one against the compiled-in keys, the ones added in the
+  settings and that list (`KeysTrustedNow()`). A new key is announced by a
+  catalog the old key signed and accepted from then on, before the store
+  binary that carries it ships; a key no accepted catalog announced is
+  refused whatever the catalog it signs claims, a catalog cannot drop a
+  compiled-in key, and a schema 1 catalog announces nothing. The Settings
+  page says how many keys the catalog announces.
+
 #### 2026-10-26 *0.1.2*
 - **The window.** `ultrastore` started plainly opens it: a sidebar with
   Discover, Categories, Installed, Updates and Settings, the download queue

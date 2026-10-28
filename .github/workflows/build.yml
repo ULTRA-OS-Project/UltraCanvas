@@ -347,6 +347,7 @@ jobs:
             ${{ matrix.msys_prefix }}-fmt
             ${{ matrix.msys_prefix }}-imagemagick
             ${{ matrix.msys_prefix }}-libheif
+            ${{ matrix.msys_prefix }}-libjxl
             ${{ matrix.msys_prefix }}-zbar
             ${{ matrix.msys_prefix }}-libsodium
             ${{ matrix.msys_prefix }}-sqlite3
@@ -354,6 +355,7 @@ jobs:
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
             ${{ matrix.msys_prefix }}-openssl
+            ${{ matrix.msys_prefix }}-gpgme
             ${{ matrix.msys_prefix }}-c-ares
             ${{ matrix.msys_prefix }}-leptonica
             ${{ matrix.msys_prefix }}-tesseract-ocr
@@ -767,6 +769,9 @@ jobs:
           scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev
           # libsodium: cryptographic backend for UltraCrypt
           scripts/ci-apt.sh install libsodium-dev
+          # UltraMail's OpenPGP: GPGME, and GnuPG for its tests (S/MIME uses
+          # libssl-dev, which libcurl4-openssl-dev brings)
+          scripts/ci-apt.sh install libgpgme-dev gnupg libssl-dev
           # UltraDatabase: SQLite is the single-user store, libpq the
           # multi-user one, libmariadb (MariaDB Connector/C) the MySQL /
           # MariaDB driver. All named explicitly rather than relied on from
@@ -946,8 +951,11 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
+            -DULTRACANVAS_BUILD_HEIF_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_EMOJI_TESTS=ON \
@@ -985,9 +993,12 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRARTC_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACANVASSTART_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
+            -DULTRACANVAS_BUILD_HEIF_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
@@ -1327,6 +1338,15 @@ jobs:
           "$store" --version
           "$store" platform
           "$store" installed --root "$RUNNER_TEMP/ultrastore-smoke"
+          # The admin backend's core: the database, the sealed key, the
+          # package store, a catalog published and verified the way the
+          # store verifies it; then the program answers.
+          (cd build && ctest --output-on-failure --no-tests=error -R "^UltraStoreAdminCore$")
+          admin=build/ultrastoreadmin
+          [ "${{ runner.os }}" = "Windows" ] && admin="$admin.exe"
+          "$admin" --version
+          "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" init
+          "$admin" --store "$RUNNER_TEMP/ultrastoreadmin-smoke" app list
           exe=build/UltraCanvasStart
           [ "${{ runner.os }}" = "Windows" ] && exe="$exe.exe"
           "$exe" --version
@@ -1501,6 +1521,39 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
+
+      # JPEG XL in the libvips each package ships: vcpkg's, built with its
+      # jpeg-xl feature, on macOS, and MSYS2's on Windows, which has JPEG XL
+      # only through its vips-jxl module and libjxl. ImageJxlTest exits 0 when
+      # libvips has neither jxlload nor jxlsave, so the step fails unless the
+      # checks really ran. ULTRACANVAS_BUILD_JXL_TESTS builds it without
+      # BUILD_TESTS; Linux runs it in image-codecs.yml, on Ubuntu 24.04 -
+      # 22.04's libvips has no libjxl.
+      - name: Run JPEG XL test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: |
+          ctest --output-on-failure --no-tests=error -V -R "^ImageJxlTest$" 2>&1 | tee jxl-test.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if ! grep -q 'All JPEG XL checks passed' jxl-test.log; then
+            echo "::error::ImageJxlTest did not run its checks: this libvips has no JPEG XL"
+            exit 1
+          fi
+
+      # HEIF and AVIF in the libheif each package ships, held to what each
+      # must and must not do (UC_HEIF_EXPECT, see Tests/ImageHeifTest.cpp).
+      # macOS: libde265 and aom only - HEIC read, AVIF read and write, and
+      # no HEIC encoder, since x265 is GPL and libvips is in the core every
+      # app links; the step fails if one turns up. Windows: MSYS2's libheif
+      # links aom, dav1d, libde265 and x265, so both read and write.
+      # ULTRACANVAS_BUILD_HEIF_TESTS builds it without BUILD_TESTS; Linux runs
+      # it in image-codecs.yml, with every libheif plug-in installed.
+      - name: Run HEIF/AVIF test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        env:
+          UC_HEIF_EXPECT: ${{ runner.os == 'macOS' && 'decode=heic,avif encode=avif no-encode=heic' || 'decode=heic,avif encode=heic,avif' }}
+        run: ctest --output-on-failure --no-tests=error -V -R "^ImageHeifTest$"
 
       # UltraCleaner's engine suite: the path guard, the rule table, the
       # scanner, the remover and the album logic, over temporary trees only

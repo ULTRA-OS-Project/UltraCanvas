@@ -1,4 +1,8 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.20.0 - SetSecureKeys / onCertificateLearnt for signed and encrypted mail
+// Version: 0.19.1 - RescanSender reads the message files through UltraMailStorage
+// Version: 0.19.0 - ShowInbox: an account's inbox under a filter (the account bar's
+//                  counters); onFilterChanged; the "today" fact for New today
 // Version: 0.18.1 - a row's tooltip only where its cell cut the text off: the
 //                   sender's name and address, the whole subject or the date,
 //                   on one line (it was "sender <address> - unread" and the
@@ -40,6 +44,7 @@
 //                  reading-pane toggle (side-by-side, or Gmail open-in-place).
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMailView.h"
+#include "UltraMailStorage.h"
 #include "UltraMailHeaderText.h"
 
 #include "UltraMailTheme.h"
@@ -521,6 +526,9 @@ void MailView::BuildMessageBox() {
     preview_.onSaveAttachment = [this](const Attachment& a) {
         if (onSaveAttachment) onSaveAttachment(a);
     };
+    preview_.onCertificateLearnt = [this](const std::string& address, const std::string& pem) {
+        if (onCertificateLearnt) onCertificateLearnt(address, pem);
+    };
     preview_.onOpenAttachment = [this](const Attachment& a) {
         if (onOpenAttachment) onOpenAttachment(a);
     };
@@ -895,11 +903,8 @@ void MailView::RescanSender(const std::string& entry) {
     std::thread([this, mail, token, dir = mailDir_]() {
         auto reports = std::make_shared<std::vector<std::pair<MessageEnvelope, ThreatReport>>>();
         for (const auto& m : mail) {
-            std::ifstream in(PathFromUtf8(CachedBodyPath(dir, m.accountId, m.folder, m.uid)),
-                             std::ios::binary);
-            if (!in) continue;
-            const std::string raw((std::istreambuf_iterator<char>(in)),
-                                  std::istreambuf_iterator<char>());
+            std::string raw;
+            if (!ReadBodyFile(CachedBodyPath(dir, m.accountId, m.folder, m.uid), raw)) continue;
             if (!raw.empty()) reports->emplace_back(m, ScanRawMessage(raw));
         }
         auto* app = UltraCanvasApplicationBase::GetCurrent();
@@ -1205,6 +1210,33 @@ void MailView::ShowAccount(const std::string& accountId) {
         SelectFolderNode(curAccount_, curFolder_);
     }
     RebuildList();
+    ReportFilter();
+}
+
+void MailView::ShowInbox(const std::string& accountId, MessageFilter filter) {
+    const bool otherAccount = accountId != curAccount_;
+    if (otherAccount) {
+        // Another account's UID: the same number here is another message.
+        selectedUid_ = -1;
+        selectedFolder_.clear();
+        traceNextPreview_ = true;
+    }
+    curAccount_ = accountId;
+    curFolder_  = "INBOX";
+    filter_     = std::move(filter);
+    if (otherAccount) RebuildFolderTree();
+    else SelectFolderNode(curAccount_, curFolder_);
+    FullRebuild(/*markTopRead=*/false);
+    ReportFilter();
+}
+
+void MailView::ReportFilter() {
+    // No filter is the same for every account.
+    const std::string account = filter_.Active() ? curAccount_ : std::string();
+    if (filter_ == reportedFilter_ && account == reportedAccount_) return;
+    reportedFilter_  = filter_;
+    reportedAccount_ = account;
+    if (onFilterChanged) onFilterChanged(curAccount_, filter_);
 }
 
 std::string MailView::DelimiterOf(const std::string& accountId, const std::string& folder) const {
@@ -1223,6 +1255,7 @@ void MailView::ShowFolder(const std::string& accountId, const std::string& folde
     // A user folder switch: in the reading pane the auto-shown top message is
     // being read, so mark it read (Gmail/Thunderbird style).
     RebuildList(/*markTopRead=*/true);
+    ReportFilter();
     if (onOpenFolder) onOpenFolder(accountId, folder);
 }
 
@@ -1503,10 +1536,12 @@ void MailView::UpdateListTitle() {
 }
 
 MessageFacts MailView::FactsFor(const MessageEnvelope& m,
-                                const std::set<int64_t>& waitingUids) const {
+                                const std::set<int64_t>& waitingUids,
+                                int64_t todayStart) const {
     MessageFacts facts;
     facts.unread = (m.flags & Flag_Seen) == 0;
     facts.needsAnswer = waitingUids.count(m.uid) > 0;
+    facts.today = m.date >= todayStart;   // as the account bar counts "New today"
     const SenderClass cls = ClassFor(m);
     facts.spam = cls == SenderClass::Spam || cls == SenderClass::Scam;
     if (const SenderBrand* brand = BrandForAddress(m.fromAddr)) facts.brand = brand->category;
@@ -1519,8 +1554,10 @@ void MailView::ApplyFilter(std::vector<MessageEnvelope>& messages,
     if (!filter_.Active() && !searching) return;
     std::vector<MessageEnvelope> kept;
     kept.reserve(messages.size());
+    const int64_t todayStart = LocalStore::StartOfToday();
     for (auto& m : messages) {
-        if (filter_.Active() && !FilterMatches(filter_, m, FactsFor(m, waitingUids))) continue;
+        if (filter_.Active() &&
+            !FilterMatches(filter_, m, FactsFor(m, waitingUids, todayStart))) continue;
         if (searching && !SearchMatches(m)) continue;
         kept.push_back(std::move(m));
     }
@@ -1550,6 +1587,7 @@ bool MailView::SearchMatches(const MessageEnvelope& m) const {
 void MailView::SetFilter(MessageFilter filter) {
     filter_ = std::move(filter);
     FullRebuild(/*markTopRead=*/false);
+    ReportFilter();
 }
 
 void MailView::RebuildList(bool markTopRead) {

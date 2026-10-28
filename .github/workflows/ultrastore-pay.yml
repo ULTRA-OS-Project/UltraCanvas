@@ -1,0 +1,24 @@
+# The UltraStore payment service (Server/UltraStorePay): its tests, on
+# every change to it. Pure Python, no system packages.
+name: UltraStore payment service
+
+on:
+  push:
+    branches: [main]
+    paths: ['Server/UltraStorePay/**', '.github/workflows/ultrastore-pay.yml']
+  pull_request:
+    paths: ['Server/UltraStorePay/**', '.github/workflows/ultrastore-pay.yml']
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: Server/UltraStorePay
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -e '.[test]'
+      - run: python -m pytest -q

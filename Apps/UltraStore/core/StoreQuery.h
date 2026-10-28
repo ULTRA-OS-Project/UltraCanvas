@@ -12,6 +12,7 @@
 // for updates); a *withdrawn* one only when it is installed (no new
 // installs, existing ones keep updating).
 //
+// Version: 0.2.0 - codes: CheckCode, DiscountedPrice, PriceLabel with a code
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -72,9 +73,28 @@ std::vector<InstalledRecord> CurrentApps(const std::vector<InstalledRecord>& rec
 // The installed runtimes and libraries.
 std::vector<InstalledRecord> InstalledComponents(const std::vector<InstalledRecord>& records);
 
-// "Free", "29.90 EUR", "4.90 EUR / month", "49.00 EUR / year"; a trial adds
-// " (14-day trial)".
-std::string PriceLabel(const Pricing& pricing);
+// ===== codes =====
+// What entering a code means for this catalog today ("YYYY-MM-DD"): the
+// code when it is known and in force, else why not. A code that applies to
+// other apps than the one looked at is still accepted (AppliesTo decides per
+// app); the message says what it is for.
+struct CodeCheck {
+    const PromoCode* code = nullptr;   // nullptr: refused, see message
+    std::string message;               // "20% off UltraVideo", "Unknown code", "Expired on 2026-12-31"
+    bool Ok() const { return code != nullptr; }
+};
+CodeCheck CheckCode(const Catalog& catalog, const std::string& text, const std::string& today);
+
+// The price after a code's discount, "23.92" (two decimals, never below
+// 0.00); the price as it is when the code does not apply to the app, has no
+// discount, or names another currency. Free stays free.
+std::string DiscountedPrice(const Pricing& pricing, const PromoCode* code);
+
+// "Free", "29.90 EUR", "4.99 EUR / month", with the trial when there is one;
+// with a code that applies, "23.92 EUR (was 29.90)".
+std::string PriceLabel(const Pricing& pricing, const PromoCode* code = nullptr);
+// What a code takes off, for the buyer: "20% off", "5.00 EUR off"; "" when nothing.
+std::string DiscountLabel(const PromoCode& code);
 
 // "1.5 GB", "12.3 MB", "640 KB", "12 bytes".
 std::string FormatBytes(uint64_t bytes);

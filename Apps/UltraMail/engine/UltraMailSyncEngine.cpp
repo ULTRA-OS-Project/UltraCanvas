@@ -1,4 +1,7 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
+// Version: 0.6.0 - message files read and written through UltraMailStorage (sealed at rest)
+// Version: 0.5.1 - the envelope date parses an ISO 8601 UTCDate (JMAP's
+//                  receivedAt) as well as an RFC 2822 Date header (IMAP)
 // Version: 0.5.0 - CreateFolder / DeleteFolder
 // Version: 0.4.0 - the verified sender domain is stored with the verdict;
 //                  RescanStaleVerdicts after each sync of a folder
@@ -8,6 +11,7 @@
 // Version: 0.1.1 - envelope subject/from/to are RFC 2047 decoded when stored
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncEngine.h"
+#include "UltraMailStorage.h"
 #include "UltraMailMimeCodec.h"
 
 #include "UltraMailThreatScan.h"
@@ -119,6 +123,43 @@ int64_t ParseRfc2822Date(const std::string& s) {
         epoch -= sign * (hh * 3600 + mm * 60);
     }
     return epoch;
+}
+
+// Parse an ISO 8601 / RFC 3339 timestamp to epoch seconds (0 on failure). JMAP
+// delivers a message's time as a UTCDate ("2026-07-17T09:00:00Z"), not an RFC
+// 2822 Date header, so the envelope date field holds this shape for a JMAP
+// account. Accepts a 'T' or ' ' between date and time, an optional fractional
+// second, and a 'Z' / ±hh:mm zone (absent is read as UTC, as JMAP always is).
+int64_t ParseIso8601Date(const std::string& s) {
+    int Y = 0, Mo = 0, D = 0, h = 0, mi = 0, se = 0;
+    int n = std::sscanf(s.c_str(), "%d-%d-%dT%d:%d:%d", &Y, &Mo, &D, &h, &mi, &se);
+    if (n < 6)
+        n = std::sscanf(s.c_str(), "%d-%d-%d %d:%d:%d", &Y, &Mo, &D, &h, &mi, &se);
+    if (n < 6 || Mo < 1 || Mo > 12 || Y < 1970) return 0;
+
+    int64_t epoch = DaysFromCivil(Y, static_cast<unsigned>(Mo),
+                                  static_cast<unsigned>(D)) * 86400
+                    + h * 3600 + mi * 60 + se;
+
+    // The zone marker sits after the seconds (past any ".fff"); search skips the
+    // date's own two '-'. 'Z'/none = UTC; "+hh:mm" / "-hh:mm" is subtracted.
+    std::size_t z = s.find_first_of("Zz+-", 10);
+    if (z != std::string::npos && (s[z] == '+' || s[z] == '-')) {
+        int sign = s[z] == '+' ? 1 : -1;
+        int hh = 0, mm = 0;
+        if (std::sscanf(s.c_str() + z + 1, "%d:%d", &hh, &mm) >= 1)
+            epoch -= sign * (hh * 3600 + mm * 60);
+    }
+    return epoch;
+}
+
+// The envelope date field holds an RFC 2822 Date header from an IMAP account and
+// an ISO 8601 UTCDate from a JMAP one; parse whichever it is. A leading
+// "YYYY-MM-DD" (the two dashes at [4] and [7]) marks the ISO form.
+int64_t ParseEnvelopeDate(const std::string& s) {
+    if (s.size() >= 10 && s[4] == '-' && s[7] == '-')
+        return ParseIso8601Date(s);
+    return ParseRfc2822Date(s);
 }
 
 std::string SanitizeFolder(const std::string& folder) {
@@ -246,7 +287,7 @@ MessageEnvelope SyncEngine::ToStored(const std::string& accountId, const std::st
     m.fromName = UltraNet_MimeDecodeHeader(m.fromName);
     m.to    = e.to;
     for (auto& addr : m.to) addr = UltraNet_MimeDecodeHeader(addr);
-    m.date  = ParseRfc2822Date(e.date);
+    m.date  = ParseEnvelopeDate(e.date);
     m.flags = MapNetFlagsToLocal(e.flags);
     // Automated/bulk detection needs List-*/Precedence headers, which the
     // envelope fetch does not carry yet; left false for now.
@@ -456,10 +497,8 @@ int SyncEngine::CountStoredAttachments(const std::string& accountId, const std::
     int counted = 0;
     for (int64_t uid : uids) {
         const std::string path = BodyPath(accountId, folder, uid);
-        std::ifstream in(PathFromUtf8(path), std::ios::binary);
-        if (!in) continue;                         // body not downloaded yet
-        const std::string raw((std::istreambuf_iterator<char>(in)),
-                              std::istreambuf_iterator<char>());
+        std::string raw;
+        if (!ReadBodyFile(path, raw)) continue;    // body not downloaded yet
         if (raw.empty()) continue;
         if (store_.SetAttachmentCount(accountId, folder, uid, MimeCodec::CountAttachments(raw)))
             ++counted;
@@ -473,10 +512,8 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     const std::string path = BodyPath(accountId, folder, uid);
     std::error_code ec;
     fs::create_directories(PathFromUtf8(path).parent_path(), ec);
-    std::ofstream os(UltraCanvas::PathFromUtf8(path), std::ios::binary | std::ios::trunc);
-    if (!os) return std::string();
-    os.write(raw.data(), static_cast<std::streamsize>(raw.size()));
-    if (!os) return std::string();
+    // Sealed with the mailbox's body key when it has one (UltraMailStorage.h).
+    if (!WriteBodyFile(path, raw)) return std::string();
 
     // A body is scanned exactly once — here, where it has just been downloaded
     // and is already in memory. The verdict goes into the index, so the message
@@ -503,10 +540,8 @@ int SyncEngine::RescanStaleVerdicts(const std::string& accountId, const std::str
         return 0;
     int rescanned = 0;
     for (int64_t uid : uids) {
-        std::ifstream in(PathFromUtf8(BodyPath(accountId, folder, uid)), std::ios::binary);
-        if (!in) continue;
-        const std::string raw((std::istreambuf_iterator<char>(in)),
-                              std::istreambuf_iterator<char>());
+        std::string raw;
+        if (!ReadBodyFile(BodyPath(accountId, folder, uid), raw)) continue;
         if (raw.empty()) continue;
         const ThreatReport report = ScanRawMessage(raw);
         MessageSecurity security;

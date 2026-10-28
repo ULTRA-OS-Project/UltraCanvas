@@ -1,10 +1,12 @@
 // Apps/EmailCleaner/engine/EmailCleanerIngest.cpp
 // Parsing (over UltraNet's MIME reader), classification and the walk over
 // UltraMail's cached message bodies.
+// Version: 0.3.0 - cached messages read through UltraMailStorage (sealed at rest)
 // Version: 0.2.0 - outgoing mail: recipients recorded, not analysed
 // Version: 0.1.0 (Phase 1)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerIngest.h"
+#include "UltraMailStorage.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "EmailCleanerMailBackend.h"   // LooksLikeTrash
@@ -122,13 +124,10 @@ void IngestStats::Add(const IngestStats& other) {
     sent        += other.sent;
 }
 
+// A cached message: UltraMail seals its message files at rest
+// (UltraMailStorage.h); opened with the body key the app set, as it is when plain.
 bool ReadFileBytes(const std::string& path, std::string& out) {
-    std::ifstream in(UltraCanvas::PathFromUtf8(path), std::ios::binary);
-    if (!in) return false;
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    out = buffer.str();
-    return true;
+    return UltraMail::ReadBodyFile(path, out);
 }
 
 bool LooksLikeTrashDirectory(const std::string& directoryName) {

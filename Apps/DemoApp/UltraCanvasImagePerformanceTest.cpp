@@ -3,9 +3,18 @@
 // Version: 2.7.0 - the shared page look (UltraCanvasDemoPageKit): the page fills the
 //                  area, toolbar, chart and status in one card, every label sized
 //                  to its text, the toolbar wraps
+// Version: 2.7.1 - HEIF and AVIF are charted only where this build can encode them
 // Version: 2.6.1 - JPEG XL is benchmarked again wherever libvips can write it
-// Last Modified: 2026-10-23
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
+//
+// ================================================================================
+// VERSION 2.7.1 - HEIF AND AVIF ONLY WHERE THEY ENCODE
+// ================================================================================
+// CodecAvailable now covers HEIF and AVIF as well as JXL: libheif can be
+// present with no encoder for a format (the macOS build reads HEIC but has no
+// x265 to write it), and its column then only ever showed a failure. Each is
+// charted where VipsCanEncode and VipsCanLoad say this build handles it.
 //
 // ================================================================================
 // VERSION 2.6.1 - JPEG XL BACK IN THE CODEC LIST
@@ -394,12 +403,19 @@ namespace UltraCanvas {
                 sizeof(kAllCodecs) / sizeof(kAllCodecs[0]);
 
         // Whether this build can run a codec at all. JPEG XL needs a libvips
-        // built with libjxl (Ubuntu 22.04's is not); without one its column
-        // would only ever show a failure, so it is left out of the chart.
+        // built with libjxl (Ubuntu 22.04's is not); HEIF and AVIF need
+        // libheif with an encoder for them - the macOS build has no HEIC
+        // encoder, because x265 is GPL and stays out of the core. Without one
+        // a column would only ever show a failure, so it is left out of the
+        // chart. VipsCanEncode tries a 2 x 2 encode once per codec.
         bool CodecAvailable(const CodecEntry& e) {
-            if (e.format != UCImageSaveFormat::JXL || e.backend != EncoderBackend::Libvips) return true;
+            const bool optional = e.format == UCImageSaveFormat::JXL ||
+                                  e.format == UCImageSaveFormat::HEIF ||
+                                  e.format == UCImageSaveFormat::AVIF;
+            if (!optional || e.backend != EncoderBackend::Libvips) return true;
 #ifdef HAS_LIBVIPS
-            return VipsCanSave(".jxl") && VipsCanLoad(".jxl");
+            const std::string ext = std::string(".") + e.extension;
+            return VipsCanEncode(ext) && VipsCanLoad(ext);
 #else
             return false;
 #endif

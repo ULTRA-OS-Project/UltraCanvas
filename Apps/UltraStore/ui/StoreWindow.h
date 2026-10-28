@@ -30,6 +30,9 @@
 //
 // Pictures (icons, screenshots) come through AssetCache on a second thread
 // and are set on the cards when they arrive.
+// Version: 0.4.0 - the open order resumed, the update terms
+// Version: 0.3.0 - Buy through the payment service; the licences
+// Version: 0.2.0 - codes and ultrastore:// links
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -38,6 +41,7 @@
 #include "Catalog.h"
 #include "CatalogClient.h"
 #include "PlatformInfo.h"
+#include "Purchase.h"
 #include "StoreEngine.h"
 #include "StoreQuery.h"
 #include "StoreSettings.h"
@@ -90,6 +94,16 @@ public:
     bool Create();
     void Show();
 
+    // A link from a QR code or a page: ultrastore://code/<CODE> enters the
+    // code; ultrastore://app/<id>[?code=<CODE>] opens the app's details,
+    // with the code when it carries one. Anything else is said in the
+    // status line.
+    void OpenLink(const std::string& url);
+    // The code the person typed or arrived with: checked against the
+    // catalog, kept in force for StoreSettings::kCodeDays, shown in the
+    // prices. An empty text forgets the code.
+    void ApplyCode(const std::string& text);
+
 private:
     // ===== shell (StoreWindow.cpp) =====
     void BuildShell();
@@ -109,6 +123,9 @@ private:
     ListingFilter BaseFilter() const;
     std::string Lang() const { return lang_; }
     std::string ServerNote() const;         // why nothing can be fetched, or empty
+    std::string Today() const;              // "YYYY-MM-DD", UTC
+    const PromoCode* CodeInForce() const;   // the settings' code when the catalog knows it and it is valid today
+    const PromoCode* CodeFor(const Component& app) const;   // CodeInForce() when it applies to the app
 
     // ===== pages =====
     void RebuildAllPages();
@@ -128,6 +145,7 @@ private:
 
     // ===== actions =====
     void InstallApp(const std::string& appId);
+    void BuyApp(const std::string& appId);     // through the catalog's payment service; else the publisher's page
     void UpdateApp(const std::string& appId);
     void UpdateAll();
     void RemoveApp(const std::string& appId);
@@ -142,19 +160,22 @@ private:
     void StopPictureThread();
 
     // ===== jobs (StoreJobs.cpp) =====
-    enum class JobKind { Refresh, Reload, Install, Update, UpdateAll, Remove, Collect };
+    enum class JobKind { Refresh, Reload, Install, Update, UpdateAll, Remove, Collect, Buy };
     struct Job {
         uint64_t id = 0;
         JobKind kind = JobKind::Reload;
         std::string appId;
         std::string title;
         bool showInQueue = true;
+        bool resume = false;   // Buy: the settings' open order, not a new one
     };
     struct JobResult {
         bool ok = true;
         std::string message;                       // for the status line
         bool haveInstalled = false;
         std::vector<InstalledRecord> installed;
+        bool haveLicences = false;
+        std::vector<LicenceRecord> licences;
         std::shared_ptr<const Catalog> catalog;    // Refresh: the new catalog
         CatalogState state;
     };
@@ -209,6 +230,11 @@ private:
     std::string catalogNote_;               // where the catalog came from, or why there is none
     CatalogState catalogState_;
     std::vector<InstalledRecord> installed_;
+    std::vector<LicenceRecord> licences_;      // the apps bought here
+    const LicenceRecord* Bought(const std::string& appId) const;
+    // The licence's terms for an app bought here, else an empty Licence.
+    Licence PurchaseOf(const std::string& appId) const;
+    bool resumedOrder_ = false;                // the settings' open order was looked at once
     bool localCatalog_ = false;
     bool autoExpanding_ = false;            // the panel opening for a job, not the user's fold
 
@@ -230,6 +256,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> searchInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> discoverList_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> discoverNote_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> codeInput_;
     std::string search_;
     // Categories
     std::shared_ptr<UltraCanvas::UltraCanvasChipGroup> categoryChips_;
