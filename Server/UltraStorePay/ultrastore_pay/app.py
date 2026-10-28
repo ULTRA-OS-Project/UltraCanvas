@@ -87,6 +87,13 @@ def create_app(settings: Settings | None = None, fetcher: Fetcher = http_fetch) 
             raise error(404, "no_such_order", "No such order")
         return order
 
+    def _update_terms(app_id: str) -> tuple[str, str]:
+        try:
+            entry = catalog.current().apps.get(app_id)
+        except CatalogError:
+            entry = None
+        return (entry.updates, entry.updates_until) if entry else ("always", "")
+
     def admin(authorization: str | None) -> None:
         token = (authorization or "").removeprefix("Bearer ").strip()
         if not settings.admin_token or not hmac.compare_digest(token, settings.admin_token):
@@ -147,7 +154,10 @@ def create_app(settings: Settings | None = None, fetcher: Fetcher = http_fetch) 
                                  note=f"amount mismatch: Skrill reports {fields.get('mb_amount')} {fields.get('mb_currency')}")
                 raise error(400, "amount_mismatch", "The amount paid is not the order's")
             licence_id = secrets.token_hex(8)
-            token = key.issue(licence_id=licence_id, app=order.app, order_id=order.id, issued=_today(), updates="per-catalog")
+            # What the purchase includes comes from the catalog as it stands
+            # when the order is paid: the store enforces it on updates.
+            terms = _update_terms(order.app)
+            token = key.issue(licence_id=licence_id, app=order.app, order_id=order.id, issued=_today(), updates=terms[0], updates_until=terms[1])
             store.mark_paid(order.id, skrill_transaction=fields.get("mb_transaction_id", ""), payer_email=fields.get("pay_from_email", ""),
                             licence_id=licence_id, licence=token)
             return PlainTextResponse("OK")

@@ -34,6 +34,7 @@
 //
 // --root is the store's folder; without it UltraCanvasLocalDataFolderRoot()/UltraStore.
 //
+// Version: 0.5.0 - licence
 // Version: 0.4.0 - buy, licences
 // Version: 0.3.0 - code
 // Version: 0.3.0 - Run() and Usage() for ui/main.cpp; the window's options in the usage;
@@ -94,7 +95,8 @@ int UltraStore::Cli::Usage(FILE* to) {
         "  ultrastore gc [--root <dir>]\n"
         "  ultrastore buy <catalog.json> <app-id> [--code <CODE>] [--root <dir>]\n"
         "                                     through the catalog's payment service: the browser pays, the licence is kept\n"
-        "  ultrastore licences [--root <dir>]  the apps bought here\n"
+        "  ultrastore licences [--root <dir>]  the apps bought here\n"        "  ultrastore licence <app-id> [--root <dir>] [--key <hex>]\n"
+        "                                     one purchase: its terms, and the licence file checked against the key\n"
         "  ultrastore code [<CODE> | clear] [--cache <dir>]\n"
         "                                     the discount or partner code in force (30 days), checked against the cached catalog\n"
         "  ultrastore ultrastore://code/<CODE>  the same, from a QR code or a page: opens the window with it\n"
@@ -512,6 +514,28 @@ int CmdBuy(const std::vector<std::string>& args) {
     return 0;
 }
 
+// licence <app-id> [--key <hex>]: the registry's record and the terms the
+// token carries; with a key, the licence file verified the way the app does.
+int CmdLicence(const std::vector<std::string>& args) {
+    const auto pos = Positional(args);
+    if (pos.size() < 2) return Usage(stderr);
+    StoreEngine engine(StoreRoot(args));
+    if (const auto r = engine.Open(); !r) return Fail(r.error);
+    const auto rec = engine.Registry().GetLicence(pos[1]);
+    if (!rec) return Fail(rec.error);
+    const LicenceRecord& l = rec.Value();
+    const auto terms = ParseLicence(l.token);
+    std::printf("%s: receipt %d, %s %s, %s\norder %s, licence %s\nterms: %s\n", l.app.c_str(), l.receiptNo, l.amount.c_str(), l.currency.c_str(),
+                l.issuedAt.c_str(), l.orderId.c_str(), l.licenceId.c_str(), terms ? terms.Value().UpdateTerms().c_str() : "(not readable)");
+    const std::string file = LicenceFilePath(engine.Root(), pos[1]);
+    const std::string key = Option(args, "--key");
+    if (key.empty()) { std::printf("file: %s\n", file.c_str()); return 0; }
+    const auto read = ReadLicenceFile(FindLicenceFile(file), key);
+    if (!read) return Fail(read.error);
+    std::printf("file: %s verifies for %s\n", file.c_str(), read.Value().app.c_str());
+    return 0;
+}
+
 int CmdLicences(const std::vector<std::string>& args) {
     StoreEngine engine(StoreRoot(args));
     if (const auto r = engine.Open(); !r) return Fail(r.error);
@@ -587,6 +611,7 @@ int UltraStore::Cli::Run(const std::vector<std::string>& args) {
     if (cmd == "code")     return CmdCode(args);
     if (cmd == "buy")      return CmdBuy(args);
     if (cmd == "licences") return CmdLicences(args);
+    if (cmd == "licence")  return CmdLicence(args);
     std::fprintf(stderr, "ultrastore: unknown command \"%s\"\n", cmd.c_str());
     return Usage(stderr);
 }

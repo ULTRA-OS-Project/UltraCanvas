@@ -1,15 +1,21 @@
 // Apps/UltraStore/core/Purchase.cpp
 // Buying through the payment service (Purchase.h).
+// Version: 0.2.0 - what the purchase includes, the licence file
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Purchase.h"
 
 #include "Verifier.h"
 
+#include "UltraCanvasPathUtf8.h"
+
 #include "DataFormats/UltraCanvasJSON.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <cctype>
 #include <cstdint>
 
@@ -168,21 +174,42 @@ LicensedUrlSigner(SqliteRegistry& registry, std::string paymentUrl, HttpCall htt
     };
 }
 
-Result<Licence> VerifyLicence(const std::string& token, const std::string& publicKeyHex) {
-    using R = Result<Licence>;
+bool Licence::Covers(const std::string& releaseDate) const {
+    if (releaseDate.empty() || updates.empty() || updates == "always") return true;
+    if (updates == "never") return issued.empty() || releaseDate <= issued;
+    if (updates == "until") return updatesUntil.empty() || releaseDate <= updatesUntil;
+    return true;   // a term this store does not know: not its place to refuse
+}
+
+std::string Licence::UpdateTerms() const {
+    if (updates == "never") return "the bought version only" + (issued.empty() ? std::string() : " (" + issued + ")");
+    if (updates == "until" && !updatesUntil.empty()) return "updates until " + updatesUntil;
+    return "updates included";
+}
+
+namespace {
+
+// The token's two parts decoded; ParseError when it is not a licence.
+Result<std::pair<std::vector<uint8_t>, std::vector<uint8_t>>> SplitLicence(const std::string& token) {
+    using R = Result<std::pair<std::vector<uint8_t>, std::vector<uint8_t>>>;
     const std::string prefix = "ULIC1.";
     if (token.rfind(prefix, 0) != 0) return R::Failure(ErrorCode::ParseError, "Not a licence");
     const size_t dot = token.find('.', prefix.size());
     if (dot == std::string::npos) return R::Failure(ErrorCode::ParseError, "Not a licence");
-    std::vector<uint8_t> payload, signature, key;
+    std::vector<uint8_t> payload, signature;
     if (!Base64UrlDecode(token.substr(prefix.size(), dot - prefix.size()), payload) || !Base64UrlDecode(token.substr(dot + 1), signature)) {
         return R::Failure(ErrorCode::ParseError, "The licence is not base64url");
     }
-    if (!FromHex(publicKeyHex, key) || key.size() != 32) return R::Failure(ErrorCode::InvalidArgument, "The licence key is not a 32-byte hex public key");
-    const std::string bytes(payload.begin(), payload.end());
-    if (const auto ok = VerifyCatalogSignature(bytes, signature, {key}); !ok) {
-        return R::Failure(ErrorCode::SignatureInvalid, "The licence is not signed by the store's licence key", ok.error.detail);
-    }
+    return R::Succeed(std::make_pair(std::move(payload), std::move(signature)));
+}
+
+} // namespace
+
+Result<Licence> ParseLicence(const std::string& token) {
+    using R = Result<Licence>;
+    const auto parts = SplitLicence(token);
+    if (!parts) return R::Failure(parts.error.code, parts.error.message);
+    const std::string bytes(parts.Value().first.begin(), parts.Value().first.end());
     UltraCanvas::JSONParseResult parse;
     const UltraCanvas::JSONValue v = UltraCanvas::JSON::Parse(bytes, &parse);
     if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The licence's payload is not JSON");
@@ -195,6 +222,63 @@ Result<Licence> VerifyLicence(const std::string& token, const std::string& publi
     l.updatesUntil = v.Get("updates_until").GetString();
     if (l.licenceId.empty() || l.app.empty()) return R::Failure(ErrorCode::ParseError, "The licence names no app");
     return R::Succeed(std::move(l));
+}
+
+Result<Licence> VerifyLicence(const std::string& token, const std::string& publicKeyHex) {
+    using R = Result<Licence>;
+    const auto parts = SplitLicence(token);
+    if (!parts) return R::Failure(parts.error.code, parts.error.message);
+    std::vector<uint8_t> key;
+    if (!FromHex(publicKeyHex, key) || key.size() != 32) return R::Failure(ErrorCode::InvalidArgument, "The licence key is not a 32-byte hex public key");
+    const std::string bytes(parts.Value().first.begin(), parts.Value().first.end());
+    if (const auto ok = VerifyCatalogSignature(bytes, parts.Value().second, {key}); !ok) {
+        return R::Failure(ErrorCode::SignatureInvalid, "The licence is not signed by the store's licence key", ok.error.detail);
+    }
+    return ParseLicence(token);
+}
+
+std::string LicenceFilePath(const std::string& storeRootUtf8, const std::string& appId) {
+    return UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(storeRootUtf8) / "apps" / UltraCanvas::PathFromUtf8(appId) / kLicenceFileName);
+}
+
+Result<void> WriteLicenceFile(const std::string& path, const std::string& token) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path file = UltraCanvas::PathFromUtf8(path);
+    fs::create_directories(file.parent_path(), ec);
+    const fs::path tmp = file.parent_path() / UltraCanvas::PathFromUtf8(std::string(kLicenceFileName) + ".tmp");
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        if (!out) return Result<void>::Failure(ErrorCode::IoError, "The licence file could not be written", path);
+        out << token << "\n";
+    }
+    fs::rename(tmp, file, ec);
+    if (ec) return Result<void>::Failure(ErrorCode::IoError, "The licence file could not be written", path);
+    return Result<void>::Succeed();
+}
+
+std::string FindLicenceFile(const std::string& pathUtf8) {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::path at = UltraCanvas::PathFromUtf8(pathUtf8);
+    if (!fs::is_directory(at, ec)) at = at.parent_path();
+    for (int up = 0; up < 4 && !at.empty(); ++up) {
+        const fs::path candidate = at / kLicenceFileName;
+        if (fs::is_regular_file(candidate, ec)) return UltraCanvas::PathToUtf8(candidate);
+        if (!at.has_parent_path() || at.parent_path() == at) break;
+        at = at.parent_path();
+    }
+    return {};
+}
+
+Result<Licence> ReadLicenceFile(const std::string& pathUtf8, const std::string& publicKeyHex) {
+    using R = Result<Licence>;
+    if (pathUtf8.empty()) return R::Failure(ErrorCode::NotFound, "No licence file");
+    std::ifstream in(UltraCanvas::PathFromUtf8(pathUtf8), std::ios::binary);
+    if (!in) return R::Failure(ErrorCode::NotFound, "No licence file", pathUtf8);
+    std::string token((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    while (!token.empty() && (token.back() == '\n' || token.back() == '\r' || token.back() == ' ')) token.pop_back();
+    return VerifyLicence(token, publicKeyHex);
 }
 
 LicenceRecord LicenceRecordOf(const Order& order, const Licence& licence) {

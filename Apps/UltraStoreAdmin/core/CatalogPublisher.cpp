@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
+// Version: 0.5.0 - a restricted package on an app with a trial
 // Version: 0.4.0 - payment_url and licence_key from the settings
 // Version: 0.3.0 - the codes, their landing pages
 // Version: 0.2.0 - trusted_keys from the active keys
@@ -128,6 +129,10 @@ Result<Catalog> BuildCatalog(const AdminDatabase& db, const PublishOptions& opti
                 p.url = packagesBase + "/" + PublishedPackagePath(file.Value());
                 p.size = file.Value().size;
                 p.format = file.Value().format;
+                if (file.Value().access == "restricted" && c.pricing.trialDays > 0) {
+                    warn.push_back(c.id + " " + r.version + " " + p.target.Describe() + ": restricted package on an app with a " +
+                                   std::to_string(c.pricing.trialDays) + "-day trial: Try installs the same package and will fail without a licence; make it public");
+                }
                 served.push_back(p);
             }
             if (served.empty()) warn.push_back(c.id + " " + r.version + ": no package to serve, left out");

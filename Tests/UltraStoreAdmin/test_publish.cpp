@@ -62,6 +62,17 @@ TEST(the_catalog_is_built_with_the_published_urls) {
     REQUIRE(db.PutPackageFile(f).Ok());
     REQUIRE(BuildCatalog(db, options).Value().apps[0].releases[0].packages[0].url.find("/restricted/") != std::string::npos);
     REQUIRE_EQ(PublishedPackagePath(f), "restricted/" + f.sha256 + ".zip");
+    // A restricted package on an app with a trial: Try would fail, so publish warns.
+    hello.pricing.model = UltraStore::PricingModel::OneTime;
+    hello.pricing.price = "9.90";
+    hello.pricing.currency = "EUR";
+    hello.pricing.trialDays = 14;
+    REQUIRE(db.PutComponent(hello).Ok());
+    warnings.clear();
+    REQUIRE(BuildCatalog(db, options, &warnings).Ok());
+    bool warnedTrial = false;
+    for (const std::string& w : warnings) if (w.find("14-day trial") != std::string::npos) warnedTrial = true;
+    REQUIRE(warnedTrial);
     RemoveDir(dir);
 }
 

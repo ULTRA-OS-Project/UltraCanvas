@@ -3,6 +3,7 @@
 // and posts progress and the outcome to the UI thread; the Downloads panel
 // shows the queue. The engine and the client are touched by the worker only
 // while a job runs and by the UI thread only while none does.
+// Version: 0.3.0 - the open order kept and resumed, the licence file
 // Version: 0.2.0 - the Buy job
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -177,13 +178,15 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
             const auto all = engine_->UpdateAll(*catalog, platform_, callbacks);
             takeInstalled();
             if (!all) return fail(all.error);
-            size_t updated = 0, failed = 0;
+            size_t updated = 0, failed = 0, toBuy = 0;
             for (const auto& [id, outcome] : all.Value()) {
-                if (!outcome) ++failed;
+                if (!outcome && outcome.error.code == ErrorCode::NotAvailable && outcome.error.message.find("not in your purchase") != std::string::npos) ++toBuy;
+                else if (!outcome) ++failed;
                 else if (!outcome.Value().installed.empty()) ++updated;
             }
             result.ok = failed == 0;
-            result.message = std::to_string(updated) + " updated" + (failed ? ", " + std::to_string(failed) + " failed" : "");
+            result.message = std::to_string(updated) + " updated" + (failed ? ", " + std::to_string(failed) + " failed" : "") +
+                             (toBuy ? ", " + std::to_string(toBuy) + " to buy anew" : "");
             return result;
         }
         case JobKind::Remove: {
@@ -201,15 +204,36 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
             if (!catalog) return fail(Error{ErrorCode::NotFound, "No catalog"});
             const Component* app = catalog->FindApp(job.appId);
             if (!app) return fail(Error{ErrorCode::NotFound, "The catalog does not list " + job.appId});
-            progress("Asking the payment service", -1.0);
             const HttpCall http = UltraNetHttpCall();
-            const auto started = StartCheckout(catalog->paymentUrl, job.appId, settings_.CodeInForce(Today()), http);
-            if (!started) return fail(started.error);
-            Order order = started.Value();
-            // The browser takes the buyer to Skrill; this job waits for the
-            // order to be paid, cancelled or given up on.
-            const std::string checkoutUrl = order.checkoutUrl;
-            app_.PostToUIThread([checkoutUrl]() { OpenURL(checkoutUrl); });
+            Order order;
+            // The settings remember the order until it is over, so a store
+            // closed during the payment resumes it at the next start.
+            auto remember = [this](const StoreSettings::OpenOrder& open) {
+                app_.PostToUIThread([this, open]() { settings_.openOrder = open; settings_.Save(); });
+            };
+            if (job.resume) {
+                const StoreSettings::OpenOrder open = settings_.OrderToResume(Today());
+                if (open.Empty() || open.app != job.appId) return fail(Error{ErrorCode::NotFound, "No open order to resume"});
+                progress("Asking the payment service about the order " + open.orderId, -1.0);
+                const auto now = OrderStatus(catalog->paymentUrl, open.orderId, open.secret, http);
+                if (!now) return fail(now.error);
+                order = now.Value();
+                if (!order.Over()) {
+                    // Still waiting for the payment: the browser again, as Buy does.
+                    const std::string checkoutUrl = order.checkoutUrl.empty() ? open.checkoutUrl : order.checkoutUrl;
+                    app_.PostToUIThread([checkoutUrl]() { OpenURL(checkoutUrl); });
+                }
+            } else {
+                progress("Asking the payment service", -1.0);
+                const auto started = StartCheckout(catalog->paymentUrl, job.appId, settings_.CodeInForce(Today()), http);
+                if (!started) return fail(started.error);
+                order = started.Value();
+                remember({order.orderId, order.secret, job.appId, order.amount, order.currency, order.checkoutUrl, Today()});
+                // The browser takes the buyer to Skrill; this job waits for the
+                // order to be paid, cancelled or given up on.
+                const std::string checkoutUrl = order.checkoutUrl;
+                app_.PostToUIThread([checkoutUrl]() { OpenURL(checkoutUrl); });
+            }
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(30);
             while (!order.Over()) {
                 if (cancelRunning_) return fail(Error{ErrorCode::NetworkError, "Cancelled; nothing was charged unless Skrill says so"});
@@ -219,6 +243,7 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                 const auto now = OrderStatus(catalog->paymentUrl, order.orderId, order.secret, http);
                 if (now) order = now.Value();
             }
+            remember({});   // over, one way or the other
             if (!order.Paid()) return fail(Error{ErrorCode::NetworkError, "The purchase was " + order.status + "; nothing to install"});
             Licence licence;
             if (catalog->licenceKey.empty()) {
@@ -233,6 +258,7 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                 licence = verified.Value();
             }
             if (const auto kept = engine_->Registry().PutLicence(LicenceRecordOf(order, licence)); !kept) return fail(kept.error);
+            engine_->WriteLicenceFile(job.appId);   // for an app already installed (its trial); a fresh install writes it too
             if (const auto all = engine_->Registry().Licences()) { result.licences = all.Value(); result.haveLicences = true; }
             result.message = "Bought " + nameOf(job.appId) + " for " + order.amount + " " + order.currency + ": receipt no. " +
                              std::to_string(order.receiptNo) + (catalog->licenceKey.empty() ? " (the licence is kept unverified: the catalog names no licence key)" : "");

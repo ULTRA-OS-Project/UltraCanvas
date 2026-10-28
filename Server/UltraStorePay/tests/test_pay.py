@@ -28,6 +28,7 @@ CATALOG = {
     ],
     "apps": [
         {"id": "org.ultraos.video", "name": "UltraVideo", "pricing": {"model": "one-time", "price": "29.90", "currency": "EUR", "trial_days": 14},
+         "updates": {"period": "until", "until": "2027-12-31"},
          "releases": [{"version": "1.0.0", "channel": "stable", "packages": [
              {"os": "linux", "arch": "x86_64", "format": "zip", "url": "https://store.example/v1/restricted/" + "a" * 64 + ".zip", "sha256": "a" * 64, "size": 10}]}]},
         {"id": "org.ultraos.hello", "name": "Hello", "pricing": {"model": "free"}, "releases": []},
@@ -105,6 +106,7 @@ def test_checkout_status_licence_receipt_and_sales(service):
     assert paid["status"] == "paid" and paid["receipt_no"] == 1 and paid["licence"].startswith("ULIC1.")
     public = client.get("/v1/keys").json()["licence_public_key"]
     payload = verify(paid["licence"], public)
+    assert payload["updates"] == "until" and payload["updates_until"] == "2027-12-31"
     assert payload and payload["app"] == "org.ultraos.video" and payload["order"] == order["order_id"] and payload["licence"] == paid["licence_id"]
     assert verify(paid["licence"][:-4] + "AAAA", public) is None
     # Skrill repeats a report it got no answer to: still OK, nothing issued twice.
