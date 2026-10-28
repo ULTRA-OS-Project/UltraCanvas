@@ -282,6 +282,7 @@ int main() {
         lossless.format = UCImageSaveFormat::JXL;
         lossless.jxl.lossless = true;
         lossless.jxl.effort = 1;
+        const int threads = vips_concurrency_get();
         for (int round = 1; round <= Rounds; ++round) {
             std::cout << "  ... " << Big << " x " << Big << ": save " << round << " of " << Rounds << std::endl;
             const fs::path path = dir / "big.jxl";
@@ -290,6 +291,8 @@ int main() {
                   std::to_string(Big) + " x " + std::to_string(Big) + ": lossless save " + std::to_string(round) +
                           " of " + std::to_string(Rounds) + " " + error);
         }
+        Check(vips_concurrency_get() == threads,
+              "... and libvips is back on " + std::to_string(threads) + " threads after it");
     }
 
     fs::remove_all(dir, ec);
