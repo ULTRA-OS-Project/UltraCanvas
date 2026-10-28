@@ -56,7 +56,11 @@ add_executable(ultraweb-runtime
     ../host/UltraWebGuest.cpp
     ../host/UltraWebStorage.cpp
 )
-set_target_properties(ultraweb-runtime PROPERTIES SUFFIX ".js")
+# In this directory, whatever the including project sets for programs (the
+# repository root puts them all in its build root): the steps below copy
+# the runtime from here.
+set_target_properties(ultraweb-runtime PROPERTIES SUFFIX ".js"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_features(ultraweb-runtime PRIVATE cxx_std_20)
 # UltraWeb/guest/ultraweb.h is the element ABI; OS/WASM/UltraCanvasWASMSupport.h
 # (IndexedDB) is reached through the library's own directory.
@@ -117,7 +121,8 @@ if(EXISTS "${_uw_clang}")
         COMMENT "Building the WasmHost test guests")
     add_custom_target(wasmhost-browser-guests DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/wasmhost-guest.wasm)
     add_executable(wasmhost-browser-test test/wasmhost-browser-test.cpp)
-    set_target_properties(wasmhost-browser-test PROPERTIES SUFFIX ".js")
+    set_target_properties(wasmhost-browser-test PROPERTIES SUFFIX ".js"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     target_compile_features(wasmhost-browser-test PRIVATE cxx_std_20)
     target_link_libraries(wasmhost-browser-test PRIVATE WasmHost)
     add_dependencies(wasmhost-browser-test wasmhost-browser-guests)
