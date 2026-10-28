@@ -1,3 +1,24 @@
+#### 2026-10-28 *0.9.432*
+- **Markdown tooltips in `UltraCanvasTextArea` open at the pointer.** The
+  footnote, abbreviation and heading-anchor tooltips of Markdown mode were
+  placed with the pointer's position in the text area, which the tooltip
+  manager reads as a position in the window - so they opened up and to the
+  left of the pointer by the text area's distance from the window's corner
+  (in UltraTexter, over the toolbar). `HandleMarkdownHover` now takes the
+  mouse event (`HandleMarkdownHover(const UCEvent&)`, was `(int, int)`):
+  the pointer in the element finds what is hovered, the pointer in the
+  window places the tooltip.
+- **`UltraCanvasTextArea` can show the characters that print nothing.**
+  `SetShowHiddenCharacters(true)` / `GetShowHiddenCharacters()` draw faint
+  marks over the text, in the new `TextAreaStyle::hiddenCharacterColor`: a dot
+  for a space (and U+3000), an arrow for a tab, a ring for a no-break space
+  (U+00A0, U+202F), a tick for a zero-width character (U+200B-U+200D, U+2060,
+  U+FEFF, U+00AD) and a pilcrow at the end of each line. Display only - the
+  text, the caret and selection are untouched. Resting the pointer on a mark
+  shows a tooltip with the character's name, `U+` code, decimal value and
+  UTF-8 bytes; on a pilcrow, the document's line ending. The light, dark and theme-role
+  presets set the colour. UltraTexter's *Hidden Characters* switch uses it.
+
 #### 2026-10-28 *0.9.431*
 - **Windows: no GPL encoder in the core's HEIF/AVIF.** MSYS2 builds libheif with plug-in loading off, so `libheif.dll` links every encoder it has, including x265 (HEVC) and x264 (AVC), both GPL. libvips' `vips-heif` module and ImageMagick's HEIC coder load that DLL, so every Windows app on the core carried GPL code. The Windows CI rows now rebuild the same libheif release with MSYS2's options minus x265 and x264, replace `libheif.dll`, and fail if the DLL imports either encoder or lacks kvazaar. The rebuild is cached per MSYSTEM and libheif version. HEIC is still written, now by kvazaar (BSD-3-Clause), and only as 4:2:0, so a "lossless" HEIC is exact in luma but not in colour. HEIC reading (libde265) and AVIF (aom, dav1d, SVT-AV1, rav1e) are unchanged. FFmpeg still links x264 / x265 for VideoFX and UltraVideo, which are GPL on their own terms. `package-win.sh` warns when it packages a stock MSYS2 libheif.
 
