@@ -3537,6 +3537,12 @@ if(ULTRACANVAS_ENABLE_DATABASE)
             target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_VAULT=1)
             string(APPEND ULTRADATABASE_DRIVERS_NOTE " (passwords from UltraVault)")
         endif()
+        # SQLite files encrypted at rest (UltraDatabaseEncryption.h): the
+        # encrypting VFS seals pages with UltraCrypt. Always linked - UltraCrypt
+        # is always built - and without libsodium a key is refused with
+        # Unsupported at run time, never ignored.
+        target_link_libraries(uc-database PRIVATE uc-crypt)
+        target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_CRYPT=1)
         target_compile_definitions(uc-database PUBLIC ULTRACANVAS_HAS_DATABASE=1)
         _ultracanvas_module_home(UltraDatabase uc-database)
 

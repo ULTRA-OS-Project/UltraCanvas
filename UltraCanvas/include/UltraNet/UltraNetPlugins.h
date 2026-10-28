@@ -3,6 +3,7 @@
 // LDAP, RTSP/RTMP/RTP, CoAP, SNMP, mDNS, ...) implement one of the
 // I<Category>ProtocolPlugin interfaces below and self-register through the
 // UltraNet_RegisterPlugin / Unregister / Get* surface.
+// Version: 0.5.3 - UltraNetMailMessage::rawMessage: a message sent exactly as it is
 // Version: 0.5.2 - ISshTunnelPlugin; UltraNetRemoteOptions moved to UltraNetSsh.h, with the host key
 // Version: 0.5.1 - IServiceDiscoveryPlugin (mDNS / DNS-SD advertising)
 // Version: 0.5.0 - IMailboxProtocolPlugin::WatchMailbox / StopWatching (push);
@@ -52,6 +53,13 @@ struct UltraNetMailMessage {
     std::vector<UltraNetMailInlinePart> inlineParts;
     std::map<std::string, std::string> headers;
     std::vector<std::pair<std::string, std::vector<uint8_t>>> attachments; // (name, bytes)
+    // A whole RFC 5322 message, sent exactly as it is when not empty: a
+    // signed or encrypted one, whose bytes nothing may rewrite. The message
+    // builder (UltraNet_MimeBuildMailMessage) returns it unchanged, so every
+    // mail plug-in sends it; `from` and to/cc/bcc still give the envelope,
+    // and the fields above the content are then not used. Appended last, as
+    // fields of this struct are.
+    std::string rawMessage;
 };
 
 // How a mail session signs in at the server - the "authentication method" of a

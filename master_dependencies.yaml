@@ -47,6 +47,33 @@ cryptography:
       vcpkg: "libsodium"
       # 1.0.19+ additionally provides crypto_kdf_hkdf_*; until the floor is
       # raised, HKDF must be built on top of the HMAC primitives.
+  mail:
+    # UltraMail's signed and encrypted mail (Apps/UltraMail/engine/
+    # UltraMailSecureMime.h). Both optional and soft-failing: without one,
+    # mail in that form is shown as one this build cannot check, and never
+    # sent in it.
+    openssl_cms:
+      min_version: "3.0"
+      purpose: "S/MIME in UltraMail: OpenSSL's CMS (libcrypto) for signing, checking, encrypting and decrypting"
+      required: false
+      platforms: ["all"]
+      cmake_module: "OpenSSL"         # find_package(OpenSSL 3 COMPONENTS Crypto)
+      pkg_config: "libcrypto"
+      apt: "libssl-dev"
+      brew: "openssl@3"
+      msys2: "mingw-w64-x86_64-openssl"
+      license: "Apache-2.0"
+    gpgme:
+      min_version: "1.16"             # Ubuntu 22.04's; gpgme_op_createkey (the tests) is 1.7+
+      purpose: "OpenPGP in UltraMail: GnuPG Made Easy, the user's own GnuPG keyring and gpg-agent"
+      required: false
+      platforms: ["all"]
+      pkg_config: "gpgme"
+      apt: "libgpgme-dev"             # GnuPG itself (gnupg) at run time
+      msys2: "mingw-w64-x86_64-gpgme"
+      vcpkg: "gpgme"                  # macOS (MacOS/deps/vcpkg.json): with libassuan, libgpg-error
+      brew: "gnupg pinentry-mac"      # macOS: GnuPG at run time, the user's own; not linked
+      license: "LGPL-2.1-or-later"    # linked dynamically: the system's shared library
 
 # ===== DATABASE (UltraDatabase) =====
 #

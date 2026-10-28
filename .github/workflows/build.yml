@@ -354,6 +354,7 @@ jobs:
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
             ${{ matrix.msys_prefix }}-openssl
+            ${{ matrix.msys_prefix }}-gpgme
             ${{ matrix.msys_prefix }}-c-ares
             ${{ matrix.msys_prefix }}-leptonica
             ${{ matrix.msys_prefix }}-tesseract-ocr
@@ -767,6 +768,9 @@ jobs:
           scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev
           # libsodium: cryptographic backend for UltraCrypt
           scripts/ci-apt.sh install libsodium-dev
+          # UltraMail's OpenPGP: GPGME, and GnuPG for its tests (S/MIME uses
+          # libssl-dev, which libcurl4-openssl-dev brings)
+          scripts/ci-apt.sh install libgpgme-dev gnupg libssl-dev
           # UltraDatabase: SQLite is the single-user store, libpq the
           # multi-user one, libmariadb (MariaDB Connector/C) the MySQL /
           # MariaDB driver. All named explicitly rather than relied on from
