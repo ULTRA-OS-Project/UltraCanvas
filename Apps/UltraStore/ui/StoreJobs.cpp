@@ -3,14 +3,18 @@
 // and posts progress and the outcome to the UI thread; the Downloads panel
 // shows the queue. The engine and the client are touched by the worker only
 // while a job runs and by the UI thread only while none does.
+// Version: 0.2.0 - the Buy job
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreWindow.h"
 
 #include "StoreTheme.h"
 
+#include "UltraCanvasUtils.h"
+
 #include <algorithm>
 #include <chrono>
+#include <thread>
 
 using namespace UltraCanvas;
 
@@ -193,6 +197,47 @@ StoreWindow::JobResult StoreWindow::RunJob(const Job& job, const std::shared_ptr
                              (components ? " and " + std::to_string(components) + (components == 1 ? " component" : " components") : "");
             return result;
         }
+        case JobKind::Buy: {
+            if (!catalog) return fail(Error{ErrorCode::NotFound, "No catalog"});
+            const Component* app = catalog->FindApp(job.appId);
+            if (!app) return fail(Error{ErrorCode::NotFound, "The catalog does not list " + job.appId});
+            progress("Asking the payment service", -1.0);
+            const HttpCall http = UltraNetHttpCall();
+            const auto started = StartCheckout(catalog->paymentUrl, job.appId, settings_.CodeInForce(Today()), http);
+            if (!started) return fail(started.error);
+            Order order = started.Value();
+            // The browser takes the buyer to Skrill; this job waits for the
+            // order to be paid, cancelled or given up on.
+            const std::string checkoutUrl = order.checkoutUrl;
+            app_.PostToUIThread([checkoutUrl]() { OpenURL(checkoutUrl); });
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(30);
+            while (!order.Over()) {
+                if (cancelRunning_) return fail(Error{ErrorCode::NetworkError, "Cancelled; nothing was charged unless Skrill says so"});
+                if (std::chrono::steady_clock::now() > deadline) return fail(Error{ErrorCode::NetworkError, "No payment arrived within 30 minutes; the order " + order.orderId + " stays open"});
+                progress("Waiting for the payment of " + order.amount + " " + order.currency + " in the browser (order " + order.orderId + ")", -1.0);
+                for (int i = 0; i < 50 && !cancelRunning_; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                const auto now = OrderStatus(catalog->paymentUrl, order.orderId, order.secret, http);
+                if (now) order = now.Value();
+            }
+            if (!order.Paid()) return fail(Error{ErrorCode::NetworkError, "The purchase was " + order.status + "; nothing to install"});
+            Licence licence;
+            if (catalog->licenceKey.empty()) {
+                licence.app = job.appId;
+                licence.licenceId = order.licenceId;
+                licence.orderId = order.orderId;
+                licence.issued = order.paidAt.substr(0, 10);
+            } else {
+                const auto verified = VerifyLicence(order.licence, catalog->licenceKey);
+                if (!verified) return fail(verified.error);
+                if (verified.Value().app != job.appId) return fail(Error{ErrorCode::SignatureInvalid, "The licence names another app", verified.Value().app});
+                licence = verified.Value();
+            }
+            if (const auto kept = engine_->Registry().PutLicence(LicenceRecordOf(order, licence)); !kept) return fail(kept.error);
+            if (const auto all = engine_->Registry().Licences()) { result.licences = all.Value(); result.haveLicences = true; }
+            result.message = "Bought " + nameOf(job.appId) + " for " + order.amount + " " + order.currency + ": receipt no. " +
+                             std::to_string(order.receiptNo) + (catalog->licenceKey.empty() ? " (the licence is kept unverified: the catalog names no licence key)" : "");
+            return result;
+        }
         case JobKind::Collect: {
             progress("Looking for unused components", -1.0);
             const auto removed = engine_->CollectGarbage();
@@ -237,6 +282,7 @@ void StoreWindow::JobFinished(uint64_t jobId, JobResult result) {
                    ", fetched " + result.state.fetchedAt + " from " + result.state.fetchedFrom);
     }
     if (result.haveInstalled) SetInstalled(std::move(result.installed));
+    if (result.haveLicences) licences_ = std::move(result.licences);
     SetStatus(result.message, !result.ok);
     if (!result.ok && job && job->kind != JobKind::Reload && !cancelRunning_) Alert(job->title + ": " + result.message);
     cancelRunning_ = false;

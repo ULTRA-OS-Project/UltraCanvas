@@ -11,6 +11,7 @@
 // setting the catalog grows is kept without a schema change. The tables that
 // are queried on their own - package files by hash, keys, settings - are
 // tables.
+// Version: 0.3.0 - a sale's reference (the payment service's order), schema 3
 // Version: 0.2.0 - affiliates, codes, sales (schema 2)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -32,7 +33,7 @@ using UltraStore::ErrorCode;
 using UltraStore::Publisher;
 using UltraStore::Result;
 
-inline constexpr int kAdminSchemaVersion = 2;   // 2: affiliates, codes, sales
+inline constexpr int kAdminSchemaVersion = 3;   // 2: affiliates, codes, sales; 3: sales.reference
 
 // A signing key: the public half in the open, the seed sealed (KeyVault.h).
 struct KeyRecord {
@@ -94,6 +95,7 @@ struct SaleRecord {
     std::string recruiter;           // the affiliate's recruiter, credited one level up, or ""
     std::string affiliateCredit;     // sharePercent of amount
     std::string recruiterCredit;     // recruitSharePercent of amount
+    std::string reference;           // the payment service's order id, "" for a sale recorded by hand
 };
 
 class AdminDatabase {
@@ -148,6 +150,7 @@ public:
     Result<void> RemoveCode(const std::string& code);
     Result<SaleRecord> AddSale(const SaleRecord& sale);       // as given; the credits are the caller's (Affiliates.h, RecordSale)
     Result<std::vector<SaleRecord>> Sales() const;
+    bool HasSaleReference(const std::string& reference) const;   // a sale with this reference is in the ledger
 
     // ----- the catalog's sequence -----
     uint64_t Sequence() const;                 // the last published; 0 before the first

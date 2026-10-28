@@ -1,6 +1,7 @@
 // Apps/UltraStore/ui/StoreWindow.cpp
 // The shell, the pages and the details view; the jobs are in StoreJobs.cpp,
 // the settings page in StoreSettingsPage.cpp.
+// Version: 0.3.0 - Buy through the payment service; the licences
 // Version: 0.2.0 - codes and ultrastore:// links
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -383,6 +384,7 @@ void StoreWindow::OpenStore() {
         storeError_ = opened.error.message + (opened.error.detail.empty() ? "" : " (" + opened.error.detail + ")");
     } else if (const auto all = engine_->Installed()) {
         installed_ = all.Value();
+        if (const auto bought = engine_->Registry().Licences()) licences_ = bought.Value();
     }
     assets_ = std::make_unique<AssetCache>(PathToUtf8(PathFromUtf8(engine_->CacheDir()) / "assets"));
     ApplySettings();
@@ -494,9 +496,18 @@ void StoreWindow::OpenLink(const std::string& url) {
     if (!code.empty()) ApplyCode(code);
 }
 
+const LicenceRecord* StoreWindow::Bought(const std::string& appId) const {
+    for (const LicenceRecord& l : licences_) if (l.app == appId) return &l;
+    return nullptr;
+}
+
 void StoreWindow::SetCatalog(std::shared_ptr<const Catalog> catalog, const std::string& note) {
     catalog_ = std::move(catalog);
     catalogNote_ = note;
+    // A paid app's package is fetched through the URL the payment service
+    // signs for the buyer: the signer runs on the job thread with the
+    // registry's licence of the app.
+    if (engine_) engine_->SetUrlSigner(LicensedUrlSigner(engine_->Registry(), catalog_ ? catalog_->paymentUrl : std::string()));
     categories_ = catalog_ ? CatalogCategories(*catalog_) : std::vector<std::string>{};
     if (std::find(categories_.begin(), categories_.end(), category_) == categories_.end()) category_.clear();
 }
@@ -710,23 +721,29 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
     if (!l.Available() || l.app->lifecycle == Lifecycle::Withdrawn) return out;
     const Pricing& pricing = l.app->pricing;
     const bool paid = pricing.model != PricingModel::Free;
-    if (!paid || pricing.trialDays > 0) {
+    if ((!paid || pricing.trialDays > 0) && !Bought(appId)) {
         auto install = Theme::Button(id + ".install", paid ? "Try" : "Install", 72, Theme::ButtonKind::Primary);
         if (paid) install->SetTooltip("Installs the " + std::to_string(pricing.trialDays) + "-day trial");
         install->onClick = [this, appId]() { InstallApp(appId); };
         install->SetDisabled(busy || storeError_.size() > 0);
         out.push_back(install);
     }
+    if (paid && Bought(appId)) {
+        // Bought here: the restricted package comes through the payment service's signed URL.
+        auto install = Theme::Button(id + ".install", "Install", 72, Theme::ButtonKind::Primary);
+        install->SetTooltip("Bought: receipt no. " + std::to_string(Bought(appId)->receiptNo));
+        install->onClick = [this, appId]() { InstallApp(appId); };
+        install->SetDisabled(busy || storeError_.size() > 0);
+        out.push_back(install);
+        return out;
+    }
     if (paid) {
-        // Payment is a later milestone: Buy goes to the publisher's page.
+        // Through the catalog's payment service; without one, the publisher's page.
         auto buy = Theme::Button(id + ".buy", "Buy", 72, paid && pricing.trialDays == 0 ? Theme::ButtonKind::Primary : Theme::ButtonKind::Secondary);
         buy->SetTooltip(PriceLabel(pricing, CodeFor(*l.app)) + " - opens the publisher's page" +
                         (CodeFor(*l.app) ? ", the code " + CodeFor(*l.app)->code + " goes with the purchase" : ""));
-        const std::string url = l.app->homepage;
-        buy->onClick = [this, url]() {
-            if (url.empty()) SetStatus("The publisher gave no page to buy from.", true);
-            else OpenURL(url);
-        };
+        buy->onClick = [this, appId]() { BuyApp(appId); };
+        buy->SetDisabled(busy || storeError_.size() > 0);
         out.push_back(buy);
     }
     return out;
@@ -748,6 +765,7 @@ std::shared_ptr<UltraCanvasCard> StoreWindow::MakeAppCard(const AppListing& l, c
 
     if (l.updateAvailable) card->SetTrailing(Badge(id + ".badge", "Update", BadgeVariant::Warning));
     else if (l.Installed()) card->SetTrailing(Badge(id + ".badge", "Installed", BadgeVariant::Successful));
+    else if (Bought(app.id)) card->SetTrailing(Badge(id + ".badge", "Bought", BadgeVariant::Successful));
     else if (!l.Available()) card->SetTrailing(Badge(id + ".badge", "Not for this system", BadgeVariant::Neutral));
     else card->SetTrailing(Badge(id + ".badge", PriceLabel(app.pricing, CodeFor(app)),
                                  app.pricing.model == PricingModel::Free ? BadgeVariant::Info : BadgeVariant::Primary));
@@ -817,6 +835,9 @@ void StoreWindow::RebuildDetails() {
     // Badges.
     auto badges = Theme::Row("usX.badges", Theme::kInnerGap, true);
     badges->AddChild(Badge("usX.price", PriceLabel(app->pricing, CodeFor(*app)), app->pricing.model == PricingModel::Free ? BadgeVariant::Info : BadgeVariant::Primary));
+    if (const LicenceRecord* bought = Bought(app->id)) {
+        badges->AddChild(Badge("usX.bought", "Bought: receipt no. " + std::to_string(bought->receiptNo) + ", " + bought->issuedAt, BadgeVariant::Successful));
+    }
     if (const PromoCode* code = CodeFor(*app)) {
         const std::string what = DiscountLabel(*code);
         badges->AddChild(Badge("usX.code", "Code " + code->code + (what.empty() ? "" : ": " + what) +
@@ -839,6 +860,12 @@ void StoreWindow::RebuildDetails() {
     auto actions = Theme::Row("usX.actions", Theme::kInnerGap, true);
     actions->layoutItem.SetFlexShrink(0);
     for (auto& button : PrimaryActions(l, "usX")) actions->AddChild(button);
+    if (const LicenceRecord* bought = Bought(app->id); bought && catalog_ && !catalog_->paymentUrl.empty()) {
+        auto receipt = Theme::Button("usX.receipt", "Receipt", 72);
+        const std::string url = catalog_->paymentUrl + "/v1/orders/" + bought->orderId + "/receipt?secret=" + bought->orderSecret;
+        receipt->onClick = [url]() { OpenURL(url); };
+        actions->AddChild(receipt);
+    }
     auto link = [&](const char* id, const char* text, const std::string& url) {
         if (url.empty()) return;
         auto b = Theme::Button(id, text, 90);
@@ -1013,6 +1040,23 @@ void StoreWindow::RefreshCatalog() {
     job.title = "Refresh the catalog";
     job.showInQueue = false;
     SetStatus("Fetching the catalog…");
+    Enqueue(std::move(job));
+}
+
+void StoreWindow::BuyApp(const std::string& appId) {
+    if (!catalog_) return;
+    const Component* app = catalog_->FindApp(appId);
+    if (!app) return;
+    if (catalog_->paymentUrl.empty()) {
+        if (app->homepage.empty()) SetStatus("The store has no payment service yet, and the publisher gave no page to buy from.", true);
+        else OpenURL(app->homepage);
+        return;
+    }
+    if (storeError_.size() > 0) { SetStatus("The store folder could not be opened: " + storeError_, true); return; }
+    Job job;
+    job.kind = JobKind::Buy;
+    job.appId = appId;
+    job.title = "Buy " + app->name;
     Enqueue(std::move(job));
 }
 

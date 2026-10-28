@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/StoreEngine.cpp
 // Install, update, remove, collect (StoreEngine.h).
+// Version: 0.2.0 - the URL signer for restricted packages
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "StoreEngine.h"
@@ -17,6 +18,16 @@ using UltraCanvas::PathToUtf8;
 
 StoreEngine::StoreEngine(std::string rootUtf8) : root_(std::move(rootUtf8)) {}
 StoreEngine::~StoreEngine() = default;
+
+void StoreEngine::SetUrlSigner(UrlSigner signer) {
+    std::lock_guard<std::mutex> lock(signerMutex_);
+    signer_ = std::move(signer);
+}
+
+StoreEngine::UrlSigner StoreEngine::Signer() const {
+    std::lock_guard<std::mutex> lock(signerMutex_);
+    return signer_;
+}
 
 std::string StoreEngine::CacheDir() const { return PathToUtf8(PathFromUtf8(root_) / "cache"); }
 std::string StoreEngine::DownloadsDir() const { return PathToUtf8(PathFromUtf8(root_) / "downloads"); }
@@ -56,7 +67,19 @@ Result<InstallOutcome> StoreEngine::Run(const Catalog& catalog, const Component&
         if (callbacks.onDownload) {
             progress = [&](int64_t done, int64_t total) { return callbacks.onDownload(step, done, total); };
         }
-        const Result<std::string> file = downloader_->Fetch(*step.package, progress);
+        // A restricted package needs the URL the payment service signs for a
+        // buyer; a free one is fetched as the catalog says.
+        Package fetched = *step.package;
+        if (fetched.url.find("/restricted/") != std::string::npos) {
+            const UrlSigner signer = Signer();
+            const std::string signed_ = signer ? signer(*step.package, app) : std::string();
+            if (signed_.empty()) {
+                return R::Failure(ErrorCode::NotAvailable, step.component->name + " is a paid app: buy it first, then install",
+                                  "the package is in restricted/ and this machine has no licence for " + app.id);
+            }
+            fetched.url = signed_;
+        }
+        const Result<std::string> file = downloader_->Fetch(fetched, progress);
         if (!file) return R::Failure(file.error.code, step.component->name + ": " + file.error.message, file.error.detail);
         outcome.bytesDownloaded += step.package->size;
 

@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/CatalogPublisher.cpp
+// Version: 0.4.0 - payment_url and licence_key from the settings
 // Version: 0.3.0 - the codes, their landing pages
 // Version: 0.2.0 - trusted_keys from the active keys
 // Version: 0.1.0
@@ -77,6 +78,10 @@ Result<Catalog> BuildCatalog(const AdminDatabase& db, const PublishOptions& opti
     catalog.schema = UltraStore::kSupportedSchema;
     catalog.sequence = options.sequence ? options.sequence : db.Sequence() + 1;
     catalog.generated = options.generatedAt.empty() ? NowIso8601() : options.generatedAt;
+    // The payment service the stores buy through, and its licence key.
+    catalog.paymentUrl = TrimSlash(db.Setting("payment.url"));
+    catalog.licenceKey = db.Setting("payment.licence_key");
+    if (!catalog.paymentUrl.empty() && catalog.licenceKey.empty()) warn.push_back("payment.url is set but payment.licence_key is not: the store cannot verify the licences");
     // Every active key may sign the next catalog (schema 2's trusted_keys):
     // a new key is announced by the first publish after it is made and
     // signs from the next one on; a retired key drops out of the list.

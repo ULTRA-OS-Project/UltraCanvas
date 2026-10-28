@@ -4,6 +4,7 @@
 // collect what nothing uses any more. Resolves with PackageResolver, fetches
 // with Downloader, unpacks with ArchiveInstaller, remembers in
 // SqliteRegistry; the layout is Installer.h's under one root.
+// Version: 0.2.0 - the URL signer for restricted packages
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -17,6 +18,7 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -75,12 +77,23 @@ public:
     std::string CacheDir() const;
     std::string DownloadsDir() const;
 
+    // The package of a paid app is served from restricted/, which the web
+    // server gives out only on a URL the payment service signed: the signer
+    // turns the catalog's URL into that, or returns "" when the app was not
+    // bought here (the install then fails with NotAvailable). Called on the
+    // thread that installs.
+    using UrlSigner = std::function<std::string(const Package& package, const Component& app)>;
+    void SetUrlSigner(UrlSigner signer);
+
 private:
     Result<InstallOutcome> Run(const Catalog& catalog, const Component& app, const Release& release,
                                const PlatformInfo& platform, const EngineCallbacks& callbacks);
 
+    UrlSigner Signer() const;
     std::string root_;
     SqliteRegistry registry_;
+    mutable std::mutex signerMutex_;
+    UrlSigner signer_;
     std::unique_ptr<Downloader> downloader_;
     std::unique_ptr<ArchiveInstaller> installer_;
 };
