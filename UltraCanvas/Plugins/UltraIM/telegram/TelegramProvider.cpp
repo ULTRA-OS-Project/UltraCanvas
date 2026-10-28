@@ -278,7 +278,10 @@ void TelegramProvider::Finish(const UltraIMResult& result) {
         pendingSignIn_ = nullptr;
     }
     if (done) {
-        debugOutput << "[Telegram] sign-in step answered: " << (result ? "ok" : result.message)
+        // Not the QR code's link: it holds the sign-in token.
+        const bool link = result.message.rfind("tg://login", 0) == 0;
+        debugOutput << "[Telegram] sign-in step answered: "
+                    << (result ? "ok" : link ? "the link to show as a QR code" : result.message)
                     << " (code " << static_cast<int>(result.code) << ")" << std::endl;
         done(result);
     }
@@ -399,15 +402,23 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
         finish(UltraIMResult::Ok());
         return;
     }
-    // A sign-in under way: this is the next step's answer.
+    const bool qr = credentials.loginType == UltraIMLoginType::QRCode;
+    const std::string phone = Trim(credentials.phoneNumber);
+    // A sign-in under way: this is the next step's answer. Not a phone number
+    // while a QR code waits: TDLib takes none in that state, so that one
+    // starts over with the number, below.
     {
         const bool open = Client()->IsOpen();
         std::unique_lock<std::mutex> lock(mutex_);
-        if (open && authStep_ != UltraIMAuthStep::Idle) {
+        const bool startOver = authStep_ == UltraIMAuthStep::OtherDevice && !qr && !phone.empty();
+        if (open && authStep_ != UltraIMAuthStep::Idle && !startOver) {
             const UltraIMAuthStep step = authStep_;
             TdObject request;
-            if (step == UltraIMAuthStep::PhoneNumber && !Trim(credentials.phoneNumber).empty()) {
-                phone_ = Trim(credentials.phoneNumber);
+            if (qr && (step == UltraIMAuthStep::PhoneNumber || step == UltraIMAuthStep::Code)) {
+                // Instead of the number, or of a code that never came.
+                request = Request::RequestQrCode();
+            } else if (step == UltraIMAuthStep::PhoneNumber && !phone.empty()) {
+                phone_ = phone;
                 request = Request::SetPhoneNumber(phone_);
             } else if (step == UltraIMAuthStep::Code && !Trim(credentials.otpCode).empty()) {
                 request = Request::CheckCode(Trim(credentials.otpCode));
@@ -460,12 +471,13 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
                                     "Telegram needs this application's API ID and API hash (from my.telegram.org)"));
         return;
     }
-    const std::string phone = Trim(credentials.phoneNumber);
-    if (phone.empty() && !HasStoredSession()) {
-        finish(UltraIMResult::Error(UltraIMResultCode::NotAuthenticated, "Sign in to Telegram with your phone number"));
+    if (phone.empty() && !qr && !HasStoredSession()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotAuthenticated,
+                                    "Sign in to Telegram with your phone number, or with a QR code"));
         return;
     }
-    debugOutput << "[Telegram] sign-in: " << (phone.empty() ? "resuming the stored session" : "a phone number given")
+    debugOutput << "[Telegram] sign-in: "
+                << (!phone.empty() ? "a phone number given" : qr ? "a QR code asked for" : "resuming the stored session")
                 << ", API ID " << apiId << " (" << (credentials.apiId.empty() ? "" : "given, ")
                 << (stored ? "stored, " : "") << (ULTRAIM_TELEGRAM_API_ID ? "built in" : "not built in") << ")"
                 << (credentials.server == "test" ? ", test servers" : "") << std::endl;
@@ -493,6 +505,7 @@ void TelegramProvider::SignIn(const UltraIMCredentials& credentials, UltraIMResu
         apiHash_ = apiHash;
         testDc_ = credentials.server == "test" || (credentials.server.empty() && phone.empty() && storedTest);
         phone_ = phone.empty() ? storedPhone : phone;
+        qrSignIn_ = qr;
         authStep_ = UltraIMAuthStep::Idle;
         authHint_.clear();
         ready_ = false;
@@ -604,11 +617,13 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
         });
     } else if (type == "authorizationStateWaitPhoneNumber") {
         std::string phone;
+        bool qr = false;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             phone = phone_;
+            qr = qrSignIn_;
         }
-        if (phone.empty()) {
+        if (phone.empty() && !qr) {
             AskFor(UltraIMAuthStep::PhoneNumber, "Your phone number, with the country code");
             return;
         }
@@ -618,8 +633,24 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
             authStep_ = UltraIMAuthStep::PhoneNumber;
             authHint_ = "Your phone number, with the country code";
         }
+        if (qr) {
+            ArmStep("requestQrCodeAuthentication - Telegram making the link");
+            Client()->Send(Request::RequestQrCode(), [this](const TdObject& answer) { OnAuthAnswer(answer); });
+            return;
+        }
         ArmStep("setAuthenticationPhoneNumber - Telegram sending the code");
         Client()->Send(Request::SetPhoneNumber(phone), [this](const TdObject& answer) { OnAuthAnswer(answer); });
+    } else if (type == "authorizationStateWaitOtherDeviceConfirmation") {
+        // The link to show as a QR code; Telegram sends a fresh one before
+        // the last expires (every half minute or so), and goes on by itself
+        // once one is scanned. The link holds the sign-in token: not logged.
+        const std::string link = state["link"].GetString();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            authResendHint_.clear();
+        }
+        debugOutput << "[Telegram] a link to show as a QR code (" << link.size() << " characters)" << std::endl;
+        AskFor(UltraIMAuthStep::OtherDevice, link);
     } else if (type == "authorizationStateWaitCode") {
         // Where the code went, said so that a person knows where to look:
         // Telegram sends it to the apps the number is already signed in on
@@ -666,8 +697,8 @@ void TelegramProvider::OnAuthorizationState(const TdObject& state) {
         AskFor(UltraIMAuthStep::Password, hint);
     } else if (type == "authorizationStateWaitRegistration") {
         AskFor(UltraIMAuthStep::Registration, "A new Telegram account: your name");
-    } else if (type == "authorizationStateWaitOtherDeviceConfirmation" || type == "authorizationStateWaitEmailAddress" ||
-               type == "authorizationStateWaitEmailCode" || type == "authorizationStateWaitPremiumPurchase") {
+    } else if (type == "authorizationStateWaitEmailAddress" || type == "authorizationStateWaitEmailCode" ||
+               type == "authorizationStateWaitPremiumPurchase") {
         const std::string why = "Telegram asks for a sign-in step ChatCube cannot do yet (" + type.substr(18) + ")";
         Finish(UltraIMResult::Error(UltraIMResultCode::Unsupported, why));
         SetState(UltraIMConnectionState::Error, why);

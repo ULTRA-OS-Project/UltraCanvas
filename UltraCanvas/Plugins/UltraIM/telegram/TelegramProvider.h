@@ -3,16 +3,18 @@
 // Telegram's own client library)
 // through its JSON interface, loaded at run time (TdJson.h). Sign-in in steps
 // - phone number, the code Telegram sends, the two-step password when there
-// is one, a name for a new account - and TDLib's database (encrypted with a
-// key the vault keeps) for the session, the chats and the history. Chats of
+// is one, a name for a new account; or a QR code scanned from a signed-in
+// Telegram app - and TDLib's database (encrypted with a key the vault keeps)
+// for the session, the chats and the history. Chats of
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
 // username or phone number, new groups.
+// Version: 0.1.3 - sign-in by a QR code (requestQrCodeAuthentication), at the start or in place of a code
 // Version: 0.1.2 - where the code went said plainly; the code asked for another way (resendAuthenticationCode)
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
 //                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -51,7 +53,14 @@ public:
     // In steps, each answering NeedsInput until the last answers Ok:
     // credentials.phoneNumber ("+44..."), then otpCode, then password (two-step
     // verification), or displayName for a new account - GetAuthStep() says
-    // which. credentials.apiId / apiHash: the application's, from
+    // which. Or credentials.loginType QRCode, with no number: the step
+    // OtherDevice, its hint a tg://login link to show as a QR code that a
+    // signed-in Telegram app scans (Settings, Devices, Link Desktop Device);
+    // Telegram refreshes the link (AuthStepChange) and, once it is scanned,
+    // goes on to the password step or signs in. It can be asked for in place
+    // of a code that never came; a phone number given while the QR code
+    // waits starts over with the number (TDLib takes none in that state).
+    // credentials.apiId / apiHash: the application's, from
     // my.telegram.org (else the ones built in or kept from the last sign-in).
     // credentials.server "test" uses Telegram's test servers. With nothing
     // but the stored session it resumes.
@@ -182,6 +191,7 @@ private:
     UltraIMAuthStep authStep_ = UltraIMAuthStep::Idle;
     std::string     authHint_;
     std::string     authResendHint_;     // the code's next_type, as a button's text; "" = none
+    bool            qrSignIn_ = false;   // a QR code asked for, sent at the phone-number state
     bool            ready_ = false;
     bool            closing_ = false;
     std::string     connection_;     // TDLib's connectionState* while not ready, "" = none yet

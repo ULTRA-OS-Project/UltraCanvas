@@ -1,9 +1,10 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.3 - UltraIMAuthStep::OtherDevice: a sign-in confirmed on another device (a QR code scanned there)
 // Version: 0.1.2 - UltraIMProviderInfo::authResendHint: a sign-in code can be asked for another way
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -169,16 +170,26 @@ enum class UltraIMLoginType {
 
 // Where a sign-in that takes more than one round stands (Telegram: the phone
 // number, then the code Telegram sends, then the cloud password when the
-// account has one; a new number registers with a name).
+// account has one; a new number registers with a name; or a QR code scanned
+// from a signed-in app instead of the number and the code).
 enum class UltraIMAuthStep {
     Idle,           // nothing asked (signed in, or not started); not `None`, which X11 #defines
     PhoneNumber,    // credentials.phoneNumber
     Code,           // credentials.otpCode: the code sent by SMS or to another device
     Password,       // credentials.password: the account's two-step password
-    Registration    // credentials.displayName: a new account's name
+    Registration,   // credentials.displayName: a new account's name
+    // Nothing to type: the hint is a link (Telegram: tg://login?token=...) to
+    // show as a QR code for a signed-in app to scan; the service refreshes
+    // it (AuthStepChange, the new link), and goes on by itself - to Password
+    // when the account has one, else signed in - once it is scanned. Asked
+    // for with credentials.loginType QRCode (at the start, or in place of a
+    // code that never came); a phone number given here starts over with it.
+    OtherDevice
 };
 
 struct UltraIMCredentials {
+    // QRCode: sign in by a QR code scanned from a signed-in app (Telegram),
+    // with no phoneNumber - see UltraIMAuthStep::OtherDevice.
     UltraIMLoginType loginType = UltraIMLoginType::UsernamePassword;
     std::string server;             // Homeserver / relay URL ("" = the provider's default)
     std::string username;

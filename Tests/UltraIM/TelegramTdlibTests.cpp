@@ -7,9 +7,10 @@
 // the names and fields are TDLib's. The library: ULTRAIM_TDJSON_PATH, else
 // the one the configure step fetched into Plugins/UltraIM/tdlib; skips with
 // neither unless ULTRAIM_TEST_TDLIB_REQUIRED is set (CI).
+// Version: 0.1.2 - requestQrCodeAuthentication
 // Version: 0.1.1 - the fetched libtdjson by default
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
@@ -122,6 +123,7 @@ void TestRequests() {
         {"checkAuthenticationPassword", Request::CheckPassword("x")},
         {"registerUser", Request::RegisterUser("Carol", "Smith")},
         {"setAuthenticationPhoneNumber", Request::SetPhoneNumber("+15550001")},
+        {"requestQrCodeAuthentication", Request::RequestQrCode()},
     };
     for (const auto& request : requests) {
         const TdObject answer = client.Await(request.second, 3000);

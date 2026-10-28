@@ -1,12 +1,13 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.1 - Telegram signs in by a QR code too, scanned from the phone's Telegram app
 // Version: 0.2.0 - the look from ChatCubeTheme: a card on the sign-in page, avatars, icon buttons,
 //                  a rounded composer, soft selection, a light and a dark theme (--dark)
 // Version: 0.1.3 - the Telegram form says where the code went and asks for it another way
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -28,6 +29,7 @@
 #include "UltraCanvasVideoTile.h"
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMCore.h"
+#include "Plugins/QRCode/UltraCanvasQRCode.h"
 
 #include <algorithm>
 #include <chrono>
@@ -399,7 +401,8 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     sidebar->AddChild(matrixKeysForm_);
 
     // A Telegram account: the phone number, then the code, then the
-    // two-step password if there is one - one field at a time.
+    // two-step password if there is one - one field at a time; or a QR code
+    // the phone's Telegram app scans, in place of the number and the code.
     telegramForm_ = std::make_shared<UltraCanvasContainer>("cc-telegram-form");
     telegramForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     telegramForm_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -417,6 +420,18 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     telegramHint_->SetWrap(TextWrap::WrapWord);
     telegramHint_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     telegramForm_->AddChild(telegramHint_);
+    // The link Telegram gives, as a QR code for the phone's Telegram app to
+    // scan - black on white whatever the theme, which every scanner reads.
+    const int qrSide = kSidebarWidth - 16;
+    telegramQr_ = std::make_shared<UltraCanvasQRCode>("cc-telegram-qr", 0, 0, qrSide, qrSide);
+    telegramQr_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
+    telegramQr_->size.width = CSSLayout::Dimension::Px(static_cast<float>(qrSide));
+    telegramQr_->size.height = CSSLayout::Dimension::Px(static_cast<float>(qrSide));
+    telegramQr_->SetForegroundColor(Colors::Black);
+    telegramQr_->SetBackgroundColor(Colors::White);
+    telegramQr_->SetQuietZoneModules(2);
+    telegramQr_->SetVisible(false);
+    telegramForm_->AddChild(telegramQr_);
     telegramCode_ = MakeInput("cc-telegram-code", "The code Telegram sent", kSidebarWidth - 16);
     telegramCode_->onEnterPressed = next;
     telegramForm_->AddChild(telegramCode_);
@@ -442,6 +457,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     telegramNext_ = MakeButton("cc-telegram-go", "Send me the code", kSidebarWidth - 16, true);
     telegramNext_->SetOnClick([this]() { SignInToTelegram(false); });
     telegramForm_->AddChild(telegramNext_);
+    // The QR code instead - of the number, or of a code that never came.
+    telegramQrButton_ = MakeButton("cc-telegram-qr-go", "Sign in with a QR code instead", kSidebarWidth - 16);
+    telegramQrButton_->SetOnClick([this]() { SignInToTelegramByQrCode(); });
+    telegramForm_->AddChild(telegramQrButton_);
     telegramForm_->SetVisible(false);
     sidebar->AddChild(telegramForm_);
 
@@ -906,19 +925,30 @@ void ChatCubeWindow::UpdateTelegramForm() {
     // The application's keys come from the relay when it has them; the
     // fields are for a relay without, or a ChatCube with no relay.
     const bool keysFromRelay = !telegramRelayApiId_.empty() && !telegramRelayApiHash_.empty();
+    // Waiting for the phone to scan: the hint is the link, shown as the QR
+    // code, and the words say what to do with it.
+    const bool scan = step == UltraIMAuthStep::OtherDevice;
     telegramPhone_->SetVisible(start);
     telegramApiId_->SetVisible(start && !keysFromRelay);
     telegramApiHash_->SetVisible(start && !keysFromRelay);
     telegramCode_->SetVisible(step == UltraIMAuthStep::Code);
-    telegramHint_->SetVisible(step == UltraIMAuthStep::Code && !info.authHint.empty());
-    telegramHint_->SetText(step == UltraIMAuthStep::Code ? info.authHint : std::string());
+    telegramHint_->SetVisible((step == UltraIMAuthStep::Code && !info.authHint.empty()) || scan);
+    telegramHint_->SetText(step == UltraIMAuthStep::Code ? info.authHint
+                           : scan ? "Scan this with the Telegram app on your phone: Settings, Devices, "
+                                    "Link Desktop Device. No code is needed; the two-step password "
+                                    "is asked for here afterwards, if your account has one."
+                                  : std::string());
+    telegramQr_->SetVisible(scan);
+    if (scan) telegramQr_->SetContent(info.authHint);
     telegramResend_->SetVisible(step == UltraIMAuthStep::Code && !info.authResendHint.empty());
     if (!info.authResendHint.empty()) telegramResend_->SetText(info.authResendHint);
     telegramPassword_->SetVisible(step == UltraIMAuthStep::Password);
     telegramName_->SetVisible(step == UltraIMAuthStep::Registration);
     if (step == UltraIMAuthStep::Code) telegramCode_->SetPlaceholder("The code");
     if (step == UltraIMAuthStep::Password && !info.authHint.empty()) telegramPassword_->SetPlaceholder(info.authHint);
-    telegramNext_->SetText(start ? "Send me the code" : "Sign in to Telegram");
+    telegramNext_->SetText(start ? "Send me the code" : scan ? "Use my phone number instead" : "Sign in to Telegram");
+    telegramQrButton_->SetVisible(start || step == UltraIMAuthStep::Code);
+    telegramQrButton_->SetText(start ? "Sign in with a QR code instead" : "Scan a QR code instead");
     if (window_) window_->RequestRedraw();
 }
 
@@ -932,31 +962,61 @@ void ChatCubeWindow::SignInToTelegram(bool stored) {
             case UltraIMAuthStep::Code:         credentials.otpCode = Trim(telegramCode_->GetText()); break;
             case UltraIMAuthStep::Password:     credentials.password = telegramPassword_->GetText(); break;
             case UltraIMAuthStep::Registration: credentials.displayName = Trim(telegramName_->GetText()); break;
+            case UltraIMAuthStep::OtherDevice:
+                // Back from the QR code to the number: Telegram takes none
+                // while the code waits, so the sign-in starts over, with the
+                // form back at the number.
+                UltraIM_SignOut(telegramProviderId_);
+                UpdateTelegramForm();
+                return;
             default:
                 credentials.phoneNumber = Trim(telegramPhone_->GetText());
                 credentials.apiId = Trim(telegramApiId_->GetText());
                 credentials.apiHash = Trim(telegramApiHash_->GetText());
                 if (credentials.phoneNumber.empty()) {
-                    SetStatus("Telegram: enter your phone number with its country code.");
+                    SetStatus("Telegram: enter your phone number with its country code, or sign in with a QR code.");
                     return;
                 }
                 break;
         }
         telegramNext_->SetDisabled(true);
     }
+    SendTelegramSignIn(std::move(credentials), stored);
+}
+
+void ChatCubeWindow::SignInToTelegramByQrCode() {
+    UltraIMCredentials credentials;
+    credentials.loginType = UltraIMLoginType::QRCode;
+    credentials.apiId = Trim(telegramApiId_->GetText());
+    credentials.apiHash = Trim(telegramApiHash_->GetText());
+    telegramNext_->SetDisabled(true);
+    telegramQrButton_->SetDisabled(true);
+    SendTelegramSignIn(std::move(credentials), false);
+}
+
+void ChatCubeWindow::SendTelegramSignIn(UltraIMCredentials credentials, bool stored) {
     // The relay's keys, unless the user typed a pair (a relay without them,
     // or their own application).
     if (credentials.apiId.empty() || credentials.apiHash.empty()) {
         credentials.apiId = telegramRelayApiId_;
         credentials.apiHash = telegramRelayApiHash_;
     }
-    SetProviderStatus(telegramProviderId_, "signing in\xE2\x80\xA6");
+    SetProviderStatus(telegramProviderId_,
+                      credentials.loginType == UltraIMLoginType::QRCode ? "asking Telegram for a QR code\xE2\x80\xA6"
+                                                                         : "signing in\xE2\x80\xA6");
     UltraIM_SignIn(telegramProviderId_, credentials, [this, stored](const UltraIMResult& r) {
         telegramNext_->SetDisabled(false);
+        telegramQrButton_->SetDisabled(false);
         if (r.code == UltraIMResultCode::NeedsInput) {
             telegramForm_->SetVisible(true);
             UpdateTelegramForm();
-            SetProviderStatus(telegramProviderId_, r.message);
+            // The hint, except the QR code's: that is the link, with the
+            // sign-in token in it, and the form shows it as the code.
+            UltraIMProviderInfo info;
+            UltraIM_GetProviderInfo(telegramProviderId_, info);
+            SetProviderStatus(telegramProviderId_, info.authStep == UltraIMAuthStep::OtherDevice
+                                                       ? "scan the QR code with your phone's Telegram app"
+                                                       : r.message);
             return;
         }
         if (!r) {
@@ -1478,6 +1538,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetProviderStatus(telegramProviderId_, e.errorText);
                     telegramNext_->SetDisabled(false);
+                    telegramQrButton_->SetDisabled(false);
                 } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
                     SetProviderStatus(telegramProviderId_, e.errorText.empty() ? std::string("reconnecting\xE2\x80\xA6") : e.errorText);
                 } else if (e.connectionState == UltraIMConnectionState::Connecting) {

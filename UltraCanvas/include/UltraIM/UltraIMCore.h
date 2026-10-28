@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
 // Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
@@ -45,7 +46,10 @@ void UltraIM_Unsubscribe(UltraIMSubscriptionId subscriptionId);
 // ---- Sessions ----------------------------------------------------------------
 // A sign-in in steps answers NeedsInput while it waits for the next one: call
 // SignIn again with what UltraIMProviderInfo::authStep asks for (the code, the
-// password, ...), the rest of the credentials as before.
+// password, ...), the rest of the credentials as before. credentials.loginType
+// QRCode asks instead for a link to show as a QR code (authStep OtherDevice,
+// the link in authHint, refreshed as AuthStepChange) that a signed-in app
+// scans; it can be asked for while a code is awaited too.
 void UltraIM_SignIn(const std::string& providerId,
                     const UltraIMCredentials& credentials,
                     UltraIMResultCallback onResult);

@@ -49,7 +49,13 @@ The first ChatCube draft, which this replaces, is kept under
    rule Telegram sends it as a message to the Telegram apps where your
    number is already signed in - look in the "Telegram" chat on your phone,
    not for an SMS - and only offers SMS or a call for some numbers; when it
-   does, a button under the code field asks for it that way. Your
+   does, a button under the code field asks for it that way. When no code
+   comes at all - Telegram has delivered none to third-party applications
+   for stretches since early 2026 - *Scan a QR code instead* (also *Sign in
+   with a QR code instead* at the start) shows a QR code: scan it with the
+   Telegram app on your phone (Settings, Devices, Link Desktop Device) and
+   ChatCube is signed in with no code, after your two-step password if you
+   have one. Your
    Telegram chats join the list; `@username`, `t.me/name` or `+phone` in
    *Add* or *New group* goes to Telegram.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
