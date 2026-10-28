@@ -1,3 +1,24 @@
+#### 2026-10-28 *0.9.426*
+- **UltraCrypt: the certificate check trusts what the operating system
+  trusts.** `UltraCrypt_CheckCertificate`'s system roots now include Windows'
+  ROOT and AuthRoot stores (less Disallowed) and macOS's system anchors plus
+  the roots marked trusted in Keychain Access (`UltraCryptSystemRoots.cpp`,
+  crypt32 / Security). OpenSSL's default store, the system's on Linux, held
+  on Windows and macOS only what the OpenSSL build carried, so a real
+  authority's certificate was not trusted there. `SSL_CERT_FILE` /
+  `SSL_CERT_DIR`, when set, still replace them.
+  - `ULTRACANVAS_BUILD_CRYPT_TESTS` builds UltraCryptTests without
+    `BUILD_TESTS` (`Tests/CryptTests.cmake`); the Windows and macOS CI rows
+    run it, and it checks that a root shipped with the system - Microsoft's
+    on Windows, ISRG Root X1 on macOS and Linux - is trusted.
+- **UltraCrypt: RSA and ECDSA signature checks against keys by their parts**
+  (`UltraCrypt/UltraCryptPublicKey.h`, on the OpenSSL 3 backend):
+  `UltraCrypt_VerifyRsaPkcs1Sha256` (JWS RS256; the key as n and e, 2048 bits
+  at least) and `UltraCrypt_VerifyEcdsaP256Sha256` (ES256; x and y, the
+  signature as r || s), with `CheckRsaPublicKey` / `CheckP256PublicKey`.
+  `ULTRACANVAS_CRYPT_HAS_OPENSSL` tells CMake consumers whether the backend
+  is there. Tested against vectors made by Python's cryptography package.
+
 #### 2026-10-28 *0.9.425*
 - **JPEG XL saves no longer end the process on libvips 8.17+.** libvips' jxlsave encodes a large picture a tile at a time on libjxl's worker threads, and its `release_buffer` callback removes each tile from a shared GLib hash table without the lock that guards adding one. With four or more tiles (about 4 megapixels and up) two threads could be in the table at once, and GLib aborted with `g_hash_table_remove_node: assertion failed (nnodes > 0)`: one Windows x64 CI run in three did so on `jxl_art2.jxl`. The libvips code is the same in 8.18.7 and on master. `ExportVImage` / `UCImageRaster::Save` now save JPEG XL with libvips on one thread when the libvips is 8.17 or later: saves take turns, and the thread setting is restored after each. Large JPEG XL saves are slower but no longer crash. Older libvips are unchanged.
 - `ImageJxlTest` 1.2.0 saves a 6144 x 6144 picture (nine tiles) as lossless JPEG XL three times, and checks that libvips' thread count is the same afterwards.
