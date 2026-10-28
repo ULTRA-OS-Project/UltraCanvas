@@ -19,12 +19,17 @@
 // capability named under decode= / encode= that is missing fails, and one
 // under no-encode= that is present fails - the macOS row says no-encode=heic,
 // so x265 (GPL) cannot slip into the core every app links unnoticed.
+// encoder= / no-encoder= name libheif encoders by their id (x265, kvazaar,
+// aom, ...) that must / must not be in libheif's list: the Windows row, whose
+// libheif is rebuilt without x265 and x264, says encoder=kvazaar
+// no-encoder=x265,x264.
 // Without it the test checks what the build has, and reports SKIP where
 // libvips has no HEIF loader at all.
 //
 // Headless.
+// Version: 1.1.0 - encoder= / no-encoder=: libheif's encoders by name
 // Version: 1.0.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -32,6 +37,9 @@
 
 #ifdef HAS_LIBVIPS
 #include <vips/vips8>
+#endif
+#ifdef HAS_LIBHEIF
+#include <libheif/heif.h>
 #endif
 
 #include <algorithm>
@@ -168,6 +176,29 @@ int main() {
         if (expected("no-encode", f.name))
             Check(!encodes[f.name], std::string("UC_HEIF_EXPECT: this build does NOT encode ") + f.name +
                                             " (its encoder is kept out of this build)");
+    }
+
+    // libheif's encoders by id, for encoder= / no-encoder=.
+    if (expect.count("encoder") || expect.count("no-encoder")) {
+#ifdef HAS_LIBHEIF
+        heif_init(nullptr);
+        const heif_encoder_descriptor* descriptors[64];
+        const int n = heif_get_encoder_descriptors(heif_compression_undefined, nullptr, descriptors, 64);
+        std::set<std::string> encoders;
+        for (int i = 0; i < n; ++i) encoders.insert(heif_encoder_descriptor_get_id_name(descriptors[i]));
+        std::string list;
+        for (const std::string& e : encoders) list += (list.empty() ? "" : ", ") + e;
+        std::cout << "  libheif's encoders: " << (list.empty() ? "none" : list) << "\n";
+        if (auto it = expect.find("encoder"); it != expect.end())
+            for (const std::string& e : it->second)
+                Check(encoders.count(e) > 0, "UC_HEIF_EXPECT: libheif has the " + e + " encoder");
+        if (auto it = expect.find("no-encoder"); it != expect.end())
+            for (const std::string& e : it->second)
+                Check(encoders.count(e) == 0, "UC_HEIF_EXPECT: libheif does NOT have the " + e + " encoder");
+        heif_deinit();
+#else
+        Check(false, "UC_HEIF_EXPECT names libheif encoders, but this test was built without libheif's headers");
+#endif
     }
 
     const fs::path dir = fs::temp_directory_path() / "uc-heif-test";

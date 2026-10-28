@@ -31,6 +31,24 @@ if(TARGET UltraCanvas AND NOT EMSCRIPTEN)
     # The samples it decodes: media/images/dice.heic and dice.avif.
     target_compile_definitions(ImageHeifTest PRIVATE
         UC_MEDIA_DIR="${CMAKE_CURRENT_LIST_DIR}/../media")
+    # libheif's own encoder list, for UC_HEIF_EXPECT's encoder= and
+    # no-encoder= (which HEVC encoder this build has: x265 is GPL). The
+    # compiler's own directories are left out of the include path, as for
+    # ImageCairo.cpp in UltraCanvas/CMakeLists.txt.
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(UC_HEIF_TEST_LIBHEIF QUIET libheif)
+    endif()
+    if(UC_HEIF_TEST_LIBHEIF_FOUND)
+        set(_heif_test_includes ${UC_HEIF_TEST_LIBHEIF_INCLUDE_DIRS})
+        if(_heif_test_includes AND CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES)
+            list(REMOVE_ITEM _heif_test_includes ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
+        endif()
+        target_include_directories(ImageHeifTest PRIVATE ${_heif_test_includes})
+        target_link_directories(ImageHeifTest PRIVATE ${UC_HEIF_TEST_LIBHEIF_LIBRARY_DIRS})
+        target_link_libraries(ImageHeifTest PRIVATE ${UC_HEIF_TEST_LIBHEIF_LIBRARIES})
+        target_compile_definitions(ImageHeifTest PRIVATE HAS_LIBHEIF=1)
+    endif()
     set_target_properties(ImageHeifTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${_HEIF_BIN_DIR}
     )

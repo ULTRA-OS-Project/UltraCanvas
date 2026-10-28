@@ -206,7 +206,7 @@ their *License* is likewise marked **—** (OS component).
 | String formatting | fmt | fmt | fmt |
 | Image processing & resize | libvips | libvips | libvips |
 | Bitmap codecs (via libvips) | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp |
-| GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif (+ libde265, aom): reads HEIC, reads and writes AVIF; no HEIC writing - its encoder, x265, is GPL and kept out of the core | giflib, libheif (+ its codec plug-ins) |
+| GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif (+ libde265, aom): reads HEIC, reads and writes AVIF; no HEIC writing - its encoder, x265, is GPL and kept out of the core | giflib, libheif (+ libde265, aom, dav1d, kvazaar): reads and writes HEIC and AVIF. MSYS2's libheif links x265 and x264 (GPL), so CI rebuilds the same release without them and kvazaar (BSD) writes HEIC, 4:2:0 only |
 | JPEG XL (via libvips) | libjxl, where the distribution's libvips has it (Ubuntu 24.04 does, 22.04 does not) | libjxl (+ brotli, Highway) | libjxl (+ brotli, Highway), through libvips' `vips-jxl` module |
 | BMP / PCX coders (via libvips) | ImageMagick | ImageMagick | ImageMagick |
 | Audio playback & capture | miniaudio (bundled) → ALSA / PulseAudio | miniaudio (bundled) → CoreAudio | miniaudio (bundled) → WASAPI |

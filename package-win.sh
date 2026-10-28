@@ -286,7 +286,16 @@ if [ -d "$VIPS_MODULE_DIR" ]; then
     echo "  Copied vips modules: vips-heif, vips-magick, vips-jxl"
 fi
 
-# Copy libheif codec plugins (AOM for AVIF, x265 for HEIC, etc.)
+# libheif without GPL encoders. MSYS2's libheif.dll links x265 and x264 (GPL)
+# and every app on the core loads it through vips-heif; CI replaces it with a
+# rebuild of the same release without them, kvazaar writing HEIC (see "Rebuild
+# libheif without x265 and x264" in .github/workflows/build.yml). A package
+# made from a stock MSYS2 libheif is said to carry them, not refused.
+if objdump -p "$MSYS_PREFIX/bin/libheif.dll" 2>/dev/null | grep -qi 'DLL Name: .*x26[45]'; then
+    echo "  WARNING: libheif.dll links x264 / x265 (GPL) - MSYS2's own build, not CI's rebuild"
+fi
+
+# Copy libheif codec plugins (MSYS2 builds them into libheif.dll: none today)
 if [ -d "$MSYS_PREFIX/lib/libheif" ]; then
     mkdir -p "$DIST_DIR/lib/libheif"
     cp $MSYS_PREFIX/lib/libheif/*.dll "$DIST_DIR/lib/libheif/" 2>/dev/null || true
