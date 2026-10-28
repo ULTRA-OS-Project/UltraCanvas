@@ -1,3 +1,43 @@
+#### 2026-10-28 *0.9.422*
+- **UltraDatabase encrypts SQLite files at rest.** A connection with an
+  `encryptionKey` (32 bytes the application holds) reads and writes a file
+  that is ciphertext on disk: every page of the database, of its WAL and of
+  its rollback journal is sealed with XChaCha20-Poly1305 by a VFS in front of
+  the platform's, so it works on the system's own libsqlite3 everywhere and
+  no query changes (`UltraDatabaseEncryption.h`).
+  - A wrong key, a plain file opened with a key and a changed byte are each
+    refused as what they are; without the key the file is not a database to
+    SQLite, the sqlite3 shell or UltraDBAdmin.
+  - `UltraDb_SetSqliteFileEncryption` encrypts a plain file, decrypts one or
+    changes its key in place, its WAL included, and swaps the file only once
+    the new one has checked; `UltraDb_InspectSqliteFile` and
+    `UltraDb_SqliteKeyOpens` tell what a file is without opening it.
+  - Temporary data of an encrypted connection stays in memory; a WAL left by
+    a crash and a hot journal are recovered through the encryption.
+  - `UltraDatabaseTests` gains nine encryption tests (103 in all), among them
+    recovery from a WAL and a journal copied mid-write.
+- **UltraCloud's account store can be encrypted at rest.**
+  `AccountStore::Open` takes an optional key, handed to UltraDatabase as the
+  connection's `encryptionKey`; UltraMail opens its `cloud.db` with one.
+- **UltraNet: a mail message can be sent as it stands.**
+  `UltraNetMailMessage::rawMessage` (UltraNetPlugins.h 0.5.3): when set,
+  `UltraNet_MimeBuildMailMessage` returns it unchanged instead of building the
+  message from its fields, so the SMTP and JMAP plug-ins send exactly those
+  bytes - a message signed or encrypted (S/MIME, OpenPGP) after it was built.
+  The other fields still give the envelope (sender, recipients).
+- **A device-key vault can take a Primary Password.**
+  `DeviceKeyVault::ChangePassphrase(current, new, keepAsDeviceKey)`
+  re-encrypts the vault file under a new passphrase - every secret in it
+  carried over, whatever module wrote it - and swaps the file in only once it
+  is complete; without the device key (`keepAsDeviceKey` false) the vault
+  then opens only with the typed passphrase (`NeedsPassphrase`), and with a
+  fresh `NewDeviceKey()` it opens silently again. A kept device key is
+  written as `device.key.next` before the swap, which `TryAutoUnlock` also
+  tries, so an interruption never leaves the vault without a key that opens
+  it; `ForgetDeviceKey` drops one left stale. `UltraVaultTests` checks
+  setting, changing and removing one, another prefix's secret carried over,
+  and an interrupted swap.
+
 #### 2026-10-28 *0.9.421*
 - **New element: the performance matrix.** `UltraCanvasPerformanceMatrix`
   draws named categories where two rated axes cross: the 9-box talent grid,
