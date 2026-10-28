@@ -152,7 +152,9 @@ the selection and to every line drawn afterwards.
   far it lies from the middle of the selection (`transform.centre`). Typed
   rotation and shear turn about that centre then.
 - **Rotate handles** (a second click on the selection): one object's frame
-  turns with it; round corner handles rotate, diamond edge handles skew, the
+  turns with it; round corner handles rotate, diamond edge handles skew
+  along the object's own edges (top and bottom along its top, the sides
+  along its sides, about the centre), the
   cross-hair centre can be dragged, and the rotation handle starts at the
   centre and points along the object's angle - a dial of 15° ticks (default)
   or a stem to just beyond the frame. Dragging its knob turns the selection

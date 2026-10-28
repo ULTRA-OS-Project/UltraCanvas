@@ -18,6 +18,11 @@
   the centre's place on the page and how far it lies from the middle of the
   selection (`transform.centre` in `config.ini`). Typed rotation and shear
   turn about that centre while the Rotate handles show.
+- **The skew handles lean along the object's own edges.** The diamond
+  handles of the Rotate frame used to skew along the page's horizontal and
+  vertical, whatever the object's angle. Now the top and bottom handles slide
+  along the object's top edge and the side handles along its sides, about the
+  rotation centre, and the dragged handle stays under the pointer.
 - A moved rotation centre now goes with the selection when it is dragged or
   moved from the bar, and stays after a typed change to the same objects.
 - Every field of the transform bar is one width, top and bottom row, and a

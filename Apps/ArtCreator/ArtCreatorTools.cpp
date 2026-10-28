@@ -5,7 +5,8 @@
 // widget helpers they share with the window.
 // Version: 1.6.0 - the Selector turns the selection by the rotation handle (the frame hidden
 //                 while it turns, the angle in the status line), a Dial / Stem switch for
-//                 that handle, and a moved rotation centre goes with a moved selection
+//                 that handle, a moved rotation centre goes with a moved selection, and the
+//                 edge handles skew along the frame's own edges
 // Version: 1.5.0 - the Selector's sections each in a rounded framed group box, captioned
 //                 small at the right of its top line; Scale / Rotate with icons; 1 px
 //                 above and below the icon bars
@@ -484,6 +485,7 @@ public:
             accumulated = 0;
             handleAngle = canvas->RotationHandleAngle();
             startAngle = handleAngle;
+            if (canvas->GetHandleMode() == VectorHandleMode::Rotate) BeginSkew(canvas, h);
             ctx.history->BeginEdit(canvas->GetHandleMode() == VectorHandleMode::Rotate
                                    ? (h == VectorHandle::Center ? "Move Centre" : "Rotate") : "Scale");
             canvas->SetDraggedHandle(h);
@@ -757,14 +759,19 @@ private:
                 // The context's angles run clockwise, the handle's counter.
                 handleAngle -= (a1 - a0) * kRadToDeg;
                 ShowTurn(ctx);
-            } else {
-                // Edge handles skew: top / bottom shear in x, left / right in y.
-                const bool horizontal = activeHandle == VectorHandle::Top || activeHandle == VectorHandle::Bottom;
-                const double delta = horizontal ? (e.doc.x - lastDoc.x) : (e.doc.y - lastDoc.y);
-                const double extent = horizontal ? cur.height : cur.width;
-                if (extent > 1e-6) {
-                    const double angle = std::atan(delta / extent) * ((activeHandle == VectorHandle::Top || activeHandle == VectorHandle::Left) ? -1 : 1);
-                    SkewElements(ctx.selection->Elements(), horizontal ? angle : 0, horizontal ? 0 : angle, c);
+            } else if (skewReady) {
+                // Edge handles skew along the frame's own edges: the dragged
+                // handle follows the pointer along its edge, the centre stays.
+                const Point2Dd moved = skewToFrame.Transform(Point2Dd(e.doc.x - pressDoc.x, e.doc.y - pressDoc.y));
+                const double total = skewAlongTop ? moved.x / skewHandleOffset : moved.y / skewHandleOffset;
+                const double step = total - skewApplied;
+                if (std::fabs(step) > 1e-12) {
+                    const Matrix3x3 shear = skewAlongTop ? Matrix3x3::FromValues(1, step, 0, 1, 0, 0)
+                                                         : Matrix3x3::FromValues(1, 0, step, 1, 0, 0);
+                    TransformElements(ctx.selection->Elements(),
+                                      Matrix3x3::Translate(skewCentre.x, skewCentre.y) * skewFromFrame * shear *
+                                      skewToFrame * Matrix3x3::Translate(-skewCentre.x, -skewCentre.y));
+                    skewApplied = total;
                 }
             }
             lastDoc = e.doc;
@@ -816,6 +823,33 @@ private:
 
     static constexpr double kRadToDeg = 180.0 / M_PI;
 
+    // An edge handle of the Rotate handles skews in the frame's own axes -
+    // its top edge across, its left edge down - as the frame stood when the
+    // drag began: the top and bottom handles slide along the top edge, the
+    // side handles along the side edges, about the rotation centre. The
+    // axes are kept for the whole drag, so the steps add up exactly.
+    void BeginSkew(UltraCanvasVectorCanvas* canvas, VectorHandle h) {
+        skewReady = false;
+        const bool topOrBottom = h == VectorHandle::Top || h == VectorHandle::Bottom;
+        if (!topOrBottom && h != VectorHandle::Left && h != VectorHandle::Right) return;
+        const auto f = canvas->SelectionFrame();
+        const Point2Dd across(f[1].x - f[0].x, f[1].y - f[0].y), down(f[3].x - f[0].x, f[3].y - f[0].y);
+        skewFromFrame = Matrix3x3::FromValues(across.x, down.x, across.y, down.y, 0, 0);
+        if (std::fabs(skewFromFrame.Determinant()) < 1e-12) return;
+        skewToFrame = skewFromFrame.Inverse();
+        skewCentre = canvas->GetRotationCenter();
+        // How far the dragged edge lies from the centre across the frame:
+        // a shift of the pointer along the edge over it is the shear.
+        const int a = h == VectorHandle::Top ? 0 : h == VectorHandle::Right ? 1 : h == VectorHandle::Bottom ? 2 : 3;
+        const Point2Dd mid((f[a].x + f[(a + 1) % 4].x) / 2 - skewCentre.x, (f[a].y + f[(a + 1) % 4].y) / 2 - skewCentre.y);
+        const Point2Dd local = skewToFrame.Transform(mid);
+        skewAlongTop = topOrBottom;
+        skewHandleOffset = topOrBottom ? local.y : local.x;
+        skewApplied = 0;
+        // An edge through the centre has nothing to lean about.
+        skewReady = std::fabs(skewHandleOffset) > 1e-6;
+    }
+
     bool moving = false, marquee = false, dragged = false, toggleModePending = false;
     VectorHandle activeHandle = VectorHandle::NoHandle;
     // The panel's widgets from the last BuildOptions (the panel owns them too).
@@ -826,6 +860,11 @@ private:
     // The way the rotation handle points while the selection turns, and
     // where it pointed when the drag began (degrees, counter-clockwise).
     double handleAngle = 0, startAngle = 0;
+    // The skew of an edge handle (BeginSkew).
+    bool skewReady = false, skewAlongTop = true;
+    Matrix3x3 skewFromFrame, skewToFrame;
+    Point2Dd skewCentre;
+    double skewHandleOffset = 1, skewApplied = 0;
     Point2Dd pressDoc, lastDoc, currentDoc;
 };
 
