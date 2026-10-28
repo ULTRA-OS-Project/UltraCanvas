@@ -1,5 +1,7 @@
 // core/UltraCanvasTextArea.cpp
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.12.0 - hidden characters: spaces, tabs, no-break and zero-width
+//                 characters and line ends marked over the text (SetShowHiddenCharacters)
 // Version: 3.11.0 - auto-completion: a list of suggestions at the caret, chosen with the keys
 //                 or a click, replacing the word before the caret
 // Version: 3.10.0 - search matches marked in the line layouts and on the scrollbar,
@@ -1148,6 +1150,7 @@ namespace UltraCanvas {
                 if (lineTop    >= viewportBottom) break;
 
                 RenderLineLayout(ctx, ll);
+                if (showHiddenCharacters) DrawHiddenCharacters(ctx, ll, i);
             }
             // Inside the text clip so marks never bleed over the gutter or the
             // scrollbars, and after the glyphs so they sit on top of them.
@@ -2826,6 +2829,7 @@ namespace UltraCanvas {
         style.lineNumbersBackgroundColor = {35, 35, 35, 255}; // Dark gutter background
         style.selectionColor = {60, 90, 150, 100};
         style.searchHighlightColor = {160, 120, 0, 140};
+        style.hiddenCharacterColor = {120, 120, 120, 200};
         style.cursorColor = {255, 255, 255, 255};
         style.scrollbarTrackColor = {50, 50, 50, 255};
         style.scrollbarColor = {100, 100, 100, 255};
@@ -2854,6 +2858,7 @@ namespace UltraCanvas {
         style.borderColor = {200, 200, 200, 255};
         style.selectionColor = {51, 153, 255, 100};
         style.searchHighlightColor = {255, 200, 0, 110};
+        style.hiddenCharacterColor = {150, 150, 150, 200};
         style.cursorColor = {0, 0, 0, 255};
         style.currentLineColor = {240, 240, 240, 255};
         style.lineNumbersColor = {128, 128, 128, 255};
@@ -4062,6 +4067,111 @@ namespace UltraCanvas {
         return MakePlainLineLayout(ctx, lineIndex);
     }
 
+    void UltraCanvasTextArea::DrawHiddenCharacters(IRenderContext* ctx, LineLayoutBase* line, int lineIndex) {
+        if (!line || !line->layout) return;
+        // Only the layouts that hold the line's own text: a table's cells, a
+        // rule, a formula or a picture have no spaces of the source to mark.
+        switch (line->layoutType) {
+            case LineLayoutType::PlainLine:
+            case LineLayoutType::MarkDownLine:
+            case LineLayoutType::Blockquote:
+            case LineLayoutType::CodeblockStart:
+            case LineLayoutType::CodeblockEnd:
+            case LineLayoutType::CodeblockContent:
+            case LineLayoutType::UnorderedListItem:
+            case LineLayoutType::OrderedListItem:
+                break;
+            default:
+                return;
+        }
+
+        const ITextLayout& layout = *line->layout;
+        const std::string text = layout.GetText();
+        const double originX = visibleTextArea.x + line->bounds.x + line->layoutShift.x - horizontalScrollOffset;
+        const double originY = visibleTextArea.y + line->bounds.y + line->layoutShift.y - verticalScrollOffset;
+        const Color& color = style.hiddenCharacterColor;
+
+        ctx->PushState();
+        ctx->SetStrokeWidth(1.0);
+        for (size_t i = 0; i < text.size(); i++) {
+            const unsigned char b0 = static_cast<unsigned char>(text[i]);
+            const unsigned char b1 = i + 1 < text.size() ? static_cast<unsigned char>(text[i + 1]) : 0;
+            const unsigned char b2 = i + 2 < text.size() ? static_cast<unsigned char>(text[i + 2]) : 0;
+            enum class Mark { Nothing, Space, Tab, NoBreakSpace, ZeroWidth } mark = Mark::Nothing;
+            size_t length = 1;
+            if (b0 == ' ') {
+                mark = Mark::Space;
+            } else if (b0 == '\t') {
+                mark = Mark::Tab;
+            } else if (b0 == 0xC2 && b1 == 0xA0) {                      // U+00A0 no-break space
+                mark = Mark::NoBreakSpace; length = 2;
+            } else if (b0 == 0xC2 && b1 == 0xAD) {                      // U+00AD soft hyphen
+                mark = Mark::ZeroWidth; length = 2;
+            } else if (b0 == 0xE2 && b1 == 0x80 && b2 == 0xAF) {        // U+202F narrow no-break space
+                mark = Mark::NoBreakSpace; length = 3;
+            } else if (b0 == 0xE2 && b1 == 0x80 && b2 >= 0x8B && b2 <= 0x8D) {   // U+200B..U+200D
+                mark = Mark::ZeroWidth; length = 3;
+            } else if (b0 == 0xE2 && b1 == 0x81 && b2 == 0xA0) {        // U+2060 word joiner
+                mark = Mark::ZeroWidth; length = 3;
+            } else if (b0 == 0xEF && b1 == 0xBB && b2 == 0xBF) {        // U+FEFF byte order mark
+                mark = Mark::ZeroWidth; length = 3;
+            } else if (b0 == 0xE3 && b1 == 0x80 && b2 == 0x80) {        // U+3000 ideographic space
+                mark = Mark::Space; length = 3;
+            }
+            if (mark == Mark::Nothing) continue;
+
+            // A right-to-left run reports a negative width.
+            const Rect2Di pos = layout.IndexToPos(static_cast<int>(i));
+            const double left = originX + std::min(pos.x, pos.x + pos.width);
+            const double width = std::abs(pos.width);
+            const double top = originY + pos.y;
+            const double centerX = left + width / 2.0;
+            const double centerY = top + pos.height / 2.0;
+            const double dot = std::max(1.0, pos.height * 0.08);
+
+            switch (mark) {
+                case Mark::Space:
+                    ctx->DrawFilledCircle(Point2Dd(centerX, centerY), static_cast<float>(dot), color);
+                    break;
+                case Mark::NoBreakSpace:
+                    ctx->DrawFilledCircle(Point2Dd(centerX, centerY), static_cast<float>(dot * 2.0),
+                                          Colors::Transparent, color, 1.0f);
+                    break;
+                case Mark::Tab: {
+                    // An arrow across the tab's whole advance.
+                    const double head = std::min(pos.height * 0.2, width / 3.0);
+                    const double x0 = left + 2.0;
+                    const double x1 = left + width - 2.0;
+                    if (x1 <= x0) break;
+                    ctx->DrawLine(Point2Dd(x0, centerY), Point2Dd(x1, centerY), color);
+                    ctx->DrawLine(Point2Dd(x1 - head, centerY - head), Point2Dd(x1, centerY), color);
+                    ctx->DrawLine(Point2Dd(x1 - head, centerY + head), Point2Dd(x1, centerY), color);
+                    break;
+                }
+                case Mark::ZeroWidth: {
+                    const double quarter = pos.height / 4.0;
+                    ctx->DrawLine(Point2Dd(left, top + quarter), Point2Dd(left, top + pos.height - quarter), color);
+                    ctx->DrawFilledCircle(Point2Dd(left, top + quarter), static_cast<float>(dot), color);
+                    break;
+                }
+                case Mark::Nothing:
+                    break;
+            }
+            i += length - 1;
+        }
+
+        // The line break itself, after the line's last character. A shard of
+        // a long line (no '\n') and the last line of the text have none.
+        if (LineHasNewline(lineIndex)) {
+            const Rect2Di end = layout.IndexToPos(static_cast<int>(text.size()));
+            ctx->SetFontStyle(style.fontStyle);
+            ctx->SetTextPaint(color);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
+            ctx->DrawText("\u00B6", Point2Dd(originX + end.x + 2.0, originY + end.y));
+        }
+        ctx->PopState();
+    }
+
     void UltraCanvasTextArea::RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line) {
         if (!line) return;
 
@@ -4372,6 +4482,7 @@ namespace UltraCanvas {
         style.selectionColor = r.accent.WithAlpha(100);
         style.cursorColor = r.ink;
         style.placeholderColor = r.inkFaint;
+        style.hiddenCharacterColor = r.inkFaint;
         style.scrollbarTrackColor = r.panel;
         style.scrollbarColor = r.lineStrong;
         style.tokenStyles.defaultStyle.color = r.ink;

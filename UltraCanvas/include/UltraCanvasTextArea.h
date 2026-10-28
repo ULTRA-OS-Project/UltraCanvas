@@ -1,5 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.16.0 - SetShowHiddenCharacters: spaces, tabs, no-break and zero-width
+//                 characters and line ends drawn as faint marks (hiddenCharacterColor)
 // Version: 3.15.0 - auto-completion: ShowAutoComplete opens a list of suggestions at the
 //                 caret (it was a placeholder); IsAutoCompleteOpen, GetAutoCompletePrefix
 // Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
@@ -13,7 +15,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-18
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -260,6 +262,9 @@ namespace UltraCanvas {
 
         // Placeholder hint shown when the document is empty
         Color placeholderColor = Color(150, 150, 150, 255);
+
+        // Marks drawn over spaces, tabs and line ends (SetShowHiddenCharacters)
+        Color hiddenCharacterColor = Color(150, 150, 150, 200);
 
         // Line numbers
         bool showLineNumbers;
@@ -740,6 +745,13 @@ namespace UltraCanvas {
         void SetShowLineNumbers(bool show) { style.showLineNumbers = show; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool GetShowLineNumbers() const { return style.showLineNumbers; }
 
+        // Draws the characters that print nothing as faint marks in
+        // style.hiddenCharacterColor: a dot for a space, an arrow for a tab, a
+        // ring for a no-break space, a tick for a zero-width character and a
+        // pilcrow at the end of every line. Display only - the text is unchanged.
+        void SetShowHiddenCharacters(bool show) { showHiddenCharacters = show; RequestRedraw(); }
+        bool GetShowHiddenCharacters() const { return showHiddenCharacters; }
+
         void SetTabSize(int size) { tabSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         int GetTabSize() const { return tabSize; }
 
@@ -1145,6 +1157,8 @@ namespace UltraCanvas {
         LineLayoutBase *GetActualLineLayout(int idx);
 
         void RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line);
+        // The SetShowHiddenCharacters marks over one line, drawn after its text.
+        void DrawHiddenCharacters(IRenderContext* ctx, LineLayoutBase* line, int lineIndex);
 
     private:
         // Auto-completion (ShowAutoComplete)
@@ -1259,6 +1273,7 @@ namespace UltraCanvas {
         std::string placeholderText; // grey hint drawn when the document is empty
         bool wordWrap;
         bool highlightCurrentLine;
+        bool showHiddenCharacters = false;
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).
         int tabSize = 4;
  

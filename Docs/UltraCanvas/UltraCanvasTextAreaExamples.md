@@ -118,6 +118,9 @@ struct TextAreaStyle {
 
     // Placeholder hint shown when the document is empty
     Color placeholderColor = Color(150, 150, 150, 255);
+
+    // Marks drawn over spaces, tabs and line ends (SetShowHiddenCharacters)
+    Color hiddenCharacterColor = Color(150, 150, 150, 200);
     
     // Line numbers
     bool showLineNumbers;
@@ -486,6 +489,35 @@ Enables or disables current line highlighting.
 void SetShowLineNumbers(bool show);
 ```
 Shows or hides line numbers.
+
+#### SetShowHiddenCharacters
+```cpp
+void SetShowHiddenCharacters(bool show);
+bool GetShowHiddenCharacters() const;
+```
+Shows the characters that print nothing as faint marks in
+`style.hiddenCharacterColor`, the way a code editor's *Show Whitespace* does:
+
+| Character | Mark |
+|---|---|
+| space, ideographic space (U+3000) | a dot in the middle of the space |
+| tab | an arrow across the tab's width |
+| no-break space (U+00A0, U+202F) | a small ring |
+| zero-width space and joiners (U+200B-U+200D), word joiner (U+2060), byte order mark (U+FEFF), soft hyphen (U+00AD) | a short vertical tick |
+| end of a line | a pilcrow (¶) after the last character |
+
+The marks are drawn over the laid-out text, so they follow word wrap,
+horizontal scrolling and right-to-left runs; the text, the caret and the
+selection are unchanged. In Markdown mode they are drawn on the lines that
+show their own text (paragraphs, lists, quotes, code blocks), not on tables,
+rules, formulas or pictures. Off by default; `ApplyLightTheme`,
+`ApplyDarkTheme` and `ApplyTheme` set the colour.
+
+```cpp
+auto editor = std::make_shared<UltraCanvasTextArea>("Editor", 0, 0, 800, 600);
+editor->SetShowHiddenCharacters(true);
+editor->GetStyle().hiddenCharacterColor = Color(200, 120, 120, 180);
+```
 
 #### SetTabSize
 ```cpp
@@ -1083,6 +1115,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks
 - **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`
 - **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
 - **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
