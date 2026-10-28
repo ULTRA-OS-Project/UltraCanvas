@@ -1890,7 +1890,7 @@ namespace UltraCanvas {
 
         // --- Markdown hover: update cursor for links/images ---
         if (editingMode == TextAreaEditingMode::MarkdownHybrid && !isSelectingText && !overHiddenCharacter) {
-            if (!HandleMarkdownHover(event.pointer.x, event.pointer.y)) {
+            if (!HandleMarkdownHover(event)) {
                 SetMouseCursor(UCMouseCursor::Text);
             }
         }

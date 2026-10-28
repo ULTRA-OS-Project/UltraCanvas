@@ -1,6 +1,8 @@
 // UltraCanvas/core/UltraCanvasTextArea_Markdown.cpp
 // Markdown hybrid rendering enhancement for TextArea
 // Shows current line as plain text, all other lines as formatted markdown
+// Version: 2.8.1 - footnote, abbreviation and anchor tooltips are placed at the pointer
+//                 in the window, not offset by the text area's position in it
 // Version: 2.8.0 - GitHub-style heading anchors: [Section](#section) jumps without {#id}
 // Version: 2.7.1 - MarkdownHybridStyle::linkUnderline is honoured (links were always underlined)
 // Version: 2.7.0
@@ -2113,10 +2115,13 @@ namespace UltraCanvas {
     // MARKDOWN HOVER HANDLING — update cursor for links/images
     // ---------------------------------------------------------------
 
-    bool UltraCanvasTextArea::HandleMarkdownHover(int mouseX, int mouseY) {
+    bool UltraCanvasTextArea::HandleMarkdownHover(const UCEvent& event) {
         if (editingMode != TextAreaEditingMode::MarkdownHybrid) return false;
 
-        const MarkdownHitRect* hit = FindHitRectAtScreenPos(mouseX, mouseY);
+        // The hit rects are in the element's coordinates, the tooltip in the
+        // window's: the pointer in the element would place it up and left of
+        // the pointer by however far the element is from the window's corner.
+        const MarkdownHitRect* hit = FindHitRectAtScreenPos(event.pointer.x, event.pointer.y);
         if (!hit) {
             UltraCanvasTooltipManager::HideTooltip();
             return false;
@@ -2124,14 +2129,14 @@ namespace UltraCanvas {
 
         if (hit->isAnchorReturn) {
             if (auto* win = GetWindow(); win && !hit->altText.empty()) {
-                UltraCanvasTooltipManager::UpdateAndShowTooltip(win, hit->altText, {mouseX, mouseY});
+                UltraCanvasTooltipManager::UpdateAndShowTooltip(win, hit->altText, event.pointerWindow);
             }
             SetMouseCursor(UCMouseCursor::Hand);
             return true;
         }
         if (hit->isAbbreviation || hit->isFootnote) {
             if (auto* win = GetWindow(); win && !hit->altText.empty()) {
-                UltraCanvasTooltipManager::UpdateAndShowTooltip(win, hit->altText, {mouseX, mouseY});
+                UltraCanvasTooltipManager::UpdateAndShowTooltip(win, hit->altText, event.pointerWindow);
             }
             return true;
         }

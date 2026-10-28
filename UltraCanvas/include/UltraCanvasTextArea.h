@@ -2,7 +2,9 @@
 // Advanced text area component with syntax highlighting and full UTF-8 support
 // Version: 3.16.0 - SetShowHiddenCharacters: spaces, tabs, no-break and zero-width
 //                 characters and line ends drawn as faint marks (hiddenCharacterColor),
-//                 their name and code in a tooltip over each
+//                 their name and code in a tooltip over each. HandleMarkdownHover takes the
+//                 event, so its tooltips are placed in window coordinates (they were
+//                 drawn up and left of the pointer by the element's offset in the window)
 // Version: 3.15.0 - auto-completion: ShowAutoComplete opens a list of suggestions at the
 //                 caret (it was a placeholder); IsAutoCompleteOpen, GetAutoCompletePrefix
 // Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
@@ -1409,12 +1411,13 @@ namespace UltraCanvas {
         bool HandleMarkdownClick(int mouseX, int mouseY);
 
         /**
-         * @brief Handle hover over markdown elements (updates cursor)
-         * @param mouseX Mouse X coordinate
-         * @param mouseY Mouse Y coordinate
+         * @brief Handle hover over markdown elements (updates cursor, shows
+         *        footnote / abbreviation / anchor tooltips)
+         * @param event The mouse move: its pointer (element coordinates) finds
+         *        the element, its pointerWindow places the tooltip
          * @return true if hovering over a clickable element
          */
-        bool HandleMarkdownHover(int mouseX, int mouseY);
+        bool HandleMarkdownHover(const UCEvent& event);
 
         void SetDocumentFilePath(const std::string& path) { documentFilePath = path; }
         std::string GetDocumentFilePath() const { return documentFilePath; }
