@@ -4126,7 +4126,8 @@ namespace UltraCanvas {
             const double width = std::abs(pos.width);
             const double top = originY + pos.y;
             const double centerX = left + width / 2.0;
-            const double centerY = top + pos.height / 2.0;
+            // 1px lines on a pixel's centre, or they blur across two.
+            const double centerY = std::floor(top + pos.height / 2.0) + 0.5;
             const double dot = std::max(1.0, pos.height * 0.08);
 
             switch (mark) {
@@ -4134,7 +4135,7 @@ namespace UltraCanvas {
                     ctx->DrawFilledCircle(Point2Dd(centerX, centerY), static_cast<float>(dot), color);
                     break;
                 case Mark::NoBreakSpace:
-                    ctx->DrawFilledCircle(Point2Dd(centerX, centerY), static_cast<float>(dot * 2.0),
+                    ctx->DrawFilledCircle(Point2Dd(centerX, centerY), static_cast<float>(std::max(2.5, pos.height * 0.2)),
                                           Colors::Transparent, color, 1.0f);
                     break;
                 case Mark::Tab: {
@@ -4149,9 +4150,14 @@ namespace UltraCanvas {
                     break;
                 }
                 case Mark::ZeroWidth: {
-                    const double quarter = pos.height / 4.0;
-                    ctx->DrawLine(Point2Dd(left, top + quarter), Point2Dd(left, top + pos.height - quarter), color);
-                    ctx->DrawFilledCircle(Point2Dd(left, top + quarter), static_cast<float>(dot), color);
+                    // A tick with a dot on top on a narrow band, so it shows
+                    // even against the stem of the letter that follows.
+                    const double x = std::floor(left) + 0.5;
+                    const double inset = pos.height * 0.15;
+                    ctx->DrawFilledRectangle(Rect2Dd(x - 2.0, top, 4.0, pos.height),
+                                             color.WithAlpha(static_cast<uint8_t>(color.a / 3)), 0.0f, Colors::Transparent);
+                    ctx->DrawLine(Point2Dd(x, top + inset), Point2Dd(x, top + pos.height - inset), color);
+                    ctx->DrawFilledCircle(Point2Dd(x, top + inset), static_cast<float>(dot * 1.5), color);
                     break;
                 }
                 case Mark::Nothing:
