@@ -1,7 +1,8 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
 // Version: 3.16.0 - SetShowHiddenCharacters: spaces, tabs, no-break and zero-width
-//                 characters and line ends drawn as faint marks (hiddenCharacterColor)
+//                 characters and line ends drawn as faint marks (hiddenCharacterColor),
+//                 their name and code in a tooltip over each
 // Version: 3.15.0 - auto-completion: ShowAutoComplete opens a list of suggestions at the
 //                 caret (it was a placeholder); IsAutoCompleteOpen, GetAutoCompletePrefix
 // Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
@@ -749,6 +750,7 @@ namespace UltraCanvas {
         // style.hiddenCharacterColor: a dot for a space, an arrow for a tab, a
         // ring for a no-break space, a tick for a zero-width character and a
         // pilcrow at the end of every line. Display only - the text is unchanged.
+        // Hovering a mark shows the character's name and code in a tooltip.
         void SetShowHiddenCharacters(bool show) { showHiddenCharacters = show; RequestRedraw(); }
         bool GetShowHiddenCharacters() const { return showHiddenCharacters; }
 
@@ -1157,8 +1159,20 @@ namespace UltraCanvas {
         LineLayoutBase *GetActualLineLayout(int idx);
 
         void RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line);
+        // A character SetShowHiddenCharacters marks, with where it is on screen
+        // (element coordinates; for a line end, where its pilcrow is drawn).
+        struct HiddenCharacterMark {
+            enum class Kind { Space, Tab, NoBreakSpace, ZeroWidth, LineEnd };
+            Kind kind = Kind::Space;
+            char32_t codepoint = 0;
+            Rect2Df bounds;
+        };
+        std::vector<HiddenCharacterMark> FindHiddenCharacters(LineLayoutBase* line, int lineIndex) const;
         // The SetShowHiddenCharacters marks over one line, drawn after its text.
         void DrawHiddenCharacters(IRenderContext* ctx, LineLayoutBase* line, int lineIndex);
+        // Shows the name and code of the marked character under the pointer in
+        // a tooltip; true when there is one.
+        bool UpdateHiddenCharacterTooltip(const UCEvent& event);
 
     private:
         // Auto-completion (ShowAutoComplete)
@@ -1274,6 +1288,7 @@ namespace UltraCanvas {
         bool wordWrap;
         bool highlightCurrentLine;
         bool showHiddenCharacters = false;
+        bool hiddenCharacterTooltipShown = false;   // UpdateHiddenCharacterTooltip's, to hide only its own
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).
         int tabSize = 4;
  

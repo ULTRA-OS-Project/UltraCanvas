@@ -513,6 +513,12 @@ show their own text (paragraphs, lists, quotes, code blocks), not on tables,
 rules, formulas or pictures. Off by default; `ApplyLightTheme`,
 `ApplyDarkTheme` and `ApplyTheme` set the colour.
 
+Resting the pointer on a mark shows a tooltip (through
+`UltraCanvasTooltipManager`) with the character's Unicode name, its code
+(`U+00A0`), its decimal value and its UTF-8 bytes. Over a pilcrow it names the
+document's line ending (`LF`, `CRLF` or `CR`, see `GetLineEnding()`) and its
+codes. A zero-width character is found within a few pixels of its tick.
+
 ```cpp
 auto editor = std::make_shared<UltraCanvasTextArea>("Editor", 0, 0, 800, 600);
 editor->SetShowHiddenCharacters(true);
@@ -1115,7 +1121,7 @@ unescaped, and the document view typesets them.
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
-- **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks
+- **3.16.0** (2026-10-28): `SetShowHiddenCharacters()` / `GetShowHiddenCharacters()` and `TextAreaStyle::hiddenCharacterColor` - spaces, tabs, no-break and zero-width characters and line ends drawn as marks, with each one's name and code in a tooltip
 - **3.15.0** (2026-10-24): Auto-completion - `ShowAutoComplete` opens a list at the caret (it was a placeholder), `IsAutoCompleteOpen()`, `GetAutoCompletePrefix()`
 - **3.10.0** (2026-10-14): An input method's composition is drawn in the caret's line (`DrawsTextComposition()`, `GetCompositionText()`)
 - **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
