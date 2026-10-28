@@ -24,9 +24,14 @@
 //  - the system's roots are the operating system's: a root that comes with
 //    Windows (Microsoft's, which no OpenSSL bundle carries) or with macOS and
 //    Linux (ISRG Root X1) is trusted through them
+//  - RS256 and ES256 against keys given by their parts (JWK n/e, x/y), with
+//    vectors made by Python's cryptography package: holding, a changed byte
+//    of the data or signature, another key, a 1024-bit RSA key and a point
+//    off the curve refused
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
+#include "UltraCrypt/UltraCryptPublicKey.h"
 #include "UltraCrypt/UltraCryptX509.h"
 #include "UltraCanvasTextUtils.h"
 
@@ -1566,6 +1571,104 @@ static void TestX509() {
           "enveloped data is not signed data");
 }
 
+// ===== RS256 / ES256 against keys given by their parts =====
+// Made with Python's cryptography package (a signer that is not OpenSSL's EVP
+// path under test): an RSA-2048 key and its PKCS #1 v1.5 SHA-256 signature, a
+// 1024-bit modulus, a P-256 key and its signature as r || s - over the
+// signing input of a JWS.
+static const char* kRsaN =
+    "b55c2e74b30112545e67a77b8c26410ca1c6bab5994bc2ac5590a03162358529257cc857792b355966c4fd71090daab7"
+    "4cbf296ad55515d42d10aa4cddbadac028b7beab50c4cef3135621b3104126ef2c6c04319a55aba4f2149718d9dc4162"
+    "2b22ae769281e2c31242b5ba711d6ad3963548157460a3ccacd0db2b07f067d03bc91a9b2ff99e6bd564b628027a9b06"
+    "76deb1195064f8796801c4bc7ed8807770eedee756d4c162ee6a8a5f69dfdaa03a887f4ed20996e0dc81c0f5b3b1a4da"
+    "2a18b6b5151d45a9bf1210011894622a57a80ac8bf1ee5938d714ac190ee9578022ca8f7193c854643264bb51e50968c"
+    "587fc23fb46917161e6a9ccc3dfc80b7"
+    ;
+static const char* kRsaE =
+    "010001"
+    ;
+static const char* kRsaSig =
+    "79f49b2e2010d025998d3f1fb99f09f4c26a7de179ab75c60e1dc4c270e6986b1f7ccab7969067bf47a7c1e20cea4ee0"
+    "388a906b5301ee587d078c1ae6e72073c816c271f781426df865cd947e82453e1b1befb9734b8e2976723df109cd1dad"
+    "ec20932de78af292793397c6d5f7c6ba8689bfaaa023280dc5b7a011a9f7f1b467d9cc3bc0ccb477af1c1bf71989b5f7"
+    "f80be30bb8af01b8bacbb0eb28ff9ecf9a3ac3abe2e23d3a36dbb7250270af669c69a8f9303ffe5245193488180af31b"
+    "b10726d590b3b7501ee03eeda3540415292d04e5de6f312e41b88ece0d2a74197f1654d2f81cd602e96b74bd23ee025c"
+    "2894efbf78b430f7e9e6da7a75327161"
+    ;
+static const char* kRsa1024N =
+    "e99e0daf51d627b6043fa955cd90231a7898884dfe64ffc0c0326b4f8d8e3e6c5c433c62fe474dbed97eb13c513741a8"
+    "5c6e74c4fb4953f0d697fb00a874cd872db9a9122ececb0af7b9c1520305aa1663b969e83ef3fc90d78494dbbd2dc72a"
+    "4d9baf7b4b45397aa1ddf323b21a61e8a7dfdeaa3b7e062ae76a67eaf8fe06a9"
+    ;
+static const char* kP256X =
+    "47f2894721846c967c62a73ed911fd41d441457407d191bc41cdd168a5f1549a"
+    ;
+static const char* kP256Y =
+    "4e9fbc3cc56218e8cd73ee8ae2c36c0d4aa2a47878f87ec53f8d0de8beca005f"
+    ;
+static const char* kP256Sig =
+    "27aade2f087398c8d4fd0835263eca63de5fdb863a1fcd4f2c67d1831a4f61f95c9953e3931846fe5dcc5383820d7939"
+    "d0d53780e408b160fc3b4e9cf1101eb7"
+    ;
+static const char* kJwsSigningInput = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlcmlrYSJ9";
+
+static std::vector<uint8_t> Hex(const char* hex) {
+    std::vector<uint8_t> out;
+    UltraCrypt_FromHex(hex, out);
+    return out;
+}
+
+static void TestRsaEcdsa() {
+    std::printf("RS256 / ES256 (keys by their parts)\n");
+    const std::string input = kJwsSigningInput;
+    const auto n = Hex(kRsaN), e = Hex(kRsaE), rsaSig = Hex(kRsaSig);
+    const auto x = Hex(kP256X), y = Hex(kP256Y), ecSig = Hex(kP256Sig);
+    if (!UltraCrypt_IsRsaEcdsaAvailable()) {
+        const auto r = UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), rsaSig);
+        Check(!r && r.code == UltraCryptResultCode::BackendUnavailable,
+              "without OpenSSL 3 every call says BackendUnavailable");
+        return;
+    }
+    using C = UltraCryptResultCode;
+
+    Check(static_cast<bool>(UltraCrypt_CheckRsaPublicKey(n, e)), "an RSA-2048 key is accepted");
+    Check(static_cast<bool>(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), rsaSig)),
+          "its RS256 signature holds");
+    std::string changed = input;
+    changed[5] ^= 0x01;
+    Check(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, changed.data(), changed.size(), rsaSig).code == C::SignatureInvalid,
+          "a changed byte of the data: SignatureInvalid");
+    auto badRsa = rsaSig;
+    badRsa[17] ^= 0x01;
+    Check(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), badRsa).code == C::SignatureInvalid,
+          "a changed byte of the signature: SignatureInvalid");
+    auto otherN = n;
+    otherN[100] ^= 0x01;
+    Check(!UltraCrypt_VerifyRsaPkcs1Sha256(otherN, e, input.data(), input.size(), rsaSig),
+          "another modulus: refused");
+    Check(UltraCrypt_CheckRsaPublicKey(Hex(kRsa1024N), e).code == C::InvalidKeySize,
+          "a 1024-bit modulus: InvalidKeySize");
+    Check(UltraCrypt_CheckRsaPublicKey(n, {0x01, 0x00, 0x00}).code == C::InvalidArgument,
+          "an even exponent: InvalidArgument");
+
+    Check(static_cast<bool>(UltraCrypt_CheckP256PublicKey(x, y)), "a P-256 key is accepted");
+    Check(static_cast<bool>(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), ecSig)),
+          "its ES256 signature (r || s) holds");
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, changed.data(), changed.size(), ecSig).code == C::SignatureInvalid,
+          "a changed byte of the data: SignatureInvalid");
+    auto badEc = ecSig;
+    badEc[40] ^= 0x01;
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), badEc).code == C::SignatureInvalid,
+          "a changed byte of s: SignatureInvalid");
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), std::vector<uint8_t>(ecSig.begin(), ecSig.end() - 1)).code ==
+              C::InvalidArgument, "a 63-byte signature: InvalidArgument");
+    auto offCurve = y;
+    offCurve[31] ^= 0x01;
+    Check(UltraCrypt_CheckP256PublicKey(x, offCurve).code == C::InvalidArgument, "a point off the curve: InvalidArgument");
+    Check(UltraCrypt_CheckP256PublicKey(std::vector<uint8_t>(x.begin() + 1, x.end()), y).code == C::InvalidKeySize,
+          "a 31-byte coordinate: InvalidKeySize");
+}
+
 int main() {
     std::printf("UltraCrypt tests — backend: %s\n\n",
                 UltraCrypt_GetBackendName().c_str());
@@ -1589,6 +1692,7 @@ int main() {
     TestKeyExchange();
     TestSecureBuffer();
     TestX509();
+    TestRsaEcdsa();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

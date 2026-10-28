@@ -10,3 +10,10 @@
     `BUILD_TESTS` (`Tests/CryptTests.cmake`); the Windows and macOS CI rows
     run it, and it checks that a root shipped with the system - Microsoft's
     on Windows, ISRG Root X1 on macOS and Linux - is trusted.
+- **UltraCrypt: RSA and ECDSA signature checks against keys by their parts**
+  (`UltraCrypt/UltraCryptPublicKey.h`, on the OpenSSL 3 backend):
+  `UltraCrypt_VerifyRsaPkcs1Sha256` (JWS RS256; the key as n and e, 2048 bits
+  at least) and `UltraCrypt_VerifyEcdsaP256Sha256` (ES256; x and y, the
+  signature as r || s), with `CheckRsaPublicKey` / `CheckP256PublicKey`.
+  `ULTRACANVAS_CRYPT_HAS_OPENSSL` tells CMake consumers whether the backend
+  is there. Tested against vectors made by Python's cryptography package.

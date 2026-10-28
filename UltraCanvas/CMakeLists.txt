@@ -2760,7 +2760,10 @@ endif()
 # that answer BackendUnavailable. Linked by its library file, as libsodium is
 # by name, so the installed package names no OpenSSL target a consumer would
 # have to find; none of its headers reach UltraCrypt's.
-target_sources(uc-crypt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptX509.cpp)
+# The same backend checks RSA and ECDSA signatures against keys given by their
+# parts (include/UltraCrypt/UltraCryptPublicKey.h: JWS RS256 / ES256).
+target_sources(uc-crypt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptX509.cpp
+                                ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptPublicKey.cpp)
 if(NOT EMSCRIPTEN)
     find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
 endif()
@@ -2777,10 +2780,16 @@ if(OpenSSL_FOUND AND OPENSSL_CRYPTO_LIBRARY)
     elseif(APPLE)
         target_link_libraries(uc-crypt PRIVATE "-framework Security" "-framework CoreFoundation")
     endif()
-    message(STATUS "  OpenSSL: ${OPENSSL_VERSION} (UltraCrypt X.509 and CMS)")
+    message(STATUS "  OpenSSL: ${OPENSSL_VERSION} (UltraCrypt X.509, CMS, RSA and ECDSA)")
+    set(_uc_crypt_openssl TRUE)
 else()
-    message(STATUS "  OpenSSL 3: NOT FOUND — UltraCrypt has no X.509 or CMS (S/MIME)")
+    message(STATUS "  OpenSSL 3: NOT FOUND — UltraCrypt has no X.509, CMS, RSA or ECDSA (S/MIME, JWS)")
+    set(_uc_crypt_openssl FALSE)
 endif()
+# For consumers that are only worth building with them (the UltraDBAdmin
+# relay's sign-in): whether UltraCrypt's X.509 / RSA / ECDSA calls do anything.
+set(ULTRACANVAS_CRYPT_HAS_OPENSSL ${_uc_crypt_openssl} CACHE INTERNAL
+    "UltraCrypt has its OpenSSL 3 backend (UltraCryptX509.h, UltraCryptPublicKey.h)")
 _ultracanvas_module_home(UltraCrypt uc-crypt)
 # The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
 # password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.

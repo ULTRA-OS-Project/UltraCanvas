@@ -49,7 +49,7 @@ cryptography:
       # raised, HKDF must be built on top of the HMAC primitives.
     openssl_x509:
       min_version: "3.0"
-      purpose: "UltraCrypt's second backend: X.509, CMS (S/MIME) and PKCS #12 (UltraCryptX509.h), which libsodium has nothing of"
+      purpose: "UltraCrypt's second backend: X.509, CMS (S/MIME), PKCS #12 (UltraCryptX509.h) and RSA / ECDSA checks (UltraCryptPublicKey.h, JWS), which libsodium has nothing of"
       required: false                 # without it the X.509 calls answer BackendUnavailable
       platforms: ["all"]              # not the browser build
       cmake_module: "OpenSSL"         # find_package(OpenSSL 3 COMPONENTS Crypto); linked privately by file

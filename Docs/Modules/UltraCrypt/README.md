@@ -1165,6 +1165,43 @@ which no OpenSSL bundle carries; ISRG Root X1 on macOS and Linux) trusted
 through them; Windows and macOS CI run the suite for that
 (`ULTRACANVAS_BUILD_CRYPT_TESTS`).
 
+### 5.12 RSA and ECDSA signature checks — JWS RS256 / ES256
+
+`include/UltraCrypt/UltraCryptPublicKey.h`, `core/UltraCrypt/UltraCryptPublicKey.cpp`,
+on the same OpenSSL 3 backend as §5.11 and as optional. For signatures the
+world makes and hands over with a key by its parts - an OpenID Connect
+provider's ID token and key set (JWKS), JOSE, WebCrypto; everything
+UltraCanvas signs of its own stays Ed25519 (§5.8).
+
+```cpp
+bool UltraCrypt_IsRsaEcdsaAvailable();
+
+// RS256: RSASSA-PKCS1-v1_5 with SHA-256. The key as a JWK's n and e
+// (big-endian bytes); below 2048 bits it is InvalidKeySize.
+UltraCryptResult UltraCrypt_CheckRsaPublicKey(modulus, exponent);
+UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(modulus, exponent, data, size, signature);
+
+// ES256: ECDSA on P-256 with SHA-256. The key as a JWK's x and y (32 bytes
+// each; a point off the curve is InvalidArgument); the signature as r || s,
+// 64 bytes, as JWS gives it - converted to DER inside.
+UltraCryptResult UltraCrypt_CheckP256PublicKey(x, y);
+UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(x, y, data, size, signature);
+```
+
+Checks only; a signature that does not hold is `SignatureInvalid`, whichever
+byte is off, as for Ed25519. The P-256 key is read as a SubjectPublicKeyInfo
+assembled from the point, since `OSSL_PARAM_BLD`'s EC import fails on
+OpenSSL 3.0.2 (Ubuntu 22.04) and `d2i_PUBKEY` reads alike everywhere.
+
+*Serves:* the UltraDBAdmin relay's OpenID Connect sign-in
+(`Apps/UltraDBAdmin/relay/RelaySignIn.cpp`), which takes the provider's keys
+whose parts these accept and checks the ID token's signature with them; its
+state and nonce come from `UltraCrypt_RandomBytes`, so the relay calls no
+OpenSSL itself. Tested against vectors made by Python's `cryptography`: both
+signatures holding, a changed byte of the data or the signature, another
+modulus, a 1024-bit modulus, an even exponent, a point off the curve, short
+coordinates and signatures.
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -1262,7 +1299,7 @@ is part of the deliverable, not a follow-up:
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
-| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME |
+| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME; RSA / ECDSA checks (§5.12), for the UltraDBAdmin relay's sign-in |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.

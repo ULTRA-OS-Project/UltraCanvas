@@ -20,10 +20,12 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
-## OpenSSL 3 libcrypto (UltraCrypt's X.509 and CMS)
+## OpenSSL 3 libcrypto (UltraCrypt's X.509, CMS, RSA and ECDSA)
 
 - **Used by:** UltraCrypt's X.509 and CMS (`UltraCanvas/core/UltraCrypt/UltraCryptX509.cpp`,
-  `UltraCryptX509.h`), and through it UltraMail's S/MIME. Optional: without
+  `UltraCryptX509.h`) and its RSA / ECDSA checks (`UltraCryptPublicKey.h`),
+  and through them UltraMail's S/MIME and the UltraDBAdmin relay's ID-token
+  signature. Optional: without
   OpenSSL 3 those calls answer `BackendUnavailable`. (UltraNet links OpenSSL
   for TLS on Linux and Android, UltraRTC for DTLS; those are listed with them.)
 - **Upstream:** https://github.com/openssl/openssl
