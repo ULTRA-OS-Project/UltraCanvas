@@ -1237,6 +1237,35 @@ namespace UltraCanvas {
         return ExportVImage(vImg, imagePath, opts);
     }
 
+    // jxlsave on one libjxl thread. libvips 8.17+ writes JPEG XL a tile at a
+    // time through libjxl's chunked encoder, on a libjxl thread pool as large
+    // as vips_concurrency_get(), and its release_buffer callback drops each
+    // tile from the save's tile table without the lock that guards adding
+    // one (still so in 8.18.7 and on master, 2026-10). Two threads in that
+    // GHashTable at once corrupt it and GLib ends the process
+    // (g_hash_table_remove_node: "nnodes > 0") - seen on Windows x64 for a
+    // picture of four or more 2048-pixel tiles. One thread takes turns. The
+    // concurrency setting is process-wide, so saves are serialized and the
+    // setting restored after each; other pipelines started meanwhile run on
+    // one thread too, slower but correct. Older libvips encode the frame
+    // whole and keep their threads.
+    static void JxlSave(vips::VImage& vImg, const std::string& imagePath, const UCImageSave::JxlExportOptions& jxl) {
+        static std::mutex jxlSaveMutex;
+        std::lock_guard<std::mutex> lock(jxlSaveMutex);
+        const bool tiled = vips_version(0) > 8 || (vips_version(0) == 8 && vips_version(1) >= 17);
+        struct OneThread {
+            int threads = 0;
+            explicit OneThread(bool on) {
+                if (on) { threads = vips_concurrency_get(); vips_concurrency_set(1); }
+            }
+            ~OneThread() { if (threads > 0) vips_concurrency_set(threads); }
+        } oneThread(tiled);
+        vImg.jxlsave(imagePath.c_str(), vips::VImage::option()
+                ->set("Q", jxl.quality)
+                ->set("lossless", jxl.lossless)
+                ->set("effort", jxl.effort));
+    }
+
     // The encoding half of ExportVImage. It writes wherever it is told, which
     // is never the caller's file directly - see ExportVImage below.
     static std::string EncodeVImageTo(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
@@ -1376,10 +1405,7 @@ namespace UltraCanvas {
 
                 case UCImageSaveFormat::JXL: {
 //                    int jxlBitDepth = ColorDepthToBitDepth(opts.jxl.colorDepth);
-                    vImg.jxlsave(imagePath.c_str(), vips::VImage::option()
-                            ->set("Q", opts.jxl.quality)
-                            ->set("lossless", opts.jxl.lossless)
-                            ->set("effort", opts.jxl.effort));
+                    JxlSave(vImg, imagePath, opts.jxl);   // one libjxl thread - see JxlSave
                     break;
                 }
 
