@@ -2,6 +2,7 @@
 // Version: 0.8.4 - an editable password row on the setup and server-re-entry
 //                  pages (AccountFields::askPassword), prefilled with the typed
 //                  password, so a failed sign-in can be fixed in place
+// Version: 0.10.0 - the Security row in place of the S/MIME row (the security dialog)
 // Version: 0.9.0 - the S/MIME row: the certificate, Import... (a .p12 file) and Remove
 // Version: 0.8.3 - a header (icon tile, title, the intro); Save, Details, Delete account, Edit signature and the
 //                  browser sign-in carry icons
@@ -175,7 +176,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // A Protocol row sits above the server rows and two authentication rows
     // under them on both. The Signature row adds one more line.
     // The header (an icon tile, a title over the intro) is 56 high.
-    config.height     = account.edit ? (account.onSaveSignature ? 656 : 624) + (account.onImportSmime ? 34 : 0) : 464;
+    config.height     = account.edit ? (account.onSaveSignature ? 656 : 624) + (account.onEditSecurity ? 34 : 0) : 464;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -452,48 +453,31 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->AddChild(editBtn);
     }
 
-    // S/MIME row (account settings only): the certificate the account signs
-    // and decrypts with. Imported from a PKCS #12 file into the vault at once.
-    if (account.edit && account.onImportSmime) {
-        auto row = credRow("srvSmimeRow", "S/MIME");
-        auto summary = Theme::MakeLine("srvSmimeSummary",
-                                       account.smimeSummary.empty() ? std::string("No certificate")
-                                                                    : account.smimeSummary,
-                                       Theme::kControlHeight, Theme::kSizeBody, Theme::kTextPrimary);
-        summary->SetTooltip(account.smimeSummary.empty()
-            ? std::string("Import your S/MIME certificate (a .p12 or .pfx file) to sign mail and to read mail "
-                          "encrypted to you")
-            : account.smimeSummary);
+    // Security row (account settings only): how the account signs and
+    // encrypts, and the button to the security dialog, which saves by itself.
+    if (account.edit && account.onEditSecurity) {
+        auto row = credRow("srvSecRow", "Security");
+        auto summary = Theme::MakeLine("srvSecSummary", account.securitySummary, Theme::kControlHeight,
+                                       Theme::kSizeBody, Theme::kTextPrimary);
+        summary->SetTooltip(account.securitySummary);
         row->AddChild(summary);
         summary->layoutItem.SetFlexGrow(1);
         UltraCanvasLabel* summaryLabel = summary.get();   // a sibling in this dialog
-        auto removeBtn = CreateButton("srvSmimeRemove", 0, 0, 90, Theme::kControlHeight, "Remove");
-        Theme::FitToLabel(removeBtn, 90);
-        Theme::StyleSecondary(removeBtn);
-        removeBtn->SetVisible(!account.smimeSummary.empty());
-        UltraCanvasButton* removeRaw = removeBtn.get();
-        auto importBtn = CreateButton("srvSmimeImport", 0, 0, 110, Theme::kControlHeight,
-                                      "Import\xE2\x80\xA6");
-        Theme::FitToLabel(importBtn, 110);
-        Theme::StyleSecondary(importBtn);
-        Theme::SetButtonIcon(importBtn, "lock");
-        auto onImport = account.onImportSmime;
-        importBtn->onClick = [dlg, onImport, summaryLabel, removeRaw]() {
-            onImport(dlg, [summaryLabel, removeRaw](const std::string& now) {
-                summaryLabel->SetText(now.empty() ? std::string("No certificate") : now);
+        auto editBtn = CreateButton("srvSecEdit", 0, 0, 130, Theme::kControlHeight,
+                                    "Mail security\xE2\x80\xA6");
+        Theme::FitToLabel(editBtn, 130);
+        Theme::StyleSecondary(editBtn);
+        Theme::SetButtonIcon(editBtn, "lock");
+        auto onEdit = account.onEditSecurity;
+        editBtn->onClick = [dlg, onEdit, summaryLabel]() {
+            // The security dialog is modal over this page, so the page (and
+            // the label) outlive it.
+            onEdit(dlg, [summaryLabel](const std::string& now) {
+                summaryLabel->SetText(now);
                 summaryLabel->SetTooltip(now);
-                removeRaw->SetVisible(!now.empty());
             });
         };
-        auto onRemove = account.onRemoveSmime;
-        removeBtn->onClick = [onRemove, summaryLabel, removeRaw]() {
-            const std::string now = onRemove ? onRemove() : std::string();
-            summaryLabel->SetText(now.empty() ? std::string("No certificate") : now);
-            summaryLabel->SetTooltip(now);
-            removeRaw->SetVisible(!now.empty());
-        };
-        row->AddChild(importBtn);
-        row->AddChild(removeBtn);
+        row->AddChild(editBtn);
     }
 
     auto note = Theme::MakeLine("srvNote", NoteFor(startProtocol), 0, Theme::kSizeBody,

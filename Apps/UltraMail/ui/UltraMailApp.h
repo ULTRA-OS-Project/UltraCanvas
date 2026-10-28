@@ -517,6 +517,17 @@ private:
     // The account's S/MIME certificate in a few words ("" for none), and
     // importing one from a PKCS #12 file (Account Settings).
     std::string SmimeSummary(const std::string& accountId) const;
+    // The account's mail security: in a few words (Account Settings' row),
+    // saved (and the keys the reading pane and the outbox use refreshed), and
+    // the dialog that edits it - from Account Settings and at the end of
+    // adding an account (`intro`, `cancelLabel`). `done` gets the new summary
+    // after a save; `closed` runs once the dialog is gone, whichever way.
+    std::string SecuritySummary(const std::string& accountId) const;
+    void SaveSecurity(const std::string& accountId, const AccountSecurity& security);
+    void ShowSecurityDialog(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
+                            const std::string& intro, const std::string& cancelLabel,
+                            std::function<void(const std::string& summary)> done,
+                            std::function<void()> closed = nullptr);
     void ImportSmimeCertificate(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
                                 std::function<void(const std::string& summary)> done);
     // A certificate from a good, vouched-for signature of `address`: kept.

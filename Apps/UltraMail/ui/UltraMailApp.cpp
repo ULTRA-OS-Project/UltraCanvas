@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.41 - Mail security per account (the security dialog: Account Settings and
+//                  after adding an account); new messages start as it says
 // Version: 0.9.40 - the account bar's counters filter the list (New today, all
 //                  unread mail, Waiting for reply); a click on the rest of the
 //                  card, or "Show all emails" under it, shows all mail again
@@ -101,6 +103,7 @@
 #include "UltraMailCredentialVault.h"
 #include "UltraMailComposer.h"
 #include "UltraMailRichComposer.h"
+#include "UltraMailSecurityDialog.h"
 #include "UltraMailSignatureDialog.h"
 #include "UltraMailSender.h"
 #include "UltraMailContactCollector.h"
@@ -559,8 +562,10 @@ void UltraMailApp::FinishStartup() {
     }
     // Demo path: one dialog on its own, to look at it (wizard, password,
     // password-new, oauth, wait, account - the last one on the demo account
-    // seeded by ULTRAMAIL_DEMO_MAIL=1 - outbox, settings, and compose: a
-    // formatted message with two attachments).
+    // seeded by ULTRAMAIL_DEMO_MAIL=1 - security and security-new, that
+    // account's Mail security as from Account Settings and as at the end of
+    // adding an account, outbox, settings, and compose: a formatted message with two
+    // attachments).
     if (const char* dd = std::getenv("ULTRAMAIL_DEMO_DIALOG"); dd && *dd) {
         const std::string which = dd;
         UltraCanvas::UltraCanvasWindowBase* parent = window_.get();
@@ -577,6 +582,13 @@ void UltraMailApp::FinishStartup() {
                 "for the mail servers of erika@example.com\xE2\x80\xA6", nullptr, "server");
         else if (which == "account" && !accounts_.empty())
             HandleAccountSettings(accounts_.front().accountId);
+        else if (which == "security" && !accounts_.empty())
+            ShowSecurityDialog(accounts_.front().accountId, parent, std::string(), "Cancel", nullptr);
+        else if (which == "security-new" && !accounts_.empty())   // as at the end of adding an account
+            ShowSecurityDialog(accounts_.front().accountId, parent,
+                               "Optional: sign and encrypt mail from this account. You can do this later in "
+                               "Account Settings \xE2\x80\xBA Security.",
+                               "Skip", nullptr);
         else if (which == "outbox") OpenOutbox();
         else if (which == "settings") OpenSettings();
         else if (which == "compose") {
@@ -1256,23 +1268,33 @@ ComposeView* UltraMailApp::OpenComposer(const Draft& draft, int64_t replacesOutb
     // Its own view: the buttons, the toolbar and Send act on this window's
     // message, whatever other compose windows are open.
     auto view = std::make_shared<ComposeView>();
-    view->SetDraft(draft);
+    // Signing and encrypting: S/MIME once the account has a certificate,
+    // OpenPGP wherever GnuPG is. A new message, reply or forward starts as
+    // the account's Mail security says, where that method is offered; one
+    // that already chose (a reply to encrypted mail, a draft resumed) keeps
+    // its own.
+    std::vector<std::string> methods;
+    const Account* from = nullptr;
+    for (const Account& a : accounts_)
+        if (ToLowerCase(a.email) == ToLowerCase(draft.fromAddr)) from = &a;
+    {
+        SmimeIdentity identity;
+        if (SmimeAvailable() && from && LoadSmimeIdentity(vault_, from->accountId, identity))
+            methods.push_back("S/MIME");
+        if (OpenPgpAvailable()) methods.push_back("OpenPGP");
+    }
+    Draft starting = draft;
+    if (from && starting.secureMethod.empty() && replacesOutboxId <= 0 && !from->security.method.empty() &&
+        std::find(methods.begin(), methods.end(), from->security.method) != methods.end()) {
+        starting.secureMethod = from->security.method;
+        starting.sign = from->security.sign;
+        starting.encrypt = from->security.encrypt;
+    }
+    view->SetDraft(starting);
     view->SetParentWindow(win.get());
     view->SetCloud(cloud_);
     view->SetAttachmentsRight(prefs_.AttachmentsRight());
-    // Signing and encrypting: S/MIME once the account has a certificate,
-    // OpenPGP wherever GnuPG is.
-    {
-        std::vector<std::string> methods;
-        SmimeIdentity identity;
-        if (SmimeAvailable()) {
-            for (const Account& a : accounts_)
-                if (ToLowerCase(a.email) == ToLowerCase(draft.fromAddr) && LoadSmimeIdentity(vault_, a.accountId, identity))
-                    methods.push_back("S/MIME");
-        }
-        if (OpenPgpAvailable()) methods.push_back("OpenPGP");
-        view->SetSecureMethods(std::move(methods));
-    }
+    view->SetSecureMethods(std::move(methods));
     // To / Cc / Bcc complete from the address book as it is when the window
     // opens (one read, then matched in memory as the writer types), the
     // addresses written to most - by the mail in the Sent folders, recent
@@ -1894,6 +1916,78 @@ void UltraMailApp::LoadAccounts() {
     mailView_.SetSecureKeys(MakeSecureKeys());
 }
 
+std::string UltraMailApp::SecuritySummary(const std::string& accountId) const {
+    for (const Account& a : accounts_)
+        if (a.accountId == accountId) {
+            SmimeIdentity identity;
+            return SecurityDialog::Describe(a.security, LoadSmimeIdentity(vault_, accountId, identity));
+        }
+    return std::string();
+}
+
+void UltraMailApp::SaveSecurity(const std::string& accountId, const AccountSecurity& security) {
+    if (UltraDbResult up = store_.SetAccountSecurity(accountId, security); !up) {
+        AlertError(window_ ? window_.get() : nullptr,
+                   "The mail security settings could not be saved.", DetailLine(up));
+        return;
+    }
+    for (Account& account : accounts_)
+        if (account.accountId == accountId) account.security = security;
+    // The OpenPGP key an account signs with is in the keys' snapshot.
+    mailView_.SetSecureKeys(MakeSecureKeys());
+}
+
+void UltraMailApp::ShowSecurityDialog(const std::string& accountId, UltraCanvas::UltraCanvasWindowBase* parent,
+                                      const std::string& intro, const std::string& cancelLabel,
+                                      std::function<void(const std::string& summary)> done,
+                                      std::function<void()> closed) {
+    const Account* account = nullptr;
+    for (const Account& a : accounts_)
+        if (a.accountId == accountId) account = &a;
+    if (!account) {
+        if (closed) closed();
+        return;
+    }
+    SecurityDialog::Options options;
+    options.email = account->email;
+    options.current = account->security;
+    options.intro = intro;
+    options.cancelLabel = cancelLabel;
+    options.smimeBuilt = SmimeAvailable();
+    if (options.smimeBuilt) {
+        options.smimeSummary = SmimeSummary(accountId);
+        options.onImportSmime = [this, accountId](UltraCanvas::UltraCanvasWindowBase* page,
+                                                  std::function<void(const std::string&)> imported) {
+            ImportSmimeCertificate(accountId, page, std::move(imported));
+        };
+        options.onRemoveSmime = [this, accountId]() {
+            RemoveSmimeIdentity(vault_, accountId);
+            mailView_.SetSecureKeys(MakeSecureKeys());
+            return SmimeSummary(accountId);
+        };
+    }
+    options.openPgpBuilt = OpenPgpAvailable();
+    if (options.openPgpBuilt) {
+        // How a key reads in the list: its name and address, and the end of
+        // its fingerprint in groups of four, as GnuPG shows it.
+        for (const OpenPgpKey& key : OpenPgpSecretKeys()) {
+            std::string label = key.name.empty() ? std::string("Key") : key.name;
+            if (!key.emails.empty()) label += " <" + key.emails.front() + ">";
+            const std::string tail = key.fingerprint.size() > 16 ? key.fingerprint.substr(key.fingerprint.size() - 16)
+                                                                 : key.fingerprint;
+            label += " \xC2\xB7";
+            for (size_t i = 0; i < tail.size(); i += 4) label += " " + tail.substr(i, 4);
+            options.openPgpKeys.emplace_back(key.fingerprint, label);
+        }
+    }
+    options.onSave = [this, accountId, done](const AccountSecurity& security) {
+        SaveSecurity(accountId, security);
+        if (done) done(SecuritySummary(accountId));
+    };
+    options.onClosed = std::move(closed);
+    SecurityDialog::Show(parent, std::move(options));
+}
+
 std::string UltraMailApp::SmimeSummary(const std::string& accountId) const {
     SmimeIdentity identity;
     CertificateInfo info;
@@ -2013,6 +2107,19 @@ SecureKeys UltraMailApp::MakeSecureKeys() {
     keys.smimeCertificateFor = [this](const std::string& address, std::string& pem) {
         bool found = false;
         return contacts_.IsOpen() && contacts_.FindCertificate(address, pem, found) && found;
+    };
+    // The OpenPGP key each account chose to sign with (Mail security).
+    std::map<std::string, std::string> pgpKeys;
+    for (const Account& a : accounts_) {
+        if (a.security.openPgpKey.empty()) continue;
+        std::string email = a.email;
+        std::transform(email.begin(), email.end(), email.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        pgpKeys[email] = a.security.openPgpKey;
+    }
+    keys.openPgpSigningKeyFor = [pgpKeys](const std::string& address) {
+        const auto found = pgpKeys.find(address);
+        return found == pgpKeys.end() ? std::string() : found->second;
     };
     return keys;
 }
@@ -4618,19 +4725,16 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.onSaveSignature = [this, accountId](const Signature& signature) {
             SaveSignature(accountId, signature);
         };
-        // S/MIME: the certificate this account signs and decrypts with.
-        if (SmimeAvailable()) {
-            fields.smimeSummary = SmimeSummary(accountId);
-            fields.onImportSmime = [this, accountId](UltraCanvas::UltraCanvasWindowBase* page,
-                                                     std::function<void(const std::string&)> done) {
-                ImportSmimeCertificate(accountId, page, std::move(done));
-            };
-            fields.onRemoveSmime = [this, accountId]() {
-                RemoveSmimeIdentity(vault_, accountId);
-                mailView_.SetSecureKeys(MakeSecureKeys());
-                return SmimeSummary(accountId);
-            };
-        }
+        // The Security row: the S/MIME certificate, the OpenPGP key, how new
+        // messages start - in the security dialog, which saves on its own Save.
+        fields.securitySummary = SecuritySummary(accountId);
+        fields.onEditSecurity = [this, accountId](UltraCanvas::UltraCanvasWindowBase* page,
+                                                  std::function<void(const std::string&)> done) {
+            // The certificate is imported and removed at once, so the row
+            // reads it again however the dialog closes.
+            ShowSecurityDialog(accountId, page, std::string(), "Cancel", nullptr,
+                               [this, accountId, done]() { if (done) done(SecuritySummary(accountId)); });
+        };
 
         // The login check uses the typed new password when present, else the
         // account's stored credentials. It only runs on the password path; the
@@ -4863,6 +4967,19 @@ void UltraMailApp::CompleteAccountSetup(const AccountDraft& draft, const Discove
                 + " needs an app password for mail programs (generated in "
                   "your account's security settings); the normal sign-in "
                   "password is rejected.";
+    // Then, where this build signs or encrypts at all, the account's mail
+    // security - optional ("Skip"), and changeable later in Account Settings -
+    // before the password is stored or the browser sign-in starts, so one
+    // dialog is open at a time.
+    if (SmimeAvailable() || OpenPgpAvailable()) {
+        AlertSuccess(parent, summary, detail, [this, accountId, parent, storePassword]() {
+            ShowSecurityDialog(accountId, parent,
+                               "Optional: sign and encrypt mail from this account. You can do this later in "
+                               "Account Settings \xE2\x80\xBA Security.",
+                               "Skip", nullptr, storePassword);
+        });
+        return;
+    }
     AlertSuccess(parent, summary, detail, storePassword);
 }
 
