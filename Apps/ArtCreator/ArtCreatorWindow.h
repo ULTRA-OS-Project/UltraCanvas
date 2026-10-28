@@ -7,6 +7,10 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.13.0 - the transform bar's rotation centre (fields on the page or from the middle,
+//                   a picker for its nine points or a ring for a dragged one) while the Rotate
+//                   handles show; typed rotation and shear turn about that centre then; every
+//                   field of the bar one width
 // Version: 1.12.0 - the user's own palettes kept (picker.userpalettes); a hovered palette
 //                  swatch floods the picker
 // Version: 1.11.0 - the palette rows under the picker (UltraCanvasColorPaletteManager):
@@ -25,7 +29,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -193,6 +197,16 @@ private:
     void ApplyScalePercent(bool horizontal, double percent, bool merge = false);
     void ApplyRotation(double degrees, bool merge = false);
     void ApplyShear(double degrees, bool merge = false);
+    // The rotation centre group at the bar's right end, shown while the
+    // Selector's Rotate handles are: its fields read the centre on the page
+    // or from the middle of the selection (settings.centreRelative).
+    void ShowCentreGroup();
+    void ShowCentreMode();
+    void ApplyCentre(bool horizontal, double value);
+    bool RotateHandlesShown() const;
+    // What typed rotation and shear turn about: the rotation centre while
+    // the Rotate handles show, else the reference point.
+    Point2Dd TurnPivot() const;
 
     // ----- icon mode -----
     // An icon is drawn for the size it is shown at (16 to 256 px). Icon mode
@@ -271,6 +285,11 @@ private:
     std::shared_ptr<UltraCanvasSpinner>         posXBox, posYBox, sizeWBox, sizeHBox, scaleWBox, scaleHBox;
     std::shared_ptr<UltraCanvasSpinner>         rotationBox, shearBox;
     std::shared_ptr<UltraCanvasButton>          ratioLockButton;
+    std::shared_ptr<UltraCanvasContainer>       centreGroup;
+    std::shared_ptr<UltraCanvasButton>          centreModeButton;
+    std::shared_ptr<UltraCanvasLabel>           centreXCaption, centreYCaption;
+    std::shared_ptr<UltraCanvasSpinner>         centreXBox, centreYBox;
+    std::shared_ptr<UltraCanvasReferencePointPicker> centrePicker;
     // The palette's slots: one per group of tools (see PaletteGroups()).
     std::vector<std::shared_ptr<UltraCanvasToolGroupButton>> toolSlots;
     std::shared_ptr<UltraCanvasGroupBox>        iconPanel;

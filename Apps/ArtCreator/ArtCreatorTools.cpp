@@ -3,6 +3,9 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.6.0 - the Selector turns the selection by the rotation handle (the frame hidden
+//                 while it turns, the angle in the status line), a Dial / Stem switch for
+//                 that handle, and a moved rotation centre goes with a moved selection
 // Version: 1.5.0 - the Selector's sections each in a rounded framed group box, captioned
 //                 small at the right of its top line; Scale / Rotate with icons; 1 px
 //                 above and below the icon bars
@@ -15,7 +18,7 @@
 // Version: 1.2.2 - the arrow keys nudge by one icon pixel in icon mode
 // Version: 1.2.1 - the Shape Editor button reads "Line / curve", not "Line ⇄ curve"
 // Version: 1.2.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorTools.h"
@@ -478,8 +481,12 @@ public:
         const VectorHandle h = canvas->HitTestHandle(e.view);
         if (h != VectorHandle::NoHandle && h != VectorHandle::Body) {
             activeHandle = h;
+            accumulated = 0;
+            handleAngle = canvas->RotationHandleAngle();
+            startAngle = handleAngle;
             ctx.history->BeginEdit(canvas->GetHandleMode() == VectorHandleMode::Rotate
                                    ? (h == VectorHandle::Center ? "Move Centre" : "Rotate") : "Scale");
+            canvas->SetDraggedHandle(h);
             return;
         }
         auto hit = canvas->HitTest(e.doc, 4.0);
@@ -505,6 +512,11 @@ public:
             double dx = e.snapped.x - lastDoc.x, dy = e.snapped.y - lastDoc.y;
             if (e.ctrl) { if (std::fabs(e.snapped.x - pressDoc.x) > std::fabs(e.snapped.y - pressDoc.y)) dy = pressDoc.y - lastDoc.y; else dx = pressDoc.x - lastDoc.x; }
             TranslateElements(ctx.selection->Elements(), dx, dy);
+            // A moved rotation centre goes with the objects.
+            if (ctx.canvas->HasRotationCenter()) {
+                const Point2Dd c = ctx.canvas->GetRotationCenter();
+                ctx.canvas->SetRotationCenter(Point2Dd(c.x + dx, c.y + dy));
+            }
             lastDoc = Point2Dd(lastDoc.x + dx, lastDoc.y + dy);
             ctx.canvas->Refresh();
         } else if (marquee) {
@@ -517,7 +529,10 @@ public:
         auto* canvas = ctx.canvas;
         if (activeHandle != VectorHandle::NoHandle) {
             activeHandle = VectorHandle::NoHandle;
+            canvas->SetDraggedHandle(VectorHandle::NoHandle);
+            canvas->SetRotationHandleAngle(std::nullopt);
             if (dragged) ctx.history->EndEdit(); else ctx.history->CancelEdit();
+            if (ctx.setStatus) ctx.setStatus(name + ": " + hint);
         } else if (moving) {
             moving = false;
             if (dragged) ctx.history->EndEdit();
@@ -552,6 +567,7 @@ public:
             case VectorHandle::Top: case VectorHandle::Bottom: c = rotate ? UCMouseCursor::SizeWE : UCMouseCursor::SizeNS; break;
             case VectorHandle::Left: case VectorHandle::Right: c = rotate ? UCMouseCursor::SizeNS : UCMouseCursor::SizeWE; break;
             case VectorHandle::Center: c = UCMouseCursor::SizeAll; break;
+            case VectorHandle::Rotation: c = UCMouseCursor::Hand; break;
             case VectorHandle::Body: c = UCMouseCursor::SizeAll; break;
             default: break;
         }
@@ -604,6 +620,16 @@ public:
                                ctx.canvas->GetHandleMode() == VectorHandleMode::Rotate ? 1 : 0,
                                [&ctx](int i) { ctx.canvas->SetHandleMode(i == 1 ? VectorHandleMode::Rotate : VectorHandleMode::Scale); },
                                { menuIcon("scale.svg"), menuIcon("rotate.svg") });
+        // How Rotate shows its handle: a ring of degrees round the centre,
+        // or a stem from it to just beyond the frame. Kept in the settings.
+        AddCaption(*handles, "ac-sel-rothandle-cap", "Rotation handle");
+        AddSwitch(*handles, "ac-sel-rothandle", { "Dial", "Stem" },
+                  ctx.canvas->GetRotationHandleStyle() == VectorRotationHandleStyle::Stem ? 1 : 0,
+                  [&ctx](int i) {
+                      const auto style = i == 1 ? VectorRotationHandleStyle::Stem : VectorRotationHandleStyle::Dial;
+                      if (ctx.setRotationHandleStyle) ctx.setRotationHandleStyle(style);
+                      else ctx.canvas->SetRotationHandleStyle(style);
+                  });
         auto arrange = AddSection(panel, "ac-sel-arrange", "Arrange");
         arrangeButtons = AddIconBar(*arrange, "ac-sel-z", {
             { icon("to-front.svg"), "Bring to front", [&ctx]() { Reorder(ctx, ZOrderMove::ToFront, "Bring to Front"); } },
@@ -703,6 +729,21 @@ private:
             const Point2Dd c = canvas->GetRotationCenter();
             const bool corner = activeHandle == VectorHandle::TopLeft || activeHandle == VectorHandle::TopRight ||
                                 activeHandle == VectorHandle::BottomLeft || activeHandle == VectorHandle::BottomRight;
+            if (activeHandle == VectorHandle::Rotation) {
+                // The handle points at the pointer: the selection turns by
+                // what that moves it. Ctrl holds it to 15 degree angles.
+                const double dx = e.doc.x - c.x, dy = e.doc.y - c.y;
+                if (std::hypot(dx, dy) < 1e-9) return;
+                double target = std::atan2(-dx, -dy) * kRadToDeg;   // counter-clockwise from up
+                if (e.ctrl) target = std::round(target / 15.0) * 15.0;
+                const double turn = std::remainder(target - handleAngle, 360.0);
+                if (std::fabs(turn) > 1e-9) RotateElements(ctx.selection->Elements(), -turn / kRadToDeg, c);
+                handleAngle += turn;
+                ShowTurn(ctx);
+                lastDoc = e.doc;
+                canvas->Refresh();
+                return;
+            }
             if (corner) {
                 const double a0 = std::atan2(lastDoc.y - c.y, lastDoc.x - c.x);
                 double a1 = std::atan2(e.doc.y - c.y, e.doc.x - c.x);
@@ -713,6 +754,9 @@ private:
                     accumulated = stepped;
                 }
                 RotateElements(ctx.selection->Elements(), a1 - a0, c);
+                // The context's angles run clockwise, the handle's counter.
+                handleAngle -= (a1 - a0) * kRadToDeg;
+                ShowTurn(ctx);
             } else {
                 // Edge handles skew: top / bottom shear in x, left / right in y.
                 const bool horizontal = activeHandle == VectorHandle::Top || activeHandle == VectorHandle::Bottom;
@@ -758,6 +802,20 @@ private:
         canvas->Refresh();
     }
 
+    // While the selection turns the rotation handle shows the angle, and
+    // the status line the angle and the turn so far.
+    void ShowTurn(ArtToolContext& ctx) {
+        ctx.canvas->SetRotationHandleAngle(handleAngle);
+        if (!ctx.setStatus) return;
+        double shown = std::remainder(handleAngle, 360.0);
+        if (std::fabs(shown) < 0.05) shown = 0;
+        char buf[96];
+        std::snprintf(buf, sizeof(buf), "Rotate: %.1f\xC2\xB0 (%+.1f\xC2\xB0)", shown, handleAngle - startAngle);
+        ctx.setStatus(buf);
+    }
+
+    static constexpr double kRadToDeg = 180.0 / M_PI;
+
     bool moving = false, marquee = false, dragged = false, toggleModePending = false;
     VectorHandle activeHandle = VectorHandle::NoHandle;
     // The panel's widgets from the last BuildOptions (the panel owns them too).
@@ -765,6 +823,9 @@ private:
     std::vector<std::shared_ptr<UltraCanvasButton>> arrangeButtons, alignButtons, distributeButtons;
     std::shared_ptr<UltraCanvasButton> pageButton;
     double accumulated = 0;
+    // The way the rotation handle points while the selection turns, and
+    // where it pointed when the drag began (degrees, counter-clockwise).
+    double handleAngle = 0, startAngle = 0;
     Point2Dd pressDoc, lastDoc, currentDoc;
 };
 

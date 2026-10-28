@@ -6,15 +6,20 @@
 // and whether its channels are open. The picker changes them, so they are
 // saved as they change; there is no settings window. It also keeps the
 // colour palettes under the picker (picker.palettes) and the palettes the
-// user made in the palette manager (picker.userpalettes).
+// user made in the palette manager (picker.userpalettes), the look of the
+// rotation handle (handles.rotation) and whether the transform bar shows
+// the rotation centre on the page or from the middle of the selection
+// (transform.centre); the Selector's panel and the bar change those.
+// Version: 1.3.0 - handles.rotation (dial / stem) and transform.centre (absolute / relative)
 // Version: 1.2.0 - picker.userpalettes: the palettes made with "Add palette"
 // Version: 1.1.0 - picker.palettes: the palette rows under the colour picker
 // Version: 1.0.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasColorPicker.h"    // ColorPickerWheelStyle and its names
+#include "UltraCanvasVectorCanvas.h"   // VectorRotationHandleStyle
 #include "UltraCanvasSettingsFolder.h"
 
 #include <filesystem>
@@ -42,6 +47,13 @@ public:
     // The user's own palettes, made with the palette manager's "Add
     // palette", in the same form; empty for none.
     std::string userPalettes;
+
+    // ===== ROTATION =====
+    // Rotate mode's handle: a dial round the centre, or a stem from it.
+    VectorRotationHandleStyle rotationHandle = VectorRotationHandleStyle::Dial;
+    // The transform bar's centre fields: the centre's place on the page,
+    // or how far it lies from the middle of the selection.
+    bool centreRelative = false;
 
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
@@ -83,6 +95,16 @@ public:
         if (it != kv.end()) palettes = it->second;
         it = kv.find("picker.userpalettes");
         if (it != kv.end()) userPalettes = it->second;
+        it = kv.find("handles.rotation");
+        if (it != kv.end()) {
+            if (it->second == "dial") rotationHandle = VectorRotationHandleStyle::Dial;
+            else if (it->second == "stem") rotationHandle = VectorRotationHandleStyle::Stem;
+        }
+        it = kv.find("transform.centre");
+        if (it != kv.end()) {
+            if (it->second == "relative") centreRelative = true;
+            else if (it->second == "absolute") centreRelative = false;
+        }
         return true;
     }
 
@@ -99,6 +121,8 @@ public:
         file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
         if (!palettes.empty()) file << "picker.palettes = " << palettes << "\n";
         if (!userPalettes.empty()) file << "picker.userpalettes = " << userPalettes << "\n";
+        file << "handles.rotation = " << (rotationHandle == VectorRotationHandleStyle::Stem ? "stem" : "dial") << "\n";
+        file << "transform.centre = " << (centreRelative ? "relative" : "absolute") << "\n";
         return file.good();
     }
 

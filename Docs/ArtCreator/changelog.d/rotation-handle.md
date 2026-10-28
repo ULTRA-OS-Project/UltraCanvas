@@ -1,0 +1,25 @@
+- **A rotation handle.** The Selector's Rotate handles (a second click on the
+  selection) now show where the selection turns about and how far it is
+  turned: a handle starts at the rotation centre and points along the
+  object's angle. Drag its knob to turn the selection; Ctrl holds it to 15°
+  angles. The *Handles* section of the Selector's options chooses its look -
+  a **dial** of degree ticks round the centre (the default) or a **stem** to
+  just beyond the frame - and keeps it (`handles.rotation` in `config.ini`).
+- **One object's own turned frame.** In Rotate mode a single object's frame
+  and handles turn with it instead of standing upright around it. While the
+  selection turns, the frame and the other handles disappear and only the
+  object, the centre and the rotation handle show; the status line reads the
+  angle and the turn so far.
+- **The rotation centre in the transform bar.** While the Rotate handles show,
+  the bar's right end holds the centre's X and Y and a reference point picker:
+  its nine points put the centre on a corner, the middle of an edge or the
+  middle of the frame, and a centre dragged anywhere else shows as a ring
+  pointing its way. The button in front of the fields switches them between
+  the centre's place on the page and how far it lies from the middle of the
+  selection (`transform.centre` in `config.ini`). Typed rotation and shear
+  turn about that centre while the Rotate handles show.
+- A moved rotation centre now goes with the selection when it is dragged or
+  moved from the bar, and stays after a typed change to the same objects.
+- Every field of the transform bar is one width, top and bottom row, and a
+  held arrow steps the value again and again - 1° or 1 mm (1 px in icon mode)
+  at a time - as one undo step.

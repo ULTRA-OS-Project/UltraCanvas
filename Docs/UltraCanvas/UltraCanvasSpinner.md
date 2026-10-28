@@ -60,6 +60,8 @@ A value can be changed four ways:
   clicking the field selects the current value so typing replaces it
 - ✅ Optional **value dropdown** (`SetDropdownEnabled(true)`) — a combobox-style
   popup of every available value, opened by clicking the field
+- ✅ A held arrow button **repeats** its step (after 400 ms, then every 60 ms,
+  while the pointer stays on it; `SetButtonRepeat`)
 - ✅ Buttons render disabled at the range limits (unless wrapping)
 - ✅ Full state feedback: hover, pressed, focused, disabled
 - ✅ Event callbacks: value changed / changing, selection changed, editing finished
@@ -125,6 +127,7 @@ void   SetWrap(bool);
 void   SetSnapToStep(bool);             // false: a Decimal value keeps its own places
 void   StepUp(double steps = 1.0);
 void   StepDown(double steps = 1.0);
+void   SetButtonRepeat(unsigned int delayMs, unsigned int intervalMs);   // 0: no repeat
 
 // List mode
 void        SetListItems(const std::vector<std::string>& items);
@@ -183,6 +186,10 @@ bool IsStepping() const;                         // a run of steps is open
   (`min + n * step`) unless `SetSnapToStep(false)`: then a Decimal spinner keeps
   any value to its `decimals` places and the buttons step by `step` from it -
   a measurement field that shows `8.61` and steps by `0.1`.
+- Holding an arrow button down steps once at once, again after the repeat
+  delay and then at the repeat interval, as a held arrow key does; sliding off
+  the button pauses it, and the release ends it. `SetButtonRepeat(0, 0)` makes
+  each click one step.
 - `onValueChanging` and `onValueChanged` fire on every step. `onStepsFinished`
   fires once when a *run* of steps ends - the arrow button released, the
   arrow / Page / Home / End key released, the wheel at rest for half a second,

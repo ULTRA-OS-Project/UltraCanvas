@@ -24,7 +24,7 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 ```
 ┌ menu bar ─────────────────────────────────────────────────────────────┐
 ├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … | mirror | quality ┤
-├ transform bar: reference point | X Y | W H | W% H% | lock | rotation shear ┤
+├ transform bar: reference point | X Y | W H | W% H% | lock | rotation shear | (Rotate) centre ┤
 ├──────┬────────────────────────────────────────────┬────────────────────┤
 │ tool │  rulers                                     │ Icon (icon mode)   │
 │ pal- │ ┌──────────────────────────────────────┐    │ Colour (fill/line) │
@@ -48,7 +48,8 @@ a line (a straight line, polyline or open path) is selected.
 
 The Selector's options are four small framed sections: a *Handles* switch
 (Scale | Rotate - the rotate handles' edges skew - which follows a second
-click on the selection) and three rows of flat icon buttons with tooltips: *Arrange* (to front, forward, backward, to back),
+click on the selection) with the *Rotation handle* switch under it (Dial |
+Stem, kept as `handles.rotation` in the settings file), and three rows of flat icon buttons with tooltips: *Arrange* (to front, forward, backward, to back),
 *Align* (left, centre, right | top, middle, bottom | centre on page) and
 *Distribute* (centres evenly | equal gaps). Each row is greyed until the
 selection holds enough objects for it - one, two, three.
@@ -140,8 +141,23 @@ the selection and to every line drawn afterwards.
   the selector's handles alike (shift frees a corner handle). The
   percentage fields have no arrows; every field steps by 1. One object shows its own
   angles; several show 0 and turn or shear by what is typed. Lengths are in
-  the page's unit, or icon pixels in icon mode. A held arrow key or a turn
-  of the wheel is one undo step.
+  the page's unit, or icon pixels in icon mode. Every field is the same
+  width. A held arrow button repeats its step; a held arrow button or key,
+  or a turn of the wheel, is one undo step.
+  While the Selector shows its Rotate handles the bar ends in the *rotation
+  centre*: its X / Y, a second reference point picker that puts it on a
+  corner, the middle of an edge or the middle of the frame (a centre dragged
+  anywhere else shows as a ring pointing its way), and a button in front
+  that switches the fields between the centre's place on the page and how
+  far it lies from the middle of the selection (`transform.centre`). Typed
+  rotation and shear turn about that centre then.
+- **Rotate handles** (a second click on the selection): one object's frame
+  turns with it; round corner handles rotate, diamond edge handles skew, the
+  cross-hair centre can be dragged, and the rotation handle starts at the
+  centre and points along the object's angle - a dial of 15° ticks (default)
+  or a stem to just beyond the frame. Dragging its knob turns the selection
+  to where the pointer is (Ctrl: 15° angles); while it turns, the frame and
+  the other handles are hidden and the status line shows the angle.
 - **Object**: No Fill, No Line, line widths in points (hairline to 8 pt)
   and in pixels (1 to 4 px: the icon's pixels in icon mode, 96 DPI pixels
   otherwise).

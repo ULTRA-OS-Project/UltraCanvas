@@ -6,12 +6,14 @@
 // VectorEdit::VectorHitTester (fill, stroke, tolerance, transforms,
 // locked layers) and the operations (transform about a pivot, z-order,
 // group / ungroup with placement preserved, align, distribute, duplicate,
-// convert to path, bake transform).
+// convert to path, bake transform), and UltraCanvasVectorCanvas's view,
+// snapping and handles - rotate mode's turned frame and rotation handle.
 //
 // Usage: VectorEditTest
 // Exit code is the number of failed checks.
+// Version: 1.2.0 - the canvas's turned frame, rotation handle and kept rotation centre
 // Version: 1.1.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBezierPath.h"
@@ -382,6 +384,46 @@ int main() {
         Check(NearPt(canvas->GetRotationCenter(), 150, 125), "the rotation centre defaults to the selection's centre");
         auto hit = canvas->HitTest(Point2Dd(150, 125));
         Check(hit && hit->element == box, "the canvas hit-tests the document");
+
+        // Rotate mode: one object's own box, turned as it is.
+        RotateElements({box}, -M_PI / 6, Point2Dd(150, 125));   // 30 degrees counter-clockwise on the page
+        const auto frame = canvas->SelectionFrame();
+        const double top = std::hypot(frame[1].x - frame[0].x, frame[1].y - frame[0].y);
+        const double side = std::hypot(frame[3].x - frame[0].x, frame[3].y - frame[0].y);
+        Check(Near(top, 100, 1e-6) && Near(side, 50, 1e-6), "the frame is the object's own 100 x 50 box");
+        Check(frame[1].y < frame[0].y, "turned counter-clockwise, its top edge rises to the right");
+        Check(Near(canvas->RotationHandleAngle(), 30, 1e-6), "the rotation handle points 30 degrees from up");
+        Check(NearPt(canvas->GetRotationCenter(), 150, 125, 1e-6), "the centre is the middle of the turned frame");
+        const Point2Dd across = canvas->SelectionFrameFraction(canvas->SelectionFramePoint(0.25, 0.75));
+        Check(NearPt(across, 0.25, 0.75, 1e-9), "SelectionFrameFraction undoes SelectionFramePoint");
+        // The dial's knob: 40 px from the centre, the handle's way.
+        const Point2Dd c = canvas->DocToView(canvas->GetRotationCenter());
+        const double a = 30 * M_PI / 180;
+        const Point2Di dialKnob(static_cast<int>(std::lround(c.x - 40 * std::sin(a))), static_cast<int>(std::lround(c.y - 40 * std::cos(a))));
+        Check(canvas->HitTestHandle(dialKnob) == VectorHandle::Rotation, "the dial's knob is the rotation handle");
+        // The stem's knob: 24 px beyond the frame's top edge.
+        canvas->SetRotationHandleStyle(VectorRotationHandleStyle::Stem);
+        const double toTop = 25 * canvas->GetZoom() + 24;
+        const Point2Di stemKnob(static_cast<int>(std::lround(c.x - toTop * std::sin(a))), static_cast<int>(std::lround(c.y - toTop * std::cos(a))));
+        Check(canvas->HitTestHandle(stemKnob) == VectorHandle::Rotation, "the stem's knob sits just beyond the frame");
+        canvas->SetRotationHandleAngle(90.0);
+        Check(Near(canvas->RotationHandleAngle(), 90, 1e-9), "a tool can say where the handle points while it turns");
+        canvas->SetRotationHandleAngle(std::nullopt);
+        Check(Near(canvas->RotationHandleAngle(), 30, 1e-6), "and hand it back to the frame");
+        canvas->SetHandleMode(VectorHandleMode::Scale);
+        Check(Near(canvas->SelectionFrame()[0].y, canvas->SelectionBounds().y, 1e-9), "scale mode keeps the upright bounds");
+        canvas->SetHandleMode(VectorHandleMode::Rotate);
+        // A moved centre stays while the same objects are selected again.
+        int centreChanges = 0;
+        canvas->onRotationCenterChanged = [&]() { ++centreChanges; };
+        canvas->SetRotationCenter(Point2Dd(120, 110));
+        canvas->GetSelection()->Set(box);
+        Check(canvas->HasRotationCenter() && NearPt(canvas->GetRotationCenter(), 120, 110), "selecting the same object again keeps the centre");
+        canvas->GetSelection()->Clear();
+        Check(!canvas->HasRotationCenter() && centreChanges == 2, "a new selection drops it, and says so");
+        canvas->onRotationCenterChanged = nullptr;
+        canvas->GetSelection()->Set(box);
+        RotateElements({box}, M_PI / 6, Point2Dd(150, 125));
         canvas->GetSelection()->Clear();
         Check(canvas->HitTestHandle(Point2Di(static_cast<int>(mid.x), static_cast<int>(mid.y))) == VectorHandle::NoHandle, "no selection, no handles");
     }

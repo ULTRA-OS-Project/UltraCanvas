@@ -272,10 +272,32 @@ What the element does by itself:
   beat the grid at equal distance. Every pointer event carries both the
   raw and the snapped point.
 - **Selection handles** — eight scale handles, or in `Rotate` mode round
-  rotate handles at the corners, skew diamonds at the edges and a movable
-  rotation centre (`SetHandleMode`, `SetRotationCenter`); `HitTestHandle`
-  tells a selector tool which one is under the pointer, `Body` when the
-  pointer is inside the bounds, `NoHandle` otherwise.
+  rotate handles at the corners, skew diamonds at the edges, a movable
+  rotation centre and a rotation handle (`SetHandleMode`, `SetRotationCenter`,
+  `onHandleModeChanged`, `onRotationCenterChanged`); `HitTestHandle`
+  tells a selector tool which one is under the pointer (`Rotation` for the
+  rotation handle), `Body` when the pointer is inside the bounds, `NoHandle`
+  otherwise.
+  - In `Rotate` mode one selected object shows its own box turned and
+    sheared as it is, and the handles sit on that frame; several objects
+    show their upright bounds. `SelectionFrame()` returns the frame's four
+    corners, `SelectionFramePoint(fx, fy)` a point across it and
+    `SelectionFrameFraction(p)` the way back.
+  - The rotation handle starts at the rotation centre and points the way
+    the selection is turned (`RotationHandleAngle()`, degrees
+    counter-clockwise from up): `VectorRotationHandleStyle::Dial` (the
+    default) draws a ring of 15° ticks round the centre with a wedge from 0
+    to the angle and the knob on the ring, `Stem` a line to a knob just
+    beyond the frame (`SetRotationHandleStyle`).
+  - A selector tool reports the handle it drags with `SetDraggedHandle`;
+    while a turning handle (a rotate corner or the rotation handle) is
+    dragged, the frame and the other handles are hidden and the objects
+    turn on their own, with the centre and the rotation handle over them.
+    `SetRotationHandleAngle` makes the handle follow the drag (several
+    objects have no angle of their own); `nullopt` hands it back.
+  - A centre set with `SetRotationCenter` stays while the same objects
+    stay selected - an edit that selects them again keeps it - and is
+    dropped when the selection changes (`HasRotationCenter`).
 - **Hit testing** — `HitTest(docPoint, tolerancePixels)` and
   `ElementsIn(rect, fullyInside)` over the document.
 - **Tool hooks** — `onToolPress / Drag / Release / Hover / DoubleClick`

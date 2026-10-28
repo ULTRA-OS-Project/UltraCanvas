@@ -9,8 +9,13 @@
 //
 // The raster twin is UltraCanvasPaintSurface; the read-only viewer is
 // UltraCanvasVectorElement. This one edits.
+// Version: 1.1.0 - Rotate mode: one object's own turned frame (SelectionFrame), a rotation
+//                  handle from the centre (VectorRotationHandleStyle Dial / Stem), the frame
+//                  hidden while turning (SetDraggedHandle), onHandleModeChanged and
+//                  onRotationCenterChanged; a moved centre stays while the same objects stay
+//                  selected
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -19,9 +24,11 @@
 #include "DataFormats/UltraCanvasVectorRenderer.h"
 #include "DataFormats/UltraCanvasVectorEdit.h"
 
+#include <array>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace UltraCanvas {
@@ -92,11 +99,18 @@ enum class VectorHandle {
     NoHandle,
     TopLeft, Top, TopRight, Right, BottomRight, Bottom, BottomLeft, Left,   // scale (or rotate / skew in rotate mode)
     Center,                                                                  // the rotation centre
+    Rotation,                                                                // the rotation handle (rotate mode)
     Body                                                                     // inside the bounds, on no handle
 };
 // Xara's two-state selector: one click shows scale handles, a second
 // click on the selection shows rotate (corners) and skew (edges) handles.
 enum class VectorHandleMode { Scale, Rotate };
+// How rotate mode shows the rotation handle, which starts at the rotation
+// centre and points the way the selection is turned (up for 0 degrees):
+// Dial - a ring of degree ticks around the centre, with a wedge from 0 to
+// the angle and the knob on the ring; Stem - a line from the centre to a
+// knob just beyond the frame.
+enum class VectorRotationHandleStyle { Dial, Stem };
 
 class UltraCanvasVectorCanvas : public UltraCanvasUIElement {
 public:
@@ -180,10 +194,39 @@ public:
     void SetHandleMode(VectorHandleMode mode);
     VectorHandleMode GetHandleMode() const { return handleMode; }
     void SetHandleSizePixels(double px) { handleSize = px; RequestRedraw(); }
-    // The rotation centre, in document units; the selection's centre when
-    // unset. The selector tool moves it by dragging the Center handle.
+    // The rotation centre, in document units; the middle of the selection's
+    // frame when unset. The selector tool moves it by dragging the Center
+    // handle. A centre that was set stays while the same objects stay
+    // selected (an edit that selects them again keeps it) and is dropped
+    // when the selection changes.
     void SetRotationCenter(const std::optional<Point2Dd>& docPoint);
     Point2Dd GetRotationCenter() const;
+    bool HasRotationCenter() const { return rotationCenter.has_value(); }
+    // The selection's frame in document units, corners top left, top right,
+    // bottom right, bottom left. In rotate mode one selected object shows
+    // its own box turned (and sheared) as the object is; otherwise, and for
+    // several objects, it is the upright bounds. The handles sit on it.
+    std::array<Point2Dd, 4> SelectionFrame() const;
+    // A point across the frame from fractions of it (0, 0 its top left
+    // corner, 1, 1 its bottom right), and the fractions of a point.
+    Point2Dd SelectionFramePoint(double fx, double fy) const;
+    Point2Dd SelectionFrameFraction(const Point2Dd& docPoint) const;
+    // The rotation handle's look; a dial by default.
+    void SetRotationHandleStyle(VectorRotationHandleStyle style);
+    VectorRotationHandleStyle GetRotationHandleStyle() const { return rotationHandleStyle; }
+    // The way the rotation handle points, in degrees counter-clockwise
+    // from up: the frame's turn, or what SetRotationHandleAngle set.
+    double RotationHandleAngle() const;
+    // While a tool turns the selection it says where the handle points (the
+    // pointer's way, or the turn so far: several objects have no angle of
+    // their own); nullopt hands it back to the frame.
+    void SetRotationHandleAngle(const std::optional<double>& degrees);
+    // The handle a tool is dragging (NoHandle when none). While one that
+    // turns the selection is dragged - a corner in rotate mode, or the
+    // rotation handle - the frame and the other handles are not drawn: only
+    // the centre and the rotation handle stay over the turning objects.
+    void SetDraggedHandle(VectorHandle handle);
+    VectorHandle GetDraggedHandle() const { return draggedHandle; }
     // Which handle a view point is on, for the selection as drawn.
     VectorHandle HitTestHandle(const Point2Di& viewPoint) const;
     // The selection's bounds in document units (empty when nothing is selected).
@@ -204,6 +247,10 @@ public:
     // selection handles, before the rulers.
     std::function<void(IRenderContext*, const VectorViewTransform&)> onDrawOverlay;
     std::function<void()> onViewChanged;
+    // The handles switched between scale and rotate.
+    std::function<void(VectorHandleMode)> onHandleModeChanged;
+    // The rotation centre was moved, or dropped with the selection.
+    std::function<void()> onRotationCenterChanged;
     std::function<void()> onGuidesChanged;
     std::function<void(const std::vector<std::string>&)> onFilesDropped;
 
@@ -231,6 +278,12 @@ private:
     void DrawDocument(IRenderContext* ctx, const Rect2Dd& area);
     void DrawGuides(IRenderContext* ctx, const Rect2Dd& area);
     void DrawSelectionHandles(IRenderContext* ctx);
+    void DrawRotationHandle(IRenderContext* ctx);
+    // The rotation handle in view coordinates: the centre, the knob and the
+    // way it points (radians counter-clockwise from up). False when nothing
+    // is selected or the handles are not in rotate mode.
+    bool RotationHandleGeometry(Point2Dd& centreView, Point2Dd& knobView, double& angle) const;
+    bool TurningHandleDragged() const;
     void DrawRulers(IRenderContext* ctx);
     Rect2Dd HandleRect(VectorHandle handle) const;      // view coordinates
     Point2Dd HandlePoint(VectorHandle handle) const;    // document coordinates
@@ -267,6 +320,10 @@ private:
     VectorHandleMode handleMode = VectorHandleMode::Scale;
     double handleSize = 8.0;
     std::optional<Point2Dd> rotationCenter;
+    std::vector<std::string> rotationCenterIds;   // the selection the centre was set for
+    VectorRotationHandleStyle rotationHandleStyle = VectorRotationHandleStyle::Dial;
+    std::optional<double> rotationHandleAngle;    // degrees, while a tool turns the selection
+    VectorHandle draggedHandle = VectorHandle::NoHandle;
 
     // interaction
     bool alwaysPan = false;
