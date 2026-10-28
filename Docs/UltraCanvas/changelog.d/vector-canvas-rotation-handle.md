@@ -33,3 +33,10 @@
   object's box down the middle of its line, so a marquee that cut through a
   thick line still selected it "fully inside", and one touching only its edge
   missed it. It uses `PaintBounds` now.
+- **`RasterizeVectorElements` no longer cuts off wide lines and far shadows.**
+  It rendered the elements' geometry box plus a fixed margin (32 points and
+  5%), so a 100-point line along a 10-point path came out 76 x 66 instead of
+  110 x 100, and a shadow cast 120 points away was lost. The area now starts
+  from `PaintBounds` and adds the reach of each element's shadow (offset,
+  blur, floor), feather, outward contour and outer bevel, its children's
+  included; the old margin stays on top for what is measured loosely.

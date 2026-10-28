@@ -37,3 +37,6 @@
   line used to select it as soon as the box held the line's middle, even when
   it cut through the line itself; it now has to hold all of the line, as it
   is drawn.
+- **Copying a selection as a picture keeps wide lines and far shadows.** A
+  line much wider than its object, or a shadow cast far from it, was cut off
+  at the picture's edge (framework: `RasterizeVectorElements`).
