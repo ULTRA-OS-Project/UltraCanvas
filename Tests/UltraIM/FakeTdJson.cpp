@@ -6,16 +6,20 @@
 // edited, deleted and read, typing, history, the session kept per database
 // directory - answering with TDLib's JSON objects (td_api.tl names), so that
 // several providers in one process can talk to each other through it.
-// A test-only request through td_execute: fakeAddAccount. For trying an
+// Test-only requests through td_execute: fakeAddAccount; and the other
+// device of a sign-in by QR code - fakeScanLoginToken (link, phone: the
+// signed-in app that scans it) and fakeRefreshLoginToken (link: a fresh one
+// in its place, as Telegram sends before the last expires). For trying an
 // application on it, FAKE_TDJSON_ACCOUNTS seeds accounts
 // ("phone:First:username:password;..."), and an account called "echobot"
 // answers every message with "echo: <text>". The code is always 12345.
 // The number +1 555 9999 is never answered (a network that is down), for the
 // provider's step timeout.
+// Version: 0.1.3 - sign-in by QR code (requestQrCodeAuthentication, scanned and refreshed through td_execute)
 // Version: 0.1.2 - the code to the app first, by SMS on resendAuthenticationCode (as Telegram does)
 // Version: 0.1.1 - a phone number whose code never comes
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasJSON.h"
@@ -79,6 +83,7 @@ struct Client {
     bool        started = false;
     bool        closed = false;
     bool        codeBySms = false;       // after resendAuthenticationCode
+    std::string loginToken;              // the QR code's, while authorizationStateWaitOtherDeviceConfirmation
     std::string state;
     std::string databaseDir;
     std::string databaseKey;
@@ -102,6 +107,7 @@ struct Server {
     int64_t nextMessage = 1;
     int64_t nextTemp = 1;
     int64_t nextGroup = 500;
+    int64_t nextToken = 1;
     int64_t clock = 1700000000;
 };
 
@@ -401,6 +407,33 @@ void CodeSent(Client& c) {
     State(c, "authorizationStateWaitCode", extraState);
 }
 
+// A sign-in by QR code: the link Telegram gives (tg://login?token=...), a
+// fresh one each time.
+void LoginTokenMade(Client& c) {
+    c.loginToken = "fake" + std::to_string(S().nextToken++);
+    JSONValue extraState = JSONValue::MakeObject();
+    extraState.Set("link", JSONValue("tg://login?token=" + c.loginToken));
+    State(c, "authorizationStateWaitOtherDeviceConfirmation", extraState);
+}
+
+// What follows a number or a QR code Telegram accepts: the two-step password
+// when the account has one, else signed in; a number Telegram does not know
+// registers (a code) or is refused (a QR code: only a signed-in app scans).
+void AccountFound(Client& c, bool byQrCode) {
+    for (auto& a : S().accounts) {
+        if (a.second.phone != c.phone) continue;
+        if (!a.second.password.empty()) {
+            JSONValue s = JSONValue::MakeObject();
+            s.Set("password_hint", JSONValue("the usual"));
+            s.Set("has_recovery_email_address", JSONValue(false));
+            return State(c, "authorizationStateWaitPassword", s);
+        }
+        return SignedIn(c, a.first);
+    }
+    if (byQrCode) return State(c, "authorizationStateWaitPhoneNumber");
+    State(c, "authorizationStateWaitRegistration");
+}
+
 // ---- requests ----------------------------------------------------------------------
 
 void Handle(Client& c, const JSONValue& r) {
@@ -459,21 +492,21 @@ void Handle(Client& c, const JSONValue& r) {
         c.codeBySms = true;
         return CodeSent(c);
     }
+    if (type == "requestQrCodeAuthentication") {
+        // The states TDLib takes it in: instead of the number, or of a code,
+        // a password, a name (not while a QR code already waits).
+        if (c.state != "authorizationStateWaitPhoneNumber" && c.state != "authorizationStateWaitCode" &&
+            c.state != "authorizationStateWaitPassword" && c.state != "authorizationStateWaitRegistration")
+            return fail(400, "Call to requestQrCodeAuthentication unexpected");
+        ok();
+        c.phone.clear();
+        return LoginTokenMade(c);
+    }
     if (type == "checkAuthenticationCode") {
         if (c.state != "authorizationStateWaitCode") return fail(400, "Unexpected checkAuthenticationCode");
         if (r["code"].GetString() != kCode) return fail(400, "PHONE_CODE_INVALID");
         ok();
-        for (auto& a : S().accounts) {
-            if (a.second.phone != c.phone) continue;
-            if (!a.second.password.empty()) {
-                JSONValue s = JSONValue::MakeObject();
-                s.Set("password_hint", JSONValue("the usual"));
-                s.Set("has_recovery_email_address", JSONValue(false));
-                return State(c, "authorizationStateWaitPassword", s);
-            }
-            return SignedIn(c, a.first);
-        }
-        return State(c, "authorizationStateWaitRegistration");
+        return AccountFound(c, false);
     }
     if (type == "checkAuthenticationPassword") {
         if (c.state != "authorizationStateWaitPassword") return fail(400, "Unexpected checkAuthenticationPassword");
@@ -760,6 +793,24 @@ FAKE_TD_EXPORT const char* td_execute(const char* request) {
         S().accounts[a.id] = a;
         answer = Obj("user");
         answer.Set("id", JSONValue(a.id));
+    } else if (type == "fakeScanLoginToken" || type == "fakeRefreshLoginToken") {
+        // The other device: a signed-in app (phone) scans the link, or
+        // Telegram replaces the link with a fresh one.
+        const std::string link = r["link"].GetString();
+        const std::string prefix = "tg://login?token=";
+        Client* waiting = nullptr;
+        for (auto& entry : S().clients) {
+            Client& c = entry.second;
+            if (!c.closed && c.state == "authorizationStateWaitOtherDeviceConfirmation" && link == prefix + c.loginToken)
+                waiting = &c;
+        }
+        if (!waiting) answer = Error(400, "No sign-in waits for that link");
+        else if (type == "fakeRefreshLoginToken") LoginTokenMade(*waiting);
+        else {
+            waiting->phone = Digits(r["phone"].GetString());
+            waiting->loginToken.clear();
+            AccountFound(*waiting, true);
+        }
     } else if (type == "getOption") {
         answer = Obj("optionValueString");
         answer.Set("value", JSONValue("fake"));
