@@ -1,3 +1,10 @@
+#### 2026-10-28 *0.10.79*
+- **S/MIME runs on UltraCrypt.** Certificates, their trust check, signing,
+  checking, encrypting, decrypting and PKCS #12 import are UltraCrypt's X.509
+  and CMS (`UltraCryptX509.h`); `UltraMailSmime.cpp` keeps only what each
+  finding means to the reader, and UltraMail links no OpenSSL of its own. A
+  certificate that holds but is not one for signing mail now says so.
+
 #### 2026-10-28 *0.10.78*
 - **The mail on the computer is encrypted.** The mailbox index (`mail.db`),
   the address book, the outbox, the cloud accounts and every downloaded
