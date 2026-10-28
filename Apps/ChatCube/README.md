@@ -65,8 +65,8 @@ ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
 UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider modules are built next
 to it in `<build>/Plugins/UltraIM/`. Matrix encryption needs a Rust toolchain
 (cargo) at build time; without one the Matrix module cannot open encrypted
-rooms. Telegram needs TDLib's `libtdjson` at run time, not at build time:
-the configure step fetches TDLib 1.8.69 prebuilt into
+rooms. Telegram needs `libtdjson` from TDLib (Telegram Database Library) at
+run time, not at build time: the configure step fetches TDLib 1.8.69 prebuilt into
 `<build>/Plugins/UltraIM/tdlib/` (`cmake/UltraCanvasTdlib.cmake`; Linux
 x86_64 and aarch64, macOS arm64, Windows x64; `ULTRAIM_TDJSON_FILE` for one
 of your own, `ULTRAIM_FETCH_TDLIB=OFF` to skip) and the packages ship it;

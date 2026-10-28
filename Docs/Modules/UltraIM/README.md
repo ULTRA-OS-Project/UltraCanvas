@@ -286,9 +286,9 @@ device, and an encrypted room with
 ## Provider: Telegram
 
 `UltraCanvas/Plugins/UltraIM/telegram/` (module `ultraim_telegram`, provider
-id `telegram`) is a client of TDLib, Telegram's own client library, through
-its JSON interface (`td_create_client_id` / `td_send` / `td_receive` /
-`td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
+id `telegram`) is a client of TDLib (Telegram Database Library), Telegram's
+own client library, through its JSON interface (`td_create_client_id` /
+`td_send` / `td_receive` / `td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
 provider builds on every platform but WebAssembly (which loads no native
 library) and works wherever a libtdjson is found - the
 `tdlib/` folder next to the provider modules, `ULTRAIM_TDJSON_PATH`, or the
