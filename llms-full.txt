@@ -3589,6 +3589,7 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
   - [Ultra AI module](#ultra-ai-module)
   - [UltraCloud module](#ultracloud-module)
   - [UltraCrypt module](#ultracrypt-module)
+  - [UltraMail: signed and encrypted mail](#ultramail-signed-and-encrypted-mail)
   - [UltraDatabase module](#ultradatabase-module)
   - [Ultra Net module](#ultra-net-module)
   - [UltraVault module](#ultravault-module)
@@ -3681,6 +3682,7 @@ their *License* is likewise marked **—** (OS component).
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
 | MariaDB Connector/C (libmariadb; the MySQL / MariaDB driver) | [mariadb.com](https://mariadb.com/docs/connectors/mariadb-connector-c/) | [github.com/mariadb-corporation/mariadb-connector-c](https://github.com/mariadb-corporation/mariadb-connector-c) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| GPGME (GnuPG Made Easy; UltraMail's OpenPGP) | [gnupg.org](https://www.gnupg.org/software/gpgme/) | [dev.gnupg.org/source/gpgme](https://dev.gnupg.org/source/gpgme/) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | Noto Color Emoji / Noto Emoji (fonts, bundled) | [fonts.google.com/noto](https://fonts.google.com/noto/specimen/Noto+Color+Emoji) | [github.com/googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) | [OFL 1.1](https://spdx.org/licenses/OFL-1.1.html) |
@@ -4023,6 +4025,24 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
+
+### UltraMail: signed and encrypted mail
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| S/MIME (sign, check, encrypt, decrypt; PKCS #12 import) | OpenSSL 3 libcrypto (`libssl-dev`) | OpenSSL 3 when found | OpenSSL 3 (MSYS2 `openssl`) |
+| OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | GPGME from vcpkg (`MacOS/deps/vcpkg.json`, bundled with libassuan and libgpg-error); GnuPG the user's, from Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite | GPGME (MSYS2 `gpgme`, which brings GnuPG); x64 only - not built on Windows on Arm, where GPGME ended the process |
+
+> Both are optional and soft-failing (`ULTRAMAIL_HAVE_SMIME`,
+> `ULTRAMAIL_HAVE_OPENPGP`): without one, a message in that form is shown as
+> one this build cannot check, and the compose window does not offer it.
+> GPGME is LGPL-2.1 and linked as the system's shared library; it starts the
+> user's GnuPG (`gpg`, `gpg-agent`) as programs, so GnuPG must be installed for
+> OpenPGP to work at run time (`OpenPgpAvailable()` says whether it is). On
+> macOS it is looked for where Homebrew (Apple silicon and Intel), GPG Suite
+> and MacPorts install it, since a Finder-started app's `PATH` has none of
+> them; Homebrew's GnuPG also needs `pinentry-mac` named in
+> `~/.gnupg/gpg-agent.conf` to ask for a passphrase outside a terminal.
 
 > libsodium is optional to the *build* only: configure succeeds without it, but
 > UltraCrypt then reports `BackendUnavailable` from every operation, and the
@@ -91729,12 +91749,13 @@ the app code hard-codes.
 
 > Status: **Stage 1 implemented, the PostgreSQL and MySQL / MariaDB drivers
 > from Stage 2, schema introspection, server administration, streaming
-> cursors, per-statement scripts, cancelling and statement observers.**
+> cursors, per-statement scripts, cancelling, statement observers and
+> encryption at rest for SQLite.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 87 tests, the PostgreSQL and MySQL
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 103 tests, the PostgreSQL and MySQL
 > ones against a live server where one is configured). The **PostgreSQL**
 > driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
 > libpq is found at configure time; it takes `?` placeholders, verifies TLS by
@@ -92180,6 +92201,64 @@ has any token.
 
 ---
 
+### Encrypted at rest
+
+A SQLite connection with an `encryptionKey` (32 bytes, an
+`UltraCryptSecureBuffer` the application holds - typically random and kept
+in its own UltraVault) reads and writes a file that is ciphertext on disk:
+every page of the database, of its WAL and of its rollback journal is
+sealed with XChaCha20-Poly1305 as it is written
+(`UltraDatabaseEncryption.h`). It is a VFS in front of the platform's, so
+it works on the system's own libsqlite3, on every platform; nothing in the
+queries changes.
+
+<!-- doc-check: std::string dataDir; -->
+```cpp
+UltraCryptSecureBuffer raw;
+UltraCrypt_RandomSecureBuffer(32, raw);          // once; then kept in the app's vault
+auto key = std::make_shared<const UltraCryptSecureBuffer>(std::move(raw));
+
+UltraDbConnectionConfig mail;
+mail.name          = "mail";
+mail.database      = dataDir + "/mail.db";
+mail.encryptionKey = key;
+UltraDb_RegisterConnection(mail);
+UltraDb_Exec("mail", "PRAGMA journal_mode=WAL");
+
+// An existing plain file becomes an encrypted one in place - and back,
+// or from one key to another - with no connection open on it:
+UltraDb_SetSqliteFileEncryption(dataDir + "/contacts.db", nullptr, key.get());
+```
+
+- **Refused as what it is.** A wrong key is `CredentialsUnavailable`; a plain
+  file opened with a key is refused with a pointer to
+  `UltraDb_SetSqliteFileEncryption`; an encrypted file opened without one is
+  "not a database" to SQLite, the sqlite3 shell and UltraDBAdmin.
+  `UltraDb_InspectSqliteFile` says which a file is without opening it, and
+  `UltraDb_SqliteKeyOpens` whether a key opens it.
+- **What it protects:** every page's content - rows, indexes, the schema -
+  and every page's place: each page's tag covers its number, so a changed
+  or moved page fails to read (`SQLITE_IOERR_DATA`).
+- **What it does not hide:** the file's size and number of pages; that WAL
+  frames and journal records carry SQLite's own checksums, computed over the
+  page as SQLite sees it (a guess of a page's whole content could be
+  confirmed); an older copy of the file put back in its place.
+- **On disk:** 4096-byte pages whose last 40 bytes (SQLite's reserved bytes)
+  hold the nonce and tag, so 4056 usable bytes a page; page 1 starts with
+  `UltraDB:XC20P:1` instead of `SQLite format 3`. Temporary data stays in
+  memory (`temp_store=MEMORY`); the encrypting VFS refuses to create a
+  temporary file.
+- **Recovery works through it.** A WAL left by a crash and a hot rollback
+  journal are replayed as SQLite replays them; the suite does both on
+  copies taken mid-write.
+- **The key is the application's.** The module never stores it. Changing
+  the password that protects the application's vault leaves the database
+  as it is; changing the key itself is `UltraDb_SetSqliteFileEncryption`
+  with both keys.
+- Available wherever UltraCrypt has its backend
+  (`UltraDb_SqliteEncryptionAvailable`); elsewhere a key is refused with
+  `Unsupported`, never ignored.
+
 ## Threading
 
 Database calls are blocking I/O, so UltraDatabase owns a **worker
@@ -92221,8 +92300,8 @@ idea* above).
   VerifyFull}` with verification on by default; certificate handling
   reuses the platform trust store (and UltraNet's TLS stack where a
   driver tunnels over it).
-- **At-rest encryption** for SQLite via the SQLCipher-compatible path,
-  opt-in per connection.
+- **At-rest encryption** for SQLite, opt-in per connection
+  (`encryptionKey`; see [Encrypted at rest](#encrypted-at-rest)).
 - **Least privilege.** Read-only connections (`readOnly = true`) are
   enforced by the driver where supported.
 
@@ -92246,9 +92325,10 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseSshTunnel.h      the opener over UltraNet's SSH plug-in (header-only)
 │   ├── UltraDatabaseRelay.h          the relay driver's seam, UltraDbRelayServer
 │   ├── UltraDatabaseRelayUltraNet.h  the relay's transport over UltraNet's WebSocket (header-only)
+│   ├── UltraDatabaseEncryption.h     SQLite files encrypted at rest
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
 ├── core/UltraDatabase/               (.cpp implementations)
-│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver and its introspection
+│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver, its introspection, its encrypting VFS
 │   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
 │   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
 │   ├── UltraDatabaseServerViews.cpp  server administration for both server engines
@@ -92319,7 +92399,8 @@ headless data module usable from any ULTRA OS process.
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
 | SSH tunnels (`UltraDatabaseTunnel.h`, `UltraDatabaseSshTunnel.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Relay (`UltraDatabaseRelay.h`: the `relay` driver, `UltraDbRelayServer` with its limits and statement time-out, a program's own sign-in, `UltraDatabaseRelayUltraNet.h`) | Implemented |
-| Test suite (94 tests) | Passing |
+| Encryption at rest for SQLite (`UltraDatabaseEncryption.h`) | Implemented |
+| Test suite (103 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |
@@ -92334,7 +92415,7 @@ headless data module usable from any ULTRA OS process.
    (The PostgreSQL and MySQL / MariaDB drivers, with their UltraVault and
    TLS wiring, and streaming cursors are done.)
 3. **Stage 3** — remaining drivers (MSSQL, Redis, MongoDB, DuckDB),
-   at-rest encryption, read-replica/failover options.
+   read-replica/failover options. (At-rest encryption for SQLite is done.)
 
 ---
 
@@ -93803,7 +93884,8 @@ table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
 `UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
-format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+format of every mail plug-in that sends; a message whose `rawMessage` is set -
+one already signed or encrypted - is sent as those bytes, unchanged), `UltraNet_HttpGet` / `HttpRequest`,
 `UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
 plug-in's push), ... Plug-in sources
 call those functions as usual;
@@ -94675,6 +94757,7 @@ vault.Lock();                                       // wipes the derived key
 |---|---|
 | Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under the lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) take turns in it; a vault unlocked directly keeps working too - it re-opens its own file before each read or write when another vault took the store meanwhile (see below) |
 | Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| A Primary Password | `NeedsPassphrase()` (a vault without a device key: it opens only with its passphrase), `ChangePassphrase(current, new, keepAsDeviceKey)`, `NewDeviceKey()`, `ForgetDeviceKey()` - see below |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
 
@@ -94690,6 +94773,29 @@ folder never opened). A vault in the 0.1 format
 the applications used before UltraVault (secrets XOR-ed against a `vault.key`
 sidecar, one line per account in `creds.dat`) is carried across on the first
 successful unlock and its files removed.
+
+**A Primary Password.** By default the vault opens with its device key, so the
+user is never asked - and anything running as the user can open it too. An
+application offers a Primary Password by re-encrypting the file under a
+passphrase the user types and dropping the device key:
+
+<!-- doc-check: UltraVault::DeviceKeyVault vault; std::string typed, current; -->
+```cpp
+vault.ChangePassphrase("", typed, false);              // set: "" = the device key opens it now
+vault.NeedsPassphrase();                               // true from now on: ask at every start
+vault.ChangePassphrase(current, typed, false);         // change
+vault.ChangePassphrase(current, UltraVault::DeviceKeyVault::NewDeviceKey(), true);   // remove
+```
+
+`ChangePassphrase` proves the current passphrase by opening the file with it,
+carries every secret in the file over - whatever its prefix, another module's
+too - into a new file under a new salt, and swaps it in only once it is
+complete: interrupted, the old file and its passphrase stay. A kept device
+key is written beside the old one first (`device.key.next`, which
+`TryAutoUnlock` also tries), so whenever the new file is in place a key that
+opens it is on disk. A device key left by an interrupted change to a Primary
+Password no longer opens the file; the application asks for the passphrase
+and, once it works, calls `ForgetDeviceKey()`.
 
 UltraVault itself is one store per process, so several `DeviceKeyVault`s
 in one program - ChatCube's three messenger providers, each with its own
@@ -99851,9 +99957,9 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
    conventional host names, and you enter the servers from your provider's
    help page (section 5). Either way UltraMail shows the incoming (IMAP)
    and outgoing (SMTP) servers it will use, and stores them with the account.
-4. The first time, UltraMail asks you to **choose a master password**. It
-   encrypts your account passwords and sign-ins on disk and is never stored
-   itself — if you forget it, you enter your account passwords again.
+4. Your account passwords and sign-ins are stored encrypted in UltraMail's
+   vault; nothing is asked for. To have UltraMail ask for a password at every
+   start, set a **Primary Password** (*Settings > Privacy > Primary Password*).
 5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page;
    when it says *Signed in - you can close this tab*, come back to UltraMail.
 6. The inbox is fetched right away. Later, every account is synced every
@@ -100213,10 +100319,66 @@ again to retry.
 
 ## 4. On the machine
 
-- **Master password.** Asked for once per session, the first time a stored
-  password or sign-in is needed (adding an account, Update, sending). Nothing
-  syncs in the background while the vault is still locked; UltraMail says so
-  once, and Update asks for the password.
+- **Primary Password.** Optional (*Settings > Privacy > Primary Password*:
+  set, change, remove). Once set, UltraMail asks for it when it starts, before
+  it reads anything stored - the vault, and the key the stored mail is
+  encrypted with, open only with it; a wrong one is asked for again, Cancel
+  ends the start. It is not stored anywhere: forgotten, the mail kept on the
+  computer is downloaded again and the account passwords entered again.
+  Without one the vault opens with a key kept beside it (`vault/device.key`),
+  so UltraMail never asks.
+- **The data folder is private.** UltraMail makes it owner-only at every start
+  (on Linux and macOS; Windows' `%APPDATA%` already is).
+- **The stored mail is encrypted.** `mail.db`, `contacts.db`, `outbox.db`,
+  `cloud.db` and every downloaded message under `mail/` are ciphertext on
+  disk, encrypted with a key kept in the vault: copied elsewhere, or opened
+  with another program (the sqlite3 shell, UltraDBAdmin), they show nothing.
+  A mailbox from an earlier version is converted at the first start - the
+  databases before the window opens, the messages in the background. With a
+  Primary Password nobody without it can read them; without one, programs
+  running as you can open the vault the way UltraMail does. Attachments you
+  open are handed to their viewer as plain copies in `cache/attachments/`,
+  which are deleted at the next start.
+- **Signed and encrypted mail: S/MIME and OpenPGP.** A message that came
+  signed or encrypted is shown as it was meant to be read: decrypted where a
+  key here opens it, with pills that say what was checked - *Encrypted*, and
+  *S/MIME* or *OpenPGP* in green when the signature holds and the signer is
+  vouched for (a certificate from an authority this computer trusts, a key
+  your keyring trusts), amber when it holds but nobody vouches for the signer,
+  red when the message was changed after it was signed. On disk it stays
+  exactly as it arrived - encrypted mail is decrypted only for the reading
+  pane, never written down decrypted.
+  - **S/MIME.** Import your certificate and its private key in *Account
+    Settings > S/MIME > Import…* from the `.p12` / `.pfx` file your
+    certificate authority gave you (its password is asked for). It is kept in
+    the vault, and only a certificate for the account's own address is
+    accepted. Your correspondents' certificates are learnt from the signed
+    mail they send you - only from a signature that holds, is vouched for and
+    is from the From address.
+  - **OpenPGP.** UltraMail uses your own GnuPG keyring and `gpg-agent`, which
+    asks for a key's passphrase itself; keys are found by the address in
+    their user id. A key that arrives as an attachment (`application/pgp-keys`)
+    is offered for import when you open it.
+  - **Sending.** The compose window's *Security* row: *Off*, or *S/MIME* /
+    *OpenPGP* (each offered when this build has it, and S/MIME once the
+    account has a certificate), with *Sign* and *Encrypt*. An encrypted
+    message is encrypted to every recipient and to you, so the copies in
+    Drafts and Sent are the same ciphertext and you can still read them;
+    without a certificate or key for a recipient UltraMail says so and does
+    not send. A message that cannot be secured is never sent in plain text
+    instead. Replies and forwards of encrypted mail start encrypted.
+  - S/MIME needs OpenSSL 3 at build time and OpenPGP GPGME (with GnuPG
+    installed to use it); a build without one shows such mail as one it
+    cannot check.
+  - **Not on Windows on Arm yet**: GPGME ended the process there in testing,
+    so that build shows OpenPGP mail as one it cannot check. S/MIME works.
+  - **OpenPGP on macOS**: the app carries GPGME, not GnuPG. Install it with
+    Homebrew - `brew install gnupg pinentry-mac`, then put
+    `pinentry-program /opt/homebrew/bin/pinentry-mac` (`/usr/local/bin/...` on
+    Intel) in `~/.gnupg/gpg-agent.conf` and run `gpgconf --kill gpg-agent`, so
+    the passphrase is asked for in a window rather than a terminal - or with
+    GPG Suite, which sets that up itself. UltraMail finds either without
+    changing `PATH`.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
@@ -100374,7 +100536,8 @@ Gmail, Outlook and Yahoo.
 | No alert right after the computer was switched on, though the pill says *Offline* or *Failed* | When UltraMail starts, or the computer wakes, more than ten minutes after it last reached a mail server, the computer was most likely switched off and its network may not be up yet. For two minutes then (*Settings > Mail > Connection*: not at all to 10 minutes) a background check that fails raises no alert, whatever the reason; the account is checked again when the time is up, and an alert follows if it still fails. Update reports at once. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days), or it was issued to a different OAuth client than the one this installation now signs in as - an account signed in with a build before the sign-in service cannot be refreshed through it. Add the account again, or use *Sign in with …* on its settings page, to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
-| *Your mail account passwords are locked* | Enter the master password — Update, sending, or adding an account asks for it. |
+| *Your mail account passwords are locked* | Enter the Primary Password — Update, sending, or adding an account asks for it. |
+| *UltraMail is locked* when it starts | A Primary Password is set (*Settings > Privacy > Primary Password*). Enter it; Cancel ends the start. |
 
 ==============================================================================
 FILE: Docs/UltraMail/Concept.md
@@ -100770,11 +100933,37 @@ point the store at a networked engine without changing UltraMail's
 query code. The raw messages stay as `.eml` files on disk; only the
 index/metadata lives in the database.
 
+**At rest everything is encrypted** (`UltraMailStorage.h`): one random
+storage key in the vault, and keys derived from it with HKDF - one per
+database file, which UltraDatabase opens as encrypted SQLite
+(`UltraDatabaseEncryption.h`: every page of the file and its WAL sealed with
+XChaCha20-Poly1305), and one for the message files, each sealed whole
+(`UltraMail:eml:1` | nonce | ciphertext | tag). A Primary Password guards
+that key, since it guards the vault; changing it re-encrypts only the vault.
+An earlier version's plain files are converted at the first start.
+
+**Signed and encrypted mail** (`UltraMailSecureMime.h`) is S/MIME (RFC 8551,
+OpenSSL 3's CMS, `UltraMailSmime.cpp`) and OpenPGP (RFC 3156 PGP/MIME and
+inline PGP, GPGME over the user's GnuPG keyring, `UltraMailOpenPgp.cpp`), each
+built where its library is found. The stored message stays as it travelled:
+`OpenSecureMessage` decrypts and checks it on a thread when the reading pane
+shows it (a few results kept in memory), and nothing decrypted is written. On
+sending, `SecureOutgoingMessage` signs and/or encrypts the message UltraNet
+built - to every recipient and to the sender - and the outbox sends exactly
+those bytes (`UltraNetMailMessage::rawMessage`), filing the same ones in
+Drafts and Sent. The user's S/MIME identity is kept in the vault
+(`UltraMailSecureKeys.h`); correspondents' certificates are learnt from their
+vouched-for signatures into the address book (`ContactStore`'s
+`certificates`).
+
 **Credentials** go into UltraMail's vault: the framework's
 `UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
 UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +
 XChaCha20-Poly1305 via UltraCrypt) unlocked without a prompt by an owner-only
-`device.key` beside it, the posture of Thunderbird with no Primary Password.
+`device.key` beside it, the posture of Thunderbird with no Primary Password -
+or, once the user sets one (*Settings > Privacy > Primary Password*), opened
+only with a Primary Password typed at every start, before anything stored is
+read (`DeviceKeyVault::ChangePassphrase`; the device key is then gone).
 `UltraMailCredentialVault.h` only names that profile. The OS keychains
 (libsecret, Windows Credential Manager, macOS Keychain) are planned as
 UltraVault backends behind the same surface, not as a seam of UltraMail's
