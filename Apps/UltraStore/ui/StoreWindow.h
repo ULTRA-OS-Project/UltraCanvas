@@ -30,6 +30,8 @@
 //
 // Pictures (icons, screenshots) come through AssetCache on a second thread
 // and are set on the cards when they arrive.
+// Version: 0.4.0 - the open order resumed, the update terms
+// Version: 0.3.0 - Buy through the payment service; the licences
 // Version: 0.2.0 - codes and ultrastore:// links
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -39,6 +41,7 @@
 #include "Catalog.h"
 #include "CatalogClient.h"
 #include "PlatformInfo.h"
+#include "Purchase.h"
 #include "StoreEngine.h"
 #include "StoreQuery.h"
 #include "StoreSettings.h"
@@ -142,6 +145,7 @@ private:
 
     // ===== actions =====
     void InstallApp(const std::string& appId);
+    void BuyApp(const std::string& appId);     // through the catalog's payment service; else the publisher's page
     void UpdateApp(const std::string& appId);
     void UpdateAll();
     void RemoveApp(const std::string& appId);
@@ -156,19 +160,22 @@ private:
     void StopPictureThread();
 
     // ===== jobs (StoreJobs.cpp) =====
-    enum class JobKind { Refresh, Reload, Install, Update, UpdateAll, Remove, Collect };
+    enum class JobKind { Refresh, Reload, Install, Update, UpdateAll, Remove, Collect, Buy };
     struct Job {
         uint64_t id = 0;
         JobKind kind = JobKind::Reload;
         std::string appId;
         std::string title;
         bool showInQueue = true;
+        bool resume = false;   // Buy: the settings' open order, not a new one
     };
     struct JobResult {
         bool ok = true;
         std::string message;                       // for the status line
         bool haveInstalled = false;
         std::vector<InstalledRecord> installed;
+        bool haveLicences = false;
+        std::vector<LicenceRecord> licences;
         std::shared_ptr<const Catalog> catalog;    // Refresh: the new catalog
         CatalogState state;
     };
@@ -223,6 +230,11 @@ private:
     std::string catalogNote_;               // where the catalog came from, or why there is none
     CatalogState catalogState_;
     std::vector<InstalledRecord> installed_;
+    std::vector<LicenceRecord> licences_;      // the apps bought here
+    const LicenceRecord* Bought(const std::string& appId) const;
+    // The licence's terms for an app bought here, else an empty Licence.
+    Licence PurchaseOf(const std::string& appId) const;
+    bool resumedOrder_ = false;                // the settings' open order was looked at once
     bool localCatalog_ = false;
     bool autoExpanding_ = false;            // the panel opening for a job, not the user's fold
 

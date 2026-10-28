@@ -8,6 +8,9 @@
 // is read in the ANSI code page, so a profile folder the code page cannot
 // spell (a Thai or Cyrillic user name under code page 1252) could not find,
 // write or protect its device key, and the vault did not open.
+// Version: 0.4.1 - a device.key.next is closed before it is renamed (Windows
+//   renames no open file, so the key stayed behind as .next)
+// Version: 0.4.0 - ChangePassphrase, NeedsPassphrase, ForgetDeviceKey: a Primary Password
 // Version: 0.3.0 - several vaults in one process, from any thread: one lock,
 //                  the store's owner remembered, a vault re-opens its own file
 //                  before every access
@@ -158,6 +161,27 @@ constexpr const char* kAccessSuffix  = ".oauth.access";
 constexpr const char* kRefreshSuffix = ".oauth.refresh";
 constexpr const char* kExpiresSuffix = ".oauth.expires";
 
+// `text` as the whole of `file`, readable by its owner only.
+bool WriteOwnerOnly(const fs::path& file, const std::string& text) {
+    { std::ofstream out(file, std::ios::binary | std::ios::trunc);
+      if (!out) return false;
+      out << text;
+      if (!out) return false; }
+    std::error_code ec;
+    fs::permissions(file, fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::replace, ec);
+    return true;
+}
+
+// The whole of a key file, its line end dropped; "" when it cannot be read.
+// The file is closed again before this returns: Windows renames or removes
+// no file that is still open.
+std::string ReadKeyFile(const fs::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    while (!text.empty() && (text.back() == '\n' || text.back() == '\r')) text.pop_back();
+    return text;
+}
+
 } // namespace
 
 std::string DeviceKeyVault::KeyFor(const std::string& account) const {
@@ -281,13 +305,22 @@ bool DeviceKeyVault::TryAutoUnlock() {
     }
     const fs::path keyFile = PathFromUtf8(DeviceKeyPath());
 
-    // A stored device key: unlock silently with it.
+    // A device key written for a new vault file that ChangePassphrase did not
+    // get to move into place: the file it is for may be in place already.
     std::error_code ec;
+    const fs::path nextKey = PathFromUtf8(DeviceKeyPath() + ".next");
+    if (fs::exists(nextKey, ec)) {
+        const std::string pass = ReadKeyFile(nextKey);
+        if (!pass.empty() && Unlock(pass) == UnlockStatus::Ok) {
+            fs::rename(nextKey, keyFile, ec);
+            return true;
+        }
+        fs::remove(nextKey, ec);
+    }
+
+    // A stored device key: unlock silently with it.
     if (fs::exists(keyFile, ec)) {
-        std::ifstream in(keyFile, std::ios::binary);
-        std::string pass((std::istreambuf_iterator<char>(in)),
-                         std::istreambuf_iterator<char>());
-        while (!pass.empty() && (pass.back() == '\n' || pass.back() == '\r')) pass.pop_back();
+        const std::string pass = ReadKeyFile(keyFile);
         if (pass.empty()) {
             lastStatus_ = UnlockStatus::IoError;   // unreadable, or emptied
             return false;
@@ -337,6 +370,94 @@ bool DeviceKeyVault::PersistDeviceKey(const std::string& passphrase) {
                     fs::perms::owner_read | fs::perms::owner_write,
                     fs::perm_options::replace, ec);
     return true;
+}
+
+bool DeviceKeyVault::NeedsPassphrase() const {
+    std::error_code ec;
+    return Exists() && !dir_.empty() && !fs::exists(PathFromUtf8(DeviceKeyPath()), ec);
+}
+
+std::string DeviceKeyVault::NewDeviceKey() { return RandomPassphrase(); }
+
+UnlockStatus DeviceKeyVault::ChangePassphrase(const std::string& currentPassphrase,
+                                              const std::string& newPassphrase,
+                                              bool keepAsDeviceKey) {
+    Turn turn(Turns());
+    if (newPassphrase.empty()) return lastStatus_ = UnlockStatus::WrongPassphrase;
+
+    // The current passphrase, proven by opening the file with it - it is
+    // also what re-opens the old file if anything below fails.
+    std::string current = currentPassphrase;
+    if (current.empty()) {
+        current = ReadKeyFile(PathFromUtf8(DeviceKeyPath()));
+        if (current.empty()) return lastStatus_ = UnlockStatus::Locked;
+    }
+    if (const UnlockStatus opened = Unlock(current); opened != UnlockStatus::Ok) return opened;
+
+    std::vector<std::pair<std::string, SecretValue>> secrets;
+    for (const std::string& key : List("")) {
+        SecretValue value;
+        if (!Get(key, value).IsOk()) return lastStatus_ = UnlockStatus::IoError;
+        secrets.emplace_back(key, std::move(value));
+    }
+    auto wipe = [&secrets] {
+        for (auto& entry : secrets)
+            if (!entry.second.bytes.empty())
+                UltraCrypt_SecureZero(entry.second.bytes.data(), entry.second.bytes.size());
+        secrets.clear();
+    };
+
+    const fs::path vaultFile = PathFromUtf8(VaultPath());
+    const std::string freshPath = VaultPath() + ".rekey";
+    const fs::path fresh = PathFromUtf8(freshPath);
+    std::error_code ec;
+    fs::remove(fresh, ec);
+    Shutdown();
+    StoreOwner() = nullptr;
+    unlocked_ = false;
+
+    Config config;
+    config.backend    = Backend::File;
+    config.filePath   = freshPath;
+    config.passphrase = newPassphrase;   // wiped in place by Initialize()
+    bool ok = Initialize(config).IsOk();
+    for (const auto& entry : secrets)
+        if (ok) ok = Put(entry.first, entry.second).IsOk();
+    if (ok && !fs::exists(fresh, ec)) {
+        // Nothing to carry over: a mutation writes the (empty) file.
+        const std::string marker = profile_.keyPrefix + "passphrase-changed";
+        ok = Put(marker, SecretValue::FromString("1")).IsOk() && Delete(marker).IsOk();
+    }
+    Shutdown();
+    wipe();
+    // A kept device key is written beside the old one before the swap
+    // (device.key.next, which TryAutoUnlock also tries), so whenever the
+    // new file is in place a key that opens it is on disk too.
+    const fs::path nextKey = PathFromUtf8(DeviceKeyPath() + ".next");
+    if (ok && keepAsDeviceKey) ok = WriteOwnerOnly(nextKey, newPassphrase);
+    if (ok) fs::rename(fresh, vaultFile, ec);
+    if (!ok || ec) {
+        fs::remove(fresh, ec);
+        fs::remove(nextKey, ec);
+        Unlock(current);
+        return lastStatus_ = UnlockStatus::IoError;
+    }
+    if (keepAsDeviceKey) {
+        fs::rename(nextKey, PathFromUtf8(DeviceKeyPath()), ec);
+    } else {
+        // Interrupted before this, the old device key stays and no longer
+        // opens the file: the caller asks for the passphrase, and forgets
+        // the stale key once the typed one works (ForgetDeviceKey).
+        fs::remove(PathFromUtf8(DeviceKeyPath()), ec);
+    }
+    return Unlock(newPassphrase);
+}
+
+bool DeviceKeyVault::ForgetDeviceKey() {
+    std::error_code ec;
+    if (dir_.empty()) return false;
+    fs::remove(PathFromUtf8(DeviceKeyPath() + ".next"), ec);
+    return fs::remove(PathFromUtf8(DeviceKeyPath()), ec);
 }
 
 std::string DeviceKeyVault::DescribeUnlockStatus(UnlockStatus status) {

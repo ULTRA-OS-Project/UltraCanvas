@@ -11,6 +11,7 @@
 #define __CDRCOLLECTOR_H__
 
 #include <map>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -57,6 +58,17 @@ public:
   void getRecursedStyle(CDRStyle &style, unsigned styleId);
 
 private:
+  // UltraCanvas: getBMPColor's answers, keyed by colour model and value.
+  // Every pixel of a bitmap goes through getBMPColor, and most models go
+  // through an lcms transform one pixel at a time; the answer depends only
+  // on the model, the value and the transforms (setColorTransform empties
+  // the cache).
+  std::unordered_map<unsigned long long, unsigned> m_bmpColorCache;
+  // ... and the last one, for the run of equal pixels most rows are.
+  unsigned long long m_lastBmpColorKey = ~0ULL;
+  unsigned m_lastBmpColor = 0;
+  unsigned _getBMPColor(const CDRColor &color);
+
   CDRParserState(const CDRParserState &);
   CDRParserState &operator=(const CDRParserState &);
 };

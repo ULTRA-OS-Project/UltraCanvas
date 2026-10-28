@@ -13,12 +13,13 @@ This app versions itself: [`Docs/UltraViewer/CHANGELOG.md`](../../Docs/UltraView
 |---|---|---|
 | Bitmaps | JPEG, PNG, GIF (animated), WebP, TIFF, HEIC/HEIF, AVIF, JXL, BMP, TGA, PSD, EXR, … | Image surface (libvips pipeline) |
 | Vector graphics | SVG / SVGZ (plus XPM, XBM, …) | Image surface (librsvg rasterization) |
+| Drawings | CorelDRAW (CDR, CMX), Xara (XAR), DXF, DWG, EMF, WMF, AI, … - whatever format plugins the build produced | `UltraCanvasVectorElement`, sharp at any zoom, on a backdrop picked to suit the drawing |
 | Video | MP4, MKV, WebM, MOV, AVI, MPEG, OGV, … | `UltraCanvasVideoPlayerElement` with play / pause / seek / scrub / volume controls |
 | Audio | MP3, WAV, FLAC, OGG, Opus, M4A, AAC, … | `UltraCanvasAudioPlayerElement` with the same transport controls |
 | Documents | PDF | `UltraCanvasPDFView` (MuPDF) |
 | e-books | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapters, TOC, reflowing text) |
 | Spreadsheets | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
-| 3D models | STL | `UltraCanvasSTLElement` (OpenGL viewer) |
+| 3D models | STL, and with the Models plugin OBJ, PLY, 3DS, STEP, FBX, COLLADA, Alembic, … | `UltraCanvasSTLElement` (OpenGL viewer) |
 | Text / source / markdown | txt, md, json, xml, source code, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown rendering) |
 | UltraCanvas Documents | `*.ucd` (UCD v2 containers) | Embedded preview thumbnail + container details (full rendering arrives with the UCD v2 engine) |
 

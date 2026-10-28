@@ -20,11 +20,16 @@
 //    operation fails with BackendUnavailable; nothing ever returns success
 //    while leaving data unprotected.
 //
+// X.509 certificates and CMS (S/MIME) are in UltraCryptX509.h, on a second,
+// optional backend (OpenSSL 3), since libsodium has no public-key
+// infrastructure.
+//
 // One cipher, one KDF: everything UltraCanvas writes uses XChaCha20-Poly1305
 // keyed with Argon2id. AES-256-GCM exists only to read foreign data and is
 // hardware-gated; AES-CBC and AES-CTR (and the PBKDF2 those formats key them
 // with) exist only for foreign formats and are portable.
 //
+// Version: 0.4.1 - X.509 and CMS in UltraCryptX509.h
 // Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -48,7 +53,7 @@ enum class UltraCryptResultCode : uint8_t {
     AuthenticationFailed,  // AEAD tag mismatch: ciphertext, AAD or nonce altered
     SignatureInvalid,      // the signature does not match the message and key
     EntropyFailure,        // CSPRNG unavailable; never falls back to a PRNG
-    BackendUnavailable,    // built without libsodium
+    BackendUnavailable,    // built without libsodium (X.509 and CMS: without OpenSSL 3)
     InternalError,
     DecryptionFailed       // AES-CBC: the padding is wrong - wrong key, or
                            // altered data (CBC itself cannot tell which)

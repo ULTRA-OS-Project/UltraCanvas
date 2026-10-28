@@ -1,4 +1,6 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.20.0 - SetSecureKeys / onCertificateLearnt for signed and encrypted mail
+// Version: 0.19.1 - RescanSender reads the message files through UltraMailStorage
 // Version: 0.19.0 - ShowInbox: an account's inbox under a filter (the account bar's
 //                  counters); onFilterChanged; the "today" fact for New today
 // Version: 0.18.1 - a row's tooltip only where its cell cut the text off: the
@@ -42,6 +44,7 @@
 //                  reading-pane toggle (side-by-side, or Gmail open-in-place).
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMailView.h"
+#include "UltraMailStorage.h"
 #include "UltraMailHeaderText.h"
 
 #include "UltraMailTheme.h"
@@ -523,6 +526,9 @@ void MailView::BuildMessageBox() {
     preview_.onSaveAttachment = [this](const Attachment& a) {
         if (onSaveAttachment) onSaveAttachment(a);
     };
+    preview_.onCertificateLearnt = [this](const std::string& address, const std::string& pem) {
+        if (onCertificateLearnt) onCertificateLearnt(address, pem);
+    };
     preview_.onOpenAttachment = [this](const Attachment& a) {
         if (onOpenAttachment) onOpenAttachment(a);
     };
@@ -897,11 +903,8 @@ void MailView::RescanSender(const std::string& entry) {
     std::thread([this, mail, token, dir = mailDir_]() {
         auto reports = std::make_shared<std::vector<std::pair<MessageEnvelope, ThreatReport>>>();
         for (const auto& m : mail) {
-            std::ifstream in(PathFromUtf8(CachedBodyPath(dir, m.accountId, m.folder, m.uid)),
-                             std::ios::binary);
-            if (!in) continue;
-            const std::string raw((std::istreambuf_iterator<char>(in)),
-                                  std::istreambuf_iterator<char>());
+            std::string raw;
+            if (!ReadBodyFile(CachedBodyPath(dir, m.accountId, m.folder, m.uid), raw)) continue;
             if (!raw.empty()) reports->emplace_back(m, ScanRawMessage(raw));
         }
         auto* app = UltraCanvasApplicationBase::GetCurrent();

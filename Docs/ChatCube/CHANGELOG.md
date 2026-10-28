@@ -1,3 +1,20 @@
+#### 2026-10-28 *0.1.7*
+- **Screenshots without a display.** `Apps/ChatCube/tools/screenshot.sh`
+  starts a relay and a second identity on this machine, drives ChatCube
+  under Xvfb like a person would (sign in, add a contact, two messages each
+  way) and writes a picture of each stage, in the light or the dark look.
+
+#### 2026-10-27 *0.1.6*
+- **A new look.** The sign-in page is a card under the ChatCube logo; the
+  sidebar has round avatars with a presence dot, a soft green selection, a
+  pill for adding a contact and three icon buttons (Group, Matrix, Telegram)
+  in place of the full-width ones; the open conversation shows its avatar in
+  the header beside round call buttons; the composer is a rounded field with
+  the send button inside it; the bubbles, the date separators and the call
+  bar follow the same palette. Every colour comes from one theme
+  (`ui/ChatCubeTheme.*`), the ChatCube green on warm neutrals, in a light
+  and a dark version: `ChatCube --dark`.
+
 #### 2026-10-27 *0.1.5*
 - **The Telegram form says where the code went.** Telegram sends the
   sign-in code as a message to the Telegram apps your number is already

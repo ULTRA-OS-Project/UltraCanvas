@@ -33,6 +33,8 @@ set(ULTRAMAIL_TEST_SOURCES
     test_trace.cpp
     test_onetimecode.cpp
     test_paths.cpp
+    test_storage.cpp
+    test_securemime.cpp
     test_resulttext.cpp
     # The Settings window's preferences file: plain C++, no UI.
     ${CMAKE_CURRENT_SOURCE_DIR}/../../Apps/UltraMail/ui/UltraMailPreferences.cpp

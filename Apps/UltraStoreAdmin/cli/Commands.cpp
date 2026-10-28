@@ -28,6 +28,7 @@
 // A passphrase comes from --passphrase, else ULTRASTOREADMIN_PASSPHRASE, else
 // a line on standard input.
 //
+// Version: 0.5.0 - sale sync
 // Version: 0.4.0 - affiliate, code, sale
 // Version: 0.3.0 - upload
 // Version: 0.2.0 - Run() and Usage() for ui/main.cpp; the window in the usage
@@ -102,7 +103,7 @@ int UltraStoreAdmin::Cli::Usage(FILE* to) {
         "  affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report | qr <id> <file.svg>\n"
         "  code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]\n"
         "  code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>\n"
-        "  sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list\n"
+        "  sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list | sync [--from <url>] [--token <t>]\n"
         "  --version | --help\n"
         "\n"
         "Fields for `app set`: name publisher license homepage support_url privacy_url source_url icon\n"
@@ -253,7 +254,7 @@ int CmdSettings(Store& store, const std::vector<std::string>& args) {
     if (!all) return Fail(all.error);
     if (all.Value().empty()) std::printf("no settings yet\n");
     for (const auto& [k, v] : all.Value()) std::printf("%-24s %s\n", k.c_str(), v.c_str());
-    std::printf("\nkeys the store reads: catalog.base_url packages.base_url texts.languages ai.provider ai.base_url ai.model upload.url upload.user upload.key_file\n");
+    std::printf("\nkeys the store reads: catalog.base_url packages.base_url texts.languages ai.provider ai.base_url ai.model upload.url upload.user upload.key_file payment.url payment.token payment.licence_key\n");
     return 0;
 }
 
@@ -823,6 +824,16 @@ int CmdSale(Store& store, const std::vector<std::string>& args) {
         if (!s.affiliate.empty()) std::printf("; %s earns %s", s.affiliate.c_str(), s.affiliateCredit.c_str());
         if (!s.recruiter.empty()) std::printf("; %s earns %s for recruiting them", s.recruiter.c_str(), s.recruiterCredit.c_str());
         std::printf("\n");
+        return 0;
+    }
+    if (pos[1] == "sync") {
+        const std::string url = Option(args, "--from", store.db.Setting("payment.url"));
+        std::string token = Option(args, "--token", store.db.Setting("payment.token"));
+        if (token.empty()) token = UltraCanvas::GetEnvUtf8("ULTRASTORE_PAY_ADMIN_TOKEN");   // path-string-ok: GetEnvUtf8 is the UTF-8 read
+        const auto report = SyncSales(store.db, url, token);
+        if (!report) return Fail(report.error);
+        std::printf("synced from %s: %zu sale(s) recorded, %zu already there, sequence %llu\n", url.c_str(), report.Value().recorded,
+                    report.Value().skipped, static_cast<unsigned long long>(report.Value().sequence));
         return 0;
     }
     if (pos[1] == "list") {

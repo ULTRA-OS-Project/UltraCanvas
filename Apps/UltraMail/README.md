@@ -104,6 +104,23 @@ Apps/UltraMail/
                                   framework's UltraVault::DeviceKeyVault with
                                   UltraMail's profile (ultramail.vault,
                                   device.key, keys mail.ultramail.<account>)
+    UltraMailStorage.{h,cpp}      the stored mail encrypted at rest: the storage
+                                  key in the vault, a key per database file
+                                  (UltraDatabase's encrypted SQLite) and one for
+                                  the message files (sealed .eml); converting an
+                                  earlier version's plain files
+    UltraMailSecureMime.{h,cpp}   signed and encrypted mail: OpenSecureMessage
+                                  (decrypt, check signatures, S/MIME and
+                                  OpenPGP, nested), SecureOutgoingMessage
+                                  (sign / encrypt to recipients and sender),
+                                  PKCS #12 import, the raw-MIME helpers
+    UltraMailSecureBackends.h     the byte work behind it, one file per library:
+    UltraMailSmime.cpp              S/MIME on UltraCrypt's X.509 and CMS
+                                    (UltraCryptX509.h); the verdicts in words
+    UltraMailOpenPgp.cpp            OpenPGP on GPGME (ULTRAMAIL_HAVE_OPENPGP);
+                                    stubs where the library is not found
+    UltraMailSecureKeys.{h,cpp}   the account's S/MIME identity in the vault
+                                  (<account>.smime.cert / .smime.key)
     UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail, Outlook, Yahoo): provider
                                   table, the sign-in service, app registration
                                   (env / oauth.ini), sign-in +
@@ -192,7 +209,13 @@ Apps/UltraMail/
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
                                   port, security, username; validates in place;
-                                  as Account Settings also name, password, Signature
+                                  as Account Settings also name, password, Signature,
+                                  Security
+    UltraMailSecurityDialog.{h,cpp} an account's mail security: the S/MIME
+                                  certificate (Import / Remove), the OpenPGP key
+                                  it signs with, how new messages start (Off /
+                                  S/MIME / OpenPGP, Sign, Encrypt); from Account
+                                  Settings and after adding an account (Skip)
     UltraMailSignatureDialog.{h,cpp} the signature editor: None / Plain text /
                                   HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards

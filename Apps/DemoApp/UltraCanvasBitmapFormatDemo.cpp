@@ -1,11 +1,12 @@
 // Apps/DemoApp/UltraCanvasBitmapFormatDemo.cpp
 // Comprehensive bitmap format specifications and capabilities
+// Version: 1.2.0 - JPEG XL, with a JXL-art sample (media/images/jxl_art2.jxl)
 // Version: 1.1.0 - the shared page look (UltraCanvasDemoPageKit): a title and
 //                  description, About / Format Specification / image /
 //                  properties as kit cards, the spec and property grids as
 //                  wrapping tiles, every text sized to fit
 // Version: 1.0.1
-// Last Modified: 2026-10-23
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -723,6 +724,66 @@ namespace UltraCanvas {
         return info;
     }
 
+// ===== JPEG XL FORMAT =====
+    BitmapFormatInfo GetJXLFormatInfo() {
+        BitmapFormatInfo info;
+
+        info.formatName = "JPEG XL";
+        info.fullName = "JPEG XL Image Coding System";
+        info.extensions = ".jxl";
+        info.accentColor = Color(13, 148, 136, 255);  // Teal
+
+        // About
+        info.aboutTitle = "About JPEG XL";
+        info.aboutDescription =
+                "JPEG XL (ISO/IEC 18181) is the JPEG committee's successor to JPEG. It has a lossy mode "
+                "(VarDCT) and a lossless one (Modular), both progressive, and it can recompress an existing "
+                "JPEG losslessly about 20% smaller and give back the original file bit for bit. It covers "
+                "HDR and wide gamut up to 32-bit float per channel, alpha, animation and any number of "
+                "extra channels. The sample is JXL art: its Modular predictor tree draws the whole "
+                "2160 x 3840 picture from an 82-byte file. Reading and writing it needs a libvips built "
+                "with libjxl.";
+
+        // Technical Specifications - Container
+        info.containerSpecs = {
+                {"Standard", "ISO/IEC 18181"},
+                {"Introduced", "2021"},
+                {"Extensions", ".jxl"}
+        };
+
+        // Technical Specifications - Codec
+        info.codecSpecs = {
+                {"Compression", "VarDCT (lossy), Modular (lossless)"},
+                {"Color Modes", "RGB, Grayscale, CMYK"},
+                {"Bit Depth", "Up to 32-bit float"}
+        };
+
+        // Capabilities
+        info.capabilities = {
+                {"Compression", "Lossy and lossless", true},
+                {"JPEG Recompression", "Lossless, ~20% smaller", true},
+                {"Alpha Channel", "Supported", true},
+                {"Animation", "Supported", true},
+                {"HDR Support", "Up to 32-bit float", true},
+                {"Progressive", "Supported", true}
+        };
+
+        // Format Specification
+        info.specification = {
+                /* compression    */ "Lossless or Lossy (VarDCT)",
+                /* colorSpace     */ "RGB, Grayscale, CMYK",
+                /* channels       */ "1-4 + extra channels",
+                /* bitsPerChannel */ "8/16-bit, 32-bit float",
+                /* hdrSupport     */ "Yes (PQ, HLG, float)",
+                /* transparency   */ "Yes (any depth)",
+                /* animation      */ "Yes",
+                /* interlacing    */ "Yes (progressive)",
+                /* metadata       */ "EXIF, XMP, ICC"
+        };
+
+        return info;
+    }
+
 // ===== FORMAT INFO REGISTRY =====
     BitmapFormatInfo GetBitmapFormatInfo(const std::string& format) {
         static std::unordered_map<std::string, BitmapFormatInfo(*)()> formatRegistry = {
@@ -745,7 +806,8 @@ namespace UltraCanvas {
                 {"PSP", GetPSPFormatInfo},
                 {"PSPIMAGE", GetPSPFormatInfo},
                 {"HEIF", GetHEIFFormatInfo},
-                {"HEIC", GetHEIFFormatInfo}
+                {"HEIC", GetHEIFFormatInfo},
+                {"JXL", GetJXLFormatInfo}
         };
 
         // Convert to uppercase for lookup

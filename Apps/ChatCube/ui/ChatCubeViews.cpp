@@ -1,10 +1,14 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.0 - the look from ChatCubeTheme: avatars with initials and a presence ring, a soft
+//                  rounded selection, bubbles without borders in the theme's colours, senders in
+//                  their avatar's colour
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeViews.h"
+#include "ChatCubeTheme.h"
 
 #include "UltraCanvasRenderContext.h"
 
@@ -19,45 +23,37 @@ namespace {
 
 // ---- bubble geometry ---------------------------------------------------------
 constexpr int   kRowPadV = 4;
-constexpr int   kRowPadH = 12;
-constexpr int   kBubblePadH = 10;
-constexpr int   kBubblePadV = 7;
-constexpr int   kBubbleMaxWidth = 460;
+constexpr int   kRowPadH = 16;
+constexpr int   kBubblePadH = 12;
+constexpr int   kBubblePadV = 8;
+constexpr int   kBubbleMaxWidth = 480;
 constexpr int   kBubbleMinWidth = 90;
-constexpr float kBubbleRadius = 10.0f;
+constexpr float kBubbleRadius = 14.0f;
 constexpr float kBodyFont = 11.0f;
 constexpr float kMetaFont = 8.5f;
 constexpr float kSenderFont = 9.5f;
 constexpr int   kMetaHeight = 14;
-constexpr int   kSenderHeight = 15;
-constexpr int   kSeparatorHeight = 30;
+constexpr int   kSenderHeight = 16;
+constexpr int   kSeparatorHeight = 34;
 constexpr int   kLineHeightEstimate = 17;
 
-// The ChatCube palette (the RISC OS original: green own bubbles, blue-grey others).
-const Color kOwnBubble       = Color(214, 238, 186, 255);
-const Color kOwnBorder       = Color(184, 214, 152, 255);
-const Color kOtherBubble     = Color(226, 234, 246, 255);
-const Color kOtherBorder     = Color(196, 208, 228, 255);
-const Color kBodyText        = Color(28, 28, 32, 255);
-const Color kMetaText        = Color(110, 118, 128, 255);
-const Color kSenderText      = Color(60, 84, 160, 255);
-const Color kTickRead        = Color(46, 150, 70, 255);
-const Color kTickFailed      = Color(200, 50, 50, 255);
-const Color kSeparatorText   = Color(110, 110, 118, 255);
-const Color kSeparatorPill   = Color(234, 234, 236, 255);
-
 // ---- conversation rows -------------------------------------------------------
-constexpr int   kListPad = 10;
+constexpr int   kRowHeight = 64;
+constexpr int   kListPad = 8;            // the inset of the rounded selection
+constexpr double kAvatarRadius = 20.0;
 constexpr float kTitleFont = 10.5f;
 constexpr float kSnippetFont = 9.0f;
-const Color kTitleText       = Color(32, 32, 36, 255);
-const Color kSnippetText     = Color(110, 110, 118, 255);
-const Color kSelectedText    = Color(255, 255, 255, 255);
-const Color kUnreadFill      = Color(46, 150, 70, 255);
-const Color kPresenceOnline  = Color(60, 190, 60, 255);
-const Color kPresenceAway    = Color(230, 180, 40, 255);
-const Color kPresenceBusy    = Color(210, 60, 60, 255);
-const Color kPresenceOffline = Color(170, 170, 176, 255);
+
+// The colours come from the theme (ChatCubeTheme.h) at paint time, so the
+// lists look like the window around them in either look.
+Color PresenceColor(UltraIMPresence presence, const Look& look) {
+    switch (presence) {
+        case UltraIMPresence::Online:       return look.presenceOnline;
+        case UltraIMPresence::Away:         return look.presenceAway;
+        case UltraIMPresence::DoNotDisturb: return look.presenceBusy;
+        default:                            return look.presenceOffline;
+    }
+}
 
 std::tm LocalTime(int64_t timestampMs) {
     const std::time_t t = static_cast<std::time_t>(timestampMs / 1000);
@@ -290,17 +286,18 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
     const Rect2Di& cell = option.rect;
     if (cell.width > 0 && cell.width != viewWidth_) SetViewWidth(cell.width);
 
+    const Look look = CurrentLook();
     if (r.kind == MessageRow::Kind::DateSeparator) {
         ctx->SetFontSize(kMetaFont + 0.5f);
-        ctx->SetFontWeight(FontWeight::Normal);
+        ctx->SetFontWeight(FontWeight::Bold);
         const int textWidth = ctx->GetTextLineWidth(r.dateLabel);
-        const Rect2Dd pill(cell.x + (cell.width - textWidth) / 2.0 - 10, cell.y + 6, textWidth + 20,
-                           kSeparatorHeight - 12);
-        ctx->DrawFilledRectangle(pill, kSeparatorPill, 0.0f, Colors::Transparent, 8.0f);
+        const Rect2Dd pill(cell.x + (cell.width - textWidth) / 2.0 - 12, cell.y + 7, textWidth + 24,
+                           kSeparatorHeight - 14);
+        ctx->DrawFilledRectangle(pill, look.well, 0.0f, Colors::Transparent, 10.0f);
         ctx->SetTextWrap(TextWrap::WrapNone);
         ctx->SetTextAlignment(TextAlignment::Center);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextPaint(kSeparatorText);
+        ctx->SetTextPaint(look.inkMuted);
         ctx->DrawTextInRect(r.dateLabel, pill);
         return;
     }
@@ -337,8 +334,10 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
 
     const double left = m.isOwn ? cell.x + cell.width - kRowPadH - bubbleWidth : cell.x + kRowPadH;
     const Rect2Dd bubble(left, cell.y + kRowPadV, bubbleWidth, bubbleHeight);
-    ctx->DrawFilledRectangle(bubble, m.isOwn ? kOwnBubble : kOtherBubble, 1.0f,
-                             m.isOwn ? kOwnBorder : kOtherBorder, kBubbleRadius);
+    // Ours on the accent's tint with no border; theirs on the panel with a
+    // hairline, so both sit on the ground without a frame around them.
+    if (m.isOwn) ctx->DrawFilledRectangle(bubble, look.bubbleOwn, 0.0f, Colors::Transparent, kBubbleRadius);
+    else ctx->DrawFilledRectangle(bubble, look.bubbleOther, 1.0f, look.bubbleOtherLine, kBubbleRadius);
 
     double y = bubble.y + kBubblePadV;
     const double x = bubble.x + kBubblePadH;
@@ -348,14 +347,14 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
         ctx->SetFontSize(kSenderFont);
         ctx->SetFontWeight(FontWeight::Bold);
         ctx->SetTextWrap(TextWrap::WrapNone);
-        ctx->SetTextPaint(kSenderText);
+        ctx->SetTextPaint(AvatarColor(m.senderId.empty() ? m.senderName : m.senderId, look));
         ctx->DrawTextInRect(m.senderName, Rect2Dd(x, y, contentWidth, kSenderHeight));
         y += kSenderHeight;
     }
     ctx->SetFontSize(kBodyFont);
     ctx->SetFontWeight(FontWeight::Normal);
     ctx->SetTextWrap(TextWrap::WrapWordChar);
-    ctx->SetTextPaint(kBodyText);
+    ctx->SetTextPaint(m.isOwn ? look.bubbleOwnInk : look.ink);
     ctx->DrawTextInRect(text, Rect2Dd(x, y, maxText, textSize.height));
     y += textSize.height;
 
@@ -363,9 +362,9 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
     ctx->SetTextWrap(TextWrap::WrapNone);
     ctx->SetTextAlignment(TextAlignment::Right);
     ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-    Color metaColor = kMetaText;
-    if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Read) metaColor = kTickRead;
-    if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Failed) metaColor = kTickFailed;
+    Color metaColor = look.inkMuted;
+    if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Read) metaColor = look.accent;
+    if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Failed) metaColor = look.danger;
     ctx->SetTextPaint(metaColor);
     ctx->DrawTextInRect(meta, Rect2Dd(bubble.x, y, bubble.width - kBubblePadH, kMetaHeight));
 }
@@ -440,6 +439,10 @@ ListDataValue ConversationListModel::GetData(const ListIndex& index, ListDataRol
     return ListDataValue();
 }
 
+int ConversationDelegate::GetRowHeight(const IListModel*, int) const {
+    return kRowHeight;
+}
+
 void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* model,
                                       int row, int column, const ListItemStyleOption& option) {
     (void)column;
@@ -447,23 +450,29 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     if (!ctx || !list || row < 0 || row >= list->GetRowCount()) return;
     const UltraIMConversation& c = list->Conversations()[static_cast<size_t>(row)];
     const Rect2Di& cell = option.rect;
-    const bool selected = option.isSelected;
+    const Look look = CurrentLook();
 
-    // Presence dot (1:1) or a group mark.
-    const double dotX = cell.x + kListPad + 5;
-    const double dotY = cell.y + 18;
-    if (!c.isGroup) {
-        Color dot = kPresenceOffline;
-        if (c.presence == UltraIMPresence::Online) dot = kPresenceOnline;
-        if (c.presence == UltraIMPresence::Away) dot = kPresenceAway;
-        if (c.presence == UltraIMPresence::DoNotDisturb) dot = kPresenceBusy;
-        ctx->DrawFilledCircle(Point2Dd(dotX, dotY), 5.0f, dot);
-    }
+    // The row's own selection and hover: a rounded, inset tint, so the list
+    // reads as cards on the sidebar rather than stripes (the list view's
+    // own selection is switched off by the window).
+    const Rect2Dd inset(cell.x + kListPad, cell.y + 2, cell.width - 2 * kListPad, cell.height - 4);
+    Color surface = look.sidebar;
+    if (option.isSelected) surface = look.accentSoft;
+    else if (option.isHovered) surface = look.hover;
+    if (option.isSelected || option.isHovered)
+        ctx->DrawFilledRectangle(inset, surface, 0.0f, Colors::Transparent, 12.0f);
 
-    const double textX = cell.x + kListPad + 18;
-    const double rightEdge = cell.x + cell.width - kListPad;
+    // The avatar, with the presence at its corner for a person.
+    const Point2Dd avatar(inset.x + 8 + kAvatarRadius, cell.y + cell.height / 2.0);
+    PaintAvatar(ctx, avatar, kAvatarRadius, c.title, c.isGroup ? c.conversationId : c.directContactId, c.isGroup, look);
+    if (!c.isGroup && c.presence != UltraIMPresence::Unknown)
+        PaintPresence(ctx, avatar, kAvatarRadius, PresenceColor(c.presence, look), surface);
 
-    // Time, top right; unread count under it.
+    const double textX = avatar.x + kAvatarRadius + 12;
+    const double rightEdge = inset.x + inset.width - 10;
+    const double topY = cell.y + 13;
+
+    // The time, top right; the unread count under it.
     ctx->SetFontSize(kSnippetFont);
     ctx->SetFontWeight(FontWeight::Normal);
     ctx->SetTextWrap(TextWrap::WrapNone);
@@ -472,19 +481,19 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     if (!time.empty()) {
         ctx->SetTextAlignment(TextAlignment::Right);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextPaint(selected ? kSelectedText : kSnippetText);
-        ctx->DrawTextInRect(time, Rect2Dd(rightEdge - timeWidth - 2, cell.y + 8, timeWidth + 2, 18));
+        ctx->SetTextPaint(c.unreadCount > 0 ? look.accent : look.inkFaint);
+        ctx->DrawTextInRect(time, Rect2Dd(rightEdge - timeWidth - 2, topY, timeWidth + 2, 18));
     }
     int badgeWidth = 0;
     if (c.unreadCount > 0) {
         const std::string count = c.unreadCount > 99 ? "99+" : std::to_string(c.unreadCount);
         ctx->SetFontWeight(FontWeight::Bold);
-        badgeWidth = std::max(20, ctx->GetTextLineWidth(count) + 10);
-        const Rect2Dd pill(rightEdge - badgeWidth, cell.y + 30, badgeWidth, 18);
-        ctx->DrawFilledRectangle(pill, kUnreadFill, 0.0f, Colors::Transparent, 9.0f);
+        badgeWidth = std::max(20, ctx->GetTextLineWidth(count) + 12);
+        const Rect2Dd pill(rightEdge - badgeWidth, topY + 22, badgeWidth, 18);
+        ctx->DrawFilledRectangle(pill, look.accent, 0.0f, Colors::Transparent, 9.0f);
         ctx->SetTextAlignment(TextAlignment::Center);
         ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-        ctx->SetTextPaint(kSelectedText);
+        ctx->SetTextPaint(look.onAccent);
         ctx->DrawTextInRect(count, pill);
     }
 
@@ -492,15 +501,15 @@ void ConversationDelegate::RenderItem(IRenderContext* ctx, const IListModel* mod
     ctx->SetFontWeight(c.unreadCount > 0 ? FontWeight::Bold : FontWeight::Normal);
     ctx->SetTextAlignment(TextAlignment::Left);
     ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-    ctx->SetTextPaint(selected ? kSelectedText : kTitleText);
-    const std::string title = c.isGroup ? "# " + c.title : c.title;
-    ctx->DrawTextInRect(title, Rect2Dd(textX, cell.y + 8, rightEdge - textX - timeWidth - 8, 18));
+    ctx->SetTextPaint(look.ink);
+    ctx->DrawTextInRect(c.title, Rect2Dd(textX, topY, rightEdge - textX - timeWidth - 8, 18));
 
     ctx->SetFontSize(kSnippetFont);
     ctx->SetFontWeight(FontWeight::Normal);
-    ctx->SetTextPaint(selected ? kSelectedText : kSnippetText);
-    const std::string snippet = c.lastMessageSnippet.empty() ? std::string("No messages yet") : c.lastMessageSnippet;
-    ctx->DrawTextInRect(snippet, Rect2Dd(textX, cell.y + 30, rightEdge - textX - badgeWidth - 8, 18));
+    ctx->SetTextPaint(c.unreadCount > 0 ? look.ink : look.inkMuted);
+    std::string snippet = c.lastMessageSnippet.empty() ? std::string("No messages yet") : c.lastMessageSnippet;
+    if (c.isEncrypted && c.lastMessageSnippet.empty()) snippet = "End-to-end encrypted";
+    ctx->DrawTextInRect(snippet, Rect2Dd(textX, topY + 22, rightEdge - textX - badgeWidth - 8, 18));
 }
 
 } // namespace ChatCube

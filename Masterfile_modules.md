@@ -1740,10 +1740,12 @@ and secure random generation are implemented, so no application, plugin or
 sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
-Scope is **data at rest and data integrity**. Transport security stays in
-UltraNet (per-platform and OS-native); credential *storage and policy* stay
-in UltraVault, which consumes UltraCrypt for its file-backed fallback
-backend.
+Scope is **data at rest and data integrity**, and the **X.509 certificates
+and CMS** of formats the world defined (S/MIME: `UltraCryptX509.h`, on a
+second, optional backend, OpenSSL 3, since libsodium has no public-key
+infrastructure). Transport security stays in UltraNet (per-platform and
+OS-native); credential *storage and policy* stay in UltraVault, which
+consumes UltraCrypt for its file-backed fallback backend.
 
 UltraCrypt elements must comply with the same rules as UltraNet and
 UltraDatabase:

@@ -7,8 +7,9 @@ account and no password: your ChatCube ID is a key made on your computer.
 
 ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
-uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`). Matrix, Telegram
-and other messengers with an open API come later as further providers.
+uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
+(`.../matrix`) and Telegram (`.../telegram`); XMPP and other messengers with
+an open API come later as further providers.
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
@@ -69,8 +70,8 @@ ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
 UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider modules are built next
 to it in `<build>/Plugins/UltraIM/`. Matrix encryption needs a Rust toolchain
 (cargo) at build time; without one the Matrix module cannot open encrypted
-rooms. Telegram needs TDLib's `libtdjson` at run time, not at build time:
-the configure step fetches TDLib 1.8.69 prebuilt into
+rooms. Telegram needs `libtdjson` from TDLib (Telegram Database Library) at
+run time, not at build time: the configure step fetches TDLib 1.8.69 prebuilt into
 `<build>/Plugins/UltraIM/tdlib/` (`cmake/UltraCanvasTdlib.cmake`; Linux
 x86_64 and aarch64, macOS arm64, Windows x64; `ULTRAIM_TDJSON_FILE` for one
 of your own, `ULTRAIM_FETCH_TDLIB=OFF` to skip) and the packages ship it;
@@ -83,6 +84,12 @@ answers. `CHATCUBE_PLUGIN_DIR` points it elsewhere.
 Its data - the identity's key vault, contacts, history - is in the per-user
 data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
+
+`ChatCube --dark` is the dark look; the light one is the default. Both are
+one theme (`ui/ChatCubeTheme.h`: the ChatCube green on warm neutrals, the
+avatar palette, the bubble and presence colours), so every element of the
+window and everything the lists paint themselves take their colours from
+the same place.
 
 When a sign-in does not go through, `ChatCube --debug` says on stderr what
 the networks do - the relay's answers, every object sent to and received
@@ -108,6 +115,19 @@ build/chatcube-peer --data /tmp/bob --add <your ChatCube ID> --echo 600
 
 Then add Bob's ID in ChatCube and write to him.
 
+### Screenshots without a display
+
+`Apps/ChatCube/tools/screenshot.sh [--dark]` does the above by itself under
+Xvfb: it starts a relay and Bob on this machine, drives ChatCube through
+XTest (`tools/xinput.c`, built once into the build directory) - sign in as
+Alice, add Bob, two messages each way - and writes `signin.png`,
+`empty.png` and `chat.png` to `<build>/chatcube-screenshots/<look>/`
+(`--out` elsewhere). For looking at a change to the window by eye and for
+pictures in the docs. It needs `xvfb-run`, ImageMagick's `import`, a C
+compiler with the libX11 and libXtst headers, and the relay's `.venv`.
+The clicks are at fixed places in the window, so a change to the sign-in
+card or the sidebar moves them; the pictures then show where they landed.
+
 ## Files
 
 | | |
@@ -115,6 +135,8 @@ Then add Bob's ID in ChatCube and write to him.
 | `main.cpp` | start-up: UltraNet, UltraRTC, UltraIM with the UI-thread dispatcher, provider modules |
 | `ui/ChatCubeWindow.*` | the window: sign-in page, sidebar, conversation pane, UltraIM events |
 | `ui/ChatCubeViews.*` | list models and delegates: conversation rows, chat bubbles, date separators |
+| `ui/ChatCubeTheme.*` | the look: the light and the dark theme, avatars, icons, the colours the views paint with |
 | `peer/main.cpp` | `chatcube-peer` |
+| `tools/screenshot.sh`, `tools/xinput.c` | screenshots of the app under Xvfb, driven through XTest |
 
 Version: `Docs/ChatCube/CHANGELOG.md` (first line).
