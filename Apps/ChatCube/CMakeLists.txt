@@ -1,7 +1,8 @@
 # Apps/ChatCube/CMakeLists.txt
 # ChatCube - the ULTRA OS native messenger, on UltraIM. The application is
-# the window; the networks are UltraIM provider modules (ChatCube Direct:
-# UltraCanvas/Plugins/UltraIM/direct, built into <build>/Plugins/UltraIM).
+# the window; the networks are UltraIM provider modules (ChatCube Direct,
+# Matrix and Telegram: UltraCanvas/Plugins/UltraIM/direct, matrix and
+# telegram, built into <build>/Plugins/UltraIM).
 #
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -32,7 +33,7 @@ target_link_libraries(ChatCube PRIVATE ${ULTRACANVAS_LIBRARY} UltraIM UltraRTC U
 find_package(Threads REQUIRED)
 target_link_libraries(ChatCube PRIVATE Threads::Threads)
 target_compile_features(ChatCube PRIVATE cxx_std_20)
-# The provider ChatCube talks through is a module: build it with the app.
+# The providers ChatCube talks through are modules: build them with the app.
 if(TARGET UltraIMDirectPlugin)
     add_dependencies(ChatCube UltraIMDirectPlugin)
     if(TARGET UltraIMMatrixPlugin)

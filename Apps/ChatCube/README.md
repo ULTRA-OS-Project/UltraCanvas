@@ -7,8 +7,9 @@ account and no password: your ChatCube ID is a key made on your computer.
 
 ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
-uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`). Matrix, Telegram
-and other messengers with an open API come later as further providers.
+uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
+(`.../matrix`) and Telegram (`.../telegram`); XMPP and other messengers with
+an open API come later as further providers.
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
