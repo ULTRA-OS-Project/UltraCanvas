@@ -1,3 +1,6 @@
+#### 2026-10-28 *0.9.431*
+- **Windows: no GPL encoder in the core's HEIF/AVIF.** MSYS2 builds libheif with plug-in loading off, so `libheif.dll` links every encoder it has, including x265 (HEVC) and x264 (AVC), both GPL. libvips' `vips-heif` module and ImageMagick's HEIC coder load that DLL, so every Windows app on the core carried GPL code. The Windows CI rows now rebuild the same libheif release with MSYS2's options minus x265 and x264, replace `libheif.dll`, and fail if the DLL imports either encoder or lacks kvazaar. The rebuild is cached per MSYSTEM and libheif version. HEIC is still written, now by kvazaar (BSD-3-Clause), and only as 4:2:0, so a "lossless" HEIC is exact in luma but not in colour. HEIC reading (libde265) and AVIF (aom, dav1d, SVT-AV1, rav1e) are unchanged. FFmpeg still links x264 / x265 for VideoFX and UltraVideo, which are GPL on their own terms. `package-win.sh` warns when it packages a stock MSYS2 libheif.
+
 #### 2026-10-28 *0.9.430*
 - **WasmHost runs in a browser.** Under Emscripten the `WasmHost` library
   now has an engine: the browser's own WebAssembly
