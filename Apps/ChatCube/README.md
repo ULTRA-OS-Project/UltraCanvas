@@ -114,6 +114,19 @@ build/chatcube-peer --data /tmp/bob --add <your ChatCube ID> --echo 600
 
 Then add Bob's ID in ChatCube and write to him.
 
+### Screenshots without a display
+
+`Apps/ChatCube/tools/screenshot.sh [--dark]` does the above by itself under
+Xvfb: it starts a relay and Bob on this machine, drives ChatCube through
+XTest (`tools/xinput.c`, built once into the build directory) - sign in as
+Alice, add Bob, two messages each way - and writes `signin.png`,
+`empty.png` and `chat.png` to `<build>/chatcube-screenshots/<look>/`
+(`--out` elsewhere). For looking at a change to the window by eye and for
+pictures in the docs. It needs `xvfb-run`, ImageMagick's `import`, a C
+compiler with the libX11 and libXtst headers, and the relay's `.venv`.
+The clicks are at fixed places in the window, so a change to the sign-in
+card or the sidebar moves them; the pictures then show where they landed.
+
 ## Files
 
 | | |
@@ -123,5 +136,6 @@ Then add Bob's ID in ChatCube and write to him.
 | `ui/ChatCubeViews.*` | list models and delegates: conversation rows, chat bubbles, date separators |
 | `ui/ChatCubeTheme.*` | the look: the light and the dark theme, avatars, icons, the colours the views paint with |
 | `peer/main.cpp` | `chatcube-peer` |
+| `tools/screenshot.sh`, `tools/xinput.c` | screenshots of the app under Xvfb, driven through XTest |
 
 Version: `Docs/ChatCube/CHANGELOG.md` (first line).
