@@ -2,6 +2,8 @@
 // Editable vector drawing view: pasteboard, page, grid, rulers, guides,
 // snapping, the selection's handles, and pointer events forwarded to the
 // active tool in document coordinates. See the header.
+// Version: 1.1.1 - the frame, the outlines of several objects and object snapping measure
+//                  the lines' width (VectorEdit::PaintBounds)
 // Version: 1.1.0 - the turned frame and the rotation handle of rotate mode
 // Version: 1.0.0
 // Last Modified: 2026-10-28
@@ -43,22 +45,17 @@ namespace {
     // A way on screen (y down) from its angle counter-clockwise from up.
     Point2Dd UpDirection(double radians) { return Point2Dd(-std::sin(radians), -std::cos(radians)); }
 
-    // One element's own box - its geometry before its Transform - carried
-    // into the document by that transform and its ancestors': the corners
-    // top left, top right, bottom right, bottom left, turned and sheared
-    // as the object is. False when the box has no area (a straight line)
-    // or the transform flattens it.
+    // One element's own box - what it paints, its line included, before its
+    // Transform - carried into the document by that transform and its
+    // ancestors': the corners top left, top right, bottom right, bottom
+    // left, turned and sheared as the object is. False when the box has no
+    // area or the transform flattens it.
     bool OwnFrame(const VectorEdit::ElementPtr& e, std::array<Point2Dd, 4>& out) {
         if (!e) return false;
-        // GetBoundingBox() maps the box through the element's Transform:
-        // set the transform aside for the moment to read the box before it.
-        const std::optional<VectorStorage::Matrix3x3> own = e->Transform;
-        e->Transform.reset();
-        const Rect2Dd local = e->GetBoundingBox();
-        e->Transform = own;
+        const Rect2Dd local = VectorEdit::OwnPaintBounds(e);
         if (local.width <= 1e-9 || local.height <= 1e-9) return false;
         const VectorStorage::Matrix3x3 m =
-            VectorEdit::ParentToDocument(e) * own.value_or(VectorStorage::Matrix3x3::Identity());
+            VectorEdit::ParentToDocument(e) * e->Transform.value_or(VectorStorage::Matrix3x3::Identity());
         if (std::fabs(m.Determinant()) < 1e-12) return false;
         out = {{ m.Transform(Point2Dd(local.x, local.y)),
                  m.Transform(Point2Dd(local.x + local.width, local.y)),
@@ -353,7 +350,7 @@ Point2Dd UltraCanvasVectorCanvas::Snap(const Point2Dd& doc, VectorSnapResult* re
             if (!layer || !layer->Visible) continue;
             for (const auto& child : layer->Children) {
                 if (!child || (selection && selection->Contains(child))) continue;
-                const Rect2Dd b = VectorEdit::DocumentBounds(child);
+                const Rect2Dd b = VectorEdit::PaintBounds(child);
                 if (EmptyBox(b)) continue;
                 for (double x : {b.x, b.x + b.width / 2, b.x + b.width}) tryX(x, VectorSnapResult::Kind::Object);
                 for (double y : {b.y, b.y + b.height / 2, b.y + b.height}) tryY(y, VectorSnapResult::Kind::Object);
@@ -374,7 +371,22 @@ Point2Dd UltraCanvasVectorCanvas::Snap(const Point2Dd& doc, VectorSnapResult* re
 // ===========================================================================
 
 Rect2Dd UltraCanvasVectorCanvas::SelectionBounds() const {
+    if (measured) return measured->bounds;
+    return MeasureSelectionBounds();
+}
+
+Rect2Dd UltraCanvasVectorCanvas::MeasureSelectionBounds() const {
     return selection ? selection->Bounds() : Rect2Dd(0, 0, 0, 0);
+}
+
+UltraCanvasVectorCanvas::FrameMeasure::FrameMeasure(const UltraCanvasVectorCanvas& c) : canvas(c), owner(!c.measured) {
+    if (!owner) return;
+    const Rect2Dd b = canvas.MeasureSelectionBounds();
+    canvas.measured = MeasuredFrame{ b, canvas.MeasureSelectionFrame(b) };
+}
+
+UltraCanvasVectorCanvas::FrameMeasure::~FrameMeasure() {
+    if (owner) canvas.measured.reset();
 }
 
 void UltraCanvasVectorCanvas::SetHandleMode(VectorHandleMode mode) {
@@ -399,7 +411,11 @@ Point2Dd UltraCanvasVectorCanvas::GetRotationCenter() const {
 }
 
 std::array<Point2Dd, 4> UltraCanvasVectorCanvas::SelectionFrame() const {
-    const Rect2Dd b = SelectionBounds();
+    if (measured) return measured->frame;
+    return MeasureSelectionFrame(MeasureSelectionBounds());
+}
+
+std::array<Point2Dd, 4> UltraCanvasVectorCanvas::MeasureSelectionFrame(const Rect2Dd& b) const {
     std::array<Point2Dd, 4> frame = {{ Point2Dd(b.x, b.y), Point2Dd(b.x + b.width, b.y),
                                        Point2Dd(b.x + b.width, b.y + b.height), Point2Dd(b.x, b.y + b.height) }};
     if (handleMode == VectorHandleMode::Rotate && selection && selection->Count() == 1) {
@@ -512,6 +528,7 @@ Rect2Dd UltraCanvasVectorCanvas::HandleRect(VectorHandle h) const {
 
 VectorHandle UltraCanvasVectorCanvas::HitTestHandle(const Point2Di& vp) const {
     if (!showSelection || !selection || selection->Empty()) return VectorHandle::NoHandle;
+    const FrameMeasure measure(*this);
     const Rect2Dd b = SelectionBounds();
     if (EmptyBox(b)) return VectorHandle::NoHandle;
     const Point2Dd p(vp.x, vp.y);
@@ -645,6 +662,7 @@ void UltraCanvasVectorCanvas::DrawGuides(IRenderContext* ctx, const Rect2Dd& are
 
 void UltraCanvasVectorCanvas::DrawSelectionHandles(IRenderContext* ctx) {
     if (!showSelection || !selection || selection->Empty()) return;
+    const FrameMeasure measure(*this);
     const Rect2Dd b = SelectionBounds();
     if (EmptyBox(b)) return;
     ctx->SetStrokeWidth(1.0);
@@ -671,7 +689,7 @@ void UltraCanvasVectorCanvas::DrawSelectionHandles(IRenderContext* ctx) {
     if (selection->Count() > 1) {
         ctx->SetStrokePaint(Color(30, 100, 220, 90));
         for (const auto& e : selection->Elements()) {
-            const Rect2Dd eb = view.DocToView(VectorEdit::DocumentBounds(e));
+            const Rect2Dd eb = view.DocToView(VectorEdit::PaintBounds(e));
             if (EmptyBox(eb)) continue;
             ctx->DrawRectangle(Rect2Dd(std::round(eb.x) + 0.5, std::round(eb.y) + 0.5, std::round(eb.width), std::round(eb.height)));
         }

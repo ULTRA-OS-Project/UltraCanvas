@@ -17,3 +17,14 @@
 - **`UltraCanvasReferencePointPicker`: a free point.** `SetFreePoint(fractions)`
   shows a point that is none of the nine as a ring in its direction, kept
   inside the frame; picking one of the nine clears it.
+- **A selection's box now includes the width of its lines.** It ran down the
+  middle of a line, so a thick stroke stood out past the handles and the
+  transform bar measured the object too small. `VectorEdit::PaintBounds` (and
+  `OwnPaintBounds`, before the element's own transform) gives the box an
+  element paints: half the line's width to each side, a miter join's point
+  while within the miter limit, square and round caps, arrowheads, the widest
+  point of a width profile or brush. The points go through every transform
+  first, so a turned line measures as drawn. `VectorSelection::Bounds`,
+  `AlignElements`, `DistributeElements` and the canvas's frame, per-object
+  outlines and object snapping use it; `DocumentBounds` stays the geometry
+  alone. The canvas measures the frame once per paint and hit test.

@@ -9,6 +9,8 @@
 //
 // The raster twin is UltraCanvasPaintSurface; the read-only viewer is
 // UltraCanvasVectorElement. This one edits.
+// Version: 1.1.1 - the frame measures the lines' width (VectorEdit::PaintBounds), once per
+//                  paint or hit test
 // Version: 1.1.0 - Rotate mode: one object's own turned frame (SelectionFrame), a rotation
 //                  handle from the centre (VectorRotationHandleStyle Dial / Stem), the frame
 //                  hidden while turning (SetDraggedHandle), onHandleModeChanged and
@@ -284,6 +286,26 @@ private:
     // is selected or the handles are not in rotate mode.
     bool RotationHandleGeometry(Point2Dd& centreView, Point2Dd& knobView, double& angle) const;
     bool TurningHandleDragged() const;
+    // The selection's bounds and frame, measured once for a paint or a hit
+    // test instead of once per handle (a long line takes a while): while a
+    // FrameMeasure lives, SelectionBounds and SelectionFrame return these.
+    struct MeasuredFrame {
+        Rect2Dd bounds;
+        std::array<Point2Dd, 4> frame;
+    };
+    class FrameMeasure {
+    public:
+        explicit FrameMeasure(const UltraCanvasVectorCanvas& c);
+        ~FrameMeasure();
+        FrameMeasure(const FrameMeasure&) = delete;
+        FrameMeasure& operator=(const FrameMeasure&) = delete;
+    private:
+        const UltraCanvasVectorCanvas& canvas;
+        bool owner;
+    };
+    Rect2Dd MeasureSelectionBounds() const;
+    std::array<Point2Dd, 4> MeasureSelectionFrame(const Rect2Dd& bounds) const;
+    mutable std::optional<MeasuredFrame> measured;
     void DrawRulers(IRenderContext* ctx);
     Rect2Dd HandleRect(VectorHandle handle) const;      // view coordinates
     Point2Dd HandlePoint(VectorHandle handle) const;    // document coordinates

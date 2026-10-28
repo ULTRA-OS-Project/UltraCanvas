@@ -75,14 +75,20 @@ Tree helpers: `ParentOf`, `IndexInParent`, `LayerOf`, `TopLevelOf` (the
 layer's child that contains an element — what a click selects unless the
 user goes "inside" a group), `ParentToDocument` (the matrix from an
 element's parent space to the document), `DocumentBounds` (an element's
-box in document space), `AllElements`, `Detach`.
+geometry box in document space - a line's box runs down its middle),
+`PaintBounds` (the box it paints, its line included: half the width to
+each side, miter points within the limit, square and round caps,
+arrowheads, a width profile's or brush's widest point; measured through
+every transform, so a turned line is not a box around its box),
+`OwnPaintBounds` (the same before the element's own transform),
+`AllElements`, `Detach`.
 
 ## Selection
 
 ```cpp
 VectorSelection selection;
 selection.Set(rect);                // or Set({a, b}), Add, Remove, Toggle, Clear
-selection.Bounds();                 // union of DocumentBounds, document units
+selection.Bounds();                 // union of PaintBounds (lines included), document units
 selection.AddListener([&] { canvas->Refresh(); });
 ```
 
@@ -278,6 +284,10 @@ What the element does by itself:
   tells a selector tool which one is under the pointer (`Rotation` for the
   rotation handle), `Body` when the pointer is inside the bounds, `NoHandle`
   otherwise.
+  - The frame is the box the selection paints - a thick line's width
+    included (`VectorEdit::PaintBounds`) - and so are the outlines of
+    several selected objects and the edges object snapping finds. It is
+    measured once per paint and once per hit test.
   - In `Rotate` mode one selected object shows its own box turned and
     sheared as it is, and the handles sit on that frame; several objects
     show their upright bounds. `SelectionFrame()` returns the frame's four

@@ -28,3 +28,8 @@
 - Every field of the transform bar is one width, top and bottom row, and a
   held arrow steps the value again and again - 1° or 1 mm (1 px in icon mode)
   at a time - as one undo step.
+- **An object's size includes its line.** The selection's box ran down the
+  middle of a line, so a thick line stood out past the handles, and the
+  transform bar's W and H, the handles' scaling, Align and Distribute measured
+  the object without it. They now measure what is drawn: a 160 x 90 pt
+  rectangle with a 14 pt line is 174 x 104 pt.

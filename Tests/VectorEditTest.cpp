@@ -11,6 +11,7 @@
 //
 // Usage: VectorEditTest
 // Exit code is the number of failed checks.
+// Version: 1.3.0 - PaintBounds: a line's width in the box, caps, joins, transforms
 // Version: 1.2.0 - the canvas's turned frame, rotation handle and kept rotation centre
 // Version: 1.1.0
 // Last Modified: 2026-10-28
@@ -23,6 +24,7 @@
 #include "UltraCanvasVectorCanvas.h"
 #include "UltraCanvasGradientEditor.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -321,6 +323,75 @@ int main() {
         Check(outline && outline->commands.size() == 6 && outline->commands.back().Type == PathCommandType::ClosePath, "OutlineOf a rectangle is M L L L L Z");
     }
 
+
+    // ===== Paint bounds: the box a line paints, its width included =====
+    {
+        auto line = [](Point2Dd a, Point2Dd b, float width, StrokeLineCap cap) {
+            auto l = std::make_shared<VectorLine>();
+            l->Start = a; l->End = b;
+            StrokeData st; st.Width = width; st.LineCap = cap;
+            l->Style.Stroke = st;
+            return l;
+        };
+        auto butt = line({0, 0}, {100, 0}, 10, StrokeLineCap::Butt);
+        Check(NearRect(DocumentBounds(butt), 0, 0, 100, 0), "DocumentBounds is the line's middle alone");
+        Check(NearRect(PaintBounds(butt), 0, -5, 100, 10), "a butt-capped line: half its width above and below, nothing past its ends");
+        Check(NearRect(PaintBounds(line({0, 0}, {100, 0}, 10, StrokeLineCap::Round)), -5, -5, 110, 10), "round caps reach half the width past the ends");
+        Check(NearRect(PaintBounds(line({0, 0}, {100, 0}, 10, StrokeLineCap::Square)), -5, -5, 110, 10), "so do square caps");
+
+        auto box = MakeRect(10, 10, 100, 50);
+        StrokeData st; st.Width = 8; st.LineJoin = StrokeLineJoin::Miter; st.MiterLimit = 4;
+        box->Style.Stroke = st;
+        Check(NearRect(PaintBounds(box), 6, 6, 108, 58), "a stroked rectangle grows by half its line on every side");
+        box->Style.Stroke->Fill = std::monostate{};
+        Check(NearRect(PaintBounds(box), 10, 10, 100, 50), "a line with no paint adds nothing");
+
+        // A sharp miter reaches past the band; past the limit it is a bevel.
+        auto spike = std::make_shared<VectorPolyline>();
+        spike->Points = {{0, 100}, {10, 0}, {20, 100}};
+        StrokeData sharp; sharp.Width = 4; sharp.LineJoin = StrokeLineJoin::Miter; sharp.MiterLimit = 20;
+        spike->Style.Stroke = sharp;
+        const Rect2Dd sharpBox = PaintBounds(spike);
+        const double ratio = 1.0 / std::sin(std::atan(10.0 / 100.0));   // miter length over width at the tip
+        Check(Near(sharpBox.y, -2.0 * ratio, 1e-6), "a miter within the limit reaches its point");
+        spike->Style.Stroke->MiterLimit = 4;
+        Check(PaintBounds(spike).y > -2.0 * 1.01 && PaintBounds(spike).y < 0, "past the limit it is cut off as a bevel");
+
+        // A turned line measures as drawn, not as a box around its box.
+        auto turned = line({-50, 0}, {50, 0}, 10, StrokeLineCap::Butt);
+        turned->Transform = Matrix3x3::RotateDegrees(45);
+        const double k = std::sqrt(0.5);
+        const double half = 50 * k + 5 * k;
+        Check(NearRect(PaintBounds(turned), -half, -half, 2 * half, 2 * half, 1e-6), "a line turned 45 degrees: its band's corners, no more");
+        Check(NearRect(OwnPaintBounds(turned), -50, -5, 100, 10), "OwnPaintBounds is the box before the turn");
+
+        // A group: its children's lines, through the group's transform.
+        auto group = std::make_shared<VectorGroup>();
+        group->AddChild(line({0, 0}, {100, 0}, 10, StrokeLineCap::Round));
+        group->Transform = Matrix3x3::Translate(20, 30) * Matrix3x3::Scale(2, 2);
+        Check(NearRect(PaintBounds(group), 10, 20, 220, 20), "a group's box holds its children's lines, scaled with it");
+
+        // The selection's bounds are the paint bounds.
+        auto pdoc = std::make_shared<VectorDocument>();
+        auto pl = pdoc->AddLayer("L");
+        auto thick = line({0, 0}, {100, 0}, 10, StrokeLineCap::Round);
+        pl->AddChild(thick);
+        VectorSelection psel;
+        psel.Set(thick);
+        Check(NearRect(psel.Bounds(), -5, -5, 110, 10), "the selection's bounds include the line's width");
+
+        // A long freehand line stays quick to measure.
+        auto freehand = std::make_shared<VectorPolyline>();
+        for (int i = 0; i < 5000; ++i) freehand->Points.push_back(Point2Dd(i * 0.2, 20 * std::sin(i * 0.05)));
+        StrokeData round; round.Width = 6; round.LineJoin = StrokeLineJoin::Round; round.LineCap = StrokeLineCap::Round;
+        freehand->Style.Stroke = round;
+        const auto t0 = std::chrono::steady_clock::now();
+        Rect2Dd fb;
+        for (int i = 0; i < 20; ++i) fb = PaintBounds(freehand);
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / 20;
+        std::printf("  (PaintBounds of a 5000-point line: %.3f ms)\n", ms);
+        Check(Near(fb.y, -23, 1e-3) && Near(fb.height, 46, 1e-3), "a round-joined freehand line: its swing plus half its width");
+    }
 
     // ===== Canvas: view mapping, snapping, handles, guides (no window) =====
     {
