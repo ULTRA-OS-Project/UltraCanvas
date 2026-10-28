@@ -15,13 +15,17 @@
 //     libvips' jxlload at their size and depth, decode through UCImageRaster
 //     to a real picture (opaque, thousands of colours, not an empty frame),
 //     and come back identical from a lossless .jxl that UCImageRaster::Save
-//     writes.
+//     writes;
+//   - a 6144 x 6144 picture saves as a lossless .jxl three times over - the
+//     tile-at-a-time encoder of libvips 8.17+ raced on Windows x64 and ended
+//     the process (see the section).
 //
 // Headless. Needs a libvips built with libjxl: reports SKIP without one -
 // Ubuntu 22.04's libvips (CI's Linux runner) has none, 24.04's has.
+// Version: 1.2.0 - a large picture saved three times (the jxlsave tile race)
 // Version: 1.1.0 - the JXL-art samples in media/images
 // Version: 1.0.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -256,6 +260,39 @@ int main() {
                 if (pixmap->GetPixel(x, y) != backPixmap->GetPixel(x, y)) { worst = 1; break; }
         Check(error.empty() && worst == 0,
               label + ": saved as a lossless .jxl and read back, every pixel the same " + error);
+    }
+
+    // ----- a large picture, saved again and again -----
+    // libvips 8.17+ writes JPEG XL a tile at a time (libjxl 0.9+'s chunked
+    // encoder), on libjxl's worker threads, and its jxlsave drops each tile
+    // from a shared table without the lock that guards adding one. Two
+    // threads in that table at once corrupt it, and GLib ends the process
+    // (g_hash_table_remove_node, "nnodes > 0") - one Windows x64 run in three
+    // did, on jxl_art2.jxl's four tiles. A 6144 x 6144 picture has nine, and
+    // three saves of it reach the race far more often than one of four
+    // (ExportVImage serializes libjxl's threads to keep out of it).
+    {
+        constexpr int Big = 6144, Rounds = 3;
+        vips::VImage xy = vips::VImage::xyz(Big, Big);
+        vips::VImage x = xy[0], y = xy[1];
+        vips::VImage big = (x & 255).bandjoin(y & 255).bandjoin((x + y) & 255)
+                                   .cast(VIPS_FORMAT_UCHAR)
+                                   .copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB));
+        UCImageSave::ImageExportOptions lossless;
+        lossless.format = UCImageSaveFormat::JXL;
+        lossless.jxl.lossless = true;
+        lossless.jxl.effort = 1;
+        const int threads = vips_concurrency_get();
+        for (int round = 1; round <= Rounds; ++round) {
+            std::cout << "  ... " << Big << " x " << Big << ": save " << round << " of " << Rounds << std::endl;
+            const fs::path path = dir / "big.jxl";
+            error = ExportVImage(big, PathToUtf8(path), lossless);
+            Check(error.empty() && IsJxl(ReadBytes(path)),
+                  std::to_string(Big) + " x " + std::to_string(Big) + ": lossless save " + std::to_string(round) +
+                          " of " + std::to_string(Rounds) + " " + error);
+        }
+        Check(vips_concurrency_get() == threads,
+              "... and libvips is back on " + std::to_string(threads) + " threads after it");
     }
 
     fs::remove_all(dir, ec);
