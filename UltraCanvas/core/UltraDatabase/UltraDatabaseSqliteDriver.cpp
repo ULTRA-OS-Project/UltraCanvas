@@ -2,6 +2,7 @@
 // The built-in SQLite driver: opens file / in-memory databases and executes
 // parameterized statements on top of libsqlite3. Registered automatically the
 // first time the manager resolves a driver.
+// Version: 0.4.0 - a connection with an encryptionKey opens through the encrypting VFS
 // Version: 0.3.2 - a statement that changes no rows reports none, not the last INSERT's
 // Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -456,14 +457,42 @@ public:
                         : (SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
         flags |= SQLITE_OPEN_FULLMUTEX;  // serialized; we also guard with our mutex
 
+        // Encrypted at rest (UltraDatabaseEncryption.h): the file is checked
+        // against the key first, so a wrong key or a plain file is said as
+        // such rather than as SQLite's "file is not a database"; then opened
+        // through the encrypting VFS, which takes the key waiting for this name.
+        const bool encrypted = config.encryptionKey != nullptr;
+        bool isNew = false;
+        std::string fullPath;
+        if (encrypted) {
+            if (path == ":memory:") {
+                error = UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                             "an in-memory database is never written: it has nothing to encrypt",
+                                             kDriverId);
+                return nullptr;
+            }
+            error = SqliteCipherPrepare(path, *config.encryptionKey, isNew);
+            if (!error) return nullptr;
+            fullPath = SqliteCipherFullPath(path);
+            SqliteCipherSetPendingKey(fullPath, config.encryptionKey);
+        }
+
         sqlite3* db = nullptr;
-        int rc = sqlite3_open_v2(path.c_str(), &db, flags, nullptr);
+        int rc = sqlite3_open_v2(path.c_str(), &db, flags, encrypted ? SqliteCipherVfsName() : nullptr);
+        if (encrypted) SqliteCipherSetPendingKey(fullPath, nullptr);
         if (rc != SQLITE_OK) {
             error = SqliteError(db, rc, "open '" + path + "'");
             if (db) sqlite3_close_v2(db);
             return nullptr;
         }
         sqlite3_busy_timeout(db, 5000);
+        if (encrypted) {
+            if (UltraDbResult configured = SqliteCipherConfigure(db, isNew && !config.readOnly); !configured) {
+                sqlite3_close_v2(db);
+                error = configured;
+                return nullptr;
+            }
+        }
         sqlite3_exec(db, "PRAGMA foreign_keys=ON;", nullptr, nullptr, nullptr);
 
         error = UltraDbResult::Ok();

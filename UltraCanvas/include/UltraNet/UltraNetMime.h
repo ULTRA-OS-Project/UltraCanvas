@@ -210,7 +210,8 @@ std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& input);
 // (UltraNetMailMessage, UltraNetPlugins.h): its addresses, subject, body with
 // the media type and charset of `contentType`, the text alternative and
 // inline pictures of an HTML body, the attachments and the extra headers,
-// through UltraNet_MimeBuild. One wire format for every mail plug-in that
-// sends (SMTP, JMAP).
+// through UltraNet_MimeBuild - or its rawMessage, unchanged, when it has one
+// (a signed or encrypted message). One wire format for every mail plug-in
+// that sends (SMTP, JMAP).
 struct UltraNetMailMessage;
 std::string UltraNet_MimeBuildMailMessage(const UltraNetMailMessage& message);

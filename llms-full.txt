@@ -1931,10 +1931,12 @@ and secure random generation are implemented, so no application, plugin or
 sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
-Scope is **data at rest and data integrity**. Transport security stays in
-UltraNet (per-platform and OS-native); credential *storage and policy* stay
-in UltraVault, which consumes UltraCrypt for its file-backed fallback
-backend.
+Scope is **data at rest and data integrity**, and the **X.509 certificates
+and CMS** of formats the world defined (S/MIME: `UltraCryptX509.h`, on a
+second, optional backend, OpenSSL 3, since libsodium has no public-key
+infrastructure). Transport security stays in UltraNet (per-platform and
+OS-native); credential *storage and policy* stay in UltraVault, which
+consumes UltraCrypt for its file-backed fallback backend.
 
 UltraCrypt elements must comply with the same rules as UltraNet and
 UltraDatabase:
@@ -3589,6 +3591,7 @@ built by `scripts/macos-deps.sh` - see `MacOS/deps/README.md`. Mirrors the in-ap
   - [Ultra AI module](#ultra-ai-module)
   - [UltraCloud module](#ultracloud-module)
   - [UltraCrypt module](#ultracrypt-module)
+  - [UltraMail: signed and encrypted mail](#ultramail-signed-and-encrypted-mail)
   - [UltraDatabase module](#ultradatabase-module)
   - [Ultra Net module](#ultra-net-module)
   - [UltraVault module](#ultravault-module)
@@ -3614,6 +3617,7 @@ their *License* is likewise marked **—** (OS component).
 | Library | Website | Source code | License |
 |---|---|---|---|
 | ALSA | [alsa-project.org](https://www.alsa-project.org/) | [github.com/alsa-project/alsa-lib](https://github.com/alsa-project/alsa-lib) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| aom (libaom) | [aomedia.org](https://aomedia.org/) | [aomedia.googlesource.com/aom](https://aomedia.googlesource.com/aom) | [BSD 2](https://spdx.org/licenses/BSD-2-Clause.html) |
 | AVFoundation | [developer.apple.com](https://developer.apple.com/documentation/avfoundation) | — | — |
 | brotli | [brotli.org](https://www.brotli.org/) | [github.com/google/brotli](https://github.com/google/brotli) | [MIT](https://spdx.org/licenses/MIT.html) |
 | Cairo | [cairographics.org](https://www.cairographics.org/) | [gitlab.freedesktop.org/cairo/cairo](https://gitlab.freedesktop.org/cairo/cairo) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
@@ -3644,6 +3648,7 @@ their *License* is likewise marked **—** (OS component).
 | GutenPrint (runtime, not linked) | [gutenprint.sourceforge.net](http://gutenprint.sourceforge.net/) | [sourceforge.net/p/gimp-print/source](https://sourceforge.net/p/gimp-print/source/) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | gumbo | [github.com/google/gumbo-parser](https://github.com/google/gumbo-parser) | [github.com/google/gumbo-parser](https://github.com/google/gumbo-parser) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | HarfBuzz | [harfbuzz.github.io](https://harfbuzz.github.io/) | [github.com/harfbuzz/harfbuzz](https://github.com/harfbuzz/harfbuzz) | [MIT](https://spdx.org/licenses/MIT.html) |
+| Highway | [google.github.io/highway](https://google.github.io/highway/) | [github.com/google/highway](https://github.com/google/highway) | [Apache 2.0](https://spdx.org/licenses/Apache-2.0.html) or [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | ICA (ImageCaptureCore) | [developer.apple.com](https://developer.apple.com/documentation/imagecapturecore) | — | — |
 | ICU | [icu.unicode.org](https://icu.unicode.org/) | [github.com/unicode-org/icu](https://github.com/unicode-org/icu) | [Unicode](https://spdx.org/licenses/Unicode-3.0.html) |
 | ImageMagick | [imagemagick.org](https://imagemagick.org/) | [github.com/ImageMagick/ImageMagick](https://github.com/ImageMagick/ImageMagick) | [ImageMagick](https://spdx.org/licenses/ImageMagick.html) |
@@ -3659,8 +3664,10 @@ their *License* is likewise marked **—** (OS component).
 | libcdr | [wiki.documentfoundation.org](https://wiki.documentfoundation.org/DLP/Libraries/libcdr) | [github.com/LibreOffice/libcdr](https://github.com/LibreOffice/libcdr) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libdatachannel (+ libjuice, usrsctp, libsrtp, plog) | [libdatachannel.org](https://libdatachannel.org/) | [github.com/paullouisageneau/libdatachannel](https://github.com/paullouisageneau/libdatachannel) | [MPL 2.0](https://spdx.org/licenses/MPL-2.0.html) |
 | libcurl | [curl.se/libcurl](https://curl.se/libcurl/) | [github.com/curl/curl](https://github.com/curl/curl) | [curl](https://spdx.org/licenses/curl.html) |
+| libde265 | [github.com/strukturag/libde265](https://github.com/strukturag/libde265) | [github.com/strukturag/libde265](https://github.com/strukturag/libde265) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libheif | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [github.com/strukturag/libheif](https://github.com/strukturag/libheif) | [LGPL 3](https://spdx.org/licenses/LGPL-3.0-or-later.html) |
 | libjpeg-turbo | [libjpeg-turbo.org](https://libjpeg-turbo.org/) | [github.com/libjpeg-turbo/libjpeg-turbo](https://github.com/libjpeg-turbo/libjpeg-turbo) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
+| libjxl | [jpeg.org/jpegxl](https://jpeg.org/jpegxl/) | [github.com/libjxl/libjxl](https://github.com/libjxl/libjxl) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libmspack | [cabextract.org.uk/libmspack](https://www.cabextract.org.uk/libmspack/) | [github.com/kyz/libmspack](https://github.com/kyz/libmspack) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libogg | [xiph.org/ogg](https://xiph.org/ogg/) | [github.com/xiph/ogg](https://github.com/xiph/ogg) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
 | libopusenc | [opus-codec.org](https://opus-codec.org/) | [github.com/xiph/libopusenc](https://github.com/xiph/libopusenc) | [BSD 3](https://spdx.org/licenses/BSD-3-Clause.html) |
@@ -3681,6 +3688,7 @@ their *License* is likewise marked **—** (OS component).
 | MuPDF | [mupdf.com](https://mupdf.com/) | [github.com/ArtifexSoftware/mupdf](https://github.com/ArtifexSoftware/mupdf) | [AGPL 3](https://spdx.org/licenses/AGPL-3.0-or-later.html) |
 | MariaDB Connector/C (libmariadb; the MySQL / MariaDB driver) | [mariadb.com](https://mariadb.com/docs/connectors/mariadb-connector-c/) | [github.com/mariadb-corporation/mariadb-connector-c](https://github.com/mariadb-corporation/mariadb-connector-c) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsecret | [gnome.pages.gitlab.gnome.org](https://gnome.pages.gitlab.gnome.org/libsecret/) | [gitlab.gnome.org/GNOME/libsecret](https://gitlab.gnome.org/GNOME/libsecret) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| GPGME (GnuPG Made Easy; UltraMail's OpenPGP) | [gnupg.org](https://www.gnupg.org/software/gpgme/) | [dev.gnupg.org/source/gpgme](https://dev.gnupg.org/source/gpgme/) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | libsodium | [libsodium.org](https://doc.libsodium.org/) | [github.com/jedisct1/libsodium](https://github.com/jedisct1/libsodium) | [ISC](https://spdx.org/licenses/ISC.html) |
 | Network.framework | [developer.apple.com](https://developer.apple.com/documentation/network) | — | — |
 | Noto Color Emoji / Noto Emoji (fonts, bundled) | [fonts.google.com/noto](https://fonts.google.com/noto/specimen/Noto+Color+Emoji) | [github.com/googlefonts/noto-emoji](https://github.com/googlefonts/noto-emoji) | [OFL 1.1](https://spdx.org/licenses/OFL-1.1.html) |
@@ -3742,7 +3750,8 @@ their *License* is likewise marked **—** (OS component).
 | String formatting | fmt | fmt | fmt |
 | Image processing & resize | libvips | libvips | libvips |
 | Bitmap codecs (via libvips) | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp | libpng, libjpeg-turbo, libtiff, libwebp |
-| GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif | giflib, libheif |
+| GIF / HEIF / AVIF (via libvips) | giflib, libheif | giflib, libheif (+ libde265, aom): reads HEIC, reads and writes AVIF; no HEIC writing - its encoder, x265, is GPL and kept out of the core | giflib, libheif (+ its codec plug-ins) |
+| JPEG XL (via libvips) | libjxl, where the distribution's libvips has it (Ubuntu 24.04 does, 22.04 does not) | libjxl (+ brotli, Highway) | libjxl (+ brotli, Highway), through libvips' `vips-jxl` module |
 | BMP / PCX coders (via libvips) | ImageMagick | ImageMagick | ImageMagick |
 | Audio playback & capture | miniaudio (bundled) → ALSA / PulseAudio | miniaudio (bundled) → CoreAudio | miniaudio (bundled) → WASAPI |
 | Audio encode FLAC / OGG / Opus / MP3, decode OGG / Opus | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) | libFLAC, libvorbis + libogg, libopusenc + opusfile, LAME (all optional) |
@@ -4023,6 +4032,32 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
+| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
+
+> OpenSSL is UltraCrypt's second backend, for the public-key infrastructure
+> libsodium has nothing of; libsodium stays the backend of everything
+> UltraCanvas encrypts of its own (`Docs/Modules/UltraCrypt/README.md` §5.11).
+> UltraCrypt links libcrypto privately, so the installed package names no
+> OpenSSL target for a consumer to find. Without OpenSSL 3 (the browser
+> build, a system without it) the X.509 calls answer `BackendUnavailable`.
+
+### UltraMail: signed and encrypted mail
+
+| Purpose | Linux | macOS | Windows |
+|---|---|---|---|
+| S/MIME (sign, check, encrypt, decrypt; PKCS #12 import) | UltraCrypt's X.509 and CMS (OpenSSL 3, above) | UltraCrypt's X.509 and CMS | UltraCrypt's X.509 and CMS |
+| OpenPGP (the user's GnuPG keyring and gpg-agent) | GPGME (`libgpgme-dev`) and GnuPG | GPGME from vcpkg (`MacOS/deps/vcpkg.json`, bundled with libassuan and libgpg-error); GnuPG the user's, from Homebrew (`brew install gnupg pinentry-mac`) or GPG Suite | GPGME (MSYS2 `gpgme`, which brings GnuPG); x64 only - not built on Windows on Arm, where GPGME ended the process |
+
+> Both are optional and soft-failing (`UltraCrypt_IsX509Available()`,
+> `ULTRAMAIL_HAVE_OPENPGP`): without one, a message in that form is shown as
+> one this build cannot check, and the compose window does not offer it.
+> GPGME is LGPL-2.1 and linked as the system's shared library; it starts the
+> user's GnuPG (`gpg`, `gpg-agent`) as programs, so GnuPG must be installed for
+> OpenPGP to work at run time (`OpenPgpAvailable()` says whether it is). On
+> macOS it is looked for where Homebrew (Apple silicon and Intel), GPG Suite
+> and MacPorts install it, since a Finder-started app's `PATH` has none of
+> them; Homebrew's GnuPG also needs `pinentry-mac` named in
+> `~/.gnupg/gpg-agent.conf` to ask for a passphrase outside a terminal.
 
 > libsodium is optional to the *build* only: configure succeeds without it, but
 > UltraCrypt then reports `BackendUnavailable` from every operation, and the
@@ -6086,8 +6121,14 @@ the commands when given one.
   releases with their packages, the publish page with its warnings, the
   keys and the settings.
 - Upload of the publish folder to the host over SFTP, FTPS, FTP or HTTPS
-  PUT, what changed only, the catalog last. Design:
+  PUT, what changed only, the catalog last.
+- Affiliates and codes: partners with a share of the sales their codes
+  make and a recruit share one level down, discount codes, QR codes and
+  links, the sales ledger and the report. Design:
   `Docs/UltraStoreAdmin/README.md`.
+- The payment service (`Server/UltraStorePay`): Skrill Quick Checkout, the
+  status report verified, the licence and the receipt, the signed download
+  URLs, the sales for the ledger.
 
 ### UltraDesktop
 
@@ -16663,10 +16704,11 @@ FILE: Docs/UltraCanvas/UltraCanvasCDRExamples.md
   - [Plugin Registration](#plugin-registration)
 - [Convenience Factories](#convenience-factories)
 - [Usage Examples](#usage-examples)
-  - [Example 1: Loading and Displaying a CDR File](#example-1-loading-and-displaying-a-cdr-file)
-  - [Example 2: Click-to-Fullscreen Handler](#example-2-click-to-fullscreen-handler)
-  - [Example 3: Hover Highlight + Click-to-Open](#example-3-hover-highlight--click-to-open)
-  - [Example 4: Inline Multi-Page Navigation](#example-4-inline-multi-page-navigation)
+  - [Example 1: Reading a drawing without freezing the window](#example-1-reading-a-drawing-without-freezing-the-window)
+  - [Example 2: Loading and Displaying a CDR File](#example-2-loading-and-displaying-a-cdr-file)
+  - [Example 3: Click-to-Fullscreen Handler](#example-3-click-to-fullscreen-handler)
+  - [Example 4: Hover Highlight + Click-to-Open](#example-4-hover-highlight--click-to-open)
+  - [Example 5: Inline Multi-Page Navigation](#example-5-inline-multi-page-navigation)
 - [Supported Features (Plugin Summary)](#supported-features-plugin-summary)
 - [Integration Checklist](#integration-checklist)
 - [Writing CDR files (`UltraCanvasCDRConverter.h`)](#writing-cdr-files-ultracanvascdrconverterh)
@@ -16831,10 +16873,22 @@ UltraCanvasCDRElement(const std::string& identifier,
 ```cpp
 bool LoadFromFile(const std::string& filePath);
 bool LoadFromMemory(const std::vector<uint8_t>& data);
+// Parses on a worker thread; onLoadComplete / onLoadError fire on the UI
+// thread when it is done. The element must be owned by a shared_ptr.
+void LoadFromFileAsync(const std::string& filePath);
 
 bool IsLoaded() const;
+bool IsLoading() const;   // an async load is running
 int  GetPageCount() const;
 ```
+
+`LoadFromFile` parses on the calling thread. A drawing with embedded photos
+takes a while to read (`media/vector/CDR/detailed.cdr`, 3.3 MB with six
+bitmaps, about 0.7 s in a debug build), so a window that shows one
+`LoadFromFileAsync`s it and puts a busy indicator up meanwhile; the element
+reads *Loading…* until the document arrives. A load started while another
+runs waits for that one to finish, and only the latest result is shown; an
+element destroyed mid-parse waits for the worker and drops its result.
 
 ### Page Navigation
 
@@ -16981,9 +17035,26 @@ std::shared_ptr<UltraCanvasCDRElement> LoadCDRFromFile(
 
 ## Usage Examples
 
-All examples below are drawn from `Apps/DemoApp/UltraCanvasCDRExamples.cpp`.
+The demo page (`Apps/DemoApp/UltraCanvasCDRExamples.cpp`) shows one drawing at
+a time, with a tab per file on the left; each drawing is read the first time
+its tab is shown.
 
-### Example 1: Loading and Displaying a CDR File
+### Example 1: Reading a drawing without freezing the window
+
+```cpp
+auto element = std::make_shared<UltraCanvasCDRElement>("CDRView", 0, 0, 0, 0);
+element->SetFitMode(CDRFitMode::FitPage);
+auto busy = CreateBusyIndicator("CDRBusy", 0, 0, 48.0f);
+
+UltraCanvasBusyIndicator* ring = busy.get();
+element->onLoadComplete = [ring]() { ring->Stop(); };
+element->onLoadError = [ring](const std::string& error) { ring->Stop(); };
+
+busy->Start();
+element->LoadFromFileAsync(NormalizePath(GetResourcesDir() + "media/vector/CDR/detailed.cdr"));
+```
+
+### Example 2: Loading and Displaying a CDR File
 
 ```cpp
 // Create a bordered container to host the CDR view
@@ -17014,7 +17085,7 @@ cdrContainer1->AddChild(cdrElement1);
 container->AddChild(cdrContainer1);
 ```
 
-### Example 2: Click-to-Fullscreen Handler
+### Example 3: Click-to-Fullscreen Handler
 
 The demo defines a small handler class that opens any clicked CDR file in a dedicated fullscreen window. Note the use of `onPageChanged` for live page-counter updates and `SetEventCallback()` for hover / click handling.
 
@@ -17139,7 +17210,7 @@ public:
 };
 ```
 
-### Example 3: Hover Highlight + Click-to-Open
+### Example 4: Hover Highlight + Click-to-Open
 
 Per-element `SetEventCallback()` wired to a `CDRDemoHandler`. Mouse-enter / leave swap the container's border colour for visual feedback; mouse-up triggers the fullscreen viewer.
 
@@ -17165,7 +17236,7 @@ cdrElement1->SetEventCallback(
     });
 ```
 
-### Example 4: Inline Multi-Page Navigation
+### Example 5: Inline Multi-Page Navigation
 
 Inline (non-fullscreen) prev / next buttons driving the `SetCurrentPage()` API and a label that follows `onPageChanged`.
 
@@ -21774,7 +21845,9 @@ colours nobody can reach.
 
 - ✅ Any list of colours (`SetColors`), with ready-made palettes: grayscale,
   colours, or both
-- ✅ Optional leading **checkered** swatch standing for "no colour — show the
+- ✅ Optional leading **auto** swatch (half light, half dark) standing for
+  "whichever colour suits what is shown" — the host decides which
+- ✅ Optional **checkered** swatch standing for "no colour — show the
   transparency pattern"
 - ✅ Swatch size adapts to the element's width **and** height; the row is centred
 - ✅ Hover outline, selected outline, per-swatch tooltip (`#RRGGBB`)
@@ -21833,14 +21906,28 @@ bar->SetColors({ Colors::White, Color(245, 240, 225, 255), Colors::Black });
 Replacing the palette keeps the selection **only** if the selected colour is in
 the new list; otherwise nothing is marked.
 
+## The auto swatch
+
+```cpp
+bar->SetShowAutoEntry(true);       // first of all, before the checkerboard
+bar->onAutoSelected = [&]() { /* pick a colour that suits the content */ };
+```
+
+The swatch is drawn half `style.autoLight`, half `style.autoDark` and its
+tooltip says *Automatic*; it selects like any other and reports through
+`onAutoSelected`. What colour "auto" turns into is the host's call - the media
+viewer works it out from the shown picture (`ContrastingBackdropFor`).
+
 ## Selection
 
 ```cpp
 void  SelectColor(const Color& c, bool runCallback = false);  // by value, alpha ignored
 void  SelectCheckered(bool runCallback = false);
+void  SelectAuto(bool runCallback = false);
 void  ClearSelection();
 bool  HasColorSelected() const;
 bool  IsCheckeredSelected() const;
+bool  IsAutoSelected() const;
 int   GetSelectedIndex() const;      // -1 == none
 Color GetSelectedColor() const;      // ask HasColorSelected() first
 ```
@@ -21911,6 +21998,7 @@ needs to read as a bar of its own.
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+std::function<void()>             onAutoSelected;          // the auto swatch
 // right click with the entry's index and the window position; when set it
 // takes the right click instead of onColorAdjustSelected
 std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
@@ -27325,7 +27413,15 @@ const DropdownItem* GetItem(int index) const;
 void SetSelectedIndex(int index, bool runNotifications = true);   // false: no onSelectionChanged
 int GetSelectedIndex() const;
 const DropdownItem* GetSelectedItem() const;
+// What the button reads while nothing is selected (single selection) - a
+// value that is none of the items; empty (a blank button) by default
+void SetPlaceholderText(const std::string& text);
+const std::string& GetPlaceholderText() const;
 ```
+
+`SetSelectedIndex(-1, false)` with a placeholder is how a box shows a value
+between its items: the media viewer's zoom box marks *Fit* or the step it is
+at, and reads `137%` between the steps.
 
 ### Multi-selection
 
@@ -41018,10 +41114,13 @@ const CodecEntry kAllCodecs[] = {
 };
 ```
 
-JPEG XL is charted only where libvips can both save and load `.jxl`
-(`VipsCanSave(".jxl") && VipsCanLoad(".jxl")`): it needs a libvips built with
-libjxl, which Ubuntu 22.04's is not. Elsewhere the JXL column is left out
-rather than shown as a failure.
+JPEG XL, HEIF and AVIF are charted only where this build can both encode and
+load them (`VipsCanEncode(ext) && VipsCanLoad(ext)`; `VipsCanEncode` tries a
+2 x 2 encode once per codec). JPEG XL needs a libvips built with libjxl, which
+Ubuntu 22.04's is not; HEIF and AVIF need libheif with an encoder for each -
+the macOS build reads HEIC but cannot write it, since its HEVC encoder, x265,
+is GPL and is kept out of the core. Elsewhere the column is left out rather
+than shown as a failure.
 
 ### CodecResult (per-codec output row)
 
@@ -46842,6 +46941,7 @@ shape (a cube of three sets). Every shape in the proposal is built. See
 | Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
 | Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
 | Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
+| Named categories where two rated axes cross: a 9-box, performance vs potential, skill / will | `UltraCanvasPerformanceMatrix` ([guide](UltraCanvasPerformanceMatrix.md)) |
 | Named relationship levels between two to four ordered lists, with totals | **this element** |
 
 The distinction that matters is the cell datum. A heatmap cell holds a *number*
@@ -47817,7 +47917,14 @@ the next bitmap while its toggle is still on.
 
 The zoom toolbar also drives the PDF view, the vector drawing view and, for
 e-books, the reading text scale (books reflow, so zoom is a text scale and "Fit"
-means a comfortable line measure across the pane).
+means a comfortable line measure across the pane). The zoom box reads the zoom
+on show: *Fit*, the step it is at (`200%`), or the percentage between steps
+(`137%`).
+
+A drawing in the vector view or in a plugin's own element (CorelDRAW through
+libcdr) has no bitmap on the image surface; the info bar labels it
+`DRAWING (<EXT>)` with its file size and, in the vector view, its document size
+and zoom, and the Details panel calls it a *Vector drawing*.
 
 ## Zooming the shown page
 
@@ -47834,12 +47941,26 @@ viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
 
 ## Backdrop under transparent images
 
+By default every file gets a backdrop chosen for it
+(`TransparentImageBackground::Auto`): the viewer samples what is shown — a
+transparent picture's pixels, or the drawing in the vector view rasterized at
+64 px — and picks white, mid grey (153) or dark grey (51), whichever gives the
+most of the artwork a contrast of 4.5:1 or better
+(`UltraCanvasMediaViewer::ContrastingBackdropFor`). Black line art lands on
+white, a white logo on dark grey, artwork in both on mid grey; a tie goes to the
+brighter one. An opaque picture covers its backdrop, so it is not sampled.
+
 A file that really has transparency — an alpha channel that is used, or a
-vector document (SVG), which paints over whatever is behind it — gets a strip of
-colours directly under the picture: an
-[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
-swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
-clicking the checkerboard goes back to the transparency pattern. Files without
+vector document (SVG), which paints over whatever is behind it — and every
+drawing in the vector view (DXF, DWG, CorelDRAW, …) gets a strip of colours
+directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the auto
+swatch first, the checkered swatch next, then greys, then colours. Clicking a
+colour makes it the backdrop for this and the following files; the auto swatch
+goes back to a colour picked per file, and the checkerboard to the transparency
+pattern. The vector view paints its backdrop over the whole pane and cannot
+draw the pattern, so the strip offers no checkerboard there, and a drawing
+shown while it is chosen gets the Auto colour. Files without
 transparency never show the strip, so it costs no space where it would mean
 nothing — that check is `UCImage::HasTransparency` (the Cairo image,
 `libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
@@ -47850,8 +47971,10 @@ viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
 // Remember what the user picked:
 viewer->onTransparentBackgroundChanged =
         [&](TransparentImageBackground mode, const Color& color) {
+    settings.automatic = (mode == TransparentImageBackground::Auto);
     settings.checkered = (mode == TransparentImageBackground::Checkered);
-    settings.color = color;
+    // Auto reports the colour it picked for this file - not a preference.
+    if (mode == TransparentImageBackground::SolidColor) settings.color = color;
 };
 // Different colours, or different metrics:
 viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });
@@ -55220,6 +55343,229 @@ statistics panel is driven by `onPartyHover` and the seat-counting helpers.
   invalidation is needed.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md
+==============================================================================
+
+# UltraCanvasPerformanceMatrix
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> container; -->
+
+A performance matrix rates something on two ordinal axes, usually people on
+performance and potential, and names each crossing: the 9-box talent grid,
+the performance management matrix, performance-vs-potential codes and
+skill / will. Each cell is a category with a code, a badge, a title, a
+description, bullets or an action. The element draws the grid in one of four
+designs and one of four palettes.
+
+- Header: `include/Plugins/Diagrams/UltraCanvasPerformanceMatrix.h`
+- Model: `include/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.h` (UI-free)
+- Base class: `UltraCanvasChartElementBase`
+- Demo: **Info Graphics → Performance Matrix**
+- Design: [`UltraCanvasPerformanceMatrixProposal.md`](UltraCanvasPerformanceMatrixProposal.md)
+
+## Contents
+
+- [Which element do I want?](#which-element-do-i-want)
+- [Quick start](#quick-start)
+- [The model](#the-model)
+  - [Axes and levels](#axes-and-levels)
+  - [Cells](#cells)
+  - [The best corner](#the-best-corner)
+- [Designs](#designs)
+- [Cell colouring and palettes](#cell-colouring-and-palettes)
+- [Text fitting](#text-fitting)
+- [Interaction](#interaction)
+- [Samples](#samples)
+- [What is not built yet](#what-is-not-built-yet)
+
+## Which element do I want?
+
+| You want | Use |
+|---|---|
+| Named categories where two rated axes cross (9-box, performance vs potential, skill / will) | This element |
+| Relationships between two to four item lists, with a symbol at each crossing (QFD, responsibility matrices) | `UltraCanvasMatrixDiagram` |
+| Points on a continuous plane split into four quadrants (SWOT, BCG, Eisenhower) | `UltraCanvasQuadrantChart` |
+| Factors plotted over curved importance–performance zones | `UltraCanvasImportancePerformanceChart` |
+| One number per cell, shown as a colour | `UltraCanvasHeatmapChart` |
+
+## Quick start
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasPerformanceMatrix.h"
+using namespace UltraCanvas;
+
+auto matrix = CreatePerformanceMatrix("ninebox", 0, 0, 840, 600);
+matrix->SetModel(PerformanceMatrixSamples::NineBox());
+matrix->SetDesign(PerformanceMatrixDesign::Grid);
+matrix->SetCellColoring(PerformanceCellColoring::DiagonalBands);
+matrix->SetPalette(PerformanceMatrixPalette::TrafficLight());
+matrix->onCellClick = [](const PerformanceCellRef& ref) {
+    // ref.row is the y level, ref.col the x level, both counted from the low end
+};
+container->AddChild(matrix);
+```
+
+## The model
+
+`PerformanceMatrixModel` is plain data. `SetModel` takes a copy and uses
+`model.title` as the element's title; set the model again after changing it.
+
+### Axes and levels
+
+`xAxis` and `yAxis` are `PerformanceAxis`: a `title` and a list of
+`levels`, **always ordered low to high**. Row 0 is the lowest y level and
+column 0 the lowest x level, whatever the picture looks like. That makes
+`row` and `col` mean the same thing in every design. By default the x axis
+runs low to high left to right, and the y axis low to high bottom to top.
+`reversed = true` turns either axis round on screen without changing its
+data.
+
+A `PerformanceLevel` has a `label`, an optional `caption` (a second line, such
+as "Move and Retain"), an optional `iconPath` (drawn in header tabs) and an
+optional `accent` colour. Each axis takes 1 to 6 levels
+(`PerformanceMatrixModel::kMaxLevels`), and the two axes need not have the
+same number.
+
+```cpp
+PerformanceMatrixModel model;
+model.title = "Sales team review";
+model.xAxis.title = "Results";
+model.xAxis.levels = {{"Below target"}, {"On target"}, {"Above target"}, {"Exceptional"}};
+model.yAxis.title = "Potential";
+model.yAxis.levels = {{"Limited", "Keep in role"}, {"Promotable", "Develop"}};
+```
+
+### Cells
+
+Cells are sparse: a grid with no cells is valid and draws empty boxes under
+its headers. `SetCell` adds a cell, or replaces the one already at its row and
+column. Every field of a `PerformanceCell` is optional and is drawn when set,
+in this order from the top: `iconPath`, `badge` (a number in a circle),
+`code` (large, bold), `title` (bold), `description` (a `\n` starts a new
+line), `bullets` and `action`. `fill` is used by
+`PerformanceCellColoring::Explicit`. `note` appears only in the tooltip.
+
+```cpp
+PerformanceCell star;
+star.row = 1;
+star.col = 3;
+star.badge = 8;
+star.title = "Rising star";
+star.bullets = {"Beats every target", "Ready for a team"};
+star.action = "Promote within a year";
+model.SetCell(star);
+const PerformanceCell* found = model.FindCell(1, 3);
+std::vector<std::string> problems = model.Validate();   // empty = valid
+```
+
+`Validate()` reports an axis with no levels or more than six, a level without
+a label, a cell outside the grid, two cells in one place, and a negative
+badge.
+
+### The best corner
+
+`highXIsBest` and `highYIsBest` (both `true` by default) say which corner is
+best. `Rank(row, col)` counts steps from it: 0 for the best cell, up to
+`MaxRank()` for the worst. The `DiagonalBands` colouring reads the rank, so
+a matrix whose best corner is elsewhere is still coloured correctly.
+
+## Designs
+
+| Design | Looks like | Column labels |
+|---|---|---|
+| `Grid` | Contiguous cells, row and column labels, axis arrows pointing to each axis's high end, axis titles | Below |
+| `Tiles` | Separated rounded tiles; a large code over a centred description | Above |
+| `HeaderTabs` | Rounded tabs in each level's colour, with icon, label and caption, above and to the left of plain cells. No arrows or axis titles: the tabs carry the levels | Above (as tabs) |
+| `Cards` | White rounded cards with a border in the cell's colour, the badge at the top left and the bullets below | Below |
+
+`SetColumnLabels(PerformanceColumnLabels::Top / Bottom)` overrides where the
+column labels go. `SetShowAxisArrows(false)` removes the arrows.
+`SetShowContainerPanel(true)` draws a rounded panel behind the matrix in the
+palette's panel colour.
+
+## Cell colouring and palettes
+
+`SetCellColoring` decides each cell's colour:
+
+| Colouring | Colour |
+|---|---|
+| `Plain` | The palette's cell background (white); the colour lives in the headers |
+| `Explicit` | Each cell's own `fill` |
+| `DiagonalBands` | The palette's `rankColors`, sampled by the cell's rank from the best corner |
+| `ByRow` / `ByColumn` | The row's or column's level colour, tinted |
+
+In the `Cards` design, the colour goes to the card's border and badge, and
+the face stays white.
+
+A level's colour is its own `accent` when it has one; otherwise it comes from
+the palette's `levelColors`. A palette with `forceLevelColors` ignores the
+levels' accents, which is how one hue recolours a model that brings its own
+colours. Text on a fill is dark or white, whichever reads.
+
+| Palette | For |
+|---|---|
+| `TrafficLight()` | Blue, green, yellow, orange, red from the best corner (performance vs potential tiles) |
+| `Vivid()` | Saturated red, orange, green levels (header tabs) |
+| `Monochrome(hue)` | Every colour a shade of one hue |
+| `Pastel()` | Soft pink, orange, yellow levels (talent review cards) |
+
+## Text fitting
+
+All cells share one font size: the largest at which every cell's text fits,
+counting down from `SetCellFontSize` (13 by default) to a floor of 9.
+Different sizes in one grid would read as different importance. If a cell
+still does not fit at the floor, it gives up content in this order: bullets
+from the end (an ellipsis marks the cut), then the description, then the
+action. The code, the badge and the title always stay.
+
+Nothing is lost: the tooltip and `BuildCellTooltip(ref)` always hold the whole
+cell. `GetFittedFontSize()` and `AnyCellTruncated()` report what the fitting
+did.
+
+## Interaction
+
+Hovering a cell outlines it, colours its row and column labels (or outlines
+its tabs), shows its tooltip and calls `onCellHover`. When the pointer leaves
+the cells, `onCellHover` is called with an invalid ref. Clicking a cell
+selects it (a second click clears the selection) and calls `onCellClick`.
+`SetSelectedCell`, `GetSelectedCell` and `ClearSelection` drive the
+selection from code. `CellAt(point)` and `GetCellRect(row, col)` map between
+cells and the element's coordinates after the first render.
+
+```cpp
+matrix->onCellHover = [](const PerformanceCellRef& ref) {
+    if (!ref.IsValid()) return;   // the pointer left the cells
+};
+matrix->SetSelectedCell(PerformanceCellRef(2, 2));
+std::string text = matrix->BuildCellTooltip(PerformanceCellRef(2, 2));
+```
+
+## Samples
+
+| Sample | Shape | Content |
+|---|---|---|
+| `PerformanceMatrixSamples::NineBox()` | 3×3 | A name, description and action per box; badges 1–9 counting up to the best box |
+| `PerformanceManagement()` | 3×3 | Performance levels as rows and three facets of potential as columns, each with its own accent; a phrase per cell |
+| `PerformanceVsPotential()` | 3×3 | Codes 1A–3C counted from the best corner, and a two-line description per tile |
+| `TalentReview()` | 3×3 | Potential levels with action captions; badges and three bullets per card |
+| `SkillWill()` | 2×2 | Guide, Delegate, Direct, Excite |
+
+The demo page shows each one in the design it was made for, with the design,
+colouring and palette switchable.
+
+## What is not built yet
+
+This is the reference-card part of the proposal, with all four designs. Still
+to come:
+
+- **The population:** people placed into the boxes by cell or by score, with
+  counts, percentages, names or dots, a target distribution, an anonymised
+  mode and a group legend.
+- **Calibration:** dragging a person to another box, with a veto callback;
+  keyboard navigation; JSON and CSV interchange through
+  `UltraCanvasFileLoader`.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPertChartExamples.md
 ==============================================================================
 
@@ -58259,6 +58605,9 @@ zones with curved or stepped edges, use `UltraCanvasImportancePerformanceChart`
 ([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)).
 The classic four-quadrant importance–performance analysis (Martilla & James)
 is this element with `QuadrantType::Custom` and the centre at the means.
+For a grid of named categories rather than points on a plane (a 9-box, a
+performance management matrix, 3×3 or larger), use `UltraCanvasPerformanceMatrix`
+([`UltraCanvasPerformanceMatrix.md`](UltraCanvasPerformanceMatrix.md)).
 
 Points support per-point color, radius (e.g. BCG revenue bubbles), shape (circle, square, triangle, diamond) and outline. The element handles hover highlighting with tooltips, click selection (single or multi), double-click callbacks, and exposes quadrant utilities (which quadrant a point falls into, per-quadrant counts) for building statistics panels.
 
@@ -65534,6 +65883,12 @@ enum class SliderValueDisplay {
     AlwaysVisible    // Always visible
 };
 ```
+
+A slider that shows a value keeps its bar at the far edge of its box - the
+foot of a horizontal one, the left of a vertical one - so the value has room
+above or beside it. With `NoDisplay` (the default) the bar is centred across
+the box instead, so a slider in a row of labels sits on their line whatever
+height it is given.
 
 ### SliderOrientation
 Defines the slider orientation:
@@ -78009,6 +78364,7 @@ Each takes its data through setters and renders itself; most have a
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
 | The four-panel SWOT infographic | `UltraCanvasSWOTDiagram` | `Plugins/Diagrams/UltraCanvasSWOTDiagram.h` |
+| A grid of named categories where two rated axes cross: a 9-box talent grid, performance vs potential, a performance management matrix, skill / will | `UltraCanvasPerformanceMatrix` | `Plugins/Diagrams/UltraCanvasPerformanceMatrix.h` |
 | Cause and effect (Ishikawa / fishbone) | `UltraCanvasFishboneDiagram` | `Plugins/Diagrams/UltraCanvasFishboneDiagram.h` |
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
@@ -90207,7 +90563,10 @@ SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
 X25519 key agreement (§5.8.1),
 AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
-formats (§5.9, §5.10).
+formats (§5.9, §5.10), and X.509 certificates with their trust check, CMS
+signed and enveloped data and PKCS #12 (§5.11) - the one part on a second,
+optional backend, OpenSSL 3, since libsodium has nothing of public-key
+infrastructure.
 (The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
@@ -90234,7 +90593,10 @@ block cipher at all: it is bitsliced and constant-time, so the reasoning that
 kept AES-GCM out of this module's own formats (§3.4) — that a table-driven
 software AES leaks its key through the cache — does not apply to it.
 
-**Not yet implemented:** key agreement and X.509 (§2, no consumer).
+**On a second backend:** X.509 and CMS (§5.11), on OpenSSL 3's libcrypto,
+for S/MIME (UltraMail) and anything else the public-key infrastructure
+reaches. Optional: without OpenSSL 3 those calls answer
+`BackendUnavailable`, the rest of the module is unaffected.
 BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ---
@@ -90315,17 +90677,17 @@ Two caveats stated plainly:
 **In scope** — data-at-rest and data-integrity primitives: hashing, HMAC,
 authenticated encryption (AEAD), digital signatures (Ed25519), password-based
 and key-derivation functions, cryptographically secure random generation,
-constant-time comparison, and secure (zeroizing) memory.
+constant-time comparison, and secure (zeroizing) memory; and, for formats the
+world defined, X.509 certificates and CMS (§5.11): what S/MIME is made of.
 
 **Out of scope:**
 
 - **Transport security.** TLS stays in UltraNet, per-platform and OS-native.
-  UltraCrypt never opens a socket and never validates a certificate.
+  UltraCrypt never opens a socket, and a TLS connection's certificate is the
+  platform's TLS to check; UltraCrypt checks certificates as data - a signed
+  message's signer, a recipient's key (§5.11).
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Key agreement and X.509.** No consumer needs them. Signatures, the one
-  public-key operation a signed catalog or update needs, are in (§5.8); the
-  rest can be added the same way without disturbing anything here.
 - **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
   request flow). Those live in their consumers and are built *from* these
   primitives.
@@ -91244,6 +91606,75 @@ file's HMAC before it decrypts a byte. Tested against SP 800-38A F.5 (CTR),
 RFC 7914 §11 (PBKDF2-SHA-256) and SHA-512 values, plus the 128-bit counter
 carry, any message length and the refusals.
 
+### 5.11 X.509 and CMS — on OpenSSL 3
+
+`include/UltraCrypt/UltraCryptX509.h`, `core/UltraCrypt/UltraCryptX509.cpp`.
+What S/MIME (RFC 8551) is made of, and what any other use of the public-key
+infrastructure needs; the mail around it (MIME, which part is signed, whose
+certificate to learn) stays with the caller.
+
+```cpp
+bool UltraCrypt_IsX509Available();          // built with OpenSSL 3
+
+// What a certificate says: common name, addresses (subject and rfc822
+// alternative names, lowercased), issuer, validity, SHA-256 fingerprint.
+UltraCryptResult UltraCrypt_ReadCertificate(const std::string& certificate,
+                                            UltraCryptCertificateInfo& out);
+// Whether it is vouched for: a chain to a trusted root (the system's, which
+// SSL_CERT_FILE / SSL_CERT_DIR override, and/or roots given), through the
+// intermediates given, for a purpose (any, mail signing, mail encryption),
+// at a time. Trusted / Untrusted / Expired / NotYetValid / Revoked /
+// WrongPurpose, with OpenSSL's reason.
+UltraCryptResult UltraCrypt_CheckCertificate(const std::string& certificatePem,
+                                             const std::vector<std::string>& intermediatesPem,
+                                             const UltraCryptTrustOptions& options,
+                                             UltraCryptTrustCheck& out);
+// A certificate, its chain and private key (PEM in a secure buffer).
+UltraCryptResult UltraCrypt_ImportPkcs12(const std::vector<uint8_t>& pkcs12,
+                                         const UltraCryptSecureBuffer& password,
+                                         UltraCryptX509Identity& out);
+// CMS: signed data checked (detached, or with its content) and made
+// (detached, SHA-256, the chain carried); enveloped data made (AES-256-CBC)
+// and opened.
+UltraCryptCmsType UltraCrypt_CmsTypeOf(const std::vector<uint8_t>& der);
+UltraCryptResult UltraCrypt_CmsVerifyDetached(content, signatureDer, UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsVerifyAttached(signedDer, outContent, UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsSignDetached(content, const UltraCryptX509Identity& signer, outSignatureDer);
+UltraCryptResult UltraCrypt_CmsEncrypt(content, recipientsPem, outEnvelopedDer);
+UltraCryptResult UltraCrypt_CmsDecrypt(envelopedDer, const UltraCryptX509Identity& recipient,
+                                       UltraCryptSecureBuffer& outContent);
+```
+
+**Why a second backend.** libsodium has no RSA, no ECDSA over the NIST
+curves, no ASN.1 and no certificates, and an S/MIME certificate is RSA or
+P-256 more often than not; writing X.509 path validation or a CMS parser here
+is precisely the hand-rolled cryptography this module exists to prevent.
+OpenSSL 3's libcrypto is the library every system already carries for its
+TLS - Linux's packages, MSYS2 on Windows, vcpkg's build for macOS 14 - so it
+costs no new dependency. It does not displace libsodium (§3.5): everything
+UltraCanvas encrypts of its own stays XChaCha20-Poly1305 with Argon2id; this
+section reads and writes what the world defined, as §5.9 and §5.10 do.
+
+**Wrapped completely.** No OpenSSL type reaches a header; the module links
+libcrypto privately by its file, so the installed package names no OpenSSL
+target for a consumer to find, and a build without OpenSSL 3 (the browser
+build, a system without it) has every call answer `BackendUnavailable`.
+
+**The rules it keeps.** Nothing throws. A signature check answers one
+question - does it hold for exactly these bytes (`SignatureInvalid` when not)
+- and leaves whether the signer is vouched for to `UltraCrypt_CheckCertificate`,
+so a caller cannot mistake "holds" for "trusted". Private keys, a PKCS #12
+password and decrypted content pass through OpenSSL's secure-memory BIOs and
+arrive in `UltraCryptSecureBuffer`. An older PKCS #12 file (RC2, 3DES) loads
+OpenSSL's legacy provider, once, alongside the default one.
+
+*Serves:* UltraMail's S/MIME (`Apps/UltraMail/engine/UltraMailSmime.cpp`),
+which links no OpenSSL of its own. Tested against a test authority made for
+the suite: certificate fields (PEM and DER), the six trust verdicts, PKCS #12
+(modern, RC2, wrong password, not PKCS #12), detached signatures (holding, a
+changed content or signature byte, a key that is not the certificate's) and
+enveloped data (RSA and EC recipients, another recipient refused).
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -91323,6 +91754,10 @@ is part of the deliverable, not a follow-up:
 - **Round-trip and cross-platform:** a fixture file sealed on one platform must
   open on the other two in CI — this is the guarantee Option B exists to
   provide, so it must be tested, not assumed.
+- **X.509 and CMS** (§5.11), against a test authority embedded in the
+  suite (valid to 2126): every trust verdict, both PKCS #12 encryptions and
+  a wrong password, and each refusal, with the stub build's
+  `BackendUnavailable` checked where OpenSSL 3 is absent.
 - **Hygiene:** `UltraCryptSecureBuffer` wipe-on-destroy verified; a test
   asserting no public header includes a backend header (the wrapped-engine
   rule, mechanically checked); ASan/UBSan on the `UltraCrypt` target.
@@ -91337,6 +91772,7 @@ is part of the deliverable, not a follow-up:
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
+| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.
@@ -91411,12 +91847,13 @@ the app code hard-codes.
 
 > Status: **Stage 1 implemented, the PostgreSQL and MySQL / MariaDB drivers
 > from Stage 2, schema introspection, server administration, streaming
-> cursors, per-statement scripts, cancelling and statement observers.**
+> cursors, per-statement scripts, cancelling, statement observers and
+> encryption at rest for SQLite.**
 > The SQLite core, connection registry, parameterized queries, prepared
 > statements, transactions and versioned migrations are built and tested —
 > `UltraCanvas/{include,core}/UltraDatabase/`, library target `UltraDatabase`
 > (`libultradatabase.a`), test suite `Tests/UltraDatabase`
-> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 87 tests, the PostgreSQL and MySQL
+> (`ULTRACANVAS_BUILD_DATABASE_TESTS=ON`, 103 tests, the PostgreSQL and MySQL
 > ones against a live server where one is configured). The **PostgreSQL**
 > driver (`UltraDatabasePostgresDriver.cpp`, over libpq) is built whenever
 > libpq is found at configure time; it takes `?` placeholders, verifies TLS by
@@ -91862,6 +92299,64 @@ has any token.
 
 ---
 
+### Encrypted at rest
+
+A SQLite connection with an `encryptionKey` (32 bytes, an
+`UltraCryptSecureBuffer` the application holds - typically random and kept
+in its own UltraVault) reads and writes a file that is ciphertext on disk:
+every page of the database, of its WAL and of its rollback journal is
+sealed with XChaCha20-Poly1305 as it is written
+(`UltraDatabaseEncryption.h`). It is a VFS in front of the platform's, so
+it works on the system's own libsqlite3, on every platform; nothing in the
+queries changes.
+
+<!-- doc-check: std::string dataDir; -->
+```cpp
+UltraCryptSecureBuffer raw;
+UltraCrypt_RandomSecureBuffer(32, raw);          // once; then kept in the app's vault
+auto key = std::make_shared<const UltraCryptSecureBuffer>(std::move(raw));
+
+UltraDbConnectionConfig mail;
+mail.name          = "mail";
+mail.database      = dataDir + "/mail.db";
+mail.encryptionKey = key;
+UltraDb_RegisterConnection(mail);
+UltraDb_Exec("mail", "PRAGMA journal_mode=WAL");
+
+// An existing plain file becomes an encrypted one in place - and back,
+// or from one key to another - with no connection open on it:
+UltraDb_SetSqliteFileEncryption(dataDir + "/contacts.db", nullptr, key.get());
+```
+
+- **Refused as what it is.** A wrong key is `CredentialsUnavailable`; a plain
+  file opened with a key is refused with a pointer to
+  `UltraDb_SetSqliteFileEncryption`; an encrypted file opened without one is
+  "not a database" to SQLite, the sqlite3 shell and UltraDBAdmin.
+  `UltraDb_InspectSqliteFile` says which a file is without opening it, and
+  `UltraDb_SqliteKeyOpens` whether a key opens it.
+- **What it protects:** every page's content - rows, indexes, the schema -
+  and every page's place: each page's tag covers its number, so a changed
+  or moved page fails to read (`SQLITE_IOERR_DATA`).
+- **What it does not hide:** the file's size and number of pages; that WAL
+  frames and journal records carry SQLite's own checksums, computed over the
+  page as SQLite sees it (a guess of a page's whole content could be
+  confirmed); an older copy of the file put back in its place.
+- **On disk:** 4096-byte pages whose last 40 bytes (SQLite's reserved bytes)
+  hold the nonce and tag, so 4056 usable bytes a page; page 1 starts with
+  `UltraDB:XC20P:1` instead of `SQLite format 3`. Temporary data stays in
+  memory (`temp_store=MEMORY`); the encrypting VFS refuses to create a
+  temporary file.
+- **Recovery works through it.** A WAL left by a crash and a hot rollback
+  journal are replayed as SQLite replays them; the suite does both on
+  copies taken mid-write.
+- **The key is the application's.** The module never stores it. Changing
+  the password that protects the application's vault leaves the database
+  as it is; changing the key itself is `UltraDb_SetSqliteFileEncryption`
+  with both keys.
+- Available wherever UltraCrypt has its backend
+  (`UltraDb_SqliteEncryptionAvailable`); elsewhere a key is refused with
+  `Unsupported`, never ignored.
+
 ## Threading
 
 Database calls are blocking I/O, so UltraDatabase owns a **worker
@@ -91903,8 +92398,8 @@ idea* above).
   VerifyFull}` with verification on by default; certificate handling
   reuses the platform trust store (and UltraNet's TLS stack where a
   driver tunnels over it).
-- **At-rest encryption** for SQLite via the SQLCipher-compatible path,
-  opt-in per connection.
+- **At-rest encryption** for SQLite, opt-in per connection
+  (`encryptionKey`; see [Encrypted at rest](#encrypted-at-rest)).
 - **Least privilege.** Read-only connections (`readOnly = true`) are
   enforced by the driver where supported.
 
@@ -91928,9 +92423,10 @@ UltraCanvas/                          (or wherever the build places it)
 │   ├── UltraDatabaseSshTunnel.h      the opener over UltraNet's SSH plug-in (header-only)
 │   ├── UltraDatabaseRelay.h          the relay driver's seam, UltraDbRelayServer
 │   ├── UltraDatabaseRelayUltraNet.h  the relay's transport over UltraNet's WebSocket (header-only)
+│   ├── UltraDatabaseEncryption.h     SQLite files encrypted at rest
 │   └── UltraDatabasePlugins.h        IDatabaseDriverPlugin
 ├── core/UltraDatabase/               (.cpp implementations)
-│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver and its introspection
+│   ├── UltraDatabaseSqlite*.cpp      the SQLite driver, its introspection, its encrypting VFS
 │   ├── UltraDatabasePostgres*.cpp    the PostgreSQL driver (libpq), its SQL lexing, introspection
 │   ├── UltraDatabaseMysql*.cpp       the MySQL / MariaDB driver (libmariadb), its script splitter, introspection
 │   ├── UltraDatabaseServerViews.cpp  server administration for both server engines
@@ -92001,7 +92497,8 @@ headless data module usable from any ULTRA OS process.
 | Statement observers (`UltraDb_AddStatementObserver`) | Implemented |
 | SSH tunnels (`UltraDatabaseTunnel.h`, `UltraDatabaseSshTunnel.h`) | Implemented (PostgreSQL, MySQL / MariaDB) |
 | Relay (`UltraDatabaseRelay.h`: the `relay` driver, `UltraDbRelayServer` with its limits and statement time-out, a program's own sign-in, `UltraDatabaseRelayUltraNet.h`) | Implemented |
-| Test suite (94 tests) | Passing |
+| Encryption at rest for SQLite (`UltraDatabaseEncryption.h`) | Implemented |
+| Test suite (103 tests) | Passing |
 | Connection pool | Planned (Stage 2) |
 | PostgreSQL driver (libpq) | Implemented — built when libpq is found; TLS `verify-full` by default; password from UltraVault |
 | MySQL / MariaDB driver (libmariadb) | Implemented — built when libmariadb is found; server-side prepared statements; TLS verified by default; password from UltraVault; `LOAD DATA LOCAL` off |
@@ -92016,7 +92513,7 @@ headless data module usable from any ULTRA OS process.
    (The PostgreSQL and MySQL / MariaDB drivers, with their UltraVault and
    TLS wiring, and streaming cursors are done.)
 3. **Stage 3** — remaining drivers (MSSQL, Redis, MongoDB, DuckDB),
-   at-rest encryption, read-replica/failover options.
+   read-replica/failover options. (At-rest encryption for SQLite is done.)
 
 ---
 
@@ -92142,7 +92639,13 @@ says what comes next (`PhoneNumber`, `Code`, `Password`, `Registration`) and
 `authHint` how to say it (where the code went, the password's hint), and
 `AuthStepChange` reports each change. Call `UltraIM_SignIn` again with that
 one field set (`otpCode`, `password`, `displayName`); the rest of the
-credentials need not be repeated.
+credentials need not be repeated. While a code is awaited,
+`UltraIMProviderInfo::authResendHint` names the other way the service can
+send it, as a button's text ("Send it by SMS instead"; empty when it offers
+none), and `UltraIM_ResendAuthCode(provider, cb)` asks for it - the new hint
+arrives as `AuthStepChange`. A step's `NeedsInput` answer always precedes
+its `AuthStepChange`, so a `SignIn` made in answer to the event is never
+resolved by the step that raised it.
 
 What one provider's service keeps for another provider's sign-in comes
 through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
@@ -92364,6 +92867,12 @@ process.
   Telegram's test servers. TDLib keeps the session, the chats and the history
   in its own database under the provider's data directory, encrypted with a
   key the vault holds; a later `SignIn` with nothing given resumes it.
+- **The code:** Telegram sends it as a message to the Telegram apps the
+  number is already signed in on whenever there are any (the "Telegram"
+  service chat there), and by SMS or a call only when it offers that as the
+  code info's `next_type` - for many third-party API IDs it offers nothing
+  else. The hint says where it went; `authResendHint` and `ResendAuthCode`
+  (TDLib `resendAuthenticationCode`) take the next way when there is one.
 - **While it signs in**, TDLib's connection state is reported as
   `ConnectionStateChange` with `Connecting` and a text (waiting for the
   network, connecting to Telegram's servers, ...), and a step TDLib does not
@@ -93473,7 +93982,8 @@ table** (`UltraNetPluginHost`, ABI 3) handed to its `UltraNet_PluginInit`:
 registering itself, and the few core functions it calls — `UltraNet_ParseUrl`,
 `UltraNet_UrlEncode` / `UrlDecode`, `UltraNet_ResolveCaBundlePath`,
 `UltraNet_MimeBuild` and `UltraNet_MimeBuildMailMessage` (the one wire
-format of every mail plug-in that sends), `UltraNet_HttpGet` / `HttpRequest`,
+format of every mail plug-in that sends; a message whose `rawMessage` is set -
+one already signed or encrypted - is sent as those bytes, unchanged), `UltraNet_HttpGet` / `HttpRequest`,
 `UltraNet_SseStreamAsync` / `CancelRequest` / `IsRequestActive` (the JMAP
 plug-in's push), ... Plug-in sources
 call those functions as usual;
@@ -94345,6 +94855,7 @@ vault.Lock();                                       // wipes the derived key
 |---|---|
 | Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under the lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) take turns in it; a vault unlocked directly keeps working too - it re-opens its own file before each read or write when another vault took the store meanwhile (see below) |
 | Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| A Primary Password | `NeedsPassphrase()` (a vault without a device key: it opens only with its passphrase), `ChangePassphrase(current, new, keepAsDeviceKey)`, `NewDeviceKey()`, `ForgetDeviceKey()` - see below |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
 
@@ -94360,6 +94871,29 @@ folder never opened). A vault in the 0.1 format
 the applications used before UltraVault (secrets XOR-ed against a `vault.key`
 sidecar, one line per account in `creds.dat`) is carried across on the first
 successful unlock and its files removed.
+
+**A Primary Password.** By default the vault opens with its device key, so the
+user is never asked - and anything running as the user can open it too. An
+application offers a Primary Password by re-encrypting the file under a
+passphrase the user types and dropping the device key:
+
+<!-- doc-check: UltraVault::DeviceKeyVault vault; std::string typed, current; -->
+```cpp
+vault.ChangePassphrase("", typed, false);              // set: "" = the device key opens it now
+vault.NeedsPassphrase();                               // true from now on: ask at every start
+vault.ChangePassphrase(current, typed, false);         // change
+vault.ChangePassphrase(current, UltraVault::DeviceKeyVault::NewDeviceKey(), true);   // remove
+```
+
+`ChangePassphrase` proves the current passphrase by opening the file with it,
+carries every secret in the file over - whatever its prefix, another module's
+too - into a new file under a new salt, and swaps it in only once it is
+complete: interrupted, the old file and its passphrase stay. A kept device
+key is written beside the old one first (`device.key.next`, which
+`TryAutoUnlock` also tries), so whenever the new file is in place a key that
+opens it is on disk. A device key left by an interrupted change to a Primary
+Password no longer opens the file; the application asks for the passphrase
+and, once it works, calls `ForgetDeviceKey()`.
 
 UltraVault itself is one store per process, so several `DeviceKeyVault`s
 in one program - ChatCube's three messenger providers, each with its own
@@ -99521,9 +100055,9 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
    conventional host names, and you enter the servers from your provider's
    help page (section 5). Either way UltraMail shows the incoming (IMAP)
    and outgoing (SMTP) servers it will use, and stores them with the account.
-4. The first time, UltraMail asks you to **choose a master password**. It
-   encrypts your account passwords and sign-ins on disk and is never stored
-   itself — if you forget it, you enter your account passwords again.
+4. Your account passwords and sign-ins are stored encrypted in UltraMail's
+   vault; nothing is asked for. To have UltraMail ask for a password at every
+   start, set a **Primary Password** (*Settings > Privacy > Primary Password*).
 5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page;
    when it says *Signed in - you can close this tab*, come back to UltraMail.
 6. The inbox is fetched right away. Later, every account is synced every
@@ -99883,10 +100417,66 @@ again to retry.
 
 ## 4. On the machine
 
-- **Master password.** Asked for once per session, the first time a stored
-  password or sign-in is needed (adding an account, Update, sending). Nothing
-  syncs in the background while the vault is still locked; UltraMail says so
-  once, and Update asks for the password.
+- **Primary Password.** Optional (*Settings > Privacy > Primary Password*:
+  set, change, remove). Once set, UltraMail asks for it when it starts, before
+  it reads anything stored - the vault, and the key the stored mail is
+  encrypted with, open only with it; a wrong one is asked for again, Cancel
+  ends the start. It is not stored anywhere: forgotten, the mail kept on the
+  computer is downloaded again and the account passwords entered again.
+  Without one the vault opens with a key kept beside it (`vault/device.key`),
+  so UltraMail never asks.
+- **The data folder is private.** UltraMail makes it owner-only at every start
+  (on Linux and macOS; Windows' `%APPDATA%` already is).
+- **The stored mail is encrypted.** `mail.db`, `contacts.db`, `outbox.db`,
+  `cloud.db` and every downloaded message under `mail/` are ciphertext on
+  disk, encrypted with a key kept in the vault: copied elsewhere, or opened
+  with another program (the sqlite3 shell, UltraDBAdmin), they show nothing.
+  A mailbox from an earlier version is converted at the first start - the
+  databases before the window opens, the messages in the background. With a
+  Primary Password nobody without it can read them; without one, programs
+  running as you can open the vault the way UltraMail does. Attachments you
+  open are handed to their viewer as plain copies in `cache/attachments/`,
+  which are deleted at the next start.
+- **Signed and encrypted mail: S/MIME and OpenPGP.** A message that came
+  signed or encrypted is shown as it was meant to be read: decrypted where a
+  key here opens it, with pills that say what was checked - *Encrypted*, and
+  *S/MIME* or *OpenPGP* in green when the signature holds and the signer is
+  vouched for (a certificate from an authority this computer trusts, a key
+  your keyring trusts), amber when it holds but nobody vouches for the signer,
+  red when the message was changed after it was signed. On disk it stays
+  exactly as it arrived - encrypted mail is decrypted only for the reading
+  pane, never written down decrypted.
+  - **S/MIME.** Import your certificate and its private key in *Account
+    Settings > S/MIME > Import…* from the `.p12` / `.pfx` file your
+    certificate authority gave you (its password is asked for). It is kept in
+    the vault, and only a certificate for the account's own address is
+    accepted. Your correspondents' certificates are learnt from the signed
+    mail they send you - only from a signature that holds, is vouched for and
+    is from the From address.
+  - **OpenPGP.** UltraMail uses your own GnuPG keyring and `gpg-agent`, which
+    asks for a key's passphrase itself; keys are found by the address in
+    their user id. A key that arrives as an attachment (`application/pgp-keys`)
+    is offered for import when you open it.
+  - **Sending.** The compose window's *Security* row: *Off*, or *S/MIME* /
+    *OpenPGP* (each offered when this build has it, and S/MIME once the
+    account has a certificate), with *Sign* and *Encrypt*. An encrypted
+    message is encrypted to every recipient and to you, so the copies in
+    Drafts and Sent are the same ciphertext and you can still read them;
+    without a certificate or key for a recipient UltraMail says so and does
+    not send. A message that cannot be secured is never sent in plain text
+    instead. Replies and forwards of encrypted mail start encrypted.
+  - S/MIME needs UltraCrypt built with OpenSSL 3 and OpenPGP GPGME (with
+    GnuPG installed to use it); a build without one shows such mail as one
+    it cannot check.
+  - **Not on Windows on Arm yet**: GPGME ended the process there in testing,
+    so that build shows OpenPGP mail as one it cannot check. S/MIME works.
+  - **OpenPGP on macOS**: the app carries GPGME, not GnuPG. Install it with
+    Homebrew - `brew install gnupg pinentry-mac`, then put
+    `pinentry-program /opt/homebrew/bin/pinentry-mac` (`/usr/local/bin/...` on
+    Intel) in `~/.gnupg/gpg-agent.conf` and run `gpgconf --kill gpg-agent`, so
+    the passphrase is asked for in a window rather than a terminal - or with
+    GPG Suite, which sets that up itself. UltraMail finds either without
+    changing `PATH`.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
@@ -100044,7 +100634,8 @@ Gmail, Outlook and Yahoo.
 | No alert right after the computer was switched on, though the pill says *Offline* or *Failed* | When UltraMail starts, or the computer wakes, more than ten minutes after it last reached a mail server, the computer was most likely switched off and its network may not be up yet. For two minutes then (*Settings > Mail > Connection*: not at all to 10 minutes) a background check that fails raises no alert, whatever the reason; the account is checked again when the time is up, and an alert follows if it still fails. Update reports at once. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days), or it was issued to a different OAuth client than the one this installation now signs in as - an account signed in with a build before the sign-in service cannot be refreshed through it. Add the account again, or use *Sign in with …* on its settings page, to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
-| *Your mail account passwords are locked* | Enter the master password — Update, sending, or adding an account asks for it. |
+| *Your mail account passwords are locked* | Enter the Primary Password — Update, sending, or adding an account asks for it. |
+| *UltraMail is locked* when it starts | A Primary Password is set (*Settings > Privacy > Primary Password*). Enter it; Cancel ends the start. |
 
 ==============================================================================
 FILE: Docs/UltraMail/Concept.md
@@ -100440,11 +101031,38 @@ point the store at a networked engine without changing UltraMail's
 query code. The raw messages stay as `.eml` files on disk; only the
 index/metadata lives in the database.
 
+**At rest everything is encrypted** (`UltraMailStorage.h`): one random
+storage key in the vault, and keys derived from it with HKDF - one per
+database file, which UltraDatabase opens as encrypted SQLite
+(`UltraDatabaseEncryption.h`: every page of the file and its WAL sealed with
+XChaCha20-Poly1305), and one for the message files, each sealed whole
+(`UltraMail:eml:1` | nonce | ciphertext | tag). A Primary Password guards
+that key, since it guards the vault; changing it re-encrypts only the vault.
+An earlier version's plain files are converted at the first start.
+
+**Signed and encrypted mail** (`UltraMailSecureMime.h`) is S/MIME (RFC 8551,
+on UltraCrypt's X.509 and CMS - `UltraCryptX509.h`, OpenSSL 3 underneath -
+with `UltraMailSmime.cpp` saying what each finding means) and OpenPGP (RFC 3156 PGP/MIME and
+inline PGP, GPGME over the user's GnuPG keyring, `UltraMailOpenPgp.cpp`), each
+built where its library is found. The stored message stays as it travelled:
+`OpenSecureMessage` decrypts and checks it on a thread when the reading pane
+shows it (a few results kept in memory), and nothing decrypted is written. On
+sending, `SecureOutgoingMessage` signs and/or encrypts the message UltraNet
+built - to every recipient and to the sender - and the outbox sends exactly
+those bytes (`UltraNetMailMessage::rawMessage`), filing the same ones in
+Drafts and Sent. The user's S/MIME identity is kept in the vault
+(`UltraMailSecureKeys.h`); correspondents' certificates are learnt from their
+vouched-for signatures into the address book (`ContactStore`'s
+`certificates`).
+
 **Credentials** go into UltraMail's vault: the framework's
 `UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
 UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +
 XChaCha20-Poly1305 via UltraCrypt) unlocked without a prompt by an owner-only
-`device.key` beside it, the posture of Thunderbird with no Primary Password.
+`device.key` beside it, the posture of Thunderbird with no Primary Password -
+or, once the user sets one (*Settings > Privacy > Primary Password*), opened
+only with a Primary Password typed at every start, before anything stored is
+read (`DeviceKeyVault::ChangePassphrase`; the device key is then gone).
 `UltraMailCredentialVault.h` only names that profile. The OS keychains
 (libsecret, Windows Credential Manager, macOS Keychain) are planned as
 UltraVault backends behind the same surface, not as a seam of UltraMail's

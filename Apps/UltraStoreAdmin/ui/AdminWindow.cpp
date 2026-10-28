@@ -1,6 +1,7 @@
 // Apps/UltraStoreAdmin/ui/AdminWindow.cpp
 // The shell, the store's pages (Overview, Settings, Keys, Publish) and the
 // worker thread; the component form is in AdminComponentPage.cpp.
+// Version: 0.4.0 - the payment settings and Sync sales
 // Version: 0.3.0 - the Affiliates and codes page
 // Version: 0.2.0 - the upload to the host on the Publish page
 // Version: 0.1.0
@@ -49,6 +50,9 @@ const char* kSettingKeys[][2] = {
     {"ai.provider", "UltraAI provider"},
     {"ai.base_url", "UltraAI server"},
     {"ai.model", "UltraAI model"},
+    {"payment.url", "Payment service URL"},
+    {"payment.licence_key", "Licence key (hex, GET /v1/keys)"},
+    {"payment.token", "Payment service admin token"},
 };
 
 std::shared_ptr<UltraCanvasContainer> MakeScrollList(const std::string& id) {
@@ -479,7 +483,7 @@ void AdminWindow::RefreshKeysPage() {
             surface->AddChild(Theme::Text(id + ".name", std::to_string(k.id) + "  " + k.name + (k.Active() ? "" : "  (retired " + k.retiredAt + ")"), 13.0f, FontWeight::Bold));
             surface->AddChild(Theme::Caption(id + ".pk", "public " + k.publicKeyHex + "\ncreated " + k.createdAt));
             auto row = Theme::Row(id + ".row", Theme::kInnerGap, true);
-            auto exportButton = Theme::Button(id + ".export", "Export .pub…", 110);
+            auto exportButton = Theme::Button(id + ".export", "Export .pub", 110);
             const std::string hex = k.publicKeyHex, name = k.name;
             exportButton->onClick = [this, hex, name]() {
                 FileDialogOptions opts;
@@ -533,7 +537,7 @@ void AdminWindow::BuildPublishPage() {
     publishDir_->SetPlaceholder("/srv/store/v1");
     auto dirRow = Theme::Row("uaP.dirRow", Theme::kInnerGap);
     dirRow->AddChild(publishDir_);
-    auto pick = Theme::Button("uaP.pick", "Choose…", 90);
+    auto pick = Theme::Button("uaP.pick", "Choose", 90);
     pick->onClick = [this]() {
         FileDialogOptions opts;
         opts.SetTitle("The publish folder").SetParentWindow(window_.get());
@@ -579,7 +583,7 @@ void AdminWindow::BuildPublishPage() {
     uploadKeyFile_->SetPlaceholder("~/.ssh/id_ed25519 (SFTP with a key; the password is its passphrase then)");
     auto keyRow = Theme::Row("uaU.keyRow", Theme::kInnerGap);
     keyRow->AddChild(uploadKeyFile_);
-    auto pickKey = Theme::Button("uaU.pickKey", "Choose…", 90);
+    auto pickKey = Theme::Button("uaU.pickKey", "Choose", 90);
     pickKey->onClick = [this]() {
         FileDialogOptions opts;
         opts.SetTitle("The SSH private key").SetParentWindow(window_.get());
@@ -832,6 +836,19 @@ void AdminWindow::BuildAffiliatesPage() {
     sCurrency_ = Theme::Pin(CreateTextInput("uaS2.currency", 0, 0, 70, Theme::kControlHeight));
     sCurrency_->SetPlaceholder("EUR");
     saleRow->AddChild(sCurrency_);
+    auto sync = Theme::Button("uaS2.sync", "Sync sales", 100, Theme::ButtonKind::Primary);
+    sync->SetTooltip("Fetch the paid orders from the payment service (Settings: payment.url and the admin token) into the ledger");
+    sync->onClick = [this]() {
+        const std::string url = db_.Setting("payment.url"), token = db_.Setting("payment.token");
+        RunJob("Syncing the sales", [this, url, token]() {
+            JobOutcome out;
+            const auto report = SyncSales(db_, url, token);
+            if (!report) { out.ok = false; out.message = report.error.message + (report.error.detail.empty() ? "" : " (" + report.error.detail + ")"); return out; }
+            out.message = "Synced: " + std::to_string(report.Value().recorded) + " sale(s) recorded, " + std::to_string(report.Value().skipped) + " already there";
+            return out;
+        }, [this](const JobOutcome&) { RefreshAffiliatesPage(); });
+    };
+    saleRow->AddChild(sync);
     auto record = Theme::Button("uaS2.record", "Record sale", 110);
     record->onClick = [this]() {
         const auto sale = RecordSale(db_, sCode_->GetText(), sApp_->GetText(), sAmount_->GetText(), sCurrency_->GetText());
@@ -880,7 +897,7 @@ void AdminWindow::RefreshAffiliatesPage() {
                 for (int i = 0; i < aRecruitedBy_->GetItemCount(); ++i) if (aRecruitedBy_->GetItem(i)->value == a.recruitedBy) aRecruitedBy_->SetSelectedIndex(i, false);
             };
             head->AddChild(edit);
-            auto qr = Theme::Button(id + ".qr", "Join QR…", 90);
+            auto qr = Theme::Button(id + ".qr", "Join QR", 90);
             qr->SetTooltip("The QR code a future partner scans to join under this one: " + JoinLink(base, a.id));
             const std::string affId = a.id;
             qr->onClick = [this, affId, base]() {
@@ -935,7 +952,7 @@ void AdminWindow::RefreshAffiliatesPage() {
             label->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
             row->AddChild(label);
             const std::string code = c.code.code;
-            auto qr = Theme::Button(id + ".qr", "QR…", 60);
+            auto qr = Theme::Button(id + ".qr", "QR", 60);
             qr->SetTooltip(CodeLink(base, code) + "  -  " + StoreLink(code));
             qr->onClick = [this, code, base]() {
                 if (base.empty()) { SetStatus("Set the catalog base URL first (Settings): the link needs it", true); return; }

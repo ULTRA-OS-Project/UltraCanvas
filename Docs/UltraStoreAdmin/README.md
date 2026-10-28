@@ -21,7 +21,7 @@ store itself is [`Docs/UltraStore/README.md`](../UltraStore/README.md).
 | Where is the signing key? | **Generated on the publishing machine, its seed sealed in the database** with a passphrase: Argon2id derives the key, XChaCha20-Poly1305 seals the 32-byte seed with the cost and the salt in the authenticated header (UltraPassword's vault scheme, through UltraCrypt). The seed is in memory for the moment of signing. The public half is exported as a `.pub` file for `Apps/UltraStore/keys/`. A second machine means a second key, which the store trusts beside the first; a key is retired here and dropped from the store's next release. Every publish lists the active keys in the catalog's `trusted_keys` (schema 2), so a new key is announced by the first publish after `key new` and signs from the next one on, and the stores that saw that catalog accept it before the binary that carries it ships; a retired key drops out of the list. |
 | How is the packages server reached? (the store's open question) | **By what the catalog says, with the paid packages behind the server.** The publish folder has `packages/` for the packages of free apps - plain files, fetched by URL, which is what a signed catalog needs and no more - and `restricted/` for the packages of paid apps. The web server serves `packages/` and `media/` to everyone and `restricted/` to nobody directly: a buyer's store gets a **short-lived signed URL** for a restricted file from the payment service (the payment milestone), the way the other stores do it (a CDN with signed URLs per user and download, tokens that expire). No bearer token in the binary: there is nothing to leak, and a leaked signed URL dies in minutes. The catalog itself, the media and the free packages are public and need no secret. |
 | How do the files reach the server? | **`upload`, from the publish folder, over what UltraNet speaks**: SFTP (a password or a key file), FTPS, FTP, or HTTPS with one PUT per file (a WebDAV folder). What changed since the last upload to that server goes up - `upload-state.json` in the store folder keeps each file's SHA-256 per target - the packages and the media first, the signature, and `catalog.json` last, so a store fetching in between sees the old catalog whole or the new one whole. An upload that breaks off goes on from where it stopped. A file gone from the folder is named, not deleted on the server: a store half-way through a download needs it. The publish folder can still be the server's document root, or be copied by other means. |
-| Affiliates and codes | **Two tiers, no more.** A partner has codes (in the catalog, with what they take off) and a share of each sale made with them; a partner recruited by another names the recruiter, who earns a recruit share of the recruit's sales, once, one level up - the recruiter's recruiter nothing. The shares, the contact and who recruited whom stay in `admin.sqlite`; the catalog carries only the codes. Sales are recorded by hand until the payment service reports them, and `affiliate report` says what each partner is owed. QR codes encode `<catalog base>/go/<CODE>` (a page the publish folder carries) and `<catalog base>/join/<affiliate>`. The store's README, *Affiliates and codes*. |
+| Affiliates and codes | **Two tiers, no more.** A partner has codes (in the catalog, with what they take off) and a share of each sale made with them; a partner recruited by another names the recruiter, who earns a recruit share of the recruit's sales, once, one level up - the recruiter's recruiter nothing; a partner may use their own code. The shares, the contact and who recruited whom stay in `admin.sqlite`; the catalog carries only the codes. Sales are recorded by hand until the payment service reports them, and `affiliate report` says what each partner is owed. QR codes encode `<catalog base>/go/<CODE>` (a page the publish folder carries) and `<catalog base>/join/<affiliate>`. The store's README, *Affiliates and codes*. |
 | Translations | **UltraAI**, the `ITranslator` of the module, with the provider the settings name (`ai.provider`: `qwen`, `llama-cpp`, a configured endpoint; empty follows the routing policy, local first). The creator writes at least one language; `translate` fills every language of `texts.languages` (the official languages, by default) the component lacks, from its `source_language`, and lists them under `machine_translated`. A text a person wrote is never overwritten; a machine one is redone on `--redo`. |
 | Which languages? | The EU's 24 official languages, the EFTA countries' and the UK's, then the other markets the apps ship to (Ukrainian, Turkish, Serbian, Russian, Arabic, Hebrew, Hindi, Indonesian, Japanese, Korean, Thai, Vietnamese, Chinese simplified and traditional, Brazilian Portuguese): `Translation.cpp`, narrowed or widened by the setting. |
 
@@ -129,7 +129,16 @@ affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report |
 code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]
 code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>
 sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list
+sale sync [--from <url>] [--token <t>]                   the paid orders from the payment service, once each
 ```
+
+The payment service is named in the settings: `payment.url` (its base,
+published as the catalog's `payment_url`), `payment.licence_key` (the
+public half of its licence key, `GET /v1/keys`, published as
+`licence_key`; publish warns while it is missing), `payment.token` (the
+bearer token for `sale sync`, or `ULTRASTORE_PAY_ADMIN_TOKEN`), and
+`payment.sales_seq`, which `sale sync` keeps for itself. The window's
+*Affiliates and codes* page has *Sync sales*.
 
 A passphrase comes from `--passphrase`, else `ULTRASTOREADMIN_PASSPHRASE`,
 else a line on standard input; the upload's password from `--password`,
@@ -177,6 +186,9 @@ Hello.
   left out with a warning; a release left without a package, and a
   component left without a release, likewise. An app without a summary, a
   publisher the database does not know, a missing picture: warnings.
+- A restricted package on an app with a trial is warned about: *Try*
+  installs the same package and fails without a licence, so an app with a
+  trial keeps its package public.
 - The signature verifies with the key's public half; a retired key does not
   sign; a wrong passphrase stops before anything is written.
 - The codes in the catalog are the enabled ones whose partner, when they
@@ -200,5 +212,7 @@ Hello.
    files reach the server?*).
 4. **Affiliates and codes** (*Decisions*): the partners, two tiers, the
    codes in the catalog, QR codes and links, the ledger and the report.
-5. **Payment**, with the signed URLs for `restricted/` and the redemption
-   of the codes (the store's milestone 7).
+5. **Payment**: Paysafe with Skrill Quick Checkout (the store's README,
+   *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
+   sales into the ledger, the catalog naming the service from the
+   `payment.*` settings.

@@ -29,7 +29,10 @@ SHA-256/512 (one-shot, streaming and file), HMAC-SHA-1/256/512, AEAD
 Argon2id key derivation, HKDF-SHA-256/512, Ed25519 signatures (§5.8),
 X25519 key agreement (§5.8.1),
 AES-128/192/256-CBC and -CTR and PBKDF2-HMAC-SHA-256/512 for foreign
-formats (§5.9, §5.10).
+formats (§5.9, §5.10), and X.509 certificates with their trust check, CMS
+signed and enveloped data and PKCS #12 (§5.11) - the one part on a second,
+optional backend, OpenSSL 3, since libsodium has nothing of public-key
+infrastructure.
 (The RFC 4648 Base32/Base64
 codecs live in UltraCanvasUtils, §5.7; UltraCrypt keeps only the secure-buffer
 Base32 decoder.) First consumer: the UCD document encryption envelope
@@ -56,7 +59,10 @@ block cipher at all: it is bitsliced and constant-time, so the reasoning that
 kept AES-GCM out of this module's own formats (§3.4) — that a table-driven
 software AES leaks its key through the cache — does not apply to it.
 
-**Not yet implemented:** key agreement and X.509 (§2, no consumer).
+**On a second backend:** X.509 and CMS (§5.11), on OpenSSL 3's libcrypto,
+for S/MIME (UltraMail) and anything else the public-key infrastructure
+reaches. Optional: without OpenSSL 3 those calls answer
+`BackendUnavailable`, the rest of the module is unaffected.
 BLAKE3-256, once listed as optional, has been dropped altogether (§9).
 
 ---
@@ -137,17 +143,17 @@ Two caveats stated plainly:
 **In scope** — data-at-rest and data-integrity primitives: hashing, HMAC,
 authenticated encryption (AEAD), digital signatures (Ed25519), password-based
 and key-derivation functions, cryptographically secure random generation,
-constant-time comparison, and secure (zeroizing) memory.
+constant-time comparison, and secure (zeroizing) memory; and, for formats the
+world defined, X.509 certificates and CMS (§5.11): what S/MIME is made of.
 
 **Out of scope:**
 
 - **Transport security.** TLS stays in UltraNet, per-platform and OS-native.
-  UltraCrypt never opens a socket and never validates a certificate.
+  UltraCrypt never opens a socket, and a TLS connection's certificate is the
+  platform's TLS to check; UltraCrypt checks certificates as data - a signed
+  message's signer, a recipient's key (§5.11).
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Key agreement and X.509.** No consumer needs them. Signatures, the one
-  public-key operation a signed catalog or update needs, are in (§5.8); the
-  rest can be added the same way without disturbing anything here.
 - **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
   request flow). Those live in their consumers and are built *from* these
   primitives.
@@ -1066,6 +1072,75 @@ file's HMAC before it decrypts a byte. Tested against SP 800-38A F.5 (CTR),
 RFC 7914 §11 (PBKDF2-SHA-256) and SHA-512 values, plus the 128-bit counter
 carry, any message length and the refusals.
 
+### 5.11 X.509 and CMS — on OpenSSL 3
+
+`include/UltraCrypt/UltraCryptX509.h`, `core/UltraCrypt/UltraCryptX509.cpp`.
+What S/MIME (RFC 8551) is made of, and what any other use of the public-key
+infrastructure needs; the mail around it (MIME, which part is signed, whose
+certificate to learn) stays with the caller.
+
+```cpp
+bool UltraCrypt_IsX509Available();          // built with OpenSSL 3
+
+// What a certificate says: common name, addresses (subject and rfc822
+// alternative names, lowercased), issuer, validity, SHA-256 fingerprint.
+UltraCryptResult UltraCrypt_ReadCertificate(const std::string& certificate,
+                                            UltraCryptCertificateInfo& out);
+// Whether it is vouched for: a chain to a trusted root (the system's, which
+// SSL_CERT_FILE / SSL_CERT_DIR override, and/or roots given), through the
+// intermediates given, for a purpose (any, mail signing, mail encryption),
+// at a time. Trusted / Untrusted / Expired / NotYetValid / Revoked /
+// WrongPurpose, with OpenSSL's reason.
+UltraCryptResult UltraCrypt_CheckCertificate(const std::string& certificatePem,
+                                             const std::vector<std::string>& intermediatesPem,
+                                             const UltraCryptTrustOptions& options,
+                                             UltraCryptTrustCheck& out);
+// A certificate, its chain and private key (PEM in a secure buffer).
+UltraCryptResult UltraCrypt_ImportPkcs12(const std::vector<uint8_t>& pkcs12,
+                                         const UltraCryptSecureBuffer& password,
+                                         UltraCryptX509Identity& out);
+// CMS: signed data checked (detached, or with its content) and made
+// (detached, SHA-256, the chain carried); enveloped data made (AES-256-CBC)
+// and opened.
+UltraCryptCmsType UltraCrypt_CmsTypeOf(const std::vector<uint8_t>& der);
+UltraCryptResult UltraCrypt_CmsVerifyDetached(content, signatureDer, UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsVerifyAttached(signedDer, outContent, UltraCryptCmsSignature& out);
+UltraCryptResult UltraCrypt_CmsSignDetached(content, const UltraCryptX509Identity& signer, outSignatureDer);
+UltraCryptResult UltraCrypt_CmsEncrypt(content, recipientsPem, outEnvelopedDer);
+UltraCryptResult UltraCrypt_CmsDecrypt(envelopedDer, const UltraCryptX509Identity& recipient,
+                                       UltraCryptSecureBuffer& outContent);
+```
+
+**Why a second backend.** libsodium has no RSA, no ECDSA over the NIST
+curves, no ASN.1 and no certificates, and an S/MIME certificate is RSA or
+P-256 more often than not; writing X.509 path validation or a CMS parser here
+is precisely the hand-rolled cryptography this module exists to prevent.
+OpenSSL 3's libcrypto is the library every system already carries for its
+TLS - Linux's packages, MSYS2 on Windows, vcpkg's build for macOS 14 - so it
+costs no new dependency. It does not displace libsodium (§3.5): everything
+UltraCanvas encrypts of its own stays XChaCha20-Poly1305 with Argon2id; this
+section reads and writes what the world defined, as §5.9 and §5.10 do.
+
+**Wrapped completely.** No OpenSSL type reaches a header; the module links
+libcrypto privately by its file, so the installed package names no OpenSSL
+target for a consumer to find, and a build without OpenSSL 3 (the browser
+build, a system without it) has every call answer `BackendUnavailable`.
+
+**The rules it keeps.** Nothing throws. A signature check answers one
+question - does it hold for exactly these bytes (`SignatureInvalid` when not)
+- and leaves whether the signer is vouched for to `UltraCrypt_CheckCertificate`,
+so a caller cannot mistake "holds" for "trusted". Private keys, a PKCS #12
+password and decrypted content pass through OpenSSL's secure-memory BIOs and
+arrive in `UltraCryptSecureBuffer`. An older PKCS #12 file (RC2, 3DES) loads
+OpenSSL's legacy provider, once, alongside the default one.
+
+*Serves:* UltraMail's S/MIME (`Apps/UltraMail/engine/UltraMailSmime.cpp`),
+which links no OpenSSL of its own. Tested against a test authority made for
+the suite: certificate fields (PEM and DER), the six trust verdicts, PKCS #12
+(modern, RC2, wrong password, not PKCS #12), detached signatures (holding, a
+changed content or signature byte, a key that is not the certificate's) and
+enveloped data (RSA and EC recipients, another recipient refused).
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -1145,6 +1220,10 @@ is part of the deliverable, not a follow-up:
 - **Round-trip and cross-platform:** a fixture file sealed on one platform must
   open on the other two in CI — this is the guarantee Option B exists to
   provide, so it must be tested, not assumed.
+- **X.509 and CMS** (§5.11), against a test authority embedded in the
+  suite (valid to 2126): every trust verdict, both PKCS #12 encryptions and
+  a wrong password, and each refusal, with the stub build's
+  `BackendUnavailable` checked where OpenSSL 3 is absent.
 - **Hygiene:** `UltraCryptSecureBuffer` wipe-on-destroy verified; a test
   asserting no public header includes a backend header (the wrapped-engine
   rule, mechanically checked); ASan/UBSan on the `UltraCrypt` target.
@@ -1159,6 +1238,7 @@ is part of the deliverable, not a follow-up:
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
+| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.

@@ -3,6 +3,7 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
+// Version: 0.14.0 - Open takes the key mail.db is encrypted with
 // Version: 0.13.0 - schema 12: the protocol of the incoming server (IMAP or JMAP)
 // Version: 0.12.2 - MarkSenderVerdictsStale (a sender trusted or blocked)
 // Version: 0.12.1 - MarkVerdictsStale (the scam warnings changed)
@@ -89,7 +90,8 @@ public:
     // up to date. `databasePath` is a file path (created if absent) or
     // ":memory:". Safe to call again with the same connection name.
     UltraDbResult Open(const std::string& connectionName,
-                       const std::string& databasePath);
+                       const std::string& databasePath,
+                       std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey = nullptr);
 
     bool IsOpen() const { return !connection_.empty(); }
     const std::string& Connection() const { return connection_; }

@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.2 - UltraIMProviderInfo::authResendHint: a sign-in code can be asked for another way
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
 // Last Modified: 2026-10-25
@@ -215,6 +216,10 @@ struct UltraIMProviderInfo {
     bool                    hasStoredSession = false; // Can sign in without asking the user
     UltraIMAuthStep         authStep = UltraIMAuthStep::Idle; // What SignIn needs next
     std::string             authHint;      // e.g. where the code went, the password's hint
+    // Code step: the other way the code can be sent, in words for a button
+    // ("Send it by SMS instead"); "" when the service offers none. Asked for
+    // with UltraIM_ResendAuthCode.
+    std::string             authResendHint;
 };
 
 struct UltraIMSendOptions {

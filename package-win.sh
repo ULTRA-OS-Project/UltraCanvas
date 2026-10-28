@@ -276,11 +276,14 @@ VIPS_MODULE_DIR=$(ls -d $MSYS_PREFIX/lib/vips-modules-* 2>/dev/null | head -1)
 if [ -d "$VIPS_MODULE_DIR" ]; then
     VIPS_MOD_DEST="$DIST_DIR/lib/$(basename "$VIPS_MODULE_DIR")"
     mkdir -p "$VIPS_MOD_DEST"
-    # vips-heif: HEIF/AVIF support, vips-magick: ImageMagick bridge (BMP, etc.)
-    for mod in vips-heif.dll vips-magick.dll; do
+    # vips-heif: HEIF/AVIF support, vips-magick: ImageMagick bridge (BMP, etc.),
+    # vips-jxl: JPEG XL (MSYS2 builds it as a module; without it libvips has
+    # no jxlload / jxlsave and the apps offer no JPEG XL at all). The loop
+    # below that collects transitive DLLs brings libjxl, brotli and highway.
+    for mod in vips-heif.dll vips-magick.dll vips-jxl.dll; do
         [ -f "$VIPS_MODULE_DIR/$mod" ] && cp "$VIPS_MODULE_DIR/$mod" "$VIPS_MOD_DEST/"
     done
-    echo "  Copied vips modules: vips-heif, vips-magick"
+    echo "  Copied vips modules: vips-heif, vips-magick, vips-jxl"
 fi
 
 # Copy libheif codec plugins (AOM for AVIF, x265 for HEIC, etc.)

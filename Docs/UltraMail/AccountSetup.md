@@ -22,9 +22,9 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
    conventional host names, and you enter the servers from your provider's
    help page (section 5). Either way UltraMail shows the incoming (IMAP)
    and outgoing (SMTP) servers it will use, and stores them with the account.
-4. The first time, UltraMail asks you to **choose a master password**. It
-   encrypts your account passwords and sign-ins on disk and is never stored
-   itself — if you forget it, you enter your account passwords again.
+4. Your account passwords and sign-ins are stored encrypted in UltraMail's
+   vault; nothing is asked for. To have UltraMail ask for a password at every
+   start, set a **Primary Password** (*Settings > Privacy > Primary Password*).
 5. For Gmail, Outlook and Yahoo the browser opens the provider's sign-in page;
    when it says *Signed in - you can close this tab*, come back to UltraMail.
 6. The inbox is fetched right away. Later, every account is synced every
@@ -384,10 +384,66 @@ again to retry.
 
 ## 4. On the machine
 
-- **Master password.** Asked for once per session, the first time a stored
-  password or sign-in is needed (adding an account, Update, sending). Nothing
-  syncs in the background while the vault is still locked; UltraMail says so
-  once, and Update asks for the password.
+- **Primary Password.** Optional (*Settings > Privacy > Primary Password*:
+  set, change, remove). Once set, UltraMail asks for it when it starts, before
+  it reads anything stored - the vault, and the key the stored mail is
+  encrypted with, open only with it; a wrong one is asked for again, Cancel
+  ends the start. It is not stored anywhere: forgotten, the mail kept on the
+  computer is downloaded again and the account passwords entered again.
+  Without one the vault opens with a key kept beside it (`vault/device.key`),
+  so UltraMail never asks.
+- **The data folder is private.** UltraMail makes it owner-only at every start
+  (on Linux and macOS; Windows' `%APPDATA%` already is).
+- **The stored mail is encrypted.** `mail.db`, `contacts.db`, `outbox.db`,
+  `cloud.db` and every downloaded message under `mail/` are ciphertext on
+  disk, encrypted with a key kept in the vault: copied elsewhere, or opened
+  with another program (the sqlite3 shell, UltraDBAdmin), they show nothing.
+  A mailbox from an earlier version is converted at the first start - the
+  databases before the window opens, the messages in the background. With a
+  Primary Password nobody without it can read them; without one, programs
+  running as you can open the vault the way UltraMail does. Attachments you
+  open are handed to their viewer as plain copies in `cache/attachments/`,
+  which are deleted at the next start.
+- **Signed and encrypted mail: S/MIME and OpenPGP.** A message that came
+  signed or encrypted is shown as it was meant to be read: decrypted where a
+  key here opens it, with pills that say what was checked - *Encrypted*, and
+  *S/MIME* or *OpenPGP* in green when the signature holds and the signer is
+  vouched for (a certificate from an authority this computer trusts, a key
+  your keyring trusts), amber when it holds but nobody vouches for the signer,
+  red when the message was changed after it was signed. On disk it stays
+  exactly as it arrived - encrypted mail is decrypted only for the reading
+  pane, never written down decrypted.
+  - **S/MIME.** Import your certificate and its private key in *Account
+    Settings > S/MIME > Import…* from the `.p12` / `.pfx` file your
+    certificate authority gave you (its password is asked for). It is kept in
+    the vault, and only a certificate for the account's own address is
+    accepted. Your correspondents' certificates are learnt from the signed
+    mail they send you - only from a signature that holds, is vouched for and
+    is from the From address.
+  - **OpenPGP.** UltraMail uses your own GnuPG keyring and `gpg-agent`, which
+    asks for a key's passphrase itself; keys are found by the address in
+    their user id. A key that arrives as an attachment (`application/pgp-keys`)
+    is offered for import when you open it.
+  - **Sending.** The compose window's *Security* row: *Off*, or *S/MIME* /
+    *OpenPGP* (each offered when this build has it, and S/MIME once the
+    account has a certificate), with *Sign* and *Encrypt*. An encrypted
+    message is encrypted to every recipient and to you, so the copies in
+    Drafts and Sent are the same ciphertext and you can still read them;
+    without a certificate or key for a recipient UltraMail says so and does
+    not send. A message that cannot be secured is never sent in plain text
+    instead. Replies and forwards of encrypted mail start encrypted.
+  - S/MIME needs UltraCrypt built with OpenSSL 3 and OpenPGP GPGME (with
+    GnuPG installed to use it); a build without one shows such mail as one
+    it cannot check.
+  - **Not on Windows on Arm yet**: GPGME ended the process there in testing,
+    so that build shows OpenPGP mail as one it cannot check. S/MIME works.
+  - **OpenPGP on macOS**: the app carries GPGME, not GnuPG. Install it with
+    Homebrew - `brew install gnupg pinentry-mac`, then put
+    `pinentry-program /opt/homebrew/bin/pinentry-mac` (`/usr/local/bin/...` on
+    Intel) in `~/.gnupg/gpg-agent.conf` and run `gpgconf --kill gpg-agent`, so
+    the passphrase is asked for in a window rather than a terminal - or with
+    GPG Suite, which sets that up itself. UltraMail finds either without
+    changing `PATH`.
 - **Data folder.** `mail.db` (accounts, folders, message index), `mail/`
   (cached message bodies), `contacts.db`, `outbox.db`, `vault/ultramail.vault`
   (the encrypted vault) and `oauth.ini` live in the data folder named above.
@@ -545,4 +601,5 @@ Gmail, Outlook and Yahoo.
 | No alert right after the computer was switched on, though the pill says *Offline* or *Failed* | When UltraMail starts, or the computer wakes, more than ten minutes after it last reached a mail server, the computer was most likely switched off and its network may not be up yet. For two minutes then (*Settings > Mail > Connection*: not at all to 10 minutes) a background check that fails raises no alert, whatever the reason; the account is checked again when the time is up, and an alert follows if it still fails. Update reports at once. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days), or it was issued to a different OAuth client than the one this installation now signs in as - an account signed in with a build before the sign-in service cannot be refreshed through it. Add the account again, or use *Sign in with …* on its settings page, to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
-| *Your mail account passwords are locked* | Enter the master password — Update, sending, or adding an account asks for it. |
+| *Your mail account passwords are locked* | Enter the Primary Password — Update, sending, or adding an account asks for it. |
+| *UltraMail is locked* when it starts | A Primary Password is set (*Settings > Privacy > Primary Password*). Enter it; Cancel ends the start. |

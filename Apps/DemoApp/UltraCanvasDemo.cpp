@@ -1,5 +1,7 @@
 // Apps/DemoApp/UltraCanvasDemo.cpp
 // Comprehensive demonstration program implementation
+// Version: 1.0.16 - Bitmap Elements > JPEG XL Images (sample: media/images/jxl_art2.jxl)
+// Version: 1.0.15 - Info Graphics > Performance Matrix: the element replaces the placeholder
 // Version: 1.0.14 - Charts > Importance-Performance Chart (UltraCanvasImportancePerformanceChart)
 // Version: 1.0.13 - gray, 8 px scrollbars; the status legend as rows sized to their text
 // Version: 1.0.12 - no status bar; a fixed-width page keeps its width (min-width), so the
@@ -11,7 +13,7 @@
 // Version: 1.0.8 - Browser build: the window fills the viewport; the audio, video and STL pages
 //                 stay out, and a category left without pages gets no tree node
 // Version: 1.0.7 - Run(showInfoWindow): no About window when the command line opens a page
-// Last Modified: 2026-10-23
+// Last Modified: 2026-10-27
 // V1.0.6: the header title wraps a long page description instead of cutting it off
 // V1.0.5: event.targetWindow read via weak_ptr lock()
 // V1.0.4: mainContainer scrollbars disabled (it is a pure layout wrapper and must
@@ -998,6 +1000,17 @@ namespace UltraCanvas {
                               "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
                 .AddVariant("images", "Modern Formats");
 
+        // JPEG XL Images - the sample is JXL art (82 bytes, 2160 x 3840).
+        // A build whose libvips lacks libjxl shows the page with a notice
+        // in place of the picture.
+        bitmapBuilder.AddItem("jxlimages", "JPEG XL Images",
+                              "JPEG XL: lossy and lossless, HDR, and lossless JPEG recompression",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateBitmapFormatDemoPage("JXL", NormalizePath(GetResourcesDir() + "media/images/jxl_art2.jxl")); },
+                              "DemoApp/UltraCanvasBitmapFormatDemo.cpp",
+                              "Docs/UltraCanvas/UltraCanvasBitmapExamples.md")
+                .AddVariant("images", "Modern Formats");
+
         // GIF Images
         bitmapBuilder.AddItem("gifimages", "GIF Images",
                               "GIF animated format with 256 color palette",
@@ -1805,10 +1818,9 @@ namespace UltraCanvas {
                 .AddVariant("circlediagram", "Node Count Sweep")
                 .AddVariant("circlediagram", "Outside Labels");
 
-        // Nothing is built for either of these: no element, no plugin, no
-        // renderer — the demo page is the placeholder text itself. "Planned",
-        // like the specification-only modules below: there is nothing partial
-        // to show.
+        // Nothing is built for this one: no element, no plugin, no renderer —
+        // the demo page is the placeholder text itself. "Planned", like the
+        // specification-only modules below: there is nothing partial to show.
         infoBuilder.AddItem("wavesinfo", "Waves info graphic", "Waves info graphic",
                             ImplementationStatus::Planned,
                             [this]() { return CreatePartiallyImplementedExamples("Waves info graphic is not ready yet"); });
@@ -1816,9 +1828,18 @@ namespace UltraCanvas {
         // ("matrix" placeholder removed: the matrix diagram is implemented and
         // registered in the Diagrams section as "matrixdiagram".)
 
-        infoBuilder.AddItem("performancematrix", "Performance Matrix", "Performance Matrix",
-                            ImplementationStatus::Planned,
-                            [this]() { return CreatePartiallyImplementedExamples("Performance Matrix is not ready yet"); });
+        infoBuilder.AddItem("performancematrix", "Performance Matrix",
+                            "9-box, performance vs potential, performance management and talent "
+                            "review matrices: named categories where two rated axes cross",
+                            ImplementationStatus::PartiallyImplemented,
+                            [this]() { return CreatePerformanceMatrixExamples(); },
+                            "DemoApp/UltraCanvasPerformanceMatrixExamples.cpp",
+                            "Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md")
+                .AddVariant("performancematrix", "9-Box (Grid)")
+                .AddVariant("performancematrix", "Performance vs Potential (Tiles)")
+                .AddVariant("performancematrix", "Performance Management (Header Tabs)")
+                .AddVariant("performancematrix", "Talent Review (Cards)")
+                .AddVariant("performancematrix", "Skill / Will");
 
 
         // ===== 3D ELEMENTS =====

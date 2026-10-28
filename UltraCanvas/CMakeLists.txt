@@ -917,6 +917,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPacketDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPerformanceMatrix.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasParliamentDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCircleDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTickerBoard.cpp
@@ -2752,6 +2754,24 @@ if(SODIUM_FOUND)
     target_link_directories(uc-crypt PUBLIC ${SODIUM_LIBRARY_DIRS})
     target_link_libraries(uc-crypt PUBLIC ${SODIUM_LIBRARIES})
 endif()
+# X.509 and CMS (include/UltraCrypt/UltraCryptX509.h: certificates, S/MIME's
+# signed and enveloped data, PKCS #12) on OpenSSL 3's libcrypto, which
+# libsodium has nothing of. Optional: without it the file builds to calls
+# that answer BackendUnavailable. Linked by its library file, as libsodium is
+# by name, so the installed package names no OpenSSL target a consumer would
+# have to find; none of its headers reach UltraCrypt's.
+target_sources(uc-crypt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptX509.cpp)
+if(NOT EMSCRIPTEN)
+    find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
+endif()
+if(OpenSSL_FOUND AND OPENSSL_CRYPTO_LIBRARY)
+    target_compile_definitions(uc-crypt PRIVATE ULTRACRYPT_HAVE_X509=1)
+    target_include_directories(uc-crypt PRIVATE ${OPENSSL_INCLUDE_DIR})
+    target_link_libraries(uc-crypt PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
+    message(STATUS "  OpenSSL: ${OPENSSL_VERSION} (UltraCrypt X.509 and CMS)")
+else()
+    message(STATUS "  OpenSSL 3: NOT FOUND — UltraCrypt has no X.509 or CMS (S/MIME)")
+endif()
 _ultracanvas_module_home(UltraCrypt uc-crypt)
 # The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
 # password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.
@@ -3535,6 +3555,12 @@ if(ULTRACANVAS_ENABLE_DATABASE)
             target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_VAULT=1)
             string(APPEND ULTRADATABASE_DRIVERS_NOTE " (passwords from UltraVault)")
         endif()
+        # SQLite files encrypted at rest (UltraDatabaseEncryption.h): the
+        # encrypting VFS seals pages with UltraCrypt. Always linked - UltraCrypt
+        # is always built - and without libsodium a key is refused with
+        # Unsupported at run time, never ignored.
+        target_link_libraries(uc-database PRIVATE uc-crypt)
+        target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_CRYPT=1)
         target_compile_definitions(uc-database PUBLIC ULTRACANVAS_HAS_DATABASE=1)
         _ultracanvas_module_home(UltraDatabase uc-database)
 

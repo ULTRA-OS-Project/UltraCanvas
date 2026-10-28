@@ -95,7 +95,13 @@ says what comes next (`PhoneNumber`, `Code`, `Password`, `Registration`) and
 `authHint` how to say it (where the code went, the password's hint), and
 `AuthStepChange` reports each change. Call `UltraIM_SignIn` again with that
 one field set (`otpCode`, `password`, `displayName`); the rest of the
-credentials need not be repeated.
+credentials need not be repeated. While a code is awaited,
+`UltraIMProviderInfo::authResendHint` names the other way the service can
+send it, as a button's text ("Send it by SMS instead"; empty when it offers
+none), and `UltraIM_ResendAuthCode(provider, cb)` asks for it - the new hint
+arrives as `AuthStepChange`. A step's `NeedsInput` answer always precedes
+its `AuthStepChange`, so a `SignIn` made in answer to the event is never
+resolved by the step that raised it.
 
 What one provider's service keeps for another provider's sign-in comes
 through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
@@ -317,6 +323,12 @@ process.
   Telegram's test servers. TDLib keeps the session, the chats and the history
   in its own database under the provider's data directory, encrypted with a
   key the vault holds; a later `SignIn` with nothing given resumes it.
+- **The code:** Telegram sends it as a message to the Telegram apps the
+  number is already signed in on whenever there are any (the "Telegram"
+  service chat there), and by SMS or a call only when it offers that as the
+  code info's `next_type` - for many third-party API IDs it offers nothing
+  else. The hint says where it went; `authResendHint` and `ResendAuthCode`
+  (TDLib `resendAuthenticationCode`) take the next way when there is one.
 - **While it signs in**, TDLib's connection state is reported as
   `ConnectionStateChange` with `Connecting` and a text (waiting for the
   network, connecting to Telegram's servers, ...), and a step TDLib does not
