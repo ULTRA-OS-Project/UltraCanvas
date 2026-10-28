@@ -719,7 +719,7 @@ std::vector<std::shared_ptr<UltraCanvasButton>> StoreWindow::PrimaryActions(cons
     }
     if (paid) {
         // Payment is a later milestone: Buy goes to the publisher's page.
-        auto buy = Theme::Button(id + ".buy", "Buy…", 72, paid && pricing.trialDays == 0 ? Theme::ButtonKind::Primary : Theme::ButtonKind::Secondary);
+        auto buy = Theme::Button(id + ".buy", "Buy", 72, paid && pricing.trialDays == 0 ? Theme::ButtonKind::Primary : Theme::ButtonKind::Secondary);
         buy->SetTooltip(PriceLabel(pricing, CodeFor(*l.app)) + " - opens the publisher's page" +
                         (CodeFor(*l.app) ? ", the code " + CodeFor(*l.app)->code + " goes with the purchase" : ""));
         const std::string url = l.app->homepage;

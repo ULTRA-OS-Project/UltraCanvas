@@ -3350,6 +3350,23 @@ add_test(NAME MatrixModelTest COMMAND MatrixModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: MatrixModelTest")
 
+# ===== PERFORMANCE MATRIX MODEL TEST =====
+# The performance matrix model: sparse cells, the rank from the best corner,
+# validation and the shipped samples. UI-free.
+message(STATUS "  Building PerformanceMatrixModelTest...")
+add_executable(PerformanceMatrixModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PerformanceMatrixModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.cpp
+)
+target_include_directories(PerformanceMatrixModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(PerformanceMatrixModelTest PRIVATE cxx_std_20)
+set_target_properties(PerformanceMatrixModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME PerformanceMatrixModelTest COMMAND PerformanceMatrixModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: PerformanceMatrixModelTest")
+
 # ===== FISHBONE MODEL TEST =====
 # Unit tests for the fishbone (Ishikawa) model: category presets, cause and
 # sub-cause counting, depth, validation, the indented-outline codec and the
@@ -5354,6 +5371,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MatrixDiagramRenderTest")
 else()
     message(STATUS "  MatrixDiagramRenderTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== PERFORMANCE MATRIX RENDER TEST =====
+# The performance matrix drawn offscreen in each design: every cell is laid
+# out and hit where it is drawn, the colouring paints each cell its rank or
+# level colour, hover and click select, and a crowded matrix fits its text by
+# dropping content that stays in the tooltip. With ULTRACANVAS_SCREENSHOT_DIR
+# set, each design is written there as a PNG.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PerformanceMatrixRenderTest...")
+    add_executable(PerformanceMatrixRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PerformanceMatrixRenderTest.cpp
+    )
+    target_include_directories(PerformanceMatrixRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PerformanceMatrixRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(PerformanceMatrixRenderTest PRIVATE UltraCanvas)
+    set_target_properties(PerformanceMatrixRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PerformanceMatrixRenderTest COMMAND PerformanceMatrixRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PerformanceMatrixRenderTest")
+else()
+    message(STATUS "  PerformanceMatrixRenderTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== IMPORTANCE-PERFORMANCE CHART RENDER TEST =====

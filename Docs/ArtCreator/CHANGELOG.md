@@ -1,3 +1,8 @@
+#### 2026-10-27 *0.8.6*
+- **The toolbar's *Quality* slider sat below its caption and value.** It now
+  sits on their line, with the framework's slider centring a bar that shows
+  no value.
+
 #### 2026-10-25 *0.8.5*
 - **The Palette manager.** The "+" under the colour palettes opens a window
   with a title bar to drag it by; *Add palette* at its foot makes a palette

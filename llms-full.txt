@@ -6086,8 +6086,14 @@ the commands when given one.
   releases with their packages, the publish page with its warnings, the
   keys and the settings.
 - Upload of the publish folder to the host over SFTP, FTPS, FTP or HTTPS
-  PUT, what changed only, the catalog last. Design:
+  PUT, what changed only, the catalog last.
+- Affiliates and codes: partners with a share of the sales their codes
+  make and a recruit share one level down, discount codes, QR codes and
+  links, the sales ledger and the report. Design:
   `Docs/UltraStoreAdmin/README.md`.
+- The payment service (`Server/UltraStorePay`): Skrill Quick Checkout, the
+  status report verified, the licence and the receipt, the signed download
+  URLs, the sales for the ledger.
 
 ### UltraDesktop
 
@@ -16663,10 +16669,11 @@ FILE: Docs/UltraCanvas/UltraCanvasCDRExamples.md
   - [Plugin Registration](#plugin-registration)
 - [Convenience Factories](#convenience-factories)
 - [Usage Examples](#usage-examples)
-  - [Example 1: Loading and Displaying a CDR File](#example-1-loading-and-displaying-a-cdr-file)
-  - [Example 2: Click-to-Fullscreen Handler](#example-2-click-to-fullscreen-handler)
-  - [Example 3: Hover Highlight + Click-to-Open](#example-3-hover-highlight--click-to-open)
-  - [Example 4: Inline Multi-Page Navigation](#example-4-inline-multi-page-navigation)
+  - [Example 1: Reading a drawing without freezing the window](#example-1-reading-a-drawing-without-freezing-the-window)
+  - [Example 2: Loading and Displaying a CDR File](#example-2-loading-and-displaying-a-cdr-file)
+  - [Example 3: Click-to-Fullscreen Handler](#example-3-click-to-fullscreen-handler)
+  - [Example 4: Hover Highlight + Click-to-Open](#example-4-hover-highlight--click-to-open)
+  - [Example 5: Inline Multi-Page Navigation](#example-5-inline-multi-page-navigation)
 - [Supported Features (Plugin Summary)](#supported-features-plugin-summary)
 - [Integration Checklist](#integration-checklist)
 - [Writing CDR files (`UltraCanvasCDRConverter.h`)](#writing-cdr-files-ultracanvascdrconverterh)
@@ -16831,10 +16838,22 @@ UltraCanvasCDRElement(const std::string& identifier,
 ```cpp
 bool LoadFromFile(const std::string& filePath);
 bool LoadFromMemory(const std::vector<uint8_t>& data);
+// Parses on a worker thread; onLoadComplete / onLoadError fire on the UI
+// thread when it is done. The element must be owned by a shared_ptr.
+void LoadFromFileAsync(const std::string& filePath);
 
 bool IsLoaded() const;
+bool IsLoading() const;   // an async load is running
 int  GetPageCount() const;
 ```
+
+`LoadFromFile` parses on the calling thread. A drawing with embedded photos
+takes a while to read (`media/vector/CDR/detailed.cdr`, 3.3 MB with six
+bitmaps, about 0.7 s in a debug build), so a window that shows one
+`LoadFromFileAsync`s it and puts a busy indicator up meanwhile; the element
+reads *Loading…* until the document arrives. A load started while another
+runs waits for that one to finish, and only the latest result is shown; an
+element destroyed mid-parse waits for the worker and drops its result.
 
 ### Page Navigation
 
@@ -16981,9 +17000,26 @@ std::shared_ptr<UltraCanvasCDRElement> LoadCDRFromFile(
 
 ## Usage Examples
 
-All examples below are drawn from `Apps/DemoApp/UltraCanvasCDRExamples.cpp`.
+The demo page (`Apps/DemoApp/UltraCanvasCDRExamples.cpp`) shows one drawing at
+a time, with a tab per file on the left; each drawing is read the first time
+its tab is shown.
 
-### Example 1: Loading and Displaying a CDR File
+### Example 1: Reading a drawing without freezing the window
+
+```cpp
+auto element = std::make_shared<UltraCanvasCDRElement>("CDRView", 0, 0, 0, 0);
+element->SetFitMode(CDRFitMode::FitPage);
+auto busy = CreateBusyIndicator("CDRBusy", 0, 0, 48.0f);
+
+UltraCanvasBusyIndicator* ring = busy.get();
+element->onLoadComplete = [ring]() { ring->Stop(); };
+element->onLoadError = [ring](const std::string& error) { ring->Stop(); };
+
+busy->Start();
+element->LoadFromFileAsync(NormalizePath(GetResourcesDir() + "media/vector/CDR/detailed.cdr"));
+```
+
+### Example 2: Loading and Displaying a CDR File
 
 ```cpp
 // Create a bordered container to host the CDR view
@@ -17014,7 +17050,7 @@ cdrContainer1->AddChild(cdrElement1);
 container->AddChild(cdrContainer1);
 ```
 
-### Example 2: Click-to-Fullscreen Handler
+### Example 3: Click-to-Fullscreen Handler
 
 The demo defines a small handler class that opens any clicked CDR file in a dedicated fullscreen window. Note the use of `onPageChanged` for live page-counter updates and `SetEventCallback()` for hover / click handling.
 
@@ -17139,7 +17175,7 @@ public:
 };
 ```
 
-### Example 3: Hover Highlight + Click-to-Open
+### Example 4: Hover Highlight + Click-to-Open
 
 Per-element `SetEventCallback()` wired to a `CDRDemoHandler`. Mouse-enter / leave swap the container's border colour for visual feedback; mouse-up triggers the fullscreen viewer.
 
@@ -17165,7 +17201,7 @@ cdrElement1->SetEventCallback(
     });
 ```
 
-### Example 4: Inline Multi-Page Navigation
+### Example 5: Inline Multi-Page Navigation
 
 Inline (non-fullscreen) prev / next buttons driving the `SetCurrentPage()` API and a label that follows `onPageChanged`.
 
@@ -21774,7 +21810,9 @@ colours nobody can reach.
 
 - ✅ Any list of colours (`SetColors`), with ready-made palettes: grayscale,
   colours, or both
-- ✅ Optional leading **checkered** swatch standing for "no colour — show the
+- ✅ Optional leading **auto** swatch (half light, half dark) standing for
+  "whichever colour suits what is shown" — the host decides which
+- ✅ Optional **checkered** swatch standing for "no colour — show the
   transparency pattern"
 - ✅ Swatch size adapts to the element's width **and** height; the row is centred
 - ✅ Hover outline, selected outline, per-swatch tooltip (`#RRGGBB`)
@@ -21833,14 +21871,28 @@ bar->SetColors({ Colors::White, Color(245, 240, 225, 255), Colors::Black });
 Replacing the palette keeps the selection **only** if the selected colour is in
 the new list; otherwise nothing is marked.
 
+## The auto swatch
+
+```cpp
+bar->SetShowAutoEntry(true);       // first of all, before the checkerboard
+bar->onAutoSelected = [&]() { /* pick a colour that suits the content */ };
+```
+
+The swatch is drawn half `style.autoLight`, half `style.autoDark` and its
+tooltip says *Automatic*; it selects like any other and reports through
+`onAutoSelected`. What colour "auto" turns into is the host's call - the media
+viewer works it out from the shown picture (`ContrastingBackdropFor`).
+
 ## Selection
 
 ```cpp
 void  SelectColor(const Color& c, bool runCallback = false);  // by value, alpha ignored
 void  SelectCheckered(bool runCallback = false);
+void  SelectAuto(bool runCallback = false);
 void  ClearSelection();
 bool  HasColorSelected() const;
 bool  IsCheckeredSelected() const;
+bool  IsAutoSelected() const;
 int   GetSelectedIndex() const;      // -1 == none
 Color GetSelectedColor() const;      // ask HasColorSelected() first
 ```
@@ -21911,6 +21963,7 @@ needs to read as a bar of its own.
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+std::function<void()>             onAutoSelected;          // the auto swatch
 // right click with the entry's index and the window position; when set it
 // takes the right click instead of onColorAdjustSelected
 std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;
@@ -27325,7 +27378,15 @@ const DropdownItem* GetItem(int index) const;
 void SetSelectedIndex(int index, bool runNotifications = true);   // false: no onSelectionChanged
 int GetSelectedIndex() const;
 const DropdownItem* GetSelectedItem() const;
+// What the button reads while nothing is selected (single selection) - a
+// value that is none of the items; empty (a blank button) by default
+void SetPlaceholderText(const std::string& text);
+const std::string& GetPlaceholderText() const;
 ```
+
+`SetSelectedIndex(-1, false)` with a placeholder is how a box shows a value
+between its items: the media viewer's zoom box marks *Fit* or the step it is
+at, and reads `137%` between the steps.
 
 ### Multi-selection
 
@@ -46842,6 +46903,7 @@ shape (a cube of three sets). Every shape in the proposal is built. See
 | Continuous numeric cell values, a colour map, a colour bar | `UltraCanvasHeatmapChartElement` |
 | Items positioned at continuous (x, y) in a 2×2 space (BCG, Eisenhower, risk) | `UltraCanvasQuadrantChart` |
 | Rooms and their required adjacencies | `UltraCanvasAdjacencyDiagram` — it owns that data and draws its own matrix view |
+| Named categories where two rated axes cross: a 9-box, performance vs potential, skill / will | `UltraCanvasPerformanceMatrix` ([guide](UltraCanvasPerformanceMatrix.md)) |
 | Named relationship levels between two to four ordered lists, with totals | **this element** |
 
 The distinction that matters is the cell datum. A heatmap cell holds a *number*
@@ -47817,7 +47879,14 @@ the next bitmap while its toggle is still on.
 
 The zoom toolbar also drives the PDF view, the vector drawing view and, for
 e-books, the reading text scale (books reflow, so zoom is a text scale and "Fit"
-means a comfortable line measure across the pane).
+means a comfortable line measure across the pane). The zoom box reads the zoom
+on show: *Fit*, the step it is at (`200%`), or the percentage between steps
+(`137%`).
+
+A drawing in the vector view or in a plugin's own element (CorelDRAW through
+libcdr) has no bitmap on the image surface; the info bar labels it
+`DRAWING (<EXT>)` with its file size and, in the vector view, its document size
+and zoom, and the Details panel calls it a *Vector drawing*.
 
 ## Zooming the shown page
 
@@ -47834,12 +47903,26 @@ viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
 
 ## Backdrop under transparent images
 
+By default every file gets a backdrop chosen for it
+(`TransparentImageBackground::Auto`): the viewer samples what is shown — a
+transparent picture's pixels, or the drawing in the vector view rasterized at
+64 px — and picks white, mid grey (153) or dark grey (51), whichever gives the
+most of the artwork a contrast of 4.5:1 or better
+(`UltraCanvasMediaViewer::ContrastingBackdropFor`). Black line art lands on
+white, a white logo on dark grey, artwork in both on mid grey; a tie goes to the
+brighter one. An opaque picture covers its backdrop, so it is not sampled.
+
 A file that really has transparency — an alpha channel that is used, or a
-vector document (SVG), which paints over whatever is behind it — gets a strip of
-colours directly under the picture: an
-[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
-swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
-clicking the checkerboard goes back to the transparency pattern. Files without
+vector document (SVG), which paints over whatever is behind it — and every
+drawing in the vector view (DXF, DWG, CorelDRAW, …) gets a strip of colours
+directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the auto
+swatch first, the checkered swatch next, then greys, then colours. Clicking a
+colour makes it the backdrop for this and the following files; the auto swatch
+goes back to a colour picked per file, and the checkerboard to the transparency
+pattern. The vector view paints its backdrop over the whole pane and cannot
+draw the pattern, so the strip offers no checkerboard there, and a drawing
+shown while it is chosen gets the Auto colour. Files without
 transparency never show the strip, so it costs no space where it would mean
 nothing — that check is `UCImage::HasTransparency` (the Cairo image,
 `libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
@@ -47850,8 +47933,10 @@ viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
 // Remember what the user picked:
 viewer->onTransparentBackgroundChanged =
         [&](TransparentImageBackground mode, const Color& color) {
+    settings.automatic = (mode == TransparentImageBackground::Auto);
     settings.checkered = (mode == TransparentImageBackground::Checkered);
-    settings.color = color;
+    // Auto reports the colour it picked for this file - not a preference.
+    if (mode == TransparentImageBackground::SolidColor) settings.color = color;
 };
 // Different colours, or different metrics:
 viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });
@@ -55220,6 +55305,229 @@ statistics panel is driven by `onPartyHover` and the seat-counting helpers.
   invalidation is needed.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasPerformanceMatrix.md
+==============================================================================
+
+# UltraCanvasPerformanceMatrix
+
+<!-- doc-check: std::shared_ptr<UltraCanvasContainer> container; -->
+
+A performance matrix rates something on two ordinal axes, usually people on
+performance and potential, and names each crossing: the 9-box talent grid,
+the performance management matrix, performance-vs-potential codes and
+skill / will. Each cell is a category with a code, a badge, a title, a
+description, bullets or an action. The element draws the grid in one of four
+designs and one of four palettes.
+
+- Header: `include/Plugins/Diagrams/UltraCanvasPerformanceMatrix.h`
+- Model: `include/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.h` (UI-free)
+- Base class: `UltraCanvasChartElementBase`
+- Demo: **Info Graphics → Performance Matrix**
+- Design: [`UltraCanvasPerformanceMatrixProposal.md`](UltraCanvasPerformanceMatrixProposal.md)
+
+## Contents
+
+- [Which element do I want?](#which-element-do-i-want)
+- [Quick start](#quick-start)
+- [The model](#the-model)
+  - [Axes and levels](#axes-and-levels)
+  - [Cells](#cells)
+  - [The best corner](#the-best-corner)
+- [Designs](#designs)
+- [Cell colouring and palettes](#cell-colouring-and-palettes)
+- [Text fitting](#text-fitting)
+- [Interaction](#interaction)
+- [Samples](#samples)
+- [What is not built yet](#what-is-not-built-yet)
+
+## Which element do I want?
+
+| You want | Use |
+|---|---|
+| Named categories where two rated axes cross (9-box, performance vs potential, skill / will) | This element |
+| Relationships between two to four item lists, with a symbol at each crossing (QFD, responsibility matrices) | `UltraCanvasMatrixDiagram` |
+| Points on a continuous plane split into four quadrants (SWOT, BCG, Eisenhower) | `UltraCanvasQuadrantChart` |
+| Factors plotted over curved importance–performance zones | `UltraCanvasImportancePerformanceChart` |
+| One number per cell, shown as a colour | `UltraCanvasHeatmapChart` |
+
+## Quick start
+
+```cpp
+#include "Plugins/Diagrams/UltraCanvasPerformanceMatrix.h"
+using namespace UltraCanvas;
+
+auto matrix = CreatePerformanceMatrix("ninebox", 0, 0, 840, 600);
+matrix->SetModel(PerformanceMatrixSamples::NineBox());
+matrix->SetDesign(PerformanceMatrixDesign::Grid);
+matrix->SetCellColoring(PerformanceCellColoring::DiagonalBands);
+matrix->SetPalette(PerformanceMatrixPalette::TrafficLight());
+matrix->onCellClick = [](const PerformanceCellRef& ref) {
+    // ref.row is the y level, ref.col the x level, both counted from the low end
+};
+container->AddChild(matrix);
+```
+
+## The model
+
+`PerformanceMatrixModel` is plain data. `SetModel` takes a copy and uses
+`model.title` as the element's title; set the model again after changing it.
+
+### Axes and levels
+
+`xAxis` and `yAxis` are `PerformanceAxis`: a `title` and a list of
+`levels`, **always ordered low to high**. Row 0 is the lowest y level and
+column 0 the lowest x level, whatever the picture looks like. That makes
+`row` and `col` mean the same thing in every design. By default the x axis
+runs low to high left to right, and the y axis low to high bottom to top.
+`reversed = true` turns either axis round on screen without changing its
+data.
+
+A `PerformanceLevel` has a `label`, an optional `caption` (a second line, such
+as "Move and Retain"), an optional `iconPath` (drawn in header tabs) and an
+optional `accent` colour. Each axis takes 1 to 6 levels
+(`PerformanceMatrixModel::kMaxLevels`), and the two axes need not have the
+same number.
+
+```cpp
+PerformanceMatrixModel model;
+model.title = "Sales team review";
+model.xAxis.title = "Results";
+model.xAxis.levels = {{"Below target"}, {"On target"}, {"Above target"}, {"Exceptional"}};
+model.yAxis.title = "Potential";
+model.yAxis.levels = {{"Limited", "Keep in role"}, {"Promotable", "Develop"}};
+```
+
+### Cells
+
+Cells are sparse: a grid with no cells is valid and draws empty boxes under
+its headers. `SetCell` adds a cell, or replaces the one already at its row and
+column. Every field of a `PerformanceCell` is optional and is drawn when set,
+in this order from the top: `iconPath`, `badge` (a number in a circle),
+`code` (large, bold), `title` (bold), `description` (a `\n` starts a new
+line), `bullets` and `action`. `fill` is used by
+`PerformanceCellColoring::Explicit`. `note` appears only in the tooltip.
+
+```cpp
+PerformanceCell star;
+star.row = 1;
+star.col = 3;
+star.badge = 8;
+star.title = "Rising star";
+star.bullets = {"Beats every target", "Ready for a team"};
+star.action = "Promote within a year";
+model.SetCell(star);
+const PerformanceCell* found = model.FindCell(1, 3);
+std::vector<std::string> problems = model.Validate();   // empty = valid
+```
+
+`Validate()` reports an axis with no levels or more than six, a level without
+a label, a cell outside the grid, two cells in one place, and a negative
+badge.
+
+### The best corner
+
+`highXIsBest` and `highYIsBest` (both `true` by default) say which corner is
+best. `Rank(row, col)` counts steps from it: 0 for the best cell, up to
+`MaxRank()` for the worst. The `DiagonalBands` colouring reads the rank, so
+a matrix whose best corner is elsewhere is still coloured correctly.
+
+## Designs
+
+| Design | Looks like | Column labels |
+|---|---|---|
+| `Grid` | Contiguous cells, row and column labels, axis arrows pointing to each axis's high end, axis titles | Below |
+| `Tiles` | Separated rounded tiles; a large code over a centred description | Above |
+| `HeaderTabs` | Rounded tabs in each level's colour, with icon, label and caption, above and to the left of plain cells. No arrows or axis titles: the tabs carry the levels | Above (as tabs) |
+| `Cards` | White rounded cards with a border in the cell's colour, the badge at the top left and the bullets below | Below |
+
+`SetColumnLabels(PerformanceColumnLabels::Top / Bottom)` overrides where the
+column labels go. `SetShowAxisArrows(false)` removes the arrows.
+`SetShowContainerPanel(true)` draws a rounded panel behind the matrix in the
+palette's panel colour.
+
+## Cell colouring and palettes
+
+`SetCellColoring` decides each cell's colour:
+
+| Colouring | Colour |
+|---|---|
+| `Plain` | The palette's cell background (white); the colour lives in the headers |
+| `Explicit` | Each cell's own `fill` |
+| `DiagonalBands` | The palette's `rankColors`, sampled by the cell's rank from the best corner |
+| `ByRow` / `ByColumn` | The row's or column's level colour, tinted |
+
+In the `Cards` design, the colour goes to the card's border and badge, and
+the face stays white.
+
+A level's colour is its own `accent` when it has one; otherwise it comes from
+the palette's `levelColors`. A palette with `forceLevelColors` ignores the
+levels' accents, which is how one hue recolours a model that brings its own
+colours. Text on a fill is dark or white, whichever reads.
+
+| Palette | For |
+|---|---|
+| `TrafficLight()` | Blue, green, yellow, orange, red from the best corner (performance vs potential tiles) |
+| `Vivid()` | Saturated red, orange, green levels (header tabs) |
+| `Monochrome(hue)` | Every colour a shade of one hue |
+| `Pastel()` | Soft pink, orange, yellow levels (talent review cards) |
+
+## Text fitting
+
+All cells share one font size: the largest at which every cell's text fits,
+counting down from `SetCellFontSize` (13 by default) to a floor of 9.
+Different sizes in one grid would read as different importance. If a cell
+still does not fit at the floor, it gives up content in this order: bullets
+from the end (an ellipsis marks the cut), then the description, then the
+action. The code, the badge and the title always stay.
+
+Nothing is lost: the tooltip and `BuildCellTooltip(ref)` always hold the whole
+cell. `GetFittedFontSize()` and `AnyCellTruncated()` report what the fitting
+did.
+
+## Interaction
+
+Hovering a cell outlines it, colours its row and column labels (or outlines
+its tabs), shows its tooltip and calls `onCellHover`. When the pointer leaves
+the cells, `onCellHover` is called with an invalid ref. Clicking a cell
+selects it (a second click clears the selection) and calls `onCellClick`.
+`SetSelectedCell`, `GetSelectedCell` and `ClearSelection` drive the
+selection from code. `CellAt(point)` and `GetCellRect(row, col)` map between
+cells and the element's coordinates after the first render.
+
+```cpp
+matrix->onCellHover = [](const PerformanceCellRef& ref) {
+    if (!ref.IsValid()) return;   // the pointer left the cells
+};
+matrix->SetSelectedCell(PerformanceCellRef(2, 2));
+std::string text = matrix->BuildCellTooltip(PerformanceCellRef(2, 2));
+```
+
+## Samples
+
+| Sample | Shape | Content |
+|---|---|---|
+| `PerformanceMatrixSamples::NineBox()` | 3×3 | A name, description and action per box; badges 1–9 counting up to the best box |
+| `PerformanceManagement()` | 3×3 | Performance levels as rows and three facets of potential as columns, each with its own accent; a phrase per cell |
+| `PerformanceVsPotential()` | 3×3 | Codes 1A–3C counted from the best corner, and a two-line description per tile |
+| `TalentReview()` | 3×3 | Potential levels with action captions; badges and three bullets per card |
+| `SkillWill()` | 2×2 | Guide, Delegate, Direct, Excite |
+
+The demo page shows each one in the design it was made for, with the design,
+colouring and palette switchable.
+
+## What is not built yet
+
+This is the reference-card part of the proposal, with all four designs. Still
+to come:
+
+- **The population:** people placed into the boxes by cell or by score, with
+  counts, percentages, names or dots, a target distribution, an anonymised
+  mode and a group legend.
+- **Calibration:** dragging a person to another box, with a veto callback;
+  keyboard navigation; JSON and CSV interchange through
+  `UltraCanvasFileLoader`.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPertChartExamples.md
 ==============================================================================
 
@@ -58259,6 +58567,9 @@ zones with curved or stepped edges, use `UltraCanvasImportancePerformanceChart`
 ([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)).
 The classic four-quadrant importance–performance analysis (Martilla & James)
 is this element with `QuadrantType::Custom` and the centre at the means.
+For a grid of named categories rather than points on a plane (a 9-box, a
+performance management matrix, 3×3 or larger), use `UltraCanvasPerformanceMatrix`
+([`UltraCanvasPerformanceMatrix.md`](UltraCanvasPerformanceMatrix.md)).
 
 Points support per-point color, radius (e.g. BCG revenue bubbles), shape (circle, square, triangle, diamond) and outline. The element handles hover highlighting with tooltips, click selection (single or multi), double-click callbacks, and exposes quadrant utilities (which quadrant a point falls into, per-quadrant counts) for building statistics panels.
 
@@ -65534,6 +65845,12 @@ enum class SliderValueDisplay {
     AlwaysVisible    // Always visible
 };
 ```
+
+A slider that shows a value keeps its bar at the far edge of its box - the
+foot of a horizontal one, the left of a vertical one - so the value has room
+above or beside it. With `NoDisplay` (the default) the bar is centred across
+the box instead, so a slider in a row of labels sits on their line whatever
+height it is given.
 
 ### SliderOrientation
 Defines the slider orientation:
@@ -78009,6 +78326,7 @@ Each takes its data through setters and renders itself; most have a
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
 | The four-panel SWOT infographic | `UltraCanvasSWOTDiagram` | `Plugins/Diagrams/UltraCanvasSWOTDiagram.h` |
+| A grid of named categories where two rated axes cross: a 9-box talent grid, performance vs potential, a performance management matrix, skill / will | `UltraCanvasPerformanceMatrix` | `Plugins/Diagrams/UltraCanvasPerformanceMatrix.h` |
 | Cause and effect (Ishikawa / fishbone) | `UltraCanvasFishboneDiagram` | `Plugins/Diagrams/UltraCanvasFishboneDiagram.h` |
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |
@@ -92142,7 +92460,13 @@ says what comes next (`PhoneNumber`, `Code`, `Password`, `Registration`) and
 `authHint` how to say it (where the code went, the password's hint), and
 `AuthStepChange` reports each change. Call `UltraIM_SignIn` again with that
 one field set (`otpCode`, `password`, `displayName`); the rest of the
-credentials need not be repeated.
+credentials need not be repeated. While a code is awaited,
+`UltraIMProviderInfo::authResendHint` names the other way the service can
+send it, as a button's text ("Send it by SMS instead"; empty when it offers
+none), and `UltraIM_ResendAuthCode(provider, cb)` asks for it - the new hint
+arrives as `AuthStepChange`. A step's `NeedsInput` answer always precedes
+its `AuthStepChange`, so a `SignIn` made in answer to the event is never
+resolved by the step that raised it.
 
 What one provider's service keeps for another provider's sign-in comes
 through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
@@ -92364,6 +92688,12 @@ process.
   Telegram's test servers. TDLib keeps the session, the chats and the history
   in its own database under the provider's data directory, encrypted with a
   key the vault holds; a later `SignIn` with nothing given resumes it.
+- **The code:** Telegram sends it as a message to the Telegram apps the
+  number is already signed in on whenever there are any (the "Telegram"
+  service chat there), and by SMS or a call only when it offers that as the
+  code info's `next_type` - for many third-party API IDs it offers nothing
+  else. The hint says where it went; `authResendHint` and `ResendAuthCode`
+  (TDLib `resendAuthenticationCode`) take the next way when there is one.
 - **While it signs in**, TDLib's connection state is reported as
   `ConnectionStateChange` with `Connecting` and a text (waiting for the
   network, connecting to Telegram's servers, ...), and a step TDLib does not

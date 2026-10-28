@@ -44,7 +44,11 @@ The first ChatCube draft, which this replaces, is kept under
    connected · Matrix: signed in as @you:matrix.org · Telegram: waiting for
    the network…* - beside what your last action said, so it shows what
    Telegram is doing while you wait, and a step Telegram does not answer
-   within 45 seconds says so instead of waiting forever. Your
+   within 45 seconds says so instead of waiting forever. The form says where the code went: as a
+   rule Telegram sends it as a message to the Telegram apps where your
+   number is already signed in - look in the "Telegram" chat on your phone,
+   not for an SMS - and only offers SMS or a call for some numbers; when it
+   does, a button under the code field asks for it that way. Your
    Telegram chats join the list; `@username`, `t.me/name` or `+phone` in
    *Add* or *New group* goes to Telegram.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
@@ -80,6 +84,12 @@ Its data - the identity's key vault, contacts, history - is in the per-user
 data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
 
+`ChatCube --dark` is the dark look; the light one is the default. Both are
+one theme (`ui/ChatCubeTheme.h`: the ChatCube green on warm neutrals, the
+avatar palette, the bubble and presence colours), so every element of the
+window and everything the lists paint themselves take their colours from
+the same place.
+
 When a sign-in does not go through, `ChatCube --debug` says on stderr what
 the networks do - the relay's answers, every object sent to and received
 from TDLib (types and errors, never a number, code, password or message) -
@@ -111,6 +121,7 @@ Then add Bob's ID in ChatCube and write to him.
 | `main.cpp` | start-up: UltraNet, UltraRTC, UltraIM with the UI-thread dispatcher, provider modules |
 | `ui/ChatCubeWindow.*` | the window: sign-in page, sidebar, conversation pane, UltraIM events |
 | `ui/ChatCubeViews.*` | list models and delegates: conversation rows, chat bubbles, date separators |
+| `ui/ChatCubeTheme.*` | the look: the light and the dark theme, avatars, icons, the colours the views paint with |
 | `peer/main.cpp` | `chatcube-peer` |
 
 Version: `Docs/ChatCube/CHANGELOG.md` (first line).
