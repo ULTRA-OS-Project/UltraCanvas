@@ -56,7 +56,7 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
-## TDLib (Telegram client library)
+## TDLib (Telegram Database Library)
 
 - **Used by:** the UltraIM Telegram provider
   (`UltraCanvas/Plugins/UltraIM/telegram/`), and through it ChatCube's

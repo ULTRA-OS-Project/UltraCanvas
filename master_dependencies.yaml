@@ -609,9 +609,10 @@ webassembly:
 
 # ===== INSTANT MESSAGING (UltraIM) =====
 #
-# UltraIM's Telegram provider is a client of TDLib through its JSON
-# interface, loaded at run time with dlopen / LoadLibrary - nothing of TDLib
-# is linked, so the provider builds everywhere. The library it loads is the
+# UltraIM's Telegram provider is a client of TDLib (Telegram Database
+# Library) through its JSON interface, loaded at run time with dlopen /
+# LoadLibrary - nothing of TDLib is linked, so the provider builds
+# everywhere. The library it loads is the
 # prebuilt libtdjson from the tdjson wheel on PyPI, fetched at configure time
 # and checked against a pinned SHA-256 (cmake/UltraCanvasTdlib.cmake) into
 # <build>/Plugins/UltraIM/tdlib, which the packages ship. Absence is
@@ -621,7 +622,7 @@ instant_messaging:
   core:
     tdlib:
       min_version: "1.7"              # td_create_client_id; 1.8.69 is what is fetched
-      purpose: "Telegram client library for the UltraIM Telegram provider (BSL-1.0), loaded at run time"
+      purpose: "Telegram Database Library (TDLib), Telegram's client library, for the UltraIM Telegram provider (BSL-1.0), loaded at run time"
       required: false
       platforms: ["linux", "macos", "windows"]
       # Not a system package: the tdjson wheel's libtdjson, downloaded at

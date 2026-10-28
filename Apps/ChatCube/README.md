@@ -7,8 +7,9 @@ account and no password: your ChatCube ID is a key made on your computer.
 
 ChatCube is the window; the networks are UltraIM providers
 ([`Docs/Modules/UltraIM`](../../Docs/Modules/UltraIM/README.md)). This release
-uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`). Matrix, Telegram
-and other messengers with an open API come later as further providers.
+uses ChatCube Direct (`UltraCanvas/Plugins/UltraIM/direct`), Matrix
+(`.../matrix`) and Telegram (`.../telegram`); XMPP and other messengers with
+an open API come later as further providers.
 Plan and decisions: [`Docs/Research/ChatCubeDirectPlan.md`](../../Docs/Research/ChatCubeDirectPlan.md).
 The first ChatCube draft, which this replaces, is kept under
 [`Docs/ChatCube/v1-draft`](../../Docs/ChatCube/v1-draft/README.md).
@@ -69,8 +70,8 @@ ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
 UltraIM, UltraRTC (OpenSSL) and UltraNet; the provider modules are built next
 to it in `<build>/Plugins/UltraIM/`. Matrix encryption needs a Rust toolchain
 (cargo) at build time; without one the Matrix module cannot open encrypted
-rooms. Telegram needs TDLib's `libtdjson` at run time, not at build time:
-the configure step fetches TDLib 1.8.69 prebuilt into
+rooms. Telegram needs `libtdjson` from TDLib (Telegram Database Library) at
+run time, not at build time: the configure step fetches TDLib 1.8.69 prebuilt into
 `<build>/Plugins/UltraIM/tdlib/` (`cmake/UltraCanvasTdlib.cmake`; Linux
 x86_64 and aarch64, macOS arm64, Windows x64; `ULTRAIM_TDJSON_FILE` for one
 of your own, `ULTRAIM_FETCH_TDLIB=OFF` to skip) and the packages ship it;
