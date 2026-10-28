@@ -432,9 +432,9 @@ again to retry.
     without a certificate or key for a recipient UltraMail says so and does
     not send. A message that cannot be secured is never sent in plain text
     instead. Replies and forwards of encrypted mail start encrypted.
-  - S/MIME needs OpenSSL 3 at build time and OpenPGP GPGME (with GnuPG
-    installed to use it); a build without one shows such mail as one it
-    cannot check.
+  - S/MIME needs UltraCrypt built with OpenSSL 3 and OpenPGP GPGME (with
+    GnuPG installed to use it); a build without one shows such mail as one
+    it cannot check.
   - **Not on Windows on Arm yet**: GPGME ended the process there in testing,
     so that build shows OpenPGP mail as one it cannot check. S/MIME works.
   - **OpenPGP on macOS**: the app carries GPGME, not GnuPG. Install it with

@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSecureMime.h
-// Signed and encrypted mail: S/MIME (RFC 8551, with OpenSSL's CMS) and
+// Signed and encrypted mail: S/MIME (RFC 8551, on UltraCrypt's CMS) and
 // OpenPGP (RFC 3156 PGP/MIME and inline PGP, with GnuPG through GPGME).
 //
 // Reading: OpenSecureMessage takes a raw message as it was received and
@@ -22,10 +22,10 @@
 // where they are kept). OpenPGP keys are GnuPG's: the user's own keyring and
 // gpg-agent, which asks for a key's passphrase itself.
 //
-// Each method is built where its library is found: ULTRAMAIL_HAVE_SMIME
-// (OpenSSL 3) and ULTRAMAIL_HAVE_OPENPGP (GPGME). Without one, a message in
-// that form is reported as such ("cannot be checked in this build") and is
-// never sent in it.
+// Each method works where its library is: S/MIME where UltraCrypt has X.509
+// (UltraCrypt_IsX509Available: OpenSSL 3), OpenPGP where GPGME is built in
+// (ULTRAMAIL_HAVE_OPENPGP). Without one, a message in that form is reported
+// as such ("cannot be checked in this build") and is never sent in it.
 //
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
