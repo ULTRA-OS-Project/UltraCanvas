@@ -7,6 +7,13 @@
 // goes through OpenSSL's secure-memory BIOs and is copied out into
 // UltraCryptSecureBuffer, so no plain heap copy of it outlives the call.
 //
+// The system's roots are OpenSSL's default store and, on Windows and macOS,
+// the operating system's own (UltraCryptSystemRoots.cpp) - OpenSSL's default
+// store there is only what came with the OpenSSL build. SSL_CERT_FILE or
+// SSL_CERT_DIR, when set, is taken as the whole answer instead.
+//
+// Version: 0.2.0 - the system's roots include Windows' ROOT store and macOS's
+//                  anchors and trust settings
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptX509.h"
@@ -26,8 +33,14 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <memory>
 #include <mutex>
+
+namespace ultracrypt_detail {
+// UltraCryptSystemRoots.cpp: the operating system's trusted roots, DER.
+std::vector<std::vector<uint8_t>> PlatformRootsDer();
+}
 
 namespace {
 
@@ -190,6 +203,31 @@ void Describe(X509* cert, UltraCryptCertificateInfo& info) {
     ERR_clear_error();
 }
 
+// The operating system's roots, read from it once (Windows' store and
+// macOS's keychains are slow to walk), and none when SSL_CERT_FILE or
+// SSL_CERT_DIR says where the roots are.
+const std::vector<std::vector<uint8_t>>& PlatformRoots() {
+    static const std::vector<std::vector<uint8_t>> roots = [] {
+        if (std::getenv("SSL_CERT_FILE") || std::getenv("SSL_CERT_DIR")) return std::vector<std::vector<uint8_t>>();
+        return ultracrypt_detail::PlatformRootsDer();
+    }();
+    return roots;
+}
+
+// `store` given the system's roots: OpenSSL's default store, then the
+// operating system's (a root already there is skipped, not an error).
+void AddSystemRoots(X509_STORE* store) {
+    X509_STORE_set_default_paths(store);
+    for (const std::vector<uint8_t>& der : PlatformRoots()) {
+        const unsigned char* p = der.data();
+        if (X509* root = d2i_X509(nullptr, &p, static_cast<long>(der.size()))) {
+            X509_STORE_add_cert(store, root);
+            X509_free(root);
+        }
+    }
+    ERR_clear_error();
+}
+
 // The system's roots, read once: X509_STORE is reference-counted and safe to
 // verify against from several threads.
 X509_STORE* SystemRoots() {
@@ -197,8 +235,7 @@ X509_STORE* SystemRoots() {
     static X509_STORE* store = nullptr;
     std::call_once(once, [] {
         store = X509_STORE_new();
-        if (store) X509_STORE_set_default_paths(store);
-        ERR_clear_error();
+        if (store) AddSystemRoots(store);
     });
     return store;
 }
@@ -244,7 +281,7 @@ UltraCryptResult UltraCrypt_CheckCertificate(const std::string& certificatePem,
         roots = SystemRoots();
     } else {
         own.reset(X509_STORE_new());
-        if (own && options.useSystemRoots) X509_STORE_set_default_paths(own.get());
+        if (own && options.useSystemRoots) AddSystemRoots(own.get());
         for (const std::string& pem : options.extraRootsPem)
             for (Cert& root : ReadCertificates(pem))
                 if (own) X509_STORE_add_cert(own.get(), root.get());

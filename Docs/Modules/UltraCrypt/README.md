@@ -1086,8 +1086,8 @@ bool UltraCrypt_IsX509Available();          // built with OpenSSL 3
 // alternative names, lowercased), issuer, validity, SHA-256 fingerprint.
 UltraCryptResult UltraCrypt_ReadCertificate(const std::string& certificate,
                                             UltraCryptCertificateInfo& out);
-// Whether it is vouched for: a chain to a trusted root (the system's, which
-// SSL_CERT_FILE / SSL_CERT_DIR override, and/or roots given), through the
+// Whether it is vouched for: a chain to a trusted root (the system's - see
+// "The system's roots" below - and/or roots given), through the
 // intermediates given, for a purpose (any, mail signing, mail encryption),
 // at a time. Trusted / Untrusted / Expired / NotYetValid / Revoked /
 // WrongPurpose, with OpenSSL's reason.
@@ -1126,6 +1126,26 @@ libcrypto privately by its file, so the installed package names no OpenSSL
 target for a consumer to find, and a build without OpenSSL 3 (the browser
 build, a system without it) has every call answer `BackendUnavailable`.
 
+**The system's roots** are the operating system's, as a mail program's
+should be (`core/UltraCrypt/UltraCryptSystemRoots.cpp`): OpenSSL's default
+store is the system's only on Linux (`/etc/ssl/certs`); on Windows and macOS
+it is whatever the OpenSSL build carried - Mozilla's set from MSYS2, nothing
+at all from vcpkg - so without more no real authority's certificate was
+trusted there.
+
+| Platform | Roots |
+|---|---|
+| Windows | the ROOT store (the user's view, which includes the machine's) and the machine's AuthRoot store (the third-party roots of Windows' automatic root update), less the Disallowed stores |
+| macOS | the system anchors (`SecTrustCopyAnchorCertificates`), and the certificates the admin and user trust settings mark as trusted roots (Keychain Access); "Never Trust" leaves one out |
+| Linux, elsewhere | OpenSSL's default store |
+
+They are read once and added to OpenSSL's default store; `SSL_CERT_FILE` or
+`SSL_CERT_DIR`, when set, is the whole answer instead. Two limits, stated so
+nobody rediscovers them: Windows fetches a third-party root into AuthRoot
+only the first time its own chain building needs it, so a root this machine
+has never used may be missing; and macOS's per-policy trust settings (a root
+trusted for SSL only) are read as trusted for every purpose.
+
 **The rules it keeps.** Nothing throws. A signature check answers one
 question - does it hold for exactly these bytes (`SignatureInvalid` when not)
 - and leaves whether the signer is vouched for to `UltraCrypt_CheckCertificate`,
@@ -1138,8 +1158,12 @@ OpenSSL's legacy provider, once, alongside the default one.
 which links no OpenSSL of its own. Tested against a test authority made for
 the suite: certificate fields (PEM and DER), the six trust verdicts, PKCS #12
 (modern, RC2, wrong password, not PKCS #12), detached signatures (holding, a
-changed content or signature byte, a key that is not the certificate's) and
-enveloped data (RSA and EC recipients, another recipient refused).
+changed content or signature byte, a key that is not the certificate's),
+enveloped data (RSA and EC recipients, another recipient refused), and the
+system's roots - a root shipped with the system (Microsoft's on Windows,
+which no OpenSSL bundle carries; ISRG Root X1 on macOS and Linux) trusted
+through them; Windows and macOS CI run the suite for that
+(`ULTRACANVAS_BUILD_CRYPT_TESTS`).
 
 ## 6. Usage sketches
 

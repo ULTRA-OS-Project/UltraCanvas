@@ -962,6 +962,7 @@ jobs:
             -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
             -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
+            -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
@@ -995,6 +996,7 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
             -DULTRACANVAS_BUILD_JXL_TESTS=ON \
@@ -1567,6 +1569,17 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
+
+      # UltraCrypt on the two systems whose trust store is their own: the
+      # certificate check's system roots are Windows' ROOT store and macOS's
+      # anchors there (UltraCryptSystemRoots.cpp), and the suite checks that a
+      # root shipped with the system - Microsoft's on Windows, which no
+      # OpenSSL bundle carries - is trusted through them. Linux runs the suite
+      # in the full pass, where the store is OpenSSL's own. Headless.
+      - name: Run UltraCryptTests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraCryptTests$"
 
       # VideoFX's engine on Windows, on MSYS2's FFmpeg - the one the package
       # ships - and through the Windows file names, cache folder and fonts;

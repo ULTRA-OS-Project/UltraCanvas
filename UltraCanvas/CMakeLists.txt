@@ -2768,6 +2768,15 @@ if(OpenSSL_FOUND AND OPENSSL_CRYPTO_LIBRARY)
     target_compile_definitions(uc-crypt PRIVATE ULTRACRYPT_HAVE_X509=1)
     target_include_directories(uc-crypt PRIVATE ${OPENSSL_INCLUDE_DIR})
     target_link_libraries(uc-crypt PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
+    # The operating system's trusted roots for the certificate check: Windows'
+    # ROOT store (crypt32), macOS's anchors and trust settings (Security).
+    # OpenSSL's own default store there is only what its build carried.
+    target_sources(uc-crypt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptSystemRoots.cpp)
+    if(WIN32)
+        target_link_libraries(uc-crypt PRIVATE crypt32)
+    elseif(APPLE)
+        target_link_libraries(uc-crypt PRIVATE "-framework Security" "-framework CoreFoundation")
+    endif()
     message(STATUS "  OpenSSL: ${OPENSSL_VERSION} (UltraCrypt X.509 and CMS)")
 else()
     message(STATUS "  OpenSSL 3: NOT FOUND — UltraCrypt has no X.509 or CMS (S/MIME)")

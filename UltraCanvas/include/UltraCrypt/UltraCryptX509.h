@@ -27,6 +27,7 @@
 // structures as DER bytes, a private key as PEM in an UltraCryptSecureBuffer.
 // Nothing throws.
 //
+// Version: 0.2.0 - the system's roots are the operating system's on Windows and macOS
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -76,8 +77,11 @@ enum class UltraCryptTrust : uint8_t {
 
 struct UltraCryptTrustOptions {
     UltraCryptCertificatePurpose purpose = UltraCryptCertificatePurpose::Any;
-    // The system's roots: OpenSSL's default store, which SSL_CERT_FILE and
-    // SSL_CERT_DIR override.
+    // The system's roots: the operating system's - Windows' ROOT certificate
+    // store, macOS's system anchors and the roots an administrator or the user
+    // marked trusted in Keychain Access - and OpenSSL's default store, which
+    // is the system's on Linux (/etc/ssl/certs). SSL_CERT_FILE or SSL_CERT_DIR,
+    // when set, is the whole of it instead.
     bool useSystemRoots = true;
     // More roots, PEM - a private authority, or a test's.
     std::vector<std::string> extraRootsPem;
