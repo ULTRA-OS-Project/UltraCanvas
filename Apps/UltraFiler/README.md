@@ -41,7 +41,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   view settings; tabs can be reordered by dragging and closed (the last one
   stays open). The strip stays visible while the History or Favorites view
   replaces the folder display, so clicking a tab returns to browsing it.
-- **Navigation:** Back / Forward history (per tab), Up, Refresh, the Split
+- **Navigation:** the row starts with two flat buttons, **Home** (the home
+  folder) and **Computer** (the Computer page: the main folders and a card
+  per drive). Then come Back / Forward history (per tab), Up, Refresh, the Split
   view toggle (see below), clickable breadcrumb path (each segment's dropdown
   lists sibling folders), folder tree with lazy expansion, and the History
   toggle (see below).

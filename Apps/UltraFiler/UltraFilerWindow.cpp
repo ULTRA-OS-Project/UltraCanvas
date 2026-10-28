@@ -789,6 +789,12 @@ namespace {
                      active ? Color(40, 120, 210, 255) : Color(0, 0, 0, 0));
     }
 
+    // A flat tool button: no frame, the row's own background, tinted only
+    // under the pointer - the look the split-view, History and Favorites
+    // switches have while off. Home and Computer, the two places the row
+    // goes to rather than steps through, wear it.
+    void StyleFlatToolButton(UltraCanvasButton* b) { StyleToggleButton(b, false); }
+
     BreadcrumbStyle MakePathBreadcrumbStyle() {
         BreadcrumbStyle s = BreadcrumbStyle::Arrow();
         s.overflowMode = BreadcrumbOverflowMode::Collapse;
@@ -2332,7 +2338,7 @@ void UltraFilerWindow::UnpinTargetsFromTree() {
     if (changed) RefreshPinnedTreeNodes();
 }
 
-// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh / Home + breadcrumb + settings) =====
+// ===== NAVIGATION ROW (Home / Computer / Back / Forward / Up / Refresh + breadcrumb + settings) =====
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
@@ -2340,6 +2346,30 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
 
     // No new-tab button here: the tab strip above carries its own "+" at the
     // end of the tab list.
+
+    // Home and Computer lead the row: the two places every walk through the
+    // folders starts from. Both are flat, unlike the framed arrow buttons
+    // that step through the history and the folders.
+    // Home: the host's home folder (HOME / USERPROFILE) in the active folder
+    // display, from wherever the window is - History, Favorites and the
+    // Computer page included, which NavigateTo leaves for the folder view.
+    auto home = MakeToolButton("ufl-home", "", "home.svg", 30, [this]() {
+        const std::string dir = UserHomeDir();
+        if (!dir.empty()) NavigateTo(dir);
+    });
+    home->SetTooltip("Home folder");
+    StyleFlatToolButton(home.get());
+    row->AddChild(home);
+
+    // Computer: the Computer page - the Home and Cloud Storage folders and a
+    // card per drive - as the tree's Computer row and the breadcrumb's
+    // leading node open it.
+    auto computer = MakeToolButton("ufl-computer", "", "computer.svg", 30,
+            [this]() { SetComputerPageVisible(true); });
+    computer->SetTooltip("Computer: drives and main folders");
+    StyleFlatToolButton(computer.get());
+    row->AddChild(computer);
+
     backButton = MakeToolButton("ufl-back", "", "arrow-left.svg", 30,
                                 [this]() { NavigateBack(); });
     forwardButton = MakeToolButton("ufl-forward", "", "arrow-right.svg", 30,
@@ -2366,16 +2396,6 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     row->AddChild(forwardButton);
     row->AddChild(upButton);
     row->AddChild(refresh);
-
-    // Home: the host's home folder (HOME / USERPROFILE) in the active folder
-    // display, from wherever the window is - History, Favorites and the
-    // Computer page included, which NavigateTo leaves for the folder view.
-    auto home = MakeToolButton("ufl-home", "", "home.svg", 30, [this]() {
-        const std::string dir = UserHomeDir();
-        if (!dir.empty()) NavigateTo(dir);
-    });
-    home->SetTooltip("Home folder");
-    row->AddChild(home);
 
     // The split screen: two folder displays side by side in place of the
     // tree and the one display, each with a tree button and a breadcrumb of

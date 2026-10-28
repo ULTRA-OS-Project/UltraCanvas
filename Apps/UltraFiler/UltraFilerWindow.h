@@ -4,8 +4,8 @@
 // UltraCanvasTabbedContainer detached from its pages: the strip is the
 // window's top bar, the pages live in the folder pane of the split below,
 // and the "+" at the end of the tab list opens another tab), then
-// a navigation row (Back / Forward / Up / Refresh, the
-// History clock toggle, the Favorites heart toggle, folder breadcrumb, and
+// a navigation row (the flat Home and Computer buttons, then Back / Forward /
+// Up / Refresh, the History clock toggle, the Favorites heart toggle, folder breadcrumb, and
 // the settings gear at the far right opening the settings window), a command
 // bar (the "New folder ▾" split button — its arrow lists the same kinds as
 // the context menu's "New >" submenu —, Cut / Copy / Paste / Rename / Delete, the
@@ -81,6 +81,7 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.30.0 - the navigation row starts with flat Home and Computer buttons
 // Version: 1.30.0 - Extras > Open location: the UltraCanvas and system folders
 //                  (crash dumps, settings, application data, logs, ...), and
 //                  Enter location… (Ctrl+L) for a typed %VAR% / $VAR / ~ path
