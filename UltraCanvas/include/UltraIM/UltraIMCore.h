@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
 // Last Modified: 2026-10-25
@@ -48,6 +49,10 @@ void UltraIM_Unsubscribe(UltraIMSubscriptionId subscriptionId);
 void UltraIM_SignIn(const std::string& providerId,
                     const UltraIMCredentials& credentials,
                     UltraIMResultCallback onResult);
+// A sign-in waiting for a code (authStep Code): ask for it the other way
+// UltraIMProviderInfo::authResendHint names (by SMS, a call); the new hint
+// arrives as AuthStepChange. CapabilityMissing when there is no other way.
+void UltraIM_ResendAuthCode(const std::string& providerId, UltraIMResultCallback onResult);
 void UltraIM_SignOut(const std::string& providerId);
 UltraIMConnectionState UltraIM_GetConnectionState(const std::string& providerId);
 

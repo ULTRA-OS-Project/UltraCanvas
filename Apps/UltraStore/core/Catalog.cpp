@@ -1,5 +1,6 @@
 // Apps/UltraStore/core/Catalog.cpp
 // catalog.json in and out (Catalog.h), through UltraCanvasJSON.
+// Version: 0.5.0 - payment_url, licence_key
 // Version: 0.4.0 - codes
 // Version: 0.3.0 - trusted_keys
 // Version: 0.2.0 - ParseComponent / SerializeComponent for the admin backend
@@ -558,6 +559,16 @@ Result<Catalog> ParseCatalog(const std::string& jsonText) {
             catalog.trustedKeys.push_back(std::move(hex));
         }
     }
+    catalog.paymentUrl = root.Get("payment_url").GetString();
+    if (!catalog.paymentUrl.empty() && catalog.paymentUrl.rfind("https://", 0) != 0 && catalog.paymentUrl.rfind("http://", 0) != 0) {
+        return Result<Catalog>::Failure(ErrorCode::ParseError, "The payment service is an http(s) URL", catalog.paymentUrl);
+    }
+    catalog.licenceKey = root.Get("licence_key").GetString();
+    if (!catalog.licenceKey.empty()) {
+        std::vector<uint8_t> bytes;
+        if (!FromHex(catalog.licenceKey, bytes) || bytes.size() != 32) return Result<Catalog>::Failure(ErrorCode::ParseError, "The licence key is not a 32-byte hex public key", catalog.licenceKey);
+        catalog.licenceKey = ToHex(bytes);
+    }
     const JSONValue& codes = root.Get("codes");
     for (size_t i = 0; i < codes.GetSize(); ++i) {
         auto c = ReadCode(codes.At(i), "codes[" + std::to_string(i) + "]");
@@ -625,6 +636,8 @@ std::string SerializeCatalog(const Catalog& catalog) {
         publishers.Append(std::move(o));
     }
     root.Set("publishers", std::move(publishers));
+    if (!catalog.paymentUrl.empty()) root.Set("payment_url", catalog.paymentUrl);
+    if (!catalog.licenceKey.empty()) root.Set("licence_key", catalog.licenceKey);
     if (!catalog.codes.empty()) {
         JSONValue codes = JSONValue::MakeArray();
         for (const PromoCode& c : catalog.codes) codes.Append(WriteCode(c));

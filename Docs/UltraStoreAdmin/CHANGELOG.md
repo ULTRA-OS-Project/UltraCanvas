@@ -1,3 +1,18 @@
+#### 2026-10-28 *0.1.4*
+- **`sale sync`** and the window's *Sync sales*: the paid orders pulled
+  from the payment service and recorded once each in the ledger, with the
+  partners' credits; the `payment.url`, `payment.licence_key` and
+  `payment.token` settings, the first two published in the catalog so
+  every store finds the service and its licence key.
+- **Publish warns about a restricted package on an app with a trial**:
+  *Try* installs the same package and would fail without a licence, so
+  the package of an app with a trial stays public.
+
+#### 2026-10-27 *0.1.3*
+- The buttons that open a dialog say what they do without a trailing
+  ellipsis: *Choose*, *Export .pub*, *Add release*, *Add package*, *Add
+  screenshot*, *QR*, *Join QR*.
+
 #### 2026-10-27 *0.1.2*
 - **Affiliates and codes.** Partners with a share of each sale made with
   their codes; two tiers and no more: a partner recruited by another names

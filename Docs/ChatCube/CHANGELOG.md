@@ -1,3 +1,23 @@
+#### 2026-10-27 *0.1.6*
+- **A new look.** The sign-in page is a card under the ChatCube logo; the
+  sidebar has round avatars with a presence dot, a soft green selection, a
+  pill for adding a contact and three icon buttons (Group, Matrix, Telegram)
+  in place of the full-width ones; the open conversation shows its avatar in
+  the header beside round call buttons; the composer is a rounded field with
+  the send button inside it; the bubbles, the date separators and the call
+  bar follow the same palette. Every colour comes from one theme
+  (`ui/ChatCubeTheme.*`), the ChatCube green on warm neutrals, in a light
+  and a dark version: `ChatCube --dark`.
+
+#### 2026-10-27 *0.1.5*
+- **The Telegram form says where the code went.** Telegram sends the
+  sign-in code as a message to the Telegram apps your number is already
+  signed in on, not by SMS, and the status line's one-line hint was easy to
+  miss; the form itself now says so above the code field ("Telegram sent the
+  5-digit code as a message to the Telegram apps where +… is signed in -
+  type it here"), and when Telegram offers another way - SMS, a call - a
+  button under the field asks for it.
+
 #### 2026-10-25 *0.1.4*
 - **"Send me the code" no longer stays grey forever.** When Telegram could
   not be reached, the button went grey, nothing was said, and nothing ever

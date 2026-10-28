@@ -7,6 +7,7 @@
 // the main list, private chats and groups, text with replies, edits,
 // deletion, read receipts, typing, presence, history, finding people by
 // username or phone number, new groups.
+// Version: 0.1.2 - where the code went said plainly; the code asked for another way (resendAuthenticationCode)
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
 //                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
@@ -61,6 +62,8 @@ public:
     bool HasStoredSession() const override;
     UltraIMAuthStep GetAuthStep() const override;
     std::string GetAuthHint() const override;
+    std::string GetAuthResendHint() const override;
+    void ResendAuthCode(UltraIMResultCallback onResult) override;
 
     void FetchConversations(UltraIMConversationsCallback onResult) override;
     void FetchMessages(const std::string& conversationId, const std::string& beforeMessageId, int limit,
@@ -116,7 +119,8 @@ private:
     void OnUpdate(const TdObject& update);
     void OnAuthorizationState(const TdObject& state);
     void OnAuthAnswer(const TdObject& answer);
-    void SetStep(UltraIMAuthStep step, const std::string& hint);
+    // Sets the step, answers the waiting SignIn NeedsInput, raises AuthStepChange.
+    void AskFor(UltraIMAuthStep step, const std::string& hint);
 
     // ---- any thread -----------------------------------------------------------------
     void Emit(const UltraIMEvent& event);
@@ -176,6 +180,7 @@ private:
     UltraIMResultCallback pendingSignIn_;
     UltraIMAuthStep authStep_ = UltraIMAuthStep::Idle;
     std::string     authHint_;
+    std::string     authResendHint_;     // the code's next_type, as a button's text; "" = none
     bool            ready_ = false;
     bool            closing_ = false;
     std::string     connection_;     // TDLib's connectionState* while not ready, "" = none yet

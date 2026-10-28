@@ -11,6 +11,7 @@
 // `depends` is the exact versions the row was installed with, written as
 // "id@version id@version", which the garbage collector follows.
 //
+// Version: 0.2.0 - licences (schema 2)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -21,6 +22,20 @@
 #include <vector>
 
 namespace UltraStore {
+
+// A purchase the store made through the payment service: the licence the
+// app checks, and the order it came from (its secret signs the downloads
+// of the app's restricted packages). One per app.
+struct LicenceRecord {
+    std::string app;
+    std::string licenceId;
+    std::string orderId;
+    std::string orderSecret;
+    std::string token;        // "ULIC1.<payload>.<signature>"
+    std::string issuedAt;     // "YYYY-MM-DD"
+    std::string amount, currency;
+    int receiptNo = 0;
+};
 
 class SqliteRegistry final : public IInstallRegistry {
 public:
@@ -49,7 +64,13 @@ public:
     // The app's current row, or NotFound.
     Result<InstalledRecord> Current(std::string_view id) const;
 
-    static constexpr int kSchemaVersion = 1;
+    // ----- licences -----
+    Result<void> PutLicence(const LicenceRecord& licence);     // adds or replaces the app's
+    Result<LicenceRecord> GetLicence(std::string_view app) const;   // NotFound when the app was not bought
+    Result<std::vector<LicenceRecord>> Licences() const;
+    Result<void> RemoveLicence(std::string_view app);
+
+    static constexpr int kSchemaVersion = 2;   // 2: licences
 
     // The UltraDatabase connection name while open (for a tool that wants
     // to query the same database), empty when closed.

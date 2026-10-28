@@ -9,6 +9,8 @@
 #include "helpers.h"
 #include "fixtures.h"
 
+#include "Purchase.h"
+#include "UltraCanvasPathUtf8.h"
 #include "StoreEngine.h"
 #include "Verifier.h"
 
@@ -21,6 +23,27 @@ namespace fs = std::filesystem;
 namespace {
 
 constexpr int kPort = 18433;
+
+// base64url without padding, as the service encodes (test_purchase.cpp has the same).
+std::string B64Url(const std::string& bytes) {
+    static const char* alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    std::string out;
+    uint32_t buffer = 0;
+    int bits = 0;
+    for (unsigned char c : bytes) {
+        buffer = (buffer << 8) | c;
+        bits += 8;
+        while (bits >= 6) { bits -= 6; out += alphabet[(buffer >> bits) & 63]; }
+    }
+    if (bits > 0) out += alphabet[(buffer << (6 - bits)) & 63];
+    return out;
+}
+
+std::string MakeLicence(const std::vector<uint8_t>& seed, const std::string& app, const std::string& order, const std::string& updates) {
+    const std::string payload = R"({"app":")" + app + R"(","issued":"2026-10-27","licence":"lic-1","order":")" + order + R"(","updates":")" + updates + R"(","v":1})";
+    const auto sig = SignCatalog(payload, seed);
+    return "ULIC1." + B64Url(payload) + "." + B64Url(std::string(sig.Value().begin(), sig.Value().end()));
+}
 
 struct World {
     std::string site = TempRoot("engine-site");
@@ -216,4 +239,89 @@ TEST(a_download_resumes_a_partial_file_and_reuses_a_complete_one) {
     downloader.Clear();
     const auto cancelled = downloader.Fetch(pkg, [&](int64_t, int64_t) { return false; });
     REQUIRE(!cancelled && cancelled.error.code == ErrorCode::NetworkError);
+}
+
+TEST(a_restricted_package_needs_the_signer_and_is_fetched_through_it) {
+    World w;
+    if (!w.ok) SKIP("no local server");
+    // The app's package is served from restricted/: the catalog's URL is
+    // refused by the web server, the signed one is the real file.
+    REQUIRE(MakeZip(w.site + "/paid.zip", {{"bin/paid", "paid 1.0"}}));
+    Component paid;
+    paid.kind = ComponentKind::App;
+    paid.id = "org.x.paid";
+    paid.name = "Paid";
+    paid.pricing.model = PricingModel::OneTime;
+    paid.pricing.price = "9.90";
+    paid.pricing.currency = "EUR";
+    Release r;
+    r.version = "1.0";
+    r.channel = "stable";
+    Package p = w.Served("paid.zip", "bin/paid");
+    p.url = w.server.baseUrl + "/restricted/" + p.sha256 + ".zip";   // nothing is served there
+    r.packages = {p};
+    paid.releases = {r};
+    w.catalog.apps.push_back(paid);
+    StoreEngine engine(w.root);
+    REQUIRE(engine.Open());
+    const auto refused = engine.Install(w.catalog, "org.x.paid", w.platform);
+    REQUIRE(!refused);
+    REQUIRE(refused.error.code == ErrorCode::NotAvailable);
+    REQUIRE(refused.error.message.find("buy it first") != std::string::npos);
+    // With a signer that knows the buyer: the real file, under its hash.
+    std::string askedFor;
+    engine.SetUrlSigner([&](const Package& package, const Component& app) {
+        askedFor = app.id + " " + RestrictedFileOf(package.url);
+        return w.server.baseUrl + "/paid.zip?md5=signed&expires=1";
+    });
+    const auto installed = engine.Install(w.catalog, "org.x.paid", w.platform);
+    REQUIRE(installed);
+    REQUIRE_EQ(askedFor, "org.x.paid restricted/" + p.sha256 + ".zip");
+    REQUIRE(engine.Registry().Current("org.x.paid"));
+}
+
+TEST(an_update_outside_the_purchase_is_refused_and_the_licence_file_follows_the_app) {
+    World w;
+    if (!w.ok) SKIP("no local server");
+    std::vector<uint8_t> seed, pk;
+    REQUIRE(GenerateSigningKey(seed, pk));
+    const std::string keyHex = ToHex(pk);
+    StoreEngine engine(w.root);
+    REQUIRE(engine.Open());
+    // Bought here: the terms say "the bought version only", issued the day
+    // of the 1.0 release; 1.1 comes later.
+    w.catalog.apps[0].releases[0].date = "2026-10-27";
+    LicenceRecord bought;
+    bought.app = "org.x.app";
+    bought.licenceId = "lic-1";
+    bought.orderId = "o-1";
+    bought.orderSecret = "s";
+    bought.token = MakeLicence(seed, "org.x.app", "o-1", "never");
+    bought.issuedAt = "2026-10-27";
+    REQUIRE(engine.Registry().PutLicence(bought));
+    REQUIRE(engine.Install(w.catalog, "org.x.app", w.platform));
+    const std::string file = LicenceFilePath(w.root, "org.x.app");
+    REQUIRE(std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(file)));
+    REQUIRE(ReadLicenceFile(file, keyHex));
+    w.PublishUpdate();
+    w.catalog.apps[0].releases[0].date = "2026-11-15";
+    REQUIRE(!engine.PurchaseCovers("org.x.app", w.catalog.apps[0].releases[0]));
+    const auto refused = engine.Update(w.catalog, "org.x.app", w.platform);
+    REQUIRE(!refused);
+    REQUIRE(refused.error.code == ErrorCode::NotAvailable);
+    REQUIRE(refused.error.message.find("not in your purchase") != std::string::npos);
+    REQUIRE_EQ(refused.error.detail, std::string("the bought version only (2026-10-27)"));
+    REQUIRE_EQ(engine.Registry().Current("org.x.app").Value().version, std::string("1.0"));
+    // A new purchase with updates included: the update goes through.
+    bought.token = MakeLicence(seed, "org.x.app", "o-2", "always");
+    REQUIRE(engine.Registry().PutLicence(bought));
+    REQUIRE(engine.PurchaseCovers("org.x.app", w.catalog.apps[0].releases[0]));
+    REQUIRE(engine.Update(w.catalog, "org.x.app", w.platform));
+    REQUIRE_EQ(engine.Registry().Current("org.x.app").Value().version, std::string("1.1"));
+    // Removed with the app; the licence stays in the registry.
+    REQUIRE(engine.Remove("org.x.app"));
+    REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(file)));
+    REQUIRE(engine.Registry().GetLicence("org.x.app"));
+    // An app not bought here is never held back.
+    REQUIRE(engine.PurchaseCovers("org.x.other", w.catalog.apps[0].releases[0]));
 }

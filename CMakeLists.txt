@@ -933,6 +933,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasImportancePerformanceChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasPerformanceMatrixExamples.cpp
             Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasTickerBoardExamples.cpp
@@ -1888,6 +1889,15 @@ if (BUILD_ULTRAVIEWER_APP)
             ${ULTRACANVAS_LIBRARY}
     )
     target_link_libraries(UltraViewer PRIVATE fmt::fmt)
+
+    # Every format plugin this build produced, registered before main(), as
+    # in UltraFiler: without it a CorelDRAW, Xara, DXF or DWG file showed only
+    # the preview bitmap stored inside it (or nothing), never the drawing,
+    # and the 3D formats past STL did not open.
+    if(TARGET UltraCanvasAllFormats)
+        target_link_libraries(UltraViewer PRIVATE
+                ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats)
+    endif()
 
     target_compile_features(UltraViewer PRIVATE cxx_std_20)
 
