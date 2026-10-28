@@ -413,20 +413,29 @@ again to retry.
   red when the message was changed after it was signed. On disk it stays
   exactly as it arrived - encrypted mail is decrypted only for the reading
   pane, never written down decrypted.
-  - **S/MIME.** Import your certificate and its private key in *Account
-    Settings > S/MIME > Import…* from the `.p12` / `.pfx` file your
+  - **Mail security, per account** - *Account Settings > Security > Mail
+    security…*, and offered (with *Skip*) right after an account is added:
+    the S/MIME certificate, the OpenPGP key to sign with, and how new
+    messages start - *Off*, *S/MIME* or *OpenPGP*, *Sign*, *Encrypt*. The
+    compose window starts from that; a reply to encrypted mail starts
+    encrypted whatever it says.
+  - **S/MIME.** Import your certificate and its private key in *Mail
+    security > S/MIME > Import…* from the `.p12` / `.pfx` file your
     certificate authority gave you (its password is asked for). It is kept in
     the vault, and only a certificate for the account's own address is
     accepted. Your correspondents' certificates are learnt from the signed
     mail they send you - only from a signature that holds, is vouched for and
     is from the From address.
   - **OpenPGP.** UltraMail uses your own GnuPG keyring and `gpg-agent`, which
-    asks for a key's passphrase itself; keys are found by the address in
-    their user id. A key that arrives as an attachment (`application/pgp-keys`)
+    asks for a key's passphrase itself. An account signs with the key whose
+    user id is its address, or with the one chosen in *Mail security*
+    (*OpenPGP key*: the keyring's secret keys, by name, address and the end of
+    the fingerprint); recipients' keys are found by their address. A key that arrives as an attachment (`application/pgp-keys`)
     is offered for import when you open it.
   - **Sending.** The compose window's *Security* row: *Off*, or *S/MIME* /
     *OpenPGP* (each offered when this build has it, and S/MIME once the
-    account has a certificate), with *Sign* and *Encrypt*. An encrypted
+    account has a certificate), with *Sign* and *Encrypt*, set as the
+    account's *Mail security* says. An encrypted
     message is encrypted to every recipient and to you, so the copies in
     Drafts and Sent are the same ciphertext and you can still read them;
     without a certificate or key for a recipient UltraMail says so and does

@@ -4515,6 +4515,26 @@ add_test(NAME FilerVolumeSpaceTest COMMAND FilerVolumeSpaceTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerVolumeSpaceTest")
 
+# ===== FILER LOCATIONS TEST =====
+# UltraFiler's Extras > Open location (Apps/UltraFiler/UltraFilerLocations.h):
+# each platform's list of UltraCanvas and system folders, and a typed
+# location's %VAR% / $VAR / ~ expansion. Header-only, so it links nothing.
+message(STATUS "  Building FilerLocationsTest...")
+add_executable(FilerLocationsTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerLocationsTest.cpp
+)
+target_include_directories(FilerLocationsTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerLocationsTest PRIVATE cxx_std_20)
+set_target_properties(FilerLocationsTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerLocationsTest COMMAND FilerLocationsTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerLocationsTest")
+
 message(STATUS "")
 
 # ===== SPREADSHEET FORMULA ENGINE TEST =====

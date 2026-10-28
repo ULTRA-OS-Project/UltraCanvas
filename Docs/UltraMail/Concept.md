@@ -407,7 +407,10 @@ shows it (a few results kept in memory), and nothing decrypted is written. On
 sending, `SecureOutgoingMessage` signs and/or encrypts the message UltraNet
 built - to every recipient and to the sender - and the outbox sends exactly
 those bytes (`UltraNetMailMessage::rawMessage`), filing the same ones in
-Drafts and Sent. The user's S/MIME identity is kept in the vault
+Drafts and Sent. Each account says how its new messages start (Off,
+S/MIME or OpenPGP, signed, encrypted) and which OpenPGP key it signs with
+(`AccountSecurity`, the accounts table's security columns), set in the Mail
+security dialog. The user's S/MIME identity is kept in the vault
 (`UltraMailSecureKeys.h`); correspondents' certificates are learnt from their
 vouched-for signatures into the address book (`ContactStore`'s
 `certificates`).

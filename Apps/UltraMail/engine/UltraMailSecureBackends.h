@@ -46,14 +46,17 @@ bool PgpDecrypt(const std::string& armored, std::string& plain, std::vector<Sign
                 std::string& error);
 // A clear-signed text ("-----BEGIN PGP SIGNED MESSAGE-----"): its text and the check.
 bool PgpVerifyClearSigned(const std::string& clearSigned, std::string& text, SignatureCheck& check);
-// `content` signed by the secret key for `signer`: an armored detached
+// `content` signed by the secret key for `signer` (an address, or a key's
+// fingerprint): an armored detached
 // signature and the micalg it was made with ("pgp-sha256").
 bool PgpSignDetached(const std::string& content, const std::string& signer, std::string& signature,
                      std::string& micalg, std::string& error);
 // `content` encrypted to `recipients` (and signed by `signer` unless empty), armored.
 bool PgpEncrypt(const std::string& content, const std::vector<std::string>& recipients,
                 const std::string& signer, std::string& armored, std::string& error);
-bool PgpHasSecretKey(const std::string& email);
+// `signer`: an address (the key whose user id it is) or a fingerprint.
+bool PgpHasSecretKey(const std::string& signer);
+std::vector<OpenPgpKey> PgpSecretKeys();
 // The addresses with no usable public key in the keyring.
 std::vector<std::string> PgpMissingKeys(const std::vector<std::string>& emails);
 int PgpImportKeys(const std::string& armored, std::string& error);

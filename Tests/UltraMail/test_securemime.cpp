@@ -10,16 +10,20 @@
 // test only (openssl, valid to 2126); the CA is trusted nowhere, so a good
 // signature reads "Untrusted". The OpenPGP keys are made for each run in a
 // GnuPG home of its own (GNUPGHOME), without passphrases.
+// Version: 0.2.0 - the account's security defaults stored; OpenPGP keys listed and
+//                  a chosen one signed with
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
+#include "UltraMailLocalStore.h"
 #include "UltraMailOutbox.h"
 #include "UltraMailSecureMime.h"
 
 #include "UltraNet/UltraNetMime.h"
 #include <UltraDatabase/UltraDatabase.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <map>
 #include <filesystem>
@@ -651,4 +655,71 @@ TEST(securemime_openpgp_encrypt_and_inline) {
     REQUIRE(BodyText(read.raw).find("Treffen um 15 Uhr.") != std::string::npos);
     REQUIRE(BodyText(read.raw).find("Hallo,") != std::string::npos);
 }
+
+TEST(securemime_openpgp_signs_with_the_chosen_key) {
+    if (!MakePgpHome()) return;
+    const std::vector<OpenPgpKey> keys = OpenPgpSecretKeys();
+    std::string aliceFpr, bobFpr;
+    for (const OpenPgpKey& k : keys) {
+        if (std::find(k.emails.begin(), k.emails.end(), "alice@example.com") != k.emails.end()) aliceFpr = k.fingerprint;
+        if (std::find(k.emails.begin(), k.emails.end(), "bob@example.com") != k.emails.end()) bobFpr = k.fingerprint;
+    }
+    REQUIRE(!aliceFpr.empty() && !bobFpr.empty());   // both secret keys listed, with their addresses
+    REQUIRE(aliceFpr.size() == 40 || aliceFpr.size() == 64);
+
+    // Alice's account set to sign with Bob's key: what it signs is Bob's.
+    SecureKeys chosen;
+    chosen.openPgpSigningKeyFor = [bobFpr](const std::string& address) {
+        return address == "alice@example.com" ? bobFpr : std::string();
+    };
+    REQUIRE(CanSignAs(SecureMethod::OpenPgp, "alice@example.com", chosen));
+    SecureSendOptions options;
+    options.method = SecureMethod::OpenPgp;
+    options.sign = true;
+    options.from = "alice@example.com";
+    options.recipients = { "bob@example.com" };
+    std::string sent, error;
+    REQUIRE(SecureOutgoingMessage(kMessage, options, chosen, sent, error));
+    SecureMessage read = OpenSecureMessage(sent, SecureKeys{});
+    REQUIRE_EQ(read.signatures.size(), size_t(1));
+    REQUIRE_EQ(read.signatures[0].signerEmail, std::string("bob@example.com"));
+    REQUIRE(!read.signatures[0].matchesFrom);       // signed, but not by the From address's key
+
+    // A fingerprint the keyring has no secret key for: nothing to sign with.
+    SecureKeys unknown;
+    unknown.openPgpSigningKeyFor = [](const std::string&) { return std::string(40, 'A'); };
+    REQUIRE(!CanSignAs(SecureMethod::OpenPgp, "alice@example.com", unknown));
+    REQUIRE(!SecureOutgoingMessage(kMessage, options, unknown, sent, error));
+}
 #endif
+
+TEST(securemime_account_security_is_stored) {
+    LocalStore store;
+    REQUIRE(store.Open("umtest-account-security", ":memory:").success);
+    Account a; a.accountId = "erika"; a.email = "erika@example.com";
+    a.shortName = "erika"; a.displayName = "Erika";
+    REQUIRE(store.UpsertAccount(a).success);
+    std::vector<Account> accounts;
+    REQUIRE(store.ListAccounts(accounts).success);
+    REQUIRE(accounts[0].security == AccountSecurity{});    // off: new messages start plain
+    REQUIRE(accounts[0].security.sign && !accounts[0].security.encrypt);
+
+    AccountSecurity security;
+    security.method = "OpenPGP";
+    security.sign = true;
+    security.encrypt = true;
+    security.openPgpKey = "0123456789ABCDEF0123456789ABCDEF01234567";
+    REQUIRE(store.SetAccountSecurity("erika", security).success);
+    REQUIRE(store.ListAccounts(accounts).success);
+    REQUIRE(accounts[0].security == security);
+
+    // Saving the account again (servers edited, the address added again)
+    // keeps it, as it keeps the signature.
+    Account again = a;
+    again.displayName = "Erika E.";
+    REQUIRE(store.UpsertAccount(again).success);
+    REQUIRE(store.ListAccounts(accounts).success);
+    REQUIRE(accounts[0].security == security);
+    REQUIRE(!store.SetAccountSecurity("", security).success);
+    UltraDb_CloseConnection("umtest-account-security");
+}

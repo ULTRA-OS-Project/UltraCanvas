@@ -18,6 +18,7 @@
 // /usr/bin:/bin:/usr/sbin:/sbin - none of where GnuPG is installed. So the
 // usual places (Homebrew on Apple silicon and on Intel, GPG Suite, MacPorts)
 // are added to PATH once, at load, when no gpgconf is on it already.
+// Version: 0.3.0 - a signer by fingerprint (the account's chosen key); PgpSecretKeys
 // Version: 0.2.0 - macOS: GnuPG found where Homebrew, GPG Suite or MacPorts put it
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -142,6 +143,28 @@ KeyRef KeyFor(gpgme_ctx_t ctx, const std::string& email, bool secret) {
     return chosen;
 }
 
+bool Usable(gpgme_key_t key) {
+    return key && !key->revoked && !key->expired && !key->disabled && !key->invalid;
+}
+
+// A key's fingerprint: 40 hex digits (v4) or 64 (v5), "0x" allowed.
+bool IsFingerprint(std::string s) {
+    if (s.rfind("0x", 0) == 0 || s.rfind("0X", 0) == 0) s = s.substr(2);
+    if (s.size() != 40 && s.size() != 64) return false;
+    return std::all_of(s.begin(), s.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
+}
+
+// The secret key to sign with: `signer` is a fingerprint (the account's
+// chosen key) or an address (the key whose user id it is).
+KeyRef SigningKey(gpgme_ctx_t ctx, const std::string& signer) {
+    if (!IsFingerprint(signer)) return KeyFor(ctx, signer, /*secret=*/true);
+    gpgme_key_t key = nullptr;
+    if (gpgme_get_key(ctx, signer.c_str(), &key, 1) != GPG_ERR_NO_ERROR) return KeyRef();
+    KeyRef held(key);
+    if (!Usable(key) || !key->can_sign) return KeyRef();
+    return held;
+}
+
 // One signature of a verify result, in UltraMail's words.
 SignatureCheck Judge(gpgme_ctx_t ctx, gpgme_signature_t sig) {
     SignatureCheck check;
@@ -262,7 +285,7 @@ bool PgpSignDetached(const std::string& content, const std::string& signer, std:
         error = "GnuPG cannot be reached";
         return false;
     }
-    KeyRef key = KeyFor(ctx.get(), signer, /*secret=*/true);
+    KeyRef key = SigningKey(ctx.get(), signer);
     if (!key) {
         error = "there is no OpenPGP secret key for " + signer + " in your keyring";
         return false;
@@ -309,7 +332,7 @@ bool PgpEncrypt(const std::string& content, const std::vector<std::string>& reci
     if (signer.empty()) {
         err = gpgme_op_encrypt(ctx.get(), list.data(), flags, in.get(), out.get());
     } else {
-        KeyRef own = KeyFor(ctx.get(), signer, /*secret=*/true);
+        KeyRef own = SigningKey(ctx.get(), signer);
         if (!own) {
             error = "there is no OpenPGP secret key for " + signer + " in your keyring";
             return false;
@@ -327,9 +350,31 @@ bool PgpEncrypt(const std::string& content, const std::vector<std::string>& reci
     return true;
 }
 
-bool PgpHasSecretKey(const std::string& email) {
+bool PgpHasSecretKey(const std::string& signer) {
     Ctx ctx = NewContext();
-    return ctx && KeyFor(ctx.get(), email, /*secret=*/true) != nullptr;
+    return ctx && SigningKey(ctx.get(), signer) != nullptr;
+}
+
+std::vector<OpenPgpKey> PgpSecretKeys() {
+    std::vector<OpenPgpKey> out;
+    Ctx ctx = NewContext();
+    if (!ctx || gpgme_op_keylist_start(ctx.get(), nullptr, 1) != GPG_ERR_NO_ERROR) return out;
+    gpgme_key_t key = nullptr;
+    while (gpgme_op_keylist_next(ctx.get(), &key) == GPG_ERR_NO_ERROR) {
+        KeyRef held(key);
+        if (!Usable(key) || !key->can_sign || !key->fpr) continue;
+        OpenPgpKey one;
+        one.fingerprint = key->fpr;
+        for (gpgme_user_id_t uid = key->uids; uid; uid = uid->next) {
+            if (uid->revoked || uid->invalid) continue;
+            if (one.name.empty() && uid->name) one.name = uid->name;
+            if (uid->email && *uid->email) one.emails.push_back(Lower(uid->email));
+        }
+        if (key->subkeys) one.expires = static_cast<int64_t>(key->subkeys->expires);
+        out.push_back(std::move(one));
+    }
+    gpgme_op_keylist_end(ctx.get());
+    return out;
 }
 
 std::vector<std::string> PgpMissingKeys(const std::vector<std::string>& emails) {
@@ -392,6 +437,7 @@ bool PgpEncrypt(const std::string&, const std::vector<std::string>&, const std::
     return false;
 }
 bool PgpHasSecretKey(const std::string&) { return false; }
+std::vector<OpenPgpKey> PgpSecretKeys() { return {}; }
 std::vector<std::string> PgpMissingKeys(const std::vector<std::string>& emails) { return emails; }
 int PgpImportKeys(const std::string&, std::string& error) {
     error = kNotBuilt;

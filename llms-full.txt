@@ -3708,7 +3708,7 @@ their *License* is likewise marked **—** (OS component).
 | SANE | [sane-project.org](http://www.sane-project.org/) | [gitlab.com/sane-project/backends](https://gitlab.com/sane-project/backends) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | SQLite | [sqlite.org](https://www.sqlite.org/) | [github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) | [public domain](https://spdx.org/licenses/blessing.html) |
 | Tesseract | [tesseract-ocr.github.io](https://tesseract-ocr.github.io/) | [github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
-| TDLib (loaded at run time, not linked; the prebuilt 1.8.69 fetched at configure time by `cmake/UltraCanvasTdlib.cmake`) | [core.telegram.org/tdlib](https://core.telegram.org/tdlib) | [github.com/tdlib/td](https://github.com/tdlib/td) | [BSL 1.0](https://spdx.org/licenses/BSL-1.0.html) |
+| TDLib - Telegram Database Library (loaded at run time, not linked; the prebuilt 1.8.69 fetched at configure time by `cmake/UltraCanvasTdlib.cmake`) | [core.telegram.org/tdlib](https://core.telegram.org/tdlib) | [github.com/tdlib/td](https://github.com/tdlib/td) | [BSL 1.0](https://spdx.org/licenses/BSL-1.0.html) |
 | TinyXML2 | [leethomason.github.io/tinyxml2](https://leethomason.github.io/tinyxml2/) | [github.com/leethomason/tinyxml2](https://github.com/leethomason/tinyxml2) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
 | V4L2 (Video4Linux2) | [docs.kernel.org](https://docs.kernel.org/userspace-api/media/v4l/v4l2.html) | [git.linuxtv.org/v4l-utils.git](https://git.linuxtv.org/v4l-utils.git) | — |
@@ -4032,7 +4032,7 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
-| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
+| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`); RSA and ECDSA P-256 signature checks (`UltraCryptPublicKey.h`: JWS RS256 / ES256) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
 
 > OpenSSL is UltraCrypt's second backend, for the public-key infrastructure
 > libsodium has nothing of; libsodium stays the backend of everything
@@ -91620,8 +91620,8 @@ bool UltraCrypt_IsX509Available();          // built with OpenSSL 3
 // alternative names, lowercased), issuer, validity, SHA-256 fingerprint.
 UltraCryptResult UltraCrypt_ReadCertificate(const std::string& certificate,
                                             UltraCryptCertificateInfo& out);
-// Whether it is vouched for: a chain to a trusted root (the system's, which
-// SSL_CERT_FILE / SSL_CERT_DIR override, and/or roots given), through the
+// Whether it is vouched for: a chain to a trusted root (the system's - see
+// "The system's roots" below - and/or roots given), through the
 // intermediates given, for a purpose (any, mail signing, mail encryption),
 // at a time. Trusted / Untrusted / Expired / NotYetValid / Revoked /
 // WrongPurpose, with OpenSSL's reason.
@@ -91660,6 +91660,26 @@ libcrypto privately by its file, so the installed package names no OpenSSL
 target for a consumer to find, and a build without OpenSSL 3 (the browser
 build, a system without it) has every call answer `BackendUnavailable`.
 
+**The system's roots** are the operating system's, as a mail program's
+should be (`core/UltraCrypt/UltraCryptSystemRoots.cpp`): OpenSSL's default
+store is the system's only on Linux (`/etc/ssl/certs`); on Windows and macOS
+it is whatever the OpenSSL build carried - Mozilla's set from MSYS2, nothing
+at all from vcpkg - so without more no real authority's certificate was
+trusted there.
+
+| Platform | Roots |
+|---|---|
+| Windows | the ROOT store (the user's view, which includes the machine's) and the machine's AuthRoot store (the third-party roots of Windows' automatic root update), less the Disallowed stores |
+| macOS | the system anchors (`SecTrustCopyAnchorCertificates`), and the certificates the admin and user trust settings mark as trusted roots (Keychain Access); "Never Trust" leaves one out |
+| Linux, elsewhere | OpenSSL's default store |
+
+They are read once and added to OpenSSL's default store; `SSL_CERT_FILE` or
+`SSL_CERT_DIR`, when set, is the whole answer instead. Two limits, stated so
+nobody rediscovers them: Windows fetches a third-party root into AuthRoot
+only the first time its own chain building needs it, so a root this machine
+has never used may be missing; and macOS's per-policy trust settings (a root
+trusted for SSL only) are read as trusted for every purpose.
+
 **The rules it keeps.** Nothing throws. A signature check answers one
 question - does it hold for exactly these bytes (`SignatureInvalid` when not)
 - and leaves whether the signer is vouched for to `UltraCrypt_CheckCertificate`,
@@ -91672,8 +91692,49 @@ OpenSSL's legacy provider, once, alongside the default one.
 which links no OpenSSL of its own. Tested against a test authority made for
 the suite: certificate fields (PEM and DER), the six trust verdicts, PKCS #12
 (modern, RC2, wrong password, not PKCS #12), detached signatures (holding, a
-changed content or signature byte, a key that is not the certificate's) and
-enveloped data (RSA and EC recipients, another recipient refused).
+changed content or signature byte, a key that is not the certificate's),
+enveloped data (RSA and EC recipients, another recipient refused), and the
+system's roots - a root shipped with the system (Microsoft's on Windows,
+which no OpenSSL bundle carries; ISRG Root X1 on macOS and Linux) trusted
+through them; Windows and macOS CI run the suite for that
+(`ULTRACANVAS_BUILD_CRYPT_TESTS`).
+
+### 5.12 RSA and ECDSA signature checks — JWS RS256 / ES256
+
+`include/UltraCrypt/UltraCryptPublicKey.h`, `core/UltraCrypt/UltraCryptPublicKey.cpp`,
+on the same OpenSSL 3 backend as §5.11 and as optional. For signatures the
+world makes and hands over with a key by its parts - an OpenID Connect
+provider's ID token and key set (JWKS), JOSE, WebCrypto; everything
+UltraCanvas signs of its own stays Ed25519 (§5.8).
+
+```cpp
+bool UltraCrypt_IsRsaEcdsaAvailable();
+
+// RS256: RSASSA-PKCS1-v1_5 with SHA-256. The key as a JWK's n and e
+// (big-endian bytes); below 2048 bits it is InvalidKeySize.
+UltraCryptResult UltraCrypt_CheckRsaPublicKey(modulus, exponent);
+UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(modulus, exponent, data, size, signature);
+
+// ES256: ECDSA on P-256 with SHA-256. The key as a JWK's x and y (32 bytes
+// each; a point off the curve is InvalidArgument); the signature as r || s,
+// 64 bytes, as JWS gives it - converted to DER inside.
+UltraCryptResult UltraCrypt_CheckP256PublicKey(x, y);
+UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(x, y, data, size, signature);
+```
+
+Checks only; a signature that does not hold is `SignatureInvalid`, whichever
+byte is off, as for Ed25519. The P-256 key is read as a SubjectPublicKeyInfo
+assembled from the point, since `OSSL_PARAM_BLD`'s EC import fails on
+OpenSSL 3.0.2 (Ubuntu 22.04) and `d2i_PUBKEY` reads alike everywhere.
+
+*Serves:* the UltraDBAdmin relay's OpenID Connect sign-in
+(`Apps/UltraDBAdmin/relay/RelaySignIn.cpp`), which takes the provider's keys
+whose parts these accept and checks the ID token's signature with them; its
+state and nonce come from `UltraCrypt_RandomBytes`, so the relay calls no
+OpenSSL itself. Tested against vectors made by Python's `cryptography`: both
+signatures holding, a changed byte of the data or the signature, another
+modulus, a 1024-bit modulus, an even exponent, a point off the curve, short
+coordinates and signatures.
 
 ## 6. Usage sketches
 
@@ -91772,7 +91833,7 @@ is part of the deliverable, not a follow-up:
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
-| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME |
+| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME; RSA / ECDSA checks (§5.12), for the UltraDBAdmin relay's sign-in |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.
@@ -92836,9 +92897,9 @@ device, and an encrypted room with
 ## Provider: Telegram
 
 `UltraCanvas/Plugins/UltraIM/telegram/` (module `ultraim_telegram`, provider
-id `telegram`) is a client of TDLib, Telegram's own client library, through
-its JSON interface (`td_create_client_id` / `td_send` / `td_receive` /
-`td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
+id `telegram`) is a client of TDLib (Telegram Database Library), Telegram's
+own client library, through its JSON interface (`td_create_client_id` /
+`td_send` / `td_receive` / `td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
 provider builds on every platform but WebAssembly (which loads no native
 library) and works wherever a libtdjson is found - the
 `tdlib/` folder next to the provider modules, `ULTRAIM_TDJSON_PATH`, or the
@@ -100446,20 +100507,29 @@ again to retry.
   red when the message was changed after it was signed. On disk it stays
   exactly as it arrived - encrypted mail is decrypted only for the reading
   pane, never written down decrypted.
-  - **S/MIME.** Import your certificate and its private key in *Account
-    Settings > S/MIME > Import…* from the `.p12` / `.pfx` file your
+  - **Mail security, per account** - *Account Settings > Security > Mail
+    security…*, and offered (with *Skip*) right after an account is added:
+    the S/MIME certificate, the OpenPGP key to sign with, and how new
+    messages start - *Off*, *S/MIME* or *OpenPGP*, *Sign*, *Encrypt*. The
+    compose window starts from that; a reply to encrypted mail starts
+    encrypted whatever it says.
+  - **S/MIME.** Import your certificate and its private key in *Mail
+    security > S/MIME > Import…* from the `.p12` / `.pfx` file your
     certificate authority gave you (its password is asked for). It is kept in
     the vault, and only a certificate for the account's own address is
     accepted. Your correspondents' certificates are learnt from the signed
     mail they send you - only from a signature that holds, is vouched for and
     is from the From address.
   - **OpenPGP.** UltraMail uses your own GnuPG keyring and `gpg-agent`, which
-    asks for a key's passphrase itself; keys are found by the address in
-    their user id. A key that arrives as an attachment (`application/pgp-keys`)
+    asks for a key's passphrase itself. An account signs with the key whose
+    user id is its address, or with the one chosen in *Mail security*
+    (*OpenPGP key*: the keyring's secret keys, by name, address and the end of
+    the fingerprint); recipients' keys are found by their address. A key that arrives as an attachment (`application/pgp-keys`)
     is offered for import when you open it.
   - **Sending.** The compose window's *Security* row: *Off*, or *S/MIME* /
     *OpenPGP* (each offered when this build has it, and S/MIME once the
-    account has a certificate), with *Sign* and *Encrypt*. An encrypted
+    account has a certificate), with *Sign* and *Encrypt*, set as the
+    account's *Mail security* says. An encrypted
     message is encrypted to every recipient and to you, so the copies in
     Drafts and Sent are the same ciphertext and you can still read them;
     without a certificate or key for a recipient UltraMail says so and does
@@ -101050,7 +101120,10 @@ shows it (a few results kept in memory), and nothing decrypted is written. On
 sending, `SecureOutgoingMessage` signs and/or encrypts the message UltraNet
 built - to every recipient and to the sender - and the outbox sends exactly
 those bytes (`UltraNetMailMessage::rawMessage`), filing the same ones in
-Drafts and Sent. The user's S/MIME identity is kept in the vault
+Drafts and Sent. Each account says how its new messages start (Off,
+S/MIME or OpenPGP, signed, encrypted) and which OpenPGP key it signs with
+(`AccountSecurity`, the accounts table's security columns), set in the Mail
+security dialog. The user's S/MIME identity is kept in the vault
 (`UltraMailSecureKeys.h`); correspondents' certificates are learnt from their
 vouched-for signatures into the address book (`ContactStore`'s
 `certificates`).
@@ -101746,7 +101819,58 @@ link on the sender's own domain and a genuine brand newsletter all come out
 clean, and each of those is a test in
 `Tests/UltraMail/test_threatscan.cpp`.
 
-## 6. Where the code lives
+## 6. Filtering the list
+
+The verdicts and the registry also narrow the message list. Two places set
+the filter, and it is the same filter whichever set it (`MessageFilter`,
+`MailView::SetFilter`); switching folder or account clears it.
+
+### The account bar's counters
+
+Each account's card in the account bar — a tile per account, or the summary
+card when there is only one — carries three counters, and each is a filter:
+
+| Counter | Counts | A click shows |
+|---|---|---|
+| **New today** (blue) | Unread inbox mail dated since local midnight | That account's inbox, only its unread mail from today (`NewToday`) |
+| **Unread** (green) | Unread inbox mail dated before today | That account's inbox, **all** of its unread mail — today's too (`Unread`) |
+| **Waiting for reply** (orange) | Mail waiting for an answer, by the needs-answer rules | That account's inbox, only the mail waiting for an answer (`NeedsAnswer`) |
+
+A click on a counter of another account switches to that account as well
+(`MailView::ShowInbox`, one rebuild of the list). A click anywhere else on the
+card — the avatar, the name, the padding — shows all of the account's mail
+again. Each counter has its own tooltip saying what a click shows; the
+card's tooltip still names all three.
+
+While a filter is on, the counter it came from is framed in its own colour,
+and a second row appears under the account bar: a card in the look of the
+account tiles, placed under the account's own card (it follows the tile when
+the tile is dragged to another place), naming the filter — *"Showing: New
+today"* — with the account's address and a **Show all emails** button. The
+card is there for any filter the list is under, also one chosen from the
+list's menu below, and goes when the filter is cleared
+(`MailView::onFilterChanged`, `AccountBar::ShowFilter`).
+
+### "Show emails ▸" in the list's menu
+
+The message list's right-click menu offers the same filters and a few that
+read the badge and the registry (`FilterMatches` in
+`UltraMailMessageFilter.cpp`):
+
+| Filter | Keeps |
+|---|---|
+| Same sender (*address*) | Mail from that address (case-insensitive) |
+| Unread | Unread mail |
+| Needs an answer | Mail waiting for an answer |
+| Spam | Mail whose badge says spam or scam (orange or red outline) |
+| Social media | Mail from a social network or messaging service in the registry, or a notification that reads like one ("commented on your post", a Mastodon server) |
+| Payments & invoices | Mail from a payment service, bank or crypto exchange in the registry, or a subject that reads like an invoice, a receipt or a payment notice |
+
+The list's title names the filter ("Inbox · Spam — 3 messages"); with a
+filter on, an empty list says *no messages* rather than looking like an empty
+folder.
+
+## 7. Where the code lives
 
 | Piece | File |
 |---|---|
@@ -101763,7 +101887,9 @@ clean, and each of those is a test in
 | Colours | `Apps/UltraMail/ui/UltraMailTheme.h` (`kTrust*`) |
 | The warning switches | `Apps/UltraMail/ui/UltraMailSettingsDialog.cpp` (Warnings > Spam/scam warnings), `UltraMailPreferences.{h,cpp}` (`scamWarnings`), applied in `UltraMailApp.cpp` |
 | Trusted and blocked senders | `SenderLists` in `Apps/UltraMail/engine/UltraMailThreatScan.{h,cpp}`; the menu items in `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SenderListItems`, `RescanSender`); `UltraMailSettingsDialog.cpp` (Warnings > Trusted & blocked); `UltraMailPreferences.{h,cpp}` (`senderLists`); `UltraMailApp.cpp` (`HandleSenderListChange`, `ApplySenderLists`) |
-| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp` |
+| The list's filters | `Apps/UltraMail/engine/UltraMailMessageFilter.{h,cpp}` (`MessageFilter`, `FilterMatches`, `Describe`); `Apps/UltraMail/ui/UltraMailMailView.cpp` (`SetFilter`, `ShowInbox`, `onFilterChanged`, the *Show emails ▸* menu) |
+| The account bar's counters and filter card | `Apps/UltraMail/ui/UltraMailAccountBar.{h,cpp}` (`onFilterAccount`, `ShowFilter`, `onShowAll`); wired in `UltraMailApp.cpp` (`SwitchToAccount`) |
+| Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
 
 ==============================================================================
 FILE: Docs/UltraVideo/README.md

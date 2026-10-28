@@ -164,7 +164,7 @@ their *License* is likewise marked **—** (OS component).
 | SANE | [sane-project.org](http://www.sane-project.org/) | [gitlab.com/sane-project/backends](https://gitlab.com/sane-project/backends) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | SQLite | [sqlite.org](https://www.sqlite.org/) | [github.com/sqlite/sqlite](https://github.com/sqlite/sqlite) | [public domain](https://spdx.org/licenses/blessing.html) |
 | Tesseract | [tesseract-ocr.github.io](https://tesseract-ocr.github.io/) | [github.com/tesseract-ocr/tesseract](https://github.com/tesseract-ocr/tesseract) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
-| TDLib (loaded at run time, not linked; the prebuilt 1.8.69 fetched at configure time by `cmake/UltraCanvasTdlib.cmake`) | [core.telegram.org/tdlib](https://core.telegram.org/tdlib) | [github.com/tdlib/td](https://github.com/tdlib/td) | [BSL 1.0](https://spdx.org/licenses/BSL-1.0.html) |
+| TDLib - Telegram Database Library (loaded at run time, not linked; the prebuilt 1.8.69 fetched at configure time by `cmake/UltraCanvasTdlib.cmake`) | [core.telegram.org/tdlib](https://core.telegram.org/tdlib) | [github.com/tdlib/td](https://github.com/tdlib/td) | [BSL 1.0](https://spdx.org/licenses/BSL-1.0.html) |
 | TinyXML2 | [leethomason.github.io/tinyxml2](https://leethomason.github.io/tinyxml2/) | [github.com/leethomason/tinyxml2](https://github.com/leethomason/tinyxml2) | [zlib](https://spdx.org/licenses/Zlib.html) |
 | TWAIN | [twain.org](https://www.twain.org/) | [github.com/twain](https://github.com/twain) | — |
 | V4L2 (Video4Linux2) | [docs.kernel.org](https://docs.kernel.org/userspace-api/media/v4l/v4l2.html) | [git.linuxtv.org/v4l-utils.git](https://git.linuxtv.org/v4l-utils.git) | — |
@@ -488,7 +488,7 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
-| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
+| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`); RSA and ECDSA P-256 signature checks (`UltraCryptPublicKey.h`: JWS RS256 / ES256) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
 
 > OpenSSL is UltraCrypt's second backend, for the public-key infrastructure
 > libsodium has nothing of; libsodium stays the backend of everything

@@ -7,6 +7,7 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.19.0 - Extras > Open location: recentLocations, the locations typed there
 // Version: 1.18.0 - previewAutoBackground (preview.transparent.auto): the viewer's Auto backdrop,
 //                  on unless a colour or the checkerboard was picked
 // Version: 1.17.0 - Handling > Protected files: forgetPasswordsAfterMinutes, how long
@@ -340,6 +341,12 @@ public:
     // default is detected at run time (see UltraFilerPrompt).
     std::string promptApplication;
 
+    // Extras > Open location > Enter location…: the locations typed there,
+    // newest first, as typed (with their %VAR% / $VAR / ~ unexpanded, so an
+    // entry follows the variable), listed at the end of the submenu.
+    static constexpr size_t kMaxRecentLocations = 10;
+    std::vector<std::string> recentLocations;
+
     // ===== PERSISTENCE =====
 
     // UltraFiler's folder in the shared UltraCanvas settings folder, as every
@@ -537,6 +544,12 @@ public:
                      kMinHistoryEntries, kMaxHistoryEntries);
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
+        // One key per entry: a path may hold the comma a list would split on.
+        recentLocations.clear();
+        for (size_t i = 1; i <= kMaxRecentLocations; ++i) {
+            it = kv.find("extras.locations.recent." + std::to_string(i));
+            if (it != kv.end() && !it->second.empty()) recentLocations.push_back(it->second);
+        }
         it = kv.find("view.split");
         if (it != kv.end())
             splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
@@ -631,6 +644,8 @@ public:
              << "\n";
         file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
+        for (size_t i = 0; i < recentLocations.size() && i < kMaxRecentLocations; ++i)
+            file << "extras.locations.recent." << (i + 1) << " = " << recentLocations[i] << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";
         file << "view.split.second.folder = " << splitSecondFolder << "\n";
         return true;

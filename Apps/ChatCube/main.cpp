@@ -3,8 +3,8 @@
 // computers (end-to-end encrypted, peer to peer when both are online), in
 // groups through a relay server, without an account or a password: the
 // identity is a key made on this computer. Built on UltraIM, whose
-// provider modules carry the networks - ChatCube Direct first; Matrix,
-// Telegram and others follow as further providers.
+// provider modules carry the networks - ChatCube Direct, Matrix and
+// Telegram; XMPP and others follow as further providers.
 //
 //   ChatCube                     open the window
 //   ChatCube --dark              in the dark look

@@ -21,9 +21,17 @@
 //    RC2, wrong password), detached signatures (holding, a changed byte of
 //    the content or the signature, a key that is not the certificate's) and
 //    enveloped data (opened by its recipient, refused by another)
+//  - the system's roots are the operating system's: a root that comes with
+//    Windows (Microsoft's, which no OpenSSL bundle carries) or with macOS and
+//    Linux (ISRG Root X1) is trusted through them
+//  - RS256 and ES256 against keys given by their parts (JWK n/e, x/y), with
+//    vectors made by Python's cryptography package: holding, a changed byte
+//    of the data or signature, another key, a 1024-bit RSA key and a point
+//    off the curve refused
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
+#include "UltraCrypt/UltraCryptPublicKey.h"
 #include "UltraCrypt/UltraCryptX509.h"
 #include "UltraCanvasTextUtils.h"
 
@@ -1302,6 +1310,77 @@ static const char* kAliceLegacyP12 =
     "rPPbHQ3ABAgUI5AjXmHGLAICCAA="
     ;
 
+// Real roots, public certificates both, valid to 2036 and 2035: one that
+// comes with every Windows (SHA-256 84:7D:F6:A7:...:ED:7C:61) and one in
+// Apple's and Linux distributions' root sets (96:BC:EC:06:...:DF:08:C6).
+static const char* kMicrosoftRoot2011Pem = R"PEM(-----BEGIN CERTIFICATE-----
+MIIF7TCCA9WgAwIBAgIQP4vItfyfspZDtWnWbELhRDANBgkqhkiG9w0BAQsFADCB
+iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCldhc2hpbmd0b24xEDAOBgNVBAcTB1Jl
+ZG1vbmQxHjAcBgNVBAoTFU1pY3Jvc29mdCBDb3Jwb3JhdGlvbjEyMDAGA1UEAxMp
+TWljcm9zb2Z0IFJvb3QgQ2VydGlmaWNhdGUgQXV0aG9yaXR5IDIwMTEwHhcNMTEw
+MzIyMjIwNTI4WhcNMzYwMzIyMjIxMzA0WjCBiDELMAkGA1UEBhMCVVMxEzARBgNV
+BAgTCldhc2hpbmd0b24xEDAOBgNVBAcTB1JlZG1vbmQxHjAcBgNVBAoTFU1pY3Jv
+c29mdCBDb3Jwb3JhdGlvbjEyMDAGA1UEAxMpTWljcm9zb2Z0IFJvb3QgQ2VydGlm
+aWNhdGUgQXV0aG9yaXR5IDIwMTEwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIK
+AoICAQCygEGqNThNE3IyaCJNuLLx/9VSvGzH9dJKjDbu0cJcfoyKrq8TKG/Ac+M6
+ztAlqFo6be+ouFmrEyNozQwph9FvgFyPRH9dkAFSWKxRxV8qh9zc2AodwQO5e7BW
+6KPeZGHCnvjzfLnsDbVU/ky2ZU+I8JxImQxCCwl8MVkXeQZ4KI2JOkwDJb5xalwL
+54RgpJki49KvhKSn+9GY7Qyp3pSJ4Q6g3MDOmT3qCFK7VnnkH4S6Hri0xElcTzFL
+h93dBWcmmYDgcRGjuKVB4qRTufcyKYMME782XgSzS0NHL2vikR7TmE/dQgfI6B0S
+/Jmpaz6SfsjWaTr8ZL22CZ3K/QwLopt3YEsDlKQwaRLWQi3BQUzK3Kr9j1uDRprZ
+/LHR47PJf0h6zSTwQY9cdNCssBAgBkm3xy0hyFfj0IbzA2j70M5xwYmZSmQBbP3s
+MJHPQTySx+W6hh1hhMdfgzlirrSSL0fzC/hV66AfWdC7dJse0Hbm8ukG1xDo+mTe
+acY1logC8Ea4PyeZb8txiSk190gWAjWP1Xl8TQLPX+uKg09FcYj5qQ1OcunCnAfP
+SRtOBA5jUYxe2ADBVSy2xuDCZU7JNDn1nLPEfuhhbhNfFcRf2X7tHc7uROzLLoax
+7Dj2cO2rXBPB2Q8Nx4CyVe0096yb5MPa50c8prWPMd/FS6/r8QIDAQABo1EwTzAL
+BgNVHQ8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUci06AjGQQ7kU
+BU7h6qfHMdEjiTQwEAYJKwYBBAGCNxUBBAMCAQAwDQYJKoZIhvcNAQELBQADggIB
+AH9yzw+3xRXbm8BJyiZb/p4T5tPw0tuXX/JLP02zrhmu7deXoKzvqTqjwkGw5biR
+nhOBJAPmCf0/V0A5ISRW0RAvS0CpNoZLtFNXmvvxfomPEf4YbFGq6O0JlbXlccmh
+6Yd1phV/yX43VF50k8XDZ8wNT2uoFwxtCJJ+i92Bqi1wIcM9BhS7vyRep4TXPw8h
+Ir1LAAbblxzYXtTFC1yHblCk6MM4pPvLLMWSZpuFXst6bJN8gClYW1e1QGm6CHmm
+ZGIVnYeWRbVmIyADixxzoNOieTPgUFmG2y/lAiXqcyqfABTINseSO+lOAOzYVgm5
+M0kS0lQLAausR7aRKX1MtHWAUgHoyoL2n8ysnI8X6i8msKtyrAv+nlEex0NVZ09R
+s1fWtuzuUrc66U7h14GIvE+OdbtLqPA1qibUZ2dJsnBMO5PcHd94kIZysjik0dyS
+TclY6ysSXNQ7roxrsIPlAT/4CTL2kzU0Iq/dNw13CYArzUgA8YyZGUcFAenRv9FO
+0OYoQzeZpApKCNmacXPSqs0xE2N2oTdvkjgefRI8ZjLny23h/FKJ3crWZgWalmG+
+oijHHKOnNlA8OqTfSm7mhzvO6/DggTedEzxSjr25HTTGHdUKaj2YKXCMiSrRq4IQ
+SB/c9O+lxbtVGjhjhE63bK2VVOxlIhBJF7jAHscPrFRH
+-----END CERTIFICATE-----
+)PEM";
+static const char* kIsrgRootX1Pem = R"PEM(-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----
+)PEM";
+
 static std::vector<uint8_t> Bytes(const std::string& s) { return std::vector<uint8_t>(s.begin(), s.end()); }
 
 static UltraCryptX509Identity IdentityOf(const char* certificatePem, const char* keyPem) {
@@ -1368,6 +1447,29 @@ static void TestX509() {
     Check(TrustOf(kAlicePem, P::EmailSigning, 7258118400LL) == UltraCryptTrust::Expired, "judged in 2200: Expired");
     Check(TrustOf(kAlicePem, P::EmailSigning, 946684800LL) == UltraCryptTrust::NotYetValid,
           "judged in 2000: NotYetValid");
+    {
+        // The system's roots are the operating system's. Microsoft's root is
+        // in no OpenSSL bundle (MSYS2's carries Mozilla's set), so on Windows
+        // it is trusted only if the ROOT store was read; on macOS the vcpkg
+        // OpenSSL carries no roots at all, so ISRG's comes from the anchors.
+#if defined(_WIN32)
+        const char* shipped = kMicrosoftRoot2011Pem;
+        const char* what = "Microsoft's root, which comes with Windows, is trusted through the ROOT store";
+#else
+        const char* shipped = kIsrgRootX1Pem;
+        const char* what = "ISRG Root X1, which comes with macOS and Linux, is trusted through the system's roots";
+#endif
+        UltraCryptTrustOptions options;
+        UltraCryptTrustCheck check;
+        UltraCrypt_CheckCertificate(shipped, {}, options, check);
+        Check(check.trust == UltraCryptTrust::Trusted, std::string(what) +
+              (check.trust == UltraCryptTrust::Trusted ? "" : " (" + check.reason + ")"));
+        UltraCryptCertificateInfo ms, isrg;
+        Check(UltraCrypt_ReadCertificate(kMicrosoftRoot2011Pem, ms) &&
+              ms.fingerprintSha256.rfind("84:7D:F6:A7", 0) == 0 &&
+              UltraCrypt_ReadCertificate(kIsrgRootX1Pem, isrg) &&
+              isrg.fingerprintSha256.rfind("96:BC:EC:06", 0) == 0, "the two real roots are the ones named");
+    }
     {
         UltraCryptTrustOptions options;
         options.useSystemRoots = false;
@@ -1469,6 +1571,104 @@ static void TestX509() {
           "enveloped data is not signed data");
 }
 
+// ===== RS256 / ES256 against keys given by their parts =====
+// Made with Python's cryptography package (a signer that is not OpenSSL's EVP
+// path under test): an RSA-2048 key and its PKCS #1 v1.5 SHA-256 signature, a
+// 1024-bit modulus, a P-256 key and its signature as r || s - over the
+// signing input of a JWS.
+static const char* kRsaN =
+    "b55c2e74b30112545e67a77b8c26410ca1c6bab5994bc2ac5590a03162358529257cc857792b355966c4fd71090daab7"
+    "4cbf296ad55515d42d10aa4cddbadac028b7beab50c4cef3135621b3104126ef2c6c04319a55aba4f2149718d9dc4162"
+    "2b22ae769281e2c31242b5ba711d6ad3963548157460a3ccacd0db2b07f067d03bc91a9b2ff99e6bd564b628027a9b06"
+    "76deb1195064f8796801c4bc7ed8807770eedee756d4c162ee6a8a5f69dfdaa03a887f4ed20996e0dc81c0f5b3b1a4da"
+    "2a18b6b5151d45a9bf1210011894622a57a80ac8bf1ee5938d714ac190ee9578022ca8f7193c854643264bb51e50968c"
+    "587fc23fb46917161e6a9ccc3dfc80b7"
+    ;
+static const char* kRsaE =
+    "010001"
+    ;
+static const char* kRsaSig =
+    "79f49b2e2010d025998d3f1fb99f09f4c26a7de179ab75c60e1dc4c270e6986b1f7ccab7969067bf47a7c1e20cea4ee0"
+    "388a906b5301ee587d078c1ae6e72073c816c271f781426df865cd947e82453e1b1befb9734b8e2976723df109cd1dad"
+    "ec20932de78af292793397c6d5f7c6ba8689bfaaa023280dc5b7a011a9f7f1b467d9cc3bc0ccb477af1c1bf71989b5f7"
+    "f80be30bb8af01b8bacbb0eb28ff9ecf9a3ac3abe2e23d3a36dbb7250270af669c69a8f9303ffe5245193488180af31b"
+    "b10726d590b3b7501ee03eeda3540415292d04e5de6f312e41b88ece0d2a74197f1654d2f81cd602e96b74bd23ee025c"
+    "2894efbf78b430f7e9e6da7a75327161"
+    ;
+static const char* kRsa1024N =
+    "e99e0daf51d627b6043fa955cd90231a7898884dfe64ffc0c0326b4f8d8e3e6c5c433c62fe474dbed97eb13c513741a8"
+    "5c6e74c4fb4953f0d697fb00a874cd872db9a9122ececb0af7b9c1520305aa1663b969e83ef3fc90d78494dbbd2dc72a"
+    "4d9baf7b4b45397aa1ddf323b21a61e8a7dfdeaa3b7e062ae76a67eaf8fe06a9"
+    ;
+static const char* kP256X =
+    "47f2894721846c967c62a73ed911fd41d441457407d191bc41cdd168a5f1549a"
+    ;
+static const char* kP256Y =
+    "4e9fbc3cc56218e8cd73ee8ae2c36c0d4aa2a47878f87ec53f8d0de8beca005f"
+    ;
+static const char* kP256Sig =
+    "27aade2f087398c8d4fd0835263eca63de5fdb863a1fcd4f2c67d1831a4f61f95c9953e3931846fe5dcc5383820d7939"
+    "d0d53780e408b160fc3b4e9cf1101eb7"
+    ;
+static const char* kJwsSigningInput = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlcmlrYSJ9";
+
+static std::vector<uint8_t> Hex(const char* hex) {
+    std::vector<uint8_t> out;
+    UltraCrypt_FromHex(hex, out);
+    return out;
+}
+
+static void TestRsaEcdsa() {
+    std::printf("RS256 / ES256 (keys by their parts)\n");
+    const std::string input = kJwsSigningInput;
+    const auto n = Hex(kRsaN), e = Hex(kRsaE), rsaSig = Hex(kRsaSig);
+    const auto x = Hex(kP256X), y = Hex(kP256Y), ecSig = Hex(kP256Sig);
+    if (!UltraCrypt_IsRsaEcdsaAvailable()) {
+        const auto r = UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), rsaSig);
+        Check(!r && r.code == UltraCryptResultCode::BackendUnavailable,
+              "without OpenSSL 3 every call says BackendUnavailable");
+        return;
+    }
+    using C = UltraCryptResultCode;
+
+    Check(static_cast<bool>(UltraCrypt_CheckRsaPublicKey(n, e)), "an RSA-2048 key is accepted");
+    Check(static_cast<bool>(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), rsaSig)),
+          "its RS256 signature holds");
+    std::string changed = input;
+    changed[5] ^= 0x01;
+    Check(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, changed.data(), changed.size(), rsaSig).code == C::SignatureInvalid,
+          "a changed byte of the data: SignatureInvalid");
+    auto badRsa = rsaSig;
+    badRsa[17] ^= 0x01;
+    Check(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), badRsa).code == C::SignatureInvalid,
+          "a changed byte of the signature: SignatureInvalid");
+    auto otherN = n;
+    otherN[100] ^= 0x01;
+    Check(!UltraCrypt_VerifyRsaPkcs1Sha256(otherN, e, input.data(), input.size(), rsaSig),
+          "another modulus: refused");
+    Check(UltraCrypt_CheckRsaPublicKey(Hex(kRsa1024N), e).code == C::InvalidKeySize,
+          "a 1024-bit modulus: InvalidKeySize");
+    Check(UltraCrypt_CheckRsaPublicKey(n, {0x01, 0x00, 0x00}).code == C::InvalidArgument,
+          "an even exponent: InvalidArgument");
+
+    Check(static_cast<bool>(UltraCrypt_CheckP256PublicKey(x, y)), "a P-256 key is accepted");
+    Check(static_cast<bool>(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), ecSig)),
+          "its ES256 signature (r || s) holds");
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, changed.data(), changed.size(), ecSig).code == C::SignatureInvalid,
+          "a changed byte of the data: SignatureInvalid");
+    auto badEc = ecSig;
+    badEc[40] ^= 0x01;
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), badEc).code == C::SignatureInvalid,
+          "a changed byte of s: SignatureInvalid");
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), std::vector<uint8_t>(ecSig.begin(), ecSig.end() - 1)).code ==
+              C::InvalidArgument, "a 63-byte signature: InvalidArgument");
+    auto offCurve = y;
+    offCurve[31] ^= 0x01;
+    Check(UltraCrypt_CheckP256PublicKey(x, offCurve).code == C::InvalidArgument, "a point off the curve: InvalidArgument");
+    Check(UltraCrypt_CheckP256PublicKey(std::vector<uint8_t>(x.begin() + 1, x.end()), y).code == C::InvalidKeySize,
+          "a 31-byte coordinate: InvalidKeySize");
+}
+
 int main() {
     std::printf("UltraCrypt tests — backend: %s\n\n",
                 UltraCrypt_GetBackendName().c_str());
@@ -1492,6 +1692,7 @@ int main() {
     TestKeyExchange();
     TestSecureBuffer();
     TestX509();
+    TestRsaEcdsa();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

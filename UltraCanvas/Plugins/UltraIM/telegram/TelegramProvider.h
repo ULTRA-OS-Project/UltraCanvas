@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramProvider.h
-// Telegram as an UltraIM provider, on TDLib (Telegram's own client library)
+// Telegram as an UltraIM provider, on TDLib (Telegram Database Library,
+// Telegram's own client library)
 // through its JSON interface, loaded at run time (TdJson.h). Sign-in in steps
 // - phone number, the code Telegram sends, the two-step password when there
 // is one, a name for a new account - and TDLib's database (encrypted with a
