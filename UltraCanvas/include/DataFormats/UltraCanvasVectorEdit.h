@@ -12,7 +12,7 @@
 // split is the same: the model edits without a window, the element shows
 // it, the application owns the tools.
 // Version: 1.2.0 - PaintBounds / OwnPaintBounds: the box an element paints, its line
-//                  included; the selection's bounds, align and distribute use it
+//                  included; the selection's bounds, align, distribute and ElementsIn use it
 // Version: 1.1.0 - SnapToPixels / SnapToPixel: shapes onto the pixel grid of
 //                  the size an icon is shown at
 // Version: 1.0.0
@@ -204,8 +204,9 @@ public:
 
     std::optional<VectorHit> HitTest(const VectorDocument& doc, const Point2Dd& documentPoint,
                                      double tolerance, bool skipLocked = true) const;
-    // Layer-level elements whose document bounds intersect (or, with
-    // fullyInside, lie within) the rectangle, in drawing order.
+    // Layer-level elements whose paint bounds - their lines included
+    // (PaintBounds) - intersect (or, with fullyInside, lie within) the
+    // rectangle, in drawing order.
     std::vector<ElementPtr> ElementsIn(const VectorDocument& doc, const Rect2Dd& documentRect,
                                        bool fullyInside, bool skipLocked = true) const;
     // One element in its own coordinate space.

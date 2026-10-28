@@ -28,3 +28,8 @@
   `AlignElements`, `DistributeElements` and the canvas's frame, per-object
   outlines and object snapping use it; `DocumentBounds` stays the geometry
   alone. The canvas measures the frame once per paint and hit test.
+- **Marquee selection measures lines by their width too.**
+  `VectorHitTester::ElementsIn` (and the canvas's `ElementsIn`) took an
+  object's box down the middle of its line, so a marquee that cut through a
+  thick line still selected it "fully inside", and one touching only its edge
+  missed it. It uses `PaintBounds` now.

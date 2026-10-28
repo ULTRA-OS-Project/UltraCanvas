@@ -1,5 +1,6 @@
 // core/DataFormats/UltraCanvasVectorEdit.cpp
 // The editing layer over VectorStorage::VectorDocument: see the header.
+// Version: 1.2.1 - ElementsIn measures the elements' lines (PaintBounds)
 // Version: 1.2.0 - PaintBounds / OwnPaintBounds
 // Version: 1.1.0 - SnapToPixels / SnapToPixel
 // Version: 1.0.0
@@ -639,7 +640,9 @@ std::vector<ElementPtr> VectorHitTester::ElementsIn(const VectorDocument& doc, c
         if (!layer || !layer->Visible || (skipLocked && layer->Locked)) continue;
         for (const auto& child : layer->Children) {
             if (!child || !child->Style.Visible) continue;
-            const Rect2Dd b = DocumentBounds(child);
+            // What the element paints, its line included: a marquee that
+            // cuts through a thick line has not got all of it.
+            const Rect2Dd b = PaintBounds(child);
             if (EmptyBox(b)) continue;
             const double bx1 = b.x + b.width, by1 = b.y + b.height;
             const bool inside = b.x >= r.x && b.y >= r.y && bx1 <= rx1 && by1 <= ry1;

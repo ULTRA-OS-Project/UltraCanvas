@@ -379,6 +379,14 @@ int main() {
         VectorSelection psel;
         psel.Set(thick);
         Check(NearRect(psel.Bounds(), -5, -5, 110, 10), "the selection's bounds include the line's width");
+        // A marquee has a line only when it holds all of what is drawn.
+        VectorHitTester marquee;
+        Check(marquee.ElementsIn(*pdoc, Rect2Dd(-2, -2, 104, 4), true).empty(),
+              "a marquee round the line's middle but through its width does not hold it");
+        Check(marquee.ElementsIn(*pdoc, Rect2Dd(-6, -6, 112, 12), true).size() == 1,
+              "one round all it paints does");
+        Check(marquee.ElementsIn(*pdoc, Rect2Dd(40, 3, 10, 10), false).size() == 1,
+              "touching the line's edge, past its middle, overlaps it");
 
         // A long freehand line stays quick to measure.
         auto freehand = std::make_shared<VectorPolyline>();

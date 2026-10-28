@@ -309,7 +309,9 @@ What the element does by itself:
     stay selected - an edit that selects them again keeps it - and is
     dropped when the selection changes (`HasRotationCenter`).
 - **Hit testing** — `HitTest(docPoint, tolerancePixels)` and
-  `ElementsIn(rect, fullyInside)` over the document.
+  `ElementsIn(rect, fullyInside)` over the document. `ElementsIn` measures
+  each object by what it paints, its line included, so a marquee that cuts
+  through a thick line does not take it with `fullyInside`.
 - **Tool hooks** — `onToolPress / Drag / Release / Hover / DoubleClick`
   with a `VectorPointerEvent` (`doc`, `snapped`, `snap`, `view`, button,
   modifiers, pressure, `insidePage`), `onToolKey`, `onDrawOverlay` in view

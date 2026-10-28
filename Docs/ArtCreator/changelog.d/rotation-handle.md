@@ -33,3 +33,7 @@
   transform bar's W and H, the handles' scaling, Align and Distribute measured
   the object without it. They now measure what is drawn: a 160 x 90 pt
   rectangle with a 14 pt line is 174 x 104 pt.
+- **The marquee measures lines by their width.** Dragging a box round a thick
+  line used to select it as soon as the box held the line's middle, even when
+  it cut through the line itself; it now has to hold all of the line, as it
+  is drawn.
