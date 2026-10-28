@@ -1,3 +1,64 @@
+#### 2026-10-28 *0.9.423*
+- **`ImageHeifTest`: HEIF and AVIF are under test, on every platform.** The
+  libheif counterpart of `ImageJxlTest`. It asks what the build can do the
+  way the framework does (`VipsCanDecode` / `VipsCanEncode` - libheif reads
+  and writes each format only through a codec for it), decodes the
+  repository's `dice.heic` / `dice.avif` through `UCImageRaster` for each
+  format it reads, and for each it writes has the export encoder and
+  `UCImageRaster::Save` write a lossy (quality 75) and a lossless file that
+  must read back close to the picture, transparency kept.
+  `UC_HEIF_EXPECT` says what a platform must - and must not - do, and CI
+  sets it per row: Linux (Ubuntu 24.04 with every libheif plug-in) and
+  Windows (MSYS2's libheif links them all) read and write both; macOS reads
+  both and writes AVIF, and fails if it can encode HEIC, so x265 (GPL)
+  cannot enter the core every Mac app links unnoticed.
+  `ULTRACANVAS_BUILD_HEIF_TESTS` builds it without `BUILD_TESTS`, as the
+  macOS and Windows rows need.
+- **HEIF and AVIF on macOS, without GPL code in the core.** The macOS libvips
+  was built with `-Dheif=disabled` - the overlay port had no `heif` feature -
+  so the Mac apps could neither read nor write HEIC or AVIF. The port gains a
+  `heif` feature on vcpkg's `libheif`, and `MacOS/deps/vcpkg.json` asks for
+  libheif without its default `hevc` feature, which is x265 (GPL-2.0): libvips
+  is linked into the core every app links, and the framework is MIT. With
+  libde265 (LGPL) and aom (BSD) the Mac apps read HEIC and read and write
+  AVIF; they do not write HEIC.
+- **DemoApp's performance page charts HEIF and AVIF only where they encode.**
+  Like JPEG XL, each is left out of the chart unless `VipsCanEncode` and
+  `VipsCanLoad` say this build handles it - libheif can be present with no
+  encoder for a format (macOS for HEIC; a Linux without libheif's encoder
+  plug-ins for both), and the column then only ever showed a failure.
+  `Docs/Dependencies.md` lists libde265 and aom.
+- **DemoApp: a JPEG XL Images page.** Bitmap Elements had a page for every
+  format the framework reads but JPEG XL. It gets one, with its format
+  specification (ISO/IEC 18181: VarDCT and Modular, lossless JPEG
+  recompression, up to 32-bit float, alpha, animation, progressive), and a
+  JXL-art sample: `media/images/jxl_art2.jxl` draws a 2160 x 3840 picture
+  from 82 bytes. `media/images/jxl_art.jxl` (62 bytes, 1024 x 1024, 16 bits a
+  channel) joins it. A build whose libvips has no libjxl shows the page with
+  "This build cannot read JPEG XL files" in place of the picture.
+- **`ImageJxlTest` reads the two JXL-art samples.** Each has to open through
+  libvips' `jxlload` at its size and depth (16 bits a channel for
+  `jxl_art.jxl`), decode through `UCImageRaster` to an opaque picture of more
+  than 10,000 colours, and come back pixel for pixel from a lossless `.jxl`
+  that `UCImageRaster::Save` writes - on Linux (`image-codecs.yml`) and on the
+  macOS and Windows rows alike.
+- **JPEG XL on macOS and Windows.** Only a Linux build on a distribution
+  whose libvips has libjxl could read or write `.jxl`; neither package could,
+  so the apps offered no JPEG XL there and DemoApp's performance page left
+  its JXL column out.
+  - macOS: the libvips overlay port (`MacOS/deps/ports/libvips`) gains a
+    `jpeg-xl` feature on vcpkg's `libjxl`, and `MacOS/deps/vcpkg.json` selects
+    it - the port builds every libvips option it is not given as disabled.
+    The bundle picks up libjxl, brotli and Highway by its `otool` walk.
+  - Windows: MSYS2's libvips has JPEG XL only through its `vips-jxl` module,
+    which loads only with libjxl installed. CI now installs `libjxl`, and
+    `package-win.sh` ships `vips-jxl.dll` beside `vips-heif` and
+    `vips-magick`; its DLL walk brings libjxl and its dependencies.
+  - `ImageJxlTest` now runs on the macOS and Windows CI rows too (the new
+    `ULTRACANVAS_BUILD_JXL_TESTS` builds it without `BUILD_TESTS`), and the
+    step fails unless its checks ran rather than skipped.
+  - `Docs/Dependencies.md` lists libjxl and Highway.
+
 #### 2026-10-28 *0.9.422*
 - **UltraDatabase encrypts SQLite files at rest.** A connection with an
   `encryptionKey` (32 bytes the application holds) reads and writes a file
