@@ -3,6 +3,7 @@
 // multipart/signed and multipart/encrypted, RFC 8551 application/pkcs7-mime,
 // RFC 3156 PGP/MIME, inline PGP - taken apart for reading and put together
 // for sending; the cryptography is the backends' (UltraMailSecureBackends.h).
+// Version: 0.2.0 - OpenPGP signs with the account's chosen key (SecureKeys::openPgpSigningKeyFor)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSecureMime.h"
@@ -179,6 +180,7 @@ const char* SecureMethodName(SecureMethod method) {
 
 bool SmimeAvailable() { return secure::SmimeBuilt(); }
 bool OpenPgpAvailable() { return secure::OpenPgpBuilt(); }
+std::vector<OpenPgpKey> OpenPgpSecretKeys() { return secure::PgpSecretKeys(); }
 
 // ---- raw MIME --------------------------------------------------------------
 
@@ -520,9 +522,16 @@ std::vector<std::string> MissingRecipientKeys(const SecureSendOptions& options, 
     return missing;
 }
 
+// What OpenPGP signs as for `address`: the account's chosen key, else the
+// address (the key whose user id it is).
+static std::string OpenPgpSigner(const std::string& address, const SecureKeys& keys) {
+    const std::string chosen = keys.openPgpSigningKeyFor ? keys.openPgpSigningKeyFor(address) : std::string();
+    return chosen.empty() ? address : chosen;
+}
+
 bool CanSignAs(SecureMethod method, const std::string& address, const SecureKeys& keys) {
     const std::string a = AddressOf(address);
-    if (method == SecureMethod::OpenPgp) return secure::PgpHasSecretKey(a);
+    if (method == SecureMethod::OpenPgp) return secure::PgpHasSecretKey(OpenPgpSigner(a, keys));
     SmimeIdentity own;
     return method == SecureMethod::Smime && keys.smimeIdentityFor && keys.smimeIdentityFor(a, own);
 }
@@ -619,7 +628,9 @@ bool SecureOutgoingMessage(const std::string& raw, const SecureSendOptions& opti
             std::vector<std::string> to = recipients;
             if (!self.empty() && std::find(to.begin(), to.end(), self) == to.end()) to.push_back(self);
             std::string armored;
-            if (!secure::PgpEncrypt(entity, to, options.sign ? self : std::string(), armored, error)) return false;
+            if (!secure::PgpEncrypt(entity, to, options.sign ? OpenPgpSigner(self, keys) : std::string(), armored,
+                                    error))
+                return false;
             const std::string boundary = Boundary("encrypted");
             entity = "Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\";\r\n"
                      " boundary=\"" + boundary + "\"\r\n\r\n"
@@ -636,7 +647,7 @@ bool SecureOutgoingMessage(const std::string& raw, const SecureSendOptions& opti
                      "--" + boundary + "--\r\n";
         } else {
             std::string signature, micalg;
-            if (!secure::PgpSignDetached(entity, self, signature, micalg, error)) return false;
+            if (!secure::PgpSignDetached(entity, OpenPgpSigner(self, keys), signature, micalg, error)) return false;
             const std::string boundary = Boundary("signed");
             entity = "Content-Type: multipart/signed; micalg=" + micalg + ";\r\n"
                      " protocol=\"application/pgp-signature\"; boundary=\"" + boundary + "\"\r\n\r\n"

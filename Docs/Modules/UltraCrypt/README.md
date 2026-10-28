@@ -1086,8 +1086,8 @@ bool UltraCrypt_IsX509Available();          // built with OpenSSL 3
 // alternative names, lowercased), issuer, validity, SHA-256 fingerprint.
 UltraCryptResult UltraCrypt_ReadCertificate(const std::string& certificate,
                                             UltraCryptCertificateInfo& out);
-// Whether it is vouched for: a chain to a trusted root (the system's, which
-// SSL_CERT_FILE / SSL_CERT_DIR override, and/or roots given), through the
+// Whether it is vouched for: a chain to a trusted root (the system's - see
+// "The system's roots" below - and/or roots given), through the
 // intermediates given, for a purpose (any, mail signing, mail encryption),
 // at a time. Trusted / Untrusted / Expired / NotYetValid / Revoked /
 // WrongPurpose, with OpenSSL's reason.
@@ -1126,6 +1126,26 @@ libcrypto privately by its file, so the installed package names no OpenSSL
 target for a consumer to find, and a build without OpenSSL 3 (the browser
 build, a system without it) has every call answer `BackendUnavailable`.
 
+**The system's roots** are the operating system's, as a mail program's
+should be (`core/UltraCrypt/UltraCryptSystemRoots.cpp`): OpenSSL's default
+store is the system's only on Linux (`/etc/ssl/certs`); on Windows and macOS
+it is whatever the OpenSSL build carried - Mozilla's set from MSYS2, nothing
+at all from vcpkg - so without more no real authority's certificate was
+trusted there.
+
+| Platform | Roots |
+|---|---|
+| Windows | the ROOT store (the user's view, which includes the machine's) and the machine's AuthRoot store (the third-party roots of Windows' automatic root update), less the Disallowed stores |
+| macOS | the system anchors (`SecTrustCopyAnchorCertificates`), and the certificates the admin and user trust settings mark as trusted roots (Keychain Access); "Never Trust" leaves one out |
+| Linux, elsewhere | OpenSSL's default store |
+
+They are read once and added to OpenSSL's default store; `SSL_CERT_FILE` or
+`SSL_CERT_DIR`, when set, is the whole answer instead. Two limits, stated so
+nobody rediscovers them: Windows fetches a third-party root into AuthRoot
+only the first time its own chain building needs it, so a root this machine
+has never used may be missing; and macOS's per-policy trust settings (a root
+trusted for SSL only) are read as trusted for every purpose.
+
 **The rules it keeps.** Nothing throws. A signature check answers one
 question - does it hold for exactly these bytes (`SignatureInvalid` when not)
 - and leaves whether the signer is vouched for to `UltraCrypt_CheckCertificate`,
@@ -1138,8 +1158,49 @@ OpenSSL's legacy provider, once, alongside the default one.
 which links no OpenSSL of its own. Tested against a test authority made for
 the suite: certificate fields (PEM and DER), the six trust verdicts, PKCS #12
 (modern, RC2, wrong password, not PKCS #12), detached signatures (holding, a
-changed content or signature byte, a key that is not the certificate's) and
-enveloped data (RSA and EC recipients, another recipient refused).
+changed content or signature byte, a key that is not the certificate's),
+enveloped data (RSA and EC recipients, another recipient refused), and the
+system's roots - a root shipped with the system (Microsoft's on Windows,
+which no OpenSSL bundle carries; ISRG Root X1 on macOS and Linux) trusted
+through them; Windows and macOS CI run the suite for that
+(`ULTRACANVAS_BUILD_CRYPT_TESTS`).
+
+### 5.12 RSA and ECDSA signature checks — JWS RS256 / ES256
+
+`include/UltraCrypt/UltraCryptPublicKey.h`, `core/UltraCrypt/UltraCryptPublicKey.cpp`,
+on the same OpenSSL 3 backend as §5.11 and as optional. For signatures the
+world makes and hands over with a key by its parts - an OpenID Connect
+provider's ID token and key set (JWKS), JOSE, WebCrypto; everything
+UltraCanvas signs of its own stays Ed25519 (§5.8).
+
+```cpp
+bool UltraCrypt_IsRsaEcdsaAvailable();
+
+// RS256: RSASSA-PKCS1-v1_5 with SHA-256. The key as a JWK's n and e
+// (big-endian bytes); below 2048 bits it is InvalidKeySize.
+UltraCryptResult UltraCrypt_CheckRsaPublicKey(modulus, exponent);
+UltraCryptResult UltraCrypt_VerifyRsaPkcs1Sha256(modulus, exponent, data, size, signature);
+
+// ES256: ECDSA on P-256 with SHA-256. The key as a JWK's x and y (32 bytes
+// each; a point off the curve is InvalidArgument); the signature as r || s,
+// 64 bytes, as JWS gives it - converted to DER inside.
+UltraCryptResult UltraCrypt_CheckP256PublicKey(x, y);
+UltraCryptResult UltraCrypt_VerifyEcdsaP256Sha256(x, y, data, size, signature);
+```
+
+Checks only; a signature that does not hold is `SignatureInvalid`, whichever
+byte is off, as for Ed25519. The P-256 key is read as a SubjectPublicKeyInfo
+assembled from the point, since `OSSL_PARAM_BLD`'s EC import fails on
+OpenSSL 3.0.2 (Ubuntu 22.04) and `d2i_PUBKEY` reads alike everywhere.
+
+*Serves:* the UltraDBAdmin relay's OpenID Connect sign-in
+(`Apps/UltraDBAdmin/relay/RelaySignIn.cpp`), which takes the provider's keys
+whose parts these accept and checks the ID token's signature with them; its
+state and nonce come from `UltraCrypt_RandomBytes`, so the relay calls no
+OpenSSL itself. Tested against vectors made by Python's `cryptography`: both
+signatures holding, a changed byte of the data or the signature, another
+modulus, a 1024-bit modulus, an even exponent, a point off the curve, short
+coordinates and signatures.
 
 ## 6. Usage sketches
 
@@ -1238,7 +1299,7 @@ is part of the deliverable, not a follow-up:
 | **2** | ✅ **Done** — AEAD (XChaCha20-Poly1305; AES-256-GCM interop path), Argon2id, HKDF. The Base32/64 codecs have since moved to UltraCanvasUtils (§5.7) |
 | **3** | ◐ **Started** — `UltraCanvasDocument`'s encryption is rewritten against UltraCrypt (§1.1), and `AnchorPoint/net/Sha256.h` is retired. Still to do: UCD v2 writer/reader. (UltraVault's file backend has since shipped on its own.) |
 | **4** | ◐ **Started** — Ed25519 signatures (§5.8), for UltraStore's signed catalog; AES-CBC for foreign formats (§5.9). Still optional: XChaCha20-Poly1305 at volume, key agreement |
-| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME |
+| **5** | ✅ **Done** — X.509 and CMS on OpenSSL 3 (§5.11), for UltraMail's S/MIME; RSA / ECDSA checks (§5.12), for the UltraDBAdmin relay's sign-in |
 
 Stage 1 alone unblocks UltraAuthenticator's OTP engine; Stage 2 unblocks its
 storage layer and the UCD v2 format.

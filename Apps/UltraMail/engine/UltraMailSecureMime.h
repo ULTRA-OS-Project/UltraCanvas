@@ -27,6 +27,8 @@
 // (ULTRAMAIL_HAVE_OPENPGP). Without one, a message in that form is reported
 // as such ("cannot be checked in this build") and is never sent in it.
 //
+// Version: 0.2.0 - OpenPgpSecretKeys; SecureKeys::openPgpSigningKeyFor (the
+//                  account's chosen OpenPGP key)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -119,6 +121,10 @@ struct SecureKeys {
     std::function<bool(const std::string& address, SmimeIdentity& out)> smimeIdentityFor;
     // A correspondent's S/MIME certificate (PEM), learnt earlier.
     std::function<bool(const std::string& address, std::string& certificatePem)> smimeCertificateFor;
+    // OpenPGP: the fingerprint of the secret key the account at `address`
+    // signs with (AccountSecurity::openPgpKey); "" or unset takes the key
+    // whose user id is the address.
+    std::function<std::string(const std::string& address)> openPgpSigningKeyFor;
 };
 
 // What form a raw message is in, from its headers and body alone: the
@@ -170,6 +176,16 @@ struct CertificateInfo {
     std::string fingerprint;
 };
 bool ReadCertificate(const std::string& certificatePem, CertificateInfo& out);
+
+// The user's OpenPGP secret keys that can sign (not revoked, expired or
+// disabled), as GnuPG lists them - to choose the one an account signs with.
+struct OpenPgpKey {
+    std::string fingerprint;
+    std::string name;                 // the first user id's name
+    std::vector<std::string> emails;  // every user id's address, lowercased
+    int64_t     expires = 0;          // seconds since 1970; 0 = never
+};
+std::vector<OpenPgpKey> OpenPgpSecretKeys();
 
 // OpenPGP keys in an armored block (an application/pgp-keys attachment)
 // added to the user's GnuPG keyring; the number imported or already there.

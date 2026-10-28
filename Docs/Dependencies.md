@@ -488,7 +488,7 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Hashing, HMAC, AEAD, key derivation, secure random | libsodium (optional) | libsodium (optional) | libsodium (optional) |
-| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
+| X.509 certificates, CMS (S/MIME's signed and enveloped data), PKCS #12 (`UltraCryptX509.h`); RSA and ECDSA P-256 signature checks (`UltraCryptPublicKey.h`: JWS RS256 / ES256) | OpenSSL 3 libcrypto (`libssl-dev`, optional) | OpenSSL 3 from vcpkg (`MacOS/deps/vcpkg.json`, optional) | OpenSSL 3 (MSYS2 `openssl`, optional) |
 
 > OpenSSL is UltraCrypt's second backend, for the public-key infrastructure
 > libsodium has nothing of; libsodium stays the backend of everything

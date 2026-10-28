@@ -209,7 +209,13 @@ Apps/UltraMail/
                                   settings lookup): text + Cancel; closed by the app
     UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
                                   port, security, username; validates in place;
-                                  as Account Settings also name, password, Signature
+                                  as Account Settings also name, password, Signature,
+                                  Security
+    UltraMailSecurityDialog.{h,cpp} an account's mail security: the S/MIME
+                                  certificate (Import / Remove), the OpenPGP key
+                                  it signs with, how new messages start (Off /
+                                  S/MIME / OpenPGP, Sign, Encrypt); from Account
+                                  Settings and after adding an account (Skip)
     UltraMailSignatureDialog.{h,cpp} the signature editor: None / Plain text /
                                   HTML (WYSIWYG RichTextEdit + FormatBar, or
                                   HTML source); also on replies and forwards

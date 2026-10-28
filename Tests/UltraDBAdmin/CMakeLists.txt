@@ -107,11 +107,13 @@ if(TARGET UltraNet AND UNIX AND NOT EMSCRIPTEN)
         ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
     target_link_libraries(UltraDBAdminRelayTests PRIVATE UltraDatabase UltraVault UltraNet Threads::Threads)
     set_target_properties(UltraDBAdminRelayTests PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    # The OpenID Connect sign-in, where the relay itself has it.
+    # The OpenID Connect sign-in, where the relay itself has it. The relay
+    # checks signatures through UltraCrypt; the test makes its tokens with
+    # OpenSSL directly - a signer independent of the code it checks.
     find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
-    if(OpenSSL_FOUND AND TARGET uc-yyjson)
+    if(OpenSSL_FOUND AND ULTRACANVAS_CRYPT_HAS_OPENSSL AND TARGET uc-yyjson)
         target_sources(UltraDBAdminRelayTests PRIVATE ${_dbadmin}/relay/RelaySignIn.cpp)
-        target_link_libraries(UltraDBAdminRelayTests PRIVATE OpenSSL::Crypto uc-yyjson)
+        target_link_libraries(UltraDBAdminRelayTests PRIVATE UltraCrypt OpenSSL::Crypto uc-yyjson)
         target_compile_definitions(UltraDBAdminRelayTests PRIVATE ULTRADBADMIN_RELAY_SIGNIN=1)
     endif()
     add_test(NAME UltraDBAdminRelay COMMAND UltraDBAdminRelayTests
