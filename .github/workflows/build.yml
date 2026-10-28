@@ -432,6 +432,91 @@ jobs:
           path: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
           key: msys2-pkgs-${{ matrix.msystem }}-${{ steps.msys2-deps.outputs.pkg-hash }}
 
+      # libheif without the GPL encoders. MSYS2 builds libheif with plug-in
+      # loading off, so every codec it has is linked into libheif.dll - x265
+      # (HEVC) and x264 (AVC) among them, both GPL. libvips' vips-heif module
+      # and ImageMagick's HEIC coder load that DLL, so every app on the core
+      # would carry GPL code. Here the same libheif release is rebuilt with
+      # MSYS2's options minus x265 and x264, and its libheif.dll replaces
+      # MSYS2's (same version, same exports). HEIC is still written, by
+      # kvazaar (BSD-3-Clause, already a libheif dependency in MSYS2): 4:2:0
+      # only, so a "lossless" HEIC is exact in luma but not in colour. AVIF
+      # (aom, dav1d, SVT-AV1, rav1e) and HEIC reading (libde265) are as
+      # before. FFmpeg still links x264 / x265 for VideoFX, which is GPL on
+      # its own terms (THIRD_PARTY_LICENSES.md) - the core no longer loads
+      # them. The build is cached per MSYSTEM and libheif version.
+      - name: Which libheif to rebuild (Windows)
+        if: runner.os == 'Windows'
+        id: libheif
+        run: |
+          ver=$(pacman -Q "${MINGW_PACKAGE_PREFIX}-libheif" | awk '{print $2}')
+          echo "pkgver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version=${ver%-*}" >> "$GITHUB_OUTPUT"
+          echo "MSYS2 libheif $ver"
+
+      - name: Restore the libheif rebuild (Windows)
+        if: runner.os == 'Windows'
+        id: libheif-cache
+        uses: actions/cache@v5
+        with:
+          path: .libheif-nogpl
+          key: libheif-nogpl-v1-${{ matrix.msystem }}-${{ steps.libheif.outputs.pkgver }}
+
+      - name: Rebuild libheif without x265 and x264 (Windows)
+        if: runner.os == 'Windows' && steps.libheif-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 30
+        env:
+          LIBHEIF_VERSION: ${{ steps.libheif.outputs.version }}
+        run: |
+          set -euo pipefail
+          src="$(cygpath -u "$RUNNER_TEMP")/libheif-src"
+          rm -rf "$src" && mkdir -p "$src"
+          curl -fsSL --retry 5 --retry-all-errors \
+            "https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz" |
+            tar -xz -C "$src"
+          # MSYS2's PKGBUILD options (mingw-w64-libheif), with x265 and x264
+          # off and nothing but the library built.
+          cmake -S "$src/libheif-${LIBHEIF_VERSION}" -B "$src/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DENABLE_PLUGIN_LOADING=OFF \
+            -DWITH_HEADER_COMPRESSION=ON \
+            -DWITH_X265=OFF \
+            -DWITH_X264=OFF \
+            -DWITH_KVAZAAR=ON \
+            -DWITH_DAV1D=ON \
+            -DWITH_RAV1E=ON \
+            -DWITH_SvtEnc=ON \
+            -DWITH_JPEG_DECODER=ON \
+            -DWITH_JPEG_ENCODER=ON \
+            -DWITH_OpenJPEG_DECODER=ON \
+            -DWITH_OpenJPEG_ENCODER=ON \
+            -DWITH_OPENJPH_ENCODER=ON \
+            -DWITH_EXAMPLES=OFF \
+            -DWITH_GDK_PIXBUF=OFF
+          cmake --build "$src/build" --target heif
+          dll=$(find "$src/build" -name 'libheif.dll')
+          test -n "$dll"
+          mkdir -p .libheif-nogpl
+          cp "$dll" .libheif-nogpl/
+
+      - name: Install the libheif rebuild (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          cp -f .libheif-nogpl/libheif.dll "$MINGW_PREFIX/bin/libheif.dll"
+          imports=$(objdump -p "$MINGW_PREFIX/bin/libheif.dll" | awk '/DLL Name:/ {print $3}')
+          echo "$imports"
+          if echo "$imports" | grep -qi 'x26[45]'; then
+            echo "::error::libheif.dll still imports a GPL encoder (x264 / x265)"
+            exit 1
+          fi
+          if ! echo "$imports" | grep -qi 'kvazaar'; then
+            echo "::error::libheif.dll does not import kvazaar - no HEIC encoder"
+            exit 1
+          fi
+
       # ===== macOS: build tools from Homebrew, libraries from vcpkg (shared
       # by the arm64 and x86_64 jobs; Homebrew lives at /opt/homebrew on Apple
       # Silicon and /usr/local on Intel). vcpkg's checkout and binary cache sit
@@ -1546,15 +1631,16 @@ jobs:
       # must and must not do (UC_HEIF_EXPECT, see Tests/ImageHeifTest.cpp).
       # macOS: libde265 and aom only - HEIC read, AVIF read and write, and
       # no HEIC encoder, since x265 is GPL and libvips is in the core every
-      # app links; the step fails if one turns up. Windows: MSYS2's libheif
-      # links aom, dav1d, libde265 and x265, so both read and write.
+      # app links; the step fails if one turns up. Windows: MSYS2's codecs
+      # with libheif rebuilt without x265 (above), so kvazaar writes HEIC and
+      # both formats read and write.
       # ULTRACANVAS_BUILD_HEIF_TESTS builds it without BUILD_TESTS; Linux runs
       # it in image-codecs.yml, with every libheif plug-in installed.
       - name: Run HEIF/AVIF test (macOS/Windows)
         if: runner.os != 'Linux'
         working-directory: build
         env:
-          UC_HEIF_EXPECT: ${{ runner.os == 'macOS' && 'decode=heic,avif encode=avif no-encode=heic' || 'decode=heic,avif encode=heic,avif' }}
+          UC_HEIF_EXPECT: ${{ runner.os == 'macOS' && 'decode=heic,avif encode=avif no-encode=heic no-encoder=x265,x264' || 'decode=heic,avif encode=heic,avif encoder=kvazaar no-encoder=x265,x264' }}
         run: ctest --output-on-failure --no-tests=error -V -R "^ImageHeifTest$"
 
       # UltraCleaner's engine suite: the path guard, the rule table, the
