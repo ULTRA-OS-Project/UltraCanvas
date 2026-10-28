@@ -181,9 +181,16 @@ int main() {
     // libheif's encoders by id, for encoder= / no-encoder=.
     if (expect.count("encoder") || expect.count("no-encoder")) {
 #ifdef HAS_LIBHEIF
-        heif_init(nullptr);
         const heif_encoder_descriptor* descriptors[64];
+#if LIBHEIF_NUMERIC_VERSION >= 0x01110000
+        heif_init(nullptr);   // loads the plug-ins (1.14+)
         const int n = heif_get_encoder_descriptors(heif_compression_undefined, nullptr, descriptors, 64);
+#else
+        // libheif 1.12 (Ubuntu 22.04): no plug-ins, no heif_init, and the
+        // list hangs off the context call, which ignores its context.
+        const int n = heif_context_get_encoder_descriptors(nullptr, heif_compression_undefined, nullptr,
+                                                           descriptors, 64);
+#endif
         std::set<std::string> encoders;
         for (int i = 0; i < n; ++i) encoders.insert(heif_encoder_descriptor_get_id_name(descriptors[i]));
         std::string list;
@@ -195,7 +202,9 @@ int main() {
         if (auto it = expect.find("no-encoder"); it != expect.end())
             for (const std::string& e : it->second)
                 Check(encoders.count(e) == 0, "UC_HEIF_EXPECT: libheif does NOT have the " + e + " encoder");
+#if LIBHEIF_NUMERIC_VERSION >= 0x01110000
         heif_deinit();
+#endif
 #else
         Check(false, "UC_HEIF_EXPECT names libheif encoders, but this test was built without libheif's headers");
 #endif
