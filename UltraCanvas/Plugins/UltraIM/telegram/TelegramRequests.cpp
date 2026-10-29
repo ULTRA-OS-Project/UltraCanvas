@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramRequests.cpp
 // Telegram provider - the TDLib requests it sends
+// Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument
 // Version: 0.1.2 - RequestQrCode
 // Version: 0.1.1 - ResendCode
@@ -45,6 +46,15 @@ TdObject LocalFile(const std::string& localPath) {
     TdObject file = Make("inputFileLocal");
     file.Set("path", TdObject(localPath));
     return file;
+}
+
+void SetThumbnail(TdObject& content, const Thumbnail& thumbnail) {
+    if (thumbnail.localPath.empty()) return;
+    TdObject t = Make("inputThumbnail");
+    t.Set("thumbnail", LocalFile(thumbnail.localPath));
+    t.Set("width", TdObject(static_cast<int64_t>(thumbnail.width)));
+    t.Set("height", TdObject(static_cast<int64_t>(thumbnail.height)));
+    content.Set("thumbnail", t);
 }
 
 TdObject SendContent(int64_t chatId, TdObject content, int64_t replyToMessageId) {
@@ -165,9 +175,11 @@ TdObject SendPhoto(int64_t chatId, const std::string& localPath, const std::stri
     return SendContent(chatId, content, replyToMessageId);
 }
 
-TdObject SendVideo(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId) {
+TdObject SendVideo(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId,
+                   const Thumbnail& thumbnail) {
     TdObject content = Make("inputMessageVideo");
     content.Set("video", LocalFile(localPath));
+    SetThumbnail(content, thumbnail);
     content.Set("added_sticker_file_ids", TdObject::MakeArray());
     content.Set("duration", TdObject(0));
     content.Set("width", TdObject(0));
@@ -177,9 +189,11 @@ TdObject SendVideo(int64_t chatId, const std::string& localPath, const std::stri
     return SendContent(chatId, content, replyToMessageId);
 }
 
-TdObject SendDocument(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId) {
+TdObject SendDocument(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId,
+                      const Thumbnail& thumbnail) {
     TdObject content = Make("inputMessageDocument");
     content.Set("document", LocalFile(localPath));
+    SetThumbnail(content, thumbnail);
     content.Set("disable_content_type_detection", TdObject(false));
     content.Set("caption", Formatted(caption));
     return SendContent(chatId, content, replyToMessageId);

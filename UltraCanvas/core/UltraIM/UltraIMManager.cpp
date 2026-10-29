@@ -1,5 +1,6 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
 // Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
@@ -51,6 +52,7 @@ struct ManagerState {
     UltraIMConfig config;
     std::map<std::string, ProviderPtr> providers;
     UltraIMDispatcher dispatcher;
+    UltraIMPreviewMaker previewMaker;
     std::map<UltraIMSubscriptionId, std::shared_ptr<UltraIMEventCallback>> subscribers;
     UltraIMSubscriptionId nextSubscriptionId = 1;
     std::set<std::string> loadedModules;     // canonical UTF-8 paths
@@ -273,6 +275,46 @@ bool UltraIM_IsInitialized() {
 
 const UltraIMConfig& UltraIM_GetConfig() {
     return State().config;
+}
+
+// ============================================================================
+// PREVIEW PICTURES
+// ============================================================================
+
+void UltraIM_SetPreviewMaker(UltraIMPreviewMaker maker) {
+    std::lock_guard<std::mutex> lock(State().mutex);
+    State().previewMaker = std::move(maker);
+}
+
+std::string UltraIM_MakePreview(const std::string& path, const std::string& mimeType, int maxSide,
+                                int& outWidth, int& outHeight) {
+    outWidth = outHeight = 0;
+    UltraIMPreviewMaker maker;
+    std::string base;
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        maker = State().previewMaker;
+        base = State().config.cacheDirectory.empty() ? State().config.dataDirectory : State().config.cacheDirectory;
+    }
+    if (!maker || path.empty() || maxSide <= 0) return std::string();
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = base.empty() ? fs::temp_directory_path(ec) / "ultraim-previews"
+                                      : UltraCanvas::PathFromUtf8(base) / "previews";
+    fs::create_directories(dir, ec);
+    // Named by the file's path, size and time, so the same file gives the
+    // same preview and a changed one a new one.
+    const auto stamp = fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec).time_since_epoch().count();
+    const auto size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+    std::vector<uint8_t> digest;
+    const std::string key = path + "|" + std::to_string(size) + "|" + std::to_string(stamp) + "|" + std::to_string(maxSide);
+    UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, key.data(), key.size(), digest);
+    const std::string out = UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8(UltraCrypt_ToHex(digest).substr(0, 32) + ".jpg"));
+    if (!maker(path, mimeType, maxSide, out, outWidth, outHeight) || outWidth <= 0 || outHeight <= 0) {
+        fs::remove(UltraCanvas::PathFromUtf8(out), ec);
+        return std::string();
+    }
+    return out;
 }
 
 // ============================================================================

@@ -1,5 +1,6 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
+// Version: 0.2.2 - a picture or a video sent goes with its preview picture (UltraIM_MakePreview)
 // Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
 // Last Modified: 2026-10-29
@@ -1261,7 +1262,7 @@ void MatrixProvider::AddContact(const std::string& address, UltraIMConversationC
     JSONValue body = JSONValue::MakeObject();
     body.Set("preset", JSONValue("trusted_private_chat"));
     body.Set("is_direct", JSONValue(true));
-    const bool encrypt = crypto_.IsOpen();
+    const bool encrypt = crypto_.IsOpen() && createEncrypted_;
     if (encrypt) {
         JSONValue encryption = JSONValue::MakeObject();
         encryption.Set("type", JSONValue("m.room.encryption"));
@@ -1317,7 +1318,7 @@ void MatrixProvider::CreateGroup(const std::string& title, const std::vector<std
     JSONValue body = JSONValue::MakeObject();
     body.Set("preset", JSONValue("private_chat"));
     body.Set("name", JSONValue(title));
-    const bool encrypt = crypto_.IsOpen();
+    const bool encrypt = crypto_.IsOpen() && createEncrypted_;
     if (encrypt) {
         JSONValue encryption = JSONValue::MakeObject();
         encryption.Set("type", JSONValue("m.room.encryption"));
@@ -1725,10 +1726,17 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
                               : type == UltraIMMessageType::Audio ? "m.audio"
                                                                   : "m.file";
     const std::string replyTo = options.replyToMessageId;
+    // The preview picture, when the application makes one.
+    auto preview = std::make_shared<std::vector<uint8_t>>();
+    int previewWidth = 0, previewHeight = 0;
+    if (type == UltraIMMessageType::Image || type == UltraIMMessageType::Video) {
+        const std::string previewPath = UltraIM_MakePreview(localPath, mime, 320, previewWidth, previewHeight);
+        if (!previewPath.empty() && !ReadWholeFile(previewPath, *preview)) preview->clear();
+    }
     // The upload waits on the server, and so does the room key in an
     // encrypted room: the send thread, in order.
     Enqueue([this, http, conversationId, clientId, bytes, name, mime, msgtype, caption, replyTo, invited, encrypted,
-             localPath]() {
+             localPath, preview, previewWidth, previewHeight]() {
         if (invited) {
             MatrixResponse joined = http->Await("POST", std::string(kClient) + "/join/" + PathSegment(conversationId),
                                                 nullptr, 20000);
@@ -1756,6 +1764,34 @@ UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const
         JSONValue info = JSONValue::MakeObject();
         info.Set("mimetype", JSONValue(mime));
         info.Set("size", JSONValue(size));
+        if (!preview->empty()) {
+            // The preview picture, uploaded like the file (and encrypted like it).
+            const int64_t previewSize = static_cast<int64_t>(preview->size());
+            JSONValue previewFile;
+            std::string previewError;
+            const bool previewReady = !encrypted || EncryptMedia(*preview, previewFile, previewError);
+            MatrixResponse previewUp;
+            if (previewReady)
+                previewUp = http->Upload("/_matrix/media/v3/upload?filename=preview.jpg",
+                                         encrypted ? std::string("application/octet-stream") : std::string("image/jpeg"),
+                                         *preview, 120000);
+            const std::string previewMxc = previewUp.body["content_uri"].GetString();
+            if (previewReady && previewUp.Ok() && !previewMxc.empty()) {
+                JSONValue previewInfo = JSONValue::MakeObject();
+                previewInfo.Set("mimetype", JSONValue("image/jpeg"));
+                previewInfo.Set("size", JSONValue(previewSize));
+                previewInfo.Set("w", JSONValue(previewWidth));
+                previewInfo.Set("h", JSONValue(previewHeight));
+                info.Set("thumbnail_info", previewInfo);
+                if (encrypted) {
+                    previewFile.Set("url", JSONValue(previewMxc));
+                    info.Set("thumbnail_file", previewFile);
+                } else {
+                    info.Set("thumbnail_url", JSONValue(previewMxc));
+                }
+            }
+            preview->clear();
+        }
         body.Set("info", info);
         if (encrypted) {
             fileInfo.Set("url", JSONValue(mxc));

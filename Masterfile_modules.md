@@ -2567,6 +2567,8 @@ UltraIM elements must comply with the following rules:
   `UltraIM_SetTyping`
 - `UltraIM_DownloadAttachment` (a video, a file or a voice note fetched to
   disk when asked for; pictures the provider fetches by itself)
+- `UltraIM_SetPreviewMaker`, `UltraIM_MakePreview` (the application's way
+  of making the preview picture a provider sends with a file)
 - `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`
