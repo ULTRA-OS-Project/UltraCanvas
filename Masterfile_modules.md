@@ -2562,8 +2562,11 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
 - `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
 - `UltraIM_SendText`, `UltraIM_SendFile`, `UltraIM_SendImage`,
-  `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`, `UltraIM_DeleteMessage`,
-  `UltraIM_EditMessage`, `UltraIM_MarkRead`, `UltraIM_SetTyping`
+  `UltraIM_SendVideo`, `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`,
+  `UltraIM_DeleteMessage`, `UltraIM_EditMessage`, `UltraIM_MarkRead`,
+  `UltraIM_SetTyping`
+- `UltraIM_DownloadAttachment` (a video, a file or a voice note fetched to
+  disk when asked for; pictures the provider fetches by itself)
 - `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`

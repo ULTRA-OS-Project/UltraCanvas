@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.2 - pictures: avatars from the person's photo, photos and videos in the bubbles and a
+//                  viewer for them, a paperclip that sends a picture, a video or a file
 // Version: 0.2.1 - Telegram signs in by a QR code too, scanned from the phone's Telegram app
 // Version: 0.2.0 - the look from ChatCubeTheme: a card on the sign-in page, avatars, icon buttons,
 //                  a rounded composer, soft selection, a light and a dark theme (--dark)
@@ -7,7 +9,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -19,6 +21,7 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSelection.h"
@@ -32,9 +35,12 @@
 #include "Plugins/QRCode/UltraCanvasQRCode.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
+#include <filesystem>
 #include <sstream>
+#include <system_error>
 
 using namespace UltraCanvas;
 
@@ -175,6 +181,24 @@ std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id, int gap = 8
     row->layout.SetFlexRow().SetFlexGap(gap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     return row;
+}
+
+// What a file is sent as, by its extension: a photo, a video, or a file
+// (a GIF goes as a file: Telegram makes it an animation, where a photo
+// would lose its movement).
+UltraIMMessageType AttachmentKind(const std::string& path) {
+    std::string ext = PathToUtf8(PathFromUtf8(path).extension());
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const char* const images[] = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".heic", ".heif",
+                                         ".tif", ".tiff", ".jxl", ".avif"};
+    static const char* const videos[] = {".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".mpg", ".mpeg", ".3gp"};
+    for (const char* e : images) {
+        if (ext == e) return UltraIMMessageType::Image;
+    }
+    for (const char* e : videos) {
+        if (ext == e) return UltraIMMessageType::Video;
+    }
+    return UltraIMMessageType::File;
 }
 
 std::string PresenceText(UltraIMPresence presence) {
@@ -529,6 +553,15 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     headerAvatar_->SetBorderRadius(18.0f);
     headerAvatar_->SetVisible(false);
     header->AddChild(headerAvatar_);
+    // The person's picture in its place, when the provider fetched one.
+    headerPhoto_ = std::make_shared<UltraCanvasImageElement>("cc-header-photo", 0, 0, 36, 36);
+    headerPhoto_->SetFitMode(ImageFitMode::Cover);
+    headerPhoto_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    headerPhoto_->size.width = CSSLayout::Dimension::Px(36);
+    headerPhoto_->size.height = CSSLayout::Dimension::Px(36);
+    headerPhoto_->SetBorderRadius(18.0f);
+    headerPhoto_->SetVisible(false);
+    header->AddChild(headerPhoto_);
     auto titles = std::make_shared<UltraCanvasContainer>("cc-header-titles");
     titles->layout.SetFlexColumn().SetFlexGap(1);
     titles->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
@@ -600,6 +633,11 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     messageList_->SetBorders(0, Colors::Transparent);
     messageList_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     messageList_->SetVisible(false);
+    // A click on a picture, or on a file's bubble, opens it.
+    messageList_->onCellClicked = [this](int row, int, const Point2Di& posInCell) {
+        Rect2Di media;
+        if (bubbles_->MediaRect(messages_.get(), row, media) && media.Contains(posInCell)) OpenAttachment(row);
+    };
     pane->AddChild(messageList_);
 
     // ----- the composer: a rounded field with the send button inside -----
@@ -614,7 +652,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     composer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     composer->SetBackgroundColor(L().well);
     composer->SetBorders(1.0f, L().line, 22.0f);
-    composer->SetPadding(5, 6, 5, 14);
+    composer->SetPadding(5, 6, 5, 6);
+    attach_ = MakeIconButton("cc-attach", "attach", "", kIconButton);
+    attach_->SetTooltip("Send a picture, a video or a file");
+    attach_->SetDisabled(true);
+    attach_->SetOnClick([this]() { AttachFile(); });
+    composer->AddChild(attach_);
     input_ = std::make_shared<UltraCanvasTextArea>("cc-input", 0, 0, 300, kInputHeight);
     input_->SetEditingMode(TextAreaEditingMode::PlainText);
     input_->SetWordWrap(true);
@@ -1216,13 +1259,34 @@ void ChatCubeWindow::UpdateHeader() {
         title_->SetText("");
         subtitle_->SetText("");
         headerAvatar_->SetVisible(false);
+        headerPhoto_->SetVisible(false);
+        attach_->SetDisabled(true);
         return;
     }
     title_->SetText(c->title);
+    // Their picture when there is one and it reads; else the initials.
+    bool photo = false;
+    if (!c->avatarPath.empty()) {
+        if (c->avatarPath != headerPhotoPath_) {
+            headerPhotoPath_ = c->avatarPath;
+            headerPhoto_->LoadFromFile(c->avatarPath);
+        }
+        UCImagePtr image = UCImage::Get(c->avatarPath);
+        photo = image && image->IsValid();
+    }
     headerAvatar_->SetText(c->isGroup ? "#" : Initials(c->title));
     headerAvatar_->SetBackgroundColor(c->isGroup ? L().well : AvatarColor(c->conversationId, L()));
     headerAvatar_->SetTextColor(c->isGroup ? L().inkMuted : Color(255, 255, 255, 255));
-    headerAvatar_->SetVisible(true);
+    headerAvatar_->SetVisible(!photo);
+    headerPhoto_->SetVisible(photo);
+    // The paperclip, for a network that takes pictures or files.
+    UltraIMProviderInfo info;
+    const bool attachments = UltraIM_GetProviderInfo(activeProvider_, info) &&
+                             (UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::ImageMessages) ||
+                              UltraIM_HasCapability(info.capabilities, UltraIMCapabilityFlags::FileTransfer));
+    attach_->SetDisabled(!attachments);
+    attach_->SetTooltip(attachments ? "Send a picture, a video or a file"
+                                    : "This network does not take pictures or files yet");
     if (!typingContact_.empty() && NowMs() < typingUntilMs_) {
         subtitle_->SetText("typing\xE2\x80\xA6");
     } else if (c->isGroup) {
@@ -1276,6 +1340,108 @@ void ChatCubeWindow::SendCurrentMessage() {
         messages_->UpdateStatus(message.clientMessageId, UltraIMDeliveryStatus::Failed);
         SetStatus("Not sent: " + r.message);
     }
+}
+
+void ChatCubeWindow::AttachFile() {
+    if (activeConversation_.empty()) return;
+    FileDialogOptions opts;
+    opts.SetTitle("Send a picture, a video or a file").SetParentWindow(window_.get());
+    // Every picture and video format this build reads, then anything.
+    UltraCanvasFileLoader::AddLoadTypes(opts, "Pictures and videos", {MediaFormatCategory::Bitmap, MediaFormatCategory::Video});
+    opts.AddFilter("All files", std::vector<std::string>{"*"});
+    UltraCanvasFileLoader::OpenFileDialog(opts, [this](DialogResult result, const std::string& path) {
+        if (result != DialogResult::OK || path.empty()) return;
+        SendAttachment(path);
+    });
+}
+
+void ChatCubeWindow::SendAttachment(const std::string& path) {
+    if (activeConversation_.empty() || path.empty()) return;
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(PathFromUtf8(path), ec)) {
+        SetStatus("There is no file " + path);
+        return;
+    }
+    const UltraIMMessageType kind = AttachmentKind(path);
+    // The composer's text goes as the caption of a picture or a video.
+    const std::string caption = kind == UltraIMMessageType::File ? std::string() : Trim(input_->GetText());
+
+    // Optimistic, like a text: the bubble shows the file at once.
+    UltraIMProviderInfo info;
+    UltraIM_GetProviderInfo(activeProvider_, info);
+    UltraIMMessage message;
+    message.providerId = activeProvider_;
+    message.conversationId = activeConversation_;
+    message.clientMessageId = UltraIM_NewClientMessageId();
+    message.messageId = message.clientMessageId;
+    message.senderId = info.localUserId;
+    message.type = kind;
+    message.text = caption;
+    message.attachment.localPath = path;
+    message.attachment.isDownloaded = true;
+    message.attachment.fileName = PathToUtf8(PathFromUtf8(path).filename());
+    message.attachment.fileSizeBytes = static_cast<int64_t>(std::filesystem::file_size(PathFromUtf8(path), ec));
+    if (kind == UltraIMMessageType::Image) {
+        UCImagePtr image = UCImage::Get(path);
+        if (image && image->IsValid()) {
+            message.attachment.width = image->GetWidth();
+            message.attachment.height = image->GetHeight();
+        }
+    }
+    message.timestampMs = NowMs();
+    message.isOwn = true;
+    message.deliveryStatus = UltraIMDeliveryStatus::Sending;
+    messages_->Upsert(message);
+    ScrollToEnd();
+    if (!caption.empty()) input_->SetText("");
+    lastTypingSentMs_ = 0;
+    UltraIM_SetTyping(activeProvider_, activeConversation_, false);
+
+    UltraIMSendOptions options;
+    options.clientMessageId = message.clientMessageId;
+    UltraIMResult r;
+    if (kind == UltraIMMessageType::Image) r = UltraIM_SendImage(activeProvider_, activeConversation_, path, caption, options);
+    else if (kind == UltraIMMessageType::Video) r = UltraIM_SendVideo(activeProvider_, activeConversation_, path, caption, options);
+    else r = UltraIM_SendFile(activeProvider_, activeConversation_, path, options);
+    if (!r) {
+        messages_->UpdateStatus(message.clientMessageId, UltraIMDeliveryStatus::Failed);
+        SetStatus("Not sent: " + r.message);
+    }
+}
+
+void ChatCubeWindow::OpenAttachment(int row) {
+    const auto& rows = messages_->Rows();
+    if (row < 0 || row >= static_cast<int>(rows.size()) || rows[static_cast<size_t>(row)].kind != MessageRow::Kind::Message)
+        return;
+    const UltraIMMessage& m = rows[static_cast<size_t>(row)].message;
+    if (m.type == UltraIMMessageType::Text || m.type == UltraIMMessageType::SystemEvent) return;
+    if (m.attachment.isDownloaded && !m.attachment.localPath.empty()) {
+        ShowAttachment(m.attachment.localPath);
+        return;
+    }
+    // A picture comes by itself; its box says so meanwhile.
+    if (m.type == UltraIMMessageType::Image || m.type == UltraIMMessageType::Sticker) return;
+    if (m.deliveryStatus == UltraIMDeliveryStatus::Sending || m.deliveryStatus == UltraIMDeliveryStatus::Failed) return;
+    const std::string name = m.attachment.fileName.empty()
+                                 ? std::string(m.type == UltraIMMessageType::Video ? "the video" : "the file")
+                                 : m.attachment.fileName;
+    SetStatus("Fetching " + name + "\xE2\x80\xA6");
+    UltraIM_DownloadAttachment(activeProvider_, m.conversationId, m.messageId,
+                               [this, name](const UltraIMResult& r, const UltraIMAttachment& a) {
+        if (!r) {
+            SetStatus("Could not fetch " + name + ": " + r.message);
+            return;
+        }
+        SetStatus("");
+        ShowAttachment(a.localPath);
+    });
+}
+
+void ChatCubeWindow::ShowAttachment(const std::string& path) {
+    if (path.empty()) return;
+    MediaViewerWindowOptions options;
+    options.browseFolder = false;       // the provider's cache is no album
+    if (!viewer_.Show(path, window_.get(), options)) SetStatus("Could not open " + path);
 }
 
 // =================================================================== calls
@@ -1524,7 +1690,11 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             }
             break;
         case UltraIMEventType::MessageUpdate:
-            if (e.conversationId == activeConversation_) messages_->Upsert(e.message);
+            // An edit, or an attachment's picture that has arrived - of a
+            // message that is shown (one further back than the history
+            // fetched is not appended to the end).
+            if (e.conversationId == activeConversation_ && messages_->Contains(e.message.clientMessageId))
+                messages_->Upsert(e.message);
             break;
         case UltraIMEventType::MessageDelete:
             if (e.conversationId == activeConversation_) messages_->Remove(e.message.messageId);

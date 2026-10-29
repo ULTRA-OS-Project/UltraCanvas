@@ -1,6 +1,7 @@
-//
-// Created by slenz on 7/15/26.
-//
+// include/UltraCanvasNativeHandle.h
+// The platform's native window and display handles behind an UltraCanvas window
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 #ifndef ULTRACANVASDEMOAPP_ULTRACANVASNATIVEHANDLE_H
 #define ULTRACANVASDEMOAPP_ULTRACANVASNATIVEHANDLE_H

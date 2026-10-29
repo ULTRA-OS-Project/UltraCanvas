@@ -1,10 +1,11 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.4 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
 // Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -90,9 +91,21 @@ UltraIMResult UltraIM_SendFile(const std::string& providerId, const std::string&
 UltraIMResult UltraIM_SendImage(const std::string& providerId, const std::string& conversationId,
                                 const std::string& localPath, const std::string& caption,
                                 const UltraIMSendOptions& options = UltraIMSendOptions());
+// A video with a caption (the provider's FileTransfer capability covers
+// it; a provider without sends it as a file or answers CapabilityMissing).
+UltraIMResult UltraIM_SendVideo(const std::string& providerId, const std::string& conversationId,
+                                const std::string& localPath, const std::string& caption,
+                                const UltraIMSendOptions& options = UltraIMSendOptions());
 UltraIMResult UltraIM_SendSticker(const std::string& providerId, const std::string& conversationId,
                                   const std::string& packId, const std::string& stickerId,
                                   const UltraIMSendOptions& options = UltraIMSendOptions());
+// A message's attachment fetched to disk - a video, a file, a voice note;
+// pictures and preview pictures the provider fetches by itself and reports
+// with MessageUpdate. The callback brings the attachment with localPath set,
+// and a MessageUpdate with the same follows; one already on disk answers at
+// once. NotFound for a message without one.
+void          UltraIM_DownloadAttachment(const std::string& providerId, const std::string& conversationId,
+                                         const std::string& messageId, UltraIMAttachmentCallback onResult);
 UltraIMResult UltraIM_SendVoiceNote(const std::string& providerId, const std::string& conversationId,
                                     const std::string& localPath,
                                     const UltraIMSendOptions& options = UltraIMSendOptions());

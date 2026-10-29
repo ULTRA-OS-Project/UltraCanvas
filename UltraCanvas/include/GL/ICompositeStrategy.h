@@ -1,6 +1,8 @@
 // GL/ICompositeStrategy.h
 // Abstract interface for compositing GL framebuffer content to UltraCanvas
 // Allows different strategies: CPU readback (initial), GPU-native (future)
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 
 #ifndef ULTRACANVAS_ENABLE_GL

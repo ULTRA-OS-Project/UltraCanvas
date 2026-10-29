@@ -5,13 +5,17 @@
 // signed-in app, asked for at the start or in place of a code), finding people by username
 // and phone number, a private chat (delivery, the echo, read receipts,
 // typing, edit, deletion, a reply), a group, history paged back, presence,
-// the stored session resumed with nothing asked, and a step Telegram never
-// answers failing with Timeout instead of hanging.
+// the stored session resumed with nothing asked, a step Telegram never
+// answers failing with Timeout instead of hanging; a contact's profile
+// picture fetched, a photo, a video and a file sent and received - the photo
+// and the video's preview picture arriving by themselves, the video when
+// asked for.
+// Version: 0.1.4 - avatars, photos, videos and files
 // Version: 0.1.3 - sign-in by a QR code
 // Version: 0.1.2 - the code asked for another way
 // Version: 0.1.1 - the step timeout
 // Version: 0.1.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
@@ -173,14 +177,44 @@ std::unique_ptr<TelegramProvider> Device(const fs::path& dir, Events& events) {
 }
 
 int64_t AddAccount(const std::string& phone, const std::string& first, const std::string& username,
-                   const std::string& password) {
+                   const std::string& password, const std::string& photo = std::string()) {
     TdObject r = TdObject::MakeObject();
     r.Set("@type", TdObject("fakeAddAccount"));
     r.Set("phone", TdObject(phone));
     r.Set("first_name", TdObject(first));
     r.Set("username", TdObject(username));
     r.Set("password", TdObject(password));
+    r.Set("photo", TdObject(photo));
     return TdInt(TdJsonLibrary::Instance().Execute(r)["id"]);
+}
+
+// A file to send: a few bytes under `base`.
+std::string WriteFile(const fs::path& base, const std::string& name) {
+    const std::string path = UltraCanvas::PathToUtf8(base / UltraCanvas::PathFromUtf8(name));
+    std::FILE* f = UltraCanvas::OpenFileUtf8(path, "wb");
+    if (f) {
+        std::fputs("not really media", f);
+        std::fclose(f);
+    }
+    return path;
+}
+
+bool WaitAttachment(const std::function<void(UltraIMAttachmentCallback)>& start, UltraIMAttachment& out,
+                    UltraIMResult* result = nullptr) {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false, ok = false;
+    start([&](const UltraIMResult& r, const UltraIMAttachment& a) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = a;
+        ok = r.success;
+        if (result) *result = r;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; });
+    return ok;
 }
 
 void TestTelegram() {
@@ -188,7 +222,7 @@ void TestTelegram() {
     CHECK(TdJsonLibrary::Instance().Load({ULTRAIM_TEST_FAKE_TDJSON}, error));
     CHECK(TdJsonLibrary::Instance().GetVersion() == "fake");
     const int64_t aliceId = AddAccount("15550001", "Alice", "alice", "");
-    const int64_t bobId = AddAccount("15550002", "Bob", "bob", "hunter2");
+    const int64_t bobId = AddAccount("15550002", "Bob", "bob", "hunter2", "/pictures/bob.jpg");
     const int64_t erinId = AddAccount("15550004", "Erin", "erin", "hunter4");
 
     const fs::path base = fs::temp_directory_path() / ("ultraim-telegram-" + std::to_string(::rand()));
@@ -333,6 +367,8 @@ void TestTelegram() {
     CHECK(again.conversationId == dm.conversationId);
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->AddContact("t.me/bob", cb); }, again));
     CHECK(again.conversationId == dm.conversationId);
+    CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::ImageMessages));
+    CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::FileTransfer));
 
     // A message: delivered under our client id, then its echo; Bob gets it.
     UltraIMSendOptions o1;
@@ -355,6 +391,20 @@ void TestTelegram() {
         return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == got.conversationId &&
                e.conversation.unreadCount == 1 && e.conversation.lastMessageSnippet == "hi bob";
     }));
+    // Bob's profile picture: fetched by itself, and the conversation - in
+    // the list now that it has a message - says so.
+    CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == dm.conversationId &&
+               e.conversation.avatarPath == "/pictures/bob.jpg";
+    }));
+    {
+        std::vector<UltraIMConversation> listed;
+        alice->FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) { listed = l; });
+        CHECK(listed.size() == 1 && listed.front().avatarPath == "/pictures/bob.jpg");
+        std::vector<UltraIMContact> contacts;
+        alice->FetchContacts([&](const UltraIMResult&, const std::vector<UltraIMContact>& l) { contacts = l; });
+        CHECK(contacts.size() == 1 && contacts.front().avatarPath == "/pictures/bob.jpg");
+    }
 
     // Bob reads it: Alice's message turns read.
     CHECK(bob->MarkRead(got.conversationId, ""));
@@ -394,6 +444,102 @@ void TestTelegram() {
     CHECK(answered.message.replyTo.messageId == sent.message.messageId);
     CHECK(answered.message.replyTo.senderId == std::to_string(aliceId));
 
+    // A photo: the sender's echo points at the file; the other side gets the
+    // message first, then its picture - fetched by itself - as an update.
+    const std::string picture = WriteFile(base, "pic.jpg");
+    const std::string clip = WriteFile(base, "clip.mp4");
+    const std::string notes = WriteFile(base, "notes.pdf");
+    UltraIMSendOptions o3;
+    o3.clientMessageId = "alice-photo";
+    CHECK(alice->SendImage(dm.conversationId, UltraCanvas::PathToUtf8(base / "missing.jpg"), "", o3).code ==
+          UltraIMResultCode::InvalidArgument);
+    CHECK(alice->SendImage(dm.conversationId, picture, "look", o3));
+    UltraIMEvent photoSent, photoEcho, photoGot, photoHere;
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageDelivered && e.message.clientMessageId == "alice-photo" &&
+               e.deliveryStatus == UltraIMDeliveryStatus::Sent;
+    }, &photoSent));
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.clientMessageId == "alice-photo";
+    }, &photoEcho));
+    CHECK(photoEcho.message.type == UltraIMMessageType::Image && photoEcho.message.text == "look");
+    CHECK(photoEcho.message.attachment.isDownloaded && photoEcho.message.attachment.localPath == picture);
+    CHECK(photoEcho.message.attachment.width == 800 && photoEcho.message.attachment.height == 600);
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::Image;
+    }, &photoGot));
+    CHECK(photoGot.message.text == "look" && photoGot.message.senderAvatarPath.empty());   // Alice has no picture
+    CHECK(photoGot.message.attachment.width == 800 && !photoGot.message.attachment.remoteUrl.empty());
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageUpdate && e.message.messageId == photoGot.message.messageId &&
+               e.message.attachment.isDownloaded;
+    }, &photoHere));
+    CHECK(photoHere.message.attachment.localPath == picture && photoHere.message.type == UltraIMMessageType::Image);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == got.conversationId &&
+               e.conversation.lastMessageSnippet == "[photo] look";
+    }));
+    // Bob's messages to Alice carry his picture.
+    CHECK(bob->SendText(got.conversationId, "nice", UltraIMSendOptions()));
+    UltraIMEvent nice;
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "nice"); }, &nice));
+    CHECK(nice.message.senderAvatarPath == "/pictures/bob.jpg");
+
+    // A video: its preview picture comes by itself, the video when asked for.
+    CHECK(alice->SendVideo(dm.conversationId, clip, "", UltraIMSendOptions()));
+    UltraIMEvent videoGot, videoThumb, videoHere;
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::Video;
+    }, &videoGot));
+    CHECK(videoGot.message.attachment.fileName == "clip.mp4" && videoGot.message.attachment.durationSeconds == 12.0);
+    CHECK(videoGot.message.attachment.width == 640 && !videoGot.message.attachment.isDownloaded);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageUpdate && e.message.messageId == videoGot.message.messageId &&
+               !e.message.attachment.thumbnailPath.empty();
+    }, &videoThumb));
+    CHECK(videoThumb.message.attachment.thumbnailPath == clip + ".thumb.jpg" && !videoThumb.message.attachment.isDownloaded);
+    UltraIMAttachment fetched;
+    UltraIMResult fetchResult;
+    CHECK(!WaitAttachment([&](UltraIMAttachmentCallback cb) { bob->DownloadAttachment(got.conversationId, got.message.messageId, cb); },
+                          fetched, &fetchResult));
+    CHECK(fetchResult.code == UltraIMResultCode::NotFound);      // a text has none
+    CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) { bob->DownloadAttachment(got.conversationId, videoGot.message.messageId, cb); },
+                         fetched));
+    CHECK(fetched.isDownloaded && fetched.localPath == clip && fetched.fileName == "clip.mp4");
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageUpdate && e.message.messageId == videoGot.message.messageId &&
+               e.message.attachment.isDownloaded;
+    }, &videoHere));
+    CHECK(videoHere.message.attachment.localPath == clip && videoHere.message.attachment.thumbnailPath == clip + ".thumb.jpg");
+    // Asked again: answered from disk.
+    CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) { bob->DownloadAttachment(got.conversationId, videoGot.message.messageId, cb); },
+                         fetched));
+    CHECK(fetched.localPath == clip);
+
+    // A file: its name, and the file when asked for.
+    CHECK(alice->SendFile(dm.conversationId, notes, UltraIMSendOptions()));
+    UltraIMEvent fileGot;
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.type == UltraIMMessageType::File;
+    }, &fileGot));
+    CHECK(fileGot.message.attachment.fileName == "notes.pdf" && !fileGot.message.attachment.isDownloaded);
+    CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == got.conversationId &&
+               e.conversation.lastMessageSnippet == "[file] notes.pdf";
+    }));
+    CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) { bob->DownloadAttachment(got.conversationId, fileGot.message.messageId, cb); },
+                         fetched));
+    CHECK(fetched.localPath == notes && fetched.isDownloaded);
+    // History brings the attachments back with their files.
+    {
+        const auto recent = Fetch(*bob, got.conversationId, "", 10);
+        int pictures = 0;
+        for (const auto& m : recent) {
+            if (m.type == UltraIMMessageType::Image && m.attachment.localPath == picture) ++pictures;
+        }
+        CHECK(pictures == 1);
+    }
+
     // A group of three, by username and by phone number.
     UltraIMConversation group;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) {
@@ -425,7 +571,7 @@ void TestTelegram() {
     CHECK(ordered);
     if (!page.empty()) {
         const auto older = Fetch(*bob, got.conversationId, page.front().messageId, 50);
-        CHECK(older.size() == 7);       // hi bob!, hi alice, messages 0-4
+        CHECK(older.size() == 11);      // hi bob!, hi alice, the photo, nice, the video, the file, messages 0-4
         if (!older.empty()) CHECK(older.front().text == "hi bob!" && older.back().text == "message 4");
     }
 
