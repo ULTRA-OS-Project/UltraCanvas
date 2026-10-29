@@ -2758,6 +2758,8 @@ UltraIM elements must comply with the following rules:
   `UltraIM_SetTyping`
 - `UltraIM_DownloadAttachment` (a video, a file or a voice note fetched to
   disk when asked for; pictures the provider fetches by itself)
+- `UltraIM_SetPreviewMaker`, `UltraIM_MakePreview` (the application's way
+  of making the preview picture a provider sends with a file)
 - `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`
@@ -92850,6 +92852,16 @@ pictures come the same way, fetched by the provider: `avatarPath` on a
 conversation, a contact and a message's sender (`senderAvatarPath`), a local
 file or empty.
 
+A file sent goes with a preview picture when the application can make one:
+`UltraIM_SetPreviewMaker(maker)` installs the application's way of writing a
+small JPEG of a picture or a video (ChatCube: pictures through the image
+pipeline, videos through VideoFX when it is built in), and a provider asks
+through `UltraIM_MakePreview(path, mimeType, maxSide, w, h)` - a JPEG under
+the cache directory, or `""` - and sends it along (Telegram's
+`inputThumbnail`, Matrix's `thumbnail_url` / `thumbnail_file`, ChatCube
+Direct's inline preview), so the other side sees something before the file
+has arrived. Without a maker, files go without one.
+
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
 `UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
@@ -92938,19 +92950,33 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   the relay for the Telegram application's API ID and hash
   (`GET /v1/telegram-credentials`, from the relay's
   `CHATCUBE_RELAY_TELEGRAM_API_ID` / `_HASH`); `NotFound` when it keeps none.
-- **Not yet:** group calls, files and images, several devices per identity,
-  groups without a relay.
+- **Files:** a picture, a video or a file goes out as sealed envelopes like
+  a text - a `file` body (kind, name, type, size, the caption, the preview
+  picture inline, under 24 KiB) and then the bytes in `chunk` bodies of 32
+  KiB (base64, sealed; under the relay's 64 KiB envelope) - peer to peer
+  over the link when it is up, else through the relay's queue, so a file
+  reaches someone offline, and a group (a copy per member), with nothing
+  added to the relay. The other side keeps the parts in its store until all
+  are here, puts the file together under the cache directory, and says so
+  with `MessageUpdate`; `DownloadAttachment` answers from disk, or once the
+  last part is here. Files up to 64 MiB; our own row points at the file
+  sent. Only the relay's text queue is involved, so a relay in service
+  needs no change.
+- **Not yet:** group calls, several devices per identity, groups without a
+  relay, a file asked for later rather than pushed.
 
 Tests: `Tests/UltraIM/DirectProviderTests.cpp` - the envelope and the store,
 then two providers against a relay started from `Server/ChatCubeRelay` (P2P
-delivery, read receipt, offline queue, sign-in again with the stored
-identity, a group, a video call - pictures across, the camera turned off,
+delivery, a picture over the link, read receipt, offline queue - a text and
+a file - sign-in again with the stored
+identity, a group with a picture to it, a video call - pictures across, the camera turned off,
 hung up - and voice calls: declined, answered with audio both ways, muted,
 hung up, and a call to a contact who is offline). It needs a `python3` with the relay's packages on `PATH`
 and skips without one, unless `ULTRAIM_TEST_RELAY_REQUIRED` is set (CI).
 Then two providers with no relay at all: reached by address, the nearby
 list, adding each other, a message peer to peer, a call, groups refused, one
-side away and back (the waiting message arrives) - and two that find each
+side away and back (the waiting message arrives), a picture over the local
+connection - and two that find each
 other over mDNS alone, which skips without a responder unless
 `ULTRAIM_TEST_MDNS_REQUIRED` is set (CI starts Avahi).
 
@@ -93025,8 +93051,8 @@ other over mDNS alone, which skips without a responder unless
   the body and the type and size in `info`; the echo's attachment points at
   the file sent. The capabilities list `ImageMessages` and `FileTransfer`.
 - **Not yet:** cross-signing and device verification (emoji / QR), key
-  backup on the server, key requests between our own devices; preview
-  pictures for what is sent from here; calls; SSO sign-in.
+  backup on the server, key requests between our own devices; calls; SSO
+  sign-in.
 
 Tests: `Tests/UltraIM/MatrixCryptoTests.cpp` without a server (canonical
 JSON against the spec's examples, vodozemac through the shim, the store,
@@ -93035,8 +93061,10 @@ against a real Synapse, which `Tests/UltraIM/matrix_test_server.py` sets up
 (config, open registration, the test users) with the python in
 `ULTRAIM_MATRIX_PYTHON` - one with `matrix-synapse` installed; it skips
 without one unless `ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI). It sends a
-picture, a video and a file each way and reads them back byte for byte
-(through the encrypted format when vodozemac is built in). Its
+picture, a video and a file each way and reads them back byte for byte -
+through the encrypted format when vodozemac is built in, and once more
+through a room created unencrypted (`SetCreateEncrypted(false)`), so both
+paths run in one build. Its
 encryption part checks the server holds only ciphertext, a second device
 (keys from then on, earlier ones by import), signing in again on the same
 device, and an encrypted room with
@@ -93133,6 +93161,8 @@ process.
   under the client id like a text, and the echo's attachment points at the
   file sent. A still sticker (WebP) arrives as a picture; an animated one
   (TGS, WebM) as its emoji.
+  A video or a document sent goes with the preview picture the application
+  makes (`inputThumbnail`).
 - **Not yet:** secret chats (end-to-end encrypted; listed, marked encrypted,
   not opened), calls, e-mail sign-in, playing animated stickers, voice notes
   recorded here.
