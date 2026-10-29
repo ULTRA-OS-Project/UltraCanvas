@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.5 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
 // Version: 0.1.4 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
 // Version: 0.1.2 - UltraIM_ResendAuthCode
@@ -153,6 +154,17 @@ void UltraIM_ImportEncryptionKeys(const std::string& providerId, const std::stri
 // provider has no such service; providerId must be signed in.
 void UltraIM_FetchSharedCredentials(const std::string& providerId, const std::string& forProviderId,
                                     UltraIMSharedCredentialsCallback onResult);
+
+// ---- Preview pictures -----------------------------------------------------------
+// The application's way of making a preview picture (UltraIMPreviewMaker):
+// installed once, with its image and video libraries, before anything is
+// sent. Without one, files go without a preview.
+void          UltraIM_SetPreviewMaker(UltraIMPreviewMaker maker);
+// For providers: a JPEG preview of the file, its longer side at most maxSide,
+// written under the cache directory ("" when no maker is installed or the
+// file cannot be read); its size in outWidth / outHeight.
+std::string   UltraIM_MakePreview(const std::string& path, const std::string& mimeType, int maxSide,
+                                  int& outWidth, int& outHeight);
 
 // ---- Helpers -----------------------------------------------------------------
 // A fresh client message id (a UUID v4).

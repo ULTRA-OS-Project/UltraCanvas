@@ -2,6 +2,7 @@
 // Telegram provider - the TDLib requests it sends, built in one place (td_api
 // names and fields), so the tests can hand every one of them to a real TDLib
 // and have it say whether it parses.
+// Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
 // Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument (a local file with a caption)
 // Version: 0.1.2 - RequestQrCode
 // Version: 0.1.1 - ResendCode
@@ -49,8 +50,17 @@ TdObject SendText(int64_t chatId, const std::string& text, int64_t replyToMessag
 // caption ("" for none). TDLib uploads it and reports the message as it
 // goes out and once it is sent, as for a text.
 TdObject SendPhoto(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId);
-TdObject SendVideo(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId);
-TdObject SendDocument(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId);
+// A preview picture to send with a video or a document: a JPEG under 320
+// pixels a side; "" for none.
+struct Thumbnail {
+    std::string localPath;
+    int         width = 0;
+    int         height = 0;
+};
+TdObject SendVideo(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId,
+                   const Thumbnail& thumbnail = Thumbnail());
+TdObject SendDocument(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId,
+                      const Thumbnail& thumbnail = Thumbnail());
 // Fetches a file TDLib knows (a photo's size, a video, a profile picture)
 // to its files directory; priority 1 (lowest) to 32. The answer is the file
 // as it stands, and updateFile follows as it comes in.

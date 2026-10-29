@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.2 - a photo's preview picture shown while the photo is on its way
 // Version: 0.2.1 - pictures: avatars from the person's photo, photos and video previews in the bubbles,
 //                  a sender's avatar beside their bubble in a group, files as their name and size
 // Version: 0.2.0 - the look from ChatCubeTheme: avatars with initials and a presence ring, a soft
@@ -118,9 +119,10 @@ std::string MessageText(const UltraIMMessage& m) {
 }
 
 // The picture file of a message that shows one: the photo or the sticker
-// itself, a video's preview picture.
+// itself (its preview picture while it is on its way), a video's preview picture.
 const std::string& PicturePath(const UltraIMMessage& m) {
-    return m.type == UltraIMMessageType::Video ? m.attachment.thumbnailPath : m.attachment.localPath;
+    if (m.type == UltraIMMessageType::Video) return m.attachment.thumbnailPath;
+    return m.attachment.localPath.empty() ? m.attachment.thumbnailPath : m.attachment.localPath;
 }
 
 } // namespace

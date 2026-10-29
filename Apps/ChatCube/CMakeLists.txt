@@ -4,6 +4,7 @@
 # Matrix and Telegram: UltraCanvas/Plugins/UltraIM/direct, matrix and
 # telegram, built into <build>/Plugins/UltraIM).
 #
+# Version: 0.1.2 - VideoFX, when it is built, for the preview pictures of videos sent
 # Version: 0.1.1 - ChatCubeTheme.cpp
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
@@ -32,6 +33,12 @@ target_include_directories(ChatCube PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 target_link_libraries(ChatCube PRIVATE ${ULTRACANVAS_LIBRARY} UltraIM UltraRTC UltraNet)
+# The preview picture of a video sent comes from VideoFX; without it, videos
+# go without one.
+if(TARGET VideoFX)
+    target_link_libraries(ChatCube PRIVATE VideoFX)
+    target_compile_definitions(ChatCube PRIVATE CHATCUBE_HAS_VIDEOFX=1)
+endif()
 find_package(Threads REQUIRED)
 target_link_libraries(ChatCube PRIVATE Threads::Threads)
 target_compile_features(ChatCube PRIVATE cxx_std_20)

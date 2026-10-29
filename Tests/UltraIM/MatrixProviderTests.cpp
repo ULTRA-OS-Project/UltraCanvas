@@ -13,6 +13,7 @@
 // python3), unless ULTRAIM_TEST_MATRIX_REQUIRED is set (CI); the nio part
 // skips without matrix-nio[e2e] in that python, unless
 // ULTRAIM_TEST_MATRIX_NIO_REQUIRED is set.
+// Version: 0.2.2 - the same in a room created unencrypted, so both paths run in one build
 // Version: 0.2.1 - a picture, a video and a file each way
 // Version: 0.2.0
 // Last Modified: 2026-10-29
@@ -682,6 +683,52 @@ void TestEndToEnd() {
         CHECK(pictures == 1);
     }
 
+    // The same through a room created unencrypted: the file travels in the
+    // clear and the preview picture rides as thumbnail_url.
+    if (e2ee) {
+        alice->SetCreateEncrypted(false);
+        UltraIMConversation plain;
+        CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->CreateGroup("Plain", {"@bob:localhost"}, cb); },
+                               plain));
+        alice->SetCreateEncrypted(true);
+        CHECK(plain.isGroup && !plain.isEncrypted);
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::ConversationUpdate && e.conversationId == plain.conversationId;
+        }));
+        // Bob joins by answering into the room; only then does its timeline reach him.
+        UltraIMSendOptions oJoin;
+        oJoin.clientMessageId = "bob-plain-join";
+        CHECK(bob->SendText(plain.conversationId, "here", oJoin));
+        CHECK(aliceEvents.WaitFor([&](const UltraIMEvent& e) {
+            return IsReceived(e, "here") && e.conversationId == plain.conversationId;
+        }));
+        UltraIMSendOptions oPlain;
+        oPlain.clientMessageId = "alice-plain-pic";
+        CHECK(alice->SendImage(plain.conversationId, picture, "in the clear", oPlain));
+        UltraIMEvent plainGot, plainHere;
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.conversationId == plain.conversationId &&
+                   e.message.type == UltraIMMessageType::Image;
+        }, &plainGot));
+        CHECK(plainGot.message.text == "in the clear");
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageUpdate && e.message.messageId == plainGot.message.messageId &&
+                   e.message.attachment.isDownloaded;
+        }, &plainHere));
+        CHECK(ReadBytes(plainHere.message.attachment.localPath) == pictureBytes);
+        CHECK(alice->SendVideo(plain.conversationId, clip, "", UltraIMSendOptions()));
+        UltraIMEvent plainClip;
+        CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.conversationId == plain.conversationId &&
+                   e.message.type == UltraIMMessageType::Video;
+        }, &plainClip));
+        UltraIMAttachment plainFetched;
+        CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) {
+            bob->DownloadAttachment(plain.conversationId, plainClip.message.messageId, cb);
+        }, plainFetched));
+        CHECK(ReadBytes(plainFetched.localPath) == clipBytes);
+    }
+
     // An edit and a redaction reach Bob.
     CHECK(alice->EditMessage(dm.conversationId, helloId, "hello bob!"));
     CHECK(bobEvents.WaitFor([&](const UltraIMEvent& e) {
@@ -771,7 +818,7 @@ void TestEndToEnd() {
 
     std::vector<UltraIMConversation> list;
     again->FetchConversations([&](const UltraIMResult&, const std::vector<UltraIMConversation>& l) { list = l; });
-    CHECK(list.size() == 2);
+    CHECK(list.size() == (e2ee ? 3u : 2u));  // the DM, the Team group and, with E2EE built in, the Plain room
 
     again->Shutdown();
     bob->Shutdown();

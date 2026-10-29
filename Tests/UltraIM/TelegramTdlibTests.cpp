@@ -112,6 +112,8 @@ void TestRequests() {
         {"sendMessage (reply)", Request::SendText(777000, "hello", 1048576)},
         {"sendMessage (photo)", Request::SendPhoto(777000, "/tmp/picture.jpg", "a caption", 0)},
         {"sendMessage (video)", Request::SendVideo(777000, "/tmp/clip.mp4", "", 1048576)},
+        {"sendMessage (video with a preview)", Request::SendVideo(777000, "/tmp/clip.mp4", "", 0, Request::Thumbnail{"/tmp/clip.jpg", 320, 180})},
+        {"sendMessage (document with a preview)", Request::SendDocument(777000, "/tmp/notes.pdf", "", 0, Request::Thumbnail{"/tmp/notes.jpg", 200, 260})},
         {"sendMessage (document)", Request::SendDocument(777000, "/tmp/notes.pdf", "", 0)},
         {"downloadFile", Request::DownloadFile(1, 32)},
         {"editMessageText", Request::EditText(777000, 1048576, "edited")},

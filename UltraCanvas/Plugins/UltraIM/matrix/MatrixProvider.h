@@ -10,6 +10,7 @@
 // are fetched as the message arrives, the rest when asked for, and a local
 // file is uploaded as a photo, a video or a file - encrypted (AES-256-CTR,
 // the m.file format) in an encrypted room.
+// Version: 0.2.2 - preview pictures sent along; SetCreateEncrypted (tests)
 // Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
 // Last Modified: 2026-10-29
@@ -48,7 +49,7 @@ public:
 
     std::string GetProviderId() const override { return providerId_; }
     std::string GetDisplayName() const override { return "Matrix"; }
-    std::string GetVersion() const override { return "0.2.1"; }
+    std::string GetVersion() const override { return "0.2.2"; }
     UltraIMCapabilityFlags GetCapabilities() const override;
     UltraIMLoginType GetLoginType() const override { return UltraIMLoginType::UsernamePassword; }
 
@@ -113,6 +114,9 @@ public:
     std::vector<MatrixDeviceInfo> GetDevicesOf(const std::string& userId) const { return crypto_.DevicesOf(userId); }
     // Rounds of the export's passphrase stretching (PBKDF2); fewer in tests.
     void SetKeyExportRounds(uint32_t rounds) { exportRounds_ = rounds; }
+    // Whether new rooms are created encrypted (when encryption is built in);
+    // false makes plain rooms, for a test of the unencrypted paths.
+    void SetCreateEncrypted(bool encrypted) { createEncrypted_ = encrypted; }
 
 private:
     struct Room {
@@ -262,6 +266,7 @@ private:
 
     MatrixCrypto    crypto_;
     uint32_t        exportRounds_ = 500000;
+    bool            createEncrypted_ = true;
     // room "|" session id -> events waiting for that key (mutex_)
     std::map<std::string, std::vector<UltraCanvas::JSONValue>> pendingDecrypt_;
 

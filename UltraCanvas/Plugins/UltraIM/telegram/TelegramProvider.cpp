@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.1.5 - a video sent goes with its preview picture (UltraIM_MakePreview)
 // Version: 0.1.4 - avatars; photos, videos, files and stickers with their files (downloadFile, updateFile);
 //                  SendImage, SendVideo, SendFile; DownloadAttachment
 // Version: 0.1.2 - where the code went said plainly; the code asked for another way (resendAuthenticationCode)
@@ -1833,8 +1834,12 @@ UltraIMResult TelegramProvider::SendVideo(const std::string& conversationId, con
     UltraIMResult r = Connected(chatId, conversationId);
     if (!r) return r;
     if (!(r = CheckLocalFile(localPath))) return r;
-    return SendContent(conversationId, Request::SendVideo(chatId, localPath, caption, ToId(options.replyToMessageId)),
-                       options);
+    // The preview picture, when the application makes one: shown to the
+    // other side before the video is fetched.
+    Request::Thumbnail thumbnail;
+    thumbnail.localPath = UltraIM_MakePreview(localPath, "video/mp4", 320, thumbnail.width, thumbnail.height);
+    return SendContent(conversationId,
+                       Request::SendVideo(chatId, localPath, caption, ToId(options.replyToMessageId), thumbnail), options);
 }
 
 UltraIMResult TelegramProvider::SendFile(const std::string& conversationId, const std::string& localPath,

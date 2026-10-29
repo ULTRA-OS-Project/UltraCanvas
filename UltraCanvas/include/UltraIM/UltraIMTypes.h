@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.5 - UltraIMPreviewMaker: the application's way of making a preview picture of a file to send
 // Version: 0.1.4 - UltraIMAttachment::thumbnailPath (a video's or a file's preview picture); UltraIMAttachmentCallback
 // Version: 0.1.3 - UltraIMAuthStep::OtherDevice: a sign-in confirmed on another device (a QR code scanned there)
 // Version: 0.1.2 - UltraIMProviderInfo::authResendHint: a sign-in code can be asked for another way
@@ -382,6 +383,15 @@ using UltraIMKeyImportCallback    = std::function<void(const UltraIMResult& resu
 // (localPath set, isDownloaded true).
 using UltraIMAttachmentCallback   = std::function<void(const UltraIMResult& result,
                                                        const UltraIMAttachment& attachment)>;
+// Makes a preview picture of a picture or video file about to be sent: a
+// JPEG, its longer side at most maxSide pixels, written to outJpegPath, its
+// size in outWidth / outHeight. The application installs one
+// (UltraIM_SetPreviewMaker) with its image and video libraries; a provider
+// asks through UltraIM_MakePreview and sends the preview along with the
+// file, so the other side sees something before the file has arrived.
+// Returns false when it cannot read the file.
+using UltraIMPreviewMaker = std::function<bool(const std::string& path, const std::string& mimeType, int maxSide,
+                                               const std::string& outJpegPath, int& outWidth, int& outHeight)>;
 // Credentials a provider's service keeps for another provider (the ChatCube
 // relay: the Telegram application's API ID and hash), to hand that
 // provider's SignIn.
