@@ -123,6 +123,26 @@ hand `UltraIM_SignIn("telegram", ...)` - set once on the server, never built
 into the application or typed by the user. `NotFound` when the service keeps
 none, `CapabilityMissing` from a provider without a service.
 
+A message with a picture, a video, a file, a voice note or a sticker carries
+it as `UltraIMMessage::attachment` (`UltraIMAttachment`): the kind in the
+message's `type`, the caption in `text`, the file's name, size, dimensions
+and length in the attachment. A provider fetches what a message shows by
+itself - the photo, the preview picture (`thumbnailPath`) of a video or a
+file - and says so with a `MessageUpdate` carrying the same message with
+`localPath` / `thumbnailPath` set; what may be large waits to be asked for:
+`UltraIM_DownloadAttachment(provider, conversation, message, cb)` fetches a
+video, a file or a voice note to disk, answers through the callback with the
+attachment (`localPath`, `isDownloaded`) - at once when it is there already -
+and raises the `MessageUpdate` for everyone else listening. Sending:
+`UltraIM_SendImage(provider, conversation, path, caption)`,
+`UltraIM_SendVideo(..., caption)` and `UltraIM_SendFile(...)` take a local
+file; the provider's `ImageMessages` and `FileTransfer` capabilities say
+which it takes, the optimistic row and the `MessageDelivered` events work as
+for a text, and the echo's attachment points at the file sent. People's
+pictures come the same way, fetched by the provider: `avatarPath` on a
+conversation, a contact and a message's sender (`senderAvatarPath`), a local
+file or empty.
+
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
 `UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
@@ -367,19 +387,37 @@ process.
   is the chat id, a message's the message id, a contact's the user id.
   `AddContact` takes `@username`, a `t.me/` link or `+phone`; `CreateGroup`
   makes a basic group of such members.
-- **Messages:** text with replies, photos, files, audio, voice, video and
-  stickers as their captions or names (not downloaded yet), the group's
-  service messages as system lines; edits (`MessageUpdate`), deletion for
-  everyone (`MessageDelete`); our own message reported `Sent` under its client
-  message id once TDLib has sent it, then `Read` when the other side's read
-  mark passes it; typing, presence, unread counts; `FetchMessages` pages back
-  with `getChatHistory`.
+- **Messages:** text with replies, photos, files, audio, voice notes,
+  videos (and animations, video notes) and stickers with their captions and
+  attachments, the group's service messages as system lines; edits
+  (`MessageUpdate`), deletion for everyone (`MessageDelete`); our own message
+  reported `Sent` under its client message id once TDLib has sent it, then
+  `Read` when the other side's read mark passes it; typing, presence, unread
+  counts; `FetchMessages` pages back with `getChatHistory`.
+- **Files** are TDLib's: it downloads them on request into `files/` under
+  the provider's data directory (`downloadFile`, the arrival as
+  `updateFile`). A photo (the size whose longer side is at least 800 pixels,
+  else the largest) and the preview pictures of videos, documents and
+  stickers are asked for as the message is kept, and reported with
+  `MessageUpdate`; a video, a document, an audio or a voice note is fetched
+  by `DownloadAttachment` (priority over the rest), which answers from disk
+  when TDLib has it. Profile photos and chat photos (the small size) are
+  fetched as the user or chat is seen: `avatarPath` on conversations,
+  contacts and a message's sender. `SendImage` sends a local file as
+  `inputMessagePhoto`, `SendVideo` as `inputMessageVideo` (with the caption),
+  `SendFile` as `inputMessageDocument`; TDLib uploads it, the message goes out
+  under the client id like a text, and the echo's attachment points at the
+  file sent. A still sticker (WebP) arrives as a picture; an animated one
+  (TGS, WebM) as its emoji.
 - **Not yet:** secret chats (end-to-end encrypted; listed, marked encrypted,
-  not opened), media download and upload, calls, e-mail sign-in.
+  not opened), calls, e-mail sign-in, playing animated stickers, voice notes
+  recorded here.
 
 Tests: `Tests/UltraIM/TelegramProviderTests.cpp` against `FakeTdJson`, a
 libtdjson stand-in that keeps a small Telegram in memory (several providers
-in one process talk through it; `FAKE_TDJSON_ACCOUNTS` and an `echobot`
+in one process talk through it; files - profile photos, photos, videos and
+documents sent, `downloadFile` - as paths, nothing read or written;
+`FAKE_TDJSON_ACCOUNTS` and an `echobot`
 account for trying ChatCube on it); `Tests/UltraIM/TelegramTdlibTests.cpp`
 hands every request the provider builds to the real TDLib, offline - it
 answers a request it cannot parse at once, so anything else means TDLib's

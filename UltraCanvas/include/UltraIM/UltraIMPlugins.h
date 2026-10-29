@@ -1,10 +1,11 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.4 - SendVideo; DownloadAttachment (a video, a file, a voice note fetched when asked for)
 // Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
 // Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -117,6 +118,13 @@ public:
         (void)conversationId; (void)localPath; (void)caption; (void)options;
         return Unsupported("images");
     }
+    virtual UltraIMResult SendVideo(const std::string& conversationId,
+                                    const std::string& localPath,
+                                    const std::string& caption,
+                                    const UltraIMSendOptions& options) {
+        (void)conversationId; (void)localPath; (void)caption; (void)options;
+        return Unsupported("videos");
+    }
     virtual UltraIMResult SendSticker(const std::string& conversationId,
                                       const std::string& packId,
                                       const std::string& stickerId,
@@ -129,6 +137,19 @@ public:
                                         const UltraIMSendOptions& options) {
         (void)conversationId; (void)localPath; (void)options;
         return Unsupported("voice notes");
+    }
+
+    // ---- Attachments -----------------------------------------------------------
+    // Fetches a message's attachment (a video, a file, a voice note: what the
+    // provider does not download by itself) to the cache directory. The
+    // callback brings the attachment with localPath set; a MessageUpdate with
+    // the same follows for everyone listening. One already on disk answers at
+    // once. NotFound for a message without an attachment.
+    virtual void DownloadAttachment(const std::string& conversationId,
+                                    const std::string& messageId,
+                                    UltraIMAttachmentCallback onResult) {
+        (void)conversationId; (void)messageId;
+        if (onResult) onResult(Unsupported("downloading attachments"), UltraIMAttachment());
     }
 
     // ---- Message actions -----------------------------------------------------

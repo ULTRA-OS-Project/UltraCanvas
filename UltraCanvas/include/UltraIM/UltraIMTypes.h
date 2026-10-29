@@ -1,10 +1,11 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.4 - UltraIMAttachment::thumbnailPath (a video's or a file's preview picture); UltraIMAttachmentCallback
 // Version: 0.1.3 - UltraIMAuthStep::OtherDevice: a sign-in confirmed on another device (a QR code scanned there)
 // Version: 0.1.2 - UltraIMProviderInfo::authResendHint: a sign-in code can be asked for another way
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -36,8 +37,14 @@ enum class UltraIMDeliveryStatus {
     Failed          // Could not be sent
 };
 
+// A picture, a video, a file, a voice note or a sticker with a message. The
+// provider downloads a picture (and a video's or a file's preview picture)
+// by itself and says so with a MessageUpdate carrying localPath /
+// thumbnailPath; a video, a file or a voice note is fetched when asked for
+// (UltraIM_DownloadAttachment), since it may be large.
 struct UltraIMAttachment {
     std::string localPath;          // UTF-8 path once downloaded (empty until then)
+    std::string thumbnailPath;      // UTF-8 path of a small preview picture, once downloaded ("" when none)
     std::string remoteUrl;          // Provider URL or file id
     std::string fileName;           // Display name
     std::string mimeType;
@@ -371,6 +378,10 @@ using UltraIMStickerPacksCallback = std::function<void(const UltraIMResult& resu
                                                        const std::vector<UltraIMStickerPack>& packs)>;
 using UltraIMKeyExportCallback    = std::function<void(const UltraIMResult& result, const std::string& data)>;
 using UltraIMKeyImportCallback    = std::function<void(const UltraIMResult& result, int imported)>;
+// A message's attachment once UltraIM_DownloadAttachment has it on disk
+// (localPath set, isDownloaded true).
+using UltraIMAttachmentCallback   = std::function<void(const UltraIMResult& result,
+                                                       const UltraIMAttachment& attachment)>;
 // Credentials a provider's service keeps for another provider (the ChatCube
 // relay: the Telegram application's API ID and hash), to hand that
 // provider's SignIn.

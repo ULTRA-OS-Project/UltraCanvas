@@ -1,9 +1,10 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "UltraIM/UltraIMCore.h"
@@ -594,6 +595,14 @@ UltraIMResult UltraIM_SendImage(const std::string& providerId, const std::string
     return provider->SendImage(conversationId, localPath, caption, WithClientId(options));
 }
 
+UltraIMResult UltraIM_SendVideo(const std::string& providerId, const std::string& conversationId,
+                                const std::string& localPath, const std::string& caption,
+                                const UltraIMSendOptions& options) {
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return NotFound(providerId);
+    return provider->SendVideo(conversationId, localPath, caption, WithClientId(options));
+}
+
 UltraIMResult UltraIM_SendSticker(const std::string& providerId, const std::string& conversationId,
                                   const std::string& packId, const std::string& stickerId,
                                   const UltraIMSendOptions& options) {
@@ -607,6 +616,18 @@ UltraIMResult UltraIM_SendVoiceNote(const std::string& providerId, const std::st
     ProviderPtr provider = FindProvider(providerId);
     if (!provider) return NotFound(providerId);
     return provider->SendVoiceNote(conversationId, localPath, WithClientId(options));
+}
+
+void UltraIM_DownloadAttachment(const std::string& providerId, const std::string& conversationId,
+                                const std::string& messageId, UltraIMAttachmentCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMAttachment>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMAttachment());
+        return;
+    }
+    provider->DownloadAttachment(conversationId, messageId,
+                                 callback ? callback : [](const UltraIMResult&, const UltraIMAttachment&) {});
 }
 
 UltraIMResult UltraIM_DeleteMessage(const std::string& providerId, const std::string& conversationId,

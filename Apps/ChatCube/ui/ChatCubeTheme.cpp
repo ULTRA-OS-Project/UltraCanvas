@@ -1,7 +1,8 @@
 // Apps/ChatCube/ui/ChatCubeTheme.cpp
 // See ChatCubeTheme.h.
+// Version: 0.1.1 - an avatar from the person's picture; a picture in a rounded box; a play mark
 // Version: 0.1.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ChatCubeTheme.h"
 
@@ -182,6 +183,43 @@ void PaintAvatar(IRenderContext* ctx, const Point2Dd& centre, double radius, con
     ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
     ctx->SetTextPaint(isGroup ? look.inkMuted : kWhite);
     ctx->DrawTextInRect(text, Rect2Dd(centre.x - radius, centre.y - radius, 2 * radius, 2 * radius));
+}
+
+void PaintAvatar(IRenderContext* ctx, const Point2Dd& centre, double radius, const std::string& title,
+                 const std::string& key, bool isGroup, const std::string& avatarPath, const Look& look) {
+    if (!ctx) return;
+    const Rect2Dd box(centre.x - radius, centre.y - radius, 2 * radius, 2 * radius);
+    if (!avatarPath.empty() && PaintPicture(ctx, avatarPath, box, radius)) return;
+    PaintAvatar(ctx, centre, radius, title, key, isGroup, look);
+}
+
+bool PaintPicture(IRenderContext* ctx, const std::string& path, const Rect2Dd& rect, double radius) {
+    if (!ctx || path.empty() || rect.width <= 0 || rect.height <= 0) return false;
+    // From the process-wide cache: the same file every frame costs one lookup.
+    UCImagePtr image = UCImage::Get(path);
+    if (!image || !image->IsValid()) return false;
+    ctx->PushState();
+    ctx->ClipRoundedRectangle(rect, radius, radius, radius, radius);
+    ctx->DrawImage(*image, rect, ImageFitMode::Cover);
+    ctx->PopState();
+    return true;
+}
+
+void PaintPlayMark(IRenderContext* ctx, const Point2Dd& centre, double radius) {
+    if (!ctx) return;
+    ctx->DrawFilledCircle(centre, static_cast<float>(radius), Color(0, 0, 0, 150), Color(255, 255, 255, 210), 1.5f);
+    // The triangle, a little right of centre so it looks centred.
+    const double r = radius * 0.5;
+    ctx->PushState();
+    ctx->ClearPath();
+    ctx->MoveTo(centre.x - r * 0.75, centre.y - r);
+    ctx->LineTo(centre.x + r * 0.95, centre.y);
+    ctx->LineTo(centre.x - r * 0.75, centre.y + r);
+    ctx->ClosePath();
+    ctx->SetFillPaint(kWhite);
+    ctx->FillPathPreserve();
+    ctx->ClearPath();
+    ctx->PopState();
 }
 
 void PaintPresence(IRenderContext* ctx, const Point2Dd& avatarCentre, double avatarRadius, const Color& presence,

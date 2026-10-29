@@ -4,9 +4,11 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.1 - pictures: avatars from the person's photo, photos and video previews in the bubbles,
+//                  a sender's avatar beside their bubble in a group, files as their name and size
 // Version: 0.2.0 - avatars, a rounded selection, the theme's colours
 // Version: 0.1.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -24,6 +26,12 @@ namespace ChatCube {
 // "14:05" / "21.10.2026" in local time.
 std::string FormatTime(int64_t timestampMs);
 std::string FormatDate(int64_t timestampMs);
+// "0:12" / "1:05:09" for a video's or a voice message's length.
+std::string FormatDuration(double seconds);
+// "840 bytes" / "12 KB" / "1.2 MB" for a file's size.
+std::string FormatSize(int64_t bytes);
+// A photo, a video or a sticker: shown as a picture in its bubble.
+bool HasPicture(const UltraIMMessage& message);
 // A user id in groups of four, so two people can read it to each other.
 std::string GroupUserId(const std::string& userId);
 
@@ -54,6 +62,8 @@ public:
     bool UpdateStatus(const std::string& clientId, UltraIMDeliveryStatus status);
     // A message deleted (redacted) for everyone: by its id or its client id.
     bool Remove(const std::string& messageId);
+    // Whether a message is shown, by its client id.
+    bool Contains(const std::string& clientId) const { return FindRow(clientId) >= 0; }
 
     const std::vector<MessageRow>& Rows() const { return rows_; }
 
@@ -72,7 +82,10 @@ private:
 };
 
 // Paints a message row as a bubble: own messages right, others left with the
-// sender's name in groups; the time and, for own messages, the ticks
+// sender's name and avatar in groups; a photo as its picture, a video as its
+// preview picture under a play mark with its length, a file as its name and
+// size (a picture still on its way is a box that says so); the caption under
+// the picture; the time and, for own messages, the ticks
 //   ...  sending   ✓ sent   ✓✓ delivered   ✓✓ (green) read   ! failed
 // GetRowHeight has no render context, so a bubble's height is measured when
 // it is painted and cached per message and width; when a measurement differs
@@ -87,12 +100,22 @@ public:
 
     void SetViewWidth(int width);
 
+    // Where a row's attachment was last painted - the picture of a photo,
+    // a video or a sticker, the whole bubble of a file or a voice message -
+    // relative to the row's top left (the space of a click's posInCell).
+    // False for a row with nothing to open.
+    bool MediaRect(const UltraCanvas::IListModel* model, int row, UltraCanvas::Rect2Di& outRect) const;
+
 private:
     int BubbleMaxWidth() const;
     int EstimateHeight(const MessageRow& row, bool showSender) const;
+    // The size a message's picture is shown at: the attachment's dimensions
+    // (or the file's, or a 4:3 box while they are unknown) scaled into the bubble.
+    UltraCanvas::Size2Di PictureSize(const UltraIMMessage& message, bool showSender) const;
 
     int viewWidth_ = 600;
-    std::map<std::string, int> measured_;   // client id -> height at viewWidth_
+    std::map<std::string, int> measured_;               // client id -> height at viewWidth_
+    std::map<std::string, UltraCanvas::Rect2Di> media_; // client id -> what MediaRect answers
 };
 
 // ============================================================================

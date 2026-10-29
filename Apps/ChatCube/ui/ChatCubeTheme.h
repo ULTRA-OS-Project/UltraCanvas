@@ -8,8 +8,9 @@
 // presence colours, the avatar palette) and a fallback for each, so a theme
 // that does not name them still looks right.
 //
+// Version: 0.1.1 - an avatar from the person's picture; a picture in a rounded box; a play mark
 // Version: 0.1.0
-// Last Modified: 2026-10-27
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -55,6 +56,17 @@ UltraCanvas::Color AvatarColor(const std::string& key, const Look& look);
 // A round avatar: the initials on the person's colour, or a group mark.
 void PaintAvatar(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& centre, double radius,
                  const std::string& title, const std::string& key, bool isGroup, const Look& look);
+// The same with the person's or the group's picture when there is one
+// (avatarPath: a file the provider fetched) and it can be read; else as above.
+void PaintAvatar(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& centre, double radius,
+                 const std::string& title, const std::string& key, bool isGroup, const std::string& avatarPath,
+                 const Look& look);
+// A picture from a file, fitted to cover `rect` and clipped to its rounded
+// corners. False, and nothing painted, when the file cannot be read.
+bool PaintPicture(UltraCanvas::IRenderContext* ctx, const std::string& path, const UltraCanvas::Rect2Dd& rect,
+                  double radius);
+// A play mark - a white triangle on a dark disc - over a video's preview picture.
+void PaintPlayMark(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& centre, double radius);
 // A presence dot at the avatar's lower right, ringed in the surface it sits on.
 void PaintPresence(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& avatarCentre, double avatarRadius,
                    const UltraCanvas::Color& presence, const UltraCanvas::Color& ring);

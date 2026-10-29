@@ -1,10 +1,12 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.1.4 - avatars; photos, videos, files and stickers with their files (downloadFile, updateFile);
+//                  SendImage, SendVideo, SendFile; DownloadAttachment
 // Version: 0.1.2 - where the code went said plainly; the code asked for another way (resendAuthenticationCode)
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
 //                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "TelegramProvider.h"
@@ -38,6 +40,50 @@ using UltraCanvas::JSONValue;
 namespace {
 
 constexpr size_t kRecentCap = 300;      // messages kept per chat in memory
+// downloadFile priorities (1 lowest .. 32): what the application waits for
+// first, then what a message brings by itself, then profile pictures.
+constexpr int32_t kPriorityAsked = 32;
+constexpr int32_t kPriorityMedia = 8;
+constexpr int32_t kPriorityAvatar = 4;
+// A photo's size to fetch: the smallest whose longer side is at least this
+// (TDLib's "x", 800), else the largest there is.
+constexpr int64_t kPhotoSide = 800;
+
+// A TDLib file as far as this provider cares: its id, and its local path
+// once it is here.
+struct TdFile {
+    int32_t     id = 0;
+    std::string path;
+    bool        done = false;
+    int64_t     size = 0;
+};
+
+TdFile FileFrom(const TdObject& file) {
+    TdFile f;
+    if (!file.IsObject()) return f;
+    f.id = static_cast<int32_t>(TdInt(file["id"]));
+    f.path = file["local"]["path"].GetString();
+    f.done = file["local"]["is_downloading_completed"].GetBoolean(false) && !f.path.empty();
+    f.size = TdInt(file["size"]);
+    if (!f.size) f.size = TdInt(file["expected_size"]);
+    return f;
+}
+
+// The photoSize to show, of a photo's sizes.
+TdObject BestPhotoSize(const TdObject& sizes) {
+    TdObject best;
+    int64_t bestSide = 0;
+    for (const auto& size : sizes.GetElements()) {
+        const int64_t side = std::max(TdInt(size["width"]), TdInt(size["height"]));
+        const bool enough = side >= kPhotoSide;
+        const bool bestEnough = bestSide >= kPhotoSide;
+        if (!best.IsObject() || (enough && (!bestEnough || side < bestSide)) || (!enough && !bestEnough && side > bestSide)) {
+            best = size;
+            bestSide = side;
+        }
+    }
+    return best;
+}
 
 bool IsError(const TdObject& o) {
     return TdType(o) == "error";
@@ -71,11 +117,13 @@ UltraIMPresence PresenceFrom(const TdObject& status) {
 
 std::string SnippetOf(const UltraIMMessage& m) {
     std::string text = m.text;
+    // A caption when there is one, else the file's name.
+    const std::string named = m.text.empty() ? m.attachment.fileName : m.text;
     switch (m.type) {
         case UltraIMMessageType::Image: text = "[photo] " + m.text; break;
-        case UltraIMMessageType::File:  text = "[file] " + m.text; break;
-        case UltraIMMessageType::Audio: text = "[audio] " + m.text; break;
-        case UltraIMMessageType::Video: text = "[video] " + m.text; break;
+        case UltraIMMessageType::File:  text = "[file] " + named; break;
+        case UltraIMMessageType::Audio: text = "[audio] " + named; break;
+        case UltraIMMessageType::Video: text = "[video] " + named; break;
         case UltraIMMessageType::Sticker: text = m.text + " (sticker)"; break;
         default: break;
     }
@@ -138,7 +186,7 @@ UltraIMCapabilityFlags TelegramProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
            F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-           F::CreateGroup | F::Channels;
+           F::CreateGroup | F::Channels | F::ImageMessages | F::FileTransfer | F::Stickers;
 }
 
 UltraIMResult TelegramProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -548,6 +596,9 @@ void TelegramProvider::SignOut() {
         chats_.clear();
         users_.clear();
         tempToClient_.clear();
+        fileUses_.clear();
+        fileWaiters_.clear();      // their downloads end with the client; nobody is told
+        downloadQueue_.clear();
         authStep_ = UltraIMAuthStep::Idle;
         authHint_.clear();
         ready_ = false;
@@ -771,6 +822,10 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
         OnAuthorizationState(update["authorization_state"]);
         return;
     }
+    if (type == "updateFile") {
+        OnFile(update["file"]);
+        return;
+    }
     if (type == "updateConnectionState") {
         const std::string s = TdType(update["state"]);
         bool ready = false;
@@ -804,6 +859,7 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
             const auto& names = u["usernames"]["active_usernames"].GetElements();
             user.username = names.empty() ? u["username"].GetString() : names.front().GetString();
             user.presence = PresenceFrom(u["status"]);
+            TakeUserPhoto(user, u["profile_photo"]);
             for (const auto& entry : chats_) {
                 if (entry.second.userId == user.id) ConversationChanged(entry.second, events);
             }
@@ -831,6 +887,12 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
             auto it = chats_.find(TdInt(update["chat_id"]));
             if (it != chats_.end()) {
                 it->second.title = update["title"].GetString();
+                ConversationChanged(it->second, events);
+            }
+        } else if (type == "updateChatPhoto") {
+            auto it = chats_.find(TdInt(update["chat_id"]));
+            if (it != chats_.end()) {
+                TakeChatPhoto(it->second, update["photo"]);
                 ConversationChanged(it->second, events);
             }
         } else if (type == "updateChatPosition" || type == "updateChatLastMessage") {
@@ -891,6 +953,7 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
             auto it = chats_.find(TdInt(message["chat_id"]));
             if (it != chats_.end() && MessageFrom(message, m)) {
                 Remember(it->second, m);
+                FetchMedia(it->second, m);
                 // Ours on its way out: the optimistic row stands for it until
                 // updateMessageSendSucceeded.
                 if (m.deliveryStatus != UltraIMDeliveryStatus::Sending) {
@@ -922,7 +985,9 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
                         break;
                     }
                 }
+                chat.media.erase(std::to_string(oldId));
                 Remember(chat, m);
+                FetchMedia(chat, m);
                 UltraIMEvent e;
                 e.type = UltraIMEventType::MessageDelivered;
                 e.providerId = providerId_;
@@ -983,6 +1048,7 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
                             recent.erase(r);
                             break;
                         }
+                        it->second.media.erase(id);
                     }
                     events.push_back(e);
                 }
@@ -1002,6 +1068,219 @@ void TelegramProvider::OnUpdate(const TdObject& update) {
         }
     }
     for (const auto& e : events) Emit(e);
+    FlushDownloads();
+}
+
+// ============================================================================
+// FILES (pictures, videos, documents, profile photos)
+// TDLib keeps a message's media as files it downloads on request into its
+// files directory. What a message brings by itself - its photo, the preview
+// picture of its video or document - is asked for as the message is kept
+// (FetchMedia); the rest when the application asks (DownloadAttachment).
+// A file's arrival is updateFile, or downloadFile's own answer when it was
+// there already; then everything it was for is told.
+// ============================================================================
+
+void TelegramProvider::WantFile(int32_t fileId, const FileUse& use, int32_t priority) {
+    if (!fileId) return;
+    auto& uses = fileUses_[fileId];
+    bool known = false;
+    for (const FileUse& u : uses) {
+        if (u.kind == use.kind && u.id == use.id && u.messageId == use.messageId) known = true;
+    }
+    if (!known) uses.push_back(use);
+    // Asked again (with a higher priority, say): TDLib takes it as the new priority.
+    downloadQueue_.push_back({fileId, priority});
+}
+
+void TelegramProvider::FlushDownloads() {
+    std::vector<std::pair<int32_t, int32_t>> queue;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        queue.swap(downloadQueue_);
+    }
+    if (queue.empty()) return;
+    std::shared_ptr<TdClient> client = Client();
+    if (!client->IsOpen()) return;
+    for (const auto& entry : queue) {
+        const int32_t id = entry.first;
+        debugOutput << "[Telegram] downloading file " << id << " (priority " << entry.second << ")" << std::endl;
+        client->Send(Request::DownloadFile(id, entry.second), [this, id](const TdObject& answer) {
+            if (IsError(answer)) OnDownloadFailed(id, ErrorText(answer));
+            else OnFile(answer);
+        });
+    }
+}
+
+void TelegramProvider::OnDownloadFailed(int32_t fileId, const std::string& why) {
+    debugOutput << "[Telegram] file " << fileId << " could not be downloaded: " << why << std::endl;
+    std::vector<UltraIMAttachmentCallback> waiters;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        fileUses_.erase(fileId);
+        auto it = fileWaiters_.find(fileId);
+        if (it != fileWaiters_.end()) {
+            waiters = std::move(it->second);
+            fileWaiters_.erase(it);
+        }
+    }
+    for (const auto& waiter : waiters)
+        waiter(UltraIMResult::Error(UltraIMResultCode::NetworkError, "Telegram could not fetch the file: " + why),
+               UltraIMAttachment());
+}
+
+void TelegramProvider::OnFile(const TdObject& file) {
+    const TdFile f = FileFrom(file);
+    if (!f.id || !f.done) return;       // on its way: nothing to say yet
+    std::vector<UltraIMEvent> events;
+    std::vector<UltraIMAttachmentCallback> waiters;
+    UltraIMAttachment handed;           // what the waiters get
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto uses = fileUses_.find(f.id);
+        if (uses != fileUses_.end()) {
+            for (const FileUse& use : uses->second) {
+                if (use.kind == FileUse::Kind::UserAvatar) {
+                    auto user = users_.find(use.id);
+                    if (user == users_.end()) continue;
+                    user->second.avatarPath = f.path;
+                    for (const auto& entry : chats_) {
+                        if (entry.second.userId == use.id) ConversationChanged(entry.second, events);
+                    }
+                } else if (use.kind == FileUse::Kind::ChatAvatar) {
+                    auto chat = chats_.find(use.id);
+                    if (chat == chats_.end()) continue;
+                    chat->second.avatarPath = f.path;
+                    ConversationChanged(chat->second, events);
+                } else {
+                    auto chat = chats_.find(use.id);
+                    if (chat == chats_.end()) continue;
+                    for (auto& m : chat->second.recent) {
+                        if (m.messageId != use.messageId) continue;
+                        if (use.kind == FileUse::Kind::MessageContent) {
+                            m.attachment.localPath = f.path;
+                            m.attachment.isDownloaded = true;
+                            if (f.size) m.attachment.fileSizeBytes = f.size;
+                            handed = m.attachment;
+                        } else {
+                            m.attachment.thumbnailPath = f.path;
+                        }
+                        if (chat->second.hasLast && chat->second.last.messageId == m.messageId) chat->second.last = m;
+                        UltraIMEvent e;
+                        e.type = UltraIMEventType::MessageUpdate;
+                        e.providerId = providerId_;
+                        e.conversationId = m.conversationId;
+                        e.contactId = m.senderId;
+                        e.message = m;
+                        events.push_back(e);
+                        break;
+                    }
+                }
+            }
+            fileUses_.erase(uses);
+        }
+        auto it = fileWaiters_.find(f.id);
+        if (it != fileWaiters_.end()) {
+            waiters = std::move(it->second);
+            fileWaiters_.erase(it);
+        }
+    }
+    if (!waiters.empty() && handed.localPath.empty()) {
+        // The message is no longer kept here; the file is, all the same.
+        handed.localPath = f.path;
+        handed.isDownloaded = true;
+        handed.fileSizeBytes = f.size;
+        handed.remoteUrl = std::to_string(f.id);
+    }
+    debugOutput << "[Telegram] file " << f.id << " downloaded (" << events.size() << " updates, " << waiters.size()
+                << " waiting)" << std::endl;
+    for (const auto& e : events) Emit(e);
+    for (const auto& waiter : waiters) waiter(UltraIMResult::Ok(), handed);
+}
+
+void TelegramProvider::TakeUserPhoto(User& user, const TdObject& profilePhoto) {
+    const TdFile small = FileFrom(profilePhoto["small"]);
+    if (!small.id) {
+        user.avatarFileId = 0;
+        user.avatarPath.clear();
+        return;
+    }
+    if (small.id == user.avatarFileId && (!user.avatarPath.empty() || !small.done)) return;
+    user.avatarFileId = small.id;
+    user.avatarPath = small.done ? small.path : std::string();
+    if (!small.done) WantFile(small.id, {FileUse::Kind::UserAvatar, user.id, std::string()}, kPriorityAvatar);
+}
+
+void TelegramProvider::TakeChatPhoto(Chat& chat, const TdObject& chatPhoto) {
+    const TdFile small = FileFrom(chatPhoto["small"]);
+    if (!small.id) {
+        chat.avatarFileId = 0;
+        chat.avatarPath.clear();
+        return;
+    }
+    if (small.id == chat.avatarFileId && (!chat.avatarPath.empty() || !small.done)) return;
+    chat.avatarFileId = small.id;
+    chat.avatarPath = small.done ? small.path : std::string();
+    if (!small.done) WantFile(small.id, {FileUse::Kind::ChatAvatar, chat.id, std::string()}, kPriorityAvatar);
+}
+
+void TelegramProvider::FetchMedia(Chat& chat, const UltraIMMessage& message) {
+    auto it = chat.media.find(message.messageId);
+    if (it == chat.media.end()) return;
+    const Media& media = it->second;
+    const UltraIMAttachment& a = message.attachment;
+    // A picture comes by itself; a video, a file or a voice note is large,
+    // so its preview picture comes and the rest waits to be asked for.
+    const bool picture = message.type == UltraIMMessageType::Image ||
+                         (message.type == UltraIMMessageType::Sticker && a.mimeType == "image/webp");
+    if (picture && !a.isDownloaded)
+        WantFile(media.fileId, {FileUse::Kind::MessageContent, chat.id, message.messageId}, kPriorityMedia);
+    if (!picture && a.thumbnailPath.empty())
+        WantFile(media.thumbnailId, {FileUse::Kind::MessageThumbnail, chat.id, message.messageId}, kPriorityMedia);
+}
+
+void TelegramProvider::DownloadAttachment(const std::string& conversationId, const std::string& messageId,
+                                          UltraIMAttachmentCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r, const UltraIMAttachment& a) { if (onResult) onResult(r, a); };
+    int64_t chatId = 0;
+    const UltraIMResult r = Connected(chatId, conversationId);
+    if (!r) {
+        finish(r, UltraIMAttachment());
+        return;
+    }
+    UltraIMAttachment attachment;
+    bool found = false, here = false;
+    int32_t fileId = 0;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto chat = chats_.find(chatId);
+        if (chat != chats_.end()) {
+            for (const auto& m : chat->second.recent) {
+                if (m.messageId != messageId) continue;
+                found = true;
+                attachment = m.attachment;
+                here = attachment.isDownloaded && !attachment.localPath.empty();
+                break;
+            }
+            auto media = chat->second.media.find(messageId);
+            if (media != chat->second.media.end()) fileId = media->second.fileId;
+            if (found && !here && fileId) {
+                fileWaiters_[fileId].push_back(finish);
+                WantFile(fileId, {FileUse::Kind::MessageContent, chatId, messageId}, kPriorityAsked);
+            }
+        }
+    }
+    if (!found || (!here && !fileId)) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotFound,
+                                    found ? "That message has no attachment" : "No such message"),
+               UltraIMAttachment());
+        return;
+    }
+    if (here) {
+        finish(UltraIMResult::Ok(), attachment);
+        return;
+    }
+    FlushDownloads();
 }
 
 // ============================================================================
@@ -1026,6 +1305,7 @@ TelegramProvider::Chat& TelegramProvider::StoreChat(const TdObject& object, std:
     } else if (t == "chatTypeSupergroup") {
         chat.kind = type["is_channel"].GetBoolean(false) ? ChatKind::Channel : ChatKind::Supergroup;
     }
+    if (object.Contains("photo")) TakeChatPhoto(chat, object["photo"]);
     for (const auto& p : object["positions"].GetElements()) {
         if (TdType(p["list"]) == "chatListMain") chat.order = TdInt(p["order"]);
     }
@@ -1059,7 +1339,12 @@ std::string TelegramProvider::NameOf(int64_t userId) const {
     return name;
 }
 
-bool TelegramProvider::MessageFrom(const TdObject& message, UltraIMMessage& out) const {
+std::string TelegramProvider::AvatarOf(int64_t userId) const {
+    auto it = users_.find(userId);
+    return it == users_.end() ? std::string() : it->second.avatarPath;
+}
+
+bool TelegramProvider::MessageFrom(const TdObject& message, UltraIMMessage& out) {
     out = UltraIMMessage();
     const int64_t chatId = TdInt(message["chat_id"]);
     out.messageId = std::to_string(TdInt(message["id"]));
@@ -1071,11 +1356,13 @@ bool TelegramProvider::MessageFrom(const TdObject& message, UltraIMMessage& out)
         const int64_t user = TdInt(sender["user_id"]);
         out.senderId = std::to_string(user);
         out.senderName = NameOf(user);
+        out.senderAvatarPath = AvatarOf(user);
     } else {
         const int64_t from = TdInt(sender["chat_id"]);
         out.senderId = std::to_string(from);
         auto c = chats_.find(from);
         out.senderName = c != chats_.end() ? c->second.title : out.senderId;
+        if (c != chats_.end()) out.senderAvatarPath = c->second.avatarPath;
     }
     out.timestampMs = message["date"].GetInteger(0) * 1000;
     out.isEdited = message["edit_date"].GetInteger(0) > 0;
@@ -1093,28 +1380,33 @@ bool TelegramProvider::MessageFrom(const TdObject& message, UltraIMMessage& out)
     const std::string type = TdType(content);
     const std::string caption = content["caption"]["text"].GetString();
     const std::string who = out.senderName;
+    Media media;
     if (type == "messageText") {
         out.text = content["text"]["text"].GetString();
     } else if (type == "messagePhoto") {
         out.type = UltraIMMessageType::Image;
         out.text = caption;
+        AttachmentFrom(content, out, media);
     } else if (type == "messageDocument") {
         out.type = UltraIMMessageType::File;
-        out.attachment.fileName = content["document"]["file_name"].GetString();
-        out.attachment.mimeType = content["document"]["mime_type"].GetString();
-        out.text = caption.empty() ? out.attachment.fileName : caption;
+        AttachmentFrom(content, out, media);
+        out.text = caption;
     } else if (type == "messageVideo" || type == "messageAnimation" || type == "messageVideoNote") {
         out.type = UltraIMMessageType::Video;
         out.text = caption;
+        AttachmentFrom(content, out, media);
     } else if (type == "messageAudio") {
         out.type = UltraIMMessageType::Audio;
         out.text = content["audio"]["title"].GetString(caption);
+        AttachmentFrom(content, out, media);
     } else if (type == "messageVoiceNote") {
         out.type = UltraIMMessageType::Audio;
         out.text = caption.empty() ? std::string("voice message") : caption;
+        AttachmentFrom(content, out, media);
     } else if (type == "messageSticker") {
         out.type = UltraIMMessageType::Sticker;
         out.text = content["sticker"]["emoji"].GetString();
+        AttachmentFrom(content, out, media);
     } else if (type == "messageBasicGroupChatCreate" || type == "messageSupergroupChatCreate") {
         out.type = UltraIMMessageType::SystemEvent;
         out.text = who + " created the group \"" + content["title"].GetString() + "\"";
@@ -1141,6 +1433,8 @@ bool TelegramProvider::MessageFrom(const TdObject& message, UltraIMMessage& out)
         out.text = "[" + (type.size() > 7 ? type.substr(7) : type) + " - not shown in ChatCube yet]";
     }
 
+    if (chat != chats_.end() && (media.fileId || media.thumbnailId)) chat->second.media[out.messageId] = media;
+
     const TdObject& reply = message["reply_to"];
     if (TdType(reply) == "messageReplyToMessage" && TdInt(reply["chat_id"], chatId) == chatId) {
         out.replyTo.messageId = std::to_string(TdInt(reply["message_id"]));
@@ -1157,6 +1451,69 @@ bool TelegramProvider::MessageFrom(const TdObject& message, UltraIMMessage& out)
     return true;
 }
 
+void TelegramProvider::AttachmentFrom(const TdObject& content, UltraIMMessage& out, Media& media) const {
+    const std::string type = TdType(content);
+    UltraIMAttachment& a = out.attachment;
+    TdFile file, thumbnail;
+    if (type == "messagePhoto") {
+        const TdObject size = BestPhotoSize(content["photo"]["sizes"]);
+        file = FileFrom(size["photo"]);
+        a.width = static_cast<int>(TdInt(size["width"]));
+        a.height = static_cast<int>(TdInt(size["height"]));
+        a.mimeType = "image/jpeg";
+    } else if (type == "messageVideo" || type == "messageAnimation") {
+        const TdObject& v = content[type == "messageVideo" ? "video" : "animation"];
+        file = FileFrom(v[type == "messageVideo" ? "video" : "animation"]);
+        thumbnail = FileFrom(v["thumbnail"]["file"]);
+        a.width = static_cast<int>(TdInt(v["width"]));
+        a.height = static_cast<int>(TdInt(v["height"]));
+        a.durationSeconds = static_cast<double>(TdInt(v["duration"]));
+        a.fileName = v["file_name"].GetString();
+        a.mimeType = v["mime_type"].GetString();
+    } else if (type == "messageVideoNote") {
+        const TdObject& v = content["video_note"];
+        file = FileFrom(v["video"]);
+        thumbnail = FileFrom(v["thumbnail"]["file"]);
+        a.width = a.height = static_cast<int>(TdInt(v["length"]));
+        a.durationSeconds = static_cast<double>(TdInt(v["duration"]));
+        a.mimeType = "video/mp4";
+    } else if (type == "messageDocument") {
+        const TdObject& d = content["document"];
+        file = FileFrom(d["document"]);
+        thumbnail = FileFrom(d["thumbnail"]["file"]);
+        a.fileName = d["file_name"].GetString();
+        a.mimeType = d["mime_type"].GetString();
+    } else if (type == "messageAudio") {
+        const TdObject& au = content["audio"];
+        file = FileFrom(au["audio"]);
+        a.durationSeconds = static_cast<double>(TdInt(au["duration"]));
+        a.fileName = au["file_name"].GetString();
+        a.mimeType = au["mime_type"].GetString();
+    } else if (type == "messageVoiceNote") {
+        const TdObject& vn = content["voice_note"];
+        file = FileFrom(vn["voice"]);
+        a.durationSeconds = static_cast<double>(TdInt(vn["duration"]));
+        a.mimeType = vn["mime_type"].GetString("audio/ogg");
+    } else if (type == "messageSticker") {
+        const TdObject& st = content["sticker"];
+        file = FileFrom(st["sticker"]);
+        thumbnail = FileFrom(st["thumbnail"]["file"]);
+        a.width = static_cast<int>(TdInt(st["width"]));
+        a.height = static_cast<int>(TdInt(st["height"]));
+        const std::string format = TdType(st["format"]);
+        a.mimeType = format == "stickerFormatWebp" ? "image/webp"
+                   : format == "stickerFormatWebm" ? "video/webm"
+                                                   : "application/x-tgsticker";
+    }
+    a.remoteUrl = file.id ? std::to_string(file.id) : std::string();
+    a.fileSizeBytes = file.size;
+    a.localPath = file.done ? file.path : std::string();
+    a.isDownloaded = file.done;
+    a.thumbnailPath = thumbnail.done ? thumbnail.path : std::string();
+    media.fileId = file.id;
+    media.thumbnailId = thumbnail.id;
+}
+
 void TelegramProvider::Remember(Chat& chat, const UltraIMMessage& message) {
     for (auto& m : chat.recent) {
         if (m.messageId == message.messageId) {
@@ -1169,7 +1526,10 @@ void TelegramProvider::Remember(Chat& chat, const UltraIMMessage& message) {
                                    return a.timestampMs < b.timestampMs;
                                });
     chat.recent.insert(at, message);
-    while (chat.recent.size() > kRecentCap) chat.recent.pop_front();
+    while (chat.recent.size() > kRecentCap) {
+        chat.media.erase(chat.recent.front().messageId);
+        chat.recent.pop_front();
+    }
     if (!chat.hasLast || message.timestampMs >= chat.last.timestampMs) {
         chat.last = message;
         chat.hasLast = true;
@@ -1181,9 +1541,11 @@ UltraIMConversation TelegramProvider::ConversationOf(const Chat& chat) const {
     c.conversationId = std::to_string(chat.id);
     c.providerId = providerId_;
     c.title = chat.title;
+    c.avatarPath = chat.avatarPath;
     if (chat.kind == ChatKind::Private || chat.kind == ChatKind::Secret) {
         c.directContactId = std::to_string(chat.userId);
         if (c.title.empty()) c.title = NameOf(chat.userId);
+        if (c.avatarPath.empty()) c.avatarPath = AvatarOf(chat.userId);
         if (myId_) c.memberIds.push_back(std::to_string(myId_));
         c.memberIds.push_back(c.directContactId);
         auto u = users_.find(chat.userId);
@@ -1229,6 +1591,7 @@ void TelegramProvider::FetchContacts(UltraIMContactsCallback onResult) {
             contact.contactId = std::to_string(chat.userId);
             contact.providerId = providerId_;
             contact.displayName = NameOf(chat.userId);
+            contact.avatarPath = AvatarOf(chat.userId);
             auto u = users_.find(chat.userId);
             if (u != users_.end()) contact.presence = u->second.presence;
             out.push_back(contact);
@@ -1289,10 +1652,14 @@ void TelegramProvider::FetchMessages(const std::string& conversationId, const st
                         page->messages.empty() ? page->before : ToId(page->messages.back().messageId);
                     if (bound && id >= bound) continue;
                     page->messages.push_back(m);
-                    if (chat != chats_.end()) Remember(chat->second, m);
+                    if (chat != chats_.end()) {
+                        Remember(chat->second, m);
+                        FetchMedia(chat->second, m);
+                    }
                     ++added;
                 }
             }
+            FlushDownloads();
             if (added && static_cast<int>(page->messages.size()) < page->wanted && ++page->rounds < 10) {
                 (*next)();
                 return;
@@ -1367,6 +1734,7 @@ void TelegramProvider::AddContact(const std::string& address, UltraIMConversatio
                 c = ConversationOf(stored);
             }
             for (const auto& e : events) Emit(e);
+            FlushDownloads();
             onResult(UltraIMResult::Ok(), c);
         });
     });
@@ -1418,6 +1786,7 @@ void TelegramProvider::CreateGroup(const std::string& title, const std::vector<s
                     c = ConversationOf(StoreChat(chat, events));
                 }
                 for (const auto& e : events) Emit(e);
+                FlushDownloads();
                 onResult(UltraIMResult::Ok(), c);
             });
         });
@@ -1434,9 +1803,54 @@ UltraIMResult TelegramProvider::SendText(const std::string& conversationId, cons
     int64_t chatId = 0;
     const UltraIMResult r = Connected(chatId, conversationId);
     if (!r) return r;
+    return SendContent(conversationId, Request::SendText(chatId, text, ToId(options.replyToMessageId)), options);
+}
+
+namespace {
+
+UltraIMResult CheckLocalFile(const std::string& localPath) {
+    std::error_code ec;
+    if (localPath.empty() || !std::filesystem::is_regular_file(UltraCanvas::PathFromUtf8(localPath), ec))
+        return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "There is no file " + localPath);
+    return UltraIMResult::Ok();
+}
+
+} // namespace
+
+UltraIMResult TelegramProvider::SendImage(const std::string& conversationId, const std::string& localPath,
+                                          const std::string& caption, const UltraIMSendOptions& options) {
+    int64_t chatId = 0;
+    UltraIMResult r = Connected(chatId, conversationId);
+    if (!r) return r;
+    if (!(r = CheckLocalFile(localPath))) return r;
+    return SendContent(conversationId, Request::SendPhoto(chatId, localPath, caption, ToId(options.replyToMessageId)),
+                       options);
+}
+
+UltraIMResult TelegramProvider::SendVideo(const std::string& conversationId, const std::string& localPath,
+                                          const std::string& caption, const UltraIMSendOptions& options) {
+    int64_t chatId = 0;
+    UltraIMResult r = Connected(chatId, conversationId);
+    if (!r) return r;
+    if (!(r = CheckLocalFile(localPath))) return r;
+    return SendContent(conversationId, Request::SendVideo(chatId, localPath, caption, ToId(options.replyToMessageId)),
+                       options);
+}
+
+UltraIMResult TelegramProvider::SendFile(const std::string& conversationId, const std::string& localPath,
+                                         const UltraIMSendOptions& options) {
+    int64_t chatId = 0;
+    UltraIMResult r = Connected(chatId, conversationId);
+    if (!r) return r;
+    if (!(r = CheckLocalFile(localPath))) return r;
+    return SendContent(conversationId,
+                       Request::SendDocument(chatId, localPath, std::string(), ToId(options.replyToMessageId)), options);
+}
+
+UltraIMResult TelegramProvider::SendContent(const std::string& conversationId, const TdObject& request,
+                                            const UltraIMSendOptions& options) {
     const std::string clientId = options.clientMessageId.empty() ? UltraIM_NewClientMessageId() : options.clientMessageId;
-    Client()->Send(Request::SendText(chatId, text, ToId(options.replyToMessageId)),
-                  [this, conversationId, clientId](const TdObject& sent) {
+    Client()->Send(request, [this, conversationId, clientId](const TdObject& sent) {
         if (IsError(sent)) {
             UltraIMEvent e;
             e.type = UltraIMEventType::MessageDelivered;
