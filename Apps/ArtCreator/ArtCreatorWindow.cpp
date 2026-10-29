@@ -299,8 +299,7 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     toolContext.iconPath = [this](const std::string& file) { return IconPath(file); };
     toolContext.setRotationHandleStyle = [this](VectorRotationHandleStyle style) {
         canvas->SetRotationHandleStyle(style);
-        settings.rotationHandle = style;
-        settings.Save();
+        settings.Update([style](ArtCreatorSettings& s) { s.rotationHandle = style; });
     };
     canvas->SetRotationHandleStyle(settings.rotationHandle);
 
@@ -786,8 +785,8 @@ void ArtCreatorWindow::BuildTransformBar() {
     centreModeButton->SetStyle(modeStyle);
     centreModeButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     centreModeButton->onClick = [this]() {
-        settings.centreRelative = !settings.centreRelative;
-        settings.Save();
+        const bool relative = !settings.centreRelative;
+        settings.Update([relative](ArtCreatorSettings& s) { s.centreRelative = relative; });
         ShowCentreMode();
         RefreshTransformBar();
     };
@@ -1219,13 +1218,13 @@ void ArtCreatorWindow::BuildRightPanel() {
         ApplyFillColour(c, true);
     };
     palettes->onPalettesChanged = [this]() {
-        // The file holds what this window has, as RememberColourPicker.
-        settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
-        settings.Save();
+        // Only the rows go to the file; another window's other settings stay.
+        const std::string rows = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
+        settings.Update([&rows](ArtCreatorSettings& s) { s.palettes = rows; });
     };
     palettes->onUserPalettesChanged = [this]() {
-        settings.userPalettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
-        settings.Save();
+        const std::string own = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
+        settings.Update([&own](ArtCreatorSettings& s) { s.userPalettes = own; });
     };
     // A swatch under the pointer floods the picker too, as the rows, so the
     // colour is seen on the whole of the card.
@@ -1281,11 +1280,15 @@ void ArtCreatorWindow::BuildRightPanel() {
 }
 
 void ArtCreatorWindow::RememberColourPicker() {
-    // The file holds only the picker, so this window's state is the whole of
-    // it: whichever window changed its picker last is the one remembered.
-    settings.pickerDesign = colorPicker->GetWheelStyle();
-    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
-    settings.Save();
+    // Whichever window changed its picker last is the one remembered; the
+    // other settings stay as the file has them (another window may have
+    // changed them since this one opened).
+    const ColorPickerWheelStyle design = colorPicker->GetWheelStyle();
+    const bool open = colorPicker->GetSlidersExpanded();
+    settings.Update([design, open](ArtCreatorSettings& s) {
+        s.pickerDesign = design;
+        s.pickerChannelsOpen = open;
+    });
 }
 
 void ArtCreatorWindow::BuildStatusBar() {

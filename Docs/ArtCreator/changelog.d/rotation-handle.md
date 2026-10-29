@@ -40,3 +40,10 @@
 - **Copying a selection as a picture keeps wide lines and far shadows.** A
   line much wider than its object, or a shadow cast far from it, was cut off
   at the picture's edge (framework: `RasterizeVectorElements`).
+- **Two windows no longer undo each other's settings.** Each window kept the
+  settings it read when it opened and wrote all of them back on any change,
+  so changing the colour picker in one window put back, say, the rotation
+  handle another window had just changed. A change is now made to the file as
+  it is at that moment (`ArtCreatorSettings::Update`), whether the other
+  window is in the same ArtCreator or another one, and the file is written
+  through a temporary file and a rename, so it is never read half-written.

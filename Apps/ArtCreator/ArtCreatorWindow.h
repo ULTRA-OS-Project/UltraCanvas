@@ -7,6 +7,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
+// Version: 1.13.1 - settings are changed through ArtCreatorSettings::Update, so one window
+//                   no longer writes back another's changes
 // Version: 1.13.0 - the transform bar's rotation centre (fields on the page or from the middle,
 //                   a picker for its nine points or a ring for a dragged one) while the Rotate
 //                   handles show; typed rotation and shear turn about that centre then; every
@@ -29,7 +31,7 @@
 // Version: 1.5.0 - SaveToPath takes the bitmap size: Export saves every type through FileLoader
 // Version: 1.4.0 - ToolIconPath / SharedIconPath; MenuIconPath is the app's 16 px menu set
 // Version: 1.3.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
