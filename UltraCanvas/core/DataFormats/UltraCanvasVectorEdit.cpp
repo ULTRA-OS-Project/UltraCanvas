@@ -1,8 +1,10 @@
 // core/DataFormats/UltraCanvasVectorEdit.cpp
 // The editing layer over VectorStorage::VectorDocument: see the header.
+// Version: 1.2.1 - ElementsIn measures the elements' lines (PaintBounds)
+// Version: 1.2.0 - PaintBounds / OwnPaintBounds
 // Version: 1.1.0 - SnapToPixels / SnapToPixel
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorEdit.h"
@@ -144,6 +146,185 @@ Rect2Dd DocumentBounds(const ElementPtr& element) {
     return ParentToDocument(element).Transform(local);
 }
 
+// ===== PAINT BOUNDS =====
+
+namespace {
+    // A box gathered from points in an element's space, each taken through
+    // the matrix to the space the box is wanted in.
+    struct PaintBox {
+        Matrix3x3 m = Matrix3x3::Identity();
+        double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+        bool any = false;
+
+        void Extend(double x, double y) {
+            if (!std::isfinite(x) || !std::isfinite(y)) return;
+            if (!any) { x0 = x1 = x; y0 = y1 = y; any = true; return; }
+            x0 = std::min(x0, x); x1 = std::max(x1, x);
+            y0 = std::min(y0, y); y1 = std::max(y1, y);
+        }
+        void Add(const Point2Dd& p) {
+            const Point2Dd q = m.Transform(p);
+            Extend(q.x, q.y);
+        }
+        // A disc of radius r round p: under the matrix an ellipse, whose box
+        // reaches r times the length of each of the matrix's rows.
+        void AddDisc(const Point2Dd& p, double r) {
+            const Point2Dd q = m.Transform(p);
+            const double ex = r * std::hypot(m.m[0][0], m.m[0][1]);
+            const double ey = r * std::hypot(m.m[1][0], m.m[1][1]);
+            Extend(q.x - ex, q.y - ey);
+            Extend(q.x + ex, q.y + ey);
+        }
+        Rect2Dd Box() const { return any ? Rect2Dd(x0, y0, x1 - x0, y1 - y0) : Rect2Dd(0, 0, 0, 0); }
+    };
+
+    Point2Dd Unit(const Point2Dd& v) {
+        const double l = std::hypot(v.x, v.y);
+        return l > 1e-12 ? Point2Dd(v.x / l, v.y / l) : Point2Dd(0, 0);
+    }
+
+    // A plain line `half` wide to each side along one flattened subpath:
+    // each segment's band, the joins and the caps.
+    void AddStrokedSubpath(const FlatSubpath& sub, const StrokeData& stroke, double half, PaintBox& box) {
+        // The points with the repeats dropped: a join needs two real segments.
+        std::vector<Point2Dd> pts;
+        for (const auto& p : sub.Points)
+            if (pts.empty() || std::hypot(p.x - pts.back().x, p.y - pts.back().y) > 1e-9) pts.push_back(p);
+        if (sub.Closed && pts.size() > 2 &&
+            std::hypot(pts.front().x - pts.back().x, pts.front().y - pts.back().y) <= 1e-9) pts.pop_back();
+        if (pts.empty()) return;
+        if (pts.size() == 1) {
+            // A dot: only a round or square cap draws one.
+            if (stroke.LineCap == StrokeLineCap::Round) box.AddDisc(pts[0], half);
+            else if (stroke.LineCap == StrokeLineCap::Square)
+                for (double sx : {-half, half}) for (double sy : {-half, half}) box.Add(Point2Dd(pts[0].x + sx, pts[0].y + sy));
+            return;
+        }
+        const bool closed = sub.Closed && pts.size() > 2;
+        const size_t n = pts.size();
+        const size_t segments = closed ? n : n - 1;
+        // The bands.
+        for (size_t i = 0; i < segments; ++i) {
+            const Point2Dd a = pts[i], b = pts[(i + 1) % n];
+            const Point2Dd d = Unit(Point2Dd(b.x - a.x, b.y - a.y));
+            const Point2Dd nrm(-d.y * half, d.x * half);
+            box.Add(Point2Dd(a.x + nrm.x, a.y + nrm.y)); box.Add(Point2Dd(a.x - nrm.x, a.y - nrm.y));
+            box.Add(Point2Dd(b.x + nrm.x, b.y + nrm.y)); box.Add(Point2Dd(b.x - nrm.x, b.y - nrm.y));
+        }
+        // The joins: round adds a disc; a miter its point while within the
+        // limit; a bevel stays inside the bands.
+        const size_t firstJoin = closed ? 0 : 1, lastJoin = closed ? n : n - 1;
+        for (size_t i = firstJoin; i < lastJoin; ++i) {
+            const Point2Dd v = pts[i];
+            if (stroke.LineJoin == StrokeLineJoin::Round) { box.AddDisc(v, half); continue; }
+            if (stroke.LineJoin != StrokeLineJoin::Miter) continue;
+            const Point2Dd before = pts[(i + n - 1) % n], after = pts[(i + 1) % n];
+            const Point2Dd d1 = Unit(Point2Dd(v.x - before.x, v.y - before.y));
+            const Point2Dd d2 = Unit(Point2Dd(after.x - v.x, after.y - v.y));
+            const double c = d1.x * d2.x + d1.y * d2.y;      // 1 straight on, -1 turning back
+            if (c > 1.0 - 1e-9 || c < -1.0 + 1e-9) continue;
+            const double ratio = 1.0 / std::sqrt((1.0 + c) / 2.0);   // miter length / line width
+            if (ratio > stroke.MiterLimit) continue;          // drawn as a bevel
+            // The point lies outside the turn, half a miter from the vertex.
+            const Point2Dd out = Unit(Point2Dd(d1.x - d2.x, d1.y - d2.y));
+            box.Add(Point2Dd(v.x + out.x * half * ratio, v.y + out.y * half * ratio));
+        }
+        // The caps of an open line.
+        if (!closed && stroke.LineCap != StrokeLineCap::Butt) {
+            const Point2Dd ends[2][2] = { { pts[0], Unit(Point2Dd(pts[0].x - pts[1].x, pts[0].y - pts[1].y)) },
+                                          { pts[n - 1], Unit(Point2Dd(pts[n - 1].x - pts[n - 2].x, pts[n - 1].y - pts[n - 2].y)) } };
+            for (const auto& end : ends) {
+                const Point2Dd p = end[0], d = end[1];
+                if (stroke.LineCap == StrokeLineCap::Round) { box.AddDisc(p, half); continue; }
+                const Point2Dd tip(p.x + d.x * half, p.y + d.y * half), nrm(-d.y * half, d.x * half);
+                box.Add(Point2Dd(tip.x + nrm.x, tip.y + nrm.y));
+                box.Add(Point2Dd(tip.x - nrm.x, tip.y - nrm.y));
+            }
+        }
+    }
+
+    // The element's own box, before its Transform: what it measures by
+    // itself is all it paints (text, an image, a clip view - its keyhole -,
+    // a mould - its envelope).
+    void AddOwnBox(const VectorElement& e, PaintBox& box) {
+        // GetBoundingBox() maps the box through the element's Transform: set
+        // the transform aside for the moment to read the box before it.
+        VectorElement& own = const_cast<VectorElement&>(e);
+        const std::optional<Matrix3x3> saved = own.Transform;
+        own.Transform.reset();
+        const Rect2Dd b = own.GetBoundingBox();
+        own.Transform = saved;
+        if (EmptyBox(b)) return;
+        box.Add(Point2Dd(b.x, b.y)); box.Add(Point2Dd(b.x + b.width, b.y));
+        box.Add(Point2Dd(b.x, b.y + b.height)); box.Add(Point2Dd(b.x + b.width, b.y + b.height));
+    }
+
+    // One element and its children, in the space `box.m` starts from.
+    void AddPaint(const VectorElement& e, PaintBox& box) {
+        if (dynamic_cast<const VectorClipView*>(&e) || dynamic_cast<const VectorMould*>(&e)) { AddOwnBox(e, box); return; }
+        if (const auto* g = dynamic_cast<const VectorGroup*>(&e)) {
+            const Matrix3x3 outer = box.m;
+            for (const auto& child : g->Children) {
+                if (!child) continue;
+                box.m = outer * child->Transform.value_or(Matrix3x3::Identity());
+                AddPaint(*child, box);
+            }
+            box.m = outer;
+            return;
+        }
+        PathData outline;
+        if (!BuildOutlinePath(e, outline)) { AddOwnBox(e, box); return; }
+        const std::vector<FlatSubpath> subs = FlattenPathData(outline);
+        for (const auto& sub : subs) for (const auto& p : sub.Points) box.Add(p);
+        if (!e.Style.Stroke || e.Style.Stroke->Width <= 0 ||
+            std::holds_alternative<std::monostate>(e.Style.Stroke->Fill)) return;
+        const StrokeData& stroke = *e.Style.Stroke;
+        if (stroke.HasWidthProfile() || stroke.HasBrush()) {
+            // A band of changing width, or stamps: round every point by the
+            // widest it gets.
+            double factor = 1.0;
+            for (const auto& sample : stroke.WidthProfile) factor = std::max(factor, static_cast<double>(sample.Factor));
+            double radius = stroke.Width * factor / 2.0;
+            if (stroke.HasBrush()) radius = std::max(radius, static_cast<double>(stroke.Width) * stroke.Brush->Scale);
+            for (const auto& sub : subs) for (const auto& p : sub.Points) box.AddDisc(p, radius);
+        } else {
+            for (const auto& sub : subs) AddStrokedSubpath(sub, stroke, stroke.Width / 2.0, box);
+        }
+        if (stroke.HasArrowheads()) {
+            Point2Dd start, startDir, end, endDir;
+            if (PathEndpoints(outline, start, startDir, end, endDir)) {
+                const std::pair<const ArrowheadData*, std::pair<Point2Dd, Point2Dd>> heads[2] = {
+                    { &stroke.StartArrow, { start, startDir } }, { &stroke.EndArrow, { end, endDir } } };
+                for (const auto& head : heads) {
+                    if (!head.first->IsSet()) continue;
+                    bool stroked = false;
+                    const PathData arrow = ArrowheadOutline(*head.first, head.second.first, head.second.second, stroke.Width, stroked);
+                    for (const auto& sub : FlattenPathData(arrow))
+                        for (const auto& p : sub.Points) {
+                            if (stroked) box.AddDisc(p, stroke.Width / 2.0);
+                            else box.Add(p);
+                        }
+                }
+            }
+        }
+    }
+}
+
+Rect2Dd PaintBounds(const ElementPtr& element) {
+    if (!element) return Rect2Dd(0, 0, 0, 0);
+    PaintBox box;
+    box.m = ParentToDocument(element) * element->Transform.value_or(Matrix3x3::Identity());
+    AddPaint(*element, box);
+    return box.Box();
+}
+
+Rect2Dd OwnPaintBounds(const ElementPtr& element) {
+    if (!element) return Rect2Dd(0, 0, 0, 0);
+    PaintBox box;
+    AddPaint(*element, box);
+    return box.Box();
+}
+
 std::vector<ElementPtr> AllElements(const VectorDocument& doc, bool includeLayers) {
     std::vector<ElementPtr> out;
     std::function<void(const ElementPtr&)> visit = [&](const ElementPtr& e) {
@@ -207,7 +388,7 @@ void VectorSelection::Clear() {
 
 Rect2Dd VectorSelection::Bounds() const {
     Rect2Dd r(0, 0, 0, 0);
-    for (const auto& e : elements) r = UnionRect(r, DocumentBounds(e));
+    for (const auto& e : elements) r = UnionRect(r, PaintBounds(e));
     return r;
 }
 
@@ -459,7 +640,9 @@ std::vector<ElementPtr> VectorHitTester::ElementsIn(const VectorDocument& doc, c
         if (!layer || !layer->Visible || (skipLocked && layer->Locked)) continue;
         for (const auto& child : layer->Children) {
             if (!child || !child->Style.Visible) continue;
-            const Rect2Dd b = DocumentBounds(child);
+            // What the element paints, its line included: a marquee that
+            // cuts through a thick line has not got all of it.
+            const Rect2Dd b = PaintBounds(child);
             if (EmptyBox(b)) continue;
             const double bx1 = b.x + b.width, by1 = b.y + b.height;
             const bool inside = b.x >= r.x && b.y >= r.y && bx1 <= rx1 && by1 <= ry1;
@@ -859,10 +1042,10 @@ void AlignElements(const std::vector<ElementPtr>& elements, AlignMode mode, cons
     if (reference) ref = *reference;
     else {
         ref = Rect2Dd(0, 0, 0, 0);
-        for (const auto& e : elements) ref = UnionRect(ref, DocumentBounds(e));
+        for (const auto& e : elements) ref = UnionRect(ref, PaintBounds(e));
     }
     for (const auto& e : elements) {
-        const Rect2Dd b = DocumentBounds(e);
+        const Rect2Dd b = PaintBounds(e);
         if (EmptyBox(b)) continue;
         double dx = 0, dy = 0;
         switch (mode) {
@@ -883,7 +1066,7 @@ void DistributeElements(const std::vector<ElementPtr>& elements, DistributeMode 
     const bool gaps = mode == DistributeMode::HorizontalGaps || mode == DistributeMode::VerticalGaps;
     std::vector<std::pair<Rect2Dd, ElementPtr>> items;
     for (const auto& e : elements) {
-        const Rect2Dd b = DocumentBounds(e);
+        const Rect2Dd b = PaintBounds(e);
         if (!EmptyBox(b)) items.emplace_back(b, e);
     }
     if (items.size() < 3) return;
