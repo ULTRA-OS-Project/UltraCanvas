@@ -1740,10 +1740,12 @@ and secure random generation are implemented, so no application, plugin or
 sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
-Scope is **data at rest and data integrity**. Transport security stays in
-UltraNet (per-platform and OS-native); credential *storage and policy* stay
-in UltraVault, which consumes UltraCrypt for its file-backed fallback
-backend.
+Scope is **data at rest and data integrity**, and the **X.509 certificates
+and CMS** of formats the world defined (S/MIME: `UltraCryptX509.h`, on a
+second, optional backend, OpenSSL 3, since libsodium has no public-key
+infrastructure). Transport security stays in UltraNet (per-platform and
+OS-native); credential *storage and policy* stay in UltraVault, which
+consumes UltraCrypt for its file-backed fallback backend.
 
 UltraCrypt elements must comply with the same rules as UltraNet and
 UltraDatabase:
@@ -2494,7 +2496,11 @@ API (`cmake/UltraCanvasWasmtime.cmake` downloads and hash-checks it, or takes
 `ULTRACANVAS_WASMTIME_DIR`), linked privately: no wasmtime header or type
 reaches a caller, so the engine can be replaced (WAMR is the measured
 fallback). UI-free and thread-agnostic; an instance belongs to the thread
-that created it.
+that created it. **In a browser** (Emscripten) the engine is the browser's
+own WebAssembly, through `UltraCanvas/OS/WASM/UltraCanvasWASMWasmHost.cpp`:
+the same header and rules, minus the per-call time limit (a browser cannot
+interrupt a call) and WebAssembly text. It is what runs UltraWeb apps in
+Chrome (`Docs/UltraWeb/UltraWebInTheBrowser.md`).
 
 **Implementation status:** Phase 1 started. On by default on Linux and on
 Windows (`ULTRACANVAS_ENABLE_WASM_HOST`). The MSYS2 CLANG64 / CLANGARM64
@@ -2518,7 +2524,9 @@ call running past its limit, malformed input - ends in a `WasmStatus`, never
 a crash or a hang of the host; after a trap or an interruption an instance
 refuses further calls; host functions are registered through the unchecked
 host-function API (measured at 7 ns per empty call against 82 ns for the
-checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.
+checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`;
+the browser engine: `Apps/UltraWeb/browser/test/wasmhost-browser-test.cpp`
+(under Node).
 
 ---
 

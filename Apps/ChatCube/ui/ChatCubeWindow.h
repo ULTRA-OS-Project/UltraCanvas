@@ -43,10 +43,13 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.2.1 - Telegram signs in by a QR code too, scanned from the phone's Telegram app
+// Version: 0.2.0 - the look from ChatCubeTheme: avatars, icon buttons, a rounded composer, --dark
+// Version: 0.1.3 - the Telegram form says where the code went and asks for it another way
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -66,6 +69,7 @@ class UltraCanvasCheckbox;
 class UltraCanvasContainer;
 class UltraCanvasLabel;
 class UltraCanvasListView;
+class UltraCanvasQRCode;
 class UltraCanvasTextArea;
 class UltraCanvasTextInput;
 class UltraCanvasVideoTile;
@@ -105,6 +109,12 @@ private:
     // Telegram signs in in steps: the form shows the field the next one needs.
     void ToggleTelegramForm();
     void SignInToTelegram(bool stored);
+    // A QR code instead of the number and the code: the form shows one for
+    // the phone's Telegram app to scan.
+    void SignInToTelegramByQrCode();
+    // The credentials to the provider; `stored` when nothing was typed (the
+    // stored session resumed).
+    void SendTelegramSignIn(UltraIMCredentials credentials, bool stored);
     void UpdateTelegramForm();
     // The Telegram application's API ID and hash the relay keeps, so nobody
     // types them; then `then` (the stored Telegram session resumed, say).
@@ -176,7 +186,11 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramPhone_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramApiId_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramApiHash_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     telegramHint_;     // where the code went, in the form
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramCode_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramResend_;   // the code another way, when offered
+    std::shared_ptr<UltraCanvas::UltraCanvasQRCode>    telegramQr_;       // the link to scan, while Telegram waits for that
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramQrButton_; // asks for the QR code instead
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramPassword_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> telegramName_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    telegramNext_;
@@ -189,11 +203,12 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  conversationList_;
     std::shared_ptr<ConversationListModel>             conversations_;
 
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     headerAvatar_;   // initials on the person's colour
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     title_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     subtitle_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    voiceCall_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    videoCall_;
-    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     emptyHint_;
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> emptyHint_;   // the logo and the words before a conversation is open
     std::shared_ptr<UltraCanvas::UltraCanvasListView>  messageList_;
     std::shared_ptr<MessageListModel>                  messages_;
     std::shared_ptr<MessageBubbleDelegate>             bubbles_;

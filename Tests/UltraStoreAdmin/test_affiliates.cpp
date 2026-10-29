@@ -230,3 +230,57 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "go/STALE.html"))));
     RemoveDir(dir);
 }
+
+TEST(the_sales_of_the_payment_service_go_into_the_ledger_once) {
+    const std::string dir = TempDir("sync");
+    AdminDatabase db;
+    REQUIRE(db.Open(Join(dir, "admin.sqlite")).Ok());
+    REQUIRE(db.PutAffiliate(Aff("aff-super", "Super", 10, 5)).Ok());
+    REQUIRE(db.PutAffiliate(Aff("aff-anna", "Anna", 20, 0, "aff-super")).Ok());
+    REQUIRE(db.PutCode(Code("anna-20", UltraStore::CodeKind::Affiliate, "aff-anna", 20)).Ok());
+    std::vector<std::string> asked;
+    std::string page1 = R"({"sales": [
+        {"seq": 1, "order_id": "ord1", "at": "2026-10-27T12:00:00Z", "code": "ANNA-20", "app": "org.ultraos.hello", "amount": "23.92", "currency": "EUR", "receipt_no": 1},
+        {"seq": 2, "order_id": "ord2", "at": "2026-10-27T12:05:00Z", "code": "", "app": "org.ultraos.hello", "amount": "29.90", "currency": "EUR", "receipt_no": 2}], "next": 2})";
+    std::string empty = R"({"sales": [], "next": 2})";
+    auto fetch = [&](const std::string& url, const std::string& token) -> UltraStore::Result<std::string> {
+        asked.push_back(url + " " + token);
+        if (url.find("since=0") != std::string::npos) return UltraStore::Result<std::string>::Succeed(page1);
+        return UltraStore::Result<std::string>::Succeed(empty);
+    };
+    REQUIRE(!SyncSales(db, "", "t", fetch).Ok());
+    REQUIRE(!SyncSales(db, "https://pay.example", "", fetch).Ok());
+    const auto first = SyncSales(db, "https://pay.example/", "admin-token", fetch);
+    REQUIRE(first.Ok());
+    REQUIRE_EQ(first.Value().recorded, size_t(2));
+    REQUIRE_EQ(first.Value().sequence, uint64_t(2));
+    REQUIRE_EQ(asked[0], std::string("https://pay.example/v1/sales?since=0 admin-token"));
+    REQUIRE_EQ(db.Setting("payment.sales_seq"), std::string("2"));
+    const auto sales = db.Sales();
+    REQUIRE_EQ(sales.Value().size(), size_t(2));
+    REQUIRE_EQ(sales.Value()[0].reference, std::string("ord1"));
+    REQUIRE_EQ(sales.Value()[0].affiliate, std::string("aff-anna"));
+    REQUIRE_EQ(sales.Value()[0].affiliateCredit, std::string("4.78"));
+    REQUIRE_EQ(sales.Value()[0].recruiterCredit, std::string("1.20"));
+    REQUIRE(sales.Value()[1].affiliate.empty());
+    // Again: nothing new from the sequence kept; a sequence set back does not record an order twice.
+    const auto second = SyncSales(db, "https://pay.example", "admin-token", fetch);
+    REQUIRE_EQ(second.Value().recorded, size_t(0));
+    REQUIRE(db.SetSetting("payment.sales_seq", "0").Ok());
+    const auto third = SyncSales(db, "https://pay.example", "admin-token", fetch);
+    REQUIRE_EQ(third.Value().recorded, size_t(0));
+    REQUIRE_EQ(third.Value().skipped, size_t(2));
+    REQUIRE_EQ(db.Sales().Value().size(), size_t(2));
+    REQUIRE(db.HasSaleReference("ord2"));
+    REQUIRE(!db.HasSaleReference(""));
+    // The catalog names the payment service and its key from the settings.
+    REQUIRE(db.SetSetting("payment.url", "https://pay.example/").Ok());
+    std::vector<std::string> warnings;
+    REQUIRE_EQ(BuildCatalog(db, PublishOptions{}, &warnings).Value().paymentUrl, std::string("https://pay.example"));
+    bool warnedKey = false;
+    for (const std::string& w : warnings) if (w.find("licence_key") != std::string::npos) warnedKey = true;
+    REQUIRE(warnedKey);
+    REQUIRE(db.SetSetting("payment.licence_key", std::string(64, 'b')).Ok());
+    REQUIRE_EQ(BuildCatalog(db, PublishOptions{}).Value().licenceKey, std::string(64, 'b'));
+    RemoveDir(dir);
+}

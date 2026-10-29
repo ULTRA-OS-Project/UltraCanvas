@@ -1,12 +1,17 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.1 - Telegram signs in by a QR code too, scanned from the phone's Telegram app
+// Version: 0.2.0 - the look from ChatCubeTheme: a card on the sign-in page, avatars, icon buttons,
+//                  a rounded composer, soft selection, a light and a dark theme (--dark)
+// Version: 0.1.3 - the Telegram form says where the code went and asks for it another way
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
+#include "ChatCubeTheme.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -14,6 +19,7 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSelection.h"
 #include "UltraCanvasListView.h"
@@ -23,6 +29,7 @@
 #include "UltraCanvasVideoTile.h"
 #include "UltraCanvasWindow.h"
 #include "UltraIM/UltraIMCore.h"
+#include "Plugins/QRCode/UltraCanvasQRCode.h"
 
 #include <algorithm>
 #include <chrono>
@@ -36,24 +43,27 @@ namespace ChatCube {
 namespace {
 
 constexpr float kTextFont = 10.0f;
-constexpr int   kControlHeight = 28;
-constexpr int   kSidebarWidth = 300;
-constexpr int   kInputHeight = 64;
-constexpr float kFormWidth = 300.0f;
+constexpr int   kControlHeight = 32;
+constexpr int   kSidebarWidth = 320;
+constexpr int   kInputHeight = 48;
+constexpr float kFormWidth = 340.0f;
+constexpr float kControlRadius = 8.0f;
+constexpr int   kIconButton = 34;       // a round icon button's side
 constexpr int64_t kTypingShownMs = 5000;
 constexpr int64_t kTypingResendMs = 3000;
 
-const Color kPageBackground = Color(250, 250, 248, 255);
-const Color kSidebarBackground = Color(242, 244, 246, 255);
-const Color kTextColor = Color(36, 36, 40, 255);
-const Color kMutedText = Color(110, 110, 118, 255);
-const Color kRuleColor = Color(222, 224, 228, 255);
-const Color kAccent = Color(46, 150, 70, 255);          // ChatCube green
-const Color kAccentHover = Color(36, 128, 58, 255);
-const Color kSelection = Color(46, 150, 70, 255);
-const Color kCallBackground = Color(228, 243, 232, 255);
-const Color kHangUp = Color(200, 52, 52, 255);
-const Color kHangUpHover = Color(170, 40, 40, 255);
+// The window's colours, from the theme set before it was built (main.cpp:
+// ChatCube::ThemeFor, light or --dark). Read once: the look does not change
+// while the window is up.
+const Look& L() {
+    static const Look look = CurrentLook();
+    return look;
+}
+
+Color Darker(const Color& c, int by) {
+    auto d = [by](uint8_t v) { return static_cast<uint8_t>(std::max(0, v - by)); };
+    return Color(d(c.r), d(c.g), d(c.b), c.a);
+}
 
 int64_t NowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -68,7 +78,7 @@ std::string Trim(const std::string& s) {
 }
 
 std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::string& text,
-                                            float fontSize = kTextFont, const Color& color = kTextColor) {
+                                            float fontSize = kTextFont, const Color& color = L().ink) {
     auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
     l->SetText(text);
     l->SetFontSize(fontSize);
@@ -79,24 +89,85 @@ std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id, const std::st
     return l;
 }
 
+// A button in the window's look: rounded, a hairline border at rest, the
+// accent fill when primary, no fill at rest when ghost (the icon buttons).
+void StyleButton(const std::shared_ptr<UltraCanvasButton>& b, bool primary, bool ghost = false) {
+    ButtonStyle st = b->GetStyle();
+    st.cornerRadius = kControlRadius;
+    st.fontSize = kTextFont;
+    st.borderWidth = ghost || primary ? 0.0f : 1.0f;
+    st.borderColor = L().line;
+    if (primary) {
+        st.normalColor = L().accent;
+        st.hoverColor = L().accentHover;
+        st.pressedColor = Darker(L().accentHover, 16);
+        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = L().onAccent;
+        st.disabledColor = L().pressed;
+        st.disabledTextColor = L().inkFaint;
+    } else {
+        st.normalColor = ghost ? Colors::Transparent : L().panel;
+        st.hoverColor = L().hover;
+        st.pressedColor = L().pressed;
+        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = L().ink;
+        st.disabledColor = ghost ? Colors::Transparent : L().well;
+        st.disabledTextColor = L().inkFaint;
+    }
+    b->SetStyle(st);
+}
+
 std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id, const std::string& text, int width,
                                               bool primary = false) {
     auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, kControlHeight, text);
-    b->SetFontSize(kTextFont);
     b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    if (primary) {
-        b->SetColors(kAccent, kAccentHover);
-        b->SetTextColors(Color(255, 255, 255, 255));
-    }
+    StyleButton(b, primary);
     return b;
 }
 
-std::shared_ptr<UltraCanvasTextInput> MakeInput(const std::string& id, const std::string& placeholder, int width) {
+// A button with an icon from media/icons/chatcube, drawn in the text colour;
+// `text` beside it when given, else the icon alone on a round button.
+std::shared_ptr<UltraCanvasButton> MakeIconButton(const std::string& id, const std::string& icon,
+                                                  const std::string& text = std::string(), int width = kIconButton,
+                                                  bool primary = false, bool ghost = true) {
+    auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, kIconButton, text);
+    b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    StyleButton(b, primary, ghost && !primary);
+    if (text.empty()) b->GetStyle().cornerRadius = kIconButton / 2.0f;
+    b->SetIcon(IconPath(icon));
+    b->SetIconSize(18, 18);
+    b->SetUseIconAsMask(true);
+    b->SetIconSpacing(6);
+    return b;
+}
+
+std::shared_ptr<UltraCanvasTextInput> MakeInput(const std::string& id, const std::string& placeholder, int width,
+                                                bool pill = false) {
     auto t = std::make_shared<UltraCanvasTextInput>(id, 0, 0, width, kControlHeight);
     t->SetPlaceholder(placeholder);
     t->SetFontSize(kTextFont);
     t->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    TextInputStyle st = t->GetStyle();
+    st.backgroundColor = L().panel;
+    st.borderColor = L().line;
+    st.focusBorderColor = L().accent;
+    st.textColor = L().ink;
+    st.placeholderColor = L().inkFaint;
+    st.caretColor = L().ink;
+    st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
+    st.borderRadius = pill ? kControlHeight / 2 : static_cast<int>(kControlRadius);
+    st.paddingLeft = st.paddingRight = pill ? 14 : 10;
+    t->SetStyle(st);
     return t;
+}
+
+// The ChatCube logo, `side` pixels square.
+std::shared_ptr<UltraCanvasImageElement> MakeLogo(const std::string& id, int side) {
+    auto logo = std::make_shared<UltraCanvasImageElement>(id, 0, 0, side, side);
+    logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/appicon/ChatCube.png"));
+    logo->SetFitMode(ImageFitMode::Contain);
+    logo->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    logo->size.width = CSSLayout::Dimension::Px(static_cast<float>(side));
+    logo->size.height = CSSLayout::Dimension::Px(static_cast<float>(side));
+    return logo;
 }
 
 std::shared_ptr<UltraCanvasContainer> MakeRow(const std::string& id, int gap = 8) {
@@ -143,7 +214,7 @@ bool ChatCubeWindow::Create() {
         return false;
     }
     window_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    window_->SetBackgroundColor(kPageBackground);
+    window_->SetBackgroundColor(L().ground);
     window_->AddChild(BuildSignInPage());
     window_->AddChild(BuildChatView());
     window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
@@ -176,52 +247,68 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     signInPage_->layout.SetFlexColumn()
         .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
         .SetFlexAlignItems(CSSLayout::AlignItems::Center)
-        .SetFlexGap(12);
+        .SetFlexGap(10);
     signInPage_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto title = MakeLabel("cc-signin-title", "ChatCube", 24.0f);
+    signInPage_->AddChild(MakeLogo("cc-signin-logo", 72));
+    auto title = MakeLabel("cc-signin-title", "ChatCube", 26.0f);
     title->SetFontWeight(FontWeight::Bold);
     signInPage_->AddChild(title);
     signInPage_->AddChild(MakeLabel("cc-signin-tagline",
                                     "Chat directly with the people you know - no account, no password",
-                                    11.0f, kMutedText));
-    signInPage_->AddSpacer(8);
+                                    11.0f, L().inkMuted));
+    signInPage_->AddSpacer(10);
+
+    // The form, on a card.
+    auto card = std::make_shared<UltraCanvasContainer>("cc-signin-card");
+    card->layout.SetFlexColumn().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    card->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    card->size.width = CSSLayout::Dimension::Px(kFormWidth + 48);
+    card->SetBackgroundColor(L().panel);
+    card->SetBorders(1.0f, L().line, 14.0f);
+    card->SetPadding(22, 24, 18, 24);
 
     name_ = MakeInput("cc-signin-name", "Your name, as your contacts will see it", static_cast<int>(kFormWidth));
     name_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
-    signInPage_->AddChild(name_);
+    card->AddChild(name_);
     relay_ = MakeInput("cc-signin-relay", "Relay server (optional), e.g. https://relay.example.org",
                        static_cast<int>(kFormWidth));
     relay_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
-    signInPage_->AddChild(relay_);
+    card->AddChild(relay_);
     localNetwork_ = std::make_shared<UltraCanvasCheckbox>("cc-signin-lan", 0, 0, static_cast<long>(kFormWidth), 22,
                                                           "Also find people on this network");
     localNetwork_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     CheckboxVisualStyle lanStyle = localNetwork_->GetVisualStyle();
     lanStyle.base.fontSize = kTextFont;                 // the size of the page's other text
-    lanStyle.base.textColor = kTextColor;
+    lanStyle.base.textColor = L().ink;
+    lanStyle.boxColor = L().panel;
+    lanStyle.boxBorderColor = L().lineStrong;
+    lanStyle.boxHoverColor = L().hover;
+    lanStyle.checkmarkColor = L().accent;
+    lanStyle.checkmarkHoverColor = L().accent;
     localNetwork_->SetVisualStyle(lanStyle);
-    signInPage_->AddChild(localNetwork_);
+    card->AddChild(localNetwork_);
 
     signIn_ = MakeButton("cc-signin-go", "Create my ChatCube ID", static_cast<int>(kFormWidth), true);
     signIn_->SetOnClick([this]() { SignIn(); });
-    signInPage_->AddChild(signIn_);
+    card->AddChild(signIn_);
 
-    signInStatus_ = MakeLabel("cc-signin-status", "", kTextFont, kMutedText);
+    signInStatus_ = MakeLabel("cc-signin-status", "", kTextFont, L().inkMuted);
     signInStatus_->SetWrap(TextWrap::WrapWord);
     signInStatus_->SetAlignment(TextAlignment::Center);
-    signInStatus_->size.width = CSSLayout::Dimension::Px(460);
-    signInPage_->AddChild(signInStatus_);
+    signInStatus_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    card->AddChild(signInStatus_);
+    signInPage_->AddChild(card);
 
     auto note = MakeLabel(
         "cc-signin-note",
         "Your ChatCube ID is a key made on this computer. Messages are end-to-end encrypted; "
         "the relay only connects you and keeps messages for people who are offline. "
         "Without one, ChatCube finds the people on your network itself.",
-        9.0f, kMutedText);
+        9.0f, L().inkFaint);
     note->SetWrap(TextWrap::WrapWord);
     note->SetAlignment(TextAlignment::Center);
-    note->size.width = CSSLayout::Dimension::Px(460);
+    note->size.width = CSSLayout::Dimension::Px(kFormWidth + 48);
     signInPage_->AddChild(note);
     return signInPage_;
 }
@@ -231,37 +318,61 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     sidebar->layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     sidebar->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
-    sidebar->SetPadding(8, 8, 8, 8);
-    sidebar->SetBorderRight(1, kRuleColor);
-    sidebar->SetBackgroundColor(kSidebarBackground);
+    sidebar->SetPadding(10, 8, 8, 8);
+    sidebar->SetBorderRight(1, L().line);
+    sidebar->SetBackgroundColor(L().sidebar);
 
-    auto idRow = MakeRow("cc-myid-row");
-    myId_ = MakeLabel("cc-myid", "", 9.0f, kMutedText);
-    myId_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    idRow->AddChild(myId_);
-    auto copy = MakeButton("cc-myid-copy", "Copy", 56);
+    // Who I am: the logo, my ID in groups of four, and a copy button.
+    auto idRow = MakeRow("cc-myid-row", 8);
+    idRow->AddChild(MakeLogo("cc-myid-logo", 30));
+    auto idColumn = std::make_shared<UltraCanvasContainer>("cc-myid-column");
+    idColumn->layout.SetFlexColumn().SetFlexGap(1).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    idColumn->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    idColumn->AddChild(MakeLabel("cc-myid-caption", "My ChatCube ID", 8.5f, L().inkFaint));
+    myId_ = MakeLabel("cc-myid", "", 9.5f, L().ink);
+    myId_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    idColumn->AddChild(myId_);
+    idRow->AddChild(idColumn);
+    auto copy = MakeIconButton("cc-myid-copy", "copy");
+    copy->SetTooltip("Copy my ChatCube ID");
     copy->SetOnClick([this]() { CopyMyId(); });
     idRow->AddChild(copy);
     sidebar->AddChild(idRow);
 
-    auto addRow = MakeRow("cc-add-row");
-    contactId_ = MakeInput("cc-add-id", "ChatCube ID, a Matrix or Telegram contact", kSidebarWidth - 16 - 60);
+    // Adding someone: a pill, and a round plus.
+    auto addRow = MakeRow("cc-add-row", 6);
+    contactId_ = MakeInput("cc-add-id", "Add: a ChatCube ID, @name:server or @telegram",
+                           kSidebarWidth - 16 - kIconButton - 6, true);
     contactId_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     contactId_->onEnterPressed = [this](const std::string&) { AddContact(); return true; };
     addRow->AddChild(contactId_);
-    auto add = MakeButton("cc-add", "Add", 52, true);
+    auto add = MakeIconButton("cc-add", "plus", "", kIconButton, true);
+    add->SetTooltip("Add the contact");
     add->SetOnClick([this]() { AddContact(); });
     addRow->AddChild(add);
     sidebar->AddChild(addRow);
 
-    auto newGroup = MakeButton("cc-new-group", "New group", kSidebarWidth - 16);
+    // The three doors: a new group, a Matrix account, a Telegram account.
+    auto doors = MakeRow("cc-doors", 6);
+    const int doorWidth = (kSidebarWidth - 16 - 12) / 3;
+    auto newGroup = MakeIconButton("cc-new-group", "group", "Group", doorWidth, false, false);
+    newGroup->SetTooltip("New group");
     newGroup->SetOnClick([this]() { ToggleGroupForm(); });
-    sidebar->AddChild(newGroup);
+    newGroup->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    doors->AddChild(newGroup);
+    matrixToggle_ = MakeIconButton("cc-matrix", "matrix", "Matrix", doorWidth, false, false);
+    matrixToggle_->SetTooltip("Matrix account");
+    matrixToggle_->SetOnClick([this]() { ToggleMatrixForm(); });
+    matrixToggle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    doors->AddChild(matrixToggle_);
+    telegramToggle_ = MakeIconButton("cc-telegram", "telegram", "Telegram", doorWidth, false, false);
+    telegramToggle_->SetTooltip("Telegram account");
+    telegramToggle_->SetOnClick([this]() { ToggleTelegramForm(); });
+    telegramToggle_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    doors->AddChild(telegramToggle_);
+    sidebar->AddChild(doors);
 
     // A Matrix account next to ChatCube Direct.
-    matrixToggle_ = MakeButton("cc-matrix", "Matrix account", kSidebarWidth - 16);
-    matrixToggle_->SetOnClick([this]() { ToggleMatrixForm(); });
-    sidebar->AddChild(matrixToggle_);
     matrixForm_ = std::make_shared<UltraCanvasContainer>("cc-matrix-form");
     matrixForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     matrixForm_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -290,10 +401,8 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     sidebar->AddChild(matrixKeysForm_);
 
     // A Telegram account: the phone number, then the code, then the
-    // two-step password if there is one - one field at a time.
-    telegramToggle_ = MakeButton("cc-telegram", "Telegram account", kSidebarWidth - 16);
-    telegramToggle_->SetOnClick([this]() { ToggleTelegramForm(); });
-    sidebar->AddChild(telegramToggle_);
+    // two-step password if there is one - one field at a time; or a QR code
+    // the phone's Telegram app scans, in place of the number and the code.
     telegramForm_ = std::make_shared<UltraCanvasContainer>("cc-telegram-form");
     telegramForm_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     telegramForm_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -305,9 +414,39 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     telegramForm_->AddChild(telegramApiId_);
     telegramApiHash_ = MakeInput("cc-telegram-api-hash", "API hash", kSidebarWidth - 16);
     telegramForm_->AddChild(telegramApiHash_);
+    // Where the code went, in the form itself: the status line moves on,
+    // and a code that went to another Telegram app is easy to miss.
+    telegramHint_ = MakeLabel("cc-telegram-hint", "", 9.0f, L().inkMuted);
+    telegramHint_->SetWrap(TextWrap::WrapWord);
+    telegramHint_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    telegramForm_->AddChild(telegramHint_);
+    // The link Telegram gives, as a QR code for the phone's Telegram app to
+    // scan - black on white whatever the theme, which every scanner reads.
+    const int qrSide = kSidebarWidth - 16;
+    telegramQr_ = std::make_shared<UltraCanvasQRCode>("cc-telegram-qr", 0, 0, qrSide, qrSide);
+    telegramQr_->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
+    telegramQr_->size.width = CSSLayout::Dimension::Px(static_cast<float>(qrSide));
+    telegramQr_->size.height = CSSLayout::Dimension::Px(static_cast<float>(qrSide));
+    telegramQr_->SetForegroundColor(Colors::Black);
+    telegramQr_->SetBackgroundColor(Colors::White);
+    telegramQr_->SetQuietZoneModules(2);
+    telegramQr_->SetVisible(false);
+    telegramForm_->AddChild(telegramQr_);
     telegramCode_ = MakeInput("cc-telegram-code", "The code Telegram sent", kSidebarWidth - 16);
     telegramCode_->onEnterPressed = next;
     telegramForm_->AddChild(telegramCode_);
+    // Telegram's other way of sending the code (SMS, a call), when it offers one.
+    telegramResend_ = MakeButton("cc-telegram-resend", "Send it another way", kSidebarWidth - 16);
+    telegramResend_->SetOnClick([this]() {
+        telegramResend_->SetDisabled(true);
+        SetProviderStatus(telegramProviderId_, "asking Telegram for the code another way\xE2\x80\xA6");
+        UltraIM_ResendAuthCode(telegramProviderId_, [this](const UltraIMResult& r) {
+            telegramResend_->SetDisabled(false);
+            if (!r) SetProviderStatus(telegramProviderId_, r.message);
+            UpdateTelegramForm();
+        });
+    });
+    telegramForm_->AddChild(telegramResend_);
     telegramPassword_ = MakeInput("cc-telegram-password", "Two-step verification password", kSidebarWidth - 16);
     telegramPassword_->SetInputType(TextInputType::Password);
     telegramPassword_->onEnterPressed = next;
@@ -318,6 +457,10 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     telegramNext_ = MakeButton("cc-telegram-go", "Send me the code", kSidebarWidth - 16, true);
     telegramNext_->SetOnClick([this]() { SignInToTelegram(false); });
     telegramForm_->AddChild(telegramNext_);
+    // The QR code instead - of the number, or of a code that never came.
+    telegramQrButton_ = MakeButton("cc-telegram-qr-go", "Sign in with a QR code instead", kSidebarWidth - 16);
+    telegramQrButton_->SetOnClick([this]() { SignInToTelegramByQrCode(); });
+    telegramForm_->AddChild(telegramQrButton_);
     telegramForm_->SetVisible(false);
     sidebar->AddChild(telegramForm_);
 
@@ -346,11 +489,15 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     conversationList_ = std::make_shared<UltraCanvasListView>("cc-conversations", 0, 0, kSidebarWidth - 16, 300);
     conversationList_->SetModel(conversations_);
     conversationList_->SetDelegate(std::make_shared<ConversationDelegate>());
-    conversationList_->SetRowHeight(56);
+    conversationList_->SetRowHeight(64);
     ListViewStyle listStyle = conversationList_->GetStyle();
-    listStyle.backgroundColor = kSidebarBackground;
-    listStyle.selectionBackgroundColor = kSelection;
+    listStyle.backgroundColor = L().sidebar;
+    // The rows paint their own rounded selection and hover.
+    listStyle.selectionBackgroundColor = Colors::Transparent;
+    listStyle.hoverBackgroundColor = Colors::Transparent;
     conversationList_->SetStyle(listStyle);
+    conversationList_->SetBackgroundColor(L().sidebar);
+    conversationList_->SetBorders(0, Colors::Transparent);
     conversationList_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     conversationList_->onSelectionChanged = [this](const std::vector<int>& rows) {
         if (fillingList_ || rows.empty()) return;
@@ -366,36 +513,61 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     auto pane = std::make_shared<UltraCanvasContainer>("cc-pane");
     pane->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     pane->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    pane->SetBackgroundColor(L().ground);
 
-    // ----- header -----
-    auto header = MakeRow("cc-header");
-    header->SetPadding(8, 12, 8, 12);
-    header->SetBorderBottom(1, kRuleColor);
+    // ----- header: the avatar, the name and its state, the call buttons -----
+    auto header = MakeRow("cc-header", 10);
+    header->SetPadding(9, 14, 9, 14);
+    header->SetBackgroundColor(L().panel);
+    header->SetBorderBottom(1, L().line);
+    headerAvatar_ = MakeLabel("cc-header-avatar", "", 12.0f, Color(255, 255, 255, 255));
+    headerAvatar_->SetFontWeight(FontWeight::Bold);
+    headerAvatar_->SetAlignment(TextAlignment::Center);
+    headerAvatar_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    headerAvatar_->size.width = CSSLayout::Dimension::Px(36);
+    headerAvatar_->size.height = CSSLayout::Dimension::Px(36);
+    headerAvatar_->SetBorderRadius(18.0f);
+    headerAvatar_->SetVisible(false);
+    header->AddChild(headerAvatar_);
     auto titles = std::make_shared<UltraCanvasContainer>("cc-header-titles");
-    titles->layout.SetFlexColumn().SetFlexGap(2);
+    titles->layout.SetFlexColumn().SetFlexGap(1);
     titles->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    title_ = MakeLabel("cc-title", "", 12.0f);
+    title_ = MakeLabel("cc-title", "", 12.5f);
     title_->SetFontWeight(FontWeight::Bold);
     titles->AddChild(title_);
-    subtitle_ = MakeLabel("cc-subtitle", "", 9.0f, kMutedText);
+    subtitle_ = MakeLabel("cc-subtitle", "", 9.0f, L().inkMuted);
     titles->AddChild(subtitle_);
     header->AddChild(titles);
-    voiceCall_ = MakeButton("cc-call", "Call", 60);
+    voiceCall_ = MakeIconButton("cc-call", "call", "", kIconButton + 2);
+    voiceCall_->SetTooltip("Call");
     voiceCall_->SetDisabled(true);
     voiceCall_->SetOnClick([this]() { StartCall(false); });
     header->AddChild(voiceCall_);
-    videoCall_ = MakeButton("cc-video", "Video", 60);
+    videoCall_ = MakeIconButton("cc-video", "video", "", kIconButton + 2);
+    videoCall_->SetTooltip("Video call");
     videoCall_->SetDisabled(true);
     videoCall_->SetOnClick([this]() { StartCall(true); });
     header->AddChild(videoCall_);
     pane->AddChild(header);
 
     // ----- messages -----
-    emptyHint_ = MakeLabel("cc-empty",
-                           "Pick a conversation, or add a contact by the ChatCube ID they give you.",
-                           11.0f, kMutedText);
-    emptyHint_->SetAlignment(TextAlignment::Center);
-    emptyHint_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto empty = std::make_shared<UltraCanvasContainer>("cc-empty-box");
+    empty->layout.SetFlexColumn().SetFlexGap(10)
+        .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+        .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    empty->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto emptyLogo = MakeLogo("cc-empty-logo", 64);
+    emptyLogo->SetOpacity(0.35f);
+    empty->AddChild(emptyLogo);
+    empty->AddChild(MakeLabel("cc-empty-title", "Your conversations", 13.0f, L().inkMuted));
+    auto hint = MakeLabel("cc-empty",
+                          "Pick a conversation on the left, or add a contact by the ChatCube ID they give you.",
+                          10.0f, L().inkFaint);
+    hint->SetAlignment(TextAlignment::Center);
+    hint->SetWrap(TextWrap::WrapWord);
+    hint->size.width = CSSLayout::Dimension::Px(380);
+    empty->AddChild(hint);
+    emptyHint_ = empty;
     pane->AddChild(emptyHint_);
 
     messages_ = std::make_shared<MessageListModel>();
@@ -420,20 +592,29 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     messageList_->SetDelegate(bubbles_);
     messageList_->SetVariableRowHeights(true);
     ListViewStyle messageStyle = messageList_->GetStyle();
-    messageStyle.backgroundColor = kPageBackground;
+    messageStyle.backgroundColor = L().ground;
     messageStyle.selectionBackgroundColor = Colors::Transparent;   // bubbles show their own state
     messageStyle.hoverBackgroundColor = Colors::Transparent;
     messageList_->SetStyle(messageStyle);
+    messageList_->SetBackgroundColor(L().ground);
+    messageList_->SetBorders(0, Colors::Transparent);
     messageList_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     messageList_->SetVisible(false);
     pane->AddChild(messageList_);
 
-    // ----- input -----
+    // ----- the composer: a rounded field with the send button inside -----
     auto inputRow = std::make_shared<UltraCanvasContainer>("cc-input-row");
     inputRow->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::End);
     inputRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    inputRow->SetPadding(8, 12, 4, 12);
-    inputRow->SetBorderTop(1, kRuleColor);
+    inputRow->SetPadding(10, 14, 10, 14);
+    inputRow->SetBackgroundColor(L().panel);
+    inputRow->SetBorderTop(1, L().line);
+    auto composer = std::make_shared<UltraCanvasContainer>("cc-composer");
+    composer->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::End);
+    composer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    composer->SetBackgroundColor(L().well);
+    composer->SetBorders(1.0f, L().line, 22.0f);
+    composer->SetPadding(5, 6, 5, 14);
     input_ = std::make_shared<UltraCanvasTextArea>("cc-input", 0, 0, 300, kInputHeight);
     input_->SetEditingMode(TextAreaEditingMode::PlainText);
     input_->SetWordWrap(true);
@@ -441,6 +622,20 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     input_->SetFontSize(11.0f);
     input_->SetPlaceholder("Message\xE2\x80\xA6  (Enter sends, Shift+Enter for a new line)");
     input_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    {
+        TextAreaStyle st = input_->GetStyle();
+        st.backgroundColor = L().well;
+        st.borderColor = Colors::Transparent;
+        st.fontColor = L().ink;
+        st.placeholderColor = L().inkFaint;
+        st.cursorColor = L().ink;
+        st.selectionColor = Color(L().accent.r, L().accent.g, L().accent.b, 90);
+        st.currentLineHighlightColor = Colors::Transparent;
+        st.scrollbarCornerRadius = 4.0f;
+        input_->SetStyle(st);
+    }
+    input_->SetBackgroundColor(L().well);
+    input_->SetBorders(0, Colors::Transparent);
     // Enter sends; Shift+Enter is left to the text area, which breaks the line.
     input_->onBeforeKeyDown = [this](const UCEvent& e) {
         const bool enter = e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter;
@@ -455,10 +650,12 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         lastTypingSentMs_ = now;
         UltraIM_SetTyping(activeProvider_, activeConversation_, true);
     });
-    inputRow->AddChild(input_);
-    send_ = MakeButton("cc-send", "Send", 72, true);
+    composer->AddChild(input_);
+    send_ = MakeIconButton("cc-send", "send", "", kIconButton, true);
+    send_->SetTooltip("Send (Enter)");
     send_->SetOnClick([this]() { SendCurrentMessage(); });
-    inputRow->AddChild(send_);
+    composer->AddChild(send_);
+    inputRow->AddChild(composer);
     pane->AddChild(inputRow);
     return pane;
 }
@@ -470,25 +667,31 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
 
     // ----- the call bar (hidden without a call) -----
     callBar_ = MakeRow("cc-call-bar");
-    callBar_->SetPadding(6, 12, 6, 12);
-    callBar_->SetBackgroundColor(kCallBackground);
-    callBar_->SetBorderBottom(1, kRuleColor);
+    callBar_->SetPadding(8, 14, 8, 14);
+    callBar_->SetBackgroundColor(L().callBar);
+    callBar_->SetBorderBottom(1, L().line);
     callText_ = MakeLabel("cc-call-text", "", 11.0f);
     callText_->SetFontWeight(FontWeight::Bold);
     callText_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     callBar_->AddChild(callText_);
-    callAccept_ = MakeButton("cc-call-accept", "Accept", 80, true);
+    callAccept_ = MakeIconButton("cc-call-accept", "accept", "Accept", 96, true);
     callAccept_->SetOnClick([this]() { AcceptCall(); });
     callBar_->AddChild(callAccept_);
-    callCamera_ = MakeButton("cc-call-camera", "Camera off", 96);
+    callCamera_ = MakeIconButton("cc-call-camera", "camera-off", "Camera off", 116, false, false);
     callCamera_->SetOnClick([this]() { ToggleCamera(); });
     callBar_->AddChild(callCamera_);
-    callMute_ = MakeButton("cc-call-mute", "Mute", 80);
+    callMute_ = MakeIconButton("cc-call-mute", "mic-off", "Mute", 86, false, false);
     callMute_->SetOnClick([this]() { ToggleMute(); });
     callBar_->AddChild(callMute_);
-    callEnd_ = MakeButton("cc-call-end", "Hang up", 80);
-    callEnd_->SetColors(kHangUp, kHangUpHover);
-    callEnd_->SetTextColors(Color(255, 255, 255, 255));
+    callEnd_ = MakeIconButton("cc-call-end", "hangup", "Hang up", 104, true);
+    {
+        ButtonStyle st = callEnd_->GetStyle();
+        st.normalColor = L().danger;
+        st.hoverColor = Darker(L().danger, 24);
+        st.pressedColor = Darker(L().danger, 40);
+        st.normalTextColor = st.hoverTextColor = st.pressedTextColor = Color(255, 255, 255, 255);
+        callEnd_->SetStyle(st);
+    }
     callEnd_->SetOnClick([this]() { EndCall(); });
     callBar_->AddChild(callEnd_);
     callBar_->SetVisible(false);
@@ -529,8 +732,8 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildChatView() {
     body->AddChild(BuildConversationPane());
     chatView_->AddChild(body);
 
-    status_ = MakeLabel("cc-status", "", 9.0f, kMutedText);
-    status_->SetMargin(2, 12, 6, 12);
+    status_ = MakeLabel("cc-status", "", 9.0f, L().inkMuted);
+    status_->SetMargin(3, 14, 5, 14);
     chatView_->AddChild(status_);
     return chatView_;
 }
@@ -604,7 +807,7 @@ void ChatCubeWindow::SignIn() {
         hasIdentity_ = true;
         UltraIMProviderInfo info;
         if (UltraIM_GetProviderInfo(providerId_, info))
-            myId_->SetText("My ID  " + GroupUserId(info.localUserId));
+            myId_->SetText(GroupUserId(info.localUserId));
         ShowChatView();
         SetProviderStatus(providerId_, "connected");
         RefreshConversations();
@@ -722,15 +925,30 @@ void ChatCubeWindow::UpdateTelegramForm() {
     // The application's keys come from the relay when it has them; the
     // fields are for a relay without, or a ChatCube with no relay.
     const bool keysFromRelay = !telegramRelayApiId_.empty() && !telegramRelayApiHash_.empty();
+    // Waiting for the phone to scan: the hint is the link, shown as the QR
+    // code, and the words say what to do with it.
+    const bool scan = step == UltraIMAuthStep::OtherDevice;
     telegramPhone_->SetVisible(start);
     telegramApiId_->SetVisible(start && !keysFromRelay);
     telegramApiHash_->SetVisible(start && !keysFromRelay);
     telegramCode_->SetVisible(step == UltraIMAuthStep::Code);
+    telegramHint_->SetVisible((step == UltraIMAuthStep::Code && !info.authHint.empty()) || scan);
+    telegramHint_->SetText(step == UltraIMAuthStep::Code ? info.authHint
+                           : scan ? "Scan this with the Telegram app on your phone: Settings, Devices, "
+                                    "Link Desktop Device. No code is needed; the two-step password "
+                                    "is asked for here afterwards, if your account has one."
+                                  : std::string());
+    telegramQr_->SetVisible(scan);
+    if (scan) telegramQr_->SetContent(info.authHint);
+    telegramResend_->SetVisible(step == UltraIMAuthStep::Code && !info.authResendHint.empty());
+    if (!info.authResendHint.empty()) telegramResend_->SetText(info.authResendHint);
     telegramPassword_->SetVisible(step == UltraIMAuthStep::Password);
     telegramName_->SetVisible(step == UltraIMAuthStep::Registration);
-    if (step == UltraIMAuthStep::Code && !info.authHint.empty()) telegramCode_->SetPlaceholder(info.authHint);
+    if (step == UltraIMAuthStep::Code) telegramCode_->SetPlaceholder("The code");
     if (step == UltraIMAuthStep::Password && !info.authHint.empty()) telegramPassword_->SetPlaceholder(info.authHint);
-    telegramNext_->SetText(start ? "Send me the code" : "Sign in to Telegram");
+    telegramNext_->SetText(start ? "Send me the code" : scan ? "Use my phone number instead" : "Sign in to Telegram");
+    telegramQrButton_->SetVisible(start || step == UltraIMAuthStep::Code);
+    telegramQrButton_->SetText(start ? "Sign in with a QR code instead" : "Scan a QR code instead");
     if (window_) window_->RequestRedraw();
 }
 
@@ -744,31 +962,61 @@ void ChatCubeWindow::SignInToTelegram(bool stored) {
             case UltraIMAuthStep::Code:         credentials.otpCode = Trim(telegramCode_->GetText()); break;
             case UltraIMAuthStep::Password:     credentials.password = telegramPassword_->GetText(); break;
             case UltraIMAuthStep::Registration: credentials.displayName = Trim(telegramName_->GetText()); break;
+            case UltraIMAuthStep::OtherDevice:
+                // Back from the QR code to the number: Telegram takes none
+                // while the code waits, so the sign-in starts over, with the
+                // form back at the number.
+                UltraIM_SignOut(telegramProviderId_);
+                UpdateTelegramForm();
+                return;
             default:
                 credentials.phoneNumber = Trim(telegramPhone_->GetText());
                 credentials.apiId = Trim(telegramApiId_->GetText());
                 credentials.apiHash = Trim(telegramApiHash_->GetText());
                 if (credentials.phoneNumber.empty()) {
-                    SetStatus("Telegram: enter your phone number with its country code.");
+                    SetStatus("Telegram: enter your phone number with its country code, or sign in with a QR code.");
                     return;
                 }
                 break;
         }
         telegramNext_->SetDisabled(true);
     }
+    SendTelegramSignIn(std::move(credentials), stored);
+}
+
+void ChatCubeWindow::SignInToTelegramByQrCode() {
+    UltraIMCredentials credentials;
+    credentials.loginType = UltraIMLoginType::QRCode;
+    credentials.apiId = Trim(telegramApiId_->GetText());
+    credentials.apiHash = Trim(telegramApiHash_->GetText());
+    telegramNext_->SetDisabled(true);
+    telegramQrButton_->SetDisabled(true);
+    SendTelegramSignIn(std::move(credentials), false);
+}
+
+void ChatCubeWindow::SendTelegramSignIn(UltraIMCredentials credentials, bool stored) {
     // The relay's keys, unless the user typed a pair (a relay without them,
     // or their own application).
     if (credentials.apiId.empty() || credentials.apiHash.empty()) {
         credentials.apiId = telegramRelayApiId_;
         credentials.apiHash = telegramRelayApiHash_;
     }
-    SetProviderStatus(telegramProviderId_, "signing in\xE2\x80\xA6");
+    SetProviderStatus(telegramProviderId_,
+                      credentials.loginType == UltraIMLoginType::QRCode ? "asking Telegram for a QR code\xE2\x80\xA6"
+                                                                         : "signing in\xE2\x80\xA6");
     UltraIM_SignIn(telegramProviderId_, credentials, [this, stored](const UltraIMResult& r) {
         telegramNext_->SetDisabled(false);
+        telegramQrButton_->SetDisabled(false);
         if (r.code == UltraIMResultCode::NeedsInput) {
             telegramForm_->SetVisible(true);
             UpdateTelegramForm();
-            SetProviderStatus(telegramProviderId_, r.message);
+            // The hint, except the QR code's: that is the link, with the
+            // sign-in token in it, and the form shows it as the code.
+            UltraIMProviderInfo info;
+            UltraIM_GetProviderInfo(telegramProviderId_, info);
+            SetProviderStatus(telegramProviderId_, info.authStep == UltraIMAuthStep::OtherDevice
+                                                       ? "scan the QR code with your phone's Telegram app"
+                                                       : r.message);
             return;
         }
         if (!r) {
@@ -867,7 +1115,7 @@ void ChatCubeWindow::SignInToMatrix(bool stored) {
 void ChatCubeWindow::RefreshNearby() {
     UltraIM_FetchNearbyContacts(providerId_, [this](const UltraIMResult&, const std::vector<UltraIMContact>& list) {
         nearbyBox_->ClearChildren();
-        if (!list.empty()) nearbyBox_->AddChild(MakeLabel("cc-nearby-title", "On this network", 9.0f, kMutedText));
+        if (!list.empty()) nearbyBox_->AddChild(MakeLabel("cc-nearby-title", "On this network", 9.0f, L().inkMuted));
         for (const UltraIMContact& person : list) {
             auto row = MakeRow("cc-nearby-row", 6);
             auto name = MakeLabel("cc-nearby-name", person.displayName, kTextFont);
@@ -967,9 +1215,14 @@ void ChatCubeWindow::UpdateHeader() {
     if (!c) {
         title_->SetText("");
         subtitle_->SetText("");
+        headerAvatar_->SetVisible(false);
         return;
     }
     title_->SetText(c->title);
+    headerAvatar_->SetText(c->isGroup ? "#" : Initials(c->title));
+    headerAvatar_->SetBackgroundColor(c->isGroup ? L().well : AvatarColor(c->conversationId, L()));
+    headerAvatar_->SetTextColor(c->isGroup ? L().inkMuted : Color(255, 255, 255, 255));
+    headerAvatar_->SetVisible(true);
     if (!typingContact_.empty() && NowMs() < typingUntilMs_) {
         subtitle_->SetText("typing\xE2\x80\xA6");
     } else if (c->isGroup) {
@@ -1285,6 +1538,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetProviderStatus(telegramProviderId_, e.errorText);
                     telegramNext_->SetDisabled(false);
+                    telegramQrButton_->SetDisabled(false);
                 } else if (e.connectionState == UltraIMConnectionState::Reconnecting) {
                     SetProviderStatus(telegramProviderId_, e.errorText.empty() ? std::string("reconnecting\xE2\x80\xA6") : e.errorText);
                 } else if (e.connectionState == UltraIMConnectionState::Connecting) {

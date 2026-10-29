@@ -1,14 +1,17 @@
 // Tests/UltraIM/TelegramProviderTests.cpp
 // Telegram provider against FakeTdJson, a libtdjson stand-in holding a small
 // Telegram in memory: sign-in in steps (phone, a wrong and the right code, the
-// two-step password, registering a new number), finding people by username
+// two-step password, registering a new number; by a QR code, scanned from a
+// signed-in app, asked for at the start or in place of a code), finding people by username
 // and phone number, a private chat (delivery, the echo, read receipts,
 // typing, edit, deletion, a reply), a group, history paged back, presence,
 // the stored session resumed with nothing asked, and a step Telegram never
 // answers failing with Timeout instead of hanging.
+// Version: 0.1.3 - sign-in by a QR code
+// Version: 0.1.2 - the code asked for another way
 // Version: 0.1.1 - the step timeout
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
@@ -143,6 +146,23 @@ UltraIMCredentials Code(const std::string& code) {
     return c;
 }
 
+// A QR code instead of the number: the application's keys, nothing else.
+UltraIMCredentials QrCode() {
+    UltraIMCredentials c = Phone(std::string());
+    c.loginType = UltraIMLoginType::QRCode;
+    return c;
+}
+
+// The other device: the app signed in as `phone` scans the link, or Telegram
+// replaces the link with a fresh one.
+TdObject OtherDevice(const char* what, const std::string& link, const std::string& phone = std::string()) {
+    TdObject r = TdObject::MakeObject();
+    r.Set("@type", TdObject(what));
+    r.Set("link", TdObject(link));
+    if (!phone.empty()) r.Set("phone", TdObject(phone));
+    return TdJsonLibrary::Instance().Execute(r);
+}
+
 std::unique_ptr<TelegramProvider> Device(const fs::path& dir, Events& events) {
     auto p = std::make_unique<TelegramProvider>("telegram");
     p->SetLibraryPath(ULTRAIM_TEST_FAKE_TDJSON);
@@ -169,14 +189,16 @@ void TestTelegram() {
     CHECK(TdJsonLibrary::Instance().GetVersion() == "fake");
     const int64_t aliceId = AddAccount("15550001", "Alice", "alice", "");
     const int64_t bobId = AddAccount("15550002", "Bob", "bob", "hunter2");
+    const int64_t erinId = AddAccount("15550004", "Erin", "erin", "hunter4");
 
     const fs::path base = fs::temp_directory_path() / ("ultraim-telegram-" + std::to_string(::rand()));
     std::error_code ec;
     fs::remove_all(base, ec);
-    Events aliceEvents, bobEvents, carolEvents;
+    Events aliceEvents, bobEvents, carolEvents, erinEvents;
     auto alice = Device(base / "alice", aliceEvents);
     auto bob = Device(base / "bob", bobEvents);
     auto carol = Device(base / "carol", carolEvents);
+    auto erin = Device(base / "erin", erinEvents);
     CHECK(!alice->HasStoredSession());
     CHECK(alice->GetLoginType() == UltraIMLoginType::PhoneOTP);
 
@@ -188,10 +210,36 @@ void TestTelegram() {
     r = SignIn(*alice, Phone("+1 555 0001"));
     CHECK(!r && r.code == UltraIMResultCode::NeedsInput);
     CHECK(alice->GetAuthStep() == UltraIMAuthStep::Code);
-    CHECK(alice->GetAuthHint().find("SMS") != std::string::npos);
+    // To the app the number is signed in on first, said so; SMS offered next.
+    CHECK(alice->GetAuthHint().find("Telegram apps") != std::string::npos);
+    CHECK(alice->GetAuthResendHint() == "Send it by SMS instead");
     CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
         return e.type == UltraIMEventType::AuthStepChange && e.authStep == UltraIMAuthStep::Code;
     }));
+    {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        UltraIMResult resent;
+        alice->ResendAuthCode([&](const UltraIMResult& rr) {
+            std::lock_guard<std::mutex> lock(mutex);
+            resent = rr;
+            done = true;
+            cv.notify_all();
+        });
+        std::unique_lock<std::mutex> lock(mutex);
+        CHECK(cv.wait_for(lock, std::chrono::seconds(10), [&]() { return done; }) && resent);
+    }
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::AuthStepChange && e.errorText.find("SMS") != std::string::npos;
+    }));
+    CHECK(alice->GetAuthHint().find("SMS") != std::string::npos);
+    CHECK(alice->GetAuthResendHint().empty());        // no way after SMS
+    {
+        UltraIMResult again;
+        alice->ResendAuthCode([&](const UltraIMResult& rr) { again = rr; });
+        CHECK(!again && again.code == UltraIMResultCode::CapabilityMissing);
+    }
     r = SignIn(*alice, Code("00000"));
     CHECK(!r && r.code == UltraIMResultCode::AuthFailed && r.message == "PHONE_CODE_INVALID");
     CHECK(alice->GetAuthStep() == UltraIMAuthStep::Code);            // still asking
@@ -224,6 +272,55 @@ void TestTelegram() {
     CHECK(SignIn(*carol, name));
     const std::string carolId = carol->GetLocalUserId();
     CHECK(!carolId.empty());
+
+    // A QR code instead of the number: the step OtherDevice, its hint the
+    // link to show. No number and no QR code asked for is refused at once.
+    UltraIMCredentials nothing = Phone(std::string());
+    r = SignIn(*erin, nothing);
+    CHECK(!r && r.code == UltraIMResultCode::NotAuthenticated);
+    r = SignIn(*erin, QrCode());
+    CHECK(!r && r.code == UltraIMResultCode::NeedsInput);
+    CHECK(erin->GetAuthStep() == UltraIMAuthStep::OtherDevice);
+    std::string link = erin->GetAuthHint();
+    CHECK(link.rfind("tg://login?token=", 0) == 0);
+    CHECK(r.message == link);
+    CHECK(erin->GetAuthResendHint().empty());
+    CHECK(erinEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::AuthStepChange && e.authStep == UltraIMAuthStep::OtherDevice &&
+               e.errorText == link;
+    }));
+    // A number while the QR code waits starts over with it (TDLib takes
+    // none in that state) - and the QR code can be asked for in its turn in
+    // place of the code that never comes.
+    r = SignIn(*erin, Phone("+15550004"));
+    CHECK(!r && r.code == UltraIMResultCode::NeedsInput && erin->GetAuthStep() == UltraIMAuthStep::Code);
+    r = SignIn(*erin, QrCode());
+    CHECK(!r && r.code == UltraIMResultCode::NeedsInput && erin->GetAuthStep() == UltraIMAuthStep::OtherDevice);
+    CHECK(erin->GetAuthHint() != link);           // a fresh one
+    const std::string earlier = link;
+    link = erin->GetAuthHint();
+    // Telegram replaces the link before it expires: the new one as AuthStepChange.
+    CHECK(TdType(OtherDevice("fakeRefreshLoginToken", "tg://login?token=nobody")) == "error");
+    CHECK(TdType(OtherDevice("fakeRefreshLoginToken", link)) == "ok");
+    UltraIMEvent refreshed;
+    CHECK(erinEvents.WaitFor([&](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::AuthStepChange && e.authStep == UltraIMAuthStep::OtherDevice &&
+               e.errorText != link && e.errorText != earlier && e.errorText.rfind("tg://login?token=", 0) == 0;
+    }, &refreshed));
+    link = refreshed.errorText;
+    CHECK(erin->GetAuthHint() == link);
+    // Scanned by the app signed in as Dave: on to the two-step password, with
+    // no SignIn pending - the step arrives as the event alone.
+    CHECK(TdType(OtherDevice("fakeScanLoginToken", link, "+1 555 0004")) == "ok");
+    CHECK(erinEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::AuthStepChange && e.authStep == UltraIMAuthStep::Password;
+    }));
+    CHECK(erin->GetAuthStep() == UltraIMAuthStep::Password);
+    pass.password = "hunter4";
+    CHECK(SignIn(*erin, pass));
+    CHECK(erin->GetConnectionState() == UltraIMConnectionState::Connected);
+    CHECK(erin->GetLocalUserId() == std::to_string(erinId));
+    CHECK(erin->HasStoredSession());
 
     // Finding people.
     UltraIMConversation dm, again, none;
@@ -371,6 +468,7 @@ void TestTelegram() {
     dave->Shutdown();
 
     carol->Shutdown();
+    erin->Shutdown();
     fs::remove_all(base, ec);
 }
 

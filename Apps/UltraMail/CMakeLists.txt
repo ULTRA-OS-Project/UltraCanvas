@@ -48,6 +48,11 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailTrace.cpp
     engine/UltraMailOneTimeCode.cpp
     engine/UltraMailPaths.cpp
+    engine/UltraMailStorage.cpp
+    engine/UltraMailSecureMime.cpp
+    engine/UltraMailSmime.cpp
+    engine/UltraMailOpenPgp.cpp
+    engine/UltraMailSecureKeys.cpp
     engine/UltraMailResultText.cpp
 )
 
@@ -63,6 +68,38 @@ target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
 # UltraCrypt), not in a format of UltraMail's own.
 if(TARGET UltraVault)
     target_link_libraries(UltraMailEngine PUBLIC UltraVault)
+endif()
+# Signed and encrypted mail (UltraMailSecureMime.h): S/MIME on UltraCrypt's
+# X.509 and CMS (UltraCryptX509.h, linked below; it has them where OpenSSL 3
+# was found), OpenPGP on GPGME (the user's GnuPG). Each is optional and
+# soft-failing: without its library a message in that form is shown as one
+# this build cannot check, and it is not offered for sending.
+# Not on Windows on Arm: there the first GPGME operation ended the process
+# (abort, no message) in CI's windows-11-arm leg (MSYS2 CLANGARM64), where
+# x64 Windows runs the same code - UltraMail would quit on opening an OpenPGP
+# message. OpenPGP mail is shown as one this build cannot check instead,
+# until GPGME on that platform is known to work.
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" _ultramail_cpu)
+if(WIN32 AND _ultramail_cpu MATCHES "^(arm64|aarch64)$")
+    set(_ultramail_gpgme_unsafe TRUE)
+endif()
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND AND NOT _ultramail_gpgme_unsafe)
+    pkg_check_modules(GPGME QUIET IMPORTED_TARGET gpgme)
+endif()
+if(GPGME_FOUND)
+    target_link_libraries(UltraMailEngine PUBLIC PkgConfig::GPGME)
+    target_compile_definitions(UltraMailEngine PUBLIC ULTRAMAIL_HAVE_OPENPGP=1)
+    message(STATUS "  [✓] UltraMail OpenPGP (GPGME ${GPGME_VERSION})")
+elseif(_ultramail_gpgme_unsafe)
+    message(STATUS "  [−] UltraMail OpenPGP - not on Windows on Arm (GPGME ends the process there)")
+else()
+    message(STATUS "  [−] UltraMail OpenPGP - no GPGME")
+endif()
+# The mail kept on the computer is encrypted at rest (UltraMailStorage.h):
+# the message files with UltraCrypt, the databases by UltraDatabase.
+if(TARGET UltraCrypt)
+    target_link_libraries(UltraMailEngine PUBLIC UltraCrypt)
 endif()
 # New mail goes to the desktop feed over UltraMessage (mail.message); the
 # publisher compiles to a no-op when the module is not in the build.
@@ -112,6 +149,7 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailServerSettingsDialog.cpp
     ui/UltraMailSettingsDialog.cpp
     ui/UltraMailSignatureDialog.cpp
+    ui/UltraMailSecurityDialog.cpp
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})

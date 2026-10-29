@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
+// Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
 // Version: 0.1.1 - FetchSharedCredentials: what a provider's service keeps for another provider
 // Version: 0.1.0
 // Last Modified: 2026-10-25
@@ -55,9 +57,18 @@ public:
     virtual bool HasStoredSession() const { return false; }
 
     // ---- Data ----------------------------------------------------------------
-    // A sign-in in steps (UltraIMResultCode::NeedsInput): which one is next.
+    // A sign-in in steps (UltraIMResultCode::NeedsInput): which one is next,
+    // and how to answer it (at OtherDevice: the link to show as a QR code).
     virtual UltraIMAuthStep GetAuthStep() const { return UltraIMAuthStep::Idle; }
     virtual std::string GetAuthHint() const { return std::string(); }
+    // While a code is awaited: the other way the service can send it, as a
+    // button's text ("Send it by SMS instead"), or "" when it offers none
+    // (Telegram: next_type of the code info). ResendAuthCode asks for it;
+    // the new hint arrives as AuthStepChange, the result through the callback.
+    virtual std::string GetAuthResendHint() const { return std::string(); }
+    virtual void ResendAuthCode(UltraIMResultCallback onResult) {
+        if (onResult) onResult(Unsupported("sending the code another way"));
+    }
 
     virtual void FetchConversations(UltraIMConversationsCallback onResult) = 0;
     // beforeMessageId "" = the most recent page. Messages come oldest first.

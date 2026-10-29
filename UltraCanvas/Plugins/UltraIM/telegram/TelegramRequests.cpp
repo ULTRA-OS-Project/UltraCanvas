@@ -1,7 +1,9 @@
 // Plugins/UltraIM/telegram/TelegramRequests.cpp
 // Telegram provider - the TDLib requests it sends
+// Version: 0.1.2 - RequestQrCode
+// Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "TelegramRequests.h"
@@ -68,10 +70,20 @@ TdObject SetPhoneNumber(const std::string& phone) {
     return o;
 }
 
+TdObject RequestQrCode() {
+    TdObject o = Make("requestQrCodeAuthentication");
+    o.Set("other_user_ids", TdObject::MakeArray());
+    return o;
+}
+
 TdObject CheckCode(const std::string& code) {
     TdObject o = Make("checkAuthenticationCode");
     o.Set("code", TdObject(code));
     return o;
+}
+
+TdObject ResendCode() {
+    return Make("resendAuthenticationCode");
 }
 
 TdObject CheckPassword(const std::string& password) {

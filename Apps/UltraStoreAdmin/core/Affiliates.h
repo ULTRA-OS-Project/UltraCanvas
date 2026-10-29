@@ -17,12 +17,14 @@
 // the payout - is the payment service's; the admin records sales by hand
 // until it exists (RecordSale), so the report and the payouts work from
 // day one.
+// Version: 0.2.0 - RecordSale with a reference; SyncSales from the payment service
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "AdminDatabase.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -38,7 +40,21 @@ Result<Credits> CreditsFor(const AdminDatabase& db, const std::string& code, con
 
 // A sale into the ledger with its credits worked out.
 Result<SaleRecord> RecordSale(AdminDatabase& db, const std::string& code, const std::string& app,
-                              const std::string& amount, const std::string& currency, const std::string& at = {});
+                              const std::string& amount, const std::string& currency, const std::string& at = {},
+                              const std::string& reference = {});
+
+// The sales the payment service reports (Server/UltraStorePay,
+// GET /v1/sales?since=), into the ledger with their credits, each once: the
+// sequence reached is kept in the setting payment.sales_seq, and a sale
+// whose order is already in the ledger is skipped. The fetch is a function
+// (the URL with the bearer token -> the body), UltraNet by default.
+using SalesFetcher = std::function<Result<std::string>(const std::string& url, const std::string& token)>;
+SalesFetcher UltraNetSalesFetcher();
+struct SyncReport {
+    size_t recorded = 0, skipped = 0;
+    uint64_t sequence = 0;        // the last sequence seen
+};
+Result<SyncReport> SyncSales(AdminDatabase& db, const std::string& paymentUrl, const std::string& token, const SalesFetcher& fetch = UltraNetSalesFetcher());
 
 // Per affiliate, what the ledger owes: the sales made with their codes and
 // their credit, the sales of their recruits and that credit, by currency.

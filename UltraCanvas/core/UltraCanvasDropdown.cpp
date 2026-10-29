@@ -2,6 +2,7 @@
 // Interactive dropdown/combobox component with icon support and multi-selection
 // Uses ListView popup for rendering dropdown items
 // The history is in the header (include/UltraCanvasDropdown.h).
+// Version: 1.2.0 - SetPlaceholderText
 // Version: 1.1.0 - the button's text and the rows' are shaped once and kept
 // Version: 1.0.4 - type-ahead, the keyboard focus, Return chooses, DropdownItem::tooltip,
 //                  DropdownStyle::buttonShowsText
@@ -681,8 +682,15 @@ namespace UltraCanvas {
             if (selectedIndex >= 0 && selectedIndex < (int)items.size()) {
                 return items[selectedIndex].text;
             }
+            return placeholderText;
         }
         return "";
+    }
+
+    void UltraCanvasDropdown::SetPlaceholderText(const std::string& text) {
+        if (placeholderText == text) return;
+        placeholderText = text;
+        RequestRedraw();
     }
 
     void UltraCanvasDropdown::RenderButton(IRenderContext *ctx) {

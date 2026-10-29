@@ -419,7 +419,11 @@ tests skip. A test that fails here but passes in CI because a library is
 missing is fixed by adding the package to that list, not by treating the
 failure as expected; re-run `cmake` on a build directory configured before
 the install. To build what CI builds, configure with the options of CI's
-*Configure CMake (macOS/Linux)* step.
+*Configure CMake (macOS/Linux)* step. The same hook widens the clone's fetch refspec to
+every branch and fetches the session branch's `origin/<branch>` copy: a cloud
+clone is shallow and single-branch, and without that copy both Stop hooks -
+the repository's and the image's own `~/.claude/stop-hook-git-check.sh`,
+which the image rewrites every turn - reported a pushed branch as unpushed.
 
 **Tests that need a display.** A few tests under `Tests/` open a real window
 and read the composited pixels back (`CaretStackingTest`,

@@ -18,6 +18,7 @@ add_executable(UltraStoreCoreTests
     test_query.cpp
     test_assets.cpp
     test_settings.cpp
+    test_purchase.cpp
 )
 target_compile_features(UltraStoreCoreTests PRIVATE cxx_std_20)
 target_include_directories(UltraStoreCoreTests PRIVATE

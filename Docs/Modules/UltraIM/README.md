@@ -95,7 +95,24 @@ says what comes next (`PhoneNumber`, `Code`, `Password`, `Registration`) and
 `authHint` how to say it (where the code went, the password's hint), and
 `AuthStepChange` reports each change. Call `UltraIM_SignIn` again with that
 one field set (`otpCode`, `password`, `displayName`); the rest of the
-credentials need not be repeated.
+credentials need not be repeated. While a code is awaited,
+`UltraIMProviderInfo::authResendHint` names the other way the service can
+send it, as a button's text ("Send it by SMS instead"; empty when it offers
+none), and `UltraIM_ResendAuthCode(provider, cb)` asks for it - the new hint
+arrives as `AuthStepChange`. A step's `NeedsInput` answer always precedes
+its `AuthStepChange`, so a `SignIn` made in answer to the event is never
+resolved by the step that raised it.
+
+A sign-in by a QR code (`credentials.loginType = UltraIMLoginType::QRCode`,
+no phone number; Telegram) has the step `OtherDevice`: nothing to type, the
+hint is a link (`tg://login?token=...`) to show as a QR code
+(`UltraCanvasQRCode`) that an app already signed in scans, the service
+replaces the link every half minute or so (`AuthStepChange`, the new link in
+its text) and, once one is scanned, goes on by itself - `Password` when the
+account has one, else signed in - so those steps arrive as events with no
+`SignIn` pending. It can be asked for in place of a code that never came
+(`SignIn` with `QRCode` while the step is `Code`); a phone number given
+while the QR code waits starts the sign-in over with the number.
 
 What one provider's service keeps for another provider's sign-in comes
 through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
@@ -286,9 +303,9 @@ device, and an encrypted room with
 ## Provider: Telegram
 
 `UltraCanvas/Plugins/UltraIM/telegram/` (module `ultraim_telegram`, provider
-id `telegram`) is a client of TDLib, Telegram's own client library, through
-its JSON interface (`td_create_client_id` / `td_send` / `td_receive` /
-`td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
+id `telegram`) is a client of TDLib (Telegram Database Library), Telegram's
+own client library, through its JSON interface (`td_create_client_id` /
+`td_send` / `td_receive` / `td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
 provider builds on every platform but WebAssembly (which loads no native
 library) and works wherever a libtdjson is found - the
 `tdlib/` folder next to the provider modules, `ULTRAIM_TDJSON_PATH`, or the
@@ -317,6 +334,23 @@ process.
   Telegram's test servers. TDLib keeps the session, the chats and the history
   in its own database under the provider's data directory, encrypted with a
   key the vault holds; a later `SignIn` with nothing given resumes it.
+- **The code:** Telegram sends it as a message to the Telegram apps the
+  number is already signed in on whenever there are any (the "Telegram"
+  service chat there), and by SMS or a call only when it offers that as the
+  code info's `next_type` - for many third-party API IDs it offers nothing
+  else. The hint says where it went; `authResendHint` and `ResendAuthCode`
+  (TDLib `resendAuthenticationCode`) take the next way when there is one.
+- **A QR code instead:** `loginType = QRCode` with no number asks TDLib for
+  a sign-in link (`requestQrCodeAuthentication`) - the step `OtherDevice`
+  (above), its hint the `tg://login` link to show as a QR code that the
+  phone's Telegram app scans (Settings, Devices, Link Desktop Device); no
+  code is sent at all, which is the way in when Telegram says it sent the
+  code to the app and the app never shows it (so for third-party API IDs
+  since early 2026). The link is refreshed as `AuthStepChange`; after the
+  scan, the password step when the account has one, else signed in. Also
+  from the `Code` step, in place of the code; a number given while the QR
+  code waits starts over (TDLib takes none in that state). The link holds
+  the sign-in token: the provider never logs it.
 - **While it signs in**, TDLib's connection state is reported as
   `ConnectionStateChange` with `Connecting` and a text (waiting for the
   network, connecting to Telegram's servers, ...), and a step TDLib does not
@@ -341,7 +375,7 @@ process.
   mark passes it; typing, presence, unread counts; `FetchMessages` pages back
   with `getChatHistory`.
 - **Not yet:** secret chats (end-to-end encrypted; listed, marked encrypted,
-  not opened), media download and upload, calls, QR-code and e-mail sign-in.
+  not opened), media download and upload, calls, e-mail sign-in.
 
 Tests: `Tests/UltraIM/TelegramProviderTests.cpp` against `FakeTdJson`, a
 libtdjson stand-in that keeps a small Telegram in memory (several providers

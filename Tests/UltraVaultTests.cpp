@@ -544,6 +544,73 @@ static void TestDeviceKeyVaultInUtf8Folder(const fs::path& base) {
     fs::remove_all(base, ec);
 }
 
+static void TestDeviceKeyVaultPrimaryPassword(const fs::path& dir) {
+    using UltraVault::DeviceKeyVault;
+    using UltraVault::UnlockStatus;
+    std::printf("device-key vault with a Primary Password\n");
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    const std::string folder = UltraCanvas::PathToUtf8(dir);
+    {
+        DeviceKeyVault vault(folder, kTestProfile);
+        Check(vault.TryAutoUnlock(), "a new vault opens with its device key");
+        Check(!vault.NeedsPassphrase(), "and needs no passphrase");
+        Check(vault.Store("erika", "pw-1"), "a secret stored");
+        // Another module's entry in the same file is carried over too.
+        Check(UltraVault::Put("cloud.acct.token", UltraVault::SecretValue::FromString("tok")).IsOk(),
+              "another prefix's secret stored");
+        Check(vault.ChangePassphrase("", "Korrekt Pferd Batterie", false) == UnlockStatus::Ok,
+              "a Primary Password set (from the device key)");
+        Check(!fs::exists(dir / "device.key", ec), "the device key is gone");
+        Check(vault.NeedsPassphrase(), "the vault now needs its passphrase");
+        std::string got;
+        Check(vault.Retrieve("erika", got) && got == "pw-1", "the secret is still there");
+        vault.Lock();
+    }
+    {
+        DeviceKeyVault vault(folder, kTestProfile);
+        Check(!vault.TryAutoUnlock() && vault.GetLastUnlockStatus() == UnlockStatus::Locked,
+              "without the passphrase it stays locked");
+        Check(vault.Unlock("wrong") == UnlockStatus::WrongPassphrase, "a wrong one is refused");
+        Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::Ok, "the Primary Password opens it");
+        UltraVault::SecretValue other;
+        Check(UltraVault::Get("cloud.acct.token", other).IsOk() && other.AsString() == "tok",
+              "the other prefix's secret survived");
+        Check(vault.ChangePassphrase("not it", "x", false) == UnlockStatus::WrongPassphrase,
+              "changing needs the current passphrase");
+        Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::Ok, "which still opens it");
+        Check(vault.ChangePassphrase("Korrekt Pferd Batterie", "zweites Passwort", false) == UnlockStatus::Ok,
+              "the Primary Password changed");
+        vault.Lock();
+        Check(vault.Unlock("Korrekt Pferd Batterie") == UnlockStatus::WrongPassphrase, "the old one no longer opens it");
+        Check(vault.Unlock("zweites Passwort") == UnlockStatus::Ok, "the new one does");
+        // Removed: a fresh device key, and the vault opens silently again.
+        Check(vault.ChangePassphrase("zweites Passwort", DeviceKeyVault::NewDeviceKey(), true) == UnlockStatus::Ok,
+              "the Primary Password removed");
+        Check(fs::exists(dir / "device.key", ec) && !fs::exists(dir / "device.key.next", ec),
+              "a device key is back");
+        vault.Lock();
+    }
+    {
+        DeviceKeyVault vault(folder, kTestProfile);
+        Check(vault.TryAutoUnlock(), "it opens silently again");
+        std::string got;
+        Check(vault.Retrieve("erika", got) && got == "pw-1", "with its secret");
+        // A swap interrupted after the new file was in place: the new key
+        // waits in device.key.next and still opens it.
+        const std::string next = DeviceKeyVault::NewDeviceKey();
+        Check(vault.ChangePassphrase("", next, true) == UnlockStatus::Ok, "a new device key");
+        vault.Lock();
+        fs::rename(dir / "device.key", dir / "device.key.next", ec);
+        Check(vault.TryAutoUnlock(), "a device.key.next left by an interrupted change opens it");
+        Check(fs::exists(dir / "device.key", ec), "and becomes the device key");
+        // A stale device key after an interrupted Primary Password: forgotten.
+        Check(vault.ForgetDeviceKey() && !fs::exists(dir / "device.key", ec), "a device key forgotten");
+        vault.Lock();
+    }
+    fs::remove_all(dir, ec);
+}
+
 int main() {
     std::printf("UltraVault tests\n");
 
@@ -556,6 +623,7 @@ int main() {
         TestDeviceKeyVaultTurns(fs::temp_directory_path() / "ultravault_devicekey_turns");
         TestDeviceKeyVaultConcurrent(fs::temp_directory_path() / "ultravault_devicekey_concurrent");
         TestDeviceKeyVaultInUtf8Folder(fs::temp_directory_path() / "ultravault_utf8_test");
+        TestDeviceKeyVaultPrimaryPassword(fs::temp_directory_path() / "ultravault_primary_password");
     } else {
         std::printf("file backend: SKIPPED (UltraCrypt backend "
                     "unavailable — built without libsodium)\n");
