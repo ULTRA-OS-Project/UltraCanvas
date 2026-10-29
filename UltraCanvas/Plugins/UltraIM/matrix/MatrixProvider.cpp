@@ -1,7 +1,8 @@
 // Plugins/UltraIM/matrix/MatrixProvider.cpp
 // Matrix as an UltraIM provider
+// Version: 0.2.1 - attachments: downloaded (plain and encrypted), SendImage / SendVideo / SendFile
 // Version: 0.2.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "MatrixProvider.h"
@@ -12,7 +13,9 @@
 #include "UltraCanvasTextUtils.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <system_error>
 
@@ -109,7 +112,7 @@ UltraIMCapabilityFlags MatrixProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     const F flags = F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::EditMessage |
                     F::DeleteMessage | F::ReplyToMessage | F::OfflineMessages | F::MultiDevice | F::AddContact |
-                    F::CreateGroup;
+                    F::CreateGroup | F::ImageMessages | F::FileTransfer;
     return OlmAvailable() ? flags | F::E2EEncryption : flags;
 }
 
@@ -132,6 +135,176 @@ void MatrixProvider::Shutdown() {
     SignOut();
     sink_ = nullptr;
 }
+
+namespace {
+
+// ---- media helpers -------------------------------------------------------------
+
+UltraCryptSecureBuffer SecretOf(const std::vector<uint8_t>& bytes) {
+    return UltraCryptSecureBuffer(bytes.data(), bytes.size());
+}
+
+// base64url (the JWK key) to the standard alphabet; the lenient decoder
+// takes the missing padding.
+std::string FromBase64Url(std::string text) {
+    for (char& c : text) {
+        if (c == '-') c = '+';
+        else if (c == '_') c = '/';
+    }
+    return text;
+}
+
+std::string UnpaddedBase64(const std::vector<uint8_t>& bytes, bool url) {
+    std::string out = UltraCanvas::Base64Encode(bytes, false);
+    while (!out.empty() && out.back() == '=') out.pop_back();
+    if (url) {
+        for (char& c : out) {
+            if (c == '+') c = '-';
+            else if (c == '/') c = '_';
+        }
+    }
+    return out;
+}
+
+// "mxc://server/id" -> the two parts.
+bool SplitMxc(const std::string& url, std::string& server, std::string& id) {
+    if (url.rfind("mxc://", 0) != 0) return false;
+    const size_t slash = url.find('/', 6);
+    if (slash == std::string::npos) return false;
+    server = url.substr(6, slash - 6);
+    id = url.substr(slash + 1);
+    return !server.empty() && !id.empty() && id.find('/') == std::string::npos;
+}
+
+std::string LowerExtension(const std::string& name) {
+    const size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos || dot + 1 >= name.size() || name.find('/', dot) != std::string::npos) return std::string();
+    std::string ext = name.substr(dot);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext;
+}
+
+const std::pair<const char*, const char*> kMimeTypes[] = {
+    {".jpg", "image/jpeg"}, {".jpeg", "image/jpeg"}, {".png", "image/png"},   {".gif", "image/gif"},
+    {".webp", "image/webp"}, {".bmp", "image/bmp"},  {".svg", "image/svg+xml"}, {".heic", "image/heic"},
+    {".mp4", "video/mp4"},  {".m4v", "video/mp4"},   {".mov", "video/quicktime"}, {".webm", "video/webm"},
+    {".mkv", "video/x-matroska"}, {".avi", "video/x-msvideo"},
+    {".mp3", "audio/mpeg"}, {".ogg", "audio/ogg"},   {".oga", "audio/ogg"},    {".opus", "audio/ogg"},
+    {".wav", "audio/wav"},  {".m4a", "audio/mp4"},   {".flac", "audio/flac"},
+    {".pdf", "application/pdf"}, {".txt", "text/plain"}, {".zip", "application/zip"},
+};
+
+std::string MimeFor(const std::string& path) {
+    const std::string ext = LowerExtension(path);
+    for (const auto& entry : kMimeTypes) {
+        if (ext == entry.first) return entry.second;
+    }
+    return "application/octet-stream";
+}
+
+std::string ExtensionFor(const std::string& mimeType, const std::string& fileName) {
+    for (const auto& entry : kMimeTypes) {
+        if (mimeType == entry.second) return entry.first;
+    }
+    return LowerExtension(fileName);
+}
+
+bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
+    std::FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
+    if (!f) return false;
+    out.clear();
+    uint8_t buffer[65536];
+    size_t n = 0;
+    while ((n = std::fread(buffer, 1, sizeof(buffer), f)) > 0) out.insert(out.end(), buffer, buffer + n);
+    const bool ok = !std::ferror(f);
+    std::fclose(f);
+    return ok;
+}
+
+bool WriteWholeFile(const std::string& path, const std::vector<uint8_t>& bytes) {
+    std::FILE* f = UltraCanvas::OpenFileUtf8(path, "wb");
+    if (!f) return false;
+    const bool ok = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    return (std::fclose(f) == 0) && ok;
+}
+
+// The m.file format (v2): AES-256-CTR with the JWK key, the IV and the
+// SHA-256 of the ciphertext. The hash is checked before anything is
+// decrypted - CTR cannot tell a wrong key from the right one.
+bool DecryptMedia(const JSONValue& file, std::vector<uint8_t>& bytes, std::string& error) {
+    if (file["key"]["alg"].GetString() != "A256CTR" || file["key"]["kty"].GetString() != "oct") {
+        error = "an encrypted file in a format ChatCube does not read";
+        return false;
+    }
+    const std::vector<uint8_t> expected = UltraCanvas::Base64Decode(file["hashes"]["sha256"].GetString());
+    std::vector<uint8_t> digest;
+    if (!UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, bytes.data(), bytes.size(), digest) || expected.size() != 32 ||
+        !UltraCrypt_ConstantTimeEquals(digest.data(), digest.size(), expected.data(), expected.size())) {
+        error = "the file does not match its hash";
+        return false;
+    }
+    std::vector<uint8_t> key = UltraCanvas::Base64Decode(FromBase64Url(file["key"]["k"].GetString()));
+    UltraCryptCtrParams params;
+    params.iv = UltraCanvas::Base64Decode(file["iv"].GetString());
+    if (key.size() != 32 || params.iv.size() != 16) {
+        UltraCrypt_SecureZero(key.data(), key.size());
+        error = "the file's key is not usable";
+        return false;
+    }
+    UltraCryptSecureBuffer plain;
+    const bool ok = UltraCrypt_AesCtrDecrypt(SecretOf(key), params, bytes.data(), bytes.size(), plain);
+    UltraCrypt_SecureZero(key.data(), key.size());
+    if (!ok) {
+        error = "the file could not be decrypted";
+        return false;
+    }
+    bytes.assign(plain.Data(), plain.Data() + plain.GetSize());
+    return true;
+}
+
+// The same the other way: `bytes` become the ciphertext, `fileOut` the
+// m.file object without its url.
+bool EncryptMedia(std::vector<uint8_t>& bytes, JSONValue& fileOut, std::string& error) {
+    std::vector<uint8_t> key(32), iv(16, 0);
+    // The IV: 8 random bytes, then 8 zero - the counter's low half, as the
+    // format wants it.
+    if (!UltraCrypt_RandomBytes(key.data(), key.size()) || !UltraCrypt_RandomBytes(iv.data(), 8)) {
+        error = "no randomness for the file's key";
+        return false;
+    }
+    UltraCryptCtrParams params;
+    params.iv = iv;
+    std::vector<uint8_t> cipher;
+    const bool ok = UltraCrypt_AesCtrEncrypt(SecretOf(key), params, bytes.data(), bytes.size(), cipher);
+    if (!ok) {
+        UltraCrypt_SecureZero(key.data(), key.size());
+        error = "the file could not be encrypted";
+        return false;
+    }
+    std::vector<uint8_t> digest;
+    UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, cipher.data(), cipher.size(), digest);
+    JSONValue jwk = JSONValue::MakeObject();
+    jwk.Set("alg", JSONValue("A256CTR"));
+    jwk.Set("ext", JSONValue(true));
+    jwk.Set("k", JSONValue(UnpaddedBase64(key, true)));
+    JSONValue ops = JSONValue::MakeArray();
+    ops.Append(JSONValue("encrypt"));
+    ops.Append(JSONValue("decrypt"));
+    jwk.Set("key_ops", ops);
+    jwk.Set("kty", JSONValue("oct"));
+    UltraCrypt_SecureZero(key.data(), key.size());
+    fileOut = JSONValue::MakeObject();
+    fileOut.Set("v", JSONValue("v2"));
+    fileOut.Set("key", jwk);
+    fileOut.Set("iv", JSONValue(UnpaddedBase64(iv, false)));
+    JSONValue hashes = JSONValue::MakeObject();
+    hashes.Set("sha256", JSONValue(UnpaddedBase64(digest, false)));
+    fileOut.Set("hashes", hashes);
+    bytes.swap(cipher);
+    return true;
+}
+
+} // namespace
 
 void MatrixProvider::Emit(const UltraIMEvent& event) {
     if (sink_) sink_(event);
@@ -370,6 +543,11 @@ void MatrixProvider::SignOut() {
         txnToClient_.clear();
         pendingDecrypt_.clear();
         deviceId_.clear();
+        media_.clear();
+        mediaUses_.clear();
+        mediaWaiters_.clear();      // their downloads ended with the session; nobody is told
+        downloading_.clear();
+        downloadQueue_.clear();
     }
     SetState(UltraIMConnectionState::Disconnected);
 }
@@ -478,6 +656,7 @@ void MatrixProvider::ApplySync(const JSONValue& body, bool initial) {
         }
     }
     for (const auto& event : events) Emit(event);
+    FlushDownloads();
 }
 
 void MatrixProvider::ApplyRoom(const std::string& roomId, const JSONValue& data, bool invited, bool initial,
@@ -635,12 +814,40 @@ bool MatrixProvider::MessageFrom(const Room& room, const JSONValue& event, Ultra
                  : msgtype == "m.audio" ? UltraIMMessageType::Audio
                  : msgtype == "m.video" ? UltraIMMessageType::Video
                                         : UltraIMMessageType::File;
-        out.attachment.remoteUrl = body["url"].GetString();
-        out.attachment.fileName = text;
-        out.attachment.mimeType = body["info"]["mimetype"].GetString();
-        out.attachment.fileSizeBytes = body["info"]["size"].GetInteger(0);
-        out.attachment.width = static_cast<int>(body["info"]["w"].GetInteger(0));
-        out.attachment.height = static_cast<int>(body["info"]["h"].GetInteger(0));
+        // The file: its URL in the clear, or inside the m.file object (the
+        // key with it) in an encrypted room. With a `filename`, the body is
+        // the caption (MSC2530); without, the body is the name.
+        const JSONValue& file = body["file"];
+        const JSONValue& info = body["info"];
+        const std::string url = file.IsObject() ? file["url"].GetString() : body["url"].GetString();
+        const std::string filename = body["filename"].GetString();
+        out.attachment.fileName = filename.empty() ? text : filename;
+        out.text = !filename.empty() && text != filename ? text : std::string();
+        out.attachment.remoteUrl = url;
+        out.attachment.mimeType = info["mimetype"].GetString();
+        out.attachment.fileSizeBytes = info["size"].GetInteger(0);
+        out.attachment.width = static_cast<int>(info["w"].GetInteger(0));
+        out.attachment.height = static_cast<int>(info["h"].GetInteger(0));
+        out.attachment.durationSeconds = static_cast<double>(info["duration"].GetInteger(0)) / 1000.0;
+        const JSONValue& thumbnailFile = info["thumbnail_file"];
+        const std::string thumbnailUrl =
+            thumbnailFile.IsObject() ? thumbnailFile["url"].GetString() : info["thumbnail_url"].GetString();
+        auto here = onDisk_.find(url);
+        if (here != onDisk_.end()) {
+            out.attachment.localPath = here->second;
+            out.attachment.isDownloaded = true;
+        }
+        auto thumb = onDisk_.find(thumbnailUrl);
+        if (thumb != onDisk_.end()) out.attachment.thumbnailPath = thumb->second;
+        if (!url.empty()) {
+            Media& media = media_[out.messageId];
+            media.url = url;
+            media.file = file.IsObject() ? file : JSONValue();
+            media.thumbnailUrl = thumbnailUrl;
+            media.thumbnailFile = thumbnailFile.IsObject() ? thumbnailFile : JSONValue();
+            media.mimeType = out.attachment.mimeType;
+            media.fileName = out.attachment.fileName;
+        }
     }
     if (!replyTo.empty()) {
         out.replyTo.messageId = replyTo;
@@ -756,7 +963,9 @@ bool MatrixProvider::ApplyEvent(Room& room, const JSONValue& event, bool live, s
         if (m.messageId == message.messageId) return false;      // already have it
     }
     room.timeline.push_back(message);
+    QueueMedia(message);
     if (room.timeline.size() > kTimelineCap) {
+        media_.erase(room.timeline.front().messageId);
         room.timeline.erase(room.timeline.begin());
         room.historyComplete = false;
     }
@@ -984,12 +1193,14 @@ void MatrixProvider::FetchMessages(const std::string& conversationId, const std:
                     if (!known) older.push_back(m);
                 }
                 std::reverse(older.begin(), older.end());
+                for (const auto& m : older) QueueMedia(m);
                 room.timeline.insert(room.timeline.begin(), older.begin(), older.end());
                 const std::string end = r.body["end"].GetString();
                 if (end.empty() || r.body["chunk"].GetElements().empty()) room.historyComplete = true;
                 room.prevBatch = end;
             }
         }
+        FlushDownloads();
         onResult(r.Ok() ? UltraIMResult::Ok() : HttpError(r, UltraIMResultCode::NetworkError), slice());
     });
 }
@@ -1236,6 +1447,346 @@ UltraIMResult MatrixProvider::SendText(const std::string& conversationId, const 
     return UltraIMResult::Ok();
 }
 
+void MatrixProvider::Delivered(const std::string& conversationId, const std::string& clientId,
+                               UltraIMDeliveryStatus status, const std::string& eventId) {
+    UltraIMEvent event;
+    event.type = UltraIMEventType::MessageDelivered;
+    event.providerId = providerId_;
+    event.conversationId = conversationId;
+    event.message.conversationId = conversationId;
+    event.message.clientMessageId = clientId;
+    event.message.messageId = eventId.empty() ? clientId : eventId;
+    event.deliveryStatus = status;
+    Emit(event);
+}
+
+// ============================================================================
+// MEDIA
+// A message's picture, video or file lives in the content repository under
+// an mxc URL; in an encrypted room the bytes there are AES-CTR ciphertext
+// and the message carries the key (the m.file object). A photo, and the
+// preview picture of a video or a file, are fetched as the message is kept
+// (QueueMedia); a video or a file when the application asks
+// (DownloadAttachment). Fetched files go to the cache directory under the
+// URL's hash, and a file sent from here is remembered under its URL so the
+// echo points at it.
+// ============================================================================
+
+std::string MatrixProvider::MediaPath(const std::string& url, const std::string& mimeType,
+                                      const std::string& fileName) const {
+    namespace fs = std::filesystem;
+    const std::string base = config_.cacheDirectory.empty() ? config_.dataDirectory : config_.cacheDirectory;
+    const fs::path dir = UltraCanvas::PathFromUtf8(base) / UltraCanvas::PathFromUtf8(providerId_) / "media";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    std::vector<uint8_t> digest;
+    UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, url.data(), url.size(), digest);
+    const std::string name = UltraCrypt_ToHex(digest).substr(0, 32) + ExtensionFor(mimeType, fileName);
+    return UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8(name));
+}
+
+void MatrixProvider::QueueMedia(const UltraIMMessage& message) {
+    auto it = media_.find(message.messageId);
+    if (it == media_.end()) return;
+    const Media& media = it->second;
+    MediaUse use;
+    use.roomId = message.conversationId;
+    use.eventId = message.messageId;
+    if (message.type == UltraIMMessageType::Image) {
+        if (!message.attachment.isDownloaded) QueueDownload(media.url, media, use);
+        return;
+    }
+    if (message.attachment.thumbnailPath.empty() && !media.thumbnailUrl.empty()) {
+        use.thumbnail = true;
+        Media preview;
+        preview.url = media.thumbnailUrl;
+        preview.file = media.thumbnailFile;
+        preview.mimeType = "image/jpeg";
+        QueueDownload(media.thumbnailUrl, preview, use);
+    }
+}
+
+void MatrixProvider::QueueDownload(const std::string& url, const Media& media, const MediaUse& use) {
+    if (url.empty() || onDisk_.count(url)) return;
+    auto& uses = mediaUses_[url];
+    bool known = false;
+    for (const auto& u : uses) known = known || (u.eventId == use.eventId && u.thumbnail == use.thumbnail);
+    if (!known) uses.push_back(use);
+    if (downloading_.count(url)) return;
+    downloading_.insert(url);
+    DownloadJob job;
+    job.url = url;
+    job.file = media.file;
+    job.mimeType = media.mimeType;
+    job.fileName = media.fileName;
+    downloadQueue_.push_back(job);
+}
+
+void MatrixProvider::FlushDownloads() {
+    std::vector<DownloadJob> queue;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        queue.swap(downloadQueue_);
+    }
+    for (const auto& job : queue) StartDownload(job, false);
+}
+
+void MatrixProvider::StartDownload(const DownloadJob& job, bool legacyEndpoint) {
+    std::shared_ptr<MatrixHttp> http = Http();
+    std::string server, id;
+    if (!http || !SplitMxc(job.url, server, id)) {
+        MediaFailed(job.url, http ? "not an mxc URL" : "not signed in");
+        return;
+    }
+    // The authenticated endpoint (Matrix 1.11), else the one before it,
+    // which an older homeserver still serves.
+    const std::string path = legacyEndpoint
+        ? "/_matrix/media/v3/download/" + PathSegment(server) + "/" + PathSegment(id)
+        : "/_matrix/client/v1/media/download/" + PathSegment(server) + "/" + PathSegment(id);
+    http->Download(path, 120000, [this, job, legacyEndpoint](const MatrixBytes& r) {
+        if (!r.Ok() && !legacyEndpoint && (r.errcode == "M_UNRECOGNIZED" || r.status == 404 || r.status == 400)) {
+            StartDownload(job, true);
+            return;
+        }
+        OnMediaDownloaded(job, r);
+    });
+}
+
+void MatrixProvider::MediaFailed(const std::string& url, const std::string& why) {
+    std::vector<UltraIMAttachmentCallback> waiters;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        downloading_.erase(url);
+        mediaUses_.erase(url);
+        auto it = mediaWaiters_.find(url);
+        if (it != mediaWaiters_.end()) {
+            waiters = std::move(it->second);
+            mediaWaiters_.erase(it);
+        }
+    }
+    for (const auto& waiter : waiters)
+        waiter(UltraIMResult::Error(UltraIMResultCode::NetworkError, "Matrix could not fetch the file: " + why),
+               UltraIMAttachment());
+}
+
+void MatrixProvider::OnMediaDownloaded(const DownloadJob& job, const MatrixBytes& r) {
+    if (!r.Ok()) {
+        MediaFailed(job.url, r.error);
+        return;
+    }
+    std::vector<uint8_t> bytes = r.body;
+    std::string error;
+    if (job.file.IsObject() && !DecryptMedia(job.file, bytes, error)) {
+        MediaFailed(job.url, error);
+        return;
+    }
+    const std::string path = MediaPath(job.url, job.mimeType, job.fileName);
+    if (!WriteWholeFile(path, bytes)) {
+        MediaFailed(job.url, "could not write " + path);
+        return;
+    }
+    std::vector<UltraIMEvent> events;
+    std::vector<UltraIMAttachmentCallback> waiters;
+    UltraIMAttachment handed;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        onDisk_[job.url] = path;
+        downloading_.erase(job.url);
+        auto uses = mediaUses_.find(job.url);
+        if (uses != mediaUses_.end()) {
+            for (const MediaUse& use : uses->second) {
+                auto room = rooms_.find(use.roomId);
+                if (room == rooms_.end()) continue;
+                for (auto& m : room->second.timeline) {
+                    if (m.messageId != use.eventId) continue;
+                    if (use.thumbnail) {
+                        m.attachment.thumbnailPath = path;
+                    } else {
+                        m.attachment.localPath = path;
+                        m.attachment.isDownloaded = true;
+                        if (!m.attachment.fileSizeBytes) m.attachment.fileSizeBytes = static_cast<int64_t>(bytes.size());
+                        handed = m.attachment;
+                    }
+                    UltraIMEvent e;
+                    e.type = UltraIMEventType::MessageUpdate;
+                    e.providerId = providerId_;
+                    e.conversationId = room->second.id;
+                    e.contactId = m.senderId;
+                    e.message = m;
+                    events.push_back(e);
+                    break;
+                }
+            }
+            mediaUses_.erase(uses);
+        }
+        auto it = mediaWaiters_.find(job.url);
+        if (it != mediaWaiters_.end()) {
+            waiters = std::move(it->second);
+            mediaWaiters_.erase(it);
+        }
+    }
+    if (!waiters.empty() && handed.localPath.empty()) {
+        handed.localPath = path;
+        handed.isDownloaded = true;
+        handed.remoteUrl = job.url;
+        handed.mimeType = job.mimeType;
+        handed.fileName = job.fileName;
+        handed.fileSizeBytes = static_cast<int64_t>(bytes.size());
+    }
+    for (const auto& e : events) Emit(e);
+    for (const auto& waiter : waiters) waiter(UltraIMResult::Ok(), handed);
+}
+
+void MatrixProvider::DownloadAttachment(const std::string& conversationId, const std::string& messageId,
+                                        UltraIMAttachmentCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r, const UltraIMAttachment& a) { if (onResult) onResult(r, a); };
+    if (!Http() || state_ == UltraIMConnectionState::Disconnected) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix"), UltraIMAttachment());
+        return;
+    }
+    UltraIMAttachment attachment;
+    bool found = false, here = false, queued = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto room = rooms_.find(conversationId);
+        if (room != rooms_.end()) {
+            for (const auto& m : room->second.timeline) {
+                if (m.messageId != messageId) continue;
+                found = true;
+                attachment = m.attachment;
+                here = attachment.isDownloaded && !attachment.localPath.empty();
+                break;
+            }
+        }
+        auto media = media_.find(messageId);
+        if (found && !here && media != media_.end() && !media->second.url.empty()) {
+            MediaUse use;
+            use.roomId = conversationId;
+            use.eventId = messageId;
+            mediaWaiters_[media->second.url].push_back(finish);
+            QueueDownload(media->second.url, media->second, use);
+            queued = true;
+        }
+    }
+    if (here) {
+        finish(UltraIMResult::Ok(), attachment);
+        return;
+    }
+    if (!queued) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotFound,
+                                    found ? "That message has no attachment" : "No such message"),
+               UltraIMAttachment());
+        return;
+    }
+    FlushDownloads();
+}
+
+UltraIMResult MatrixProvider::SendImage(const std::string& conversationId, const std::string& localPath,
+                                        const std::string& caption, const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, caption, UltraIMMessageType::Image, options);
+}
+
+UltraIMResult MatrixProvider::SendVideo(const std::string& conversationId, const std::string& localPath,
+                                        const std::string& caption, const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, caption, UltraIMMessageType::Video, options);
+}
+
+UltraIMResult MatrixProvider::SendFile(const std::string& conversationId, const std::string& localPath,
+                                       const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, std::string(), UltraIMMessageType::File, options);
+}
+
+UltraIMResult MatrixProvider::SendMedia(const std::string& conversationId, const std::string& localPath,
+                                        const std::string& caption, UltraIMMessageType type,
+                                        const UltraIMSendOptions& options) {
+    std::shared_ptr<MatrixHttp> http = Http();
+    if (!http || state_ == UltraIMConnectionState::Disconnected)
+        return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in to Matrix");
+    bool invited = false;
+    bool encrypted = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = rooms_.find(conversationId);
+        if (it == rooms_.end()) return UltraIMResult::Error(UltraIMResultCode::NotFound, "No such room");
+        invited = it->second.invited;
+        encrypted = it->second.encrypted;
+    }
+    if (encrypted && !crypto_.IsOpen())
+        return UltraIMResult::Error(UltraIMResultCode::CapabilityMissing,
+                                    "This Matrix room is end-to-end encrypted: " + GetEncryptionError());
+    auto bytes = std::make_shared<std::vector<uint8_t>>();
+    if (localPath.empty() || !ReadWholeFile(localPath, *bytes))
+        return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "There is no file " + localPath);
+    const std::string clientId = options.clientMessageId.empty() ? UltraIM_NewClientMessageId() : options.clientMessageId;
+    const std::string name = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(localPath).filename());
+    const std::string mime = MimeFor(localPath);
+    const std::string msgtype = type == UltraIMMessageType::Image ? "m.image"
+                              : type == UltraIMMessageType::Video ? "m.video"
+                              : type == UltraIMMessageType::Audio ? "m.audio"
+                                                                  : "m.file";
+    const std::string replyTo = options.replyToMessageId;
+    // The upload waits on the server, and so does the room key in an
+    // encrypted room: the send thread, in order.
+    Enqueue([this, http, conversationId, clientId, bytes, name, mime, msgtype, caption, replyTo, invited, encrypted,
+             localPath]() {
+        if (invited) {
+            MatrixResponse joined = http->Await("POST", std::string(kClient) + "/join/" + PathSegment(conversationId),
+                                                nullptr, 20000);
+            if (!joined.Ok()) return Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());
+        }
+        const int64_t size = static_cast<int64_t>(bytes->size());
+        JSONValue fileInfo;
+        std::string error;
+        if (encrypted && !EncryptMedia(*bytes, fileInfo, error))
+            return Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());
+        MatrixResponse up = http->Upload("/_matrix/media/v3/upload?filename=" + PathSegment(name),
+                                         encrypted ? std::string("application/octet-stream") : mime, *bytes, 300000);
+        bytes->clear();
+        const std::string mxc = up.body["content_uri"].GetString();
+        if (!up.Ok() || mxc.empty()) return Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());
+        {
+            // The echo's attachment points at the file sent.
+            std::lock_guard<std::mutex> lock(mutex_);
+            onDisk_[mxc] = localPath;
+        }
+        JSONValue body = JSONValue::MakeObject();
+        body.Set("msgtype", JSONValue(msgtype));
+        body.Set("body", JSONValue(caption.empty() ? name : caption));
+        body.Set("filename", JSONValue(name));
+        JSONValue info = JSONValue::MakeObject();
+        info.Set("mimetype", JSONValue(mime));
+        info.Set("size", JSONValue(size));
+        body.Set("info", info);
+        if (encrypted) {
+            fileInfo.Set("url", JSONValue(mxc));
+            body.Set("file", fileInfo);
+        } else {
+            body.Set("url", JSONValue(mxc));
+        }
+        if (!replyTo.empty()) {
+            JSONValue relates = JSONValue::MakeObject();
+            JSONValue inReplyTo = JSONValue::MakeObject();
+            inReplyTo.Set("event_id", JSONValue(replyTo));
+            relates.Set("m.in_reply_to", inReplyTo);
+            body.Set("m.relates_to", relates);
+        }
+        std::string eventId;
+        if (encrypted) {
+            if (SendEncrypted(http, conversationId, clientId, "m.room.message", body, eventId, error))
+                Delivered(conversationId, clientId, UltraIMDeliveryStatus::Sent, eventId);
+            else
+                Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());
+            return;
+        }
+        MatrixResponse sent = http->Await("PUT", std::string(kClient) + "/rooms/" + PathSegment(conversationId) +
+                                                     "/send/m.room.message/" + PathSegment(clientId),
+                                          &body, 30000);
+        if (sent.Ok()) Delivered(conversationId, clientId, UltraIMDeliveryStatus::Sent, sent.body["event_id"].GetString());
+        else Delivered(conversationId, clientId, UltraIMDeliveryStatus::Failed, std::string());
+    });
+    return UltraIMResult::Ok();
+}
+
 UltraIMResult MatrixProvider::EditMessage(const std::string& conversationId, const std::string& messageId,
                                           const std::string& newText) {
     std::shared_ptr<MatrixHttp> http = Http();
@@ -1457,6 +2008,7 @@ void MatrixProvider::RetryPending(const std::vector<MatrixSessionRef>& arrived) 
                 if (plain && at != room.timeline.end() && MessageFrom(room, clear, message)) {
                     // The placeholder becomes the message, where it stood.
                     *at = message;
+                    QueueMedia(message);
                     UltraIMEvent e;
                     e.type = UltraIMEventType::MessageUpdate;
                     e.providerId = providerId_;
@@ -1486,6 +2038,7 @@ void MatrixProvider::RetryPending(const std::vector<MatrixSessionRef>& arrived) 
         }
     }
     for (const auto& e : events) Emit(e);
+    FlushDownloads();
 }
 
 bool MatrixProvider::SendEncrypted(const std::shared_ptr<MatrixHttp>& http, const std::string& roomId,

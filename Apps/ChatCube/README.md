@@ -61,7 +61,8 @@ The first ChatCube draft, which this replaces, is kept under
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
    green `✓✓` read. The paperclip sends a picture, a video or any file to
-   the open chat (Telegram), with what you typed as its caption. A photo
+   the open chat (Telegram and Matrix, encrypted rooms included), with what
+   you typed as its caption. A photo
    shows as its picture, a video as its preview under a play mark with its
    length, a file as its name and size; a click on a picture opens it full
    size, on a video or a file fetches it and opens it. People's Telegram

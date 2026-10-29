@@ -266,9 +266,10 @@ other over mDNS alone, which skips without a responder unless
   accepts it. `AddContact("@name:server")` opens a direct chat (or returns
   the one there is); `CreateGroup` makes a private room and invites.
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
-  emotes, images and files as their names (attachments are not downloaded
-  yet), edits (`m.replace` - `MessageUpdate`), redactions (`MessageDelete`),
-  joins and leaves as system lines. Our own message is sent under the client
+  emotes, pictures, videos, audio and files with their attachments (the
+  `filename` and the body as the caption, MSC2530), edits (`m.replace` -
+  `MessageUpdate`), redactions (`MessageDelete`), joins and leaves as system
+  lines. Our own message is sent under the client
   message id as its transaction id, so its echo matches the optimistic row;
   `Sent` when the server took it, `Read` when someone's read receipt covers
   it. Typing, presence of the other person in a direct chat, unread counts.
@@ -302,9 +303,23 @@ other over mDNS alone, which skips without a responder unless
   clients read and write (PBKDF2-HMAC-SHA-512 with 500 000 rounds,
   AES-256-CTR, HMAC-SHA-256 - UltraCrypt's). Built without cargo, encrypted
   rooms say they cannot be read and new rooms are not encrypted.
+- **Attachments** live in the content repository under `mxc://` URLs. A
+  picture, and the preview picture (`thumbnail_url` / `thumbnail_file`) of
+  a video or a file, are fetched as the message arrives - through the
+  authenticated endpoint (`/_matrix/client/v1/media/download`, Matrix
+  1.11), else the one before it - into the cache directory under the URL's
+  hash, and reported with `MessageUpdate`; a video, an audio or a file when
+  `DownloadAttachment` asks. In an encrypted room the repository holds
+  ciphertext and the message carries the key (the `m.file` object: AES-256-CTR
+  with a JWK key, the IV, the SHA-256 of the ciphertext, checked before
+  decrypting). `SendImage`, `SendVideo` and `SendFile` upload a local file
+  (`/_matrix/media/v3/upload`; encrypted first in an encrypted room, with a
+  fresh key per file) and send the message with `filename`, the caption as
+  the body and the type and size in `info`; the echo's attachment points at
+  the file sent. The capabilities list `ImageMessages` and `FileTransfer`.
 - **Not yet:** cross-signing and device verification (emoji / QR), key
-  backup on the server, key requests between our own devices; media up-
-  and download; calls; SSO sign-in.
+  backup on the server, key requests between our own devices; preview
+  pictures for what is sent from here; calls; SSO sign-in.
 
 Tests: `Tests/UltraIM/MatrixCryptoTests.cpp` without a server (canonical
 JSON against the spec's examples, vodozemac through the shim, the store,
@@ -312,7 +327,9 @@ replay and room checks, export files); `Tests/UltraIM/MatrixProviderTests.cpp`
 against a real Synapse, which `Tests/UltraIM/matrix_test_server.py` sets up
 (config, open registration, the test users) with the python in
 `ULTRAIM_MATRIX_PYTHON` - one with `matrix-synapse` installed; it skips
-without one unless `ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI). Its
+without one unless `ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI). It sends a
+picture, a video and a file each way and reads them back byte for byte
+(through the encrypted format when vodozemac is built in). Its
 encryption part checks the server holds only ciphertext, a second device
 (keys from then on, earlier ones by import), signing in again on the same
 device, and an encrypted room with

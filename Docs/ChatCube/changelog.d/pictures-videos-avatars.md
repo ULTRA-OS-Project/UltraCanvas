@@ -8,5 +8,6 @@
   Telegram profile pictures when they have one, the initials as before when
   not. The paperclip in the composer sends a picture, a video or any file to
   the open chat, with the composer's text as its caption; the bubble appears
-  at once and takes its ticks as a text does. Matrix and ChatCube Direct do
-  not carry pictures yet, and their paperclip says so.
+  at once and takes its ticks as a text does. The same in Matrix rooms,
+  encrypted ones included; ChatCube Direct does not carry pictures yet, and
+  its paperclip says so.

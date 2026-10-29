@@ -1,7 +1,8 @@
 // Plugins/UltraIM/matrix/MatrixHttp.cpp
 // Matrix provider - the homeserver's client-server API over UltraNet HTTP
+// Version: 0.1.1 - Download and Upload
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "MatrixHttp.h"
@@ -45,6 +46,29 @@ UltraNetHttpMethod MethodFor(const std::string& method) {
     if (method == "PUT") return UltraNetHttpMethod::Put;
     if (method == "DELETE") return UltraNetHttpMethod::Delete;
     return UltraNetHttpMethod::Get;
+}
+
+MatrixBytes ToBytes(const UltraNetResponse& raw) {
+    MatrixBytes out;
+    if (!raw.transferError.empty()) {
+        out.error = raw.transferError;
+        return out;
+    }
+    out.status = raw.statusCode;
+    out.body = raw.body;
+    if (!out.Ok()) {
+        // The server's error, as JSON when it is one.
+        const std::string text = raw.GetBodyAsString();
+        if (!text.empty() && text[0] == '{') {
+            UltraCanvas::JSONParseResult parsed;
+            const UltraCanvas::JSONValue body = UltraCanvas::JSON::Parse(text, &parsed);
+            out.errcode = body["errcode"].GetString();
+            out.error = body["error"].GetString();
+        }
+        if (out.error.empty()) out.error = "HTTP " + std::to_string(raw.statusCode);
+        out.body.clear();
+    }
+    return out;
 }
 
 MatrixResponse ToResponse(const UltraNetResponse& raw) {
@@ -112,6 +136,53 @@ bool MatrixHttp::IsStopping() const {
 
 void MatrixHttp::Request(const std::string& method, const std::string& path, const UltraCanvas::JSONValue* body,
                          int timeoutMs, MatrixCallback onDone) {
+    std::vector<uint8_t> bytes;
+    if (body) {
+        const std::string text = UltraCanvas::JSON::Serialize(*body);
+        bytes.assign(text.begin(), text.end());
+    } else if (method == "POST" || method == "PUT") {
+        bytes = {'{', '}'};
+    }
+    Transfer(method, path, "application/json", bytes, true, 0, timeoutMs,
+             [onDone](const UltraNetResponse& raw) { if (onDone) onDone(ToResponse(raw)); });
+}
+
+void MatrixHttp::Download(const std::string& path, int timeoutMs, MatrixBytesCallback onDone) {
+    Transfer("GET", path, std::string(), {}, false, int64_t(1) << 30, timeoutMs,
+             [onDone](const UltraNetResponse& raw) { if (onDone) onDone(ToBytes(raw)); });
+}
+
+MatrixResponse MatrixHttp::Upload(const std::string& path, const std::string& contentType,
+                                  const std::vector<uint8_t>& bytes, int timeoutMs) {
+    struct Wait {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool done = false;
+        MatrixResponse response;
+    };
+    auto wait = std::make_shared<Wait>();
+    Transfer("POST", path, contentType, bytes, true, 0, timeoutMs, [wait](const UltraNetResponse& raw) {
+        std::lock_guard<std::mutex> lock(wait->mutex);
+        wait->response = ToResponse(raw);
+        wait->done = true;
+        wait->cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(wait->mutex);
+    while (!wait->done) {
+        wait->cv.wait_for(lock, std::chrono::milliseconds(200));
+        if (!wait->done && IsStopping()) {
+            MatrixResponse cancelled;
+            cancelled.cancelled = true;
+            cancelled.error = "Stopped";
+            return cancelled;
+        }
+    }
+    return wait->response;
+}
+
+void MatrixHttp::Transfer(const std::string& method, const std::string& path, const std::string& contentType,
+                          const std::vector<uint8_t>& body, bool jsonAnswer, int64_t maxBytes, int timeoutMs,
+                          std::function<void(const UltraNetResponse&)> onDone) {
     UltraNetHttpRequest request;
     {
         std::lock_guard<std::mutex> lock(shared_->mutex);
@@ -120,15 +191,12 @@ void MatrixHttp::Request(const std::string& method, const std::string& path, con
         if (!shared_->token.empty()) request.headers.Set("Authorization", "Bearer " + shared_->token);
     }
     request.method = MethodFor(method);
-    request.headers.Set("Accept", "application/json");
+    if (jsonAnswer) request.headers.Set("Accept", "application/json");
     request.options.timeoutMs = timeoutMs > 0 ? timeoutMs : 30000;
-    if (body) {
-        const std::string text = UltraCanvas::JSON::Serialize(*body);
-        request.body.assign(text.begin(), text.end());
-        request.headers.Set("Content-Type", "application/json");
-    } else if (method == "POST" || method == "PUT") {
-        request.body = {'{', '}'};
-        request.headers.Set("Content-Type", "application/json");
+    if (maxBytes > 0) request.options.maxReceiveSize = maxBytes;
+    if (!body.empty()) {
+        request.body = body;
+        if (!contentType.empty()) request.headers.Set("Content-Type", contentType);
     }
 
     std::weak_ptr<Shared> weak = shared_;
@@ -141,7 +209,7 @@ void MatrixHttp::Request(const std::string& method, const std::string& path, con
             shared->requests.erase(handleBox->load());
         }
         if (!shared->Enter()) return;
-        if (onDone) onDone(ToResponse(raw));
+        if (onDone) onDone(raw);
         shared->Leave();
     };
     const UltraNetHandle handle = UltraNet_HttpRequestAsync(request, done);
