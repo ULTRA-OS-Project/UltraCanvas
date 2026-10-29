@@ -304,8 +304,11 @@ std::string UltraIM_MakePreview(const std::string& path, const std::string& mime
     fs::create_directories(dir, ec);
     // Named by the file's path, size and time, so the same file gives the
     // same preview and a changed one a new one.
-    const auto stamp = fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec).time_since_epoch().count();
-    const auto size = fs::file_size(UltraCanvas::PathFromUtf8(path), ec);
+    // (The write time's count is a 128-bit integer under libc++, which
+    // to_string has no overload for: through a fixed width.)
+    const long long stamp = static_cast<long long>(
+        fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec).time_since_epoch().count());
+    const unsigned long long size = static_cast<unsigned long long>(fs::file_size(UltraCanvas::PathFromUtf8(path), ec));
     std::vector<uint8_t> digest;
     const std::string key = path + "|" + std::to_string(size) + "|" + std::to_string(stamp) + "|" + std::to_string(maxSide);
     UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, key.data(), key.size(), digest);
