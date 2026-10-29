@@ -1,3 +1,18 @@
+#### 2026-10-29 *0.1.9*
+- **Pictures, videos and files - and people's faces.** A Telegram chat now
+  shows what it holds: a photo as its picture in the bubble, a video as its
+  preview picture under a play mark with its length, a file as its name and
+  size, the caption under the picture. Photos and preview pictures arrive by
+  themselves; a click on a video or a file fetches it and opens it in the
+  media viewer (a photo opens there too, full size). The sidebar's avatars,
+  the header's and, in a group, the one beside each person's bubble are their
+  Telegram profile pictures when they have one, the initials as before when
+  not. The paperclip in the composer sends a picture, a video or any file to
+  the open chat, with the composer's text as its caption; the bubble appears
+  at once and takes its ticks as a text does. The same in Matrix rooms,
+  encrypted ones included; ChatCube Direct does not carry pictures yet, and
+  its paperclip says so.
+
 #### 2026-10-28 *0.1.8*
 - **Sign in to Telegram with a QR code.** When Telegram says it sent the
   code to your Telegram app and the app shows none - as it has for
