@@ -10,10 +10,15 @@
 //      default;
 //   4. a symbolic link is stored as a link, or as the file it points to;
 //   5. the exclusions leave out a folder with all it holds, a name pattern,
-//      and a pattern with a '/' matched against the path.
+//      and a pattern with a '/' matched against the path;
+//   6. VirtualFSOpenOptions::compressionLevel reaches ZIP, 7-Zip and a
+//      stream compressor (Store stores a ZIP), and Normal writes what the
+//      library default does.
 //
 // Archives are written below the directory given as the first argument
 // (ctest passes one in the build tree), else the system temp directory.
+// Version: 1.1.0 - the compressionLevel preset; repeat.bin, the data the
+//                  levels are told apart by (on the text alone xz -1 beats -9)
 // Version: 1.0.0
 // Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
@@ -23,6 +28,7 @@
 #include <archive.h>
 #include <archive_entry.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <ctime>
 #include <filesystem>
@@ -105,8 +111,9 @@ static void WriteFile(const fs::path& path, const std::string& text) {
 }
 
 static bool Pack(const fs::path& archive, const fs::path& folder,
-                 const VirtualFSArchiveWriteOptions& write) {
-    VirtualFSOpenOptions options = VirtualFSOpenOptions::ForCreating();
+                 const VirtualFSArchiveWriteOptions& write,
+                 VirtualFSCompressionLevel preset = VirtualFSCompressionLevel::Normal) {
+    VirtualFSOpenOptions options = VirtualFSOpenOptions::ForCreating(preset);
     options.archiveWrite = write;
     std::error_code ec;
     fs::remove(archive, ec);
@@ -134,12 +141,29 @@ int main(int argc, char** argv) {
     fs::create_directories(src / "sub", ec);
     fs::create_directories(src / ".git" / "objects", ec);
 
-    // Compressible, but not trivially: a level-0 xz and a level-9 xz differ.
+    // Compressible text, which every level of every compressor shrinks.
     std::string text;
     for (int i = 0; i < 40000; ++i)
         text += "line " + std::to_string(i % 977) + " of the sample text, " +
                 std::to_string((i * 7919) % 104729) + "\n";
     WriteFile(src / "data.txt", text);
+    // What tells the levels apart for certain: a 1.2 MB block of noise, then
+    // the same block again. Only a match window longer than the block finds
+    // the repeat - xz/7-Zip from level 6 (8 MB and more) and zstd from level
+    // 19 do, while xz 0/1 (256 KB / 1 MB) and zstd 1 (512 KB) cannot - so
+    // the higher level is smaller by about the block. On the text alone the
+    // levels do not even order: xz -1 packs it smaller than xz -9.
+    {
+        std::string block(1200 * 1024, '\0');
+        uint32_t state = 2463534242u;
+        for (char& c : block) {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            c = static_cast<char>(state & 0xFF);
+        }
+        WriteFile(src / "repeat.bin", block + block);
+    }
     WriteFile(src / "sub" / "note.md", "keep me");
     WriteFile(src / "sub" / "scratch.tmp", "excluded by name");
     WriteFile(src / "sub" / "drop.log", "excluded by path");
@@ -285,6 +309,39 @@ int main(int argc, char** argv) {
               !VirtualFSWildcardMatch("*.o", "main.obj") &&
               VirtualFSWildcardMatch("?ain.*", "main.cpp"),
               "the wildcard matcher");
+    }
+
+    std::printf("== the compressionLevel preset ==\n");
+    {
+        using L = VirtualFSCompressionLevel;
+        const VirtualFSArchiveWriteOptions none;   // filterLevel -1: the preset decides
+        for (const char* ext : {"zip", "7z", "tar.gz", "tar.xz", "tar.zst"}) {
+            const fs::path fastest = root / (std::string("fastest.") + ext);
+            const fs::path best = root / (std::string("best.") + ext);
+            const bool packed = Pack(fastest, src, none, L::Fastest) &&
+                                Pack(best, src, none, L::Best);
+            const std::string what = std::string(ext) + ": Best is smaller than Fastest";
+            CHECK(packed && SizeOf(best) < SizeOf(fastest), what.c_str());
+        }
+        CHECK(Pack(root / "store.zip", src, none, L::Store), "a stored ZIP packs");
+        CHECK(SizeOf(root / "store.zip") > text.size(),
+              "Store keeps a ZIP uncompressed");
+        const ArchiveFacts stored = ReadArchive(root / "store.zip");
+        CHECK(stored.entries.count("src/data.txt") == 1 &&
+              stored.entries.at("src/data.txt").content == text,
+              "the stored ZIP reads back");
+
+        VirtualFSArchiveWriteOptions six;
+        six.filterLevel = 6;   // gzip's own default
+        CHECK(Pack(root / "normal.tar.gz", src, none, L::Normal) &&
+              Pack(root / "six.tar.gz", src, six, L::Normal) &&
+              SizeOf(root / "normal.tar.gz") == SizeOf(root / "six.tar.gz"),
+              "Normal leaves gzip at its default level");
+        VirtualFSArchiveWriteOptions one;
+        one.filterLevel = 1;
+        CHECK(Pack(root / "override.tar.gz", src, one, L::Best) &&
+              SizeOf(root / "override.tar.gz") == SizeOf(root / "fast.tar.gz"),
+              "filterLevel wins over the preset");
     }
 
     fs::remove_all(root, ec);

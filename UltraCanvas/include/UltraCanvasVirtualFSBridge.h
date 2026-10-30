@@ -115,7 +115,7 @@ enum class UCVFSTarFormat {
  * library default on one thread.
  */
 struct UCVFSArchiveWriteOptions {
-    int  filterLevel = -1;        // gzip/bzip2/lz4 1-9, xz 0-9, zstd 1-22; -1 = library default
+    int  filterLevel = -1;        // gzip/bzip2/lz4 1-9, xz 0-9, zstd 1-22; -1 = from `level`
     int  threads = 1;             // xz and zstd workers; 0 = one per core
     int  zstdLongWindowLog = 0;   // zstd --long=N window (power of two); 0 = off
     UCVFSTarFormat tarFormat = UCVFSTarFormat::Pax;

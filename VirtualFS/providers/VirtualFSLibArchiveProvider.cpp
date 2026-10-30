@@ -1,5 +1,9 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
+// Version: 1.5.0 - creating an archive follows VirtualFSOpenOptions::compressionLevel,
+//                  which was ignored: ZIP / 7-Zip get it as their 0-9 level
+//                  (Store: stored), a stream compressor on its own scale;
+//                  Normal keeps every library's default
 // Version: 1.4.0 - creating an archive follows VirtualFSOpenOptions::archiveWrite
 //                  (ApplyArchiveWriteOptions, WriteDiskEntry): compressor level,
 //                  threads and zstd long mode, the TAR header format, each
@@ -1914,9 +1918,30 @@ void VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
         }
     }
 
-    // The compressor. libarchive takes its options by the filter's module
-    // name; one it does not know (an older libarchive without zstd's "long")
-    // is refused with a warning and the archive is written without it.
+    // How hard to compress: archiveWrite.filterLevel when it names one, else
+    // the compressionLevel preset. Normal - the default - leaves every
+    // library at its own default, so an archive nobody asked to tune is the
+    // one it always was.
+    const VirtualFSCompressionLevel preset = options.compressionLevel;
+    const bool tunePreset = preset != VirtualFSCompressionLevel::Normal;
+
+    // ZIP and 7-Zip compress inside the format, and take the preset as the
+    // format's own 0-9 level (Store: no compression at all).
+    const int baseFormat = archive_format(writeArchive) & ARCHIVE_FORMAT_BASE_MASK;
+    if (tunePreset && (baseFormat == ARCHIVE_FORMAT_ZIP || baseFormat == ARCHIVE_FORMAT_7ZIP)) {
+        const char* formatModule = baseFormat == ARCHIVE_FORMAT_ZIP ? "zip" : "7zip";
+        if (preset == VirtualFSCompressionLevel::Store) {
+            archive_write_set_format_option(writeArchive, formatModule,
+                                            "compression", "store");
+        } else {
+            archive_write_set_format_option(writeArchive, formatModule, "compression-level",
+                    std::to_string(GetLibArchiveCompressionLevel(preset)).c_str());
+        }
+    }
+
+    // The stream compressor. libarchive takes its options by the filter's
+    // module name; one it does not know (an older libarchive without zstd's
+    // "long") is refused with a warning and the archive is written without it.
     const char* module = nullptr;
     int minLevel = 1, maxLevel = 9;
     bool threaded = false;
@@ -1926,10 +1951,34 @@ void VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
         case ARCHIVE_FILTER_XZ:    module = "xz";    minLevel = 0; threaded = true; break;
         case ARCHIVE_FILTER_ZSTD:  module = "zstd";  maxLevel = 22; threaded = true; break;
         case ARCHIVE_FILTER_LZ4:   module = "lz4";   break;
-        default: return;   // uncompressed, or a format with its own codec
+        default: module = nullptr; break;   // uncompressed, or a format with its own codec
     }
+    if (!module) {
+        archive_clear_error(writeArchive);
+        return;
+    }
+    int level = -1;
     if (tuning.filterLevel >= 0) {
-        const int level = std::clamp(tuning.filterLevel, minLevel, maxLevel);
+        level = tuning.filterLevel;
+    } else if (tunePreset) {
+        // Zstandard counts to 22, not 9: the preset is spread over its own
+        // scale (19 is the top of the ordinary range, 22 needs ultra memory).
+        if (std::strcmp(module, "zstd") == 0) {
+            switch (preset) {
+                case VirtualFSCompressionLevel::Store:
+                case VirtualFSCompressionLevel::Fastest: level = 1;  break;
+                case VirtualFSCompressionLevel::Fast:    level = 2;  break;
+                case VirtualFSCompressionLevel::Good:    level = 9;  break;
+                case VirtualFSCompressionLevel::Best:    level = 19; break;
+                case VirtualFSCompressionLevel::Ultra:   level = 22; break;
+                default: break;
+            }
+        } else {
+            level = GetLibArchiveCompressionLevel(preset);
+        }
+    }
+    if (level >= 0) {
+        level = std::clamp(level, minLevel, maxLevel);
         archive_write_set_filter_option(writeArchive, module, "compression-level",
                                         std::to_string(level).c_str());
     }

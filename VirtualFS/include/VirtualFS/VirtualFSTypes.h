@@ -1,5 +1,7 @@
 // VirtualFS/include/VirtualFSTypes.h
 // Core types, enumerations, and structures for VirtualFS
+// Version: 1.1.1 - compressionLevel is honoured when creating: the level
+//                  preset of ZIP / 7-Zip and of a stream compressor
 // Version: 1.1.0 - VirtualFSArchiveWriteOptions (VirtualFSOpenOptions::archiveWrite):
 //                  compressor level, threads, zstd long mode, TAR header
 //                  format, what of a file is kept, symlinks, exclusions
@@ -271,7 +273,8 @@ enum class VirtualFSTarFormat {
 struct VirtualFSArchiveWriteOptions {
     // The compressor's own level, applied to a compressed TAR (.tar.gz,
     // .tar.bz2, .tar.xz, .tar.zst, .tar.lz4) and to a single compressed
-    // stream: gzip, bzip2 and lz4 1-9, xz 0-9, zstd 1-22. -1 leaves the
+    // stream: gzip, bzip2 and lz4 1-9, xz 0-9, zstd 1-22. -1 takes
+    // VirtualFSOpenOptions::compressionLevel instead, whose Normal leaves the
     // library default (gzip 6, bzip2 9, xz 6, zstd 3).
     int filterLevel = -1;
     // Worker threads of the xz and zstd compressors; 0 = one per core. The
@@ -345,6 +348,10 @@ inline bool VirtualFSIsExcluded(const VirtualFSArchiveWriteOptions& options,
 struct VirtualFSOpenOptions {
     VirtualFSOpenMode mode = VirtualFSOpenMode::Read;
     std::string password;
+    // Creating an archive: how hard ZIP / 7-Zip and the stream compressor of
+    // a .tar.gz / .xz / ... work (Store: ZIP and 7-Zip store uncompressed).
+    // Normal leaves each library at its own default; archiveWrite.filterLevel
+    // overrides it for the stream compressor.
     VirtualFSCompressionLevel compressionLevel = VirtualFSCompressionLevel::Normal;
     VirtualFSCompressionMethod compressionMethod = VirtualFSCompressionMethod::Auto;
     bool followSymlinks = true;

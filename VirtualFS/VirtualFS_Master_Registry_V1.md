@@ -333,7 +333,7 @@ struct VirtualFSOpenOptions {
 enum class VirtualFSTarFormat { Pax, Gnu, Ustar };
 
 struct VirtualFSArchiveWriteOptions {
-    int  filterLevel = -1;          // gzip/bzip2/lz4 1-9, xz 0-9, zstd 1-22; -1 = library default
+    int  filterLevel = -1;          // gzip/bzip2/lz4 1-9, xz 0-9, zstd 1-22; -1 = compressionLevel
     int  threads = 1;               // xz / zstd workers; 0 = one per core
     int  zstdLongWindowLog = 0;     // zstd --long=N; 0 = off
     VirtualFSTarFormat tarFormat = VirtualFSTarFormat::Pax;

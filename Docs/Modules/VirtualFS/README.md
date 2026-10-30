@@ -187,8 +187,9 @@ VirtualFS_CreateArchive("/home/user/src.tar.xz", {"/home/user/src"}, options);
 
 `VirtualFSOpenOptions::archiveWrite` (`VirtualFSArchiveWriteOptions`) tunes
 what `CreateArchive` writes: the level of the stream compressor of a
-`.tar.gz` / `.bz2` / `.xz` / `.zst` / `.lz4` (`filterLevel`, -1 for the
-library default), the worker threads of xz and Zstandard (`threads`, 0 for
+`.tar.gz` / `.bz2` / `.xz` / `.zst` / `.lz4` (`filterLevel`; -1 takes the
+`compressionLevel` preset, which ZIP and 7-Zip follow too and whose `Normal`
+leaves every library at its default), the worker threads of xz and Zstandard (`threads`, 0 for
 one per core), Zstandard's long-distance window (`zstdLongWindowLog`, 27 =
 `--long=27`), the TAR header layout (`tarFormat`: pax, GNU or ustar), and
 what is stored of each file - its own modification time, permission bits
