@@ -7,7 +7,6 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.20.0 - Handling > Opening files: mediaOpensInUltraViewer
 // Version: 1.19.0 - Extras > Open location: recentLocations, the locations typed there
 // Version: 1.18.0 - previewAutoBackground (preview.transparent.auto): the viewer's Auto backdrop,
 //                  on unless a colour or the checkerboard was picked
@@ -558,10 +557,6 @@ public:
         it = kv.find("handling.files.double.click");
         if (it != kv.end())
             doubleClickOpensRegisteredApp = (it->second == "application");
-        it = kv.find("handling.files.media.ultraviewer");
-        if (it != kv.end())
-            mediaOpensInUltraViewer =
-                    (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("extras.history.max.entries");
         if (it != kv.end())
             ParseInt(it->second, historyMaxEntries,
@@ -579,6 +574,10 @@ public:
             splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("view.split.second.folder");
         if (it != kv.end()) splitSecondFolder = it->second;
+        it = kv.find("handling.files.media.ultraviewer");
+        if (it != kv.end())
+            mediaOpensInUltraViewer =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
         return true;
     }
 
@@ -668,14 +667,14 @@ public:
         file << "handling.files.double.click = "
              << (doubleClickOpensRegisteredApp ? "application" : "preview")
              << "\n";
-        file << "handling.files.media.ultraviewer = "
-             << (mediaOpensInUltraViewer ? "true" : "false") << "\n";
         file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         for (size_t i = 0; i < recentLocations.size() && i < kMaxRecentLocations; ++i)
             file << "extras.locations.recent." << (i + 1) << " = " << recentLocations[i] << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";
         file << "view.split.second.folder = " << splitSecondFolder << "\n";
+        file << "handling.files.media.ultraviewer = "
+             << (mediaOpensInUltraViewer ? "true" : "false") << "\n";
         return true;
     }
 
