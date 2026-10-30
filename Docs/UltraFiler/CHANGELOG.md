@@ -1,3 +1,39 @@
+#### 2026-10-30 *1.98.0*
+- **On macOS a saved file now appears at once** instead of on the next poll of
+  the folder, and on every platform a file saved while a folder was being
+  opened is no longer missed. Both are framework changes - see the UltraCanvas
+  changelog entries "macOS gets a native folder watch (FSEvents)" and "A file
+  saved into a folder just opened in the Filer was missed".
+- **A file saved into the open folder by another program (a Firefox "Save
+  Image As", for one) did not appear** until the folder was refreshed by hand.
+  Fixed in the framework's Filer widget - see the UltraCanvas changelog entry
+  "The Filer missed a file saved into the open folder".
+- **macOS: a double-click on an application in the folder display did
+  nothing.** An `.app` is a folder on disk that the file display launches
+  instead of entering, and UltraFiler's double-click handler skipped every
+  folder before looking at what it was. The application now starts, as it does
+  in the Finder and already did in the preview pane's folder peek, and the
+  History lists it under Apps rather than Folders.
+- **macOS: a pinned application went to the Favorites' Folders tab.** Pinning
+  now files an `.app` under Apps, beside the other applications, and its heart
+  mark and Unpin find it there. Applications pinned earlier are moved from
+  Folders to Apps at the next start, keeping the date they were pinned - left
+  where they were, they could no longer have been unpinned
+  (`UltraFilerFavorites::Reclassify`).
+- **A double-click on a picture, an audio file or a video starts UltraViewer
+  with it.** It comes first - before the registered program and before the
+  preview pane - in every folder display, the split view's right-hand one and
+  the folder peek in the preview pane included; a running UltraViewer shows the
+  file in place of what it showed. When UltraViewer cannot be found or started,
+  or the file is inside an archive or on a remote drive, the file opens the way
+  it did before and the status bar says why, so a double-click never comes to
+  nothing. *Settings > Handling > Opening files* has the new checkbox "Open
+  pictures, audio and video in UltraViewer" (on by default;
+  `handling.files.media.ultraviewer` in the settings file). Finding UltraViewer
+  inside its own app bundle on macOS is a framework change - see the
+  UltraCanvas changelog entry "`FindProgram` / `LaunchProgram` find a sibling
+  application on macOS".
+
 #### 2026-10-30 *1.97.0*
 - **Settings > Archives > TAR** sets how Compress packs a `.tar`,
   `.tar.gz`, `.tar.bz2`, `.tar.xz` and `.tar.zst`: the compression level of

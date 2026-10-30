@@ -1,3 +1,43 @@
+#### 2026-10-30 *0.9.445*
+- **The Filer missed a file saved into the open folder and never showed it.**
+  A save is several steps - Firefox writes an empty placeholder, then a
+  `.part` file, then renames it to the real name. The first step made the
+  folder watch ask for a rescan, and every rescan then stopped and restarted
+  the native watch (`ReadDirectoryChangesW` / inotify) and cleared the
+  "changed" flag. The steps that happened during the scan or during the
+  restart were thrown away, so the listing stayed on the half-saved state
+  until the user refreshed by hand. A rescan of the folder already watched now
+  keeps its watch running, and a change reported while the scan ran is kept
+  and triggers one more rescan; only moving to another folder discards
+  pending news (`UltraCanvasFilerWidget::WatchFolder`).
+- **`FindProgram` / `LaunchProgram` find a sibling application on macOS.**
+  Every macOS application is a bundle of its own, so "next to this
+  executable" (`<App>.app/Contents/MacOS`) never held another application and
+  `LaunchProgram("UltraViewer")` failed unless it was on `PATH`. Before `PATH`
+  they now try `<name>.app/Contents/MacOS/<name>` beside this application's
+  bundle, then in `~/Applications` and `/Applications`
+  (`UltraCanvasDesktopShell`).
+- **macOS gets a native folder watch (FSEvents).** `UltraCanvasFolderWatcher`
+  had backends only for Linux/BSD (inotify) and Windows
+  (`ReadDirectoryChangesW`), so on macOS the Filer re-read the open folder on
+  a timer and showed a saved file only on the next poll. The new backend
+  (`OS/MacOS/UltraCanvasMacOSFolderWatcher.cpp`) runs an FSEvents stream on the
+  folder on a private dispatch queue, drops events for subfolders so it answers
+  for this folder only like the other backends, counts events FSEvents
+  coalesced or dropped as a change, and reports the folder being deleted, moved
+  away or unmounted (`RootChanged` / `Unmount`) through the failure callback.
+  `Stop()` drains the queue, so no callback arrives after it returns. The
+  library and `FolderWatcherTest` link CoreServices for it.
+- **A file saved into a folder just opened in the Filer was missed.** The
+  widget read the folder first and started the watch afterwards, so whatever
+  happened during the read was never reported. It now starts the watch first
+  and reads second; a change during the read lists the folder once more. On
+  Windows the backend also issued its first `ReadDirectoryChangesW` on its
+  thread after `Watch()` had returned, and the system only collects changes
+  from that first call on; `Start()` now issues it, so every backend is
+  listening by the time `Watch()` returns. `FolderWatcherTest` checks a change
+  made right after `Watch()`.
+
 #### 2026-10-30 *0.9.444*
 - **`VirtualFSOpenOptions::compressionLevel` is honoured when an archive is
   written.** It was ignored: every ZIP, 7-Zip and compressed TAR was written
