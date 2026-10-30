@@ -150,6 +150,30 @@ else()
     message(STATUS "  FilerHostIconsTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FILER FILE NAME LINES TEST =====
+# Display > File names: the full name or at most 2 / 3 / 4 rows under a
+# thumbnail tile - the caption wrapping with no limit, the file display's
+# SetCaptionMaxLines, and UltraFiler's saved choice read back from a temporary
+# config folder (Apps/UltraFiler/UltraFilerSettings.h, header-only).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFileNameLinesTest...")
+    add_executable(FilerFileNameLinesTest
+        ${_FT_DIR}/FilerFileNameLinesTest.cpp
+    )
+    target_include_directories(FilerFileNameLinesTest PRIVATE ${_FT_INCLUDE_DIR}
+        ${_FT_DIR}/../Apps/UltraFiler)
+    target_compile_features(FilerFileNameLinesTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFileNameLinesTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFileNameLinesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerFileNameLinesTest COMMAND FilerFileNameLinesTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerFileNameLinesTest")
+else()
+    message(STATUS "  FilerFileNameLinesTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILER SHORTCUT ENTRY TEST =====
 # What the file display makes of a .lnk it lists: type, category, info column
 # and the resolved target on the entry. Builds its own shortcuts (and, off

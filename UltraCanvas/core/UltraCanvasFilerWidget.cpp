@@ -4426,6 +4426,16 @@ namespace UltraCanvas {
         NotifyDisplayFormatsChanged();
     }
 
+    void UltraCanvasFilerWidget::SetCaptionMaxLines(int lines) {
+        lines = std::max(0, lines);
+        if (style.captionMaxLines == lines) return;
+        style.captionMaxLines = lines;
+        // The caption band of a row is its deepest wrapped name, so the grid
+        // is laid out again with the new limit.
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
     void UltraCanvasFilerWidget::SetFavoriteMarkProvider(
             std::function<bool(const FilerEntry&)> provider) {
         const bool hadGutter = FavoriteMarkGutter() > 0;
@@ -10158,7 +10168,7 @@ namespace UltraCanvas {
         // Wrapping needs text metrics. Outside a render pass the widget may not
         // be on a window yet: captions then stay single-line and the first
         // Render() rebuilds the layout with real measurements.
-        int maxNameLines = std::max(1, style.captionMaxLines);
+        int maxNameLines = CaptionLineLimit();
         IRenderContext* mctx = measureContext ? measureContext : GetRenderContext();
         captionLinesMeasured = (mctx != nullptr);
         if (mctx && maxNameLines > 1) {
@@ -11070,6 +11080,13 @@ namespace UltraCanvas {
     // come out near equal — "CoderBox" / "compiler.png" rather than the
     // greedy "CoderBox compiler" / ".png" (see UltraCanvasTextWrapping.h).
 
+    int UltraCanvasFilerWidget::CaptionLineLimit() const {
+        // No limit is a limit nothing reaches: the wrap stops at the end of
+        // the name, long before the line counter would.
+        if (style.captionMaxLines <= 0) return std::numeric_limits<int>::max();
+        return style.captionMaxLines;
+    }
+
     int UltraCanvasFilerWidget::CaptionOverflowSlack() const {
         if (style.captionOverflowSlack > 0) return style.captionOverflowSlack;
         // Auto: about half a character of the caption font — enough for the
@@ -11123,7 +11140,7 @@ namespace UltraCanvas {
     int UltraCanvasFilerWidget::CaptionLinesFor(IRenderContext* ctx,
                                                 const std::string& name,
                                                 int maxWidth) const {
-        int maxLines = std::max(1, style.captionMaxLines);
+        int maxLines = CaptionLineLimit();
         if (!ctx || maxLines == 1 || maxWidth <= 0) return 1;
         return TextWrapping::LineCount(ContextMeasure{ctx}, name,
                                        CaptionWrapOptions(maxWidth, maxLines));
@@ -13580,7 +13597,7 @@ namespace UltraCanvas {
             bool showSize = item.rect.height >= 42;
             int nameRoom = item.rect.height - 6 - (showSize ? lineH : 0);
             int maxLines = clampi(nameRoom / std::max(1, lineH), 1,
-                                  std::max(1, style.captionMaxLines));
+                                  CaptionLineLimit());
             std::vector<std::string> nameLines = WrapEntryName(
                     ctx, item.entryIndex, DisplayNameOf(e),
                     item.rect.width - 8, maxLines);

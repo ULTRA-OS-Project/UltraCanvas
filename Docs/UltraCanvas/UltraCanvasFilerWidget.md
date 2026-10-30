@@ -257,7 +257,10 @@ being cut off after one:
   the name off the caption, the name is re-broken with mid-word breaks allowed
   (and the case rule off) and the version showing more of it wins.
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
-  restores the old single-line caption).
+  restores the old single-line caption; `0` lifts the limit, so the full name
+  is always shown over as many lines as it needs). `SetCaptionMaxLines(n)`
+  changes just that value and relays the grid out — UltraFiler's
+  *Settings > Display > File names* drives it.
 - A name that fits its lines completely is broken **balanced**, not greedily:
   the break points are chosen so the lines come out near equal instead of the
   first line taking everything that fits and leaving a stub behind:

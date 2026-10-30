@@ -1611,6 +1611,8 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     // the tag the thumbnail tiles carry.
     target->SetFileExtensionsInNames(settings.showFileExtensions);
     target->SetExtensionBadge(settings.extensionBadge);
+    // Display > File names: how many lines a tile caption may wrap over.
+    target->SetCaptionMaxLines(settings.fileNameMaxLines);
     // Display > File icons: UltraFiler's own drawn icons, or the ones this
     // desktop draws for the type.
     target->SetFileIconStyle(settings.fileIconStyle);

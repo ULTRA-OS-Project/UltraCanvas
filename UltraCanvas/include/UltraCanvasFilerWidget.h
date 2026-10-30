@@ -36,7 +36,8 @@
 // UltraCanvasSplitPane-style splitters between their columns, and names that
 // do not fit their column show the full name in a tooltip. In the tile-shaped
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
-// further lines (FilerStyle::captionMaxLines, 2 by default), broken between
+// further lines (FilerStyle::captionMaxLines, 2 by default, 0 = no limit;
+// SetCaptionMaxLines), broken between
 // whole words wherever the width allows one — the words of a PascalCase name
 // included ("UltraCanvas" / "Texter.exe"); what does not fit even then is
 // dropped from the front of the last line, which opens with "…".
@@ -103,6 +104,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.43.0 - SetCaptionMaxLines / GetCaptionMaxLines, and
+//                  FilerStyle::captionMaxLines 0 = no limit: a tile caption
+//                  shows the full name over as many lines as it needs.
 // Version: 1.42.0 - FormatSizeText: the display's own size formatting for a
 //                  host's status bar; the hidden-items notice sits on the file
 //                  area's background (no grey strip), its count beside the
@@ -623,10 +627,11 @@ namespace UltraCanvas {
         // Name wrapping in the caption of a thumbnail tile / treemap cell: a
         // name wider than the tile continues on the next line, up to
         // captionMaxLines lines (1 = the old single-line, tail-ellipsized
-        // caption). What still does not fit is dropped from the *front* of the
-        // last line, which then opens with "…" so the end of the name — its
-        // extension — stays readable. Every line past the first adds
-        // captionLineHeight to the tile.
+        // caption; 0 = no limit, the full name is always shown). What still
+        // does not fit is dropped from the *front* of the last line, which
+        // then opens with "…" so the end of the name — its extension — stays
+        // readable. Every line past the first adds captionLineHeight to the
+        // tile. SetCaptionMaxLines() changes it without a whole SetStyle().
         int captionMaxLines   = 2;
         int captionLineHeight = 0;       // 0 = derived from smallFontSize
 
@@ -1236,6 +1241,15 @@ namespace UltraCanvas {
         bool AreFileExtensionsInNames() const { return fileExtensionsInNames; }
         void SetExtensionBadge(FilerExtensionBadge badge);
         FilerExtensionBadge GetExtensionBadge() const { return extensionBadge; }
+        // ===== FILE NAMES =====
+        // Display > File names: how many lines a name may take in the caption
+        // of a thumbnail tile / treemap cell (FilerStyle::captionMaxLines) -
+        // 0 for the full name however many lines it needs, otherwise the
+        // limit, past which the head of the last line gives way to "…". Rows
+        // grow and shrink with it, so a change relays the grid out. The
+        // column views (Details / List / Size bars) keep one line per entry.
+        void SetCaptionMaxLines(int lines);
+        int  GetCaptionMaxLines() const { return style.captionMaxLines; }
         // ===== FAVORITE MARK =====
         // A small red heart at the outermost left of an entry, vertically
         // centred - on the row of the Details / List / Size bars views, beside
@@ -3160,6 +3174,8 @@ namespace UltraCanvas {
         std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,
                                                const std::string& name,
                                                int maxWidth, int maxLines);
+        // FilerStyle::captionMaxLines, resolved: 0 (no limit) as INT_MAX.
+        int  CaptionLineLimit() const;
         // Lines a caption needs for `name` at `maxWidth` (1..captionMaxLines).
         int  CaptionLinesFor(IRenderContext* ctx, const std::string& name,
                              int maxWidth) const;
