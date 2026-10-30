@@ -1,3 +1,11 @@
+#### 2026-10-30 *0.8.8*
+- **Ctrl+Shift+S showed *Convert to Editable Shapes* in the Arrange menu but
+  ran *Save As*.** Save As keeps Ctrl+Shift+S, as the File menu says;
+  Convert to Editable Shapes is Ctrl+Shift+C now, in the menu and on the
+  keyboard (Inkscape's key for Object to Path).
+- The panels' icon bars space their groups with the toolbar's new
+  `groupSpacing` instead of spacers around each divider; they look as before.
+
 #### 2026-10-29 *0.8.7*
 - **A rotation handle.** The Selector's Rotate handles (a second click on the
   selection) now show where the selection turns about and how far it is
