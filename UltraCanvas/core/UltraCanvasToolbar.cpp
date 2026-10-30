@@ -1,5 +1,6 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.10.0 - AddWidget, RefreshCommandStates
 // Version: 1.9.0 - groupSpacing sets a separator's margins; ToolbarOverflowMode::Menu
 //                  (Arrange takes what does not fit off the end, behind a chevron button)
 // Version: 1.8.1 - a label is as wide as its text; a dropdown button shows its
@@ -17,6 +18,7 @@
 
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasMenuRegistry.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
@@ -551,6 +553,51 @@ namespace UltraCanvas {
         }
         RegisterWidget(id, autoComplete);
         return autoComplete;
+    }
+
+    std::shared_ptr<UltraCanvasUIElement> UltraCanvasToolbar::AddWidget(
+            const std::string& id, std::shared_ptr<UltraCanvasUIElement> widget) {
+        return RegisterWidget(id, std::move(widget));
+    }
+
+// ===== COMMANDS =====
+
+    void UltraCanvasToolbar::RefreshCommandStates() {
+        if (!commandRegistry) return;
+        for (const auto& entry : widgetMap) {
+            const std::string& id = entry.first;
+            const auto& widget = entry.second;
+            if (auto group = std::dynamic_pointer_cast<UltraCanvasToolGroupButton>(widget)) {
+                // A folded group: its tools are the commands.
+                bool anyEnabled = false, anyCommand = false;
+                for (const auto& tool : group->GetItems()) {
+                    const MenuCommand* cmd = commandRegistry->Find(tool.id);
+                    if (!cmd) continue;
+                    anyCommand = true;
+                    if (cmd->IsEnabledNow()) anyEnabled = true;
+                }
+                if (anyCommand && group->IsDisabled() == anyEnabled) group->SetDisabled(!anyEnabled);
+                continue;
+            }
+            const MenuCommand* cmd = commandRegistry->Find(id);
+            if (!cmd) continue;
+            const bool enabled = cmd->IsEnabledNow();
+            if (widget->IsDisabled() == enabled) widget->SetDisabled(!enabled);
+            if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(widget)) {
+                const std::string tip = cmd->TooltipText();
+                if (button->GetTooltip() != tip) button->SetTooltip(tip);
+                if (button->CanToggle() && cmd->isChecked) {
+                    const bool checked = cmd->isChecked();
+                    if (button->IsPressed() != checked) button->SetPressed(checked);
+                }
+                // A button that shows its label shows the current one.
+                if (toolbarAppearance.showIconLabels && cmd->dynamicLabel) {
+                    const std::string label = cmd->dynamicLabel();
+                    if (button->GetText() != label) button->SetText(label);
+                }
+            }
+        }
+        RequestRedraw();
     }
 
 // ===== APPEARANCE =====

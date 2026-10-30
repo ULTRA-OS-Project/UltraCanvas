@@ -25,6 +25,12 @@
 // ToolbarOverflowMode::Menu the items that do not fit are taken off the end
 // of the bar and a chevron button there lists them in a popup menu: a button
 // as an entry, a toggle as a check, a tool group or a dropdown as a submenu.
+// A toolbar can be built from data: MaterializeToolbar (UltraCanvasToolbarLayout.h)
+// fills it from a ToolbarLayout - groups of command ids - and a command
+// registry, and RefreshCommandStates re-reads each command's enabled, checked
+// and label state into its button.
+// Version: 1.12.0 - AddWidget; SetCommandRegistry / RefreshCommandStates for a bar built
+//                   from commands (MaterializeToolbar)
 // Version: 1.11.0 - groupSpacing is the gap across a separator (it was never read);
 //                   ToolbarOverflowMode::Menu works (it did nothing): the items past the
 //                   end go into a menu behind a chevron button
@@ -65,6 +71,7 @@ namespace UltraCanvas {
 
 // ===== FORWARD DECLARATIONS =====
     class UltraCanvasToolbar;
+    class UltraCanvasMenuRegistry;
 
 // ===== TOOLBAR ENUMERATIONS =====
 
@@ -308,6 +315,9 @@ namespace UltraCanvas {
         // would see it, so both have to look before the target does.
         bool pointerFilterInstalled = false;
 
+        // The registry the items came from (SetCommandRegistry).
+        const UltraCanvasMenuRegistry* commandRegistry = nullptr;
+
         // Magnification (for dock-style toolbars)
         int hoveredItemIndex = -1;
         Point2Di mousePosition;
@@ -424,6 +434,25 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
                 const std::string& id, const std::string& placeholder = "Search...",
                 std::function<void(const std::string&)> onTextChange = nullptr);
+        // Any other widget as an item, registered under `id` like the ones
+        // above (GetWidget, the order, badges): a slider, a progress gauge.
+        std::shared_ptr<UltraCanvasUIElement> AddWidget(
+                const std::string& id, std::shared_ptr<UltraCanvasUIElement> widget);
+
+        // ===== COMMANDS =====
+        // The registry the bar's items came from (MaterializeToolbar sets it;
+        // it must outlive the bar). An item whose id is a command id there -
+        // a button, a toggle, a widget, a tool group's tools - follows that
+        // command's state on RefreshCommandStates.
+        void SetCommandRegistry(const UltraCanvasMenuRegistry* registry) { commandRegistry = registry; }
+        const UltraCanvasMenuRegistry* GetCommandRegistry() const { return commandRegistry; }
+        // Re-reads every command's isEnabled, isChecked and dynamicLabel into
+        // its item: a disabled command greys its button, a checked one presses
+        // its toggle, and the tooltip follows the label ("Undo Move (Ctrl+Z)").
+        // A tool group is enabled while any of its tools is. The program calls
+        // this where its state changes - after an edit, a selection - instead
+        // of keeping pointers to the buttons, which the user may have removed.
+        void RefreshCommandStates();
 
         // ===== LAYOUT =====
         // Lays the items out again for the overflow mode. The Menu mode works

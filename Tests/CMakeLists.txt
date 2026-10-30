@@ -5758,6 +5758,28 @@ else()
     message(STATUS "  ToolbarOverflowMenuTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TOOLBAR LAYOUT TEST =====
+# A toolbar built from groups of command ids (MaterializeToolbar), its state
+# read from the commands, and the user's arrangement kept across releases.
+# Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolbarLayoutTest...")
+    add_executable(ToolbarLayoutTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ToolbarLayoutTest.cpp
+    )
+    target_include_directories(ToolbarLayoutTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ToolbarLayoutTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolbarLayoutTest PRIVATE UltraCanvas)
+    set_target_properties(ToolbarLayoutTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ToolbarLayoutTest COMMAND ToolbarLayoutTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolbarLayoutTest")
+else()
+    message(STATUS "  ToolbarLayoutTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CSS LAYOUT FORM GRID TEST =====
 # The two-column [auto, 1fr] form grid every dialog is built from: captions
 # share a column, controls line up under each other, a full-width row does not

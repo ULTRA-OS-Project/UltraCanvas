@@ -11,6 +11,7 @@
   - [Item Management](#item-management)
   - [Item Badges](#item-badges)
   - [Convenience Methods](#convenience-methods)
+  - [Built from commands](#built-from-commands)
   - [Tool Groups](#tool-groups)
   - [Auto-Hide](#auto-hide)
   - [Drag and Drop](#drag-and-drop)
@@ -160,6 +161,24 @@ std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
 std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
         const std::string& id, const std::string& placeholder = "Search...",
         std::function<void(const std::string&)> onTextChange = nullptr);
+// Any other widget as an item under `id` (a slider, a gauge)
+std::shared_ptr<UltraCanvasUIElement> AddWidget(
+        const std::string& id, std::shared_ptr<UltraCanvasUIElement> widget);
+```
+
+### Built from commands
+
+A toolbar can be built from data instead: `MaterializeToolbar` fills it from
+a `ToolbarLayout` - groups of command ids the user can show, hide, reorder
+and fold - and the command registry menus are built from. Each item's id is
+then its command id, and one call re-reads every command's state into its
+button, so the program keeps no pointers to buttons the user may remove.
+See [Toolbar Layout](UltraCanvasToolbarLayout.md).
+
+```cpp
+void SetCommandRegistry(const UltraCanvasMenuRegistry* registry);   // MaterializeToolbar sets it
+const UltraCanvasMenuRegistry* GetCommandRegistry() const;
+void RefreshCommandStates();   // isEnabled / isChecked / dynamicLabel into the items
 ```
 
 ### Tool Groups
@@ -616,6 +635,7 @@ running->ClearItemBadge("webcam");                                // off again
 
 - [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
 - [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
+- [Toolbar Layout](UltraCanvasToolbarLayout.md) - A toolbar built from groups of commands, kept in the settings (`MaterializeToolbar`)
 - [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally
