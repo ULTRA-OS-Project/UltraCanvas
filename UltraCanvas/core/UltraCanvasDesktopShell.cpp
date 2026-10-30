@@ -6,12 +6,13 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.7.0 - FindProgram finds a sibling application's bundle on macOS
 // Version: 1.6.0 - LockSession, the loudspeaker's volume, ActivateMenuItem
 // Version: 1.5.0 - GetSystemDesktopSwitchUnavailableReason
 // Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
 // Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
 // Version: 1.2.0 - the platform's own application list; shortcut entries launch
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
@@ -493,6 +494,30 @@ std::string UltraCanvasDesktopShell::FindProgram(const std::string& program) {
         if (IsExecutableFile(siblingExe)) return PathToUtf8(siblingExe);
 #endif
     }
+#if defined(__APPLE__)
+    {
+        // A macOS application is a bundle of its own - UltraFiler.app beside
+        // UltraViewer.app - so "next to this executable" never finds a
+        // sibling application: it is inside the next bundle over. Looked for
+        // beside this bundle first (an installed family, a build's packaged
+        // apps), then in the user's and the system's Applications folders.
+        std::vector<fs::path> folders;
+        if (!here.empty()) {
+            fs::path macosDir = PathFromUtf8(here);   // <folder>/<App>.app/Contents/MacOS
+            if (!macosDir.has_filename()) macosDir = macosDir.parent_path();
+            const fs::path bundle = macosDir.parent_path().parent_path();
+            if (bundle.extension() == ".app") folders.push_back(bundle.parent_path());
+        }
+        const std::string home = EnvString("HOME");
+        if (!home.empty()) folders.push_back(PathFromUtf8(home) / "Applications");
+        folders.push_back(PathFromUtf8("/Applications"));
+        for (const fs::path& folder : folders) {
+            const fs::path inBundle = folder / PathFromUtf8(program + ".app") /
+                                      "Contents" / "MacOS" / given;
+            if (IsExecutableFile(inBundle)) return PathToUtf8(inBundle);
+        }
+    }
+#endif
 #if defined(_WIN32)
     const char separator = ';';
 #else

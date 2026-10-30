@@ -19,9 +19,10 @@
 // through the code page names a different file: every path here goes through
 // PathToUtf8 / PathFromUtf8, and the config folder is redirected through the
 // wide environment API that GetEnvUtf8 reads.
+// Version: 1.3.0 - Favorites: Reclassify moves misfiled pins
 // Version: 1.2.0 - Handling > Protected files: the minutes before passwords are forgotten
 // Version: 1.1.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 // The config directory is read from the environment, so it is pointed at a
@@ -30,6 +31,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <ctime>
 #include <string>
 #include <vector>
 
@@ -393,6 +395,48 @@ void TestNonAsciiNameStays() {
             "and the pin is still there after a restart");
 }
 
+// A pin filed under the wrong kind - a macOS application pinned under Folders
+// before FavoriteKindOf knew bundles - moves to the right one with its pin
+// time, is not doubled where it is already pinned, and stays moved.
+void TestReclassifyMovesPins() {
+    std::printf("\n-- Favorites: Reclassify --\n");
+    UltraFilerFavorites favorites;
+    favorites.ClearAll();
+    favorites.Pin(FilerFavoriteKind::Folder, "/Applications/Calculator.app");
+    favorites.Pin(FilerFavoriteKind::Folder, "/Users/someone/Documents");
+    favorites.Pin(FilerFavoriteKind::Folder, "/Applications/Safari.app");
+    favorites.Pin(FilerFavoriteKind::App, "/Applications/Safari.app");
+    const std::time_t pinnedAt =
+            favorites.Items(FilerFavoriteKind::Folder).front().pinnedAt;
+
+    const size_t moved = favorites.Reclassify(
+            FilerFavoriteKind::Folder, FilerFavoriteKind::App,
+            [](const std::string& path) {
+                return path.size() > 4 && path.compare(path.size() - 4, 4, ".app") == 0;
+            });
+    CheckEq(moved, 2u, "both applications leave Folders");
+    CheckEq(favorites.Items(FilerFavoriteKind::Folder).size(), 1u,
+            "the real folder stays under Folders");
+    CheckEq(favorites.Items(FilerFavoriteKind::App).size(), 2u,
+            "Apps holds each application once");
+    Check(favorites.IsPinned(FilerFavoriteKind::App, "/Applications/Calculator.app"),
+          "the moved application is pinned under Apps");
+    std::time_t movedAt = 0;
+    for (const FilerFavoriteItem& item : favorites.Items(FilerFavoriteKind::App))
+        if (item.path == "/Applications/Calculator.app") movedAt = item.pinnedAt;
+    Check(movedAt == pinnedAt, "and keeps the time it was pinned");
+
+    UltraFilerFavorites reloaded;
+    reloaded.Load();
+    Check(reloaded.IsPinned(FilerFavoriteKind::App, "/Applications/Calculator.app") &&
+          !reloaded.IsPinned(FilerFavoriteKind::Folder, "/Applications/Calculator.app"),
+          "the move is saved");
+    CheckEq(reloaded.Reclassify(FilerFavoriteKind::Folder, FilerFavoriteKind::App,
+                                [](const std::string&) { return false; }),
+            0u, "nothing to move moves nothing");
+    favorites.ClearAll();
+}
+
 } // namespace
 
 int main() {
@@ -420,6 +464,7 @@ int main() {
     TestProtectedFilesSetting();
     TestMissingPathsDropOut();
     TestNonAsciiNameStays();
+    TestReclassifyMovesPins();
 
     std::filesystem::remove_all(root, ec);
 

@@ -3774,6 +3774,14 @@ namespace UltraCanvas {
         // which is exactly what a remote drive cannot serve.
         listingIsRealDirectory = fileListMode || isRealDir;
 
+        // Watch first, read second. Started after the read, the watch missed
+        // whatever the folder did while it was being read - a file saved into
+        // a folder just opened stayed invisible until something else changed.
+        // Started here, such a change is reported and lists the folder once
+        // more. A rescan of the folder already watched keeps its watch, so this
+        // costs nothing on a Refresh().
+        if (!fileListMode && isRealDir) WatchFolder(currentPath);
+
         // What this listing leaves out, for the hidden-items notice: the
         // hidden entries filtered below, plus the subfolders a curated home
         // folder keeps back. Counted while the listing is built - afterwards
@@ -4052,9 +4060,9 @@ namespace UltraCanvas {
                         {distinct.begin(), distinct.end()});
         }
 
-        // Point the folder watch at what is now on screen. Done after the scan
-        // so the fingerprint the worker takes describes the listing the user
-        // is looking at, not the one that was there a moment ago.
+        // Point the folder watch at what is now on screen. A real folder is
+        // already watched (see above) and this keeps that watch; anything else
+        // - a file list, an archive interior, a remote drive - stops it.
         WatchFolder((fileListMode || !isRealDir) ? std::string() : currentPath);
 
         if (listingPendingStatus != pendingBefore && onListingPendingChanged)
@@ -14696,18 +14704,42 @@ namespace UltraCanvas {
                  fs::is_directory(PathFromUtf8(path), ec))
                         ? path : std::string();
 
+        // Every scan ends here, so most calls are a Refresh() of the folder
+        // already watched - most often one the watch itself asked for. Read
+        // before anything changes; folderWatchPath is only written on this
+        // thread, so reading it without the lock is safe.
+        const std::string previous =
+                nativeWatchActive ? folderWatcher.WatchedPath() : folderWatchPath;
+        const bool sameTarget = !target.empty() && target == previous;
+
         // The operating system can usually tell us the moment something
         // changes - inotify, ReadDirectoryChangesW - which beats re-reading
         // the folder on a timer on both latency and cost. The callback runs on
         // the watcher's thread and does nothing but raise the flag the UI timer
         // already polls, so the rest of the machinery is unchanged.
-        folderWatcher.Stop();
-        nativeWatchActive = false;
-        // Stop() joined the previous backend, so nothing can still be about to
-        // report the folder we just left: whatever sets this from here on
-        // belongs to the watch started below.
-        nativeWatchLost.store(false);
-        if (!target.empty()) {
+        //
+        // A live watch on this same folder is kept. Restarting it after every
+        // scan dropped whatever the folder did in between - and a save is
+        // several steps (Firefox writes a placeholder, then a .part file, then
+        // renames it): the first step triggered the scan, the rest landed
+        // while it ran or while the watch was being replaced, and the listing
+        // stayed on the half-saved state for good.
+        const bool keepNativeWatch =
+                sameTarget && nativeWatchActive && !nativeWatchLost.load();
+        if (!keepNativeWatch) {
+            folderWatcher.Stop();
+            nativeWatchActive = false;
+            // Stop() joined the previous backend, so nothing can still be
+            // about to report the folder we just left: whatever sets these
+            // from here on belongs to the watch started below.
+            nativeWatchLost.store(false);
+            // News pending about another folder means nothing here. News
+            // about this one is kept: the timer clears the flag before it
+            // refreshes, so a flag raised since came from a change the scan
+            // that just ran may not have seen.
+            if (!sameTarget) folderWatchDirty.store(false);
+        }
+        if (!target.empty() && !keepNativeWatch) {
             nativeWatchActive = folderWatcher.Watch(target,
                     [this]() { folderWatchDirty.store(true); },
                     // A native watch can die on its own - the volume it is on
@@ -14738,7 +14770,6 @@ namespace UltraCanvas {
             if (target.empty()) return;
             if (!nativeWatchActive) StartFolderWatchWorkerLocked();
         }
-        folderWatchDirty.store(false);   // whatever was pending described the old folder
         folderWatchCond.notify_all();
         ArmFolderWatchTimer();
     }

@@ -65,6 +65,12 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.37.0 - a double-click on a macOS application in the folder display
+//                  launches it (it did nothing); History lists it under Apps;
+//                  pinning one files it under the Favorites' Apps tab, and
+//                  earlier pins under Folders are moved there
+// Version: 1.36.0 - pictures, audio and video open in UltraViewer
+//                  (OpenInUltraViewer)
 // Version: 1.35.0 - a drive's folder being fetched or updated says so on the
 //                  status bar (the display only slides a thin bar along its
 //                  foot); a drop is asked about at once during a transfer,
@@ -86,7 +92,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -99,9 +105,11 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files
 #include "UltraCanvasDiskCache.h"         // the cache entry of Extras > Open location
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
+#include "UltraCanvasMacBundle.h"      // a pinned application bundle, by path
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasSupportedFormats.h"  // its image formats
@@ -863,7 +871,37 @@ namespace {
     // The list below is what it cannot answer: formats the widget's table
     // does not carry (.com, .bat, .apk, .snap) and, on the Unixes, a plain
     // executable with no extension at all, where the execute bit decides.
+    // A macOS application bundle: a directory on disk that the file display
+    // launches rather than enters - the same rule the widget applies on
+    // activation (UltraCanvasFilerWidget, isBundle + Executable). macOS only,
+    // as there: everywhere else a Mac application is a folder to look into.
+    bool IsLaunchableBundle(const FilerEntry& e) {
+#ifdef __APPLE__
+        return e.isDirectory && e.isBundle &&
+               e.category == FilerFileCategory::Executable;
+#else
+        (void)e;
+        return false;
+#endif
+    }
+
+    // The same question for a path alone - a pin read back from the
+    // favorites file, with no FilerEntry behind it. Answered the way the
+    // widget answers it: the name says ".app" and its Info.plist says
+    // application.
+    bool IsLaunchableBundlePath(const std::string& path) {
+#ifdef __APPLE__
+        if (!IsApplicationBundlePath(path)) return false;
+        UCAppBundle bundle;
+        return ReadApplicationBundle(path, bundle) && bundle.isApplication;
+#else
+        (void)path;
+        return false;
+#endif
+    }
+
     bool IsApplicationEntry(const FilerEntry& e) {
+        if (IsLaunchableBundle(e)) return true;
         if (e.isDirectory) return false;
         // A Windows shortcut is whatever it points at: one to a program
         // belongs in the Applications list (that is what a Start-Menu entry
@@ -884,8 +922,12 @@ namespace {
     }
 
     // The favorites list (= Favorites tab) an entry belongs to when pinned.
+    // An application bundle is an application here, not the folder it is on
+    // disk - it was pinned under Folders, and its tile there opened the
+    // folder holding it instead of being one of the user's apps.
     FilerFavoriteKind FavoriteKindOf(const FilerEntry& e) {
-        return e.isDirectory ? FilerFavoriteKind::Folder
+        return IsLaunchableBundle(e) ? FilerFavoriteKind::App
+                : e.isDirectory ? FilerFavoriteKind::Folder
                 : IsApplicationEntry(e) ? FilerFavoriteKind::App
                                         : FilerFavoriteKind::File;
     }
@@ -1201,6 +1243,16 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // folder is disk work the user rarely follows up on.
     folderPreview->SetFolderPrefetchEnabled(false);
     folderPreview->SetActivateOpensWithDefaultApp(true);
+    // A double-click in the pane opens the file with the system's program -
+    // except a picture, audio file or video, which goes to UltraViewer the
+    // way it does in the main display (Settings > Handling > Opening files).
+    // An installed onFileActivated takes over from the widget's own launch,
+    // so the rest is handed back to it - a macOS application bundle (a
+    // directory the widget activates rather than enters) included.
+    folderPreview->onFileActivated = [this](const FilerEntry& entry) {
+        if (OpenInUltraViewer(entry)) return;
+        if (folderPreview) folderPreview->OpenEntryWithOS(entry);
+    };
     // Work done through the pane's context menu (a paste, a delete, ...) is
     // work done in that folder, exactly as in the main folder display - the
     // History and the folder tree follow it the same way.
@@ -1247,6 +1299,11 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // rather than after the first entry is recorded into it.
     history.Load();
     favorites.Load();
+    // Applications pinned before FavoriteKindOf knew them are filed under
+    // Folders: move them to Apps, where the heart toggle now looks for them
+    // (left where they were, they could no longer be unpinned).
+    favorites.Reclassify(FilerFavoriteKind::Folder, FilerFavoriteKind::App,
+                         IsLaunchableBundlePath);
     folderViews.Load();
     // Loaded before the tree is built, so a folder the user gave an icon
     // carries it from the first frame rather than after the first repaint.
@@ -1577,6 +1634,35 @@ bool UltraFilerWindow::HasRegisteredApplication(const std::string& path) {
     // A platform with no enumeration backend reports none, which is the right
     // answer here: nothing else will open the file, so we do.
     return FileAssociations::HasDefaultApplication(path);
+}
+
+bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
+    if (!settings.mediaOpensInUltraViewer) return false;
+    if (entry.isDirectory || entry.isShortcut) return false;
+    switch (entry.category) {
+        case FilerFileCategory::Image:
+        case FilerFileCategory::Vector:
+        case FilerFileCategory::Audio:
+        case FilerFileCategory::Video:
+            break;
+        default:
+            return false;
+    }
+    // Only a file on the disk: an entry inside an archive or on a remote
+    // drive is a path no other program can open - those stay with the
+    // preview, which reads them itself.
+    std::error_code ec;
+    if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) || ec)
+        return false;
+
+    std::string error;
+    if (!UltraCanvasDesktopShell::LaunchProgram("UltraViewer", {entry.path}, &error)) {
+        // Said once per double-click, and the file still opens the usual way,
+        // so a missing UltraViewer never turns a double-click into nothing.
+        if (statusLabel) statusLabel->SetText("UltraViewer could not be started: " + error);
+        return false;
+    }
+    return true;
 }
 
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
@@ -5640,12 +5726,23 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         UpdatePreviewPane();
     };
     tab->filer->onFileActivated = [this, tab](const FilerEntry& entry) {
-        if (entry.isDirectory) return;
+        // A folder is entered by the widget and never arrives here - except a
+        // macOS application bundle, which the widget activates instead of
+        // entering (the Finder's rule). Skipping every directory made a
+        // double-click on an application in the folder display do nothing.
+        if (entry.isDirectory && !IsLaunchableBundle(entry)) return;
         // Opening a file (or launching an application) puts it at the top of
         // the matching History list, and counts as work done in its folder.
         RecordEntryInHistory(entry);
         RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
         if (!IsActiveTab(tab)) return;
+        // The bundle is launched, the way the Finder does and the preview
+        // pane's folder peek already did; none of the file rules below - the
+        // registered program, UltraViewer, the preview - apply to it.
+        if (entry.isDirectory) {
+            if (tab->filer) tab->filer->OpenEntryWithOS(entry);
+            return;
+        }
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
         // Windows executables, installers and program shortcuts go to the
         // UltraWin emulation layer, not to the host's file associations
@@ -5677,6 +5774,11 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // Only for a file that is on the disk: an entry inside an archive is
         // a virtual path, which no other program can open - the preview reads
         // those through VirtualFS, and is the only thing that can show them.
+        // Settings > Handling > Opening files: pictures, audio and video go to
+        // UltraViewer first - ahead of the registered program and of the
+        // preview. Falls through when UltraViewer is off, missing, or the
+        // entry is not a media file on the disk.
+        if (OpenInUltraViewer(entry)) return;
         if (settings.doubleClickOpensRegisteredApp) {
             std::error_code ec;
             if (fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) && !ec &&
@@ -6131,7 +6233,9 @@ void UltraFilerWindow::RefreshHistoryTabs() {
 }
 
 void UltraFilerWindow::RecordEntryInHistory(const FilerEntry& entry) {
-    if (entry.isDirectory) {
+    // An application bundle is a directory, but launching one is using an
+    // application: it goes to the Apps list, not the Folders list.
+    if (entry.isDirectory && !IsLaunchableBundle(entry)) {
         RecordFolderInHistory(entry.path);
         return;
     }

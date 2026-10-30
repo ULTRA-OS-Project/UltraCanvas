@@ -438,13 +438,13 @@ if(BUILD_DEMO_APP)
 endif()
 
 # Which platforms ship a native folder-watch backend (UltraCanvasFolderWatcher:
-# inotify / ReadDirectoryChangesW). Decided HERE, above every add_subdirectory,
+# inotify / ReadDirectoryChangesW / FSEvents). Decided HERE, above every add_subdirectory,
 # because the library and Tests/ are sibling scopes and both must agree: the
 # core file compiles a null-returning fallback unless this is set, so a
 # disagreement is either a duplicate symbol or a missing one at link time.
 # Adding a platform means dropping its backend under OS/<Platform>/ and adding
 # it to the condition below.
-if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
+if(WIN32 OR APPLE OR (UNIX AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH ON)
 endif()
 

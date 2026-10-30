@@ -418,7 +418,7 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   listing instead of a file preview, so a folder can be peeked into without
   leaving the one on display. The peek is live: double-clicking a subfolder
   in it descends further, a file activated in it opens with its OS default
-  application, files can be dropped into it, and its context menu offers
+  application (a picture, audio file or video with UltraViewer), files can be dropped into it, and its context menu offers
   the usual file commands (only the hover icon menu stays off). Selecting
   more files with **Ctrl** held (Ctrl+click, a Ctrl marquee, Ctrl+A) leaves
   the pane as it is, so the window does not rearrange itself while a
@@ -450,6 +450,13 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   sound, the default), *5 s clip* (a five-second muted preview in the
   `UltraCanvasAlbum` hover style, then pause) or *Still image* (paused
   first frame).
+- **Pictures, audio and video open in UltraViewer:** double-click / Enter on
+  one of them starts UltraViewer with it (a running UltraViewer shows it in
+  place of what it showed), ahead of everything below. UltraViewer is looked
+  for next to UltraFiler, beside its app bundle on macOS, and on `PATH`; when
+  it is not there - or the file is inside an archive or on a remote drive -
+  the file opens the way any other file does, and the status bar says why.
+  *Settings > Handling > Opening files* switches it off.
 - **Open files:** double-click / Enter either starts the program this system
   has registered for the file, exactly as a double-click in Explorer or the
   Finder does, or shows the file in the preview pane —

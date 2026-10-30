@@ -341,6 +341,13 @@ public:
     bool doubleClickOpensRegisteredApp = false;
 #endif
 
+    // Handling > Opening files: a double-click (or Enter) on a picture, an
+    // audio file or a video starts UltraViewer with it - ahead of the choice
+    // above, because UltraViewer is the family's own viewer for exactly these.
+    // Where UltraViewer cannot be found or started, the choice above applies
+    // as if this were off.
+    bool mediaOpensInUltraViewer = true;
+
     // View > Split view: whether the window shows two folder displays side by
     // side (the navigation row's split-screen toggle), and the folder the
     // right-hand display last showed, so the next start opens the pair the
@@ -607,6 +614,10 @@ public:
             splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("view.split.second.folder");
         if (it != kv.end()) splitSecondFolder = it->second;
+        it = kv.find("handling.files.media.ultraviewer");
+        if (it != kv.end())
+            mediaOpensInUltraViewer =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
         return true;
     }
 
@@ -720,6 +731,8 @@ public:
             file << "extras.locations.recent." << (i + 1) << " = " << recentLocations[i] << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";
         file << "view.split.second.folder = " << splitSecondFolder << "\n";
+        file << "handling.files.media.ultraviewer = "
+             << (mediaOpensInUltraViewer ? "true" : "false") << "\n";
         return true;
     }
 

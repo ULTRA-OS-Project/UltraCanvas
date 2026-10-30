@@ -2318,11 +2318,11 @@ filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
 ```
 
 Where the operating system can report changes itself the widget uses that —
-inotify on Linux, `ReadDirectoryChangesW` on Windows, through
+inotify on Linux, `ReadDirectoryChangesW` on Windows, FSEvents on macOS, through
 [`UltraCanvasFolderWatcher`](UltraCanvasFolderWatcher.md). A change is then seen
 the moment it happens, and an idle folder costs nothing at all.
 
-Where no backend exists (macOS, Android, WebAssembly) it falls back to polling:
+Where no backend exists (Android, WebAssembly) it falls back to polling:
 a background worker re-fingerprints the folder every interval — its own
 modification time folded together with each entry's name, size and modification
 time — and raises a flag when the number moves. The scan never runs on the UI
@@ -2332,6 +2332,12 @@ Either way only a real directory is watched: an archive interior or a file list
 has no folder whose changes would mean anything. The interval governs detection
 only while polling; with a native watcher it bounds just how quickly the UI
 applies what the watcher already reported.
+
+A rescan of the folder already being watched keeps its watch running, and a
+change reported while the rescan was running is not discarded - it triggers one
+more rescan. A save is usually several steps (a browser writes a placeholder,
+then a `.part` file, then renames it), and the first step's rescan must not
+swallow the rest.
 
 A native watch can also die after it started — the volume the folder is on is
 unmounted, the share drops, the handle goes bad. The widget is told (the

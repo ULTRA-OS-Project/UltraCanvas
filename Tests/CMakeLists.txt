@@ -294,6 +294,9 @@ if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
     if(WIN32)
         list(APPEND FOLDER_WATCHER_SOURCES
             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFolderWatcher.cpp)
+    elseif(APPLE)
+        list(APPEND FOLDER_WATCHER_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MacOS/UltraCanvasMacOSFolderWatcher.cpp)
     else()
         list(APPEND FOLDER_WATCHER_SOURCES
             ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFolderWatcher.cpp)
@@ -308,6 +311,9 @@ if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
 endif()
 find_package(Threads REQUIRED)
 target_link_libraries(FolderWatcherTest PRIVATE Threads::Threads)
+if(APPLE AND ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    target_link_libraries(FolderWatcherTest PRIVATE "-framework CoreServices")
+endif()
 set_target_properties(FolderWatcherTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
