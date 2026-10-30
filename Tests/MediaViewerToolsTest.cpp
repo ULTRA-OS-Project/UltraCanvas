@@ -10,7 +10,8 @@
 // An HTML page, and an .xml that holds XHTML, is rendered in the page view
 // (MV_Web) rather than shown as its source; data XML stays text. An .eml is
 // shown there as the message: header, body, its pictures, attachments listed;
-// an .emlx the same, and a saved web page (.mht) as the page it saved.
+// an .emlx and an Outlook .msg the same, and a saved web page (.mht) as the
+// page it saved.
 //
 // A layered UltraCanvas document (*.ucd, UCBitmap) is shown whole - its
 // layers composited at full size, not the 256 px thumbnail it carries - and
@@ -27,6 +28,7 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.10.0 - Outlook .msg messages, attachments listed with Open and Save
 // Version: 1.9.0 - Apple Mail .emlx; saved web pages (.mht) from their own parts
 // Version: 1.8.0 - e-mail messages (.eml) shown as the message
 // Version: 1.7.0 - HTML / XHTML pages rendered (MV_Web, IsHtmlFile); data XML stays text
@@ -52,6 +54,8 @@
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasWebView.h"
 #include "UltraCanvasImageElement.h"
+#include "UltraCanvasCompoundFile.h"
+#include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
@@ -367,6 +371,58 @@ int main() {
 #else
     Check(Shown(*viewer, "MV_Text"), "message.eml: without a MIME reader, its text");
 #endif
+
+    // An Outlook .msg (a compound file, read by UCOutlookMessage - no MIME
+    // reader needed): the message, its HTML body with its hidden cid:
+    // picture, its attachment listed with Open and Save. A .msg that is
+    // not one (a message catalogue) is text.
+    {
+        auto utf16 = [](const std::string& ascii) {
+            std::vector<uint8_t> out;
+            for (unsigned char c : ascii) { out.push_back(c); out.push_back(0); }
+            out.push_back(0); out.push_back(0);
+            return out;
+        };
+        auto bytes = [](const std::string& text) { return std::vector<uint8_t>(text.begin(), text.end()); };
+        UCCompoundFileWriter msg;
+        msg.AddStream("__properties_version1.0", std::vector<uint8_t>(32, 0));
+        msg.AddStream("__substg1.0_0037001F", utf16("Outlook notes"));
+        msg.AddStream("__substg1.0_0C1A001F", utf16("Erin Example"));
+        msg.AddStream("__substg1.0_5D01001F", utf16("erin@example.org"));
+        msg.AddStream("__substg1.0_0E04001F", utf16("Frank"));
+        msg.AddStream("__substg1.0_10130102",
+                      bytes("<html><body><p>Notes from Outlook.</p><img src=\"cid:sig@x\"></body></html>"));
+        msg.AddStream("__attach_version1.0_#00000000/__properties_version1.0", std::vector<uint8_t>(8, 0));
+        msg.AddStream("__attach_version1.0_#00000000/__substg1.0_3707001F", utf16("minutes.txt"));
+        msg.AddStream("__attach_version1.0_#00000000/__substg1.0_37010102", bytes("Minutes.\n"));
+        msg.AddStream("__attach_version1.0_#00000001/__properties_version1.0", std::vector<uint8_t>(8, 0));
+        msg.AddStream("__attach_version1.0_#00000001/__substg1.0_370E001F", utf16("image/png"));
+        msg.AddStream("__attach_version1.0_#00000001/__substg1.0_3712001F", utf16("sig@x"));
+        msg.AddStream("__attach_version1.0_#00000001/__substg1.0_37010102", [] {
+            const std::string b64 =
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+            return Base64Decode(b64);
+        }());
+        const std::vector<uint8_t> built = msg.Build();
+        const fs::path outlook = dir / "notes.msg";
+        WriteFile(outlook, std::string(built.begin(), built.end()));
+        Expect(*viewer, outlook, false, false, false, false);
+        Check(UltraCanvasMediaViewer::IsMailMessageFile(PathToUtf8(outlook)), "IsMailMessageFile: an Outlook .msg");
+        Check(Shown(*viewer, "MV_Web") && web && web->GetTitle() == "Outlook notes",
+              "notes.msg: shown as the message");
+        Check(web && PageLabel(web, "Erin Example") && PageLabel(web, "Frank"), "notes.msg: From and To");
+        Check(web && PageLabel(web, "Notes from Outlook."), "notes.msg: its HTML body");
+        Check(web && PagePictures(web) == 1, "notes.msg: the picture its body names by cid:");
+        Check(web && PageLabel(web, "minutes.txt") && PageLabel(web, "Save"),
+              "notes.msg: the attachment, with its Open and Save links");
+        Check(Has(InfoText(*viewer), "EMAIL"), "notes.msg: the info bar calls it EMAIL");
+
+        const fs::path catalogue = dir / "strings.msg";
+        WriteFile(catalogue, "$set 1\n1 Hello\n");
+        Expect(*viewer, catalogue, false, false, false, false);
+        Check(!UltraCanvasMediaViewer::IsMailMessageFile(PathToUtf8(catalogue)) && Shown(*viewer, "MV_Text"),
+              "strings.msg: not a compound file - a text file, shown as text");
+    }
 
     Expect(*viewer, sheet, false, false, false, false);
     Expect(*viewer, model, false, false, false, false);

@@ -33,6 +33,25 @@ the format specifies. `ReadStream` and `HasStream` look in the root storage;
 when a writer left the directory tree empty (or it is damaged), the first
 stream of that name anywhere is taken instead.
 
+Below the root, a path names a stream: storages and the stream separated by
+`/`, each name compared the same way. An Outlook `.msg` keeps every
+attachment and recipient in a storage of its own:
+
+```cpp
+UltraCanvas::UCCompoundFileReader msg;
+if (msg.Open(path)) {
+    for (const std::string& storage : msg.StorageNamesAt("")) {   // "__attach_version1.0_#00000000", ...
+        std::vector<uint8_t> data;
+        if (msg.ReadStreamAt(storage + "/__substg1.0_37010102", data)) {
+            // an attachment's bytes
+        }
+        std::vector<std::string> streams = msg.StreamNamesAt(storage);
+        bool named = msg.HasStreamAt(storage + "/__substg1.0_3707001F");
+        (void)streams; (void)named;
+    }
+}
+```
+
 ## Writing one
 
 `UCCompoundFileWriter` builds a compound file in memory - what the
@@ -81,7 +100,9 @@ The reader: the `.doc` importer
 (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`), the
 [`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
 [password-protected `.xlsx` and `.docx` files](UltraCanvasOfficeEncryption.md),
-which reads their `EncryptionInfo` and `EncryptedPackage` streams. The writer:
+which reads their `EncryptionInfo` and `EncryptedPackage` streams, and the
+[Outlook `.msg` reader](UltraCanvasOutlookMessage.md), which reads by path below
+the root. The writer:
 the encryptor of those files, which builds them.
 
 ## Test
@@ -91,4 +112,5 @@ The reader is covered by `Tests/SpreadsheetXlsFileTest.cpp` (an `.xls`, a
 by `Tests/WordFormatsTest.cpp`. The writer by `Tests/OfficeEncryptionTest.cpp`:
 what it builds read back, streams in the mini stream and in sectors, nested
 storages, and a 9 MB file that needs DIFAT sectors; Python's olefile and
-msoffcrypto-tool opened its output when it was written.
+msoffcrypto-tool opened its output when it was written. The paths below the
+root by `Tests/OutlookMessageTest.cpp`.

@@ -6056,6 +6056,21 @@ else()
     message(STATUS "  MediaViewerToolsTest skipped (UltraCanvas target not present)")
 endif()
 
+# OutlookMessageTest - the Outlook .msg reader (UltraCanvasOutlookMessage.h):
+# messages built with UCCompoundFileWriter as Outlook lays them out, the
+# compressed RTF body and the HTML it encapsulates, attachments; the compound
+# file's paths below the root; DecodeWindowsCodePage. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OutlookMessageTest...")
+    add_executable(OutlookMessageTest ${CMAKE_CURRENT_SOURCE_DIR}/OutlookMessageTest.cpp)
+    target_include_directories(OutlookMessageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OutlookMessageTest PRIVATE cxx_std_20)
+    target_link_libraries(OutlookMessageTest PRIVATE UltraCanvas)
+    set_target_properties(OutlookMessageTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME OutlookMessageTest COMMAND OutlookMessageTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OutlookMessageTest")
+endif()
+
 # ===== ULTRAVIEWER SETTINGS TEST =====
 # UltraViewer's settings file (Apps/UltraViewer/UltraViewerSettings.h,
 # header-only): the minutes before Unlock's passwords are forgotten - the

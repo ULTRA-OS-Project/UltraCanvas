@@ -85,7 +85,7 @@ tool and a missing plugin should stop it running.
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
-| `Text` (messages) | eml, emlx | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
+| `Text` (messages) | eml, emlx, msg | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
 | `Text` (saved pages) | mht, mhtml | **The page it saved**, its style sheets and pictures read from the archive's own parts (*Saved web pages* below) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
@@ -145,9 +145,12 @@ Moving to another file lets the page go (`UltraCanvasWebView::Clear`).
 An `.eml` (an RFC 5322 message, as mail programs save one) - or Apple Mail's
 `.emlx`, the same message after a line giving its length and before Mail's
 property list - is shown as the message, not its raw headers and MIME
-parts: `IsMailMessageFile(path)`, read
-through UltraNet's MIME reader (`UltraNet/UltraNetMime.h`) into one page in
-the page view (`MV_Web`):
+parts: `IsMailMessageFile(path)`, read through UltraNet's MIME reader
+(`UltraNet/UltraNetMime.h`) into one page in the page view (`MV_Web`). So is
+an Outlook `.msg`, read by [UltraCanvasOutlookMessage](UltraCanvasOutlookMessage.md)
+(its HTML body even when Outlook kept it only inside the compressed RTF); a
+`.msg` that is not a compound file - another program's message catalogue -
+is shown as text. The page:
 
 - a header block - the subject, From, To, Cc and Date, encoded words
   (`=?UTF-8?Q?...?=`) decoded - and the attachments listed by name and size;
@@ -163,7 +166,29 @@ the page view (`MV_Web`):
 The info bar calls it `EMAIL` and Details *Message information*. A message
 may be up to 64 MB (attachments are listed, not put in the page). A build
 without UltraNet (`ULTRACANVAS_HAS_NET` off) has no MIME reader: there an
-`.eml` is shown as its text.
+`.eml` is shown as its text (a `.msg` needs no UltraNet).
+
+### Opening and saving attachments
+
+Each attachment the page lists has two links:
+
+- **its name** opens it. It is written to a folder of its own under the
+  temporary folder, under its own name, and shown in an
+  [`UltraCanvasMediaViewerWindow`](UltraCanvasMediaViewerWindow.md) when the
+  viewer shows that kind of file (a picture, a PDF, another message), else in
+  the application the system opens it with
+  (`FileAssociations::OpenWithDefaultApplication`), else the viewer offers to
+  save it. **A program, script, installer, shortcut or disk image** (`.exe`,
+  `.bat`, `.js`, `.ps1`, `.lnk`, `.msi`, `.iso`, `.sh`, `.desktop`,
+  `.appimage`, ...) **is never opened from the preview** - the system would
+  run it; the viewer says so and offers to save it.
+- **Save** asks where, through the framework's Save dialog
+  (`UltraCanvasFileLoader::SaveFileDialog`; the Downloads folder first, the
+  attachment's own type, then All files), and writes its bytes as they are.
+
+An attached message (Outlook's *attach item*) and an empty part are listed
+without links. The links are `ucattachment:open/N` and `ucattachment:save/N`,
+which the page view hands to the viewer (`onExternalLink`).
 
 ## Saved web pages
 

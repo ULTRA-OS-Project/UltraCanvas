@@ -28,6 +28,23 @@
   `Content-Location` or `cid:`), never from the network; a link to a place
   in the page scrolls there (`UltraCanvasMediaViewer::IsWebArchiveFile`).
   An `.emlx` is the message inside it, shown as an `.eml` is.
+- **Outlook messages (`.msg`) are shown as messages, and a message's
+  attachments open and save from the preview.** The new
+  `UltraCanvasOutlookMessage` reads a `.msg` - subject, sender, recipients,
+  date, body, attachments - and gets its HTML body back even when Outlook
+  kept it only inside the compressed RTF (`UCDecompressRtf`, LZFu;
+  `UCHtmlFromEncapsulatedRtf`, `\fromhtml1`). A `.msg` that is not a
+  compound file stays text. In every message (`.eml`, `.emlx`, `.msg`) an
+  attachment's name opens it - in a viewer window when the viewer shows its
+  kind, else in the system's application - and *Save* writes it where the
+  Save dialog says. A program or script (`.exe`, `.js`, `.lnk`, `.sh`, ...)
+  is never opened from the preview; it is offered to be saved instead.
+- **UltraCanvasCompoundFile 1.2.0: streams and storages below the root**
+  (`ReadStreamAt`, `HasStreamAt`, `StreamNamesAt`, `StorageNamesAt`), for the
+  `.msg` reader's recipients and attachments.
+- **`DecodeWindowsCodePage` (UltraCanvasTextUtils):** the `.xls` reader's
+  Windows code-page tables (1250, 1251, 1252), moved to be shared with the
+  `.msg` reader, and UTF-8 (65001).
 - **UltraCanvasWebView 1.6.0: `SetOpensWebLinks`, `ScrollBy`, `Clear`.** A
   viewer of local files can send `http` / `https` links to `onExternalLink`
   instead of following them, scroll the page from its own keys, and let a

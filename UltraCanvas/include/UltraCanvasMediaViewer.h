@@ -84,6 +84,7 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.21.0 - Outlook .msg messages; a message's attachments open and save
 // Version: 1.20.0 - saved web pages (.mht / .mhtml, IsWebArchiveFile) and Apple Mail .emlx
 // Version: 1.19.0 - e-mail messages (.eml) shown as the message (IsMailMessageFile)
 // Version: 1.18.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
@@ -657,10 +658,11 @@ public:
     // whose content is XHTML (an <html> root or the XHTML DOCTYPE - the
     // start of the file is read for that). Other XML stays source text.
     static bool IsHtmlFile(const std::string& path);
-    // An e-mail message (.eml, Apple Mail's .emlx) shown as the message -
-    // header, body rendered, attachments listed - in the same page view.
-    // False in a build without UltraNet's MIME reader (ULTRACANVAS_HAS_NET),
-    // where a message is text.
+    // An e-mail message (.eml, Apple Mail's .emlx, an Outlook .msg) shown as
+    // the message - header, body rendered, attachments listed with Open and
+    // Save - in the same page view. A .msg must be a compound file (another
+    // program's .msg is text). An .eml / .emlx needs UltraNet's MIME reader
+    // (ULTRACANVAS_HAS_NET); without it they are text.
     static bool IsMailMessageFile(const std::string& path);
     // A saved web page (.mht / .mhtml) shown as the page it saved, its style
     // sheets and pictures read from the archive's own parts. False without
@@ -831,6 +833,13 @@ private:
     // The parts of the saved web page (.mht) on show, which its style sheets
     // and pictures are answered from (cleared with the page).
     std::shared_ptr<struct MediaViewerWebArchive> webArchive;
+    // A message's attachment links: Open writes it to a temporary folder and
+    // shows it in attachmentWindow when the viewer shows its kind, else in
+    // the system's application - never a program or script, which is only
+    // offered to be saved; Save asks where (UltraCanvasFileLoader).
+    void OpenAttachment(size_t index);
+    void SaveAttachment(size_t index);
+    std::shared_ptr<class UltraCanvasMediaViewerWindow> attachmentWindow;
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
     std::shared_ptr<UltraCanvasUIElement>    vectorView;    // UltraCanvasVectorElement
