@@ -1062,7 +1062,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
   `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
-  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  internal `UltraCanvasDesktopShellBackend.h`; the Linux session end and
+  lock (logind), loudspeaker (libpulse) and tray (StatusNotifierItem) in
+  `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`,
+  `UltraCanvasLinuxDesktopShellAudio.cpp` and `UltraCanvasLinuxTrayHost.cpp`;
+  a null backend elsewhere. On
   Windows also the standalone **UltraCanvasShellGuard** program
   (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
   instead of Explorer. Public surface:
@@ -1102,7 +1106,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `GetSystemDesktopSwitchUnavailableReason` - why the switch is off where
     the platform has one (a Windows copy running from its MSIX package).
   - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
-    (Windows `ExitWindowsEx`).
+    (Windows `ExitWindowsEx`; Linux logind over the system bus);
+    `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
+    logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
+    volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
+    loudspeaker through the sound server (libpulse loaded at run time:
+    PulseAudio or PipeWire; Core Audio's `IAudioEndpointVolume` on Windows).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -1114,12 +1124,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
     elsewhere and when another program holds it). `"Super"` alone is a tap
-    of the Win key on Windows (a low-level keyboard hook), refused on X11.
+    of the Super key - a low-level keyboard hook on Windows, XInput2's raw
+    key events on X11 - which neither grabs.
   - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
-    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
-    `Click(id, TrayClick)`: the notification area for a desktop that is the
-    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
-    taskbar runs, and on X11).
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon, and
+    `menu` as `DesktopTrayMenuItem`s where the program hands it over as
+    data) / `Click(id, TrayClick)` / `ActivateMenuItem(id, itemId)`: the
+    notification area for a desktop that is the shell (Windows
+    `Shell_TrayWnd` on its own thread, refused while Explorer's taskbar runs;
+    Linux the StatusNotifierWatcher and host on the session bus with the
+    items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -25651,14 +25665,15 @@ FILE: Docs/UltraCanvas/UltraCanvasDesktopShell.md
 
 # UltraCanvasDesktopShell
 
-<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; void TogglePanel(); -->
+<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; void TogglePanel(); std::shared_ptr<UltraCanvasSlider> slider; -->
 
 The running desktop as a shell sees it: the windows other applications have
 open and which one is active, the virtual desktops, the installed applications
 a launcher lists, a screenshot of the screen, the live state of the devices an
 info panel shows, and the counts an application publishes for the desktop to
 show beside its icon. For a desktop that is the session's shell it also hosts
-the programs' tray icons and ends the session.
+the programs' tray icons, locks the screen, ends the session and sets the
+loudspeaker's volume.
 
 ```cpp
 #include "UltraCanvasDesktopShell.h"
@@ -25733,8 +25748,8 @@ never to "every desktop".
 | Call | Meaning |
 |---|---|
 | `GetScreenSize(w, h)` | The default screen's size in pixels; on Windows the primary monitor's, the one at 0,0 that a desktop window covers. |
-| `ListScreens()` | Every monitor as a `DesktopScreenInfo` — `x`, `y`, `width`, `height` in physical pixels and `primary` — the primary first, the rest left to right. On Windows `EnumDisplayMonitors`, the primary at 0,0 and a monitor left of or above it at negative coordinates; on X11 RandR's monitors in root-window coordinates, and while nobody chose a primary the one at the origin. Where the platform tells no monitors apart, the one screen `GetScreenSize` reports. A desktop whose own window covers only the primary monitor (Windows) covers the others with windows of `WindowType::Desktop` placed by `WindowConfig::desktopArea` — UltraDesktop puts its wallpaper there while Explorer does not run, so a monitor is not left black. |
-| `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
+| `ListScreens()` | Every monitor as a `DesktopScreenInfo` — `x`, `y`, `width`, `height` in physical pixels and `primary` — the primary first, the rest left to right. On Windows `EnumDisplayMonitors`, the primary at 0,0 and a monitor left of or above it at negative coordinates; on X11 RandR's monitors in root-window coordinates, and while nobody chose a primary the one at the origin. Where the platform tells no monitors apart, the one screen `GetScreenSize` reports; a monitor that spans others (a server's automatic whole-screen monitor listed beside ones set with `xrandr --setmonitor`) is left out. A desktop puts its own window on the primary monitor through `WindowConfig::desktopArea` and covers the others with windows of `WindowType::Desktop` placed the same way — UltraDesktop puts its wallpaper there, so a monitor is not left black. |
+| `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
 | `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
@@ -25869,8 +25884,12 @@ measure the taskbar (`SHAppBarMessage`) are told there is none.
 
 `UltraCanvasTrayHost` is the system tray for a desktop that is the session's
 shell: on Windows the window every program's `Shell_NotifyIcon` talks to
-(`Shell_TrayWnd`), on a thread of its own, so a busy desktop never stalls a
-program adding its icon.
+(`Shell_TrayWnd`); on Linux the StatusNotifierWatcher and StatusNotifierHost
+on the D-Bus session bus that every program's StatusNotifierItem registers
+with (Telegram, Nextcloud, Steam, the network and volume applets — anything
+built on KStatusNotifierItem, libappindicator or Qt's `QSystemTrayIcon`).
+Each runs on a thread of its own, so a busy desktop never stalls a program
+adding its icon.
 
 ```cpp
 UltraCanvasTrayHost tray;   // a member: Stop() runs in its destructor
@@ -25889,22 +25908,68 @@ for (const DesktopTrayIcon& icon : tray.ListIcons()) {
 
 | Call | Meaning |
 |---|---|
-| `Start(onChanged, &error)` | Hosts the notification area and asks the programs already running to add their icons again (`TaskbarCreated`). False, saying why, while another notification area runs — Explorer's taskbar, when the desktop runs beside it; only one can — and on a platform with none to host (X11 here, whose trays are a protocol of their own). `onChanged` runs on the host's thread and must only hand the news over. |
+| `Start(onChanged, &error)` | Hosts the notification area and asks the programs already running to add their icons again (`TaskbarCreated`). False, saying why, while another notification area runs — Explorer's taskbar, when the desktop runs beside it; another `org.kde.StatusNotifierWatcher` on Linux (KDE's or GNOME's), named in the reason; only one can — without a D-Bus session bus (the host never autolaunches one), and on a platform with none to host. `onChanged` runs on the host's thread and must only hand the news over. |
 | `Stop()` | Takes the window down; joins, so no callback runs after it returns. `IsRunning()`. |
-| `ListIcons()` | The icons, in the order the programs added them, hidden ones left out: `DesktopTrayIcon { id, tooltip, iconFile, appClass, processId, balloonTitle, balloonText, balloonSerial }`. `iconFile` is a PNG of the icon in the disk cache, named after its pixels (an animated icon's frames are each written once); `appClass` the program's name, as `DesktopWindowInfo`'s. A new balloon gets a new `balloonSerial`: a desktop shows each serial once, as a toast. Any thread. |
-| `Click(id, button)` | A click at the mouse pointer, handed to the program as the notification area would — in the form the program asked for with `NIM_SETVERSION` (the button message alone; plus `NIN_SELECT` and `WM_CONTEXTMENU`; or the anchor point and the icon's id packed in) — with the foreground handed on, so the program's menu or window can come forward. Two left clicks within the double-click time are a double click. False when the icon is gone. Any thread. |
+| `ListIcons()` | The icons, in the order the programs added them, hidden ones left out: `DesktopTrayIcon { id, tooltip, iconFile, appClass, processId, balloonTitle, balloonText, balloonSerial }`. `iconFile` is a PNG of the icon in the disk cache, named after its pixels (an animated icon's frames are each written once); `appClass` the program's name, as `DesktopWindowInfo`'s. A new balloon gets a new `balloonSerial`: a desktop shows each serial once, as a toast. On Linux `iconFile` is the item's `IconPixmap` (the frame nearest 22 px) written once as a PNG, or its `IconName` resolved through the item's own `IconThemePath` and then the installed icon themes (an SVG where the theme has one); `tooltip` is the ToolTip's title and description (`title: description`), else the `Title`; `appClass` the item's `Id`, else the program's name from `/proc`; a `Passive` item is left out and `NeedsAttention` shows the attention icon; the balloon fields stay empty (the protocol has none). `menu` is the item's dbusmenu as data (see `ActivateMenuItem`). Any thread. |
+| `Click(id, button)` | A click at the mouse pointer, handed to the program as the notification area would — on Windows in the form the program asked for with `NIM_SETVERSION` (the button message alone; plus `NIN_SELECT` and `WM_CONTEXTMENU`; or the anchor point and the icon's id packed in) — with the foreground handed on, so the program's menu or window can come forward. Two left clicks within the double-click time are a double click. On Linux the item's `Activate`, `SecondaryActivate` (middle) or `ContextMenu` (right, and left for an icon that is only a menu). False when the icon is gone. Any thread. |
+| `ActivateMenuItem(id, itemId)` | The choice from an icon's `menu` (`DesktopTrayIcon::menu`, a tree of `DesktopTrayMenuItem { id, label, iconFile, enabled, separator, checkable, checked, children }`), handed to the program - on Linux the dbusmenu's "clicked" event for that entry. The list is filled where the program hands its menu over as data rather than drawing it itself (the StatusNotifierItem's dbusmenu, `com.canonical.dbusmenu`): read after one `AboutToShow` (some programs fill it only then) and again on its `LayoutUpdated` / `ItemsPropertiesUpdated`, the entries with their label (the `_` mnemonic stripped), `enabled`, `separator`, `checkable` / `checked` for check marks and radio items, an icon (`icon-name` or `icon-data`) and `children` for a submenu, hidden entries left out. A desktop draws it as a menu of its own and reports the choice here. Empty on Windows, where `Click(id, TrayClick::Right)` opens the program's own. False when the icon or the entry is gone. Any thread. |
 
-The host answers `Shell_NotifyIconGetRect` with a square around the point the
-icon was last clicked at, so a program's popup opens beside it, and drops the
-icon of a program that ended without removing it. It does not answer
-`SHAppBarMessage`.
+On Windows the host answers `Shell_NotifyIconGetRect` with a square around
+the point the icon was last clicked at, so a program's popup opens beside it,
+and drops the icon of a program that ended without removing it. It does not
+answer `SHAppBarMessage`.
 
-### The end of the session
+On Linux the host owns `org.kde.StatusNotifierWatcher` and
+`org.kde.StatusNotifierHost-<pid>` on a private connection and exports
+`/StatusNotifierWatcher` with `RegisterStatusNotifierItem` /
+`RegisterStatusNotifierHost`, the `RegisteredStatusNotifierItems`,
+`IsStatusNotifierHostRegistered` and `ProtocolVersion` properties and the
+registered / unregistered signals. An item is a bus name, a bus name and
+path, or a path alone (the sender's name, `/StatusNotifierItem` by default);
+its id is `<busname><path>`. Its properties are read over
+`org.freedesktop.DBus.Properties` (`org.kde.StatusNotifierItem`, else
+`org.freedesktop.StatusNotifierItem`), re-read on its `New*` signals, and
+the item is dropped when its connection leaves the bus. Every call to a
+program has a short timeout and clicks expect no reply, so a hung program
+holds up nothing but its own icon. `Stop()` closes the connection, which
+releases the names at once.
+
+### The end of the session, and the lock
 
 | Call | Meaning |
 |---|---|
-| `CanEndSession()` | Whether this backend can sign out, restart and shut down: true on Windows; on Linux the session's own menu does it. |
-| `EndSession(how, &error)` | `SessionEnd::SignOut`, `Restart` or `ShutDown`: the system asks every program to close, and a program may still refuse. On Windows `ExitWindowsEx`, with the shutdown privilege every account that may shut down holds switched on first. What a desktop's menu offers when it is the shell and no Start menu runs. |
+| `CanEndSession()` | Whether this backend can sign out, restart and shut down: true on Windows, and on Linux while logind answers on the system bus (decided once). |
+| `EndSession(how, &error)` | `SessionEnd::SignOut`, `Restart` or `ShutDown`: the system asks every program to close, and a program may still refuse. On Windows `ExitWindowsEx`, with the shutdown privilege every account that may shut down holds switched on first. On Linux logind: its manager's `Reboot` and `PowerOff` (with the "interactive" flag, so polkit is asked as the desktops' own menus ask it, and an active local session needs no password), and `Terminate` on this process's own session to sign out, after which the display manager shows the sign-in again. What a desktop's menu offers when it is the shell and no Start menu runs. |
+| `CanLockSession()` | Whether `LockSession` has anyone to ask: true on Windows; on Linux with logind or a session bus. |
+| `LockSession(&error)` | Lock the screen - a desktop's *Lock screen* and Super+L. Windows `LockWorkStation`; on Linux `Lock` on this process's logind session, which sends the `Lock` signal the screen locker waits for ([UltraCanvasSessionLock](UltraCanvasSessionLock.md) reports it like any other lock), and without logind `org.freedesktop.ScreenSaver.Lock` on the session bus, which every screensaver implements. False with the reason. |
+
+### The loudspeaker
+
+The default output's volume and mute, as a desktop's speaker icon shows and
+sets them:
+
+```cpp
+DesktopAudioOutput speaker = UltraCanvasDesktopShell::ReadAudioOutput();
+if (speaker.available) {
+    slider->SetValue(static_cast<float>(speaker.volumePercent));   // "Speakers (Realtek)": speaker.device
+    UltraCanvasDesktopShell::SetAudioOutputVolume(speaker.volumePercent + 5);
+    UltraCanvasDesktopShell::SetAudioOutputMuted(true);
+}
+```
+
+| Call | Meaning |
+|---|---|
+| `ReadAudioOutput()` | A `DesktopAudioOutput { available, volumePercent, muted, device, error }`: the sound server's default output - its name as the server gives it, its volume as a percentage (PulseAudio allows more than 100, which is reported as it is) and whether it is muted. `available` is false with `error` saying why when no sound server answers. A few milliseconds: fine when a panel opens or every few seconds, not every frame. |
+| `SetAudioOutputVolume(percent, &error)` | Every channel to that level; 0 to 100 on Windows, up to 150 where PulseAudio allows it. |
+| `SetAudioOutputMuted(muted, &error)` | Mute or unmute. |
+
+On Linux the backend talks to PulseAudio, or to PipeWire through its
+PulseAudio service, with `libpulse.so.0` loaded at run time - the framework
+does not depend on a sound server, and a machine without one still runs the
+desktop, whose panel then says so - connecting, asking and disconnecting for
+each call with a two-second deadline, and never starting a server (no
+autospawn). On Windows it is the default render endpoint's
+`IAudioEndpointVolume`; the device name is its friendly name.
 
 ### Notices
 
@@ -25957,14 +26022,17 @@ if (!shortcut.Start("Super+V", [this]() {
 `Start(accelerator, onPressed, &error)` reads `Super`, `Ctrl`, `Alt` and
 `Shift` and one key (`"Ctrl+Alt+H"`, `"Super+V"`); it fails, saying why, when
 the combination cannot be read, when another program already holds it, and on
-a platform without global shortcuts. `"Super"` alone is a **tap** of the Win
-key — down and up with no other key between, so `Super+E` is not one — on
-Windows only (a low-level keyboard hook on the shortcut's thread, which sees
-the key without taking it from anyone); X11 refuses it, since a grab of the
-bare key would take it from every other combination. Explorer opens its
-Start menu on that tap, so a desktop asks for it only where Explorer does
-not run: UltraDesktop as the shell opens its *Applications* window with it.
-Another modifier alone is refused. `Stop()` joins the thread, so no
+a platform without global shortcuts. `"Super"` alone is a **tap** of the
+Super (Win) key — down and up with no other key between, so `Super+E` is not
+one. Neither platform grabs the key for it, which would take it from every
+other combination: on Windows a low-level keyboard hook on the shortcut's
+thread sees the key without taking it from anyone, and on X11 the shortcut
+watches XInput2's raw key events on the root window, which every client may
+without a grab (`XI_RawKeyPress` / `XI_RawKeyRelease` of either Super key
+and of whatever is pressed while it is held). Explorer opens its Start menu
+on that tap, so a desktop asks for it only where Explorer does not run:
+UltraDesktop as the shell, and on Linux, opens its *Applications* window
+with it. Another modifier alone is refused. `Stop()` joins the thread, so no
 callback runs after it returns; `IsRunning()`.
 
 The callback runs when the combination's key is **let go**, once however long
@@ -25983,9 +26051,9 @@ the shell they are free.
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it". The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). No switch at sign-in, tray host or session end: the session owns those. |
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
-| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start` and `EndSession` fail with a reason; the application list, launcher and notices still work. |
+| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -99349,18 +99417,19 @@ edge for one run, start it with `UltraDesktop --edge top` or `--edge bottom`.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 1  │  virtual desktops
-│ ⋮⋮ │                                                              │ 2  │
-│╲   │                                                              │ 3  │
-│ ╲  │                                                              │ 📌 │  Sticker board
-│ ▣  │                                                              │ 🗒 │  notes
-│ ▣  │                     wallpaper                                │ 📋 │  clipboard history
-│ ▣  │              (your windows float above it)                   │ 📷 │  screenshot
-│ ▣  │                                                              │╱   │
-│  ╲ │                                                              │ ✉14│  info panel
-│   ╲│                                                              │ ⇧⇩ │
-│ ▤  │                                                              │ ⌨ ●│
-│ 📁 │                                                              │ 🔋 │
+│ ⚙  │                                                              │ 🕒 │  clock and date
+│ ⋮⋮ │                                                              │30Oct│
+│╲   │                                                              │ 1  │  virtual desktops
+│ ╲  │                                                              │ 2  │
+│ ▣  │                                                              │ 3  │
+│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
+│ ▣  │              (your windows float above it)                   │ 🗒 │  notes
+│ ▣  │                                                              │ 📋 │  clipboard history
+│  ╲ │                                                              │ 📷 │  screenshot
+│   ╲│                                                              │╱   │
+│ ▤  │                                                              │ ✉14│  info panel
+│ 📁 │                                                              │ ⇧⇩ │
+│ 🎨 │                                                              │ 🔊 │
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -99372,10 +99441,11 @@ groups:
    **Applications** (⋮⋮) opens the list of installed programs.
 2. **Your open windows** on the current desktop, one button each.
 3. **Pinned**: the **RAM disc** (on Linux, `/dev/shm`; on Windows only if you
-   set a folder) and **UltraFiler**.
+   set a folder), **UltraFiler**, and the programs you pin yourself (section
+   4.1).
 
-**The right bar** has the virtual desktops and the tools at the top and the
-info panel at the bottom.
+**The right bar** has the clock at the top, then the virtual desktops and
+the tools, and the info panel at the bottom.
 
 Maximised windows stop beside the bars instead of covering them.
 
@@ -99390,10 +99460,17 @@ it is showing.
   tile; type in **Find an application…** to narrow the list, then click the
   tile. The window closes once the program starts; if it cannot start, the
   window stays open and says why.
-- When UltraDesktop runs instead of Explorer, a tap of the **Win key** on its
-  own opens the same window, where the Start menu would open.
+- A tap of the **Super key** (the Win key) on its own opens the same window
+  - on Linux, and on Windows when UltraDesktop runs instead of Explorer,
+  where the Start menu would open.
 - **UltraFiler** and the **RAM disc** are one click away at the foot of the
   taskbar.
+- **Pin a program** there too: right-click its window's taskbar button, or
+  its tile in Applications, and choose **Pin to taskbar**. It joins the
+  pinned group with its own icon. Right-click the pinned button for **Open**
+  and **Unpin from taskbar**. Pins stay through restarts, and a pinned
+  program that is uninstalled comes back to the bar when it is installed
+  again.
 
 On Windows the list holds the Start menu's programs, named as the Start menu
 names them, and the Microsoft Store apps (Calculator, Photos, Settings …).
@@ -99409,14 +99486,14 @@ highlighted.
 - **Click** a button to bring its window to the front; click the active
   window's button to minimise it.
 - **Right-click** for **Activate**, **Minimize**, **Move to** (a desktop, or
-  **Every desktop**) and **Close window**.
+  **Every desktop**), **Pin to taskbar** (section 4.1) and **Close window**.
 - **Drag** a button to put it somewhere else in the row. A new window joins
   its program's other windows.
 - When the row is full, scroll it with the mouse wheel.
 
 ### 4.3 Virtual desktops
 
-The numbered buttons at the top of the right bar are your virtual desktops.
+The numbered buttons under the clock on the right bar are your virtual desktops.
 Click one to switch to it. The taskbar then shows that desktop's windows.
 
 - To change how many there are, use UOS-Settings → Desktop → **Virtual
@@ -99502,7 +99579,28 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
 
 The board, its look, its place and its size are kept.
 
-### 4.8 The info panel
+### 4.8 The clock
+
+The clock at the top of the right bar shows the time on a small analog face
+and the date under it; rest the pointer on it for the whole date and time.
+Click it for the clock panel: the time large, on a face and in figures,
+today written out, and this month's calendar with today marked. You can page
+through other months; nothing is chosen there. Escape, or a click anywhere
+else, closes it.
+
+### 4.9 The loudspeaker
+
+Click the loudspeaker icon on the info panel for the volume panel: the
+output's name, a slider for its volume and a **Mute** switch. The icon's
+tooltip names the volume ("Loudspeaker: 63%"), says when something is
+playing, and the icon shows a red dot while muted. A change made elsewhere -
+the keyboard's volume keys, another program - shows within ten seconds.
+
+On Linux this talks to PulseAudio or PipeWire; on Windows to the default
+output. When no sound server answers, the panel says so and the slider is
+greyed out.
+
+### 4.10 The info panel
 
 The icons at the foot of the right bar show your devices and connections:
 Email, Upload, Download, Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard,
@@ -99524,17 +99622,22 @@ A click opens the program for that icon:
 | Email | UltraMail |
 | Upload, Download, Internet/LAN, VPN, Wi-Fi | UltraNetMonitor |
 | USB, Keyboard, Webcam | DeviceExplorer |
-| Bluetooth, Microphone, Loudspeaker, Battery, Task Manager | the Task Manager |
+| Loudspeaker | the volume panel (section 4.9) |
+| Bluetooth, Microphone, Battery, Task Manager | the Task Manager |
 
 When there are many virtual desktops on a small screen, the panel scrolls: a
 chevron marks where more icons are, and a click on it or the mouse wheel
 scrolls.
 
-When UltraDesktop runs instead of Explorer on Windows, the programs' **tray
-icons** (OneDrive, a VPN client, a chat program) appear here too, above the
-services. A click opens the program, and a right-click opens its menu.
+On Linux, and on Windows when UltraDesktop runs instead of Explorer, the
+programs' **tray icons** (a chat program, a cloud drive, a VPN client)
+appear here too, above the services. A click opens the program, and a
+right-click opens its menu. On Linux UltraDesktop is then the tray every
+such program registers with, so another desktop's tray must not be running
+at the same time; the icons' menus are drawn by UltraDesktop, submenus and
+check marks included.
 
-### 4.9 Notifications
+### 4.11 Notifications
 
 On ULTRA OS, notifications from every program appear in the top-right
 corner, beside the right bar. At most four show at a time, newest on top.
@@ -99551,7 +99654,7 @@ dunst …), that server shows them instead. On Windows beside Explorer, Windows
 shows them as before. Instead of Explorer, UltraDesktop shows the tray icons'
 balloons.
 
-### 4.10 The Task Manager
+### 4.12 The Task Manager
 
 The Task Manager icon at the foot of the info panel opens it.
 
@@ -99578,6 +99681,12 @@ Changes are saved at once: a choice when you make it, a text field when you
 leave it or press Return. A running UltraDesktop takes them over within a
 second; there is no need to restart it. The line under the settings names the
 file they were saved to, or says why they were not saved.
+
+The ⚙ button's **right-click menu** also has **Lock screen** (or press
+Super+L), and - on Linux, and on Windows instead of Explorer - **Sign out**,
+**Restart** and **Shut down**, each of which asks first. On Linux these go
+through the system's logind, the same way the other desktops' menus do; if
+it is not there, the menu leaves them out.
 
 ## 6. UltraDesktop as your Windows desktop
 
@@ -99698,7 +99807,12 @@ at sign-in.
 | Where | Action | Does |
 |---|---|---|
 | Any window | Super+V (Win+V) | opens the clipboard history (on Windows only instead of Explorer) |
-| Any window, Windows instead of Explorer | Win key alone | opens Applications |
+| Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
+| Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
+| Clock | click | the clock panel |
+| Loudspeaker icon | click | the volume panel |
+| Pinned program | click / right-click | start it / open, unpin |
+| Applications tile | click / right-click | start it / pin or unpin |
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
@@ -99736,10 +99850,34 @@ Explorer runs. Use the clipboard button on the right bar.
 **The Win key opens the Start menu.** That is expected beside Explorer. Only
 instead of Explorer does the Win key open Applications.
 
+**The loudspeaker panel says there is no sound server.** On Linux UltraDesktop
+talks to PulseAudio, or to PipeWire's PulseAudio service
+(`pipewire-pulse`); install or start one. The icon still shows when
+something is playing, which comes from the sound cards directly.
+
+**Sign out, Restart and Shut down are missing from the ⚙ menu.** On Linux
+they need logind (systemd) on the system bus; on Windows they appear only
+when UltraDesktop runs instead of Explorer - beside Explorer the Start menu
+has them.
+
+**Tray icons are missing on Linux, or appear twice.** Only one tray can run
+on a session. UltraDesktop hosts the icons when no other desktop's tray
+(KDE's, GNOME's AppIndicator extension …) holds the name
+`org.kde.StatusNotifierWatcher` when it starts; otherwise that one keeps
+them.
+
 **My other monitor shows Explorer's desktop, or the wallpaper is missing
 there.** Beside Explorer, the other monitors show Explorer's desktop. Instead
-of Explorer, UltraDesktop covers them with its wallpaper; a monitor whose
-wallpaper was closed is covered again within a few seconds.
+of Explorer, and on Linux, UltraDesktop covers them with its wallpaper; a
+monitor whose wallpaper was closed is covered again within a few seconds.
+
+**The bars are on the wrong monitor.** The bars sit on the primary monitor:
+on Linux `xrandr --output <name> --primary` chooses it (your desktop's
+display settings do the same), and UltraDesktop moves there within a few
+seconds. With the primary on the left of another monitor,
+maximised windows may cover the right bar, which lies between the two
+monitors: put the taskbar on the top or bottom edge, or make the right-hand
+monitor the primary.
 
 **I can't find the tray icons.** Beside Explorer they are in Explorer's
 taskbar; move the pointer to the bottom edge. Instead of Explorer they are on
@@ -99832,18 +99970,19 @@ system.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 1  │  desktop
-│ ⋮⋮ │                                                              │ 2  │  organiser
-│╲   │                                                              │ 3  │
-│ ╲  │                                                              │ 📌 │  Sticker board
-│ ▣  │                                                              │ 🗒 │  notes
-│ ▣  │                     wallpaper                                │ 📋 │  clipboard
-│ ▣  │            (application windows float above)                 │ 📷 │  screenshot
-│ ▣  │                                                              │╱   │
-│  ╲ │                                                              │ ✉14│  info panel
-│   ╲│                                                              │ ⇧⇩ │  (devices and
-│ ▤  │                                                              │ ⌨ ●│   services)
-│ 📁 │                                                              │ 🔋 │
+│ ⚙  │                                                              │ 🕒 │  clock
+│ ⋮⋮ │                                                              │30Oct│  and date
+│╲   │                                                              │ 1  │  desktop
+│ ╲  │                                                              │ 2  │  organiser
+│ ▣  │                                                              │ 3  │
+│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
+│ ▣  │            (application windows float above)                 │ 🗒 │  notes
+│ ▣  │                                                              │ 📋 │  clipboard
+│  ╲ │                                                              │ 📷 │  screenshot
+│   ╲│                                                              │╱   │
+│ ▤  │                                                              │ ✉14│  info panel
+│ 📁 │                                                              │ ⇧⇩ │  (devices and
+│ 🎨 │                                                              │ 🔊 │   services)
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -99864,16 +100003,50 @@ separators:
    it if it already is active; a right-click offers *Activate*, *Minimize*,
    *Move to desktop …* and *Close window*. Drag a button to reorder; when
    the group is full it scrolls with the mouse wheel. New windows join next
-   to their application's other windows.
+   to their application's other windows. *Pin to taskbar* on the menu pins
+   the window's application.
 3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
-   by default, in the file manager) and *UltraFiler*.
+   by default, in the file manager), *UltraFiler*, and the applications the
+   user pinned - from a running window's menu or a tile's in the
+   Applications window - each with its own icon, one click to start, and
+   *Unpin from taskbar* on its right-click menu. The pins are kept in the
+   settings by the program's path (on Windows the shortcut or the Store
+   application's id), so a renamed application stays pinned, and one that is
+   uninstalled shows again when it is back.
+
+The settings button's right-click menu also offers *Lock screen* (Super+L)
+and - on Linux, and on Windows as the shell - *Sign out*, *Restart* and
+*Shut down*, each asked first, through
+[UltraCanvasDesktopShell](../UltraCanvas/UltraCanvasDesktopShell.md)
+(logind on Linux, `ExitWindowsEx` and `LockWorkStation` on Windows).
 
 The taskbar's edge and the right bar are reserved with the window manager
 (`ReserveScreenEdges` in the module), so maximised and tiled application
 windows stop short of the bars instead of covering them.
 
+With several monitors the desktop window - the bars and the wallpaper -
+covers the **primary** monitor (the one the session marks, else the one at
+the origin), and every other monitor gets a wallpaper window of its own; a
+monitor plugged in later is covered within seconds, and when the primary
+moves (`xrandr --output <name> --primary`, the display settings) the desktop
+follows within seconds - its window is made anew on the new primary, the
+bars with it, and the old one closes. On X11 an
+edge is reserved only where the primary lies on that edge of the whole
+screen: with the primary on the left of a second monitor the taskbar on its
+left edge is reserved, the right bar between the two is not (a strut is
+measured from the screen's edge, and one across the other monitor would push
+its windows aside), so a maximised window on the primary may cover the right
+bar there - put the taskbar on the top or bottom edge in that layout, or make
+the right-hand monitor the primary.
+
 ### Right bar
 
+- **Clock**: the framework's gauge element in its analog clock mode
+  ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
+  which ticks on its own, over the date ("30 Oct"); the tooltip has the
+  whole date and time. A click opens the clock panel beside the bar: the
+  time large as an analog face and in figures (the gauge's digital clock),
+  today in words, and the month on the calendar view with today marked.
 - **Desktop organiser**: the virtual desktops as numbered toggles — as many
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
@@ -99911,9 +100084,22 @@ windows stop short of the bars instead of covering them.
   | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
-  1.2 MB/s", "Battery: 84%, charging"). Clicking opens what the icon is
-  about: Email starts UltraMail, the network icons UltraNetMonitor, USB,
-  keyboard and webcam DeviceExplorer, the rest the Task Manager.
+  1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
+  opens what the icon is about: Email starts UltraMail, the network icons
+  UltraNetMonitor, USB, keyboard and webcam DeviceExplorer, the loudspeaker
+  its volume panel, the rest the Task Manager.
+- **Loudspeaker**: the volume panel beside the bar - the output's name, its
+  volume on a slider, its mute on a switch - through the sound server
+  (PulseAudio or PipeWire on Linux, Core Audio on Windows; the panel says so
+  when none answers). The icon shows a red dot while muted and reads the
+  volume again every ten seconds, so a change made with the keyboard's
+  volume keys shows.
+- **Tray icons**: where the desktop hosts the notification area - as the
+  shell on Windows, and on Linux, where it is the StatusNotifierWatcher the
+  tray programs register with - the programs' icons sit above the services.
+  A click opens the program; a right click opens its menu, which on Linux
+  the program hands over as data and the desktop draws itself, submenus
+  and check marks included.
 
   When the organiser leaves the panel short of room — five or more desktops
   on a 900 px screen — the panel scrolls rather than losing its last items:
@@ -99924,9 +100110,11 @@ windows stop short of the bars instead of covering them.
 
 - **Applications** (app starter): every installed application from its
   desktop entry as an icon tile, a filter box above them, one click to
-  start. What the application menu of any other desktop shows, so an
-  application installed by its package appears without being told about
-  ULTRA OS.
+  start; a right click pins it to the taskbar or unpins it. What the
+  application menu of any other desktop shows, so an application installed
+  by its package appears without being told about ULTRA OS. A tap of the
+  Super key opens it from any window - on Linux, and on Windows as the
+  shell (beside Explorer the key is the Start menu's).
 - **Task Manager**: the open windows with *Activate* and *Close* on the
   first tab, the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
@@ -100024,7 +100212,8 @@ earlier versions kept under `~/.config` is moved on the first start):
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
-                     "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } }
+                     "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } },
+  "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ]
 }
 ```
 
@@ -100034,7 +100223,9 @@ RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
-`stickynotes`, `poster`, `schematic`, `dark`.
+`stickynotes`, `poster`, `schematic`, `dark`. `pinnedApps` are the pinned
+applications' keys in the order they were pinned: the program's path, or on
+Windows the shortcut's path or `store:<AppUserModelID>`.
 
 ## How the mail count gets there
 
@@ -100046,11 +100237,14 @@ the ones it has an icon for.
 
 ## Platform
 
-The window list, the virtual desktops, the screenshot and the device markers
-come from the module's backends: X11 on Linux and the BSDs, Win32 on Windows.
-Elsewhere (macOS) the desktop still runs — application list, launcher,
-settings, the Sticker board and the notes work — but the running-apps group
-stays empty and the Task Manager says so.
+The window list, the virtual desktops, the screenshot, the device markers,
+the tray, the lock, the end of the session and the loudspeaker come from the
+module's backends: X11 (with logind, the session bus and the sound server)
+on Linux and the BSDs, Win32 on Windows. Elsewhere (macOS) the desktop still
+runs — application list, launcher, pins, clock, settings, the Sticker board
+and the notes work — but the running-apps group stays empty, the Task
+Manager says so, and the lock, session and volume calls answer with a
+reason.
 
 ## On Windows
 
@@ -100149,7 +100343,8 @@ same.
 | Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
 | Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
 | RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
-| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
+| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
+| Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
