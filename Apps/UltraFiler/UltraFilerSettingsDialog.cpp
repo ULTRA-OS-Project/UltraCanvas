@@ -29,8 +29,11 @@
 // History view's three lists keeps, and clearing the recently-used
 // lists and the pinned entries) and Extras > Cache (whether finished
 // thumbnails are kept on disk between runs and compressed in memory, what
-// each cache is holding against what it may hold, and emptying them). Changes apply live and are saved
-// immediately.
+// each cache is holding against what it may hold, and emptying them), and
+// Archives > TAR (how Compress packs a TAR: each compressor's level, the
+// threads of xz and Zstandard, Zstandard's long mode, the header format,
+// what each file keeps, symbolic links, and the names left out). Changes
+// apply live and are saved immediately.
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
 // caption that says what the choice is about, the controls, and - set apart
@@ -40,11 +43,12 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.18.0 - Archives > TAR: how Compress packs a TAR
 // Version: 1.17.0 - Handling > Protected files: the minutes without input before the
 //                   preview forgets Unlock's passwords (0: never)
 // Version: 1.16.1 - the colour popup's picker is the framework's ColorPickerStyle::Light
 // Version: 1.16.0
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -79,7 +83,10 @@
 #include <memory>
 #include <string>
 #include <system_error>
+#include <thread>
+#include <tuple>
 #include <utility>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -130,6 +137,8 @@ namespace {
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "extras/history-favorites";
     constexpr const char* kPageCache = "extras/cache";
+    constexpr const char* kPageArchives = "archives";
+    constexpr const char* kPageTar = "archives/tar";
     // The page shown while nothing is selected - the window opens with every
     // section closed, so there is no page to show yet.
     constexpr const char* kPageStart = "start";
@@ -290,6 +299,26 @@ namespace {
         std::shared_ptr<UltraCanvasLabel>  cacheMissingLine;
         std::shared_ptr<UltraCanvasLabel>  cacheLocationLine;
         std::shared_ptr<UltraCanvasLabel>  cacheStatus;
+
+        // Archives > TAR: a slider and its value per compressor level and
+        // for the threads, the switches, the header format and link radios,
+        // and the field the exclusions are typed into.
+        struct TarSliderRow {
+            std::shared_ptr<UltraCanvasSlider> slider;
+            std::shared_ptr<UltraCanvasLabel>  value;
+        };
+        TarSliderRow tarGzip, tarBzip2, tarXz, tarZstd, tarThreads;
+        std::shared_ptr<UltraCanvasCheckbox> tarLongBox;
+        std::shared_ptr<UltraCanvasCheckbox> tarTimesBox;
+        std::shared_ptr<UltraCanvasCheckbox> tarPermissionsBox;
+        std::shared_ptr<UltraCanvasCheckbox> tarOwnerBox;
+        std::vector<std::pair<FilerTarHeaderFormat,
+                              std::shared_ptr<UltraCanvasRadio>>> tarFormatRadios;
+        UltraCanvasRadioGroup                tarFormatGroup;
+        std::shared_ptr<UltraCanvasRadio>    tarLinkRadio;
+        std::shared_ptr<UltraCanvasRadio>    tarTargetRadio;
+        UltraCanvasRadioGroup                tarLinksGroup;
+        std::shared_ptr<UltraCanvasTagInput> tarExcludeInput;
 
         UltraFilerSettings*   settings = nullptr;
         std::function<void()> onChanged;
@@ -2479,6 +2508,240 @@ namespace {
     // ===== THE PAGE SHOWN WHILE NOTHING IS SELECTED =====
     // The window opens with the three sections closed, so it opens on this
     // rather than on whichever page happened to be first.
+    // ===== ARCHIVES > TAR =====
+
+    // "6 (default)" / "every core" beside the page's sliders.
+    void UpdateTarLabels(DialogState* d) {
+        if (!d->settings) return;
+        const FilerTarSettings& tar = d->settings->tar;
+        const FilerTarSettings defaults;
+        auto level = [](DialogState::TarSliderRow& row, int value, int byDefault) {
+            if (!row.value) return;
+            row.value->SetText(std::to_string(value) +
+                               (value == byDefault ? " (default)" : ""));
+            row.value->RequestRedraw();
+        };
+        level(d->tarGzip, tar.gzipLevel, defaults.gzipLevel);
+        level(d->tarBzip2, tar.bzip2Level, defaults.bzip2Level);
+        level(d->tarXz, tar.xzLevel, defaults.xzLevel);
+        level(d->tarZstd, tar.zstdLevel, defaults.zstdLevel);
+        if (d->tarThreads.value) {
+            const int n = tar.threads;
+            d->tarThreads.value->SetText(n == 0 ? std::string("every core")
+                    : std::to_string(n) + (n == 1 ? " thread" : " threads"));
+            d->tarThreads.value->RequestRedraw();
+        }
+    }
+
+    // One "[caption] [slider] [value]" row setting the int `field` of the
+    // TAR settings.
+    DialogState::TarSliderRow AddTarSlider(DialogState* d, PageParts& parts,
+                                           const std::string& key,
+                                           const std::string& caption,
+                                           int minValue, int maxValue,
+                                           int FilerTarSettings::* field) {
+        DialogState::TarSliderRow row;
+        row.value = MakeSliderValueLabel("ufl-set-tar-" + key + "-value", 90);
+        row.slider = MakeIntSlider("ufl-set-tar-" + key, minValue, maxValue,
+                d->settings->tar.*field, [d, field](int value) {
+            if (!d->settings || d->settings->tar.*field == value) return;
+            d->settings->tar.*field = value;
+            UpdateTarLabels(d);
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(MakeSliderRow("ufl-set-tar-" + key + "-row", caption,
+                row.slider, row.value, 0, 100));
+        return row;
+    }
+
+    // Puts the TAR settings onto the page's controls (Restore defaults).
+    void SyncTarControls(DialogState* d) {
+        if (!d->settings) return;
+        const FilerTarSettings& tar = d->settings->tar;
+        d->syncing = true;
+        auto slide = [](DialogState::TarSliderRow& row, int value) {
+            if (row.slider) row.slider->SetValue(static_cast<float>(value));
+        };
+        slide(d->tarGzip, tar.gzipLevel);
+        slide(d->tarBzip2, tar.bzip2Level);
+        slide(d->tarXz, tar.xzLevel);
+        slide(d->tarZstd, tar.zstdLevel);
+        slide(d->tarThreads, tar.threads);
+        if (d->tarLongBox) d->tarLongBox->SetChecked(tar.zstdLongMode);
+        for (const auto& [format, radio] : d->tarFormatRadios)
+            if (format == tar.headerFormat) d->tarFormatGroup.SelectButton(radio);
+        if (d->tarTimesBox) d->tarTimesBox->SetChecked(tar.keepTimestamps);
+        if (d->tarPermissionsBox) d->tarPermissionsBox->SetChecked(tar.keepPermissions);
+        if (d->tarOwnerBox) d->tarOwnerBox->SetChecked(tar.keepOwner);
+        d->tarLinksGroup.SelectButton(tar.storeSymlinks ? d->tarLinkRadio
+                                                        : d->tarTargetRadio);
+        if (d->tarExcludeInput) d->tarExcludeInput->SetTags(tar.excludePatterns);
+        d->syncing = false;
+        UpdateTarLabels(d);
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildTarPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-tar", "TAR",
+                "How Compress packs a .tar, .tar.gz, .tar.bz2, .tar.xz and "
+                ".tar.zst:", /*scrolls=*/true);
+        FilerTarSettings& tar = d->settings->tar;
+
+        // ----- the compressors -----
+        AddBodyCaption(parts, "ufl-set-tar-level-caption",
+                       "Compression level - higher packs smaller, and slower:");
+        d->tarGzip = AddTarSlider(d, parts, "gzip", "gzip", 1,
+                FilerTarSettings::kMaxGzipLevel, &FilerTarSettings::gzipLevel);
+        d->tarBzip2 = AddTarSlider(d, parts, "bzip2", "bzip2", 1,
+                FilerTarSettings::kMaxBzip2Level, &FilerTarSettings::bzip2Level);
+        d->tarXz = AddTarSlider(d, parts, "xz", "xz", 0,
+                FilerTarSettings::kMaxXzLevel, &FilerTarSettings::xzLevel);
+        d->tarZstd = AddTarSlider(d, parts, "zstd", "Zstandard", 1,
+                FilerTarSettings::kMaxZstdLevel, &FilerTarSettings::zstdLevel);
+
+        AddBodyCaption(parts, "ufl-set-tar-threads-caption",
+                       "Threads of xz and Zstandard (0: one per core):");
+        // As many as this machine has cores - or more, when the setting was
+        // made on a bigger one.
+        const int cores = std::max(1, static_cast<int>(std::thread::hardware_concurrency()));
+        const int maxThreads = std::min(FilerTarSettings::kMaxThreads,
+                                        std::max(cores, tar.threads));
+        d->tarThreads = AddTarSlider(d, parts, "threads", "Threads", 0, maxThreads,
+                                     &FilerTarSettings::threads);
+
+        d->tarLongBox = MakeCheckbox("ufl-set-tar-long",
+                "Zstandard long mode: matches across 128 MB (zstd --long=27)",
+                kTextWidth, tar.zstdLongMode, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->tar.zstdLongMode = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->tarLongBox);
+
+        // ----- the header format -----
+        AddBodyCaption(parts, "ufl-set-tar-format-caption", "Header format:");
+        {
+            auto row = MakeChoiceRow("ufl-set-tar-format-row");
+            const std::vector<std::tuple<FilerTarHeaderFormat, const char*, int>> choices = {
+                {FilerTarHeaderFormat::Pax,   "PAX (POSIX.1-2001)", 160},
+                {FilerTarHeaderFormat::Gnu,   "GNU tar",            90},
+                {FilerTarHeaderFormat::Ustar, "ustar (POSIX.1-1988)", 170},
+            };
+            d->tarFormatRadios.clear();
+            for (const auto& [format, label, width] : choices) {
+                auto radio = MakeChoice("ufl-set-tar-format-" +
+                                        UltraFilerSettings::FormatTarHeaderFormat(format),
+                                        label, tar.headerFormat == format, width);
+                d->tarFormatRadios.emplace_back(format, radio);
+                d->tarFormatGroup.AddRadioButton(radio);
+                row->AddChild(radio);
+            }
+            d->tarFormatGroup.onSelectionChanged =
+                    [d](std::shared_ptr<UltraCanvasRadio> selected) {
+                if (!selected || !d->settings) return;
+                for (const auto& [format, radio] : d->tarFormatRadios)
+                    if (radio == selected) d->settings->tar.headerFormat = format;
+                ApplyAndSave(d);
+            };
+            parts.body->AddChild(row);
+        }
+
+        // ----- what each file keeps -----
+        AddBodyCaption(parts, "ufl-set-tar-keep-caption", "Store with each file:");
+        d->tarTimesBox = MakeCheckbox("ufl-set-tar-times",
+                "Its modification time (else the time it was packed)",
+                kTextWidth, tar.keepTimestamps, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->tar.keepTimestamps = on;
+            ApplyAndSave(d);
+        });
+        d->tarPermissionsBox = MakeCheckbox("ufl-set-tar-permissions",
+                "Its permissions (else 0644, folders 0755)",
+                kTextWidth, tar.keepPermissions, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->tar.keepPermissions = on;
+            ApplyAndSave(d);
+        });
+        d->tarOwnerBox = MakeCheckbox("ufl-set-tar-owner",
+                "Its owner and group (else 0, without names)",
+                kTextWidth, tar.keepOwner, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->tar.keepOwner = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->tarTimesBox);
+        parts.body->AddChild(d->tarPermissionsBox);
+        parts.body->AddChild(d->tarOwnerBox);
+
+        // ----- symbolic links -----
+        AddBodyCaption(parts, "ufl-set-tar-links-caption", "A symbolic link:");
+        d->tarLinkRadio = MakeChoice("ufl-set-tar-links-link",
+                "Store the link", tar.storeSymlinks);
+        d->tarTargetRadio = MakeChoice("ufl-set-tar-links-target",
+                "Store the file or folder it points to (tar -h)", !tar.storeSymlinks);
+        d->tarLinksGroup.AddRadioButton(d->tarLinkRadio);
+        d->tarLinksGroup.AddRadioButton(d->tarTargetRadio);
+        d->tarLinksGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->tar.storeSymlinks = (selected == d->tarLinkRadio);
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->tarLinkRadio);
+        parts.body->AddChild(d->tarTargetRadio);
+
+        // ----- the exclusions -----
+        AddBodyCaption(parts, "ufl-set-tar-exclude-caption",
+                       "Leave out - type a pattern and press Enter:");
+        d->tarExcludeInput = CreateTagInput("ufl-set-tar-exclude", -1, -1,
+                                            static_cast<float>(kTextWidth));
+        d->tarExcludeInput->SetPlaceholder("e.g. .git or *.tmp");
+        d->tarExcludeInput->SetTags(tar.excludePatterns);
+        d->tarExcludeInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        d->tarExcludeInput->size.width = CSSLayout::Dimension::Px(kTextWidth);
+        d->tarExcludeInput->onTagsChanged =
+                [d](const std::vector<std::string>& patterns) {
+            if (!d->settings) return;
+            d->settings->tar.excludePatterns = patterns;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->tarExcludeInput);
+
+        UpdateTarLabels(d);
+
+        d->resets[kPageTar] = PageReset{"Restore defaults", 170, [d]() {
+            if (!d->settings) return;
+            d->settings->tar = FilerTarSettings();
+            SyncTarControls(d);
+            ApplyAndSave(d);
+        }};
+
+        AddNote(parts, "ufl-set-tar-note1",
+                "Point at an entry of the Compress menu to see the command "
+                "line it packs with. The defaults are the compressors' own "
+                "levels - gzip 6, bzip2 9, xz 6, Zstandard 3 - on every core.");
+        AddNote(parts, "ufl-set-tar-note2",
+                "Threads make xz and Zstandard many times faster on a "
+                "multi-core machine; xz then cuts the data into blocks, which "
+                "costs a little size, and needs more memory at level 9. xz's "
+                "extreme mode (-e) is not available. Long mode makes big, "
+                "repetitive data pack smaller; zstd 1.3.2 or later unpacks it "
+                "without options.");
+        AddNote(parts, "ufl-set-tar-note3",
+                "PAX is today's standard: long names, large files, names in "
+                "any script. GNU tar's own format does the same its own way. "
+                "ustar is for the oldest tar programs and takes names of at "
+                "most 255 bytes and files of at most 8 GB.");
+        AddNote(parts, "ufl-set-tar-note4",
+                "A pattern is matched against each name inside a packed "
+                "folder, ignoring case: \"*\" stands for any run of "
+                "characters, \"?\" for one; with a \"/\" it is matched "
+                "against the path inside the folder (\"src/*.o\"). A "
+                "matching folder is left out with all it holds; what you "
+                "selected is always packed. ZIP and 7-Zip are not affected "
+                "by this page.");
+        return parts.page;
+    }
+
     std::shared_ptr<UltraCanvasContainer> BuildStartPage(DialogState* /*d*/) {
         PageParts parts = MakePage("ufl-set-page-start", "Settings",
                 "Open a section on the left and choose the page to set:");
@@ -2492,6 +2755,10 @@ namespace {
                 "Handling - what an action does: dropping dragged files onto "
                 "a folder, opening a file, how long the passwords of protected "
                 "files are kept, and what the \"+\" of the tab strip opens.");
+        AddNote(parts, "ufl-set-start-note-archives",
+                "Archives - how Compress packs a TAR: each compressor's level "
+                "and threads, the header format, what is stored of each file, "
+                "and the names left out.");
         AddNote(parts, "ufl-set-start-note3",
                 "Extras - the command line program \"Open prompt\" starts, "
                 "clearing the recently-used lists, the pinned entries and the "
@@ -2644,6 +2911,8 @@ namespace {
         AddTreeNode(d, kPageHandling, kPageOpeningFiles, "Opening files");
         AddTreeNode(d, kPageHandling, kPageProtectedFiles, "Protected files");
         AddTreeNode(d, kPageHandling, kPageTabs, "Tabs");
+        AddTreeNode(d, "settings", kPageArchives, "Archives");
+        AddTreeNode(d, kPageArchives, kPageTar, "TAR");
         AddTreeNode(d, "settings", kPageExtras, "Extras");
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, "Open prompt");
         AddTreeNode(d, kPageExtras, kPageLists, "History & Favorites");
@@ -2685,6 +2954,7 @@ namespace {
         AddPage(d, kPageTabs, BuildTabsPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));
         AddPage(d, kPageLists, BuildListsPage(d));
+        AddPage(d, kPageTar, BuildTarPage(d));
         AddPage(d, kPageCache, BuildCachePage(d));
         AddPage(d, kPageStart, BuildStartPage(d));
 
@@ -2722,7 +2992,7 @@ namespace {
 
         d->tree->onNodeSelected = [d](TreeNode* node) {
             if (!node) return;
-            // A section (Display, Handling, Extras) has no page of its own:
+            // A section (Display, Handling, Archives, Extras) has no page of its own:
             // selecting one moves on to its first page. The tree jumps one
             // level per selection, so this takes the remaining steps.
             TreeNode* leaf = node;

@@ -7,12 +7,15 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.18.0 - Archives > TAR: tar, how Compress packs a TAR (the
+//                   compressor levels, threads, zstd long mode, header format,
+//                   what each file keeps, links, exclusions)
 // Version: 1.17.0 - Handling > Protected files: forgetPasswordsAfterMinutes, how long
 //                   UltraFiler goes without input before the preview forgets the
 //                   passwords Unlock was given
 // Version: 1.16.0 - the shared settings folder, and the move of the old one into it
 // Version: 1.15.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -331,6 +334,14 @@ public:
     bool splitView = false;
     std::string splitSecondFolder;
 
+    // Archives > TAR: how the file display's Compress packs a .tar and a
+    // .tar.gz / .bz2 / .xz / .zst - each compressor's level, the threads of
+    // xz and Zstandard, Zstandard's long mode, the header format, what is
+    // kept of each file, symbolic links and the entries left out. The
+    // defaults are the compressors' own levels on every core, and each
+    // file's own time and permissions without its owner.
+    FilerTarSettings tar;
+
     // Extras > Open prompt: the command line program the "Open prompt" menu
     // entry starts. Empty means "whatever this OS provides" - the platform
     // default is detected at run time (see UltraFilerPrompt).
@@ -523,6 +534,35 @@ public:
         it = kv.find("handling.files.double.click");
         if (it != kv.end())
             doubleClickOpensRegisteredApp = (it->second == "application");
+        it = kv.find("archives.tar.level.gzip");
+        if (it != kv.end())
+            ParseInt(it->second, tar.gzipLevel, 1, FilerTarSettings::kMaxGzipLevel);
+        it = kv.find("archives.tar.level.bzip2");
+        if (it != kv.end())
+            ParseInt(it->second, tar.bzip2Level, 1, FilerTarSettings::kMaxBzip2Level);
+        it = kv.find("archives.tar.level.xz");
+        if (it != kv.end())
+            ParseInt(it->second, tar.xzLevel, 0, FilerTarSettings::kMaxXzLevel);
+        it = kv.find("archives.tar.level.zstd");
+        if (it != kv.end())
+            ParseInt(it->second, tar.zstdLevel, 1, FilerTarSettings::kMaxZstdLevel);
+        it = kv.find("archives.tar.threads");
+        if (it != kv.end())
+            ParseInt(it->second, tar.threads, 0, FilerTarSettings::kMaxThreads);
+        it = kv.find("archives.tar.zstd.long");
+        if (it != kv.end()) tar.zstdLongMode = ParseFlag(it->second);
+        it = kv.find("archives.tar.format");
+        if (it != kv.end()) tar.headerFormat = ParseTarHeaderFormat(it->second);
+        it = kv.find("archives.tar.keep.times");
+        if (it != kv.end()) tar.keepTimestamps = ParseFlag(it->second);
+        it = kv.find("archives.tar.keep.permissions");
+        if (it != kv.end()) tar.keepPermissions = ParseFlag(it->second);
+        it = kv.find("archives.tar.keep.owner");
+        if (it != kv.end()) tar.keepOwner = ParseFlag(it->second);
+        it = kv.find("archives.tar.links");
+        if (it != kv.end()) tar.storeSymlinks = (Trim(it->second) != "target");
+        it = kv.find("archives.tar.exclude");
+        if (it != kv.end()) tar.excludePatterns = ParseList(it->second);
         it = kv.find("extras.history.max.entries");
         if (it != kv.end())
             ParseInt(it->second, historyMaxEntries,
@@ -619,6 +659,24 @@ public:
         file << "handling.files.double.click = "
              << (doubleClickOpensRegisteredApp ? "application" : "preview")
              << "\n";
+        file << "archives.tar.level.gzip = " << tar.gzipLevel << "\n";
+        file << "archives.tar.level.bzip2 = " << tar.bzip2Level << "\n";
+        file << "archives.tar.level.xz = " << tar.xzLevel << "\n";
+        file << "archives.tar.level.zstd = " << tar.zstdLevel << "\n";
+        file << "archives.tar.threads = " << tar.threads << "\n";
+        file << "archives.tar.zstd.long = "
+             << (tar.zstdLongMode ? "true" : "false") << "\n";
+        file << "archives.tar.format = "
+             << FormatTarHeaderFormat(tar.headerFormat) << "\n";
+        file << "archives.tar.keep.times = "
+             << (tar.keepTimestamps ? "true" : "false") << "\n";
+        file << "archives.tar.keep.permissions = "
+             << (tar.keepPermissions ? "true" : "false") << "\n";
+        file << "archives.tar.keep.owner = "
+             << (tar.keepOwner ? "true" : "false") << "\n";
+        file << "archives.tar.links = "
+             << (tar.storeSymlinks ? "link" : "target") << "\n";
+        file << "archives.tar.exclude = " << FormatList(tar.excludePatterns) << "\n";
         file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";
@@ -678,6 +736,24 @@ public:
         if (value == "simple-modern") return FilerTabStripStyle::SimpleModern;
         if (value == "classic")       return FilerTabStripStyle::Classic;
         return FilerTabStripStyle::Modern;
+    }
+
+    // ===== THE TAR HEADER FORMAT =====
+    // Named, like every other choice in the file. An unknown value reads
+    // back as pax, the default.
+    static std::string FormatTarHeaderFormat(FilerTarHeaderFormat format) {
+        switch (format) {
+            case FilerTarHeaderFormat::Gnu:   return "gnu";
+            case FilerTarHeaderFormat::Ustar: return "ustar";
+            default:                          return "pax";
+        }
+    }
+
+    static FilerTarHeaderFormat ParseTarHeaderFormat(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "gnu")   return FilerTarHeaderFormat::Gnu;
+        if (value == "ustar") return FilerTarHeaderFormat::Ustar;
+        return FilerTarHeaderFormat::Pax;
     }
 
     // ===== THE DROP CONFIRMATION =====
@@ -805,6 +881,11 @@ public:
     }
 
 private:
+    static bool ParseFlag(const std::string& text) {
+        const std::string value = Trim(text);
+        return value == "true" || value == "1" || value == "yes";
+    }
+
     static std::string Trim(const std::string& s) {
         size_t start = s.find_first_not_of(" \t");
         if (start == std::string::npos) return "";

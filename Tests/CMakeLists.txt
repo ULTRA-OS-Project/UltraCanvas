@@ -3498,6 +3498,44 @@ if(LIBARCHIVE_TEST_FOUND)
     )
     message(STATUS "    Test registered: VirtualFSDeleteTest")
 
+    # ===== VIRTUALFS ARCHIVE WRITE OPTIONS TEST =====
+    # VirtualFSOpenOptions::archiveWrite (UltraFiler's Settings > Archives >
+    # TAR): compressor level / threads / zstd long mode, the TAR header
+    # format, kept times / permissions / owner, symbolic links, exclusions.
+    message(STATUS "  Building VirtualFSArchiveWriteOptionsTest...")
+    add_executable(VirtualFSArchiveWriteOptionsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSArchiveWriteOptionsTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSArchiveWriteOptionsTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSArchiveWriteOptionsTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSArchiveWriteOptionsTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSArchiveWriteOptionsTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSArchiveWriteOptionsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSArchiveWriteOptionsTest
+        COMMAND VirtualFSArchiveWriteOptionsTest ${CMAKE_BINARY_DIR}/vfs-archive-write-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSArchiveWriteOptionsTest")
+
     # ===== VIRTUALFS NAME ENCODING TEST =====
     # ZIP entry names in the DOS code page (no UTF-8 flag, as Windows writes
     # "Namensänderung") list and extract as UTF-8; Thai / Russian / Chinese

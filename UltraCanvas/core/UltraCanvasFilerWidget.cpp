@@ -50,6 +50,10 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.42.0 - Compress packs a TAR with the host's FilerTarSettings
+//                  (CompressOptionsFor), ZIP and 7-Zip storing what a link
+//                  points to; each Compress menu entry's tooltip is the
+//                  command line it packs with (DescribeCompressParameters)
 // Version: 1.41.0 - a remote folder being fetched or updated shows a thin blue
 //                  bar sliding along the foot of the file area, not a
 //                  "Loading folder" notice over it; its status line goes to
@@ -86,7 +90,7 @@
 //                  (HTML::DecodeEntities): every named and numeric reference, where
 //                  a numeric one was a blank before
 // Version: 1.36.0 - an icon on every entry of the context menu and its Display submenu
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -8762,6 +8766,105 @@ namespace UltraCanvas {
         if (job->onFinished) job->onFinished(ok, cancelled);
     }
 
+    namespace {
+        // The TAR formats of Compress: a plain .tar and every .tar.<filter>.
+        bool IsTarExtension(const std::string& extension) {
+            return extension == "tar" || extension.rfind("tar.", 0) == 0;
+        }
+
+        // The level FilerTarSettings gives the compressor of `extension`,
+        // clamped to that compressor's range; -1 for a plain .tar.
+        int TarCompressorLevel(const std::string& extension,
+                               const FilerTarSettings& tar) {
+            using T = FilerTarSettings;
+            if (extension == "tar.gz")  return std::clamp(tar.gzipLevel, 1, T::kMaxGzipLevel);
+            if (extension == "tar.bz2") return std::clamp(tar.bzip2Level, 1, T::kMaxBzip2Level);
+            if (extension == "tar.xz")  return std::clamp(tar.xzLevel, 0, T::kMaxXzLevel);
+            if (extension == "tar.zst") return std::clamp(tar.zstdLevel, 1, T::kMaxZstdLevel);
+            return -1;
+        }
+
+        int TarThreads(const FilerTarSettings& tar) {
+            return std::clamp(tar.threads, 0, FilerTarSettings::kMaxThreads);
+        }
+
+#ifdef ULTRACANVAS_HAS_VIRTUALFS
+        // What CreateArchive is handed for an archive of `extension`: the TAR
+        // settings for a TAR; for ZIP and 7-Zip the library defaults, storing
+        // what a link points to, as zip -r and 7z a do.
+        UCVFSCompressionOptions CompressOptionsFor(const std::string& extension,
+                                                   const FilerTarSettings& tar) {
+            UCVFSCompressionOptions options = UCVFSCompressionOptions::Default();
+            UCVFSArchiveWriteOptions& write = options.archive;
+            if (!IsTarExtension(extension)) {
+                write.storeSymlinks = false;
+                return options;
+            }
+            write.filterLevel = TarCompressorLevel(extension, tar);
+            write.threads = TarThreads(tar);
+            write.zstdLongWindowLog = (extension == "tar.zst" && tar.zstdLongMode) ? 27 : 0;
+            switch (tar.headerFormat) {
+                case FilerTarHeaderFormat::Pax:   write.tarFormat = UCVFSTarFormat::Pax;   break;
+                case FilerTarHeaderFormat::Gnu:   write.tarFormat = UCVFSTarFormat::Gnu;   break;
+                case FilerTarHeaderFormat::Ustar: write.tarFormat = UCVFSTarFormat::Ustar; break;
+            }
+            write.keepTimestamps = tar.keepTimestamps;
+            write.keepPermissions = tar.keepPermissions;
+            write.keepOwner = tar.keepOwner;
+            write.storeSymlinks = tar.storeSymlinks;
+            write.excludePatterns = tar.excludePatterns;
+            return options;
+        }
+#endif
+    }
+
+    std::string UltraCanvasFilerWidget::DescribeCompressParameters(
+            const std::string& extension, const FilerTarSettings& tar) {
+        // ZIP and 7-Zip pack at libarchive's defaults.
+        if (extension == "zip")
+            return "zip -r -6 <files>   (Deflate, level 6)\n"
+                   "Each file: own modification time, own permissions; "
+                   "links as the files they point to";
+        if (extension == "7z")
+            return "7z a -m0=LZMA -mx=6 <files>   (LZMA, level 6)\n"
+                   "Each file: own modification time; "
+                   "links as the files they point to";
+        if (!IsTarExtension(extension)) return std::string();
+
+        std::string command = "tar";
+        switch (tar.headerFormat) {
+            case FilerTarHeaderFormat::Pax:   command += " --format=pax";   break;
+            case FilerTarHeaderFormat::Gnu:   command += " --format=gnu";   break;
+            case FilerTarHeaderFormat::Ustar: command += " --format=ustar"; break;
+        }
+        if (!tar.storeSymlinks) command += " -h";
+        if (!tar.keepOwner) command += " --owner=0 --group=0 --numeric-owner";
+        if (!tar.keepTimestamps) command += " --mtime=now";
+        for (const std::string& pattern : tar.excludePatterns)
+            if (!pattern.empty()) command += " --exclude='" + pattern + "'";
+
+        const int level = TarCompressorLevel(extension, tar);
+        const std::string threads = " -T" + std::to_string(TarThreads(tar));
+        std::string compressor;
+        if (extension == "tar.gz")  compressor = "gzip -" + std::to_string(level);
+        if (extension == "tar.bz2") compressor = "bzip2 -" + std::to_string(level);
+        if (extension == "tar.xz")  compressor = "xz -" + std::to_string(level) + threads;
+        if (extension == "tar.zst")
+            compressor = "zstd -" + std::to_string(level) + threads +
+                         (tar.zstdLongMode ? " --long=27" : "");
+        if (compressor.empty())
+            command += " -cf archive." + extension + " <files>";
+        else
+            command += " -cf - <files> | " + compressor;
+
+        std::string kept = "Each file: ";
+        kept += tar.keepTimestamps ? "own modification time" : "the packing time";
+        kept += tar.keepPermissions ? ", own permissions" : ", permissions 0644 (folders 0755)";
+        kept += tar.keepOwner ? ", owner and group" : ", no owner";
+        kept += tar.storeSymlinks ? "; links as links" : "; links as the files they point to";
+        return command + "\n" + kept;
+    }
+
     void UltraCanvasFilerWidget::CompressSelection(const std::string& extension) {
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
         std::vector<FilerEntry> targets = SelectionOrAll();
@@ -8781,11 +8884,11 @@ namespace UltraCanvas {
         // to build the VirtualFS provider registry.
         UCVFSBridge::Initialize();
         const std::string archiveName = PathToUtf8(PathFromUtf8(dest).filename());
+        const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
         StartArchiveJob("Compressing", "Creating \"" + archiveName + "\"",
                         dest, /*packing=*/true,
-                        [dest, paths](const ArchiveProgressReporter& report) {
-            return UCVFSBridge::CreateArchive(dest, paths,
-                    UCVFSCompressionOptions::Default(),
+                        [dest, paths, options](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::CreateArchive(dest, paths, options,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
@@ -9301,12 +9404,12 @@ namespace UltraCanvas {
         // to build the VirtualFS provider registry.
         UCVFSBridge::Initialize();
         const std::vector<std::string> sources = d.sourcePaths;
+        const UCVFSCompressionOptions options = CompressOptionsFor(ext, tarSettings);
         StartArchiveJob("Compressing",
                         "Creating \"" + PathToUtf8(candidate.filename()) + "\"",
                         dest, /*packing=*/true,
-                        [dest, sources](const ArchiveProgressReporter& report) {
-            return UCVFSBridge::CreateArchive(dest, sources,
-                    UCVFSCompressionOptions::Default(),
+                        [dest, sources, options](const ArchiveProgressReporter& report) {
+            return UCVFSBridge::CreateArchive(dest, sources, options,
                     [&report](uint64_t done, uint64_t total,
                               const std::string& file) {
                 return report(done, total, file);
@@ -15696,6 +15799,9 @@ namespace UltraCanvas {
                         f.label,
                         [this, ext, label]() { OpenCompressDialog(ext, label); });
                 item.enabled = canCompress;
+                // What the entry packs with, as a command line - so the TAR
+                // settings the host offers can be read off the menu itself.
+                item.tooltip = DescribeCompressParameters(ext, tarSettings);
                 compressItems.push_back(item);
             }
             MenuItemData compressSub = MenuItemData::Submenu(

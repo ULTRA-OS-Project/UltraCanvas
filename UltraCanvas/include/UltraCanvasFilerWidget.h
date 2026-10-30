@@ -103,6 +103,11 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.43.0 - FilerTarSettings (SetTarSettings): how Compress packs a
+//                  TAR - each compressor's level, threads, zstd long mode, the
+//                  header format, what of a file is kept, links, exclusions;
+//                  every Compress menu entry's tooltip names the parameters it
+//                  packs with (DescribeCompressParameters)
 // Version: 1.42.0 - FormatSizeText: the display's own size formatting for a
 //                  host's status bar; the hidden-items notice sits on the file
 //                  area's background (no grey strip), its count beside the
@@ -128,7 +133,7 @@
 // Version: 1.40.0 - RequestBackgroundStop / BackgroundStopped: a host can let the workers
 //                  end before it destroys the widget
 // Version: 1.39.2
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -202,6 +207,51 @@ namespace UltraCanvas {
     // An entry that cannot be copied, moved or deleted: ask Try again / Skip
     // (the default), or skip it and list it in the summary at the end.
     enum class FilerProblemPolicy { Ask, SkipAndReport };
+
+    // ===== HOW COMPRESS PACKS A TAR =====
+    // The host's choices for the TAR formats of the context menu's Compress
+    // (UltraFiler's Settings > Archives > TAR). ZIP and 7-Zip pack at their
+    // library defaults and are not affected.
+    enum class FilerTarHeaderFormat {
+        Pax,    // POSIX.1-2001, pax extensions only where needed (default)
+        Gnu,    // GNU tar's own
+        Ustar   // POSIX.1-1988: names to 255 bytes, files to 8 GB
+    };
+    struct FilerTarSettings {
+        // The level each compressor packs at, in its own range; the defaults
+        // are the compressors' own.
+        static constexpr int kMaxGzipLevel  = 9;    // 1-9
+        static constexpr int kMaxBzip2Level = 9;    // 1-9
+        static constexpr int kMaxXzLevel    = 9;    // 0-9
+        static constexpr int kMaxZstdLevel  = 19;   // 1-19 (20+ needs --ultra memory)
+        static constexpr int kMaxThreads    = 64;
+        int gzipLevel  = 6;
+        int bzip2Level = 9;
+        int xzLevel    = 6;
+        int zstdLevel  = 3;
+        // Worker threads of xz and Zstandard (gzip and bzip2 have none);
+        // 0 = one per core, xz/zstd -T0.
+        int threads = 0;
+        // Zstandard long-distance matching over a 128 MB window
+        // (zstd --long=27): smaller archives of large, repetitive data.
+        bool zstdLongMode = false;
+        FilerTarHeaderFormat headerFormat = FilerTarHeaderFormat::Pax;
+        // What is stored of each file: its own modification time (else the
+        // packing time), its own permission bits (else 0644, folders 0755),
+        // its owner and group (else 0 without names), and a symbolic link
+        // as a link (else the file or folder it points to).
+        bool keepTimestamps  = true;
+        bool keepPermissions = true;
+        bool keepOwner       = false;
+        bool storeSymlinks   = true;
+        // Entries left out of a packed folder: '*' / '?' patterns, ASCII
+        // case-insensitive, matched against the name - or, holding a '/',
+        // against the path below the packed folder. A selected item is
+        // always packed.
+        std::vector<std::string> excludePatterns;
+
+        bool operator==(const FilerTarSettings&) const = default;
+    };
 
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
     enum class FilerViewType {
@@ -1179,6 +1229,16 @@ namespace UltraCanvas {
         // volume is not two seconds of nothing.
         void SetProgressWindowDelay(unsigned milliseconds) { progressWindowDelayMs = milliseconds; }
         unsigned GetProgressWindowDelay() const { return progressWindowDelayMs; }
+
+        // How Compress packs the TAR formats (FilerTarSettings above).
+        void SetTarSettings(const FilerTarSettings& settings) { tarSettings = settings; }
+        const FilerTarSettings& GetTarSettings() const { return tarSettings; }
+        // What Compress packs an archive of `extension` ("zip", "7z", "tar",
+        // "tar.gz", "tar.bz2", "tar.xz", "tar.zst") with, as the equivalent
+        // command line and a line on what each file keeps - the tooltip of
+        // the Compress menu's entries. Several lines, '\n'-separated.
+        static std::string DescribeCompressParameters(const std::string& extension,
+                                                      const FilerTarSettings& settings);
 
         // The selection info bar shown under the folder display. One line
         // describing the selection: name, type, size, modified date and
@@ -2277,6 +2337,7 @@ namespace UltraCanvas {
         FilerFolderConflictPolicy folderConflictPolicy = FilerFolderConflictPolicy::Merge;
         FilerProblemPolicy problemPolicy = FilerProblemPolicy::Ask;
         unsigned progressWindowDelayMs = 2000;
+        FilerTarSettings tarSettings;      // how Compress packs a TAR
         bool dragOutArmed = false;         // press may still become a drag
         Point2Di dragOutPressPoint;
         int  dragPressIndex = -1;          // entry the press landed on
