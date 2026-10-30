@@ -2316,6 +2316,12 @@ has no folder whose changes would mean anything. The interval governs detection
 only while polling; with a native watcher it bounds just how quickly the UI
 applies what the watcher already reported.
 
+A rescan of the folder already being watched keeps its watch running, and a
+change reported while the rescan was running is not discarded - it triggers one
+more rescan. A save is usually several steps (a browser writes a placeholder,
+then a `.part` file, then renames it), and the first step's rescan must not
+swallow the rest.
+
 A native watch can also die after it started — the volume the folder is on is
 unmounted, the share drops, the handle goes bad. The widget is told (the
 watcher's failure callback) and moves that folder to polling, so it keeps
