@@ -48772,6 +48772,14 @@ recent.prototype = [this]() { return BuildRecentFilesSubmenu(); };
 reg.Register(recent);
 ```
 
+The same registry builds toolbars ([Toolbar Layout](UltraCanvasToolbarLayout.md)),
+and a command carries what a toolbar needs as well: `iconName`, resolved per
+size by `SetIconResolver` / `ResolveIcon`; a `tooltip`; live state -
+`isEnabled`, `isChecked`, `dynamicLabel` - which `Materialize` reads into the
+entry it builds and `RefreshMenuStates(menu)` reads again into a menu built
+earlier; and `makeToolbarWidget` for a command that is a widget on a toolbar.
+`FindShortcutConflicts()` lists the shortcuts given to more than one command.
+
 ## 2. Describe the default layout
 
 A `MenuLayout` is a tree of `MenuLayoutNode`s (`Command`, `Group`, or `Separator`).
@@ -75631,9 +75639,13 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md
 
 # A Toolbar Configuration Widget — Investigation
 
-Status: **Investigation.** Nothing below is built yet. The code blocks show
-APIs that do not exist; their names are recorded in
-`scripts/doc_examples_baseline.txt` until they do.
+Status: **Investigation — phase 1 built.** The command catalogue, the
+group model, building a toolbar from it and keeping the user's arrangement
+(§4.1–§4.5, §6 phase 1) exist now and are documented in
+[`UltraCanvasToolbarLayout.md`](UltraCanvasToolbarLayout.md). The editor
+(§4.4) and the changes on the bar itself (§4.6) are phase 2 and are not
+built; their names are recorded in `scripts/doc_examples_baseline.txt`
+until they are.
 
 **Since written (2026-10-30):** three of the gaps it found are fixed —
 `groupSpacing` is read (the gap across a separator), `ToolbarOverflowMode::Menu`
@@ -75905,6 +75917,9 @@ Extend `MenuCommand` rather than add a second registry. A program then
 registers each command once, and the menu editor and the toolbar editor
 offer the same catalogue.
 
+<!-- The fields below are MenuCommand's, listed outside the struct, so the
+     doc check cannot place them; they exist (UltraCanvasMenuRegistry.h). -->
+
 ```cpp
 // UltraCanvasMenuRegistry.h, MenuCommand gains:
 std::string iconName;                    // "to-front.svg": resolved per size by the registry's icon resolver
@@ -76082,7 +76097,8 @@ release adds to `zoom` appears for users who never customised the group.
 ```cpp
 bool SaveToolbarLayout(UltraCanvasAppSettings& settings, const ToolbarLayout& layout, const ToolbarLayout& defaults);
 // Reads toolbars.<defaults.name>: the defaults with the saved changes applied, unknown ids dropped.
-ToolbarLayout LoadToolbarLayout(const UltraCanvasAppSettings& settings, const ToolbarLayout& defaults);
+ToolbarLayout LoadToolbarLayout(const UltraCanvasAppSettings& settings, const ToolbarLayout& defaults,
+                                const UltraCanvasMenuRegistry* registry = nullptr);
 ```
 
 ArtCreator keeps its other settings in its own `config.ini`
@@ -76129,7 +76145,15 @@ Nothing needs a new dependency or platform code.
 **Phase 1: the command catalogue and the group model (framework).**
 Items 1–4 and 9. They are useful without the editor: a program gets
 toolbars built from data, separators that are always right, and state that
-stays in step.
+stays in step. *Built:* `UltraCanvasToolbarLayout.h` (`ToolbarLayout`,
+`MaterializeToolbar`, `MergeToolbarLayout`, `Save` / `Load` /
+`ForgetToolbarLayout`), the `MenuCommand` fields and registry calls of §4.1
+plus `FindShortcutConflicts` and `RefreshMenuStates`, the toolbar's
+`AddWidget` and `RefreshCommandStates`, and `Tests/ToolbarLayoutTest.cpp`.
+Two choices made on the way: the registry keeps its name (§8, question 1,
+is still open; a rename is cheap while nothing but the DemoApp uses it), and
+menus take live state through `RefreshMenuStates`, called where the program
+calls `RefreshCommandStates`, rather than at every opening.
 
 **Phase 2: the editor and the right-click menu (framework).** Items 5, 7
 and 8, plus a DemoApp page beside the menu-configuration page that uses
@@ -76220,6 +76244,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarExamples.md
   - [Item Management](#item-management)
   - [Item Badges](#item-badges)
   - [Convenience Methods](#convenience-methods)
+  - [Built from commands](#built-from-commands)
   - [Tool Groups](#tool-groups)
   - [Auto-Hide](#auto-hide)
   - [Drag and Drop](#drag-and-drop)
@@ -76369,6 +76394,24 @@ std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
 std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
         const std::string& id, const std::string& placeholder = "Search...",
         std::function<void(const std::string&)> onTextChange = nullptr);
+// Any other widget as an item under `id` (a slider, a gauge)
+std::shared_ptr<UltraCanvasUIElement> AddWidget(
+        const std::string& id, std::shared_ptr<UltraCanvasUIElement> widget);
+```
+
+### Built from commands
+
+A toolbar can be built from data instead: `MaterializeToolbar` fills it from
+a `ToolbarLayout` - groups of command ids the user can show, hide, reorder
+and fold - and the command registry menus are built from. Each item's id is
+then its command id, and one call re-reads every command's state into its
+button, so the program keeps no pointers to buttons the user may remove.
+See [Toolbar Layout](UltraCanvasToolbarLayout.md).
+
+```cpp
+void SetCommandRegistry(const UltraCanvasMenuRegistry* registry);   // MaterializeToolbar sets it
+const UltraCanvasMenuRegistry* GetCommandRegistry() const;
+void RefreshCommandStates();   // isEnabled / isChecked / dynamicLabel into the items
 ```
 
 ### Tool Groups
@@ -76825,10 +76868,236 @@ running->ClearItemBadge("webcam");                                // off again
 
 - [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
 - [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
+- [Toolbar Layout](UltraCanvasToolbarLayout.md) - A toolbar built from groups of commands, kept in the settings (`MaterializeToolbar`)
 - [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally
 - [UltraCanvasSegmentedControl](UltraCanvasSegmentedControl.md) - Alternative for grouped toggle choices
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasToolbarLayout.md
+==============================================================================
+
+# Toolbar Layout — toolbars built from commands
+
+`UltraCanvasToolbarLayout.h` describes a toolbar as data: **groups of command
+ids**, each group one function of the program (*File*, *Zoom*, *Arrange*).
+The user can show, hide, reorder and fold the groups and turn single
+commands off, and the arrangement is kept in the application's settings
+across restarts and releases. `MaterializeToolbar` turns a layout and a
+command registry into the toolbar's buttons.
+
+It is phase 1 of the toolbar configuration in
+[`UltraCanvasToolbarConfigInvestigation.md`](UltraCanvasToolbarConfigInvestigation.md);
+the editor (phase 2) is built on it.
+
+## Contents
+
+- [Why a layout](#why-a-layout)
+- [1. Register the commands](#1-register-the-commands)
+  - [Icons by size](#icons-by-size)
+  - [Live state](#live-state)
+  - [Widgets and shortcuts](#widgets-and-shortcuts)
+- [2. Describe the default groups](#2-describe-the-default-groups)
+- [3. Build the toolbar](#3-build-the-toolbar)
+- [4. Keep the user's arrangement](#4-keep-the-users-arrangement)
+- [Files](#files)
+
+## Why a layout
+
+A toolbar built with `AddButton(..., [this]() { ... })` holds lambdas, which
+have no identity: nothing can save it, move one of its groups, or hide a
+button and bring it back. A program also declares each command twice or
+three times - as a menu entry, a toolbar button, a case in its shortcut
+handler - and the copies drift apart (ArtCreator's menu once showed a
+shortcut its keyboard handler gave to another command).
+
+The layout separates the two:
+
+| Concern | Type | Saved? |
+|---|---|---|
+| What a command is: label, icon, shortcut, callback, live state | `MenuCommand` in `UltraCanvasMenuRegistry` | no (holds callbacks) |
+| How a toolbar is arranged: groups, order, what is shown | `ToolbarLayout` / `ToolbarLayoutGroup` | yes (ids only) |
+
+The registry is the one menus are built from
+([Menu Configuration Widget](UltraCanvasMenuConfigWidget.md)), so a command
+registered once is the same in the menu, on the toolbar and in the shortcut
+list.
+
+## 1. Register the commands
+
+<!-- doc-check: void CmdUndo(); bool CanUndo(); std::string UndoStepName(); bool gridShown; std::string IconFolder(); -->
+
+```cpp
+UltraCanvasMenuRegistry registry;   // one per window: the callbacks reach that window
+
+MenuCommand undo("edit.undo", "Edit", "Undo");
+undo.iconName = "undo.svg";          // the file name; the resolver picks the size
+undo.shortcut = "Ctrl+Z";
+undo.onClick = [this]() { CmdUndo(); };
+undo.isEnabled = [this]() { return CanUndo(); };
+undo.dynamicLabel = [this]() { return "Undo " + UndoStepName(); };
+registry.Register(undo);
+
+MenuCommand grid("view.grid", "View", "Grid");
+grid.type = MenuItemType::Checkbox;  // a toggle button on a toolbar, a check in a menu
+grid.iconName = "grid.svg";
+grid.onToggle = [this](bool on) { gridShown = on; };
+grid.isChecked = [this]() { return gridShown; };
+registry.Register(grid);
+```
+
+### Icons by size
+
+A line icon is sharp only at the pixel grid it was drawn for, so a program
+keeps one folder per size (16 px for menus, 24 for toolbars...). A command
+names its icon by file name, and the registry's resolver picks the file for
+the size it is drawn at:
+
+```cpp
+registry.SetIconResolver([this](const std::string& name, int px) {
+    return IconFolder() + std::to_string(px) + "/" + name;
+});
+std::string toolbarIcon = registry.ResolveIcon(*registry.Find("edit.undo"), 24);
+```
+
+Without a resolver, or for a command with only `iconPath`, the path is used
+as it is. `Materialize` gives a menu entry the 16 px icon.
+
+### Live state
+
+`isEnabled`, `isChecked` and `dynamicLabel` are read whenever a menu or
+toolbar built from the command is refreshed, so the program never keeps
+pointers to the buttons - which the user may have removed:
+
+```cpp
+// After an edit, a selection, an undo:
+// toolbar->RefreshCommandStates();
+// registry.RefreshMenuStates(*menuBar);
+```
+
+`MenuCommand::TooltipText()` is the toolbar's tooltip: `tooltip` when set,
+else the current label and `" (shortcut)"` - *Undo Move (Ctrl+Z)*.
+
+### Widgets and shortcuts
+
+A command that is a widget on the toolbar rather than a button - a slider,
+a field - makes it:
+
+```cpp
+MenuCommand quality("view.quality", "View", "Quality");
+quality.makeToolbarWidget = [](const std::string& id) -> std::shared_ptr<UltraCanvasUIElement> {
+    return std::make_shared<UltraCanvasSlider>(id, 0, 0, 90, 24);
+};
+registry.Register(quality);
+```
+
+`FindShortcutConflicts()` lists the shortcuts given to more than one
+command, with their ids; `"Ctrl+Shift+S"` and `"shift+ctrl+s"` are one
+shortcut. A program can check it once at start in a debug build.
+
+## 2. Describe the default groups
+
+```cpp
+ToolbarLayout defaults;
+defaults.name = "main";   // the settings key: one per toolbar
+defaults.groups = {
+    ToolbarLayoutGroup::Make("file",    "File",    { "file.new", "file.open", "file.save" }),
+    ToolbarLayoutGroup::Make("history", "History", { "edit.undo", "edit.redo" }),
+    ToolbarLayoutGroup::Make("view",    "View",    { "view.grid", "view.quality" }),
+};
+ToolbarLayoutGroup align = ToolbarLayoutGroup::Make("align", "Align", { "arrange.align-left", "arrange.align-right" });
+align.visible = false;   // offered, off until the user turns it on
+align.folded = true;     // one slot with a fold-out bar
+defaults.groups.push_back(align);
+```
+
+A group's fields: `id`, `label`, `iconName` (the slot's icon when folded),
+`commands` (its full set, in order), `hidden` (those the user turned off),
+`visible`, `folded`, `userMade`. `SetCommandShown`, `IsCommandShown` and
+`ShownCommands` work on `hidden`; a hidden command stays in its group and
+comes back in its place. `ToolbarLayout::FindGroup` and `MoveGroup` find and
+reorder groups.
+
+## 3. Build the toolbar
+
+<!-- doc-check: UltraCanvasMenuRegistry registry; ToolbarLayout layout; -->
+
+```cpp
+auto toolbar = std::make_shared<UltraCanvasToolbar>("main", 0, 0, 0, 38);
+MaterializeToolbar(*toolbar, layout, registry);
+```
+
+`MaterializeToolbar` clears the toolbar and, for each shown group with
+something to show, adds a separator after the previous group and the group's
+commands:
+
+- an Action command is a button, a Checkbox or Radio command a toggle button,
+  a command with `makeToolbarWidget` its widget;
+- a folded group of two or more is one `UltraCanvasToolGroupButton` slot
+  under the group's id: a group of toggle commands (tools) stays pressed on
+  the one picked, a group of actions springs back once it has run;
+- each item's id is its command id, so `toolbar->GetWidget("edit.undo")`
+  finds the Undo button while it is shown;
+- a command the registry does not know, a hidden command and a hidden group
+  leave nothing behind - no gap, no second separator - and a command in two
+  groups shows in the first.
+
+The layout's `iconSize` and `showLabels` become the toolbar's appearance. The
+toolbar keeps a pointer to the registry (`SetCommandRegistry`), which must
+outlive it, and reads the commands' state at the end; call
+`RefreshCommandStates()` again wherever the state changes.
+
+## 4. Keep the user's arrangement
+
+<!-- doc-check: UltraCanvasMenuRegistry registry; ToolbarLayout defaults; -->
+
+```cpp
+UltraCanvasAppSettings settings("MyApp");   // <settings folder>/MyApp/settings.json
+settings.Load();
+ToolbarLayout layout = LoadToolbarLayout(settings, defaults, &registry);
+
+// ... the user hides a group and turns a command off ...
+layout.FindGroup("history")->visible = false;
+layout.FindGroup("file")->SetCommandShown("file.open", false);
+SaveToolbarLayout(settings, layout, defaults);
+
+// Reset: the program's defaults from now on.
+ForgetToolbarLayout(settings, "main");
+```
+
+Only what the user changed is kept, under `toolbars.<name>`:
+
+```json
+{ "toolbars": { "main": {
+    "iconSize": 16,
+    "groups": [
+      { "id": "history", "visible": false },
+      { "id": "file", "hidden": ["file.open"] },
+      { "id": "view" },
+      { "id": "mine", "user": true, "label": "My commands", "commands": ["file.save"] }
+] } } }
+```
+
+What is in a group the program defines comes from the program's defaults
+every time, so `LoadToolbarLayout` (`MergeToolbarLayout`) can bring a saved
+layout forward to a new release:
+
+- a command the release adds to a group shows, and the user's hidden ones
+  stay hidden;
+- a group new in the release goes in after the group it follows in the
+  defaults;
+- a group the release no longer has is dropped, and with the registry given,
+  so is every command it does not know - in the user's own groups too.
+
+## Files
+
+| File | Contents |
+|---|---|
+| `UltraCanvas/include/UltraCanvasToolbarLayout.h` | `ToolbarLayoutGroup`, `ToolbarLayout`, `MaterializeToolbar`, `MergeToolbarLayout`, `SaveToolbarLayout`, `LoadToolbarLayout`, `ForgetToolbarLayout` |
+| `UltraCanvas/include/UltraCanvasMenuRegistry.h` | `MenuCommand` (with `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`), `SetIconResolver`, `ResolveIcon`, `FindShortcutConflicts`, `RefreshMenuStates` |
+| `UltraCanvas/include/UltraCanvasToolbar.h` | `AddWidget`, `SetCommandRegistry`, `RefreshCommandStates` |
+| `Tests/ToolbarLayoutTest.cpp` | the registry, building, refreshing, saving and merging |
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasTooltipManager.md
@@ -79047,7 +79316,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
-| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page), and `ToolbarOverflowMode::Menu` moves what does not fit into a chevron button's menu. A separator divides the bar into groups, `groupSpacing` apart | `UltraCanvasToolbar.h` |
+| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them. Items carry badges (`SetItemBadge` / `SetItemBadgeCount` / `SetItemBadgeDot`), can be dragged into a new order (`EnableItemReordering`), `ToolbarOverflowMode::Scroll` scrolls a full bar with the wheel, a chevron over the edge the items continue past (click: a page), and `ToolbarOverflowMode::Menu` moves what does not fit into a chevron button's menu. A separator divides the bar into groups, `groupSpacing` apart. Built from groups of commands the user can show, hide and reorder, kept in the settings: `MaterializeToolbar` ([doc](UltraCanvasToolbarLayout.md)) | `UltraCanvasToolbar.h`, `UltraCanvasToolbarLayout.h` |
 | Several tools sharing one slot of a palette or toolbar - the slot shows one, a bar of the whole group folds out while the pointer rests on it, the slot then shows the tool last picked (or always the main one) ([doc](UltraCanvasToolGroupButton.md)) | `UltraCanvasToolGroupButton` (`UltraCanvasToolbar::AddToolGroup`) | `UltraCanvasToolGroupButton.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 | The S-curve between two groups on one bar (a taskbar's system group flowing into its running apps) — one group's colour up to the curve, the next group's after it ([doc](UltraCanvasWaveSeparator.md)) | `UltraCanvasWaveSeparator` | `UltraCanvasWaveSeparator.h` |
