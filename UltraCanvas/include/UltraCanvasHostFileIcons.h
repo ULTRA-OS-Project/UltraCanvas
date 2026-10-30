@@ -33,8 +33,10 @@
 // system image list, which is what Explorer itself draws from) and macOS
 // (NSWorkspace). Platforms with no desktop to ask — WebAssembly, Android —
 // report unavailable, and a caller then keeps its own drawn icons.
+// Version: 1.3.0 - Windows: a type no program is registered for answers null
+//                  rather than the shell's blank page
 // Version: 1.2.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -78,6 +80,9 @@ namespace UltraCanvas {
     // UltraCanvasNativeFileIcons.h). Null when this system has no icon for
     // the type, which is not a failure — it is the answer on a machine with
     // no icon theme installed, and the caller draws its own icon instead.
+    // On Windows it is also the answer for a type no program is registered
+    // for (".7z", ".tar.xz" without 7-Zip): Explorer's blank "no program"
+    // page says less than the caller's own icon for the type does.
     std::shared_ptr<UCPixmap> LoadHostFileIconPixmap(const std::string& path,
                                                      bool isDirectory,
                                                      int desiredSize);

@@ -175,6 +175,32 @@ VirtualFS_CreateArchive("/home/user/new.zip",
 ```
 
 ```cpp
+// Create a .tar.xz the way `tar --format=gnu --exclude=.git -cf - src | xz -9 -T0` would
+VirtualFSOpenOptions options = VirtualFSOpenOptions::ForCreating();
+options.archiveWrite.filterLevel = 9;      // the compressor's own level
+options.archiveWrite.threads = 0;          // xz / zstd: one thread per core
+options.archiveWrite.tarFormat = VirtualFSTarFormat::Gnu;
+options.archiveWrite.excludePatterns = {".git", "*.tmp", "build/*.o"};
+VirtualFS_CreateArchive("/home/user/src.tar.xz", {"/home/user/src"}, options);
+```
+
+`VirtualFSOpenOptions::archiveWrite` (`VirtualFSArchiveWriteOptions`) tunes
+what `CreateArchive` writes: the level of the stream compressor of a
+`.tar.gz` / `.bz2` / `.xz` / `.zst` / `.lz4` (`filterLevel`; -1 takes the
+`compressionLevel` preset, which ZIP and 7-Zip follow too and whose `Normal`
+leaves every library at its default), the worker threads of xz and Zstandard (`threads`, 0 for
+one per core), Zstandard's long-distance window (`zstdLongWindowLog`, 27 =
+`--long=27`), the TAR header layout (`tarFormat`: pax, GNU or ustar), and
+what is stored of each file - its own modification time, permission bits
+and owner (`keepTimestamps`, `keepPermissions`, `keepOwner`), a symbolic
+link as a link or as what it points to (`storeSymlinks`), and the names
+left out of a packed folder (`excludePatterns`, `*` / `?`, case ignored,
+matched against the path below the folder when the pattern holds a `/`).
+By default each file keeps its time and permissions, its owner is left
+out, links stay links, and the compressor runs at its default level on one
+thread. File content is streamed, never read into memory whole.
+
+```cpp
 // UltraCanvas integration — drop-in compression
 #include <UltraCanvasVirtualFSBridge.h>
 using namespace UltraCanvas;

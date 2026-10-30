@@ -9,8 +9,16 @@
 // That is what makes this a type lookup rather than a file lookup - one call
 // per extension serves a folder of ten thousand files, and a path on a
 // disconnected volume still gets its icon.
+//
+// A type nothing on this machine is registered for - ".7z", ".tar.xz",
+// ".tar.zst" on a Windows without 7-Zip - is the one answer that is not
+// passed on: the shell's icon for it is the blank "no program" page, which
+// says nothing about the file, so it is reported as no icon and the file
+// display draws its own type icon (an archive with "7Z" on it) instead.
+// Version: 1.2.0 - a type no program is registered for answers no icon, not
+//                  the shell's blank page, so the caller draws its own
 // Version: 1.1.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasWindowsIcons.h"
@@ -155,6 +163,28 @@ namespace UltraCanvas {
             return true;
         }
 
+        // The blank page Explorer draws for a type no program is registered
+        // for. The shell's stock icon names it; a made-up extension asked the
+        // same way as any file confirms it, in case a shell answers the two
+        // with different entries of its list.
+        bool IsNoAssociationIcon(int index) {
+            static const int stockIndex = []() {
+                SHSTOCKICONINFO info{};
+                info.cbSize = sizeof(info);
+                if (FAILED(SHGetStockIconInfo(SIID_DOCNOASSOC, SHGSI_SYSICONINDEX,
+                                              &info)))
+                    return -1;
+                return info.iSysImageIndex;
+            }();
+            static const int probeIndex = []() {
+                int probe = -1;
+                if (!SystemIconIndex(L"x.ultracanvas-no-such-type", false, probe))
+                    return -1;
+                return probe;
+            }();
+            return index >= 0 && (index == stockIndex || index == probeIndex);
+        }
+
         std::shared_ptr<UCPixmap> IconFromImageList(int list, int index) {
             IImageList* images = nullptr;
             if (FAILED(SHGetImageList(list, kImageListIid,
@@ -202,6 +232,8 @@ namespace UltraCanvas {
 
         int index = 0;
         if (SystemIconIndex(wide, isDirectory, index)) {
+            // Nothing registered for the type: the blank page is no icon.
+            if (!isDirectory && IsNoAssociationIcon(index)) return nullptr;
             for (int list : ListsForSize(desiredSize)) {
                 if (auto pixmap = IconFromImageList(list, index))
                     return FitHostIconToSize(TrimTransparentBorder(pixmap), desiredSize);

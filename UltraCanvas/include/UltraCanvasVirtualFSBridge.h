@@ -1,7 +1,10 @@
 // UltraCanvas/include/UltraCanvasVirtualFSBridge.h
 // Bridge module connecting UltraCanvas to VirtualFS for compression and archive operations
+// Version: 1.1.0 - UCVFSArchiveWriteOptions (UCVFSCompressionOptions::archive): the
+//                  compressor level, threads and zstd long mode, the TAR header
+//                  format and what of a file CreateArchive stores
 // Version: 1.0.0
-// Last Modified: 2026-01-10
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -93,6 +96,39 @@ using UCVFSProgressCallback = std::function<bool(
 // ============================================================================
 
 /**
+ * @enum UCVFSTarFormat
+ * @brief Header layout of a TAR archive (plain and every .tar.*)
+ */
+enum class UCVFSTarFormat {
+    Pax,    // POSIX.1-2001, pax extensions only where needed (default)
+    Gnu,    // GNU tar's own: long names and large files
+    Ustar   // POSIX.1-1988: the oldest readers; names to 255 bytes, files to 8 GB
+};
+
+/**
+ * @struct UCVFSArchiveWriteOptions
+ * @brief How CreateArchive packs: compressor tuning and what of each file
+ *        is stored (VirtualFS::VirtualFSArchiveWriteOptions)
+ *
+ * The defaults keep each file's modification time, permission bits and
+ * symbolic links, leave the owner out, and run the compressor at its
+ * library default on one thread.
+ */
+struct UCVFSArchiveWriteOptions {
+    int  filterLevel = -1;        // gzip/bzip2/lz4 1-9, xz 0-9, zstd 1-22; -1 = from `level`
+    int  threads = 1;             // xz and zstd workers; 0 = one per core
+    int  zstdLongWindowLog = 0;   // zstd --long=N window (power of two); 0 = off
+    UCVFSTarFormat tarFormat = UCVFSTarFormat::Pax;
+    bool keepTimestamps = true;   // off: the packing time
+    bool keepPermissions = true;  // off: 0644 files, 0755 folders
+    bool keepOwner = false;       // off: user and group 0, no names
+    bool storeSymlinks = true;    // off: store what a link points to
+    // '*' / '?' patterns (ASCII case-insensitive) of entries left out while
+    // a folder is packed; one with a '/' matches the path below that folder.
+    std::vector<std::string> excludePatterns;
+};
+
+/**
  * @struct UCVFSCompressionOptions
  * @brief Options for compression operations
  */
@@ -102,6 +138,7 @@ struct UCVFSCompressionOptions {
     bool includeHeader = false;     // Include format header (e.g., gzip header)
     int windowBits = 15;            // For DEFLATE/GZIP (8-15)
     int memLevel = 8;               // Memory usage level (1-9)
+    UCVFSArchiveWriteOptions archive;   // CreateArchive only
     
     // Factory methods
     static UCVFSCompressionOptions Default() {

@@ -1655,6 +1655,9 @@ void UltraFilerWindow::ApplyFileOperationSettings(UltraCanvasFilerWidget& target
     target.SetProblemPolicy(settings.problemPolicy);
     target.SetProgressWindowDelay(
             static_cast<unsigned>(std::max(0, settings.progressDelaySeconds)) * 1000u);
+    // Archives > TAR: how Compress packs a TAR, and what its menu's
+    // tooltips say it packs with.
+    target.SetTarSettings(settings.tar);
 }
 
 void UltraFilerWindow::ApplySettings() {

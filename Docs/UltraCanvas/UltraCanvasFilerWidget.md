@@ -88,6 +88,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Selection after a delete](#selection-after-a-delete)
 - [Watching the shown folder](#watching-the-shown-folder)
 - [Compressing and extracting](#compressing-and-extracting)
+  - [How a TAR is packed](#how-a-tar-is-packed)
 - [Clipboard interop with other programs](#clipboard-interop-with-other-programs)
   - [The operation dialog](#the-operation-dialog)
   - [Name conflicts](#name-conflicts)
@@ -376,6 +377,14 @@ pixmap. Until an answer lands — and on a system that has no icon for the type,
 or no desktop to ask at all — the simple icon is drawn, so the display never
 waits on a lookup and never shows an empty box.
 
+On Windows a type no program is registered for counts as one the system has
+no icon for. Explorer draws such a file - a `.7z`, `.tar`, `.tar.xz` or
+`.tar.zst` on a machine without 7-Zip - as a blank page that says nothing
+about it, so the display draws its own icon for the type instead: the archive
+sheet with `7Z`, `TAR`, `XZ` or `ZST` on it. A type that is registered keeps
+Explorer's icon, and installing a program for it switches it over the next
+time the display resolves its icons (`RefreshHostIcons()`, or a restart).
+
 `AreHostFileIconsAvailable()` reports whether there is a desktop to ask
 (false on WebAssembly and Android): a settings page should say so rather than
 offer a choice that changes nothing. `RefreshHostIcons()` throws the resolved
@@ -540,6 +549,9 @@ Notes:
   drag retargets the destination exactly like compressing. Both go through
   `UCVFSBridge` and are available when the VirtualFS module is built
   (`ULTRACANVAS_HAS_VIRTUALFS`); without it they report an error through `onError`.
+  Each format's entry has a tooltip with the parameters it packs with, as
+  the equivalent command line - see
+  [How a TAR is packed](#how-a-tar-is-packed).
   `CompressSelection(extension)` / `ExtractSelection()` perform the immediate
   operations for programmatic use — `ExtractSelection()` asks (Keep both /
   Extract into the existing folder / Skip) when the destination folder name
@@ -2371,6 +2383,52 @@ at all still reports `Extraction failed for <archive>` there, now followed by
 the reason. The text comes from `UCVFSBridge::ExtractArchive`'s `outError`
 parameter, not the bridge's shared `GetLastError()`, because extractions run on
 worker threads.
+
+### How a TAR is packed
+
+The TAR entries of Compress - `.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`,
+`.tar.zst` - pack with the host's `FilerTarSettings` (UltraFiler: Settings >
+Archives > TAR); ZIP and 7-Zip pack at libarchive's defaults. The defaults
+are the compressors' own levels on every core, each file's own modification
+time and permission bits without its owner, and symbolic links stored as
+links:
+
+<!-- doc-check: UltraCanvasFilerWidget* filer; -->
+```cpp
+FilerTarSettings tar;
+tar.xzLevel = 9;                     // xz -9 (0-9)
+tar.zstdLevel = 19;                  // zstd -19 (1-19)
+tar.threads = 0;                     // xz / zstd -T0: one thread per core
+tar.zstdLongMode = true;             // zstd --long=27
+tar.headerFormat = FilerTarHeaderFormat::Gnu;
+tar.keepOwner = true;                // owner and group, with their names
+tar.storeSymlinks = false;           // tar -h: what a link points to
+tar.excludePatterns = {".git", "node_modules", "*.tmp", "build/*.o"};
+filer->SetTarSettings(tar);
+
+// The tooltip of the Compress menu's "TAR + xz (.tar.xz)":
+std::string text = UltraCanvasFilerWidget::DescribeCompressParameters("tar.xz", tar);
+// tar --format=gnu -h --exclude='.git' ... -cf - <files> | xz -9 -T0
+// Each file: own modification time, own permissions, owner and group;
+//            links as the files they point to
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `gzipLevel` / `bzip2Level` / `xzLevel` / `zstdLevel` | 6 / 9 / 6 / 3 | The compressor's own level: gzip and bzip2 1-9, xz 0-9, Zstandard 1-19 |
+| `threads` | 0 | Worker threads of xz and Zstandard; 0 is one per core (`-T0`) |
+| `zstdLongMode` | off | Zstandard long-distance matching over 128 MB (`--long=27`); any zstd from 1.3.2 unpacks it without options |
+| `headerFormat` | `Pax` | `Pax` (POSIX.1-2001, extensions only where needed), `Gnu`, or `Ustar` (names to 255 bytes, files to 8 GB) |
+| `keepTimestamps` | on | Off: every entry carries the time it was packed |
+| `keepPermissions` | on | Off: files 0644, folders 0755 |
+| `keepOwner` | off | On: the owner and group, by number and name; off: 0 without names |
+| `storeSymlinks` | on | Off: the file or folder a link points to is stored instead (a link pointing nowhere stays a link) |
+| `excludePatterns` | none | `*` / `?` patterns, case ignored, matched against each name inside a packed folder - or, holding a `/`, against its path there. A matching folder goes with all it holds; a selected item is always packed |
+
+xz's extreme mode (`-e`) is not available: libarchive does not offer it. The
+settings are handed to `UCVFSBridge::CreateArchive` as
+`UCVFSCompressionOptions::archive`, which is VirtualFS's
+`VirtualFSOpenOptions::archiveWrite`.
 
 ## Clipboard interop with other programs
 

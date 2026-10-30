@@ -1,7 +1,16 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
+// Version: 1.5.0 - creating an archive follows VirtualFSOpenOptions::compressionLevel,
+//                  which was ignored: ZIP / 7-Zip get it as their 0-9 level
+//                  (Store: stored), a stream compressor on its own scale;
+//                  Normal keeps every library's default
+// Version: 1.4.0 - creating an archive follows VirtualFSOpenOptions::archiveWrite
+//                  (ApplyArchiveWriteOptions, WriteDiskEntry): compressor level,
+//                  threads and zstd long mode, the TAR header format, each
+//                  file's own time / permissions / owner, symbolic links stored
+//                  as links, exclusions; files are streamed instead of read whole
 // Version: 1.3.1
-// Last Modified: 2026-10-06
+// Last Modified: 2026-10-30
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
@@ -24,6 +33,7 @@ using UltraCanvas::PathToUtf8;
 #include <cstring>
 #include <ctime>
 #include <sstream>
+#include <thread>
 
 #if !defined(_WIN32)
 #include <langinfo.h>
@@ -1116,6 +1126,7 @@ VirtualFSResult VirtualFSLibArchiveProvider::CreateArchive(
     }
     
     ConfigureWriteFormat(pImpl->writeArchive, archivePath);
+    ApplyArchiveWriteOptions(pImpl->writeArchive, options);
 
     std::string ext = archivePath;
     size_t dotPos = ext.rfind('.');
@@ -1144,28 +1155,122 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddFile(
     const VirtualFSOpenOptions& options) {
     
     if (!pImpl->writeArchive) return VirtualFSResult::ArchiveNotOpen;
-    
-    if (!std::filesystem::exists(UltraCanvas::PathFromUtf8(sourcePath))) {
+    return WriteDiskEntry(sourcePath, virtualPath, options);
+}
+
+VirtualFSResult VirtualFSLibArchiveProvider::WriteDiskEntry(
+    const std::string& sourcePath,
+    const std::string& virtualPath,
+    const VirtualFSOpenOptions& options) {
+
+    if (!pImpl->writeArchive) return VirtualFSResult::ArchiveNotOpen;
+    const VirtualFSArchiveWriteOptions& keep = options.archiveWrite;
+    const std::filesystem::path source = PathFromUtf8(sourcePath);
+
+    std::error_code ec;
+    const bool isLink = std::filesystem::is_symlink(source, ec);
+    if (!isLink && !std::filesystem::exists(source, ec)) {
         pImpl->lastError = "Source file not found: " + sourcePath;
         return VirtualFSResult::NotFound;
     }
-    
-    std::ifstream file(UltraCanvas::PathFromUtf8(sourcePath), std::ios::binary | std::ios::ate);
+    // A link pointing nowhere has nothing to follow, so it stays a link.
+    const bool followLink = isLink && !keep.storeSymlinks &&
+                            std::filesystem::exists(source, ec);
+
+    Utf8LocaleScope utf8Names;   // see ENTRY NAME ENCODING
+
+    // libarchive reads what the file system says about the file - type,
+    // size, times, mode, owner, link target - on every platform.
+    struct archive* disk = archive_read_disk_new();
+    if (!disk) {
+        pImpl->lastError = "Failed to create disk reader";
+        return VirtualFSResult::OutOfMemory;
+    }
+    if (followLink) archive_read_disk_set_symlink_logical(disk);
+    else            archive_read_disk_set_symlink_physical(disk);
+    // Extended attributes, ACLs and file flags are not portable between the
+    // systems an archive travels to; nothing above asks for them.
+    archive_read_disk_set_behavior(disk, ARCHIVE_READDISK_NO_XATTR |
+                                         ARCHIVE_READDISK_NO_ACL |
+                                         ARCHIVE_READDISK_NO_FFLAGS);
+    if (keep.keepOwner) archive_read_disk_set_standard_lookup(disk);
+
+    struct archive_entry* entry = archive_entry_new();
+#if defined(_WIN32)
+    archive_entry_copy_sourcepath_w(entry, source.c_str());
+#else
+    archive_entry_copy_sourcepath(entry, source.c_str());
+#endif
+    const int read = archive_read_disk_entry_from_file(disk, entry, -1, nullptr);
+    if (read < ARCHIVE_WARN) {
+        pImpl->lastError = archive_error_string(disk) ? archive_error_string(disk)
+                                                      : "Cannot read " + sourcePath;
+        archive_entry_free(entry);
+        archive_read_free(disk);
+        return VirtualFSResult::ReadError;
+    }
+    archive_read_free(disk);
+
+    const auto type = archive_entry_filetype(entry);
+    // Devices, pipes and sockets are not packed (no archive format other
+    // than tar can hold them, and a socket not even that).
+    if (type != AE_IFREG && type != AE_IFDIR && type != AE_IFLNK) {
+        archive_entry_free(entry);
+        return VirtualFSResult::Ok;
+    }
+
+    std::string name = virtualPath;
+    if (type == AE_IFDIR && (name.empty() || name.back() != '/')) name += '/';
+    archive_entry_set_pathname_utf8(entry, name.c_str());
+    if (type != AE_IFREG) archive_entry_set_size(entry, 0);
+
+    // Only the modification time travels: access and change times differ
+    // on every machine the archive is unpacked on.
+    archive_entry_unset_atime(entry);
+    archive_entry_unset_ctime(entry);
+    archive_entry_unset_birthtime(entry);
+    if (!keep.keepTimestamps) archive_entry_set_mtime(entry, time(nullptr), 0);
+    if (!keep.keepPermissions) {
+        archive_entry_set_perm(entry, type == AE_IFDIR ? 0755
+                                    : type == AE_IFLNK ? 0777 : 0644);
+    }
+    if (!keep.keepOwner) {
+        archive_entry_set_uid(entry, 0);
+        archive_entry_set_gid(entry, 0);
+        archive_entry_set_uname(entry, nullptr);
+        archive_entry_set_gname(entry, nullptr);
+    }
+
+    if (archive_write_header(pImpl->writeArchive, entry) < ARCHIVE_WARN) {
+        pImpl->lastError = archive_error_string(pImpl->writeArchive);
+        archive_entry_free(entry);
+        return VirtualFSResult::WriteError;
+    }
+    const bool hasData = type == AE_IFREG && archive_entry_size(entry) > 0;
+    archive_entry_free(entry);
+    if (!hasData) return VirtualFSResult::Ok;
+
+    std::ifstream file(source, std::ios::binary);
     if (!file) {
-        pImpl->lastError = "Failed to open source file";
+        pImpl->lastError = "Failed to open source file: " + sourcePath;
         return VirtualFSResult::ReadError;
     }
-    
-    std::streamsize fileSize = file.tellg();
-    file.seekg(0, std::ios::beg);
-    
-    std::vector<uint8_t> data(static_cast<size_t>(fileSize));
-    if (!file.read(reinterpret_cast<char*>(data.data()), fileSize)) {
-        pImpl->lastError = "Failed to read source file";
+    std::vector<char> buffer(256 * 1024);
+    while (file) {
+        file.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+        const std::streamsize got = file.gcount();
+        if (got <= 0) break;
+        if (archive_write_data(pImpl->writeArchive, buffer.data(),
+                               static_cast<size_t>(got)) < 0) {
+            pImpl->lastError = archive_error_string(pImpl->writeArchive);
+            return VirtualFSResult::WriteError;
+        }
+    }
+    if (file.bad()) {
+        pImpl->lastError = "Failed to read source file: " + sourcePath;
         return VirtualFSResult::ReadError;
     }
-    
-    return AddFromMemory(virtualPath, data, options);
+    return VirtualFSResult::Ok;
 }
 
 VirtualFSResult VirtualFSLibArchiveProvider::AddFromMemory(
@@ -1216,60 +1321,67 @@ VirtualFSResult VirtualFSLibArchiveProvider::AddDirectory(
     }
     
     std::filesystem::path srcPath(UltraCanvas::PathFromUtf8(sourcePath));
-    
+    const VirtualFSArchiveWriteOptions& keep = options.archiveWrite;
+
+    // Links are stored as links unless asked to pack what they point to -
+    // then a linked folder is walked into like any other.
+    const auto walkOptions = keep.storeSymlinks
+            ? std::filesystem::directory_options::none
+            : std::filesystem::directory_options::follow_directory_symlink;
+
     size_t filesAdded = 0;
-    auto addEntry = [&](const std::filesystem::directory_entry& dirEntry) -> VirtualFSResult {
-        std::string relativePath = PathToUtf8(std::filesystem::relative(dirEntry.path(), srcPath));
-        std::string destPath = virtualPath.empty() ? relativePath : virtualPath + "/" + relativePath;
-        std::replace(destPath.begin(), destPath.end(), '\\', '/');
-
-        // Report every file before it is added, so a caller packing one big
-        // folder sees the run advance instead of one callback for the folder.
-        // The provider knows this file and its size; the caller owns the
-        // running totals (it is the only one that knows the grand total).
-        if (progressCallback && dirEntry.is_regular_file()) {
-            VirtualFSProgress progress;
-            progress.currentFile = PathToUtf8(dirEntry.path());
-            std::error_code sizeEc;
-            progress.currentTotalBytes =
-                    std::filesystem::file_size(dirEntry.path(), sizeEc);
-            if (sizeEc) progress.currentTotalBytes = 0;
-            progress.filesProcessed = filesAdded;
-            if (!progressCallback(progress)) return VirtualFSResult::Cancelled;
-            ++filesAdded;
-        }
-
-        if (dirEntry.is_directory()) {
-            struct archive_entry* entry = archive_entry_new();
-            archive_entry_set_pathname(entry, (destPath + "/").c_str());
-            archive_entry_set_filetype(entry, AE_IFDIR);
-            archive_entry_set_perm(entry, 0755);
-            archive_entry_set_mtime(entry, time(nullptr), 0);
-            
-            if (archive_write_header(pImpl->writeArchive, entry) != ARCHIVE_OK) {
-                pImpl->lastError = archive_error_string(pImpl->writeArchive);
-                archive_entry_free(entry);
-                return VirtualFSResult::WriteError;
-            }
-            archive_entry_free(entry);
-        } else if (dirEntry.is_regular_file()) {
-            return AddFile(PathToUtf8(dirEntry.path()), destPath, options);
-        }
-        
-        return VirtualFSResult::Ok;
-    };
-    
     try {
-        if (recursive) {
-            for (const auto& entry : std::filesystem::recursive_directory_iterator(srcPath)) {
-                auto result = addEntry(entry);
-                if (result != VirtualFSResult::Ok) return result;
+        std::error_code walkEc;
+        std::filesystem::recursive_directory_iterator it(srcPath, walkOptions, walkEc);
+        const std::filesystem::recursive_directory_iterator end;
+        if (walkEc) {
+            pImpl->lastError = walkEc.message();
+            return VirtualFSResult::ReadError;
+        }
+        for (; it != end; it.increment(walkEc)) {
+            if (walkEc) {
+                pImpl->lastError = walkEc.message();
+                return VirtualFSResult::ReadError;
             }
-        } else {
-            for (const auto& entry : std::filesystem::directory_iterator(srcPath)) {
-                auto result = addEntry(entry);
-                if (result != VirtualFSResult::Ok) return result;
+            const std::filesystem::directory_entry& dirEntry = *it;
+            if (!recursive) it.disable_recursion_pending();
+
+            std::string relativePath =
+                    PathToUtf8(dirEntry.path().lexically_relative(srcPath));
+            std::replace(relativePath.begin(), relativePath.end(), '\\', '/');
+            if (VirtualFSIsExcluded(keep, PathToUtf8(dirEntry.path().filename()),
+                                    relativePath)) {
+                it.disable_recursion_pending();   // a folder goes with all it holds
+                continue;
             }
+            const std::string destPath = virtualPath.empty()
+                    ? relativePath : virtualPath + "/" + relativePath;
+
+            std::error_code typeEc;
+            const bool isLink = dirEntry.is_symlink(typeEc);
+            const bool isFile = (!isLink || !keep.storeSymlinks) &&
+                                dirEntry.is_regular_file(typeEc);
+
+            // Report every file before it is added, so a caller packing one
+            // big folder sees the run advance instead of one callback for the
+            // folder. The provider knows this file and its size; the caller
+            // owns the running totals (it is the only one that knows the
+            // grand total).
+            if (progressCallback && isFile) {
+                VirtualFSProgress progress;
+                progress.currentFile = PathToUtf8(dirEntry.path());
+                std::error_code sizeEc;
+                progress.currentTotalBytes =
+                        std::filesystem::file_size(dirEntry.path(), sizeEc);
+                if (sizeEc) progress.currentTotalBytes = 0;
+                progress.filesProcessed = filesAdded;
+                if (!progressCallback(progress)) return VirtualFSResult::Cancelled;
+                ++filesAdded;
+            }
+
+            const auto result = WriteDiskEntry(PathToUtf8(dirEntry.path()),
+                                               destPath, options);
+            if (result != VirtualFSResult::Ok) return result;
         }
     } catch (const std::exception& e) {
         pImpl->lastError = e.what();
@@ -1785,6 +1897,105 @@ void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
         case WriteFilter::LZ4:   archive_write_add_filter_lz4(writeArchive);   break;
         case WriteFilter::NoFilter:  break;
     }
+}
+
+void VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
+    void* writeArchivePtr, const VirtualFSOpenOptions& options) {
+    auto* writeArchive = static_cast<struct archive*>(writeArchivePtr);
+    const VirtualFSArchiveWriteOptions& tuning = options.archiveWrite;
+
+    // The TAR header layout; ConfigureWriteFormat chose restricted pax.
+    if ((archive_format(writeArchive) & ARCHIVE_FORMAT_BASE_MASK) == ARCHIVE_FORMAT_TAR) {
+        switch (tuning.tarFormat) {
+            case VirtualFSTarFormat::Gnu:
+                archive_write_set_format(writeArchive, ARCHIVE_FORMAT_TAR_GNUTAR);
+                break;
+            case VirtualFSTarFormat::Ustar:
+                archive_write_set_format(writeArchive, ARCHIVE_FORMAT_TAR_USTAR);
+                break;
+            case VirtualFSTarFormat::Pax:
+                break;
+        }
+    }
+
+    // How hard to compress: archiveWrite.filterLevel when it names one, else
+    // the compressionLevel preset. Normal - the default - leaves every
+    // library at its own default, so an archive nobody asked to tune is the
+    // one it always was.
+    const VirtualFSCompressionLevel preset = options.compressionLevel;
+    const bool tunePreset = preset != VirtualFSCompressionLevel::Normal;
+
+    // ZIP and 7-Zip compress inside the format, and take the preset as the
+    // format's own 0-9 level (Store: no compression at all).
+    const int baseFormat = archive_format(writeArchive) & ARCHIVE_FORMAT_BASE_MASK;
+    if (tunePreset && (baseFormat == ARCHIVE_FORMAT_ZIP || baseFormat == ARCHIVE_FORMAT_7ZIP)) {
+        const char* formatModule = baseFormat == ARCHIVE_FORMAT_ZIP ? "zip" : "7zip";
+        if (preset == VirtualFSCompressionLevel::Store) {
+            archive_write_set_format_option(writeArchive, formatModule,
+                                            "compression", "store");
+        } else {
+            archive_write_set_format_option(writeArchive, formatModule, "compression-level",
+                    std::to_string(GetLibArchiveCompressionLevel(preset)).c_str());
+        }
+    }
+
+    // The stream compressor. libarchive takes its options by the filter's
+    // module name; one it does not know (an older libarchive without zstd's
+    // "long") is refused with a warning and the archive is written without it.
+    const char* module = nullptr;
+    int minLevel = 1, maxLevel = 9;
+    bool threaded = false;
+    switch (archive_filter_code(writeArchive, 0)) {
+        case ARCHIVE_FILTER_GZIP:  module = "gzip";  minLevel = 0; break;
+        case ARCHIVE_FILTER_BZIP2: module = "bzip2"; break;
+        case ARCHIVE_FILTER_XZ:    module = "xz";    minLevel = 0; threaded = true; break;
+        case ARCHIVE_FILTER_ZSTD:  module = "zstd";  maxLevel = 22; threaded = true; break;
+        case ARCHIVE_FILTER_LZ4:   module = "lz4";   break;
+        default: module = nullptr; break;   // uncompressed, or a format with its own codec
+    }
+    if (!module) {
+        archive_clear_error(writeArchive);
+        return;
+    }
+    int level = -1;
+    if (tuning.filterLevel >= 0) {
+        level = tuning.filterLevel;
+    } else if (tunePreset) {
+        // Zstandard counts to 22, not 9: the preset is spread over its own
+        // scale (19 is the top of the ordinary range, 22 needs ultra memory).
+        if (std::strcmp(module, "zstd") == 0) {
+            switch (preset) {
+                case VirtualFSCompressionLevel::Store:
+                case VirtualFSCompressionLevel::Fastest: level = 1;  break;
+                case VirtualFSCompressionLevel::Fast:    level = 2;  break;
+                case VirtualFSCompressionLevel::Good:    level = 9;  break;
+                case VirtualFSCompressionLevel::Best:    level = 19; break;
+                case VirtualFSCompressionLevel::Ultra:   level = 22; break;
+                default: break;
+            }
+        } else {
+            level = GetLibArchiveCompressionLevel(preset);
+        }
+    }
+    if (level >= 0) {
+        level = std::clamp(level, minLevel, maxLevel);
+        archive_write_set_filter_option(writeArchive, module, "compression-level",
+                                        std::to_string(level).c_str());
+    }
+    if (threaded && tuning.threads != 1) {
+        int threads = tuning.threads;
+        if (threads <= 0) threads = static_cast<int>(std::thread::hardware_concurrency());
+        if (threads < 1) threads = 1;
+        archive_write_set_filter_option(writeArchive, module, "threads",
+                                        std::to_string(threads).c_str());
+    }
+    if (archive_filter_code(writeArchive, 0) == ARCHIVE_FILTER_ZSTD &&
+        tuning.zstdLongWindowLog > 0) {
+        const int windowLog = std::clamp(tuning.zstdLongWindowLog, 10, 31);
+        archive_write_set_filter_option(writeArchive, module, "long",
+                                        std::to_string(windowLog).c_str());
+    }
+    archive_clear_error(writeArchive);   // a refused option is not a failure
 }
 
 int VirtualFSLibArchiveProvider::GetLibArchiveFormat(const std::string& ext) {

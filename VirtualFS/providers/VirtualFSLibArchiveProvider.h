@@ -1,7 +1,11 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.h
 // libarchive-based provider for multi-format archive support
+// Version: 1.1.0 - creating an archive follows VirtualFSOpenOptions::archiveWrite:
+//                  compressor level / threads / zstd long mode, the TAR header
+//                  format, each file's own time, permissions, owner and links,
+//                  and the exclusions; files are streamed, not read whole
 // Version: 1.0.1
-// Last Modified: 2026-07-25
+// Last Modified: 2026-10-30
 // Author: ULTRA OS Framework
 #pragma once
 
@@ -233,6 +237,15 @@ private:
     int GetLibArchiveFilter(VirtualFSCompressionMethod method);
     int GetLibArchiveCompressionLevel(VirtualFSCompressionLevel level);
     void ConfigureWriteFormat(void* writeArchive, const std::string& archivePath);
+    // The TAR header format and the compressor options of
+    // options.archiveWrite, on a writer ConfigureWriteFormat has set up.
+    void ApplyArchiveWriteOptions(void* writeArchive, const VirtualFSOpenOptions& options);
+    // Writes one file, folder or symbolic link from disk as `virtualPath`,
+    // with what options.archiveWrite keeps of it; a file's content is
+    // streamed, never read into memory whole.
+    VirtualFSResult WriteDiskEntry(const std::string& sourcePath,
+                                   const std::string& virtualPath,
+                                   const VirtualFSOpenOptions& options);
     VirtualFSResult DeleteEntriesZipFast(
         const std::vector<std::string>& targets,
         const std::string& tempPath,
