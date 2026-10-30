@@ -1,7 +1,10 @@
 // UltraCanvasVectorElement.h
 // UI Element for Vector Document Display and Interaction
+// Version: 2.3.0 - ZoomToFit / ZoomToActualSize report the zoom they set through
+//                  onZoomChange (the fit done once the element has its size used to go
+//                  unreported); IsAtFit
 // Version: 2.2.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -9,6 +12,7 @@
 #include "UltraCanvasSmoothScroll.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorRenderer.h"
+#include <cmath>
 #include <memory>
 #include <string>
 #include <functional>
@@ -99,6 +103,8 @@ namespace UltraCanvas {
 
         void SetZoom(float zoom);
         float GetZoom() const { return zoomLevel; }
+        // True while the drawing is shown at the scale ZoomToFit chose.
+        bool IsAtFit() const { return fitZoom > 0.0f && std::abs(zoomLevel - fitZoom) < 0.001f; }
         void ZoomIn();
         void ZoomOut();
         void ZoomToFit();

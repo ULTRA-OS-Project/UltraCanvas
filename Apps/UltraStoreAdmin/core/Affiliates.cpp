@@ -1,14 +1,19 @@
 // Apps/UltraStoreAdmin/core/Affiliates.cpp
 // The affiliate scheme (Affiliates.h).
+// Version: 0.2.0 - RecordSale with a reference; SyncSales
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "Affiliates.h"
 
+#include "DataFormats/UltraCanvasJSON.h"
 #include "Plugins/QRCode/UltraCanvasQRCode.h"
+#include "UltraNet/UltraNetCore.h"
+#include "UltraNet/UltraNetHttp.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -107,7 +112,7 @@ Result<Credits> CreditsFor(const AdminDatabase& db, const std::string& code, con
 }
 
 Result<SaleRecord> RecordSale(AdminDatabase& db, const std::string& code, const std::string& app,
-                              const std::string& amount, const std::string& currency, const std::string& at) {
+                              const std::string& amount, const std::string& currency, const std::string& at, const std::string& reference) {
     using R = Result<SaleRecord>;
     int64_t cents = 0;
     if (!Cents(amount, cents)) return R::Failure(ErrorCode::InvalidArgument, "The amount is a decimal such as 29.90", amount);
@@ -124,7 +129,61 @@ Result<SaleRecord> RecordSale(AdminDatabase& db, const std::string& code, const 
     sale.recruiter = credits.Value().recruiter;
     sale.affiliateCredit = credits.Value().affiliateCredit;
     sale.recruiterCredit = credits.Value().recruiterCredit;
+    sale.reference = reference;
     return db.AddSale(sale);
+}
+
+SalesFetcher UltraNetSalesFetcher() {
+    return [](const std::string& url, const std::string& token) -> Result<std::string> {
+        if (!UltraNet_IsInitialized()) UltraNet_Initialize();
+        UltraNetHttpOptions options;
+        options.httpsOnlyRedirects = true;
+        options.maxReceiveSize = int64_t(8) << 20;
+        options.headers.Set("Authorization", "Bearer " + token);
+        UltraNetResponse response;
+        const UltraNetResult r = UltraNet_HttpGet(url, response, options);
+        if (!r && r.code != UltraNetResultCode::HttpError) return Result<std::string>::Failure(ErrorCode::NetworkError, "The payment service could not be reached", r.message);
+        if (!response.IsComplete()) return Result<std::string>::Failure(ErrorCode::NetworkError, "The payment service could not be reached", response.transferError);
+        if (!response.IsSuccess()) return Result<std::string>::Failure(ErrorCode::NetworkError, "The payment service answered HTTP " + std::to_string(response.statusCode), response.GetBodyAsString());
+        return Result<std::string>::Succeed(response.GetBodyAsString());
+    };
+}
+
+Result<SyncReport> SyncSales(AdminDatabase& db, const std::string& paymentUrl, const std::string& token, const SalesFetcher& fetch) {
+    using R = Result<SyncReport>;
+    if (paymentUrl.empty()) return R::Failure(ErrorCode::InvalidArgument, "No payment service URL (the setting payment.url)");
+    if (token.empty()) return R::Failure(ErrorCode::InvalidArgument, "No admin token for the payment service (the setting payment.token)");
+    SyncReport report;
+    uint64_t since = std::strtoull(db.Setting("payment.sales_seq", "0").c_str(), nullptr, 10);   // locale-ok: digits only
+    report.sequence = since;
+    for (int page = 0; page < 1000; ++page) {
+        const auto body = fetch(TrimSlash(paymentUrl) + "/v1/sales?since=" + std::to_string(since), token);
+        if (!body) return R::Failure(body.error.code, body.error.message, body.error.detail);
+        UltraCanvas::JSONParseResult parse;
+        const UltraCanvas::JSONValue v = UltraCanvas::JSON::Parse(body.Value(), &parse);
+        if (!parse.success || !v.IsObject()) return R::Failure(ErrorCode::ParseError, "The payment service's sales are not JSON", parse.errorMessage);
+        const UltraCanvas::JSONValue& sales = v.Get("sales");
+        if (sales.GetSize() == 0) break;
+        for (size_t i = 0; i < sales.GetSize(); ++i) {
+            const UltraCanvas::JSONValue& s = sales.At(i);
+            const std::string reference = s.Get("order_id").GetString();
+            const uint64_t seq = static_cast<uint64_t>(std::max<int64_t>(0, s.Get("seq").GetInteger(0)));
+            if (!reference.empty() && db.HasSaleReference(reference)) { ++report.skipped; }
+            else {
+                const auto recorded = RecordSale(db, s.Get("code").GetString(), s.Get("app").GetString(), s.Get("amount").GetString(),
+                                                 s.Get("currency").GetString(), s.Get("at").GetString(), reference);
+                if (!recorded) return R::Failure(recorded.error.code, "A sale could not be recorded: " + recorded.error.message, recorded.error.detail);
+                ++report.recorded;
+            }
+            if (seq > report.sequence) report.sequence = seq;
+        }
+        const uint64_t next = static_cast<uint64_t>(std::max<int64_t>(0, v.Get("next").GetInteger(0)));
+        if (next <= since) break;
+        since = next;
+        if (const auto kept = db.SetSetting("payment.sales_seq", std::to_string(since)); !kept) return R::Failure(kept.error.code, kept.error.message, kept.error.detail);
+    }
+    if (report.sequence > 0) db.SetSetting("payment.sales_seq", std::to_string(report.sequence));
+    return R::Succeed(report);
 }
 
 Result<std::vector<AffiliateTotals>> AffiliateReport(const AdminDatabase& db) {

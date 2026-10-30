@@ -299,17 +299,25 @@ Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::no member named 
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AddComputedDimension(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::prose names `AutoOrderAxes(`, which no header declares
 Docs/UltraCanvas/UltraCanvasParallelCoordinateChartProposal.md::use of undeclared identifier 'UpdateStatusBar'
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ExportPerformanceItemsCsv' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ExportPerformanceMatrixJson' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ImportPerformanceItemsCsv' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ImportPerformanceMatrixJson' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'NineBox' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceManagement' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceMatrixToJson' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceVsPotential' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SkillWill' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'TalentReview' is not a member of UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, UltraCanvasMatrixDiagram, nor a free function
-Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::prose names `NineBox(`, which no header declares
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'CellOf' is not a member of PerformanceMatrixModel
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'CountsPerCell' is not a member of PerformanceMatrixModel
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ExportPerformanceItemsCsv' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ExportPerformanceMatrixJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ImportPerformanceItemsCsv' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'ImportPerformanceMatrixJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceAxis::maxScore' does not exist (no member named 'maxScore' in 'PerformanceAxis')
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceAxis::minScore' does not exist (no member named 'minScore' in 'PerformanceAxis')
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceCellColoring::ByCount' does not exist (no member named 'ByCount' in 'PerformanceCellColoring')
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceLevel::upperBound' does not exist (no member named 'upperBound' in 'PerformanceLevel')
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceMatrixModel::items' does not exist (no member named 'items' in 'PerformanceMatrixModel')
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceMatrixModel::targetDistribution' does not exist (no member named 'targetDistribution' in 'PerformanceMatrixModel')
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'PerformanceMatrixToJson' is not a member of UltraCanvasPerformanceMatrix, UltraCanvasSWOTDiagram, UltraCanvasChartElementBase, UltraCanvasFileLoader, nor a free function
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetAllowItemDrag' is not a member of UltraCanvasPerformanceMatrix
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetAnonymised' is not a member of UltraCanvasPerformanceMatrix
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetPopulationDisplay' is not a member of UltraCanvasPerformanceMatrix
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'SetShowLegend' is not a member of UltraCanvasPerformanceMatrix
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'UltraCanvasPerformanceMatrix::onItemClick' does not exist (no member named 'onItemClick' in 'UltraCanvasPerformanceMatrix')
+Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::'UltraCanvasPerformanceMatrix::onItemMove' does not exist (no member named 'onItemMove' in 'UltraCanvasPerformanceMatrix')
 Docs/UltraCanvas/UltraCanvasPerformanceMatrixProposal.md::prose names `SetAnonymised(`, which no header declares
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::cannot initialize a parameter of type 'RequirementTraceDirection' with an rvalue of type 'int'
 Docs/UltraCanvas/UltraCanvasRequirementDiagramProposal.md::no member named 'SetLayout' in 'UltraCanvasRequirementDiagram'

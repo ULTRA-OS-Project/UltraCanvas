@@ -26,7 +26,9 @@ colours nobody can reach.
 
 - ✅ Any list of colours (`SetColors`), with ready-made palettes: grayscale,
   colours, or both
-- ✅ Optional leading **checkered** swatch standing for "no colour — show the
+- ✅ Optional leading **auto** swatch (half light, half dark) standing for
+  "whichever colour suits what is shown" — the host decides which
+- ✅ Optional **checkered** swatch standing for "no colour — show the
   transparency pattern"
 - ✅ Swatch size adapts to the element's width **and** height; the row is centred
 - ✅ Hover outline, selected outline, per-swatch tooltip (`#RRGGBB`)
@@ -85,14 +87,28 @@ bar->SetColors({ Colors::White, Color(245, 240, 225, 255), Colors::Black });
 Replacing the palette keeps the selection **only** if the selected colour is in
 the new list; otherwise nothing is marked.
 
+## The auto swatch
+
+```cpp
+bar->SetShowAutoEntry(true);       // first of all, before the checkerboard
+bar->onAutoSelected = [&]() { /* pick a colour that suits the content */ };
+```
+
+The swatch is drawn half `style.autoLight`, half `style.autoDark` and its
+tooltip says *Automatic*; it selects like any other and reports through
+`onAutoSelected`. What colour "auto" turns into is the host's call - the media
+viewer works it out from the shown picture (`ContrastingBackdropFor`).
+
 ## Selection
 
 ```cpp
 void  SelectColor(const Color& c, bool runCallback = false);  // by value, alpha ignored
 void  SelectCheckered(bool runCallback = false);
+void  SelectAuto(bool runCallback = false);
 void  ClearSelection();
 bool  HasColorSelected() const;
 bool  IsCheckeredSelected() const;
+bool  IsAutoSelected() const;
 int   GetSelectedIndex() const;      // -1 == none
 Color GetSelectedColor() const;      // ask HasColorSelected() first
 ```
@@ -163,6 +179,7 @@ needs to read as a bar of its own.
 std::function<void(const Color&)> onColorSelected;        // left click
 std::function<void(const Color&)> onColorAdjustSelected;  // right click
 std::function<void()>             onCheckeredSelected;
+std::function<void()>             onAutoSelected;          // the auto swatch
 // right click with the entry's index and the window position; when set it
 // takes the right click instead of onColorAdjustSelected
 std::function<void(int index, const Point2Di& windowPos)> onColorContextClicked;

@@ -1,8 +1,11 @@
 # Apps/ChatCube/CMakeLists.txt
 # ChatCube - the ULTRA OS native messenger, on UltraIM. The application is
-# the window; the networks are UltraIM provider modules (ChatCube Direct:
-# UltraCanvas/Plugins/UltraIM/direct, built into <build>/Plugins/UltraIM).
+# the window; the networks are UltraIM provider modules (ChatCube Direct,
+# Matrix and Telegram: UltraCanvas/Plugins/UltraIM/direct, matrix and
+# telegram, built into <build>/Plugins/UltraIM).
 #
+# Version: 0.1.2 - VideoFX, when it is built, for the preview pictures of videos sent
+# Version: 0.1.1 - ChatCubeTheme.cpp
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -17,6 +20,7 @@ endif()
 
 add_executable(ChatCube
     main.cpp
+    ui/ChatCubeTheme.cpp
     ui/ChatCubeViews.cpp
     ui/ChatCubeWindow.cpp
 )
@@ -29,10 +33,16 @@ target_include_directories(ChatCube PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 target_link_libraries(ChatCube PRIVATE ${ULTRACANVAS_LIBRARY} UltraIM UltraRTC UltraNet)
+# The preview picture of a video sent comes from VideoFX; without it, videos
+# go without one.
+if(TARGET VideoFX)
+    target_link_libraries(ChatCube PRIVATE VideoFX)
+    target_compile_definitions(ChatCube PRIVATE CHATCUBE_HAS_VIDEOFX=1)
+endif()
 find_package(Threads REQUIRED)
 target_link_libraries(ChatCube PRIVATE Threads::Threads)
 target_compile_features(ChatCube PRIVATE cxx_std_20)
-# The provider ChatCube talks through is a module: build it with the app.
+# The providers ChatCube talks through are modules: build them with the app.
 if(TARGET UltraIMDirectPlugin)
     add_dependencies(ChatCube UltraIMDirectPlugin)
     if(TARGET UltraIMMatrixPlugin)

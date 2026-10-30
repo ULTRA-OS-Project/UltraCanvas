@@ -68,13 +68,16 @@
 // view owns the bare arrows itself (spreadsheet cell movement) Alt+Left /
 // Alt+Right still browse.
 //
-// Transparent images draw over a configurable backdrop: either a preset
-// solid colour (default white) or the checkered pattern familiar from image
-// editors (SetTransparentBackground / SetTransparentColor). A file that really
-// has transparency — an alpha channel that is used, or a vector document —
-// also gets a palette strip directly under the picture: greys and colours to
-// click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
-// off, onTransparentBackgroundChanged reports what was picked).
+// Transparent images and drawings draw over a configurable backdrop: by
+// default one chosen for each file so that what it shows stands out (Auto -
+// white under dark artwork, dark grey under light artwork, mid grey under
+// both), or a preset solid colour, or the checkered pattern familiar from
+// image editors (SetTransparentBackground / SetTransparentColor). A file that
+// really has transparency — an alpha channel that is used, or a vector
+// document — also gets a palette strip directly under the picture: the auto
+// swatch, greys and colours to click, plus the checkered swatch for a picture
+// (SetTransparencyPaletteVisible turns it off, onTransparentBackgroundChanged
+// reports what was picked).
 //
 // IsPlayingMedia says whether a shown video or sound is playing, so a host
 // that reopens a file which changed on disk can leave one being played alone.
@@ -84,11 +87,15 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
-// Version: 1.21.0 - Outlook .msg messages; a message's attachments open and save
-// Version: 1.20.0 - saved web pages (.mht / .mhtml, IsWebArchiveFile) and Apple Mail .emlx
-// Version: 1.19.0 - e-mail messages (.eml) shown as the message (IsMailMessageFile)
-// Version: 1.18.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
+// Version: 1.22.0 - Outlook .msg messages; a message's attachments open and save
+// Version: 1.21.0 - saved web pages (.mht / .mhtml, IsWebArchiveFile) and Apple Mail .emlx
+// Version: 1.20.0 - e-mail messages (.eml) shown as the message (IsMailMessageFile)
+// Version: 1.19.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
 //                   (webView, IsHtmlFile) instead of as source text
+// Version: 1.18.0 - TransparentImageBackground::Auto, the default: a backdrop picked per
+//                   file to contrast with its content, under a transparent picture and
+//                   behind a drawing in the vector view (which takes the strip's colours
+//                   now too); the zoom box shows the zoom; a drawing in the info bar
 // Version: 1.17.0 - SetSettingsAction: a host's settings, behind a gear at the right
 //                   end of the info bar
 // Version: 1.16.0 - Unlock's passwords are forgotten - and an unlocked file shown locked
@@ -179,7 +186,12 @@ enum class MediaTransition {
 // transparent pixels. Independent of the surrounding canvas colour.
 enum class TransparentImageBackground {
     SolidColor,   // flat preset colour (default white)
-    Checkered     // light/dark checkerboard, as used by image editors
+    Checkered,    // light/dark checkerboard, as used by image editors
+    // A flat colour chosen for each file from its own pixels: white, mid grey
+    // or dark grey, whichever leaves the most of the artwork clearly visible
+    // (UltraCanvasMediaViewer::ContrastingBackdropFor). The media viewer's
+    // default; a bare surface shows its SetAutoBackdropColor().
+    Auto
 };
 
 // ===== TONE / COLOUR ADJUSTMENTS =====
@@ -308,6 +320,10 @@ public:
     // The preset colour used by TransparentImageBackground::SolidColor.
     void SetTransparentColor(const Color& c) { transparentColor = c; RequestRedraw(); }
     const Color& GetTransparentColor() const { return transparentColor; }
+    // The colour TransparentImageBackground::Auto draws: the viewer works it
+    // out for each picture and sets it here (white until it does).
+    void SetAutoBackdropColor(const Color& c) { autoBackdropColor = c; RequestRedraw(); }
+    const Color& GetAutoBackdropColor() const { return autoBackdropColor; }
 
     // Called when the user navigates by click / arrow (delta -1 == previous,
     // +1 == next) and when the view geometry changes (to refresh the info bar).
@@ -373,6 +389,7 @@ private:
     // Backdrop under transparent images (see SetTransparentBackground).
     TransparentImageBackground transparentBackground = TransparentImageBackground::SolidColor;
     Color transparentColor = Color(255, 255, 255, 255);
+    Color autoBackdropColor = Color(255, 255, 255, 255);
 
     // View geometry for the current image.
     double zoom = 1.0;        // multiple of the fit scale (1.0 == fit)
@@ -486,13 +503,27 @@ public:
     UltraCanvasMediaSurface* GetSurface() const { return surface.get(); }
 
     // ===== BACKDROP BEHIND TRANSPARENT IMAGES =====
-    // Forwarded to the display surface: what transparent image pixels read
-    // against — a preset solid colour (default white) or the checkered
-    // pattern used by image editors.
+    // What transparent image pixels, and a drawing in the vector view, read
+    // against — Auto (the default: a colour picked for each file, see
+    // ContrastingBackdropFor), a preset solid colour or the checkered pattern
+    // used by image editors. The vector view cannot draw the pattern: while
+    // it is chosen a drawing gets the Auto colour, and the strip offers no
+    // checkered swatch there.
     void SetTransparentBackground(TransparentImageBackground mode);
     TransparentImageBackground GetTransparentBackground() const;
     void SetTransparentColor(const Color& c);
     Color GetTransparentColor() const;
+    // The colour Auto picked for the file on show (white when nothing shown
+    // has transparency, or Auto is not in force).
+    Color GetAutoBackdropColor() const;
+    // The backdrop Auto would pick under `pixels` (straight, not
+    // premultiplied, alpha; fully transparent ones count for nothing): white,
+    // mid grey (153) or dark grey (51) - all in the strip's palette -
+    // whichever gives the most of the artwork a contrast of 4.5:1 or better,
+    // the brighter one on a tie. So black line art gets white, a white logo
+    // dark grey, and artwork in both black and white mid grey. White when
+    // there is nothing visible to judge.
+    static Color ContrastingBackdropFor(const std::vector<Color>& pixels);
     // Forwarded to the display surface: whether fit-to-window enlarges a
     // picture smaller than the pane (the default) or shows it at its own
     // size. See UltraCanvasMediaSurface::SetFitEnlarges.
@@ -697,6 +728,15 @@ private:
     // Show the backdrop palette for a transparent image (and hide it for
     // everything else), and mark the swatch the current backdrop uses.
     void UpdateTransparencyPalette();
+    // Work out the Auto backdrop for what is on show now (a transparent
+    // picture's pixels, or the drawing in the vector view rasterized small),
+    // when Auto is in force, then ApplyDrawingBackdrop().
+    void RefreshAutoBackdrop();
+    // The vector view's background: the strip's colour, or the Auto one.
+    void ApplyDrawingBackdrop();
+    // The zoom box reads the zoom on show: Fit, the step it is at, or the
+    // percentage between steps; blank where nothing zooms.
+    void UpdateZoomBox();
     // Mark the swatch matching the backdrop the surface is using (none when it
     // is a colour the palette does not hold).
     void SyncBackdropSelection();

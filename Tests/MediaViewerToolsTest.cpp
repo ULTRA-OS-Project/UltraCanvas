@@ -26,12 +26,19 @@
 // forgets them too and shows the unlocked file locked again; while it is
 // unlocked the info bar says so beside its kind.
 //
+// A file with transparency gets a backdrop picked to suit it unless one was
+// chosen (Auto): white under dark artwork, dark grey under light, mid grey
+// under both - and the strip under it marks the auto swatch. The zoom box
+// reads the zoom on show.
+//
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
-// Version: 1.10.0 - Outlook .msg messages, attachments listed with Open and Save
-// Version: 1.9.0 - Apple Mail .emlx; saved web pages (.mht) from their own parts
-// Version: 1.8.0 - e-mail messages (.eml) shown as the message
-// Version: 1.7.0 - HTML / XHTML pages rendered (MV_Web, IsHtmlFile); data XML stays text
+// Version: 1.11.0 - Outlook .msg messages, attachments listed with Open and Save
+// Version: 1.10.0 - Apple Mail .emlx; saved web pages (.mht) from their own parts
+// Version: 1.9.0 - e-mail messages (.eml) shown as the message
+// Version: 1.8.0 - HTML / XHTML pages rendered (MV_Web, IsHtmlFile); data XML stays text
+// Version: 1.7.0 - the Auto backdrop (ContrastingBackdropFor, the default, the strip's
+//                  auto swatch); the zoom box shows the zoom
 // Version: 1.6.0 - SetSettingsAction: the gear in the info bar
 // Version: 1.5.0 - forgotten, and the file locked again, on a session lock, ForgetPasswords
 //                  and idleness; IsUnlocked and "unlocked" in the info bar
@@ -49,6 +56,8 @@
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasUCDContainer.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasColorSwatchBar.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasToolbar.h"
@@ -671,6 +680,91 @@ int main() {
             adjust->onToggle(false);
             Check(!Shown(*viewer, "MV_Adjust"), "toggle off: the panel closes");
         }
+    }
+
+    // ----- The backdrop picked to suit the file -----
+    std::cout << "\nAuto backdrop\n";
+    {
+        const Color white(255, 255, 255, 255), grey(153, 153, 153, 255), dark(51, 51, 51, 255);
+        auto same = [](const Color& a, const Color& b) {
+            return a.r == b.r && a.g == b.g && a.b == b.b;
+        };
+        std::vector<Color> blackArt(200, Color(0, 0, 0, 255));
+        std::vector<Color> whiteArt(200, Color(255, 255, 255, 255));
+        std::vector<Color> both = blackArt;
+        both.insert(both.end(), whiteArt.begin(), whiteArt.end());
+        std::vector<Color> greyLines(200, Color(58, 58, 58, 255));   // the dark-on-dark CDR
+        std::vector<Color> yellow(200, Color(253, 216, 53, 255));
+        std::vector<Color> clear(200, Color(255, 255, 255, 0));
+        Check(same(UltraCanvasMediaViewer::ContrastingBackdropFor(blackArt), white),
+              "black artwork: white backdrop");
+        Check(same(UltraCanvasMediaViewer::ContrastingBackdropFor(whiteArt), dark),
+              "white artwork: dark grey backdrop");
+        Check(same(UltraCanvasMediaViewer::ContrastingBackdropFor(both), grey),
+              "black and white artwork: mid grey backdrop");
+        Check(same(UltraCanvasMediaViewer::ContrastingBackdropFor(greyLines), white),
+              "dark grey lines: white backdrop");
+        Check(same(UltraCanvasMediaViewer::ContrastingBackdropFor(yellow), dark),
+              "yellow artwork: dark grey backdrop");
+        Check(same(UltraCanvasMediaViewer::ContrastingBackdropFor(clear), white) &&
+              same(UltraCanvasMediaViewer::ContrastingBackdropFor({}), white),
+              "nothing visible: white");
+
+        auto fresh = CreateMediaViewer("AutoViewer", 0, 0, 900, 600);
+        Check(fresh->GetTransparentBackground() == TransparentImageBackground::Auto,
+              "Auto is the viewer's default");
+        const fs::path whiteSvg = dir / "white-logo.svg";
+        const fs::path blackSvg = dir / "black-lines.svg";
+        WriteFile(whiteSvg,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"48\">"
+            "<rect x=\"8\" y=\"8\" width=\"48\" height=\"32\" fill=\"#ffffff\"/></svg>");
+        WriteFile(blackSvg,
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"48\">"
+            "<rect x=\"8\" y=\"8\" width=\"48\" height=\"32\" fill=\"none\" "
+            "stroke=\"#000000\" stroke-width=\"3\"/></svg>");
+        if (svgShown) {
+            auto* strip = fresh->GetTransparencyPalette();
+            fresh->SetFiles({ PathToUtf8(whiteSvg), PathToUtf8(blackSvg) });
+            Check(same(fresh->GetAutoBackdropColor(), dark),
+                  "white-logo.svg: shown on dark grey");
+            Check(strip && strip->IsVisible() && strip->IsAutoSelected(),
+                  "white-logo.svg: the strip is up with the auto swatch marked");
+            fresh->Next();
+            Check(same(fresh->GetAutoBackdropColor(), white),
+                  "black-lines.svg: shown on white");
+            if (strip && strip->onColorSelected) strip->onColorSelected(grey);
+            Check(fresh->GetTransparentBackground() == TransparentImageBackground::SolidColor &&
+                  strip->HasColorSelected() && !strip->IsAutoSelected(),
+                  "a colour picked in the strip replaces Auto");
+            fresh->Previous();
+            Check(fresh->GetTransparentBackground() == TransparentImageBackground::SolidColor,
+                  "... and stays for the next file");
+            if (strip && strip->onAutoSelected) strip->onAutoSelected();
+            Check(fresh->GetTransparentBackground() == TransparentImageBackground::Auto &&
+                  same(fresh->GetAutoBackdropColor(), dark),
+                  "the auto swatch brings Auto back, worked out for the file on show");
+        } else {
+            std::cout << "  (no SVG loader in this build: the files are not shown)\n";
+        }
+
+        // The zoom box reads the zoom.
+        auto* zoomBox = dynamic_cast<UltraCanvasDropdown*>(fresh->FindChildById("mv_zoom"));
+        fresh->SetFiles({ PathToUtf8(photo) });
+        // Headless there is no layout pass: the surface needs a size for a
+        // zoom to mean anything.
+        fresh->GetSurface()->SetSize(800, 500);
+        Check(zoomBox && zoomBox->GetSelectedIndex() == 0, "photo: the zoom box says Fit");
+        fresh->GetSurface()->SetZoomPercent(200.0);
+        Check(zoomBox && zoomBox->GetSelectedItem() &&
+              zoomBox->GetSelectedItem()->text == "200%", "photo at 200%: the zoom box says 200%");
+        fresh->GetSurface()->SetZoomPercent(137.0);
+        Check(zoomBox && zoomBox->GetSelectedIndex() < 0 &&
+              zoomBox->GetPlaceholderText() == "137%",
+              "photo at 137%: the zoom box says 137% (" +
+              (zoomBox ? zoomBox->GetPlaceholderText() : std::string()) + ")");
+        fresh->SetFiles({ PathToUtf8(text) });
+        Check(zoomBox && zoomBox->GetSelectedIndex() < 0 && zoomBox->GetPlaceholderText().empty(),
+              "text: nothing zooms, the zoom box is blank");
     }
 
     viewer->CloseFile();

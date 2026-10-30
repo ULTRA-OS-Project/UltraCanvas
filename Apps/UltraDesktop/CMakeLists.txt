@@ -6,6 +6,7 @@
 # One target, the desktop application; the headless modes (--windows, --apps,
 # --devices, --screenshot) come from the module and need nothing this file adds.
 #
+# Version: 0.2.0 - the clock, popup and volume panels
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -22,9 +23,12 @@ add_executable(UltraDesktop
     ui/UltraDesktopAppStarter.cpp
     ui/UltraDesktopCategoryBoard.cpp
     ui/UltraDesktopClipboardPanel.cpp
+    ui/UltraDesktopClockPanel.cpp
+    ui/UltraDesktopPopupPanel.cpp
     ui/UltraDesktopSettings.cpp
     ui/UltraDesktopStickerboard.cpp
     ui/UltraDesktopTasksWindow.cpp
+    ui/UltraDesktopVolumePanel.cpp
     ui/UltraDesktopWindow.cpp
 )
 

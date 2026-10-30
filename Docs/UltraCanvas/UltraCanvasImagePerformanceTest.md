@@ -203,10 +203,13 @@ const CodecEntry kAllCodecs[] = {
 };
 ```
 
-JPEG XL is charted only where libvips can both save and load `.jxl`
-(`VipsCanSave(".jxl") && VipsCanLoad(".jxl")`): it needs a libvips built with
-libjxl, which Ubuntu 22.04's is not. Elsewhere the JXL column is left out
-rather than shown as a failure.
+JPEG XL, HEIF and AVIF are charted only where this build can both encode and
+load them (`VipsCanEncode(ext) && VipsCanLoad(ext)`; `VipsCanEncode` tries a
+2 x 2 encode once per codec). JPEG XL needs a libvips built with libjxl, which
+Ubuntu 22.04's is not; HEIF and AVIF need libheif with an encoder for each -
+the macOS build reads HEIC but cannot write it, since its HEVC encoder, x265,
+is GPL and is kept out of the core. Elsewhere the column is left out rather
+than shown as a failure.
 
 ### CodecResult (per-codec output row)
 

@@ -1,4 +1,6 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.11.1 - the S/MIME / OpenPGP pill no longer says UltraMail cannot check
+//   signatures: the reading pane checks them (UltraMailSecureMime.h)
 // Version: 0.11.0 - fake invoices: attachment-web-page (40 when the mail speaks of an
 //                   invoice or a payment), attachment-active-page (the attached page
 //                   loads a script, sends a form, moves the browser on), and
@@ -2292,8 +2294,9 @@ std::vector<AuthCheck> DescribeMessageAuthentication(const std::string& rawMessa
         c.tooltip = kind + ": the author signed this message with " +
                     (kind == "S/MIME" ? std::string("a personal certificate")
                                       : std::string("an OpenPGP key")) +
-                    ".\nUltraMail does not check such signatures yet, so the signature "
-                    "says nothing on its own - anyone can attach one.";
+                    ".\nThis is what the headers say, not yet a check: until the signature is "
+                    "checked against the message (the reading pane does that when it opens "
+                    "it), it says nothing on its own - anyone can attach one.";
         checks.push_back(c);
     }
     return checks;

@@ -75,6 +75,8 @@ class MailView {
 public:
     void SetStore(LocalStore* store) { store_ = store; preview_.SetStore(store); }
     void SetMailDir(std::string dir) { mailDir_ = dir; preview_.SetMailDir(std::move(dir)); }
+    // Signed and encrypted mail in the reading pane (MessagePreview::SetSecureKeys).
+    void SetSecureKeys(SecureKeys keys) { preview_.SetSecureKeys(std::move(keys)); }
     // Keep the account list (drives the folder tree) and forward it to the
     // preview (which resolves the "self" address for replies).
     void SetAccounts(std::vector<Account> accounts);
@@ -206,6 +208,8 @@ public:
 
     // Forwarded to the preview.
     std::function<void(const Attachment&)> onOpenAttachment;
+    // An S/MIME certificate learnt from a good signature (MessagePreview::onCertificateLearnt).
+    std::function<void(const std::string& address, const std::string& certificatePem)> onCertificateLearnt;
     std::function<void(const Attachment&)> onSaveAttachment;
     std::function<void(const SourceMessage&, const std::string& selfName,
                        const std::string& selfAddr)> onReply;

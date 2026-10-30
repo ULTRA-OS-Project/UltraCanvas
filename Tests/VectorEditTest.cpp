@@ -6,12 +6,15 @@
 // VectorEdit::VectorHitTester (fill, stroke, tolerance, transforms,
 // locked layers) and the operations (transform about a pivot, z-order,
 // group / ungroup with placement preserved, align, distribute, duplicate,
-// convert to path, bake transform).
+// convert to path, bake transform), and UltraCanvasVectorCanvas's view,
+// snapping and handles - rotate mode's turned frame and rotation handle.
 //
 // Usage: VectorEditTest
 // Exit code is the number of failed checks.
+// Version: 1.3.0 - PaintBounds: a line's width in the box, caps, joins, transforms
+// Version: 1.2.0 - the canvas's turned frame, rotation handle and kept rotation centre
 // Version: 1.1.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBezierPath.h"
@@ -21,6 +24,7 @@
 #include "UltraCanvasVectorCanvas.h"
 #include "UltraCanvasGradientEditor.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -320,6 +324,83 @@ int main() {
     }
 
 
+    // ===== Paint bounds: the box a line paints, its width included =====
+    {
+        auto line = [](Point2Dd a, Point2Dd b, float width, StrokeLineCap cap) {
+            auto l = std::make_shared<VectorLine>();
+            l->Start = a; l->End = b;
+            StrokeData st; st.Width = width; st.LineCap = cap;
+            l->Style.Stroke = st;
+            return l;
+        };
+        auto butt = line({0, 0}, {100, 0}, 10, StrokeLineCap::Butt);
+        Check(NearRect(DocumentBounds(butt), 0, 0, 100, 0), "DocumentBounds is the line's middle alone");
+        Check(NearRect(PaintBounds(butt), 0, -5, 100, 10), "a butt-capped line: half its width above and below, nothing past its ends");
+        Check(NearRect(PaintBounds(line({0, 0}, {100, 0}, 10, StrokeLineCap::Round)), -5, -5, 110, 10), "round caps reach half the width past the ends");
+        Check(NearRect(PaintBounds(line({0, 0}, {100, 0}, 10, StrokeLineCap::Square)), -5, -5, 110, 10), "so do square caps");
+
+        auto box = MakeRect(10, 10, 100, 50);
+        StrokeData st; st.Width = 8; st.LineJoin = StrokeLineJoin::Miter; st.MiterLimit = 4;
+        box->Style.Stroke = st;
+        Check(NearRect(PaintBounds(box), 6, 6, 108, 58), "a stroked rectangle grows by half its line on every side");
+        box->Style.Stroke->Fill = std::monostate{};
+        Check(NearRect(PaintBounds(box), 10, 10, 100, 50), "a line with no paint adds nothing");
+
+        // A sharp miter reaches past the band; past the limit it is a bevel.
+        auto spike = std::make_shared<VectorPolyline>();
+        spike->Points = {{0, 100}, {10, 0}, {20, 100}};
+        StrokeData sharp; sharp.Width = 4; sharp.LineJoin = StrokeLineJoin::Miter; sharp.MiterLimit = 20;
+        spike->Style.Stroke = sharp;
+        const Rect2Dd sharpBox = PaintBounds(spike);
+        const double ratio = 1.0 / std::sin(std::atan(10.0 / 100.0));   // miter length over width at the tip
+        Check(Near(sharpBox.y, -2.0 * ratio, 1e-6), "a miter within the limit reaches its point");
+        spike->Style.Stroke->MiterLimit = 4;
+        Check(PaintBounds(spike).y > -2.0 * 1.01 && PaintBounds(spike).y < 0, "past the limit it is cut off as a bevel");
+
+        // A turned line measures as drawn, not as a box around its box.
+        auto turned = line({-50, 0}, {50, 0}, 10, StrokeLineCap::Butt);
+        turned->Transform = Matrix3x3::RotateDegrees(45);
+        const double k = std::sqrt(0.5);
+        const double half = 50 * k + 5 * k;
+        Check(NearRect(PaintBounds(turned), -half, -half, 2 * half, 2 * half, 1e-6), "a line turned 45 degrees: its band's corners, no more");
+        Check(NearRect(OwnPaintBounds(turned), -50, -5, 100, 10), "OwnPaintBounds is the box before the turn");
+
+        // A group: its children's lines, through the group's transform.
+        auto group = std::make_shared<VectorGroup>();
+        group->AddChild(line({0, 0}, {100, 0}, 10, StrokeLineCap::Round));
+        group->Transform = Matrix3x3::Translate(20, 30) * Matrix3x3::Scale(2, 2);
+        Check(NearRect(PaintBounds(group), 10, 20, 220, 20), "a group's box holds its children's lines, scaled with it");
+
+        // The selection's bounds are the paint bounds.
+        auto pdoc = std::make_shared<VectorDocument>();
+        auto pl = pdoc->AddLayer("L");
+        auto thick = line({0, 0}, {100, 0}, 10, StrokeLineCap::Round);
+        pl->AddChild(thick);
+        VectorSelection psel;
+        psel.Set(thick);
+        Check(NearRect(psel.Bounds(), -5, -5, 110, 10), "the selection's bounds include the line's width");
+        // A marquee has a line only when it holds all of what is drawn.
+        VectorHitTester marquee;
+        Check(marquee.ElementsIn(*pdoc, Rect2Dd(-2, -2, 104, 4), true).empty(),
+              "a marquee round the line's middle but through its width does not hold it");
+        Check(marquee.ElementsIn(*pdoc, Rect2Dd(-6, -6, 112, 12), true).size() == 1,
+              "one round all it paints does");
+        Check(marquee.ElementsIn(*pdoc, Rect2Dd(40, 3, 10, 10), false).size() == 1,
+              "touching the line's edge, past its middle, overlaps it");
+
+        // A long freehand line stays quick to measure.
+        auto freehand = std::make_shared<VectorPolyline>();
+        for (int i = 0; i < 5000; ++i) freehand->Points.push_back(Point2Dd(i * 0.2, 20 * std::sin(i * 0.05)));
+        StrokeData round; round.Width = 6; round.LineJoin = StrokeLineJoin::Round; round.LineCap = StrokeLineCap::Round;
+        freehand->Style.Stroke = round;
+        const auto t0 = std::chrono::steady_clock::now();
+        Rect2Dd fb;
+        for (int i = 0; i < 20; ++i) fb = PaintBounds(freehand);
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count() / 20;
+        std::printf("  (PaintBounds of a 5000-point line: %.3f ms)\n", ms);
+        Check(Near(fb.y, -23, 1e-3) && Near(fb.height, 46, 1e-3), "a round-joined freehand line: its swing plus half its width");
+    }
+
     // ===== Canvas: view mapping, snapping, handles, guides (no window) =====
     {
         auto cdoc = std::make_shared<VectorDocument>();
@@ -382,6 +463,46 @@ int main() {
         Check(NearPt(canvas->GetRotationCenter(), 150, 125), "the rotation centre defaults to the selection's centre");
         auto hit = canvas->HitTest(Point2Dd(150, 125));
         Check(hit && hit->element == box, "the canvas hit-tests the document");
+
+        // Rotate mode: one object's own box, turned as it is.
+        RotateElements({box}, -M_PI / 6, Point2Dd(150, 125));   // 30 degrees counter-clockwise on the page
+        const auto frame = canvas->SelectionFrame();
+        const double top = std::hypot(frame[1].x - frame[0].x, frame[1].y - frame[0].y);
+        const double side = std::hypot(frame[3].x - frame[0].x, frame[3].y - frame[0].y);
+        Check(Near(top, 100, 1e-6) && Near(side, 50, 1e-6), "the frame is the object's own 100 x 50 box");
+        Check(frame[1].y < frame[0].y, "turned counter-clockwise, its top edge rises to the right");
+        Check(Near(canvas->RotationHandleAngle(), 30, 1e-6), "the rotation handle points 30 degrees from up");
+        Check(NearPt(canvas->GetRotationCenter(), 150, 125, 1e-6), "the centre is the middle of the turned frame");
+        const Point2Dd across = canvas->SelectionFrameFraction(canvas->SelectionFramePoint(0.25, 0.75));
+        Check(NearPt(across, 0.25, 0.75, 1e-9), "SelectionFrameFraction undoes SelectionFramePoint");
+        // The dial's knob: 40 px from the centre, the handle's way.
+        const Point2Dd c = canvas->DocToView(canvas->GetRotationCenter());
+        const double a = 30 * M_PI / 180;
+        const Point2Di dialKnob(static_cast<int>(std::lround(c.x - 40 * std::sin(a))), static_cast<int>(std::lround(c.y - 40 * std::cos(a))));
+        Check(canvas->HitTestHandle(dialKnob) == VectorHandle::Rotation, "the dial's knob is the rotation handle");
+        // The stem's knob: 24 px beyond the frame's top edge.
+        canvas->SetRotationHandleStyle(VectorRotationHandleStyle::Stem);
+        const double toTop = 25 * canvas->GetZoom() + 24;
+        const Point2Di stemKnob(static_cast<int>(std::lround(c.x - toTop * std::sin(a))), static_cast<int>(std::lround(c.y - toTop * std::cos(a))));
+        Check(canvas->HitTestHandle(stemKnob) == VectorHandle::Rotation, "the stem's knob sits just beyond the frame");
+        canvas->SetRotationHandleAngle(90.0);
+        Check(Near(canvas->RotationHandleAngle(), 90, 1e-9), "a tool can say where the handle points while it turns");
+        canvas->SetRotationHandleAngle(std::nullopt);
+        Check(Near(canvas->RotationHandleAngle(), 30, 1e-6), "and hand it back to the frame");
+        canvas->SetHandleMode(VectorHandleMode::Scale);
+        Check(Near(canvas->SelectionFrame()[0].y, canvas->SelectionBounds().y, 1e-9), "scale mode keeps the upright bounds");
+        canvas->SetHandleMode(VectorHandleMode::Rotate);
+        // A moved centre stays while the same objects are selected again.
+        int centreChanges = 0;
+        canvas->onRotationCenterChanged = [&]() { ++centreChanges; };
+        canvas->SetRotationCenter(Point2Dd(120, 110));
+        canvas->GetSelection()->Set(box);
+        Check(canvas->HasRotationCenter() && NearPt(canvas->GetRotationCenter(), 120, 110), "selecting the same object again keeps the centre");
+        canvas->GetSelection()->Clear();
+        Check(!canvas->HasRotationCenter() && centreChanges == 2, "a new selection drops it, and says so");
+        canvas->onRotationCenterChanged = nullptr;
+        canvas->GetSelection()->Set(box);
+        RotateElements({box}, M_PI / 6, Point2Dd(150, 125));
         canvas->GetSelection()->Clear();
         Check(canvas->HitTestHandle(Point2Di(static_cast<int>(mid.x), static_cast<int>(mid.y))) == VectorHandle::NoHandle, "no selection, no handles");
     }

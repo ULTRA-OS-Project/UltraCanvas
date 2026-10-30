@@ -24,6 +24,18 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.2.1 - ReserveScreenEdges reserves only the root's edges the window
+//                  lies on, its strips the window's own extent: a desktop on
+//                  one monitor of several claims nothing on the others
+// Version: 1.2.0 - "Super" alone, a tap of the Super key, watched through
+//                  XInput2's raw key events (no grab, so every Super+X
+//                  combination still reaches its owner); the end of the
+//                  session, the lock and the loudspeaker moved to files of
+//                  their own (UltraCanvasLinuxDesktopShellSession.cpp,
+//                  UltraCanvasLinuxDesktopShellAudio.cpp); the notification
+//                  area to UltraCanvasLinuxTrayHost.cpp (StatusNotifierWatcher
+//                  and host over D-Bus), with the pointer's position shared
+//                  through UltraCanvasLinuxDesktopShellInternal.h
 // Version: 1.1.5 - a held shortcut counts once on a server without detectable
 //                  auto-repeat: the release before each repeat is dropped
 // Version: 1.1.4 - ListScreens (RandR monitors); the wake pipes no longer
@@ -33,11 +45,12 @@
 //                  the tray, which on X11 is a protocol of its own)
 // Version: 1.1.2 - ListNativeApplications (none: desktop entries are the list);
 //                  ReplaceSystemDesktop (none: the session starts the desktop)
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShellBackend.h"
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasLinuxDesktopShellInternal.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <algorithm>
@@ -62,6 +75,8 @@
 #include <X11/Xatom.h>
 #include <X11/Xutil.h>
 #include <X11/extensions/Xrandr.h>
+#include <X11/extensions/XInput2.h>
+#include <X11/keysym.h>
 #include <X11/XKBlib.h>
 #include <cairo/cairo.h>
 
@@ -566,7 +581,22 @@ std::vector<DesktopScreenInfo> ListScreens() {
         if (screen.width > 0 && screen.height > 0) screens.push_back(screen);
     }
     if (monitors) XRRFreeMonitors(monitors);
-    return screens;
+    // A server that lists a monitor spanning others beside them - Xvfb's
+    // automatic whole-screen monitor next to ones set with xrandr
+    // --setmonitor - is telling two stories; the monitors are the ones that
+    // contain no other.
+    std::vector<DesktopScreenInfo> distinct;
+    for (const DesktopScreenInfo& screen : screens) {
+        bool containsAnother = false;
+        for (const DesktopScreenInfo& other : screens) {
+            if (other == screen) continue;
+            if (other.x >= screen.x && other.y >= screen.y && other.x + other.width <= screen.x + screen.width &&
+                other.y + other.height <= screen.y + screen.height)
+                containsAnother = true;
+        }
+        if (!containsAnother) distinct.push_back(screen);
+    }
+    return distinct;
 }
 
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
@@ -577,18 +607,44 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     const int screen = DefaultScreen(d);
     const long width = DisplayWidth(d, screen);
     const long height = DisplayHeight(d, screen);
+    const Window w = static_cast<Window>(id);
+    // A strut is measured from the root window's edge, whatever monitor the
+    // window is on: a desktop that covers one monitor of several reserves
+    // an edge only where its monitor lies on that edge of the root - a strip
+    // from the root's edge across another monitor would push that monitor's
+    // windows aside - and its strips run the window's own extent, not the
+    // whole root, so a bar on the primary monitor claims nothing on the
+    // monitor beside it.
+    long wx = 0, wy = 0, ww = width, wh = height;
+    {
+        Window root = 0, child = 0;
+        int x = 0, y = 0;
+        unsigned int uw = 0, uh = 0, border = 0, depth = 0;
+        if (XGetGeometry(d, w, &root, &x, &y, &uw, &uh, &border, &depth) && uw > 0 && uh > 0) {
+            int rx = 0, ry = 0;
+            if (XTranslateCoordinates(d, w, root, 0, 0, &rx, &ry, &child)) {
+                wx = rx;
+                wy = ry;
+            }
+            ww = uw;
+            wh = uh;
+        }
+    }
+    if (wx > 0) left = 0;
+    if (wy > 0) top = 0;
+    if (wx + ww < width) right = 0;
+    if (wy + wh < height) bottom = 0;
     // _NET_WM_STRUT_PARTIAL: left, right, top, bottom, then the start and end
     // coordinate of each strip along its edge. A strip that reserves nothing
     // has 0..0. _NET_WM_STRUT (the four widths alone) is set as well, for a
     // manager that reads only the older property.
     long partial[12] = {
         left, right, top, bottom,
-        left > 0 ? 0 : 0,  left > 0 ? height - 1 : 0,
-        right > 0 ? 0 : 0, right > 0 ? height - 1 : 0,
-        top > 0 ? 0 : 0,   top > 0 ? width - 1 : 0,
-        bottom > 0 ? 0 : 0, bottom > 0 ? width - 1 : 0,
+        left > 0 ? wy : 0,   left > 0 ? wy + wh - 1 : 0,
+        right > 0 ? wy : 0,  right > 0 ? wy + wh - 1 : 0,
+        top > 0 ? wx : 0,    top > 0 ? wx + ww - 1 : 0,
+        bottom > 0 ? wx : 0, bottom > 0 ? wx + ww - 1 : 0,
     };
-    const Window w = static_cast<Window>(id);
     XChangeProperty(d, w, InternAtom(d, "_NET_WM_STRUT_PARTIAL"), XA_CARDINAL, 32, PropModeReplace,
                     reinterpret_cast<unsigned char*>(partial), 12);
     XChangeProperty(d, w, InternAtom(d, "_NET_WM_STRUT"), XA_CARDINAL, 32, PropModeReplace,
@@ -721,13 +777,9 @@ bool RestoreSystemDesktop(std::string&) { return true; }   // nothing was ever r
 bool IsSystemDesktopRunning() { return true; }              // whatever the session started is the system's
 std::string SystemDesktopSwitchUnavailableReason() { return {}; }   // there is no switch
 
-// Signing out is the session manager's (logind, the display manager), which
-// this backend does not talk to yet.
-bool CanEndSession() { return false; }
-bool EndSession(SessionEnd, std::string& error) {
-    error = "Signing out, restarting and shutting down go through the session's own menu here.";
-    return false;
-}
+// The end of the session and the lock go through logind
+// (UltraCanvasLinuxDesktopShellSession.cpp); the loudspeaker through the
+// sound server (UltraCanvasLinuxDesktopShellAudio.cpp).
 
 void ReadDeviceActivity(DesktopDeviceActivity& activity) {
     ProbeAudio(activity);
@@ -833,11 +885,67 @@ struct ShortcutState {
     KeyCode keycode = 0;
     unsigned int modifiers = 0;
     bool down = false;   // the combination was pressed and its key is not let go yet
+    // "Super" alone: a tap of either Super key - down and up with no other
+    // key between - seen through XInput2's raw events, which every client
+    // may watch without taking the key from anyone. A grab of the bare key
+    // would hold the keyboard while it is down and so swallow every Super+X
+    // combination the window manager and the other programs own.
+    bool tap = false;
+    int xiOpcode = 0;
+    KeyCode superKeys[2] = {0, 0};
+    bool other = false;  // another key went down while Super was held
     // The server sends a held key's repeats as presses alone. Without it
     // each repeat is a release and a press, and ShortcutWait drops the
     // release, or a held shortcut would count once per repeat.
     bool detectableAutoRepeat = false;
 };
+
+// The Super key alone, watched rather than grabbed (see ShortcutState::tap).
+static ShortcutState* OpenSuperTap(const std::string& accelerator, std::string& error) {
+    Display* d = XOpenDisplay(nullptr);
+    if (!d) {
+        error = "No X display for " + accelerator + ".";
+        return nullptr;
+    }
+    int opcode = 0, firstEvent = 0, firstError = 0;
+    int major = 2, minor = 0;
+    if (!XQueryExtension(d, "XInputExtension", &opcode, &firstEvent, &firstError) ||
+        XIQueryVersion(d, &major, &minor) != Success) {
+        XCloseDisplay(d);
+        error = "This X server has no XInput 2, so a tap of the Super key cannot be watched.";
+        return nullptr;
+    }
+    const KeyCode left = XKeysymToKeycode(d, XK_Super_L);
+    const KeyCode right = XKeysymToKeycode(d, XK_Super_R);
+    if (left == 0 && right == 0) {
+        XCloseDisplay(d);
+        error = "This keyboard has no Super key.";
+        return nullptr;
+    }
+    unsigned char maskBits[XIMaskLen(XI_LASTEVENT)] = {};
+    XIEventMask mask;
+    mask.deviceid = XIAllMasterDevices;
+    mask.mask_len = sizeof maskBits;
+    mask.mask = maskBits;
+    XISetMask(maskBits, XI_RawKeyPress);
+    XISetMask(maskBits, XI_RawKeyRelease);
+    XISelectEvents(d, DefaultRootWindow(d), &mask, 1);
+    XFlush(d);
+
+    auto* state = new ShortcutState();
+    state->display = d;
+    state->tap = true;
+    state->xiOpcode = opcode;
+    state->superKeys[0] = left;
+    state->superKeys[1] = right;
+    if (!OpenWakePipe(state->wakePipe)) {
+        XCloseDisplay(d);
+        delete state;
+        error = "No pipe for the shortcut's thread.";
+        return nullptr;
+    }
+    return state;
+}
 
 ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) {
     // "Super+V" -> Mod4Mask and the keysym "v".
@@ -859,10 +967,12 @@ ShortcutState* ShortcutOpen(const std::string& accelerator, std::string& error) 
         if (plus == std::string::npos) break;
         start = plus + 1;
     }
-    if (key.empty()) {
+    const bool tap = key.empty() && modifiers == Mod4Mask;
+    if (key.empty() && !tap) {
         error = "\"" + accelerator + "\" names no key.";
         return nullptr;
     }
+    if (tap) return OpenSuperTap(accelerator, error);
     KeySym keysym = XStringToKeysym(key.c_str());
     if (keysym == NoSymbol && key.size() == 1) {
         const std::string lower(1, static_cast<char>(std::tolower(static_cast<unsigned char>(key[0]))));
@@ -946,6 +1056,30 @@ bool ShortcutWait(ShortcutState* state) {
         while (XPending(d) > 0) {
             XEvent event;
             XNextEvent(d, &event);
+            if (state->tap) {
+                // Raw events carry the keycode in `detail`, whichever window
+                // has the focus and whatever grabs are in place.
+                if (event.type != GenericEvent || event.xcookie.extension != state->xiOpcode) continue;
+                if (!XGetEventData(d, &event.xcookie)) continue;
+                const auto* raw = static_cast<const XIRawEvent*>(event.xcookie.data);
+                const KeyCode code = static_cast<KeyCode>(raw->detail);
+                const bool super = code != 0 && (code == state->superKeys[0] || code == state->superKeys[1]);
+                if (event.xcookie.evtype == XI_RawKeyPress) {
+                    if (super) {
+                        if (!state->down) {   // not the auto-repeat of the held key
+                            state->down = true;
+                            state->other = false;
+                        }
+                    } else if (state->down) {
+                        state->other = true;
+                    }
+                } else if (event.xcookie.evtype == XI_RawKeyRelease && super) {
+                    if (state->down && !state->other) released = true;
+                    state->down = false;
+                }
+                XFreeEventData(d, &event.xcookie);
+                continue;
+            }
             if (event.xkey.keycode != state->keycode) continue;
             if (event.type == KeyPress) state->down = true;
             else if (event.type == KeyRelease && state->down && !IsRepeatRelease(state, event)) {
@@ -987,10 +1121,13 @@ void ShortcutWake(ShortcutState* state) {
 void ShortcutClose(ShortcutState* state) {
     if (!state) return;
     if (state->display) {
-        const unsigned int locks[] = {0, LockMask, Mod2Mask, LockMask | Mod2Mask};
-        for (unsigned int lock : locks) {
-            XUngrabKey(state->display, state->keycode, state->modifiers | lock, DefaultRootWindow(state->display));
+        if (!state->tap) {
+            const unsigned int locks[] = {0, LockMask, Mod2Mask, LockMask | Mod2Mask};
+            for (unsigned int lock : locks) {
+                XUngrabKey(state->display, state->keycode, state->modifiers | lock, DefaultRootWindow(state->display));
+            }
         }
+        // A tap's raw-event selection goes with the connection.
         XCloseDisplay(state->display);
     }
     if (state->wakePipe[0] >= 0) ::close(state->wakePipe[0]);
@@ -999,21 +1136,29 @@ void ShortcutClose(ShortcutState* state) {
 }
 
 // ===== THE NOTIFICATION AREA =====
-// An X11 tray is the system-tray protocol (a selection and XEmbed) or
-// StatusNotifierItem over D-Bus, neither of which this backend hosts yet.
+// Hosted in UltraCanvasLinuxTrayHost.cpp: a StatusNotifierWatcher and host
+// on the session bus. What it borrows from this file is the pointer's
+// position, for the clicks it hands to the programs.
 
-struct TrayHostState {};
+namespace X11 {
 
-TrayHostState* TrayHostOpen(std::string& error) {
-    error = "Hosting the notification area is not available on X11 yet.";
-    return nullptr;
+bool QueryPointerPosition(int& x, int& y) {
+    x = 0;
+    y = 0;
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    Display* d = QueryDisplay();
+    if (!d) return false;
+    ScopedErrorHandler guard;
+    Window root = 0, child = 0;
+    int rootX = 0, rootY = 0, winX = 0, winY = 0;
+    unsigned int mask = 0;
+    if (!XQueryPointer(d, RootOf(d), &root, &child, &rootX, &rootY, &winX, &winY, &mask)) return false;
+    x = rootX;
+    y = rootY;
+    return true;
 }
-bool TrayHostAttach(TrayHostState*, std::string&) { return false; }
-bool TrayHostWait(TrayHostState*) { return false; }
-void TrayHostWake(TrayHostState*) {}
-void TrayHostClose(TrayHostState*) {}
-std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState*) { return {}; }
-bool TrayHostClick(TrayHostState*, const std::string&, TrayClick) { return false; }
+
+} // namespace X11
 
 } // namespace DesktopShellBackend
 } // namespace UltraCanvas

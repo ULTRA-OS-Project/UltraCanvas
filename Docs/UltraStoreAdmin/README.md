@@ -129,7 +129,16 @@ affiliate list | show <id> | enable <id> | disable <id> | remove <id> | report |
 code new <CODE> [--affiliate <id>] [--percent <n> | --amount <x> --currency <ccy>] [--apps <id> ...] [--from <d>] [--until <d>]
 code list | enable <CODE> | disable <CODE> | remove <CODE> | link <CODE> | qr <CODE> <file.svg>
 sale add <CODE|-> <app-id> <amount> <currency> [--at <iso8601>] | list
+sale sync [--from <url>] [--token <t>]                   the paid orders from the payment service, once each
 ```
+
+The payment service is named in the settings: `payment.url` (its base,
+published as the catalog's `payment_url`), `payment.licence_key` (the
+public half of its licence key, `GET /v1/keys`, published as
+`licence_key`; publish warns while it is missing), `payment.token` (the
+bearer token for `sale sync`, or `ULTRASTORE_PAY_ADMIN_TOKEN`), and
+`payment.sales_seq`, which `sale sync` keeps for itself. The window's
+*Affiliates and codes* page has *Sync sales*.
 
 A passphrase comes from `--passphrase`, else `ULTRASTOREADMIN_PASSPHRASE`,
 else a line on standard input; the upload's password from `--password`,
@@ -177,6 +186,9 @@ Hello.
   left out with a warning; a release left without a package, and a
   component left without a release, likewise. An app without a summary, a
   publisher the database does not know, a missing picture: warnings.
+- A restricted package on an app with a trial is warned about: *Try*
+  installs the same package and fails without a licence, so an app with a
+  trial keeps its package public.
 - The signature verifies with the key's public half; a retired key does not
   sign; a wrong passphrase stops before anything is written.
 - The codes in the catalog are the enabled ones whose partner, when they
@@ -201,5 +213,6 @@ Hello.
 4. **Affiliates and codes** (*Decisions*): the partners, two tiers, the
    codes in the catalog, QR codes and links, the ledger and the report.
 5. **Payment**: Paysafe with Skrill Quick Checkout (the store's README,
-   *Payment*), the signed URLs for `restricted/`, the sales reported into
-   the ledger instead of `sale add` by hand.
+   *Payment*), the signed URLs for `restricted/`, `sale sync` pulling the
+   sales into the ledger, the catalog naming the service from the
+   `payment.*` settings.

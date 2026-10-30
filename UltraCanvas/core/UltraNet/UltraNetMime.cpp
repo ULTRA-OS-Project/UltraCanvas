@@ -4,6 +4,7 @@
 // building. Pure C++ / STL — no libcurl or platform dependency; other
 // charsets than UTF-8 and Latin-1 go through iconv where the build has it
 // (ULTRANET_HAS_ICONV).
+// Version: 0.5.1 - UltraNet_MimeBuildMailMessage returns a message's rawMessage unchanged
 // Version: 0.5.0 - UltraNet_ConvertToUtf8 (the body charset conversion, public)
 // Version: 0.4.0 - UltraNet_ImapUtf7Encode (a typed mailbox name for the wire)
 // Version: 0.3.1 - MimeBuild takes a Message-ID passed among the extra headers
@@ -1194,6 +1195,8 @@ std::string BuildRichBody(const UltraNetMimeBuildInput& in, const std::string& b
 } // namespace
 
 std::string UltraNet_MimeBuildMailMessage(const UltraNetMailMessage& m) {
+    // A message made elsewhere (signed, encrypted) goes as it is.
+    if (!m.rawMessage.empty()) return m.rawMessage;
     UltraNetMimeBuildInput in;
     in.from    = m.from;
     in.to      = m.to;
