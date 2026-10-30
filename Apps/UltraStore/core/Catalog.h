@@ -4,6 +4,7 @@
 // one shape - releases with packages per target - and a release names the
 // component versions it was built against (depends), so an install is the
 // app plus whatever of those the machine does not have yet.
+// Version: 0.5.0 - payment_url and licence_key: the payment service the store buys through
 // Version: 0.4.0 - codes: the discount and affiliate codes the store applies
 // Version: 0.3.0 - schema 2: trusted_keys, the keys that may sign the next catalogs
 // Version: 0.2.0 - ParseComponent / SerializeComponent for the admin backend
@@ -184,6 +185,11 @@ struct Catalog {
     // compiled-in key (Docs/UltraStore/README.md, *Keys*).
     std::vector<std::string> trustedKeys;
     std::vector<PromoCode> codes;       // the discount and affiliate codes in force
+    // The payment service (Server/UltraStorePay) the store buys through,
+    // and the hex Ed25519 key its licences are signed with; both empty when
+    // the store has none, and Buy goes to the publisher's page then.
+    std::string paymentUrl;
+    std::string licenceKey;
     std::vector<Publisher> publishers;
     std::vector<Component> apps;        // kind == App
     std::vector<Component> components;  // kind == Runtime or Library

@@ -21,6 +21,8 @@
 // lives as long as its page - a rebuild keeps it playing, leaving the page
 // stops it. A page plays nothing by itself unless it is muted (autoplay with
 // sound waits for the reader's click, as browsers do).
+// Version: 1.6.0 - SetOpensWebLinks: a viewer of local files sends http(s)
+//                  links to the host; ScrollBy for a host's keys; Clear
 // Version: 1.5.0 - <video> and <audio>: SetMediaPlayback, the players kept
 //                  across rebuilds of one page
 // Version: 1.4.0 - onOpenInNewWindow: target="_blank" links go to the host
@@ -29,7 +31,7 @@
 // Version: 1.1.0 - SetInteractiveForms / SubmitForm: forms with real widgets,
 //                  sent by GET or POST
 // Version: 1.0.0
-// Last Modified: 2026-10-22
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -72,6 +74,11 @@ public:
     // <video> and <audio> as players (on by default). Off: their fallback
     // content is shown, as in a reader that plays nothing.
     void SetMediaPlayback(bool on) { mediaPlayback = on; }
+    // http(s) links followed in the view (on by default). Off - a viewer of
+    // local files with no network, such as the media viewer's HTML preview -
+    // they go to onExternalLink as mailto: does, and file: links still open
+    // here.
+    void SetOpensWebLinks(bool on) { opensWebLinks = on; }
     // The players of the page on show, in no particular order.
     std::vector<std::shared_ptr<UltraCanvasVideoPlayerElement>> GetMediaPlayers() const;
     // Players on one page at most; a <video> past it shows its fallback.
@@ -81,12 +88,18 @@ public:
     void Navigate(const std::string& url);
     void Reload();
     void Stop();
+    // Nothing on show: the load in progress stopped, the page, its players
+    // and the history let go.
+    void Clear();
     bool CanGoBack() const;
     bool CanGoForward() const;
     void GoBack();
     void GoForward();
     // Scrolls to the element with this id (or <a name>); "" is the top.
     bool ScrollToFragment(const std::string& fragment);
+    // Scrolls the page by `dy` pixels (down when positive), for a host that
+    // keeps the keyboard itself.
+    bool ScrollBy(int dy);
 
     // ===== STATE =====
     std::string GetUrl() const;
@@ -160,6 +173,7 @@ private:
     const HTML::Document* formsDocument = nullptr;
     bool interactiveForms = true;
     bool mediaPlayback = true;
+    bool opensWebLinks = true;
     // The page's players by the element they play, and the document they
     // belong to (another document: they are let go).
     std::unordered_map<const HTML::Node*, std::shared_ptr<UltraCanvasVideoPlayerElement>> media;

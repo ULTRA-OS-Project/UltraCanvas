@@ -410,7 +410,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
   page from a URL: `SetServices`, `SetScheduler`, `SetBuildOptions`,
   `Navigate`, `Reload`, `Stop`, `GoBack` / `GoForward` (scroll positions kept),
-  `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
+  `ScrollToFragment`, `ScrollBy`, `Clear`, `SetOpensWebLinks` (off: web
+  links to `onExternalLink`, for a viewer of local files), `GetUrl`,
+  `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
   JavaScript (`<noscript>` shown). Forms the reader fills in and sends
@@ -453,6 +455,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `RunsCodeWhenOpened` — whether opening a file of this name would run
+    code (a program, script, installer, shortcut, disk image), by name
+    alone: what a mail attachment or a preview must never open. UltraMail,
+    its threat scanner and the media viewer ask it. Header-only
+    (`UltraCanvasRunsCodeWhenOpened.h`), so headless modules can.
   - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
     file (matched by name, never by reading it) and the generic icon name
     that type falls back to (`application/pdf` → `x-office-document`). Both
@@ -652,12 +659,27 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
   every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
-  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
-  `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`; below the
+  root by '/'-separated path: `ReadStreamAt` / `HasStreamAt`,
+  `StreamNamesAt` / `StorageNamesAt`. Used by the `.doc` importer, the `.xls`
+  reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
   `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
   storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
   the password-protected Office files.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasOutlookMessage** (`UltraCanvasOutlookMessage.h`) — Outlook
+  `.msg` messages ([MS-OXMSG]) read through the compound-file reader:
+  `UCOutlookMessage::Load` / `LoadFromMemory` → `subject`, `messageId`,
+  `inReplyTo`, `from`, `to`,
+  `cc`, `date` (UTC, RFC 5322 form), `bodyText`, `bodyHtml` (`PR_HTML`, else
+  the HTML encapsulated in the compressed RTF), `attachments`
+  (`UCOutlookAttachment`: `filename`, `mediaType`, `contentId`, `hidden`,
+  `embeddedMessage`, `data`). `UCDecompressRtf` ([MS-OXRTFCP] LZFu / MELA) and
+  `UCHtmlFromEncapsulatedRtf` ([MS-OXRTFEX] `\fromhtml1`). 8-bit text in the
+  message's code page (`DecodeWindowsCodePage`). In
+  `core/UltraCanvasOutlookMessage.cpp`; used by the media viewer.
+  See `Docs/UltraCanvas/UltraCanvasOutlookMessage.md`.
 
 - **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
   password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
@@ -871,7 +893,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
   `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
-  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  internal `UltraCanvasDesktopShellBackend.h`; the Linux session end and
+  lock (logind), loudspeaker (libpulse) and tray (StatusNotifierItem) in
+  `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`,
+  `UltraCanvasLinuxDesktopShellAudio.cpp` and `UltraCanvasLinuxTrayHost.cpp`;
+  a null backend elsewhere. On
   Windows also the standalone **UltraCanvasShellGuard** program
   (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
   instead of Explorer. Public surface:
@@ -911,7 +937,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `GetSystemDesktopSwitchUnavailableReason` - why the switch is off where
     the platform has one (a Windows copy running from its MSIX package).
   - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
-    (Windows `ExitWindowsEx`).
+    (Windows `ExitWindowsEx`; Linux logind over the system bus);
+    `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
+    logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
+    volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
+    loudspeaker through the sound server (libpulse loaded at run time:
+    PulseAudio or PipeWire; Core Audio's `IAudioEndpointVolume` on Windows).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -923,12 +955,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
     elsewhere and when another program holds it). `"Super"` alone is a tap
-    of the Win key on Windows (a low-level keyboard hook), refused on X11.
+    of the Super key - a low-level keyboard hook on Windows, XInput2's raw
+    key events on X11 - which neither grabs.
   - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
-    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
-    `Click(id, TrayClick)`: the notification area for a desktop that is the
-    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
-    taskbar runs, and on X11).
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon, and
+    `menu` as `DesktopTrayMenuItem`s where the program hands it over as
+    data) / `Click(id, TrayClick)` / `ActivateMenuItem(id, itemId)`: the
+    notification area for a desktop that is the shell (Windows
+    `Shell_TrayWnd` on its own thread, refused while Explorer's taskbar runs;
+    Linux the StatusNotifierWatcher and host on the session bus with the
+    items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
@@ -1740,10 +1776,12 @@ and secure random generation are implemented, so no application, plugin or
 sibling module has to write its own. Sources under `UltraCanvas/{include,core}/UltraCrypt/`;
 see `Docs/Modules/UltraCrypt/README.md`.
 
-Scope is **data at rest and data integrity**. Transport security stays in
-UltraNet (per-platform and OS-native); credential *storage and policy* stay
-in UltraVault, which consumes UltraCrypt for its file-backed fallback
-backend.
+Scope is **data at rest and data integrity**, and the **X.509 certificates
+and CMS** of formats the world defined (S/MIME: `UltraCryptX509.h`, on a
+second, optional backend, OpenSSL 3, since libsodium has no public-key
+infrastructure). Transport security stays in UltraNet (per-platform and
+OS-native); credential *storage and policy* stay in UltraVault, which
+consumes UltraCrypt for its file-backed fallback backend.
 
 UltraCrypt elements must comply with the same rules as UltraNet and
 UltraDatabase:
@@ -1794,7 +1832,9 @@ backing library is never visible in a public header.
   secure buffer). The general RFC 4648 codecs — `Base32Encode`, `Base32Decode`,
   `Base64Encode`, `Base64Decode` — live in UltraCanvasUtils
   (`UltraCanvasTextUtils.h`, the platform-free text helpers compiled into the
-  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link);
+  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link;
+  it also holds `DecodeWindowsCodePage`, the Windows code pages 1250 / 1251 /
+  1252 / UTF-8 as UTF-8, for the `.xls` and `.msg` readers);
   UltraCrypt's former copies were removed.
 
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
@@ -2494,7 +2534,11 @@ API (`cmake/UltraCanvasWasmtime.cmake` downloads and hash-checks it, or takes
 `ULTRACANVAS_WASMTIME_DIR`), linked privately: no wasmtime header or type
 reaches a caller, so the engine can be replaced (WAMR is the measured
 fallback). UI-free and thread-agnostic; an instance belongs to the thread
-that created it.
+that created it. **In a browser** (Emscripten) the engine is the browser's
+own WebAssembly, through `UltraCanvas/OS/WASM/UltraCanvasWASMWasmHost.cpp`:
+the same header and rules, minus the per-call time limit (a browser cannot
+interrupt a call) and WebAssembly text. It is what runs UltraWeb apps in
+Chrome (`Docs/UltraWeb/UltraWebInTheBrowser.md`).
 
 **Implementation status:** Phase 1 started. On by default on Linux and on
 Windows (`ULTRACANVAS_ENABLE_WASM_HOST`). The MSYS2 CLANG64 / CLANGARM64
@@ -2518,7 +2562,9 @@ call running past its limit, malformed input - ends in a `WasmStatus`, never
 a crash or a hang of the host; after a trap or an interruption an instance
 refuses further calls; host functions are registered through the unchecked
 host-function API (measured at 7 ns per empty call against 82 ns for the
-checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.
+checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`;
+the browser engine: `Apps/UltraWeb/browser/test/wasmhost-browser-test.cpp`
+(under Node).
 
 ---
 
@@ -2554,8 +2600,13 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_SignIn`, `UltraIM_SignOut`, `UltraIM_GetConnectionState`
 - `UltraIM_FetchConversations`, `UltraIM_FetchMessages`
 - `UltraIM_SendText`, `UltraIM_SendFile`, `UltraIM_SendImage`,
-  `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`, `UltraIM_DeleteMessage`,
-  `UltraIM_EditMessage`, `UltraIM_MarkRead`, `UltraIM_SetTyping`
+  `UltraIM_SendVideo`, `UltraIM_SendSticker`, `UltraIM_SendVoiceNote`,
+  `UltraIM_DeleteMessage`, `UltraIM_EditMessage`, `UltraIM_MarkRead`,
+  `UltraIM_SetTyping`
+- `UltraIM_DownloadAttachment` (a video, a file or a voice note fetched to
+  disk when asked for; pictures the provider fetches by itself)
+- `UltraIM_SetPreviewMaker`, `UltraIM_MakePreview` (the application's way
+  of making the preview picture a provider sends with a file)
 - `UltraIM_CanCall`, `UltraIM_StartCall`, `UltraIM_AcceptCall`,
   `UltraIM_EndCall`, `UltraIM_SetCallMuted`, `UltraIM_SetCallCamera`,
   `UltraIM_SetCallVideoSinks`

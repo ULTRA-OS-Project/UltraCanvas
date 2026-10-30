@@ -3,9 +3,15 @@
 // key-pair identity, end-to-end encrypted messages peer to peer over WebRTC
 // data channels, the relay for rendezvous, the offline queue and groups, and
 // the local network for all of that between two ChatCubes with no relay
+// A picture, a video or a file travels as sealed envelopes like a text: a
+// "file" body with its name, size and preview picture, then the bytes in
+// numbered parts (32 KiB each, one envelope per part), peer to peer over
+// the link when it is up, else through the relay's queue - so a file reaches
+// someone offline, and a group, with nothing added to the relay.
+// Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -85,6 +91,20 @@ public:
     // ---- sending ------------------------------------------------------------
     UltraIMResult SendText(const std::string& conversationId, const std::string& text,
                            const UltraIMSendOptions& options) override;
+    // A file of ours, in parts (up to 64 MiB), with its preview picture when
+    // the application makes one (UltraIM_SetPreviewMaker). The outcome as
+    // for a text; our own row is in the store at once, pointing at the file.
+    UltraIMResult SendImage(const std::string& conversationId, const std::string& localPath,
+                            const std::string& caption, const UltraIMSendOptions& options) override;
+    UltraIMResult SendVideo(const std::string& conversationId, const std::string& localPath,
+                            const std::string& caption, const UltraIMSendOptions& options) override;
+    UltraIMResult SendFile(const std::string& conversationId, const std::string& localPath,
+                           const UltraIMSendOptions& options) override;
+    // Everything arrives by itself (the sender pushes the parts): this waits
+    // for the file when it is still on its way, and answers from disk when
+    // it is here.
+    void DownloadAttachment(const std::string& conversationId, const std::string& messageId,
+                            UltraIMAttachmentCallback onResult) override;
     UltraIMResult MarkRead(const std::string& conversationId, const std::string& upToMessageId) override;
     UltraIMResult SetTyping(const std::string& conversationId, bool isTyping) override;
 
@@ -155,6 +175,18 @@ private:
     void ProcessEnvelope(const std::string& envelopeJson, int64_t relayId, bool overLink);
     void HandleBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
 
+    // ---- files ---------------------------------------------------------------------
+    UltraIMResult SendMedia(const std::string& conversationId, const std::string& localPath, const std::string& caption,
+                            UltraIMMessageType type, const UltraIMSendOptions& options);
+    // Where a file that arrived (or its preview picture) is kept.
+    std::string MediaPath(const std::string& fileId, const std::string& suffix) const;
+    // All parts here and the message known: the file is put together, the
+    // message updated, and whoever waits for it told.
+    void TryAssemble(const std::string& fileId);
+    // The "file" and "chunk" bodies.
+    void HandleFileBody(const Envelope& envelope, const UltraCanvas::JSONValue& body);
+    void HandleChunkBody(const UltraCanvas::JSONValue& body);
+
     // ---- outgoing ---------------------------------------------------------------
     void QueueBody(const std::string& conversation, const std::vector<std::string>& recipients,
                    const std::string& clientId, const std::string& bodyJson, int64_t timestampMs);
@@ -198,6 +230,7 @@ private:
         int64_t deadlineMs = 0;
     };
     std::vector<PendingAdd> pendingAdds_;
+    std::map<std::string, std::vector<UltraIMAttachmentCallback>> mediaWaiters_;    // file id -> DownloadAttachment's callbacks
 
     std::thread     worker_;
     std::condition_variable wake_;

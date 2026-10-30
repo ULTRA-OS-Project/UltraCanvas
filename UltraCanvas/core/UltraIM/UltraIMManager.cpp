@@ -1,8 +1,11 @@
 // core/UltraIM/UltraIMManager.cpp
 // UltraIM - provider registry, event bus and the UltraIM_* entry points
+// Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
+// Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
+// Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "UltraIM/UltraIMCore.h"
@@ -49,6 +52,7 @@ struct ManagerState {
     UltraIMConfig config;
     std::map<std::string, ProviderPtr> providers;
     UltraIMDispatcher dispatcher;
+    UltraIMPreviewMaker previewMaker;
     std::map<UltraIMSubscriptionId, std::shared_ptr<UltraIMEventCallback>> subscribers;
     UltraIMSubscriptionId nextSubscriptionId = 1;
     std::set<std::string> loadedModules;     // canonical UTF-8 paths
@@ -150,6 +154,7 @@ UltraIMProviderInfo DescribeProvider(const IUltraIMProviderPlugin& provider) {
     info.localUserId = provider.GetLocalUserId();
     info.authStep = provider.GetAuthStep();
     info.authHint = provider.GetAuthHint();
+    info.authResendHint = provider.GetAuthResendHint();
     info.hasStoredSession = provider.HasStoredSession();
     return info;
 }
@@ -270,6 +275,49 @@ bool UltraIM_IsInitialized() {
 
 const UltraIMConfig& UltraIM_GetConfig() {
     return State().config;
+}
+
+// ============================================================================
+// PREVIEW PICTURES
+// ============================================================================
+
+void UltraIM_SetPreviewMaker(UltraIMPreviewMaker maker) {
+    std::lock_guard<std::mutex> lock(State().mutex);
+    State().previewMaker = std::move(maker);
+}
+
+std::string UltraIM_MakePreview(const std::string& path, const std::string& mimeType, int maxSide,
+                                int& outWidth, int& outHeight) {
+    outWidth = outHeight = 0;
+    UltraIMPreviewMaker maker;
+    std::string base;
+    {
+        std::lock_guard<std::mutex> lock(State().mutex);
+        maker = State().previewMaker;
+        base = State().config.cacheDirectory.empty() ? State().config.dataDirectory : State().config.cacheDirectory;
+    }
+    if (!maker || path.empty() || maxSide <= 0) return std::string();
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    const fs::path dir = base.empty() ? fs::temp_directory_path(ec) / "ultraim-previews"
+                                      : UltraCanvas::PathFromUtf8(base) / "previews";
+    fs::create_directories(dir, ec);
+    // Named by the file's path, size and time, so the same file gives the
+    // same preview and a changed one a new one.
+    // (The write time's count is a 128-bit integer under libc++, which
+    // to_string has no overload for: through a fixed width.)
+    const long long stamp = static_cast<long long>(
+        fs::last_write_time(UltraCanvas::PathFromUtf8(path), ec).time_since_epoch().count());
+    const unsigned long long size = static_cast<unsigned long long>(fs::file_size(UltraCanvas::PathFromUtf8(path), ec));
+    std::vector<uint8_t> digest;
+    const std::string key = path + "|" + std::to_string(size) + "|" + std::to_string(stamp) + "|" + std::to_string(maxSide);
+    UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, key.data(), key.size(), digest);
+    const std::string out = UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8(UltraCrypt_ToHex(digest).substr(0, 32) + ".jpg"));
+    if (!maker(path, mimeType, maxSide, out, outWidth, outHeight) || outWidth <= 0 || outHeight <= 0) {
+        fs::remove(UltraCanvas::PathFromUtf8(out), ec);
+        return std::string();
+    }
+    return out;
 }
 
 // ============================================================================
@@ -404,6 +452,16 @@ void UltraIM_SignIn(const std::string& providerId,
         return;
     }
     provider->SignIn(credentials, callback ? callback : [](const UltraIMResult&) {});
+}
+
+void UltraIM_ResendAuthCode(const std::string& providerId, UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    provider->ResendAuthCode(callback ? callback : [](const UltraIMResult&) {});
 }
 
 void UltraIM_SignOut(const std::string& providerId) {
@@ -582,6 +640,14 @@ UltraIMResult UltraIM_SendImage(const std::string& providerId, const std::string
     return provider->SendImage(conversationId, localPath, caption, WithClientId(options));
 }
 
+UltraIMResult UltraIM_SendVideo(const std::string& providerId, const std::string& conversationId,
+                                const std::string& localPath, const std::string& caption,
+                                const UltraIMSendOptions& options) {
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return NotFound(providerId);
+    return provider->SendVideo(conversationId, localPath, caption, WithClientId(options));
+}
+
 UltraIMResult UltraIM_SendSticker(const std::string& providerId, const std::string& conversationId,
                                   const std::string& packId, const std::string& stickerId,
                                   const UltraIMSendOptions& options) {
@@ -595,6 +661,18 @@ UltraIMResult UltraIM_SendVoiceNote(const std::string& providerId, const std::st
     ProviderPtr provider = FindProvider(providerId);
     if (!provider) return NotFound(providerId);
     return provider->SendVoiceNote(conversationId, localPath, WithClientId(options));
+}
+
+void UltraIM_DownloadAttachment(const std::string& providerId, const std::string& conversationId,
+                                const std::string& messageId, UltraIMAttachmentCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMAttachment>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMAttachment());
+        return;
+    }
+    provider->DownloadAttachment(conversationId, messageId,
+                                 callback ? callback : [](const UltraIMResult&, const UltraIMAttachment&) {});
 }
 
 UltraIMResult UltraIM_DeleteMessage(const std::string& providerId, const std::string& conversationId,

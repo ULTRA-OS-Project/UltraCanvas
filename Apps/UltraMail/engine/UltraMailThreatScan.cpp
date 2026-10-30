@@ -1,4 +1,10 @@
 // Apps/UltraMail/engine/UltraMailThreatScan.cpp
+// Version: 0.11.2 - an attachment is a program when FileAssociations::RunsCodeWhenOpened
+//   says so - the question UltraMail asks before opening one - not by a list of its own:
+//   scripts (.sh, .py), shortcuts (.url, .desktop), installers (.pkg, .deb, .msix), disk
+//   images (.dmg, .vhd) and macOS / Linux programs too, and a name ending in dots or spaces
+// Version: 0.11.1 - the S/MIME / OpenPGP pill no longer says UltraMail cannot check
+//   signatures: the reading pane checks them (UltraMailSecureMime.h)
 // Version: 0.11.0 - fake invoices: attachment-web-page (40 when the mail speaks of an
 //                   invoice or a payment), attachment-active-page (the attached page
 //                   loads a script, sends a form, moves the browser on), and
@@ -37,6 +43,7 @@
 #include "UltraMailThreatScan.h"
 
 #include "UltraMailSenderBrands.h"
+#include "UltraCanvasRunsCodeWhenOpened.h"   // which attachments are programs
 
 #include "HTMLReader/HTMLDocument.h"       // HTML::ExtractPlainText
 #include "HTMLReader/HTMLParser.h"         // HTML::Parser (the links of a page)
@@ -148,16 +155,6 @@ const std::set<std::string>& Shorteners() {
         "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly",
         "cutt.ly", "rb.gy", "shorturl.at", "tiny.cc", "rebrand.ly", "bl.ink",
         "t.ly", "s.id", "short.io", "lnkd.in", "qr.ae",
-    };
-    return s;
-}
-
-// Extensions that execute (or that Windows hides the second half of).
-const std::set<std::string>& RiskyExtensions() {
-    static const std::set<std::string> s = {
-        "exe", "scr", "pif", "com", "bat", "cmd", "msi", "jar", "js", "jse",
-        "vbs", "vbe", "wsf", "wsh", "ps1", "hta", "lnk", "reg", "apk", "iso",
-        "img", "cpl", "dll", "chm", "scf",
     };
     return s;
 }
@@ -1709,7 +1706,9 @@ ThreatReport ScanMessage(const ScanInput& input) {
             inner == "xlsx" || inner == "jpg" || inner == "png" || inner == "txt" ||
             inner == "zip" || inner == "rtf" || inner == "csv";
 
-        if (RiskyExtensions().count(ext)) {
+        // A program, script, installer, shortcut or disk image - the same
+        // question UltraMail asks before it will open an attachment.
+        if (UltraCanvas::FileAssociations::RunsCodeWhenOpened(name)) {
             // A program sent as a program is a reason to be careful; a program
             // dressed as an invoice is the attack itself, so only the disguise
             // is weighted as one. (A colleague really does send the odd .jar.)
@@ -2292,8 +2291,9 @@ std::vector<AuthCheck> DescribeMessageAuthentication(const std::string& rawMessa
         c.tooltip = kind + ": the author signed this message with " +
                     (kind == "S/MIME" ? std::string("a personal certificate")
                                       : std::string("an OpenPGP key")) +
-                    ".\nUltraMail does not check such signatures yet, so the signature "
-                    "says nothing on its own - anyone can attach one.";
+                    ".\nThis is what the headers say, not yet a check: until the signature is "
+                    "checked against the message (the reading pane does that when it opens "
+                    "it), it says nothing on its own - anyone can attach one.";
         checks.push_back(c);
     }
     return checks;

@@ -2,8 +2,11 @@
 // Editable vector drawing view: pasteboard, page, grid, rulers, guides,
 // snapping, the selection's handles, and pointer events forwarded to the
 // active tool in document coordinates. See the header.
+// Version: 1.1.1 - the frame, the outlines of several objects and object snapping measure
+//                  the lines' width (VectorEdit::PaintBounds)
+// Version: 1.1.0 - the turned frame and the rotation handle of rotate mode
 // Version: 1.0.0
-// Last Modified: 2026-09-15
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorCanvas.h"
@@ -31,6 +34,51 @@ namespace {
         const double mag = std::pow(10.0, std::floor(std::log10(std::max(raw, 1e-9))));
         for (double k : {1.0, 2.0, 5.0, 10.0}) if (k * mag >= raw) return k * mag;
         return 10.0 * mag;
+    }
+
+    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kDialRadius = 40.0;      // view pixels
+    constexpr double kStemBeyondFrame = 24.0; // view pixels past the frame
+
+    Point2Dd Midpoint(const Point2Dd& a, const Point2Dd& b) { return Point2Dd((a.x + b.x) / 2, (a.y + b.y) / 2); }
+
+    // A way on screen (y down) from its angle counter-clockwise from up.
+    Point2Dd UpDirection(double radians) { return Point2Dd(-std::sin(radians), -std::cos(radians)); }
+
+    // One element's own box - what it paints, its line included, before its
+    // Transform - carried into the document by that transform and its
+    // ancestors': the corners top left, top right, bottom right, bottom
+    // left, turned and sheared as the object is. False when the box has no
+    // area or the transform flattens it.
+    bool OwnFrame(const VectorEdit::ElementPtr& e, std::array<Point2Dd, 4>& out) {
+        if (!e) return false;
+        const Rect2Dd local = VectorEdit::OwnPaintBounds(e);
+        if (local.width <= 1e-9 || local.height <= 1e-9) return false;
+        const VectorStorage::Matrix3x3 m =
+            VectorEdit::ParentToDocument(e) * e->Transform.value_or(VectorStorage::Matrix3x3::Identity());
+        if (std::fabs(m.Determinant()) < 1e-12) return false;
+        out = {{ m.Transform(Point2Dd(local.x, local.y)),
+                 m.Transform(Point2Dd(local.x + local.width, local.y)),
+                 m.Transform(Point2Dd(local.x + local.width, local.y + local.height)),
+                 m.Transform(Point2Dd(local.x, local.y + local.height)) }};
+        return true;
+    }
+
+    // How far a ray from `p` along the unit `u` runs before it leaves the
+    // convex quad (0 when it never enters it).
+    double RayExit(const Point2Dd& p, const Point2Dd& u, const std::array<Point2Dd, 4>& quad) {
+        double exit = 0.0;
+        for (int i = 0; i < 4; ++i) {
+            const Point2Dd a = quad[i], b = quad[(i + 1) % 4];
+            const Point2Dd e(b.x - a.x, b.y - a.y);
+            const double denom = u.x * e.y - u.y * e.x;
+            if (std::fabs(denom) < 1e-12) continue;
+            const Point2Dd w(a.x - p.x, a.y - p.y);
+            const double t = (w.x * e.y - w.y * e.x) / denom;   // along the ray
+            const double s = (w.x * u.y - w.y * u.x) / denom;   // along the edge
+            if (t > exit && s >= -1e-9 && s <= 1.0 + 1e-9) exit = t;
+        }
+        return exit;
     }
 
     std::string FormatTick(double v) {
@@ -65,6 +113,8 @@ void UltraCanvasVectorCanvas::SetDocument(std::shared_ptr<VectorStorage::VectorD
     document = std::move(doc);
     if (selection) selection->Clear();
     rotationCenter.reset();
+    rotationCenterIds.clear();
+    rotationHandleAngle.reset();
     fitPending = true;
     RequestRedraw();
 }
@@ -72,7 +122,12 @@ void UltraCanvasVectorCanvas::SetDocument(std::shared_ptr<VectorStorage::VectorD
 void UltraCanvasVectorCanvas::HookSelection() {
     if (!selection) return;
     selectionListener = selection->AddListener([this]() {
-        rotationCenter.reset();
+        // An edit that selects the same objects again keeps a moved centre.
+        if (rotationCenter && selection->Ids() != rotationCenterIds) {
+            rotationCenter.reset();
+            rotationCenterIds.clear();
+            if (onRotationCenterChanged) onRotationCenterChanged();
+        }
         RequestRedraw();
     });
 }
@@ -295,7 +350,7 @@ Point2Dd UltraCanvasVectorCanvas::Snap(const Point2Dd& doc, VectorSnapResult* re
             if (!layer || !layer->Visible) continue;
             for (const auto& child : layer->Children) {
                 if (!child || (selection && selection->Contains(child))) continue;
-                const Rect2Dd b = VectorEdit::DocumentBounds(child);
+                const Rect2Dd b = VectorEdit::PaintBounds(child);
                 if (EmptyBox(b)) continue;
                 for (double x : {b.x, b.x + b.width / 2, b.x + b.width}) tryX(x, VectorSnapResult::Kind::Object);
                 for (double y : {b.y, b.y + b.height / 2, b.y + b.height}) tryY(y, VectorSnapResult::Kind::Object);
@@ -316,42 +371,153 @@ Point2Dd UltraCanvasVectorCanvas::Snap(const Point2Dd& doc, VectorSnapResult* re
 // ===========================================================================
 
 Rect2Dd UltraCanvasVectorCanvas::SelectionBounds() const {
+    if (measured) return measured->bounds;
+    return MeasureSelectionBounds();
+}
+
+Rect2Dd UltraCanvasVectorCanvas::MeasureSelectionBounds() const {
     return selection ? selection->Bounds() : Rect2Dd(0, 0, 0, 0);
+}
+
+UltraCanvasVectorCanvas::FrameMeasure::FrameMeasure(const UltraCanvasVectorCanvas& c) : canvas(c), owner(!c.measured) {
+    if (!owner) return;
+    const Rect2Dd b = canvas.MeasureSelectionBounds();
+    canvas.measured = MeasuredFrame{ b, canvas.MeasureSelectionFrame(b) };
+}
+
+UltraCanvasVectorCanvas::FrameMeasure::~FrameMeasure() {
+    if (owner) canvas.measured.reset();
 }
 
 void UltraCanvasVectorCanvas::SetHandleMode(VectorHandleMode mode) {
     if (handleMode == mode) return;
     handleMode = mode;
     RequestRedraw();
+    if (onHandleModeChanged) onHandleModeChanged(mode);
 }
 
 void UltraCanvasVectorCanvas::SetRotationCenter(const std::optional<Point2Dd>& docPoint) {
     rotationCenter = docPoint;
+    if (rotationCenter && selection) rotationCenterIds = selection->Ids();
+    else rotationCenterIds.clear();
     RequestRedraw();
+    if (onRotationCenterChanged) onRotationCenterChanged();
 }
 
 Point2Dd UltraCanvasVectorCanvas::GetRotationCenter() const {
     if (rotationCenter) return *rotationCenter;
-    const Rect2Dd b = SelectionBounds();
-    return Point2Dd(b.x + b.width / 2, b.y + b.height / 2);
+    const std::array<Point2Dd, 4> f = SelectionFrame();
+    return Midpoint(f[0], f[2]);
+}
+
+std::array<Point2Dd, 4> UltraCanvasVectorCanvas::SelectionFrame() const {
+    if (measured) return measured->frame;
+    return MeasureSelectionFrame(MeasureSelectionBounds());
+}
+
+std::array<Point2Dd, 4> UltraCanvasVectorCanvas::MeasureSelectionFrame(const Rect2Dd& b) const {
+    std::array<Point2Dd, 4> frame = {{ Point2Dd(b.x, b.y), Point2Dd(b.x + b.width, b.y),
+                                       Point2Dd(b.x + b.width, b.y + b.height), Point2Dd(b.x, b.y + b.height) }};
+    if (handleMode == VectorHandleMode::Rotate && selection && selection->Count() == 1) {
+        std::array<Point2Dd, 4> own;
+        if (OwnFrame(selection->First(), own)) frame = own;
+    }
+    return frame;
+}
+
+Point2Dd UltraCanvasVectorCanvas::SelectionFramePoint(double fx, double fy) const {
+    const std::array<Point2Dd, 4> f = SelectionFrame();
+    return Point2Dd(f[0].x + (f[1].x - f[0].x) * fx + (f[3].x - f[0].x) * fy,
+                    f[0].y + (f[1].y - f[0].y) * fx + (f[3].y - f[0].y) * fy);
+}
+
+Point2Dd UltraCanvasVectorCanvas::SelectionFrameFraction(const Point2Dd& docPoint) const {
+    const std::array<Point2Dd, 4> f = SelectionFrame();
+    // The frame is a parallelogram: solve p = f0 + fx * across + fy * down.
+    const Point2Dd across(f[1].x - f[0].x, f[1].y - f[0].y), down(f[3].x - f[0].x, f[3].y - f[0].y);
+    const double det = across.x * down.y - across.y * down.x;
+    if (std::fabs(det) < 1e-12) return Point2Dd(0.5, 0.5);
+    const Point2Dd w(docPoint.x - f[0].x, docPoint.y - f[0].y);
+    return Point2Dd((w.x * down.y - w.y * down.x) / det, (across.x * w.y - across.y * w.x) / det);
+}
+
+void UltraCanvasVectorCanvas::SetRotationHandleStyle(VectorRotationHandleStyle style) {
+    if (rotationHandleStyle == style) return;
+    rotationHandleStyle = style;
+    RequestRedraw();
+}
+
+double UltraCanvasVectorCanvas::RotationHandleAngle() const {
+    if (rotationHandleAngle) return *rotationHandleAngle;
+    // The frame's top edge runs along the object's x axis: the handle
+    // stands square to it, as the transform bar's rotation reads it.
+    const std::array<Point2Dd, 4> f = SelectionFrame();
+    const Point2Dd across(f[1].x - f[0].x, f[1].y - f[0].y);
+    if (std::hypot(across.x, across.y) < 1e-12) return 0.0;
+    const double degrees = std::atan2(-across.y, across.x) * 180.0 / kPi;
+    return std::fabs(degrees) < 1e-9 ? 0.0 : degrees;
+}
+
+void UltraCanvasVectorCanvas::SetRotationHandleAngle(const std::optional<double>& degrees) {
+    rotationHandleAngle = degrees;
+    RequestRedraw();
+}
+
+void UltraCanvasVectorCanvas::SetDraggedHandle(VectorHandle handle) {
+    if (draggedHandle == handle) return;
+    draggedHandle = handle;
+    RequestRedraw();
+}
+
+bool UltraCanvasVectorCanvas::TurningHandleDragged() const {
+    if (handleMode != VectorHandleMode::Rotate) return false;
+    switch (draggedHandle) {
+        case VectorHandle::TopLeft: case VectorHandle::TopRight:
+        case VectorHandle::BottomRight: case VectorHandle::BottomLeft:
+        case VectorHandle::Rotation:
+            return true;
+        default:
+            return false;
+    }
 }
 
 Point2Dd UltraCanvasVectorCanvas::HandlePoint(VectorHandle h) const {
-    const Rect2Dd b = SelectionBounds();
-    const double x0 = b.x, x1 = b.x + b.width, xm = b.x + b.width / 2;
-    const double y0 = b.y, y1 = b.y + b.height, ym = b.y + b.height / 2;
+    const std::array<Point2Dd, 4> f = SelectionFrame();
     switch (h) {
-        case VectorHandle::TopLeft: return {x0, y0};
-        case VectorHandle::Top: return {xm, y0};
-        case VectorHandle::TopRight: return {x1, y0};
-        case VectorHandle::Right: return {x1, ym};
-        case VectorHandle::BottomRight: return {x1, y1};
-        case VectorHandle::Bottom: return {xm, y1};
-        case VectorHandle::BottomLeft: return {x0, y1};
-        case VectorHandle::Left: return {x0, ym};
+        case VectorHandle::TopLeft: return f[0];
+        case VectorHandle::Top: return Midpoint(f[0], f[1]);
+        case VectorHandle::TopRight: return f[1];
+        case VectorHandle::Right: return Midpoint(f[1], f[2]);
+        case VectorHandle::BottomRight: return f[2];
+        case VectorHandle::Bottom: return Midpoint(f[2], f[3]);
+        case VectorHandle::BottomLeft: return f[3];
+        case VectorHandle::Left: return Midpoint(f[3], f[0]);
         case VectorHandle::Center: return GetRotationCenter();
-        default: return {xm, ym};
+        case VectorHandle::Rotation: {
+            Point2Dd centre, knob;
+            double angle = 0;
+            if (RotationHandleGeometry(centre, knob, angle)) return view.ViewToDoc(knob);
+            return GetRotationCenter();
+        }
+        default: return Midpoint(f[0], f[2]);
     }
+}
+
+bool UltraCanvasVectorCanvas::RotationHandleGeometry(Point2Dd& centreView, Point2Dd& knobView, double& angle) const {
+    if (handleMode != VectorHandleMode::Rotate || !selection || selection->Empty()) return false;
+    const Rect2Dd b = SelectionBounds();
+    if (EmptyBox(b)) return false;
+    angle = RotationHandleAngle() * kPi / 180.0;
+    centreView = view.DocToView(GetRotationCenter());
+    const Point2Dd u = UpDirection(angle);
+    double length = kDialRadius;
+    if (rotationHandleStyle == VectorRotationHandleStyle::Stem) {
+        std::array<Point2Dd, 4> frame = SelectionFrame();
+        for (auto& corner : frame) corner = view.DocToView(corner);
+        length = RayExit(centreView, u, frame) + kStemBeyondFrame;
+    }
+    knobView = Point2Dd(centreView.x + u.x * length, centreView.y + u.y * length);
+    return true;
 }
 
 Rect2Dd UltraCanvasVectorCanvas::HandleRect(VectorHandle h) const {
@@ -362,6 +528,7 @@ Rect2Dd UltraCanvasVectorCanvas::HandleRect(VectorHandle h) const {
 
 VectorHandle UltraCanvasVectorCanvas::HitTestHandle(const Point2Di& vp) const {
     if (!showSelection || !selection || selection->Empty()) return VectorHandle::NoHandle;
+    const FrameMeasure measure(*this);
     const Rect2Dd b = SelectionBounds();
     if (EmptyBox(b)) return VectorHandle::NoHandle;
     const Point2Dd p(vp.x, vp.y);
@@ -370,7 +537,10 @@ VectorHandle UltraCanvasVectorCanvas::HitTestHandle(const Point2Di& vp) const {
         const Rect2Dd r = HandleRect(h);
         return p.x >= r.x - slop && p.x <= r.x + r.width + slop && p.y >= r.y - slop && p.y <= r.y + r.height + slop;
     };
-    if (handleMode == VectorHandleMode::Rotate && within(VectorHandle::Center)) return VectorHandle::Center;
+    if (handleMode == VectorHandleMode::Rotate) {
+        if (within(VectorHandle::Rotation)) return VectorHandle::Rotation;
+        if (within(VectorHandle::Center)) return VectorHandle::Center;
+    }
     for (VectorHandle h : {VectorHandle::TopLeft, VectorHandle::TopRight, VectorHandle::BottomRight, VectorHandle::BottomLeft,
                            VectorHandle::Top, VectorHandle::Right, VectorHandle::Bottom, VectorHandle::Left})
         if (within(h)) return h;
@@ -492,19 +662,34 @@ void UltraCanvasVectorCanvas::DrawGuides(IRenderContext* ctx, const Rect2Dd& are
 
 void UltraCanvasVectorCanvas::DrawSelectionHandles(IRenderContext* ctx) {
     if (!showSelection || !selection || selection->Empty()) return;
+    const FrameMeasure measure(*this);
     const Rect2Dd b = SelectionBounds();
     if (EmptyBox(b)) return;
-    const Rect2Dd vb = view.DocToView(b);
-    // The bounds, as a thin blue rectangle.
-    ctx->SetStrokePaint(Color(30, 100, 220, 160));
     ctx->SetStrokeWidth(1.0);
     ctx->SetLineDash(UCDashPattern());
-    ctx->DrawRectangle(Rect2Dd(std::round(vb.x) + 0.5, std::round(vb.y) + 0.5, std::round(vb.width), std::round(vb.height)));
+    // While the selection turns only the objects, the centre and the
+    // rotation handle show.
+    if (TurningHandleDragged()) {
+        DrawRotationHandle(ctx);
+        return;
+    }
+    const Rect2Dd vb = view.DocToView(b);
+    const bool rotate = handleMode == VectorHandleMode::Rotate;
+    std::array<Point2Dd, 4> frame = SelectionFrame();
+    for (auto& corner : frame) corner = view.DocToView(corner);
+    // The frame, as a thin blue outline: the upright bounds on whole
+    // pixels, or one object's turned box.
+    ctx->SetStrokePaint(Color(30, 100, 220, 160));
+    if (rotate && selection->Count() == 1) {
+        ctx->DrawLinePath(std::vector<Point2Dd>(frame.begin(), frame.end()), true);
+    } else {
+        ctx->DrawRectangle(Rect2Dd(std::round(vb.x) + 0.5, std::round(vb.y) + 0.5, std::round(vb.width), std::round(vb.height)));
+    }
     // Per-element outlines when several are selected.
     if (selection->Count() > 1) {
         ctx->SetStrokePaint(Color(30, 100, 220, 90));
         for (const auto& e : selection->Elements()) {
-            const Rect2Dd eb = view.DocToView(VectorEdit::DocumentBounds(e));
+            const Rect2Dd eb = view.DocToView(VectorEdit::PaintBounds(e));
             if (EmptyBox(eb)) continue;
             ctx->DrawRectangle(Rect2Dd(std::round(eb.x) + 0.5, std::round(eb.y) + 0.5, std::round(eb.width), std::round(eb.height)));
         }
@@ -513,33 +698,103 @@ void UltraCanvasVectorCanvas::DrawSelectionHandles(IRenderContext* ctx) {
     const VectorHandle edges[] = {VectorHandle::Top, VectorHandle::Right, VectorHandle::Bottom, VectorHandle::Left};
     ctx->SetStrokePaint(handleBorder);
     ctx->SetFillPaint(handleColor);
-    if (handleMode == VectorHandleMode::Scale) {
+    if (!rotate) {
         for (VectorHandle h : corners) { const Rect2Dd r = HandleRect(h); ctx->FillRectangle(r); ctx->DrawRectangle(r); }
         for (VectorHandle h : edges) { const Rect2Dd r = HandleRect(h); ctx->FillRectangle(r); ctx->DrawRectangle(r); }
-    } else {
-        // Rotate: round corner handles; skew: diamond edge handles; and
-        // the rotation centre as a cross-hair circle.
-        for (VectorHandle h : corners) {
-            const Rect2Dd r = HandleRect(h);
-            const Point2Dd c(r.x + r.width / 2, r.y + r.height / 2);
-            ctx->FillCircle(c, r.width / 2);
-            ctx->DrawCircle(c, r.width / 2);
-        }
-        for (VectorHandle h : edges) {
-            const Rect2Dd r = HandleRect(h);
-            const Point2Dd c(r.x + r.width / 2, r.y + r.height / 2);
-            ctx->ClearPath();
-            ctx->MoveTo(c.x, r.y); ctx->LineTo(r.x + r.width, c.y); ctx->LineTo(c.x, r.y + r.height); ctx->LineTo(r.x, c.y); ctx->ClosePath();
-            ctx->FillPathPreserve();
-            ctx->StrokePathPreserve();
-            ctx->ClearPath();
-        }
-        const Point2Dd c = view.DocToView(GetRotationCenter());
-        const double r = handleSize * 0.6;
-        ctx->DrawCircle(c, r);
-        ctx->DrawLine(Point2Dd(c.x - r * 1.6, c.y), Point2Dd(c.x + r * 1.6, c.y));
-        ctx->DrawLine(Point2Dd(c.x, c.y - r * 1.6), Point2Dd(c.x, c.y + r * 1.6));
+        return;
     }
+    // Rotate: round corner handles; skew: diamond edge handles, square to
+    // the frame's edges; the centre and the rotation handle.
+    for (VectorHandle h : corners) {
+        const Rect2Dd r = HandleRect(h);
+        const Point2Dd c(r.x + r.width / 2, r.y + r.height / 2);
+        ctx->FillCircle(c, r.width / 2);
+        ctx->DrawCircle(c, r.width / 2);
+    }
+    const double turn = RotationHandleAngle() * kPi / 180.0;
+    const Point2Dd along(std::cos(turn), -std::sin(turn)), square = UpDirection(turn);
+    for (VectorHandle h : edges) {
+        const Point2Dd c = view.DocToView(HandlePoint(h));
+        const double r = handleSize / 2;
+        ctx->ClearPath();
+        ctx->MoveTo(c.x + square.x * r, c.y + square.y * r);
+        ctx->LineTo(c.x + along.x * r, c.y + along.y * r);
+        ctx->LineTo(c.x - square.x * r, c.y - square.y * r);
+        ctx->LineTo(c.x - along.x * r, c.y - along.y * r);
+        ctx->ClosePath();
+        ctx->FillPathPreserve();
+        ctx->StrokePathPreserve();
+        ctx->ClearPath();
+    }
+    DrawRotationHandle(ctx);
+}
+
+void UltraCanvasVectorCanvas::DrawRotationHandle(IRenderContext* ctx) {
+    Point2Dd c, knob;
+    double angle = 0;
+    if (!RotationHandleGeometry(c, knob, angle)) return;
+    const Color halo(255, 255, 255, 220);
+    ctx->SetLineDash(UCDashPattern());
+    if (rotationHandleStyle == VectorRotationHandleStyle::Dial) {
+        const double r = kDialRadius;
+        // The ring, white under blue so it reads on any drawing.
+        ctx->SetStrokePaint(halo);
+        ctx->SetStrokeWidth(3.0);
+        ctx->DrawCircle(c, r);
+        ctx->SetStrokePaint(handleBorder);
+        ctx->SetStrokeWidth(1.0);
+        ctx->DrawCircle(c, r);
+        // A wedge from 0 (up) to the angle. Up is -pi/2 in the context's
+        // angles, which run clockwise; ours run counter-clockwise.
+        const double a = std::remainder(angle, 2 * kPi);
+        if (std::fabs(a) > 1e-6) {
+            ctx->SetFillPaint(Color(30, 100, 220, 45));
+            const double up = -kPi / 2;
+            if (a > 0) ctx->FillArc(c.x, c.y, r - 0.5, up - a, up);
+            else ctx->FillArc(c.x, c.y, r - 0.5, up, up - a);
+        }
+        // A tick every 15 degrees, longer every 45 and longest at 0.
+        for (int i = 0; i < 24; ++i) {
+            const Point2Dd u = UpDirection(i * kPi / 12);
+            const double inner = r - (i == 0 ? 10.0 : (i % 3 == 0 ? 7.0 : 4.0));
+            ctx->SetStrokeWidth(i % 3 == 0 ? 1.4 : 1.0);
+            ctx->DrawLine(Point2Dd(c.x + u.x * inner, c.y + u.y * inner), Point2Dd(c.x + u.x * r, c.y + u.y * r));
+        }
+    }
+    // The stem from the centre to the knob.
+    const double knobRadius = handleSize * 0.8;
+    const Point2Dd u = UpDirection(angle);
+    const double length = std::hypot(knob.x - c.x, knob.y - c.y);
+    const Point2Dd end(c.x + u.x * std::max(0.0, length - knobRadius), c.y + u.y * std::max(0.0, length - knobRadius));
+    ctx->SetStrokePaint(halo);
+    ctx->SetStrokeWidth(3.0);
+    ctx->DrawLine(c, end);
+    ctx->SetStrokePaint(handleBorder);
+    ctx->SetStrokeWidth(1.2);
+    ctx->DrawLine(c, end);
+    // The centre: a cross-hair circle.
+    const double cr = handleSize * 0.6;
+    ctx->SetFillPaint(handleColor);
+    ctx->FillCircle(c, cr);
+    ctx->SetStrokeWidth(1.0);
+    ctx->DrawCircle(c, cr);
+    ctx->DrawLine(Point2Dd(c.x - cr * 1.6, c.y), Point2Dd(c.x + cr * 1.6, c.y));
+    ctx->DrawLine(Point2Dd(c.x, c.y - cr * 1.6), Point2Dd(c.x, c.y + cr * 1.6));
+    // The knob: a round handle with a turning arrow inside.
+    const bool held = draggedHandle == VectorHandle::Rotation;
+    ctx->SetFillPaint(held ? handleBorder : handleColor);
+    ctx->FillCircle(knob, knobRadius);
+    ctx->SetStrokeWidth(1.4);
+    ctx->DrawCircle(knob, knobRadius);
+    const Color glyph = held ? handleColor : handleBorder;
+    const double gr = knobRadius * 0.5;
+    ctx->SetStrokePaint(glyph);
+    ctx->SetStrokeWidth(1.2);
+    ctx->DrawArc(knob.x, knob.y, gr, -kPi * 0.15, kPi * 1.35);
+    const Point2Dd tip(knob.x + gr * std::cos(-kPi * 0.15), knob.y + gr * std::sin(-kPi * 0.15));
+    ctx->SetFillPaint(glyph);
+    ctx->FillLinePath({ Point2Dd(tip.x - gr * 0.55, tip.y - gr * 0.55), Point2Dd(tip.x + gr * 0.7, tip.y - gr * 0.2),
+                        Point2Dd(tip.x + gr * 0.05, tip.y + gr * 0.75) });
 }
 
 void UltraCanvasVectorCanvas::DrawRulers(IRenderContext* ctx) {

@@ -36,6 +36,22 @@
 # ModelMS3DTest, DiagramJsonLocaleTest) run under one and skip without it - and
 # the image has none (no de_DE, checked 2026-10-15), so here they had never run.
 #
+# It also looks after the clone's own branch. A cloud clone is shallow, hence
+# single-branch: its fetch refspec covers the default branch alone, so a
+# branch pushed with `git push -u` never gets its origin/<branch> copy, and
+# the two Stop hooks that compare HEAD with that copy - the repository's
+# .claude/hooks/check-delivery.sh and the image's own
+# ~/.claude/stop-hook-git-check.sh - read every commit on the branch as
+# unpushed although the remote held them all (a session was told twice to
+# push what it had already pushed). The repository's hook fetches the copy
+# itself since 1.4.0; the image's hook is rewritten by the image at every
+# turn, so it cannot be patched. The cure is at the root: the fetch refspec is
+# widened to every branch, as a full clone has it, so a push keeps the copy
+# current for any branch, and the branch the session starts on has its copy
+# fetched here - both hooks then see the branch as it is on origin.
+#
+# Version: 1.5.0 - the fetch refspec widened to every branch and the session's
+#                  branch copy fetched, for the Stop hooks on a shallow clone
 # Version: 1.4.0 - openssh-server, for the SSH tunnel tests
 # Version: 1.3.0 - the libraries of the MQTT, AMQP, CoAP, SNMP and SSH plug-ins
 # Version: 1.2.0 - the de_DE.UTF-8 locale the locale tests need
@@ -53,7 +69,7 @@ PACKAGES=(
     cmake pkg-config build-essential
     libcairo2-dev libpango1.0-dev libharfbuzz-dev libvips-dev libglib2.0-dev libfreetype-dev dbus
     libtinyxml2-dev libfmt-dev
-    libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+    libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
     # CorelDRAW import, colour management, Unicode, barcodes
     libcdr-dev librevenge-dev zlib1g-dev libboost-dev liblcms2-dev libicu-dev libzbar-dev
     # devices: hot-plug, printing, scanning, remote desktop (UltraWin)
@@ -102,6 +118,30 @@ missing_packages() {
         grep -qxF "$p" <<<"$installed" || echo "$p"
     done
 }
+
+# ---- The clone's branch ----------------------------------------------------------
+
+# The clone keeps origin/<branch> current for every branch, as a full clone
+# does: the fetch refspec is widened to all heads, so a `git push -u` of a
+# branch made in this session updates its copy at once, and the branch the
+# session starts on has its copy fetched here (bounded, no prompt) rather
+# than on the first `git fetch`. A `git fetch` with no refspec then brings
+# every branch of the remote (shallow, a few seconds); the hooks and scripts
+# fetch named branches, as before. Nothing is written in a checkout that is
+# not a clone of origin, and a branch the remote does not have is left alone.
+register_branch_copy() {
+    local repo="${CLAUDE_PROJECT_DIR:-.}" branch
+    git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    git -C "$repo" config --get remote.origin.url >/dev/null 2>&1 || return 0
+    git -C "$repo" config --get-all remote.origin.fetch 2>/dev/null | grep -qxF '+refs/heads/*:refs/remotes/origin/*' ||
+        git -C "$repo" config --add remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+    branch=$(git -C "$repo" branch --show-current 2>/dev/null)
+    [ -n "$branch" ] || return 0
+    git -C "$repo" rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null 2>&1 && return 0
+    GIT_TERMINAL_PROMPT=0 timeout 15 git -C "$repo" fetch --quiet --no-tags origin \
+        "+refs/heads/$branch:refs/remotes/origin/$branch" >/dev/null 2>&1 || true
+}
+register_branch_copy
 
 mapfile -t missing < <(missing_packages)
 need_locale=0

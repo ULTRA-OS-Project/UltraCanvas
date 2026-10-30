@@ -25,12 +25,14 @@
 //
 // The test never touches the user's real cache: it points the cache at a
 // temporary directory of its own and removes it at the end.
+// Version: 1.2.0 - DiskCache::SweepFolders (a folder per entry: opened attachments)
 // Version: 1.1.0
-// Last Modified: 2026-10-09
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDiskCache.h"
 #include "UltraCanvasThumbnailDiskCache.h"
+#include "UltraCanvasPathUtf8.h"   // PathToUtf8
 
 #include <algorithm>
 #include <chrono>
@@ -366,6 +368,37 @@ void TestSweepKeepsAClockSetBack() {
           "reads as fresh rather than as impossibly old, so it survives");
 }
 
+void TestSweepFoldersExpiresOldFolders() {
+    std::cout << "\nA cache with a folder per entry (opened attachments):\n";
+
+    const fs::path directory = g_root / "folders";
+    fs::create_directories(directory);
+    const fs::path fresh = directory / "1001";
+    const fs::path old = directory / "1002";
+    const fs::path ahead = directory / "1003";
+    for (const fs::path& folder : { fresh, old, ahead }) {
+        fs::create_directories(folder);
+        WriteFile(folder / "report.pdf", "content");
+    }
+    const fs::path loose = directory / "loose.txt";
+    WriteFile(loose, "content");
+    // Stamped after their files are written: adding one renews the folder's.
+    Backdate(fresh, std::chrono::hours(12));        // opened this morning
+    Backdate(old, std::chrono::hours(30));          // opened yesterday
+    Backdate(ahead, std::chrono::hours(-24 * 30));  // a clock set back
+    Backdate(loose, std::chrono::hours(24 * 400));
+
+    const size_t removed = DiskCache::SweepFolders(PathToUtf8(directory), std::chrono::hours(24));
+    Check(removed == 1, "one folder goes");
+    Check(!fs::exists(old), "the one made more than a day ago, with its file");
+    Check(fs::exists(fresh / "report.pdf"), "one made within the day stays, with its file");
+    Check(fs::exists(ahead), "a stamp in the future reads as fresh");
+    Check(fs::exists(loose), "a file directly in the cache is not a folder entry: never touched");
+    Check(DiskCache::SweepFolders(PathToUtf8(g_root / "no-such-cache"), std::chrono::hours(24)) == 0 &&
+          DiskCache::SweepFolders(std::string(), std::chrono::hours(24)) == 0,
+          "a cache that does not exist, or none named, sweeps nothing");
+}
+
 void TestSweepOnceRunsOnce() {
     std::cout << "\nThe startup sweep:\n";
 
@@ -456,6 +489,7 @@ int main() {
     TestTouchIsThrottled();
     TestSweepExpiresWhatIsNotServed();
     TestSweepKeepsAClockSetBack();
+    TestSweepFoldersExpiresOldFolders();
     TestSweepOnceRunsOnce();
     TestDisabledCacheIsInert();
     TestUsageAndClear();

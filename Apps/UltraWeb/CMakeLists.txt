@@ -33,6 +33,7 @@ endif()
 add_executable(UltraWeb
     main.cpp
     host/UltraWebFetch.cpp
+    host/UltraWebNetworkFetch.cpp
     host/UltraWebGuest.cpp
     host/UltraWebLoader.cpp
     host/UltraWebCookies.cpp

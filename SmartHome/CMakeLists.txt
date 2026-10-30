@@ -196,8 +196,12 @@ endif()
 
 # smarthome.db is an UltraDatabase (SQLite) store. Without SQLite the store
 # compiles to one that refuses to open, and everything else still works.
-if(TARGET uc-database)
-    target_link_libraries(SmartHome PRIVATE uc-database)
+# Linked through the module's home, never the uc-database archive: on a shared
+# core the archive is already inside libUltraCanvas, and linking it here too
+# gave the app a second copy of UltraDatabase's code and global state (see
+# "MODULE HOMES" in UltraCanvas/CMakeLists.txt).
+if(TARGET UltraDatabase)
+    target_link_libraries(SmartHome PRIVATE UltraDatabase)
     target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
     message(STATUS "  [✓] SmartHome store - smarthome.db over UltraDatabase")
 else()
@@ -375,7 +379,7 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     target_include_directories(SmartHomeAutomationTest PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/core
                                ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
-    if(TARGET uc-database)
+    if(TARGET UltraDatabase)
         target_compile_definitions(SmartHomeAutomationTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
     endif()
     add_test(NAME SmartHomeAutomation COMMAND SmartHomeAutomationTest)
@@ -386,7 +390,7 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
     target_include_directories(SmartHomeHomeModelTest PRIVATE
                                ${CMAKE_CURRENT_SOURCE_DIR}/core
                                ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Simulated)
-    if(TARGET uc-database)
+    if(TARGET UltraDatabase)
         target_compile_definitions(SmartHomeHomeModelTest PRIVATE ULTRACANVAS_SMARTHOME_HAS_STORE=1)
     endif()
     add_test(NAME SmartHomeHomeModel COMMAND SmartHomeHomeModelTest)

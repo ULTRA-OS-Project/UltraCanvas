@@ -1,7 +1,10 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.cpp
 // Xara XAR vector graphics format plugin implementation for UltraCanvas
+// Version: 2.3.1 - the element draws at its own origin: it placed the page by its
+//                  position in the parent a second time, so a drawing anywhere but
+//                  the parent's top-left corner sat that far down and right, cut off
 // Version: 2.3.0
-// Last Modified: 2026-09-18
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARPlugin.h"
@@ -3418,7 +3421,9 @@ namespace UltraCanvas {
 
     void UltraCanvasXARElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRect*/) {
         if (!document || !ctx) return;
-        Rect2Di bounds = GetBounds();
+        // The context is already at the element's origin (the parent
+        // translates to it); its position in the parent applies once.
+        Rect2Di bounds = GetLocalBounds();
         ctx->PushState();
         float docW = document->GetPageWidth(currentPage);
         float docH = document->GetPageHeight(currentPage);

@@ -1,8 +1,9 @@
 // core/UltraCanvasToolGroupButton.cpp
 // A tool group: several tools sharing one slot of a tool palette or toolbar,
 // with a bar of all of them folding out while the pointer rests on the slot.
+// Version: 1.1.0 - SelectItem
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolGroupButton.h"
@@ -131,6 +132,15 @@ namespace UltraCanvas {
                 currentIndex = static_cast<int>(i);
                 if (slotShowsLastPicked) ApplySlotItem();
             }
+            return true;
+        }
+        return false;
+    }
+
+    bool UltraCanvasToolGroupButton::SelectItem(const std::string& itemId) {
+        for (size_t i = 0; i < items.size(); ++i) {
+            if (items[i].id != itemId) continue;
+            PickItem(static_cast<int>(i));
             return true;
         }
         return false;

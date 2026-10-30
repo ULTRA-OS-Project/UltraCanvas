@@ -1,3 +1,67 @@
+#### 2026-10-30 *1.96.0*
+- **Widening a column in the Details view moves the columns after it**
+  instead of taking the width from the column on its right - dragging the
+  divider at a column's right edge in the header resizes that column alone,
+  and a table that grows past the window scrolls sideways (Shift+wheel, a
+  sideways wheel or the scrollbar under the rows). This is the default now;
+  it comes from the framework's `UltraCanvasFilerWidget` (see
+  `Docs/UltraCanvas/changelog.d/filer-details-push-columns.md`).
+- **The "Drive" button sits at the right end of the toolbar**, just left of
+  the Settings gear, instead of between the Favorites heart and the path bar.
+- **Settings > Display > File names.** How much of a long name a thumbnail
+  tile shows is now a choice: *Full name* (as many rows as the name needs),
+  or at most *2*, *3* or *4 rows*. With a limit, a name that needs more rows
+  keeps its end - the start of the last row gives way to "…" so the extension
+  stays readable - and hovering the tile shows the whole name. Every tile of a
+  grid row is as tall as its longest caption, so the rows grow and shrink with
+  the choice; the Details, List and Size bars views keep one line per file. The
+  treemap's cells follow the same limit within the room a cell has. The
+  default stays at 2 rows, the caption earlier releases drew; the choice is
+  saved to `config.ini` (`display.file.names.lines` = `full`, `2`, `3` or `4`)
+  and applied to every file display of the window. Needs the framework's
+  `UltraCanvasFilerWidget::SetCaptionMaxLines` (see
+  `Docs/UltraCanvas/changelog.d/filer-caption-max-lines.md`).
+
+#### 2026-10-28 *1.95.0*
+- **Home and Computer lead the navigation row.** The Home button moved from
+  after Refresh to the first place, and a new **Computer** button beside it
+  opens the Computer page (the main folders and a card per drive) in one
+  click, the way the tree's Computer row and the breadcrumb's first node do.
+  Both are flat, like the split-view, History and Favorites buttons: no frame,
+  tinted only under the pointer. The Computer icon is a new line-style
+  `media/icons/computer.svg` drawn to match `home.svg`.
+- **Extras > Open location** opens the folders a user is sent to and cannot
+  easily find, in the active tab. The *UltraCanvas* block lists where the
+  framework writes: **Crash dumps** (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`,
+  or `ULTRACANVAS_CRASH_DUMP_DIR`; Windows only), **Settings**, **UltraFiler
+  settings** and **Cache**. The *System* block lists the operating system's
+  places: application data, temporary files, crash reports, logs, startup
+  programs, fonts and `/etc` / `drivers\etc`, chosen per platform:
+  - Windows: Windows Error Reporting's dumps and report archive, the Start
+    menu and Startup folders, Program Files.
+  - macOS: `~/Library/Logs/DiagnosticReports`, Preferences, LaunchAgents.
+  - Linux: the XDG folders, `/var/crash`, the systemd core dumps.
+
+  A folder that does not exist yet is listed greyed out, so "there are no
+  crash dumps" reads at a glance. Hovering an entry shows the full path it
+  opens, a greyed-out one included.
+- **Enter location…** (also **Ctrl+L**, wherever the focus is) opens a
+  typed folder or file the way the system writes it. It expands `%VAR%` on
+  Windows (`%LOCALAPPDATA%\UltraCanvas\CrashDumps`), `$VAR` / `${VAR}`
+  elsewhere, and a leading `~`. It strips the quotes "Copy as path" adds, and
+  reads a relative path from the folder on screen. A file opens its folder
+  with the file selected.
+- A location that does not exist is reported with the path it expanded to,
+  so an unset variable shows. The last ten locations that opened are kept,
+  as typed, in the submenu's *Recent* block, with **Clear recent locations**.
+
+#### 2026-10-27 *1.94.0*
+- **The preview pane picks a backdrop that suits each transparent picture or
+  drawing** (the media viewer's new Auto backdrop), and remembers the auto
+  swatch like any other choice (`preview.transparent.auto`). An existing
+  settings file with no such line starts on Auto; picking a colour or the
+  checkerboard in the strip under the preview switches it off again.
+
 #### 2026-10-25 *1.93.0*
 - **Starting UltraFiler after closing it said "UltraFiler is already
   running"** on Windows, and the old copy - no window, still in Task Manager -

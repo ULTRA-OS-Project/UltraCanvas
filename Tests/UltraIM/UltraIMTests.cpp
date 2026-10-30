@@ -187,6 +187,22 @@ void TestSendingAndCalls() {
     CHECK(a->lastClientId == "mine");
     CHECK(UltraIM_SendText("a", "c1", "").code == UltraIMResultCode::InvalidArgument);
     CHECK(UltraIM_SendFile("a", "c1", "/tmp/x").code == UltraIMResultCode::CapabilityMissing);
+    CHECK(UltraIM_SendVideo("a", "c1", "/tmp/x.mp4", "a caption").code == UltraIMResultCode::CapabilityMissing);
+    {
+        // A provider without attachments answers through the dispatcher like
+        // every callback.
+        UltraIMResult downloaded;
+        UltraIMAttachment attachment;
+        UltraIM_DownloadAttachment("a", "c1", "m1", [&](const UltraIMResult& r, const UltraIMAttachment& a) {
+            downloaded = r;
+            attachment = a;
+        });
+        CHECK(downloaded.code == UltraIMResultCode::CapabilityMissing && attachment.localPath.empty());
+        UltraIM_DownloadAttachment("nobody", "c1", "m1", [&](const UltraIMResult& r, const UltraIMAttachment&) {
+            downloaded = r;
+        });
+        CHECK(downloaded.code == UltraIMResultCode::ProviderNotFound);
+    }
 
     std::string callId;
     CHECK(UltraIM_CanCall("a", "direct", false));
@@ -207,6 +223,10 @@ void TestSendingAndCalls() {
     CHECK(!sharedResult && sharedResult.code == UltraIMResultCode::NotFound);
     UltraIM_FetchSharedCredentials("nobody", "telegram", [&](const UltraIMResult& r, const UltraIMCredentials&) { sharedResult = r; });
     CHECK(sharedResult.code == UltraIMResultCode::ProviderNotFound);
+
+    UltraIMResult resend;
+    UltraIM_ResendAuthCode("a", [&](const UltraIMResult& r) { resend = r; });
+    CHECK(!resend && resend.code == UltraIMResultCode::CapabilityMissing);
 
     const std::string id1 = UltraIM_NewClientMessageId();
     const std::string id2 = UltraIM_NewClientMessageId();

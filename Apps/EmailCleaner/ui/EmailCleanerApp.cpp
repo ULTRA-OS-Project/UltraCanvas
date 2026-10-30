@@ -1,8 +1,10 @@
 // Apps/EmailCleaner/ui/EmailCleanerApp.cpp
+// Version: 0.5.0 - UltraMail's mail read with its storage key (encrypted at rest)
 // Version: 0.4.0 - the Contacts page: the address book against the mail sent
 // Version: 0.3.0 - own accounts beside UltraMail's
 // Author: UltraCanvas Framework / ULTRA OS
 #include "EmailCleanerApp.h"
+#include "UltraMailStorage.h"
 #include "UltraCanvasPathUtf8.h"   // PathFromUtf8 / PathToUtf8
 
 #include "UltraCanvasApplication.h"
@@ -82,6 +84,11 @@ bool EmailCleanerApp::Initialize(const std::string& dataDir,
     mailDataDir_  = mailDataDir;
     // UltraMail caches raw bodies under <its data dir>/mail/<account>/<folder>.
     mailCacheDir_ = mailDataDir + "/mail";
+    // ... and keeps them, and its databases, encrypted at rest with the
+    // storage key in its vault (UltraMailStorage.h): read once, with the
+    // device key; a mailbox with a Primary Password stays closed to us.
+    ultraMailKey_ = UltraMail::ReadMailboxStorageKey(mailDataDir, ultraMailKeyProblem_);
+    UltraMail::SetBodyKey(UltraMail::BodyKey(ultraMailKey_));
     rulesPath_    = dataDir + "/rules.txt";
 
     // EmailCleaner's own accounts. A failure here costs only the accounts
@@ -168,8 +175,9 @@ int EmailCleanerApp::RegisterUltraMailAccounts(std::string& problem) {
         // either, and was told to set the account up in UltraMail first.
         const UltraVault::UnlockStatus why = vault.GetLastUnlockStatus();
         if (why == UltraVault::UnlockStatus::Locked) {
-            problem = "UltraMail's credential vault is locked with a master password — "
-                      "open UltraMail once so it stores its device key, then restart.";
+            problem = "UltraMail's mail is locked with a Primary Password - EmailCleaner "
+                      "cannot read it while one is set (UltraMail: Settings > Privacy > "
+                      "Primary Password).";
         } else if (why == UltraVault::UnlockStatus::IoError && !vault.Exists()) {
             problem = "UltraMail has no credential vault yet, and none could be made in " +
                       mailDataDir_ + "/vault — set the account up in UltraMail first, "
@@ -303,7 +311,8 @@ void EmailCleanerApp::ImportAccounts() {
 
     if (std::filesystem::exists(UltraCanvas::PathFromUtf8(mailDb), ec)) {
         UltraMail::LocalStore mailStore;
-        if (mailStore.Open("emailcleaner-mailaccounts", mailDb)) {
+        if (mailStore.Open("emailcleaner-mailaccounts", mailDb,
+                           UltraMail::DatabaseKey(ultraMailKey_, "mail.db"))) {
             std::vector<UltraMail::Account> mailAccounts;
             if (mailStore.ListAccounts(mailAccounts)) {
                 for (const UltraMail::Account& account : mailAccounts) {
@@ -672,7 +681,8 @@ void EmailCleanerApp::RefreshContacts() {
     UltraDbResult read;
     {
         UltraMail::ContactStore book;
-        read = book.Open("emailcleaner-contacts", AddressBookPath());
+        read = book.Open("emailcleaner-contacts", AddressBookPath(),
+                         UltraMail::DatabaseKey(ultraMailKey_, "contacts.db"));
         if (read) read = book.ListAll(contacts);
     }
     // Let go of the file again, as with UltraMail's account list.
@@ -721,7 +731,8 @@ void EmailCleanerApp::DeleteContacts(const std::vector<ContactReview>& selected)
             UltraDbResult result;
             {
                 UltraMail::ContactStore book;
-                result = book.Open("emailcleaner-contacts", AddressBookPath());
+                result = book.Open("emailcleaner-contacts", AddressBookPath(),
+                                   UltraMail::DatabaseKey(ultraMailKey_, "contacts.db"));
                 if (result) result = RemoveContacts(book, selected, removed);
             }
             UltraDb_CloseConnection("emailcleaner-contacts");

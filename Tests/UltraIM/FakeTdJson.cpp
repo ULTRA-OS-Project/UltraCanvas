@@ -6,15 +6,26 @@
 // edited, deleted and read, typing, history, the session kept per database
 // directory - answering with TDLib's JSON objects (td_api.tl names), so that
 // several providers in one process can talk to each other through it.
-// A test-only request through td_execute: fakeAddAccount. For trying an
+// Files: a photo, a video or a document sent (inputMessagePhoto / Video /
+// Document with inputFileLocal) is kept as a file the sender has and the
+// others download (downloadFile: the file object back, and updateFile), as
+// is a profile photo (fakeAddAccount's photo), so avatars and attachments
+// work as with TDLib - paths only, no file is read or written.
+// Test-only requests through td_execute: fakeAddAccount; and the other
+// device of a sign-in by QR code - fakeScanLoginToken (link, phone: the
+// signed-in app that scans it) and fakeRefreshLoginToken (link: a fresh one
+// in its place, as Telegram sends before the last expires). For trying an
 // application on it, FAKE_TDJSON_ACCOUNTS seeds accounts
 // ("phone:First:username:password;..."), and an account called "echobot"
 // answers every message with "echo: <text>". The code is always 12345.
 // The number +1 555 9999 is never answered (a network that is down), for the
 // provider's step timeout.
+// Version: 0.1.4 - files: profile photos, photos, videos and documents sent, downloadFile and updateFile
+// Version: 0.1.3 - sign-in by QR code (requestQrCodeAuthentication, scanned and refreshed through td_execute)
+// Version: 0.1.2 - the code to the app first, by SMS on resendAuthenticationCode (as Telegram does)
 // Version: 0.1.1 - a phone number whose code never comes
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasJSON.h"
@@ -52,6 +63,16 @@ struct Account {
     std::string lastName;
     std::string username;
     std::string password;       // "" = no two-step verification
+    int32_t     photoFile = 0;  // the profile photo's file; 0 = none
+};
+
+// A file Telegram holds: its path on the sender's disk, which is where a
+// download "puts" it too (nothing is copied).
+struct FileRec {
+    int32_t     id = 0;
+    std::string path;
+    int64_t     size = 0;
+    std::set<int64_t> downloadedBy; // the users whose devices have it (TDLib's database keeps it per account)
 };
 
 struct Message {
@@ -60,9 +81,13 @@ struct Message {
     int64_t     date = 0;
     int64_t     editDate = 0;
     int64_t     replyTo = 0;
-    std::string text;
+    std::string text;           // the text, or a media message's caption
     std::string service;        // "" = text; else the content's @type
     std::string title;
+    std::string media;          // "" = text; messagePhoto / messageVideo / messageDocument
+    std::string fileName;
+    int32_t     file = 0;       // the media's file
+    int32_t     thumbnail = 0;  // a video's preview picture
 };
 
 struct ChatRec {
@@ -77,6 +102,8 @@ struct Client {
     int         id = 0;
     bool        started = false;
     bool        closed = false;
+    bool        codeBySms = false;       // after resendAuthenticationCode
+    std::string loginToken;              // the QR code's, while authorizationStateWaitOtherDeviceConfirmation
     std::string state;
     std::string databaseDir;
     std::string databaseKey;
@@ -95,11 +122,14 @@ struct Server {
     std::map<std::string, std::pair<std::string, int64_t>> sessions;    // database dir -> key, user
     std::map<std::string, ChatRec> chats;   // "p:<low>:<high>" or "g:<id>"
     std::map<int, Client> clients;
+    std::map<int32_t, FileRec> files;
+    int32_t nextFile = 1;
     int nextClient = 1;
     int64_t nextUser = 1000;
     int64_t nextMessage = 1;
     int64_t nextTemp = 1;
     int64_t nextGroup = 500;
+    int64_t nextToken = 1;
     int64_t clock = 1700000000;
 };
 
@@ -124,6 +154,69 @@ std::string Digits(const std::string& s) {
         if (c >= '0' && c <= '9') d += c;
     }
     return d;
+}
+
+std::string BaseName(const std::string& path) {
+    const size_t slash = path.find_last_of("/\\");
+    return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+// ---- files (server mutex held) ---------------------------------------------------
+
+int32_t NewFile(const std::string& path, int64_t size, int64_t owner) {
+    FileRec f;
+    f.id = S().nextFile++;
+    f.path = path;
+    f.size = size;
+    if (owner) f.downloadedBy.insert(owner);
+    S().files[f.id] = f;
+    return f.id;
+}
+
+// The file as TDLib describes it to `viewer`: the path once that account has it.
+JSONValue FileObject(int32_t id, int64_t viewer) {
+    JSONValue o = Obj("file");
+    auto it = S().files.find(id);
+    if (it == S().files.end()) return o;
+    const FileRec& f = it->second;
+    const bool here = viewer && f.downloadedBy.count(viewer);
+    o.Set("id", JSONValue(f.id));
+    o.Set("size", JSONValue(f.size));
+    o.Set("expected_size", JSONValue(f.size));
+    JSONValue local = Obj("localFile");
+    local.Set("path", JSONValue(here ? f.path : std::string()));
+    local.Set("can_be_downloaded", JSONValue(true));
+    local.Set("can_be_deleted", JSONValue(here));
+    local.Set("is_downloading_active", JSONValue(false));
+    local.Set("is_downloading_completed", JSONValue(here));
+    local.Set("download_offset", JSONValue(0));
+    local.Set("downloaded_prefix_size", JSONValue(here ? f.size : 0));
+    local.Set("downloaded_size", JSONValue(here ? f.size : 0));
+    o.Set("local", local);
+    JSONValue remote = Obj("remoteFile");
+    remote.Set("id", JSONValue("remote-" + std::to_string(f.id)));
+    remote.Set("unique_id", JSONValue("unique-" + std::to_string(f.id)));
+    remote.Set("is_uploading_active", JSONValue(false));
+    remote.Set("is_uploading_completed", JSONValue(true));
+    remote.Set("uploaded_size", JSONValue(f.size));
+    o.Set("remote", remote);
+    return o;
+}
+
+JSONValue PhotoInfo(const char* type, int32_t file, int64_t viewer) {
+    JSONValue p = Obj(type);
+    p.Set("small", FileObject(file, viewer));
+    p.Set("big", FileObject(file, viewer));
+    p.Set("has_animation", JSONValue(false));
+    p.Set("is_personal", JSONValue(false));
+    return p;
+}
+
+JSONValue Formatted(const std::string& text) {
+    JSONValue t = Obj("formattedText");
+    t.Set("text", JSONValue(text));
+    t.Set("entities", JSONValue::MakeArray());
+    return t;
 }
 
 void Seed(Server& server) {
@@ -193,11 +286,16 @@ std::vector<Client*> ClientsOf(int64_t user) {
     return out;
 }
 
-JSONValue UserObject(const Account& a) {
+JSONValue UserObject(const Account& a, int64_t viewer) {
     JSONValue u = Obj("user");
     u.Set("id", JSONValue(a.id));
     u.Set("first_name", JSONValue(a.firstName));
     u.Set("last_name", JSONValue(a.lastName));
+    if (a.photoFile) {
+        JSONValue photo = PhotoInfo("profilePhoto", a.photoFile, viewer);
+        photo.Set("id", JSONValue(static_cast<int64_t>(a.photoFile)));
+        u.Set("profile_photo", photo);
+    }
     JSONValue names = Obj("usernames");
     JSONValue active = JSONValue::MakeArray();
     if (!a.username.empty()) active.Append(JSONValue(a.username));
@@ -218,7 +316,7 @@ void KnowUser(Client& c, int64_t user) {
     if (c.knownUsers.count(user) || !S().accounts.count(user)) return;
     c.knownUsers.insert(user);
     JSONValue u = Obj("updateUser");
-    u.Set("user", UserObject(S().accounts[user]));
+    u.Set("user", UserObject(S().accounts[user], c.user));
     Push(c, u);
 }
 
@@ -269,12 +367,56 @@ JSONValue MessageObject(const ChatRec& chat, const Message& m, int64_t viewer, b
         o.Set("reply_to", reply);
     }
     JSONValue content;
-    if (m.service.empty()) {
+    if (m.media == "messagePhoto") {
+        content = Obj("messagePhoto");
+        JSONValue photo = Obj("photo");
+        photo.Set("has_stickers", JSONValue(false));
+        JSONValue sizes = JSONValue::MakeArray();
+        const char* types[] = {"m", "x"};
+        for (int i = 0; i < 2; ++i) {
+            JSONValue size = Obj("photoSize");
+            size.Set("type", JSONValue(types[i]));
+            size.Set("photo", FileObject(m.file, viewer));
+            size.Set("width", JSONValue(i == 0 ? 320 : 800));
+            size.Set("height", JSONValue(i == 0 ? 240 : 600));
+            size.Set("progressive_sizes", JSONValue::MakeArray());
+            sizes.Append(size);
+        }
+        photo.Set("sizes", sizes);
+        content.Set("photo", photo);
+        content.Set("caption", Formatted(m.text));
+        content.Set("is_secret", JSONValue(false));
+    } else if (m.media == "messageVideo") {
+        content = Obj("messageVideo");
+        JSONValue video = Obj("video");
+        video.Set("duration", JSONValue(12));
+        video.Set("width", JSONValue(640));
+        video.Set("height", JSONValue(360));
+        video.Set("file_name", JSONValue(m.fileName));
+        video.Set("mime_type", JSONValue("video/mp4"));
+        video.Set("has_stickers", JSONValue(false));
+        video.Set("supports_streaming", JSONValue(true));
+        JSONValue thumbnail = Obj("thumbnail");
+        thumbnail.Set("format", Obj("thumbnailFormatJpeg"));
+        thumbnail.Set("width", JSONValue(320));
+        thumbnail.Set("height", JSONValue(180));
+        thumbnail.Set("file", FileObject(m.thumbnail, viewer));
+        video.Set("thumbnail", thumbnail);
+        video.Set("video", FileObject(m.file, viewer));
+        content.Set("video", video);
+        content.Set("caption", Formatted(m.text));
+        content.Set("is_secret", JSONValue(false));
+    } else if (m.media == "messageDocument") {
+        content = Obj("messageDocument");
+        JSONValue document = Obj("document");
+        document.Set("file_name", JSONValue(m.fileName));
+        document.Set("mime_type", JSONValue("application/octet-stream"));
+        document.Set("document", FileObject(m.file, viewer));
+        content.Set("document", document);
+        content.Set("caption", Formatted(m.text));
+    } else if (m.service.empty()) {
         content = Obj("messageText");
-        JSONValue text = Obj("formattedText");
-        text.Set("text", JSONValue(m.text));
-        text.Set("entities", JSONValue::MakeArray());
-        content.Set("text", text);
+        content.Set("text", Formatted(m.text));
     } else {
         content = Obj(m.service.c_str());
         content.Set("title", JSONValue(m.title));
@@ -315,6 +457,7 @@ JSONValue ChatObject(const ChatRec& chat, int64_t viewer) {
         o.Set("type", t);
         const Account& a = S().accounts[peer];
         o.Set("title", JSONValue(a.firstName + (a.lastName.empty() ? "" : " " + a.lastName)));
+        if (a.photoFile) o.Set("photo", PhotoInfo("chatPhotoInfo", a.photoFile, viewer));
     }
     o.Set("positions", JSONValue::MakeArray());     // they follow in updateChatLastMessage
     int unread = 0;
@@ -356,7 +499,7 @@ void PresenceChanged(int64_t user) {
         if (c.closed || c.user == user || !c.knownUsers.count(user) || c.state != "authorizationStateReady") continue;
         JSONValue u = Obj("updateUserStatus");
         u.Set("user_id", JSONValue(user));
-        u.Set("status", UserObject(S().accounts[user])["status"]);
+        u.Set("status", UserObject(S().accounts[user], 0)["status"]);
         Push(c, u);
     }
 }
@@ -379,6 +522,51 @@ void Deliver(ChatRec& chat, const Message& m, int64_t exceptClient) {
             Push(*other, u);
         }
     }
+}
+
+// The code info Telegram sends: to the app the number is signed in on first,
+// with SMS as the next way; by SMS once asked for, with no way after that.
+void CodeSent(Client& c) {
+    JSONValue info = Obj("authenticationCodeInfo");
+    info.Set("phone_number", JSONValue("+" + c.phone));
+    JSONValue how = Obj(c.codeBySms ? "authenticationCodeTypeSms" : "authenticationCodeTypeTelegramMessage");
+    how.Set("length", JSONValue(5));
+    info.Set("type", how);
+    if (!c.codeBySms) {
+        JSONValue next = Obj("authenticationCodeTypeSms");
+        next.Set("length", JSONValue(5));
+        info.Set("next_type", next);
+    }
+    JSONValue extraState = JSONValue::MakeObject();
+    extraState.Set("code_info", info);
+    State(c, "authorizationStateWaitCode", extraState);
+}
+
+// A sign-in by QR code: the link Telegram gives (tg://login?token=...), a
+// fresh one each time.
+void LoginTokenMade(Client& c) {
+    c.loginToken = "fake" + std::to_string(S().nextToken++);
+    JSONValue extraState = JSONValue::MakeObject();
+    extraState.Set("link", JSONValue("tg://login?token=" + c.loginToken));
+    State(c, "authorizationStateWaitOtherDeviceConfirmation", extraState);
+}
+
+// What follows a number or a QR code Telegram accepts: the two-step password
+// when the account has one, else signed in; a number Telegram does not know
+// registers (a code) or is refused (a QR code: only a signed-in app scans).
+void AccountFound(Client& c, bool byQrCode) {
+    for (auto& a : S().accounts) {
+        if (a.second.phone != c.phone) continue;
+        if (!a.second.password.empty()) {
+            JSONValue s = JSONValue::MakeObject();
+            s.Set("password_hint", JSONValue("the usual"));
+            s.Set("has_recovery_email_address", JSONValue(false));
+            return State(c, "authorizationStateWaitPassword", s);
+        }
+        return SignedIn(c, a.first);
+    }
+    if (byQrCode) return State(c, "authorizationStateWaitPhoneNumber");
+    State(c, "authorizationStateWaitRegistration");
 }
 
 // ---- requests ----------------------------------------------------------------------
@@ -429,30 +617,31 @@ void Handle(Client& c, const JSONValue& r) {
         if (c.phone.size() < 5) return fail(400, "PHONE_NUMBER_INVALID");
         if (c.phone == "15559999") return;      // no answer, ever: the network is down
         ok();
-        JSONValue info = Obj("authenticationCodeInfo");
-        info.Set("phone_number", JSONValue("+" + c.phone));
-        JSONValue how = Obj("authenticationCodeTypeSms");
-        how.Set("length", JSONValue(5));
-        info.Set("type", how);
-        JSONValue extraState = JSONValue::MakeObject();
-        extraState.Set("code_info", info);
-        return State(c, "authorizationStateWaitCode", extraState);
+        c.codeBySms = false;
+        return CodeSent(c);
+    }
+    if (type == "resendAuthenticationCode") {
+        if (c.state != "authorizationStateWaitCode") return fail(400, "Unexpected resendAuthenticationCode");
+        if (c.codeBySms) return fail(400, "SEND_CODE_UNAVAILABLE");    // no next way left
+        ok();
+        c.codeBySms = true;
+        return CodeSent(c);
+    }
+    if (type == "requestQrCodeAuthentication") {
+        // The states TDLib takes it in: instead of the number, or of a code,
+        // a password, a name (not while a QR code already waits).
+        if (c.state != "authorizationStateWaitPhoneNumber" && c.state != "authorizationStateWaitCode" &&
+            c.state != "authorizationStateWaitPassword" && c.state != "authorizationStateWaitRegistration")
+            return fail(400, "Call to requestQrCodeAuthentication unexpected");
+        ok();
+        c.phone.clear();
+        return LoginTokenMade(c);
     }
     if (type == "checkAuthenticationCode") {
         if (c.state != "authorizationStateWaitCode") return fail(400, "Unexpected checkAuthenticationCode");
         if (r["code"].GetString() != kCode) return fail(400, "PHONE_CODE_INVALID");
         ok();
-        for (auto& a : S().accounts) {
-            if (a.second.phone != c.phone) continue;
-            if (!a.second.password.empty()) {
-                JSONValue s = JSONValue::MakeObject();
-                s.Set("password_hint", JSONValue("the usual"));
-                s.Set("has_recovery_email_address", JSONValue(false));
-                return State(c, "authorizationStateWaitPassword", s);
-            }
-            return SignedIn(c, a.first);
-        }
-        return State(c, "authorizationStateWaitRegistration");
+        return AccountFound(c, false);
     }
     if (type == "checkAuthenticationPassword") {
         if (c.state != "authorizationStateWaitPassword") return fail(400, "Unexpected checkAuthenticationPassword");
@@ -477,7 +666,7 @@ void Handle(Client& c, const JSONValue& r) {
     }
     if (!ready) return fail(401, "Unauthorized");
 
-    if (type == "getMe") return Answer(c, extra, UserObject(S().accounts[c.user]));
+    if (type == "getMe") return Answer(c, extra, UserObject(S().accounts[c.user], c.user));
     if (type == "loadChats") {
         if (c.allLoaded) return fail(404, "Not Found");
         for (auto& entry : S().chats) {
@@ -509,7 +698,7 @@ void Handle(Client& c, const JSONValue& r) {
         for (auto& a : S().accounts) {
             if (a.second.phone != phone) continue;
             KnowUser(c, a.first);
-            return Answer(c, extra, UserObject(a.second));
+            return Answer(c, extra, UserObject(a.second, c.user));
         }
         return fail(404, "User not found");
     }
@@ -548,12 +737,31 @@ void Handle(Client& c, const JSONValue& r) {
         ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
         if (!chat) return fail(400, "Chat not found");
         const JSONValue& content = r["input_message_content"];
-        if (content["@type"].GetString() != "inputMessageText") return fail(400, "Unsupported content");
+        const std::string kind = content["@type"].GetString();
         Message m;
         m.sender = c.user;
         m.date = ++S().clock;
-        m.text = content["text"]["text"].GetString();
         m.replyTo = r["reply_to"]["message_id"].GetInteger(0);
+        if (kind == "inputMessageText") {
+            m.text = content["text"]["text"].GetString();
+        } else if (kind == "inputMessagePhoto" || kind == "inputMessageVideo" || kind == "inputMessageDocument") {
+            // A file of the sender's (inputFileLocal): kept as a file the
+            // sender has and the others download; a video gets a preview
+            // picture that everyone downloads.
+            const char* field = kind == "inputMessagePhoto" ? "photo" : kind == "inputMessageVideo" ? "video" : "document";
+            const std::string path = content[field]["path"].GetString();
+            if (content[field]["@type"].GetString() != "inputFileLocal" || path.empty())
+                return fail(400, "Unsupported file");
+            m.media = kind == "inputMessagePhoto" ? "messagePhoto"
+                    : kind == "inputMessageVideo" ? "messageVideo"
+                                                  : "messageDocument";
+            m.text = content["caption"]["text"].GetString();
+            m.fileName = BaseName(path);
+            m.file = NewFile(path, 1000 + static_cast<int64_t>(path.size()), c.user);
+            if (kind == "inputMessageVideo") m.thumbnail = NewFile(path + ".thumb.jpg", 320, 0);
+        } else {
+            return fail(400, "Unsupported content");
+        }
         // First the message as it goes out (a temporary id), then as sent.
         Message pending = m;
         pending.id = (S().nextTemp++) + 1;
@@ -671,6 +879,22 @@ void Handle(Client& c, const JSONValue& r) {
         }
         return;
     }
+    if (type == "downloadFile") {
+        auto file = S().files.find(static_cast<int32_t>(r["file_id"].GetInteger(0)));
+        if (file == S().files.end()) return fail(400, "File not found");
+        const bool had = file->second.downloadedBy.count(c.user) != 0;
+        file->second.downloadedBy.insert(c.user);
+        Answer(c, extra, FileObject(file->first, c.user));
+        if (!had) {
+            // As TDLib: the file reported as it comes in, to this account's clients.
+            for (Client* mine : ClientsOf(c.user)) {
+                JSONValue u = Obj("updateFile");
+                u.Set("file", FileObject(file->first, c.user));
+                Push(*mine, u);
+            }
+        }
+        return;
+    }
     if (type == "getChatHistory") {
         ChatRec* chat = ChatOf(c.user, r["chat_id"].GetInteger(0));
         if (!chat) return fail(400, "Chat not found");
@@ -736,9 +960,29 @@ FAKE_TD_EXPORT const char* td_execute(const char* request) {
         a.lastName = r["last_name"].GetString();
         a.username = r["username"].GetString();
         a.password = r["password"].GetString();
+        const std::string photo = r["photo"].GetString();
+        if (!photo.empty()) a.photoFile = NewFile(photo, 4096, 0);
         S().accounts[a.id] = a;
         answer = Obj("user");
         answer.Set("id", JSONValue(a.id));
+    } else if (type == "fakeScanLoginToken" || type == "fakeRefreshLoginToken") {
+        // The other device: a signed-in app (phone) scans the link, or
+        // Telegram replaces the link with a fresh one.
+        const std::string link = r["link"].GetString();
+        const std::string prefix = "tg://login?token=";
+        Client* waiting = nullptr;
+        for (auto& entry : S().clients) {
+            Client& c = entry.second;
+            if (!c.closed && c.state == "authorizationStateWaitOtherDeviceConfirmation" && link == prefix + c.loginToken)
+                waiting = &c;
+        }
+        if (!waiting) answer = Error(400, "No sign-in waits for that link");
+        else if (type == "fakeRefreshLoginToken") LoginTokenMade(*waiting);
+        else {
+            waiting->phone = Digits(r["phone"].GetString());
+            waiting->loginToken.clear();
+            AccountFound(*waiting, true);
+        }
     } else if (type == "getOption") {
         answer = Obj("optionValueString");
         answer.Set("value", JSONValue("fake"));

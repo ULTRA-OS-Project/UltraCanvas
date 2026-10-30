@@ -22,6 +22,14 @@ Homebrew still provides the build tools (`cmake`, `pkg-config`, `ccache`,
 autotools, `nasm`), and remains the easy way to build locally - those apps run
 on the macOS they were built on and newer.
 
+It is also where most users get **GnuPG**, which UltraMail's OpenPGP runs as
+programs (`gpg`, `gpg-agent`): the bundle carries GPGME (built here, with
+libassuan and libgpg-error) but no GnuPG, which stays the user's own
+(`brew install gnupg pinentry-mac`, or GPG Suite). UltraMail looks for it in
+`/opt/homebrew/bin`, `/usr/local/bin`, `/usr/local/MacGPG2/bin` and
+`/opt/local/bin`, since an app started from the Finder has none of them on its
+`PATH`.
+
 ## What is here
 
 | Path | Contents |
@@ -29,7 +37,7 @@ on the macOS they were built on and newer.
 | `vcpkg.json` | The libraries, with the features the apps rely on (libvips' file formats, harfbuzz's CoreText shaper, ...) |
 | `vcpkg-configuration.json` | Points vcpkg at the overlays below; no registry, so the ports are those of the pinned vcpkg commit |
 | `triplets/` | `arm64-osx-ultracanvas` and `x64-osx-ultracanvas`: shared libraries, release only, `VCPKG_OSX_DEPLOYMENT_TARGET 14.0` |
-| `ports/libvips` | vcpkg's port with the features it lacks (FITS, MAT, OpenEXR, JPEG 2000, RAW, FFTW, highway, dzsave archives, and the built-in GIF/PPM/Radiance/Analyze loaders, which vcpkg's portfile turns off unless named) |
+| `ports/libvips` | vcpkg's port with the features it lacks (FITS, MAT, OpenEXR, JPEG 2000, JPEG XL, HEIF / AVIF, RAW, FFTW, highway, dzsave archives, and the built-in GIF/PPM/Radiance/Analyze loaders, which vcpkg's portfile turns off unless named) |
 | `ports/mupdf` | MuPDF, not in vcpkg: a shared libmupdf against vcpkg's freetype, harfbuzz and friends, as Homebrew built it, with its lcms2mt fork's `cms*` symbols kept out of the library's exports. Without libcrypto (PDF signatures, which the apps do not use), and with pkg-config confined to vcpkg's prefix, so it never links a library of the build machine's Homebrew |
 | `ports/zbar` | zbar, not in vcpkg: the library only |
 | `ports/librevenge` | librevenge, not in vcpkg: needed by the vendored libcdr (CorelDRAW plug-in) |

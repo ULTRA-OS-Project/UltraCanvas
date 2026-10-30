@@ -7,9 +7,12 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.18.0 - Archives > TAR: tar, how Compress packs a TAR (the
+// Version: 1.20.0 - Archives > TAR: tar, how Compress packs a TAR (the
 //                   compressor levels, threads, zstd long mode, header format,
 //                   what each file keeps, links, exclusions)
+// Version: 1.19.0 - Extras > Open location: recentLocations, the locations typed there
+// Version: 1.18.0 - previewAutoBackground (preview.transparent.auto): the viewer's Auto backdrop,
+//                  on unless a colour or the checkerboard was picked
 // Version: 1.17.0 - Handling > Protected files: forgetPasswordsAfterMinutes, how long
 //                   UltraFiler goes without input before the preview forgets the
 //                   passwords Unlock was given
@@ -90,10 +93,12 @@ public:
     static constexpr int kDefaultHistoryEntries = 300;
 
     // ===== THE SETTINGS =====
-    // Media viewer: backdrop behind transparent images — the checkered
-    // pattern used by image editors, or a preset solid colour (default white).
-    // Chosen from the colour strip the viewer shows under a transparent
-    // image; the settings window has no page for it.
+    // Media viewer: backdrop behind transparent images and drawings — one
+    // picked for each file to suit it (the default), the checkered pattern
+    // used by image editors, or a preset solid colour. Chosen from the colour
+    // strip the viewer shows under a transparent image; the settings window
+    // has no page for it. Auto wins over the other two.
+    bool  previewAutoBackground      = true;
     bool  previewCheckeredBackground = false;
     Color previewTransparentColor    = Color(255, 255, 255, 255);
 
@@ -158,6 +163,16 @@ public:
     // which is the display every earlier release had.
     bool showFileExtensions = true;
     FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+
+    // Display > File names: how many lines a name may take under a thumbnail
+    // tile (and in a treemap cell) - 0 for the full name however many lines
+    // it needs, otherwise 2, 3 or 4, past which the head of the last line
+    // gives way to "…" so the extension stays readable. Two by default, the
+    // caption every earlier release drew. The column views keep one line.
+    static constexpr int kFileNameLinesFull = 0;
+    static constexpr int kMinFileNameLines  = 2;
+    static constexpr int kMaxFileNameLines  = 4;
+    int fileNameMaxLines = 2;
 
     // Display > File icons: whose icons an entry with no picture of its own
     // is drawn with - UltraFiler's own drawn folder shape and coloured sheet,
@@ -347,6 +362,12 @@ public:
     // default is detected at run time (see UltraFilerPrompt).
     std::string promptApplication;
 
+    // Extras > Open location > Enter location…: the locations typed there,
+    // newest first, as typed (with their %VAR% / $VAR / ~ unexpanded, so an
+    // entry follows the variable), listed at the end of the submenu.
+    static constexpr size_t kMaxRecentLocations = 10;
+    std::vector<std::string> recentLocations;
+
     // ===== PERSISTENCE =====
 
     // UltraFiler's folder in the shared UltraCanvas settings folder, as every
@@ -423,7 +444,11 @@ public:
             kv[Trim(line.substr(0, eq))] = Trim(line.substr(eq + 1));
         }
 
-        auto it = kv.find("preview.transparent.checkered");
+        auto it = kv.find("preview.transparent.auto");
+        if (it != kv.end())
+            previewAutoBackground =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("preview.transparent.checkered");
         if (it != kv.end())
             previewCheckeredBackground =
                     (it->second == "true" || it->second == "1" || it->second == "yes");
@@ -468,6 +493,8 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.extensions.badge");
         if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
+        it = kv.find("display.file.names.lines");
+        if (it != kv.end()) fileNameMaxLines = ParseFileNameLines(it->second);
         // Not "display.file.icons", the key UltraFiler 1.66.1 and earlier
         // wrote: every save put "simple" there whether or not anyone chose
         // it, so it cannot tell a choice from the old default, and reading
@@ -569,6 +596,12 @@ public:
                      kMinHistoryEntries, kMaxHistoryEntries);
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
+        // One key per entry: a path may hold the comma a list would split on.
+        recentLocations.clear();
+        for (size_t i = 1; i <= kMaxRecentLocations; ++i) {
+            it = kv.find("extras.locations.recent." + std::to_string(i));
+            if (it != kv.end() && !it->second.empty()) recentLocations.push_back(it->second);
+        }
         it = kv.find("view.split");
         if (it != kv.end())
             splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
@@ -586,6 +619,8 @@ public:
         if (!file.is_open()) return false;
 
         file << "# UltraFiler Configuration\n\n";
+        file << "preview.transparent.auto = "
+             << (previewAutoBackground ? "true" : "false") << "\n";
         file << "preview.transparent.checkered = "
              << (previewCheckeredBackground ? "true" : "false") << "\n";
         file << "preview.transparent.color = "
@@ -617,6 +652,8 @@ public:
              << (showFileExtensions ? "true" : "false") << "\n";
         file << "display.extensions.badge = "
              << FormatExtensionBadge(extensionBadge) << "\n";
+        file << "display.file.names.lines = "
+             << FormatFileNameLines(fileNameMaxLines) << "\n";
         file << "display.file.icons.style = "
              << FormatFileIconStyle(fileIconStyle) << "\n";
         file << "display.tabs.style = "
@@ -679,6 +716,8 @@ public:
         file << "archives.tar.exclude = " << FormatList(tar.excludePatterns) << "\n";
         file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
+        for (size_t i = 0; i < recentLocations.size() && i < kMaxRecentLocations; ++i)
+            file << "extras.locations.recent." << (i + 1) << " = " << recentLocations[i] << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";
         file << "view.split.second.folder = " << splitSecondFolder << "\n";
         return true;
@@ -701,6 +740,23 @@ public:
         if (value == "bar")  return FilerExtensionBadge::Bar;
         if (value == "icon") return FilerExtensionBadge::Icon;
         return FilerExtensionBadge::NoneBadge;
+    }
+
+    // ===== HOW MANY LINES A NAME MAY TAKE =====
+    // "full" or the line count. A value outside 2..4 - a hand edit, or a file
+    // from a release with more choices - is pulled into the range rather
+    // than dropped, so "6" still means "long names, please".
+    static std::string FormatFileNameLines(int lines) {
+        if (lines <= kFileNameLinesFull) return "full";
+        return std::to_string(lines);
+    }
+
+    static int ParseFileNameLines(const std::string& text) {
+        const std::string value = Trim(text);
+        if (value == "full") return kFileNameLinesFull;
+        int lines = 2;   // stays when the value is not a number
+        ParseInt(value, lines, kMinFileNameLines, kMaxFileNameLines);
+        return lines;
     }
 
     // ===== WHOSE FILE ICONS THE DISPLAY DRAWS =====
