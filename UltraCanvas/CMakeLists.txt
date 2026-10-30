@@ -460,6 +460,9 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # storage, USB and Bluetooth, and the CF property readers around it.
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    # CoreServices carries FSEvents, behind the folder watch
+    # (OS/MacOS/UltraCanvasMacOSFolderWatcher.cpp).
+    find_library(CORESERVICES_FRAMEWORK CoreServices REQUIRED)
     # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
     # macOS 10.14, so it is looked up only when that surface is wanted, and an
     # SDK without it turns the surface off instead of failing the configure -
@@ -2357,6 +2360,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${CORETEXT_FRAMEWORK}
             ${IOKIT_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK}
+            ${CORESERVICES_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
     if(UNIFORMTYPEIDENTIFIERS_FRAMEWORK)

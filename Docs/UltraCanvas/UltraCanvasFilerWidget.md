@@ -2301,11 +2301,11 @@ filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
 ```
 
 Where the operating system can report changes itself the widget uses that —
-inotify on Linux, `ReadDirectoryChangesW` on Windows, through
+inotify on Linux, `ReadDirectoryChangesW` on Windows, FSEvents on macOS, through
 [`UltraCanvasFolderWatcher`](UltraCanvasFolderWatcher.md). A change is then seen
 the moment it happens, and an idle folder costs nothing at all.
 
-Where no backend exists (macOS, Android, WebAssembly) it falls back to polling:
+Where no backend exists (Android, WebAssembly) it falls back to polling:
 a background worker re-fingerprints the folder every interval — its own
 modification time folded together with each entry's name, size and modification
 time — and raises a flag when the number moves. The scan never runs on the UI

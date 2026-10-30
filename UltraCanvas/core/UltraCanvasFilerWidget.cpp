@@ -3767,6 +3767,14 @@ namespace UltraCanvas {
         // which is exactly what a remote drive cannot serve.
         listingIsRealDirectory = fileListMode || isRealDir;
 
+        // Watch first, read second. Started after the read, the watch missed
+        // whatever the folder did while it was being read - a file saved into
+        // a folder just opened stayed invisible until something else changed.
+        // Started here, such a change is reported and lists the folder once
+        // more. A rescan of the folder already watched keeps its watch, so this
+        // costs nothing on a Refresh().
+        if (!fileListMode && isRealDir) WatchFolder(currentPath);
+
         // What this listing leaves out, for the hidden-items notice: the
         // hidden entries filtered below, plus the subfolders a curated home
         // folder keeps back. Counted while the listing is built - afterwards
@@ -4045,9 +4053,9 @@ namespace UltraCanvas {
                         {distinct.begin(), distinct.end()});
         }
 
-        // Point the folder watch at what is now on screen. Done after the scan
-        // so the fingerprint the worker takes describes the listing the user
-        // is looking at, not the one that was there a moment ago.
+        // Point the folder watch at what is now on screen. A real folder is
+        // already watched (see above) and this keeps that watch; anything else
+        // - a file list, an archive interior, a remote drive - stops it.
         WatchFolder((fileListMode || !isRealDir) ? std::string() : currentPath);
 
         if (listingPendingStatus != pendingBefore && onListingPendingChanged)
