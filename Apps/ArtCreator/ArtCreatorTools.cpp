@@ -3,6 +3,7 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
+// Version: 1.6.1 - the icon bars' dividers take their room from the toolbar's groupSpacing
 // Version: 1.6.0 - the Selector turns the selection by the rotation handle (the frame hidden
 //                 while it turns, the angle in the status line), a Dial / Stem switch for
 //                 that handle, a moved rotation centre goes with a moved selection, and the
@@ -19,7 +20,7 @@
 // Version: 1.2.2 - the arrow keys nudge by one icon pixel in icon mode
 // Version: 1.2.1 - the Shape Editor button reads "Line / curve", not "Line ⇄ curve"
 // Version: 1.2.0
-// Last Modified: 2026-10-28
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorTools.h"
@@ -163,6 +164,10 @@ std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer&
     app.showIconLabels = false;
     app.style = ToolbarStyle::Flat;
     app.itemSpacing = 2.0f;
+    // 7 px from a group's last button to the divider and on to the next
+    // group's first: the 2 px gap plus 5 px the toolbar puts either side of
+    // its separators for this.
+    app.groupSpacing = 14.0f;
     // The card's own white behind the buttons.
     auto* card = dynamic_cast<UltraCanvasGroupBox*>(&panel);
     app.backgroundColor = card ? card->GetVisualStyle().backgroundColor : Colors::SectionCardBackground;
@@ -177,10 +182,8 @@ std::vector<std::shared_ptr<UltraCanvasButton>> AddIconBar(UltraCanvasContainer&
     int i = 0;
     for (const auto& item : items) {
         if (item.icon.empty()) {
-            // A divider between two groups, with room on either side.
-            bar->AddSpacer(3);
+            // A divider between two groups (groupSpacing gives it its room).
             bar->AddSeparator(id + "-sep" + std::to_string(i++));
-            bar->AddSpacer(3);
             continue;
         }
         auto b = bar->AddButton(id + "-" + std::to_string(i++), "", item.icon, item.action);
