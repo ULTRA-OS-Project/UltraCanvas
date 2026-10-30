@@ -25842,7 +25842,7 @@ second or two is fine.
 |---|---|
 | `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Then the Microsoft Store (packaged) applications, which have no shortcut there: the shell's *Applications* folder (`FOLDERID_AppsFolder`, what the Start menu's list is made of), each entry with its `appUserModelId` (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), its display name and a PNG of the tile icon the shell gives it, `program` empty. |
 | `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. An entry with an `appUserModelId` is started through `IApplicationActivationManager`, as the Start menu starts it (`shell:AppsFolder\<id>` when that is not there); it takes no files and refuses them with a reason. |
-| `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. |
+| `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. On macOS, where each application is a bundle of its own, `<name>.app` beside this application's bundle and in `~/Applications` and `/Applications` comes before `PATH`. |
 | `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
 ### In place of the system's desktop
@@ -33321,11 +33321,11 @@ filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
 ```
 
 Where the operating system can report changes itself the widget uses that —
-inotify on Linux, `ReadDirectoryChangesW` on Windows, through
+inotify on Linux, `ReadDirectoryChangesW` on Windows, FSEvents on macOS, through
 [`UltraCanvasFolderWatcher`](UltraCanvasFolderWatcher.md). A change is then seen
 the moment it happens, and an idle folder costs nothing at all.
 
-Where no backend exists (macOS, Android, WebAssembly) it falls back to polling:
+Where no backend exists (Android, WebAssembly) it falls back to polling:
 a background worker re-fingerprints the folder every interval — its own
 modification time folded together with each entry's name, size and modification
 time — and raises a flag when the number moves. The scan never runs on the UI
@@ -33335,6 +33335,12 @@ Either way only a real directory is watched: an archive interior or a file list
 has no folder whose changes would mean anything. The interval governs detection
 only while polling; with a native watcher it bounds just how quickly the UI
 applies what the watcher already reported.
+
+A rescan of the folder already being watched keeps its watch running, and a
+change reported while the rescan was running is not discarded - it triggers one
+more rescan. A save is usually several steps (a browser writes a placeholder,
+then a `.part` file, then renames it), and the first step's rescan must not
+swallow the rest.
 
 A native watch can also die after it started — the volume the folder is on is
 unmounted, the share drops, the handle goes bad. The widget is told (the
@@ -35473,7 +35479,20 @@ but the watch is alive and a rescan covers it.
 |---|---|
 | Linux, BSD | `inotify` — one watch on the directory, a thread waiting on the queue and a self-pipe so `Stop()` wakes it immediately |
 | Windows | `ReadDirectoryChangesW` — overlapped, on a directory handle opened with `FILE_SHARE_DELETE` so watching a folder never blocks renaming or deleting it |
-| macOS, Android, WebAssembly | none yet — `Watch()` returns false and the caller polls |
+| macOS | FSEvents — a stream on the folder, delivered on a private serial dispatch queue; events for subfolders are dropped, so it answers for this folder only like the others |
+| Android, WebAssembly | none yet — `Watch()` returns false and the caller polls |
+
+Every backend is already listening when `Watch()` returns — inotify adds its
+watch, Windows issues its first read and FSEvents registers its stream before
+it returns — so a change made right after is reported. That is what lets a
+caller start the watch first and list the folder second without a gap between
+the two.
+
+On macOS the watch ends when FSEvents reports `RootChanged` (the folder was
+deleted, moved away or replaced) or `Unmount` for the volume it is on. Events
+FSEvents could not keep apart — `MustScanSubDirs`, or dropped by the kernel or
+the user-space daemon — count as a change, never as a failure: the stream is
+alive and a rescan covers them.
 
 Platform code lives under `UltraCanvas/OS/<Platform>/`; the core file holds no
 operating system calls at all. A platform is wired up by dropping its backend
