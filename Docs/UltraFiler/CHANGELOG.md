@@ -1,3 +1,27 @@
+#### 2026-10-30 *1.96.0*
+- **Widening a column in the Details view moves the columns after it**
+  instead of taking the width from the column on its right - dragging the
+  divider at a column's right edge in the header resizes that column alone,
+  and a table that grows past the window scrolls sideways (Shift+wheel, a
+  sideways wheel or the scrollbar under the rows). This is the default now;
+  it comes from the framework's `UltraCanvasFilerWidget` (see
+  `Docs/UltraCanvas/changelog.d/filer-details-push-columns.md`).
+- **The "Drive" button sits at the right end of the toolbar**, just left of
+  the Settings gear, instead of between the Favorites heart and the path bar.
+- **Settings > Display > File names.** How much of a long name a thumbnail
+  tile shows is now a choice: *Full name* (as many rows as the name needs),
+  or at most *2*, *3* or *4 rows*. With a limit, a name that needs more rows
+  keeps its end - the start of the last row gives way to "…" so the extension
+  stays readable - and hovering the tile shows the whole name. Every tile of a
+  grid row is as tall as its longest caption, so the rows grow and shrink with
+  the choice; the Details, List and Size bars views keep one line per file. The
+  treemap's cells follow the same limit within the room a cell has. The
+  default stays at 2 rows, the caption earlier releases drew; the choice is
+  saved to `config.ini` (`display.file.names.lines` = `full`, `2`, `3` or `4`)
+  and applied to every file display of the window. Needs the framework's
+  `UltraCanvasFilerWidget::SetCaptionMaxLines` (see
+  `Docs/UltraCanvas/changelog.d/filer-caption-max-lines.md`).
+
 #### 2026-10-28 *1.95.0*
 - **Home and Computer lead the navigation row.** The Home button moved from
   after Refresh to the first place, and a new **Computer** button beside it

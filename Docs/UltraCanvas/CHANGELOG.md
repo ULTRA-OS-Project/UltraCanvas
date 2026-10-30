@@ -1,3 +1,22 @@
+#### 2026-10-30 *0.9.438*
+- **`UltraCanvasFilerWidget::SetCaptionMaxLines` / `GetCaptionMaxLines`.** A
+  host can change how many lines a thumbnail tile's or treemap cell's name may
+  wrap over without replacing the whole `FilerStyle`; the grid is relaid out
+  with the new limit. `FilerStyle::captionMaxLines = 0` now means *no limit* -
+  the full name is shown over as many lines as it needs - where it used to be
+  read as 1. UltraFiler's *Settings > Display > File names* drives it.
+- **Widening a Details column no longer narrows the next one.** Dragging the
+  splitter on a column's right edge in `UltraCanvasFilerWidget`'s Details view
+  now resizes that column alone: the columns after it move along with their
+  widths intact (`FilerColumnResizeMode::PushFollowing`, the new default).
+  A table pushed wider than the view gets a horizontal scrollbar under the
+  rows - the header scrolls with them, Shift+wheel or a sideways wheel scrolls
+  it, and the hover icon menu stays at the visible right edge - and the last
+  column gets a splitter of its own. The Name column still fills the view
+  until the first drag pins it; `ResetDetailsColumnWidths()` frees it again.
+  The old split-pane behaviour, where the width a column gains is taken from
+  its neighbour, is `SetDetailsColumnResizeMode(FilerColumnResizeMode::SplitWithNeighbour)`.
+
 #### 2026-10-30 *0.9.437*
 - **SmartHome linked the UltraDatabase archive next to the shared core.**
   `SmartHome/CMakeLists.txt` linked `uc-database` directly while also linking
