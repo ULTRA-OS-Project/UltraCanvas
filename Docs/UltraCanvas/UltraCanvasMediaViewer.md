@@ -172,8 +172,11 @@ without UltraNet (`ULTRACANVAS_HAS_NET` off) has no MIME reader: there an
 
 Each attachment the page lists has two links:
 
-- **its name** opens it. It is written to a folder of its own under the
-  temporary folder, under its own name, and shown in an
+- **its name** opens it. It is written to a folder of its own, under its
+  own name, in the per-user cache (`opened-attachments` under
+  `DiskCache::Root()`: `~/.cache/UltraCanvas` on Linux,
+  `~/Library/Caches/UltraCanvas` on macOS, `%LOCALAPPDATA%\UltraCanvas` on
+  Windows) - not the temporary folder other users share - and shown in an
   [`UltraCanvasMediaViewerWindow`](UltraCanvasMediaViewerWindow.md) when the
   viewer shows that kind of file (a picture, a PDF, another message), else in
   the application the system opens it with
@@ -185,6 +188,12 @@ Each attachment the page lists has two links:
 - **Save** asks where, through the framework's Save dialog
   (`UltraCanvasFileLoader::SaveFileDialog`; the Downloads folder first, the
   attachment's own type, then All files), and writes its bytes as they are.
+
+An opened attachment's folder is swept a day after it was made
+(`DiskCache::SweepFolders`, once a process: when the first viewer is made
+and when the first attachment is opened); by then the program that opened
+it has read it. A folder whose file is still held open - Windows will not
+delete it - goes on a later sweep.
 
 An attached message (Outlook's *attach item*) and an empty part are listed
 without links. The links are `ucattachment:open/N` and `ucattachment:save/N`,
