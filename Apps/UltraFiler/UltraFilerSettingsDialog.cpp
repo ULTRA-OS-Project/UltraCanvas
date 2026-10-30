@@ -261,6 +261,8 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>       openAppRadio;
         std::shared_ptr<UltraCanvasRadio>       openPreviewRadio;
         UltraCanvasRadioGroup                   openActivationGroup;
+        // ... and whether pictures, audio and video go to UltraViewer first.
+        std::shared_ptr<UltraCanvasCheckbox>    mediaUltraViewerBox;
 
         // Handling > Protected files: minutes without input before the
         // preview forgets Unlock's passwords.
@@ -1839,8 +1841,20 @@ namespace {
     // ===== HANDLING > OPENING FILES =====
     std::shared_ptr<UltraCanvasContainer> BuildOpeningFilesPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-opening", "Opening files",
-                "Double-click (or Enter) on a file - what it does when this "
-                "system has a program registered for that kind of file:");
+                "Double-click (or Enter) on a file - what it does:");
+
+        d->mediaUltraViewerBox = MakeCheckbox("ufl-set-open-ultraviewer",
+                "Open pictures, audio and video in UltraViewer", kTextWidth,
+                d->settings->mediaOpensInUltraViewer, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->mediaOpensInUltraViewer = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->mediaUltraViewerBox);
+
+        AddBodyCaption(parts, "ufl-set-open-other-caption",
+                "Any other file, when this system has a program registered for "
+                "that kind of file:");
 
         const bool app = d->settings->doubleClickOpensRegisteredApp;
 
@@ -1860,6 +1874,11 @@ namespace {
         parts.body->AddChild(d->openAppRadio);
         parts.body->AddChild(d->openPreviewRadio);
 
+        AddNote(parts, "ufl-set-open-note0",
+                "UltraViewer shows the picture, audio file or video full size, "
+                "with the rest of its folder a key press away. When UltraViewer "
+                "is not installed, or this is switched off, such a file is "
+                "handled like any other, by the choice below it.");
         AddNote(parts, "ufl-set-open-note1",
                 "\"Start the registered program\" is what a double-click does "
                 "in Explorer and the Finder: the file opens in the program its "

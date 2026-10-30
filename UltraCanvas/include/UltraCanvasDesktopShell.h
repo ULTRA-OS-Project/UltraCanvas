@@ -45,6 +45,8 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.7.0 - FindProgram / LaunchProgram find a sibling application's
+//                  bundle on macOS
 // Version: 1.6.0 - GetSystemDesktopSwitchUnavailableReason (no switch from an
 //                  MSIX package)
 // Version: 1.5.0 - ListScreens; Microsoft Store applications on Windows;
@@ -278,7 +280,10 @@ namespace UltraCanvas {
                                       const std::vector<std::string>& files = {},
                                       std::string* error = nullptr);
         // Start a program by name - "UltraFiler" - looked up next to this
-        // executable first (a build tree, a bundle), then on PATH.
+        // executable first (a build tree, a bundle), then on PATH. On macOS,
+        // where every application is a bundle of its own, the <name>.app
+        // beside this application's bundle and in ~/Applications and
+        // /Applications are tried before PATH.
         static bool LaunchProgram(const std::string& program,
                                   const std::vector<std::string>& arguments = {},
                                   std::string* error = nullptr);

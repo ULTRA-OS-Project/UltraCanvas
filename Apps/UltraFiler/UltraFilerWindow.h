@@ -81,6 +81,9 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.30.0 - a double-click on a picture, audio file or video starts
+//                  UltraViewer with it (OpenInUltraViewer, Settings >
+//                  Handling > Opening files)
 // Version: 1.29.1 - a remote drive's path bar is its own (FillRemoteBreadcrumb):
 //                  it was resolved as a local path, which on Windows put an
 //                  "ultracloud:" node under the user folder that opened an
@@ -1031,6 +1034,14 @@ private:
     // over this one. The window is reused, so a second double-click replaces
     // what is in it rather than opening another.
     void OpenInMediaWindow(const std::string& path);
+    // Settings > Handling > Opening files: a picture, an audio file or a
+    // video on the disk is opened by starting UltraViewer with it (a running
+    // UltraViewer shows it in place of what it showed). False - and nothing
+    // started - when the setting is off, the entry is anything else (a
+    // folder, a shortcut, an entry inside an archive or on a remote drive),
+    // or UltraViewer cannot be found or started; the caller then opens the
+    // file the way it would have.
+    bool OpenInUltraViewer(const FilerEntry& entry);
     // The tail the file display hangs under Display > Thumbnails and
     // Display > Detail view: "File formats...", which opens the matching
     // settings page.

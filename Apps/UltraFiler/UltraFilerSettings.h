@@ -7,6 +7,7 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.18.0 - Handling > Opening files: mediaOpensInUltraViewer
 // Version: 1.17.0 - Handling > Protected files: forgetPasswordsAfterMinutes, how long
 //                   UltraFiler goes without input before the preview forgets the
 //                   passwords Unlock was given
@@ -323,6 +324,13 @@ public:
     bool doubleClickOpensRegisteredApp = false;
 #endif
 
+    // Handling > Opening files: a double-click (or Enter) on a picture, an
+    // audio file or a video starts UltraViewer with it - ahead of the choice
+    // above, because UltraViewer is the family's own viewer for exactly these.
+    // Where UltraViewer cannot be found or started, the choice above applies
+    // as if this were off.
+    bool mediaOpensInUltraViewer = true;
+
     // View > Split view: whether the window shows two folder displays side by
     // side (the navigation row's split-screen toggle), and the folder the
     // right-hand display last showed, so the next start opens the pair the
@@ -523,6 +531,10 @@ public:
         it = kv.find("handling.files.double.click");
         if (it != kv.end())
             doubleClickOpensRegisteredApp = (it->second == "application");
+        it = kv.find("handling.files.media.ultraviewer");
+        if (it != kv.end())
+            mediaOpensInUltraViewer =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("extras.history.max.entries");
         if (it != kv.end())
             ParseInt(it->second, historyMaxEntries,
@@ -619,6 +631,8 @@ public:
         file << "handling.files.double.click = "
              << (doubleClickOpensRegisteredApp ? "application" : "preview")
              << "\n";
+        file << "handling.files.media.ultraviewer = "
+             << (mediaOpensInUltraViewer ? "true" : "false") << "\n";
         file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";

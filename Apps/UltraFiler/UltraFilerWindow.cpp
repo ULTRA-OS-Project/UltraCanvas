@@ -95,6 +95,7 @@
 #include "UltraCanvasClipboard.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
@@ -1175,6 +1176,16 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // folder is disk work the user rarely follows up on.
     folderPreview->SetFolderPrefetchEnabled(false);
     folderPreview->SetActivateOpensWithDefaultApp(true);
+    // A double-click in the pane opens the file with the system's program -
+    // except a picture, audio file or video, which goes to UltraViewer the
+    // way it does in the main display (Settings > Handling > Opening files).
+    // An installed onFileActivated takes over from the widget's own launch,
+    // so the rest is handed back to it - a macOS application bundle (a
+    // directory the widget activates rather than enters) included.
+    folderPreview->onFileActivated = [this](const FilerEntry& entry) {
+        if (OpenInUltraViewer(entry)) return;
+        if (folderPreview) folderPreview->OpenEntryWithOS(entry);
+    };
     // Work done through the pane's context menu (a paste, a delete, ...) is
     // work done in that folder, exactly as in the main folder display - the
     // History and the folder tree follow it the same way.
@@ -1551,6 +1562,35 @@ bool UltraFilerWindow::HasRegisteredApplication(const std::string& path) {
     // A platform with no enumeration backend reports none, which is the right
     // answer here: nothing else will open the file, so we do.
     return FileAssociations::HasDefaultApplication(path);
+}
+
+bool UltraFilerWindow::OpenInUltraViewer(const FilerEntry& entry) {
+    if (!settings.mediaOpensInUltraViewer) return false;
+    if (entry.isDirectory || entry.isShortcut) return false;
+    switch (entry.category) {
+        case FilerFileCategory::Image:
+        case FilerFileCategory::Vector:
+        case FilerFileCategory::Audio:
+        case FilerFileCategory::Video:
+            break;
+        default:
+            return false;
+    }
+    // Only a file on the disk: an entry inside an archive or on a remote
+    // drive is a path no other program can open - those stay with the
+    // preview, which reads them itself.
+    std::error_code ec;
+    if (!fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) || ec)
+        return false;
+
+    std::string error;
+    if (!UltraCanvasDesktopShell::LaunchProgram("UltraViewer", {entry.path}, &error)) {
+        // Said once per double-click, and the file still opens the usual way,
+        // so a missing UltraViewer never turns a double-click into nothing.
+        if (statusLabel) statusLabel->SetText("UltraViewer could not be started: " + error);
+        return false;
+    }
+    return true;
 }
 
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
@@ -5509,6 +5549,11 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         // Only for a file that is on the disk: an entry inside an archive is
         // a virtual path, which no other program can open - the preview reads
         // those through VirtualFS, and is the only thing that can show them.
+        // Settings > Handling > Opening files: pictures, audio and video go to
+        // UltraViewer first - ahead of the registered program and of the
+        // preview. Falls through when UltraViewer is off, missing, or the
+        // entry is not a media file on the disk.
+        if (OpenInUltraViewer(entry)) return;
         if (settings.doubleClickOpensRegisteredApp) {
             std::error_code ec;
             if (fs::is_regular_file(UltraCanvas::PathFromUtf8(entry.path), ec) && !ec &&
