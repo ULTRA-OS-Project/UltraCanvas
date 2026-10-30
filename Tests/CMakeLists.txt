@@ -5674,6 +5674,28 @@ else()
     message(STATUS "  ToolbarThicknessTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TOOLBAR OVERFLOW MENU TEST =====
+# groupSpacing is the gap across a separator, and ToolbarOverflowMode::Menu
+# takes what does not fit off the end of the bar into a chevron's menu.
+# Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolbarOverflowMenuTest...")
+    add_executable(ToolbarOverflowMenuTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ToolbarOverflowMenuTest.cpp
+    )
+    target_include_directories(ToolbarOverflowMenuTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ToolbarOverflowMenuTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolbarOverflowMenuTest PRIVATE UltraCanvas)
+    set_target_properties(ToolbarOverflowMenuTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ToolbarOverflowMenuTest COMMAND ToolbarOverflowMenuTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolbarOverflowMenuTest")
+else()
+    message(STATUS "  ToolbarOverflowMenuTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CSS LAYOUT FORM GRID TEST =====
 # The two-column [auto, 1fr] form grid every dialog is built from: captions
 # share a column, controls line up under each other, a full-width row does not
@@ -6358,6 +6380,27 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: TreeViewKeyboardTest")
 else()
     message(STATUS "  TreeViewKeyboardTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TREE VIEW NODE DRAG TEST =====
+# Dragging a tree row onto another: the threshold, the targets accepted,
+# onNodeDragDrop, Escape, scrolling past the edge. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TreeViewNodeDragTest...")
+    add_executable(TreeViewNodeDragTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TreeViewNodeDragTest.cpp
+    )
+    target_include_directories(TreeViewNodeDragTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TreeViewNodeDragTest PRIVATE cxx_std_20)
+    target_link_libraries(TreeViewNodeDragTest PRIVATE UltraCanvas)
+    set_target_properties(TreeViewNodeDragTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TreeViewNodeDragTest COMMAND TreeViewNodeDragTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TreeViewNodeDragTest")
+else()
+    message(STATUS "  TreeViewNodeDragTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== TREE VIEW SCROLL BUTTONS TEST =====

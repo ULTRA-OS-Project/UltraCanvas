@@ -2,6 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.10.1 - Convert to Editable Shapes is Ctrl+Shift+C: the menu showed Ctrl+Shift+S,
+//                  which is Save As
 // Version: 1.10.0 - the right panel's sections are SectionCard group boxes on the
 //                  section page, as UltraPaint's, with a smaller caption; Tool Options,
 //                  Gradient (was Fill) and Line show only while their tool is active; the transform
@@ -35,7 +37,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -475,7 +477,7 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::ActionWithShortcut("Apply ClipView", "Ctrl+K", MenuIconPath("clipview.svg"), [this]() { CmdApplyClipView(); }),
             M::Action("Remove ClipView, Blend or Mould", MenuIconPath("release.svg"), [this]() { CmdRemoveContainer(); }),
             M::Separator(),
-            M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", MenuIconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
+            M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+C", MenuIconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
             M::ActionWithShortcut("Snap to Pixels", "Ctrl+Shift+P", MenuIconPath("snap-pixels.svg"), [this]() { CmdSnapToPixels(); }),
         })
         .AddSubmenu("Object", {
@@ -1188,7 +1190,7 @@ void ArtCreatorWindow::InstallShortcuts() {
                 case UCKeys::Z: if (e.shift) CmdRedo(); else CmdUndo(); return true;
                 case UCKeys::Y: CmdRedo(); return true;
                 case UCKeys::X: CmdCut(); return true;
-                case UCKeys::C: CmdCopy(); return true;
+                case UCKeys::C: if (e.shift) CmdConvertToPath(); else CmdCopy(); return true;
                 case UCKeys::V: CmdPaste(); return true;
                 case UCKeys::D: CmdDuplicate(); return true;
                 case UCKeys::A: if (e.shift) CmdSelectNone(); else CmdSelectAll(); return true;

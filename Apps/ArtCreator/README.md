@@ -131,7 +131,7 @@ the selection and to every line drawn afterwards.
   others and is removed; Add and Intersect keep the back shape's style),
   Apply ClipView (Ctrl+K: the front shape becomes the keyhole the others
   show through), Remove ClipView, Blend or Mould, Convert to Editable
-  Shapes, Snap to Pixels (Ctrl+Shift+P, in icon mode).
+  Shapes (Ctrl+Shift+C), Snap to Pixels (Ctrl+Shift+P, in icon mode).
 - **Transform bar** (under the toolbar): the selection's X / Y, W / H,
   scale in percent, rotation and shear, typed or stepped. The 3 x 3
   *reference point* picker on its left says which point of the selection

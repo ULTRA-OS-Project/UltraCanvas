@@ -4,6 +4,14 @@ Status: **Investigation.** Nothing below is built yet. The code blocks show
 APIs that do not exist; their names are recorded in
 `scripts/doc_examples_baseline.txt` until they do.
 
+**Since written (2026-10-30):** three of the gaps it found are fixed —
+`groupSpacing` is read (the gap across a separator), `ToolbarOverflowMode::Menu`
+works (what does not fit goes into a chevron's menu), and tree rows can be
+dragged (`UltraCanvasTreeView::SetNodeDragEnabled`, `onNodeDragDrop`) — and
+ArtCreator's *Convert to Editable Shapes* is Ctrl+Shift+C, so Ctrl+Shift+S is
+Save As in the menu too. The text below is kept as measured; the notes in
+§2.1, §2.3, §3.2, §7 and §8 say what changed.
+
 The question asked was: *what would it take for UltraCanvas to offer a
 toolbar configuration widget, so that every program can let its users
 choose and arrange the icons on its toolbars, with the icons in groups that
@@ -19,7 +27,8 @@ The answer has four parts:
 2. **The toolbar has no idea of a group.** `UltraCanvasToolbar` holds a flat
    row of child widgets. A "group" today is whatever lies between two
    separators, so nothing can hide, move or name one.
-   `ToolbarAppearance::groupSpacing` is declared and never read. §2.3.
+   `ToolbarAppearance::groupSpacing` was declared and never read (now
+   fixed). §2.1.
 3. **ArtCreator declares each command three times and the copies have
    drifted apart.** It declares each one as a menu item, again as a
    toolbar button and again as a case in the shortcut switch. For example,
@@ -81,7 +90,8 @@ What it lacks:
 
 - **There is no group.** A group exists only as a separator in the child
   list. `ToolbarAppearance::groupSpacing` is set by `ToolbarAppearance::Ribbon()`,
-  but nothing in `core/` or `Apps/` reads it. The Ribbon example in
+  but nothing in `core/` or `Apps/` read it. *(Fixed since: it is the gap
+  across a separator now.)* The Ribbon example in
   `UltraCanvasToolbarExamples.md` builds its labelled groups by hand from
   `AddLabel` + `AddSpacer(20)`.
 - **There is no way to save it.** `GetItemOrder()` returns the ids, but no
@@ -130,8 +140,8 @@ The registry is close to what a toolbar needs, but not quite:
 - **`UltraCanvasTreeView`** — draws optional checkboxes with a `Mixed`
   state (`SetShowCheckboxes`, `onNodeCheckChanged`). That is the right
   control for "this group is partly shown". Its `onNodeDragDrop` callback
-  is declared (`UltraCanvasTreeView.h:376`), but nothing in the tree calls
-  it, so the editor cannot rely on dragging rows (§7).
+  was declared but never called. *(Fixed since: `SetNodeDragEnabled(true)`
+  lets a row be dragged onto another, so the editor can offer dragging.)*
 - **`UltraCanvasToolGroupButton`** — a slot showing one tool, with a fold-out
   bar holding the others. This is how a folded group is drawn.
 - **`UltraCanvasMenu::ShowPopupAt`** with `MenuItemData::Checkbox` — the
@@ -209,7 +219,8 @@ nothing keeps the copies in step. They have already drifted apart:
 - **A shortcut that does something else.** The Arrange menu shows
   *Convert to Editable Shapes — Ctrl+Shift+S* (`:478`). `InstallShortcuts`
   (`:1185`) sends Ctrl+Shift+S to *Save As*. The menu therefore advertises
-  a shortcut that runs a different command.
+  a shortcut that runs a different command. *(Fixed since: Convert to
+  Editable Shapes is Ctrl+Shift+C.)*
 - **Two icons for one command.** The menu's *Open* uses `artcreator/16/open.svg`.
   The toolbar's uses the shared `menu/folder.svg`.
 - **Names that differ.** The menu says *Fit Page* and *Actual Size*. The
@@ -500,8 +511,8 @@ both on one sample program.
    `isEnabled` (Undo, Redo, everything that needs a selection) and
    `isChecked` (Rulers, Grid, the snaps).
 2. `BuildMenuBar` becomes `MaterializeInto(menuBar, defaultMenuLayout, registry)`.
-   The menu now greys out Undo correctly, and the Ctrl+Shift+S conflict is
-   resolved in one place (the shortcut has to be chosen anyway; see §7).
+   The menu now greys out Undo correctly, and each shortcut is written in
+   one place.
 3. `BuildToolbar` becomes `MaterializeToolbar` with the six default groups
    from §3.1. The eight candidate groups of §3.1 are registered as well,
    hidden by default.
@@ -530,15 +541,16 @@ toolbar picker.
   *active* window. Recommendation: one registry per window, passed to
   `MaterializeToolbar` and to the editor, and `Default()` kept only for
   single-window programs.
-- **Dragging tree rows is not available.** `UltraCanvasTreeView::onNodeDragDrop`
-  is never called. The editor's first version uses buttons (Add, Remove,
-  Up, Down), as the menu editor does. Wiring up drag-and-drop in the tree
-  would help both editors, but it is a separate change.
+- **Dragging tree rows.** This was not available when this was written:
+  `UltraCanvasTreeView::onNodeDragDrop` was never called. It is now
+  (`SetNodeDragEnabled`), so the editor can take drags as well as its Add,
+  Remove, Up and Down buttons, and the menu editor can gain them too.
 - **Toolbar width.** A user can add more groups than fit. Recommendation:
   the main toolbar uses `ToolbarOverflowMode::Scroll`, as the palette
-  already does, so nothing is cut off. `ToolbarOverflowMode::Menu` is in
-  the enum, but `CreateOverflowMenu` and `UpdateOverflowButton` are empty
-  `TODO` stubs (`UltraCanvasToolbar.cpp:956-962`), so it cannot be used.
+  already does, so nothing is cut off. `ToolbarOverflowMode::Menu` was
+  empty `TODO` stubs when this was written. It works now: the groups that
+  do not fit go into a chevron's menu, which suits a main toolbar better
+  than scrolling.
 - **Shortcuts in the catalogue.** Once shortcuts are registry data,
   conflicts such as Ctrl+Shift+S can be detected
   (`registry.FindShortcutConflicts()`). That check is a cheap addition to
@@ -553,10 +565,8 @@ toolbar picker.
    *Menus* tab and a *Toolbars* tab (`UltraCanvasTabbedContainer`).
    Recommended: build the widgets separately and offer the tabbed dialog
    as a convenience.
-3. **Which shortcut does ArtCreator mean by Ctrl+Shift+S:** Save As, as the
-   key handler does, or Convert to Editable Shapes, as the menu shows?
-   Save As is the convention in other programs. Recommended: keep Save As
-   and give Convert another key.
+3. ~~**Which shortcut does ArtCreator mean by Ctrl+Shift+S?**~~ Settled:
+   Save As keeps it, and Convert to Editable Shapes is Ctrl+Shift+C.
 4. **Should a layout be shared across the suite?** For example, a user who
    hides *Zoom* in UltraPaint might expect it hidden in ArtCreator too.
    Recommended: no. Each program keeps its own `settings.json` entry,
