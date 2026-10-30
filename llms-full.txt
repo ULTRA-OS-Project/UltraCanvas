@@ -103536,21 +103536,6 @@ folder.
 | Tests | `Tests/UltraMail/test_senderidentity.cpp`, `test_threatscan.cpp`, `test_contacts.cpp`, `test_localstore.cpp`, `test_preferences.cpp`, `test_messagefilter.cpp`; `AccountBarClickTest.cpp` and `FolderTreeTest.cpp` (the counters as filters, in a window) |
 
 ==============================================================================
-FILE: Docs/UltraMail/changelog.d/threat-scan-runs-code-when-opened.md
-==============================================================================
-
-- **The threat scanner names the same attachments UltraMail refuses to
-  open.** Whether an attachment is a program is now
-  `FileAssociations::RunsCodeWhenOpened`, the question *Open* asks, instead of
-  the scanner's own shorter, Windows-only list. Scripts (`.sh`, `.py`,
-  `.ps1`), shortcuts (`.url`, `.desktop`), installers (`.pkg`, `.deb`,
-  `.msix`), disk images (`.dmg`, `.vhd`) and macOS and Linux programs
-  (`.app`, `.AppImage`) are now called programs too, and so is a name that
-  hides its extension behind trailing dots or spaces (`setup.exe.`). As
-  before, a program sent as a program is *attachment-executable*
-  (suspicious) and one dressed as a document *attachment-disguised-executable*.
-
-==============================================================================
 FILE: Docs/UltraVideo/README.md
 ==============================================================================
 
