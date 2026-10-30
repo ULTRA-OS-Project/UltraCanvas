@@ -76,7 +76,9 @@
 //                  destroyed once they are gone (RetireDisplay), so a busy worker
 //                  no longer freezes the window as the tab closes
 // Version: 1.34.0 - a double-click on a macOS application in the folder display
-//                  launches it (it did nothing); History lists it under Apps
+//                  launches it (it did nothing); History lists it under Apps;
+//                  pinning one files it under the Favorites' Apps tab, and
+//                  earlier pins under Folders are moved there
 // Version: 1.33.0 - pictures, audio and video open in UltraViewer
 //                  (OpenInUltraViewer)
 // Version: 1.32.0 - the connection log button on every remote drive; add-drive
@@ -102,6 +104,7 @@
 #include "UltraCanvasDesktopShell.h"   // LaunchProgram: UltraViewer for media files
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
+#include "UltraCanvasMacBundle.h"      // a pinned application bundle, by path
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasSupportedFormats.h"  // its image formats
@@ -858,10 +861,31 @@ namespace {
     // executable with no extension at all, where the execute bit decides.
     // A macOS application bundle: a directory on disk that the file display
     // launches rather than enters - the same rule the widget applies on
-    // activation (UltraCanvasFilerWidget, isBundle + Executable).
+    // activation (UltraCanvasFilerWidget, isBundle + Executable). macOS only,
+    // as there: everywhere else a Mac application is a folder to look into.
     bool IsLaunchableBundle(const FilerEntry& e) {
+#ifdef __APPLE__
         return e.isDirectory && e.isBundle &&
                e.category == FilerFileCategory::Executable;
+#else
+        (void)e;
+        return false;
+#endif
+    }
+
+    // The same question for a path alone - a pin read back from the
+    // favorites file, with no FilerEntry behind it. Answered the way the
+    // widget answers it: the name says ".app" and its Info.plist says
+    // application.
+    bool IsLaunchableBundlePath(const std::string& path) {
+#ifdef __APPLE__
+        if (!IsApplicationBundlePath(path)) return false;
+        UCAppBundle bundle;
+        return ReadApplicationBundle(path, bundle) && bundle.isApplication;
+#else
+        (void)path;
+        return false;
+#endif
     }
 
     bool IsApplicationEntry(const FilerEntry& e) {
@@ -886,8 +910,12 @@ namespace {
     }
 
     // The favorites list (= Favorites tab) an entry belongs to when pinned.
+    // An application bundle is an application here, not the folder it is on
+    // disk - it was pinned under Folders, and its tile there opened the
+    // folder holding it instead of being one of the user's apps.
     FilerFavoriteKind FavoriteKindOf(const FilerEntry& e) {
-        return e.isDirectory ? FilerFavoriteKind::Folder
+        return IsLaunchableBundle(e) ? FilerFavoriteKind::App
+                : e.isDirectory ? FilerFavoriteKind::Folder
                 : IsApplicationEntry(e) ? FilerFavoriteKind::App
                                         : FilerFavoriteKind::File;
     }
@@ -1245,6 +1273,11 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // rather than after the first entry is recorded into it.
     history.Load();
     favorites.Load();
+    // Applications pinned before FavoriteKindOf knew them are filed under
+    // Folders: move them to Apps, where the heart toggle now looks for them
+    // (left where they were, they could no longer be unpinned).
+    favorites.Reclassify(FilerFavoriteKind::Folder, FilerFavoriteKind::App,
+                         IsLaunchableBundlePath);
     folderViews.Load();
     // Loaded before the tree is built, so a folder the user gave an icon
     // carries it from the first frame rather than after the first repaint.
