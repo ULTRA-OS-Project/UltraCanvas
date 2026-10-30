@@ -1,3 +1,52 @@
+#### 2026-10-30 *0.9.444*
+- **`VirtualFSOpenOptions::compressionLevel` is honoured when an archive is
+  written.** It was ignored: every ZIP, 7-Zip and compressed TAR was written
+  at the library's default level whatever was asked (and so was
+  `UCVFSCompressionOptions::level` through `UCVFSBridge::CreateArchive`).
+  ZIP and 7-Zip now take it as their 0-9 level - `Store` stores them
+  uncompressed - and the stream compressor of a `.tar.gz` / `.bz2` / `.xz` /
+  `.zst` / `.lz4` on its own scale (Zstandard 1 / 2 / 9 / 19 / 22 for
+  Fastest / Fast / Good / Best / Ultra). `Normal`, the default, still leaves
+  every library at its own default, so no archive written today changes;
+  `archiveWrite.filterLevel` still overrides it for the stream compressor.
+  `VirtualFSArchiveWriteOptionsTest` checks Fastest against Best for each
+  format, a stored ZIP, and that Normal matches the default level.
+- **How a TAR is packed can be set, and every Compress entry says how it
+  packs.** `UltraCanvasFilerWidget::SetTarSettings(FilerTarSettings)` gives
+  the TAR entries of the context menu's Compress the level of each
+  compressor (gzip, bzip2, xz, Zstandard), the threads of xz and Zstandard
+  (`-T0` by default), Zstandard's long mode, the header format (pax, GNU,
+  ustar), what is stored of each file, symbolic links, and names to leave
+  out of a packed folder. Each entry of the Compress submenu shows the
+  parameters it packs with as a tooltip - the equivalent command line, e.g.
+  `tar --format=pax --owner=0 --group=0 --numeric-owner -cf - <files> | xz -6 -T0`
+  (`DescribeCompressParameters`). Underneath, VirtualFS takes the same
+  choices as `VirtualFSOpenOptions::archiveWrite`
+  (`VirtualFSArchiveWriteOptions`), and `UCVFSBridge::CreateArchive` as
+  `UCVFSCompressionOptions::archive`.
+- **Packed files keep their own modification time and permissions.** Every
+  entry VirtualFS packed carried the time it was packed and 0644 (folders
+  0755), whatever the file had - an unpacked script was no longer
+  executable, and every file looked new. A file now keeps its own time and
+  permission bits (the owner is still left out unless asked for), a symbolic
+  link in a TAR is stored as a link instead of a copy of its target, and
+  file content is streamed into the archive instead of being read into
+  memory whole. ZIP and 7-Zip store what a link points to, as `zip -r` and
+  `7z a` do.
+- New test `VirtualFSArchiveWriteOptionsTest`: compressor levels and
+  threads, Zstandard long mode, the three header formats, kept and
+  normalised times / permissions / owner, links stored and followed, and
+  the exclusions.
+- **A `.7z` or `.tar.xz` showed a blank page on Windows.** With host icons
+  on (`FilerFileIconStyle::HostOperatingSystem`), a type no program is
+  registered for - `.7z`, `.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`,
+  `.tar.zst` on a Windows without 7-Zip - was drawn with the shell's blank
+  "no program" page, which says nothing about the file. The Windows backend
+  of `LoadHostFileIconPixmap` now answers such a type with no icon, and the
+  file display draws its own archive icon with the extension on it; a
+  registered type keeps Explorer's icon. `FilerHostIconsTest` checks it on
+  Windows.
+
 #### 2026-10-30 *0.9.443*
 - **UltraFiler crashed while making thumbnails of folders with HTML or SVG
   files.** The HTML parser put inline `<svg>` / `<math>` names back in their
