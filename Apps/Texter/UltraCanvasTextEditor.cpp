@@ -733,6 +733,9 @@ namespace {
                         MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
                             OnViewToggleWordWrap(checked);
                         }),
+                        MenuItemData::Checkbox("Hidden Characters", config.showHiddenCharacters, [this](bool checked) {
+                            OnViewToggleHiddenCharacters(checked);
+                        }),
                         MenuItemData::Checkbox("Page Layout (documents)", config.documentPageLayout, [this](bool checked) {
                             OnViewTogglePageLayout(checked);
                         }),
@@ -1620,6 +1623,7 @@ namespace {
         doc->textArea->SetFontSize(GetFontSize());
         doc->textArea->SetShowLineNumbers(config.showLineNumbers);
         doc->textArea->SetWordWrap(config.wordWrap);
+        doc->textArea->SetShowHiddenCharacters(config.showHiddenCharacters);
 
         // Add document to list
         documents.push_back(doc);
@@ -1960,6 +1964,7 @@ namespace {
         doc->textArea->SetFontSize(GetFontSize());
         doc->textArea->SetShowLineNumbers(config.showLineNumbers);
         doc->textArea->SetWordWrap(config.wordWrap);
+        doc->textArea->SetShowHiddenCharacters(config.showHiddenCharacters);
         ApplySpellCheckToDocument(docIndex);
 
         // Build the per-tab flex content and add it as the tab's content element.
@@ -4190,6 +4195,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->textArea->SetShowLineNumbers(config.showLineNumbers);
             }
         }
+        UpdateViewMenuChecks();
         SaveConfig();
     }
 
@@ -4201,7 +4207,35 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 doc->textArea->SetWordWrap(config.wordWrap);
             }
         }
+        UpdateViewMenuChecks();
         SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::OnViewToggleHiddenCharacters(bool checked) {
+        config.showHiddenCharacters = checked;
+        for (auto& doc : documents) {
+            if (doc->textArea) {
+                doc->textArea->SetShowHiddenCharacters(config.showHiddenCharacters);
+            }
+        }
+        UpdateViewMenuChecks();
+        SaveConfig();
+    }
+
+    void UltraCanvasTextEditor::UpdateViewMenuChecks() {
+        if (!menuBar) return;
+        // View menu is at index 2 (File=0, Edit=1, View=2)
+        auto* viewItem = menuBar->GetItem(2);
+        if (!viewItem) return;
+        for (auto& sub : viewItem->subItems) {
+            if (sub.label == "Line Numbers") {
+                sub.checked = config.showLineNumbers;
+            } else if (sub.label == "Word Wrap") {
+                sub.checked = config.wordWrap;
+            } else if (sub.label == "Hidden Characters") {
+                sub.checked = config.showHiddenCharacters;
+            }
+        }
     }
 
     void UltraCanvasTextEditor::OnViewTogglePageLayout(bool checked) {
@@ -4669,6 +4703,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         doc->textArea->SetFontSize(GetFontSize());
         doc->textArea->SetShowLineNumbers(config.showLineNumbers);
         doc->textArea->SetWordWrap(config.wordWrap);
+        doc->textArea->SetShowHiddenCharacters(config.showHiddenCharacters);
     }
 
     void UltraCanvasTextEditor::ApplyThemeToAllDocuments() {
@@ -6072,6 +6107,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.darkTheme = configFile.GetBool("darkTheme", config.darkTheme);
         config.showLineNumbers = configFile.GetBool("showLineNumbers", config.showLineNumbers);
         config.wordWrap = configFile.GetBool("wordWrap", config.wordWrap);
+        config.showHiddenCharacters = configFile.GetBool("showHiddenCharacters", config.showHiddenCharacters);
         config.documentPageLayout = configFile.GetBool("documentPageLayout", config.documentPageLayout);
         config.defaultFontSize = configFile.GetInt("defaultFontSize", config.defaultFontSize);
         config.fontZoomPercent = configFile.GetInt("fontZoomPercent", 100);
@@ -6090,6 +6126,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetBool("darkTheme", isDarkTheme);
         configFile.SetBool("showLineNumbers", config.showLineNumbers);
         configFile.SetBool("wordWrap", config.wordWrap);
+        configFile.SetBool("showHiddenCharacters", config.showHiddenCharacters);
         configFile.SetBool("documentPageLayout", config.documentPageLayout);
         configFile.SetInt("defaultFontSize", config.defaultFontSize);
         configFile.SetInt("fontZoomPercent", config.fontZoomPercent);

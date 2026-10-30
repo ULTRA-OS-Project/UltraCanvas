@@ -220,3 +220,16 @@ TEST(codes_round_trip_and_the_wrong_ones_are_refused) {
     refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A", "valid_until": "soon"}], "apps": []})", "no date");
     refuse(R"({"schema": 2, "sequence": 1, "codes": [{"code": "A"}, {"code": "a"}], "apps": []})", "twice");
 }
+
+TEST(the_catalog_names_the_payment_service_and_its_licence_key) {
+    Catalog c = FixtureCatalog();
+    c.paymentUrl = "https://pay.example";
+    c.licenceKey = std::string(64, 'A');
+    const Result<Catalog> parsed = ParseCatalog(SerializeCatalog(c));
+    REQUIRE(parsed);
+    REQUIRE_EQ(parsed.Value().paymentUrl, std::string("https://pay.example"));
+    REQUIRE_EQ(parsed.Value().licenceKey, std::string(64, 'a'));   // lower-cased
+    REQUIRE(ParseCatalog(SerializeCatalog(FixtureCatalog())).Value().paymentUrl.empty());
+    REQUIRE(!ParseCatalog(R"({"schema": 2, "sequence": 1, "payment_url": "ftp://x", "apps": []})"));
+    REQUIRE(!ParseCatalog(R"({"schema": 2, "sequence": 1, "licence_key": "abc", "apps": []})"));
+}

@@ -11,6 +11,7 @@
   - [Item Management](#item-management)
   - [Item Badges](#item-badges)
   - [Convenience Methods](#convenience-methods)
+  - [Built from commands](#built-from-commands)
   - [Tool Groups](#tool-groups)
   - [Auto-Hide](#auto-hide)
   - [Drag and Drop](#drag-and-drop)
@@ -160,6 +161,24 @@ std::shared_ptr<UltraCanvasTextInput> AddSearchBox(
 std::shared_ptr<UltraCanvasAutoComplete> AddAutoComplete(
         const std::string& id, const std::string& placeholder = "Search...",
         std::function<void(const std::string&)> onTextChange = nullptr);
+// Any other widget as an item under `id` (a slider, a gauge)
+std::shared_ptr<UltraCanvasUIElement> AddWidget(
+        const std::string& id, std::shared_ptr<UltraCanvasUIElement> widget);
+```
+
+### Built from commands
+
+A toolbar can be built from data instead: `MaterializeToolbar` fills it from
+a `ToolbarLayout` - groups of command ids the user can show, hide, reorder
+and fold - and the command registry menus are built from. Each item's id is
+then its command id, and one call re-reads every command's state into its
+button, so the program keeps no pointers to buttons the user may remove.
+See [Toolbar Layout](UltraCanvasToolbarLayout.md).
+
+```cpp
+void SetCommandRegistry(const UltraCanvasMenuRegistry* registry);   // MaterializeToolbar sets it
+const UltraCanvasMenuRegistry* GetCommandRegistry() const;
+void RefreshCommandStates();   // isEnabled / isChecked / dynamicLabel into the items
 ```
 
 ### Tool Groups
@@ -255,7 +274,7 @@ enum class ToolbarOverflowMode {
 };
 ```
 
-`Scroll` is the one that does something today: items keep their size instead
+`Scroll` and `Menu` are the two that do something today. With `Scroll`, items keep their size instead
 of shrinking to fit (`flex-shrink: 0`), the ones past the edge are laid out
 beyond it, and the mouse wheel scrolls them into view along the toolbar's
 axis — no scrollbar is shown. A desktop taskbar's running-apps group is the
@@ -269,6 +288,38 @@ of the item under it and takes that press, which is why the hint is a window
 watch like the reorder drag and not a child. Nothing is drawn while the items
 fit, and `SetScrollHints(false)` turns the strips off for a toolbar that
 wants the wheel alone.
+
+With `Menu`, items keep their size too, and the ones that do not fit are
+taken off the end of the bar into a menu behind a chevron button there
+(pointing down on a horizontal bar, right on a vertical one). The bar works
+this out each time it is laid out, so a wider window puts them back. A
+separator left at the end of the bar goes into the menu with the group after
+it, and an item the program hid itself stays hidden either way.
+
+```cpp
+std::vector<std::string> GetOverflowItemIds() const;        // the items in the menu, in order
+bool IsItemInOverflowMenu(const std::string& identifier) const;
+std::shared_ptr<UltraCanvasButton> GetOverflowButton() const;   // the chevron (not an item)
+std::vector<MenuItemData> GetOverflowMenuItems();           // what the menu shows
+void OpenOverflowMenu();                                    // as a click on the chevron
+```
+
+The menu stands in for each item: a button is an entry with its icon and its
+tooltip, whose `" (Ctrl+N)"` ending becomes the entry's shortcut; a toggle
+button is a check; a tool group is a submenu of its tools, and picking one
+picks it in the group (`UltraCanvasToolGroupButton::SelectItem`); a dropdown
+is a submenu of its choices; separators are separators. A disabled item is
+a disabled entry. A label, a slider or a text field has no menu entry: put
+such a widget where it always fits, before the buttons.
+
+```cpp
+auto bar = std::make_shared<UltraCanvasToolbar>("Main", 0, 0, 0, 38);
+bar->SetOverflowMode(ToolbarOverflowMode::Menu);
+bar->AddButton("new", "", "media/icons/menu/new.svg", []() {})->SetTooltip("New (Ctrl+N)");
+bar->AddSeparator("s1");
+bar->AddButton("undo", "", "media/icons/menu/undo.svg", []() {})->SetTooltip("Undo (Ctrl+Z)");
+// ...however many there are: what the window has no room for is in the chevron's menu.
+```
 
 ### ToolbarIconSize
 
@@ -316,8 +367,8 @@ struct ToolbarAppearance {
     Color activeBackgroundColor    = Color(204, 228, 247, 255);
     Color disabledBackgroundColor  = Color(220, 220, 220, 255);
 
-    float itemSpacing  = 4.0f;
-    float groupSpacing = 8.0f;
+    float itemSpacing  = 4.0f;   // between two items
+    float groupSpacing = 8.0f;   // between two groups, across a separator
 
     // Shadow
     bool     hasShadow     = false;
@@ -349,6 +400,22 @@ struct ToolbarAppearance {
     static ToolbarAppearance StatusBar();
     static ToolbarAppearance Sidebar();
 };
+```
+
+A separator divides the bar into groups. `groupSpacing` is the gap from the
+last item of one group to the first of the next, with the separator's line in
+the middle; it is never less than the two `itemSpacing` gaps either side of
+the line, so the default 8 (= 2 x 4) is a separator as it always looked, and
+a bar that only tightens its items does not change. `Ribbon()` sets 16, and a
+bar of small icons can set its groups apart without spacers around each
+separator:
+
+```cpp
+auto iconBar = std::make_shared<UltraCanvasToolbar>("Icons", 0, 0, 0, 28);
+ToolbarAppearance look = iconBar->GetAppearance();
+look.itemSpacing = 2.0f;    // the buttons close together
+look.groupSpacing = 14.0f;  // 7 px from a group's last button to the line, 7 px on
+iconBar->SetAppearance(look);
 ```
 
 ## Items are widgets
@@ -568,6 +635,7 @@ running->ClearItemBadge("webcam");                                // off again
 
 - [UltraCanvasButton](UltraCanvasButton.md) - Building block for toolbar buttons
 - [UltraCanvasToolGroupButton](UltraCanvasToolGroupButton.md) - Several tools in one slot, with a fold-out bar (`AddToolGroup`)
+- [Toolbar Layout](UltraCanvasToolbarLayout.md) - A toolbar built from groups of commands, kept in the settings (`MaterializeToolbar`)
 - [UltraCanvasMenu](UltraCanvasMenu.md) - Used internally for dropdown buttons and overflow menus
 - [UltraCanvasContainer](UltraCanvasContainer.md) - Base container class
 - [UltraCanvasLayoutExamples](UltraCanvasLayoutExamples.md) - Layout managers used internally

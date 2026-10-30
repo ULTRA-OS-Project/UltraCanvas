@@ -93,7 +93,8 @@ int GetItemCount() const;
 bool HasItem(const std::string& itemId) const;
 
 // The tool last picked or set, and the one the slot shows
-bool SetCurrentItem(const std::string& itemId);
+bool SetCurrentItem(const std::string& itemId);   // fires nothing
+bool SelectItem(const std::string& itemId);       // as a click in the bar: current, pressed, onItemSelected
 std::string GetCurrentItem() const;
 std::string GetSlotItem() const;
 void SetSlotShowsLastPicked(bool showLastPicked);

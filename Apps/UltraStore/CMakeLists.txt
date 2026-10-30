@@ -93,6 +93,7 @@ add_library(UltraStoreCore STATIC
     core/StoreQuery.cpp
     core/AssetCache.cpp
     core/StoreSettings.cpp
+    core/Purchase.cpp
 )
 set_target_properties(UltraStoreCore PROPERTIES
     POSITION_INDEPENDENT_CODE ON

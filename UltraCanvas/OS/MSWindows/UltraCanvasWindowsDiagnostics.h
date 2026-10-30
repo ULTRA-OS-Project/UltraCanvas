@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsDiagnostics.h
 // Startup and crash diagnostics for Windows builds.
+// Version: 1.2.1 - the dump folder's rule is UltraCanvasCrashDumpFolder() (comment)
 // Version: 1.2.0 - ArmWindowsExitWatchdog / DisarmWindowsExitWatchdog
 // Version: 1.1.0 - the crash report names functions from the COFF symbol table too
 // Version: 1.0.0
@@ -94,7 +95,9 @@ namespace UltraCanvas {
     // an undefined state and the normal sink may be mid-write; the dump writer
     // is resolved here, while the process is healthy, for the same reason.
     // ULTRACANVAS_CRASH_DUMP_DIR names another folder for the dump;
-    // ULTRACANVAS_NO_CRASH_DUMP=1 writes none.
+    // ULTRACANVAS_NO_CRASH_DUMP=1 writes none. The folder's rule is
+    // UltraCanvasCrashDumpFolder() (UltraCanvasCrashDumpFolder.h), which a
+    // tool reads to show the user where the dumps are.
     void InstallWindowsCrashReporter(const std::string& appName);
 
     // Arms the exit watchdog. Called by the Windows backend once the main

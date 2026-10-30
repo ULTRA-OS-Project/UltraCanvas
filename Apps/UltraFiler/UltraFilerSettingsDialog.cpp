@@ -8,6 +8,8 @@
 // opens the colour picker in a popup window, and the tree's width - fitted
 // to its rows or fixed), Display > Home folder (what the
 // Home folder shows), Display > Files (whether hidden files are listed),
+// Display > File names (how many lines a name may take under a thumbnail
+// tile - the full name, or at most 2, 3 or 4 lines),
 // Display > File extensions (whether a displayed name
 // still ends in its extension, and whether a thumbnail tile carries that
 // extension as a bar or a small tag), Display > Files in use (whether held
@@ -116,6 +118,7 @@ namespace {
     constexpr const char* kPageIgnoredFiles = "display/ignored-files";
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageThumbnails = "display/thumbnails";
+    constexpr const char* kPageFileNames = "display/file-names";
     constexpr const char* kPageFileExtensions = "display/file-extensions";
     constexpr const char* kPageFileIcons = "display/file-icons";
     constexpr const char* kPageFilesInUse = "display/files-in-use";
@@ -170,6 +173,11 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>  homeAllRadio;
         std::shared_ptr<UltraCanvasRadio>  homePredefinedRadio;
         UltraCanvasRadioGroup              homeContentGroup;
+
+        // Display > File names: one radio per choice (full name, 2, 3, 4
+        // lines), paired with the line count it stands for (0 = full name).
+        std::vector<std::pair<int, std::shared_ptr<UltraCanvasRadio>>> fileNameRadios;
+        UltraCanvasRadioGroup                                         fileNameGroup;
 
         // Display > File extensions: the "keep them in the name" checkbox and
         // one radio per thumbnail tag mode (None / Bar / Icon), in the order
@@ -1192,6 +1200,57 @@ namespace {
                 ++inRow;
             }
         }
+        return parts.page;
+    }
+
+    // ===== DISPLAY > FILE NAMES =====
+    // How much of a long name a thumbnail tile shows: all of it, wrapped over
+    // as many lines as it takes, or at most 2 / 3 / 4 lines, past which the
+    // head of the last line gives way to "…" so the extension stays in view.
+    std::shared_ptr<UltraCanvasContainer> BuildFileNamesPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-file-names", "File names",
+                "How long names are shown under the tiles of the thumbnail "
+                "views:");
+
+        const std::pair<int, const char*> choices[] = {
+            {UltraFilerSettings::kFileNameLinesFull,
+                    "Full name - as many lines as the name needs"},
+            {2, "Maximum 2 rows"},
+            {3, "Maximum 3 rows"},
+            {4, "Maximum 4 rows"},
+        };
+        d->fileNameRadios.clear();
+        for (const auto& [lines, text] : choices) {
+            std::string id = "ufl-set-file-names-" +
+                    (lines == UltraFilerSettings::kFileNameLinesFull
+                             ? std::string("full") : std::to_string(lines));
+            auto radio = MakeChoice(id, text,
+                    d->settings && d->settings->fileNameMaxLines == lines);
+            d->fileNameGroup.AddRadioButton(radio);
+            d->fileNameRadios.emplace_back(lines, radio);
+            parts.body->AddChild(radio);
+        }
+        d->fileNameGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            for (const auto& [lines, radio] : d->fileNameRadios) {
+                if (radio != selected) continue;
+                d->settings->fileNameMaxLines = lines;
+                ApplyAndSave(d);
+                return;
+            }
+        };
+
+        AddNote(parts, "ufl-set-file-names-note1",
+                "A name is broken between words where it can. When it needs "
+                "more rows than allowed, the start of the last row is left "
+                "out and replaced by \"…\", so the end of the name and its "
+                "extension stay readable; hovering the tile shows the whole "
+                "name.");
+        AddNote(parts, "ufl-set-file-names-note2",
+                "Every tile of a row is as tall as its longest caption, so "
+                "more rows per name means fewer tiles on the screen. The "
+                "Details, List and Size bars views keep one line per file.");
         return parts.page;
     }
 
@@ -2505,8 +2564,8 @@ namespace {
         AddNote(parts, "ufl-set-start-note1",
                 "Display - what the folder tree, the file display and the "
                 "preview beside it show: colours, the Home folder, hidden "
-                "files, file extensions, files in use, and which file kinds "
-                "get a thumbnail or a preview.");
+                "files, file names, file extensions, files in use, and which "
+                "file kinds get a thumbnail or a preview.");
         AddNote(parts, "ufl-set-start-note2",
                 "Handling - what an action does: dropping dragged files onto "
                 "a folder, opening a file, how long the passwords of protected "
@@ -2651,6 +2710,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, "Home folder");
         AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
         AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, "Ignored files");
+        AddTreeNode(d, kPageDisplay, kPageFileNames, "File names");
         AddTreeNode(d, kPageDisplay, kPageFileExtensions, "File extensions");
         AddTreeNode(d, kPageDisplay, kPageFileIcons, "File icons");
         AddTreeNode(d, kPageDisplay, kPageFilesInUse, "Files in use");
@@ -2689,6 +2749,7 @@ namespace {
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
         AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
+        AddPage(d, kPageFileNames, BuildFileNamesPage(d));
         AddPage(d, kPageFileExtensions, BuildFileExtensionsPage(d));
         AddPage(d, kPageFileIcons, BuildFileIconsPage(d));
         AddPage(d, kPageFilesInUse, BuildFilesInUsePage(d));

@@ -8,10 +8,15 @@
 // running copy, whose viewer shows them in place of what it showed
 // (UltraCanvasSingleInstance.h); --help and --version print and quit without
 // asking it.
+// Every format plugin this build produced registers itself before main(),
+// because the executable links UltraCanvasAllFormats (as UltraFiler does) -
+// see UltraCanvas/Plugins/UltraCanvasAllFormats.h.
+// Version: 1.1.1 - the drawing and 3D format plugins are linked and registered:
+//                  a CDR, XAR, DXF or DWG shows the drawing, not its stored preview
 // Version: 1.1.0 - one UltraViewer per user: a second start's files are shown
 //                  in the running viewer, a start without files brings it forward
 // Version: 1.0.1
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 
 #include <cstdlib>

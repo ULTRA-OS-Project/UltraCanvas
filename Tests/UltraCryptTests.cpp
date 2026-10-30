@@ -15,9 +15,24 @@
 //  - Ed25519 against the RFC 8032 §7.1 vectors, plus a flipped message bit, a
 //    flipped signature bit and a wrong key, each reported as SignatureInvalid
 //  - secure-buffer semantics (move-only, wipe on destroy)
+//  - X.509 and CMS, against a test authority made for these tests (openssl,
+//    valid to 2126): what a certificate says, the trust verdicts (trusted,
+//    untrusted, expired, not yet valid, wrong purpose), PKCS #12 (modern and
+//    RC2, wrong password), detached signatures (holding, a changed byte of
+//    the content or the signature, a key that is not the certificate's) and
+//    enveloped data (opened by its recipient, refused by another)
+//  - the system's roots are the operating system's: a root that comes with
+//    Windows (Microsoft's, which no OpenSSL bundle carries) or with macOS and
+//    Linux (ISRG Root X1) is trusted through them
+//  - RS256 and ES256 against keys given by their parts (JWK n/e, x/y), with
+//    vectors made by Python's cryptography package: holding, a changed byte
+//    of the data or signature, another key, a 1024-bit RSA key and a point
+//    off the curve refused
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCrypt/UltraCryptCore.h"
+#include "UltraCrypt/UltraCryptPublicKey.h"
+#include "UltraCrypt/UltraCryptX509.h"
 #include "UltraCanvasTextUtils.h"
 
 #include <cstdio>
@@ -1103,6 +1118,557 @@ static void TestKeyExchange() {
     Check(!conv && conv.code == UltraCryptResultCode::InvalidKeySize, "a 31-byte Ed25519 key is refused");
 }
 
+// ===== X.509 and CMS =====
+// A test authority, Alice's mail certificate (RSA, emailProtection, also as
+// PKCS #12 with password "geheim", AES and RC2) and a TLS server certificate
+// (P-256, serverAuth only) - made with openssl for these tests alone.
+static const char* kCaPem = R"PEM(-----BEGIN CERTIFICATE-----
+MIIBszCCAVqgAwIBAgIUCgwesYfljEA4IIB8WZrGRH48tTYwCgYIKoZIzj0EAwIw
+NzEYMBYGA1UECgwPVWx0cmFDcnlwdCBUZXN0MRswGQYDVQQDDBJVbHRyYUNyeXB0
+IFRlc3QgQ0EwIBcNMjYxMDI3MjAyMzQ0WhgPMjEyNjEwMDMyMDIzNDRaMDcxGDAW
+BgNVBAoMD1VsdHJhQ3J5cHQgVGVzdDEbMBkGA1UEAwwSVWx0cmFDcnlwdCBUZXN0
+IENBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEVm2uLSKHP2cZtdbgxjCqHCQ4
+UkSrFNN5cFmJEYWL6Nfa9MCQF09QaxsXYeqeY0TyHoJMIk7u68tJGredDU8WJaNC
+MEAwDwYDVR0TAQH/BAUwAwEB/zAOBgNVHQ8BAf8EBAMCAQYwHQYDVR0OBBYEFLHK
+ExSYvC1GQpDNQMJJWLoa+j4JMAoGCCqGSM49BAMCA0cAMEQCIDVh/1rKNyTNHWbN
+uZKpSsx5t5WukxCkjMxNRswehiYoAiAe3Srm0xrRAk2RrQPZRVHQ4Jn9RKXbg6bU
+m0Zx1zyOLw==
+-----END CERTIFICATE-----
+)PEM";
+static const char* kAlicePem = R"PEM(-----BEGIN CERTIFICATE-----
+MIIC0jCCAnigAwIBAgIUBNDhddFTCsgVpUIdjd+XiWJcwJowCgYIKoZIzj0EAwIw
+NzEYMBYGA1UECgwPVWx0cmFDcnlwdCBUZXN0MRswGQYDVQQDDBJVbHRyYUNyeXB0
+IFRlc3QgQ0EwIBcNMjYxMDI3MjAyMzQ0WhgPMjEyNjEwMDMyMDIzNDRaMDoxFjAU
+BgNVBAMMDUFsaWNlIEV4YW1wbGUxIDAeBgkqhkiG9w0BCQEWEWFsaWNlQGV4YW1w
+bGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAoof2q7U3YKlx
+jPrx5ZpY6xd+PGBFBR8RvvpOY3WpOkGTOV1jKpLl61emRUsuxhfUC1kvATheLOz2
+qBQKXRXJ2sjC5ulwejXzmBldQUkGpYa+p5uSIrFwfzvRTvyDhSwx7aGlpkZLJRj8
+yn0A5sO+LFtr6CyviYkEJAg6C9jTmsvXCY0aRhcEKJS9MfTbmj8fGLPS6SewnFhs
+mz+wt4e6NF50gpphmcgBp0QFwSNkRC6GTQFQr9qgq0PpUJo/UnRlbnyZ99pvc6hc
+hobfOfM3FhSYMYlsyk9E4GqHEUsYveYZuHfCrKeo+mDuOZql/f5fXznjJettqPam
+rWfet4pNJQIDAQABo4GRMIGOMAkGA1UdEwQCMAAwDgYDVR0PAQH/BAQDAgWgMBMG
+A1UdJQQMMAoGCCsGAQUFBwMEMBwGA1UdEQQVMBOBEUFsaWNlQEV4YW1wbGUuQ09N
+MB0GA1UdDgQWBBSOPiI6Lss1G2K/Un+k8x3VEi6ySDAfBgNVHSMEGDAWgBSxyhMU
+mLwtRkKQzUDCSVi6Gvo+CTAKBggqhkjOPQQDAgNIADBFAiEA9HCZx2hgHoMEt4dT
+hsK+dV1f3Pa8IjYIEBhLbMvApisCIBvhZdw34Xm6bSU918T3tDup7GTqcp1OgPXP
+SVAkffSJ
+-----END CERTIFICATE-----
+)PEM";
+static const char* kAliceKeyPem = R"PEM(-----BEGIN PRIVATE KEY-----
+MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQCih/artTdgqXGM
++vHlmljrF348YEUFHxG++k5jdak6QZM5XWMqkuXrV6ZFSy7GF9QLWS8BOF4s7Pao
+FApdFcnayMLm6XB6NfOYGV1BSQalhr6nm5IisXB/O9FO/IOFLDHtoaWmRkslGPzK
+fQDmw74sW2voLK+JiQQkCDoL2NOay9cJjRpGFwQolL0x9NuaPx8Ys9LpJ7CcWGyb
+P7C3h7o0XnSCmmGZyAGnRAXBI2RELoZNAVCv2qCrQ+lQmj9SdGVufJn32m9zqFyG
+ht858zcWFJgxiWzKT0TgaocRSxi95hm4d8Ksp6j6YO45mqX9/l9fOeMl622o9qat
+Z963ik0lAgMBAAECggEAKG/V5/YT40189hOoM9UBKupjKp/UBDhs6JwrfRTUx+zx
+NVw99CVspS8fK83PAxOCGtmzN2VADwLcwkgMJQkq+a8pyJwLMyixpKWo3TmPOQcL
+b7VluBJ39/vYsUNjcHJksKffR/1krEPpfvJ3UzKfobcUI4VcngYUHOfcEz78tJ38
+8phSc5/9fOYKL62OXlP0nFugmf3K7OgE3MzAg+2MUKYaTHITMgXMYE9Ur/qh2uHi
+z0ntNu2eLCa8dgJZLVjd/5b1Ux5q+6NUBrtOnO5pM+nbaWBSZl7owIDpMbRkb6I5
+wB/z32p/untXmiRsiYpNACXx46r8fxY8AKNU4fTv+QKBgQDhB+uj4T9UU3+QOWPt
+Fafmepvw+lEJ40ZiExrrfiNRLfMPCWwuHzmFGri490S5VAEBJcCSzuRW8C+EvTlX
+UXK9+f+gJPaLsGFkEg9j3DbMl8kX/e36Far6Sy8NU3/5nvIdQIp7Im2oX7o7XH9A
+Q6DYn7bCPj2WTzoSti4bn9MrqQKBgQC45huEZEc5oBPX/iHPmgNI1Mo7jKI8j6VK
+pMGE1nJoRrXVRo5qTaA5x/STVnBa3ZewBU0E+QWQH554BlQcg9Z17LcVqtekSPIz
+fd64BGlo0fAuiS/RKhmVaqlxQuWOFWKQ/0kFb2mFfz+yyhPgweRvljeIvP3QGIRn
+fQIKclxjHQKBgDVDQqsPbYXwHYltjBFZxtvuuWpYVUYZ3VbpXr3OpV1ZmuY8PLbN
+/TdcE8zz+fhDwdkbrnERN0q8nwK0JxZb2OTOf4rQNOrrXKHrBGmGfhH++0IKgIFp
+D4cetIxa7zeOP5Bc7momw/3Oaq4SPqxfVXrwkrl3MeyZ5Az5wgAX3EvBAoGAYRYS
+ZNXywENZqBR81HFeQCPbfKE/nuUeOa+BHassr6xRVgeSSCcydqSTu7mrjUrFl1tx
+MadAUIkJwKQyDjb7qTf+epYWXOEgrADvrVhDsRJrN0Q5o26juF0lU594wb5g3xns
+0bnKgppqbArHnUCyHhWWW2pBK79z5pMxOyMJd9ECgYA8waZncE3uFUK4f1sBwp/x
+vKmIIPI9Jf3Y7Rt5LOPTmeOkv4gtW0vz2w7dnTO/IhRmtnDO2UlGK58mjPrWtaiH
+sRFcbZC25rDpE9zVwq6UYufi2L0UUMSAzlUvauQhtFDd6S5ThRKW8yJ+4YYuLxly
+kJP4rk3JYSB6A7jufkhdwQ==
+-----END PRIVATE KEY-----
+)PEM";
+static const char* kTlsPem = R"PEM(-----BEGIN CERTIFICATE-----
+MIIB5jCCAYugAwIBAgIUBNDhddFTCsgVpUIdjd+XiWJcwJswCgYIKoZIzj0EAwIw
+NzEYMBYGA1UECgwPVWx0cmFDcnlwdCBUZXN0MRswGQYDVQQDDBJVbHRyYUNyeXB0
+IFRlc3QgQ0EwIBcNMjYxMDI3MjAyMzQ0WhgPMjEyNjEwMDMyMDIzNDRaMBoxGDAW
+BgNVBAMMD3Rscy5leGFtcGxlLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IA
+BGUixn8itnX+qZW+AgIvUeJHocNYViSuqi8K9TMYOIAvzRbXpZ3b/x1QPE/O6Ynh
+yhBfkMX4/z8O3AhJbnic40KjgY8wgYwwCQYDVR0TBAIwADAOBgNVHQ8BAf8EBAMC
+BaAwEwYDVR0lBAwwCgYIKwYBBQUHAwEwGgYDVR0RBBMwEYIPdGxzLmV4YW1wbGUu
+Y29tMB0GA1UdDgQWBBT6FEz4Qd2VmBki+LLTIz9WvsVGrjAfBgNVHSMEGDAWgBSx
+yhMUmLwtRkKQzUDCSVi6Gvo+CTAKBggqhkjOPQQDAgNJADBGAiEAhhJbHKDkcW6x
+OMFZ1GsEpuWgnoxVYNcrOG4UVkkMKpwCIQDtNCOU8KuDA+nZBQPmS9dffbFVcvvj
++VKFBynqt/+bpA==
+-----END CERTIFICATE-----
+)PEM";
+static const char* kTlsKeyPem = R"PEM(-----BEGIN PRIVATE KEY-----
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQguRY/v8GRjQ6J3cg0
+Mig0JWT88KWKgYTadfZlv9PA3ouhRANCAARlIsZ/IrZ1/qmVvgICL1HiR6HDWFYk
+rqovCvUzGDiAL80W16Wd2/8dUDxPzumJ4coQX5DF+P8/DtwISW54nONC
+-----END PRIVATE KEY-----
+)PEM";
+static const char* kAliceP12 =
+    "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"
+    ;
+static const char* kAliceLegacyP12 =
+    "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"
+    "rPPbHQ3ABAgUI5AjXmHGLAICCAA="
+    ;
+
+// Real roots, public certificates both, valid to 2036 and 2035: one that
+// comes with every Windows (SHA-256 84:7D:F6:A7:...:ED:7C:61) and one in
+// Apple's and Linux distributions' root sets (96:BC:EC:06:...:DF:08:C6).
+static const char* kMicrosoftRoot2011Pem = R"PEM(-----BEGIN CERTIFICATE-----
+MIIF7TCCA9WgAwIBAgIQP4vItfyfspZDtWnWbELhRDANBgkqhkiG9w0BAQsFADCB
+iDELMAkGA1UEBhMCVVMxEzARBgNVBAgTCldhc2hpbmd0b24xEDAOBgNVBAcTB1Jl
+ZG1vbmQxHjAcBgNVBAoTFU1pY3Jvc29mdCBDb3Jwb3JhdGlvbjEyMDAGA1UEAxMp
+TWljcm9zb2Z0IFJvb3QgQ2VydGlmaWNhdGUgQXV0aG9yaXR5IDIwMTEwHhcNMTEw
+MzIyMjIwNTI4WhcNMzYwMzIyMjIxMzA0WjCBiDELMAkGA1UEBhMCVVMxEzARBgNV
+BAgTCldhc2hpbmd0b24xEDAOBgNVBAcTB1JlZG1vbmQxHjAcBgNVBAoTFU1pY3Jv
+c29mdCBDb3Jwb3JhdGlvbjEyMDAGA1UEAxMpTWljcm9zb2Z0IFJvb3QgQ2VydGlm
+aWNhdGUgQXV0aG9yaXR5IDIwMTEwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIK
+AoICAQCygEGqNThNE3IyaCJNuLLx/9VSvGzH9dJKjDbu0cJcfoyKrq8TKG/Ac+M6
+ztAlqFo6be+ouFmrEyNozQwph9FvgFyPRH9dkAFSWKxRxV8qh9zc2AodwQO5e7BW
+6KPeZGHCnvjzfLnsDbVU/ky2ZU+I8JxImQxCCwl8MVkXeQZ4KI2JOkwDJb5xalwL
+54RgpJki49KvhKSn+9GY7Qyp3pSJ4Q6g3MDOmT3qCFK7VnnkH4S6Hri0xElcTzFL
+h93dBWcmmYDgcRGjuKVB4qRTufcyKYMME782XgSzS0NHL2vikR7TmE/dQgfI6B0S
+/Jmpaz6SfsjWaTr8ZL22CZ3K/QwLopt3YEsDlKQwaRLWQi3BQUzK3Kr9j1uDRprZ
+/LHR47PJf0h6zSTwQY9cdNCssBAgBkm3xy0hyFfj0IbzA2j70M5xwYmZSmQBbP3s
+MJHPQTySx+W6hh1hhMdfgzlirrSSL0fzC/hV66AfWdC7dJse0Hbm8ukG1xDo+mTe
+acY1logC8Ea4PyeZb8txiSk190gWAjWP1Xl8TQLPX+uKg09FcYj5qQ1OcunCnAfP
+SRtOBA5jUYxe2ADBVSy2xuDCZU7JNDn1nLPEfuhhbhNfFcRf2X7tHc7uROzLLoax
+7Dj2cO2rXBPB2Q8Nx4CyVe0096yb5MPa50c8prWPMd/FS6/r8QIDAQABo1EwTzAL
+BgNVHQ8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUci06AjGQQ7kU
+BU7h6qfHMdEjiTQwEAYJKwYBBAGCNxUBBAMCAQAwDQYJKoZIhvcNAQELBQADggIB
+AH9yzw+3xRXbm8BJyiZb/p4T5tPw0tuXX/JLP02zrhmu7deXoKzvqTqjwkGw5biR
+nhOBJAPmCf0/V0A5ISRW0RAvS0CpNoZLtFNXmvvxfomPEf4YbFGq6O0JlbXlccmh
+6Yd1phV/yX43VF50k8XDZ8wNT2uoFwxtCJJ+i92Bqi1wIcM9BhS7vyRep4TXPw8h
+Ir1LAAbblxzYXtTFC1yHblCk6MM4pPvLLMWSZpuFXst6bJN8gClYW1e1QGm6CHmm
+ZGIVnYeWRbVmIyADixxzoNOieTPgUFmG2y/lAiXqcyqfABTINseSO+lOAOzYVgm5
+M0kS0lQLAausR7aRKX1MtHWAUgHoyoL2n8ysnI8X6i8msKtyrAv+nlEex0NVZ09R
+s1fWtuzuUrc66U7h14GIvE+OdbtLqPA1qibUZ2dJsnBMO5PcHd94kIZysjik0dyS
+TclY6ysSXNQ7roxrsIPlAT/4CTL2kzU0Iq/dNw13CYArzUgA8YyZGUcFAenRv9FO
+0OYoQzeZpApKCNmacXPSqs0xE2N2oTdvkjgefRI8ZjLny23h/FKJ3crWZgWalmG+
+oijHHKOnNlA8OqTfSm7mhzvO6/DggTedEzxSjr25HTTGHdUKaj2YKXCMiSrRq4IQ
+SB/c9O+lxbtVGjhjhE63bK2VVOxlIhBJF7jAHscPrFRH
+-----END CERTIFICATE-----
+)PEM";
+static const char* kIsrgRootX1Pem = R"PEM(-----BEGIN CERTIFICATE-----
+MIIFazCCA1OgAwIBAgIRAIIQz7DSQONZRGPgu2OCiwAwDQYJKoZIhvcNAQELBQAw
+TzELMAkGA1UEBhMCVVMxKTAnBgNVBAoTIEludGVybmV0IFNlY3VyaXR5IFJlc2Vh
+cmNoIEdyb3VwMRUwEwYDVQQDEwxJU1JHIFJvb3QgWDEwHhcNMTUwNjA0MTEwNDM4
+WhcNMzUwNjA0MTEwNDM4WjBPMQswCQYDVQQGEwJVUzEpMCcGA1UEChMgSW50ZXJu
+ZXQgU2VjdXJpdHkgUmVzZWFyY2ggR3JvdXAxFTATBgNVBAMTDElTUkcgUm9vdCBY
+MTCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAK3oJHP0FDfzm54rVygc
+h77ct984kIxuPOZXoHj3dcKi/vVqbvYATyjb3miGbESTtrFj/RQSa78f0uoxmyF+
+0TM8ukj13Xnfs7j/EvEhmkvBioZxaUpmZmyPfjxwv60pIgbz5MDmgK7iS4+3mX6U
+A5/TR5d8mUgjU+g4rk8Kb4Mu0UlXjIB0ttov0DiNewNwIRt18jA8+o+u3dpjq+sW
+T8KOEUt+zwvo/7V3LvSye0rgTBIlDHCNAymg4VMk7BPZ7hm/ELNKjD+Jo2FR3qyH
+B5T0Y3HsLuJvW5iB4YlcNHlsdu87kGJ55tukmi8mxdAQ4Q7e2RCOFvu396j3x+UC
+B5iPNgiV5+I3lg02dZ77DnKxHZu8A/lJBdiB3QW0KtZB6awBdpUKD9jf1b0SHzUv
+KBds0pjBqAlkd25HN7rOrFleaJ1/ctaJxQZBKT5ZPt0m9STJEadao0xAH0ahmbWn
+OlFuhjuefXKnEgV4We0+UXgVCwOPjdAvBbI+e0ocS3MFEvzG6uBQE3xDk3SzynTn
+jh8BCNAw1FtxNrQHusEwMFxIt4I7mKZ9YIqioymCzLq9gwQbooMDQaHWBfEbwrbw
+qHyGO0aoSCqI3Haadr8faqU9GY/rOPNk3sgrDQoo//fb4hVC1CLQJ13hef4Y53CI
+rU7m2Ys6xt0nUW7/vGT1M0NPAgMBAAGjQjBAMA4GA1UdDwEB/wQEAwIBBjAPBgNV
+HRMBAf8EBTADAQH/MB0GA1UdDgQWBBR5tFnme7bl5AFzgAiIyBpY9umbbjANBgkq
+hkiG9w0BAQsFAAOCAgEAVR9YqbyyqFDQDLHYGmkgJykIrGF1XIpu+ILlaS/V9lZL
+ubhzEFnTIZd+50xx+7LSYK05qAvqFyFWhfFQDlnrzuBZ6brJFe+GnY+EgPbk6ZGQ
+3BebYhtF8GaV0nxvwuo77x/Py9auJ/GpsMiu/X1+mvoiBOv/2X/qkSsisRcOj/KK
+NFtY2PwByVS5uCbMiogziUwthDyC3+6WVwW6LLv3xLfHTjuCvjHIInNzktHCgKQ5
+ORAzI4JMPJ+GslWYHb4phowim57iaztXOoJwTdwJx4nLCgdNbOhdjsnvzqvHu7Ur
+TkXWStAmzOVyyghqpZXjFaH3pO3JLF+l+/+sKAIuvtd7u+Nxe5AW0wdeRlN8NwdC
+jNPElpzVmbUq4JUagEiuTDkHzsxHpFKVK7q4+63SM1N95R1NbdWhscdCb+ZAJzVc
+oyi3B43njTOQ5yOf+1CceWxG1bQVs5ZufpsMljq4Ui0/1lvh+wjChP4kqKOJ2qxq
+4RgqsahDYVvTH9w7jXbyLeiNdd8XM2w9U/t7y0Ff/9yi0GE44Za4rF2LN9d11TPA
+mRGunUHBcnWEvgJBQl9nJEiU0Zsnvgc/ubhPgXRR4Xq37Z0j4r7g1SgEEzwxA57d
+emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
+-----END CERTIFICATE-----
+)PEM";
+
+static std::vector<uint8_t> Bytes(const std::string& s) { return std::vector<uint8_t>(s.begin(), s.end()); }
+
+static UltraCryptX509Identity IdentityOf(const char* certificatePem, const char* keyPem) {
+    UltraCryptX509Identity id;
+    id.certificatePem = certificatePem;
+    id.privateKeyPem = UltraCryptSecureBuffer(keyPem, std::strlen(keyPem));
+    return id;
+}
+
+static UltraCryptTrust TrustOf(const std::string& cert, UltraCryptCertificatePurpose purpose, int64_t at = 0,
+                               bool withTestRoot = true) {
+    UltraCryptTrustOptions options;
+    options.purpose = purpose;
+    options.useSystemRoots = !withTestRoot;
+    if (withTestRoot) options.extraRootsPem.push_back(kCaPem);
+    options.at = at;
+    UltraCryptTrustCheck check;
+    UltraCrypt_CheckCertificate(cert, {}, options, check);
+    return check.trust;
+}
+
+static void TestX509() {
+    std::printf("X.509 and CMS\n");
+    if (!UltraCrypt_IsX509Available()) {
+        UltraCryptCertificateInfo info;
+        const auto r = UltraCrypt_ReadCertificate(kAlicePem, info);
+        Check(!r && r.code == UltraCryptResultCode::BackendUnavailable,
+              "without OpenSSL 3 every call says BackendUnavailable");
+        std::printf("  (built without OpenSSL 3: nothing more to check)\n");
+        return;
+    }
+
+    // What a certificate says.
+    UltraCryptCertificateInfo info;
+    Check(static_cast<bool>(UltraCrypt_ReadCertificate(kAlicePem, info)), "a PEM certificate is read");
+    Check(info.commonName == "Alice Example", "its common name");
+    Check(info.emails.size() == 1 && info.emails[0] == "alice@example.com",
+          "its address, lowercased, once (subject and alternative name)");
+    Check(info.issuer == "UltraCrypt Test (UltraCrypt Test CA)", "its issuer, organisation and name");
+    Check(info.notBefore > 1700000000 && info.notAfter > info.notBefore + 36000LL * 86400, "its validity period");
+    Check(info.fingerprintSha256.size() == 95 && info.fingerprintSha256[2] == ':', "its SHA-256 fingerprint");
+    {
+        std::string body;
+        for (const char* p = std::strstr(kAlicePem, "\n") + 1; *p && *p != '-'; ++p)
+            if (*p != '\n') body += *p;
+        const std::vector<uint8_t> der = UltraCanvas::Base64Decode(body);
+        UltraCryptCertificateInfo fromDer;
+        Check(UltraCrypt_ReadCertificate(std::string(der.begin(), der.end()), fromDer) &&
+              fromDer.fingerprintSha256 == info.fingerprintSha256, "the same certificate as DER");
+    }
+    UltraCryptCertificateInfo none;
+    const auto bad = UltraCrypt_ReadCertificate("not a certificate", none);
+    Check(!bad && bad.code == UltraCryptResultCode::InvalidArgument, "text without a certificate is refused");
+
+    // Trust.
+    using P = UltraCryptCertificatePurpose;
+    Check(TrustOf(kAlicePem, P::EmailSigning, 0, false) == UltraCryptTrust::Untrusted,
+          "the test authority is trusted nowhere: Untrusted");
+    Check(TrustOf(kAlicePem, P::EmailSigning) == UltraCryptTrust::Trusted, "with its root given: Trusted");
+    Check(TrustOf(kAlicePem, P::EmailEncryption) == UltraCryptTrust::Trusted, "for encrypting too");
+    Check(TrustOf(kTlsPem, P::EmailSigning) == UltraCryptTrust::WrongPurpose,
+          "a TLS server certificate signing mail: WrongPurpose");
+    Check(TrustOf(kTlsPem, P::Any) == UltraCryptTrust::Trusted, "the same for no purpose in particular: Trusted");
+    Check(TrustOf(kAlicePem, P::EmailSigning, 7258118400LL) == UltraCryptTrust::Expired, "judged in 2200: Expired");
+    Check(TrustOf(kAlicePem, P::EmailSigning, 946684800LL) == UltraCryptTrust::NotYetValid,
+          "judged in 2000: NotYetValid");
+    {
+        // The system's roots are the operating system's. Microsoft's root is
+        // in no OpenSSL bundle (MSYS2's carries Mozilla's set), so on Windows
+        // it is trusted only if the ROOT store was read; on macOS the vcpkg
+        // OpenSSL carries no roots at all, so ISRG's comes from the anchors.
+#if defined(_WIN32)
+        const char* shipped = kMicrosoftRoot2011Pem;
+        const char* what = "Microsoft's root, which comes with Windows, is trusted through the ROOT store";
+#else
+        const char* shipped = kIsrgRootX1Pem;
+        const char* what = "ISRG Root X1, which comes with macOS and Linux, is trusted through the system's roots";
+#endif
+        UltraCryptTrustOptions options;
+        UltraCryptTrustCheck check;
+        UltraCrypt_CheckCertificate(shipped, {}, options, check);
+        Check(check.trust == UltraCryptTrust::Trusted, std::string(what) +
+              (check.trust == UltraCryptTrust::Trusted ? "" : " (" + check.reason + ")"));
+        UltraCryptCertificateInfo ms, isrg;
+        Check(UltraCrypt_ReadCertificate(kMicrosoftRoot2011Pem, ms) &&
+              ms.fingerprintSha256.rfind("84:7D:F6:A7", 0) == 0 &&
+              UltraCrypt_ReadCertificate(kIsrgRootX1Pem, isrg) &&
+              isrg.fingerprintSha256.rfind("96:BC:EC:06", 0) == 0, "the two real roots are the ones named");
+    }
+    {
+        UltraCryptTrustOptions options;
+        options.useSystemRoots = false;
+        UltraCryptTrustCheck check;
+        UltraCrypt_CheckCertificate(kAlicePem, {kCaPem}, options, check);
+        Check(check.trust == UltraCryptTrust::Untrusted && !check.reason.empty(),
+              "an intermediate is not a root: Untrusted, with a reason");
+    }
+
+    // PKCS #12.
+    const UltraCryptSecureBuffer password("geheim", 6);
+    UltraCryptX509Identity alice;
+    Check(static_cast<bool>(UltraCrypt_ImportPkcs12(UltraCanvas::Base64Decode(kAliceP12), password, alice)),
+          "a PKCS #12 file opens with its password");
+    UltraCryptCertificateInfo first;
+    Check(UltraCrypt_ReadCertificate(alice.certificatePem, first) && first.fingerprintSha256 == info.fingerprintSha256,
+          "its certificate comes first");
+    Check(alice.certificatePem.find("BEGIN CERTIFICATE", alice.certificatePem.find("END CERTIFICATE")) != std::string::npos,
+          "then its chain");
+    Check(alice.privateKeyPem.GetSize() > 100 &&
+          std::memcmp(alice.privateKeyPem.Data(), "-----BEGIN PRIVATE KEY-----", 27) == 0,
+          "and its private key, PKCS #8 PEM");
+    UltraCryptX509Identity legacy;
+    Check(static_cast<bool>(UltraCrypt_ImportPkcs12(UltraCanvas::Base64Decode(kAliceLegacyP12), password, legacy)),
+          "an older file (RC2) opens too");
+    UltraCryptX509Identity wrong;
+    const auto wrongPw = UltraCrypt_ImportPkcs12(UltraCanvas::Base64Decode(kAliceP12),
+                                                 UltraCryptSecureBuffer("falsch", 6), wrong);
+    Check(!wrongPw && wrongPw.code == UltraCryptResultCode::AuthenticationFailed && wrong.privateKeyPem.IsEmpty(),
+          "a wrong password: AuthenticationFailed, and no key");
+    const auto notP12 = UltraCrypt_ImportPkcs12(Bytes("not pkcs12"), password, wrong);
+    Check(!notP12 && notP12.code == UltraCryptResultCode::InvalidArgument, "a file that is not PKCS #12: InvalidArgument");
+
+    // Detached signatures.
+    const std::vector<uint8_t> content = Bytes("Content-Type: text/plain\r\n\r\nHallo Bob.\r\n");
+    std::vector<uint8_t> signature;
+    Check(static_cast<bool>(UltraCrypt_CmsSignDetached(content, alice, signature)), "Alice signs");
+    Check(UltraCrypt_CmsTypeOf(signature) == UltraCryptCmsType::SignedData, "it is signed data");
+    UltraCryptCmsSignature found;
+    Check(static_cast<bool>(UltraCrypt_CmsVerifyDetached(content, signature, found)), "the signature holds");
+    UltraCryptCertificateInfo signer;
+    Check(UltraCrypt_ReadCertificate(found.signerCertificatePem, signer) &&
+          signer.fingerprintSha256 == info.fingerprintSha256, "it names Alice's certificate");
+    Check(found.certificatesPem.size() == 2, "and carries her chain");
+    {
+        UltraCryptTrustOptions options;
+        options.purpose = UltraCryptCertificatePurpose::EmailSigning;
+        options.useSystemRoots = false;
+        options.extraRootsPem.push_back(kCaPem);
+        UltraCryptTrustCheck check;
+        UltraCrypt_CheckCertificate(found.signerCertificatePem, found.certificatesPem, options, check);
+        Check(check.trust == UltraCryptTrust::Trusted, "the signer is vouched for through what it carries");
+    }
+    std::vector<uint8_t> changed = content;
+    changed[changed.size() - 3] ^= 0x01;
+    UltraCryptCmsSignature changedFound;
+    const auto changedResult = UltraCrypt_CmsVerifyDetached(changed, signature, changedFound);
+    Check(!changedResult && changedResult.code == UltraCryptResultCode::SignatureInvalid,
+          "a changed byte of the content: SignatureInvalid");
+    Check(!changedFound.signerCertificatePem.empty(), "the signer is still named");
+    std::vector<uint8_t> badSignature = signature;
+    badSignature.back() ^= 0x01;
+    const auto badSig = UltraCrypt_CmsVerifyDetached(content, badSignature, changedFound);
+    Check(!badSig && badSig.code == UltraCryptResultCode::SignatureInvalid, "a changed byte of the signature: SignatureInvalid");
+    const auto notSigned = UltraCrypt_CmsVerifyDetached(content, content, changedFound);
+    Check(!notSigned && notSigned.code == UltraCryptResultCode::InvalidArgument, "bytes that are no signature: InvalidArgument");
+    std::vector<uint8_t> unused;
+    const auto mismatched = UltraCrypt_CmsSignDetached(content, IdentityOf(kAlicePem, kTlsKeyPem), unused);
+    Check(!mismatched && mismatched.code == UltraCryptResultCode::InvalidArgument && unused.empty(),
+          "a key that is not the certificate's signs nothing");
+
+    // Enveloped data.
+    std::vector<uint8_t> enveloped;
+    Check(UltraCrypt_CmsEncrypt(content, {kAlicePem, kTlsPem}, enveloped) &&
+          UltraCrypt_CmsTypeOf(enveloped) == UltraCryptCmsType::EnvelopedData,
+          "encrypted to Alice and to an EC certificate");
+    UltraCryptSecureBuffer opened;
+    Check(UltraCrypt_CmsDecrypt(enveloped, alice, opened) && opened.GetSize() == content.size() &&
+          std::memcmp(opened.Data(), content.data(), content.size()) == 0, "Alice opens it");
+    UltraCryptSecureBuffer openedPem;
+    Check(UltraCrypt_CmsDecrypt(enveloped, IdentityOf(kAlicePem, kAliceKeyPem), openedPem) &&
+          openedPem.GetSize() == content.size(), "and so does her key as a PEM file holds it");
+    UltraCryptSecureBuffer openedEc;
+    Check(UltraCrypt_CmsDecrypt(enveloped, IdentityOf(kTlsPem, kTlsKeyPem), openedEc) &&
+          openedEc.GetSize() == content.size(), "so does the EC recipient");
+    std::vector<uint8_t> toAliceOnly;
+    UltraCrypt_CmsEncrypt(content, {kAlicePem}, toAliceOnly);
+    UltraCryptSecureBuffer refused;
+    const auto notMine = UltraCrypt_CmsDecrypt(toAliceOnly, IdentityOf(kTlsPem, kTlsKeyPem), refused);
+    Check(!notMine && notMine.code == UltraCryptResultCode::DecryptionFailed && refused.IsEmpty(),
+          "another recipient: DecryptionFailed, and nothing");
+    std::vector<uint8_t> noOne;
+    Check(UltraCrypt_CmsEncrypt(content, {}, noOne).code == UltraCryptResultCode::InvalidArgument &&
+          UltraCrypt_CmsEncrypt(content, {"garbage"}, noOne).code == UltraCryptResultCode::InvalidArgument,
+          "no recipient, or one without a certificate: InvalidArgument");
+    std::vector<uint8_t> attached;
+    UltraCryptCmsSignature attachedFound;
+    Check(UltraCrypt_CmsVerifyAttached(enveloped, attached, attachedFound).code == UltraCryptResultCode::InvalidArgument,
+          "enveloped data is not signed data");
+}
+
+// ===== RS256 / ES256 against keys given by their parts =====
+// Made with Python's cryptography package (a signer that is not OpenSSL's EVP
+// path under test): an RSA-2048 key and its PKCS #1 v1.5 SHA-256 signature, a
+// 1024-bit modulus, a P-256 key and its signature as r || s - over the
+// signing input of a JWS.
+static const char* kRsaN =
+    "b55c2e74b30112545e67a77b8c26410ca1c6bab5994bc2ac5590a03162358529257cc857792b355966c4fd71090daab7"
+    "4cbf296ad55515d42d10aa4cddbadac028b7beab50c4cef3135621b3104126ef2c6c04319a55aba4f2149718d9dc4162"
+    "2b22ae769281e2c31242b5ba711d6ad3963548157460a3ccacd0db2b07f067d03bc91a9b2ff99e6bd564b628027a9b06"
+    "76deb1195064f8796801c4bc7ed8807770eedee756d4c162ee6a8a5f69dfdaa03a887f4ed20996e0dc81c0f5b3b1a4da"
+    "2a18b6b5151d45a9bf1210011894622a57a80ac8bf1ee5938d714ac190ee9578022ca8f7193c854643264bb51e50968c"
+    "587fc23fb46917161e6a9ccc3dfc80b7"
+    ;
+static const char* kRsaE =
+    "010001"
+    ;
+static const char* kRsaSig =
+    "79f49b2e2010d025998d3f1fb99f09f4c26a7de179ab75c60e1dc4c270e6986b1f7ccab7969067bf47a7c1e20cea4ee0"
+    "388a906b5301ee587d078c1ae6e72073c816c271f781426df865cd947e82453e1b1befb9734b8e2976723df109cd1dad"
+    "ec20932de78af292793397c6d5f7c6ba8689bfaaa023280dc5b7a011a9f7f1b467d9cc3bc0ccb477af1c1bf71989b5f7"
+    "f80be30bb8af01b8bacbb0eb28ff9ecf9a3ac3abe2e23d3a36dbb7250270af669c69a8f9303ffe5245193488180af31b"
+    "b10726d590b3b7501ee03eeda3540415292d04e5de6f312e41b88ece0d2a74197f1654d2f81cd602e96b74bd23ee025c"
+    "2894efbf78b430f7e9e6da7a75327161"
+    ;
+static const char* kRsa1024N =
+    "e99e0daf51d627b6043fa955cd90231a7898884dfe64ffc0c0326b4f8d8e3e6c5c433c62fe474dbed97eb13c513741a8"
+    "5c6e74c4fb4953f0d697fb00a874cd872db9a9122ececb0af7b9c1520305aa1663b969e83ef3fc90d78494dbbd2dc72a"
+    "4d9baf7b4b45397aa1ddf323b21a61e8a7dfdeaa3b7e062ae76a67eaf8fe06a9"
+    ;
+static const char* kP256X =
+    "47f2894721846c967c62a73ed911fd41d441457407d191bc41cdd168a5f1549a"
+    ;
+static const char* kP256Y =
+    "4e9fbc3cc56218e8cd73ee8ae2c36c0d4aa2a47878f87ec53f8d0de8beca005f"
+    ;
+static const char* kP256Sig =
+    "27aade2f087398c8d4fd0835263eca63de5fdb863a1fcd4f2c67d1831a4f61f95c9953e3931846fe5dcc5383820d7939"
+    "d0d53780e408b160fc3b4e9cf1101eb7"
+    ;
+static const char* kJwsSigningInput = "eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlcmlrYSJ9";
+
+static std::vector<uint8_t> Hex(const char* hex) {
+    std::vector<uint8_t> out;
+    UltraCrypt_FromHex(hex, out);
+    return out;
+}
+
+static void TestRsaEcdsa() {
+    std::printf("RS256 / ES256 (keys by their parts)\n");
+    const std::string input = kJwsSigningInput;
+    const auto n = Hex(kRsaN), e = Hex(kRsaE), rsaSig = Hex(kRsaSig);
+    const auto x = Hex(kP256X), y = Hex(kP256Y), ecSig = Hex(kP256Sig);
+    if (!UltraCrypt_IsRsaEcdsaAvailable()) {
+        const auto r = UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), rsaSig);
+        Check(!r && r.code == UltraCryptResultCode::BackendUnavailable,
+              "without OpenSSL 3 every call says BackendUnavailable");
+        return;
+    }
+    using C = UltraCryptResultCode;
+
+    Check(static_cast<bool>(UltraCrypt_CheckRsaPublicKey(n, e)), "an RSA-2048 key is accepted");
+    Check(static_cast<bool>(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), rsaSig)),
+          "its RS256 signature holds");
+    std::string changed = input;
+    changed[5] ^= 0x01;
+    Check(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, changed.data(), changed.size(), rsaSig).code == C::SignatureInvalid,
+          "a changed byte of the data: SignatureInvalid");
+    auto badRsa = rsaSig;
+    badRsa[17] ^= 0x01;
+    Check(UltraCrypt_VerifyRsaPkcs1Sha256(n, e, input.data(), input.size(), badRsa).code == C::SignatureInvalid,
+          "a changed byte of the signature: SignatureInvalid");
+    auto otherN = n;
+    otherN[100] ^= 0x01;
+    Check(!UltraCrypt_VerifyRsaPkcs1Sha256(otherN, e, input.data(), input.size(), rsaSig),
+          "another modulus: refused");
+    Check(UltraCrypt_CheckRsaPublicKey(Hex(kRsa1024N), e).code == C::InvalidKeySize,
+          "a 1024-bit modulus: InvalidKeySize");
+    Check(UltraCrypt_CheckRsaPublicKey(n, {0x01, 0x00, 0x00}).code == C::InvalidArgument,
+          "an even exponent: InvalidArgument");
+
+    Check(static_cast<bool>(UltraCrypt_CheckP256PublicKey(x, y)), "a P-256 key is accepted");
+    Check(static_cast<bool>(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), ecSig)),
+          "its ES256 signature (r || s) holds");
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, changed.data(), changed.size(), ecSig).code == C::SignatureInvalid,
+          "a changed byte of the data: SignatureInvalid");
+    auto badEc = ecSig;
+    badEc[40] ^= 0x01;
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), badEc).code == C::SignatureInvalid,
+          "a changed byte of s: SignatureInvalid");
+    Check(UltraCrypt_VerifyEcdsaP256Sha256(x, y, input.data(), input.size(), std::vector<uint8_t>(ecSig.begin(), ecSig.end() - 1)).code ==
+              C::InvalidArgument, "a 63-byte signature: InvalidArgument");
+    auto offCurve = y;
+    offCurve[31] ^= 0x01;
+    Check(UltraCrypt_CheckP256PublicKey(x, offCurve).code == C::InvalidArgument, "a point off the curve: InvalidArgument");
+    Check(UltraCrypt_CheckP256PublicKey(std::vector<uint8_t>(x.begin() + 1, x.end()), y).code == C::InvalidKeySize,
+          "a 31-byte coordinate: InvalidKeySize");
+}
+
 int main() {
     std::printf("UltraCrypt tests — backend: %s\n\n",
                 UltraCrypt_GetBackendName().c_str());
@@ -1125,6 +1691,8 @@ int main() {
     TestSignatures();
     TestKeyExchange();
     TestSecureBuffer();
+    TestX509();
+    TestRsaEcdsa();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

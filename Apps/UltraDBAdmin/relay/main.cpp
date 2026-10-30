@@ -11,6 +11,7 @@
 //   ultradbadmin-relay --hash-token               a token from stdin -> token_sha256
 //   ultradbadmin-relay --config relay.ini --set-secret crm
 //                                                 a password from stdin -> the vault
+// Version: 0.2.1 - the no-sign-in message names UltraCrypt's OpenSSL backend
 // Version: 0.2.0 - the OpenID Connect sign-in ([signin], RelaySignIn.h)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -207,7 +208,7 @@ int main(int argc, char** argv) {
     }
 #else
     if (config.signIn.enabled) {
-        std::fprintf(stderr, "this relay was built without OpenSSL 3, so it has no [signin]\n");
+        std::fprintf(stderr, "this relay was built without UltraNet or UltraCrypt's OpenSSL 3 backend, so it has no [signin]\n");
         return 1;
     }
 #endif

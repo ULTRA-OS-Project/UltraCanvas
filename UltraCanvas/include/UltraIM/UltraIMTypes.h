@@ -1,8 +1,12 @@
 // include/UltraIM/UltraIMTypes.h
 // UltraIM - data types shared by the instant-messaging API and its providers
+// Version: 0.1.5 - UltraIMPreviewMaker: the application's way of making a preview picture of a file to send
+// Version: 0.1.4 - UltraIMAttachment::thumbnailPath (a video's or a file's preview picture); UltraIMAttachmentCallback
+// Version: 0.1.3 - UltraIMAuthStep::OtherDevice: a sign-in confirmed on another device (a QR code scanned there)
+// Version: 0.1.2 - UltraIMProviderInfo::authResendHint: a sign-in code can be asked for another way
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -34,8 +38,14 @@ enum class UltraIMDeliveryStatus {
     Failed          // Could not be sent
 };
 
+// A picture, a video, a file, a voice note or a sticker with a message. The
+// provider downloads a picture (and a video's or a file's preview picture)
+// by itself and says so with a MessageUpdate carrying localPath /
+// thumbnailPath; a video, a file or a voice note is fetched when asked for
+// (UltraIM_DownloadAttachment), since it may be large.
 struct UltraIMAttachment {
     std::string localPath;          // UTF-8 path once downloaded (empty until then)
+    std::string thumbnailPath;      // UTF-8 path of a small preview picture, once downloaded ("" when none)
     std::string remoteUrl;          // Provider URL or file id
     std::string fileName;           // Display name
     std::string mimeType;
@@ -168,16 +178,26 @@ enum class UltraIMLoginType {
 
 // Where a sign-in that takes more than one round stands (Telegram: the phone
 // number, then the code Telegram sends, then the cloud password when the
-// account has one; a new number registers with a name).
+// account has one; a new number registers with a name; or a QR code scanned
+// from a signed-in app instead of the number and the code).
 enum class UltraIMAuthStep {
     Idle,           // nothing asked (signed in, or not started); not `None`, which X11 #defines
     PhoneNumber,    // credentials.phoneNumber
     Code,           // credentials.otpCode: the code sent by SMS or to another device
     Password,       // credentials.password: the account's two-step password
-    Registration    // credentials.displayName: a new account's name
+    Registration,   // credentials.displayName: a new account's name
+    // Nothing to type: the hint is a link (Telegram: tg://login?token=...) to
+    // show as a QR code for a signed-in app to scan; the service refreshes
+    // it (AuthStepChange, the new link), and goes on by itself - to Password
+    // when the account has one, else signed in - once it is scanned. Asked
+    // for with credentials.loginType QRCode (at the start, or in place of a
+    // code that never came); a phone number given here starts over with it.
+    OtherDevice
 };
 
 struct UltraIMCredentials {
+    // QRCode: sign in by a QR code scanned from a signed-in app (Telegram),
+    // with no phoneNumber - see UltraIMAuthStep::OtherDevice.
     UltraIMLoginType loginType = UltraIMLoginType::UsernamePassword;
     std::string server;             // Homeserver / relay URL ("" = the provider's default)
     std::string username;
@@ -215,6 +235,10 @@ struct UltraIMProviderInfo {
     bool                    hasStoredSession = false; // Can sign in without asking the user
     UltraIMAuthStep         authStep = UltraIMAuthStep::Idle; // What SignIn needs next
     std::string             authHint;      // e.g. where the code went, the password's hint
+    // Code step: the other way the code can be sent, in words for a button
+    // ("Send it by SMS instead"); "" when the service offers none. Asked for
+    // with UltraIM_ResendAuthCode.
+    std::string             authResendHint;
 };
 
 struct UltraIMSendOptions {
@@ -355,6 +379,19 @@ using UltraIMStickerPacksCallback = std::function<void(const UltraIMResult& resu
                                                        const std::vector<UltraIMStickerPack>& packs)>;
 using UltraIMKeyExportCallback    = std::function<void(const UltraIMResult& result, const std::string& data)>;
 using UltraIMKeyImportCallback    = std::function<void(const UltraIMResult& result, int imported)>;
+// A message's attachment once UltraIM_DownloadAttachment has it on disk
+// (localPath set, isDownloaded true).
+using UltraIMAttachmentCallback   = std::function<void(const UltraIMResult& result,
+                                                       const UltraIMAttachment& attachment)>;
+// Makes a preview picture of a picture or video file about to be sent: a
+// JPEG, its longer side at most maxSide pixels, written to outJpegPath, its
+// size in outWidth / outHeight. The application installs one
+// (UltraIM_SetPreviewMaker) with its image and video libraries; a provider
+// asks through UltraIM_MakePreview and sends the preview along with the
+// file, so the other side sees something before the file has arrived.
+// Returns false when it cannot read the file.
+using UltraIMPreviewMaker = std::function<bool(const std::string& path, const std::string& mimeType, int maxSide,
+                                               const std::string& outJpegPath, int& outWidth, int& outHeight)>;
 // Credentials a provider's service keeps for another provider (the ChatCube
 // relay: the Telegram application's API ID and hash), to hand that
 // provider's SignIn.

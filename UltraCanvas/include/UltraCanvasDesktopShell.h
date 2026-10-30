@@ -45,8 +45,12 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
-// Version: 1.7.0 - FindProgram / LaunchProgram find a sibling application's
+// Version: 1.8.0 - FindProgram / LaunchProgram find a sibling application's
 //                  bundle on macOS
+// Version: 1.7.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
+//                  SetAudioOutputVolume, SetAudioOutputMuted); a tray icon's
+//                  menu as data (DesktopTrayMenuItem, ActivateMenuItem);
+//                  EndSession and the tray on Linux too
 // Version: 1.6.0 - GetSystemDesktopSwitchUnavailableReason (no switch from an
 //                  MSIX package)
 // Version: 1.5.0 - ListScreens; Microsoft Store applications on Windows;
@@ -161,9 +165,27 @@ namespace UltraCanvas {
                     // start at all (Windows: the account's own shell setting)
     };
 
+    // ===== AN ENTRY OF A TRAY ICON'S MENU =====
+    // What a program's icon offers on a right click where the program hands
+    // its menu over as data rather than drawing it itself - the
+    // StatusNotifierItem's dbusmenu on Linux. A desktop shows the entries as
+    // a menu of its own and reports the choice with
+    // UltraCanvasTrayHost::ActivateMenuItem. Where the program draws its own
+    // menu (Windows: Click(TrayClick::Right) opens it) the list stays empty.
+    struct DesktopTrayMenuItem {
+        int32_t id = 0;                 // what ActivateMenuItem takes
+        std::string label;              // with the program's "_" mnemonics removed
+        std::string iconFile;           // a PNG; "" when the entry has none
+        bool enabled = true;
+        bool separator = false;         // a line, no label
+        bool checkable = false;         // a check mark or a radio item ...
+        bool checked = false;           // ... and whether it is on
+        std::vector<DesktopTrayMenuItem> children;   // a submenu; empty otherwise
+    };
+
     // ===== AN ICON IN THE NOTIFICATION AREA =====
-    // What a program puts in the system tray (Shell_NotifyIcon on Windows),
-    // as the desktop hosting the tray sees it.
+    // What a program puts in the system tray (Shell_NotifyIcon on Windows, a
+    // StatusNotifierItem on Linux), as the desktop hosting the tray sees it.
     struct DesktopTrayIcon {
         std::string id;                 // stable while the icon exists
         std::string tooltip;            // UTF-8; "" when the program gave none
@@ -175,12 +197,28 @@ namespace UltraCanvas {
         std::string balloonTitle;
         std::string balloonText;
         uint64_t    balloonSerial = 0;
+        // The icon's menu as data, where the program hands it over (Linux);
+        // empty where a right click opens the program's own.
+        std::vector<DesktopTrayMenuItem> menu;
     };
 
     enum class TrayClick { Left, Right, Middle };
 
     // ===== THE END OF THE SESSION =====
     enum class SessionEnd { SignOut, Restart, ShutDown };
+
+    // ===== THE LOUDSPEAKER =====
+    // The volume of the output the sound server plays through by default,
+    // as a desktop's speaker icon shows and sets it. `available` is false
+    // with `error` saying why when no sound server answers; the rest is then
+    // left at its default.
+    struct DesktopAudioOutput {
+        bool available = false;
+        int  volumePercent = 0;         // 0..100 (PulseAudio allows more; shown as it is)
+        bool muted = false;
+        std::string device;             // the output's name, as the sound server gives it
+        std::string error;
+    };
 
     // ===== A COUNT AN APPLICATION PUBLISHES FOR THE DESKTOP =====
     // UltraMail publishes its unread count under "UltraMail"; the desktop
@@ -344,6 +382,23 @@ namespace UltraCanvas {
         // where this backend has no such call.
         static bool CanEndSession();
         static bool EndSession(SessionEnd how, std::string* error = nullptr);
+        // Lock the screen - what a desktop's "Lock screen" and Super+L do.
+        // The session's own locker shows (logind's Lock signal on Linux,
+        // LockWorkStation on Windows); UltraCanvasSessionLock reports it
+        // like any other lock. False with the reason in `error`;
+        // CanLockSession() is false where this backend has no such call.
+        static bool CanLockSession();
+        static bool LockSession(std::string* error = nullptr);
+
+        // ===== THE LOUDSPEAKER =====
+        // The default output's volume and mute, through the sound server
+        // (PulseAudio or PipeWire's PulseAudio service on Linux, Core Audio's
+        // endpoint volume on Windows). Cheap enough to read when a panel
+        // opens, not meant to be polled every frame. The setters answer
+        // false with the reason in `error`.
+        static DesktopAudioOutput ReadAudioOutput();
+        static bool SetAudioOutputVolume(int percent, std::string* error = nullptr);
+        static bool SetAudioOutputMuted(bool muted, std::string* error = nullptr);
 
         // ===== NOTICES =====
         // Publish `count` (and an optional line of text) under `application`.
@@ -432,21 +487,26 @@ namespace UltraCanvas {
     // ===== THE NOTIFICATION AREA =====
     // The system tray, for a desktop that is the session's shell: on Windows
     // the window every program's Shell_NotifyIcon talks to (Shell_TrayWnd),
-    // on a thread of its own, so a busy desktop never stalls a program
-    // adding its icon. Starting it asks the programs already running to add
-    // their icons again (TaskbarCreated).
+    // on Linux the StatusNotifierWatcher and host on the session bus that
+    // every program's StatusNotifierItem registers with - each on a thread
+    // of its own, so a busy desktop never stalls a program adding its icon.
+    // Starting it asks the programs already running to add their icons again
+    // (TaskbarCreated; the watcher's name appearing on the bus).
     //
     //   UltraCanvasTrayHost tray;
     //   if (tray.Start([this]() { trayDirty.store(true); })) {   // background thread!
     //       for (const DesktopTrayIcon& icon : tray.ListIcons()) { ... }
     //       tray.Click(icon.id, TrayClick::Right);   // the program opens its menu
+    //       // ... or, when icon.menu is not empty, the desktop draws that
+    //       // menu and reports the choice:
+    //       tray.ActivateMenuItem(icon.id, icon.menu[0].id);
     //   }
     //
     // Only one notification area works at a time, so Start refuses while
-    // another runs - Explorer's taskbar, when the desktop runs beside it -
-    // and wherever the platform has none to host (X11 here; its trays are a
-    // protocol of their own). The callback runs on the host's thread and must
-    // only hand the news over.
+    // another runs - Explorer's taskbar, when the desktop runs beside it;
+    // another StatusNotifierWatcher on Linux - and wherever the platform has
+    // none to host. The callback runs on the host's thread and must only
+    // hand the news over.
     class UltraCanvasTrayHost {
     public:
         using ChangedCallback = std::function<void()>;
@@ -473,6 +533,10 @@ namespace UltraCanvas {
         // system's double-click time are a double click. False when the icon
         // is gone. Any thread.
         bool Click(const std::string& id, TrayClick button);
+        // The choice from an icon's menu (DesktopTrayIcon::menu), handed to
+        // the program. False when the icon or the entry is gone, and where
+        // programs draw their own menus. Any thread.
+        bool ActivateMenuItem(const std::string& id, int32_t itemId);
 
     private:
         std::atomic<bool> running{false};

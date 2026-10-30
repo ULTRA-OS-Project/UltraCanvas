@@ -2,6 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
+// Version: 1.10.1 - Convert to Editable Shapes is Ctrl+Shift+C: the menu showed Ctrl+Shift+S,
+//                  which is Save As
 // Version: 1.10.0 - the right panel's sections are SectionCard group boxes on the
 //                  section page, as UltraPaint's, with a smaller caption; Tool Options,
 //                  Gradient (was Fill) and Line show only while their tool is active; the transform
@@ -35,7 +37,7 @@
 //                 and edit commands (was the black Texter set), and an icon on
 //                 most menu items
 // Version: 1.3.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -297,6 +299,11 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
     toolContext.lockAspectRatio = lockAspectRatio;
     toolContext.iconPath = [this](const std::string& file) { return IconPath(file); };
+    toolContext.setRotationHandleStyle = [this](VectorRotationHandleStyle style) {
+        canvas->SetRotationHandleStyle(style);
+        settings.Update([style](ArtCreatorSettings& s) { s.rotationHandle = style; });
+    };
+    canvas->SetRotationHandleStyle(settings.rotationHandle);
 
     // ----- canvas -> tool -----
     // In icon mode the pointer goes to the icon's pixel grid first (IconEvent).
@@ -320,6 +327,8 @@ bool ArtCreatorWindow::Initialize(const std::vector<std::string>& paths) {
         if (auto* t = ActiveTool()) t->DrawOverlay(toolContext, ctx, v);
     };
     canvas->onViewChanged = [this]() { UpdateStatus(); };
+    canvas->onHandleModeChanged = [this](VectorHandleMode) { ShowCentreGroup(); };
+    canvas->onRotationCenterChanged = [this]() { RefreshTransformBar(); };
     canvas->onFilesDropped = [this](const std::vector<std::string>& files) {
         if (files.empty()) return;
         auto go = [this, files]() { OpenFile(files.front()); for (size_t i = 1; i < files.size(); ++i) OpenWindow({files[i]}); };
@@ -475,7 +484,7 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::ActionWithShortcut("Apply ClipView", "Ctrl+K", MenuIconPath("clipview.svg"), [this]() { CmdApplyClipView(); }),
             M::Action("Remove ClipView, Blend or Mould", MenuIconPath("release.svg"), [this]() { CmdRemoveContainer(); }),
             M::Separator(),
-            M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", MenuIconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
+            M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+C", MenuIconPath("shape-editor.svg"), [this]() { CmdConvertToPath(); }),
             M::ActionWithShortcut("Snap to Pixels", "Ctrl+Shift+P", MenuIconPath("snap-pixels.svg"), [this]() { CmdSnapToPixels(); }),
         })
         .AddSubmenu("Object", {
@@ -620,6 +629,8 @@ void ArtCreatorWindow::SetDisplayQuality(int level) {
 namespace {
     constexpr float kTransformBarHeight = 50.0f;
     constexpr float kTransformRowHeight = 21.0f;
+    // Every field of the bar is this wide, in both rows.
+    constexpr float kTransformFieldWidth = 96.0f;
     constexpr double kDegrees = 180.0 / 3.14159265358979323846;
 }
 
@@ -694,37 +705,39 @@ void ArtCreatorWindow::BuildTransformBar() {
     };
 
     constexpr double kFar = 1.0e6;
-    auto position = column("pos", 113);
+    // A column of a caption (or an icon) and a field: 14 + 3 + the field.
+    constexpr float kColumn = 17 + kTransformFieldWidth;
+    auto position = column("pos", kColumn);
     auto posX = row(position, "x");
     caption(posX, "x", "X");
-    posXBox = field(posX, "x", 96, -kFar, kFar, 2, 1, "Horizontal position of the reference point",
+    posXBox = field(posX, "x", kTransformFieldWidth, -kFar, kFar, 2, 1, "Horizontal position of the reference point",
                     [this](double v, bool merge) { ApplyPosition(true, v, merge); });
     auto posY = row(position, "y");
     caption(posY, "y", "Y");
-    posYBox = field(posY, "y", 96, -kFar, kFar, 2, 1, "Vertical position of the reference point",
+    posYBox = field(posY, "y", kTransformFieldWidth, -kFar, kFar, 2, 1, "Vertical position of the reference point",
                     [this](double v, bool merge) { ApplyPosition(false, v, merge); });
 
-    auto size = column("size", 113);
+    auto size = column("size", kColumn);
     auto sizeW = row(size, "w");
     caption(sizeW, "w", "W");
-    sizeWBox = field(sizeW, "w", 96, 0, kFar, 2, 1, "Width of the selection",
+    sizeWBox = field(sizeW, "w", kTransformFieldWidth, 0, kFar, 2, 1, "Width of the selection",
                      [this](double v, bool merge) { ApplySize(true, v, merge); });
     auto sizeH = row(size, "h");
     caption(sizeH, "h", "H");
-    sizeHBox = field(sizeH, "h", 96, 0, kFar, 2, 1, "Height of the selection",
+    sizeHBox = field(sizeH, "h", kTransformFieldWidth, 0, kFar, 2, 1, "Height of the selection",
                      [this](double v, bool merge) { ApplySize(false, v, merge); });
 
-    auto scale = column("scale", 91);
+    auto scale = column("scale", kColumn);
     auto scaleW = row(scale, "sw");
     caption(scaleW, "sw", "W");
-    scaleWBox = field(scaleW, "sw", 74, 0.1, 100000, 1, 1, "Scale the width by a percentage",
+    scaleWBox = field(scaleW, "sw", kTransformFieldWidth, 0.1, 100000, 1, 1, "Scale the width by a percentage",
                       [this](double v, bool merge) { ApplyScalePercent(true, v, merge); });
     scaleWBox->SetSuffix(" %");
     // Typed, not stepped: no arrows (the keys and the wheel still step by 1).
     scaleWBox->SetLayout(SpinnerLayout::FieldOnly);
     auto scaleH = row(scale, "sh");
     caption(scaleH, "sh", "H");
-    scaleHBox = field(scaleH, "sh", 74, 0.1, 100000, 1, 1, "Scale the height by a percentage",
+    scaleHBox = field(scaleH, "sh", kTransformFieldWidth, 0.1, 100000, 1, 1, "Scale the height by a percentage",
                       [this](double v, bool merge) { ApplyScalePercent(false, v, merge); });
     scaleHBox->SetSuffix(" %");
     scaleHBox->SetLayout(SpinnerLayout::FieldOnly);
@@ -744,19 +757,124 @@ void ArtCreatorWindow::BuildTransformBar() {
     ratioLockButton->onToggle = [this](bool on) { lockAspectRatio = on; toolContext.lockAspectRatio = on; };
     transformBar->AddChild(ratioLockButton);
 
-    auto angles = column("angles", 93);
+    auto angles = column("angles", 19 + kTransformFieldWidth);
     auto rotation = row(angles, "rot");
     icon(rotation, "rot", "rotate.svg");
-    rotationBox = field(rotation, "rot", 74, -3600, 3600, 1, 1, "Rotation, counter-clockwise, about the reference point",
+    rotationBox = field(rotation, "rot", kTransformFieldWidth, -3600, 3600, 1, 1,
+                        "Rotation, counter-clockwise, about the reference point (with the Rotate handles, about the rotation centre)",
                         [this](double v, bool merge) { ApplyRotation(v, merge); });
     rotationBox->SetSuffix("\xC2\xB0");
     auto shear = row(angles, "shear");
     icon(shear, "shear", "shear.svg");
-    shearBox = field(shear, "shear", 74, -89, 89, 1, 1, "Shear: how far the top leans to the right",
+    shearBox = field(shear, "shear", kTransformFieldWidth, -89, 89, 1, 1, "Shear: how far the top leans to the right",
                      [this](double v, bool merge) { ApplyShear(v, merge); });
     shearBox->SetSuffix("\xC2\xB0");
 
+    // The rotation centre, while the Selector shows its Rotate handles: a
+    // button that switches the fields between the centre's place on the
+    // page and how far it lies from the middle of the selection, the two
+    // fields, and a reference point picker that puts it on a corner, an
+    // edge's middle or the middle of the frame. A centre dragged anywhere
+    // else shows there as a ring pointing its way.
+    centreGroup = std::make_shared<UltraCanvasContainer>("ac-tf-centre", 0, 0, 0, kTransformBarHeight - 4);
+    centreGroup->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    centreGroup->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    transformBar->AddChild(centreGroup);
+    centreModeButton = std::make_shared<UltraCanvasButton>("ac-tf-centre-mode", 0, 0, 30, 30, "");
+    centreModeButton->SetIconSize(22, 22);
+    ButtonStyle modeStyle = centreModeButton->GetStyle();
+    modeStyle.cornerRadius = 6.0f;
+    centreModeButton->SetStyle(modeStyle);
+    centreModeButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centreModeButton->onClick = [this]() {
+        const bool relative = !settings.centreRelative;
+        settings.Update([relative](ArtCreatorSettings& s) { s.centreRelative = relative; });
+        ShowCentreMode();
+        RefreshTransformBar();
+    };
+    centreGroup->AddChild(centreModeButton);
+    auto centreColumn = std::make_shared<UltraCanvasContainer>("ac-tf-col-centre", 0, 0, 27 + kTransformFieldWidth, kTransformBarHeight - 4);
+    centreColumn->layout.SetFlexColumn().SetFlexGap(4).SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+    centreColumn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centreGroup->AddChild(centreColumn);
+    const std::pair<std::shared_ptr<UltraCanvasContainer>, float> centreCol(centreColumn, 27 + kTransformFieldWidth);
+    auto centreCaption = [&](const std::shared_ptr<UltraCanvasContainer>& r, const std::string& id) {
+        // Wide enough for "ΔX" in the relative mode.
+        auto l = CreateLabel("ac-tf-cap-" + id, 0, 0, 24, kTransformRowHeight, "");
+        l->SetFontSize(11);
+        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        r->AddChild(l);
+        return l;
+    };
+    auto centreX = row(centreCol, "cx");
+    centreXCaption = centreCaption(centreX, "cx");
+    centreXBox = field(centreX, "cx", kTransformFieldWidth, -kFar, kFar, 2, 1, "",
+                       [this](double v, bool) { ApplyCentre(true, v); });
+    auto centreY = row(centreCol, "cy");
+    centreYCaption = centreCaption(centreY, "cy");
+    centreYBox = field(centreY, "cy", kTransformFieldWidth, -kFar, kFar, 2, 1, "",
+                       [this](double v, bool) { ApplyCentre(false, v); });
+    centrePicker = CreateReferencePointPicker("ac-tf-centre-point", 0, 0, 40, 40);
+    centrePicker->SetTooltip("Put the rotation centre on a corner, the middle of an edge or the middle of the selection");
+    centrePicker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    centrePicker->onPointChanged = [this](ReferencePoint point) {
+        if (!canvas || selection->Empty()) return;
+        // The middle is the centre's own place: no centre of its own then.
+        if (point == ReferencePoint::Centre) canvas->SetRotationCenter(std::nullopt);
+        else {
+            const Point2Dd f = ReferencePointFraction(point);
+            canvas->SetRotationCenter(canvas->SelectionFramePoint(f.x, f.y));
+        }
+    };
+    centreGroup->AddChild(centrePicker);
+    centreGroup->SetVisible(false);
+    ShowCentreMode();
+
     window->AddChild(transformBar);
+}
+
+void ArtCreatorWindow::ShowCentreMode() {
+    if (!centreModeButton) return;
+    const bool relative = settings.centreRelative;
+    centreModeButton->SetIcon(IconPath(relative ? "rotation-centre-relative.svg" : "rotation-centre.svg"));
+    centreModeButton->SetTooltip(relative
+        ? "Rotation centre from the middle of the selection - click for its place on the page"
+        : "Rotation centre on the page - click for how far it lies from the middle of the selection");
+    centreXCaption->SetText(relative ? "\xCE\x94X" : "X");
+    centreYCaption->SetText(relative ? "\xCE\x94Y" : "Y");
+    centreXBox->SetTooltip(relative ? "How far the rotation centre lies right of the middle of the selection"
+                                    : "Horizontal position of the rotation centre");
+    centreYBox->SetTooltip(relative ? "How far the rotation centre lies below the middle of the selection"
+                                    : "Vertical position of the rotation centre");
+}
+
+void ArtCreatorWindow::ShowCentreGroup() {
+    if (!centreGroup || !canvas) return;
+    const bool on = canvas->GetHandleMode() == VectorHandleMode::Rotate;
+    if (centreGroup->IsVisible() == on) return;
+    centreGroup->SetVisible(on);
+    transformBar->InvalidateLayout();
+    RefreshTransformBar();
+}
+
+bool ArtCreatorWindow::RotateHandlesShown() const {
+    return canvas && canvas->GetHandleMode() == VectorHandleMode::Rotate;
+}
+
+Point2Dd ArtCreatorWindow::TurnPivot() const {
+    return RotateHandlesShown() ? canvas->GetRotationCenter() : TransformPivot();
+}
+
+void ArtCreatorWindow::ApplyCentre(bool horizontal, double value) {
+    if (!canvas || selection->Empty()) return;
+    double k = 1;
+    std::string unit;
+    TransformUnit(k, unit);
+    Point2Dd c = canvas->GetRotationCenter();
+    const Point2Dd origin = settings.centreRelative ? canvas->SelectionFramePoint(0.5, 0.5) : Point2Dd(0, 0);
+    if (horizontal) c.x = origin.x + value * k;
+    else c.y = origin.y + value * k;
+    canvas->SetRotationCenter(c);
 }
 
 void ArtCreatorWindow::TransformUnit(double& pointsPerUnit, std::string& symbol) const {
@@ -801,12 +919,12 @@ void ArtCreatorWindow::RefreshTransformBar() {
     const bool any = !selection->Empty();
     for (UltraCanvasUIElement* e : std::initializer_list<UltraCanvasUIElement*>{
              posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), scaleWBox.get(), scaleHBox.get(),
-             rotationBox.get(), shearBox.get()})
+             rotationBox.get(), shearBox.get(), centreXBox.get(), centreYBox.get(), centrePicker.get()})
         if (e->IsDisabled() == any) e->SetDisabled(!any);
     double k = 1;
     std::string unit;
     TransformUnit(k, unit);
-    for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get()}) {
+    for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), centreXBox.get(), centreYBox.get()}) {
         if (s->GetSuffix() != unit) s->SetSuffix(unit);
     }
     const auto ids = selection->Ids();
@@ -827,9 +945,25 @@ void ArtCreatorWindow::RefreshTransformBar() {
         if (sameSelection) rotation += 360.0 * std::round((rotationBox->GetValue() - rotation) / 360.0);
         rotationBox->SetValue(rotation);
         shearBox->SetValue(shear);
+        // The rotation centre, on the page or from the middle of the frame;
+        // on the picker, one of its nine points or a ring pointing its way.
+        const Point2Dd c = canvas->GetRotationCenter();
+        const Point2Dd origin = settings.centreRelative ? canvas->SelectionFramePoint(0.5, 0.5) : Point2Dd(0, 0);
+        centreXBox->SetValue((c.x - origin.x) / k);
+        centreYBox->SetValue((c.y - origin.y) / k);
+        const Point2Dd f = canvas->SelectionFrameFraction(c);
+        std::optional<ReferencePoint> onPoint;
+        for (int i = 0; i < 9 && !onPoint; ++i) {
+            const Point2Dd p = ReferencePointFraction(static_cast<ReferencePoint>(i));
+            if (std::fabs(p.x - f.x) < 1e-6 && std::fabs(p.y - f.y) < 1e-6) onPoint = static_cast<ReferencePoint>(i);
+        }
+        if (onPoint) centrePicker->SetPoint(*onPoint);
+        else centrePicker->SetFreePoint(f);
     } else {
-        for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), rotationBox.get(), shearBox.get()})
+        for (auto* s : {posXBox.get(), posYBox.get(), sizeWBox.get(), sizeHBox.get(), rotationBox.get(), shearBox.get(),
+                        centreXBox.get(), centreYBox.get()})
             s->SetValue(0);
+        centrePicker->SetPoint(ReferencePoint::Centre);
     }
     scaleWBox->SetValue(100);
     scaleHBox->SetValue(100);
@@ -848,6 +982,11 @@ void ArtCreatorWindow::ApplyPosition(bool horizontal, double value, bool merge) 
     auto ids = selection->Ids();
     history.Record("Move", [&]() { TranslateElements(selection->Elements(), dx, dy); }, merge);
     Reselect(ids);
+    // A rotation centre of the selection's own goes with it.
+    if (canvas->HasRotationCenter()) {
+        const Point2Dd c = canvas->GetRotationCenter();
+        canvas->SetRotationCenter(Point2Dd(c.x + dx, c.y + dy));
+    }
 }
 
 void ArtCreatorWindow::ApplySize(bool horizontal, double value, bool merge) {
@@ -882,7 +1021,7 @@ void ArtCreatorWindow::ApplyRotation(double degrees, bool merge) {
     // The shortest turn there: 375 typed over 0 turns by 15.
     const double turn = std::remainder(degrees - rotation, 360.0);
     if (std::fabs(turn) < 1e-9) { RefreshTransformBar(); return; }
-    const Point2Dd pivot = TransformPivot();
+    const Point2Dd pivot = TurnPivot();
     auto ids = selection->Ids();
     history.Record("Rotate", [&]() { RotateElements(selection->Elements(), -turn / kDegrees, pivot); }, merge);
     Reselect(ids);
@@ -898,7 +1037,7 @@ void ArtCreatorWindow::ApplyShear(double degrees, bool merge) {
     const double delta = std::atan(std::tan(-target / kDegrees) - std::tan(-shear / kDegrees));
     if (std::fabs(delta) < 1e-9) return;
     const double theta = -rotation / kDegrees;
-    const Point2Dd pivot = TransformPivot();
+    const Point2Dd pivot = TurnPivot();
     const Matrix3x3 m = Matrix3x3::Translate(pivot.x, pivot.y) * Matrix3x3::Rotate(theta) *
                         Matrix3x3::SkewX(delta) * Matrix3x3::Rotate(-theta) *
                         Matrix3x3::Translate(-pivot.x, -pivot.y);
@@ -1081,13 +1220,13 @@ void ArtCreatorWindow::BuildRightPanel() {
         ApplyFillColour(c, true);
     };
     palettes->onPalettesChanged = [this]() {
-        // The file holds what this window has, as RememberColourPicker.
-        settings.palettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
-        settings.Save();
+        // Only the rows go to the file; another window's other settings stay.
+        const std::string rows = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetPalettes());
+        settings.Update([&rows](ArtCreatorSettings& s) { s.palettes = rows; });
     };
     palettes->onUserPalettesChanged = [this]() {
-        settings.userPalettes = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
-        settings.Save();
+        const std::string own = UltraCanvasColorPaletteManager::SerializePalettes(palettes->GetUserPalettes());
+        settings.Update([&own](ArtCreatorSettings& s) { s.userPalettes = own; });
     };
     // A swatch under the pointer floods the picker too, as the rows, so the
     // colour is seen on the whole of the card.
@@ -1143,11 +1282,15 @@ void ArtCreatorWindow::BuildRightPanel() {
 }
 
 void ArtCreatorWindow::RememberColourPicker() {
-    // The file holds only the picker, so this window's state is the whole of
-    // it: whichever window changed its picker last is the one remembered.
-    settings.pickerDesign = colorPicker->GetWheelStyle();
-    settings.pickerChannelsOpen = colorPicker->GetSlidersExpanded();
-    settings.Save();
+    // Whichever window changed its picker last is the one remembered; the
+    // other settings stay as the file has them (another window may have
+    // changed them since this one opened).
+    const ColorPickerWheelStyle design = colorPicker->GetWheelStyle();
+    const bool open = colorPicker->GetSlidersExpanded();
+    settings.Update([design, open](ArtCreatorSettings& s) {
+        s.pickerDesign = design;
+        s.pickerChannelsOpen = open;
+    });
 }
 
 void ArtCreatorWindow::BuildStatusBar() {
@@ -1188,7 +1331,7 @@ void ArtCreatorWindow::InstallShortcuts() {
                 case UCKeys::Z: if (e.shift) CmdRedo(); else CmdUndo(); return true;
                 case UCKeys::Y: CmdRedo(); return true;
                 case UCKeys::X: CmdCut(); return true;
-                case UCKeys::C: CmdCopy(); return true;
+                case UCKeys::C: if (e.shift) CmdConvertToPath(); else CmdCopy(); return true;
                 case UCKeys::V: CmdPaste(); return true;
                 case UCKeys::D: CmdDuplicate(); return true;
                 case UCKeys::A: if (e.shift) CmdSelectNone(); else CmdSelectAll(); return true;

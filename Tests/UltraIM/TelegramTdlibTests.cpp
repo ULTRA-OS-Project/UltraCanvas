@@ -7,9 +7,11 @@
 // the names and fields are TDLib's. The library: ULTRAIM_TDJSON_PATH, else
 // the one the configure step fetched into Plugins/UltraIM/tdlib; skips with
 // neither unless ULTRAIM_TEST_TDLIB_REQUIRED is set (CI).
+// Version: 0.1.3 - the media requests: a photo, a video, a document, downloadFile
+// Version: 0.1.2 - requestQrCodeAuthentication
 // Version: 0.1.1 - the fetched libtdjson by default
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "TdJson.h"
@@ -108,6 +110,12 @@ void TestRequests() {
         {"getChatHistory", Request::GetChatHistory(777000, 1048576, 50)},
         {"sendMessage", Request::SendText(777000, "hello", 0)},
         {"sendMessage (reply)", Request::SendText(777000, "hello", 1048576)},
+        {"sendMessage (photo)", Request::SendPhoto(777000, "/tmp/picture.jpg", "a caption", 0)},
+        {"sendMessage (video)", Request::SendVideo(777000, "/tmp/clip.mp4", "", 1048576)},
+        {"sendMessage (video with a preview)", Request::SendVideo(777000, "/tmp/clip.mp4", "", 0, Request::Thumbnail{"/tmp/clip.jpg", 320, 180})},
+        {"sendMessage (document with a preview)", Request::SendDocument(777000, "/tmp/notes.pdf", "", 0, Request::Thumbnail{"/tmp/notes.jpg", 200, 260})},
+        {"sendMessage (document)", Request::SendDocument(777000, "/tmp/notes.pdf", "", 0)},
+        {"downloadFile", Request::DownloadFile(1, 32)},
         {"editMessageText", Request::EditText(777000, 1048576, "edited")},
         {"deleteMessages", Request::DeleteMessages(777000, {1048576, 2097152}, true)},
         {"viewMessages", Request::ViewMessages(777000, {1048576})},
@@ -118,9 +126,11 @@ void TestRequests() {
         {"createPrivateChat", Request::CreatePrivateChat(777000)},
         {"createNewBasicGroupChat", Request::CreateBasicGroup({777000}, "Team")},
         {"checkAuthenticationCode", Request::CheckCode("12345")},
+        {"resendAuthenticationCode", Request::ResendCode()},
         {"checkAuthenticationPassword", Request::CheckPassword("x")},
         {"registerUser", Request::RegisterUser("Carol", "Smith")},
         {"setAuthenticationPhoneNumber", Request::SetPhoneNumber("+15550001")},
+        {"requestQrCodeAuthentication", Request::RequestQrCode()},
     };
     for (const auto& request : requests) {
         const TdObject answer = client.Await(request.second, 3000);

@@ -38,11 +38,20 @@
 //     icons added, changed, hidden, ballooned and removed, clicks in every
 //     NIM_SETVERSION form, Shell_NotifyIconGetRect - while the user's own
 //     taskbar is never touched.
+//
+// On Linux the notification area runs as its own CTest entry
+// (DesktopShellTrayTest: this test with --tray, under dbus-run-session): a
+// StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
+// tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
+// its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.8.0 - two RandR monitors under Xvfb: ListScreens and the per-monitor struts;
+//                  the lock, session and loudspeaker calls
+// Version: 1.7.0 - the Linux notification area (--tray)
 // Version: 1.6.0 - the X11 backend on a real display; Stop() within seconds
 // Version: 1.5.0 - ListScreens, Microsoft Store applications, the Win key's tap
 // Version: 1.4.0 - instead of Explorer, the shell guard, the tray host
 // Version: 1.3.0 - ReplaceSystemDesktop / RestoreSystemDesktop
-// Last Modified: 2026-10-15
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopShell.h"
@@ -50,6 +59,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <cwchar>
@@ -89,6 +99,11 @@
 #  define DESKTOPSHELLTEST_X11 1
 #  include <X11/Xlib.h>
 #  include <X11/Xatom.h>
+#  include <X11/extensions/Xrandr.h>
+#  include <unistd.h>
+#  if defined(DESKTOPSHELLTEST_HAVE_GIO)
+#    include <gio/gio.h>
+#  endif
 #endif
 
 namespace fs = std::filesystem;
@@ -552,6 +567,355 @@ void DeleteRootProperty(Display* display, const char* name) {
 }
 #endif
 
+#if defined(DESKTOPSHELLTEST_X11) && defined(DESKTOPSHELLTEST_HAVE_GIO)
+// ----- the notification area over D-Bus (--tray) -----
+// A StatusNotifierItem of the test's own, exported over GDBus on a private
+// connection (so closing it is a program that went away), with a dbusmenu
+// at /MenuBar. Its calls land on this thread's main context, which the
+// waits below pump.
+
+struct FakeTrayItem {
+    GDBusConnection* bus = nullptr;
+    guint itemObject = 0;
+    guint menuObject = 0;
+    std::string uniqueName;
+    std::string status = "Active";
+    std::string tooltipTitle = "Test item";
+    std::string tooltipText = "with a description";
+    int aboutToShow = 0;
+    guint32 revision = 1;
+    bool extraEntry = false;                                  // a fourth entry, after LayoutUpdated
+    std::vector<std::pair<std::string, std::pair<int, int>>> calls;   // Activate & co. with their point
+    std::vector<std::pair<int, std::string>> events;          // dbusmenu Event: id, "clicked"
+};
+FakeTrayItem g_fake;
+
+constexpr const char* kFakeItemXml =
+    "<node>"
+    "  <interface name='org.kde.StatusNotifierItem'>"
+    "    <property name='Category' type='s' access='read'/>"
+    "    <property name='Id' type='s' access='read'/>"
+    "    <property name='Title' type='s' access='read'/>"
+    "    <property name='Status' type='s' access='read'/>"
+    "    <property name='IconName' type='s' access='read'/>"
+    "    <property name='IconPixmap' type='a(iiay)' access='read'/>"
+    "    <property name='ToolTip' type='(sa(iiay)ss)' access='read'/>"
+    "    <property name='ItemIsMenu' type='b' access='read'/>"
+    "    <property name='Menu' type='o' access='read'/>"
+    "    <method name='Activate'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>"
+    "    <method name='SecondaryActivate'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>"
+    "    <method name='ContextMenu'><arg type='i' direction='in'/><arg type='i' direction='in'/></method>"
+    "    <signal name='NewStatus'><arg type='s'/></signal>"
+    "    <signal name='NewToolTip'/>"
+    "  </interface>"
+    "</node>";
+
+constexpr const char* kFakeMenuXml =
+    "<node>"
+    "  <interface name='com.canonical.dbusmenu'>"
+    "    <method name='GetLayout'>"
+    "      <arg type='i' direction='in'/><arg type='i' direction='in'/><arg type='as' direction='in'/>"
+    "      <arg type='u' direction='out'/><arg type='(ia{sv}av)' direction='out'/>"
+    "    </method>"
+    "    <method name='AboutToShow'><arg type='i' direction='in'/><arg type='b' direction='out'/></method>"
+    "    <method name='Event'>"
+    "      <arg type='i' direction='in'/><arg type='s' direction='in'/><arg type='v' direction='in'/>"
+    "      <arg type='u' direction='in'/>"
+    "    </method>"
+    "    <signal name='LayoutUpdated'><arg type='u'/><arg type='i'/></signal>"
+    "  </interface>"
+    "</node>";
+
+// 16x16, opaque red, ARGB32 in network byte order as the protocol says.
+GVariant* FakePixmaps() {
+    static std::vector<unsigned char> pixels;
+    if (pixels.empty()) {
+        for (int i = 0; i < 16 * 16; ++i) {
+            pixels.push_back(0xff);
+            pixels.push_back(0xff);
+            pixels.push_back(0x00);
+            pixels.push_back(0x00);
+        }
+    }
+    GVariantBuilder frames;
+    g_variant_builder_init(&frames, G_VARIANT_TYPE("a(iiay)"));
+    g_variant_builder_add(&frames, "(ii@ay)", 16, 16,
+                          g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, pixels.data(), pixels.size(), 1));
+    return g_variant_builder_end(&frames);
+}
+
+GVariant* FakeMenuEntry(int id, std::initializer_list<std::pair<const char*, GVariant*>> props) {
+    GVariantBuilder p;
+    g_variant_builder_init(&p, G_VARIANT_TYPE("a{sv}"));
+    for (const auto& [name, value] : props) g_variant_builder_add(&p, "{sv}", name, value);
+    GVariantBuilder c;
+    g_variant_builder_init(&c, G_VARIANT_TYPE("av"));
+    return g_variant_new("(ia{sv}av)", id, &p, &c);
+}
+
+GVariant* FakeMenuLayout() {
+    GVariantBuilder p;
+    g_variant_builder_init(&p, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&p, "{sv}", "children-display", g_variant_new_string("submenu"));
+    GVariantBuilder c;
+    g_variant_builder_init(&c, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&c, "v", FakeMenuEntry(1, {{"label", g_variant_new_string("_Open")}}));
+    g_variant_builder_add(&c, "v", FakeMenuEntry(2, {{"type", g_variant_new_string("separator")}}));
+    g_variant_builder_add(&c, "v", FakeMenuEntry(3, {{"label", g_variant_new_string("Mute")},
+                                                     {"toggle-type", g_variant_new_string("checkmark")},
+                                                     {"toggle-state", g_variant_new_int32(1)}}));
+    g_variant_builder_add(&c, "v", FakeMenuEntry(4, {{"label", g_variant_new_string("Hidden")},
+                                                     {"visible", g_variant_new_boolean(FALSE)}}));
+    if (g_fake.extraEntry) {
+        g_variant_builder_add(&c, "v", FakeMenuEntry(5, {{"label", g_variant_new_string("Save __as__")},
+                                                         {"enabled", g_variant_new_boolean(FALSE)}}));
+    }
+    return g_variant_new("(ia{sv}av)", 0, &p, &c);
+}
+
+GVariant* OnFakeItemProperty(GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar* property,
+                             GError** error, gpointer) {
+    const std::string name = property ? property : "";
+    if (name == "Category") return g_variant_new_string("ApplicationStatus");
+    if (name == "Id") return g_variant_new_string("TestItem");
+    if (name == "Title") return g_variant_new_string("The test's item");
+    if (name == "Status") return g_variant_new_string(g_fake.status.c_str());
+    if (name == "IconName") return g_variant_new_string("");
+    if (name == "IconPixmap") return FakePixmaps();
+    if (name == "ToolTip") {
+        return g_variant_new("(s@a(iiay)ss)", "", g_variant_new_array(G_VARIANT_TYPE("(iiay)"), nullptr, 0),
+                             g_fake.tooltipTitle.c_str(), g_fake.tooltipText.c_str());
+    }
+    if (name == "ItemIsMenu") return g_variant_new_boolean(FALSE);
+    if (name == "Menu") return g_variant_new_object_path("/MenuBar");
+    g_set_error(error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "No such property: %s", name.c_str());
+    return nullptr;
+}
+
+void OnFakeItemMethod(GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar* method,
+                      GVariant* parameters, GDBusMethodInvocation* invocation, gpointer) {
+    gint32 x = 0, y = 0;
+    g_variant_get(parameters, "(ii)", &x, &y);
+    g_fake.calls.emplace_back(method ? method : "", std::make_pair(x, y));
+    g_dbus_method_invocation_return_value(invocation, nullptr);
+}
+
+void OnFakeMenuMethod(GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar* method,
+                      GVariant* parameters, GDBusMethodInvocation* invocation, gpointer) {
+    const std::string name = method ? method : "";
+    if (name == "GetLayout") {
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(u@(ia{sv}av))", g_fake.revision, FakeMenuLayout()));
+    } else if (name == "AboutToShow") {
+        ++g_fake.aboutToShow;
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", FALSE));
+    } else if (name == "Event") {
+        gint32 id = 0;
+        const gchar* eventId = nullptr;
+        GVariant* data = nullptr;
+        guint32 timestamp = 0;
+        g_variant_get(parameters, "(i&svu)", &id, &eventId, &data, &timestamp);
+        if (data) g_variant_unref(data);
+        g_fake.events.emplace_back(id, eventId ? eventId : "");
+        g_dbus_method_invocation_return_value(invocation, nullptr);
+    } else {
+        g_dbus_method_invocation_return_error(invocation, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD, "%s", name.c_str());
+    }
+}
+
+const GDBusInterfaceVTable kFakeItemVTable = {OnFakeItemMethod, OnFakeItemProperty, nullptr, {nullptr}};
+const GDBusInterfaceVTable kFakeMenuVTable = {OnFakeMenuMethod, nullptr, nullptr, {nullptr}};
+
+// Pumps this thread's main context - the fake item's calls - while waiting.
+template <typename Done>
+bool PumpUntil(Done done, int ms) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+    for (;;) {
+        while (g_main_context_iteration(nullptr, FALSE)) {
+        }
+        if (done()) return true;
+        if (std::chrono::steady_clock::now() >= until) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
+bool FakeCalled(const std::string& method) {
+    for (const auto& call : g_fake.calls) {
+        if (call.first == method) return true;
+    }
+    return false;
+}
+
+bool NameHasOwner(GDBusConnection* bus, const char* name) {
+    GVariant* reply = g_dbus_connection_call_sync(bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+                                                  "org.freedesktop.DBus", "NameHasOwner", g_variant_new("(s)", name),
+                                                  G_VARIANT_TYPE("(b)"), G_DBUS_CALL_FLAGS_NONE, 3000, nullptr, nullptr);
+    if (!reply) return false;
+    gboolean owned = FALSE;
+    g_variant_get(reply, "(b)", &owned);
+    g_variant_unref(reply);
+    return owned != FALSE;
+}
+
+const DesktopTrayIcon* FindTestIcon(const std::vector<DesktopTrayIcon>& icons, std::vector<DesktopTrayIcon>& keep) {
+    keep = icons;
+    for (const DesktopTrayIcon& icon : keep) {
+        if (icon.appClass == "TestItem") return &icon;
+    }
+    return nullptr;
+}
+
+int TrayTest() {
+    std::printf("Notification area (StatusNotifierWatcher over D-Bus)\n");
+    const std::string address = GetEnvUtf8("DBUS_SESSION_BUS_ADDRESS");
+    if (address.empty()) {
+        std::printf("  (no DBUS_SESSION_BUS_ADDRESS: the notification area's checks are skipped)\n");
+        std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
+        return 0;
+    }
+    GError* error = nullptr;
+    GDBusConnection* shared = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+    Check(shared != nullptr, std::string("the session bus answers ") + (error ? error->message : ""));
+    if (error) g_error_free(error);
+    if (!shared) {
+        std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
+        return 1;
+    }
+    Check(!NameHasOwner(shared, "org.kde.StatusNotifierWatcher"), "no StatusNotifierWatcher on this bus yet");
+
+    UltraCanvasTrayHost host;
+    std::atomic<int> changes{0};
+    std::string why;
+    Check(host.Start([&changes]() { ++changes; }, &why), "the tray host starts " + why);
+    Check(NameHasOwner(shared, "org.kde.StatusNotifierWatcher"), "it owns org.kde.StatusNotifierWatcher");
+    {
+        UltraCanvasTrayHost second;
+        std::string refused;
+        Check(!second.Start([]() {}, &refused) && !refused.empty(), "a second host is refused: " + refused);
+    }
+
+    // The fake item, on a connection of its own.
+    gchar* busAddress = g_dbus_address_get_for_bus_sync(G_BUS_TYPE_SESSION, nullptr, nullptr);
+    g_fake.bus = busAddress ? g_dbus_connection_new_for_address_sync(
+                                  busAddress,
+                                  static_cast<GDBusConnectionFlags>(G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
+                                                                    G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION),
+                                  nullptr, nullptr, &error)
+                            : nullptr;
+    g_free(busAddress);
+    Check(g_fake.bus != nullptr, std::string("the fake item has a connection of its own ") + (error ? error->message : ""));
+    if (error) g_error_free(error);
+    if (g_fake.bus) {
+        g_dbus_connection_set_exit_on_close(g_fake.bus, FALSE);
+        g_fake.uniqueName = g_dbus_connection_get_unique_name(g_fake.bus);
+        GDBusNodeInfo* itemInfo = g_dbus_node_info_new_for_xml(kFakeItemXml, nullptr);
+        GDBusNodeInfo* menuInfo = g_dbus_node_info_new_for_xml(kFakeMenuXml, nullptr);
+        g_fake.itemObject = g_dbus_connection_register_object(g_fake.bus, "/StatusNotifierItem", itemInfo->interfaces[0],
+                                                              &kFakeItemVTable, nullptr, nullptr, nullptr);
+        g_fake.menuObject = g_dbus_connection_register_object(g_fake.bus, "/MenuBar", menuInfo->interfaces[0],
+                                                              &kFakeMenuVTable, nullptr, nullptr, nullptr);
+        Check(g_fake.itemObject != 0 && g_fake.menuObject != 0, "the fake item and its menu are exported");
+        // Registered by path alone: the watcher takes the sender's name.
+        GVariant* reply = g_dbus_connection_call_sync(
+            g_fake.bus, "org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher", "org.kde.StatusNotifierWatcher",
+            "RegisterStatusNotifierItem", g_variant_new("(s)", "/StatusNotifierItem"), nullptr,
+            G_DBUS_CALL_FLAGS_NONE, 3000, nullptr, &error);
+        Check(reply != nullptr, std::string("RegisterStatusNotifierItem is answered ") + (error ? error->message : ""));
+        if (reply) g_variant_unref(reply);
+        if (error) g_error_free(error);
+        error = nullptr;
+        g_dbus_node_info_unref(itemInfo);
+        g_dbus_node_info_unref(menuInfo);
+    }
+
+    std::vector<DesktopTrayIcon> icons;
+    const DesktopTrayIcon* icon = nullptr;
+    Check(PumpUntil([&]() { return (icon = FindTestIcon(host.ListIcons(), icons)) != nullptr; }, 5000),
+          "the item is listed (" + std::to_string(icons.size()) + " icons)");
+    std::string id;
+    if (icon) {
+        id = icon->id;
+        Check(icon->id == g_fake.uniqueName + "/StatusNotifierItem", "its id is the bus name and path: " + icon->id);
+        Check(icon->tooltip == "Test item: with a description", "its tooltip is the title and the description: " + icon->tooltip);
+        Check(icon->processId == static_cast<int>(getpid()), "with this process's id");
+        char signature[8] = {};
+        std::FILE* png = icon->iconFile.empty() ? nullptr : OpenFileUtf8(icon->iconFile, "rb");
+        if (png) {
+            if (std::fread(signature, 1, 8, png) != 8) signature[1] = 0;
+            std::fclose(png);
+        }
+        Check(png && std::string(signature + 1, 3) == "PNG", "its pixmap became a PNG file: " + icon->iconFile);
+        Check(icon->balloonSerial == 0 && icon->balloonTitle.empty(), "no balloon (the protocol has none)");
+    }
+    // The menu: AboutToShow first, then the layout as data.
+    Check(PumpUntil([&]() { return (icon = FindTestIcon(host.ListIcons(), icons)) != nullptr && icon->menu.size() == 3; }, 5000),
+          "the menu is handed over as data (" + std::to_string(icon ? icon->menu.size() : 0) + " entries)");
+    Check(g_fake.aboutToShow == 1, "AboutToShow was sent once before reading it");
+    if (icon && icon->menu.size() == 3) {
+        const auto& menu = icon->menu;
+        Check(menu[0].id == 1 && menu[0].label == "Open" && !menu[0].separator && menu[0].enabled && !menu[0].checkable,
+              "entry 1: \"" + menu[0].label + "\", the mnemonic stripped");
+        Check(menu[1].id == 2 && menu[1].separator, "entry 2: a separator");
+        Check(menu[2].id == 3 && menu[2].label == "Mute" && menu[2].checkable && menu[2].checked, "entry 3: a check mark, on");
+    }
+
+    // Clicks reach the program at the pointer's position.
+    Check(host.Click(id, TrayClick::Left), "a left click is handed over");
+    Check(PumpUntil([]() { return FakeCalled("Activate"); }, 3000), "as Activate");
+    Check(host.Click(id, TrayClick::Middle), "a middle click is handed over");
+    Check(PumpUntil([]() { return FakeCalled("SecondaryActivate"); }, 3000), "as SecondaryActivate");
+    Check(host.Click(id, TrayClick::Right), "a right click is accepted");
+    PumpUntil([]() { return false; }, 300);
+    Check(!FakeCalled("ContextMenu"), "but not sent on: the desktop draws the menu it was given");
+    Check(host.ActivateMenuItem(id, 3), "a menu entry is activated");
+    Check(PumpUntil([]() { return !g_fake.events.empty(); }, 3000) && g_fake.events[0].first == 3 &&
+              g_fake.events[0].second == "clicked",
+          "as the dbusmenu Event \"clicked\"");
+    Check(!host.ActivateMenuItem(id, 99), "an entry the menu has not is refused");
+    Check(!host.Click("nobody/StatusNotifierItem", TrayClick::Left), "a click on an unknown icon is refused");
+
+    // Changes the program announces.
+    if (g_fake.bus) {
+        g_fake.status = "Passive";
+        g_dbus_connection_emit_signal(g_fake.bus, nullptr, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "NewStatus",
+                                      g_variant_new("(s)", "Passive"), nullptr);
+        Check(PumpUntil([&]() { return FindTestIcon(host.ListIcons(), icons) == nullptr; }, 5000), "a passive item is not listed");
+        g_fake.status = "Active";
+        g_fake.tooltipTitle = "Changed";
+        g_fake.tooltipText.clear();
+        g_dbus_connection_emit_signal(g_fake.bus, nullptr, "/StatusNotifierItem", "org.kde.StatusNotifierItem", "NewStatus",
+                                      g_variant_new("(s)", "Active"), nullptr);
+        Check(PumpUntil([&]() { return (icon = FindTestIcon(host.ListIcons(), icons)) != nullptr && icon->tooltip == "Changed"; }, 5000),
+              "listed again when active, with the new tooltip");
+        g_fake.extraEntry = true;
+        g_fake.revision = 2;
+        g_dbus_connection_emit_signal(g_fake.bus, nullptr, "/MenuBar", "com.canonical.dbusmenu", "LayoutUpdated",
+                                      g_variant_new("(ui)", 2u, 0), nullptr);
+        Check(PumpUntil([&]() { return (icon = FindTestIcon(host.ListIcons(), icons)) != nullptr && icon->menu.size() == 4; }, 5000),
+              "LayoutUpdated brings the new entry");
+        if (icon && icon->menu.size() == 4) {
+            Check(icon->menu[3].label == "Save _as_" && !icon->menu[3].enabled, "a doubled underscore is one, disabled: " + icon->menu[3].label);
+        }
+        Check(g_fake.aboutToShow == 1, "AboutToShow is not sent again on a re-read");
+        Check(changes.load() > 0, "the host reported its changes (" + std::to_string(changes.load()) + ")");
+
+        // The program goes: its connection closes without a goodbye.
+        g_dbus_connection_close_sync(g_fake.bus, nullptr, nullptr);
+        Check(PumpUntil([&]() { return FindTestIcon(host.ListIcons(), icons) == nullptr; }, 5000),
+              "an item whose connection left is dropped");
+        g_object_unref(g_fake.bus);
+        g_fake.bus = nullptr;
+    }
+
+    FinishesWithin([&host]() { host.Stop(); }, 5000, "the host stops within seconds");
+    Check(!host.IsRunning(), "and is stopped");
+    Check(!NameHasOwner(shared, "org.kde.StatusNotifierWatcher"), "the watcher's name is released");
+    g_object_unref(shared);
+
+    std::printf("\n%d checks, %d failures\n", g_checks, g_failures);
+    return g_failures == 0 ? 0 : 1;
+}
+#endif
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -566,6 +930,11 @@ int main(int argc, char** argv) {
         return failures;
     }
 #else
+#if defined(DESKTOPSHELLTEST_X11) && defined(DESKTOPSHELLTEST_HAVE_GIO)
+    // The notification area, under a session bus of its own (CTest's
+    // DesktopShellTrayTest runs it through dbus-run-session).
+    if (argc == 2 && std::strcmp(argv[1], "--tray") == 0) return TrayTest();
+#endif
     (void)argc;
     (void)argv;
 #endif
@@ -610,6 +979,43 @@ int main(int argc, char** argv) {
         const std::string dir = UltraCanvasDesktopShell::NoticesDirectory();
         Check(dir.find("ultraos") != std::string::npos && dir.find("notices") != std::string::npos,
               "the notices directory is under ultraos/notices");
+    }
+
+    // ===== THE LOCK, THE END OF THE SESSION, THE LOUDSPEAKER =====
+    // Never locked or ended here - a test must not lock a machine - only
+    // asked, and a backend that cannot answer says so instead of crashing.
+    {
+        if (!UltraCanvasDesktopShell::CanLockSession()) {
+            std::string why;
+            Check(!UltraCanvasDesktopShell::LockSession(&why) && !why.empty(),
+                  "without a locker, LockSession fails with a reason: " + why);
+        } else {
+            Check(true, "a screen locker is reachable here (not asked to lock)");
+        }
+        std::printf("  (CanEndSession: %s)\n", UltraCanvasDesktopShell::CanEndSession() ? "yes" : "no");
+
+        const DesktopAudioOutput speaker = UltraCanvasDesktopShell::ReadAudioOutput();
+        Check(speaker.available || !speaker.error.empty(),
+              speaker.available ? "the loudspeaker is read: " + speaker.device + " at " +
+                                      std::to_string(speaker.volumePercent) + "%" + (speaker.muted ? ", muted" : "")
+                                : "no loudspeaker here, with the reason: " + speaker.error);
+        std::string why;
+        if (speaker.available) {
+            Check(speaker.volumePercent >= 0, "the volume is a percentage");
+            Check(UltraCanvasDesktopShell::SetAudioOutputVolume(speaker.volumePercent, &why),
+                  "the same volume is set back " + why);
+            Check(UltraCanvasDesktopShell::SetAudioOutputMuted(speaker.muted, &why), "and the same mute " + why);
+            const DesktopAudioOutput again = UltraCanvasDesktopShell::ReadAudioOutput();
+            Check(again.available && again.muted == speaker.muted &&
+                      std::abs(again.volumePercent - speaker.volumePercent) <= 1,
+                  "and read back unchanged");
+        } else {
+            Check(!UltraCanvasDesktopShell::SetAudioOutputVolume(50, &why) && !why.empty(),
+                  "without a sound server, setting the volume fails with a reason: " + why);
+            why.clear();
+            Check(!UltraCanvasDesktopShell::SetAudioOutputMuted(false, &why) && !why.empty(),
+                  "and so does muting: " + why);
+        }
     }
 
     // ===== PROGRAMS =====
@@ -856,10 +1262,16 @@ int main(int argc, char** argv) {
         Check(UltraCanvasDesktopShell::GetSystemDesktopReplacement() == DesktopReplacement::Off,
               "and the replacement reads as none");
         Check(UltraCanvasDesktopShell::IsSystemDesktopRunning(), "whatever the session runs is its own desktop");
-        std::string why;
-        Check(!UltraCanvasDesktopShell::CanEndSession() &&
-                  !UltraCanvasDesktopShell::EndSession(SessionEnd::SignOut, &why) && !why.empty(),
-              "ending the session is the session manager's here: " + why);
+        // The end of the session is logind's on Linux: a machine with it on
+        // the system bus (a CI runner has one) can, and is not asked to - a
+        // test must never end its session; one without says why it cannot.
+        if (UltraCanvasDesktopShell::CanEndSession()) {
+            Check(true, "logind answers here, so the session can be ended (not asked to)");
+        } else {
+            std::string why;
+            Check(!UltraCanvasDesktopShell::EndSession(SessionEnd::SignOut, &why) && !why.empty(),
+                  "without logind, ending the session fails with a reason: " + why);
+        }
         UltraCanvasTrayHost tray;
         std::string trayWhy;
         Check(!tray.Start([]() {}, &trayWhy) && !trayWhy.empty() && !tray.IsRunning(),
@@ -901,9 +1313,22 @@ int main(int argc, char** argv) {
             Check(shortcut.Start("Ctrl+Alt+Shift+F11", []() {}, &why), "a free combination is grabbed " + why);
             FinishesWithin([&shortcut]() { shortcut.Stop(); }, 5000, "the shortcut stops within seconds");
             Check(!shortcut.IsRunning(), "and is stopped");
+            // The Super key alone: watched through XInput2's raw events, so
+            // nothing is grabbed and every Super+X combination stays its
+            // owner's. Xvfb has XInput2; a server without it says so.
             std::string tap;
-            Check(!shortcut.Start("Super", []() {}, &tap) && !tap.empty() && !shortcut.IsRunning(),
-                  "the Win key alone is refused on X11: " + tap);
+            UltraCanvasGlobalShortcut superTap;
+            const bool tapWatched = superTap.Start("Super", []() {}, &tap);
+            Check(tapWatched || tap.find("XInput") != std::string::npos,
+                  "the Super key alone is watched on X11 " + tap);
+            if (tapWatched) {
+                Check(superTap.IsRunning(), "and the watch runs");
+                FinishesWithin([&superTap]() { superTap.Stop(); }, 5000, "the watch stops within seconds");
+                Check(!superTap.IsRunning(), "and is stopped");
+            }
+            std::string altAlone;
+            Check(!shortcut.Start("Alt", []() {}, &altAlone) && !altAlone.empty(),
+                  "another modifier alone is no shortcut: " + altAlone);
 
             int rootWidth = 0, rootHeight = 0;
             UltraCanvasDesktopShell::GetScreenSize(rootWidth, rootHeight);
@@ -921,6 +1346,85 @@ int main(int argc, char** argv) {
             Check(UltraCanvasDesktopShell::CaptureScreenImage(shot, &captureError) && shot.width == rootWidth &&
                       shot.height == rootHeight,
                   "the screen is captured at the root window's size " + captureError);
+
+            // ===== TWO MONITORS (RandR 1.5 virtual monitors) =====
+            // A left one and a right, primary, one that takes the screen's
+            // output (so the server's automatic whole-screen monitor goes):
+            // the list names both, the primary first; a desktop window on
+            // the right monitor reserves its right bar on the root's right
+            // edge, along its own height, and nothing on the left, which is
+            // another monitor's edge.
+            if (rootWidth >= 640 && rootHeight >= 480) {
+                const Window root = DefaultRootWindow(display);
+                const int leftWidth = rootWidth / 2;
+                const int rightWidth = rootWidth - leftWidth;
+                const int rightHeight = rootHeight - 40;   // shorter: a dead area under it
+                XRRScreenResources* resources = XRRGetScreenResources(display, root);
+                RROutput output = resources && resources->noutput > 0 ? resources->outputs[0] : 0;
+                const Atom leftName = XInternAtom(display, "UltraCanvasTestLeft", False);
+                const Atom rightName = XInternAtom(display, "UltraCanvasTestRight", False);
+                XRRMonitorInfo left = {};
+                left.name = leftName;
+                left.x = 0;
+                left.y = 0;
+                left.width = leftWidth;
+                left.height = rootHeight;
+                left.mwidth = leftWidth / 4;
+                left.mheight = rootHeight / 4;
+                XRRMonitorInfo right = {};
+                right.name = rightName;
+                right.primary = True;
+                right.x = leftWidth;
+                right.y = 0;
+                right.width = rightWidth;
+                right.height = rightHeight;
+                right.mwidth = rightWidth / 4;
+                right.mheight = rightHeight / 4;
+                right.noutput = output ? 1 : 0;
+                right.outputs = output ? &output : nullptr;
+                XRRSetMonitor(display, root, &left);
+                XRRSetMonitor(display, root, &right);
+                XSync(display, False);
+
+                const auto two = UltraCanvasDesktopShell::ListScreens();
+                Check(two.size() == 2 && two[0].primary && two[0].x == leftWidth && two[0].width == rightWidth &&
+                          two[0].height == rightHeight && !two[1].primary && two[1].x == 0 && two[1].width == leftWidth,
+                      "two monitors are listed, the primary (right) first, the whole-screen one left out: " +
+                          std::to_string(two.size()) + " screens");
+
+                const Window onRight = XCreateSimpleWindow(display, root, leftWidth, 0,
+                                                           static_cast<unsigned>(rightWidth),
+                                                           static_cast<unsigned>(rightHeight), 0, 0, 0);
+                XMapWindow(display, onRight);
+                XSync(display, False);
+                Check(UltraCanvasDesktopShell::ReserveScreenEdges(static_cast<uint64_t>(onRight), 52, 48, 0, 0),
+                      "a window on the right monitor reserves its edges");
+                Atom type = 0;
+                int format = 0;
+                unsigned long items = 0, after = 0;
+                unsigned char* data = nullptr;
+                std::vector<long> strut;
+                if (XGetWindowProperty(display, onRight, XInternAtom(display, "_NET_WM_STRUT_PARTIAL", False), 0, 12,
+                                       False, XA_CARDINAL, &type, &format, &items, &after, &data) == Success && data) {
+                    const long* values = reinterpret_cast<const long*>(data);
+                    strut.assign(values, values + items);
+                    XFree(data);
+                }
+                Check(strut.size() == 12 && strut[0] == 0 && strut[1] == 48 && strut[6] == 0 &&
+                          strut[7] == rightHeight - 1,
+                      "the right bar is reserved along the window's own height and the left edge - another "
+                      "monitor's - is not: " + (strut.size() == 12 ? std::to_string(strut[0]) + "," +
+                                                                        std::to_string(strut[1]) + " / " +
+                                                                        std::to_string(strut[6]) + ".." +
+                                                                        std::to_string(strut[7])
+                                                                  : std::string("no strut")));
+                XDestroyWindow(display, onRight);
+                XRRDeleteMonitor(display, root, rightName);
+                XRRDeleteMonitor(display, root, leftName);
+                XSync(display, False);
+                if (resources) XRRFreeScreenResources(resources);
+                Check(UltraCanvasDesktopShell::ListScreens().size() == 1, "the monitors are gone again");
+            }
 
             DeleteRootProperty(display, "_NET_CURRENT_DESKTOP");
             DeleteRootProperty(display, "_NET_NUMBER_OF_DESKTOPS");

@@ -106,7 +106,12 @@ def recent_branches(remote, base_ref, days, current):
 
 
 def changed_files(a, b):
-    out = git("diff", "--name-only", git("merge-base", a, b).stdout.strip(), b).stdout
+    """The files `b` changes since it left `a`; None when the two share no
+    history this clone can see (a shallow clone holding only the tips)."""
+    base = git("merge-base", a, b, check=False)
+    if base.returncode != 0 or not base.stdout.strip():
+        return None
+    out = git("diff", "--name-only", base.stdout.strip(), b).stdout
     return set(out.split())
 
 
@@ -170,6 +175,10 @@ def main():
         return 2
 
     mine = changed_files(base_ref, "HEAD")
+    if mine is None:
+        print(f"check_pr_overlap: {current} shares no visible history with {base_ref} - "
+              f"a shallow clone; fetch more of it (git fetch --deepen=200 {args.remote} {args.base}) and run again")
+        return 2
     print(f"check_pr_overlap: {current} ({len(mine)} files) against {source}: {len(others)} branch(es)")
     if not others:
         print("  nothing to compare - no other open work")
@@ -183,6 +192,12 @@ def main():
             print(f"  {label}: not found on {args.remote}")
             continue
         theirs = changed_files(base_ref, ref)
+        if theirs is None:
+            # A shallow clone sees the branch's tip but not where it left the
+            # base: nothing to compare without more history.
+            print(f"  {label}: no merge base with {base_ref} in this clone (shallow) - not compared; "
+                  f"fetch more history (git fetch --deepen=200 {args.remote} {args.base} {name}) to include it")
+            continue
         shared = sorted(mine & theirs)
         if not shared:
             continue

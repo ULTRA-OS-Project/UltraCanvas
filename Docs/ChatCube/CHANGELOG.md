@@ -1,3 +1,67 @@
+#### 2026-10-29 *0.1.10*
+- **Pictures, videos and files between ChatCubes.** The paperclip works in
+  ChatCube Direct chats and groups too: a file goes end-to-end encrypted,
+  peer to peer when both are online, through the relay's queue when not, and
+  the other side sees its preview picture at once and the file as it
+  finishes arriving.
+- **A preview picture goes with what you send.** A photo or a video sent on
+  any network carries a small preview - photos through the image pipeline,
+  videos through VideoFX when ChatCube is built with it - so the other side
+  sees something before the file is fetched; and a photo on its way in shows
+  its preview in the bubble until it is here.
+
+#### 2026-10-29 *0.1.9*
+- **Pictures, videos and files - and people's faces.** A Telegram chat now
+  shows what it holds: a photo as its picture in the bubble, a video as its
+  preview picture under a play mark with its length, a file as its name and
+  size, the caption under the picture. Photos and preview pictures arrive by
+  themselves; a click on a video or a file fetches it and opens it in the
+  media viewer (a photo opens there too, full size). The sidebar's avatars,
+  the header's and, in a group, the one beside each person's bubble are their
+  Telegram profile pictures when they have one, the initials as before when
+  not. The paperclip in the composer sends a picture, a video or any file to
+  the open chat, with the composer's text as its caption; the bubble appears
+  at once and takes its ticks as a text does. The same in Matrix rooms,
+  encrypted ones included; ChatCube Direct does not carry pictures yet, and
+  its paperclip says so.
+
+#### 2026-10-28 *0.1.8*
+- **Sign in to Telegram with a QR code.** When Telegram says it sent the
+  code to your Telegram app and the app shows none - as it has for
+  third-party applications for stretches since early 2026 - *Scan a QR code
+  instead* under the code field (or *Sign in with a QR code instead* at the
+  start) puts a QR code in the form: scan it with the Telegram app on your
+  phone (Settings, Devices, Link Desktop Device) and ChatCube is signed in
+  with no code at all, after your two-step password if you have one. The
+  code refreshes as Telegram renews the link; *Use my phone number instead*
+  goes back to the number.
+
+#### 2026-10-28 *0.1.7*
+- **Screenshots without a display.** `Apps/ChatCube/tools/screenshot.sh`
+  starts a relay and a second identity on this machine, drives ChatCube
+  under Xvfb like a person would (sign in, add a contact, two messages each
+  way) and writes a picture of each stage, in the light or the dark look.
+
+#### 2026-10-27 *0.1.6*
+- **A new look.** The sign-in page is a card under the ChatCube logo; the
+  sidebar has round avatars with a presence dot, a soft green selection, a
+  pill for adding a contact and three icon buttons (Group, Matrix, Telegram)
+  in place of the full-width ones; the open conversation shows its avatar in
+  the header beside round call buttons; the composer is a rounded field with
+  the send button inside it; the bubbles, the date separators and the call
+  bar follow the same palette. Every colour comes from one theme
+  (`ui/ChatCubeTheme.*`), the ChatCube green on warm neutrals, in a light
+  and a dark version: `ChatCube --dark`.
+
+#### 2026-10-27 *0.1.5*
+- **The Telegram form says where the code went.** Telegram sends the
+  sign-in code as a message to the Telegram apps your number is already
+  signed in on, not by SMS, and the status line's one-line hint was easy to
+  miss; the form itself now says so above the code field ("Telegram sent the
+  5-digit code as a message to the Telegram apps where +… is signed in -
+  type it here"), and when Telegram offers another way - SMS, a call - a
+  button under the field asks for it.
+
 #### 2026-10-25 *0.1.4*
 - **"Send me the code" no longer stays grey forever.** When Telegram could
   not be reached, the button went grey, nothing was said, and nothing ever

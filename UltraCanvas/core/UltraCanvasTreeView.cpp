@@ -335,6 +335,7 @@ namespace UltraCanvas {
         selectedNodes.clear();
         hoveredNode = nullptr;
         focusedNode = nullptr;
+        EndNodeDrag();
         rootNode = std::make_unique<TreeNode>(rootData);
         // A hidden root never shows an expander, so it must start expanded or
         // the whole forest below it would be invisible.
@@ -386,6 +387,10 @@ namespace UltraCanvas {
             );
             if (inSubtree(hoveredNode)) hoveredNode = nullptr;
             if (inSubtree(focusedNode)) focusedNode = nullptr;
+            // A drag of a row that is gone, or onto one, has nothing left to
+            // drop.
+            if (inSubtree(dragCandidateNode)) EndNodeDrag();
+            if (inSubtree(dropTargetNode)) dropTargetNode = nullptr;
 
             UpdateScrollbars();
         }
@@ -1019,6 +1024,67 @@ namespace UltraCanvas {
         if (event.droppedFiles.empty() || !onFilesDroppedOnNode || !target)
             return false;
         return onFilesDroppedOnNode(target, event.droppedFiles);
+    }
+
+// ===== DRAGGING ROWS =====
+
+    void UltraCanvasTreeView::SetNodeDragEnabled(bool enabled) {
+        if (nodeDragEnabled == enabled) return;
+        nodeDragEnabled = enabled;
+        if (!enabled) EndNodeDrag();
+    }
+
+    bool UltraCanvasTreeView::NodeDragAccepts(TreeNode *dragged, TreeNode *target) const {
+        if (!dragged || !target) return false;
+        if (onNodeDragAccept) return onNodeDragAccept(dragged, target);
+        // Not onto itself, nor into its own subtree.
+        for (TreeNode *n = target; n; n = n->parent) {
+            if (n == dragged) return false;
+        }
+        return true;
+    }
+
+    void UltraCanvasTreeView::UpdateNodeDragTarget(const UCEvent &event) {
+        // Past the top or bottom of the rows the tree scrolls a row per move,
+        // so a target out of view can be reached; the pointer is captured, so
+        // the moves keep coming out there.
+        const Rect2Df content = UltraCanvasUIElement::GetLocalContentRect();
+        const int top = static_cast<int>(content.y) + GetHeaderHeight();
+        const int bottom = static_cast<int>(content.y + content.height);
+        int scrollBy = 0;
+        if (event.pointer.y < top) scrollBy = -rowHeight;
+        else if (event.pointer.y >= bottom) scrollBy = rowHeight;
+        if (scrollBy != 0) {
+            const int before = scrollOffsetY;
+            scrollAnim.Cancel();
+            scrollOffsetY += scrollBy;
+            ClampScrollOffset();
+            if (scrollOffsetY != before) RequestRedraw();
+        }
+
+        // The row under the pointer, kept inside the rows while it is past
+        // an edge.
+        const int y = std::clamp(event.pointer.y, top, std::max(top, bottom - 1));
+        TreeNode *under = GetNodeAtY(y);
+        TreeNode *accepted = NodeDragAccepts(dragCandidateNode, under) ? under : nullptr;
+        if (accepted != dropTargetNode) {
+            dropTargetNode = accepted;
+            RequestRedraw();
+        }
+    }
+
+    void UltraCanvasTreeView::EndNodeDrag() {
+        const bool hadDrag = dragCandidateNode != nullptr;
+        if (nodeDragActive && dropTargetNode) {
+            dropTargetNode = nullptr;
+            RequestRedraw();
+        }
+        dragCandidateNode = nullptr;
+        nodeDragActive = false;
+        if (hadDrag) {
+            auto *app = UltraCanvasApplication::GetInstance();
+            if (app && app->GetCapturedElement() == this) app->ReleaseMouse();
+        }
     }
 
     void UltraCanvasTreeView::Arrange(const Rect2Df &finalRect, const CSSLayout::LayoutContext &ctx) {
@@ -1706,6 +1772,16 @@ namespace UltraCanvas {
             // Regular node selection
             bool addToSelection = (event.ctrl && selectionMode == TreeSelectionMode::Multiple);
             SelectNode(clickedNode, addToSelection);
+            // The press may become a drag of this row once the pointer has
+            // travelled far enough (HandleMouseMove). Captured, the moves
+            // past the tree's edge - which scroll it - and the release
+            // arrive wherever the pointer goes.
+            if (nodeDragEnabled && event.button == UCMouseButton::Left) {
+                dragCandidateNode = clickedNode;
+                nodeDragActive = false;
+                nodeDragStart = event.pointer;
+                if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+            }
             focusedNode = clickedNode;
             if (autoExpandSelectedNode && !focusedNode->children.empty() && !focusedNode->IsExpanded()) {
                 ExpandNode(focusedNode);
@@ -1733,15 +1809,17 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTreeView::HandleMouseMove(const UCEvent &event) {
-//        if (isDragging && hasVerticalScrollbar) {
-//            // Handle scrollbar dragging
-//            float deltaY = event.pointer.y - lastMousePos.y;
-//            scrollOffsetY += deltaY;
-//            ClampScrollOffset();
-//            lastMousePos = Point2Di(event.pointer.x, event.pointer.y);
-//            RequestRedraw();
-//            return true;
-//        }
+        if (dragCandidateNode) {
+            if (!nodeDragActive) {
+                const int dx = event.pointer.x - nodeDragStart.x;
+                const int dy = event.pointer.y - nodeDragStart.y;
+                if (dx * dx + dy * dy >= NodeDragThreshold * NodeDragThreshold) nodeDragActive = true;
+            }
+            if (nodeDragActive) {
+                UpdateNodeDragTarget(event);
+                return true;
+            }
+        }
 
         // Update hover state
         TreeNode *newHovered = GetNodeAtY(event.pointer.y);
@@ -1756,10 +1834,16 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTreeView::HandleMouseUp(const UCEvent &event) {
-//        if (isDragging)  {
-//            isDragging = false;
-//            return true;
-//        }
+        if (dragCandidateNode && event.button == UCMouseButton::Left) {
+            const bool wasDragging = nodeDragActive;
+            TreeNode *dragged = dragCandidateNode;
+            TreeNode *target = wasDragging ? dropTargetNode : nullptr;
+            // The drag is over before the handler runs: it may rebuild the
+            // tree, which would leave every pointer above dangling.
+            EndNodeDrag();
+            if (dragged && target && onNodeDragDrop) onNodeDragDrop(dragged, target);
+            if (wasDragging) return true;
+        }
 
         // Right-click context menu on the node under the cursor. Only the
         // right button fires it — this used to trigger on every release.
@@ -1812,6 +1896,10 @@ namespace UltraCanvas {
     // nothing on Linux or macOS. Returns true for a key the tree acted on, so
     // a scrolling container above it does not scroll on the same arrow.
     bool UltraCanvasTreeView::HandleKeyDown(const UCEvent &event) {
+        if (nodeDragActive && event.virtualKey == UCKeys::Escape) {
+            EndNodeDrag();
+            return true;
+        }
         if (!rootNode) return false;
 
         // No row yet (the tree was reached by Tab, or the row it had was

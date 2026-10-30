@@ -4,8 +4,8 @@
 // UltraCanvasTabbedContainer detached from its pages: the strip is the
 // window's top bar, the pages live in the folder pane of the split below,
 // and the "+" at the end of the tab list opens another tab), then
-// a navigation row (Back / Forward / Up / Refresh, the
-// History clock toggle, the Favorites heart toggle, folder breadcrumb, and
+// a navigation row (the flat Home and Computer buttons, then Back / Forward /
+// Up / Refresh, the History clock toggle, the Favorites heart toggle, folder breadcrumb, and
 // the settings gear at the far right opening the settings window), a command
 // bar (the "New folder ▾" split button — its arrow lists the same kinds as
 // the context menu's "New >" submenu —, Cut / Copy / Paste / Rename / Delete, the
@@ -81,9 +81,13 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
-// Version: 1.30.0 - a double-click on a picture, audio file or video starts
+// Version: 1.31.0 - a double-click on a picture, audio file or video starts
 //                  UltraViewer with it (OpenInUltraViewer, Settings >
 //                  Handling > Opening files)
+// Version: 1.30.0 - the navigation row starts with flat Home and Computer buttons
+// Version: 1.30.0 - Extras > Open location: the UltraCanvas and system folders
+//                  (crash dumps, settings, application data, logs, ...), and
+//                  Enter location… (Ctrl+L) for a typed %VAR% / $VAR / ~ path
 // Version: 1.29.1 - a remote drive's path bar is its own (FillRemoteBreadcrumb):
 //                  it was resolved as a local path, which on Windows put an
 //                  "ultracloud:" node under the user folder that opened an
@@ -100,7 +104,7 @@
 // Version: 1.27.1 - the connection log button on every remote drive
 // Version: 1.27.0 - OpenFolders: a second start's folders open in tabs here
 // Version: 1.26.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -767,7 +771,7 @@ private:
     void UnpinTargetsFromTree();
     // The app's tail of the filer context menus' Extras submenu (wired into
     // every filer's extrasMenuProvider, rebuilt on each open): "Open prompt",
-    // then Pin / Unpin submenus whose "To Treeview" / "To Favorites" flags
+    // the "Open location" submenu, then Pin / Unpin submenus whose "To Treeview" / "To Favorites" flags
     // show whether the current selection is pinned there.
     std::vector<MenuItemData> BuildExtrasMenuItems();
 
@@ -1008,6 +1012,26 @@ private:
     // of the active tab. Which application that is comes from the settings
     // (Extras > Open prompt); an empty setting uses the platform default.
     void OpenSystemPrompt();
+
+    // ===== OPEN LOCATION (Extras > Open location) =====
+    // The submenu: the UltraCanvas folders (crash dumps, settings, cache),
+    // the system's (application data, temporary files, logs, startup, ...)
+    // from FilerOsLocations - a folder that does not exist is listed
+    // disabled - then "Enter location…" and the locations typed there
+    // before, with "Clear recent locations". Each entry's tooltip is the
+    // path it opens (a recent one's: what its variables expand to).
+    std::vector<MenuItemData> BuildOpenLocationItems();
+    // Shows `path` in the active tab: a folder is opened, a file is shown
+    // selected in its folder (OpenHistoryEntry).
+    void OpenLocation(const std::string& path);
+    // Enter location… (also Ctrl+L): asks for a location, pre-filled with
+    // the last one typed, and opens it (OpenTypedLocation).
+    void PromptForLocation();
+    // A location as typed: %VAR% / $VAR / ~ expanded, a relative one taken
+    // from the active tab's folder. Opens it and remembers it in the recent
+    // list; a location that does not exist is reported with what it expanded
+    // to, and is not remembered.
+    void OpenTypedLocation(const std::string& typed);
 
     // ===== SETTINGS =====
     // Pushes the persisted settings into the widgets they configure (the

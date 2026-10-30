@@ -164,16 +164,17 @@ if(UNIX AND NOT EMSCRIPTEN AND NOT ANDROID)
     target_link_libraries(ultradbadmin-relay PRIVATE UltraDatabase UltraVault Threads::Threads)
     target_compile_features(ultradbadmin-relay PRIVATE cxx_std_20)
     # The OpenID Connect sign-in ([signin], relay/RelaySignIn.h): UltraNet
-    # for the provider's endpoints and its OAuth2 helpers, OpenSSL 3 for the
-    # ID token's signature. Without them the relay takes tokens only.
-    find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
-    if(TARGET UltraNet AND OpenSSL_FOUND AND TARGET uc-yyjson)
+    # for the provider's endpoints and its OAuth2 helpers, UltraCrypt for the
+    # ID token's RS256 / ES256 signature (UltraCryptPublicKey.h) - which it
+    # checks only where UltraCrypt has its OpenSSL 3 backend. Without them the
+    # relay takes tokens only.
+    if(TARGET UltraNet AND ULTRACANVAS_CRYPT_HAS_OPENSSL AND TARGET uc-yyjson)
         target_sources(ultradbadmin-relay PRIVATE relay/RelaySignIn.cpp)
-        target_link_libraries(ultradbadmin-relay PRIVATE UltraNet OpenSSL::Crypto uc-yyjson)
+        target_link_libraries(ultradbadmin-relay PRIVATE UltraNet UltraCrypt uc-yyjson)
         target_compile_definitions(ultradbadmin-relay PRIVATE ULTRADBADMIN_RELAY_SIGNIN=1)
         message(STATUS "  [✓] ultradbadmin-relay sign-in (OpenID Connect) - ENABLED")
     else()
-        message(STATUS "  [−] ultradbadmin-relay sign-in - DISABLED (needs UltraNet and OpenSSL 3)")
+        message(STATUS "  [−] ultradbadmin-relay sign-in - DISABLED (needs UltraNet and UltraCrypt with OpenSSL 3)")
     endif()
     install(TARGETS ultradbadmin-relay RUNTIME DESTINATION bin)
     message(STATUS "  [✓] ultradbadmin-relay - ENABLED (target: ultradbadmin-relay)")

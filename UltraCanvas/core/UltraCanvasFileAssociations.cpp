@@ -7,8 +7,10 @@
 // Threading model: every backend call — from the worker and from cold-path
 // synchronous lookups alike — runs under one backend mutex, so the backends
 // stay lock-free. The cache has its own mutex and is safe from any thread.
+// Version: 1.2.1 - RunsCodeWhenOpened moved to UltraCanvasRunsCodeWhenOpened.h (header-only)
+// Version: 1.2.0 - RunsCodeWhenOpened
 // Version: 1.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileAssociations.h"

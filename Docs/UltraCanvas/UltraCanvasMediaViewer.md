@@ -84,6 +84,9 @@ tool and a missing plugin should stop it running.
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
+| `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
+| `Text` (messages) | eml, emlx, msg | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
+| `Text` (saved pages) | mht, mhtml | **The page it saved**, its style sheets and pictures read from the archive's own parts (*Saved web pages* below) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
@@ -104,6 +107,119 @@ carries a probe for the 188-byte packet sync bytes.
 The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
 so the viewer gets full player control for free.
+
+
+## HTML pages
+
+A viewer shows what a file *is*, and an HTML page is the page it describes:
+`.html`, `.htm`, `.xhtml`, `.xht` and `.shtml` files, and an `.xml` whose
+content is XHTML, are rendered through
+[`UltraCanvasWebView`](UltraCanvasHTMLReader.md) (the framework's HTML and
+CSS reader), not shown as markup. That is the difference from the Texter,
+which opens the same file to edit its source. `IsHtmlFile(path)` answers
+which files these are; for an `.xml` it reads the start of the file: past
+the XML declaration, processing instructions and comments, an HTML DOCTYPE
+or an `<html>` root element (with or without a namespace prefix) makes it a
+page. Any other XML - data, configuration, a feed - stays in the text view
+with its highlighting, since it has no page to show.
+
+The page view (`MV_Web`) stands in the text view's place: `MediaKind` stays
+`Text`, so a host's classification (`ClassifyFile`) is unchanged; the info
+bar says `HTML` and Details *Page information*. It is a preview of local
+files:
+
+- the page's style sheets and pictures are read from the disk next to it
+  (relative links resolve against the file);
+- a link to another local file opens in the view, and a web (`http`,
+  `https`) or `mailto:` link opens in the system's browser or mail client
+  (`OpenURL`) - the viewer fetches nothing from the network;
+- forms are drawn but send nothing, and `<video>` / `<audio>` show their
+  fallback content; no script runs (the web view never runs JavaScript);
+- Up / Down / Page Up / Page Down / Space scroll it, and Left / Right keep
+  browsing the folder, as with a text file.
+
+Moving to another file lets the page go (`UltraCanvasWebView::Clear`).
+
+## E-mail messages
+
+An `.eml` (an RFC 5322 message, as mail programs save one) - or Apple Mail's
+`.emlx`, the same message after a line giving its length and before Mail's
+property list - is shown as the message, not its raw headers and MIME
+parts: `IsMailMessageFile(path)`, read through UltraNet's MIME reader
+(`UltraNet/UltraNetMime.h`) into one page in the page view (`MV_Web`). So is
+an Outlook `.msg`, read by [UltraCanvasOutlookMessage](UltraCanvasOutlookMessage.md)
+(its HTML body even when Outlook kept it only inside the compressed RTF); a
+`.msg` that is not a compound file - another program's message catalogue -
+is shown as text. The page:
+
+- a header block - the subject, From, To, Cc and Date, encoded words
+  (`=?UTF-8?Q?...?=`) decoded - and the attachments listed by name and size;
+- the body: the HTML one rendered, with its own style sheet, else the text
+  one (`UltraNet_MimeGetDisplayBody` picks it);
+- the pictures the message carries: a `cid:` reference shows the part with
+  that Content-ID, and a picture sent along inline but not referenced
+  follows the body;
+- **no remote picture is fetched.** The preview reads local files only, so
+  opening a message never tells its sender that, when or where it was read
+  (a tracking pixel is exactly that). A link opens in the system's browser.
+
+The info bar calls it `EMAIL` and Details *Message information*. A message
+may be up to 64 MB (attachments are listed, not put in the page). A build
+without UltraNet (`ULTRACANVAS_HAS_NET` off) has no MIME reader: there an
+`.eml` is shown as its text (a `.msg` needs no UltraNet).
+
+### Opening and saving attachments
+
+Each attachment the page lists has two links:
+
+- **its name** opens it. It is written to a folder of its own, under its
+  own name, in the per-user cache (`opened-attachments` under
+  `DiskCache::Root()`: `~/.cache/UltraCanvas` on Linux,
+  `~/Library/Caches/UltraCanvas` on macOS, `%LOCALAPPDATA%\UltraCanvas` on
+  Windows) - not the temporary folder other users share - and shown in an
+  [`UltraCanvasMediaViewerWindow`](UltraCanvasMediaViewerWindow.md) when the
+  viewer shows that kind of file (a picture, a PDF, another message), else in
+  the application the system opens it with
+  (`FileAssociations::OpenWithDefaultApplication`), else the viewer offers to
+  save it. **A program, script, installer, shortcut or disk image** (`.exe`,
+  `.bat`, `.js`, `.ps1`, `.lnk`, `.msi`, `.iso`, `.sh`, `.desktop`,
+  `.appimage`, ...) **is never opened from the preview** - the system would
+  run it; the viewer says so and offers to save it.
+- **Save** asks where, through the framework's Save dialog
+  (`UltraCanvasFileLoader::SaveFileDialog`; the Downloads folder first, the
+  attachment's own type, then All files), and writes its bytes as they are.
+
+An opened attachment's folder is swept a day after it was made
+(`DiskCache::SweepFolders`, once a process: when the first viewer is made
+and when the first attachment is opened); by then the program that opened
+it has read it. A folder whose file is still held open - Windows will not
+delete it - goes on a later sweep.
+
+An attached message (Outlook's *attach item*) and an empty part are listed
+without links. The links are `ucattachment:open/N` and `ucattachment:save/N`,
+which the page view hands to the viewer (`onExternalLink`).
+
+## Saved web pages
+
+An `.mht` / `.mhtml` (MHTML, RFC 2557: what Chromium, Edge and Internet
+Explorer write for *Save page as - single file*) is a MIME message holding
+a page and everything it shows, each part under the address it was saved
+from (`Content-Location`) or a Content-ID. `IsWebArchiveFile(path)`; it is
+shown as the page it saved, not as the archive:
+
+- the page is the archive's first HTML part, and its links and pictures read
+  against the address it was saved from (a `<base>` the page carries itself
+  wins), so a relative `css/site.css` finds the part saved as
+  `https://example.org/css/site.css`;
+- its style sheets and pictures are answered from those parts, by address,
+  and `cid:` references with the part of that Content-ID - **the network is
+  never asked**: what the archive does not hold is not shown;
+- a link to a place in the page (`#part2`, which a browser saves as the full
+  address) scrolls there; any other web link opens in the system's browser.
+
+The info bar calls it `WEB ARCHIVE`, Details a *Saved web page*. An archive
+with no HTML part is shown as a message. Like a message it may be up to
+64 MB, and without UltraNet it is shown as its text.
 
 ## Tools per kind of file
 
@@ -141,7 +257,14 @@ the next bitmap while its toggle is still on.
 
 The zoom toolbar also drives the PDF view, the vector drawing view and, for
 e-books, the reading text scale (books reflow, so zoom is a text scale and "Fit"
-means a comfortable line measure across the pane).
+means a comfortable line measure across the pane). The zoom box reads the zoom
+on show: *Fit*, the step it is at (`200%`), or the percentage between steps
+(`137%`).
+
+A drawing in the vector view or in a plugin's own element (CorelDRAW through
+libcdr) has no bitmap on the image surface; the info bar labels it
+`DRAWING (<EXT>)` with its file size and, in the vector view, its document size
+and zoom, and the Details panel calls it a *Vector drawing*.
 
 ## Zooming the shown page
 
@@ -158,12 +281,26 @@ viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
 
 ## Backdrop under transparent images
 
+By default every file gets a backdrop chosen for it
+(`TransparentImageBackground::Auto`): the viewer samples what is shown — a
+transparent picture's pixels, or the drawing in the vector view rasterized at
+64 px — and picks white, mid grey (153) or dark grey (51), whichever gives the
+most of the artwork a contrast of 4.5:1 or better
+(`UltraCanvasMediaViewer::ContrastingBackdropFor`). Black line art lands on
+white, a white logo on dark grey, artwork in both on mid grey; a tie goes to the
+brighter one. An opaque picture covers its backdrop, so it is not sampled.
+
 A file that really has transparency — an alpha channel that is used, or a
-vector document (SVG), which paints over whatever is behind it — gets a strip of
-colours directly under the picture: an
-[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
-swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
-clicking the checkerboard goes back to the transparency pattern. Files without
+vector document (SVG), which paints over whatever is behind it — and every
+drawing in the vector view (DXF, DWG, CorelDRAW, …) gets a strip of colours
+directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the auto
+swatch first, the checkered swatch next, then greys, then colours. Clicking a
+colour makes it the backdrop for this and the following files; the auto swatch
+goes back to a colour picked per file, and the checkerboard to the transparency
+pattern. The vector view paints its backdrop over the whole pane and cannot
+draw the pattern, so the strip offers no checkerboard there, and a drawing
+shown while it is chosen gets the Auto colour. Files without
 transparency never show the strip, so it costs no space where it would mean
 nothing — that check is `UCImage::HasTransparency` (the Cairo image,
 `libspecific/Cairo/ImageCairo.h`), which ignores the fully opaque alpha
@@ -174,8 +311,10 @@ viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
 // Remember what the user picked:
 viewer->onTransparentBackgroundChanged =
         [&](TransparentImageBackground mode, const Color& color) {
+    settings.automatic = (mode == TransparentImageBackground::Auto);
     settings.checkered = (mode == TransparentImageBackground::Checkered);
-    settings.color = color;
+    // Auto reports the colour it picked for this file - not a preference.
+    if (mode == TransparentImageBackground::SolidColor) settings.color = color;
 };
 // Different colours, or different metrics:
 viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });

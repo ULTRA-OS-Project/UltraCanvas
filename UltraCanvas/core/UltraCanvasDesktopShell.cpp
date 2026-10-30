@@ -6,7 +6,8 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
-// Version: 1.6.0 - FindProgram finds a sibling application's bundle on macOS
+// Version: 1.7.0 - FindProgram finds a sibling application's bundle on macOS
+// Version: 1.6.0 - LockSession, the loudspeaker's volume, ActivateMenuItem
 // Version: 1.5.0 - GetSystemDesktopSwitchUnavailableReason
 // Version: 1.4.0 - Microsoft Store applications launch (appUserModelId), ListScreens
 // Version: 1.3.0 - DesktopReplacement::Instead, the tray host's thread, EndSession
@@ -604,6 +605,35 @@ bool UltraCanvasDesktopShell::EndSession(SessionEnd how, std::string* error) {
     return false;
 }
 
+bool UltraCanvasDesktopShell::CanLockSession() { return DesktopShellBackend::CanLockSession(); }
+
+bool UltraCanvasDesktopShell::LockSession(std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::LockSession(reason)) return true;
+    if (error) *error = reason;
+    return false;
+}
+
+// ===== THE LOUDSPEAKER =====
+
+DesktopAudioOutput UltraCanvasDesktopShell::ReadAudioOutput() {
+    return DesktopShellBackend::ReadAudioOutput();
+}
+
+bool UltraCanvasDesktopShell::SetAudioOutputVolume(int percent, std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::SetAudioOutputVolume(std::max(0, percent), reason)) return true;
+    if (error) *error = reason;
+    return false;
+}
+
+bool UltraCanvasDesktopShell::SetAudioOutputMuted(bool muted, std::string* error) {
+    std::string reason;
+    if (DesktopShellBackend::SetAudioOutputMuted(muted, reason)) return true;
+    if (error) *error = reason;
+    return false;
+}
+
 // ===== NOTICES =====
 
 std::string UltraCanvasDesktopShell::NoticesDirectory() {
@@ -840,6 +870,11 @@ bool UltraCanvasTrayHost::Click(const std::string& id, TrayClick button) {
     return DesktopShellBackend::TrayHostClick(impl->state, id, button);
 }
 
+bool UltraCanvasTrayHost::ActivateMenuItem(const std::string& id, int32_t itemId) {
+    if (!running.load() || !impl->state) return false;
+    return DesktopShellBackend::TrayHostMenuActivate(impl->state, id, itemId);
+}
+
 // ===== FALLBACK BACKEND =====
 
 #ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE
@@ -897,6 +932,25 @@ namespace DesktopShellBackend {
         error = "Signing out, restarting and shutting down are not available on this platform yet.";
         return false;
     }
+    bool CanLockSession() { return false; }
+    bool LockSession(std::string& error) {
+        error = "Locking the screen is not available on this platform yet.";
+        return false;
+    }
+
+    DesktopAudioOutput ReadAudioOutput() {
+        DesktopAudioOutput out;
+        out.error = "The loudspeaker's volume is not read on this platform yet.";
+        return out;
+    }
+    bool SetAudioOutputVolume(int, std::string& error) {
+        error = "The loudspeaker's volume is not set on this platform yet.";
+        return false;
+    }
+    bool SetAudioOutputMuted(bool, std::string& error) {
+        error = "The loudspeaker's volume is not set on this platform yet.";
+        return false;
+    }
 
     void ReadDeviceActivity(DesktopDeviceActivity& activity) {
         activity.warnings.push_back(
@@ -929,6 +983,7 @@ namespace DesktopShellBackend {
     void TrayHostClose(TrayHostState*) {}
     std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState*) { return {}; }
     bool TrayHostClick(TrayHostState*, const std::string&, TrayClick) { return false; }
+    bool TrayHostMenuActivate(TrayHostState*, const std::string&, int32_t) { return false; }
 
 } // namespace DesktopShellBackend
 #endif // !ULTRACANVAS_DESKTOPSHELL_NATIVE

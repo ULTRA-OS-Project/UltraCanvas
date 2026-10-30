@@ -5,10 +5,13 @@
 // folder that is not the application's.
 //
 // Also the settings root beside it (UltraCanvasSettingsFolder.h), which
-// UltraTexter and UltraAI keep their own folders under.
+// UltraTexter and UltraAI keep their own folders under, and the crash dump
+// folder (UltraCanvasCrashDumpFolder.h), which the Windows crash reporter
+// writes to and UltraFiler's Extras > Open location shows.
 //
 // Self-contained: no test framework, links nothing (both headers are header-only).
 // Author: UltraCanvas Framework
+#include "UltraCanvasCrashDumpFolder.h"
 #include "UltraCanvasDataFolder.h"
 #include "UltraCanvasSettingsFolder.h"
 
@@ -148,6 +151,29 @@ static void TestSettingsRoot() {
           "the desktop folder is <root>/ultraos");
 }
 
+static void TestCrashDumpFolder() {
+    std::printf("crash dump folder\n");
+    // Windows: %LOCALAPPDATA%\UltraCanvas\CrashDumps, unless the variable names another.
+    Check(SamePath(CrashDumpFolderFor(DataFolderPlatform::Windows, "", "C:/Users/erika/AppData/Local"),
+                   fs::path("C:/Users/erika/AppData/Local/UltraCanvas/CrashDumps")),
+          "Windows: LOCALAPPDATA");
+    Check(SamePath(CrashDumpFolderFor(DataFolderPlatform::Windows, "D:/dumps", "C:/Users/erika/AppData/Local"),
+                   fs::path("D:/dumps")),
+          "Windows: ULTRACANVAS_CRASH_DUMP_DIR wins");
+    Check(CrashDumpFolderFor(DataFolderPlatform::Windows, "", "").empty(),
+          "Windows: nothing without LOCALAPPDATA");
+    // No dump is written elsewhere, so there is no folder to show.
+    Check(CrashDumpFolderFor(DataFolderPlatform::MacOS, "/tmp/dumps", "/Users/erika").empty(),
+          "macOS: none");
+    Check(CrashDumpFolderFor(DataFolderPlatform::Unix, "/tmp/dumps", "/home/erika").empty(),
+          "Linux: none");
+    // A profile folder named outside the ANSI code page survives.
+    Check(SamePath(CrashDumpFolderFor(DataFolderPlatform::Windows, "",
+                                      "C:/Users/" + std::string("ทดสอบ") + "/AppData/Local"),
+                   PathFromUtf8("C:/Users/ทดสอบ/AppData/Local/UltraCanvas/CrashDumps")),
+          "Windows: a Thai profile folder");
+}
+
 static void TestAdopt(const fs::path& scratch) {
     std::printf("adopt\n");
     const std::vector<std::string> markers = {"mail.db", "social.db"};
@@ -249,6 +275,7 @@ int main() {
 
     TestRule();
     TestSettingsRoot();
+    TestCrashDumpFolder();
     TestAdopt(scratch);
 
     fs::remove_all(scratch, ec);

@@ -19,8 +19,9 @@
 //
 // UltraCanvasToolbar::AddToolGroup adds one to a toolbar with the toolbar's
 // button appearance, as AddToggleButton does for a single tool.
+// Version: 1.1.0 - SelectItem: pick a tool as a click in the bar does (a toolbar's overflow menu)
 // Version: 1.0.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -84,6 +85,11 @@ namespace UltraCanvas {
         bool SetCurrentItem(const std::string& itemId);
         // "" while the group is empty.
         std::string GetCurrentItem() const;
+        // Pick the tool `itemId` as a click on it in the bar does: it becomes
+        // current, the slot is pressed and onItemSelected fires. A toolbar's
+        // overflow menu picks a tool of a group it holds this way. Returns
+        // false, changing nothing, when no item has this id.
+        bool SelectItem(const std::string& itemId);
         // The tool the slot shows and a click on it picks: the current one,
         // or the first while SetSlotShowsLastPicked(false).
         std::string GetSlotItem() const;

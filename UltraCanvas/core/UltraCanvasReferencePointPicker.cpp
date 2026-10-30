@@ -1,7 +1,8 @@
 // core/UltraCanvasReferencePointPicker.cpp
 // The 3 x 3 reference point picker.
+// Version: 1.1.0 - the free point
 // Version: 1.0.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasReferencePointPicker.h"
@@ -36,9 +37,17 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasReferencePointPicker::SetPoint(ReferencePoint p, bool runCallback) {
-        if (p == point) return;
+        if (p == point && !freePoint) return;
         point = p;
+        freePoint.reset();
         if (runCallback && onPointChanged) onPointChanged(point);
+        NotifyAccessibility(AccessibilityEventType::ValueChanged);
+        RequestRedraw();
+    }
+
+    void UltraCanvasReferencePointPicker::SetFreePoint(const std::optional<Point2Dd>& fraction) {
+        if (fraction == freePoint) return;
+        freePoint = fraction;
         NotifyAccessibility(AccessibilityEventType::ValueChanged);
         RequestRedraw();
     }
@@ -91,7 +100,7 @@ namespace UltraCanvas {
         ctx->DrawFilledRectangle(Rect2Dd(tl.x, tl.y, br.x - tl.x, br.y - tl.y), Colors::Transparent,
                                  1.0f, disabled ? style.disabledColor : style.pointColor, 0.0f);
 
-        const int selected = static_cast<int>(point);
+        const int selected = freePoint ? -1 : static_cast<int>(point);
         for (int i = 0; i < 9; ++i) {
             const Point2Df c = PointCentre(i);
             const bool isSelected = i == selected;
@@ -105,6 +114,19 @@ namespace UltraCanvas {
             ctx->DrawFilledRectangle(Rect2Dd(x, y, std::round(size), std::round(size)), colour,
                                      isSelected ? 0.0f : 1.0f,
                                      isSelected ? Colors::Transparent : colour, 0.0f);
+        }
+
+        // The free point: a ring where it lies across the points' box, held
+        // inside it so it never leaves the frame.
+        if (freePoint) {
+            const double fx = std::clamp(freePoint->x, 0.0, 1.0), fy = std::clamp(freePoint->y, 0.0, 1.0);
+            const Point2Dd c(tl.x + (br.x - tl.x) * fx, tl.y + (br.y - tl.y) * fy);
+            const double radius = style.selectedPointSize / 2.0;
+            ctx->SetFillPaint(style.backgroundColor);
+            ctx->FillCircle(c, radius);
+            ctx->SetStrokePaint(disabled ? style.disabledColor : style.selectedColor);
+            ctx->SetStrokeWidth(2.0);
+            ctx->DrawCircle(c, radius);
         }
     }
 
