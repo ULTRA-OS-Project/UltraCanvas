@@ -1,8 +1,12 @@
 # A Toolbar Configuration Widget — Investigation
 
-Status: **Investigation.** Nothing below is built yet. The code blocks show
-APIs that do not exist; their names are recorded in
-`scripts/doc_examples_baseline.txt` until they do.
+Status: **Investigation — phase 1 built.** The command catalogue, the
+group model, building a toolbar from it and keeping the user's arrangement
+(§4.1–§4.5, §6 phase 1) exist now and are documented in
+[`UltraCanvasToolbarLayout.md`](UltraCanvasToolbarLayout.md). The editor
+(§4.4) and the changes on the bar itself (§4.6) are phase 2 and are not
+built; their names are recorded in `scripts/doc_examples_baseline.txt`
+until they are.
 
 **Since written (2026-10-30):** three of the gaps it found are fixed —
 `groupSpacing` is read (the gap across a separator), `ToolbarOverflowMode::Menu`
@@ -274,6 +278,9 @@ Extend `MenuCommand` rather than add a second registry. A program then
 registers each command once, and the menu editor and the toolbar editor
 offer the same catalogue.
 
+<!-- The fields below are MenuCommand's, listed outside the struct, so the
+     doc check cannot place them; they exist (UltraCanvasMenuRegistry.h). -->
+
 ```cpp
 // UltraCanvasMenuRegistry.h, MenuCommand gains:
 std::string iconName;                    // "to-front.svg": resolved per size by the registry's icon resolver
@@ -451,7 +458,8 @@ release adds to `zoom` appears for users who never customised the group.
 ```cpp
 bool SaveToolbarLayout(UltraCanvasAppSettings& settings, const ToolbarLayout& layout, const ToolbarLayout& defaults);
 // Reads toolbars.<defaults.name>: the defaults with the saved changes applied, unknown ids dropped.
-ToolbarLayout LoadToolbarLayout(const UltraCanvasAppSettings& settings, const ToolbarLayout& defaults);
+ToolbarLayout LoadToolbarLayout(const UltraCanvasAppSettings& settings, const ToolbarLayout& defaults,
+                                const UltraCanvasMenuRegistry* registry = nullptr);
 ```
 
 ArtCreator keeps its other settings in its own `config.ini`
@@ -498,7 +506,15 @@ Nothing needs a new dependency or platform code.
 **Phase 1: the command catalogue and the group model (framework).**
 Items 1–4 and 9. They are useful without the editor: a program gets
 toolbars built from data, separators that are always right, and state that
-stays in step.
+stays in step. *Built:* `UltraCanvasToolbarLayout.h` (`ToolbarLayout`,
+`MaterializeToolbar`, `MergeToolbarLayout`, `Save` / `Load` /
+`ForgetToolbarLayout`), the `MenuCommand` fields and registry calls of §4.1
+plus `FindShortcutConflicts` and `RefreshMenuStates`, the toolbar's
+`AddWidget` and `RefreshCommandStates`, and `Tests/ToolbarLayoutTest.cpp`.
+Two choices made on the way: the registry keeps its name (§8, question 1,
+is still open; a rename is cheap while nothing but the DemoApp uses it), and
+menus take live state through `RefreshMenuStates`, called where the program
+calls `RefreshCommandStates`, rather than at every opening.
 
 **Phase 2: the editor and the right-click menu (framework).** Items 5, 7
 and 8, plus a DemoApp page beside the menu-configuration page that uses
