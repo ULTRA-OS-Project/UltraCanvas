@@ -261,6 +261,13 @@ int main() {
     auto icon = LoadHostFileIconPixmap("/a/definitely-not-a-type.zzqq", false, 48);
     Check(icon == nullptr || icon->IsValid(),
           "an unknown type answers with nothing, or with a usable pixmap");
+#if defined(_WIN32)
+    // Explorer draws a blank page for a type no program is registered for;
+    // that says less than the caller's own icon, so it is reported as none.
+    Check(icon == nullptr,
+          "Windows: a type no program is registered for answers nothing, "
+          "not the shell's blank page");
+#endif
     auto folderIcon = LoadHostFileIconPixmap("/", true, 48);
     Check(folderIcon == nullptr || folderIcon->IsValid(),
           "the folder icon is either absent or usable");

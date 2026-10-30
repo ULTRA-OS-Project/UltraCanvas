@@ -120,6 +120,11 @@ plain associated icon where a locked-down shell refuses the lists. A
 transparent border is trimmed off what comes back: the jumbo list is a 256×256
 canvas, and a type whose icon exists only at 48 sits in the middle of it with
 empty space all round, which drawn into a tile would be a postage stamp.
+A type no program is registered for answers **null**, not the shell's icon
+for it: that is the blank "no program" page (`SIID_DOCNOASSOC`), which tells
+the reader nothing - a `.7z` or `.tar.xz` on a machine without 7-Zip looked
+like an empty sheet - while the caller's own icon for the type at least says
+what kind of file it is.
 
 **macOS** — `OS/MacOS/UltraCanvasMacOSHostFileIcons.mm`. `NSWorkspace`, asked
 for the content type the extension names rather than for the file, so one

@@ -372,6 +372,14 @@ pixmap. Until an answer lands — and on a system that has no icon for the type,
 or no desktop to ask at all — the simple icon is drawn, so the display never
 waits on a lookup and never shows an empty box.
 
+On Windows a type no program is registered for counts as one the system has
+no icon for. Explorer draws such a file - a `.7z`, `.tar`, `.tar.xz` or
+`.tar.zst` on a machine without 7-Zip - as a blank page that says nothing
+about it, so the display draws its own icon for the type instead: the archive
+sheet with `7Z`, `TAR`, `XZ` or `ZST` on it. A type that is registered keeps
+Explorer's icon, and installing a program for it switches it over the next
+time the display resolves its icons (`RefreshHostIcons()`, or a restart).
+
 `AreHostFileIconsAvailable()` reports whether there is a desktop to ask
 (false on WebAssembly and Android): a settings page should say so rather than
 offer a choice that changes nothing. `RefreshHostIcons()` throws the resolved
