@@ -61,18 +61,19 @@ edge for one run, start it with `UltraDesktop --edge top` or `--edge bottom`.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 1  │  virtual desktops
-│ ⋮⋮ │                                                              │ 2  │
-│╲   │                                                              │ 3  │
-│ ╲  │                                                              │ 📌 │  Sticker board
-│ ▣  │                                                              │ 🗒 │  notes
-│ ▣  │                     wallpaper                                │ 📋 │  clipboard history
-│ ▣  │              (your windows float above it)                   │ 📷 │  screenshot
-│ ▣  │                                                              │╱   │
-│  ╲ │                                                              │ ✉14│  info panel
-│   ╲│                                                              │ ⇧⇩ │
-│ ▤  │                                                              │ ⌨ ●│
-│ 📁 │                                                              │ 🔋 │
+│ ⚙  │                                                              │ 🕒 │  clock and date
+│ ⋮⋮ │                                                              │30Oct│
+│╲   │                                                              │ 1  │  virtual desktops
+│ ╲  │                                                              │ 2  │
+│ ▣  │                                                              │ 3  │
+│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
+│ ▣  │              (your windows float above it)                   │ 🗒 │  notes
+│ ▣  │                                                              │ 📋 │  clipboard history
+│  ╲ │                                                              │ 📷 │  screenshot
+│   ╲│                                                              │╱   │
+│ ▤  │                                                              │ ✉14│  info panel
+│ 📁 │                                                              │ ⇧⇩ │
+│ 🎨 │                                                              │ 🔊 │
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -84,10 +85,11 @@ groups:
    **Applications** (⋮⋮) opens the list of installed programs.
 2. **Your open windows** on the current desktop, one button each.
 3. **Pinned**: the **RAM disc** (on Linux, `/dev/shm`; on Windows only if you
-   set a folder) and **UltraFiler**.
+   set a folder), **UltraFiler**, and the programs you pin yourself (section
+   4.1).
 
-**The right bar** has the virtual desktops and the tools at the top and the
-info panel at the bottom.
+**The right bar** has the clock at the top, then the virtual desktops and
+the tools, and the info panel at the bottom.
 
 Maximised windows stop beside the bars instead of covering them.
 
@@ -102,10 +104,17 @@ it is showing.
   tile; type in **Find an application…** to narrow the list, then click the
   tile. The window closes once the program starts; if it cannot start, the
   window stays open and says why.
-- When UltraDesktop runs instead of Explorer, a tap of the **Win key** on its
-  own opens the same window, where the Start menu would open.
+- A tap of the **Super key** (the Win key) on its own opens the same window
+  - on Linux, and on Windows when UltraDesktop runs instead of Explorer,
+  where the Start menu would open.
 - **UltraFiler** and the **RAM disc** are one click away at the foot of the
   taskbar.
+- **Pin a program** there too: right-click its window's taskbar button, or
+  its tile in Applications, and choose **Pin to taskbar**. It joins the
+  pinned group with its own icon. Right-click the pinned button for **Open**
+  and **Unpin from taskbar**. Pins stay through restarts, and a pinned
+  program that is uninstalled comes back to the bar when it is installed
+  again.
 
 On Windows the list holds the Start menu's programs, named as the Start menu
 names them, and the Microsoft Store apps (Calculator, Photos, Settings …).
@@ -121,14 +130,14 @@ highlighted.
 - **Click** a button to bring its window to the front; click the active
   window's button to minimise it.
 - **Right-click** for **Activate**, **Minimize**, **Move to** (a desktop, or
-  **Every desktop**) and **Close window**.
+  **Every desktop**), **Pin to taskbar** (section 4.1) and **Close window**.
 - **Drag** a button to put it somewhere else in the row. A new window joins
   its program's other windows.
 - When the row is full, scroll it with the mouse wheel.
 
 ### 4.3 Virtual desktops
 
-The numbered buttons at the top of the right bar are your virtual desktops.
+The numbered buttons under the clock on the right bar are your virtual desktops.
 Click one to switch to it. The taskbar then shows that desktop's windows.
 
 - To change how many there are, use UOS-Settings → Desktop → **Virtual
@@ -214,7 +223,28 @@ into categories, on a board over the wallpaper. It starts with **Docs**,
 
 The board, its look, its place and its size are kept.
 
-### 4.8 The info panel
+### 4.8 The clock
+
+The clock at the top of the right bar shows the time on a small analog face
+and the date under it; rest the pointer on it for the whole date and time.
+Click it for the clock panel: the time large, on a face and in figures,
+today written out, and this month's calendar with today marked. You can page
+through other months; nothing is chosen there. Escape, or a click anywhere
+else, closes it.
+
+### 4.9 The loudspeaker
+
+Click the loudspeaker icon on the info panel for the volume panel: the
+output's name, a slider for its volume and a **Mute** switch. The icon's
+tooltip names the volume ("Loudspeaker: 63%"), says when something is
+playing, and the icon shows a red dot while muted. A change made elsewhere -
+the keyboard's volume keys, another program - shows within ten seconds.
+
+On Linux this talks to PulseAudio or PipeWire; on Windows to the default
+output. When no sound server answers, the panel says so and the slider is
+greyed out.
+
+### 4.10 The info panel
 
 The icons at the foot of the right bar show your devices and connections:
 Email, Upload, Download, Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard,
@@ -236,17 +266,22 @@ A click opens the program for that icon:
 | Email | UltraMail |
 | Upload, Download, Internet/LAN, VPN, Wi-Fi | UltraNetMonitor |
 | USB, Keyboard, Webcam | DeviceExplorer |
-| Bluetooth, Microphone, Loudspeaker, Battery, Task Manager | the Task Manager |
+| Loudspeaker | the volume panel (section 4.9) |
+| Bluetooth, Microphone, Battery, Task Manager | the Task Manager |
 
 When there are many virtual desktops on a small screen, the panel scrolls: a
 chevron marks where more icons are, and a click on it or the mouse wheel
 scrolls.
 
-When UltraDesktop runs instead of Explorer on Windows, the programs' **tray
-icons** (OneDrive, a VPN client, a chat program) appear here too, above the
-services. A click opens the program, and a right-click opens its menu.
+On Linux, and on Windows when UltraDesktop runs instead of Explorer, the
+programs' **tray icons** (a chat program, a cloud drive, a VPN client)
+appear here too, above the services. A click opens the program, and a
+right-click opens its menu. On Linux UltraDesktop is then the tray every
+such program registers with, so another desktop's tray must not be running
+at the same time; the icons' menus are drawn by UltraDesktop, submenus and
+check marks included.
 
-### 4.9 Notifications
+### 4.11 Notifications
 
 On ULTRA OS, notifications from every program appear in the top-right
 corner, beside the right bar. At most four show at a time, newest on top.
@@ -263,7 +298,7 @@ dunst …), that server shows them instead. On Windows beside Explorer, Windows
 shows them as before. Instead of Explorer, UltraDesktop shows the tray icons'
 balloons.
 
-### 4.10 The Task Manager
+### 4.12 The Task Manager
 
 The Task Manager icon at the foot of the info panel opens it.
 
@@ -290,6 +325,12 @@ Changes are saved at once: a choice when you make it, a text field when you
 leave it or press Return. A running UltraDesktop takes them over within a
 second; there is no need to restart it. The line under the settings names the
 file they were saved to, or says why they were not saved.
+
+The ⚙ button's **right-click menu** also has **Lock screen** (or press
+Super+L), and - on Linux, and on Windows instead of Explorer - **Sign out**,
+**Restart** and **Shut down**, each of which asks first. On Linux these go
+through the system's logind, the same way the other desktops' menus do; if
+it is not there, the menu leaves them out.
 
 ## 6. UltraDesktop as your Windows desktop
 
@@ -410,7 +451,12 @@ at sign-in.
 | Where | Action | Does |
 |---|---|---|
 | Any window | Super+V (Win+V) | opens the clipboard history (on Windows only instead of Explorer) |
-| Any window, Windows instead of Explorer | Win key alone | opens Applications |
+| Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
+| Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
+| Clock | click | the clock panel |
+| Loudspeaker icon | click | the volume panel |
+| Pinned program | click / right-click | start it / open, unpin |
+| Applications tile | click / right-click | start it / pin or unpin |
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
@@ -447,6 +493,22 @@ Explorer runs. Use the clipboard button on the right bar.
 
 **The Win key opens the Start menu.** That is expected beside Explorer. Only
 instead of Explorer does the Win key open Applications.
+
+**The loudspeaker panel says there is no sound server.** On Linux UltraDesktop
+talks to PulseAudio, or to PipeWire's PulseAudio service
+(`pipewire-pulse`); install or start one. The icon still shows when
+something is playing, which comes from the sound cards directly.
+
+**Sign out, Restart and Shut down are missing from the ⚙ menu.** On Linux
+they need logind (systemd) on the system bus; on Windows they appear only
+when UltraDesktop runs instead of Explorer - beside Explorer the Start menu
+has them.
+
+**Tray icons are missing on Linux, or appear twice.** Only one tray can run
+on a session. UltraDesktop hosts the icons when no other desktop's tray
+(KDE's, GNOME's AppIndicator extension …) holds the name
+`org.kde.StatusNotifierWatcher` when it starts; otherwise that one keeps
+them.
 
 **My other monitor shows Explorer's desktop, or the wallpaper is missing
 there.** Beside Explorer, the other monitors show Explorer's desktop. Instead
