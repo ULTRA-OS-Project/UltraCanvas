@@ -26,6 +26,16 @@
 - **A tap of the Super key opens Applications on Linux too**, where the
   session has no other desktop to own the key; beside Explorer on Windows it
   stays the Start menu's.
+- **The desktop sits on the primary monitor on Linux too.** One window
+  across the whole X11 screen put the bars on the far edges of two monitors
+  and, with monitors of different sizes, into the dead area where the
+  shorter one ended, with the info panel out of sight. The desktop window
+  now covers the primary monitor (as it did as the Windows shell) and every
+  other monitor gets a wallpaper window; the clipboard, clock and volume
+  panels and the notification toasts stay on the primary. The bars are
+  reserved with the window manager only along the edges of the whole screen
+  the primary lies on (framework changelog:
+  `desktopshell-session-audio-super-tap`).
 - **Tray icons' menus on Linux.** With the framework's new StatusNotifierItem
   tray host (framework changelog: `desktopshell-linux-tray-host`), the
   programs' tray icons appear on the info panel on Linux as they do instead

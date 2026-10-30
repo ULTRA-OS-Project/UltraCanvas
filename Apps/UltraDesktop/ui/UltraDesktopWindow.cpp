@@ -2,6 +2,8 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.5.1 - the desktop on the primary monitor (area_), the others
+//                  covered on X11 too; panels and toasts placed from it
 // Version: 0.5.0 - the clock (BuildClock, UpdateClock, the clock panel);
 //                  pinned applications (PinKey, ShowPinnedMenu); the volume
 //                  panel and the speaker's words (ReadSpeaker); the lock
@@ -162,6 +164,30 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     config.width = 1280;    // replaced by the screen size for a desktop window
     config.height = 800;
     config.backgroundColor = kBarInsetColor;
+    // Several monitors: the primary carries the bars, and the others get
+    // wallpaper windows (CoverOtherScreens). One window across the whole
+    // X11 root put the bars on the far edges of the two monitors, and into
+    // the dead area where the shorter one ended. One monitor, or a platform
+    // that tells none apart: the screen as it is.
+    {
+        const std::vector<DesktopScreenInfo> screens = UltraCanvasDesktopShell::ListScreens();
+        const DesktopScreenInfo* primary = nullptr;
+        for (const DesktopScreenInfo& screen : screens) {
+            if (screen.primary && !primary) primary = &screen;
+        }
+        if (!primary && !screens.empty()) primary = &screens.front();
+        if (primary && screens.size() > 1) {
+            config.desktopArea = Rect2Di(primary->x, primary->y, primary->width, primary->height);
+            area_ = *primary;
+        } else {
+            int width = 0, height = 0;
+            UltraCanvasDesktopShell::GetScreenSize(width, height);
+            area_ = DesktopScreenInfo();
+            area_.width = width;
+            area_.height = height;
+            area_.primary = true;
+        }
+    }
     window_ = CreateWindow(config);
     if (!window_) return false;
 
@@ -502,12 +528,10 @@ void UltraDesktopWindow::OpenClockPanel() {
         clockPanel_->Close();
         return;
     }
-    // Beside the right bar, level with the clock: the desktop window covers
-    // the screen from its top-left corner, so its coordinates are the
-    // screen's, scaled to physical pixels.
+    // Beside the right bar, level with the clock.
     const Rect2Df bounds = clock_ ? clock_->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
-    clockPanel_->Open(window_->LogicalToPhysical(static_cast<int>(bounds.x) - 10),
-                      window_->LogicalToPhysical(static_cast<int>(bounds.y)));
+    clockPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    clockPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y));
 }
 
 // ===== THE LOUDSPEAKER =====
@@ -523,8 +547,8 @@ void UltraDesktopWindow::OpenVolumePanel() {
     }
     auto speaker = std::dynamic_pointer_cast<UltraCanvasButton>(info_->GetWidget("speaker"));
     const Rect2Df bounds = speaker ? speaker->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
-    volumePanel_->Open(window_->LogicalToPhysical(static_cast<int>(bounds.x) - 10),
-                       window_->LogicalToPhysical(static_cast<int>(bounds.y) - 60));
+    volumePanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    volumePanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 60));
 }
 
 void UltraDesktopWindow::ReadSpeaker() {
@@ -883,14 +907,23 @@ void UltraDesktopWindow::StartNotifications() {
 void UltraDesktopWindow::PlaceNotifications() {
 #ifdef ULTRADESKTOP_HAVE_NOTIFICATIONS
     if (!toasts_) return;
-    // Top right, beside the right bar, and below the taskbar when it runs
-    // along the top.
+    // Top right of the desktop's own monitor, beside the right bar, and
+    // below the taskbar when it runs along the top. The toasts measure from
+    // the whole screen's edges, so the monitors beyond the desktop's are
+    // part of the margins.
     const TaskbarEdge edge = settings_.taskbarEdge;
+    int screenW = 0, screenH = 0;
+    UltraCanvasDesktopShell::GetScreenSize(screenW, screenH);
+    const auto logical = [this](int physical) { return window_ ? window_->PhysicalToLogical(physical) : physical; };
+    const int beyondLeft = logical(std::max(0, area_.x));
+    const int beyondTop = logical(std::max(0, area_.y));
+    const int beyondRight = logical(std::max(0, screenW - (area_.x + area_.width)));
+    const int beyondBottom = logical(std::max(0, screenH - (area_.y + area_.height)));
     toasts_->SetCorner(NotificationToastCorner::TopRight);
-    toasts_->SetScreenMargins(edge == TaskbarEdge::Left ? kBarThickness : 0,
-                              edge == TaskbarEdge::Top ? kBarThickness : 0,
-                              kInfoPanelWidth,
-                              edge == TaskbarEdge::Bottom ? kBarThickness : 0);
+    toasts_->SetScreenMargins(beyondLeft + (edge == TaskbarEdge::Left ? kBarThickness : 0),
+                              beyondTop + (edge == TaskbarEdge::Top ? kBarThickness : 0),
+                              beyondRight + kInfoPanelWidth,
+                              beyondBottom + (edge == TaskbarEdge::Bottom ? kBarThickness : 0));
 #endif
 }
 
@@ -1331,17 +1364,27 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
 
 // ===== EVERY SCREEN =====
 
+int UltraDesktopWindow::ScreenX(float logicalX) const {
+    return area_.x + (window_ ? window_->LogicalToPhysical(static_cast<int>(logicalX)) : static_cast<int>(logicalX));
+}
+
+int UltraDesktopWindow::ScreenY(float logicalY) const {
+    return area_.y + (window_ ? window_->LogicalToPhysical(static_cast<int>(logicalY)) : static_cast<int>(logicalY));
+}
+
 void UltraDesktopWindow::CoverOtherScreens() {
-    // What the desktop window covers, from 0,0: the primary monitor on
-    // Windows, the whole screen on X11.
-    // Beside Explorer, Explorer's desktop shows on the others, with its icons.
-    int coveredWidth = 0, coveredHeight = 0;
-    UltraCanvasDesktopShell::GetScreenSize(coveredWidth, coveredHeight);
+    // The monitors outside what the desktop window covers (area_). Beside
+    // Explorer, Explorer's desktop shows on them, with its icons; as the
+    // shell on Windows, and on X11, where the session has no other desktop,
+    // each gets a wallpaper window.
+    const bool systemCovers = UltraCanvasDesktopShell::CanReplaceSystemDesktop() &&
+                              UltraCanvasDesktopShell::IsSystemDesktopRunning();
     std::vector<DesktopScreenInfo> others;
-    if (!UltraCanvasDesktopShell::IsSystemDesktopRunning()) {
+    if (!systemCovers) {
         for (const DesktopScreenInfo& screen : UltraCanvasDesktopShell::ListScreens()) {
-            const bool inside = screen.x >= 0 && screen.y >= 0 && screen.x + screen.width <= coveredWidth &&
-                                screen.y + screen.height <= coveredHeight;
+            const bool inside = screen.x >= area_.x && screen.y >= area_.y &&
+                                screen.x + screen.width <= area_.x + area_.width &&
+                                screen.y + screen.height <= area_.y + area_.height;
             if (!inside) others.push_back(screen);
         }
     }
@@ -1797,12 +1840,11 @@ void UltraDesktopWindow::ToggleClipboardPanel(bool besideButton) {
         lastPasteWindow_ = pasteWindow->id;
         target = PasteTargetFor(*pasteWindow, Applications());
     }
+    // On the desktop's own monitor: beside the button, or centred for Super+V.
+    clipboardPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
     if (besideButton && clipboardButton_) {
-        // The desktop window covers the screen from its top left corner, so
-        // its coordinates are the screen's, scaled to physical pixels.
         const Rect2Df bounds = clipboardButton_->GetBoundsInWindow();
-        clipboardPanel_->Open(window_->LogicalToPhysical(static_cast<int>(bounds.x) - 10),
-                              window_->LogicalToPhysical(static_cast<int>(bounds.y) - 8), std::move(target));
+        clipboardPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 8), std::move(target));
     } else {
         clipboardPanel_->Open(-1, -1, std::move(target));
     }

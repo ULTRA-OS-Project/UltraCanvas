@@ -1,6 +1,7 @@
 // GL/GLContextManager.h
 // Abstract interface for OpenGL context management
 // Platform-specific implementations: EGL (Linux), CGL (macOS), WGL (Windows)
+// Version: 1.0.0 - the context manager interface the platform GL backends implement
 #pragma once
 
 #ifndef ULTRACANVAS_ENABLE_GL

@@ -33,6 +33,9 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.5.1 - on X11 the desktop covers the primary monitor and puts
+//                  wallpaper windows on the others, as it does as the
+//                  Windows shell; panels and toasts follow it
 // Version: 0.5.0 - the clock and the date, the clock panel; pinned
 //                  applications; the volume panel; the lock; sign out,
 //                  restart and shut down wherever the platform can; the
@@ -215,12 +218,17 @@ private:
     void ConfirmEndSession(UltraCanvas::SessionEnd how);
 
     // ===== EVERY SCREEN =====
-    // The desktop window covers the primary monitor (Windows) or the whole
-    // screen (X11). While no Explorer desktop runs, a monitor outside it gets
-    // a desktop window of its own with the wallpaper, so no screen stays
-    // black; followed as monitors come and go, and a window closed (Alt+F4)
-    // opens again at the next check.
+    // The desktop window covers the primary monitor as of start-up (`area_`),
+    // or the whole screen where the platform tells no monitors apart. While
+    // no other desktop runs - Explorer beside this one - a monitor outside
+    // it gets a desktop window of its own with the wallpaper, so no screen
+    // stays black; followed as monitors come and go, and a window closed
+    // (Alt+F4) opens again at the next check.
     void CoverOtherScreens();
+    // A point of the desktop window, in logical px, as a screen position in
+    // physical px: what the panels beside the bars are placed by.
+    int ScreenX(float logicalX) const;
+    int ScreenY(float logicalY) const;
     // The window for otherScreens_[index]; `report` says a failure once.
     void OpenScreenWindow(size_t index, bool report);
 
@@ -257,6 +265,8 @@ private:
     std::string iconsDir_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    // What the desktop window covers, in the screen's physical pixels.
+    UltraCanvas::DesktopScreenInfo area_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> workArea_;
     std::shared_ptr<UltraCanvas::UltraCanvasImageElement> wallpaper_;

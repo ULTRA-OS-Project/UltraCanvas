@@ -83,6 +83,18 @@ The taskbar's edge and the right bar are reserved with the window manager
 (`ReserveScreenEdges` in the module), so maximised and tiled application
 windows stop short of the bars instead of covering them.
 
+With several monitors the desktop window - the bars and the wallpaper -
+covers the **primary** monitor (the one the session marks, else the one at
+the origin), as of start-up, and every other monitor gets a wallpaper window
+of its own; a monitor plugged in later is covered within seconds. On X11 an
+edge is reserved only where the primary lies on that edge of the whole
+screen: with the primary on the left of a second monitor the taskbar on its
+left edge is reserved, the right bar between the two is not (a strut is
+measured from the screen's edge, and one across the other monitor would push
+its windows aside), so a maximised window on the primary may cover the right
+bar there - put the taskbar on the top or bottom edge in that layout, or make
+the right-hand monitor the primary.
+
 ### Right bar
 
 - **Clock**: the framework's gauge element in its analog clock mode

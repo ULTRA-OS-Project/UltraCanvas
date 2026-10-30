@@ -1,6 +1,7 @@
 // UltraCanvasGLSurface.h
 // OpenGL 3D rendering surface for UltraCanvas
 // Provides an EGL/OpenGL rendering context within a UltraCanvasUIElement
+// Version: 1.0.0 - a GL context inside an element, composited through ICompositeStrategy
 // Last Modified: 2026-05-29
 #pragma once
 

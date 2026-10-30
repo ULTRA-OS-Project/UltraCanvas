@@ -44,6 +44,8 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.8.0 - two RandR monitors under Xvfb: ListScreens and the per-monitor struts;
+//                  the lock, session and loudspeaker calls
 // Version: 1.7.0 - the Linux notification area (--tray)
 // Version: 1.6.0 - the X11 backend on a real display; Stop() within seconds
 // Version: 1.5.0 - ListScreens, Microsoft Store applications, the Win key's tap
@@ -97,6 +99,7 @@
 #  define DESKTOPSHELLTEST_X11 1
 #  include <X11/Xlib.h>
 #  include <X11/Xatom.h>
+#  include <X11/extensions/Xrandr.h>
 #  include <unistd.h>
 #  if defined(DESKTOPSHELLTEST_HAVE_GIO)
 #    include <gio/gio.h>
@@ -1337,6 +1340,85 @@ int main(int argc, char** argv) {
             Check(UltraCanvasDesktopShell::CaptureScreenImage(shot, &captureError) && shot.width == rootWidth &&
                       shot.height == rootHeight,
                   "the screen is captured at the root window's size " + captureError);
+
+            // ===== TWO MONITORS (RandR 1.5 virtual monitors) =====
+            // A left one and a right, primary, one that takes the screen's
+            // output (so the server's automatic whole-screen monitor goes):
+            // the list names both, the primary first; a desktop window on
+            // the right monitor reserves its right bar on the root's right
+            // edge, along its own height, and nothing on the left, which is
+            // another monitor's edge.
+            if (rootWidth >= 640 && rootHeight >= 480) {
+                const Window root = DefaultRootWindow(display);
+                const int leftWidth = rootWidth / 2;
+                const int rightWidth = rootWidth - leftWidth;
+                const int rightHeight = rootHeight - 40;   // shorter: a dead area under it
+                XRRScreenResources* resources = XRRGetScreenResources(display, root);
+                RROutput output = resources && resources->noutput > 0 ? resources->outputs[0] : 0;
+                const Atom leftName = XInternAtom(display, "UltraCanvasTestLeft", False);
+                const Atom rightName = XInternAtom(display, "UltraCanvasTestRight", False);
+                XRRMonitorInfo left = {};
+                left.name = leftName;
+                left.x = 0;
+                left.y = 0;
+                left.width = leftWidth;
+                left.height = rootHeight;
+                left.mwidth = leftWidth / 4;
+                left.mheight = rootHeight / 4;
+                XRRMonitorInfo right = {};
+                right.name = rightName;
+                right.primary = True;
+                right.x = leftWidth;
+                right.y = 0;
+                right.width = rightWidth;
+                right.height = rightHeight;
+                right.mwidth = rightWidth / 4;
+                right.mheight = rightHeight / 4;
+                right.noutput = output ? 1 : 0;
+                right.outputs = output ? &output : nullptr;
+                XRRSetMonitor(display, root, &left);
+                XRRSetMonitor(display, root, &right);
+                XSync(display, False);
+
+                const auto two = UltraCanvasDesktopShell::ListScreens();
+                Check(two.size() == 2 && two[0].primary && two[0].x == leftWidth && two[0].width == rightWidth &&
+                          two[0].height == rightHeight && !two[1].primary && two[1].x == 0 && two[1].width == leftWidth,
+                      "two monitors are listed, the primary (right) first, the whole-screen one left out: " +
+                          std::to_string(two.size()) + " screens");
+
+                const Window onRight = XCreateSimpleWindow(display, root, leftWidth, 0,
+                                                           static_cast<unsigned>(rightWidth),
+                                                           static_cast<unsigned>(rightHeight), 0, 0, 0);
+                XMapWindow(display, onRight);
+                XSync(display, False);
+                Check(UltraCanvasDesktopShell::ReserveScreenEdges(static_cast<uint64_t>(onRight), 52, 48, 0, 0),
+                      "a window on the right monitor reserves its edges");
+                Atom type = 0;
+                int format = 0;
+                unsigned long items = 0, after = 0;
+                unsigned char* data = nullptr;
+                std::vector<long> strut;
+                if (XGetWindowProperty(display, onRight, XInternAtom(display, "_NET_WM_STRUT_PARTIAL", False), 0, 12,
+                                       False, XA_CARDINAL, &type, &format, &items, &after, &data) == Success && data) {
+                    const long* values = reinterpret_cast<const long*>(data);
+                    strut.assign(values, values + items);
+                    XFree(data);
+                }
+                Check(strut.size() == 12 && strut[0] == 0 && strut[1] == 48 && strut[6] == 0 &&
+                          strut[7] == rightHeight - 1,
+                      "the right bar is reserved along the window's own height and the left edge - another "
+                      "monitor's - is not: " + (strut.size() == 12 ? std::to_string(strut[0]) + "," +
+                                                                        std::to_string(strut[1]) + " / " +
+                                                                        std::to_string(strut[6]) + ".." +
+                                                                        std::to_string(strut[7])
+                                                                  : std::string("no strut")));
+                XDestroyWindow(display, onRight);
+                XRRDeleteMonitor(display, root, rightName);
+                XRRDeleteMonitor(display, root, leftName);
+                XSync(display, False);
+                if (resources) XRRFreeScreenResources(resources);
+                Check(UltraCanvasDesktopShell::ListScreens().size() == 1, "the monitors are gone again");
+            }
 
             DeleteRootProperty(display, "_NET_CURRENT_DESKTOP");
             DeleteRootProperty(display, "_NET_NUMBER_OF_DESKTOPS");

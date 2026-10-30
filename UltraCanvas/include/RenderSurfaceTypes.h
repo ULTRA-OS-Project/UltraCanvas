@@ -1,6 +1,7 @@
 // RenderSurfaceTypes.h
 // Generic types for 3D rendering surfaces (API-agnostic)
 // These types are shared across different 3D backends (OpenGL, Vulkan, Metal, etc.)
+// Version: 1.0.0 - RenderMode and the surface types the GL surface and its backends share
 #pragma once
 
 #include <cstdint>

@@ -2,6 +2,7 @@
 // Tree view variant that renders IDE-style Name / Type / Value columns (plus
 // full-width section-header bars) on top of the generic UltraCanvasTreeView.
 // Extracted from the Modern display mode that used to live in the base tree.
+// Version: 1.0.0 - the Name / Type / Value columns, split out of UltraCanvasTreeView
 // Last Modified: 2026-07-26
 #pragma once
 

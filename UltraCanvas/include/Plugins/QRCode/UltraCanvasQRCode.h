@@ -1,3 +1,8 @@
+// include/Plugins/QRCode/UltraCanvasQRCode.h
+// The QR code element: generation with error correction, encoding mode and
+// point styles, and the scanner over an image or a camera frame.
+// Version: 1.0.0 - generation and scanning, including a camera frame (UCVideoFrame)
+// Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasUIElement.h"

@@ -512,8 +512,16 @@ them.
 
 **My other monitor shows Explorer's desktop, or the wallpaper is missing
 there.** Beside Explorer, the other monitors show Explorer's desktop. Instead
-of Explorer, UltraDesktop covers them with its wallpaper; a monitor whose
-wallpaper was closed is covered again within a few seconds.
+of Explorer, and on Linux, UltraDesktop covers them with its wallpaper; a
+monitor whose wallpaper was closed is covered again within a few seconds.
+
+**The bars are on the wrong monitor.** The bars sit on the primary monitor
+as it was when UltraDesktop started: on Linux `xrandr --output <name>
+--primary` chooses it (your desktop's display settings do the same), then
+start UltraDesktop again. With the primary on the left of another monitor,
+maximised windows may cover the right bar, which lies between the two
+monitors: put the taskbar on the top or bottom edge, or make the right-hand
+monitor the primary.
 
 **I can't find the tray icons.** Beside Explorer they are in Explorer's
 taskbar; move the pointer to the bottom edge. Instead of Explorer they are on

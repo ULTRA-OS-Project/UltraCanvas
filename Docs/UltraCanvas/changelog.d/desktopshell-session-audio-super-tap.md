@@ -23,6 +23,16 @@
   between - as the Windows hook does. The X11 build links `xi` (libxi-dev,
   which GTK 3's development package already depends on; added to the CI and
   cloud-session package lists all the same).
+- **`ReserveScreenEdges` on X11 reserves only the root's edges the window
+  lies on, its strips along the window's own extent.** A strut is measured
+  from the root window's edge whatever monitor the window is on, so a
+  desktop covering one monitor of several would have carved a strip across
+  the monitor beside it; now an edge of its monitor that is not an edge of
+  the root reserves nothing, and the strips run the window's height or
+  width, not the root's. `ListScreens` leaves out a monitor that spans
+  others (Xvfb's automatic whole-screen monitor next to ones set with
+  `xrandr --setmonitor`), so a virtual two-monitor server lists two.
+  DesktopShellTest sets two RandR monitors under Xvfb and checks both.
 - **A tray icon's menu as data.** `DesktopTrayIcon::menu` holds the icon's
   menu as `DesktopTrayMenuItem`s (label, icon, enabled, separator, check
   mark, submenu) where the program hands it over rather than drawing it -

@@ -24,6 +24,9 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.2.1 - ReserveScreenEdges reserves only the root's edges the window
+//                  lies on, its strips the window's own extent: a desktop on
+//                  one monitor of several claims nothing on the others
 // Version: 1.2.0 - "Super" alone, a tap of the Super key, watched through
 //                  XInput2's raw key events (no grab, so every Super+X
 //                  combination still reaches its owner); the end of the
@@ -578,7 +581,22 @@ std::vector<DesktopScreenInfo> ListScreens() {
         if (screen.width > 0 && screen.height > 0) screens.push_back(screen);
     }
     if (monitors) XRRFreeMonitors(monitors);
-    return screens;
+    // A server that lists a monitor spanning others beside them - Xvfb's
+    // automatic whole-screen monitor next to ones set with xrandr
+    // --setmonitor - is telling two stories; the monitors are the ones that
+    // contain no other.
+    std::vector<DesktopScreenInfo> distinct;
+    for (const DesktopScreenInfo& screen : screens) {
+        bool containsAnother = false;
+        for (const DesktopScreenInfo& other : screens) {
+            if (other == screen) continue;
+            if (other.x >= screen.x && other.y >= screen.y && other.x + other.width <= screen.x + screen.width &&
+                other.y + other.height <= screen.y + screen.height)
+                containsAnother = true;
+        }
+        if (!containsAnother) distinct.push_back(screen);
+    }
+    return distinct;
 }
 
 bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
@@ -589,18 +607,44 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     const int screen = DefaultScreen(d);
     const long width = DisplayWidth(d, screen);
     const long height = DisplayHeight(d, screen);
+    const Window w = static_cast<Window>(id);
+    // A strut is measured from the root window's edge, whatever monitor the
+    // window is on: a desktop that covers one monitor of several reserves
+    // an edge only where its monitor lies on that edge of the root - a strip
+    // from the root's edge across another monitor would push that monitor's
+    // windows aside - and its strips run the window's own extent, not the
+    // whole root, so a bar on the primary monitor claims nothing on the
+    // monitor beside it.
+    long wx = 0, wy = 0, ww = width, wh = height;
+    {
+        Window root = 0, child = 0;
+        int x = 0, y = 0;
+        unsigned int uw = 0, uh = 0, border = 0, depth = 0;
+        if (XGetGeometry(d, w, &root, &x, &y, &uw, &uh, &border, &depth) && uw > 0 && uh > 0) {
+            int rx = 0, ry = 0;
+            if (XTranslateCoordinates(d, w, root, 0, 0, &rx, &ry, &child)) {
+                wx = rx;
+                wy = ry;
+            }
+            ww = uw;
+            wh = uh;
+        }
+    }
+    if (wx > 0) left = 0;
+    if (wy > 0) top = 0;
+    if (wx + ww < width) right = 0;
+    if (wy + wh < height) bottom = 0;
     // _NET_WM_STRUT_PARTIAL: left, right, top, bottom, then the start and end
     // coordinate of each strip along its edge. A strip that reserves nothing
     // has 0..0. _NET_WM_STRUT (the four widths alone) is set as well, for a
     // manager that reads only the older property.
     long partial[12] = {
         left, right, top, bottom,
-        left > 0 ? 0 : 0,  left > 0 ? height - 1 : 0,
-        right > 0 ? 0 : 0, right > 0 ? height - 1 : 0,
-        top > 0 ? 0 : 0,   top > 0 ? width - 1 : 0,
-        bottom > 0 ? 0 : 0, bottom > 0 ? width - 1 : 0,
+        left > 0 ? wy : 0,   left > 0 ? wy + wh - 1 : 0,
+        right > 0 ? wy : 0,  right > 0 ? wy + wh - 1 : 0,
+        top > 0 ? wx : 0,    top > 0 ? wx + ww - 1 : 0,
+        bottom > 0 ? wx : 0, bottom > 0 ? wx + ww - 1 : 0,
     };
-    const Window w = static_cast<Window>(id);
     XChangeProperty(d, w, InternAtom(d, "_NET_WM_STRUT_PARTIAL"), XA_CARDINAL, 32, PropModeReplace,
                     reinterpret_cast<unsigned char*>(partial), 12);
     XChangeProperty(d, w, InternAtom(d, "_NET_WM_STRUT"), XA_CARDINAL, 32, PropModeReplace,

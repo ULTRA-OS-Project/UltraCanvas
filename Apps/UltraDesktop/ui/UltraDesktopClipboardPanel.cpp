@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopClipboardPanel.cpp
 // The clipboard quick panel. See UltraDesktopClipboardPanel.h.
+// Version: 0.1.2 - SetScreenArea
 // Version: 0.1.1 - the row's icons follow the history's iconSide (left or right of the text)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -76,20 +77,23 @@ void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
     config.minWidth = kPanelWidth;
     config.minHeight = kPanelHeight;
     config.backgroundColor = kPanel;
-    int screenW = 0, screenH = 0;
-    UltraCanvasDesktopShell::GetScreenSize(screenW, screenH);
+    int areaX = areaX_, areaY = areaY_, areaW = areaW_, areaH = areaH_;
+    if (areaW <= 0 || areaH <= 0) {
+        areaX = areaY = 0;
+        UltraCanvasDesktopShell::GetScreenSize(areaW, areaH);
+    }
     window_ = CreateWindow(config);
     if (!window_) return;
     const int physW = window_->LogicalToPhysical(kPanelWidth);
     const int physH = window_->LogicalToPhysical(kPanelHeight);
     int x = rightX - physW;
     int y = topY;
-    if (rightX < 0 && topY < 0 && screenW > 0) {
-        x = (screenW - physW) / 2;
-        y = (screenH - physH) / 3;
+    if (rightX < 0 && topY < 0 && areaW > 0) {
+        x = areaX + (areaW - physW) / 2;
+        y = areaY + (areaH - physH) / 3;
     }
-    if (screenW > 0) x = std::clamp(x, 0, std::max(0, screenW - physW));
-    if (screenH > 0) y = std::clamp(y, 0, std::max(0, screenH - physH));
+    if (areaW > 0) x = std::clamp(x, areaX, std::max(areaX, areaX + areaW - physW));
+    if (areaH > 0) y = std::clamp(y, areaY, std::max(areaY, areaY + areaH - physH));
     window_->SetWindowPosition(x, y);
 
     Build();
@@ -108,6 +112,13 @@ void UltraDesktopClipboardPanel::Open(int rightX, int topY, Target target) {
     window_->Show();
     window_->RaiseAndFocus();
     search_->SetFocus(true);
+}
+
+void UltraDesktopClipboardPanel::SetScreenArea(int x, int y, int width, int height) {
+    areaX_ = x;
+    areaY_ = y;
+    areaW_ = width;
+    areaH_ = height;
 }
 
 void UltraDesktopClipboardPanel::Close() {
