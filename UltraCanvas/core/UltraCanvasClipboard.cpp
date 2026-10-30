@@ -1,5 +1,6 @@
 // UltraCanvasClipboard.cpp
 // Platform-independent clipboard core implementation
+// Version: 1.2.0 - the Wayland clipboard backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.1.0
 // Last Modified: 2026-10-06
 // Author: UltraCanvas Framework
@@ -19,6 +20,8 @@
 // Browser: the async Clipboard API behind a text cache (fed by the paste
 // event bridge in UltraCanvasWASMApplication).
 #include "../OS/WASM/UltraCanvasWASMClipboard.h"
+#elif defined(ULTRACANVAS_DISPLAY_WAYLAND)
+#include "../OS/Linux/Wayland/UltraCanvasWaylandClipboard.h"
 #elif defined(__linux__)
 #include "../OS/Linux/UltraCanvasLinuxClipboard.h"
 #elif _WIN32
@@ -98,6 +101,8 @@ bool UltraCanvasClipboard::Initialize() {
     return InitializeWithBackend(std::make_unique<UltraCanvasAndroidClipboard>());
 #elif defined(__EMSCRIPTEN__)
     return InitializeWithBackend(std::make_unique<UltraCanvasWASMClipboard>());
+#elif defined(ULTRACANVAS_DISPLAY_WAYLAND)
+    return InitializeWithBackend(std::make_unique<UltraCanvasWaylandClipboard>());
 #elif defined(__linux__)
     return InitializeWithBackend(std::make_unique<UltraCanvasLinuxClipboard>());
 #elif _WIN32

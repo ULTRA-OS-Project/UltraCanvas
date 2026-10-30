@@ -1,6 +1,7 @@
 // OS/Linux/UltraCanvasNativeDialogsLinux.cpp
 // Linux implementation of native OS dialogs using GTK+
 // Uses unified DialogType, DialogButtons, DialogResult from UltraCanvasModalDialog.h
+// Version: 2.3.0 - builds without X11 (the Wayland backend): no dialog parenting there
 // Version: 2.2.0
 // Last Modified: 2026-07-12
 // Author: UltraCanvas Framework
@@ -14,7 +15,9 @@
 
 #include <gtk-3.0/gtk/gtk.h>
 #include <gtk/gtkunixprint.h>
+#ifndef ULTRACANVAS_DISPLAY_WAYLAND
 #include <gdk/gdkx.h>   // gdk_x11_window_foreign_new_for_display — parent dialogs to X11 windows
+#endif
 #include <algorithm>
 #include <iostream>
 #include <cstring>
@@ -67,8 +70,17 @@ namespace UltraCanvas {
         // keep-above behaviour so the dialog still surfaces above the app.
         void ParentDialogToWindow(GtkWidget* dialog, UltraCanvasWindowBase* parent) {
             if (!dialog) return;
+#ifdef ULTRACANVAS_DISPLAY_WAYLAND
+            // GTK runs on its own Wayland connection and cannot be made
+            // transient for a surface of another connection without
+            // xdg-foreign; the dialog stays above instead.
+            (void)parent;
+            NativeWindowHandle xid = 0;
+#else
             NativeWindowHandle xid = parent ? parent->GetNativeHandle() : 0;
+#endif
             if (xid) {
+#ifndef ULTRACANVAS_DISPLAY_WAYLAND
                 gtk_widget_realize(dialog);
                 GdkWindow* dlgGdk = gtk_widget_get_window(dialog);
                 if (dlgGdk) {
@@ -79,6 +91,7 @@ namespace UltraCanvas {
                         g_object_unref(parentGdk);
                     }
                 }
+#endif
                 gtk_window_set_modal(GTK_WINDOW(dialog), TRUE);
             } else {
                 gtk_window_set_keep_above(GTK_WINDOW(dialog), TRUE);
@@ -100,6 +113,11 @@ namespace UltraCanvas {
         // "Open…" button would immediately reopen the just-closed dialog —
         // so pointer/keyboard events queued during the dialog are dropped.
         void DiscardQueuedUserInput() {
+#ifdef ULTRACANVAS_DISPLAY_WAYLAND
+            // The compositor sends a Wayland client no input while a GTK
+            // dialog (its own connection, its own surface) has the focus.
+            return;
+#else
             auto* app = UltraCanvasApplication::GetInstance();
             Display* display = app ? app->GetDisplay() : nullptr;
             if (!display) return;
@@ -109,6 +127,7 @@ namespace UltraCanvas {
                                    ButtonPressMask | ButtonReleaseMask |
                                    KeyPressMask | KeyReleaseMask,
                                    &dropped)) {}
+#endif
         }
 
         // Post-dialog cleanup shared by every modal dialog in this file.

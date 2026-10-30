@@ -93,9 +93,10 @@
 #include <shellapi.h>   // SHAppBarMessage, Shell_NotifyIconW
 #endif
 
-// The platforms whose backend is X11 (UltraCanvasDesktopShellBackend.h).
-#if (defined(__linux__) && !defined(__ANDROID__)) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
-    defined(__NetBSD__)
+// The platforms whose backend is X11 (UltraCanvasDesktopShellBackend.h);
+// a Wayland build of the framework (ULTRACANVAS_WAYLAND) has none of it.
+#if ((defined(__linux__) && !defined(__ANDROID__)) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+     defined(__NetBSD__)) && !defined(ULTRACANVAS_DISPLAY_WAYLAND)
 #  define DESKTOPSHELLTEST_X11 1
 #  include <X11/Xlib.h>
 #  include <X11/Xatom.h>

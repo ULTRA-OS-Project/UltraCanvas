@@ -75,7 +75,7 @@ UltraCanvas/
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
 │   ├── core/             # Platform-independent implementations
-│   ├── OS/Linux/         # Linux-specific code (X11, Cairo)
+│   ├── OS/Linux/         # Linux-specific code (X11, Cairo; OS/Linux/Wayland/ the Wayland backend)
 │   ├── OS/MSWindows/     # Windows-specific code (Win32, Direct2D)
 │   ├── OS/MacOS/         # macOS-specific code (Cocoa, Core Graphics)
 │   ├── OS/BSD/           # BSD-specific code
@@ -121,6 +121,11 @@ mkdir build && cd build
 cmake ..
 make
 ```
+
+On Linux the default is the X11 backend. `cmake -DULTRACANVAS_WAYLAND=ON ..`
+builds the Wayland backend in its place (`libwayland-dev`,
+`wayland-protocols`, `libxkbcommon-dev`); one build speaks one display
+protocol.
 
 ----------
 
@@ -169,7 +174,9 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland support** - Native Wayland windowing on Linux
+-   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
+    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
+    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 

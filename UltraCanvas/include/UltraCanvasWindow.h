@@ -1,5 +1,6 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.8.0 - UltraCanvasWindow is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 2.7.0 - WindowConfig::desktopArea: a Desktop window on any monitor
 // Version: 2.6.0 - RefreshAfterFontChange(): lays out and draws everything again
 // Version: 2.5.0 - popups composite with their alpha over the window, and a popup's
@@ -637,6 +638,12 @@ namespace UltraCanvas {
 #include "../OS/WASM/UltraCanvasWASMWindow.h"
 namespace UltraCanvas {
     using UltraCanvasWindow = UltraCanvasWASMWindow;
+}
+#elif defined(ULTRACANVAS_DISPLAY_WAYLAND)
+// Linux on Wayland (the ULTRACANVAS_WAYLAND build option)
+#include "../OS/Linux/Wayland/UltraCanvasWaylandWindow.h"
+namespace UltraCanvas {
+    using UltraCanvasWindow = UltraCanvasWaylandWindow;
 }
 #elif defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxWindow.h"

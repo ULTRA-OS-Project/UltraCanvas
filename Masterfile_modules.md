@@ -866,7 +866,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend's first
+  phase (the outputs, the devices; the shell protocols are the next step,
+  `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and

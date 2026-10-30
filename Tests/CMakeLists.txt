@@ -4846,7 +4846,7 @@ endif()
 # Every format another program offers is seen: the X11 backend read a
 # TARGETS list (format 32, C longs) at 4 bytes an item and saw half of it.
 # Skips without DISPLAY.
-if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
     message(STATUS "  Building ClipboardTargetsTest...")
     add_executable(ClipboardTargetsTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardTargetsTest.cpp
@@ -4868,7 +4868,7 @@ endif()
 # A copy too large for one X request travels in pieces (ICCCM INCR), both
 # ways; checked against xclip as well when it is installed. Skips without
 # DISPLAY.
-if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
     message(STATUS "  Building ClipboardIncrTest...")
     add_executable(ClipboardIncrTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardIncrTest.cpp

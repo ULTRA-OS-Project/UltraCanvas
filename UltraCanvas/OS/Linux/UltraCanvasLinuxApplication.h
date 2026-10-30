@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasLinuxApplication.h
 // Complete Linux platform implementation for UltraCanvas Framework
+// Version: 1.6.1 - the font methods forward to UltraCanvasLinuxFonts
 // Version: 1.6.0 - a held key is one press and one release (detectable auto-repeat)
 // Version: 1.5.0 - image cursors kept per screen scaling
 // Last Modified: 2026-10-17
