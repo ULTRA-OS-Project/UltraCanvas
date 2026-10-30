@@ -323,6 +323,21 @@ Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::'TimelineNodeShape::Flag
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddEra(const std::string& name, GanttDate from, GanttDate to)` - the header has: int AddEra(const std::string& name, double from, double to);
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddMilestone(const std::string& name, GanttDate on)` - the header has: int AddMilestone(const std::string& name, double serial); | int AddMilestone(const std::string& name, int year, int month, int day);
 Docs/UltraCanvas/UltraCanvasTimelineDiagramProposal.md::signature differs: `int AddSpan(const std::string& name, GanttDate from, GanttDate to)` - the header has: int AddSpan(const std::string& name, double from, double to); | int AddSpan(const std::string& name, int y1, int m1, int d1, int y2, int m2, int d2);
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'LoadToolbarLayout' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'MaterializeToolbar' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'RefreshCommandStates' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'ResolveIcon' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'SaveToolbarLayout' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'SetIconResolver' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'ShowToolbarConfigDialog' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'dynamicLabel' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'iconName' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'isChecked' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'isEnabled' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::'makeToolbarWidget' is not a member of UltraCanvasToolbar, UltraCanvasMenuRegistry, UltraCanvasAppSettings, UltraCanvasTreeView, nor a free function
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::prose names `FindShortcutConflicts(`, which no header declares
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::prose names `PaletteGroups(`, which no header declares
+Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md::prose names `PaletteGroups(`, which no header declares
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'GetClipboardData' is not a member of UCRichDocument, UltraCanvasTextArea, UltraCanvasRichTextEdit, ITextLayout, nor a free function
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'RichDocPosition::cellIndex' does not exist (no member named 'cellIndex' in 'RichDocPosition')
 Docs/UltraCanvas/WYSIWYGElementInvestigation.md::'SetClipboardData' is not a member of UCRichDocument, UltraCanvasTextArea, UltraCanvasRichTextEdit, ITextLayout, nor a free function
