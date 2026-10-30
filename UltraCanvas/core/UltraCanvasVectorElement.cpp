@@ -8,8 +8,9 @@
 // Everything here works in element-LOCAL coordinates: the parent container
 // translates the render context to the element's origin before calling
 // Render(), and delivers pointer events with the same origin subtracted.
+// Version: 2.3.0 - ZoomToFit / ZoomToActualSize report through onZoomChange; IsAtFit
 // Version: 2.2.0
-// Last Modified: 2026-09-22
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorElement.h"
@@ -104,17 +105,23 @@ namespace UltraCanvas {
         // limit for interactive zooming (MinAllowedZoom), so a zoom-out still
         // stops at the whole drawing.
         fitZoom = std::min(scale, options.MaxZoom);
+        const bool changed = std::abs(fitZoom - zoomLevel) > 0.001f;
         zoomLevel = fitZoom;
         panOffset.x = (finalBounds.width - docBounds.width * zoomLevel) / 2 - docBounds.x * zoomLevel;
         panOffset.y = (finalBounds.height - docBounds.height * zoomLevel) / 2 - docBounds.y * zoomLevel;
         UpdateViewTransform();
         state.IsDirty = true;
+        // Reported like any other zoom: the fit done from Render() once the
+        // element has its size is the zoom a status line has to show.
+        if (changed && onZoomChange) onZoomChange(zoomLevel);
         RequestRedraw();
     }
 
     void UltraCanvasVectorElement::ZoomToActualSize() {
+        const bool changed = std::abs(zoomLevel - 1.0f) > 0.001f;
         zoomLevel = 1.0f;
         CenterDocument();
+        if (changed && onZoomChange) onZoomChange(zoomLevel);
     }
 
     void UltraCanvasVectorElement::SetPan(float x, float y) {

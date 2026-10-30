@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TdJson.h
-// Telegram provider - TDLib's JSON interface (libtdjson), loaded at run time:
+// Telegram provider - the JSON interface (libtdjson) of TDLib, the Telegram
+// Database Library, loaded at run time:
 // nothing of TDLib is linked, so the provider builds everywhere and works
 // wherever a libtdjson is found. One thread receives for every client in the
 // process (td_receive serves them all) and hands each its answers and

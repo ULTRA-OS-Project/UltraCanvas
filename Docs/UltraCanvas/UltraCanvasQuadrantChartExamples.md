@@ -40,6 +40,9 @@ zones with curved or stepped edges, use `UltraCanvasImportancePerformanceChart`
 ([`UltraCanvasImportancePerformanceChart.md`](UltraCanvasImportancePerformanceChart.md)).
 The classic four-quadrant importance–performance analysis (Martilla & James)
 is this element with `QuadrantType::Custom` and the centre at the means.
+For a grid of named categories rather than points on a plane (a 9-box, a
+performance management matrix, 3×3 or larger), use `UltraCanvasPerformanceMatrix`
+([`UltraCanvasPerformanceMatrix.md`](UltraCanvasPerformanceMatrix.md)).
 
 Points support per-point color, radius (e.g. BCG revenue bubbles), shape (circle, square, triangle, diamond) and outline. The element handles hover highlighting with tooltips, click selection (single or multi), double-click callbacks, and exposes quadrant utilities (which quadrant a point falls into, per-quadrant counts) for building statistics panels.
 

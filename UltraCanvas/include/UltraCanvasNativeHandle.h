@@ -1,8 +1,7 @@
 // include/UltraCanvasNativeHandle.h
-// NativeWindowHandle: the window system's own handle type on each platform,
-// declared without the platform's headers so every file can name it.
-// Version: 1.0.0 - X11 Window, HWND, an opaque NSWindow, ANativeWindow and the WASM canvas id
-// Created by slenz on 7/15/26.
+// The platform's native window and display handles behind an UltraCanvas window
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 #ifndef ULTRACANVASDEMOAPP_ULTRACANVASNATIVEHANDLE_H
 #define ULTRACANVASDEMOAPP_ULTRACANVASNATIVEHANDLE_H

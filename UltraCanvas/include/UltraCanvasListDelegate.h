@@ -1,6 +1,7 @@
 // include/UltraCanvasListDelegate.h
 // Item delegate interfaces and default delegate for ListView
-// Version: 1.0.0 - IListDelegate and the default row delegate
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"

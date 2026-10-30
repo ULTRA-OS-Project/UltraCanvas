@@ -8,6 +8,7 @@
 // "Accounts…" are EmailCleaner's own: their own list, vault and body cache
 // under EmailCleaner's data directory, fetched by the same UltraMail
 // SyncEngine (EmailCleanerAccounts.h). Both land in the one analysis database.
+// Version: 0.5.0 - UltraMail's mail read with its storage key (encrypted at rest)
 // Version: 0.4.0 - the Contacts page: the address book against the mail sent
 // Version: 0.3.0 - own accounts beside UltraMail's
 // Author: UltraCanvas Framework / ULTRA OS
@@ -142,6 +143,12 @@ private:
     std::string dataDir_;
     std::string mailDataDir_;
     std::string mailCacheDir_;
+    // UltraMail's storage key (UltraMailStorage.h): its databases and message
+    // files are encrypted with keys derived from it. nullptr for a mailbox
+    // whose files are plain, or one locked with a Primary Password (then
+    // ultraMailKeyProblem_ says so).
+    std::shared_ptr<const UltraCryptSecureBuffer> ultraMailKey_;
+    std::string ultraMailKeyProblem_;
     std::string rulesPath_;
     std::string pluginDir_;   // where UltraNet's plug-ins were looked for
 

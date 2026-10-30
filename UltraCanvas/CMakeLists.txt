@@ -920,6 +920,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPacketDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPerformanceMatrix.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasParliamentDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCircleDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasTickerBoard.cpp
@@ -1497,6 +1499,16 @@ file(GLOB _ultracanvas_networkmonitor_platform_srcs
 )
 if(_ultracanvas_networkmonitor_platform_srcs)
     list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_networkmonitor_platform_srcs})
+endif()
+
+# And the browser's WebAssembly engine (OS/WASM/UltraCanvasWASMWasmHost.cpp):
+# it is the WasmHost library's engine under Emscripten, compiled into that
+# library below, not into the core.
+file(GLOB _ultracanvas_wasmhost_platform_srcs
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*WasmHost*.cpp
+)
+if(_ultracanvas_wasmhost_platform_srcs)
+    list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_wasmhost_platform_srcs})
 endif()
 
 # The platform-dir glob above also matches the GL context managers
@@ -2755,6 +2767,42 @@ if(SODIUM_FOUND)
     target_link_directories(uc-crypt PUBLIC ${SODIUM_LIBRARY_DIRS})
     target_link_libraries(uc-crypt PUBLIC ${SODIUM_LIBRARIES})
 endif()
+# X.509 and CMS (include/UltraCrypt/UltraCryptX509.h: certificates, S/MIME's
+# signed and enveloped data, PKCS #12) on OpenSSL 3's libcrypto, which
+# libsodium has nothing of. Optional: without it the file builds to calls
+# that answer BackendUnavailable. Linked by its library file, as libsodium is
+# by name, so the installed package names no OpenSSL target a consumer would
+# have to find; none of its headers reach UltraCrypt's.
+# The same backend checks RSA and ECDSA signatures against keys given by their
+# parts (include/UltraCrypt/UltraCryptPublicKey.h: JWS RS256 / ES256).
+target_sources(uc-crypt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptX509.cpp
+                                ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptPublicKey.cpp)
+if(NOT EMSCRIPTEN)
+    find_package(OpenSSL 3 QUIET COMPONENTS Crypto)
+endif()
+if(OpenSSL_FOUND AND OPENSSL_CRYPTO_LIBRARY)
+    target_compile_definitions(uc-crypt PRIVATE ULTRACRYPT_HAVE_X509=1)
+    target_include_directories(uc-crypt PRIVATE ${OPENSSL_INCLUDE_DIR})
+    target_link_libraries(uc-crypt PRIVATE ${OPENSSL_CRYPTO_LIBRARY})
+    # The operating system's trusted roots for the certificate check: Windows'
+    # ROOT store (crypt32), macOS's anchors and trust settings (Security).
+    # OpenSSL's own default store there is only what its build carried.
+    target_sources(uc-crypt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptSystemRoots.cpp)
+    if(WIN32)
+        target_link_libraries(uc-crypt PRIVATE crypt32)
+    elseif(APPLE)
+        target_link_libraries(uc-crypt PRIVATE "-framework Security" "-framework CoreFoundation")
+    endif()
+    message(STATUS "  OpenSSL: ${OPENSSL_VERSION} (UltraCrypt X.509, CMS, RSA and ECDSA)")
+    set(_uc_crypt_openssl TRUE)
+else()
+    message(STATUS "  OpenSSL 3: NOT FOUND — UltraCrypt has no X.509, CMS, RSA or ECDSA (S/MIME, JWS)")
+    set(_uc_crypt_openssl FALSE)
+endif()
+# For consumers that are only worth building with them (the UltraDBAdmin
+# relay's sign-in): whether UltraCrypt's X.509 / RSA / ECDSA calls do anything.
+set(ULTRACANVAS_CRYPT_HAS_OPENSSL ${_uc_crypt_openssl} CACHE INTERNAL
+    "UltraCrypt has its OpenSSL 3 backend (UltraCryptX509.h, UltraCryptPublicKey.h)")
 _ultracanvas_module_home(UltraCrypt uc-crypt)
 # The core itself uses it: UltraCanvasOfficeEncryption.cpp decrypts
 # password-protected Office files with UltraCrypt's AES-CBC, SHA-2 and HMAC.
@@ -2834,7 +2882,10 @@ _ultracanvas_module_home(NetworkMonitor uc-networkmonitor)
 # API (cmake/UltraCanvasWasmtime.cmake), private to this library: no
 # wasmtime header reaches its users. Without an engine - the option off, or
 # a platform with no prebuilt library - the library still builds and every
-# call reports that there is no engine, so its users link everywhere.
+# call reports that there is no engine, so its users link everywhere. In a
+# browser (Emscripten) the engine is the browser's own, through
+# OS/WASM/UltraCanvasWASMWasmHost.cpp: that is what runs UltraWeb apps in an
+# ordinary browser (Docs/UltraWeb/UltraWebInTheBrowser.md).
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR MINGW)
     # Windows (MSYS2 CLANG64 / CLANGARM64): wasmtime's C API is built from
     # its source release with the native Rust toolchain.
@@ -2844,7 +2895,11 @@ else()
     set(_uc_wasm_host_default OFF)
 endif()
 option(ULTRACANVAS_ENABLE_WASM_HOST "Run WebAssembly modules through wasmtime (WasmHost, UltraWeb)" ${_uc_wasm_host_default})
-add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/WasmHost/UltraCanvasWasmHost.cpp)
+if(EMSCRIPTEN)
+    add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/OS/WASM/UltraCanvasWASMWasmHost.cpp)
+else()
+    add_library(WasmHost STATIC ${CMAKE_CURRENT_SOURCE_DIR}/core/WasmHost/UltraCanvasWasmHost.cpp)
+endif()
 target_include_directories(WasmHost PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas/include>)
@@ -2859,6 +2914,12 @@ if(ULTRACANVAS_ENABLE_WASM_HOST AND NOT EMSCRIPTEN AND NOT ANDROID)
     else()
         message(STATUS "  [−] WasmHost - no engine (no wasmtime C API for this platform; set ULTRACANVAS_WASMTIME_DIR)")
     endif()
+elseif(EMSCRIPTEN)
+    # The core's threading and exception ABI (the WASM branch above), so the
+    # library links into a page with it - and on its own into a test.
+    target_compile_options(WasmHost PUBLIC ${_uc_wasm_thread_compile} -fwasm-exceptions)
+    target_link_options(WasmHost PUBLIC ${_uc_wasm_thread_compile} -fwasm-exceptions)
+    message(STATUS "  [✓] WasmHost - ENABLED (the browser's WebAssembly engine)")
 else()
     message(STATUS "  [−] WasmHost - no engine (ULTRACANVAS_ENABLE_WASM_HOST=OFF)")
 endif()
@@ -3538,6 +3599,12 @@ if(ULTRACANVAS_ENABLE_DATABASE)
             target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_VAULT=1)
             string(APPEND ULTRADATABASE_DRIVERS_NOTE " (passwords from UltraVault)")
         endif()
+        # SQLite files encrypted at rest (UltraDatabaseEncryption.h): the
+        # encrypting VFS seals pages with UltraCrypt. Always linked - UltraCrypt
+        # is always built - and without libsodium a key is refused with
+        # Unsupported at run time, never ignored.
+        target_link_libraries(uc-database PRIVATE uc-crypt)
+        target_compile_definitions(uc-database PRIVATE ULTRADATABASE_HAS_CRYPT=1)
         target_compile_definitions(uc-database PUBLIC ULTRACANVAS_HAS_DATABASE=1)
         _ultracanvas_module_home(UltraDatabase uc-database)
 

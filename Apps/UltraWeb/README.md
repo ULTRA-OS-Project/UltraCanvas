@@ -9,6 +9,9 @@ and gives them timers, fetch, per-origin storage and clipboard writes.
 - The plan (HTML reader, live DOM, React and Angular through QuickJS in
   WebAssembly) and the measurements behind it:
   [`Docs/UltraWeb/UltraWebProposal.md`](../../Docs/UltraWeb/UltraWebProposal.md)
+- The same apps in Chrome and Firefox - the runtime, its browser extension
+  and a sample site in `browser/`:
+  [`Docs/UltraWeb/UltraWebInTheBrowser.md`](../../Docs/UltraWeb/UltraWebInTheBrowser.md)
 - Changes: [`Docs/UltraWeb/CHANGELOG.md`](../../Docs/UltraWeb/CHANGELOG.md)
 
 ```bash

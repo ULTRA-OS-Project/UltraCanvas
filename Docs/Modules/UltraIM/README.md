@@ -95,7 +95,24 @@ says what comes next (`PhoneNumber`, `Code`, `Password`, `Registration`) and
 `authHint` how to say it (where the code went, the password's hint), and
 `AuthStepChange` reports each change. Call `UltraIM_SignIn` again with that
 one field set (`otpCode`, `password`, `displayName`); the rest of the
-credentials need not be repeated.
+credentials need not be repeated. While a code is awaited,
+`UltraIMProviderInfo::authResendHint` names the other way the service can
+send it, as a button's text ("Send it by SMS instead"; empty when it offers
+none), and `UltraIM_ResendAuthCode(provider, cb)` asks for it - the new hint
+arrives as `AuthStepChange`. A step's `NeedsInput` answer always precedes
+its `AuthStepChange`, so a `SignIn` made in answer to the event is never
+resolved by the step that raised it.
+
+A sign-in by a QR code (`credentials.loginType = UltraIMLoginType::QRCode`,
+no phone number; Telegram) has the step `OtherDevice`: nothing to type, the
+hint is a link (`tg://login?token=...`) to show as a QR code
+(`UltraCanvasQRCode`) that an app already signed in scans, the service
+replaces the link every half minute or so (`AuthStepChange`, the new link in
+its text) and, once one is scanned, goes on by itself - `Password` when the
+account has one, else signed in - so those steps arrive as events with no
+`SignIn` pending. It can be asked for in place of a code that never came
+(`SignIn` with `QRCode` while the step is `Code`); a phone number given
+while the QR code waits starts the sign-in over with the number.
 
 What one provider's service keeps for another provider's sign-in comes
 through `UltraIM_FetchSharedCredentials(provider, forProvider, cb)`: ChatCube
@@ -105,6 +122,36 @@ Direct's relay keeps the Telegram application's API ID and hash
 hand `UltraIM_SignIn("telegram", ...)` - set once on the server, never built
 into the application or typed by the user. `NotFound` when the service keeps
 none, `CapabilityMissing` from a provider without a service.
+
+A message with a picture, a video, a file, a voice note or a sticker carries
+it as `UltraIMMessage::attachment` (`UltraIMAttachment`): the kind in the
+message's `type`, the caption in `text`, the file's name, size, dimensions
+and length in the attachment. A provider fetches what a message shows by
+itself - the photo, the preview picture (`thumbnailPath`) of a video or a
+file - and says so with a `MessageUpdate` carrying the same message with
+`localPath` / `thumbnailPath` set; what may be large waits to be asked for:
+`UltraIM_DownloadAttachment(provider, conversation, message, cb)` fetches a
+video, a file or a voice note to disk, answers through the callback with the
+attachment (`localPath`, `isDownloaded`) - at once when it is there already -
+and raises the `MessageUpdate` for everyone else listening. Sending:
+`UltraIM_SendImage(provider, conversation, path, caption)`,
+`UltraIM_SendVideo(..., caption)` and `UltraIM_SendFile(...)` take a local
+file; the provider's `ImageMessages` and `FileTransfer` capabilities say
+which it takes, the optimistic row and the `MessageDelivered` events work as
+for a text, and the echo's attachment points at the file sent. People's
+pictures come the same way, fetched by the provider: `avatarPath` on a
+conversation, a contact and a message's sender (`senderAvatarPath`), a local
+file or empty.
+
+A file sent goes with a preview picture when the application can make one:
+`UltraIM_SetPreviewMaker(maker)` installs the application's way of writing a
+small JPEG of a picture or a video (ChatCube: pictures through the image
+pipeline, videos through VideoFX when it is built in), and a provider asks
+through `UltraIM_MakePreview(path, mimeType, maxSide, w, h)` - a JPEG under
+the cache directory, or `""` - and sends it along (Telegram's
+`inputThumbnail`, Matrix's `thumbnail_url` / `thumbnail_file`, ChatCube
+Direct's inline preview), so the other side sees something before the file
+has arrived. Without a maker, files go without one.
 
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
@@ -194,19 +241,33 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   the relay for the Telegram application's API ID and hash
   (`GET /v1/telegram-credentials`, from the relay's
   `CHATCUBE_RELAY_TELEGRAM_API_ID` / `_HASH`); `NotFound` when it keeps none.
-- **Not yet:** group calls, files and images, several devices per identity,
-  groups without a relay.
+- **Files:** a picture, a video or a file goes out as sealed envelopes like
+  a text - a `file` body (kind, name, type, size, the caption, the preview
+  picture inline, under 24 KiB) and then the bytes in `chunk` bodies of 32
+  KiB (base64, sealed; under the relay's 64 KiB envelope) - peer to peer
+  over the link when it is up, else through the relay's queue, so a file
+  reaches someone offline, and a group (a copy per member), with nothing
+  added to the relay. The other side keeps the parts in its store until all
+  are here, puts the file together under the cache directory, and says so
+  with `MessageUpdate`; `DownloadAttachment` answers from disk, or once the
+  last part is here. Files up to 64 MiB; our own row points at the file
+  sent. Only the relay's text queue is involved, so a relay in service
+  needs no change.
+- **Not yet:** group calls, several devices per identity, groups without a
+  relay, a file asked for later rather than pushed.
 
 Tests: `Tests/UltraIM/DirectProviderTests.cpp` - the envelope and the store,
 then two providers against a relay started from `Server/ChatCubeRelay` (P2P
-delivery, read receipt, offline queue, sign-in again with the stored
-identity, a group, a video call - pictures across, the camera turned off,
+delivery, a picture over the link, read receipt, offline queue - a text and
+a file - sign-in again with the stored
+identity, a group with a picture to it, a video call - pictures across, the camera turned off,
 hung up - and voice calls: declined, answered with audio both ways, muted,
 hung up, and a call to a contact who is offline). It needs a `python3` with the relay's packages on `PATH`
 and skips without one, unless `ULTRAIM_TEST_RELAY_REQUIRED` is set (CI).
 Then two providers with no relay at all: reached by address, the nearby
 list, adding each other, a message peer to peer, a call, groups refused, one
-side away and back (the waiting message arrives) - and two that find each
+side away and back (the waiting message arrives), a picture over the local
+connection - and two that find each
 other over mDNS alone, which skips without a responder unless
 `ULTRAIM_TEST_MDNS_REQUIRED` is set (CI starts Avahi).
 
@@ -229,9 +290,10 @@ other over mDNS alone, which skips without a responder unless
   accepts it. `AddContact("@name:server")` opens a direct chat (or returns
   the one there is); `CreateGroup` makes a private room and invites.
 - **Messages:** text with replies (`replyTo`, the quoted fallback taken off),
-  emotes, images and files as their names (attachments are not downloaded
-  yet), edits (`m.replace` - `MessageUpdate`), redactions (`MessageDelete`),
-  joins and leaves as system lines. Our own message is sent under the client
+  emotes, pictures, videos, audio and files with their attachments (the
+  `filename` and the body as the caption, MSC2530), edits (`m.replace` -
+  `MessageUpdate`), redactions (`MessageDelete`), joins and leaves as system
+  lines. Our own message is sent under the client
   message id as its transaction id, so its echo matches the optimistic row;
   `Sent` when the server took it, `Read` when someone's read receipt covers
   it. Typing, presence of the other person in a direct chat, unread counts.
@@ -265,9 +327,23 @@ other over mDNS alone, which skips without a responder unless
   clients read and write (PBKDF2-HMAC-SHA-512 with 500 000 rounds,
   AES-256-CTR, HMAC-SHA-256 - UltraCrypt's). Built without cargo, encrypted
   rooms say they cannot be read and new rooms are not encrypted.
+- **Attachments** live in the content repository under `mxc://` URLs. A
+  picture, and the preview picture (`thumbnail_url` / `thumbnail_file`) of
+  a video or a file, are fetched as the message arrives - through the
+  authenticated endpoint (`/_matrix/client/v1/media/download`, Matrix
+  1.11), else the one before it - into the cache directory under the URL's
+  hash, and reported with `MessageUpdate`; a video, an audio or a file when
+  `DownloadAttachment` asks. In an encrypted room the repository holds
+  ciphertext and the message carries the key (the `m.file` object: AES-256-CTR
+  with a JWK key, the IV, the SHA-256 of the ciphertext, checked before
+  decrypting). `SendImage`, `SendVideo` and `SendFile` upload a local file
+  (`/_matrix/media/v3/upload`; encrypted first in an encrypted room, with a
+  fresh key per file) and send the message with `filename`, the caption as
+  the body and the type and size in `info`; the echo's attachment points at
+  the file sent. The capabilities list `ImageMessages` and `FileTransfer`.
 - **Not yet:** cross-signing and device verification (emoji / QR), key
-  backup on the server, key requests between our own devices; media up-
-  and download; calls; SSO sign-in.
+  backup on the server, key requests between our own devices; calls; SSO
+  sign-in.
 
 Tests: `Tests/UltraIM/MatrixCryptoTests.cpp` without a server (canonical
 JSON against the spec's examples, vodozemac through the shim, the store,
@@ -275,7 +351,11 @@ replay and room checks, export files); `Tests/UltraIM/MatrixProviderTests.cpp`
 against a real Synapse, which `Tests/UltraIM/matrix_test_server.py` sets up
 (config, open registration, the test users) with the python in
 `ULTRAIM_MATRIX_PYTHON` - one with `matrix-synapse` installed; it skips
-without one unless `ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI). Its
+without one unless `ULTRAIM_TEST_MATRIX_REQUIRED` is set (CI). It sends a
+picture, a video and a file each way and reads them back byte for byte -
+through the encrypted format when vodozemac is built in, and once more
+through a room created unencrypted (`SetCreateEncrypted(false)`), so both
+paths run in one build. Its
 encryption part checks the server holds only ciphertext, a second device
 (keys from then on, earlier ones by import), signing in again on the same
 device, and an encrypted room with
@@ -286,9 +366,9 @@ device, and an encrypted room with
 ## Provider: Telegram
 
 `UltraCanvas/Plugins/UltraIM/telegram/` (module `ultraim_telegram`, provider
-id `telegram`) is a client of TDLib, Telegram's own client library, through
-its JSON interface (`td_create_client_id` / `td_send` / `td_receive` /
-`td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
+id `telegram`) is a client of TDLib (Telegram Database Library), Telegram's
+own client library, through its JSON interface (`td_create_client_id` /
+`td_send` / `td_receive` / `td_execute`). **TDLib is loaded at run time, not linked** (`TdJson.h`): the
 provider builds on every platform but WebAssembly (which loads no native
 library) and works wherever a libtdjson is found - the
 `tdlib/` folder next to the provider modules, `ULTRAIM_TDJSON_PATH`, or the
@@ -317,6 +397,23 @@ process.
   Telegram's test servers. TDLib keeps the session, the chats and the history
   in its own database under the provider's data directory, encrypted with a
   key the vault holds; a later `SignIn` with nothing given resumes it.
+- **The code:** Telegram sends it as a message to the Telegram apps the
+  number is already signed in on whenever there are any (the "Telegram"
+  service chat there), and by SMS or a call only when it offers that as the
+  code info's `next_type` - for many third-party API IDs it offers nothing
+  else. The hint says where it went; `authResendHint` and `ResendAuthCode`
+  (TDLib `resendAuthenticationCode`) take the next way when there is one.
+- **A QR code instead:** `loginType = QRCode` with no number asks TDLib for
+  a sign-in link (`requestQrCodeAuthentication`) - the step `OtherDevice`
+  (above), its hint the `tg://login` link to show as a QR code that the
+  phone's Telegram app scans (Settings, Devices, Link Desktop Device); no
+  code is sent at all, which is the way in when Telegram says it sent the
+  code to the app and the app never shows it (so for third-party API IDs
+  since early 2026). The link is refreshed as `AuthStepChange`; after the
+  scan, the password step when the account has one, else signed in. Also
+  from the `Code` step, in place of the code; a number given while the QR
+  code waits starts over (TDLib takes none in that state). The link holds
+  the sign-in token: the provider never logs it.
 - **While it signs in**, TDLib's connection state is reported as
   `ConnectionStateChange` with `Connecting` and a text (waiting for the
   network, connecting to Telegram's servers, ...), and a step TDLib does not
@@ -333,19 +430,39 @@ process.
   is the chat id, a message's the message id, a contact's the user id.
   `AddContact` takes `@username`, a `t.me/` link or `+phone`; `CreateGroup`
   makes a basic group of such members.
-- **Messages:** text with replies, photos, files, audio, voice, video and
-  stickers as their captions or names (not downloaded yet), the group's
-  service messages as system lines; edits (`MessageUpdate`), deletion for
-  everyone (`MessageDelete`); our own message reported `Sent` under its client
-  message id once TDLib has sent it, then `Read` when the other side's read
-  mark passes it; typing, presence, unread counts; `FetchMessages` pages back
-  with `getChatHistory`.
+- **Messages:** text with replies, photos, files, audio, voice notes,
+  videos (and animations, video notes) and stickers with their captions and
+  attachments, the group's service messages as system lines; edits
+  (`MessageUpdate`), deletion for everyone (`MessageDelete`); our own message
+  reported `Sent` under its client message id once TDLib has sent it, then
+  `Read` when the other side's read mark passes it; typing, presence, unread
+  counts; `FetchMessages` pages back with `getChatHistory`.
+- **Files** are TDLib's: it downloads them on request into `files/` under
+  the provider's data directory (`downloadFile`, the arrival as
+  `updateFile`). A photo (the size whose longer side is at least 800 pixels,
+  else the largest) and the preview pictures of videos, documents and
+  stickers are asked for as the message is kept, and reported with
+  `MessageUpdate`; a video, a document, an audio or a voice note is fetched
+  by `DownloadAttachment` (priority over the rest), which answers from disk
+  when TDLib has it. Profile photos and chat photos (the small size) are
+  fetched as the user or chat is seen: `avatarPath` on conversations,
+  contacts and a message's sender. `SendImage` sends a local file as
+  `inputMessagePhoto`, `SendVideo` as `inputMessageVideo` (with the caption),
+  `SendFile` as `inputMessageDocument`; TDLib uploads it, the message goes out
+  under the client id like a text, and the echo's attachment points at the
+  file sent. A still sticker (WebP) arrives as a picture; an animated one
+  (TGS, WebM) as its emoji.
+  A video or a document sent goes with the preview picture the application
+  makes (`inputThumbnail`).
 - **Not yet:** secret chats (end-to-end encrypted; listed, marked encrypted,
-  not opened), media download and upload, calls, QR-code and e-mail sign-in.
+  not opened), calls, e-mail sign-in, playing animated stickers, voice notes
+  recorded here.
 
 Tests: `Tests/UltraIM/TelegramProviderTests.cpp` against `FakeTdJson`, a
 libtdjson stand-in that keeps a small Telegram in memory (several providers
-in one process talk through it; `FAKE_TDJSON_ACCOUNTS` and an `echobot`
+in one process talk through it; files - profile photos, photos, videos and
+documents sent, `downloadFile` - as paths, nothing read or written;
+`FAKE_TDJSON_ACCOUNTS` and an `echobot`
 account for trying ChatCube on it); `Tests/UltraIM/TelegramTdlibTests.cpp`
 hands every request the provider builds to the real TDLib, offline - it
 answers a request it cannot parse at once, so anything else means TDLib's

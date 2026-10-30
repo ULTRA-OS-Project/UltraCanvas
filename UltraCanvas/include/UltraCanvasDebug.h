@@ -1,9 +1,9 @@
 #pragma once
 
 // UltraCanvasDebug.h
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 // The framework's diagnostic stream, `debugOutput`.
-// Version: 1.1.0 - the sink chosen at run time (ULTRACANVAS_DEBUG_LOG: off, stderr, a file; logcat on Android)
-// Version: 1.0.0 - std::cerr under ULTRACANVAS_DEBUG, a null stream otherwise
 //
 // Historically this compiled to `std::cerr` under ULTRACANVAS_DEBUG and to a
 // do-nothing NullStream otherwise. That made a packaged build undiagnosable in

@@ -1,4 +1,5 @@
 // Apps/UltraStoreAdmin/core/AdminDatabase.cpp
+// Version: 0.3.0 - sales.reference
 // Version: 0.2.0 - affiliates, codes, sales
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -73,7 +74,8 @@ Result<void> AdminDatabase::Open(const std::string& databasePathUtf8) {
         "CREATE TABLE IF NOT EXISTS sales ("
         " id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, code TEXT NOT NULL DEFAULT '', app TEXT NOT NULL DEFAULT '',"
         " amount TEXT NOT NULL DEFAULT '0', currency TEXT NOT NULL DEFAULT '', affiliate TEXT NOT NULL DEFAULT '',"
-        " recruiter TEXT NOT NULL DEFAULT '', affiliate_credit TEXT NOT NULL DEFAULT '0', recruiter_credit TEXT NOT NULL DEFAULT '0')",
+        " recruiter TEXT NOT NULL DEFAULT '', affiliate_credit TEXT NOT NULL DEFAULT '0', recruiter_credit TEXT NOT NULL DEFAULT '0',"
+        " reference TEXT NOT NULL DEFAULT '')",
     };
     for (const char* sql : kTables) {
         if (const UltraDbResult r = UltraDb_Exec(connection_, sql); !r) {
@@ -87,6 +89,12 @@ Result<void> AdminDatabase::Open(const std::string& databasePathUtf8) {
         return DbFailure<void>(r, "read its schema version");
     }
     const int existing = meta.Empty() ? 0 : meta.Row(0)[size_t(0)].AsInt();
+    if (existing == 2) {   // schema 2's sales table has no reference column
+        if (const UltraDbResult r = UltraDb_Exec(connection_, "ALTER TABLE sales ADD COLUMN reference TEXT NOT NULL DEFAULT ''"); !r) {
+            Close();
+            return DbFailure<void>(r, "add the sales' reference column");
+        }
+    }
     if (existing > kAdminSchemaVersion) {
         Close();
         return Result<void>::Failure(ErrorCode::SchemaTooNew, "The admin database was written by a newer UltraStoreAdmin",
@@ -459,9 +467,10 @@ Result<void> AdminDatabase::RemoveCode(const std::string& code) {
 // ===== sales =====
 Result<SaleRecord> AdminDatabase::AddSale(const SaleRecord& sale) {
     const UltraDbResult r = UltraDb_Exec(connection_,
-        "INSERT INTO sales (at, code, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO sales (at, code, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit, reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         {UltraDbValue(sale.at.empty() ? NowIso8601() : sale.at), UltraDbValue(sale.code), UltraDbValue(sale.app), UltraDbValue(sale.amount),
-         UltraDbValue(sale.currency), UltraDbValue(sale.affiliate), UltraDbValue(sale.recruiter), UltraDbValue(sale.affiliateCredit), UltraDbValue(sale.recruiterCredit)});
+         UltraDbValue(sale.currency), UltraDbValue(sale.affiliate), UltraDbValue(sale.recruiter), UltraDbValue(sale.affiliateCredit), UltraDbValue(sale.recruiterCredit),
+         UltraDbValue(sale.reference)});
     if (!r) return DbFailure<SaleRecord>(r, "record the sale");
     SaleRecord out = sale;
     out.id = r.lastInsertId;
@@ -469,10 +478,17 @@ Result<SaleRecord> AdminDatabase::AddSale(const SaleRecord& sale) {
     return Result<SaleRecord>::Succeed(std::move(out));
 }
 
+bool AdminDatabase::HasSaleReference(const std::string& reference) const {
+    if (reference.empty()) return false;
+    UltraDbResultSet rs;
+    if (const UltraDbResult r = UltraDb_Query(connection_, "SELECT id FROM sales WHERE reference = ? LIMIT 1", {UltraDbValue(reference)}, rs); !r) return false;
+    return !rs.Empty();
+}
+
 Result<std::vector<SaleRecord>> AdminDatabase::Sales() const {
     UltraDbResultSet rs;
     if (const UltraDbResult r = UltraDb_Query(connection_,
-            "SELECT id, at, code, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit FROM sales ORDER BY id", rs); !r) {
+            "SELECT id, at, code, app, amount, currency, affiliate, recruiter, affiliate_credit, recruiter_credit, reference FROM sales ORDER BY id", rs); !r) {
         return DbFailure<std::vector<SaleRecord>>(r, "read its sales");
     }
     std::vector<SaleRecord> out;
@@ -489,6 +505,7 @@ Result<std::vector<SaleRecord>> AdminDatabase::Sales() const {
         sale.recruiter = Str(row, "recruiter");
         sale.affiliateCredit = Str(row, "affiliate_credit");
         sale.recruiterCredit = Str(row, "recruiter_credit");
+        sale.reference = Str(row, "reference");
         out.push_back(std::move(sale));
     }
     return Result<std::vector<SaleRecord>>::Succeed(std::move(out));

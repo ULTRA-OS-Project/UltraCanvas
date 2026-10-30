@@ -1,6 +1,7 @@
 // include/UltraCanvasListModel.h
 // Model interfaces and concrete models for ListView (Model-View-Delegate)
-// Version: 1.0.0 - IListModel and the concrete models
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"

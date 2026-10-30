@@ -1,7 +1,6 @@
 // include/UltraCanvasListSelection.h
 // Selection models for ListView: single and multi-selection
-// Version: 1.0.1 - ShiftRows: the selection follows rows inserted or removed above it
-// Version: 1.0.0 - single and multi-selection models
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
 // Last Modified: 2026-10-04 - ShiftRows: the selection follows rows inserted or
 //                             removed above it
 #pragma once

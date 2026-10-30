@@ -2,6 +2,7 @@
 // Stage 1 subset of the UltraDatabase module: handles, result type,
 // connection configuration, and the version/driver-registry entrypoints.
 // Full surface specified in Docs/Modules/UltraDatabase/README.md.
+// Version: 0.3.0 - UltraDbConnectionConfig::encryptionKey (UltraDatabaseEncryption.h)
 // Version: 0.2.0 - HostKeyUnknown, HostKeyChanged, UltraDbResult::hostKeyFingerprint (SSH tunnels)
 // Version: 0.1.0 (Stage 1)
 // Author: UltraCanvas Framework / ULTRA OS
@@ -9,8 +10,11 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
+
+class UltraCryptSecureBuffer;   // UltraCrypt/UltraCryptCore.h
 
 // Opaque handle for prepared statements, transactions and (Stage 2) cursors
 // and async queries. Zero is always invalid.
@@ -96,6 +100,9 @@ struct UltraDbConnectionConfig {
     bool        readOnly = false;
     int         poolSize = 1;             // Stage 1 opens a single connection
     std::map<std::string, std::string> options;  // driver-specific extras
+    // SQLite: the file is encrypted at rest with this 32-byte key
+    // (UltraDatabaseEncryption.h); empty, it is an ordinary SQLite file.
+    std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey;
 };
 
 // Module version string, e.g. "0.1.0".

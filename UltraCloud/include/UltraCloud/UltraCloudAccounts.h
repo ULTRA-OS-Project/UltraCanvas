@@ -5,6 +5,7 @@
 // CloudService needs to know about uploads across runs: the ones whose
 // leftovers are to be removed if they do not finish, and the accounts whose
 // server would not rename an upload into place (UltraCloudUploads.h).
+// Version: 0.3.0 - AccountStore::Open takes an encryption key for its file
 // Version: 0.2.0 - pending uploads; accounts that upload straight to the name
 // Last Modified: 2026-10-17
 // Author: UltraCanvas Framework / ULTRA OS
@@ -13,8 +14,11 @@
 #include "UltraCloudTypes.h"
 #include "UltraCloudUploads.h"
 
+#include <memory>
 #include <string>
 #include <vector>
+
+class UltraCryptSecureBuffer;   // UltraCrypt/UltraCryptCore.h
 
 namespace UltraCloud {
 
@@ -25,8 +29,10 @@ std::string MakeAccountId(const std::string& providerId, const std::string& user
 class AccountStore {
 public:
     // Register an UltraDatabase connection and bring the schema up to date.
-    // `databasePath` is a file (created if absent) or ":memory:".
-    Result Open(const std::string& connectionName, const std::string& databasePath);
+    // `databasePath` is a file (created if absent) or ":memory:"; with an
+    // `encryptionKey` the file is encrypted at rest (UltraDatabaseEncryption.h).
+    Result Open(const std::string& connectionName, const std::string& databasePath,
+                std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey = nullptr);
     bool IsOpen() const { return !connection_.empty(); }
 
     // Insert or update. The first account stored becomes the default.

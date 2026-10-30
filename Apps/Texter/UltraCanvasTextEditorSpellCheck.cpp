@@ -514,6 +514,22 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
     items.push_back(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A",
         [this]() { OnEditSelectAll(); }));
 
+    // How a text tab shows its text; the same switches as the View menu's.
+    if (!richEdit) {
+        items.push_back(MenuItemData::Separator());
+        items.push_back(MenuItemData::Submenu("Display", {
+            MenuItemData::Checkbox("Hidden Characters", config.showHiddenCharacters, [this](bool checked) {
+                OnViewToggleHiddenCharacters(checked);
+            }),
+            MenuItemData::Checkbox("Line Numbers", config.showLineNumbers, [this](bool checked) {
+                OnViewToggleLineNumbers(checked);
+            }),
+            MenuItemData::Checkbox("Word Wrap", config.wordWrap, [this](bool checked) {
+                OnViewToggleWordWrap(checked);
+            })
+        }));
+    }
+
     // Named styles: the paragraph's (a radio group) and the text's.
     if (richEdit && editable) {
         items.push_back(MenuItemData::Separator());

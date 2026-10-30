@@ -1,6 +1,5 @@
 // include/UltraCanvasSmoothScroll.h
 // Shared smooth-scroll animator for elements that own their scroll offsets.
-// Version: 1.0.0 - Bind, AnimateBy, Jump and Cancel on a scroll member of the element's own
 //
 // UltraCanvasScrollbar animates its own position, so every element that scrolls
 // through a real scrollbar child (containers, list and tree views, dropdowns)
@@ -35,6 +34,8 @@
 // a zoom that steps *additively* (UltraCanvasVectorElement), where the write
 // callback re-solves the pan from an anchor captured at the start of the
 // gesture.
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 
 #include "UltraCanvasTimer.h"

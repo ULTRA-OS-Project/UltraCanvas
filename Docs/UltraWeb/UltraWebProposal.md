@@ -112,7 +112,10 @@ What carries over:
 - The rule that `Run()` does not block.
 - One reuse worth keeping open: the Emscripten build could implement
   UltraWeb's imports inside an ordinary browser. The same guest module
-  would then also run on the open web (§14, question 5).
+  would then also run on the open web (§14, question 5). **Done as a
+  prototype (2026-10-27):** the UltraWeb runtime runs the same guest
+  modules in Chromium, installed once by a browser extension or served by
+  the site - [`UltraWebInTheBrowser.md`](UltraWebInTheBrowser.md).
 
 ### 2.2 HTMLReader, CSSLayout, UltraNet
 
@@ -1012,5 +1015,13 @@ visit, and a tenth of that from a bytecode cache.
 4. What are the default search provider and the ULTRA OS start page?
 5. Should the Emscripten build (`OS/WASM`) implement the element ABI in
    ordinary browsers, so UltraWeb apps also run on the open web?
+   **Answered (2026-10-27): yes, and it works.** The UltraWeb runtime
+   (`Apps/UltraWeb/browser`) is UltraCanvas under Emscripten with UltraWeb's
+   own `UltraWebGuest`, unchanged; `WasmHost` gained the browser's
+   WebAssembly engine as its second engine. A browser extension installs the
+   runtime once, so a site sends only its app; a site can also serve the
+   runtime itself for visitors without the extension. The prototype, its
+   measurements and its limits (single-threaded, no per-call time limit,
+   Chromium only so far) are in [`UltraWebInTheBrowser.md`](UltraWebInTheBrowser.md).
 6. Profile storage: plain files in the settings directory, or UltraVault
    for cookies and app storage?

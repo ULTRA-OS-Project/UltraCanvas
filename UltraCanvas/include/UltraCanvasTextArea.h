@@ -1,5 +1,10 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
+// Version: 3.16.0 - SetShowHiddenCharacters: spaces, tabs, no-break and zero-width
+//                 characters and line ends drawn as faint marks (hiddenCharacterColor),
+//                 their name and code in a tooltip over each. HandleMarkdownHover takes the
+//                 event, so its tooltips are placed in window coordinates (they were
+//                 drawn up and left of the pointer by the element's offset in the window)
 // Version: 3.15.0 - auto-completion: ShowAutoComplete opens a list of suggestions at the
 //                 caret (it was a placeholder); IsAutoCompleteOpen, GetAutoCompletePrefix
 // Version: 3.14.0 - every search match is marked in the text views and on the scrollbar
@@ -13,7 +18,7 @@
 // Version: 3.9.2 - SetCursorPosition(pos, true) extends the selection from its anchor
 //                 (the flag was ignored); GetCursorPosition() is const
 // Version: 3.9.1 - TextAreaStyle: scrollbarWidth, scrollbarCornerRadius, scrollbarThumbInset
-// Last Modified: 2026-10-18
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -260,6 +265,9 @@ namespace UltraCanvas {
 
         // Placeholder hint shown when the document is empty
         Color placeholderColor = Color(150, 150, 150, 255);
+
+        // Marks drawn over spaces, tabs and line ends (SetShowHiddenCharacters)
+        Color hiddenCharacterColor = Color(150, 150, 150, 200);
 
         // Line numbers
         bool showLineNumbers;
@@ -740,6 +748,14 @@ namespace UltraCanvas {
         void SetShowLineNumbers(bool show) { style.showLineNumbers = show; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool GetShowLineNumbers() const { return style.showLineNumbers; }
 
+        // Draws the characters that print nothing as faint marks in
+        // style.hiddenCharacterColor: a dot for a space, an arrow for a tab, a
+        // ring for a no-break space, a tick for a zero-width character and a
+        // pilcrow at the end of every line. Display only - the text is unchanged.
+        // Hovering a mark shows the character's name and code in a tooltip.
+        void SetShowHiddenCharacters(bool show) { showHiddenCharacters = show; RequestRedraw(); }
+        bool GetShowHiddenCharacters() const { return showHiddenCharacters; }
+
         void SetTabSize(int size) { tabSize = size; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         int GetTabSize() const { return tabSize; }
 
@@ -1145,6 +1161,20 @@ namespace UltraCanvas {
         LineLayoutBase *GetActualLineLayout(int idx);
 
         void RenderLineLayout(IRenderContext *ctx, LineLayoutBase* line);
+        // A character SetShowHiddenCharacters marks, with where it is on screen
+        // (element coordinates; for a line end, where its pilcrow is drawn).
+        struct HiddenCharacterMark {
+            enum class Kind { Space, Tab, NoBreakSpace, ZeroWidth, LineEnd };
+            Kind kind = Kind::Space;
+            char32_t codepoint = 0;
+            Rect2Df bounds;
+        };
+        std::vector<HiddenCharacterMark> FindHiddenCharacters(LineLayoutBase* line, int lineIndex) const;
+        // The SetShowHiddenCharacters marks over one line, drawn after its text.
+        void DrawHiddenCharacters(IRenderContext* ctx, LineLayoutBase* line, int lineIndex);
+        // Shows the name and code of the marked character under the pointer in
+        // a tooltip; true when there is one.
+        bool UpdateHiddenCharacterTooltip(const UCEvent& event);
 
     private:
         // Auto-completion (ShowAutoComplete)
@@ -1259,6 +1289,8 @@ namespace UltraCanvas {
         std::string placeholderText; // grey hint drawn when the document is empty
         bool wordWrap;
         bool highlightCurrentLine;
+        bool showHiddenCharacters = false;
+        bool hiddenCharacterTooltipShown = false;   // UpdateHiddenCharacterTooltip's, to hide only its own
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).
         int tabSize = 4;
  
@@ -1379,12 +1411,13 @@ namespace UltraCanvas {
         bool HandleMarkdownClick(int mouseX, int mouseY);
 
         /**
-         * @brief Handle hover over markdown elements (updates cursor)
-         * @param mouseX Mouse X coordinate
-         * @param mouseY Mouse Y coordinate
+         * @brief Handle hover over markdown elements (updates cursor, shows
+         *        footnote / abbreviation / anchor tooltips)
+         * @param event The mouse move: its pointer (element coordinates) finds
+         *        the element, its pointerWindow places the tooltip
          * @return true if hovering over a clickable element
          */
-        bool HandleMarkdownHover(int mouseX, int mouseY);
+        bool HandleMarkdownHover(const UCEvent& event);
 
         void SetDocumentFilePath(const std::string& path) { documentFilePath = path; }
         std::string GetDocumentFilePath() const { return documentFilePath; }

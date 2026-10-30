@@ -388,11 +388,41 @@ point the store at a networked engine without changing UltraMail's
 query code. The raw messages stay as `.eml` files on disk; only the
 index/metadata lives in the database.
 
+**At rest everything is encrypted** (`UltraMailStorage.h`): one random
+storage key in the vault, and keys derived from it with HKDF - one per
+database file, which UltraDatabase opens as encrypted SQLite
+(`UltraDatabaseEncryption.h`: every page of the file and its WAL sealed with
+XChaCha20-Poly1305), and one for the message files, each sealed whole
+(`UltraMail:eml:1` | nonce | ciphertext | tag). A Primary Password guards
+that key, since it guards the vault; changing it re-encrypts only the vault.
+An earlier version's plain files are converted at the first start.
+
+**Signed and encrypted mail** (`UltraMailSecureMime.h`) is S/MIME (RFC 8551,
+on UltraCrypt's X.509 and CMS - `UltraCryptX509.h`, OpenSSL 3 underneath -
+with `UltraMailSmime.cpp` saying what each finding means) and OpenPGP (RFC 3156 PGP/MIME and
+inline PGP, GPGME over the user's GnuPG keyring, `UltraMailOpenPgp.cpp`), each
+built where its library is found. The stored message stays as it travelled:
+`OpenSecureMessage` decrypts and checks it on a thread when the reading pane
+shows it (a few results kept in memory), and nothing decrypted is written. On
+sending, `SecureOutgoingMessage` signs and/or encrypts the message UltraNet
+built - to every recipient and to the sender - and the outbox sends exactly
+those bytes (`UltraNetMailMessage::rawMessage`), filing the same ones in
+Drafts and Sent. Each account says how its new messages start (Off,
+S/MIME or OpenPGP, signed, encrypted) and which OpenPGP key it signs with
+(`AccountSecurity`, the accounts table's security columns), set in the Mail
+security dialog. The user's S/MIME identity is kept in the vault
+(`UltraMailSecureKeys.h`); correspondents' certificates are learnt from their
+vouched-for signatures into the address book (`ContactStore`'s
+`certificates`).
+
 **Credentials** go into UltraMail's vault: the framework's
 `UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
 UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +
 XChaCha20-Poly1305 via UltraCrypt) unlocked without a prompt by an owner-only
-`device.key` beside it, the posture of Thunderbird with no Primary Password.
+`device.key` beside it, the posture of Thunderbird with no Primary Password -
+or, once the user sets one (*Settings > Privacy > Primary Password*), opened
+only with a Primary Password typed at every start, before anything stored is
+read (`DeviceKeyVault::ChangePassphrase`; the device key is then gone).
 `UltraMailCredentialVault.h` only names that profile. The OS keychains
 (libsecret, Windows Credential Manager, macOS Keychain) are planned as
 UltraVault backends behind the same surface, not as a seam of UltraMail's

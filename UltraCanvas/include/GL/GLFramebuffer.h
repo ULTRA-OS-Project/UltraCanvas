@@ -1,6 +1,7 @@
 // GL/GLFramebuffer.h
 // OpenGL Framebuffer Object (FBO) wrapper for offscreen rendering
-// Version: 1.0.0 - an FBO with its colour and depth attachments for offscreen rendering
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 #pragma once
 
 #ifndef ULTRACANVAS_ENABLE_GL
