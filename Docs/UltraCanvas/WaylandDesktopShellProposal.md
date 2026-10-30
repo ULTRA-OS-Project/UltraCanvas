@@ -128,10 +128,16 @@ X11-bound and compile into both.
 
 ### 3.4 Checked
 
-Built and run under `weston --backend=headless --renderer=pixman` in this
-session's container (weston 13): the framework, DemoApp and UltraDesktop
-start as Wayland clients, open their windows, and draw; see the changelog
-entry for what was seen. An X11 session is unchanged.
+Built and run under `weston --backend=headless --renderer=pixman --debug`
+(weston 13; the debug flag lets `weston-screenshooter` capture the
+output): the framework, DemoApp and UltraDesktop start as Wayland clients,
+open their windows and draw - the demo at its own size with the component
+tree and the Menus page, the desktop maximized under weston's panel with
+the wallpaper, the bars, the clock and the device icons. DesktopShellTest
+passes against the `wayland` backend (66 checks; the phase-2 features
+report their reason). An X11 build of the same sources is unchanged.
+Pointer and keyboard input could not be driven headless (weston's headless
+backend has no input devices); that is checked on a real session.
 
 ## 4. Phase 2: the desktop shell backend (next)
 

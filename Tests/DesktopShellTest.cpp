@@ -44,6 +44,7 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.8.1 - the X11 checks are left out of a Wayland build of the framework
 // Version: 1.8.0 - two RandR monitors under Xvfb: ListScreens and the per-monitor struts;
 //                  the lock, session and loudspeaker calls
 // Version: 1.7.0 - the Linux notification area (--tray)
