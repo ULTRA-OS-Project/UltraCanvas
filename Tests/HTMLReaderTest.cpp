@@ -1,6 +1,8 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
+// Version: 1.22.0 - several threads parse inline <svg> / <math> at once (UltraFiler's
+//                  thumbnail workers crashed in the foreign-name tables)
 // Version: 1.21.0 - nesting depth capped (kMaxTreeDepth); flex and grid properties: display, the flex shorthand, alignment,
 //                  gaps, grid templates (repeat, minmax, auto-fill, areas), grid lines
 // Version: 1.20.0 - the newline right after <pre> / <listing> / <textarea>
@@ -29,7 +31,7 @@
 // Version: 1.3.0 - @media, <style media>, background layers, margin: auto
 // Version: 1.2.0 - every HTML 4 entity; mail table attributes; a:link
 // Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
-// Last Modified: 2026-10-08
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -41,6 +43,8 @@
 #include <cmath>
 #include <functional>
 #include <string>
+#include <thread>
+#include <vector>
 
 using namespace UltraCanvas::HTML;
 
@@ -1451,6 +1455,34 @@ static void TestSelectorMatchingOnForeignTree() {
     CHECK(!Matches(domSheet.rules[1].selectors[0], *second));
 }
 
+// UltraFiler's thumbnail workers extract text previews on several threads at
+// once, and the first <svg> or <math> any of them met filled the parser's
+// foreign-name tables while another thread read them: an access violation in
+// the hash table. Runs first in main() so the threads race on that first use.
+static void TestParserForeignContentOnThreads() {
+    const std::string html =
+        "<p>preview</p><svg viewbox='0 0 4 4'><lineargradient gradientunits='userSpaceOnUse'>"
+        "<stop/></lineargradient><clippath/></svg><math definitionurl='x'><mi>x</mi></math>";
+    constexpr int kThreads = 8;
+    std::vector<int> wrong(kThreads, 0);
+    std::vector<std::thread> threads;
+    for (int t = 0; t < kThreads; ++t) {
+        threads.emplace_back([&html, &wrong, t] {
+            for (int i = 0; i < 200; ++i) {
+                Parser parser;
+                Document doc = parser.Parse(html);
+                Node* svg = doc.Body()->FindFirst("svg");
+                if (!svg || !svg->HasAttribute("viewBox") || !svg->FindFirst("linearGradient") ||
+                    !svg->FindFirst("clipPath")) {
+                    ++wrong[t];
+                }
+            }
+        });
+    }
+    for (auto& thread : threads) thread.join();
+    for (int t = 0; t < kThreads; ++t) CHECK_EQ(wrong[t], 0);
+}
+
 static void TestParserDepthLimit() {
     std::printf("nesting depth is capped\n");
     // Ten thousand nested elements: kept, and the text at the bottom too,
@@ -1624,6 +1656,7 @@ static void TestGridLines() {
 }
 
 int main() {
+    TestParserForeignContentOnThreads();
     TestSelectorMatchingOnForeignTree();
     TestParserBasics();
     TestParserFragmentAndRecovery();

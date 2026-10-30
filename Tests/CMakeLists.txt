@@ -1678,7 +1678,8 @@ message(STATUS "  Building HTMLReaderTest...")
 add_executable(HTMLReaderTest
     ${CMAKE_CURRENT_SOURCE_DIR}/HTMLReaderTest.cpp
 )
-target_link_libraries(HTMLReaderTest PRIVATE HTMLReaderTestCore)
+find_package(Threads REQUIRED)
+target_link_libraries(HTMLReaderTest PRIVATE HTMLReaderTestCore Threads::Threads)
 set_target_properties(HTMLReaderTest PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
