@@ -181,7 +181,9 @@ Hello.
   sign; a wrong passphrase stops before anything is written.
 - The codes in the catalog are the enabled ones whose partner, when they
   have one, is enabled too; a code naming an app the catalog does not list
-  is warned about. A page per code is written under `go/`.
+  is warned about. A page per code is written as `go/<CODE>/index.html`,
+  so the QR code's link `<catalog base>/go/<CODE>` is served by a plain
+  static web server with no rewrite rule.
 - The catalog is schema 2 and announces every active key (`trusted_keys`):
   to rotate, `key new`, publish once with the old key, then with the new
   one; `key retire` the old one afterwards.

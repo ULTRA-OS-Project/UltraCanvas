@@ -214,7 +214,8 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     REQUIRE(BuildCatalog(db, PublishOptions{}).Value().FindCode("anna-20") == nullptr);
     anna.enabled = true;
     REQUIRE(db.PutAffiliate(anna).Ok());
-    // Publish writes go/<CODE>.html for each code in the catalog.
+    // Publish writes go/<CODE>/index.html for each code in the catalog: the
+    // QR link is <base>/go/<CODE>, which a static server answers from there.
     if (!UltraCrypt_IsAvailable()) SKIP("no crypto backend");
     const auto key = NewSigningKey("pass", KeyCost::Fast());
     const auto added = db.AddKey("test", key.Value().publicKeyHex, key.Value().sealed.Bytes());
@@ -224,9 +225,9 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     const auto report = Publish(db, added.Value().id, "pass", options);
     REQUIRE(report.Ok());
     REQUIRE_EQ(report.Value().codePages, size_t(2));
-    const std::string page = ReadFile(Join(options.outDirUtf8, "go/ANNA-20.html"));
+    const std::string page = ReadFile(Join(options.outDirUtf8, "go/ANNA-20/index.html"));
     REQUIRE(page.find("ultrastore://code/ANNA-20") != std::string::npos);
     REQUIRE(page.find("<li>Hello</li>") != std::string::npos);
-    REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "go/STALE.html"))));
+    REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "go/STALE/index.html"))));
     RemoveDir(dir);
 }

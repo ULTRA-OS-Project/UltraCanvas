@@ -63,7 +63,7 @@ std::string StoreLink(const std::string& code);                                 
 // The QR code of a text as an SVG file (UTF-8 path).
 Result<void> WriteQrCodeSvg(const std::string& text, const std::string& fileUtf8);
 
-// The landing page of a code, for the publish folder's go/<CODE>.html:
+// The landing page of a code, for the publish folder's go/<CODE>/index.html:
 // what the code gives, the apps, and the link that opens the store with it.
 std::string CodeLandingPage(const UltraStore::PromoCode& code, const std::vector<UltraStore::Component>& apps, const std::string& catalogBase);
 

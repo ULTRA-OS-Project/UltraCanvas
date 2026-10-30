@@ -236,13 +236,18 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
             }
         }
     }
-    // A landing page per code, go/<CODE>.html: what a partner's QR code and
-    // link open on a phone, with the ultrastore:// link for the store.
+    // A landing page per code, go/<CODE>/index.html: what a partner's QR
+    // code and link open on a phone, with the ultrastore:// link for the
+    // store. The link is <catalog base>/go/<CODE> with no extension, and a
+    // folder with an index.html is what every static web server serves
+    // for that URL without a rewrite rule.
     if (!catalog.codes.empty()) {
         const std::string catalogBase = TrimSlash(options.catalogBaseUrl.empty() ? db.Setting("catalog.base_url") : options.catalogBaseUrl);
-        fs::create_directories(out / "go", ec);
         for (const UltraStore::PromoCode& code : catalog.codes) {
-            const fs::path page = out / "go" / UltraCanvas::PathFromUtf8(UltraStore::NormalizeCode(code.code) + ".html");
+            const fs::path folder = out / "go" / UltraCanvas::PathFromUtf8(UltraStore::NormalizeCode(code.code));
+            fs::create_directories(folder, ec);
+            if (ec) return R::Failure(ErrorCode::IoError, "cannot create " + UltraCanvas::PathToUtf8(folder) + ": " + ec.message());
+            const fs::path page = folder / "index.html";
             if (!WriteFileAtomically(page, CodeLandingPage(code, catalog.apps, catalogBase), error)) return R::Failure(ErrorCode::IoError, error);
             ++report.codePages;
         }

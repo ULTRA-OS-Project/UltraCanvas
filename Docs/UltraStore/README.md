@@ -238,7 +238,8 @@ something off the price. The scheme is decided as follows.
   registers the scheme (`MimeType=x-scheme-handler/ultrastore`), and a
   second start hands the link to the running copy. The partner's QR code
   encodes `https://<catalog base>/go/<CODE>`, a page the publish folder
-  carries (`go/<CODE>.html`: what the code gives and the `ultrastore://`
+  carries (`go/<CODE>/index.html`, so the extension-less link is served by
+  any static web server: what the code gives and the `ultrastore://`
   link), so a phone that scans it lands somewhere useful; a future partner
   scans `https://<catalog base>/join/<affiliate>` and names the recruiter
   when the admin signs them up.
