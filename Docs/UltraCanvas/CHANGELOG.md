@@ -1,3 +1,83 @@
+#### 2026-10-30 *0.9.436*
+- **UltraCanvasDesktopShell hosts the notification area on Linux.**
+  `UltraCanvasTrayHost::Start` was refused on X11 ("not available on X11
+  yet"). The new `OS/Linux/UltraCanvasLinuxTrayHost.cpp` is a
+  StatusNotifierWatcher and StatusNotifierHost on the D-Bus session bus
+  (GDBus, on a thread and `GMainContext` of its own, over a private
+  connection): it owns `org.kde.StatusNotifierWatcher` and exports
+  `/StatusNotifierWatcher`, takes the items programs register (a bus
+  name, a name and path, or a path alone), reads each item's `Id`,
+  `Status`, icon, tooltip, `ItemIsMenu` and `Menu` over
+  `org.freedesktop.DBus.Properties` (`org.kde.StatusNotifierItem`, else
+  `org.freedesktop.StatusNotifierItem`), follows its `New*` signals and
+  drops it when its connection leaves the bus. A `Passive` item is left
+  out; `NeedsAttention` shows the attention icon. An `IconPixmap` (the
+  frame nearest 22 px, ARGB32 in network byte order) is written once as
+  a PNG in the disk cache's `desktop-icons` folder, named after its
+  pixels; an `IconName` resolves through the item's `IconThemePath`,
+  then the installed icon themes. `appClass` is the item's `Id`, else
+  the program's name from `/proc`; `processId` comes from the bus.
+  - The item's dbusmenu (`com.canonical.dbusmenu` at `Menu`) is handed
+    over as `DesktopTrayIcon::menu` - labels with the `_` mnemonics
+    stripped, separators, check marks and radio items with their state,
+    icons, submenus, hidden entries left out - read after one
+    `AboutToShow` and again on `LayoutUpdated` /
+    `ItemsPropertiesUpdated`; `ActivateMenuItem` sends
+    `Event(id, "clicked")`. `Click` sends `Activate` (`ContextMenu` for
+    an item that is only a menu), `SecondaryActivate` or `ContextMenu`
+    at the pointer's position, read from the X query connection; a
+    right click on an icon with a menu is the desktop's to draw.
+  - `Start` refuses, saying who, while another watcher owns the name
+    (KDE's or GNOME's) and without a session bus, so it never autolaunches
+    one. `Stop` closes the connection, which releases the names at once.
+  - `Tests/DesktopShellTest.cpp --tray` (CTest `DesktopShellTrayTest`,
+    under `dbus-run-session`) exports a StatusNotifierItem of its own
+    over GDBus and checks the listing, the PNG, the menu as data, clicks,
+    menu activation, hiding, `LayoutUpdated`, the drop on disconnect, the
+    refusal of a second host and that `Stop` returns within seconds.
+- **UltraCanvasDesktopShell ends the session and locks the screen on Linux,
+  and reads and sets the loudspeaker's volume.** `EndSession` goes through
+  logind on the system bus - `Reboot(true)` and `PowerOff(true)`, which ask
+  polkit as the desktops' own menus do, and `Terminate` on the program's own
+  session to sign out - so `CanEndSession()` is true wherever logind answers,
+  not only on Windows. The new `CanLockSession()` / `LockSession()` lock the
+  screen: `LockWorkStation` on Windows; on Linux logind's `Session.Lock`,
+  which sends the signal the screen locker waits for, and without logind
+  `org.freedesktop.ScreenSaver.Lock` on the session bus. The new
+  `ReadAudioOutput()` (a `DesktopAudioOutput`: the default output's name,
+  volume and mute), `SetAudioOutputVolume()` and `SetAudioOutputMuted()`
+  talk to PulseAudio or PipeWire through `libpulse.so.0` loaded at run time
+  - no build dependency, no autospawn, a two-second deadline - and on
+  Windows to the default render endpoint's `IAudioEndpointVolume`. The
+  files: `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp` and
+  `UltraCanvasLinuxDesktopShellAudio.cpp`.
+- **A tap of the Super key is a global shortcut on X11 too.**
+  `UltraCanvasGlobalShortcut::Start("Super", ...)` refused on X11 because a
+  grab of the bare key would have taken every Super+X combination from the
+  window manager and the other programs. It now watches XInput2's raw key
+  events on the root window instead, which any client may without a grab,
+  and reports a press and release of either Super key with no other key
+  between - as the Windows hook does. The X11 build links `xi` (libxi-dev,
+  which GTK 3's development package already depends on; added to the CI and
+  cloud-session package lists all the same).
+- **`ReserveScreenEdges` on X11 reserves only the root's edges the window
+  lies on, its strips along the window's own extent.** A strut is measured
+  from the root window's edge whatever monitor the window is on, so a
+  desktop covering one monitor of several would have carved a strip across
+  the monitor beside it; now an edge of its monitor that is not an edge of
+  the root reserves nothing, and the strips run the window's height or
+  width, not the root's. `ListScreens` leaves out a monitor that spans
+  others (Xvfb's automatic whole-screen monitor next to ones set with
+  `xrandr --setmonitor`), so a virtual two-monitor server lists two.
+  DesktopShellTest sets two RandR monitors under Xvfb and checks both.
+- **A tray icon's menu as data.** `DesktopTrayIcon::menu` holds the icon's
+  menu as `DesktopTrayMenuItem`s (label, icon, enabled, separator, check
+  mark, submenu) where the program hands it over rather than drawing it -
+  the StatusNotifierItem's dbusmenu on Linux - and
+  `UltraCanvasTrayHost::ActivateMenuItem(id, itemId)` reports the choice.
+  Empty on Windows, where the right click opens the program's own menu, as
+  before.
+
 #### 2026-10-29 *0.9.435*
 - **ChatCube Direct carries pictures, videos and files.** A file goes out
   as sealed envelopes like a text: a `file` body with its name, size, kind,
