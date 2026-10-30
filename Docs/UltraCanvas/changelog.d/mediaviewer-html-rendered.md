@@ -20,6 +20,14 @@
   fetched, so a tracking pixel learns nothing. Read through UltraNet's MIME
   reader (`UltraCanvasMediaViewer::IsMailMessageFile`); a build without
   UltraNet shows the message's text.
+- **Saved web pages (`.mht` / `.mhtml`) are shown as the page, Apple Mail
+  messages (`.emlx`) as messages.** An MHTML archive - Chromium's, Edge's or
+  Internet Explorer's *save as single file* - shows the page it saved: its
+  links read against the address it was saved from, and its style sheets
+  and pictures answered from the archive's own parts (by
+  `Content-Location` or `cid:`), never from the network; a link to a place
+  in the page scrolls there (`UltraCanvasMediaViewer::IsWebArchiveFile`).
+  An `.emlx` is the message inside it, shown as an `.eml` is.
 - **UltraCanvasWebView 1.6.0: `SetOpensWebLinks`, `ScrollBy`, `Clear`.** A
   viewer of local files can send `http` / `https` links to `onExternalLink`
   instead of following them, scroll the page from its own keys, and let a

@@ -17,8 +17,9 @@
 // markdown files through a read-only UltraCanvasTextArea (syntax highlighting
 // + markdown rendering), HTML / XHTML pages - and XML files that hold XHTML -
 // rendered as a browser shows them through UltraCanvasWebView (their source
-// is the Texter's to show, not the viewer's), e-mail messages (.eml) as the
-// message - header, body, attachments - in the same view, e-books (EPUB / FB2 / MOBI / AZW) through
+// is the Texter's to show, not the viewer's), e-mail messages (.eml, .emlx) as
+// the message - header, body, attachments - and saved web pages (.mht /
+// .mhtml) as the page, from their own parts, in the same view, e-books (EPUB / FB2 / MOBI / AZW) through
 // UltraCanvasEBookViewer (engine registry), vector drawings through
 // UltraCanvasVectorElement (SVG, XAR, EMF, WMF, DXF and the DWG family, read
 // by whichever Vector plugin the application registered - see
@@ -83,6 +84,7 @@
 // size, and writes with the type's save settings at the size chosen; a drawing
 // is drawn again at that size, sharp, rather than stretched.
 //
+// Version: 1.20.0 - saved web pages (.mht / .mhtml, IsWebArchiveFile) and Apple Mail .emlx
 // Version: 1.19.0 - e-mail messages (.eml) shown as the message (IsMailMessageFile)
 // Version: 1.18.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
 //                   (webView, IsHtmlFile) instead of as source text
@@ -655,10 +657,15 @@ public:
     // whose content is XHTML (an <html> root or the XHTML DOCTYPE - the
     // start of the file is read for that). Other XML stays source text.
     static bool IsHtmlFile(const std::string& path);
-    // An e-mail message (.eml) shown as the message - header, body rendered,
-    // attachments listed - in the same page view. False in a build without
-    // UltraNet's MIME reader (ULTRACANVAS_HAS_NET), where an .eml is text.
+    // An e-mail message (.eml, Apple Mail's .emlx) shown as the message -
+    // header, body rendered, attachments listed - in the same page view.
+    // False in a build without UltraNet's MIME reader (ULTRACANVAS_HAS_NET),
+    // where a message is text.
     static bool IsMailMessageFile(const std::string& path);
+    // A saved web page (.mht / .mhtml) shown as the page it saved, its style
+    // sheets and pictures read from the archive's own parts. False without
+    // UltraNet's MIME reader, as IsMailMessageFile.
+    static bool IsWebArchiveFile(const std::string& path);
 
     // ===== DETAILS PANEL =====
     // The panel the "Details" button opens over the display area: file facts
@@ -821,6 +828,9 @@ private:
     // Text); `webShown` says so.
     std::shared_ptr<UltraCanvasUIElement>    webView;
     bool webShown = false;
+    // The parts of the saved web page (.mht) on show, which its style sheets
+    // and pictures are answered from (cleared with the page).
+    std::shared_ptr<struct MediaViewerWebArchive> webArchive;
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
     std::shared_ptr<UltraCanvasUIElement>    vectorView;    // UltraCanvasVectorElement

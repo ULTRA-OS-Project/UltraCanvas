@@ -85,7 +85,8 @@ tool and a missing plugin should stop it running.
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
-| `Text` (messages) | eml | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
+| `Text` (messages) | eml, emlx | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
+| `Text` (saved pages) | mht, mhtml | **The page it saved**, its style sheets and pictures read from the archive's own parts (*Saved web pages* below) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
@@ -141,8 +142,10 @@ Moving to another file lets the page go (`UltraCanvasWebView::Clear`).
 
 ## E-mail messages
 
-An `.eml` (an RFC 5322 message, as mail programs save one) is shown as the
-message, not its raw headers and MIME parts: `IsMailMessageFile(path)`, read
+An `.eml` (an RFC 5322 message, as mail programs save one) - or Apple Mail's
+`.emlx`, the same message after a line giving its length and before Mail's
+property list - is shown as the message, not its raw headers and MIME
+parts: `IsMailMessageFile(path)`, read
 through UltraNet's MIME reader (`UltraNet/UltraNetMime.h`) into one page in
 the page view (`MV_Web`):
 
@@ -161,6 +164,28 @@ The info bar calls it `EMAIL` and Details *Message information*. A message
 may be up to 64 MB (attachments are listed, not put in the page). A build
 without UltraNet (`ULTRACANVAS_HAS_NET` off) has no MIME reader: there an
 `.eml` is shown as its text.
+
+## Saved web pages
+
+An `.mht` / `.mhtml` (MHTML, RFC 2557: what Chromium, Edge and Internet
+Explorer write for *Save page as - single file*) is a MIME message holding
+a page and everything it shows, each part under the address it was saved
+from (`Content-Location`) or a Content-ID. `IsWebArchiveFile(path)`; it is
+shown as the page it saved, not as the archive:
+
+- the page is the archive's first HTML part, and its links and pictures read
+  against the address it was saved from (a `<base>` the page carries itself
+  wins), so a relative `css/site.css` finds the part saved as
+  `https://example.org/css/site.css`;
+- its style sheets and pictures are answered from those parts, by address,
+  and `cid:` references with the part of that Content-ID - **the network is
+  never asked**: what the archive does not hold is not shown;
+- a link to a place in the page (`#part2`, which a browser saves as the full
+  address) scrolls there; any other web link opens in the system's browser.
+
+The info bar calls it `WEB ARCHIVE`, Details a *Saved web page*. An archive
+with no HTML part is shown as a message. Like a message it may be up to
+64 MB, and without UltraNet it is shown as its text.
 
 ## Tools per kind of file
 

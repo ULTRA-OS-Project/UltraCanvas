@@ -9,7 +9,8 @@
 //
 // An HTML page, and an .xml that holds XHTML, is rendered in the page view
 // (MV_Web) rather than shown as its source; data XML stays text. An .eml is
-// shown there as the message: header, body, its pictures, attachments listed.
+// shown there as the message: header, body, its pictures, attachments listed;
+// an .emlx the same, and a saved web page (.mht) as the page it saved.
 //
 // A layered UltraCanvas document (*.ucd, UCBitmap) is shown whole - its
 // layers composited at full size, not the 256 px thumbnail it carries - and
@@ -26,6 +27,7 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.9.0 - Apple Mail .emlx; saved web pages (.mht) from their own parts
 // Version: 1.8.0 - e-mail messages (.eml) shown as the message
 // Version: 1.7.0 - HTML / XHTML pages rendered (MV_Web, IsHtmlFile); data XML stays text
 // Version: 1.6.0 - SetSettingsAction: the gear in the info bar
@@ -53,6 +55,8 @@
 #include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
+#include <deque>
+#include <functional>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -296,6 +300,70 @@ int main() {
     Check(web && web->GetPage() && web->GetPage()->kind == HTML::PageKind::Html,
           "message.eml: built as a page");
     Check(Has(InfoText(*viewer), "EMAIL"), "message.eml: the info bar calls it EMAIL (" + InfoText(*viewer) + ")");
+
+    // Apple Mail's .emlx: the message's length, the message, Mail's plist.
+    {
+        const std::string message =
+            "From: Carol <carol@example.org>\r\nTo: Dan <dan@example.org>\r\n"
+            "Subject: From Apple Mail\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n"
+            "Plain words from an emlx.\r\n";
+        const fs::path emlx = dir / "12345.emlx";
+        WriteFile(emlx, std::to_string(message.size()) + "\n" + message +
+                        "<?xml version=\"1.0\"?>\n<plist version=\"1.0\"><dict><key>flags</key>"
+                        "<integer>8590195713</integer></dict></plist>\n");
+        Expect(*viewer, emlx, false, false, false, false);
+        Check(Shown(*viewer, "MV_Web") && web && web->GetTitle() == "From Apple Mail",
+              "12345.emlx: shown as the message");
+        Check(web && PageLabel(web, "Plain words from an emlx.") && !PageLabel(web, "plist"),
+              "12345.emlx: its body, without Mail's property list");
+        Check(Has(InfoText(*viewer), "EMAIL"), "12345.emlx: the info bar calls it EMAIL");
+    }
+
+    // A saved web page (.mht): the page, its style sheet and pictures read
+    // from the archive's parts under the address it was saved from (a
+    // relative link reads against that), a cid: picture too. The page view
+    // runs its rebuilds on a queue here - a window's next UI turn.
+    {
+        std::deque<std::function<void()>> turn;
+        if (web) web->SetScheduler([&turn](std::function<void()> task) { turn.push_back(std::move(task)); });
+        auto settle = [&] {
+            for (int i = 0; i < 10 && !turn.empty(); ++i) {
+                auto tasks = std::move(turn);
+                turn.clear();
+                for (auto& task : tasks) task();
+            }
+        };
+        const std::string png =
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+        const fs::path mht = dir / "saved.mht";
+        WriteFile(mht,
+            "From: <Saved by a browser>\r\nSubject: Saved article\r\nMIME-Version: 1.0\r\n"
+            "Content-Type: multipart/related; type=\"text/html\"; boundary=\"mht\"\r\n\r\n"
+            "--mht\r\nContent-Type: text/html; charset=\"utf-8\"\r\n"
+            "Content-Location: https://example.org/articles/page.html\r\n\r\n"
+            "<html><head><title>Saved article</title><link rel=\"stylesheet\" href=\"../css/site.css\"></head>"
+            "<body><p>Saved text.</p><p class=\"gone\">Hidden by the saved style sheet</p>"
+            "<img src=\"images/photo.png\"><img src=\"cid:logo@mht\"></body></html>\r\n"
+            "--mht\r\nContent-Type: text/css\r\nContent-Location: https://example.org/css/site.css\r\n\r\n"
+            ".gone { display: none; }\r\n"
+            "--mht\r\nContent-Type: image/png\r\nContent-Transfer-Encoding: base64\r\n"
+            "Content-Location: https://example.org/articles/images/photo.png\r\n\r\n" + png + "\r\n"
+            "--mht\r\nContent-Type: image/png\r\nContent-Transfer-Encoding: base64\r\n"
+            "Content-ID: <logo@mht>\r\n\r\n" + png + "\r\n--mht--\r\n");
+        Expect(*viewer, mht, false, false, false, false);
+        settle();
+        Check(UltraCanvasMediaViewer::IsWebArchiveFile(PathToUtf8(mht)), "IsWebArchiveFile: .mht is a saved page");
+        Check(Shown(*viewer, "MV_Web") && web && web->GetTitle() == "Saved article",
+              "saved.mht: shown as the page it saved");
+        Check(web && PageLabel(web, "Saved text."), "saved.mht: its text");
+        Check(web && !PageLabel(web, "Hidden by the saved style sheet"),
+              "saved.mht: its style sheet, from the archive (a relative link read against where it was saved)");
+        Check(web && PagePictures(web) == 2, "saved.mht: both pictures, by Content-Location and by cid:");
+        Check(web && web->GetPage() && web->GetPage()->baseUrl == "https://example.org/articles/page.html",
+              "saved.mht: its links read against the address it was saved from");
+        Check(Has(InfoText(*viewer), "WEB ARCHIVE"), "saved.mht: the info bar calls it WEB ARCHIVE");
+        if (web) web->SetScheduler(nullptr);
+    }
 #else
     Check(Shown(*viewer, "MV_Text"), "message.eml: without a MIME reader, its text");
 #endif
