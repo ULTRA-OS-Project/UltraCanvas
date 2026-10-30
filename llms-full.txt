@@ -601,7 +601,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
   page from a URL: `SetServices`, `SetScheduler`, `SetBuildOptions`,
   `Navigate`, `Reload`, `Stop`, `GoBack` / `GoForward` (scroll positions kept),
-  `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
+  `ScrollToFragment`, `ScrollBy`, `Clear`, `SetOpensWebLinks` (off: web
+  links to `onExternalLink`, for a viewer of local files), `GetUrl`,
+  `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
   JavaScript (`<noscript>` shown). Forms the reader fills in and sends
@@ -644,6 +646,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `RunsCodeWhenOpened` — whether opening a file of this name would run
+    code (a program, script, installer, shortcut, disk image), by name
+    alone: what a mail attachment or a preview must never open. UltraMail
+    and the media viewer ask it.
   - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
     file (matched by name, never by reading it) and the generic icon name
     that type falls back to (`application/pdf` → `x-office-document`). Both
@@ -843,12 +849,27 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`.doc`, `.xls`, `.ppt`, `.msg`). In `core/UltraCanvasCompoundFile.cpp`;
   every chain and offset is bounded. `UCCompoundFileReader::HasSignature`,
   `Open` (UTF-8 path) / `OpenFromMemory`, `ReadStream` / `HasStream` (root
-  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`. Used by the
-  `.doc` importer, the `.xls` reader and UltraCanvasOfficeEncryption.
+  storage, ASCII case-insensitive), `StreamNames`, `GetLastError`; below the
+  root by '/'-separated path: `ReadStreamAt` / `HasStreamAt`,
+  `StreamNamesAt` / `StorageNamesAt`. Used by the `.doc` importer, the `.xls`
+  reader, UltraCanvasOfficeEncryption and UltraCanvasOutlookMessage.
   `UCCompoundFileWriter` builds one in memory (`AddStream` with '/'-separated
   storages, `Build`: version 3, mini stream, DIFAT, valid red-black trees), for
   the password-protected Office files.
   See `Docs/UltraCanvas/UltraCanvasCompoundFile.md`.
+
+- **UltraCanvasOutlookMessage** (`UltraCanvasOutlookMessage.h`) — Outlook
+  `.msg` messages ([MS-OXMSG]) read through the compound-file reader:
+  `UCOutlookMessage::Load` / `LoadFromMemory` → `subject`, `messageId`,
+  `inReplyTo`, `from`, `to`,
+  `cc`, `date` (UTC, RFC 5322 form), `bodyText`, `bodyHtml` (`PR_HTML`, else
+  the HTML encapsulated in the compressed RTF), `attachments`
+  (`UCOutlookAttachment`: `filename`, `mediaType`, `contentId`, `hidden`,
+  `embeddedMessage`, `data`). `UCDecompressRtf` ([MS-OXRTFCP] LZFu / MELA) and
+  `UCHtmlFromEncapsulatedRtf` ([MS-OXRTFEX] `\fromhtml1`). 8-bit text in the
+  message's code page (`DecodeWindowsCodePage`). In
+  `core/UltraCanvasOutlookMessage.cpp`; used by the media viewer.
+  See `Docs/UltraCanvas/UltraCanvasOutlookMessage.md`.
 
 - **UltraCanvasOfficeEncryption** (`UltraCanvasOfficeEncryption.h`) —
   password-protected `.xlsx` / `.docx` / `.pptx` (ECMA-376 agile encryption:
@@ -2001,7 +2022,9 @@ backing library is never visible in a public header.
   secure buffer). The general RFC 4648 codecs — `Base32Encode`, `Base32Decode`,
   `Base64Encode`, `Base64Decode` — live in UltraCanvasUtils
   (`UltraCanvasTextUtils.h`, the platform-free text helpers compiled into the
-  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link);
+  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link;
+  it also holds `DecodeWindowsCodePage`, the Windows code pages 1250 / 1251 /
+  1252 / UTF-8 as UTF-8, for the `.xls` and `.msg` readers);
   UltraCrypt's former copies were removed.
 
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
@@ -23483,6 +23506,25 @@ the format specifies. `ReadStream` and `HasStream` look in the root storage;
 when a writer left the directory tree empty (or it is damaged), the first
 stream of that name anywhere is taken instead.
 
+Below the root, a path names a stream: storages and the stream separated by
+`/`, each name compared the same way. An Outlook `.msg` keeps every
+attachment and recipient in a storage of its own:
+
+```cpp
+UltraCanvas::UCCompoundFileReader msg;
+if (msg.Open(path)) {
+    for (const std::string& storage : msg.StorageNamesAt("")) {   // "__attach_version1.0_#00000000", ...
+        std::vector<uint8_t> data;
+        if (msg.ReadStreamAt(storage + "/__substg1.0_37010102", data)) {
+            // an attachment's bytes
+        }
+        std::vector<std::string> streams = msg.StreamNamesAt(storage);
+        bool named = msg.HasStreamAt(storage + "/__substg1.0_3707001F");
+        (void)streams; (void)named;
+    }
+}
+```
+
 ## Writing one
 
 `UCCompoundFileWriter` builds a compound file in memory - what the
@@ -23531,7 +23573,9 @@ The reader: the `.doc` importer
 (`Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp`), the
 [`.xls` reader](UltraCanvasSpreadsheetXls.md), and the decryptor of
 [password-protected `.xlsx` and `.docx` files](UltraCanvasOfficeEncryption.md),
-which reads their `EncryptionInfo` and `EncryptedPackage` streams. The writer:
+which reads their `EncryptionInfo` and `EncryptedPackage` streams, and the
+[Outlook `.msg` reader](UltraCanvasOutlookMessage.md), which reads by path below
+the root. The writer:
 the encryptor of those files, which builds them.
 
 ## Test
@@ -23541,7 +23585,8 @@ The reader is covered by `Tests/SpreadsheetXlsFileTest.cpp` (an `.xls`, a
 by `Tests/WordFormatsTest.cpp`. The writer by `Tests/OfficeEncryptionTest.cpp`:
 what it builds read back, streams in the mini stream and in sectors, nested
 storages, and a 9 MB file that needs DIFAT sectors; Python's olefile and
-msoffcrypto-tool opened its output when it was written.
+msoffcrypto-tool opened its output when it was written. The paths below the
+root by `Tests/OutlookMessageTest.cpp`.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasContourChart.md
@@ -30187,6 +30232,25 @@ the icon-theme lookup behind `Icon=` — is
 the file display draws the very same launchers and must agree with the menu
 about what they are called and what they look like.
 
+### Files from elsewhere
+
+`RunsCodeWhenOpened(fileName)` says whether opening a file of that name would
+run code: a program, a script, an installer, a shortcut or a disk image
+(`.exe`, `.bat`, `.js`, `.ps1`, `.lnk`, `.msi`, `.iso` on Windows, `.app`,
+`.pkg`, `.dmg` on macOS, `.sh`, `.desktop`, `.appimage`, `.deb` on Linux,
+and script languages an association may run). It judges by the name alone,
+case-insensitively, after the trailing dots and spaces Windows ignores - a
+mail attachment or a download has no execute permission to look at. A mail
+reader or a preview offers such a file to be saved and never hands it to
+`OpenWithDefaultApplication`: UltraMail's attachments and the media
+viewer's message attachments both ask it.
+
+```cpp
+if (UltraCanvas::FileAssociations::RunsCodeWhenOpened("invoice.pdf.exe")) {
+    // offer to save it; do not open it
+}
+```
+
 ## Prewarm / caching model
 
 Lookups are cached per extension and served under a mutex, so
@@ -30251,6 +30315,8 @@ code.
 
 ## Version
 
+- 1.4.0 (2026-10-30): `RunsCodeWhenOpened` - files a mail reader or a preview
+  must not open.
 - 1.2.3 (2026-10-01): the Windows `explorer.exe` detour of 1.2.2 is gone. It
   answered a registered handler that would not start from our process by
   starting it from Explorer's, which hid the reason; the reason was the
@@ -39817,6 +39883,13 @@ goes to `BuildOptions::onLinkActivatedNewWindow` when that is set, else to
 `onLinkActivated` like any other. (Two links to the same address in one
 run of text, one with and one without a new-window target, both open the
 other window.) `<script>` is not run, and `<noscript>` and its content are shown.
+A viewer of local files turns the web off: `SetOpensWebLinks(false)` sends
+`http` / `https` links to `onExternalLink` as `mailto:` goes (file links
+still open in the view), `ScrollBy(dy)` scrolls the page for a host that
+keeps the keyboard, and `Clear()` leaves nothing on show - the page, its
+players and the history let go. The media viewer's HTML preview is built
+that way ([UltraCanvasMediaViewer.md](UltraCanvasMediaViewer.md), *HTML
+pages*).
 `Tests/HTMLPageLoaderTest.cpp` and `Tests/WebViewTest.cpp` cover both
 against a fake web. UltraWeb is the browser around it
 (`Docs/UltraWeb/UltraWeb.md`).
@@ -47944,6 +48017,9 @@ tool and a missing plugin should stop it running.
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
+| `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
+| `Text` (messages) | eml, emlx, msg | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
+| `Text` (saved pages) | mht, mhtml | **The page it saved**, its style sheets and pictures read from the archive's own parts (*Saved web pages* below) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
@@ -47964,6 +48040,110 @@ carries a probe for the 188-byte packet sync bytes.
 The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
 so the viewer gets full player control for free.
+
+
+## HTML pages
+
+A viewer shows what a file *is*, and an HTML page is the page it describes:
+`.html`, `.htm`, `.xhtml`, `.xht` and `.shtml` files, and an `.xml` whose
+content is XHTML, are rendered through
+[`UltraCanvasWebView`](UltraCanvasHTMLReader.md) (the framework's HTML and
+CSS reader), not shown as markup. That is the difference from the Texter,
+which opens the same file to edit its source. `IsHtmlFile(path)` answers
+which files these are; for an `.xml` it reads the start of the file: past
+the XML declaration, processing instructions and comments, an HTML DOCTYPE
+or an `<html>` root element (with or without a namespace prefix) makes it a
+page. Any other XML - data, configuration, a feed - stays in the text view
+with its highlighting, since it has no page to show.
+
+The page view (`MV_Web`) stands in the text view's place: `MediaKind` stays
+`Text`, so a host's classification (`ClassifyFile`) is unchanged; the info
+bar says `HTML` and Details *Page information*. It is a preview of local
+files:
+
+- the page's style sheets and pictures are read from the disk next to it
+  (relative links resolve against the file);
+- a link to another local file opens in the view, and a web (`http`,
+  `https`) or `mailto:` link opens in the system's browser or mail client
+  (`OpenURL`) - the viewer fetches nothing from the network;
+- forms are drawn but send nothing, and `<video>` / `<audio>` show their
+  fallback content; no script runs (the web view never runs JavaScript);
+- Up / Down / Page Up / Page Down / Space scroll it, and Left / Right keep
+  browsing the folder, as with a text file.
+
+Moving to another file lets the page go (`UltraCanvasWebView::Clear`).
+
+## E-mail messages
+
+An `.eml` (an RFC 5322 message, as mail programs save one) - or Apple Mail's
+`.emlx`, the same message after a line giving its length and before Mail's
+property list - is shown as the message, not its raw headers and MIME
+parts: `IsMailMessageFile(path)`, read through UltraNet's MIME reader
+(`UltraNet/UltraNetMime.h`) into one page in the page view (`MV_Web`). So is
+an Outlook `.msg`, read by [UltraCanvasOutlookMessage](UltraCanvasOutlookMessage.md)
+(its HTML body even when Outlook kept it only inside the compressed RTF); a
+`.msg` that is not a compound file - another program's message catalogue -
+is shown as text. The page:
+
+- a header block - the subject, From, To, Cc and Date, encoded words
+  (`=?UTF-8?Q?...?=`) decoded - and the attachments listed by name and size;
+- the body: the HTML one rendered, with its own style sheet, else the text
+  one (`UltraNet_MimeGetDisplayBody` picks it);
+- the pictures the message carries: a `cid:` reference shows the part with
+  that Content-ID, and a picture sent along inline but not referenced
+  follows the body;
+- **no remote picture is fetched.** The preview reads local files only, so
+  opening a message never tells its sender that, when or where it was read
+  (a tracking pixel is exactly that). A link opens in the system's browser.
+
+The info bar calls it `EMAIL` and Details *Message information*. A message
+may be up to 64 MB (attachments are listed, not put in the page). A build
+without UltraNet (`ULTRACANVAS_HAS_NET` off) has no MIME reader: there an
+`.eml` is shown as its text (a `.msg` needs no UltraNet).
+
+### Opening and saving attachments
+
+Each attachment the page lists has two links:
+
+- **its name** opens it. It is written to a folder of its own under the
+  temporary folder, under its own name, and shown in an
+  [`UltraCanvasMediaViewerWindow`](UltraCanvasMediaViewerWindow.md) when the
+  viewer shows that kind of file (a picture, a PDF, another message), else in
+  the application the system opens it with
+  (`FileAssociations::OpenWithDefaultApplication`), else the viewer offers to
+  save it. **A program, script, installer, shortcut or disk image** (`.exe`,
+  `.bat`, `.js`, `.ps1`, `.lnk`, `.msi`, `.iso`, `.sh`, `.desktop`,
+  `.appimage`, ...) **is never opened from the preview** - the system would
+  run it; the viewer says so and offers to save it.
+- **Save** asks where, through the framework's Save dialog
+  (`UltraCanvasFileLoader::SaveFileDialog`; the Downloads folder first, the
+  attachment's own type, then All files), and writes its bytes as they are.
+
+An attached message (Outlook's *attach item*) and an empty part are listed
+without links. The links are `ucattachment:open/N` and `ucattachment:save/N`,
+which the page view hands to the viewer (`onExternalLink`).
+
+## Saved web pages
+
+An `.mht` / `.mhtml` (MHTML, RFC 2557: what Chromium, Edge and Internet
+Explorer write for *Save page as - single file*) is a MIME message holding
+a page and everything it shows, each part under the address it was saved
+from (`Content-Location`) or a Content-ID. `IsWebArchiveFile(path)`; it is
+shown as the page it saved, not as the archive:
+
+- the page is the archive's first HTML part, and its links and pictures read
+  against the address it was saved from (a `<base>` the page carries itself
+  wins), so a relative `css/site.css` finds the part saved as
+  `https://example.org/css/site.css`;
+- its style sheets and pictures are answered from those parts, by address,
+  and `cid:` references with the part of that Content-ID - **the network is
+  never asked**: what the archive does not hold is not shown;
+- a link to a place in the page (`#part2`, which a browser saves as the full
+  address) scrolls there; any other web link opens in the system's browser.
+
+The info bar calls it `WEB ARCHIVE`, Details a *Saved web page*. An archive
+with no HTML part is shown as a message. Like a message it may be up to
+64 MB, and without UltraNet it is shown as its text.
 
 ## Tools per kind of file
 
@@ -53090,6 +53270,109 @@ byte are caught, and saves and reopens through `SaveToFile`,
 the writer was made, msoffcrypto-tool decrypted its output - integrity check
 included - for packages in the mini stream, in sectors and past the DIFAT
 limit, byte for byte.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasOutlookMessage.md
+==============================================================================
+
+# UltraCanvasOutlookMessage — Outlook .msg messages
+
+<!-- doc-check: std::string path; std::vector<uint8_t> bytes; -->
+
+`UltraCanvasOutlookMessage.h` reads the file Outlook writes for *Save as* and
+for a message dragged out of it (`.msg`, [MS-OXMSG]) into what a reader shows:
+the subject, the sender, the recipients, the date, the body and the
+attachments. Headless and read-only. The
+[media viewer](UltraCanvasMediaViewer.md) shows a `.msg` through it, as it
+shows an `.eml`, and UltraMail's *Import* builds a standard message from it.
+
+```cpp
+#include "UltraCanvasOutlookMessage.h"
+
+UltraCanvas::UCOutlookMessage msg;
+std::string error;
+if (msg.Load(path, error)) {                   // UTF-8 path; or LoadFromMemory(bytes, error)
+    std::string title = msg.subject;
+    std::string sender = msg.from;             // "Name <address>"
+    for (const std::string& to : msg.to) { (void)to; }
+    for (const std::string& cc : msg.cc) { (void)cc; }
+    std::string when = msg.date;               // "Thu, 29 Oct 2026 09:00:00 +0000"
+    std::string body = msg.bodyHtml.empty() ? msg.bodyText : msg.bodyHtml;   // UTF-8
+    for (const UltraCanvas::UCOutlookAttachment& a : msg.attachments) {
+        // a.filename, a.mediaType, a.data; a.contentId and a.hidden for a
+        // picture the HTML body shows (cid:); a.embeddedMessage for an
+        // attached message, listed by name with no bytes
+        (void)a;
+    }
+} else {
+    // error: "Not an OLE2 compound file", "the compound file holds no Outlook message", ...
+}
+```
+
+## What is read, and from where
+
+A `.msg` is a [compound file](UltraCanvasCompoundFile.md): every property of
+the message is a stream named after its tag (`__substg1.0_0037001F` is the
+subject, as UTF-16), the fixed-size ones (times, the code page) are entries of
+the `__properties_version1.0` stream, and every recipient and attachment is a
+storage of its own (`__recip_version1.0_#00000000`,
+`__attach_version1.0_#00000000`) laid out the same way.
+
+| Field | Read from |
+|---|---|
+| `subject` | `PR_SUBJECT` |
+| `messageId`, `inReplyTo` | `PR_INTERNET_MESSAGE_ID`, `PR_IN_REPLY_TO_ID` (empty for a message that never went through the Internet, a draft) |
+| `from` | `PR_SENDER_NAME` with `PR_SENDER_SMTP_ADDRESS` (else `PR_SENDER_EMAIL_ADDRESS` unless it is an Exchange address, `/O=...`); a message with neither: `PR_SENT_REPRESENTING_*` |
+| `to`, `cc` | each recipient's display name and SMTP address, by `PR_RECIPIENT_TYPE` (Bcc left out); `PR_DISPLAY_TO` / `PR_DISPLAY_CC` when there are no recipient storages |
+| `date` | delivered (`PR_MESSAGE_DELIVERY_TIME`), else sent (`PR_CLIENT_SUBMIT_TIME`); a draft's last change, else its creation; UTC |
+| `bodyHtml` | `PR_HTML`; else the HTML encapsulated in the compressed RTF body (below) |
+| `bodyText` | `PR_BODY` |
+| attachments | long name, else 8.3 name, else display name; `PR_ATTACH_MIME_TAG` (lower-cased), `PR_ATTACH_CONTENT_ID` (without `<>`), `PR_ATTACHMENT_HIDDEN`; the bytes of `PR_ATTACH_DATA_BIN`; an attached message (method 5, or a `3701000D` storage) is `embeddedMessage` |
+
+Strings stored as UTF-16 - what Outlook writes since 2003 - are read as they
+are. 8-bit strings (`001E`), a binary `PR_HTML` and RTF text are read in the
+message's code page (`PR_INTERNET_CPID`, else `PR_MESSAGE_CODEPAGE`) through
+`DecodeWindowsCodePage` (`UltraCanvasTextUtils.h`): 1250, 1251, 1252 and
+UTF-8; any other code page as Latin-1.
+
+## The HTML body inside the RTF
+
+Most messages that arrived as HTML keep their HTML only inside the compressed
+RTF body (`PR_RTF_COMPRESSED`), which is why `PR_HTML` is often missing. Two
+functions get it back, and are public for anyone with such a stream:
+
+- `UCDecompressRtf(compressed, rtf)` — [MS-OXRTFCP]: an `LZFu` stream (the
+  4096-byte dictionary, its 207-byte initial text, references and literals)
+  or a `MELA` one stored uncompressed. The CRC is not checked: a damaged
+  stream gives what it holds, up to its stated size.
+- `UCHtmlFromEncapsulatedRtf(rtf, html)` — [MS-OXRTFEX]: for RTF whose header
+  says `\fromhtml1`, the `{\*\htmltag ...}` groups as written plus the text
+  outside `\htmlrtf ... \htmlrtf0`, with `\par`, `\tab`, `\'hh` (in the
+  `\ansicpg` code page), `\u` (its `\uc` fallback skipped) and the escaped
+  `\{ \} \\`; `\fonttbl`, `\colortbl` and the other non-HTML destinations, and
+  `\*\mhtmltag`, are left out. False for RTF that never was HTML (a message
+  written in Outlook's rich text), whose plain text `PR_BODY` always holds.
+
+## Limits
+
+- Code pages beyond 1250, 1251, 1252 and UTF-8 (Japanese, Chinese, Greek,
+  ...) are read as Latin-1 in 8-bit text; their UTF-16 strings are fine.
+- An attached message is listed, not read: its own storage is a message of
+  its own that a caller could read the same way.
+- Signed or encrypted messages (S/MIME, `.p7m` attachments) come out as the
+  attachment they are.
+
+## Test
+
+`Tests/OutlookMessageTest.cpp` builds messages with `UCCompoundFileWriter` as
+Outlook lays them out - three recipients, an Exchange sender address beside
+the SMTP one, an LZFu body with a dictionary reference holding encapsulated
+HTML, a `PR_HTML` body, an attachment by value, a hidden picture with an 8-bit
+name and a Content-ID, an attached message - and reads them back, with the
+compound file's paths below the root and `DecodeWindowsCodePage`. Two files
+Outlook wrote (the msg-extractor project's `unicode.msg`, with two TIFF
+attachments, and `strangeDate.msg`, a draft whose 41 KB of HTML is only in its
+RTF body) were checked by hand when the reader was written.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPDFExamples.md
@@ -102311,7 +102594,13 @@ A separate window (`CreateWindow`) per draft, Texter-style:
   account and insert the share link — see `Docs/Modules/UltraCloud/README.md`);
   shown as a chip strip with sizes and a total-size warning - under the
   message, or in a column at its right (*Settings > Reading > Attachments*,
-  for reading and writing alike).
+  for reading and writing alike). *Open* shows an attachment in the media
+  viewer or the system's application - but never a program or script
+  (`FileAssociations::RunsCodeWhenOpened`): that is offered to be saved.
+- **Import** — `.eml`, Apple Mail `.emlx` and Outlook `.msg` files into the
+  folder on show: uploaded to the server (`AppendMessage`, as the Drafts and
+  Sent copies are) and synced back, so they live where the account's mail
+  lives (`ui/UltraMailMessageImport`).
 - **Signatures** — per account, in *Account Settings > Signature*: none,
   plain text (below a `-- ` line) or HTML, designed in a WYSIWYG editor
   (`UltraCanvasRichTextEdit`: character formatting, font, size, colour,
