@@ -36,7 +36,8 @@
 // UltraCanvasSplitPane-style splitters between their columns, and names that
 // do not fit their column show the full name in a tooltip. In the tile-shaped
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
-// further lines (FilerStyle::captionMaxLines, 2 by default), broken between
+// further lines (FilerStyle::captionMaxLines, 2 by default, 0 = no limit;
+// SetCaptionMaxLines), broken between
 // whole words wherever the width allows one — the words of a PascalCase name
 // included ("UltraCanvas" / "Texter.exe"); what does not fit even then is
 // dropped from the front of the last line, which opens with "…".
@@ -103,6 +104,13 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.44.0 - Details column splitters push the following columns
+//                  (FilerColumnResizeMode::PushFollowing, the new default;
+//                  SetDetailsColumnResizeMode) and the table scrolls sideways
+//                  when it outgrows the view; the last column gets a splitter.
+// Version: 1.43.0 - SetCaptionMaxLines / GetCaptionMaxLines, and
+//                  FilerStyle::captionMaxLines 0 = no limit: a tile caption
+//                  shows the full name over as many lines as it needs.
 // Version: 1.42.0 - FormatSizeText: the display's own size formatting for a
 //                  host's status bar; the hidden-items notice sits on the file
 //                  area's background (no grey strip), its count beside the
@@ -372,6 +380,21 @@ namespace UltraCanvas {
         Icon
     };
 
+    // ===== HOW A DETAILS COLUMN SPLITTER RESIZES =====
+    // What dragging the splitter on a Details column's right edge does:
+    //   PushFollowing      — only that column changes width; the columns after
+    //                        it move along, keeping their own widths. A table
+    //                        wider than the view scrolls sideways (the
+    //                        default, as in Explorer and the Finder).
+    //   SplitWithNeighbour — the width the column gains is taken from the
+    //                        column after it, so the table always spans the
+    //                        view exactly (split-pane style, the only
+    //                        behaviour before PushFollowing was added).
+    enum class FilerColumnResizeMode {
+        PushFollowing,
+        SplitWithNeighbour
+    };
+
     // ===== WHICH ICONS A FILE DISPLAY DRAWS =====
     // Display > File icons. What an entry with no picture of its own is
     // drawn with — the file kinds that thumbnail as their content, and the
@@ -623,10 +646,11 @@ namespace UltraCanvas {
         // Name wrapping in the caption of a thumbnail tile / treemap cell: a
         // name wider than the tile continues on the next line, up to
         // captionMaxLines lines (1 = the old single-line, tail-ellipsized
-        // caption). What still does not fit is dropped from the *front* of the
-        // last line, which then opens with "…" so the end of the name — its
-        // extension — stays readable. Every line past the first adds
-        // captionLineHeight to the tile.
+        // caption; 0 = no limit, the full name is always shown). What still
+        // does not fit is dropped from the *front* of the last line, which
+        // then opens with "…" so the end of the name — its extension — stays
+        // readable. Every line past the first adds captionLineHeight to the
+        // tile. SetCaptionMaxLines() changes it without a whole SetStyle().
         int captionMaxLines   = 2;
         int captionLineHeight = 0;       // 0 = derived from smallFontSize
 
@@ -1236,6 +1260,15 @@ namespace UltraCanvas {
         bool AreFileExtensionsInNames() const { return fileExtensionsInNames; }
         void SetExtensionBadge(FilerExtensionBadge badge);
         FilerExtensionBadge GetExtensionBadge() const { return extensionBadge; }
+        // ===== FILE NAMES =====
+        // Display > File names: how many lines a name may take in the caption
+        // of a thumbnail tile / treemap cell (FilerStyle::captionMaxLines) -
+        // 0 for the full name however many lines it needs, otherwise the
+        // limit, past which the head of the last line gives way to "…". Rows
+        // grow and shrink with it, so a change relays the grid out. The
+        // column views (Details / List / Size bars) keep one line per entry.
+        void SetCaptionMaxLines(int lines);
+        int  GetCaptionMaxLines() const { return style.captionMaxLines; }
         // ===== FAVORITE MARK =====
         // A small red heart at the outermost left of an entry, vertically
         // centred - on the row of the Details / List / Size bars views, beside
@@ -1423,9 +1456,13 @@ namespace UltraCanvas {
         // The column views carry draggable splitters (UltraCanvasSplitPane
         // dividers, styled through FilerStyle::columnSplitter):
         //   Details — one splitter on the right edge of every column, inside
-        //             the header strip; dragging it moves width between that
-        //             column and the one after it, so the table keeps filling
-        //             the widget exactly like split-pane panes do.
+        //             the header strip. By default (PushFollowing) dragging it
+        //             widens or narrows that column alone and the columns
+        //             after it move along; a table wider than the view gets a
+        //             horizontal scrollbar (Shift+wheel or a sideways wheel
+        //             scrolls it). SplitWithNeighbour moves the width between
+        //             the column and the one after it instead, so the table
+        //             keeps filling the widget like split-pane panes do.
         //   List    — one splitter in every gap between the flowing columns;
         //             dragging any of them re-widths all of them (the list
         //             columns are uniform).
@@ -1435,10 +1472,19 @@ namespace UltraCanvas {
         // code to restore a layout saved by the application.
         void SetColumnResizeEnabled(bool enabled);
         bool IsColumnResizeEnabled() const { return columnResizeEnabled; }
+        void SetDetailsColumnResizeMode(FilerColumnResizeMode mode);
+        FilerColumnResizeMode GetDetailsColumnResizeMode() const {
+            return detailsResizeMode;
+        }
 
-        // Details columns. The Name column is the flexible one: it absorbs
-        // whatever the other columns leave, so setting its width is equivalent
-        // to taking that width from the column next to it.
+        // Details columns. The Name column starts out flexible: it absorbs
+        // whatever the other columns leave, so the table spans the widget.
+        // Under SplitWithNeighbour it stays that way, and setting its width
+        // is equivalent to taking that width from the column next to it.
+        // Under PushFollowing the first splitter drag - or setting the Name
+        // width from code - pins it at its width, after which every column
+        // keeps the width it was given; ResetDetailsColumnWidths makes it
+        // flexible again.
         void SetDetailsColumnWidth(FilerDetailsColumn column, int pixels);
         int  GetDetailsColumnWidth(FilerDetailsColumn column) const;
         void ResetDetailsColumnWidths();          // back to the built-in widths
@@ -2087,9 +2133,11 @@ namespace UltraCanvas {
         // Current width of every Details column, indexed by FilerDetailsColumn
         // — the widths the splitters edit, kept across rescans, sorting and
         // view switches. Index 0 (Name) is derived at layout time from what
-        // the other columns leave, so it always fills the table out to the
-        // widget edge.
+        // the other columns leave, so it fills the table out to the widget
+        // edge - until a PushFollowing drag pins it (detailsNameFlexible off).
         std::vector<int> detailsColumnWidths;
+        FilerColumnResizeMode detailsResizeMode = FilerColumnResizeMode::PushFollowing;
+        bool detailsNameFlexible = true;
         uint32_t hiddenDetailsColumns = 0;   // bit per FilerDetailsColumn
 
         // BarSize columns: the name column on the left, the size label on the
@@ -2129,6 +2177,7 @@ namespace UltraCanvas {
         UltraCanvasSmoothScroll scrollAnimX;
         UltraCanvasSmoothScroll scrollAnimY;
         bool draggingScrollbar = false;
+        bool draggingScrollbarHorizontal = false;   // which bar is held
         int  scrollbarGrabOffset = 0;
 
         // Hover icon-menu hit rects (screen-local), rebuilt each frame.
@@ -2924,8 +2973,13 @@ namespace UltraCanvas {
             int travel = 0;
             int maxScroll = 0;
         };
-        ScrollbarGeom ScrollbarGeometry() const;
-        void ScrollThumbTo(int thumbLeadPx);
+        // The bar of one axis; inactive when the view does not scroll that
+        // way. List scrolls sideways only, Details both ways (sideways once
+        // its columns are pushed past the view), the other views vertically.
+        ScrollbarGeom ScrollbarGeometry(bool horizontal) const;
+        bool ScrollsHorizontally() const;
+        bool ScrollsVertically() const;
+        void ScrollThumbTo(int thumbLeadPx, bool horizontal);
         void EnsureVisible(size_t entryIndex);
         // The scroll correction of EnsureVisible against the current layout
         // (assumes EnsureLayout already ran). It glides by default, so keyboard
@@ -3160,6 +3214,8 @@ namespace UltraCanvas {
         std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,
                                                const std::string& name,
                                                int maxWidth, int maxLines);
+        // FilerStyle::captionMaxLines, resolved: 0 (no limit) as INT_MAX.
+        int  CaptionLineLimit() const;
         // Lines a caption needs for `name` at `maxWidth` (1..captionMaxLines).
         int  CaptionLinesFor(IRenderContext* ctx, const std::string& name,
                              int maxWidth) const;
