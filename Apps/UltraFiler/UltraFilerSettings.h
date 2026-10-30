@@ -7,6 +7,9 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.19.0 - Extras > Open location: recentLocations, the locations typed there
+// Version: 1.18.0 - previewAutoBackground (preview.transparent.auto): the viewer's Auto backdrop,
+//                  on unless a colour or the checkerboard was picked
 // Version: 1.17.0 - Handling > Protected files: forgetPasswordsAfterMinutes, how long
 //                   UltraFiler goes without input before the preview forgets the
 //                   passwords Unlock was given
@@ -87,10 +90,12 @@ public:
     static constexpr int kDefaultHistoryEntries = 300;
 
     // ===== THE SETTINGS =====
-    // Media viewer: backdrop behind transparent images — the checkered
-    // pattern used by image editors, or a preset solid colour (default white).
-    // Chosen from the colour strip the viewer shows under a transparent
-    // image; the settings window has no page for it.
+    // Media viewer: backdrop behind transparent images and drawings — one
+    // picked for each file to suit it (the default), the checkered pattern
+    // used by image editors, or a preset solid colour. Chosen from the colour
+    // strip the viewer shows under a transparent image; the settings window
+    // has no page for it. Auto wins over the other two.
+    bool  previewAutoBackground      = true;
     bool  previewCheckeredBackground = false;
     Color previewTransparentColor    = Color(255, 255, 255, 255);
 
@@ -336,6 +341,12 @@ public:
     // default is detected at run time (see UltraFilerPrompt).
     std::string promptApplication;
 
+    // Extras > Open location > Enter location…: the locations typed there,
+    // newest first, as typed (with their %VAR% / $VAR / ~ unexpanded, so an
+    // entry follows the variable), listed at the end of the submenu.
+    static constexpr size_t kMaxRecentLocations = 10;
+    std::vector<std::string> recentLocations;
+
     // ===== PERSISTENCE =====
 
     // UltraFiler's folder in the shared UltraCanvas settings folder, as every
@@ -412,7 +423,11 @@ public:
             kv[Trim(line.substr(0, eq))] = Trim(line.substr(eq + 1));
         }
 
-        auto it = kv.find("preview.transparent.checkered");
+        auto it = kv.find("preview.transparent.auto");
+        if (it != kv.end())
+            previewAutoBackground =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("preview.transparent.checkered");
         if (it != kv.end())
             previewCheckeredBackground =
                     (it->second == "true" || it->second == "1" || it->second == "yes");
@@ -529,6 +544,12 @@ public:
                      kMinHistoryEntries, kMaxHistoryEntries);
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
+        // One key per entry: a path may hold the comma a list would split on.
+        recentLocations.clear();
+        for (size_t i = 1; i <= kMaxRecentLocations; ++i) {
+            it = kv.find("extras.locations.recent." + std::to_string(i));
+            if (it != kv.end() && !it->second.empty()) recentLocations.push_back(it->second);
+        }
         it = kv.find("view.split");
         if (it != kv.end())
             splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
@@ -546,6 +567,8 @@ public:
         if (!file.is_open()) return false;
 
         file << "# UltraFiler Configuration\n\n";
+        file << "preview.transparent.auto = "
+             << (previewAutoBackground ? "true" : "false") << "\n";
         file << "preview.transparent.checkered = "
              << (previewCheckeredBackground ? "true" : "false") << "\n";
         file << "preview.transparent.color = "
@@ -621,6 +644,8 @@ public:
              << "\n";
         file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
+        for (size_t i = 0; i < recentLocations.size() && i < kMaxRecentLocations; ++i)
+            file << "extras.locations.recent." << (i + 1) << " = " << recentLocations[i] << "\n";
         file << "view.split = " << (splitView ? "true" : "false") << "\n";
         file << "view.split.second.folder = " << splitSecondFolder << "\n";
         return true;

@@ -1,8 +1,12 @@
 // include/UltraIM/UltraIMCore.h
 // UltraIM - the public instant-messaging API (UltraIM_* functions)
+// Version: 0.1.5 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
+// Version: 0.1.4 - UltraIM_SendVideo, UltraIM_DownloadAttachment
+// Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
+// Version: 0.1.2 - UltraIM_ResendAuthCode
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -44,10 +48,17 @@ void UltraIM_Unsubscribe(UltraIMSubscriptionId subscriptionId);
 // ---- Sessions ----------------------------------------------------------------
 // A sign-in in steps answers NeedsInput while it waits for the next one: call
 // SignIn again with what UltraIMProviderInfo::authStep asks for (the code, the
-// password, ...), the rest of the credentials as before.
+// password, ...), the rest of the credentials as before. credentials.loginType
+// QRCode asks instead for a link to show as a QR code (authStep OtherDevice,
+// the link in authHint, refreshed as AuthStepChange) that a signed-in app
+// scans; it can be asked for while a code is awaited too.
 void UltraIM_SignIn(const std::string& providerId,
                     const UltraIMCredentials& credentials,
                     UltraIMResultCallback onResult);
+// A sign-in waiting for a code (authStep Code): ask for it the other way
+// UltraIMProviderInfo::authResendHint names (by SMS, a call); the new hint
+// arrives as AuthStepChange. CapabilityMissing when there is no other way.
+void UltraIM_ResendAuthCode(const std::string& providerId, UltraIMResultCallback onResult);
 void UltraIM_SignOut(const std::string& providerId);
 UltraIMConnectionState UltraIM_GetConnectionState(const std::string& providerId);
 
@@ -81,9 +92,21 @@ UltraIMResult UltraIM_SendFile(const std::string& providerId, const std::string&
 UltraIMResult UltraIM_SendImage(const std::string& providerId, const std::string& conversationId,
                                 const std::string& localPath, const std::string& caption,
                                 const UltraIMSendOptions& options = UltraIMSendOptions());
+// A video with a caption (the provider's FileTransfer capability covers
+// it; a provider without sends it as a file or answers CapabilityMissing).
+UltraIMResult UltraIM_SendVideo(const std::string& providerId, const std::string& conversationId,
+                                const std::string& localPath, const std::string& caption,
+                                const UltraIMSendOptions& options = UltraIMSendOptions());
 UltraIMResult UltraIM_SendSticker(const std::string& providerId, const std::string& conversationId,
                                   const std::string& packId, const std::string& stickerId,
                                   const UltraIMSendOptions& options = UltraIMSendOptions());
+// A message's attachment fetched to disk - a video, a file, a voice note;
+// pictures and preview pictures the provider fetches by itself and reports
+// with MessageUpdate. The callback brings the attachment with localPath set,
+// and a MessageUpdate with the same follows; one already on disk answers at
+// once. NotFound for a message without one.
+void          UltraIM_DownloadAttachment(const std::string& providerId, const std::string& conversationId,
+                                         const std::string& messageId, UltraIMAttachmentCallback onResult);
 UltraIMResult UltraIM_SendVoiceNote(const std::string& providerId, const std::string& conversationId,
                                     const std::string& localPath,
                                     const UltraIMSendOptions& options = UltraIMSendOptions());
@@ -131,6 +154,17 @@ void UltraIM_ImportEncryptionKeys(const std::string& providerId, const std::stri
 // provider has no such service; providerId must be signed in.
 void UltraIM_FetchSharedCredentials(const std::string& providerId, const std::string& forProviderId,
                                     UltraIMSharedCredentialsCallback onResult);
+
+// ---- Preview pictures -----------------------------------------------------------
+// The application's way of making a preview picture (UltraIMPreviewMaker):
+// installed once, with its image and video libraries, before anything is
+// sent. Without one, files go without a preview.
+void          UltraIM_SetPreviewMaker(UltraIMPreviewMaker maker);
+// For providers: a JPEG preview of the file, its longer side at most maxSide,
+// written under the cache directory ("" when no maker is installed or the
+// file cannot be read); its size in outWidth / outHeight.
+std::string   UltraIM_MakePreview(const std::string& path, const std::string& mimeType, int maxSide,
+                                  int& outWidth, int& outHeight);
 
 // ---- Helpers -----------------------------------------------------------------
 // A fresh client message id (a UUID v4).

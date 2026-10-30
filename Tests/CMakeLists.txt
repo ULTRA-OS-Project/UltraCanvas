@@ -214,6 +214,7 @@ if(TARGET WasmHost AND TARGET UltraCanvas AND TARGET UltraNet)
     add_executable(UltraWebTabTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraWebTabTest.cpp
         ${_uw_dir}/host/UltraWebFetch.cpp
+        ${_uw_dir}/host/UltraWebNetworkFetch.cpp
         ${_uw_dir}/host/UltraWebGuest.cpp
         ${_uw_dir}/host/UltraWebLoader.cpp
         ${_uw_dir}/host/UltraWebCookies.cpp
@@ -3350,6 +3351,23 @@ add_test(NAME MatrixModelTest COMMAND MatrixModelTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: MatrixModelTest")
 
+# ===== PERFORMANCE MATRIX MODEL TEST =====
+# The performance matrix model: sparse cells, the rank from the best corner,
+# validation and the shipped samples. UI-free.
+message(STATUS "  Building PerformanceMatrixModelTest...")
+add_executable(PerformanceMatrixModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PerformanceMatrixModelTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Diagrams/UltraCanvasPerformanceMatrixModel.cpp
+)
+target_include_directories(PerformanceMatrixModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(PerformanceMatrixModelTest PRIVATE cxx_std_20)
+set_target_properties(PerformanceMatrixModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME PerformanceMatrixModelTest COMMAND PerformanceMatrixModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: PerformanceMatrixModelTest")
+
 # ===== FISHBONE MODEL TEST =====
 # Unit tests for the fishbone (Ishikawa) model: category presets, cause and
 # sub-cause counting, depth, validation, the indented-outline codec and the
@@ -4498,6 +4516,26 @@ add_test(NAME FilerVolumeSpaceTest COMMAND FilerVolumeSpaceTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerVolumeSpaceTest")
 
+# ===== FILER LOCATIONS TEST =====
+# UltraFiler's Extras > Open location (Apps/UltraFiler/UltraFilerLocations.h):
+# each platform's list of UltraCanvas and system folders, and a typed
+# location's %VAR% / $VAR / ~ expansion. Header-only, so it links nothing.
+message(STATUS "  Building FilerLocationsTest...")
+add_executable(FilerLocationsTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerLocationsTest.cpp
+)
+target_include_directories(FilerLocationsTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerLocationsTest PRIVATE cxx_std_20)
+set_target_properties(FilerLocationsTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerLocationsTest COMMAND FilerLocationsTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerLocationsTest")
+
 message(STATUS "")
 
 # ===== SPREADSHEET FORMULA ENGINE TEST =====
@@ -5354,6 +5392,30 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: MatrixDiagramRenderTest")
 else()
     message(STATUS "  MatrixDiagramRenderTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== PERFORMANCE MATRIX RENDER TEST =====
+# The performance matrix drawn offscreen in each design: every cell is laid
+# out and hit where it is drawn, the colouring paints each cell its rank or
+# level colour, hover and click select, and a crowded matrix fits its text by
+# dropping content that stays in the tooltip. With ULTRACANVAS_SCREENSHOT_DIR
+# set, each design is written there as a PNG.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building PerformanceMatrixRenderTest...")
+    add_executable(PerformanceMatrixRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PerformanceMatrixRenderTest.cpp
+    )
+    target_include_directories(PerformanceMatrixRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PerformanceMatrixRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(PerformanceMatrixRenderTest PRIVATE UltraCanvas)
+    set_target_properties(PerformanceMatrixRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PerformanceMatrixRenderTest COMMAND PerformanceMatrixRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PerformanceMatrixRenderTest")
+else()
+    message(STATUS "  PerformanceMatrixRenderTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== IMPORTANCE-PERFORMANCE CHART RENDER TEST =====
@@ -6239,27 +6301,16 @@ else()
 endif()
 
 # ===== IMAGE JPEG XL TEST =====
-# JPEG XL through the framework's image pipeline: the format inventory, a
-# lossless and a lossy .jxl from the export encoder read back through
-# UCImageRaster, the quality option, and UCImageRaster::Save. Headless;
-# reports SKIP on a libvips built without libjxl.
-if(TARGET UltraCanvas)
-    message(STATUS "  Building ImageJxlTest...")
-    add_executable(ImageJxlTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/ImageJxlTest.cpp
-    )
-    target_include_directories(ImageJxlTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(ImageJxlTest PRIVATE cxx_std_20)
-    target_link_libraries(ImageJxlTest PRIVATE UltraCanvas)
-    set_target_properties(ImageJxlTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME ImageJxlTest COMMAND ImageJxlTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: ImageJxlTest")
-else()
-    message(STATUS "  ImageJxlTest skipped (UltraCanvas target not present)")
-endif()
+# Defined in ImageJxlTests.cmake, which the top level also includes on its own
+# (ULTRACANVAS_BUILD_JXL_TESTS) where BUILD_TESTS is off - the macOS and
+# Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/ImageJxlTests.cmake)
+
+# ===== IMAGE HEIF / AVIF TEST =====
+# Defined in ImageHeifTests.cmake, which the top level also includes on its
+# own (ULTRACANVAS_BUILD_HEIF_TESTS) where BUILD_TESTS is off - the macOS and
+# Windows rows.
+include(${CMAKE_CURRENT_SOURCE_DIR}/ImageHeifTests.cmake)
 
 # ===== IMAGE GIF SAVER TEST =====
 # The framework's GIF saver for libvips (VipsGifPlugin): registered, picked

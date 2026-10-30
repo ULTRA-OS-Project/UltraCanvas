@@ -3,6 +3,7 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.6.0 - LockSession; the loudspeaker's volume; TrayHostMenuActivate
 // Version: 1.5.0 - LaunchPackagedApplication (Microsoft Store applications),
 //                  ListScreens
 // Version: 1.4.0 - DesktopReplacement::Instead, the tray host, EndSession
@@ -78,9 +79,17 @@ namespace DesktopShellBackend {
     // platform has no such switch at all.
     std::string SystemDesktopSwitchUnavailableReason();
 
-    // The end of the session.
+    // The end of the session, and the lock.
     bool CanEndSession();
     bool EndSession(SessionEnd how, std::string& error);
+    bool CanLockSession();
+    bool LockSession(std::string& error);
+
+    // The default output's volume: `available` false with `error` set when
+    // no sound server answers.
+    DesktopAudioOutput ReadAudioOutput();
+    bool SetAudioOutputVolume(int percent, std::string& error);
+    bool SetAudioOutputMuted(bool muted, std::string& error);
 
     // The parts of the device activity only the platform can read: audio
     // and video capture in use, playback running, the battery, the keyboard
@@ -118,6 +127,9 @@ namespace DesktopShellBackend {
     void TrayHostClose(TrayHostState* state);
     std::vector<DesktopTrayIcon> TrayHostIcons(TrayHostState* state);
     bool TrayHostClick(TrayHostState* state, const std::string& id, TrayClick button);
+    // The choice from DesktopTrayIcon::menu; false where the icons carry no
+    // menu (Windows) or the entry is gone.
+    bool TrayHostMenuActivate(TrayHostState* state, const std::string& id, int32_t itemId);
 
 } // namespace DesktopShellBackend
 } // namespace UltraCanvas

@@ -20,6 +20,25 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## OpenSSL 3 libcrypto (UltraCrypt's X.509, CMS, RSA and ECDSA)
+
+- **Used by:** UltraCrypt's X.509 and CMS (`UltraCanvas/core/UltraCrypt/UltraCryptX509.cpp`,
+  `UltraCryptX509.h`) and its RSA / ECDSA checks (`UltraCryptPublicKey.h`),
+  and through them UltraMail's S/MIME and the UltraDBAdmin relay's ID-token
+  signature. Optional: without
+  OpenSSL 3 those calls answer `BackendUnavailable`. (UltraNet links OpenSSL
+  for TLS on Linux and Android, UltraRTC for DTLS; those are listed with them.)
+- **Upstream:** https://github.com/openssl/openssl
+- **Linked, not vendored:** the system package (`libssl-dev`; MSYS2's
+  `openssl`), on macOS vcpkg's build for macOS 14 (`MacOS/deps/vcpkg.json`),
+  bundled as a dylib in the suite's shared `Frameworks/`. No OpenSSL source is
+  carried in this repository, and no OpenSSL type appears in any UltraCanvas
+  public header.
+- **License:** Apache License 2.0 (OpenSSL 3.0 and later). A binary
+  distribution that carries the library carries its licence text.
+
+---
+
 ## wasmtime (WebAssembly engine)
 
 - **Used by:** the WasmHost module (`UltraCanvas/core/WasmHost/`), and through
@@ -37,7 +56,7 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
-## TDLib (Telegram client library)
+## TDLib (Telegram Database Library)
 
 - **Used by:** the UltraIM Telegram provider
   (`UltraCanvas/Plugins/UltraIM/telegram/`), and through it ChatCube's
@@ -403,6 +422,28 @@ their source is published here; UltraCanvas's own files are unaffected.
   speaks to MySQL servers as well.
 
 ---
+
+## GPGME (GnuPG Made Easy — UltraMail's OpenPGP)
+
+- **Used by:** UltraMail's OpenPGP support
+  (`Apps/UltraMail/engine/UltraMailOpenPgp.cpp`): checking and making
+  signatures, encrypting and decrypting, with the user's own GnuPG keyring.
+  Optional: a build without it has no OpenPGP and says so.
+- **Upstream:** https://dev.gnupg.org/source/gpgme/
+- **Linked, not vendored, and dynamically:** the system package is used
+  (`libgpgme-dev`; MSYS2's `gpgme`); on macOS vcpkg builds it
+  (`MacOS/deps/vcpkg.json`) and the suite bundles it as a dylib in its shared
+  `Frameworks/`, with its two libraries **libassuan** and **libgpg-error**
+  (both LGPL-2.1-or-later, the same terms). GPGME runs GnuPG's own programs (`gpg`,
+  `gpg-agent`, `pinentry`) as separate processes; none of GnuPG is linked.
+  No GPGME source is carried in this repository, and the code that calls it is
+  not a modification of it: it stays MIT.
+- **License:** **LGPL-2.1-or-later** (GnuPG itself, run as a program, is
+  GPL-3.0-or-later). A distributor of a binary that links GPGME ships the
+  licence text and this notice, makes the exact GPGME source shipped
+  available, keeps the library a separate file the user could replace, and
+  does not forbid reverse engineering for debugging such a replacement - as
+  for MariaDB Connector/C above.
 
 ## FFmpeg (optional — VideoFX's engine; LGPL or GPL depending on the build)
 

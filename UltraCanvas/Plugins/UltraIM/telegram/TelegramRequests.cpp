@@ -1,7 +1,11 @@
 // Plugins/UltraIM/telegram/TelegramRequests.cpp
 // Telegram provider - the TDLib requests it sends
+// Version: 0.1.4 - SendVideo and SendDocument take a preview picture (inputThumbnail)
+// Version: 0.1.3 - DownloadFile; SendPhoto, SendVideo, SendDocument
+// Version: 0.1.2 - RequestQrCode
+// Version: 0.1.1 - ResendCode
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 
 #include "TelegramRequests.h"
@@ -25,13 +29,44 @@ TdObject Ids(const std::vector<int64_t>& ids) {
     return list;
 }
 
-TdObject Text(const std::string& text) {
+TdObject Formatted(const std::string& text) {
     TdObject formatted = Make("formattedText");
     formatted.Set("text", TdObject(text));
     formatted.Set("entities", TdObject::MakeArray());
+    return formatted;
+}
+
+TdObject Text(const std::string& text) {
     TdObject content = Make("inputMessageText");
-    content.Set("text", formatted);
+    content.Set("text", Formatted(text));
     return content;
+}
+
+TdObject LocalFile(const std::string& localPath) {
+    TdObject file = Make("inputFileLocal");
+    file.Set("path", TdObject(localPath));
+    return file;
+}
+
+void SetThumbnail(TdObject& content, const Thumbnail& thumbnail) {
+    if (thumbnail.localPath.empty()) return;
+    TdObject t = Make("inputThumbnail");
+    t.Set("thumbnail", LocalFile(thumbnail.localPath));
+    t.Set("width", TdObject(static_cast<int64_t>(thumbnail.width)));
+    t.Set("height", TdObject(static_cast<int64_t>(thumbnail.height)));
+    content.Set("thumbnail", t);
+}
+
+TdObject SendContent(int64_t chatId, TdObject content, int64_t replyToMessageId) {
+    TdObject o = Make("sendMessage");
+    o.Set("chat_id", TdObject(chatId));
+    if (replyToMessageId) {
+        TdObject reply = Make("inputMessageReplyToMessage");
+        reply.Set("message_id", TdObject(replyToMessageId));
+        o.Set("reply_to", reply);
+    }
+    o.Set("input_message_content", content);
+    return o;
 }
 
 } // namespace
@@ -68,10 +103,20 @@ TdObject SetPhoneNumber(const std::string& phone) {
     return o;
 }
 
+TdObject RequestQrCode() {
+    TdObject o = Make("requestQrCodeAuthentication");
+    o.Set("other_user_ids", TdObject::MakeArray());
+    return o;
+}
+
 TdObject CheckCode(const std::string& code) {
     TdObject o = Make("checkAuthenticationCode");
     o.Set("code", TdObject(code));
     return o;
+}
+
+TdObject ResendCode() {
+    return Make("resendAuthenticationCode");
 }
 
 TdObject CheckPassword(const std::string& password) {
@@ -115,14 +160,52 @@ TdObject GetChatHistory(int64_t chatId, int64_t fromMessageId, int32_t limit) {
 }
 
 TdObject SendText(int64_t chatId, const std::string& text, int64_t replyToMessageId) {
-    TdObject o = Make("sendMessage");
-    o.Set("chat_id", TdObject(chatId));
-    if (replyToMessageId) {
-        TdObject reply = Make("inputMessageReplyToMessage");
-        reply.Set("message_id", TdObject(replyToMessageId));
-        o.Set("reply_to", reply);
-    }
-    o.Set("input_message_content", Text(text));
+    return SendContent(chatId, Text(text), replyToMessageId);
+}
+
+TdObject SendPhoto(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId) {
+    // The size is left to TDLib, which reads the file; the server makes the
+    // other sizes.
+    TdObject content = Make("inputMessagePhoto");
+    content.Set("photo", LocalFile(localPath));
+    content.Set("added_sticker_file_ids", TdObject::MakeArray());
+    content.Set("width", TdObject(0));
+    content.Set("height", TdObject(0));
+    content.Set("caption", Formatted(caption));
+    return SendContent(chatId, content, replyToMessageId);
+}
+
+TdObject SendVideo(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId,
+                   const Thumbnail& thumbnail) {
+    TdObject content = Make("inputMessageVideo");
+    content.Set("video", LocalFile(localPath));
+    SetThumbnail(content, thumbnail);
+    content.Set("added_sticker_file_ids", TdObject::MakeArray());
+    content.Set("duration", TdObject(0));
+    content.Set("width", TdObject(0));
+    content.Set("height", TdObject(0));
+    content.Set("supports_streaming", TdObject(true));
+    content.Set("caption", Formatted(caption));
+    return SendContent(chatId, content, replyToMessageId);
+}
+
+TdObject SendDocument(int64_t chatId, const std::string& localPath, const std::string& caption, int64_t replyToMessageId,
+                      const Thumbnail& thumbnail) {
+    TdObject content = Make("inputMessageDocument");
+    content.Set("document", LocalFile(localPath));
+    SetThumbnail(content, thumbnail);
+    content.Set("disable_content_type_detection", TdObject(false));
+    content.Set("caption", Formatted(caption));
+    return SendContent(chatId, content, replyToMessageId);
+}
+
+TdObject DownloadFile(int32_t fileId, int32_t priority) {
+    TdObject o = Make("downloadFile");
+    o.Set("file_id", TdObject(static_cast<int64_t>(fileId)));
+    o.Set("priority", TdObject(static_cast<int64_t>(priority)));
+    o.Set("offset", TdObject(0));
+    o.Set("limit", TdObject(0));
+    o.Set("synchronous", TdObject(false));
     return o;
 }
 

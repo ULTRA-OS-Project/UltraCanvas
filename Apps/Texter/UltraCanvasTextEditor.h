@@ -80,6 +80,8 @@ namespace UltraCanvas {
         std::string defaultLanguage = "Plain Text";
         bool darkTheme = false;
         bool wordWrap = true;
+        // Spaces, tabs and line ends drawn as faint marks in text tabs.
+        bool showHiddenCharacters = false;
         // Word-processing documents shown on their pages (headers, footers,
         // page breaks) rather than as one column.
         bool documentPageLayout = true;
@@ -495,6 +497,10 @@ namespace UltraCanvas {
         void OnViewToggleTheme();
         void OnViewToggleLineNumbers(bool checked);
         void OnViewToggleWordWrap(bool checked);
+        void OnViewToggleHiddenCharacters(bool checked);
+        // Ticks the View menu's Line Numbers, Word Wrap and Hidden Characters
+        // to match the config after the editor's context menu changed one.
+        void UpdateViewMenuChecks();
         void OnViewTogglePageLayout(bool checked);
         void OnViewToggleToolbar(bool checked);
         void OnViewToggleMarkdownToolbar(bool checked);

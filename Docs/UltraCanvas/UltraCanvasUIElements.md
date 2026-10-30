@@ -239,6 +239,7 @@ Each takes its data through setters and renders itself; most have a
 | Words sized by frequency, optionally inside a shape or image mask | `UltraCanvasWordCloudElement` | `Plugins/Diagrams/UltraCanvasWordCloudDiagram.h` |
 | Seats by party: hemicycle, circle, Westminster benches, grid | `UltraCanvasParliamentDiagram` | `Plugins/Diagrams/UltraCanvasParliamentDiagram.h` |
 | The four-panel SWOT infographic | `UltraCanvasSWOTDiagram` | `Plugins/Diagrams/UltraCanvasSWOTDiagram.h` |
+| A grid of named categories where two rated axes cross: a 9-box talent grid, performance vs potential, a performance management matrix, skill / will | `UltraCanvasPerformanceMatrix` | `Plugins/Diagrams/UltraCanvasPerformanceMatrix.h` |
 | Cause and effect (Ishikawa / fishbone) | `UltraCanvasFishboneDiagram` | `Plugins/Diagrams/UltraCanvasFishboneDiagram.h` |
 | A hub with a ring of labelled nodes and satellites | `UltraCanvasCircleDiagram` | `Plugins/Diagrams/UltraCanvasCircleDiagram.h` |
 | A narrative timeline along a decorative path (**not** date-accurate — that is `UltraCanvasTimelineChart`) | `UltraCanvasTimelineDiagram` | `Plugins/Diagrams/UltraCanvasTimelineDiagram.h` |

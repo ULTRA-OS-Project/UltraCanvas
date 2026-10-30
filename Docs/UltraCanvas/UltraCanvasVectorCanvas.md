@@ -75,14 +75,20 @@ Tree helpers: `ParentOf`, `IndexInParent`, `LayerOf`, `TopLevelOf` (the
 layer's child that contains an element — what a click selects unless the
 user goes "inside" a group), `ParentToDocument` (the matrix from an
 element's parent space to the document), `DocumentBounds` (an element's
-box in document space), `AllElements`, `Detach`.
+geometry box in document space - a line's box runs down its middle),
+`PaintBounds` (the box it paints, its line included: half the width to
+each side, miter points within the limit, square and round caps,
+arrowheads, a width profile's or brush's widest point; measured through
+every transform, so a turned line is not a box around its box),
+`OwnPaintBounds` (the same before the element's own transform),
+`AllElements`, `Detach`.
 
 ## Selection
 
 ```cpp
 VectorSelection selection;
 selection.Set(rect);                // or Set({a, b}), Add, Remove, Toggle, Clear
-selection.Bounds();                 // union of DocumentBounds, document units
+selection.Bounds();                 // union of PaintBounds (lines included), document units
 selection.AddListener([&] { canvas->Refresh(); });
 ```
 
@@ -272,12 +278,40 @@ What the element does by itself:
   beat the grid at equal distance. Every pointer event carries both the
   raw and the snapped point.
 - **Selection handles** — eight scale handles, or in `Rotate` mode round
-  rotate handles at the corners, skew diamonds at the edges and a movable
-  rotation centre (`SetHandleMode`, `SetRotationCenter`); `HitTestHandle`
-  tells a selector tool which one is under the pointer, `Body` when the
-  pointer is inside the bounds, `NoHandle` otherwise.
+  rotate handles at the corners, skew diamonds at the edges, a movable
+  rotation centre and a rotation handle (`SetHandleMode`, `SetRotationCenter`,
+  `onHandleModeChanged`, `onRotationCenterChanged`); `HitTestHandle`
+  tells a selector tool which one is under the pointer (`Rotation` for the
+  rotation handle), `Body` when the pointer is inside the bounds, `NoHandle`
+  otherwise.
+  - The frame is the box the selection paints - a thick line's width
+    included (`VectorEdit::PaintBounds`) - and so are the outlines of
+    several selected objects and the edges object snapping finds. It is
+    measured once per paint and once per hit test.
+  - In `Rotate` mode one selected object shows its own box turned and
+    sheared as it is, and the handles sit on that frame; several objects
+    show their upright bounds. `SelectionFrame()` returns the frame's four
+    corners, `SelectionFramePoint(fx, fy)` a point across it and
+    `SelectionFrameFraction(p)` the way back.
+  - The rotation handle starts at the rotation centre and points the way
+    the selection is turned (`RotationHandleAngle()`, degrees
+    counter-clockwise from up): `VectorRotationHandleStyle::Dial` (the
+    default) draws a ring of 15° ticks round the centre with a wedge from 0
+    to the angle and the knob on the ring, `Stem` a line to a knob just
+    beyond the frame (`SetRotationHandleStyle`).
+  - A selector tool reports the handle it drags with `SetDraggedHandle`;
+    while a turning handle (a rotate corner or the rotation handle) is
+    dragged, the frame and the other handles are hidden and the objects
+    turn on their own, with the centre and the rotation handle over them.
+    `SetRotationHandleAngle` makes the handle follow the drag (several
+    objects have no angle of their own); `nullopt` hands it back.
+  - A centre set with `SetRotationCenter` stays while the same objects
+    stay selected - an edit that selects them again keeps it - and is
+    dropped when the selection changes (`HasRotationCenter`).
 - **Hit testing** — `HitTest(docPoint, tolerancePixels)` and
-  `ElementsIn(rect, fullyInside)` over the document.
+  `ElementsIn(rect, fullyInside)` over the document. `ElementsIn` measures
+  each object by what it paints, its line included, so a marquee that cuts
+  through a thick line does not take it with `fullyInside`.
 - **Tool hooks** — `onToolPress / Drag / Release / Hover / DoubleClick`
   with a `VectorPointerEvent` (`doc`, `snapped`, `snap`, `view`, button,
   modifiers, pressure, `insidePage`), `onToolKey`, `onDrawOverlay` in view

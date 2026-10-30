@@ -150,6 +150,7 @@ vault.Lock();                                       // wipes the derived key
 |---|---|
 | Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under the lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) take turns in it; a vault unlocked directly keeps working too - it re-opens its own file before each read or write when another vault took the store meanwhile (see below) |
 | Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| A Primary Password | `NeedsPassphrase()` (a vault without a device key: it opens only with its passphrase), `ChangePassphrase(current, new, keepAsDeviceKey)`, `NewDeviceKey()`, `ForgetDeviceKey()` - see below |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
 | OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
 
@@ -165,6 +166,29 @@ folder never opened). A vault in the 0.1 format
 the applications used before UltraVault (secrets XOR-ed against a `vault.key`
 sidecar, one line per account in `creds.dat`) is carried across on the first
 successful unlock and its files removed.
+
+**A Primary Password.** By default the vault opens with its device key, so the
+user is never asked - and anything running as the user can open it too. An
+application offers a Primary Password by re-encrypting the file under a
+passphrase the user types and dropping the device key:
+
+<!-- doc-check: UltraVault::DeviceKeyVault vault; std::string typed, current; -->
+```cpp
+vault.ChangePassphrase("", typed, false);              // set: "" = the device key opens it now
+vault.NeedsPassphrase();                               // true from now on: ask at every start
+vault.ChangePassphrase(current, typed, false);         // change
+vault.ChangePassphrase(current, UltraVault::DeviceKeyVault::NewDeviceKey(), true);   // remove
+```
+
+`ChangePassphrase` proves the current passphrase by opening the file with it,
+carries every secret in the file over - whatever its prefix, another module's
+too - into a new file under a new salt, and swaps it in only once it is
+complete: interrupted, the old file and its passphrase stay. A kept device
+key is written beside the old one first (`device.key.next`, which
+`TryAutoUnlock` also tries), so whenever the new file is in place a key that
+opens it is on disk. A device key left by an interrupted change to a Primary
+Password no longer opens the file; the application asks for the passphrase
+and, once it works, calls `ForgetDeviceKey()`.
 
 UltraVault itself is one store per process, so several `DeviceKeyVault`s
 in one program - ChatCube's three messenger providers, each with its own

@@ -6,15 +6,27 @@
 // and whether its channels are open. The picker changes them, so they are
 // saved as they change; there is no settings window. It also keeps the
 // colour palettes under the picker (picker.palettes) and the palettes the
-// user made in the palette manager (picker.userpalettes).
+// user made in the palette manager (picker.userpalettes), the look of the
+// rotation handle (handles.rotation) and whether the transform bar shows
+// the rotation centre on the page or from the middle of the selection
+// (transform.centre); the Selector's panel and the bar change those.
+//
+// Every open window - in this process or another - keeps its own copy, read
+// when it opened, and changes the file through Update: the file is read
+// again, only the change is made to it, and it is written whole by a rename,
+// so a window never writes another's changes back to what they were.
+// Version: 1.4.0 - Update: a change made to the file as it is now, not to the copy the
+//                  window opened with; Save writes through a temporary file and a rename
+// Version: 1.3.0 - handles.rotation (dial / stem) and transform.centre (absolute / relative)
 // Version: 1.2.0 - picker.userpalettes: the palettes made with "Add palette"
 // Version: 1.1.0 - picker.palettes: the palette rows under the colour picker
 // Version: 1.0.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-10-29
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasColorPicker.h"    // ColorPickerWheelStyle and its names
+#include "UltraCanvasVectorCanvas.h"   // VectorRotationHandleStyle
 #include "UltraCanvasSettingsFolder.h"
 
 #include <filesystem>
@@ -42,6 +54,13 @@ public:
     // The user's own palettes, made with the palette manager's "Add
     // palette", in the same form; empty for none.
     std::string userPalettes;
+
+    // ===== ROTATION =====
+    // Rotate mode's handle: a dial round the centre, or a stem from it.
+    VectorRotationHandleStyle rotationHandle = VectorRotationHandleStyle::Dial;
+    // The transform bar's centre fields: the centre's place on the page,
+    // or how far it lies from the middle of the selection.
+    bool centreRelative = false;
 
     // ===== THE FILE =====
     // Empty when the environment names no home to keep settings in.
@@ -83,26 +102,64 @@ public:
         if (it != kv.end()) palettes = it->second;
         it = kv.find("picker.userpalettes");
         if (it != kv.end()) userPalettes = it->second;
+        it = kv.find("handles.rotation");
+        if (it != kv.end()) {
+            if (it->second == "dial") rotationHandle = VectorRotationHandleStyle::Dial;
+            else if (it->second == "stem") rotationHandle = VectorRotationHandleStyle::Stem;
+        }
+        it = kv.find("transform.centre");
+        if (it != kv.end()) {
+            if (it->second == "relative") centreRelative = true;
+            else if (it->second == "absolute") centreRelative = false;
+        }
         return true;
     }
 
+    // Makes `change` (a callable taking ArtCreatorSettings&) to the file as
+    // it is now and to this copy, and saves the file. What another window
+    // changed since this one read the file stays as that window left it.
+    template <class Change>
+    bool Update(Change&& change) {
+        ArtCreatorSettings current = *this;   // what a missing file or key falls back to
+        current.Load();
+        change(current);
+        change(*this);
+        return current.Save();
+    }
+
+    // Writes every setting of this copy. A window changes the file through
+    // Update; Save alone would put back what this copy holds of the others.
     bool Save() const {
         const std::filesystem::path path = ConfigPath();
         if (path.empty()) return false;
         std::error_code ec;
         std::filesystem::create_directories(path.parent_path(), ec);
         if (ec) return false;
-        std::ofstream file(path);
+        // Written beside it and renamed over it: a window reading the file
+        // meanwhile finds the old one or the new one, never half of one.
+        std::filesystem::path temporary = path;
+        temporary += ".new";
+        if (!WriteTo(temporary)) { std::filesystem::remove(temporary, ec); return false; }
+        std::filesystem::rename(temporary, path, ec);
+        if (ec) { std::filesystem::remove(temporary, ec); return false; }
+        return true;
+    }
+
+private:
+    bool WriteTo(const std::filesystem::path& target) const {
+        std::ofstream file(target, std::ios::binary | std::ios::trunc);
         if (!file.is_open()) return false;
         file << "# ArtCreator configuration\n\n";
         file << "picker.design = " << ColorPickerWheelStyleName(pickerDesign) << "\n";
         file << "picker.channels = " << (pickerChannelsOpen ? "open" : "folded") << "\n";
         if (!palettes.empty()) file << "picker.palettes = " << palettes << "\n";
         if (!userPalettes.empty()) file << "picker.userpalettes = " << userPalettes << "\n";
+        file << "handles.rotation = " << (rotationHandle == VectorRotationHandleStyle::Stem ? "stem" : "dial") << "\n";
+        file << "transform.centre = " << (centreRelative ? "relative" : "absolute") << "\n";
+        file.flush();
         return file.good();
     }
 
-private:
     static std::string Trim(const std::string& s) {
         const size_t a = s.find_first_not_of(" \t");
         if (a == std::string::npos) return {};

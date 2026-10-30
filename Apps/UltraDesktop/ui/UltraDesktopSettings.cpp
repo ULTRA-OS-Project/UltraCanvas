@@ -2,6 +2,7 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.2.0 - the pinned applications
 // Version: 0.1.1 - the file lives in the framework's desktop settings folder
 //                  (UltraCanvasDesktopSettingsFolder): Application Support on macOS,
 //                  moved there from ~/.config once; every variable read as UTF-8
@@ -135,6 +136,9 @@ std::string DesktopSettings::ToJson() const {
         if (parsed.success && kanban.IsObject()) board.Set("board", std::move(kanban));
     }
     root.Set("categoryBoard", std::move(board));
+    JSONValue pinned = JSONValue::MakeArray();
+    for (const std::string& key : pinnedApps) pinned.Append(JSONValue(key));
+    root.Set("pinnedApps", std::move(pinned));
     JSONSerializeOptions options;
     options.pretty = true;
     return JSON::Serialize(root, options);
@@ -186,8 +190,28 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
         const JSONValue& kanban = board.Get("board");
         if (kanban.IsObject()) cb.board = JSON::Serialize(kanban);
     }
+    const JSONValue& pinned = root.Get("pinnedApps");
+    if (pinned.IsArray()) {
+        for (size_t i = 0; i < pinned.GetSize(); ++i) {
+            const std::string key = pinned.At(i).GetString();
+            if (!key.empty()) loaded.SetPinned(key, true);
+        }
+    }
     *this = std::move(loaded);
     return true;
+}
+
+bool DesktopSettings::IsPinned(const std::string& key) const {
+    return std::find(pinnedApps.begin(), pinnedApps.end(), key) != pinnedApps.end();
+}
+
+void DesktopSettings::SetPinned(const std::string& key, bool pinned) {
+    if (key.empty()) return;
+    const bool already = IsPinned(key);
+    if (pinned && !already) pinnedApps.push_back(key);
+    if (!pinned && already) {
+        pinnedApps.erase(std::remove(pinnedApps.begin(), pinnedApps.end(), key), pinnedApps.end());
+    }
 }
 
 Sticker* DesktopSettings::FindSticker(const std::string& id) {

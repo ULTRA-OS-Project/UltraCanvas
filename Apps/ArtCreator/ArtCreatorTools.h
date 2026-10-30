@@ -9,12 +9,13 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
+// Version: 1.6.0 - ArtToolContext::setRotationHandleStyle
 // Version: 1.5.0 - ArtOptionWidgets::AddSection; AddSwitch takes icons
 // Version: 1.4.0 - ArtToolContext::iconPath; ArtOptionWidgets::AddIconBar and AddSwitch
 // Version: 1.3.0 - ArtToolContext::lockAspectRatio
 // Version: 1.2.0 - ArtToolContext::iconPixel
 // Version: 1.1.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -118,6 +119,9 @@ struct ArtToolContext {
     bool lockAspectRatio = false;
     // A panel icon's full path from its name in media/icons/artcreator/.
     std::function<std::string(const std::string&)> iconPath;
+    // The Selector's Dial / Stem switch: the window shows the rotation
+    // handle that way and keeps the choice in its settings.
+    std::function<void(VectorRotationHandleStyle)> setRotationHandleStyle;
 };
 
 class ArtTool {

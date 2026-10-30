@@ -347,6 +347,7 @@ jobs:
             ${{ matrix.msys_prefix }}-fmt
             ${{ matrix.msys_prefix }}-imagemagick
             ${{ matrix.msys_prefix }}-libheif
+            ${{ matrix.msys_prefix }}-libjxl
             ${{ matrix.msys_prefix }}-zbar
             ${{ matrix.msys_prefix }}-libsodium
             ${{ matrix.msys_prefix }}-sqlite3
@@ -354,6 +355,7 @@ jobs:
             ${{ matrix.msys_prefix }}-libmupdf
             ${{ matrix.msys_prefix }}-curl-winssl
             ${{ matrix.msys_prefix }}-openssl
+            ${{ matrix.msys_prefix }}-gpgme
             ${{ matrix.msys_prefix }}-c-ares
             ${{ matrix.msys_prefix }}-leptonica
             ${{ matrix.msys_prefix }}-tesseract-ocr
@@ -429,6 +431,91 @@ jobs:
         with:
           path: ${{ steps.msys2.outputs.msys2-location }}\var\cache\pacman\pkg
           key: msys2-pkgs-${{ matrix.msystem }}-${{ steps.msys2-deps.outputs.pkg-hash }}
+
+      # libheif without the GPL encoders. MSYS2 builds libheif with plug-in
+      # loading off, so every codec it has is linked into libheif.dll - x265
+      # (HEVC) and x264 (AVC) among them, both GPL. libvips' vips-heif module
+      # and ImageMagick's HEIC coder load that DLL, so every app on the core
+      # would carry GPL code. Here the same libheif release is rebuilt with
+      # MSYS2's options minus x265 and x264, and its libheif.dll replaces
+      # MSYS2's (same version, same exports). HEIC is still written, by
+      # kvazaar (BSD-3-Clause, already a libheif dependency in MSYS2): 4:2:0
+      # only, so a "lossless" HEIC is exact in luma but not in colour. AVIF
+      # (aom, dav1d, SVT-AV1, rav1e) and HEIC reading (libde265) are as
+      # before. FFmpeg still links x264 / x265 for VideoFX, which is GPL on
+      # its own terms (THIRD_PARTY_LICENSES.md) - the core no longer loads
+      # them. The build is cached per MSYSTEM and libheif version.
+      - name: Which libheif to rebuild (Windows)
+        if: runner.os == 'Windows'
+        id: libheif
+        run: |
+          ver=$(pacman -Q "${MINGW_PACKAGE_PREFIX}-libheif" | awk '{print $2}')
+          echo "pkgver=$ver" >> "$GITHUB_OUTPUT"
+          echo "version=${ver%-*}" >> "$GITHUB_OUTPUT"
+          echo "MSYS2 libheif $ver"
+
+      - name: Restore the libheif rebuild (Windows)
+        if: runner.os == 'Windows'
+        id: libheif-cache
+        uses: actions/cache@v5
+        with:
+          path: .libheif-nogpl
+          key: libheif-nogpl-v1-${{ matrix.msystem }}-${{ steps.libheif.outputs.pkgver }}
+
+      - name: Rebuild libheif without x265 and x264 (Windows)
+        if: runner.os == 'Windows' && steps.libheif-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 30
+        env:
+          LIBHEIF_VERSION: ${{ steps.libheif.outputs.version }}
+        run: |
+          set -euo pipefail
+          src="$(cygpath -u "$RUNNER_TEMP")/libheif-src"
+          rm -rf "$src" && mkdir -p "$src"
+          curl -fsSL --retry 5 --retry-all-errors \
+            "https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz" |
+            tar -xz -C "$src"
+          # MSYS2's PKGBUILD options (mingw-w64-libheif), with x265 and x264
+          # off and nothing but the library built.
+          cmake -S "$src/libheif-${LIBHEIF_VERSION}" -B "$src/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_TESTING=OFF \
+            -DENABLE_PLUGIN_LOADING=OFF \
+            -DWITH_HEADER_COMPRESSION=ON \
+            -DWITH_X265=OFF \
+            -DWITH_X264=OFF \
+            -DWITH_KVAZAAR=ON \
+            -DWITH_DAV1D=ON \
+            -DWITH_RAV1E=ON \
+            -DWITH_SvtEnc=ON \
+            -DWITH_JPEG_DECODER=ON \
+            -DWITH_JPEG_ENCODER=ON \
+            -DWITH_OpenJPEG_DECODER=ON \
+            -DWITH_OpenJPEG_ENCODER=ON \
+            -DWITH_OPENJPH_ENCODER=ON \
+            -DWITH_EXAMPLES=OFF \
+            -DWITH_GDK_PIXBUF=OFF
+          cmake --build "$src/build" --target heif
+          dll=$(find "$src/build" -name 'libheif.dll')
+          test -n "$dll"
+          mkdir -p .libheif-nogpl
+          cp "$dll" .libheif-nogpl/
+
+      - name: Install the libheif rebuild (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -euo pipefail
+          cp -f .libheif-nogpl/libheif.dll "$MINGW_PREFIX/bin/libheif.dll"
+          imports=$(objdump -p "$MINGW_PREFIX/bin/libheif.dll" | awk '/DLL Name:/ {print $3}')
+          echo "$imports"
+          if echo "$imports" | grep -qi 'x26[45]'; then
+            echo "::error::libheif.dll still imports a GPL encoder (x264 / x265)"
+            exit 1
+          fi
+          if ! echo "$imports" | grep -qi 'kvazaar'; then
+            echo "::error::libheif.dll does not import kvazaar - no HEIC encoder"
+            exit 1
+          fi
 
       # ===== macOS: build tools from Homebrew, libraries from vcpkg (shared
       # by the arm64 and x86_64 jobs; Homebrew lives at /opt/homebrew on Apple
@@ -601,7 +688,7 @@ jobs:
           scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
           scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
-          scripts/ci-apt.sh install libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+          scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
           scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev
@@ -767,6 +854,9 @@ jobs:
           scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev
           # libsodium: cryptographic backend for UltraCrypt
           scripts/ci-apt.sh install libsodium-dev
+          # UltraMail's OpenPGP: GPGME, and GnuPG for its tests (S/MIME uses
+          # libssl-dev, which libcurl4-openssl-dev brings)
+          scripts/ci-apt.sh install libgpgme-dev gnupg libssl-dev
           # UltraDatabase: SQLite is the single-user store, libpq the
           # multi-user one, libmariadb (MariaDB Connector/C) the MySQL /
           # MariaDB driver. All named explicitly rather than relied on from
@@ -949,12 +1039,15 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
+            -DULTRACANVAS_BUILD_HEIF_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_FILER_TESTS=ON \
             -DULTRACANVAS_BUILD_EMOJI_TESTS=ON \
             -DULTRACANVAS_BUILD_VIDEOFX_TESTS=ON \
             -DULTRACANVAS_BUILD_DESKTOPSHELL_TESTS=ON \
             -DULTRACANVAS_BUILD_VAULT_TESTS=ON \
+            -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
@@ -988,8 +1081,11 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRASTORE_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRASTOREADMIN_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_CRYPT_TESTS=ON \
             -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DULTRACANVAS_BUILD_VECTOR_FORMAT_TESTS=ON \
+            -DULTRACANVAS_BUILD_JXL_TESTS=ON \
+            -DULTRACANVAS_BUILD_HEIF_TESTS=ON \
             -DULTRACANVAS_BUILD_STARTPAGE_TESTS=ON \
             -DULTRACANVAS_BUILD_DEVICE_TLS_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
@@ -1513,6 +1609,40 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^(VectorFormatsPluginTest|CDRWriterTest)$"
 
+      # JPEG XL in the libvips each package ships: vcpkg's, built with its
+      # jpeg-xl feature, on macOS, and MSYS2's on Windows, which has JPEG XL
+      # only through its vips-jxl module and libjxl. ImageJxlTest exits 0 when
+      # libvips has neither jxlload nor jxlsave, so the step fails unless the
+      # checks really ran. ULTRACANVAS_BUILD_JXL_TESTS builds it without
+      # BUILD_TESTS; Linux runs it in image-codecs.yml, on Ubuntu 24.04 -
+      # 22.04's libvips has no libjxl.
+      - name: Run JPEG XL test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: |
+          ctest --output-on-failure --no-tests=error -V -R "^ImageJxlTest$" 2>&1 | tee jxl-test.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if ! grep -q 'All JPEG XL checks passed' jxl-test.log; then
+            echo "::error::ImageJxlTest did not run its checks: this libvips has no JPEG XL"
+            exit 1
+          fi
+
+      # HEIF and AVIF in the libheif each package ships, held to what each
+      # must and must not do (UC_HEIF_EXPECT, see Tests/ImageHeifTest.cpp).
+      # macOS: libde265 and aom only - HEIC read, AVIF read and write, and
+      # no HEIC encoder, since x265 is GPL and libvips is in the core every
+      # app links; the step fails if one turns up. Windows: MSYS2's codecs
+      # with libheif rebuilt without x265 (above), so kvazaar writes HEIC and
+      # both formats read and write.
+      # ULTRACANVAS_BUILD_HEIF_TESTS builds it without BUILD_TESTS; Linux runs
+      # it in image-codecs.yml, with every libheif plug-in installed.
+      - name: Run HEIF/AVIF test (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        env:
+          UC_HEIF_EXPECT: ${{ runner.os == 'macOS' && 'decode=heic,avif encode=avif no-encode=heic no-encoder=x265,x264' || 'decode=heic,avif encode=heic,avif encoder=kvazaar no-encoder=x265,x264' }}
+        run: ctest --output-on-failure --no-tests=error -V -R "^ImageHeifTest$"
+
       # UltraCleaner's engine suite: the path guard, the rule table, the
       # scanner, the remover and the album logic, over temporary trees only
       # (no display, no network, nothing outside the temp folder removed).
@@ -1525,6 +1655,17 @@ jobs:
         if: runner.os != 'Linux'
         working-directory: build
         run: ctest --output-on-failure --no-tests=error -R "^UltraCleanerEngine$"
+
+      # UltraCrypt on the two systems whose trust store is their own: the
+      # certificate check's system roots are Windows' ROOT store and macOS's
+      # anchors there (UltraCryptSystemRoots.cpp), and the suite checks that a
+      # root shipped with the system - Microsoft's on Windows, which no
+      # OpenSSL bundle carries - is trusted through them. Linux runs the suite
+      # in the full pass, where the store is OpenSSL's own. Headless.
+      - name: Run UltraCryptTests (macOS/Windows)
+        if: runner.os != 'Linux'
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error -R "^UltraCryptTests$"
 
       # VideoFX's engine on Windows, on MSYS2's FFmpeg - the one the package
       # ships - and through the Windows file names, cache folder and fonts;

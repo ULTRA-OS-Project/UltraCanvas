@@ -61,11 +61,13 @@ std::string MakeAccountId(const std::string& providerId, const std::string& user
     return id;
 }
 
-Result AccountStore::Open(const std::string& connectionName, const std::string& databasePath) {
+Result AccountStore::Open(const std::string& connectionName, const std::string& databasePath,
+                          std::shared_ptr<const UltraCryptSecureBuffer> encryptionKey) {
     UltraDbConnectionConfig cfg;
     cfg.name     = connectionName;
     cfg.driver   = "sqlite";
     cfg.database = databasePath;
+    cfg.encryptionKey = std::move(encryptionKey);
     UltraDbResult reg = UltraDb_RegisterConnection(cfg);
     if (!reg) return FromDb(reg, "open cloud account store");
     connection_ = connectionName;
