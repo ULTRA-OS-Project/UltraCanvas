@@ -1,8 +1,9 @@
 // core/UltraCanvasColorSwatchBar.cpp
 // Platform-independent colour swatch strip implementation.
+// Version: 1.4.0 - the "auto" swatch
 // Version: 1.3.0 - onColorHovered; full wrapped lines where they fit
 // Version: 1.2.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-10-27
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasColorSwatchBar.h"
@@ -54,6 +55,14 @@ void UltraCanvasColorSwatchBar::SetShowCheckeredEntry(bool show) {
     if (show == showCheckered_) return;
     showCheckered_ = show;
     if (!show) checkeredSelected_ = false;
+    hoverSlot_ = -1;
+    RequestRedraw();
+}
+
+void UltraCanvasColorSwatchBar::SetShowAutoEntry(bool show) {
+    if (show == showAuto_) return;
+    showAuto_ = show;
+    if (!show) autoSelected_ = false;
     hoverSlot_ = -1;
     RequestRedraw();
 }
@@ -119,6 +128,7 @@ void UltraCanvasColorSwatchBar::SelectColor(const Color& c, bool runCallback) {
     }
     selectedIndex_ = found;
     checkeredSelected_ = false;
+    autoSelected_ = false;
     RequestRedraw();
     if (runCallback && found >= 0 && onColorSelected) {
         onColorSelected(colors_[static_cast<size_t>(found)]);
@@ -128,13 +138,23 @@ void UltraCanvasColorSwatchBar::SelectColor(const Color& c, bool runCallback) {
 void UltraCanvasColorSwatchBar::SelectCheckered(bool runCallback) {
     selectedIndex_ = -1;
     checkeredSelected_ = true;
+    autoSelected_ = false;
     RequestRedraw();
     if (runCallback && onCheckeredSelected) onCheckeredSelected();
+}
+
+void UltraCanvasColorSwatchBar::SelectAuto(bool runCallback) {
+    selectedIndex_ = -1;
+    checkeredSelected_ = false;
+    autoSelected_ = true;
+    RequestRedraw();
+    if (runCallback && onAutoSelected) onAutoSelected();
 }
 
 void UltraCanvasColorSwatchBar::ClearSelection() {
     selectedIndex_ = -1;
     checkeredSelected_ = false;
+    autoSelected_ = false;
     RequestRedraw();
 }
 
@@ -143,11 +163,11 @@ void UltraCanvasColorSwatchBar::ClearSelection() {
 // ===================================================================
 
 int UltraCanvasColorSwatchBar::SlotCount() const {
-    return static_cast<int>(colors_.size()) + (showCheckered_ ? 1 : 0);
+    return static_cast<int>(colors_.size()) + LeadingSlots();
 }
 
 int UltraCanvasColorSwatchBar::ColorIndexOfSlot(int slot) const {
-    const int index = showCheckered_ ? slot - 1 : slot;
+    const int index = slot - LeadingSlots();
     if (index < 0 || index >= static_cast<int>(colors_.size())) return -1;
     return index;
 }
@@ -329,6 +349,15 @@ void UltraCanvasColorSwatchBar::DrawCheckerboard(IRenderContext* ctx,
     ctx->PopState();
 }
 
+// Light on the left, dark on the right: "whichever suits".
+void UltraCanvasColorSwatchBar::DrawAutoSwatch(IRenderContext* ctx,
+                                               const Rect2Df& r) const {
+    const float half = std::floor(r.width * 0.5f);
+    ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, half, r.height), style_.autoLight, 0.0f);
+    ctx->DrawFilledRectangle(Rect2Dd(r.x + half, r.y, r.width - half, r.height),
+                             style_.autoDark, 0.0f);
+}
+
 void UltraCanvasColorSwatchBar::Render(IRenderContext* ctx,
                                        const Rect2Df& /*dirtyRect*/) {
     if (!IsVisible()) return;
@@ -350,12 +379,14 @@ void UltraCanvasColorSwatchBar::Render(IRenderContext* ctx,
         if (r.width <= 0.0f || r.height <= 0.0f) continue;
 
         const int colorIndex = ColorIndexOfSlot(slot);
-        const bool selected = IsCheckeredSlot(slot)
-                              ? checkeredSelected_
+        const bool selected = IsAutoSlot(slot)      ? autoSelected_
+                            : IsCheckeredSlot(slot) ? checkeredSelected_
                               : (colorIndex >= 0 && colorIndex == selectedIndex_);
         const bool hovered = (slot == hoverSlot_);
 
-        if (IsCheckeredSlot(slot)) {
+        if (IsAutoSlot(slot)) {
+            DrawAutoSwatch(ctx, r);
+        } else if (IsCheckeredSlot(slot)) {
             DrawCheckerboard(ctx, r);
         } else if (colorIndex >= 0) {
             ctx->DrawFilledRectangle(Rect2Dd(r.x, r.y, r.width, r.height),
@@ -397,7 +428,9 @@ bool UltraCanvasColorSwatchBar::OnEvent(const UCEvent& event) {
                 // The tooltip names what the pointer is over: the colour's hex
                 // value, or what the checkerboard stands for.
                 const int colorIndex = ColorIndexOfSlot(slot);
-                if (IsCheckeredSlot(slot)) {
+                if (IsAutoSlot(slot)) {
+                    SetTooltip("Automatic (a background that suits what is shown)");
+                } else if (IsCheckeredSlot(slot)) {
                     SetTooltip("Checkered (no background colour)");
                 } else if (colorIndex >= 0) {
                     SetTooltip(HexOf(colors_[static_cast<size_t>(colorIndex)]));
@@ -445,13 +478,16 @@ bool UltraCanvasColorSwatchBar::OnEvent(const UCEvent& event) {
                 return true;
             }
             if (event.button != UCMouseButton::Left) return false;
-            if (IsCheckeredSlot(slot)) {
+            if (IsAutoSlot(slot)) {
+                SelectAuto(true);
+            } else if (IsCheckeredSlot(slot)) {
                 SelectCheckered(true);
             } else {
                 const int colorIndex = ColorIndexOfSlot(slot);
                 if (colorIndex < 0) return false;
                 selectedIndex_ = colorIndex;
                 checkeredSelected_ = false;
+                autoSelected_ = false;
                 RequestRedraw();
                 if (onColorSelected) {
                     onColorSelected(colors_[static_cast<size_t>(colorIndex)]);

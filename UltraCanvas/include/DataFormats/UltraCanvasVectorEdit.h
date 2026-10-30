@@ -11,10 +11,12 @@
 // The raster counterpart is UCRasterDocument / UCRasterSelection; the
 // split is the same: the model edits without a window, the element shows
 // it, the application owns the tools.
+// Version: 1.2.0 - PaintBounds / OwnPaintBounds: the box an element paints, its line
+//                  included; the selection's bounds, align, distribute and ElementsIn use it
 // Version: 1.1.0 - SnapToPixels / SnapToPixel: shapes onto the pixel grid of
 //                  the size an icon is shown at
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -56,8 +58,21 @@ ElementPtr TopLevelOf(const ElementPtr& element);
 // parent space -> document space (every ancestor's Transform composed).
 Matrix3x3 ParentToDocument(const ElementPtr& element);
 // Bounding box in document space (the parent-space box mapped through the
-// ancestors; a transformed box's bounding box, so conservative).
+// ancestors; a transformed box's bounding box, so conservative). The
+// geometry alone: a line's box runs down its middle.
 Rect2Dd DocumentBounds(const ElementPtr& element);
+// The box an element paints in document space, its line included: the
+// outline grown by the stroke as the renderer draws it - half the width to
+// each side, a miter join's point while it is within the miter limit,
+// square and round caps, arrowheads, the widest point of a width profile
+// or a brush. The outline's points go through every transform before the
+// box is taken, so a turned or sheared line measures as it is drawn, not
+// as a box around its box. Without a line it is the geometry's box. What
+// an editor shows and lines up: the selection's bounds, align, distribute.
+Rect2Dd PaintBounds(const ElementPtr& element);
+// The same in the element's own space, before its own Transform (its
+// ancestors' too): the box an editor turns with the object.
+Rect2Dd OwnPaintBounds(const ElementPtr& element);
 // All elements of the document in drawing order, layers included when
 // `includeLayers` is set.
 std::vector<ElementPtr> AllElements(const VectorDocument& doc, bool includeLayers = false);
@@ -82,7 +97,8 @@ public:
     void Toggle(const ElementPtr& element);
     void Clear();
 
-    // Union of the elements' document-space bounds.
+    // Union of the elements' paint bounds in document space - the box they
+    // paint, their lines included (PaintBounds).
     Rect2Dd Bounds() const;
     std::vector<std::string> Ids() const;
     // After an undo / redo the document holds new element objects: the
@@ -188,8 +204,9 @@ public:
 
     std::optional<VectorHit> HitTest(const VectorDocument& doc, const Point2Dd& documentPoint,
                                      double tolerance, bool skipLocked = true) const;
-    // Layer-level elements whose document bounds intersect (or, with
-    // fullyInside, lie within) the rectangle, in drawing order.
+    // Layer-level elements whose paint bounds - their lines included
+    // (PaintBounds) - intersect (or, with fullyInside, lie within) the
+    // rectangle, in drawing order.
     std::vector<ElementPtr> ElementsIn(const VectorDocument& doc, const Rect2Dd& documentRect,
                                        bool fullyInside, bool skipLocked = true) const;
     // One element in its own coordinate space.
@@ -244,7 +261,7 @@ void DeleteElements(const std::vector<ElementPtr>& elements);
 std::vector<ElementPtr> DuplicateElements(const std::vector<ElementPtr>& elements, double dx = 0, double dy = 0);
 
 enum class AlignMode { Left, HorizontalCenter, Right, Top, VerticalCenter, Bottom };
-// Aligns the elements' document bounds to the reference rectangle (the
+// Aligns the elements' paint bounds (PaintBounds) to the reference rectangle (the
 // selection's own bounds when none is given, the page for "align to page").
 void AlignElements(const std::vector<ElementPtr>& elements, AlignMode mode,
                    const std::optional<Rect2Dd>& reference = std::nullopt);

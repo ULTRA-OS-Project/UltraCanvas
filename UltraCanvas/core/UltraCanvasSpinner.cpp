@@ -25,8 +25,9 @@ namespace UltraCanvas {
     }
 
     UltraCanvasSpinner::~UltraCanvasSpinner() {
-        // The run timer captures `this`.
+        // The run and repeat timers capture `this`.
         CancelStepRunTimer();
+        StopButtonRepeat();
     }
 
 // ===================================================================
@@ -577,11 +578,13 @@ namespace UltraCanvas {
                 SetHovered(false);
                 hoveredPart = Part::NonePart;
                 pressedPart = Part::NonePart;
+                StopButtonRepeat();
                 EndStepRun();
                 RequestRedraw();
                 return true;
             case UCEventType::FocusLost:
                 if (editing) CommitEditing();
+                StopButtonRepeat();
                 EndStepRun();
                 return false;
             default:
@@ -596,15 +599,18 @@ namespace UltraCanvas {
 
         SetFocus(true);
         pressedPart = part;
+        hoveredPart = part;   // a press without a move before it is on the part too
         // The run lasts while the button is held: no timer ends it.
         CancelStepRunTimer();
 
         if (part == Part::IncButton) {
             if (editing) CommitEditing();
             StepBy(1.0);
+            StartButtonRepeat();
         } else if (part == Part::DecButton) {
             if (editing) CommitEditing();
             StepBy(-1.0);
+            StartButtonRepeat();
         } else if (part == Part::Field) {
             if (dropdownEnabled) {
                 // Combobox-style: the field click toggles the value dropdown.
@@ -622,6 +628,7 @@ namespace UltraCanvas {
     bool UltraCanvasSpinner::HandleMouseUp(const UCEvent& /*event*/) {
         if (pressedPart == Part::NonePart) return false;
         pressedPart = Part::NonePart;
+        StopButtonRepeat();
         EndStepRun();
         RequestRedraw();
         return true;
@@ -780,6 +787,36 @@ namespace UltraCanvas {
             stepRunTimer = InvalidTimerId;
             EndStepRun();
         });
+    }
+
+    void UltraCanvasSpinner::StartButtonRepeat() {
+        StopButtonRepeat();
+        if (repeatDelayMs == 0 || repeatIntervalMs == 0) return;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        repeatTimer = app->StartTimer(repeatDelayMs, false, [this](TimerId) {
+            repeatTimer = InvalidTimerId;
+            RepeatHeldButton();
+            if (pressedPart != Part::IncButton && pressedPart != Part::DecButton) return;
+            if (auto* a = UltraCanvasApplication::GetInstance())
+                repeatTimer = a->StartTimer(repeatIntervalMs, true, [this](TimerId) { RepeatHeldButton(); });
+        });
+    }
+
+    void UltraCanvasSpinner::StopButtonRepeat() {
+        if (repeatTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(repeatTimer);
+        repeatTimer = InvalidTimerId;
+    }
+
+    // One repeat of the held button; none while the pointer has slid off
+    // it (the press still holds, so sliding back on carries on).
+    void UltraCanvasSpinner::RepeatHeldButton() {
+        if (pressedPart != Part::IncButton && pressedPart != Part::DecButton) { StopButtonRepeat(); return; }
+        if (IsDisabled() || !IsVisible()) { StopButtonRepeat(); return; }
+        if (hoveredPart != pressedPart) return;
+        StepBy(pressedPart == Part::IncButton ? 1.0 : -1.0);
+        RequestRedraw();
     }
 
     bool UltraCanvasSpinner::SetFocus(bool focus) {

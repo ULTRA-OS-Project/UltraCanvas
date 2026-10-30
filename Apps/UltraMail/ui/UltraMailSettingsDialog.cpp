@@ -26,6 +26,7 @@
 // at the foot of the page in its own tinted block - the notes that explain
 // the setting. A page's "Restore default ..." button sits at the left end of
 // the bottom bar, opposite Close. Changes apply live and are saved at once.
+// Version: 1.16.0 - Privacy > Primary Password: set, change and remove it
 // Version: 1.15.0 - Reading > Attachments: at the bottom or on the right side
 // Version: 1.14.0 - the sections in the tree carry icons (media/icons/ultramail/
 //                   section-*)
@@ -114,6 +115,7 @@ namespace {
     constexpr const char* kPagePrivacy     = "privacy";
     constexpr const char* kPageImages      = "privacy/images";
     constexpr const char* kPageSenderIcons = "privacy/sender-icons";
+    constexpr const char* kPagePrimaryPassword = "privacy/primary-password";
     constexpr const char* kPageDisplay     = "display";
     constexpr const char* kPageLinks       = "display/links";
     constexpr const char* kPageNotify      = "display/notifications";
@@ -196,6 +198,12 @@ namespace {
         std::shared_ptr<UltraCanvasCheckbox> senderIconsBox;
         std::shared_ptr<UltraCanvasCheckbox> siteIconsBox;
 
+        // Privacy > Primary Password
+        std::shared_ptr<UltraCanvasLabel>  primaryStateLabel;
+        std::shared_ptr<UltraCanvasButton> primarySetButton;
+        std::shared_ptr<UltraCanvasButton> primaryChangeButton;
+        std::shared_ptr<UltraCanvasButton> primaryRemoveButton;
+
         // Display > Links
         std::shared_ptr<UltraCanvasRadio> linksStatusRadio;
         std::shared_ptr<UltraCanvasRadio> linksTooltipRadio;
@@ -222,6 +230,7 @@ namespace {
     };
 
     std::shared_ptr<DialogState> g_dialog;
+    SettingsDialog::SecurityHooks g_security;
 
     void ApplyAndSave(DialogState* d) {
         if (d->syncing) return;
@@ -955,6 +964,69 @@ namespace {
         return parts.page;
     }
 
+    // ===== PRIVACY > PRIMARY PASSWORD =====
+    void SyncPrimaryPassword(DialogState* d) {
+        if (!d->primaryStateLabel) return;
+        const bool available = static_cast<bool>(g_security.hasPrimaryPassword);
+        const bool set = available && g_security.hasPrimaryPassword();
+        d->primaryStateLabel->SetText(!available ? "This build has no credential vault to protect."
+                                      : set     ? "A Primary Password is set: UltraMail asks for it at every start."
+                                                : "No Primary Password is set: UltraMail starts without asking.");
+        if (d->primarySetButton)    d->primarySetButton->SetVisible(available && !set);
+        if (d->primaryChangeButton) d->primaryChangeButton->SetVisible(set);
+        if (d->primaryRemoveButton) d->primaryRemoveButton->SetVisible(set);
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildPrimaryPasswordPage(DialogState* d) {
+        PageParts parts = MakePage("um-set-page-primary", "Primary Password",
+                "A password only you know, asked for when UltraMail starts:");
+
+        d->primaryStateLabel = MakeText("um-set-primary-state", "");
+        d->primaryStateLabel->SetFontWeight(FontWeight::Bold);
+        parts.body->AddChild(d->primaryStateLabel);
+
+        auto row = std::make_shared<UltraCanvasContainer>("um-set-primary-buttons");
+        row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.height = CSSLayout::Dimension::Px(28);
+        // The flows ask in dialogs of their own over this window, and the page
+        // shows the state again when they are over.
+        auto run = [d](const std::function<void(UltraCanvasWindowBase*, std::function<void()>)>& flow) {
+            if (!flow) return;
+            flow(d->window.get(), [d]() {
+                if (g_dialog.get() == d && !d->closed) SyncPrimaryPassword(d);
+            });
+        };
+        d->primarySetButton = MakeButton("um-set-primary-set", "Set a Primary Password...", 200,
+                                         [run]() { run(g_security.setPrimaryPassword); });
+        d->primaryChangeButton = MakeButton("um-set-primary-change", "Change...", 110,
+                                            [run]() { run(g_security.changePrimaryPassword); });
+        d->primaryRemoveButton = MakeButton("um-set-primary-remove", "Remove...", 110,
+                                            [run]() { run(g_security.removePrimaryPassword); });
+        row->AddChild(d->primarySetButton);
+        row->AddChild(d->primaryChangeButton);
+        row->AddChild(d->primaryRemoveButton);
+        parts.body->AddChild(row);
+        SyncPrimaryPassword(d);
+
+        AddNote(parts, "um-set-primary-note1",
+                "What it protects: the passwords of your mail accounts, and the key the "
+                "mail stored on this computer is encrypted with - the mailbox, the address "
+                "book, the outbox and every downloaded message. Without it nobody can read "
+                "them, not even someone who copies the whole data folder.");
+        AddNote(parts, "um-set-primary-note2",
+                "Without a Primary Password that key is kept beside the vault, so UltraMail "
+                "starts without asking: the encryption then protects copies of the mail "
+                "files - a backup, a disk taken out - but not this computer account, whose "
+                "programs can open the key as UltraMail does.");
+        AddNote(parts, "um-set-primary-note3",
+                "It is not stored anywhere. Forgotten, it cannot be recovered: the mail kept "
+                "on this computer has to be downloaded again from the mail servers, and the "
+                "mail passwords entered again. Mail that is only on this computer - the "
+                "outbox - is lost.");
+        return parts.page;
+    }
+
     // ===== DISPLAY > LINKS =====
     std::shared_ptr<UltraCanvasContainer> BuildLinksPage(DialogState* d) {
         PageParts parts = MakePage("um-set-page-links", "Links",
@@ -1225,7 +1297,8 @@ namespace {
         AddNote(parts, "um-set-start-note2",
                 "Privacy - when pictures on the web are downloaded (always, only "
                 "from websites and senders you trust and your contacts, or never "
-                "by themselves), and whether the known senders' icons are fetched.");
+                "by themselves), whether the known senders' icons are fetched, and "
+                "a Primary Password asked for at every start.");
         AddNote(parts, "um-set-start-note3",
                 "Display - whether a link's address is shown in the status bar or "
                 "as a tooltip, whether new mail shows a notification on the "
@@ -1336,6 +1409,7 @@ namespace {
         AddTreeNode(d, "settings", kPagePrivacy, "Privacy", "section-privacy");
         AddTreeNode(d, kPagePrivacy, kPageImages, "Images");
         AddTreeNode(d, kPagePrivacy, kPageSenderIcons, "Sender icons");
+        AddTreeNode(d, kPagePrivacy, kPagePrimaryPassword, "Primary Password");
         AddTreeNode(d, "settings", kPageDisplay, "Display", "section-display");
         AddTreeNode(d, kPageDisplay, kPageLinks, "Links");
         AddTreeNode(d, kPageDisplay, kPageNotify, "Notifications");
@@ -1364,6 +1438,7 @@ namespace {
         AddPage(d, kPageAttachments, BuildAttachmentsPage(d));
         AddPage(d, kPageImages, BuildImagesPage(d));
         AddPage(d, kPageSenderIcons, BuildSenderIconsPage(d));
+        AddPage(d, kPagePrimaryPassword, BuildPrimaryPasswordPage(d));
         AddPage(d, kPageLinks, BuildLinksPage(d));
         AddPage(d, kPageNotify, BuildNotificationsPage(d));
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
@@ -1423,10 +1498,13 @@ namespace {
 
 } // namespace
 
+void SettingsDialog::SetSecurityHooks(SecurityHooks hooks) { g_security = std::move(hooks); }
+
 void SettingsDialog::Show(UltraCanvasWindowBase* parent, Preferences* prefs,
                           std::function<void()> onChanged) {
     if (g_dialog && g_dialog->window && !g_dialog->closed) {
         SyncControls(g_dialog.get());
+        SyncPrimaryPassword(g_dialog.get());
         g_dialog->window->Show();
         return;
     }
@@ -1463,6 +1541,7 @@ void SettingsDialog::SyncWithPreferences() {
 
 void SettingsDialog::Shutdown() {
     g_dialog.reset();
+    g_security = SecurityHooks{};   // they hold the application
 }
 
 } // namespace UltraMail

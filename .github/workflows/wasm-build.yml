@@ -16,7 +16,9 @@ name: WebAssembly build
 # four-fonts variant is a measurement that may fail to build or link; it
 # never fails the run.
 # A fifth job, dbadmin-browser, takes the baseline's UltraDBAdmin page and
-# tests it end to end against a relay it builds natively.
+# tests it end to end against a relay it builds natively. Every variant
+# builds the UltraWeb runtime too (Apps/UltraWeb/browser); the
+# single-threaded one, the runtime that ships, also runs it in Chromium.
 # The single-threaded one is required: it is the build a static host
 # without cross-origin isolation headers must serve, and since run 24 it
 # builds and passes its smoke test like the baseline.
@@ -48,6 +50,9 @@ on:
       - 'Tests/UltraDBAdmin/e2e/**'
       - 'UltraCanvas/core/UltraDatabase/**'
       - 'UltraCanvas/include/UltraDatabase/**'
+      - 'UltraCanvas/include/WasmHost/**'
+      - 'Apps/UltraWeb/**'
+      - 'UltraWeb/guest/**'
   push:
     branches: [main]
     paths:
@@ -63,6 +68,9 @@ on:
       - 'Tests/UltraDBAdmin/e2e/**'
       - 'UltraCanvas/core/UltraDatabase/**'
       - 'UltraCanvas/include/UltraDatabase/**'
+      - 'UltraCanvas/include/WasmHost/**'
+      - 'Apps/UltraWeb/**'
+      - 'UltraWeb/guest/**'
   workflow_dispatch:
     inputs:
       # Pinned, not 'latest': latest moves to a new release, major ones
@@ -321,6 +329,30 @@ jobs:
         with:
           name: wasm-smoke-${{ matrix.variant }}
           path: smoke-${{ matrix.variant }}
+          if-no-files-found: ignore
+
+      # The UltraWeb runtime (Docs/UltraWeb/UltraWebInTheBrowser.md): the
+      # browser engine behind WasmHost under Node, then the sample site in
+      # Chromium - without the extension (the runtime from the site, clicks,
+      # timer, fetch, storage across a reload), and with it (the site sends
+      # no runtime). Single-threaded only: that is the runtime that ships.
+      # Playwright's Chromium, not the runner's Chrome: branded Chrome no
+      # longer loads an unpacked extension from the command line (Chrome 137).
+      - name: UltraWeb runtime in Chromium
+        if: matrix.threads == 0
+        env:
+          UWR_OUT: uwr-${{ matrix.variant }}
+        run: |
+          node build-wasm/Apps/UltraWeb/browser/wasmhost-browser-test.js
+          npx playwright install chromium
+          node Apps/UltraWeb/browser/test/runtime-test.mjs build-wasm/Apps/UltraWeb/browser
+
+      - name: Upload the UltraWeb runtime screenshots and logs
+        if: always() && matrix.threads == 0
+        uses: actions/upload-artifact@v6
+        with:
+          name: ultraweb-runtime-${{ matrix.variant }}
+          path: uwr-${{ matrix.variant }}
           if-no-files-found: ignore
 
   # UltraDBAdmin's page end to end (Tests/UltraDBAdmin/e2e/run_e2e.sh): the

@@ -1,6 +1,8 @@
 #pragma once
 
 // UltraCanvasDebug.h
+// Version: 1.0.0 - the history starts here; earlier changes are in the framework changelog
+// Last Modified: 2026-10-29
 // The framework's diagnostic stream, `debugOutput`.
 //
 // Historically this compiled to `std::cerr` under ULTRACANVAS_DEBUG and to a

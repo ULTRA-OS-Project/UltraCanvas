@@ -842,7 +842,7 @@ TEST(a_signed_message_is_recognised_but_not_vouched_for) {
     const auto checks = DescribeMessageAuthentication(smime);
     REQUIRE_EQ(checks.size(), static_cast<std::size_t>(2));   // Not checked + S/MIME
     REQUIRE(CheckNamed(checks, "S/MIME")->state == AuthCheckState::Neutral);
-    REQUIRE(Says(CheckNamed(checks, "S/MIME"), "does not check such signatures yet"));
+    REQUIRE(Says(CheckNamed(checks, "S/MIME"), "not yet a check"));
 
     REQUIRE_EQ(MessageSignatureKind(
         "Content-Type: multipart/signed; protocol=\"application/pgp-signature\"\r\n\r\n"),

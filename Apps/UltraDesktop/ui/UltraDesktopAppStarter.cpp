@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopAppStarter.cpp
 // The Apps window. See the header.
+// Version: 0.2.0 - pin to the taskbar
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -10,6 +11,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasMenu.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
 
@@ -42,7 +44,7 @@ bool Matches(const UCDesktopEntry& entry, const std::string& filter) {
 
 } // namespace
 
-UltraDesktopAppStarter::UltraDesktopAppStarter() = default;
+UltraDesktopAppStarter::UltraDesktopAppStarter(Pins pins) : pins_(std::move(pins)) {}
 UltraDesktopAppStarter::~UltraDesktopAppStarter() = default;
 
 void UltraDesktopAppStarter::Open() {
@@ -133,6 +135,7 @@ void UltraDesktopAppStarter::RebuildTiles() {
         tile->layoutItem.SetFlexShrink(0.0f);
         const UCDesktopEntry launched = entry;
         tile->onClick = [this, launched]() { Launch(launched); };
+        tile->onContextMenu = [this, launched](int x, int y) { ShowTileMenu(launched, x, y); };
         tiles_->AddChild(tile);
         ++shown;
     }
@@ -141,6 +144,21 @@ void UltraDesktopAppStarter::RebuildTiles() {
     }
     tiles_->InvalidateLayout();
     tiles_->RequestRedraw();
+}
+
+void UltraDesktopAppStarter::ShowTileMenu(const UCDesktopEntry& entry, int windowX, int windowY) {
+    if (!window_) return;
+    menu_ = std::make_shared<UltraCanvasMenu>("appsTileMenu", 0, 0, 220, 0);
+    menu_->SetMenuType(MenuType::PopupMenu);
+    menu_->AddItem(MenuItemData::Header(entry.name));
+    menu_->AddItem(MenuItemData::Action("Open", [this, entry]() { Launch(entry); }));
+    if (pins_.isPinned && pins_.setPinned) {
+        const bool pinned = pins_.isPinned(entry);
+        menu_->AddItem(MenuItemData::Action(pinned ? "Unpin from taskbar" : "Pin to taskbar",
+                                            [this, entry, pinned]() { pins_.setPinned(entry, !pinned); }));
+    }
+    PopupElementSettings settings;
+    menu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
 }
 
 void UltraDesktopAppStarter::Launch(const UCDesktopEntry& entry) {

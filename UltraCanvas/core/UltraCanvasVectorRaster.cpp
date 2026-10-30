@@ -7,11 +7,14 @@
 // Both render *at* the requested size rather than rendering small and
 // scaling up: the whole point of a vector source is that the resolution is
 // chosen at rasterization time.
+// Version: 1.3.1 - RasterizeVectorElements: the area holds every line (PaintBounds) and
+//                  reaches as far as the shadows, glows, feathers, contours and outer
+//                  bevels do
 // Version: 1.3.0 - password-protected PDFs: a password to open them with, and a report of
 //                  one needed or wrong (an /Encrypt dictionary behind a refusal)
 // Version: 1.2.0 - RasterizeVectorDocument: a whole page at any size
 // Version: 1.1.0 - RasterizeVectorElements
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorRaster.h"
@@ -22,7 +25,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasDebug.h"
-#include "DataFormats/UltraCanvasVectorEdit.h"       // DocumentBounds, ParentToDocument
+#include "DataFormats/UltraCanvasVectorEdit.h"       // PaintBounds, ParentToDocument
 #include "DataFormats/UltraCanvasVectorRenderer.h"
 
 #ifdef HAS_LIBVIPS
@@ -483,6 +486,39 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorFile(const std::string& path,
 #endif
 }
 
+namespace {
+    // How far past what an element paints its effects reach - a shadow's
+    // offset and blur, a glow, a feather, an outward contour, an outer
+    // bevel - in document units, its children's too. `scale` is how much
+    // the transforms down to the element enlarge it at most.
+    double EffectsReach(const VectorStorage::VectorElement& e, const VectorStorage::Matrix3x3& toDocument) {
+        using namespace VectorStorage;
+        const Matrix3x3 m = toDocument * e.Transform.value_or(Matrix3x3::Identity());
+        const double scale = std::max(std::hypot(m.m[0][0], m.m[1][0]), std::hypot(m.m[0][1], m.m[1][1]));
+        double reach = 0;
+        const VectorEffects& fx = e.Effects;
+        if (fx.Shadow) {
+            const ShadowEffect& s = *fx.Shadow;
+            double r = std::max(std::fabs(s.Offset.x), std::fabs(s.Offset.y)) + 2.0 * s.Blur;
+            if (s.Kind == ShadowKind::Floor) {
+                // Laid on the floor behind the object: sheared sideways by
+                // up to its height and squashed below it.
+                const Rect2Dd b = e.GetBoundingBox();
+                r += std::max(b.width, b.height) * (std::fabs(s.FloorShear) + std::fabs(s.FloorSquash));
+            }
+            reach = std::max(reach, r);
+        }
+        if (fx.Feather) reach = std::max(reach, static_cast<double>(fx.Feather->Radius));
+        if (fx.Contour && fx.Contour->Width > 0) reach = std::max(reach, static_cast<double>(fx.Contour->Width));
+        if (fx.Bevel && fx.Bevel->Outer) reach = std::max(reach, static_cast<double>(fx.Bevel->Indent));
+        reach *= scale;
+        if (const auto* g = dynamic_cast<const VectorGroup*>(&e))
+            for (const auto& child : g->Children)
+                if (child) reach = std::max(reach, EffectsReach(*child, m));
+        return reach;
+    }
+}
+
 std::shared_ptr<UCRasterLayer> RasterizeVectorElements(
         const VectorStorage::VectorDocument& document,
         const std::vector<std::shared_ptr<VectorStorage::VectorElement>>& elements,
@@ -497,9 +533,13 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorElements(
     }
     bool any = false;
     Rect2Dd bounds;
+    double effects = 0;
     for (const auto& element : elements) {
         if (!element) continue;
-        const Rect2Dd b = VectorEdit::DocumentBounds(element);
+        // What it paints, its lines included (their width, caps, joins and
+        // arrowheads), through every transform.
+        const Rect2Dd b = VectorEdit::PaintBounds(element);
+        effects = std::max(effects, EffectsReach(*element, VectorEdit::ParentToDocument(element)));
         if (!(b.width >= 0) || !(b.height >= 0) || !std::isfinite(b.x) || !std::isfinite(b.y)) continue;
         bounds = any ? bounds.Union(b) : b;
         any = true;
@@ -509,11 +549,12 @@ std::shared_ptr<UCRasterLayer> RasterizeVectorElements(
         return nullptr;
     }
 
-    // The bounds are the geometry's: a thick stroke, a shadow or a glow
-    // reaches past them. Render with a margin and crop to what was painted.
-    // The area starts on a whole pixel, so an edge on a whole point stays
-    // crisp instead of smearing across two pixels.
-    const double margin = 32.0 + 0.05 * std::max(bounds.width, bounds.height);
+    // The bounds hold every line; the effects reach past them by as much as
+    // they spread, and a margin on top covers what is measured loosely (a
+    // text's glyphs, a blend's or mould's steps). Render with it and crop
+    // to what was painted. The area starts on a whole pixel, so an edge on
+    // a whole point stays crisp instead of smearing across two pixels.
+    const double margin = 32.0 + 0.05 * std::max(bounds.width, bounds.height) + effects;
     const double left = std::floor((bounds.x - margin) * pixelsPerPoint);
     const double top = std::floor((bounds.y - margin) * pixelsPerPoint);
     const double pixelsW = std::ceil((bounds.x + bounds.width + margin) * pixelsPerPoint) - left;

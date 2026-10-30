@@ -132,9 +132,12 @@ if (!layer) ShowStatus(error);   // nothing visible, or too large
   transform and every ancestor's are applied, and definitions (gradients,
   clip paths, symbols) resolve against the document. Elements are drawn in
   the order given, so pass them in drawing order.
-- **Cropped** to the pixels the elements paint: the bounds the elements
-  report are their geometry's, so the render is made with a margin and then
-  trimmed, which keeps a thick stroke or a shadow and drops empty margin. The
+- **Cropped** to the pixels the elements paint: the render area is the box
+  they paint, every line whole (`VectorEdit::PaintBounds`: width, caps,
+  joins, arrowheads), grown by as far as their shadows, glows, feathers,
+  outward contours and outer bevels reach, plus a margin for what is
+  measured loosely (text, blends, moulds); the render is then trimmed, which
+  keeps every stroke and shadow and drops empty margin. The
   render area starts on a whole pixel, so an edge on a whole point stays
   crisp.
 - The background is transparent. Null comes back with `error` set when there

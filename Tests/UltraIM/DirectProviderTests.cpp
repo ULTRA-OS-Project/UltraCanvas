@@ -2,6 +2,10 @@
 // ChatCube Direct: the envelope, the store, and two providers end to end
 // through a local relay (P2P, read receipts, offline queue, groups, calls),
 // and two on the local network with no relay at all
+// Version: 0.1.4 - a picture over the link, a file through the relay's queue to someone away, a picture to a
+//                  group, and a picture over the local network with no relay - each read back byte for byte
+// Version: 0.1.3 - the relay's port probed free, three tries
+// Version: 0.1.2 - the plaintext check on the sealed bytes
 // Version: 0.1.1 - TestRelayRedirect: the relay behind a redirector
 // Last Modified: 2026-10-22
 // Author: UltraCanvas Framework
@@ -12,6 +16,7 @@
 #include "DirectStore.h"
 
 #include "UltraCanvasPathUtf8.h"
+#include "UltraIM/UltraIMCore.h"
 #include "UltraNet/UltraNetCore.h"
 #include "UltraNet/UltraNetHttp.h"
 #include "UltraNet/UltraNetPlugins.h"
@@ -33,7 +38,10 @@
 #if defined(_WIN32)
 #include <process.h>
 #else
+#include <arpa/inet.h>
+#include <netinet/in.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
@@ -86,7 +94,12 @@ void TestEnvelope() {
     Envelope envelope;
     CHECK(ring.Seal(alice, bob.signPublic, bob.userId, "dm", "id-1", 1234, "{\"type\":\"text\",\"text\":\"hi\"}",
                     envelope, error));
-    CHECK(envelope.ciphertext.find("hi") == std::string::npos);
+    // The plaintext is not in the sealed bytes. Checked on the bytes, not on
+    // the base64 text: base64 of random bytes contains any two letters, "hi"
+    // included, every few hundred runs.
+    const std::vector<uint8_t> sealed = FromBase64(envelope.ciphertext);
+    const std::string sealedBytes(sealed.begin(), sealed.end());
+    CHECK(!sealed.empty() && sealedBytes.find("{\"type\":\"text\",\"text\":\"hi\"}") == std::string::npos);
 
     Envelope parsed;
     CHECK(Envelope::FromJson(envelope.ToJson(), parsed));
@@ -182,10 +195,17 @@ struct Events {
         return false;
     }
     bool WaitFor(const std::function<bool(const UltraIMEvent&)>& match, int seconds = 30) {
+        return WaitFor(match, nullptr, seconds);
+    }
+    // The same, handing the first matching event back.
+    bool WaitFor(const std::function<bool(const UltraIMEvent&)>& match, UltraIMEvent* found, int seconds) {
         std::unique_lock<std::mutex> lock(mutex);
         return changed.wait_for(lock, std::chrono::seconds(seconds), [&]() {
             for (const auto& e : list) {
-                if (match(e)) return true;
+                if (match(e)) {
+                    if (found) *found = e;
+                    return true;
+                }
             }
             return false;
         });
@@ -224,33 +244,59 @@ bool WaitConversation(const std::function<void(UltraIMConversationCallback)>& st
 }
 
 #if !defined(_WIN32)
+// A loopback port nobody listens on, from the one given upwards. The pid
+// alone chose the port before, and a build's test rows run several suites
+// at once: another process held the port now and then, the relay's bind
+// failed, and the end-to-end part failed with it.
+int FreePort(int from) {
+    for (int port = from; port < from + 100; ++port) {
+        const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (fd < 0) return port;
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = htons(static_cast<uint16_t>(port));
+        const bool isFree = ::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof addr) == 0;
+        ::close(fd);
+        if (isFree) return port;
+    }
+    return from;
+}
+
 struct Relay {
     pid_t pid = -1;
     std::string url;
 
     bool Start(const fs::path& dataDir) {
         if (std::system("python3 -c 'import fastapi, uvicorn, cryptography' >/dev/null 2>&1") != 0) return false;
-        const int port = 20000 + static_cast<int>(::getpid() % 20000);
-        url = "http://127.0.0.1:" + std::to_string(port);
-        pid = fork();
-        if (pid == 0) {
-            if (chdir(ULTRAIM_RELAY_DIR) != 0) _exit(127);
-            setenv("CHATCUBE_RELAY_PORT", std::to_string(port).c_str(), 1);
-            setenv("CHATCUBE_RELAY_DB", UltraCanvas::PathToUtf8(dataDir / "relay.sqlite3").c_str(), 1);
-            // The Telegram application's keys a relay hands its users.
-            setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "1017053", 1);
-            setenv("CHATCUBE_RELAY_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef", 1);
-            execlp("python3", "python3", "-m", "chatcube_relay", static_cast<char*>(nullptr));
-            _exit(127);
+        // Three tries: the port is probed free, but another process can
+        // still take it between the probe and the relay's bind.
+        for (int attempt = 0; attempt < 3; ++attempt) {
+            const int port = FreePort(20000 + static_cast<int>(::getpid() % 20000) + attempt * 101);
+            url = "http://127.0.0.1:" + std::to_string(port);
+            pid = fork();
+            if (pid == 0) {
+                if (chdir(ULTRAIM_RELAY_DIR) != 0) _exit(127);
+                setenv("CHATCUBE_RELAY_PORT", std::to_string(port).c_str(), 1);
+                setenv("CHATCUBE_RELAY_DB", UltraCanvas::PathToUtf8(dataDir / "relay.sqlite3").c_str(), 1);
+                // The Telegram application's keys a relay hands its users.
+                setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "1017053", 1);
+                setenv("CHATCUBE_RELAY_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef", 1);
+                execlp("python3", "python3", "-m", "chatcube_relay", static_cast<char*>(nullptr));
+                _exit(127);
+            }
+            for (int i = 0; i < 100; ++i) {
+                UltraNetResponse response;
+                UltraNetHttpOptions options;
+                options.timeoutMs = 1000;
+                if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 200) return true;
+                int status = 0;
+                if (waitpid(pid, &status, WNOHANG) == pid) { pid = -1; break; }   // gone: the bind failed, or no module
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            Stop();
+            std::printf("DirectProviderTests: the relay did not come up on port %d (try %d)\n", port, attempt + 1);
         }
-        for (int i = 0; i < 100; ++i) {
-            UltraNetResponse response;
-            UltraNetHttpOptions options;
-            options.timeoutMs = 1000;
-            if (UltraNet_HttpGet(url + "/healthz", response, options) && response.statusCode == 200) return true;
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        Stop();
         return false;
     }
     void Stop() {
@@ -269,7 +315,7 @@ struct Redirector {
     std::string url;
 
     bool Start(const std::string& target) {
-        const int port = 40000 + static_cast<int>(::getpid() % 20000);
+        const int port = FreePort(40000 + static_cast<int>(::getpid() % 20000));
         url = "http://127.0.0.1:" + std::to_string(port);
         const std::string script =
             "import sys\n"
@@ -353,6 +399,74 @@ void TestRelayRedirect(const std::string& relayUrl) {
 bool IsDelivered(const UltraIMEvent& e, const std::string& clientId, UltraIMDeliveryStatus status) {
     return e.type == UltraIMEventType::MessageDelivered && e.message.clientMessageId == clientId &&
            e.deliveryStatus == status;
+}
+
+// A file of `size` bytes that is not all the same, under `path`.
+std::vector<uint8_t> WritePattern(const fs::path& path, size_t size, uint8_t seed) {
+    std::vector<uint8_t> bytes(size);
+    for (size_t i = 0; i < size; ++i) bytes[i] = static_cast<uint8_t>((i * 31 + seed) ^ (i >> 3));
+    std::FILE* f = UltraCanvas::OpenFileUtf8(UltraCanvas::PathToUtf8(path), "wb");
+    if (f) {
+        std::fwrite(bytes.data(), 1, bytes.size(), f);
+        std::fclose(f);
+    }
+    return bytes;
+}
+
+std::vector<uint8_t> ReadBytes(const std::string& path) {
+    std::vector<uint8_t> out;
+    std::FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
+    if (!f) return out;
+    uint8_t buffer[4096];
+    size_t n = 0;
+    while ((n = std::fread(buffer, 1, sizeof(buffer), f)) > 0) out.insert(out.end(), buffer, buffer + n);
+    std::fclose(f);
+    return out;
+}
+
+bool WaitAttachment(const std::function<void(UltraIMAttachmentCallback)>& start, UltraIMAttachment& out,
+                    int seconds = 30) {
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool done = false, ok = false;
+    start([&](const UltraIMResult& r, const UltraIMAttachment& a) {
+        std::lock_guard<std::mutex> lock(mutex);
+        out = a;
+        ok = r.success;
+        done = true;
+        cv.notify_all();
+    });
+    std::unique_lock<std::mutex> lock(mutex);
+    cv.wait_for(lock, std::chrono::seconds(seconds), [&]() { return done; });
+    return ok;
+}
+
+// A picture from `from` to `to` in the conversation, received whole: the
+// message first, then the file (several parts), read back byte for byte.
+bool PictureArrives(DirectProvider& from, DirectProvider& to, Events& toEvents, const std::string& conversation,
+                    const std::string& path, const std::vector<uint8_t>& bytes, const std::string& caption) {
+    UltraIMSendOptions o;
+    o.clientMessageId = "pic-" + UltraIM_NewClientMessageId();
+    if (!from.SendImage(conversation, path, caption, o)) return false;
+    UltraIMEvent got, here;
+    if (!toEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageReceive && e.message.clientMessageId == o.clientMessageId;
+        }, &got, 60))
+        return false;
+    if (got.message.type != UltraIMMessageType::Image || got.message.text != caption ||
+        got.message.attachment.fileSizeBytes != static_cast<int64_t>(bytes.size()))
+        return false;
+    if (!toEvents.WaitFor([&](const UltraIMEvent& e) {
+            return e.type == UltraIMEventType::MessageUpdate && e.message.clientMessageId == o.clientMessageId &&
+                   e.message.attachment.isDownloaded;
+        }, &here, 120))
+        return false;
+    // And from the store, as history brings it back.
+    UltraIMAttachment fetched;
+    if (!WaitAttachment([&](UltraIMAttachmentCallback cb) { to.DownloadAttachment(got.conversationId, o.clientMessageId, cb); },
+                        fetched))
+        return false;
+    return fetched.localPath == here.message.attachment.localPath && ReadBytes(fetched.localPath) == bytes;
 }
 
 bool IsReceived(const UltraIMEvent& e, const std::string& text) {
@@ -625,6 +739,11 @@ void TestLocalNetwork() {
     o1.clientMessageId = "lan-1";
     CHECK(carol->SendText(daveId, "hello across the room", o1));
     CHECK(daveEvents.WaitFor([](const UltraIMEvent& e) { return IsReceived(e, "hello across the room"); }));
+    // A picture over the local connection, with no relay anywhere.
+    {
+        const std::vector<uint8_t> lanBytes = WritePattern(base / "lan.png", 80000, 3);
+        CHECK(PictureArrives(*carol, *dave, daveEvents, daveId, UltraCanvas::PathToUtf8(base / "lan.png"), lanBytes, "nearby"));
+    }
     CHECK(carolEvents.WaitFor([](const UltraIMEvent& e) { return IsDelivered(e, "lan-1", UltraIMDeliveryStatus::Delivered); }));
     CHECK(carol->CountSentOverLink() >= 1 && carol->CountSentOverRelay() == 0);
     CHECK(dave->MarkRead(carolId, ""));
@@ -816,6 +935,16 @@ void TestEndToEnd() {
     std::printf("  P2P: %d copies over the link, %d over the relay\n", alice->CountSentOverLink(),
                 alice->CountSentOverRelay());
 
+    // A picture over the link: the message, then its parts, then the file.
+    CHECK(UltraIM_HasCapability(alice->GetCapabilities(), UltraIMCapabilityFlags::ImageMessages));
+    const std::vector<uint8_t> pictureBytes = WritePattern(base / "pic.png", 100000, 1);
+    const std::string picture = UltraCanvas::PathToUtf8(base / "pic.png");
+    CHECK(alice->SendImage(bobId, UltraCanvas::PathToUtf8(base / "missing.png"), "", UltraIMSendOptions()).code ==
+          UltraIMResultCode::InvalidArgument);
+    CHECK(PictureArrives(*alice, *bob, bobEvents, bobId, picture, pictureBytes, "look"));
+    std::printf("  picture: %d copies over the link, %d over the relay\n", alice->CountSentOverLink(),
+                alice->CountSentOverRelay());
+
     // Bob reads it: Alice sees the read receipt.
     CHECK(bob->MarkRead(aliceId, ""));
     CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) { return IsDelivered(e, "msg-p2p", UltraIMDeliveryStatus::Read); }));
@@ -838,6 +967,27 @@ void TestEndToEnd() {
         return IsDelivered(e, "msg-offline", UltraIMDeliveryStatus::Delivered);
     }));
 
+    // A file while Bob is away: its parts wait in the relay's queue too.
+    bob->SignOut();
+    const std::vector<uint8_t> notesBytes = WritePattern(base / "notes.pdf", 50000, 2);
+    const std::string notes = UltraCanvas::PathToUtf8(base / "notes.pdf");
+    UltraIMSendOptions oFile;
+    oFile.clientMessageId = "msg-file-offline";
+    CHECK(alice->SendFile(bobId, notes, oFile));
+    CHECK(aliceEvents.WaitFor([](const UltraIMEvent& e) {
+        return IsDelivered(e, "msg-file-offline", UltraIMDeliveryStatus::Sent);
+    }, 60));
+    CHECK(WaitResult([&](UltraIMResultCallback cb) { bob->SignIn(bobLogin, cb); }, r) && r);
+    UltraIMEvent fileGot;
+    CHECK(bobEvents.WaitFor([](const UltraIMEvent& e) {
+        return e.type == UltraIMEventType::MessageReceive && e.message.clientMessageId == "msg-file-offline";
+    }, &fileGot, 60));
+    CHECK(fileGot.message.type == UltraIMMessageType::File && fileGot.message.attachment.fileName == "notes.pdf");
+    UltraIMAttachment fetched;
+    CHECK(WaitAttachment([&](UltraIMAttachmentCallback cb) { bob->DownloadAttachment(aliceId, "msg-file-offline", cb); },
+                         fetched, 120));
+    CHECK(fetched.isDownloaded && ReadBytes(fetched.localPath) == notesBytes);
+
     // A group: through the relay, and only once at Bob's.
     UltraIMConversation group;
     CHECK(WaitConversation([&](UltraIMConversationCallback cb) { alice->CreateGroup("Team", {bobId}, cb); }, group));
@@ -849,6 +999,8 @@ void TestEndToEnd() {
         return IsReceived(e, "hello team") && e.conversationId == group.conversationId;
     }));
     CHECK(!bob->CanCall(group.conversationId, false));
+    // A picture to the group goes through the relay, a copy per member.
+    CHECK(PictureArrives(*alice, *bob, bobEvents, group.conversationId, picture, pictureBytes, "for the team"));
 
     if (UltraRtc_GetCapabilities().audio && UltraRtc_GetCapabilities().video) {
         TestVideoCall(*alice, aliceEvents, *bob, bobEvents, bobId);
@@ -861,11 +1013,16 @@ void TestEndToEnd() {
         std::printf("  calls skipped: this build has no Opus\n");
     }
 
-    // History is local: Bob's store holds what arrived, oldest first.
+    // History is local: Bob's store holds what arrived, oldest first, the
+    // files with their attachments.
     std::vector<UltraIMMessage> history;
     bob->FetchMessages(aliceId, "", 50, [&](const UltraIMResult&, const std::vector<UltraIMMessage>& m) { history = m; });
-    CHECK(history.size() == 2);
-    if (history.size() == 2) CHECK(history[0].text == "hello over the data channel");
+    CHECK(history.size() == 4);
+    if (history.size() == 4) {
+        CHECK(history[0].text == "hello over the data channel");
+        CHECK(history[1].type == UltraIMMessageType::Image && history[1].attachment.isDownloaded);
+        CHECK(history[3].type == UltraIMMessageType::File && history[3].attachment.fileName == "notes.pdf");
+    }
 
     alice->Shutdown();
     bob->Shutdown();

@@ -29,18 +29,19 @@ system.
 
 ```
 ┌────┬──────────────────────────────────────────────────────────────┬────┐
-│ ⚙  │                                                              │ 1  │  desktop
-│ ⋮⋮ │                                                              │ 2  │  organiser
-│╲   │                                                              │ 3  │
-│ ╲  │                                                              │ 📌 │  Sticker board
-│ ▣  │                                                              │ 🗒 │  notes
-│ ▣  │                     wallpaper                                │ 📋 │  clipboard
-│ ▣  │            (application windows float above)                 │ 📷 │  screenshot
-│ ▣  │                                                              │╱   │
-│  ╲ │                                                              │ ✉14│  info panel
-│   ╲│                                                              │ ⇧⇩ │  (devices and
-│ ▤  │                                                              │ ⌨ ●│   services)
-│ 📁 │                                                              │ 🔋 │
+│ ⚙  │                                                              │ 🕒 │  clock
+│ ⋮⋮ │                                                              │30Oct│  and date
+│╲   │                                                              │ 1  │  desktop
+│ ╲  │                                                              │ 2  │  organiser
+│ ▣  │                                                              │ 3  │
+│ ▣  │                     wallpaper                                │ 📌 │  Sticker board
+│ ▣  │            (application windows float above)                 │ 🗒 │  notes
+│ ▣  │                                                              │ 📋 │  clipboard
+│  ╲ │                                                              │ 📷 │  screenshot
+│   ╲│                                                              │╱   │
+│ ▤  │                                                              │ ✉14│  info panel
+│ 📁 │                                                              │ ⇧⇩ │  (devices and
+│ 🎨 │                                                              │ 🔊 │   services)
 └────┴──────────────────────────────────────────────────────────────┴────┘
  taskbar                                                               right bar
 ```
@@ -61,16 +62,50 @@ separators:
    it if it already is active; a right-click offers *Activate*, *Minimize*,
    *Move to desktop …* and *Close window*. Drag a button to reorder; when
    the group is full it scrolls with the mouse wheel. New windows join next
-   to their application's other windows.
+   to their application's other windows. *Pin to taskbar* on the menu pins
+   the window's application.
 3. **Pinned** — the *RAM disc* (opens the path from the settings, `/dev/shm`
-   by default, in the file manager) and *UltraFiler*.
+   by default, in the file manager), *UltraFiler*, and the applications the
+   user pinned - from a running window's menu or a tile's in the
+   Applications window - each with its own icon, one click to start, and
+   *Unpin from taskbar* on its right-click menu. The pins are kept in the
+   settings by the program's path (on Windows the shortcut or the Store
+   application's id), so a renamed application stays pinned, and one that is
+   uninstalled shows again when it is back.
+
+The settings button's right-click menu also offers *Lock screen* (Super+L)
+and - on Linux, and on Windows as the shell - *Sign out*, *Restart* and
+*Shut down*, each asked first, through
+[UltraCanvasDesktopShell](../UltraCanvas/UltraCanvasDesktopShell.md)
+(logind on Linux, `ExitWindowsEx` and `LockWorkStation` on Windows).
 
 The taskbar's edge and the right bar are reserved with the window manager
 (`ReserveScreenEdges` in the module), so maximised and tiled application
 windows stop short of the bars instead of covering them.
 
+With several monitors the desktop window - the bars and the wallpaper -
+covers the **primary** monitor (the one the session marks, else the one at
+the origin), and every other monitor gets a wallpaper window of its own; a
+monitor plugged in later is covered within seconds, and when the primary
+moves (`xrandr --output <name> --primary`, the display settings) the desktop
+follows within seconds - its window is made anew on the new primary, the
+bars with it, and the old one closes. On X11 an
+edge is reserved only where the primary lies on that edge of the whole
+screen: with the primary on the left of a second monitor the taskbar on its
+left edge is reserved, the right bar between the two is not (a strut is
+measured from the screen's edge, and one across the other monitor would push
+its windows aside), so a maximised window on the primary may cover the right
+bar there - put the taskbar on the top or bottom edge in that layout, or make
+the right-hand monitor the primary.
+
 ### Right bar
 
+- **Clock**: the framework's gauge element in its analog clock mode
+  ([UltraCanvasGaugeDiagramElement](../UltraCanvas/UltraCanvasGaugeExamples.md)),
+  which ticks on its own, over the date ("30 Oct"); the tooltip has the
+  whole date and time. A click opens the clock panel beside the bar: the
+  time large as an analog face and in figures (the gauge's digital clock),
+  today in words, and the month on the calendar view with today marked.
 - **Desktop organiser**: the virtual desktops as numbered toggles — as many
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
@@ -108,9 +143,22 @@ windows stop short of the bars instead of covering them.
   | grey pill | a count or a value | Email unread (from UltraMail), USB devices attached, battery percentage (green while charging, red at 15 % and below), keyboard layout |
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
-  1.2 MB/s", "Battery: 84%, charging"). Clicking opens what the icon is
-  about: Email starts UltraMail, the network icons UltraNetMonitor, USB,
-  keyboard and webcam DeviceExplorer, the rest the Task Manager.
+  1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
+  opens what the icon is about: Email starts UltraMail, the network icons
+  UltraNetMonitor, USB, keyboard and webcam DeviceExplorer, the loudspeaker
+  its volume panel, the rest the Task Manager.
+- **Loudspeaker**: the volume panel beside the bar - the output's name, its
+  volume on a slider, its mute on a switch - through the sound server
+  (PulseAudio or PipeWire on Linux, Core Audio on Windows; the panel says so
+  when none answers). The icon shows a red dot while muted and reads the
+  volume again every ten seconds, so a change made with the keyboard's
+  volume keys shows.
+- **Tray icons**: where the desktop hosts the notification area - as the
+  shell on Windows, and on Linux, where it is the StatusNotifierWatcher the
+  tray programs register with - the programs' icons sit above the services.
+  A click opens the program; a right click opens its menu, which on Linux
+  the program hands over as data and the desktop draws itself, submenus
+  and check marks included.
 
   When the organiser leaves the panel short of room — five or more desktops
   on a 900 px screen — the panel scrolls rather than losing its last items:
@@ -121,9 +169,11 @@ windows stop short of the bars instead of covering them.
 
 - **Applications** (app starter): every installed application from its
   desktop entry as an icon tile, a filter box above them, one click to
-  start. What the application menu of any other desktop shows, so an
-  application installed by its package appears without being told about
-  ULTRA OS.
+  start; a right click pins it to the taskbar or unpins it. What the
+  application menu of any other desktop shows, so an application installed
+  by its package appears without being told about ULTRA OS. A tap of the
+  Super key opens it from any window - on Linux, and on Windows as the
+  shell (beside Explorer the key is the Start menu's).
 - **Task Manager**: the open windows with *Activate* and *Close* on the
   first tab, the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
@@ -221,7 +271,8 @@ earlier versions kept under `~/.config` is moved on the first start):
   "stickerboardVisible": false,
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
-                     "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } }
+                     "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } },
+  "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ]
 }
 ```
 
@@ -231,7 +282,9 @@ RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
-`stickynotes`, `poster`, `schematic`, `dark`.
+`stickynotes`, `poster`, `schematic`, `dark`. `pinnedApps` are the pinned
+applications' keys in the order they were pinned: the program's path, or on
+Windows the shortcut's path or `store:<AppUserModelID>`.
 
 ## How the mail count gets there
 
@@ -243,11 +296,14 @@ the ones it has an icon for.
 
 ## Platform
 
-The window list, the virtual desktops, the screenshot and the device markers
-come from the module's backends: X11 on Linux and the BSDs, Win32 on Windows.
-Elsewhere (macOS) the desktop still runs — application list, launcher,
-settings, the Sticker board and the notes work — but the running-apps group
-stays empty and the Task Manager says so.
+The window list, the virtual desktops, the screenshot, the device markers,
+the tray, the lock, the end of the session and the loudspeaker come from the
+module's backends: X11 (with logind, the session bus and the sound server)
+on Linux and the BSDs, Win32 on Windows. Elsewhere (macOS) the desktop still
+runs — application list, launcher, pins, clock, settings, the Sticker board
+and the notes work — but the running-apps group stays empty, the Task
+Manager says so, and the lock, session and volume calls answer with a
+reason.
 
 ## On Windows
 
@@ -346,5 +402,6 @@ same.
 | Super+V | taken by Windows' own clipboard history while Explorer runs, so the clipboard panel opens from its bar button instead; free instead of Explorer |
 | Other monitors | beside Explorer, Explorer's desktop shows there; instead of Explorer, UltraDesktop's wallpaper (the bars stay on the main monitor) |
 | RAM disc | no button unless a folder is set (UOS-Settings → Desktop → RAM disc) |
-| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
+| Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
+| Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |

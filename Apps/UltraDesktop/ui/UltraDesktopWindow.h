@@ -33,6 +33,14 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.5.1 - on X11 the desktop covers the primary monitor and puts
+//                  wallpaper windows on the others, as it does as the
+//                  Windows shell; panels and toasts follow it, and so does
+//                  the desktop itself when the primary moves
+// Version: 0.5.0 - the clock and the date, the clock panel; pinned
+//                  applications; the volume panel; the lock; sign out,
+//                  restart and shut down wherever the platform can; the
+//                  Super tap and Super+L on Linux; tray icons' menus
 // Version: 0.4.0 - Windows: instead of Explorer - the tray icons, sign out,
 //                  restart and shut down, the Win key, every screen
 // Version: 0.3.0 - Windows: in place of the Windows desktop and back
@@ -69,12 +77,16 @@ namespace UltraCanvas {
     class UltraCanvasImageElement;
     class UltraCanvasMenu;
     class UltraCanvasButton;
+    class UltraCanvasGaugeDiagramElement;
+    class UltraCanvasLabel;
 }
 
 namespace UltraDesktop {
 
 class UltraDesktopAppStarter;
 class UltraDesktopClipboardPanel;
+class UltraDesktopClockPanel;
+class UltraDesktopVolumePanel;
 class UltraDesktopStickerboard;
 class UltraDesktopCategoryBoard;
 class UltraDesktopTasksWindow;
@@ -117,6 +129,18 @@ public:
     void ToggleStickerboard(bool visible);
     void ToggleCategoryBoard(bool visible);
     void SwitchToDesktop(int index);
+    // The clock's panel (a click on the clock) and the loudspeaker's (a
+    // click on the speaker icon).
+    void OpenClockPanel();
+    void OpenVolumePanel();
+    // Lock the screen - the settings menu's "Lock screen" and Super+L.
+    void LockScreen();
+    // The taskbar's pinned applications, kept in the settings by key: the
+    // program's path, or on Windows the shortcut or the Store application's
+    // id - what stays the same across sessions.
+    static std::string PinKey(const UltraCanvas::UCDesktopEntry& entry);
+    bool IsPinned(const UltraCanvas::UCDesktopEntry& entry) const;
+    void SetPinned(const UltraCanvas::UCDesktopEntry& entry, bool pinned);
     // Save the settings object and rebuild the bars from it.
     void ApplySettings();
     // UOS-Settings writes the desktop's settings file from its own process:
@@ -140,7 +164,14 @@ private:
     int  DesiredDesktopCount() const;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildTaskbar(bool vertical);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildRightBar();
+    // The clock at the top of the right bar: the gauge element's analog
+    // clock over the date, the whole date and time in the tooltip.
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildClock();
+    void UpdateClock();
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildWorkArea();
+    // The installed applications, read once and again every five minutes:
+    // the pins, the running apps' entries and the clipboard panel's targets.
+    const std::vector<UltraCanvas::UCDesktopEntry>& Applications();
     std::shared_ptr<UltraCanvas::UltraCanvasToolbar> MakeGroup(const std::string& id, bool vertical,
                                                                 bool inset);
     std::shared_ptr<UltraCanvas::UltraCanvasButton> AddBarButton(
@@ -170,20 +201,40 @@ private:
 
     // ===== RUNNING APPS =====
     void ShowWindowMenu(uint64_t windowId, int windowX, int windowY);
+    void ShowPinnedMenu(const UltraCanvas::UCDesktopEntry& entry, int windowX, int windowY);
     void ShowClipboardMenu(int windowX, int windowY);
     void ShowSettingsButtonMenu(int windowX, int windowY);
+    // The shortcuts that reach the desktop from any window: a tap of the
+    // Super key for the Applications window and Super+L for the lock -
+    // wherever no other desktop owns them (Linux; Windows as the shell).
+    void StartDesktopShortcuts();
+    // The loudspeaker's volume and mute, for the speaker icon's words and
+    // marker: read on the device poll's thread now and then, and here after
+    // the volume panel changed it.
+    void ReadSpeaker();
+    void ApplySpeaker();
     // Once a second: a session desktop whose switch was turned off closes.
     void CheckDesktopSwitch();
     // Sign out, restart, shut down - asked first.
     void ConfirmEndSession(UltraCanvas::SessionEnd how);
 
     // ===== EVERY SCREEN =====
-    // The desktop window covers the primary monitor (Windows) or the whole
-    // screen (X11). While no Explorer desktop runs, a monitor outside it gets
-    // a desktop window of its own with the wallpaper, so no screen stays
+    // The desktop window covers the primary monitor (`area_`), or the whole
+    // screen where the platform tells no monitors apart. While no other
+    // desktop runs - Explorer beside this one - a monitor outside it gets a
+    // desktop window of its own with the wallpaper, so no screen stays
     // black; followed as monitors come and go, and a window closed (Alt+F4)
-    // opens again at the next check.
+    // opens again at the next check. A primary that moves is followed too:
+    // the desktop window is made anew on the new one.
+    static UltraCanvas::DesktopScreenInfo DesktopAreaNow(bool& oneOfSeveral);
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> CreateDesktopWindow(const UltraCanvas::DesktopScreenInfo& area,
+                                                                        bool oneOfSeveral);
+    void FollowPrimaryScreen();
     void CoverOtherScreens();
+    // A point of the desktop window, in logical px, as a screen position in
+    // physical px: what the panels beside the bars are placed by.
+    int ScreenX(float logicalX) const;
+    int ScreenY(float logicalY) const;
     // The window for otherScreens_[index]; `report` says a failure once.
     void OpenScreenWindow(size_t index, bool report);
 
@@ -192,6 +243,8 @@ private:
     // The tray icons on the info panel follow the host's list.
     void RefreshTray();
     void ShowTrayBalloon(const UltraCanvas::DesktopTrayIcon& icon);
+    // An icon whose program hands its menu over as data (Linux): drawn here.
+    void ShowTrayMenu(const std::string& iconId, const std::string& itemId, int windowX, int windowY);
 
     // ===== CLIPBOARD HISTORY =====
     void StartClipboardHistory();
@@ -218,6 +271,8 @@ private:
     std::string iconsDir_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    // What the desktop window covers, in the screen's physical pixels.
+    UltraCanvas::DesktopScreenInfo area_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> workArea_;
     std::shared_ptr<UltraCanvas::UltraCanvasImageElement> wallpaper_;
@@ -230,6 +285,21 @@ private:
     std::shared_ptr<UltraDesktopAppStarter> appStarter_;
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
     std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;
+
+    // The clock: its face and the date under it, refreshed once a minute.
+    std::shared_ptr<UltraCanvas::UltraCanvasGaugeDiagramElement> clock_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> clockDate_;
+    int clockMinute_ = -1;
+    std::shared_ptr<UltraDesktopClockPanel> clockPanel_;
+    std::shared_ptr<UltraDesktopVolumePanel> volumePanel_;
+    UltraCanvas::UltraCanvasGlobalShortcut lockShortcut_;
+    // The pinned applications as resolved against the installed ones at the
+    // last rebuild; a pin whose application is gone is kept, and shows again
+    // when it is back.
+    std::vector<UltraCanvas::UCDesktopEntry> pinnedEntries_;
+    // The loudspeaker as last read; `haveSpeaker_` false until the first reading.
+    UltraCanvas::DesktopAudioOutput speaker_;
+    bool haveSpeaker_ = false;
 
     // The clipboard history; null when the build has no database.
     std::unique_ptr<UltraCanvas::UltraCanvasClipboardHistory> history_;
@@ -275,6 +345,8 @@ private:
     std::map<std::string, std::string> trayIcons_;
     std::map<std::string, std::string> trayTooltips_;
     std::map<std::string, uint64_t> trayBalloons_;
+    // Item id -> the icon's menu as data, for the right click.
+    std::map<std::string, std::vector<UltraCanvas::DesktopTrayMenuItem>> trayMenus_;
     UltraCanvas::TimerId uiTimer_ = 0;
     int ticksSinceNotices_ = 0;
     int screenshotBadgeTicks_ = 0;
@@ -286,6 +358,11 @@ private:
     bool devicePollRunning_ = false;
     bool devicePending_ = false;
     UltraCanvas::DesktopDeviceActivity pending_;
+    // The speaker is read on the same thread every fifth poll (a sound
+    // server round trip is dearer than a sysfs read).
+    bool speakerPending_ = false;
+    UltraCanvas::DesktopAudioOutput pendingSpeaker_;
+    int pollsSinceSpeaker_ = 0;
     UltraCanvas::DesktopDeviceActivity lastActivity_;
     bool haveLastActivity_ = false;
 };

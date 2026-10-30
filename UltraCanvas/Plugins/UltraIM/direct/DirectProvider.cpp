@@ -1,5 +1,6 @@
 // Plugins/UltraIM/direct/DirectProvider.cpp
 // ChatCube Direct - the ULTRA OS native messenger as an UltraIM provider
+// Version: 0.1.2 - pictures, videos and files sent and received in parts; DownloadAttachment
 // Version: 0.1.1 - FetchSharedCredentials: the Telegram application's keys from the relay
 // Version: 0.1.0
 // Last Modified: 2026-10-25
@@ -14,6 +15,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <system_error>
 
@@ -86,7 +88,7 @@ UltraIMCapabilityFlags DirectProvider::GetCapabilities() const {
     using F = UltraIMCapabilityFlags;
     return F::TextMessages | F::GroupChats | F::ReadReceipts | F::TypingIndicator | F::E2EEncryption |
            F::OfflineMessages | F::PeerToPeer | F::ReplyToMessage | F::AnonymousLogin | F::AddContact |
-           F::CreateGroup | F::VoiceCalls | F::VideoCalls;
+           F::CreateGroup | F::VoiceCalls | F::VideoCalls | F::ImageMessages | F::FileTransfer;
 }
 
 UltraIMResult DirectProvider::Initialize(const UltraIMConfig& config, UltraIMEventSink sink) {
@@ -927,6 +929,14 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
         for (const auto& id : body["ids"].GetElements()) MarkDelivered(envelope.from, id.GetString(), status);
         return;
     }
+    if (type == "chunk") {
+        HandleChunkBody(body);
+        return;
+    }
+    if (type == "file") {
+        HandleFileBody(envelope, body);
+        return;
+    }
     if (type != "text") return;
 
     const bool group = IsGroupId(envelope.conversation);
@@ -983,6 +993,370 @@ void DirectProvider::HandleBody(const Envelope& envelope, const JSONValue& body)
     Emit(updated);
 
     if (!group) SendReceipt(envelope.from, {envelope.id}, "delivered");
+}
+
+// ============================================================================
+// FILES
+// A picture, a video or a file goes out as one "file" body - the message
+// with the file's name, size, kind and preview picture - followed by its
+// bytes in "chunk" bodies, each a sealed envelope of its own on the same
+// path as a text (the link, else the relay's queue). The other side keeps
+// the parts until all are here, then puts the file together.
+// ============================================================================
+
+namespace {
+
+constexpr size_t kChunkBytes = 32 * 1024;          // raw bytes per part: base64 and sealed, under the relay's 64 KiB
+constexpr int64_t kMaxFileBytes = 64 * 1024 * 1024;
+constexpr size_t kMaxPreviewBytes = 24 * 1024;     // a preview picture that still fits the file body
+constexpr int kPreviewSide = 320;
+
+int ChunkCount(int64_t size) {
+    return size <= 0 ? 0 : static_cast<int>((size + static_cast<int64_t>(kChunkBytes) - 1) / static_cast<int64_t>(kChunkBytes));
+}
+
+bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
+    std::FILE* f = UltraCanvas::OpenFileUtf8(path, "rb");
+    if (!f) return false;
+    out.clear();
+    uint8_t buffer[65536];
+    size_t n = 0;
+    while ((n = std::fread(buffer, 1, sizeof(buffer), f)) > 0) out.insert(out.end(), buffer, buffer + n);
+    const bool ok = !std::ferror(f);
+    std::fclose(f);
+    return ok;
+}
+
+bool WriteWholeFile(const std::string& path, const std::vector<uint8_t>& bytes) {
+    std::FILE* f = UltraCanvas::OpenFileUtf8(path, "wb");
+    if (!f) return false;
+    const bool ok = bytes.empty() || std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size();
+    return (std::fclose(f) == 0) && ok;
+}
+
+std::string LowerExtension(const std::string& name) {
+    const size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos || dot + 1 >= name.size() || name.find('/', dot) != std::string::npos) return std::string();
+    std::string ext = name.substr(dot);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext;
+}
+
+std::string MimeFor(const std::string& path) {
+    static const std::pair<const char*, const char*> kTypes[] = {
+        {".jpg", "image/jpeg"}, {".jpeg", "image/jpeg"}, {".png", "image/png"},   {".gif", "image/gif"},
+        {".webp", "image/webp"}, {".bmp", "image/bmp"},  {".heic", "image/heic"},
+        {".mp4", "video/mp4"},  {".m4v", "video/mp4"},   {".mov", "video/quicktime"}, {".webm", "video/webm"},
+        {".mkv", "video/x-matroska"}, {".avi", "video/x-msvideo"},
+        {".mp3", "audio/mpeg"}, {".ogg", "audio/ogg"},   {".opus", "audio/ogg"},   {".wav", "audio/wav"},
+        {".pdf", "application/pdf"}, {".txt", "text/plain"}, {".zip", "application/zip"},
+    };
+    const std::string ext = LowerExtension(path);
+    for (const auto& entry : kTypes) {
+        if (ext == entry.first) return entry.second;
+    }
+    return "application/octet-stream";
+}
+
+const char* KindOf(UltraIMMessageType type) {
+    switch (type) {
+        case UltraIMMessageType::Image: return "image";
+        case UltraIMMessageType::Video: return "video";
+        case UltraIMMessageType::Audio: return "audio";
+        default: return "file";
+    }
+}
+
+UltraIMMessageType TypeOfKind(const std::string& kind) {
+    if (kind == "image") return UltraIMMessageType::Image;
+    if (kind == "video") return UltraIMMessageType::Video;
+    if (kind == "audio") return UltraIMMessageType::Audio;
+    return UltraIMMessageType::File;
+}
+
+} // namespace
+
+std::string DirectProvider::MediaPath(const std::string& fileId, const std::string& suffix) const {
+    namespace fs = std::filesystem;
+    const std::string base = config_.cacheDirectory.empty() ? config_.dataDirectory : config_.cacheDirectory;
+    const fs::path dir = UltraCanvas::PathFromUtf8(base) / UltraCanvas::PathFromUtf8(providerId_) / "media";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    std::string name;
+    for (char c : fileId) {
+        if (std::isalnum(static_cast<unsigned char>(c)) || c == '-') name += c;
+    }
+    return UltraCanvas::PathToUtf8(dir / UltraCanvas::PathFromUtf8(name + suffix));
+}
+
+UltraIMResult DirectProvider::SendImage(const std::string& conversationId, const std::string& localPath,
+                                        const std::string& caption, const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, caption, UltraIMMessageType::Image, options);
+}
+
+UltraIMResult DirectProvider::SendVideo(const std::string& conversationId, const std::string& localPath,
+                                        const std::string& caption, const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, caption, UltraIMMessageType::Video, options);
+}
+
+UltraIMResult DirectProvider::SendFile(const std::string& conversationId, const std::string& localPath,
+                                       const UltraIMSendOptions& options) {
+    return SendMedia(conversationId, localPath, std::string(), UltraIMMessageType::File, options);
+}
+
+UltraIMResult DirectProvider::SendMedia(const std::string& conversationId, const std::string& localPath,
+                                        const std::string& caption, UltraIMMessageType type,
+                                        const UltraIMSendOptions& options) {
+    if (!identity_.IsValid() || state_ == UltraIMConnectionState::Disconnected)
+        return UltraIMResult::Error(UltraIMResultCode::NotConnected, "Not signed in");
+    UltraIMConversation conversation;
+    if (!store_.GetConversation(conversationId, conversation))
+        return UltraIMResult::Error(UltraIMResultCode::NotFound, "No such conversation");
+    std::vector<std::string> recipients;
+    if (conversation.isGroup) {
+        for (const auto& m : conversation.memberIds) {
+            if (m != identity_.userId) recipients.push_back(m);
+        }
+        if (recipients.empty())
+            return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "The group has no other members");
+    } else {
+        recipients.push_back(conversationId);
+    }
+    std::vector<uint8_t> bytes;
+    if (localPath.empty() || !ReadWholeFile(localPath, bytes))
+        return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "There is no file " + localPath);
+    if (static_cast<int64_t>(bytes.size()) > kMaxFileBytes)
+        return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "ChatCube sends files up to 64 MiB");
+
+    const int64_t now = NowMs();
+    const std::string clientId = options.clientMessageId.empty() ? UltraIM_NewClientMessageId() : options.clientMessageId;
+    const std::string fileId = UltraIM_NewClientMessageId();
+    const std::string name = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(localPath).filename());
+    const std::string mime = MimeFor(localPath);
+    const int parts = ChunkCount(static_cast<int64_t>(bytes.size()));
+
+    // The preview picture, when the application makes one and it is small
+    // enough to ride in the file body.
+    UltraIMMessage message;
+    message.attachment.localPath = localPath;
+    message.attachment.isDownloaded = true;
+    message.attachment.remoteUrl = fileId;
+    message.attachment.fileName = name;
+    message.attachment.mimeType = mime;
+    message.attachment.fileSizeBytes = static_cast<int64_t>(bytes.size());
+    std::string previewBase64;
+    if (type == UltraIMMessageType::Image || type == UltraIMMessageType::Video) {
+        int w = 0, h = 0;
+        const std::string preview = UltraIM_MakePreview(localPath, mime, kPreviewSide, w, h);
+        std::vector<uint8_t> previewBytes;
+        if (!preview.empty() && ReadWholeFile(preview, previewBytes) && previewBytes.size() <= kMaxPreviewBytes) {
+            previewBase64 = Base64(previewBytes);
+            message.attachment.thumbnailPath = preview;
+            if (type == UltraIMMessageType::Image && message.attachment.width == 0) {
+                // The preview keeps the picture's shape: good enough for the bubble.
+                message.attachment.width = w;
+                message.attachment.height = h;
+            }
+        }
+    }
+
+    JSONValue body = JSONValue::MakeObject();
+    body.Set("type", JSONValue("file"));
+    body.Set("kind", JSONValue(KindOf(type)));
+    body.Set("file", JSONValue(fileId));
+    body.Set("name", JSONValue(name));
+    body.Set("mime", JSONValue(mime));
+    body.Set("size", JSONValue(static_cast<int64_t>(bytes.size())));
+    body.Set("parts", JSONValue(static_cast<int64_t>(parts)));
+    body.Set("text", JSONValue(caption));
+    body.Set("w", JSONValue(static_cast<int64_t>(message.attachment.width)));
+    body.Set("h", JSONValue(static_cast<int64_t>(message.attachment.height)));
+    if (!previewBase64.empty()) body.Set("preview", JSONValue(previewBase64));
+    body.Set("sender_name", JSONValue(displayName_));
+    if (!options.replyToMessageId.empty()) body.Set("reply_to", JSONValue(options.replyToMessageId));
+    if (conversation.isGroup) body.Set("group_title", JSONValue(conversation.title));
+
+    message.providerId = providerId_;
+    message.conversationId = conversationId;
+    message.clientMessageId = clientId;
+    message.messageId = clientId;
+    message.senderId = identity_.userId;
+    message.senderName = displayName_;
+    message.timestampMs = now;
+    message.type = type;
+    message.text = caption;
+    message.replyTo.messageId = options.replyToMessageId;
+    message.deliveryStatus = UltraIMDeliveryStatus::Sending;
+    message.isOwn = true;
+    if (!store_.AddMessage(message))
+        return UltraIMResult::Error(UltraIMResultCode::InvalidArgument, "This client message id was already sent");
+
+    const std::string wire = conversation.isGroup ? conversationId : kDirectConversation;
+    QueueBody(wire, recipients, clientId, UltraCanvas::JSON::Serialize(body), now);
+    // The parts, in order, each under an id of its own (their delivery is
+    // nobody's business but the outbox's).
+    for (int seq = 0; seq < parts; ++seq) {
+        const size_t at = static_cast<size_t>(seq) * kChunkBytes;
+        const size_t n = std::min(kChunkBytes, bytes.size() - at);
+        JSONValue chunk = JSONValue::MakeObject();
+        chunk.Set("type", JSONValue("chunk"));
+        chunk.Set("file", JSONValue(fileId));
+        chunk.Set("seq", JSONValue(static_cast<int64_t>(seq)));
+        chunk.Set("parts", JSONValue(static_cast<int64_t>(parts)));
+        chunk.Set("data", JSONValue(Base64(std::vector<uint8_t>(bytes.begin() + static_cast<std::ptrdiff_t>(at),
+                                                                bytes.begin() + static_cast<std::ptrdiff_t>(at + n)))));
+        QueueBody(wire, recipients, "c-" + fileId + "-" + std::to_string(seq), UltraCanvas::JSON::Serialize(chunk), now);
+    }
+
+    UltraIMEvent updated;
+    updated.type = UltraIMEventType::ConversationUpdate;
+    updated.providerId = providerId_;
+    updated.conversationId = conversationId;
+    store_.GetConversation(conversationId, updated.conversation);
+    Emit(updated);
+    return UltraIMResult::Ok();
+}
+
+void DirectProvider::HandleFileBody(const Envelope& envelope, const JSONValue& body) {
+    const bool group = IsGroupId(envelope.conversation);
+    UltraIMConversation conversation;
+    if (group) {
+        if (!store_.GetConversation(envelope.conversation, conversation)) {
+            conversation.conversationId = envelope.conversation;
+            conversation.providerId = providerId_;
+            conversation.title = body["group_title"].GetString("Group");
+            conversation.isGroup = true;
+            store_.UpsertConversation(conversation);
+            RefreshGroups();
+        }
+        if (!store_.GetConversation(envelope.conversation, conversation)) return;
+        if (!conversation.memberIds.empty() &&
+            std::find(conversation.memberIds.begin(), conversation.memberIds.end(), envelope.from) ==
+                conversation.memberIds.end())
+            return;
+    } else {
+        conversation = EnsureDirectConversation(envelope.from);
+    }
+    const std::string fileId = body["file"].GetString();
+    if (fileId.empty()) return;
+
+    StoredContact sender;
+    store_.GetContact(envelope.from, sender);
+    UltraIMMessage message;
+    message.providerId = providerId_;
+    message.conversationId = conversation.conversationId;
+    message.clientMessageId = envelope.id;
+    message.messageId = envelope.id;
+    message.senderId = envelope.from;
+    message.senderName = sender.displayName.empty() ? body["sender_name"].GetString() : sender.displayName;
+    message.timestampMs = envelope.timestampMs;
+    message.type = TypeOfKind(body["kind"].GetString());
+    message.text = body["text"].GetString();
+    message.replyTo.messageId = body["reply_to"].GetString();
+    message.deliveryStatus = UltraIMDeliveryStatus::Delivered;
+    message.isOwn = false;
+    message.attachment.remoteUrl = fileId;
+    message.attachment.fileName = body["name"].GetString();
+    message.attachment.mimeType = body["mime"].GetString();
+    message.attachment.fileSizeBytes = body["size"].GetInteger(0);
+    message.attachment.width = static_cast<int>(body["w"].GetInteger(0));
+    message.attachment.height = static_cast<int>(body["h"].GetInteger(0));
+    const std::string preview = body["preview"].GetString();
+    if (!preview.empty()) {
+        const std::string path = MediaPath(fileId, ".preview.jpg");
+        if (WriteWholeFile(path, FromBase64(preview))) message.attachment.thumbnailPath = path;
+    }
+    if (!store_.AddMessage(message)) return;    // seen already
+
+    UltraIMEvent received;
+    received.type = UltraIMEventType::MessageReceive;
+    received.providerId = providerId_;
+    received.conversationId = conversation.conversationId;
+    received.contactId = envelope.from;
+    received.message = message;
+    Emit(received);
+    UltraIMEvent updated;
+    updated.type = UltraIMEventType::ConversationUpdate;
+    updated.providerId = providerId_;
+    updated.conversationId = conversation.conversationId;
+    store_.GetConversation(conversation.conversationId, updated.conversation);
+    Emit(updated);
+    if (!group) SendReceipt(envelope.from, {envelope.id}, "delivered");
+    TryAssemble(fileId);        // the parts may have come first
+}
+
+void DirectProvider::HandleChunkBody(const JSONValue& body) {
+    const std::string fileId = body["file"].GetString();
+    const int64_t seq = body["seq"].GetInteger(-1);
+    const std::string data = body["data"].GetString();
+    if (fileId.empty() || seq < 0 || seq >= 1000000 || data.empty()) return;
+    store_.AddPart(fileId, static_cast<int>(seq), data);
+    TryAssemble(fileId);
+}
+
+void DirectProvider::TryAssemble(const std::string& fileId) {
+    UltraIMMessage message;
+    if (!store_.FindMessageByFile(fileId, message) || message.attachment.isDownloaded) return;
+    const int parts = ChunkCount(message.attachment.fileSizeBytes);
+    if (store_.CountParts(fileId) < parts) return;
+    std::vector<uint8_t> bytes;
+    for (const std::string& part : store_.Parts(fileId)) {
+        const std::vector<uint8_t> raw = FromBase64(part);
+        bytes.insert(bytes.end(), raw.begin(), raw.end());
+    }
+    if (static_cast<int64_t>(bytes.size()) != message.attachment.fileSizeBytes) {
+        // Parts of another size than said: not this file. Start over.
+        store_.RemoveParts(fileId);
+        return;
+    }
+    const std::string path = MediaPath(fileId, LowerExtension(message.attachment.fileName));
+    if (!WriteWholeFile(path, bytes)) return;
+    store_.RemoveParts(fileId);
+    message.attachment.localPath = path;
+    message.attachment.isDownloaded = true;
+    store_.UpdateAttachment(message.conversationId, message.clientMessageId, message.attachment);
+
+    std::vector<UltraIMAttachmentCallback> waiters;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = mediaWaiters_.find(fileId);
+        if (it != mediaWaiters_.end()) {
+            waiters = std::move(it->second);
+            mediaWaiters_.erase(it);
+        }
+    }
+    UltraIMEvent updated;
+    updated.type = UltraIMEventType::MessageUpdate;
+    updated.providerId = providerId_;
+    updated.conversationId = message.conversationId;
+    updated.contactId = message.senderId;
+    updated.message = message;
+    Emit(updated);
+    for (const auto& waiter : waiters) waiter(UltraIMResult::Ok(), message.attachment);
+}
+
+void DirectProvider::DownloadAttachment(const std::string& conversationId, const std::string& messageId,
+                                        UltraIMAttachmentCallback onResult) {
+    auto finish = [onResult](const UltraIMResult& r, const UltraIMAttachment& a) { if (onResult) onResult(r, a); };
+    UltraIMMessage message;
+    if (!store_.FindMessage(conversationId, messageId, message)) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotFound, "No such message"), UltraIMAttachment());
+        return;
+    }
+    if (message.attachment.remoteUrl.empty()) {
+        finish(UltraIMResult::Error(UltraIMResultCode::NotFound, "That message has no attachment"), UltraIMAttachment());
+        return;
+    }
+    if (message.attachment.isDownloaded && !message.attachment.localPath.empty()) {
+        finish(UltraIMResult::Ok(), message.attachment);
+        return;
+    }
+    // On its way: the sender pushes the parts; told when the last is here.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        mediaWaiters_[message.attachment.remoteUrl].push_back(finish);
+    }
+    TryAssemble(message.attachment.remoteUrl);
 }
 
 // ============================================================================
@@ -1213,13 +1587,14 @@ void DirectProvider::PostToRelay(const std::vector<OutboxEntry>& copies) {
         }
         if (!r.Ok() && retry) return;      // stays in the outbox for the next pass
         for (const auto& copy : sealed) store_.RemoveOutbox(copy.clientId, copy.recipient);
-        const OutboxEntry& first = sealed.front();
-        const std::string local = IsGroupId(first.conversation) ? first.conversation : first.recipient;
-        if (r.Ok()) {
-            sentOverRelay_ += static_cast<int>(sealed.size());
-            MarkDelivered(local, first.clientId, UltraIMDeliveryStatus::Sent);
-        } else {
-            MarkDelivered(local, first.clientId, UltraIMDeliveryStatus::Failed);
+        if (r.Ok()) sentOverRelay_ += static_cast<int>(sealed.size());
+        // One mark per message (a group's copies share the client id; a
+        // file's parts have ids of their own, which no message carries).
+        std::set<std::string> marked;
+        for (const auto& copy : sealed) {
+            if (!marked.insert(copy.clientId).second) continue;
+            const std::string local = IsGroupId(copy.conversation) ? copy.conversation : copy.recipient;
+            MarkDelivered(local, copy.clientId, r.Ok() ? UltraIMDeliveryStatus::Sent : UltraIMDeliveryStatus::Failed);
         }
     });
 }
@@ -1238,6 +1613,7 @@ void DirectProvider::Pump() {
     CompletePendingAdds(now);
 
     std::map<std::string, std::vector<OutboxEntry>> groupCopies;   // client id -> copies
+    std::vector<OutboxEntry> relayCopies;                          // 1:1 copies for the relay, one request
     for (const auto& entry : store_.Outbox()) {
         if (KeyOf(entry.recipient).empty()) {
             FetchUser(entry.recipient, [this](bool known) { if (known) Wake(); });
@@ -1278,9 +1654,15 @@ void DirectProvider::Pump() {
         const bool online = EffectivePresence(entry.recipient) == UltraIMPresence::Online;
         if (online) links_.Ensure(entry.recipient);
         // Without a relay a message waits in the outbox until the link is up.
-        if (relay && (!online || now - entry.timestampMs > timings_.relayFallbackMs)) PostToRelay({entry});
+        if (relay && (!online || now - entry.timestampMs > timings_.relayFallbackMs)) relayCopies.push_back(entry);
     }
     if (relay) {
+        // A file's parts go in a few requests, not one each.
+        constexpr size_t kBatch = 64;
+        for (size_t at = 0; at < relayCopies.size(); at += kBatch) {
+            PostToRelay(std::vector<OutboxEntry>(relayCopies.begin() + static_cast<std::ptrdiff_t>(at),
+                                                 relayCopies.begin() + static_cast<std::ptrdiff_t>(std::min(relayCopies.size(), at + kBatch))));
+        }
         for (const auto& group : groupCopies) PostToRelay(group.second);
     }
 }
