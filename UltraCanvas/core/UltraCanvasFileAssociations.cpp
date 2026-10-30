@@ -7,8 +7,9 @@
 // Threading model: every backend call — from the worker and from cold-path
 // synchronous lookups alike — runs under one backend mutex, so the backends
 // stay lock-free. The cache has its own mutex and is safe from any thread.
+// Version: 1.2.0 - RunsCodeWhenOpened
 // Version: 1.1.0
-// Last Modified: 2026-09-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileAssociations.h"
@@ -366,6 +367,34 @@ void PrewarmAsync() {
 
 void PrewarmExtensionsAsync(const std::vector<std::string>& extensions) {
     Service::Instance().QueueExtensions(extensions);
+}
+
+// Programs, scripts, installers, shortcuts, disk images and the like on
+// Windows, macOS and Linux: what the system runs, mounts or follows when it
+// opens them.
+bool RunsCodeWhenOpened(const std::string& fileName) {
+    static const std::unordered_set<std::string> kRunnable = {
+        // Windows
+        "exe", "com", "bat", "cmd", "msi", "msp", "mst", "scr", "pif", "cpl", "hta", "jar",
+        "js", "jse", "vbs", "vbe", "wsf", "wsh", "ws", "ps1", "psm1", "psd1", "lnk", "url", "scf",
+        "reg", "inf", "dll", "sys", "msc", "application", "appref-ms", "gadget", "chm", "iso", "img",
+        "vhd", "vhdx", "appx", "msix", "appxbundle", "msixbundle", "settingcontent-ms",
+        // macOS
+        "app", "command", "tool", "pkg", "mpkg", "dmg", "terminal", "workflow", "scpt",
+        // Linux and other POSIX
+        "sh", "bash", "csh", "ksh", "zsh", "fish", "desktop", "appimage", "run", "bin", "deb",
+        "rpm", "snap", "flatpakref", "apk",
+        // script languages an association may run
+        "py", "pyw", "pl", "rb", "php"
+    };
+    std::string name = fileName;
+    const size_t slash = name.find_last_of("/\\");
+    if (slash != std::string::npos) name.erase(0, slash + 1);
+    // "invoice.pdf.exe " and "setup.exe." end where the system says they do.
+    while (!name.empty() && (name.back() == ' ' || name.back() == '.')) name.pop_back();
+    const size_t dot = name.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    return kRunnable.count(ToLowerCase(name.substr(dot + 1))) > 0;
 }
 
 } // namespace FileAssociations

@@ -9,8 +9,9 @@
 // UCCompoundFileWriter builds one, for the password-protected Office files
 // UltraCanvasOfficeEncryption.h writes.
 // Specification: [MS-CFB] Compound File Binary File Format.
+// Version: 1.2.0 - ReadStreamAt / HasStreamAt / StreamNamesAt / StorageNamesAt: below the root
 // Version: 1.1.0
-// Last Modified: 2026-10-17
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -47,6 +48,17 @@ public:
     // Names of the streams directly in the root storage, as UTF-8.
     std::vector<std::string> StreamNames() const;
 
+    // Below the root: a stream by its '/'-separated path from the root
+    // ("__attach_version1.0_#00000000/__substg1.0_37010102"), each name
+    // compared without regard to ASCII case. Outlook's .msg keeps every
+    // attachment and recipient in a storage of its own.
+    bool ReadStreamAt(const std::string& path, std::vector<uint8_t>& out) const;
+    bool HasStreamAt(const std::string& path) const;
+    // The streams, and the storages, directly in the storage at
+    // `storagePath` ("" is the root), as UTF-8 names.
+    std::vector<std::string> StreamNamesAt(const std::string& storagePath) const;
+    std::vector<std::string> StorageNamesAt(const std::string& storagePath) const;
+
     // Reason for the most recent failed Open. Empty after success.
     const std::string& GetLastError() const { return lastError_; }
 
@@ -80,6 +92,11 @@ private:
     void LoadMiniFat(uint32_t firstSector);
     bool LoadDirectory(uint32_t firstSector, uint16_t majorVersion);
     void CollectRootChildren();
+    // The directory entries directly in the storage `dirIndex` (its
+    // children's tree walked; a looping tree cannot hang it).
+    std::vector<uint32_t> ChildrenOf(uint32_t dirIndex) const;
+    // The entry at a '/'-separated path from the root; null when none.
+    const DirEntry* FindEntryAt(const std::string& path) const;
     bool ReadChain(uint32_t firstSector, uint64_t maxSize, std::vector<uint8_t>& out) const;
     bool ReadMiniChain(uint32_t firstSector, uint64_t maxSize, std::vector<uint8_t>& out) const;
     bool ReadEntry(const DirEntry& entry, std::vector<uint8_t>& out) const;

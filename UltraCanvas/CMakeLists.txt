@@ -1077,6 +1077,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUCDContainer.cpp
         # OLE2 compound files (the legacy Office containers: .doc, .xls)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCompoundFile.cpp
+        # Outlook .msg (a compound file): the media viewer shows one as a message.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOutlookMessage.cpp
         # Password-protected .xlsx / .docx (ECMA-376 agile encryption), on
         # UltraCrypt - linked below, after the module is defined
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasOfficeEncryption.cpp
