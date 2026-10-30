@@ -22,6 +22,7 @@
 // writes since 2003 - is read whatever the code page.
 //
 // Headless and read-only; no UI. The media viewer shows a .msg through it.
+// Version: 1.1.0 - messageId, inReplyTo (PR_INTERNET_MESSAGE_ID, PR_IN_REPLY_TO_ID)
 // Version: 1.0.0
 // Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
@@ -46,6 +47,10 @@ struct UCOutlookAttachment {
 
 struct UCOutlookMessage {
     std::string subject;
+    // The Internet Message-ID it travelled with ("<id@host>"), and the one it
+    // answers; "" for a message that never went through the Internet (a draft).
+    std::string messageId;
+    std::string inReplyTo;
     std::string from;              // "Name <address>", or whichever of the two the file has
     std::vector<std::string> to;   // the same form, one per recipient
     std::vector<std::string> cc;

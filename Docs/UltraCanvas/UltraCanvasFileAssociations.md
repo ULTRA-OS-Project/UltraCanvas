@@ -112,6 +112,25 @@ the icon-theme lookup behind `Icon=` — is
 the file display draws the very same launchers and must agree with the menu
 about what they are called and what they look like.
 
+### Files from elsewhere
+
+`RunsCodeWhenOpened(fileName)` says whether opening a file of that name would
+run code: a program, a script, an installer, a shortcut or a disk image
+(`.exe`, `.bat`, `.js`, `.ps1`, `.lnk`, `.msi`, `.iso` on Windows, `.app`,
+`.pkg`, `.dmg` on macOS, `.sh`, `.desktop`, `.appimage`, `.deb` on Linux,
+and script languages an association may run). It judges by the name alone,
+case-insensitively, after the trailing dots and spaces Windows ignores - a
+mail attachment or a download has no execute permission to look at. A mail
+reader or a preview offers such a file to be saved and never hands it to
+`OpenWithDefaultApplication`: UltraMail's attachments and the media
+viewer's message attachments both ask it.
+
+```cpp
+if (UltraCanvas::FileAssociations::RunsCodeWhenOpened("invoice.pdf.exe")) {
+    // offer to save it; do not open it
+}
+```
+
 ## Prewarm / caching model
 
 Lookups are cached per extension and served under a mutex, so
@@ -176,6 +195,8 @@ code.
 
 ## Version
 
+- 1.4.0 (2026-10-30): `RunsCodeWhenOpened` - files a mail reader or a preview
+  must not open.
 - 1.2.3 (2026-10-01): the Windows `explorer.exe` detour of 1.2.2 is gone. It
   answered a registered handler that would not start from our process by
   starting it from Explorer's, which hid the reason; the reason was the

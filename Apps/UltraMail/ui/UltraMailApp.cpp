@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
+// Version: 0.9.42 - Import: .eml, .emlx and Outlook .msg files into the folder on show
+//                  (uploaded to the server, synced back); an attachment that is a
+//                  program or script is never opened, only offered to be saved
 // Version: 0.9.41 - Mail security per account (the security dialog: Account Settings and
 //                  after adding an account); new messages start as it says
 // Version: 0.9.40 - the account bar's counters filter the list (New today, all
@@ -114,6 +117,7 @@
 #include "UltraMailWaitDialog.h"
 #include "UltraMailOAuthCodeDialog.h"
 #include "UltraMailTrace.h"
+#include "UltraMailMessageImport.h"
 
 #include <UltraCloud/UltraCloudMemory.h>
 
@@ -679,6 +683,9 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
     outboxButton_ = makeAction("umOutbox", "Outbox", 76, "", false, [this]() { OpenOutbox(); });
     outboxButton_->SetTooltip("Messages waiting to be sent");
     outboxButton_->SetVisible(false);
+    // Import: .eml / .emlx / Outlook .msg files into the folder on show.
+    makeAction("umImport", "Import", 70, "", false, [this]() { ImportMessages(); })
+        ->SetTooltip("Add messages saved as .eml, .emlx or Outlook .msg files to the folder on show");
     toolbar->AddStretchSpacer(1);
     makeAction("umSettings", "Account Settings", 0, "", false, [this]() {
         if (!selectedAccount_.empty()) HandleAccountSettings(selectedAccount_);
@@ -3926,6 +3933,83 @@ void UltraMailApp::SeedDemoContacts() {
     add("Electricity",  ContactSection::Services, "billing@power.example", "",             "PowerCo");
 }
 
+void UltraMailApp::ImportMessages() {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    if (selectedAccount_.empty()) {
+        AlertError(parent, "There is no account to import into.", "Add an account first.");
+        return;
+    }
+    const std::string accountId = selectedAccount_;
+    std::string folder = mailView_.CurrentFolder();
+    if (folder.empty()) folder = "INBOX";
+
+    UltraCanvas::FileDialogOptions options;
+    options.title = "Import messages into " + FolderLabel(accountId, folder);
+    options.parentWindow = parent;
+    options.filters = { UltraCanvas::FileFilter("E-mail messages (.eml, .emlx, Outlook .msg)",
+                                                ImportableMessageExtensions()) };
+    UltraCanvas::UltraCanvasFileLoader::OpenMultipleFilesDialog(
+        options, [this, accountId, folder](UltraCanvas::DialogResult result, const std::vector<std::string>& paths) {
+            if (result != UltraCanvas::DialogResult::OK || paths.empty()) return;
+            ImportMessageFiles(accountId, folder, paths);
+        });
+}
+
+void UltraMailApp::ImportMessageFiles(const std::string& accountId, const std::string& folder,
+                                      const std::vector<std::string>& paths) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    // The account's server, sign-in and plug-in - the ones its Drafts and
+    // Sent copies go through - taken here, on the UI thread.
+    auto copies = std::make_shared<ServerCopies>(MakeServerCopies());
+    if (!copies->imap || !copies->prepare) {
+        AlertError(parent, "The messages could not be imported.", "No mail plug-in is loaded.");
+        return;
+    }
+    const std::string label = FolderLabel(accountId, folder);
+    SetStatus("Importing " + std::to_string(paths.size()) + (paths.size() == 1 ? " message" : " messages") +
+              " into " + label + "…");
+    std::thread([this, copies, accountId, folder, paths, label, parent]() {
+        int imported = 0;
+        std::vector<std::string> failures;
+        ServerFolders where;
+        const UltraNetResult ready = copies->prepare(accountId, where);
+        for (const auto& path : paths) {
+            const std::string name = PathToUtf8(PathFromUtf8(path).filename());
+            if (!ready) { failures.push_back(name + ": " + ready.message); continue; }
+            // Read through the file loader, as every file the user picks is.
+            auto loaded = UltraCanvas::UltraCanvasFileLoader::LoadFile(path, /*autoDecompress=*/false);
+            if (!loaded.success) { failures.push_back(name + ": " + loaded.error); continue; }
+            std::string raw, why;
+            if (!MessageFileToRfc822(name, loaded.bytes, raw, why)) { failures.push_back(name + ": " + why); continue; }
+            // Uploaded as read: it was read where it came from.
+            const UltraNetResult added = copies->MailboxFor(where).AppendMessage(
+                where.serverUrl, folder, raw, UltraNetMailFlags::Seen, where.options);
+            if (added) ++imported;
+            else failures.push_back(name + ": " + added.message);
+        }
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, accountId, folder, label, parent, imported, failures]() {
+            if (imported > 0) {
+                SetStatus(std::to_string(imported) + (imported == 1 ? " message" : " messages") +
+                          " imported into " + label);
+                // The folder's next sync brings them into the list.
+                SyncFolder(accountId, folder, /*userInitiated=*/true);
+            } else {
+                SetStatus("");
+            }
+            if (!failures.empty()) {
+                std::string details;
+                for (const auto& f : failures) details += (details.empty() ? "" : "\n") + f;
+                AlertError(parent,
+                           failures.size() == 1 ? "A message could not be imported."
+                                                : std::to_string(failures.size()) + " messages could not be imported.",
+                           details);
+            }
+        });
+    }).detach();
+}
+
 void UltraMailApp::OpenAttachment(const Attachment& attachment) {
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
 
@@ -3952,6 +4036,24 @@ void UltraMailApp::OpenAttachment(const Attachment& attachment) {
                 else
                     AlertError(parent, "The key could not be imported.", error);
             },
+            parent);
+        return;
+    }
+
+    // A program, script, installer, shortcut or disk image would run if it
+    // were opened - the commonest way mail carries malware. It is never
+    // opened from here, not even written to the cache; it can be saved and
+    // looked at on purpose. Its own name decides, and so does the name the
+    // cache would give it (an unnamed part gets one from its media type).
+    const std::string cacheName = AttachmentCache::SanitizeFilename(attachment.filename, attachment.mediaType);
+    if (UltraCanvas::FileAssociations::RunsCodeWhenOpened(attachment.filename) ||
+        UltraCanvas::FileAssociations::RunsCodeWhenOpened(cacheName)) {
+        const std::string name = attachment.filename.empty() ? cacheName : attachment.filename;
+        UltraCanvasAlert::Confirm(
+            "\"" + name + "\" is a program or a script, which would run if it were opened. "
+            "UltraMail does not open it.\n\nWould you like to save it instead?",
+            "Open attachment",
+            [this, attachment](bool save) { if (save) SaveAttachment(attachment); },
             parent);
         return;
     }

@@ -33,6 +33,7 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.12.0 - FileAssociations::RunsCodeWhenOpened, what an attachment link will not open
 // Version: 1.11.0 - Outlook .msg messages, attachments listed with Open and Save
 // Version: 1.10.0 - Apple Mail .emlx; saved web pages (.mht) from their own parts
 // Version: 1.9.0 - e-mail messages (.eml) shown as the message
@@ -64,6 +65,7 @@
 #include "UltraCanvasWebView.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasCompoundFile.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasTextUtils.h"
 #include "UltraCanvasPathUtf8.h"
 
@@ -425,6 +427,24 @@ int main() {
         Check(web && PageLabel(web, "minutes.txt") && PageLabel(web, "Save"),
               "notes.msg: the attachment, with its Open and Save links");
         Check(Has(InfoText(*viewer), "EMAIL"), "notes.msg: the info bar calls it EMAIL");
+
+        // What an attachment link refuses to open: programs and scripts,
+        // by name, whatever the case, however the name ends.
+        Check(FileAssociations::RunsCodeWhenOpened("setup.exe") &&
+              FileAssociations::RunsCodeWhenOpened("Invoice.PDF.JS") &&
+              FileAssociations::RunsCodeWhenOpened("run.sh") &&
+              FileAssociations::RunsCodeWhenOpened("Report.lnk") &&
+              FileAssociations::RunsCodeWhenOpened("update.desktop") &&
+              FileAssociations::RunsCodeWhenOpened("Tool.app") &&
+              FileAssociations::RunsCodeWhenOpened("tricky.exe. ") &&
+              FileAssociations::RunsCodeWhenOpened("C:\\Temp\\x.bat"),
+              "RunsCodeWhenOpened: programs, scripts, shortcuts, an .exe hiding behind dots and spaces");
+        Check(!FileAssociations::RunsCodeWhenOpened("minutes.txt") &&
+              !FileAssociations::RunsCodeWhenOpened("report.pdf") &&
+              !FileAssociations::RunsCodeWhenOpened("photo.jpeg") &&
+              !FileAssociations::RunsCodeWhenOpened("exe") &&
+              !FileAssociations::RunsCodeWhenOpened("archive.exe.zip"),
+              "RunsCodeWhenOpened: documents, pictures, a bare word, an archive are not");
 
         const fs::path catalogue = dir / "strings.msg";
         WriteFile(catalogue, "$set 1\n1 Hello\n");

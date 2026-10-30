@@ -1,6 +1,7 @@
 // core/UltraCanvasOutlookMessage.cpp
 // Outlook .msg reader, compressed-RTF decompressor and RTF-encapsulated HTML
 // extractor - see UltraCanvasOutlookMessage.h.
+// Version: 1.1.0 - messageId, inReplyTo
 // Version: 1.0.0
 // Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
@@ -42,6 +43,8 @@ constexpr uint16_t kDeliveryTime         = 0x0E06;
 constexpr uint16_t kBody                 = 0x1000;
 constexpr uint16_t kRtfCompressed        = 0x1009;
 constexpr uint16_t kHtml                 = 0x1013;
+constexpr uint16_t kInternetMessageId    = 0x1035;
+constexpr uint16_t kInReplyToId          = 0x1042;
 constexpr uint16_t kDisplayName          = 0x3001;
 constexpr uint16_t kCreationTime         = 0x3007;
 constexpr uint16_t kLastModificationTime = 0x3008;
@@ -523,6 +526,8 @@ bool UCOutlookMessage::LoadFromMemory(std::vector<uint8_t> data, std::string& er
     message.SetCodePage(codePage);
 
     subject = message.String(kSubject);
+    messageId = message.String(kInternetMessageId);
+    inReplyTo = message.String(kInReplyToId);
     std::string fromName = message.String(kSenderName);
     std::string fromAddress = message.String(kSenderSmtpAddress);
     if (fromAddress.empty()) fromAddress = message.String(kSenderEmail);

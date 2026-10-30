@@ -130,6 +130,7 @@ endif()
 
 set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailApp.cpp
+    ui/UltraMailMessageImport.cpp
     ui/UltraMailAlerts.cpp
     ui/UltraMailPreferences.cpp
     ui/UltraMailStartPage.cpp

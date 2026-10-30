@@ -101,6 +101,7 @@ std::vector<uint8_t> BuildMessage(bool withHtmlProperty) {
     w.AddStream("__properties_version1.0",
                 Properties(32, { { 0x0E060040u, 134377380000000000ULL }, { 0x3FDE0003u, 1252 } }));
     w.AddStream("__substg1.0_0037001F", Utf16Resume());
+    w.AddStream("__substg1.0_1035001F", Utf16("<q3@example.org>"));
     w.AddStream("__substg1.0_0C1A001F", Utf16("Alice Example"));
     w.AddStream("__substg1.0_0C1F001F", Utf16("/O=EXCHANGE/OU=FIRST/CN=ALICE"));   // not an address
     w.AddStream("__substg1.0_5D01001F", Utf16("alice@example.org"));
@@ -197,6 +198,7 @@ static void TestMessage() {
     std::string error;
     Check(msg.LoadFromMemory(BuildMessage(false), error), "it loads (" + error + ")");
     Check(msg.subject == "Quarterly r\xC3\xA9sum\xC3\xA9", "the subject, from UTF-16");
+    Check(msg.messageId == "<q3@example.org>" && msg.inReplyTo.empty(), "its Message-ID; it answers none");
     Check(msg.from == "Alice Example <alice@example.org>", "From: the name and the SMTP address, not the Exchange one");
     Check(msg.to.size() == 1 && msg.to[0] == "Bob <bob@example.org>", "To");
     Check(msg.cc.size() == 1 && msg.cc[0] == "Carol <carol@example.org>", "Cc");

@@ -2474,27 +2474,12 @@ static std::string AttachmentFileName(const std::string& name) {
     return safe.empty() ? std::string("attachment") : safe;
 }
 
-// A program, a script, an installer, a shortcut or a disk image: what an
-// attachment must not be opened as from a preview - the system would run it
-// (Windows opens an .exe by running it, a .desktop file starts what it
-// names). It can be saved and looked at deliberately.
-static bool RunsWhenOpened(const std::string& name) {
-    static const std::set<std::string> kRunnable = {
-        "exe", "com", "bat", "cmd", "msi", "msp", "mst", "scr", "pif", "cpl", "hta", "jar",
-        "js", "jse", "vbs", "vbe", "wsf", "wsh", "ws", "ps1", "psm1", "psd1", "lnk", "url", "scf",
-        "reg", "inf", "dll", "sys", "msc", "application", "appref-ms", "gadget", "chm", "iso", "img",
-        "vhd", "vhdx", "appx", "msix", "app", "command", "tool", "pkg", "dmg", "sh", "bash", "csh",
-        "ksh", "zsh", "fish", "desktop", "appimage", "run", "bin", "deb", "rpm", "apk", "py", "pyw",
-        "pl", "rb", "php"
-    };
-    return kRunnable.count(LowerExt(name)) > 0;
-}
-
 void UltraCanvasMediaViewer::OpenAttachment(size_t index) {
     if (!webArchive || index >= webArchive->attachments.size()) return;
     const MailPart part = webArchive->attachments[index];
     const std::string name = AttachmentFileName(part.filename);
-    if (RunsWhenOpened(name)) {
+    // A program or script would run if it were opened (FileAssociations).
+    if (FileAssociations::RunsCodeWhenOpened(name)) {
         UltraCanvasAlert::Confirm(
             "\"" + name + "\" is a program or a script, which would run if it were opened. "
             "The preview does not open it.\n\nWould you like to save it instead?",
@@ -2558,10 +2543,10 @@ void UltraCanvasMediaViewer::SaveAttachment(size_t index) {
     opts.saveSettingsButton = false;   // written as it is, not by a format's writer
     UltraCanvasFileLoader::SaveFileDialog(opts, [this, part, name](DialogResult result, const std::string& chosen) {
         if (result != DialogResult::OK || chosen.empty()) return;
-        std::ofstream out(PathFromUtf8(chosen), std::ios::binary);
-        out.write(reinterpret_cast<const char*>(part.data.data()), static_cast<std::streamsize>(part.data.size()));
-        if (!out) {
-            UltraCanvasAlert::Error("\"" + name + "\" could not be written to " + chosen + ".",
+        std::string error;
+        if (!UltraCanvasFileLoader::SaveFile(chosen, part.data, error)) {
+            UltraCanvasAlert::Error("\"" + name + "\" could not be written to " + chosen +
+                                    (error.empty() ? std::string(".") : ": " + error),
                                     "Save attachment", nullptr, GetWindow());
             return;
         }

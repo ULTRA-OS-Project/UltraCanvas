@@ -323,7 +323,16 @@ private:
 
     // Materialise an attachment to the cache and hand it to the OS default
     // application; when no application is associated, offer to save it instead.
+    // A program or script (FileAssociations::RunsCodeWhenOpened) is never
+    // opened - not even cached; it is offered to be saved.
     void OpenAttachment(const Attachment& attachment);
+    // Import: pick .eml / .emlx / Outlook .msg files (UltraCanvasFileLoader's
+    // Open dialog) and upload them into the folder on show of the account on
+    // screen (AppendMessage, through the account's ServerCopies), then sync
+    // that folder so they appear. Failures are listed per file.
+    void ImportMessages();
+    void ImportMessageFiles(const std::string& accountId, const std::string& folder,
+                            const std::vector<std::string>& paths);
     // Save an attachment to a location the user picks, through the framework's
     // file dialog (UltraCanvasFileLoader::SaveFileDialog).
     void SaveAttachment(const Attachment& attachment);

@@ -455,6 +455,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `RunsCodeWhenOpened` — whether opening a file of this name would run
+    code (a program, script, installer, shortcut, disk image), by name
+    alone: what a mail attachment or a preview must never open. UltraMail
+    and the media viewer ask it.
   - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
     file (matched by name, never by reading it) and the generic icon name
     that type falls back to (`application/pdf` → `x-office-document`). Both
@@ -665,7 +669,8 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 
 - **UltraCanvasOutlookMessage** (`UltraCanvasOutlookMessage.h`) — Outlook
   `.msg` messages ([MS-OXMSG]) read through the compound-file reader:
-  `UCOutlookMessage::Load` / `LoadFromMemory` → `subject`, `from`, `to`,
+  `UCOutlookMessage::Load` / `LoadFromMemory` → `subject`, `messageId`,
+  `inReplyTo`, `from`, `to`,
   `cc`, `date` (UTC, RFC 5322 form), `bodyText`, `bodyHtml` (`PR_HTML`, else
   the HTML encapsulated in the compressed RTF), `attachments`
   (`UCOutlookAttachment`: `filename`, `mediaType`, `contentId`, `hidden`,

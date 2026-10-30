@@ -7,7 +7,7 @@ for a message dragged out of it (`.msg`, [MS-OXMSG]) into what a reader shows:
 the subject, the sender, the recipients, the date, the body and the
 attachments. Headless and read-only. The
 [media viewer](UltraCanvasMediaViewer.md) shows a `.msg` through it, as it
-shows an `.eml`.
+shows an `.eml`, and UltraMail's *Import* builds a standard message from it.
 
 ```cpp
 #include "UltraCanvasOutlookMessage.h"
@@ -44,6 +44,7 @@ storage of its own (`__recip_version1.0_#00000000`,
 | Field | Read from |
 |---|---|
 | `subject` | `PR_SUBJECT` |
+| `messageId`, `inReplyTo` | `PR_INTERNET_MESSAGE_ID`, `PR_IN_REPLY_TO_ID` (empty for a message that never went through the Internet, a draft) |
 | `from` | `PR_SENDER_NAME` with `PR_SENDER_SMTP_ADDRESS` (else `PR_SENDER_EMAIL_ADDRESS` unless it is an Exchange address, `/O=...`); a message with neither: `PR_SENT_REPRESENTING_*` |
 | `to`, `cc` | each recipient's display name and SMTP address, by `PR_RECIPIENT_TYPE` (Bcc left out); `PR_DISPLAY_TO` / `PR_DISPLAY_CC` when there are no recipient storages |
 | `date` | delivered (`PR_MESSAGE_DELIVERY_TIME`), else sent (`PR_CLIENT_SUBMIT_TIME`); a draft's last change, else its creation; UTC |

@@ -39,6 +39,14 @@
   kind, else in the system's application - and *Save* writes it where the
   Save dialog says. A program or script (`.exe`, `.js`, `.lnk`, `.sh`, ...)
   is never opened from the preview; it is offered to be saved instead.
+- **`FileAssociations::RunsCodeWhenOpened`:** whether opening a file of that
+  name would run code - a program, script, installer, shortcut or disk image
+  on Windows, macOS or Linux - by name alone, for the attachments and
+  downloads that have no execute permission to look at. The media viewer's
+  message attachments and UltraMail's attachments ask it.
+- **`UCOutlookMessage` keeps the message's `messageId` and `inReplyTo`**, so a
+  `.msg` built again as MIME (UltraMail's Import) keeps its identity and its
+  place in a conversation.
 - **UltraCanvasCompoundFile 1.2.0: streams and storages below the root**
   (`ReadStreamAt`, `HasStreamAt`, `StreamNamesAt`, `StorageNamesAt`), for the
   `.msg` reader's recipients and attachments.
