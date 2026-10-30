@@ -1,5 +1,7 @@
 // core/HTMLReader/HTMLParser.cpp
 // Tolerant HTML/XHTML parser implementation.
+// Version: 1.5.1 - the SVG / MathML name tables are built once, thread-safely:
+//                  parsing on several threads at once crashed in the hash table
 // Version: 1.5.0 - elements nest at most kMaxTreeDepth deep; deeper ones are leaves
 // Version: 1.4.0 - the newline right after a <pre>, <listing> or <textarea> start tag
 //                  is not content, as in HTML's tree builder
@@ -8,7 +10,7 @@
 //                  resumes at foreignObject / desc / title / annotation-xml / mi...
 // Version: 1.2.0 - <!DOCTYPE> recorded; quirks mode decided from it
 // Version: 1.1.0 - <style media="..."> becomes an @media block
-// Last Modified: 2026-10-12
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -79,22 +81,6 @@ std::string ToLower(std::string s) {
     return s;
 }
 
-// The HTML standard's "adjust SVG tag names" and "adjust SVG / MathML
-// attributes" tables: the tokenizer lower-cases every name, and in foreign
-// content these are put back in the case their vocabulary spells them, so
-// `<lineargradient viewbox>` and `<linearGradient viewBox>` both come out
-// right, as in a browser. Looked up by the lower-cased name.
-const std::string* AdjustedForeignName(const std::string& lower, const char* const* table,
-                                       size_t count) {
-    static std::unordered_map<const char* const*, std::unordered_map<std::string, std::string>> maps;
-    auto& map = maps[table];
-    if (map.empty()) {
-        for (size_t i = 0; i < count; ++i) map.emplace(ToLower(table[i]), table[i]);
-    }
-    auto it = map.find(lower);
-    return it == map.end() ? nullptr : &it->second;
-}
-
 const char* const kSvgTagNames[] = {
     "altGlyph", "altGlyphDef", "altGlyphItem", "animateColor", "animateMotion",
     "animateTransform", "clipPath", "feBlend", "feColorMatrix", "feComponentTransfer",
@@ -122,10 +108,39 @@ const char* const kSvgAttributeNames[] = {
 
 const char* const kMathMlAttributeNames[] = { "definitionURL" };
 
+// The HTML standard's "adjust SVG tag names" and "adjust SVG / MathML
+// attributes" tables: the tokenizer lower-cases every name, and in foreign
+// content these are put back in the case their vocabulary spells them, so
+// `<lineargradient viewbox>` and `<linearGradient viewBox>` both come out
+// right, as in a browser. Looked up by the lower-cased name.
+//
+// The lookup maps are built in one static initializer, which C++ runs exactly
+// once even when several threads parse at the same time (UltraFiler's
+// thumbnail workers do). They were filled lazily on first use and crashed in
+// the hash table when two threads met an <svg> together.
+using ForeignNameMap = std::unordered_map<std::string, std::string>;
+
 template <size_t N>
-std::string AdjustForeignName(std::string lower, const char* const (&table)[N]) {
-    if (const std::string* adjusted = AdjustedForeignName(lower, table, N)) return *adjusted;
-    return lower;
+ForeignNameMap BuildForeignNameMap(const char* const (&table)[N]) {
+    ForeignNameMap map;
+    for (const char* name : table) map.emplace(ToLower(name), name);
+    return map;
+}
+
+struct ForeignNameMaps {
+    ForeignNameMap svgTags = BuildForeignNameMap(kSvgTagNames);
+    ForeignNameMap svgAttributes = BuildForeignNameMap(kSvgAttributeNames);
+    ForeignNameMap mathMlAttributes = BuildForeignNameMap(kMathMlAttributeNames);
+};
+
+const ForeignNameMaps& GetForeignNameMaps() {
+    static const ForeignNameMaps maps;
+    return maps;
+}
+
+std::string AdjustForeignName(std::string lower, const ForeignNameMap& map) {
+    auto it = map.find(lower);
+    return it == map.end() ? lower : it->second;
 }
 
 } // namespace
@@ -402,7 +417,7 @@ void Parser::ParseTag(Node* /*parent*/, std::vector<Node*>& openStack) {
 
     const Content content = ContentOf(openStack);
     std::string tag = ParseTagName();
-    if (content == Content::Svg) tag = AdjustForeignName(tag, kSvgTagNames);
+    if (content == Content::Svg) tag = AdjustForeignName(tag, GetForeignNameMaps().svgTags);
     if (tag.empty()) {
         // Malformed: skip to '>'.
         SkipUntil(">");
@@ -508,8 +523,8 @@ void Parser::ParseAttributes(Node& element, Content content) {
         // Names are kept verbatim, lower-cased (xlink:href stays xlink:href).
         // In foreign content the vocabulary's own case comes back: viewBox,
         // preserveAspectRatio, definitionURL.
-        if (content == Content::Svg) name = AdjustForeignName(name, kSvgAttributeNames);
-        else if (content == Content::MathMl) name = AdjustForeignName(name, kMathMlAttributeNames);
+        if (content == Content::Svg) name = AdjustForeignName(name, GetForeignNameMaps().svgAttributes);
+        else if (content == Content::MathMl) name = AdjustForeignName(name, GetForeignNameMaps().mathMlAttributes);
         element.attributes.emplace_back(name, DecodeEntities(value));
     }
 }
