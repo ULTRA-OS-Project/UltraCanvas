@@ -601,7 +601,7 @@ jobs:
           scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
           scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
-          scripts/ci-apt.sh install libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+          scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
           # Build dependencies of the patched libcdr in UltraCanvas/third_party/libcdr.
           scripts/ci-apt.sh install libboost-dev liblcms2-dev libicu-dev

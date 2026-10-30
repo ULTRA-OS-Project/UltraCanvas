@@ -49,7 +49,10 @@
 //   - The notification area, when the desktop is the shell: Shell_TrayWnd,
 //     the window every program's Shell_NotifyIcon talks to
 //     (UltraCanvasWindowsTrayHost.cpp).
-//   - The end of the session: ExitWindowsEx.
+//   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
+//   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.5.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
+//                  SetAudioOutputVolume, SetAudioOutputMuted)
 // Version: 1.4.0 - no desktop switch from an MSIX package: its registry
 //                  writes are the package's own (UltraCanvasWindowsPackage.h)
 // Version: 1.3.0 - Microsoft Store applications (ListPackagedApplications,
@@ -88,7 +91,9 @@
 #include <windows.h>
 #include <audiopolicy.h>
 #include <dwmapi.h>
+#include <endpointvolume.h>
 #include <mmdeviceapi.h>
+#include <propsys.h>
 #include <objbase.h>
 #include <shellapi.h>
 #include <shlobj.h>     // SHGetKnownFolderItem
@@ -203,6 +208,9 @@ namespace {
         {0x1E87508D, 0x89C2, 0x42F0, {0x8A, 0x7E, 0x64, 0x5A, 0x0F, 0x50, 0xCA, 0x58}};
     const GUID kBhidEnumItems =
         {0x94F60519, 0x2850, 0x4924, {0xAA, 0x5A, 0xD1, 0x5E, 0x84, 0x86, 0x80, 0x39}};
+    // PKEY_Device_FriendlyName, whose header defines it only under INITGUID.
+    const PROPERTYKEY kKeyDeviceFriendlyName =
+        {{0xA45C254E, 0xDF1C, 0x4EFD, {0x80, 0x20, 0x67, 0xD1, 0x46, 0xA8, 0x50, 0xE0}}, 14};
 
     // ===== THE PNG CACHE FOR ICONS =====
     // The taskbar and the app starter draw image files. An executable's or a
@@ -1728,6 +1736,100 @@ bool EndSession(SessionEnd how, std::string& error) {
         return false;
     }
     return true;
+}
+
+bool CanLockSession() { return true; }
+
+bool LockSession(std::string& error) {
+    // What Win+L does: the secure desktop shows, and the session reports
+    // WTS_SESSION_LOCK to UltraCanvasSessionLock's listeners.
+    if (!LockWorkStation()) {
+        error = "Windows did not lock the screen (error " + std::to_string(GetLastError()) + ").";
+        return false;
+    }
+    return true;
+}
+
+// ===== THE LOUDSPEAKER =====
+
+namespace {
+    // The default playback endpoint's volume control, with the endpoint's
+    // name; nullptr with the reason in `error`. The caller releases it.
+    IAudioEndpointVolume* DefaultOutputVolume(std::string& name, std::string& error) {
+        IMMDeviceEnumerator* enumerator = nullptr;
+        if (FAILED(CoCreateInstance(kClsidMMDeviceEnumerator, nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
+                                    reinterpret_cast<void**>(&enumerator)))) {
+            error = "Windows audio is not available.";
+            return nullptr;
+        }
+        IMMDevice* device = nullptr;
+        const HRESULT found = enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &device);
+        Release(enumerator);
+        if (FAILED(found) || !device) {
+            error = "No loudspeaker is set as the default output.";
+            return nullptr;
+        }
+        IPropertyStore* properties = nullptr;
+        if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, &properties)) && properties) {
+            PROPVARIANT value;
+            PropVariantInit(&value);
+            if (SUCCEEDED(properties->GetValue(kKeyDeviceFriendlyName, &value)) && value.vt == VT_LPWSTR && value.pwszVal) {
+                name = Narrow(value.pwszVal);
+            }
+            PropVariantClear(&value);
+            Release(properties);
+        }
+        IAudioEndpointVolume* volume = nullptr;
+        const HRESULT opened = device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr,
+                                                reinterpret_cast<void**>(&volume));
+        Release(device);
+        if (FAILED(opened) || !volume) {
+            error = "The output's volume control could not be opened.";
+            return nullptr;
+        }
+        return volume;
+    }
+} // namespace
+
+DesktopAudioOutput ReadAudioOutput() {
+    ComScope com;
+    DesktopAudioOutput out;
+    IAudioEndpointVolume* volume = DefaultOutputVolume(out.device, out.error);
+    if (!volume) return out;
+    float level = 0.0f;
+    BOOL muted = FALSE;
+    if (SUCCEEDED(volume->GetMasterVolumeLevelScalar(&level)) && SUCCEEDED(volume->GetMute(&muted))) {
+        out.available = true;
+        out.volumePercent = static_cast<int>(level * 100.0f + 0.5f);
+        out.muted = muted != FALSE;
+    } else {
+        out.error = "The output's volume could not be read.";
+    }
+    Release(volume);
+    return out;
+}
+
+bool SetAudioOutputVolume(int percent, std::string& error) {
+    ComScope com;
+    std::string name;
+    IAudioEndpointVolume* volume = DefaultOutputVolume(name, error);
+    if (!volume) return false;
+    const float level = static_cast<float>(std::clamp(percent, 0, 100)) / 100.0f;
+    const bool ok = SUCCEEDED(volume->SetMasterVolumeLevelScalar(level, nullptr));
+    if (!ok) error = "The output's volume could not be set.";
+    Release(volume);
+    return ok;
+}
+
+bool SetAudioOutputMuted(bool muted, std::string& error) {
+    ComScope com;
+    std::string name;
+    IAudioEndpointVolume* volume = DefaultOutputVolume(name, error);
+    if (!volume) return false;
+    const bool ok = SUCCEEDED(volume->SetMute(muted ? TRUE : FALSE, nullptr));
+    if (!ok) error = "The output could not be muted.";
+    Release(volume);
+    return ok;
 }
 
 // ===== DEVICES =====

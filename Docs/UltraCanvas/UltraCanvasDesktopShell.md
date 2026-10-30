@@ -1,13 +1,14 @@
 # UltraCanvasDesktopShell
 
-<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; void TogglePanel(); -->
+<!-- doc-check: std::shared_ptr<UltraCanvasToolbar> taskbar; void TogglePanel(); std::shared_ptr<UltraCanvasSlider> slider; -->
 
 The running desktop as a shell sees it: the windows other applications have
 open and which one is active, the virtual desktops, the installed applications
 a launcher lists, a screenshot of the screen, the live state of the devices an
 info panel shows, and the counts an application publishes for the desktop to
 show beside its icon. For a desktop that is the session's shell it also hosts
-the programs' tray icons and ends the session.
+the programs' tray icons, locks the screen, ends the session and sets the
+loudspeaker's volume.
 
 ```cpp
 #include "UltraCanvasDesktopShell.h"
@@ -218,8 +219,12 @@ measure the taskbar (`SHAppBarMessage`) are told there is none.
 
 `UltraCanvasTrayHost` is the system tray for a desktop that is the session's
 shell: on Windows the window every program's `Shell_NotifyIcon` talks to
-(`Shell_TrayWnd`), on a thread of its own, so a busy desktop never stalls a
-program adding its icon.
+(`Shell_TrayWnd`); on Linux the StatusNotifierWatcher and StatusNotifierHost
+on the D-Bus session bus that every program's StatusNotifierItem registers
+with (Telegram, Nextcloud, Steam, the network and volume applets — anything
+built on KStatusNotifierItem, libappindicator or Qt's `QSystemTrayIcon`).
+Each runs on a thread of its own, so a busy desktop never stalls a program
+adding its icon.
 
 ```cpp
 UltraCanvasTrayHost tray;   // a member: Stop() runs in its destructor
@@ -238,22 +243,68 @@ for (const DesktopTrayIcon& icon : tray.ListIcons()) {
 
 | Call | Meaning |
 |---|---|
-| `Start(onChanged, &error)` | Hosts the notification area and asks the programs already running to add their icons again (`TaskbarCreated`). False, saying why, while another notification area runs — Explorer's taskbar, when the desktop runs beside it; only one can — and on a platform with none to host (X11 here, whose trays are a protocol of their own). `onChanged` runs on the host's thread and must only hand the news over. |
+| `Start(onChanged, &error)` | Hosts the notification area and asks the programs already running to add their icons again (`TaskbarCreated`). False, saying why, while another notification area runs — Explorer's taskbar, when the desktop runs beside it; another `org.kde.StatusNotifierWatcher` on Linux (KDE's or GNOME's), named in the reason; only one can — without a D-Bus session bus (the host never autolaunches one), and on a platform with none to host. `onChanged` runs on the host's thread and must only hand the news over. |
 | `Stop()` | Takes the window down; joins, so no callback runs after it returns. `IsRunning()`. |
-| `ListIcons()` | The icons, in the order the programs added them, hidden ones left out: `DesktopTrayIcon { id, tooltip, iconFile, appClass, processId, balloonTitle, balloonText, balloonSerial }`. `iconFile` is a PNG of the icon in the disk cache, named after its pixels (an animated icon's frames are each written once); `appClass` the program's name, as `DesktopWindowInfo`'s. A new balloon gets a new `balloonSerial`: a desktop shows each serial once, as a toast. Any thread. |
-| `Click(id, button)` | A click at the mouse pointer, handed to the program as the notification area would — in the form the program asked for with `NIM_SETVERSION` (the button message alone; plus `NIN_SELECT` and `WM_CONTEXTMENU`; or the anchor point and the icon's id packed in) — with the foreground handed on, so the program's menu or window can come forward. Two left clicks within the double-click time are a double click. False when the icon is gone. Any thread. |
+| `ListIcons()` | The icons, in the order the programs added them, hidden ones left out: `DesktopTrayIcon { id, tooltip, iconFile, appClass, processId, balloonTitle, balloonText, balloonSerial }`. `iconFile` is a PNG of the icon in the disk cache, named after its pixels (an animated icon's frames are each written once); `appClass` the program's name, as `DesktopWindowInfo`'s. A new balloon gets a new `balloonSerial`: a desktop shows each serial once, as a toast. On Linux `iconFile` is the item's `IconPixmap` (the frame nearest 22 px) written once as a PNG, or its `IconName` resolved through the item's own `IconThemePath` and then the installed icon themes (an SVG where the theme has one); `tooltip` is the ToolTip's title and description (`title: description`), else the `Title`; `appClass` the item's `Id`, else the program's name from `/proc`; a `Passive` item is left out and `NeedsAttention` shows the attention icon; the balloon fields stay empty (the protocol has none). `menu` is the item's dbusmenu as data (see `ActivateMenuItem`). Any thread. |
+| `Click(id, button)` | A click at the mouse pointer, handed to the program as the notification area would — on Windows in the form the program asked for with `NIM_SETVERSION` (the button message alone; plus `NIN_SELECT` and `WM_CONTEXTMENU`; or the anchor point and the icon's id packed in) — with the foreground handed on, so the program's menu or window can come forward. Two left clicks within the double-click time are a double click. On Linux the item's `Activate`, `SecondaryActivate` (middle) or `ContextMenu` (right, and left for an icon that is only a menu). False when the icon is gone. Any thread. |
+| `ActivateMenuItem(id, itemId)` | The choice from an icon's `menu` (`DesktopTrayIcon::menu`, a tree of `DesktopTrayMenuItem { id, label, iconFile, enabled, separator, checkable, checked, children }`), handed to the program - on Linux the dbusmenu's "clicked" event for that entry. The list is filled where the program hands its menu over as data rather than drawing it itself (the StatusNotifierItem's dbusmenu, `com.canonical.dbusmenu`): read after one `AboutToShow` (some programs fill it only then) and again on its `LayoutUpdated` / `ItemsPropertiesUpdated`, the entries with their label (the `_` mnemonic stripped), `enabled`, `separator`, `checkable` / `checked` for check marks and radio items, an icon (`icon-name` or `icon-data`) and `children` for a submenu, hidden entries left out. A desktop draws it as a menu of its own and reports the choice here. Empty on Windows, where `Click(id, TrayClick::Right)` opens the program's own. False when the icon or the entry is gone. Any thread. |
 
-The host answers `Shell_NotifyIconGetRect` with a square around the point the
-icon was last clicked at, so a program's popup opens beside it, and drops the
-icon of a program that ended without removing it. It does not answer
-`SHAppBarMessage`.
+On Windows the host answers `Shell_NotifyIconGetRect` with a square around
+the point the icon was last clicked at, so a program's popup opens beside it,
+and drops the icon of a program that ended without removing it. It does not
+answer `SHAppBarMessage`.
 
-### The end of the session
+On Linux the host owns `org.kde.StatusNotifierWatcher` and
+`org.kde.StatusNotifierHost-<pid>` on a private connection and exports
+`/StatusNotifierWatcher` with `RegisterStatusNotifierItem` /
+`RegisterStatusNotifierHost`, the `RegisteredStatusNotifierItems`,
+`IsStatusNotifierHostRegistered` and `ProtocolVersion` properties and the
+registered / unregistered signals. An item is a bus name, a bus name and
+path, or a path alone (the sender's name, `/StatusNotifierItem` by default);
+its id is `<busname><path>`. Its properties are read over
+`org.freedesktop.DBus.Properties` (`org.kde.StatusNotifierItem`, else
+`org.freedesktop.StatusNotifierItem`), re-read on its `New*` signals, and
+the item is dropped when its connection leaves the bus. Every call to a
+program has a short timeout and clicks expect no reply, so a hung program
+holds up nothing but its own icon. `Stop()` closes the connection, which
+releases the names at once.
+
+### The end of the session, and the lock
 
 | Call | Meaning |
 |---|---|
-| `CanEndSession()` | Whether this backend can sign out, restart and shut down: true on Windows; on Linux the session's own menu does it. |
-| `EndSession(how, &error)` | `SessionEnd::SignOut`, `Restart` or `ShutDown`: the system asks every program to close, and a program may still refuse. On Windows `ExitWindowsEx`, with the shutdown privilege every account that may shut down holds switched on first. What a desktop's menu offers when it is the shell and no Start menu runs. |
+| `CanEndSession()` | Whether this backend can sign out, restart and shut down: true on Windows, and on Linux while logind answers on the system bus (decided once). |
+| `EndSession(how, &error)` | `SessionEnd::SignOut`, `Restart` or `ShutDown`: the system asks every program to close, and a program may still refuse. On Windows `ExitWindowsEx`, with the shutdown privilege every account that may shut down holds switched on first. On Linux logind: its manager's `Reboot` and `PowerOff` (with the "interactive" flag, so polkit is asked as the desktops' own menus ask it, and an active local session needs no password), and `Terminate` on this process's own session to sign out, after which the display manager shows the sign-in again. What a desktop's menu offers when it is the shell and no Start menu runs. |
+| `CanLockSession()` | Whether `LockSession` has anyone to ask: true on Windows; on Linux with logind or a session bus. |
+| `LockSession(&error)` | Lock the screen - a desktop's *Lock screen* and Super+L. Windows `LockWorkStation`; on Linux `Lock` on this process's logind session, which sends the `Lock` signal the screen locker waits for ([UltraCanvasSessionLock](UltraCanvasSessionLock.md) reports it like any other lock), and without logind `org.freedesktop.ScreenSaver.Lock` on the session bus, which every screensaver implements. False with the reason. |
+
+### The loudspeaker
+
+The default output's volume and mute, as a desktop's speaker icon shows and
+sets them:
+
+```cpp
+DesktopAudioOutput speaker = UltraCanvasDesktopShell::ReadAudioOutput();
+if (speaker.available) {
+    slider->SetValue(static_cast<float>(speaker.volumePercent));   // "Speakers (Realtek)": speaker.device
+    UltraCanvasDesktopShell::SetAudioOutputVolume(speaker.volumePercent + 5);
+    UltraCanvasDesktopShell::SetAudioOutputMuted(true);
+}
+```
+
+| Call | Meaning |
+|---|---|
+| `ReadAudioOutput()` | A `DesktopAudioOutput { available, volumePercent, muted, device, error }`: the sound server's default output - its name as the server gives it, its volume as a percentage (PulseAudio allows more than 100, which is reported as it is) and whether it is muted. `available` is false with `error` saying why when no sound server answers. A few milliseconds: fine when a panel opens or every few seconds, not every frame. |
+| `SetAudioOutputVolume(percent, &error)` | Every channel to that level; 0 to 100 on Windows, up to 150 where PulseAudio allows it. |
+| `SetAudioOutputMuted(muted, &error)` | Mute or unmute. |
+
+On Linux the backend talks to PulseAudio, or to PipeWire through its
+PulseAudio service, with `libpulse.so.0` loaded at run time - the framework
+does not depend on a sound server, and a machine without one still runs the
+desktop, whose panel then says so - connecting, asking and disconnecting for
+each call with a two-second deadline, and never starting a server (no
+autospawn). On Windows it is the default render endpoint's
+`IAudioEndpointVolume`; the device name is its friendly name.
 
 ### Notices
 
@@ -306,14 +357,17 @@ if (!shortcut.Start("Super+V", [this]() {
 `Start(accelerator, onPressed, &error)` reads `Super`, `Ctrl`, `Alt` and
 `Shift` and one key (`"Ctrl+Alt+H"`, `"Super+V"`); it fails, saying why, when
 the combination cannot be read, when another program already holds it, and on
-a platform without global shortcuts. `"Super"` alone is a **tap** of the Win
-key — down and up with no other key between, so `Super+E` is not one — on
-Windows only (a low-level keyboard hook on the shortcut's thread, which sees
-the key without taking it from anyone); X11 refuses it, since a grab of the
-bare key would take it from every other combination. Explorer opens its
-Start menu on that tap, so a desktop asks for it only where Explorer does
-not run: UltraDesktop as the shell opens its *Applications* window with it.
-Another modifier alone is refused. `Stop()` joins the thread, so no
+a platform without global shortcuts. `"Super"` alone is a **tap** of the
+Super (Win) key — down and up with no other key between, so `Super+E` is not
+one. Neither platform grabs the key for it, which would take it from every
+other combination: on Windows a low-level keyboard hook on the shortcut's
+thread sees the key without taking it from anyone, and on X11 the shortcut
+watches XInput2's raw key events on the root window, which every client may
+without a grab (`XI_RawKeyPress` / `XI_RawKeyRelease` of either Super key
+and of whatever is pressed while it is held). Explorer opens its Start menu
+on that tap, so a desktop asks for it only where Explorer does not run:
+UltraDesktop as the shell, and on Linux, opens its *Applications* window
+with it. Another modifier alone is refused. `Stop()` joins the thread, so no
 callback runs after it returns; `IsRunning()`.
 
 The callback runs when the combination's key is **let go**, once however long
@@ -332,9 +386,9 @@ the shell they are free.
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it". The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). No switch at sign-in, tray host or session end: the session owns those. |
+| Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
-| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start` and `EndSession` fail with a reason; the application list, launcher and notices still work. |
+| macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the

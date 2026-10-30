@@ -409,7 +409,10 @@ endif()
 # Platform-specific dependencies
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     # xrandr: per-monitor DPI query for HiDPI scaling (XRRGetMonitors).
-    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr)
+    # xi: XInput2's raw key events, which the desktop shell's "Super" tap
+    # watches without grabbing the key (GTK 3 depends on it, so it is
+    # installed wherever the GTK dependency below is).
+    pkg_check_modules(X11 REQUIRED x11 xcursor xrandr xi)
     # XFixes: the clipboard backend hears of every new clipboard owner (an
     # image or a file copy as much as a text) instead of comparing the text.
     # libXcursor depends on it, so it is installed wherever xcursor is;
