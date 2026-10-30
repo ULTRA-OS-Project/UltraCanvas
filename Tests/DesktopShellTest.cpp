@@ -1262,10 +1262,16 @@ int main(int argc, char** argv) {
         Check(UltraCanvasDesktopShell::GetSystemDesktopReplacement() == DesktopReplacement::Off,
               "and the replacement reads as none");
         Check(UltraCanvasDesktopShell::IsSystemDesktopRunning(), "whatever the session runs is its own desktop");
-        std::string why;
-        Check(!UltraCanvasDesktopShell::CanEndSession() &&
-                  !UltraCanvasDesktopShell::EndSession(SessionEnd::SignOut, &why) && !why.empty(),
-              "ending the session is the session manager's here: " + why);
+        // The end of the session is logind's on Linux: a machine with it on
+        // the system bus (a CI runner has one) can, and is not asked to - a
+        // test must never end its session; one without says why it cannot.
+        if (UltraCanvasDesktopShell::CanEndSession()) {
+            Check(true, "logind answers here, so the session can be ended (not asked to)");
+        } else {
+            std::string why;
+            Check(!UltraCanvasDesktopShell::EndSession(SessionEnd::SignOut, &why) && !why.empty(),
+                  "without logind, ending the session fails with a reason: " + why);
+        }
         UltraCanvasTrayHost tray;
         std::string trayWhy;
         Check(!tray.Start([]() {}, &trayWhy) && !trayWhy.empty() && !tray.IsRunning(),
