@@ -8,7 +8,8 @@
 // would be no way to take it off.
 //
 // An HTML page, and an .xml that holds XHTML, is rendered in the page view
-// (MV_Web) rather than shown as its source; data XML stays text.
+// (MV_Web) rather than shown as its source; data XML stays text. An .eml is
+// shown there as the message: header, body, its pictures, attachments listed.
 //
 // A layered UltraCanvas document (*.ucd, UCBitmap) is shown whole - its
 // layers composited at full size, not the 256 px thumbnail it carries - and
@@ -25,6 +26,7 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.8.0 - e-mail messages (.eml) shown as the message
 // Version: 1.7.0 - HTML / XHTML pages rendered (MV_Web, IsHtmlFile); data XML stays text
 // Version: 1.6.0 - SetSettingsAction: the gear in the info bar
 // Version: 1.5.0 - forgotten, and the file locked again, on a session lock, ForgetPasswords
@@ -47,6 +49,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasWebView.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
@@ -82,6 +85,22 @@ std::string InfoText(UltraCanvasMediaViewer& viewer) {
 
 bool Has(const std::string& text, const std::string& part) {
     return text.find(part) != std::string::npos;
+}
+
+// The page view's label holding `text`, or one of its pictures.
+UltraCanvasLabel* PageLabel(UltraCanvasUIElement* root, const std::string& text) {
+    if (auto* label = dynamic_cast<UltraCanvasLabel*>(root))
+        if (label->GetText().find(text) != std::string::npos) return label;
+    if (auto* box = dynamic_cast<UltraCanvasContainer*>(root))
+        for (auto& child : box->GetChildren())
+            if (auto* found = PageLabel(child.get(), text)) return found;
+    return nullptr;
+}
+int PagePictures(UltraCanvasUIElement* root) {
+    int count = dynamic_cast<UltraCanvasImageElement*>(root) ? 1 : 0;
+    if (auto* box = dynamic_cast<UltraCanvasContainer*>(root))
+        for (auto& child : box->GetChildren()) count += PagePictures(child.get());
+    return count;
 }
 
 bool Shown(UltraCanvasMediaViewer& viewer, const std::string& id) {
@@ -231,6 +250,55 @@ int main() {
     Check(Shown(*viewer, "MV_Text") && !Shown(*viewer, "MV_Web"),
           "data.xml: XML that is not a page stays text");
     Check(web && web->GetPage() == nullptr, "data.xml: the last page was let go");
+
+    // An e-mail message is shown as the message: its header, its HTML body
+    // with the picture it carries (cid:), its attachment listed - and no
+    // remote picture fetched. A build without UltraNet's MIME reader shows
+    // the message's text.
+    const fs::path mail = dir / "message.eml";
+    WriteFile(mail,
+        "From: Alice Example <alice@example.org>\r\n"
+        "To: Bob <bob@example.org>\r\n"
+        "Subject: =?UTF-8?Q?Quarterly_r=C3=A9sum=C3=A9?=\r\n"
+        "Date: Thu, 29 Oct 2026 10:00:00 +0100\r\n"
+        "MIME-Version: 1.0\r\n"
+        "Content-Type: multipart/mixed; boundary=\"outer\"\r\n\r\n"
+        "--outer\r\n"
+        "Content-Type: multipart/related; boundary=\"inner\"\r\n\r\n"
+        "--inner\r\n"
+        "Content-Type: text/html; charset=utf-8\r\n\r\n"
+        "<html><head><style>p { color: #333; }</style></head><body>"
+        "<p>Hello Bob, the chart is below.</p><img src=\"cid:chart@example\">"
+        "<img src=\"https://tracker.example.com/pixel.gif\"></body></html>\r\n"
+        "--inner\r\n"
+        "Content-Type: image/png\r\n"
+        "Content-ID: <chart@example>\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\r\n"
+        "--inner--\r\n"
+        "--outer\r\n"
+        "Content-Type: application/pdf; name=\"report.pdf\"\r\n"
+        "Content-Disposition: attachment; filename=\"report.pdf\"\r\n"
+        "Content-Transfer-Encoding: base64\r\n\r\n"
+        "JVBERi0xLjQK\r\n"
+        "--outer--\r\n");
+    Expect(*viewer, mail, false, false, false, false);
+#ifdef ULTRACANVAS_HAS_NET
+    Check(UltraCanvasMediaViewer::IsMailMessageFile(PathToUtf8(mail)), "IsMailMessageFile: .eml is a message");
+    Check(Shown(*viewer, "MV_Web") && !Shown(*viewer, "MV_Text"),
+          "message.eml: shown as the message, not as its source");
+    Check(web && web->GetTitle() == "Quarterly r\xC3\xA9sum\xC3\xA9", "message.eml: its subject, decoded");
+    Check(web && PageLabel(web, "Alice Example") && PageLabel(web, "bob@example.org"),
+          "message.eml: the header shows From and To");
+    Check(web && PageLabel(web, "Hello Bob, the chart is below."), "message.eml: the HTML body is rendered");
+    Check(web && PageLabel(web, "report.pdf"), "message.eml: the attachment is listed");
+    Check(web && PagePictures(web) >= 1, "message.eml: the picture it carries (cid:) is shown");
+    Check(web && web->GetPage() && web->GetPage()->kind == HTML::PageKind::Html,
+          "message.eml: built as a page");
+    Check(Has(InfoText(*viewer), "EMAIL"), "message.eml: the info bar calls it EMAIL (" + InfoText(*viewer) + ")");
+#else
+    Check(Shown(*viewer, "MV_Text"), "message.eml: without a MIME reader, its text");
+#endif
 
     Expect(*viewer, sheet, false, false, false, false);
     Expect(*viewer, model, false, false, false, false);

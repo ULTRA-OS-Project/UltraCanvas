@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.17.0 - e-mail messages (.eml) are shown as the message: its header, its
+//                   body rendered (embedded pictures shown, remote ones never fetched)
+//                   and its attachments listed
 // Version: 1.16.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
 //                   in a web view (local files only, web links to the browser), not
 //                   as their source - the Texter shows the source
@@ -74,6 +77,9 @@
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
 #include "UltraCanvasWebView.h"       // HTML pages, rendered
 #include "UltraCanvasUtils.h"         // OpenURL, for a page's web links
+#ifdef ULTRACANVAS_HAS_NET
+#include "UltraNet/UltraNetMime.h"    // an .eml read as a message
+#endif
 #include "UltraCanvasLanguageDetect.h" // the language of a .txt
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
@@ -295,6 +301,27 @@ static std::string FileUrlFromPath(const std::string& path) {
     return url;
 }
 
+// %XX escapes undone (a URL's path, a cid: reference).
+static std::string PercentDecode(const std::string& text) {
+    auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    std::string out;
+    out.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == '%' && i + 2 < text.size() && hex(text[i + 1]) >= 0 && hex(text[i + 2]) >= 0) {
+            out += static_cast<char>(hex(text[i + 1]) * 16 + hex(text[i + 2]));
+            i += 2;
+        } else {
+            out += text[i];
+        }
+    }
+    return out;
+}
+
 // A file:// URL's path: query and fragment cut, percent-escapes undone.
 static std::string PathFromFileUrl(const std::string& url) {
     std::string raw = url.substr(7);
@@ -305,22 +332,7 @@ static std::string PathFromFileUrl(const std::string& url) {
         const size_t slash = raw.find('/');
         raw = slash == std::string::npos ? std::string("/") : raw.substr(slash);
     }
-    auto hex = [](char c) -> int {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-        return -1;
-    };
-    std::string path;
-    path.reserve(raw.size());
-    for (size_t i = 0; i < raw.size(); ++i) {
-        if (raw[i] == '%' && i + 2 < raw.size() && hex(raw[i + 1]) >= 0 && hex(raw[i + 2]) >= 0) {
-            path += static_cast<char>(hex(raw[i + 1]) * 16 + hex(raw[i + 2]));
-            i += 2;
-        } else {
-            path += raw[i];
-        }
-    }
+    std::string path = PercentDecode(raw);
 #ifdef _WIN32
     if (path.size() >= 3 && path[0] == '/' && path[2] == ':') path.erase(0, 1);   // /C:/x -> C:/x
 #endif
@@ -431,9 +443,121 @@ static std::string ReadFileHead(const std::string& path, size_t maxBytes) {
     return head;
 }
 
+#ifdef ULTRACANVAS_HAS_NET
+// ----- E-MAIL MESSAGES -----
+// An .eml is shown as a mail program shows it: one page with the message's
+// header (subject, from, to, cc, date), its body - the HTML one rendered,
+// else the text - and its attachments listed. Pictures the message carries
+// (cid: references) are put in as data: URLs; a remote picture is never
+// fetched (the preview reads local files only), so opening a message tells
+// its sender nothing.
+
+static std::string DataUrl(const UltraNetMimeAttachmentView& part) {
+    return "data:" + (part.mediaType.empty() ? std::string("application/octet-stream") : part.mediaType) +
+           ";base64," + UltraNet_Base64Encode(part.data, false);
+}
+
+// The body's cid: references replaced by the parts they name (RFC 2392: a
+// Content-ID, percent-escaped). `used` collects the Content-IDs shown.
+static std::string InlineContentIds(const std::string& html,
+                                    const std::vector<UltraNetMimeAttachmentView>& parts,
+                                    std::set<std::string>& used) {
+    const std::string lower = LowerAscii(html);
+    std::string out;
+    out.reserve(html.size());
+    size_t i = 0;
+    for (size_t at = lower.find("cid:"); at != std::string::npos; at = lower.find("cid:", i)) {
+        size_t end = at + 4;
+        while (end < html.size() && html[end] != '"' && html[end] != '\'' && html[end] != ')' &&
+               html[end] != '>' && !std::isspace(static_cast<unsigned char>(html[end]))) ++end;
+        const std::string id = LowerAscii(PercentDecode(html.substr(at + 4, end - at - 4)));
+        out.append(html, i, at - i);
+        const UltraNetMimeAttachmentView* named = nullptr;
+        for (const auto& part : parts) {
+            if (!part.contentId.empty() && LowerAscii(part.contentId) == id) { named = &part; break; }
+        }
+        if (named) {
+            out += DataUrl(*named);
+            used.insert(id);
+        } else {
+            out.append(html, at, end - at);
+        }
+        i = end;
+    }
+    out.append(html, i, std::string::npos);
+    return out;
+}
+
+// The page an .eml is shown as.
+static std::string MailMessageAsHtml(const std::string& raw) {
+    UltraNetMimeMessage message;
+    if (!UltraNet_MimeParse(raw, message)) {
+        return "<!DOCTYPE html><html><head><title>Message</title></head><body>"
+               "<pre style=\"white-space:pre-wrap\">" + HTML::EscapeText(raw) + "</pre></body></html>";
+    }
+    std::vector<UltraNetMimeAttachmentView> parts;
+    UltraNet_MimeCollectAttachments(message, parts, /*includeInline=*/true);
+
+    auto join = [](const std::vector<std::string>& list) {
+        std::string text;
+        for (const auto& item : list) text += (text.empty() ? "" : ", ") + item;
+        return text;
+    };
+    auto row = [](const char* label, const std::string& value) {
+        if (value.empty()) return std::string();
+        return "<tr><td style=\"color:#666;padding:1px 12px 1px 0;vertical-align:top\">" + std::string(label) +
+               "</td><td style=\"padding:1px 0\">" + HTML::EscapeText(value) + "</td></tr>";
+    };
+    const std::string subject = message.subject.empty() ? std::string("(no subject)") : message.subject;
+
+    std::string body;
+    bool isHtml = false;
+    std::set<std::string> used;
+    if (UltraNet_MimeGetDisplayBody(message, body, isHtml)) {
+        if (isHtml) body = InlineContentIds(body, parts, used);
+        else body = "<pre style=\"white-space:pre-wrap;font-family:sans-serif;margin:0\">" +
+                    HTML::EscapeText(body) + "</pre>";
+    }
+
+    // What the body did not show: pictures sent along inline (Apple Mail
+    // puts them after the text), then everything else, listed.
+    std::string pictures, attachments;
+    for (const auto& part : parts) {
+        if (!part.contentId.empty() && used.count(LowerAscii(part.contentId))) continue;
+        if (part.isInline && part.mediaType.rfind("image/", 0) == 0) {
+            pictures += "<p><img src=\"" + DataUrl(part) + "\" style=\"max-width:100%\"></p>";
+            continue;
+        }
+        const std::string name = part.filename.empty() ? std::string("(unnamed)") : part.filename;
+        attachments += "<li>" + HTML::EscapeText(name) + " <span style=\"color:#666\">(" +
+                       HTML::EscapeText(HumanSize(part.data.size())) + ")</span></li>";
+    }
+
+    std::string html =
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>" + HTML::EscapeText(subject) +
+        "</title></head><body style=\"margin:0\">"
+        "<div style=\"background:#f3f4f6;border-bottom:1px solid #d0d4da;padding:12px 16px;"
+        "font-family:sans-serif;font-size:13px;color:#222\">"
+        "<div style=\"font-size:17px;font-weight:bold;margin-bottom:6px\">" + HTML::EscapeText(subject) + "</div>"
+        "<table style=\"border-collapse:collapse\">" +
+        row("From", message.from) + row("To", join(message.to)) + row("Cc", join(message.cc)) +
+        row("Date", message.date) + "</table>";
+    if (!attachments.empty()) {
+        html += "<div style=\"margin-top:6px;color:#666\">Attachments</div>"
+                "<ul style=\"margin:2px 0 0 0\">" + attachments + "</ul>";
+    }
+    // The message's own HTML follows as it is: the parser takes a second
+    // <html> / <body> inside this one, and its <style> rules still apply.
+    html += "</div><div style=\"padding:12px 16px\">" + body + pictures + "</div></body></html>";
+    return html;
+}
+#endif
+
 // The largest page or resource the preview reads (PageLoaderLimits'
-// maxDocumentBytes): a bigger file is refused before it is read.
+// maxDocumentBytes): a bigger file is refused before it is read. A message
+// may be larger - its attachments are listed, not put in the page.
 static constexpr uintmax_t kMaxPageFileBytes = 16u * 1024u * 1024u;
+static constexpr uintmax_t kMaxMailFileBytes = 64u * 1024u * 1024u;
 
 // What the web view asks the viewer for: a page, or one of its style sheets
 // or pictures - read from the disk, file:// only.
@@ -450,8 +574,9 @@ static HTML::FetchResult FetchLocalFile(const std::string& url) {
         result.error = "There is no file " + path + ".";
         return result;
     }
+    const std::string ext = LowerExt(path);
     const uintmax_t size = std::filesystem::file_size(fsPath, ec);
-    if (!ec && size > kMaxPageFileBytes) {
+    if (!ec && size > (ext == "eml" ? kMaxMailFileBytes : kMaxPageFileBytes)) {
         result.tooLarge = true;
         result.error = "The file " + path + " is too large to show.";
         return result;
@@ -466,7 +591,15 @@ static HTML::FetchResult FetchLocalFile(const std::string& url) {
     result.status = 200;
     // The loader tells a page by its name or its first bytes; an .xml says
     // which it is by its content: XHTML a page, anything else its text.
-    const std::string ext = LowerExt(path);
+#ifdef ULTRACANVAS_HAS_NET
+    if (ext == "eml") {
+        // A message: the page it is shown as.
+        const std::string page = MailMessageAsHtml(std::string(result.body.begin(), result.body.end()));
+        result.body.assign(page.begin(), page.end());
+        result.contentType = "text/html; charset=utf-8";
+        return result;
+    }
+#endif
     if (ext == "xml" || ext == "xht" || ext == "xhtml") {
         const std::string head(result.body.begin(),
                                result.body.begin() + static_cast<std::ptrdiff_t>(
@@ -2012,7 +2145,7 @@ static const std::vector<std::string>& PlainTextExtensions() {
     static const std::vector<std::string> exts = {
         "txt", "text", "log", "md", "markdown", "rst", "json", "xml",
         "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "xhtml",
-        "xht", "shtml", "css",
+        "xht", "shtml", "eml", "css",
         "tex", "srt", "vtt", "diff", "patch"
     };
     return exts;
@@ -2039,6 +2172,15 @@ bool UltraCanvasMediaViewer::IsHtmlFile(const std::string& path) {
     if (e != "xml") return false;
     // An .xml is a page when its content is XHTML; data XML is shown as text.
     return LooksLikeXhtml(ReadFileHead(path, 4096));
+}
+
+bool UltraCanvasMediaViewer::IsMailMessageFile(const std::string& path) {
+#ifdef ULTRACANVAS_HAS_NET
+    return LowerExt(path) == "eml";
+#else
+    (void)path;
+    return false;   // no MIME reader in this build: an .eml is shown as its text
+#endif
 }
 
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
@@ -2573,9 +2715,10 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
             infoLabel->SetText("Failed to open 3D model: " + BaseName(path));
         handled = true;
     }
-    if (!handled && kind == MediaKind::Text && webView && IsHtmlFile(path)) {
+    if (!handled && kind == MediaKind::Text && webView && (IsHtmlFile(path) || IsMailMessageFile(path))) {
         // An HTML page - and XML that holds XHTML - is shown rendered, as a
-        // browser shows it; its source is what the Texter is for.
+        // browser shows it; its source is what the Texter is for. An e-mail
+        // message is shown as the message (FetchLocalFile builds its page).
         ShowView(MediaKind::Text);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         if (textView) textView->SetVisible(false);
@@ -3494,7 +3637,8 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
                               : activeKind == MediaKind::Audio ? "AUDIO"
                               : activeKind == MediaKind::Model ? "3D MODEL"
                               : activeKind == MediaKind::Book  ? "EBOOK"
-                              : activeKind == MediaKind::Text  ? (webShown ? "HTML" : "TEXT")
+                              : activeKind == MediaKind::Text  ? (!webShown ? "TEXT"
+                                                                  : IsMailMessageFile(path) ? "EMAIL" : "HTML")
                                                                : "SHEET";
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
@@ -3637,13 +3781,15 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         const char* heading = activeKind == MediaKind::Video ? "Video information\n\n"
                             : activeKind == MediaKind::Audio ? "Audio information\n\n"
                             : activeKind == MediaKind::Model ? "3D model information\n\n"
-                            : activeKind == MediaKind::Text  ? (webShown ? "Page information\n\n"
-                                                                         : "Text information\n\n")
+                            : activeKind == MediaKind::Text  ? (!webShown ? "Text information\n\n"
+                                                                : IsMailMessageFile(path) ? "Message information\n\n"
+                                                                : "Page information\n\n")
                                                              : "Spreadsheet information\n\n";
         const char* typeName = activeKind == MediaKind::Video ? "Video"
                              : activeKind == MediaKind::Audio ? "Audio"
                              : activeKind == MediaKind::Model ? "3D model"
-                             : activeKind == MediaKind::Text  ? (webShown ? "HTML page" : "Text")
+                             : activeKind == MediaKind::Text  ? (!webShown ? "Text"
+                                                               : IsMailMessageFile(path) ? "E-mail message" : "HTML page")
                                                               : "Spreadsheet";
         std::ostringstream mos;
         mos << heading;

@@ -85,6 +85,7 @@ tool and a missing plugin should stop it running.
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
+| `Text` (messages) | eml | **The message**, as a mail program shows it, in the same page view: header, body rendered, its pictures, attachments listed (*E-mail messages* below) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
@@ -137,6 +138,29 @@ files:
   browsing the folder, as with a text file.
 
 Moving to another file lets the page go (`UltraCanvasWebView::Clear`).
+
+## E-mail messages
+
+An `.eml` (an RFC 5322 message, as mail programs save one) is shown as the
+message, not its raw headers and MIME parts: `IsMailMessageFile(path)`, read
+through UltraNet's MIME reader (`UltraNet/UltraNetMime.h`) into one page in
+the page view (`MV_Web`):
+
+- a header block - the subject, From, To, Cc and Date, encoded words
+  (`=?UTF-8?Q?...?=`) decoded - and the attachments listed by name and size;
+- the body: the HTML one rendered, with its own style sheet, else the text
+  one (`UltraNet_MimeGetDisplayBody` picks it);
+- the pictures the message carries: a `cid:` reference shows the part with
+  that Content-ID, and a picture sent along inline but not referenced
+  follows the body;
+- **no remote picture is fetched.** The preview reads local files only, so
+  opening a message never tells its sender that, when or where it was read
+  (a tracking pixel is exactly that). A link opens in the system's browser.
+
+The info bar calls it `EMAIL` and Details *Message information*. A message
+may be up to 64 MB (attachments are listed, not put in the page). A build
+without UltraNet (`ULTRACANVAS_HAS_NET` off) has no MIME reader: there an
+`.eml` is shown as its text.
 
 ## Tools per kind of file
 

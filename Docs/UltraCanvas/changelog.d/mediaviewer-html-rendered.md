@@ -11,6 +11,15 @@
   XML that is not a page (data, configuration, feeds) stays in the text view.
   `UltraCanvasMediaViewer::IsHtmlFile` says which files are pages; the info
   bar calls them `HTML`.
+- **The media viewer shows an e-mail message (`.eml`) as the message.**
+  Before, the viewer did not open an `.eml` at all, so UltraFiler's preview
+  pane stayed empty. It now shows a header block (subject, From, To, Cc,
+  Date - encoded words decoded - and the attachments by name and size)
+  above the body: the HTML one rendered with its own styles, else the text.
+  Pictures the message carries (`cid:`) are shown; remote pictures are never
+  fetched, so a tracking pixel learns nothing. Read through UltraNet's MIME
+  reader (`UltraCanvasMediaViewer::IsMailMessageFile`); a build without
+  UltraNet shows the message's text.
 - **UltraCanvasWebView 1.6.0: `SetOpensWebLinks`, `ScrollBy`, `Clear`.** A
   viewer of local files can send `http` / `https` links to `onExternalLink`
   instead of following them, scroll the page from its own keys, and let a
