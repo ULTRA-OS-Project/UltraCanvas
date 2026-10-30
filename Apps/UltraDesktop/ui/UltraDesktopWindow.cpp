@@ -3,7 +3,8 @@
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
 // Version: 0.5.1 - the desktop on the primary monitor (area_), the others
-//                  covered on X11 too; panels and toasts placed from it
+//                  covered on X11 too; panels and toasts placed from it; a
+//                  primary that moves is followed (FollowPrimaryScreen)
 // Version: 0.5.0 - the clock (BuildClock, UpdateClock, the clock panel);
 //                  pinned applications (PinKey, ShowPinnedMenu); the volume
 //                  panel and the speaker's words (ReadSpeaker); the lock
@@ -158,37 +159,14 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     }
     iconsDir_ = NormalizePath(GetResourcesDir() + "media/icons/desktop/");
 
-    WindowConfig config;
-    config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
-    config.type = WindowType::Desktop;
-    config.width = 1280;    // replaced by the screen size for a desktop window
-    config.height = 800;
-    config.backgroundColor = kBarInsetColor;
     // Several monitors: the primary carries the bars, and the others get
     // wallpaper windows (CoverOtherScreens). One window across the whole
     // X11 root put the bars on the far edges of the two monitors, and into
     // the dead area where the shorter one ended. One monitor, or a platform
     // that tells none apart: the screen as it is.
-    {
-        const std::vector<DesktopScreenInfo> screens = UltraCanvasDesktopShell::ListScreens();
-        const DesktopScreenInfo* primary = nullptr;
-        for (const DesktopScreenInfo& screen : screens) {
-            if (screen.primary && !primary) primary = &screen;
-        }
-        if (!primary && !screens.empty()) primary = &screens.front();
-        if (primary && screens.size() > 1) {
-            config.desktopArea = Rect2Di(primary->x, primary->y, primary->width, primary->height);
-            area_ = *primary;
-        } else {
-            int width = 0, height = 0;
-            UltraCanvasDesktopShell::GetScreenSize(width, height);
-            area_ = DesktopScreenInfo();
-            area_.width = width;
-            area_.height = height;
-            area_.primary = true;
-        }
-    }
-    window_ = CreateWindow(config);
+    bool oneOfSeveral = false;
+    area_ = DesktopAreaNow(oneOfSeveral);
+    window_ = CreateDesktopWindow(area_, oneOfSeveral);
     if (!window_) return false;
 
     BuildLayout();
@@ -983,6 +961,7 @@ void UltraDesktopWindow::OnTimer() {
         const auto now = std::chrono::steady_clock::now();
         if (now >= nextScreenCheck_) {
             nextScreenCheck_ = now + std::chrono::seconds(3);
+            FollowPrimaryScreen();
             CoverOtherScreens();
         }
     }
@@ -1363,6 +1342,75 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
 }
 
 // ===== EVERY SCREEN =====
+
+// The monitor the desktop belongs on right now: the primary of several (the
+// one the session marks, else the one listed first - at the origin), the
+// whole screen of one or where the platform tells none apart.
+DesktopScreenInfo UltraDesktopWindow::DesktopAreaNow(bool& oneOfSeveral) {
+    const std::vector<DesktopScreenInfo> screens = UltraCanvasDesktopShell::ListScreens();
+    const DesktopScreenInfo* primary = nullptr;
+    for (const DesktopScreenInfo& screen : screens) {
+        if (screen.primary && !primary) primary = &screen;
+    }
+    if (!primary && !screens.empty()) primary = &screens.front();
+    oneOfSeveral = primary && screens.size() > 1;
+    DesktopScreenInfo area;
+    if (oneOfSeveral) {
+        area = *primary;
+    } else {
+        UltraCanvasDesktopShell::GetScreenSize(area.width, area.height);
+    }
+    area.primary = true;
+    return area;
+}
+
+std::shared_ptr<UltraCanvasWindow> UltraDesktopWindow::CreateDesktopWindow(const DesktopScreenInfo& area,
+                                                                           bool oneOfSeveral) {
+    WindowConfig config;
+    config.title = std::string("UltraDesktop ") + ULTRADESKTOP_VERSION;
+    config.type = WindowType::Desktop;
+    config.width = 1280;    // replaced by the screen size for a desktop window
+    config.height = 800;
+    config.backgroundColor = kBarInsetColor;
+    if (oneOfSeveral) config.desktopArea = Rect2Di(area.x, area.y, area.width, area.height);
+    return CreateWindow(config);
+}
+
+// The primary moved (xrandr --output ... --primary, the display settings),
+// or the monitors changed so that the desktop's own is no longer the
+// primary's place: a desktop window cannot be moved to another monitor in
+// place, so a new one is made there, the bars built into it, and the old one
+// closed - the new one first, so the application never sees itself without
+// a window. The panels and the toasts follow through area_.
+void UltraDesktopWindow::FollowPrimaryScreen() {
+    bool oneOfSeveral = false;
+    const DesktopScreenInfo area = DesktopAreaNow(oneOfSeveral);
+    if (area.width <= 0 || area.height <= 0) return;
+    if (area.x == area_.x && area.y == area_.y && area.width == area_.width && area.height == area_.height) return;
+    auto fresh = CreateDesktopWindow(area, oneOfSeveral);
+    if (!fresh) {
+        debugOutput << "UltraDesktop: no window for the primary monitor at " << area.x << "," << area.y << std::endl;
+        return;
+    }
+    debugOutput << "UltraDesktop: the primary monitor is now " << area.width << "x" << area.height << " at "
+                << area.x << "," << area.y << "; moving the desktop there" << std::endl;
+    auto old = window_;
+    // The old window's tree goes with it; the bars are built anew for the
+    // new one (BuildLayout removes root_ from window_, which is the new one
+    // by then, so it is taken off the old one here).
+    if (old && root_) old->RemoveChild(root_);
+    root_.reset();
+    window_ = fresh;
+    area_ = area;
+    BuildLayout();
+    RefreshDesktops();
+    window_->Show();
+    PlaceNotifications();
+    if (old) {
+        old->onWindowResize = nullptr;
+        old->Close();
+    }
+}
 
 int UltraDesktopWindow::ScreenX(float logicalX) const {
     return area_.x + (window_ ? window_->LogicalToPhysical(static_cast<int>(logicalX)) : static_cast<int>(logicalX));

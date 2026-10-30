@@ -32,7 +32,9 @@
   shorter one ended, with the info panel out of sight. The desktop window
   now covers the primary monitor (as it did as the Windows shell) and every
   other monitor gets a wallpaper window; the clipboard, clock and volume
-  panels and the notification toasts stay on the primary. The bars are
+  panels and the notification toasts stay on the primary, and a primary
+  that moves while the desktop runs is followed within seconds (the desktop
+  window is made anew there and the old one closed). The bars are
   reserved with the window manager only along the edges of the whole screen
   the primary lies on (framework changelog:
   `desktopshell-session-audio-super-tap`).

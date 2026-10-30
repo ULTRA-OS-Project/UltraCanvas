@@ -85,8 +85,11 @@ windows stop short of the bars instead of covering them.
 
 With several monitors the desktop window - the bars and the wallpaper -
 covers the **primary** monitor (the one the session marks, else the one at
-the origin), as of start-up, and every other monitor gets a wallpaper window
-of its own; a monitor plugged in later is covered within seconds. On X11 an
+the origin), and every other monitor gets a wallpaper window of its own; a
+monitor plugged in later is covered within seconds, and when the primary
+moves (`xrandr --output <name> --primary`, the display settings) the desktop
+follows within seconds - its window is made anew on the new primary, the
+bars with it, and the old one closes. On X11 an
 edge is reserved only where the primary lies on that edge of the whole
 screen: with the primary on the left of a second monitor the taskbar on its
 left edge is reserved, the right bar between the two is not (a strut is

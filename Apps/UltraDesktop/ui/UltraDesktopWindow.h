@@ -35,7 +35,8 @@
 // Applications window.
 // Version: 0.5.1 - on X11 the desktop covers the primary monitor and puts
 //                  wallpaper windows on the others, as it does as the
-//                  Windows shell; panels and toasts follow it
+//                  Windows shell; panels and toasts follow it, and so does
+//                  the desktop itself when the primary moves
 // Version: 0.5.0 - the clock and the date, the clock panel; pinned
 //                  applications; the volume panel; the lock; sign out,
 //                  restart and shut down wherever the platform can; the
@@ -218,12 +219,17 @@ private:
     void ConfirmEndSession(UltraCanvas::SessionEnd how);
 
     // ===== EVERY SCREEN =====
-    // The desktop window covers the primary monitor as of start-up (`area_`),
-    // or the whole screen where the platform tells no monitors apart. While
-    // no other desktop runs - Explorer beside this one - a monitor outside
-    // it gets a desktop window of its own with the wallpaper, so no screen
-    // stays black; followed as monitors come and go, and a window closed
-    // (Alt+F4) opens again at the next check.
+    // The desktop window covers the primary monitor (`area_`), or the whole
+    // screen where the platform tells no monitors apart. While no other
+    // desktop runs - Explorer beside this one - a monitor outside it gets a
+    // desktop window of its own with the wallpaper, so no screen stays
+    // black; followed as monitors come and go, and a window closed (Alt+F4)
+    // opens again at the next check. A primary that moves is followed too:
+    // the desktop window is made anew on the new one.
+    static UltraCanvas::DesktopScreenInfo DesktopAreaNow(bool& oneOfSeveral);
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> CreateDesktopWindow(const UltraCanvas::DesktopScreenInfo& area,
+                                                                        bool oneOfSeveral);
+    void FollowPrimaryScreen();
     void CoverOtherScreens();
     // A point of the desktop window, in logical px, as a screen position in
     // physical px: what the panels beside the bars are placed by.
