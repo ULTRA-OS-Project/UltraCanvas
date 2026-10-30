@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.20.1 - an opened attachment is kept in the per-user cache (opened-attachments),
+//                   not the shared temporary folder, and its folder is swept a day later
+//                   (DiskCache::SweepFolders, once a process)
 // Version: 1.20.0 - Outlook messages (.msg) shown as messages; a message's attachments
 //                   open (in a viewer window, else the system's application - never a
 //                   program or script) and save from their links
@@ -93,6 +96,7 @@
 #include "UltraCanvasMediaViewerWindow.h" // an attachment opened in a window of its own
 #include "UltraCanvasFileAssociations.h"  // ... or in the application the system opens it with
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasDiskCache.h"     // where an opened attachment is kept, and swept
 #include "UltraCanvasTextUtils.h"     // Base64Encode, for a message's pictures
 #ifdef ULTRACANVAS_HAS_NET
 #include "UltraNet/UltraNetMime.h"    // an .eml read as a message
@@ -135,6 +139,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 
 namespace fs = std::filesystem;
@@ -762,6 +767,29 @@ struct MediaViewerWebArchive {
 // Files read as messages: e-mail (MIME or Outlook's) and saved web pages.
 static bool IsMessageFileExtension(const std::string& ext) {
     return ext == "eml" || ext == "emlx" || ext == "msg" || ext == "mht" || ext == "mhtml";
+}
+
+// The attachments the viewer opens are files of its own: one folder each
+// (so the program that opens one shows its own name) in the per-user cache,
+// not the shared temporary folder. A folder goes a day after it was made -
+// by then the program that opened it has long read it; one still held open
+// (Windows will not delete it) goes on a later sweep.
+static constexpr const char* kOpenedAttachmentsCache = "opened-attachments";
+static constexpr auto kOpenedAttachmentMaxAge = std::chrono::hours(24);
+
+// Once per process: what earlier sessions opened and is a day old is swept.
+// A cache never used is not made just to be looked at.
+static void SweepOpenedAttachmentsOnce() {
+    static std::once_flag once;
+    std::call_once(once, [] {
+        const std::string root = DiskCache::Root();
+        if (root.empty()) return;
+        const fs::path cachePath = PathFromUtf8(root) / PathFromUtf8(kOpenedAttachmentsCache);
+        std::error_code ec;
+        if (!fs::is_directory(cachePath, ec)) return;
+        DiskCache::SweepFolders(PathToUtf8(cachePath),
+                                std::chrono::duration_cast<std::chrono::seconds>(kOpenedAttachmentMaxAge));
+    });
 }
 
 // What the web view asks the viewer for: a page, or one of its style sheets
@@ -1668,6 +1696,9 @@ UltraCanvasMediaViewer::UltraCanvasMediaViewer(const std::string& identifier,
                                                float x, float y, float w, float h)
     : UltraCanvasContainer(identifier, x, y, w, h) {
     BuildUI(w, h);
+    // The attachments an earlier session opened, a day old, go now - not
+    // only when this session opens one too.
+    SweepOpenedAttachmentsOnce();
 }
 
 UltraCanvasMediaViewer::~UltraCanvasMediaViewer() {
@@ -2486,12 +2517,19 @@ void UltraCanvasMediaViewer::OpenAttachment(size_t index) {
             "Open attachment", [this, index](bool save) { if (save) SaveAttachment(index); }, GetWindow());
         return;
     }
-    // Written to a folder of its own under the temporary folder (a cache of
-    // the viewer's own, not a file the user saves), under its own name, so
-    // the program that opens it shows that name.
+    // Written to a folder of its own in the viewer's cache (a file of the
+    // viewer's own, not one the user saves), under its own name, so the
+    // program that opens it shows that name. Swept a day later.
+    SweepOpenedAttachmentsOnce();
+    const std::string cache = DiskCache::Directory(kOpenedAttachmentsCache);
+    if (cache.empty()) {
+        UltraCanvasAlert::Error("There is no folder to open \"" + name + "\" from: the cache folder cannot be made.",
+                                "Open attachment", nullptr, GetWindow());
+        return;
+    }
     std::error_code ec;
-    const fs::path folder = fs::temp_directory_path(ec) / PathFromUtf8(
-        "UltraCanvas-attachments-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    const fs::path folder = PathFromUtf8(cache) / PathFromUtf8(
+        std::to_string(std::chrono::system_clock::now().time_since_epoch().count()));
     fs::create_directories(folder, ec);
     const fs::path file = folder / PathFromUtf8(name);
     {

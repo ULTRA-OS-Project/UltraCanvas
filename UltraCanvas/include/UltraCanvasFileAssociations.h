@@ -10,11 +10,14 @@
 // handlers Explorer's own "Open with" lists) and macOS (NSWorkspace /
 // Launch Services, macOS 12+). WebAssembly has no application registry and
 // reports no candidates.
+// Version: 1.4.1 - RunsCodeWhenOpened is header-only (UltraCanvasRunsCodeWhenOpened.h)
 // Version: 1.4.0 - RunsCodeWhenOpened: files an attachment or a preview must not open
 // Version: 1.3.0
 // Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 #pragma once
+
+#include "UltraCanvasRunsCodeWhenOpened.h"   // FileAssociations::RunsCodeWhenOpened
 
 #include <string>
 #include <vector>
@@ -131,14 +134,10 @@ namespace UltraCanvas {
         std::string GetApplicationsDirectory();
 
         // ===== FILES FROM ELSEWHERE =====
-        // Whether opening a file of this name would run code: a program, a
-        // script, an installer, a shortcut, a disk image (Windows opens an
-        // .exe by running it and mounts an .iso; a .desktop file starts what
-        // it names). Judged by the name alone - for a file that arrived from
-        // elsewhere (a mail attachment, a download) there is no execute
-        // permission to look at. A mail reader or a preview offers such a
-        // file to be saved, never opened. Case-insensitive.
-        bool RunsCodeWhenOpened(const std::string& fileName);
+        // RunsCodeWhenOpened(fileName): whether opening a file of this name
+        // would run code (a program, script, installer, shortcut, disk
+        // image), by name alone - in UltraCanvasRunsCodeWhenOpened.h,
+        // header-only so headless modules ask it too; included above.
 
         // ===== PREWARM (see UltraCanvasFileAssociationsProposal.md §7) =====
         // Parse the platform association database on the background worker so

@@ -457,8 +457,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     be a `.desktop` file, whose own command is what then runs).
   - `RunsCodeWhenOpened` — whether opening a file of this name would run
     code (a program, script, installer, shortcut, disk image), by name
-    alone: what a mail attachment or a preview must never open. UltraMail
-    and the media viewer ask it.
+    alone: what a mail attachment or a preview must never open. UltraMail,
+    its threat scanner and the media viewer ask it. Header-only
+    (`UltraCanvasRunsCodeWhenOpened.h`), so headless modules can.
   - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
     file (matched by name, never by reading it) and the generic icon name
     that type falls back to (`application/pdf` → `x-office-document`). Both
