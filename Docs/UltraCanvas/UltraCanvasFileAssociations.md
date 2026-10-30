@@ -123,7 +123,11 @@ case-insensitively, after the trailing dots and spaces Windows ignores - a
 mail attachment or a download has no execute permission to look at. A mail
 reader or a preview offers such a file to be saved and never hands it to
 `OpenWithDefaultApplication`: UltraMail's attachments and the media
-viewer's message attachments both ask it.
+viewer's message attachments both ask it, and UltraMail's threat scanner
+names such an attachment with it. It is header-only
+(`UltraCanvasRunsCodeWhenOpened.h`, included by this header), so a headless
+module that does not link the UltraCanvas library - UltraMail's engine - asks
+the very same question.
 
 ```cpp
 if (UltraCanvas::FileAssociations::RunsCodeWhenOpened("invoice.pdf.exe")) {
@@ -195,6 +199,8 @@ code.
 
 ## Version
 
+- 1.4.1 (2026-10-30): `RunsCodeWhenOpened` is header-only
+  (`UltraCanvasRunsCodeWhenOpened.h`), for UltraMail's threat scanner.
 - 1.4.0 (2026-10-30): `RunsCodeWhenOpened` - files a mail reader or a preview
   must not open.
 - 1.2.3 (2026-10-01): the Windows `explorer.exe` detour of 1.2.2 is gone. It
