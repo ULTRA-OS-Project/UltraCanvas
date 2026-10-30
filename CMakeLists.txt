@@ -1259,7 +1259,7 @@ if(BUILD_DEMO_APP)
             ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas)
         set(_uc_demo_preload
             media/fonts media/icons media/appicon media/images media/vector
-            media/flags media/textsamples media/ebooks media/diagrams
+            media/desktop media/flags media/textsamples media/ebooks media/diagrams
             media/docs
             media/3D/3DS media/3D/Alembic media/3D/COLLADA media/3D/DWG
             media/3D/DXF media/3D/FBX media/3D/MS3D media/3D/OBJ media/3D/STEP

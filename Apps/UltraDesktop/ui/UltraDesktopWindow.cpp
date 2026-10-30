@@ -2,6 +2,7 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.5.2 - the default wallpaper is ULTRA OS's own picture (media/desktop)
 // Version: 0.5.1 - the desktop on the primary monitor (area_), the others
 //                  covered on X11 too; panels and toasts placed from it; a
 //                  primary that moves is followed (FollowPrimaryScreen)
@@ -206,6 +207,11 @@ std::string UltraDesktopWindow::WallpaperPath() const {
         debugOutput << "UltraDesktop: wallpaper \"" << settings_.wallpaper
                     << "\" is not there, showing the default" << std::endl;
     }
+    // ULTRA OS's own picture; the framework's landscape where a package
+    // left media/desktop out.
+    const std::string own = NormalizePath(GetResourcesDir() + "media/desktop/ULTRA_OS_A.jpg");
+    std::error_code ec;
+    if (fs::is_regular_file(PathFromUtf8(own), ec)) return own;
     return NormalizePath(GetResourcesDir() + "media/images/landscape.jpg");
 }
 

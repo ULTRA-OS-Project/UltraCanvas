@@ -276,7 +276,9 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows the framework's `media/images/landscape.jpg`. An
+An empty wallpaper shows ULTRA OS's own picture, `media/desktop/ULTRA_OS_A.jpg`
+(the framework's `media/images/landscape.jpg` where a package has no
+`media/desktop`). An
 empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
 RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document

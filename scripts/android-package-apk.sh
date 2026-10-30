@@ -114,7 +114,7 @@ mapfile -t class_files < <(find "$work/classes" -name '*.class')
 # ---- 2. Assets, laid out as $HOME/share expects them.
 assets="$work/assets"
 mkdir -p "$assets/DemoApp"
-for path in media/fonts media/icons media/appicon media/images media/vector \
+for path in media/fonts media/icons media/appicon media/images media/desktop media/vector \
             media/flags media/textsamples media/ebooks media/diagrams media/docs \
             media/3D/3DS media/3D/Alembic media/3D/COLLADA media/3D/DWG \
             media/3D/DXF media/3D/FBX media/3D/MS3D media/3D/OBJ media/3D/STEP \
