@@ -84,6 +84,7 @@ tool and a missing plugin should stop it running.
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
 | `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.txt` / `.text` is shown as the language `DetectLanguageFromContent` reads in it, plain when it names none; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
+| `Text` (pages) | html, htm, xhtml, xht, shtml, and an `.xml` that holds XHTML | **Rendered**, as a browser shows the page, in an `UltraCanvasWebView` in the text view's place (*HTML pages* below) - not its source, which is the Texter's to show |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (a layered image at full size, else the embedded preview thumbnail) or the note view (header summary) |
@@ -104,6 +105,38 @@ carries a probe for the 188-byte packet sync bytes.
 The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
 so the viewer gets full player control for free.
+
+
+## HTML pages
+
+A viewer shows what a file *is*, and an HTML page is the page it describes:
+`.html`, `.htm`, `.xhtml`, `.xht` and `.shtml` files, and an `.xml` whose
+content is XHTML, are rendered through
+[`UltraCanvasWebView`](UltraCanvasHTMLReader.md) (the framework's HTML and
+CSS reader), not shown as markup. That is the difference from the Texter,
+which opens the same file to edit its source. `IsHtmlFile(path)` answers
+which files these are; for an `.xml` it reads the start of the file: past
+the XML declaration, processing instructions and comments, an HTML DOCTYPE
+or an `<html>` root element (with or without a namespace prefix) makes it a
+page. Any other XML - data, configuration, a feed - stays in the text view
+with its highlighting, since it has no page to show.
+
+The page view (`MV_Web`) stands in the text view's place: `MediaKind` stays
+`Text`, so a host's classification (`ClassifyFile`) is unchanged; the info
+bar says `HTML` and Details *Page information*. It is a preview of local
+files:
+
+- the page's style sheets and pictures are read from the disk next to it
+  (relative links resolve against the file);
+- a link to another local file opens in the view, and a web (`http`,
+  `https`) or `mailto:` link opens in the system's browser or mail client
+  (`OpenURL`) - the viewer fetches nothing from the network;
+- forms are drawn but send nothing, and `<video>` / `<audio>` show their
+  fallback content; no script runs (the web view never runs JavaScript);
+- Up / Down / Page Up / Page Down / Space scroll it, and Left / Right keep
+  browsing the folder, as with a text file.
+
+Moving to another file lets the page go (`UltraCanvasWebView::Clear`).
 
 ## Tools per kind of file
 

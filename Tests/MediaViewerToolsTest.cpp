@@ -7,6 +7,9 @@
 // must not tint the drawing browsed to next - with the sliders hidden there
 // would be no way to take it off.
 //
+// An HTML page, and an .xml that holds XHTML, is rendered in the page view
+// (MV_Web) rather than shown as its source; data XML stays text.
+//
 // A layered UltraCanvas document (*.ucd, UCBitmap) is shown whole - its
 // layers composited at full size, not the 256 px thumbnail it carries - and
 // zooms like a picture; a password-protected one shows only its thumbnail,
@@ -22,6 +25,7 @@
 //
 // Runs headless: the viewer, its toolbars and the image surface are built
 // and loaded without a window; only what decides visibility is checked.
+// Version: 1.7.0 - HTML / XHTML pages rendered (MV_Web, IsHtmlFile); data XML stays text
 // Version: 1.6.0 - SetSettingsAction: the gear in the info bar
 // Version: 1.5.0 - forgotten, and the file locked again, on a session lock, ForgetPasswords
 //                  and idleness; IsUnlocked and "unlocked" in the info bar
@@ -32,7 +36,7 @@
 // Version: 1.2.0 - layered *.ucd images: full size; protected: the thumbnail
 // Version: 1.1.0 - one toolbar row; Details is in the info bar only
 // Version: 1.0.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
@@ -42,6 +46,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasToolbar.h"
+#include "UltraCanvasWebView.h"
 #include "UltraCanvasPathUtf8.h"
 
 #include <chrono>
@@ -192,6 +197,41 @@ int main() {
     Expect(*viewer, text,  false, false, false, false);
     Check(Shown(*viewer, "MV_Text") && !Shown(*viewer, "MV_Note"),
           "notes.txt: a text file is on the text page, not in a note");
+
+    // An HTML page - and XML that holds XHTML - is shown rendered, not as
+    // its source; other XML is text. None of them takes an image tool.
+    const fs::path page  = dir / "page.html";
+    const fs::path xpage = dir / "page.xml";
+    const fs::path data  = dir / "data.xml";
+    WriteFile(dir / "style.css", "p { color: #204080; }");
+    WriteFile(page, "<!DOCTYPE html><html><head><title>A page</title>"
+                    "<link rel=\"stylesheet\" href=\"style.css\"></head>"
+                    "<body><p>Rendered, not source.</p></body></html>");
+    WriteFile(xpage, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                     "<!-- an XHTML page saved as .xml -->\n"
+                     "<html xmlns=\"http://www.w3.org/1999/xhtml\"><head><title>An XML page</title></head>"
+                     "<body><p>Also rendered.</p></body></html>");
+    WriteFile(data, "<?xml version=\"1.0\"?>\n<catalog><book id=\"1\">Title</book></catalog>");
+    Check(UltraCanvasMediaViewer::IsHtmlFile(PathToUtf8(page)) &&
+          UltraCanvasMediaViewer::IsHtmlFile(PathToUtf8(xpage)) &&
+          !UltraCanvasMediaViewer::IsHtmlFile(PathToUtf8(data)) &&
+          !UltraCanvasMediaViewer::IsHtmlFile(PathToUtf8(text)),
+          "IsHtmlFile: .html and XHTML in .xml are pages; data XML and .txt are not");
+    auto* web = dynamic_cast<UltraCanvasWebView*>(viewer->FindChildById("MV_Web"));
+    Expect(*viewer, page, false, false, false, false);
+    Check(Shown(*viewer, "MV_Web") && !Shown(*viewer, "MV_Text"),
+          "page.html: rendered in the page view, not shown as source text");
+    Check(web && web->GetTitle() == "A page", "page.html: the page itself is loaded (its title)");
+    Check(Has(InfoText(*viewer), "HTML"), "page.html: the info bar calls it HTML (" + InfoText(*viewer) + ")");
+    Expect(*viewer, xpage, false, false, false, false);
+    Check(Shown(*viewer, "MV_Web") && !Shown(*viewer, "MV_Text"),
+          "page.xml: XHTML in an .xml file is rendered too");
+    Check(web && web->GetTitle() == "An XML page", "page.xml: the page itself is loaded (its title)");
+    Expect(*viewer, data, false, false, false, false);
+    Check(Shown(*viewer, "MV_Text") && !Shown(*viewer, "MV_Web"),
+          "data.xml: XML that is not a page stays text");
+    Check(web && web->GetPage() == nullptr, "data.xml: the last page was let go");
+
     Expect(*viewer, sheet, false, false, false, false);
     Expect(*viewer, model, false, false, false, false);
     Expect(*viewer, video, false, false, false, false);

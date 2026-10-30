@@ -410,7 +410,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
 - **UltraCanvasWebView** (`UltraCanvasWebView.h`) - the element that shows a
   page from a URL: `SetServices`, `SetScheduler`, `SetBuildOptions`,
   `Navigate`, `Reload`, `Stop`, `GoBack` / `GoForward` (scroll positions kept),
-  `ScrollToFragment`, `GetUrl`, `GetTitle`, `ResolveLink`; `onUrlChanged`,
+  `ScrollToFragment`, `ScrollBy`, `Clear`, `SetOpensWebLinks` (off: web
+  links to `onExternalLink`, for a viewer of local files), `GetUrl`,
+  `GetTitle`, `ResolveLink`; `onUrlChanged`,
   `onTitleChanged`, `onLoadingChanged`, `onLinkHovered`, `onExternalLink`,
   `onNonHtml`. Rebuilds on a new width or arriving pictures; error pages; no
   JavaScript (`<noscript>` shown). Forms the reader fills in and sends

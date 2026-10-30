@@ -1,6 +1,9 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
+// Version: 1.16.0 - HTML / XHTML files, and XML that holds XHTML, are shown rendered
+//                   in a web view (local files only, web links to the browser), not
+//                   as their source - the Texter shows the source
 // Version: 1.15.0 - SetSettingsAction: a gear in the info bar for the host's settings
 // Version: 1.14.0 - Unlock's passwords are forgotten, and an unlocked file locked again,
 //                   when the session locks or the window has been idle (ten minutes by
@@ -69,6 +72,8 @@
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
 #include "UltraCanvasModelPreview.h"    // which 3D formats this build reads
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
+#include "UltraCanvasWebView.h"       // HTML pages, rendered
+#include "UltraCanvasUtils.h"         // OpenURL, for a page's web links
 #include "UltraCanvasLanguageDetect.h" // the language of a .txt
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
@@ -125,6 +130,12 @@ static std::string LowerExt(const std::string& path) {
     std::transform(ext.begin(), ext.end(), ext.begin(),
                    [](unsigned char c) { return (char)std::tolower(c); });
     return ext;
+}
+
+static std::string LowerAscii(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return (char)std::tolower(c); });
+    return text;
 }
 
 static std::string BaseName(const std::string& path) {
@@ -251,6 +262,220 @@ static bool ReadTextFile(const std::string& path, std::string& out,
         out += "\n\n[... truncated ...]";
     }
     return true;
+}
+
+// ----- HTML PAGES (the web view's local-file services) -----
+// The viewer renders an HTML page from disk through UltraCanvasWebView, which
+// reads pages by URL. These turn a path into a file:// URL and back, read a
+// link against the page it is on, and answer the view's fetches from the
+// disk - local files only: the viewer has no network, and a web link goes to
+// the browser instead.
+
+// A path as a file:// URL: absolute, '/' separated, every byte but the
+// unreserved ones percent-escaped (so any file name survives the trip).
+static std::string FileUrlFromPath(const std::string& path) {
+    std::error_code ec;
+    std::filesystem::path p = std::filesystem::absolute(UltraCanvas::PathFromUtf8(path), ec);
+    if (ec) p = UltraCanvas::PathFromUtf8(path);
+    std::string text = UltraCanvas::PathToUtf8(p.lexically_normal());
+#ifdef _WIN32
+    std::replace(text.begin(), text.end(), '\\', '/');
+#endif
+    if (text.empty() || text[0] != '/') text = "/" + text;        // C:/x -> /C:/x
+    std::string url = "file://";
+    for (unsigned char c : text) {
+        if (std::isalnum(c) || c == '/' || c == '-' || c == '_' || c == '.' || c == '~' || c == ':') {
+            url += static_cast<char>(c);
+        } else {
+            char escaped[4];
+            std::snprintf(escaped, sizeof(escaped), "%%%02X", c);
+            url += escaped;
+        }
+    }
+    return url;
+}
+
+// A file:// URL's path: query and fragment cut, percent-escapes undone.
+static std::string PathFromFileUrl(const std::string& url) {
+    std::string raw = url.substr(7);
+    const size_t cut = raw.find_first_of("?#");
+    if (cut != std::string::npos) raw.resize(cut);
+    // file://host/path: the host part is not a folder.
+    if (!raw.empty() && raw[0] != '/') {
+        const size_t slash = raw.find('/');
+        raw = slash == std::string::npos ? std::string("/") : raw.substr(slash);
+    }
+    auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    std::string path;
+    path.reserve(raw.size());
+    for (size_t i = 0; i < raw.size(); ++i) {
+        if (raw[i] == '%' && i + 2 < raw.size() && hex(raw[i + 1]) >= 0 && hex(raw[i + 2]) >= 0) {
+            path += static_cast<char>(hex(raw[i + 1]) * 16 + hex(raw[i + 2]));
+            i += 2;
+        } else {
+            path += raw[i];
+        }
+    }
+#ifdef _WIN32
+    if (path.size() >= 3 && path[0] == '/' && path[2] == ':') path.erase(0, 1);   // /C:/x -> C:/x
+#endif
+    return path;
+}
+
+// `ref` read against the file:// URL `base` (RFC 3986 reference resolution,
+// for the one scheme the view fetches here). A reference with a scheme of
+// its own stands as it is.
+static bool ResolveFileUrl(const std::string& base, const std::string& ref, std::string& out) {
+    const size_t colon = ref.find(':');
+    if (colon != std::string::npos && colon > 1 && std::isalpha(static_cast<unsigned char>(ref[0])) &&
+        std::all_of(ref.begin(), ref.begin() + static_cast<std::ptrdiff_t>(colon), [](char c) {
+            return std::isalnum(static_cast<unsigned char>(c)) || c == '+' || c == '-' || c == '.';
+        })) {
+        out = ref;
+        return true;
+    }
+    if (base.size() < 7 || LowerAscii(base.substr(0, 7)) != "file://") return false;
+    const std::string document = base.substr(0, base.find('#'));
+    if (ref.empty()) { out = document; return true; }
+    if (ref[0] == '#') { out = document + ref; return true; }
+    if (ref.size() > 1 && ref[0] == '/' && ref[1] == '/') { out = "file:" + ref; return true; }
+    std::string basePath = document.substr(7, document.find('?') == std::string::npos
+                                                   ? std::string::npos : document.find('?') - 7);
+    if (ref[0] == '?') { out = "file://" + basePath + ref; return true; }
+
+    const size_t tailAt = ref.find_first_of("?#");
+    const std::string refPath = ref.substr(0, tailAt);
+    const std::string tail = tailAt == std::string::npos ? std::string() : ref.substr(tailAt);
+    std::string merged = refPath[0] == '/' ? refPath
+                                           : basePath.substr(0, basePath.rfind('/') + 1) + refPath;
+    if (merged[0] != '/') merged.insert(merged.begin(), '/');
+    // The dot segments removed: "a/./b" is "a/b", "a/b/../c" is "a/c".
+    std::vector<std::string> segments;
+    size_t start = 1;
+    bool trailingSlash = false;
+    while (start <= merged.size()) {
+        size_t end = merged.find('/', start);
+        if (end == std::string::npos) end = merged.size();
+        const std::string segment = merged.substr(start, end - start);
+        const bool last = end == merged.size();
+        if (segment == "..") {
+            if (!segments.empty()) segments.pop_back();
+            trailingSlash = last;
+        } else if (segment == ".") {
+            trailingSlash = last;
+        } else {
+            segments.push_back(segment);
+            trailingSlash = false;
+        }
+        start = end + 1;
+    }
+    std::string path;
+    for (const auto& segment : segments) path += "/" + segment;
+    if (path.empty() || trailingSlash) path += "/";
+    out = "file://" + path + tail;
+    return true;
+}
+
+// Whether the text starts as an XHTML document does: past the XML
+// declaration, processing instructions and comments, an HTML DOCTYPE or an
+// <html> root element (with or without a namespace prefix).
+static bool LooksLikeXhtml(const std::string& text) {
+    const std::string lower = LowerAscii(text);
+    size_t i = 0;
+    if (lower.compare(0, 3, "\xEF\xBB\xBF") == 0) i = 3;    // UTF-8 BOM
+    while (i < lower.size()) {
+        while (i < lower.size() && std::isspace(static_cast<unsigned char>(lower[i]))) ++i;
+        if (i >= lower.size() || lower[i] != '<') return false;
+        if (lower.compare(i, 2, "<?") == 0) {
+            const size_t end = lower.find("?>", i + 2);
+            if (end == std::string::npos) return false;
+            i = end + 2;
+        } else if (lower.compare(i, 4, "<!--") == 0) {
+            const size_t end = lower.find("-->", i + 4);
+            if (end == std::string::npos) return false;
+            i = end + 3;
+        } else if (lower.compare(i, 9, "<!doctype") == 0) {
+            const size_t end = lower.find('>', i);
+            const std::string doctype = lower.substr(i + 9, end == std::string::npos ? std::string::npos
+                                                                                      : end - i - 9);
+            // "<!DOCTYPE html ..." - HTML5 or the XHTML 1.x DTDs.
+            size_t n = 0;
+            while (n < doctype.size() && std::isspace(static_cast<unsigned char>(doctype[n]))) ++n;
+            return doctype.compare(n, 4, "html") == 0 &&
+                   (n + 4 == doctype.size() || !std::isalnum(static_cast<unsigned char>(doctype[n + 4])));
+        } else {
+            size_t end = i + 1;
+            while (end < lower.size() && !std::isspace(static_cast<unsigned char>(lower[end])) &&
+                   lower[end] != '>' && lower[end] != '/') ++end;
+            std::string name = lower.substr(i + 1, end - i - 1);
+            const size_t prefix = name.find(':');
+            if (prefix != std::string::npos) name.erase(0, prefix + 1);
+            return name == "html";
+        }
+    }
+    return false;
+}
+
+// The first `maxBytes` of a file ("" when it cannot be read).
+static std::string ReadFileHead(const std::string& path, size_t maxBytes) {
+    std::ifstream f(UltraCanvas::PathFromUtf8(path), std::ios::binary);
+    if (!f) return std::string();
+    std::string head(maxBytes, '\0');
+    f.read(&head[0], static_cast<std::streamsize>(maxBytes));
+    head.resize(static_cast<size_t>(f.gcount()));
+    return head;
+}
+
+// The largest page or resource the preview reads (PageLoaderLimits'
+// maxDocumentBytes): a bigger file is refused before it is read.
+static constexpr uintmax_t kMaxPageFileBytes = 16u * 1024u * 1024u;
+
+// What the web view asks the viewer for: a page, or one of its style sheets
+// or pictures - read from the disk, file:// only.
+static HTML::FetchResult FetchLocalFile(const std::string& url) {
+    HTML::FetchResult result;
+    if (url.size() < 7 || LowerAscii(url.substr(0, 7)) != "file://") {
+        result.error = "The viewer shows local files only.";
+        return result;
+    }
+    const std::string path = PathFromFileUrl(url);
+    std::error_code ec;
+    const auto fsPath = UltraCanvas::PathFromUtf8(path);
+    if (!std::filesystem::is_regular_file(fsPath, ec)) {
+        result.error = "There is no file " + path + ".";
+        return result;
+    }
+    const uintmax_t size = std::filesystem::file_size(fsPath, ec);
+    if (!ec && size > kMaxPageFileBytes) {
+        result.tooLarge = true;
+        result.error = "The file " + path + " is too large to show.";
+        return result;
+    }
+    std::ifstream f(fsPath, std::ios::binary);
+    if (!f) {
+        result.error = "The file " + path + " could not be read.";
+        return result;
+    }
+    result.body.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    result.ok = true;
+    result.status = 200;
+    // The loader tells a page by its name or its first bytes; an .xml says
+    // which it is by its content: XHTML a page, anything else its text.
+    const std::string ext = LowerExt(path);
+    if (ext == "xml" || ext == "xht" || ext == "xhtml") {
+        const std::string head(result.body.begin(),
+                               result.body.begin() + static_cast<std::ptrdiff_t>(
+                                   std::min<size_t>(result.body.size(), 4096)));
+        result.contentType = (ext != "xml" || LooksLikeXhtml(head)) ? "application/xhtml+xml" : "text/plain";
+    } else if (ext == "html" || ext == "htm" || ext == "shtml") {
+        result.contentType = "text/html";
+    }
+    return result;
 }
 
 // ----- UCD v2 CONTAINER -----
@@ -1419,6 +1644,31 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(textView);
     }
 
+    // ----- HTML PAGE VIEW (rendered, display only) -----
+    // An HTML page - or XML that holds XHTML - is shown as a browser shows
+    // it, in the text view's place. Local files only: its style sheets and
+    // pictures are read from the disk beside it, a link to another local
+    // page opens here, and a web link opens in the browser. A preview sends
+    // no forms and plays nothing.
+    {
+        auto wv = std::make_shared<UltraCanvasWebView>("MV_Web", 0, 0);
+        wv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        HTML::PageLoaderServices services;
+        services.fetch = [](const std::string& url, std::function<void(HTML::FetchResult)> done) {
+            done(FetchLocalFile(url));
+        };
+        services.resolve = ResolveFileUrl;
+        wv->SetServices(std::move(services));
+        wv->SetInteractiveForms(false);
+        wv->SetMediaPlayback(false);
+        wv->SetOpensWebLinks(false);
+        wv->onExternalLink = [](const std::string& url) { OpenURL(url); };
+        wv->SetVisible(false);
+        webView = wv;
+        AddChild(webView);
+    }
+
     // ----- NOTE VIEW (the viewer's own words about a file) -----
     // A *.ucd without a picture to show, a PDF that needs its password: what
     // the viewer says about them reads in its own dark colours, laid out as
@@ -1761,7 +2011,8 @@ bool UltraCanvasMediaViewer::IsImageFile(const std::string& path) {
 static const std::vector<std::string>& PlainTextExtensions() {
     static const std::vector<std::string> exts = {
         "txt", "text", "log", "md", "markdown", "rst", "json", "xml",
-        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "css",
+        "yaml", "yml", "ini", "cfg", "conf", "toml", "html", "htm", "xhtml",
+        "xht", "shtml", "css",
         "tex", "srt", "vtt", "diff", "patch"
     };
     return exts;
@@ -1780,6 +2031,14 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
     // harmless here since we only need the match result.
     static SyntaxTokenizer tokenizer;
     return tokenizer.SetLanguageByExtension(e);
+}
+
+bool UltraCanvasMediaViewer::IsHtmlFile(const std::string& path) {
+    const std::string e = LowerExt(path);
+    if (e == "html" || e == "htm" || e == "xhtml" || e == "xht" || e == "shtml") return true;
+    if (e != "xml") return false;
+    // An .xml is a page when its content is XHTML; data XML is shown as text.
+    return LooksLikeXhtml(ReadFileHead(path, 4096));
 }
 
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
@@ -1932,6 +2191,7 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     if (fontView) static_cast<UltraCanvasFontViewer*>(fontView.get())->CloseFont();
     if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
     if (noteView) static_cast<UltraCanvasTextArea*>(noteView.get())->SetText("");
+    if (webView) static_cast<UltraCanvasWebView*>(webView.get())->Clear();
     // The document can be a large drawing; a closed preview must not keep it.
     if (vectorView) static_cast<UltraCanvasVectorElement*>(vectorView.get())->ClearDocument();
     DropPluginView();
@@ -2126,6 +2386,10 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (textView)    textView->SetVisible(kind == MediaKind::Text);
     noteShown = false;   // ShowNote puts it up in the text view's place
     if (noteView)    noteView->SetVisible(false);
+    // An HTML page is shown there too; whatever comes next, it is let go.
+    if (webView && webShown) static_cast<UltraCanvasWebView*>(webView.get())->Clear();
+    webShown = false;
+    if (webView)     webView->SetVisible(false);
     if (bookView)    bookView->SetVisible(kind == MediaKind::Book);
     if (fontView)    fontView->SetVisible(kind == MediaKind::Font);
     if (vectorView)  vectorView->SetVisible(kind == MediaKind::Vector && !pluginView);
@@ -2307,6 +2571,18 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         auto* mv = static_cast<UltraCanvasSTLElement*>(modelView.get());
         if (!mv->LoadFromFile(path) && infoLabel)
             infoLabel->SetText("Failed to open 3D model: " + BaseName(path));
+        handled = true;
+    }
+    if (!handled && kind == MediaKind::Text && webView && IsHtmlFile(path)) {
+        // An HTML page - and XML that holds XHTML - is shown rendered, as a
+        // browser shows it; its source is what the Texter is for.
+        ShowView(MediaKind::Text);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        if (textView) textView->SetVisible(false);
+        auto* wv = static_cast<UltraCanvasWebView*>(webView.get());
+        wv->SetVisible(true);
+        webShown = true;
+        wv->Navigate(FileUrlFromPath(path));
         handled = true;
     }
     if (!handled && kind == MediaKind::Text && textView) {
@@ -3218,7 +3494,8 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
                               : activeKind == MediaKind::Audio ? "AUDIO"
                               : activeKind == MediaKind::Model ? "3D MODEL"
                               : activeKind == MediaKind::Book  ? "EBOOK"
-                              : activeKind == MediaKind::Text  ? "TEXT" : "SHEET";
+                              : activeKind == MediaKind::Text  ? (webShown ? "HTML" : "TEXT")
+                                                               : "SHEET";
         std::ostringstream os;
         os << BaseName(path) << "   \xC2\xB7   " << kindLabel;
         std::error_code ec;
@@ -3360,12 +3637,14 @@ void UltraCanvasMediaViewer::UpdateDetailedInfo() {
         const char* heading = activeKind == MediaKind::Video ? "Video information\n\n"
                             : activeKind == MediaKind::Audio ? "Audio information\n\n"
                             : activeKind == MediaKind::Model ? "3D model information\n\n"
-                            : activeKind == MediaKind::Text  ? "Text information\n\n"
+                            : activeKind == MediaKind::Text  ? (webShown ? "Page information\n\n"
+                                                                         : "Text information\n\n")
                                                              : "Spreadsheet information\n\n";
         const char* typeName = activeKind == MediaKind::Video ? "Video"
                              : activeKind == MediaKind::Audio ? "Audio"
                              : activeKind == MediaKind::Model ? "3D model"
-                             : activeKind == MediaKind::Text  ? "Text" : "Spreadsheet";
+                             : activeKind == MediaKind::Text  ? (webShown ? "HTML page" : "Text")
+                                                              : "Spreadsheet";
         std::ostringstream mos;
         mos << heading;
         mos << "File: " << BaseName(path) << "\n";
@@ -3759,7 +4038,8 @@ UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
         case MediaKind::Document: return pdfView.get();
         case MediaKind::Sheet:    return sheetView.get();
         case MediaKind::Model:    return modelView.get();
-        case MediaKind::Text:     return noteShown ? noteView.get() : textView.get();
+        case MediaKind::Text:     return noteShown ? noteView.get()
+                                       : webShown  ? webView.get() : textView.get();
         case MediaKind::Book:     return bookView.get();
         case MediaKind::Font:     return fontView.get();
         case MediaKind::Vector:   return pluginView ? pluginView.get()
@@ -3771,12 +4051,21 @@ UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
     }
 }
 
+bool UltraCanvasMediaViewer::IsInWebView(const UltraCanvasUIElement* element) const {
+    // The page is built of many elements (labels, pictures, tables), any of
+    // which a click can focus; they are all part of the one display view.
+    for (const UltraCanvasUIElement* e = element; e && webView; e = e->GetParentContainer()) {
+        if (e == webView.get()) return true;
+    }
+    return false;
+}
+
 bool UltraCanvasMediaViewer::IsDisplayView(const UltraCanvasUIElement* element) const {
     if (!element) return false;
     return element == surface.get()     || element == pdfView.get() ||
            element == sheetView.get()   || element == modelView.get() ||
            element == textView.get()    || element == bookView.get() ||
-           element == noteView.get()    ||
+           element == noteView.get()    || IsInWebView(element) ||
            element == vectorView.get()  || element == pluginView.get() ||
            element == videoPlayer.get() || element == audioPlayer.get();
 }
@@ -3873,6 +4162,23 @@ bool UltraCanvasMediaViewer::HandleViewerKey(const UCEvent& event) {
     if (IsLocked() && event.virtualKey == UCKeys::Return && !event.ctrl && !event.alt) {
         Unlock();
         return true;
+    }
+
+    // A rendered page scrolls by the same keys: the viewer keeps the
+    // keyboard, so Left / Right still browse.
+    if (activeKind == MediaKind::Text && webShown && webView) {
+        auto* wv = static_cast<UltraCanvasWebView*>(webView.get());
+        const int line = 40;
+        const int page = std::max(line, static_cast<int>(wv->GetHeight()) - line);
+        switch (event.virtualKey) {
+            case UCKeys::Up:       wv->ScrollBy(-line);   return true;
+            case UCKeys::Down:     wv->ScrollBy(line);    return true;
+            case UCKeys::PageUp:   wv->ScrollBy(-page);   return true;
+            case UCKeys::PageDown: wv->ScrollBy(page);    return true;
+            case UCKeys::Space:    wv->ScrollBy(event.shift ? -page : page); return true;
+            default: break;
+        }
+        return false;
     }
 
     // The text view (or a note in its place) is display-only, so scrolling
