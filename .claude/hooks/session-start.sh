@@ -69,7 +69,7 @@ PACKAGES=(
     cmake pkg-config build-essential
     libcairo2-dev libpango1.0-dev libharfbuzz-dev libvips-dev libglib2.0-dev libfreetype-dev dbus
     libtinyxml2-dev libfmt-dev
-    libx11-dev libxcursor-dev libgl1-mesa-dev libgtk-3-dev
+    libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
     # CorelDRAW import, colour management, Unicode, barcodes
     libcdr-dev librevenge-dev zlib1g-dev libboost-dev liblcms2-dev libicu-dev libzbar-dev
     # devices: hot-plug, printing, scanning, remote desktop (UltraWin)

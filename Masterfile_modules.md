@@ -871,7 +871,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
   `UltraCanvasWindowsTrayHost.cpp` (the notification area), both behind the
-  internal `UltraCanvasDesktopShellBackend.h`; a null backend elsewhere. On
+  internal `UltraCanvasDesktopShellBackend.h`; the Linux session end and
+  lock (logind), loudspeaker (libpulse) and tray (StatusNotifierItem) in
+  `OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`,
+  `UltraCanvasLinuxDesktopShellAudio.cpp` and `UltraCanvasLinuxTrayHost.cpp`;
+  a null backend elsewhere. On
   Windows also the standalone **UltraCanvasShellGuard** program
   (`OS/MSWindows/ShellGuard/`), what the sign-in starts when a desktop runs
   instead of Explorer. Public surface:
@@ -911,7 +915,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `GetSystemDesktopSwitchUnavailableReason` - why the switch is off where
     the platform has one (a Windows copy running from its MSIX package).
   - `CanEndSession` / `EndSession(SessionEnd)` - sign out, restart, shut down
-    (Windows `ExitWindowsEx`).
+    (Windows `ExitWindowsEx`; Linux logind over the system bus);
+    `CanLockSession` / `LockSession` - the screen lock (`LockWorkStation`;
+    logind's `Session.Lock`, else `org.freedesktop.ScreenSaver.Lock`).
+  - `ReadAudioOutput` → `DesktopAudioOutput` (the default output's name,
+    volume and mute), `SetAudioOutputVolume`, `SetAudioOutputMuted` - the
+    loudspeaker through the sound server (libpulse loaded at run time:
+    PulseAudio or PipeWire; Core Audio's `IAudioEndpointVolume` on Windows).
   - `PublishNotice` / `RemoveNotice` / `ReadNotices` / `ReadNotice` /
     `NoticesDirectory` - one atomically written JSON file per application
     under `$XDG_RUNTIME_DIR/ultraos/notices`.
@@ -923,12 +933,16 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     program from any window (X11 `XGrabKey` on its own connection and
     thread, Windows `RegisterHotKey` on its own thread; fails with a reason
     elsewhere and when another program holds it). `"Super"` alone is a tap
-    of the Win key on Windows (a low-level keyboard hook), refused on X11.
+    of the Super key - a low-level keyboard hook on Windows, XInput2's raw
+    key events on X11 - which neither grabs.
   - `UltraCanvasTrayHost` - `Start(onChanged, &error)` / `Stop()` (joins) /
-    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon) /
-    `Click(id, TrayClick)`: the notification area for a desktop that is the
-    shell (Windows `Shell_TrayWnd` on its own thread; refused while Explorer's
-    taskbar runs, and on X11).
+    `ListIcons()` (`DesktopTrayIcon`: tooltip, PNG, program, balloon, and
+    `menu` as `DesktopTrayMenuItem`s where the program hands it over as
+    data) / `Click(id, TrayClick)` / `ActivateMenuItem(id, itemId)`: the
+    notification area for a desktop that is the shell (Windows
+    `Shell_TrayWnd` on its own thread, refused while Explorer's taskbar runs;
+    Linux the StatusNotifierWatcher and host on the session bus with the
+    items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,

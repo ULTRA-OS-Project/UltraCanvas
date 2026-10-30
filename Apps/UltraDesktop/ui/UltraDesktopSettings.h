@@ -5,6 +5,7 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.2.0 - the pinned applications (pinnedApps)
 // Version: 0.1.1 - no RAM disc by default on Windows
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -57,6 +58,12 @@ struct DesktopSettings {
     bool stickerboardVisible = false;
     std::vector<Sticker> stickers;
     CategoryBoardSettings categoryBoard;
+    // The applications pinned to the taskbar, after the RAM disc and the
+    // file manager, in the order they were pinned: each the key
+    // UltraDesktopWindow::PinKey gives its desktop entry (the program's
+    // path; on Windows the shortcut or the Store application's id), which
+    // is stable across sessions and survives the entry's name changing.
+    std::vector<std::string> pinnedApps;
 
     // "<config dir>/ultraos/desktop.json": $XDG_CONFIG_HOME, else ~/.config
     // (%APPDATA% on Windows, ~/Library/Application Support on macOS - the
@@ -71,6 +78,10 @@ struct DesktopSettings {
 
     std::string ToJson() const;
     bool FromJson(const std::string& json, std::string* error = nullptr);
+
+    bool IsPinned(const std::string& key) const;
+    // Pins at the end, or unpins; a key is pinned once.
+    void SetPinned(const std::string& key, bool pinned);
 
     Sticker* FindSticker(const std::string& id);
     void RemoveSticker(const std::string& id);
