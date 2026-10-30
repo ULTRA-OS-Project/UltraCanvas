@@ -75,6 +75,10 @@
 // Version: 1.33.0 - a closed tab's folder display is told to stop its workers and
 //                  destroyed once they are gone (RetireDisplay), so a busy worker
 //                  no longer freezes the window as the tab closes
+// Version: 1.34.0 - a double-click on a macOS application in the folder display
+//                  launches it (it did nothing); History lists it under Apps
+// Version: 1.33.0 - pictures, audio and video open in UltraViewer
+//                  (OpenInUltraViewer)
 // Version: 1.32.0 - the connection log button on every remote drive; add-drive
 //                  sign-ins in the connection log; "+ Drive > Connection log..."
 // Version: 1.31.0 - OpenFolders: a second start's folders open in new tabs
@@ -82,7 +86,7 @@
 // Version: 1.30.1 - the New and Add-drive menus open anchored to their buttons
 //                  (OpenMenuAnchored): above them when there is no room below
 // Version: 1.30.0
-// Last Modified: 2026-10-19
+// Last Modified: 2026-10-30
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -852,7 +856,16 @@ namespace {
     // The list below is what it cannot answer: formats the widget's table
     // does not carry (.com, .bat, .apk, .snap) and, on the Unixes, a plain
     // executable with no extension at all, where the execute bit decides.
+    // A macOS application bundle: a directory on disk that the file display
+    // launches rather than enters - the same rule the widget applies on
+    // activation (UltraCanvasFilerWidget, isBundle + Executable).
+    bool IsLaunchableBundle(const FilerEntry& e) {
+        return e.isDirectory && e.isBundle &&
+               e.category == FilerFileCategory::Executable;
+    }
+
     bool IsApplicationEntry(const FilerEntry& e) {
+        if (IsLaunchableBundle(e)) return true;
         if (e.isDirectory) return false;
         // A Windows shortcut is whatever it points at: one to a program
         // belongs in the Applications list (that is what a Start-Menu entry
@@ -5512,12 +5525,23 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
         UpdatePreviewPane();
     };
     tab->filer->onFileActivated = [this, tab](const FilerEntry& entry) {
-        if (entry.isDirectory) return;
+        // A folder is entered by the widget and never arrives here - except a
+        // macOS application bundle, which the widget activates instead of
+        // entering (the Finder's rule). Skipping every directory made a
+        // double-click on an application in the folder display do nothing.
+        if (entry.isDirectory && !IsLaunchableBundle(entry)) return;
         // Opening a file (or launching an application) puts it at the top of
         // the matching History list, and counts as work done in its folder.
         RecordEntryInHistory(entry);
         RecordFolderInHistory(PathToUtf8(PathFromUtf8(entry.path).parent_path()));
         if (!IsActiveTab(tab)) return;
+        // The bundle is launched, the way the Finder does and the preview
+        // pane's folder peek already did; none of the file rules below - the
+        // registered program, UltraViewer, the preview - apply to it.
+        if (entry.isDirectory) {
+            if (tab->filer) tab->filer->OpenEntryWithOS(entry);
+            return;
+        }
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
         // Windows executables, installers and program shortcuts go to the
         // UltraWin emulation layer, not to the host's file associations
@@ -6008,7 +6032,9 @@ void UltraFilerWindow::RefreshHistoryTabs() {
 }
 
 void UltraFilerWindow::RecordEntryInHistory(const FilerEntry& entry) {
-    if (entry.isDirectory) {
+    // An application bundle is a directory, but launching one is using an
+    // application: it goes to the Apps list, not the Folders list.
+    if (entry.isDirectory && !IsLaunchableBundle(entry)) {
         RecordFolderInHistory(entry.path);
         return;
     }
