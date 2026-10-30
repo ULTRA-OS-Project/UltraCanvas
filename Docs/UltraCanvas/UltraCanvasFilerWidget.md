@@ -184,14 +184,13 @@ The three column-based views carry draggable splitters between their columns.
 They are `UltraCanvasSplitPane` dividers in look and feel — the style is a
 `SplitPaneStyle` (`FilerStyle::columnSplitter`), the hovered and dragged
 divider highlight the same way, the cursor turns into the `SizeWE` resize
-cursor, and a drag re-splits the two neighbouring columns instead of moving the
-whole table. They are painted by the widget itself (like the rows, the hover
+cursor. They are painted by the widget itself (like the rows, the hover
 icon menu and the scrollbar) rather than being child elements, so a folder with
 thousands of entries stays as cheap as before.
 
 | View | Splitters | Dragging one |
 |---|---|---|
-| `Details` | On the right edge of every column, inside the header strip (the rows stay fully clickable). A guide line follows the drag down the entries. | Moves width between that column and the one after it, so the table keeps spanning the widget. The Name column is the flexible one: it absorbs whatever the others leave, so dragging the first splitter widens or narrows the name. |
+| `Details` | On the right edge of every column, inside the header strip (the rows stay fully clickable). A guide line follows the drag down the entries. | By default (`FilerColumnResizeMode::PushFollowing`) resizes that column alone: the columns after it move along and keep their widths, and a table wider than the view gets a horizontal scrollbar (Shift+wheel or a sideways wheel scrolls it; the header scrolls with the rows). The Name column starts out flexible — it fills what the others leave — and is pinned at its width by the first drag; `ResetDetailsColumnWidths()` makes it flexible again. `SplitWithNeighbour` moves width between the column and the one after it instead, so the table keeps spanning the widget; the last column then has no splitter. |
 | `List` | In every gap between the flowing columns, full height. | Re-widths **all** columns (the list columns are uniform) and reflows the entries. |
 | `BarSize` | Between the name column and the bar, and between the bar and the size label, full height. | Resizes the name / label column; the bar takes what is left between them. |
 
@@ -210,6 +209,9 @@ filer->SetBarSizeValueColumnWidth(0);    // 0 = auto (fits the widest size)
 
 filer->onColumnWidthsChanged = [] { /* persist the layout */ };
 filer->SetColumnResizeEnabled(false);    // fixed columns
+
+// Details: split-pane resizing instead of pushing the following columns.
+filer->SetDetailsColumnResizeMode(FilerColumnResizeMode::SplitWithNeighbour);
 ```
 
 `FilerDetailsColumn` names the Details columns left to right: `Name`, `Path`,

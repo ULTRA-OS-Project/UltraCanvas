@@ -2197,7 +2197,7 @@ void UltraFilerWindow::UnpinTargetsFromTree() {
     if (changed) RefreshPinnedTreeNodes();
 }
 
-// ===== NAVIGATION ROW ("+" / Back / Forward / Up / Refresh / Home + breadcrumb + settings) =====
+// ===== NAVIGATION ROW (Back / Forward / Up / Refresh / Home ... + breadcrumb + Drive + settings) =====
 
 std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     auto row = MakeToolRow("ufl-nav-row");
@@ -2267,17 +2267,6 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     StyleToggleButton(favoritesButton.get(), favoritesShown);
     row->AddChild(favoritesButton);
 
-    // "+ Drive": adds an FTP / SFTP server or a cloud account as a place you
-    // can browse. It sits with the other buttons that change what the window
-    // can reach rather than in the file commands row below, which acts on the
-    // entries of one folder.
-    addDriveButton = MakeToolButton("ufl-add-drive", "Drive", "add-folder.svg", 0,
-            [this]() { ShowAddDriveMenu(); });
-    // From what the build has: the system has not been asked yet, and is
-    // not asked here (see StartRamDiskProbe). Set again when it answers.
-    UpdateAddDriveButton();
-    row->AddChild(addDriveButton);
-
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
     breadcrumb->SetStyle(MakePathBreadcrumbStyle());
     breadcrumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
@@ -2289,6 +2278,17 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     navPathSpacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     navPathSpacer->SetVisible(false);
     row->AddChild(navPathSpacer);
+
+    // "+ Drive": adds an FTP / SFTP server or a cloud account as a place you
+    // can browse. It sits at the right end of the row, just left of the
+    // gear, with the window-level commands rather than in the file commands
+    // row below, which acts on the entries of one folder.
+    addDriveButton = MakeToolButton("ufl-add-drive", "Drive", "add-folder.svg", 0,
+            [this]() { ShowAddDriveMenu(); });
+    // From what the build has: the system has not been asked yet, and is
+    // not asked here (see StartRamDiskProbe). Set again when it answers.
+    UpdateAddDriveButton();
+    row->AddChild(addDriveButton);
 
     // The gear at the far right opens the settings window.
     auto settingsButton = MakeToolButton("ufl-settings", "", "settings.svg", 30,

@@ -150,6 +150,27 @@ else()
     message(STATUS "  FilerHostIconsTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== FILER DETAILS COLUMNS TEST =====
+# How a Details column takes a new width: PushFollowing (the default) moves the
+# columns after it, SplitWithNeighbour takes Name's gain from its neighbour.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerDetailsColumnsTest...")
+    add_executable(FilerDetailsColumnsTest
+        ${_FT_DIR}/FilerDetailsColumnsTest.cpp
+    )
+    target_include_directories(FilerDetailsColumnsTest PRIVATE ${_FT_INCLUDE_DIR})
+    target_compile_features(FilerDetailsColumnsTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerDetailsColumnsTest PRIVATE UltraCanvas)
+    set_target_properties(FilerDetailsColumnsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${_FT_BIN_DIR}
+    )
+    add_test(NAME FilerDetailsColumnsTest COMMAND FilerDetailsColumnsTest
+             WORKING_DIRECTORY ${_FT_BIN_DIR})
+    message(STATUS "    Test registered: FilerDetailsColumnsTest")
+else()
+    message(STATUS "  FilerDetailsColumnsTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FILER FILE NAME LINES TEST =====
 # Display > File names: the full name or at most 2 / 3 / 4 rows under a
 # thumbnail tile - the caption wrapping with no limit, the file display's

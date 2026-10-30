@@ -253,6 +253,9 @@ namespace UltraCanvas {
         // never collapses to the icon.
         constexpr int kMinColumnWidth = 44;
         constexpr int kMinNameColumnWidth = 120;
+        // A pushed Details column stops here: wide enough for any path, and
+        // the sideways scroll stays something a scrollbar can still handle.
+        constexpr int kMaxDetailsColumnWidth = 4000;
         constexpr int kMinListColumnWidth = 80;
         constexpr int kMinBarWidth = 60;             // BarSize: shortest bar area
         constexpr int kScrollbarGutter = 10;         // reserved on the right edge
@@ -4666,6 +4669,16 @@ namespace UltraCanvas {
     }
 
     // ===== RESIZABLE COLUMNS =====
+    void UltraCanvasFilerWidget::SetDetailsColumnResizeMode(FilerColumnResizeMode mode) {
+        if (detailsResizeMode == mode) return;
+        detailsResizeMode = mode;
+        // Split-pane resizing needs the flexible Name column that keeps the
+        // table at the view's width.
+        if (mode == FilerColumnResizeMode::SplitWithNeighbour) detailsNameFlexible = true;
+        InvalidateFilerLayout();
+        RequestRedraw();
+    }
+
     void UltraCanvasFilerWidget::SetColumnResizeEnabled(bool enabled) {
         if (columnResizeEnabled == enabled) return;
         columnResizeEnabled = enabled;
@@ -4704,9 +4717,14 @@ namespace UltraCanvas {
                                                             : kMinColumnWidth;
         int width = std::max(minWidth, pixels);
         if (detailsColumnWidths[index] == width) return;
-        // Name is derived from what the others leave, so widening it means
-        // taking that width from the visible column next to it.
-        if (column == FilerDetailsColumn::Name) {
+        // Under PushFollowing a Name width set from code is kept as given;
+        // under SplitWithNeighbour Name is derived from what the others leave,
+        // so widening it means taking that width from the visible column next
+        // to it.
+        if (column == FilerDetailsColumn::Name &&
+            detailsResizeMode == FilerColumnResizeMode::PushFollowing) {
+            detailsNameFlexible = false;
+        } else if (column == FilerDetailsColumn::Name) {
             int delta = width - detailsColumnWidths[0];
             const std::vector<size_t> vis = VisibleDetailsSpecIndices();
             size_t next = vis.size() > 1 ? vis[1]
@@ -4728,6 +4746,7 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::ResetDetailsColumnWidths() {
         detailsColumnWidths.clear();
         EnsureDetailsColumnWidths();
+        detailsNameFlexible = true;   // Name fills the view again
         InvalidateFilerLayout();
         NotifyColumnWidthsChanged();
         RequestRedraw();
@@ -10081,14 +10100,17 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::LayoutDetails(const Rect2Di& area) {
         EnsureDetailsColumnWidths();
         const std::vector<size_t> vis = VisibleDetailsSpecIndices();
-        // The name column absorbs whatever the (splitter-resized) rest leaves,
-        // so the table always spans the widget and dragging a splitter moves
-        // width between two neighbours instead of scrolling the table sideways.
-        int othersTotal = 0;
-        for (size_t k = 1; k < vis.size(); ++k)
-            othersTotal += detailsColumnWidths[vis[k]];
-        detailsColumnWidths[0] = std::max(kMinNameColumnWidth,
-                                          area.width - othersTotal - kScrollbarGutter);
+        // While it is flexible, the name column absorbs whatever the
+        // (splitter-resized) rest leaves, so the table spans the widget. Once
+        // a PushFollowing drag has pinned it, every column keeps its own
+        // width and a table wider than the view scrolls sideways.
+        if (detailsNameFlexible) {
+            int othersTotal = 0;
+            for (size_t k = 1; k < vis.size(); ++k)
+                othersTotal += detailsColumnWidths[vis[k]];
+            detailsColumnWidths[0] = std::max(kMinNameColumnWidth,
+                                              area.width - othersTotal - kScrollbarGutter);
+        }
 
         int x = area.x;
         for (size_t k = 0; k < vis.size(); ++k) {
@@ -10105,18 +10127,26 @@ namespace UltraCanvas {
             x += c.width;
         }
 
+        // A row spans the table, and at least the view: the strip right of
+        // a table narrower than the widget still selects and opens the entry.
+        const int tableWidth = x - area.x;
+        const int rowWidth = std::max(tableWidth, area.width - kScrollbarGutter);
         int rowH = style.detailsRowHeight;
         int y = area.y + detailsHeaderHeight;
         for (size_t i = 0; i < entries.size(); ++i) {
             ItemLayout it;
             it.entryIndex = i;
-            it.rect = Rect2Di(area.x, y, x - area.x, rowH);
+            it.rect = Rect2Di(area.x, y, rowWidth, rowH);
             it.imageRect = Rect2Di(area.x + 4 + FavoriteMarkGutter(), y + 3,
                                    rowH - 6, rowH - 6);
             items.push_back(it);
             y += rowH;
         }
-        contentWidth = area.width;
+        // Wide enough that the last scroll position puts the table's right
+        // edge where an exactly fitting table has it; no wider than the view
+        // (no sideways scrolling) while the table fits.
+        contentWidth = std::max(area.width,
+                                tableWidth + kScrollbarGutter + 2 * style.outerPadding);
         contentHeight = y + style.outerPadding;
     }
 
@@ -10400,22 +10430,37 @@ namespace UltraCanvas {
         scrollAnimY.Cancel();
     }
 
-    UltraCanvasFilerWidget::ScrollbarGeom UltraCanvasFilerWidget::ScrollbarGeometry() const {
+    bool UltraCanvasFilerWidget::ScrollsHorizontally() const {
+        return IsHorizontal() || viewType == FilerViewType::Details;
+    }
+
+    bool UltraCanvasFilerWidget::ScrollsVertically() const {
+        return !IsHorizontal();
+    }
+
+    UltraCanvasFilerWidget::ScrollbarGeom
+    UltraCanvasFilerWidget::ScrollbarGeometry(bool horizontal) const {
         ScrollbarGeom g;
+        if (horizontal ? !ScrollsHorizontally() : !ScrollsVertically()) return g;
         auto b = GetLocalBounds();
         constexpr int kBarThickness = 6;
         constexpr int kMinThumb = 30;
-        if (IsHorizontal()) {
+        if (horizontal) {
             int maxX = MaxScrollX();
             if (maxX <= 0) return g;
             int y = static_cast<int>(b.y + b.height) - InfoBarHeight()
                     - kBarThickness - 2;
+            // Stops short of the vertical bar's column when there is one, so
+            // the two thumbs never overlap in the corner.
+            int trackW = static_cast<int>(b.width);
+            if (ScrollsVertically() && MaxScrollY() > 0) trackW -= kBarThickness + 4;
+            trackW = std::max(1, trackW);
             double frac = static_cast<double>(b.width) / std::max(1, contentWidth);
-            int thumbW = std::max(kMinThumb, static_cast<int>(b.width * frac));
-            int travel = std::max(0, static_cast<int>(b.width) - thumbW);
+            int thumbW = std::min(trackW, std::max(kMinThumb, static_cast<int>(trackW * frac)));
+            int travel = std::max(0, trackW - thumbW);
             int tx = static_cast<int>(b.x) + (maxX > 0 ? travel * scrollOffsetX / maxX : 0);
             g.active = true; g.horizontal = true; g.travel = travel; g.maxScroll = maxX;
-            g.track = Rect2Di(static_cast<int>(b.x), y, static_cast<int>(b.width), kBarThickness);
+            g.track = Rect2Di(static_cast<int>(b.x), y, trackW, kBarThickness);
             g.thumb = Rect2Di(tx, y, thumbW, kBarThickness);
         } else {
             int maxY = MaxScrollY();
@@ -10433,8 +10478,8 @@ namespace UltraCanvas {
         return g;
     }
 
-    void UltraCanvasFilerWidget::ScrollThumbTo(int thumbLeadPx) {
-        ScrollbarGeom g = ScrollbarGeometry();
+    void UltraCanvasFilerWidget::ScrollThumbTo(int thumbLeadPx, bool horizontal) {
+        ScrollbarGeom g = ScrollbarGeometry(horizontal);
         if (!g.active || g.travel <= 0) return;
         // Dragging the thumb positions the view directly: a glide chasing the
         // pointer would lag behind the grabbed thumb.
@@ -13319,6 +13364,9 @@ namespace UltraCanvas {
         fsty.fontSize = style.fontSize;
         fsty.fontWeight = FontWeight::Bold;
         ctx->SetFontStyle(fsty);
+        // Titles of columns scrolled off to the left stay inside the strip.
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(header));
         for (const DetailsColumn& c : detailsColumns) {
             // The sort direction is a triangle drawn after the title: the
             // bundled UI font has no "▲" or "▼", and where no fallback font
@@ -13328,7 +13376,10 @@ namespace UltraCanvas {
             std::string title = EllipsizeText(ctx, c.title, c.width - 12 - markWidth);
             ctx->SetTextPaint(style.headerTextColor);
             Size2Di ts = ctx->GetTextLineDimensions(title);
-            int tx = c.rightAligned ? c.x + c.width - ts.width - markWidth - 8 : c.x + 6;
+            // The header stays put vertically but scrolls sideways with the
+            // rows.
+            const int cx = c.x - scrollOffsetX;
+            int tx = c.rightAligned ? cx + c.width - ts.width - markWidth - 8 : cx + 6;
             int ty = area.y + (detailsHeaderHeight - ts.height) / 2;
             ctx->DrawText(title, Point2Dd(tx, ty));
             if (sorted) {
@@ -13336,6 +13387,7 @@ namespace UltraCanvas {
                                  sortAscending, style.headerTextColor);
             }
         }
+        ctx->PopState();
     }
 
     void UltraCanvasFilerWidget::DrawDetailsRow(IRenderContext* ctx,
@@ -13635,7 +13687,14 @@ namespace UltraCanvas {
         // Right-align the strip inside the item, but never let it spill past the
         // item's left edge: on narrow thumbnail tiles the four buttons are wider
         // than the tile, so clamp the start to the left edge instead.
-        int x = item.rect.x + item.rect.width - total - 4;
+        int right = item.rect.x + item.rect.width;
+        // A Details row wider than the view (its columns pushed past it) keeps
+        // the strip at the visible right edge rather than off-screen.
+        if (viewType == FilerViewType::Details) {
+            const Rect2Di area = ContentBounds();
+            right = std::min(right, area.x + area.width - kScrollbarGutter + scrollOffsetX);
+        }
+        int x = right - total - 4;
         if (x < item.rect.x) x = item.rect.x;
         int y = item.rect.y + 2;
         for (IconMenuAction a : actions) {
@@ -13812,21 +13871,26 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DrawScrollbar(IRenderContext* ctx) {
-        ScrollbarGeom g = ScrollbarGeometry();
-        if (!g.active) return;
-        Color thumbColor = draggingScrollbar ? Color(70, 70, 78, 220)
-                                             : Color(90, 90, 96, 180);
-        if (g.horizontal) {
-            ctx->SetFillPaint(Color(0, 0, 0, 30));
-            ctx->FillRoundedRectangle(Rect2Dd(g.track.x + 2, g.track.y,
-                                              g.track.width - 4, g.track.height), 3);
-        } else {
-            ctx->SetFillPaint(Color(0, 0, 0, 30));
-            ctx->FillRoundedRectangle(Rect2Dd(g.track.x, g.track.y + 2,
-                                              g.track.width, g.track.height - 4), 3);
+        // Details can carry both bars: the vertical one for the rows and the
+        // horizontal one once its columns are pushed past the view.
+        for (bool horizontal : {false, true}) {
+            ScrollbarGeom g = ScrollbarGeometry(horizontal);
+            if (!g.active) continue;
+            const bool held = draggingScrollbar && draggingScrollbarHorizontal == horizontal;
+            Color thumbColor = held ? Color(70, 70, 78, 220)
+                                    : Color(90, 90, 96, 180);
+            if (g.horizontal) {
+                ctx->SetFillPaint(Color(0, 0, 0, 30));
+                ctx->FillRoundedRectangle(Rect2Dd(g.track.x + 2, g.track.y,
+                                                  g.track.width - 4, g.track.height), 3);
+            } else {
+                ctx->SetFillPaint(Color(0, 0, 0, 30));
+                ctx->FillRoundedRectangle(Rect2Dd(g.track.x, g.track.y + 2,
+                                                  g.track.width, g.track.height - 4), 3);
+            }
+            ctx->SetFillPaint(thumbColor);
+            ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
         }
-        ctx->SetFillPaint(thumbColor);
-        ctx->FillRoundedRectangle(Rect2Dd(g.thumb), 3);
     }
 
     // ===== COLUMN SPLITTERS =====
@@ -13858,11 +13922,16 @@ namespace UltraCanvas {
 
         switch (viewType) {
             case FilerViewType::Details: {
-                // One splitter on the right edge of every column but the last;
-                // inside the header strip only.
-                for (size_t i = 0; i + 1 < detailsColumns.size(); ++i) {
+                // One splitter on the right edge of every column, inside the
+                // header strip only. Splitting with the neighbour leaves the
+                // last one out - that edge is the view's - while pushing the
+                // following columns makes the last column resizable too.
+                const bool push = detailsResizeMode == FilerColumnResizeMode::PushFollowing;
+                const size_t n = push ? detailsColumns.size()
+                                      : (detailsColumns.empty() ? 0 : detailsColumns.size() - 1);
+                for (size_t i = 0; i < n; ++i) {
                     const DetailsColumn& c = detailsColumns[i];
-                    strips.push_back({c.x + c.width, area.y,
+                    strips.push_back({c.x + c.width - scrollOffsetX, area.y,
                                       area.y + detailsHeaderHeight});
                 }
                 break;
@@ -13958,12 +14027,14 @@ namespace UltraCanvas {
                 // The splitter index counts visible columns; the widths stay
                 // indexed by FilerDetailsColumn (Path may be hidden).
                 const std::vector<size_t> vis = VisibleDetailsSpecIndices();
-                if (index + 1 >= (int)vis.size()) {
+                const bool push = detailsResizeMode == FilerColumnResizeMode::PushFollowing;
+                if (index >= (int)vis.size() || (!push && index + 1 >= (int)vis.size())) {
                     draggingSplitter = -1;
                     return;
                 }
                 splitterDragStartA = detailsColumnWidths[vis[index]];
-                splitterDragStartB = detailsColumnWidths[vis[index + 1]];
+                splitterDragStartB = (index + 1 < (int)vis.size())
+                        ? detailsColumnWidths[vis[index + 1]] : 0;
                 break;
             }
             case FilerViewType::List:
@@ -13996,12 +14067,25 @@ namespace UltraCanvas {
 
         switch (viewType) {
             case FilerViewType::Details: {
+                const std::vector<size_t> vis = VisibleDetailsSpecIndices();
+                if (index >= (int)vis.size()) return;
+                if (detailsResizeMode == FilerColumnResizeMode::PushFollowing) {
+                    // Only the dragged column changes; the ones after it move
+                    // along with their widths intact. The flexible Name column
+                    // is pinned at the width it is drawn with first, or it
+                    // would give way to the column being widened.
+                    if (delta == 0) return;
+                    detailsNameFlexible = false;
+                    int minWidth = (index == 0) ? kMinNameColumnWidth : kMinColumnWidth;
+                    detailsColumnWidths[vis[index]] =
+                            clampi(splitterDragStartA + delta, minWidth, kMaxDetailsColumnWidth);
+                    break;
+                }
                 // Split-pane semantics: the width the left column gains is
                 // taken from the column on the right, so the table keeps
                 // spanning the widget. The Name column is derived from what
                 // the others leave, which makes dragging the first splitter
                 // resize Name by the same amount in the opposite direction.
-                const std::vector<size_t> vis = VisibleDetailsSpecIndices();
                 if (index + 1 >= (int)vis.size()) return;
                 int pairTotal = splitterDragStartA + splitterDragStartB;
                 int minLeft = (index == 0) ? kMinNameColumnWidth : kMinColumnWidth;
@@ -15120,9 +15204,10 @@ namespace UltraCanvas {
         Rect2Di area = ContentBounds();
         if (localPoint.y < area.y || localPoint.y > area.y + detailsHeaderHeight)
             return -1;
+        const int x = localPoint.x + scrollOffsetX;   // the header scrolls sideways
         for (size_t i = 0; i < detailsColumns.size(); ++i) {
             const DetailsColumn& c = detailsColumns[i];
-            if (c.sortable && localPoint.x >= c.x && localPoint.x < c.x + c.width)
+            if (c.sortable && x >= c.x && x < c.x + c.width)
                 return static_cast<int>(i);
         }
         return -1;
@@ -16132,7 +16217,8 @@ namespace UltraCanvas {
                 // a drag reaches another window) must not interrupt it.
                 return true;
             }
-            case UCEventType::MouseWheel: {
+            case UCEventType::MouseWheel:
+            case UCEventType::MouseWheelHorizontal: {
                 RememberPointer(event);
                 // Glide to the new position instead of jumping (see
                 // UltraCanvasSmoothScroll.h); each eased step repaints, and the
@@ -16140,10 +16226,17 @@ namespace UltraCanvas {
                 // hover, its icon menu and its tooltip on every one of those
                 // paints (RefreshHoverState) rather than staying on the old
                 // file.
-                if (IsHorizontal()) {
+                // A sideways wheel - or Shift with the normal one - scrolls a
+                // Details table that is wider than the view; the List view
+                // scrolls sideways with the normal wheel.
+                const bool tilt = event.type == UCEventType::MouseWheelHorizontal;
+                if (tilt && !ScrollsHorizontally()) return false;
+                if (tilt || IsHorizontal() || (event.shift && ScrollsHorizontally())) {
                     if (MaxScrollX() <= 0) return false;
-                    scrollAnimX.AnimateBy(-event.wheelDelta * kWheelStep,
-                                          0, MaxScrollX());
+                    // A tilt to the right reports +1 (see the platform layers),
+                    // a notch away from the user on the normal wheel +1 too.
+                    const int step = tilt ? event.wheelDelta : -event.wheelDelta;
+                    scrollAnimX.AnimateBy(step * kWheelStep, 0, MaxScrollX());
                 } else {
                     if (MaxScrollY() <= 0) return false;
                     scrollAnimY.AnimateBy(-event.wheelDelta * kWheelStep,
@@ -16200,8 +16293,8 @@ namespace UltraCanvas {
                     }
                 }
                 if (draggingScrollbar) {
-                    ScrollThumbTo((IsHorizontal() ? local.x : local.y)
-                                  - scrollbarGrabOffset);
+                    ScrollThumbTo((draggingScrollbarHorizontal ? local.x : local.y)
+                                  - scrollbarGrabOffset, draggingScrollbarHorizontal);
                     RequestRedraw();
                     return true;
                 }
@@ -16287,9 +16380,10 @@ namespace UltraCanvas {
 
                 if (renamingIndex >= 0) CommitRename();
 
-                // Scrollbar first: it sits above the content.
-                {
-                    ScrollbarGeom g = ScrollbarGeometry();
+                // Scrollbars first: they sit above the content (Details can
+                // have one along each axis).
+                for (bool horizontal : {false, true}) {
+                    ScrollbarGeom g = ScrollbarGeometry(horizontal);
                     if (g.active) {
                         Rect2Di hit = g.track;
                         if (g.horizontal) { hit.y -= 6; hit.height += 8; }
@@ -16302,9 +16396,10 @@ namespace UltraCanvas {
                                 scrollbarGrabOffset =
                                         (g.horizontal ? g.thumb.width : g.thumb.height) / 2;
                                 ScrollThumbTo((g.horizontal ? local.x : local.y)
-                                              - scrollbarGrabOffset);
+                                              - scrollbarGrabOffset, g.horizontal);
                             }
                             draggingScrollbar = true;
+                            draggingScrollbarHorizontal = g.horizontal;
                             // The pointer is parked on the bar for the whole
                             // drag, not on a file: drop the hover so its icon
                             // menu does not sit under the thumb the user is
