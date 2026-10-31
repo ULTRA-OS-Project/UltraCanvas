@@ -1,10 +1,13 @@
 // UltraCanvas/include/UltraCanvasVirtualFSBridge.h
 // Bridge module connecting UltraCanvas to VirtualFS for compression and archive operations
+// Version: 1.2.0 - UCVFSArchiveWriteOptions::method: what CreateArchive compresses
+//                  a ZIP / 7-Zip with; UCVFSCompressionOptions::type is said to
+//                  be the buffer compressors' choice only
 // Version: 1.1.0 - UCVFSArchiveWriteOptions (UCVFSCompressionOptions::archive): the
 //                  compressor level, threads and zstd long mode, the TAR header
 //                  format and what of a file CreateArchive stores
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -13,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 
 // Forward declaration - avoid circular dependency
 namespace VirtualFS {
@@ -115,6 +119,15 @@ enum class UCVFSTarFormat {
  * library default on one thread.
  */
 struct UCVFSArchiveWriteOptions {
+    // What a ZIP or 7-Zip is compressed with (VirtualFSOpenOptions::
+    // compressionMethod); empty: the library's default, Deflate / LZMA. ZIP
+    // takes Uncompressed and Deflate (more with libarchive 3.8+), 7-Zip
+    // Uncompressed, Deflate, BZip2, LZMA, LZMA2 and XZ; a TAR only the
+    // method its extension names. Anything else - LZX, MSZip and Quantum
+    // have no archive writer at all - makes CreateArchive fail without a
+    // file. Not UCVFSCompressionOptions::type, which is for buffers and
+    // whose default (Zstd) no ZIP writer before libarchive 3.8 can do.
+    std::optional<UCVFSCompressionType> method;
     int  filterLevel = -1;        // gzip/bzip2/lz4 1-9, xz 0-9, zstd 1-22; -1 = from `level`
     int  threads = 1;             // xz and zstd workers; 0 = one per core
     int  zstdLongWindowLog = 0;   // zstd --long=N window (power of two); 0 = off
@@ -133,7 +146,12 @@ struct UCVFSArchiveWriteOptions {
  * @brief Options for compression operations
  */
 struct UCVFSCompressionOptions {
+    // The algorithm of the buffer compressors (Compress / Decompress and
+    // their friends). CreateArchive does not read it: an archive's method is
+    // archive.method, and its format is the file name's extension.
     UCVFSCompressionType type = UCVFSCompressionType::Zstd;
+    // Both: the buffer compressors' level, and CreateArchive's level preset
+    // (VirtualFSOpenOptions::compressionLevel; Normal = library default).
     UCVFSCompressionLevel level = UCVFSCompressionLevel::Normal;
     bool includeHeader = false;     // Include format header (e.g., gzip header)
     int windowBits = 15;            // For DEFLATE/GZIP (8-15)

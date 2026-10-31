@@ -313,8 +313,10 @@ struct VirtualFSOpenOptions {
     VirtualFSOpenMode mode = VirtualFSOpenMode::Read;
     std::string password;                       // For encrypted archives
     VirtualFSCompressionLevel compressionLevel = VirtualFSCompressionLevel::Normal;
-    std::string compressionMethod;              // "deflate", "lzma", "zstd", etc.
-    bool followSymlinks = true;                 // Resolve symbolic links
+    VirtualFSCompressionMethod compressionMethod = VirtualFSCompressionMethod::Auto;
+                                                // ZIP / 7-Zip method when creating;
+                                                // NotSupported when it cannot be written
+    bool followSymlinks = true;                 // Reading: follow links inside the archive
     bool caseSensitive = true;                  // Case-sensitive path matching
     size_t cacheSize = 64 * 1024 * 1024;       // 64MB metadata cache
     bool validateCRC = false;                   // Verify checksums on read
