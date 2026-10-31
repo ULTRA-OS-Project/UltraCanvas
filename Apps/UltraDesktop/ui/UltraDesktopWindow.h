@@ -33,6 +33,9 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.6.0 - the Wi-Fi and Bluetooth panels (join, pair, connect),
+//                  and the USB, keyboard, webcam, microphone and battery
+//                  panels behind the info panel's icons
 // Version: 0.5.1 - on X11 the desktop covers the primary monitor and puts
 //                  wallpaper windows on the others, as it does as the
 //                  Windows shell; panels and toasts follow it, and so does
@@ -87,6 +90,9 @@ class UltraDesktopAppStarter;
 class UltraDesktopClipboardPanel;
 class UltraDesktopClockPanel;
 class UltraDesktopVolumePanel;
+class UltraDesktopWifiPanel;
+class UltraDesktopBluetoothPanel;
+class UltraDesktopDevicePanel;
 class UltraDesktopStickerboard;
 class UltraDesktopCategoryBoard;
 class UltraDesktopTasksWindow;
@@ -133,6 +139,14 @@ public:
     // click on the speaker icon).
     void OpenClockPanel();
     void OpenVolumePanel();
+    // The info panel's radios: Wi-Fi and Bluetooth, operated from a panel
+    // (UltraCanvasWireless).
+    void OpenWifiPanel();
+    void OpenBluetoothPanel();
+    // The info panel's devices: "usb", "keyboard", "webcam", "mic",
+    // "battery" - what is attached or in use, with a way on to
+    // DeviceExplorer or the Task Manager.
+    void OpenDevicePanel(const std::string& device);
     // Lock the screen - the settings menu's "Lock screen" and Super+L.
     void LockScreen();
     // The taskbar's pinned applications, kept in the settings by key: the
@@ -292,6 +306,10 @@ private:
     int clockMinute_ = -1;
     std::shared_ptr<UltraDesktopClockPanel> clockPanel_;
     std::shared_ptr<UltraDesktopVolumePanel> volumePanel_;
+    std::shared_ptr<UltraDesktopWifiPanel> wifiPanel_;
+    std::shared_ptr<UltraDesktopBluetoothPanel> bluetoothPanel_;
+    // One per device icon, by its item id; made on the first click.
+    std::map<std::string, std::shared_ptr<UltraDesktopDevicePanel>> devicePanels_;
     UltraCanvas::UltraCanvasGlobalShortcut lockShortcut_;
     // The pinned applications as resolved against the installed ones at the
     // last rebuild; a pin whose application is gone is kept, and shows again

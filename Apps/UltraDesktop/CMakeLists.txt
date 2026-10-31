@@ -21,14 +21,17 @@ endif()
 add_executable(UltraDesktop
     main.cpp
     ui/UltraDesktopAppStarter.cpp
+    ui/UltraDesktopBluetoothPanel.cpp
     ui/UltraDesktopCategoryBoard.cpp
     ui/UltraDesktopClipboardPanel.cpp
     ui/UltraDesktopClockPanel.cpp
+    ui/UltraDesktopDevicePanel.cpp
     ui/UltraDesktopPopupPanel.cpp
     ui/UltraDesktopSettings.cpp
     ui/UltraDesktopStickerboard.cpp
     ui/UltraDesktopTasksWindow.cpp
     ui/UltraDesktopVolumePanel.cpp
+    ui/UltraDesktopWifiPanel.cpp
     ui/UltraDesktopWindow.cpp
 )
 

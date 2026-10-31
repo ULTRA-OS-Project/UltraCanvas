@@ -144,9 +144,31 @@ the right-hand monitor the primary.
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
-  opens what the icon is about: Email starts UltraMail, the network icons
-  UltraNetMonitor, USB, keyboard and webcam DeviceExplorer, the loudspeaker
-  its volume panel, the rest the Task Manager.
+  opens what the icon is about: Email starts UltraMail, the traffic, LAN and
+  VPN icons UltraNetMonitor, Wi-Fi and Bluetooth their panels (below), USB,
+  keyboard, webcam, microphone and battery a panel saying what is attached
+  or in use with a button on to Device Explorer or the Task Manager, the
+  loudspeaker its volume panel, and the last icon the Task Manager.
+- **Wi-Fi**: the Wi-Fi panel beside the bar - Wi-Fi on a switch, the network
+  joined, and the networks in reach with their signal and security. *Connect*
+  joins a saved or open network at once and asks for the password of a new
+  one (kept only once the network has been joined, so a mistyped password is
+  not saved); *Disconnect* leaves the network, *Forget* deletes its saved
+  password, *Scan* looks again, *Traffic* opens UltraNetMonitor. The list is
+  read again every five seconds while the panel is open. Through
+  NetworkManager on Linux, Windows' Wi-Fi service, and CoreWLAN on macOS,
+  which shows network names only once Location Services allows UltraDesktop
+  (the panel says so until then). On Windows and macOS *System settings*
+  opens the system's own page.
+- **Bluetooth**: the Bluetooth panel - Bluetooth on a switch, *My devices*
+  with *Connect* / *Disconnect* and *Remove* (unpair), the device's kind and,
+  where it reports it, its battery, and *Add device*, which looks for devices
+  in pairing mode for a minute and lists them with *Pair* (pair, trust,
+  connect). Through BlueZ on Linux, the Bluetooth API on Windows, IOBluetooth
+  on macOS. Windows switches Bluetooth on and off only in its own settings,
+  which *System settings* opens, and shows its own prompt when a device wants
+  a code; on Linux a device that needs a code typed or confirmed (most
+  keyboards) cannot be paired from the panel yet, and the panel says so.
 - **Loudspeaker**: the volume panel beside the bar - the output's name, its
   volume on a slider, its mute on a switch - through the sound server
   (PulseAudio or PipeWire on Linux, Core Audio on Windows; the panel says so

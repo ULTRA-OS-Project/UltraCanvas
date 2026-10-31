@@ -32,8 +32,15 @@
 #include "UltraDesktopStickerboard.h"
 #include "UltraDesktopTasksWindow.h"
 #include "UltraDesktopVolumePanel.h"
+#include "UltraDesktopWifiPanel.h"
+#include "UltraDesktopBluetoothPanel.h"
+#include "UltraDesktopDevicePanel.h"
 
 #include "UltraCanvasAlert.h"
+#include "UltraCanvasAudioDevices.h"
+#include "UltraCanvasHardwareInfo.h"
+#include "UltraCanvasVideoDevices.h"
+#include "UltraCanvasWireless.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasClipboard.h"
@@ -57,6 +64,8 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -140,6 +149,9 @@ UltraDesktopWindow::~UltraDesktopWindow() {
     clipboardPanel_.reset();
     clockPanel_.reset();
     volumePanel_.reset();
+    wifiPanel_.reset();
+    bluetoothPanel_.reset();
+    devicePanels_.clear();
     if (recorder_) recorder_->Detach();
     if (uiTimer_ != 0) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(uiTimer_);
@@ -529,6 +541,222 @@ void UltraDesktopWindow::OpenVolumePanel() {
     volumePanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 60));
 }
 
+// ===== THE RADIOS AND THE DEVICES =====
+
+namespace {
+
+std::string Lowered(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return text;
+}
+
+std::string JoinParts(const std::vector<std::string>& parts) {
+    std::string out;
+    for (const std::string& part : parts) {
+        if (part.empty()) continue;
+        if (!out.empty()) out += " · ";
+        out += part;
+    }
+    return out;
+}
+
+std::string UsbTitle(const USBDeviceInfo& device) {
+    if (!device.productName.empty()) return device.productName;
+    char ids[24];
+    std::snprintf(ids, sizeof(ids), "%04x:%04x", device.vendorId, device.productId);
+    return "USB device " + std::string(ids);
+}
+
+DevicePanelContent ReadUsbPanel() {
+    DevicePanelContent content;
+    for (const USBDeviceInfo& device : UltraCanvasHardwareInfo::ListUSBDevices()) {
+        if (device.isHub) continue;
+        DevicePanelEntry entry;
+        entry.title = UsbTitle(device);
+        entry.detail = JoinParts({device.vendorName, device.deviceClass, device.speed});
+        content.entries.push_back(entry);
+    }
+    const size_t count = content.entries.size();
+    content.summary = count == 0 ? "" : std::to_string(count) + (count == 1 ? " device attached" : " devices attached");
+    content.empty = "No USB devices are attached (hubs are not counted).";
+    return content;
+}
+
+DevicePanelContent ReadKeyboardPanel(const std::string& layout) {
+    DevicePanelContent content;
+    content.summary = layout.empty() ? "The keyboard layout in use is not known."
+                                     : "Keyboard layout in use: " + layout;
+    for (const USBDeviceInfo& device : UltraCanvasHardwareInfo::ListUSBDevices()) {
+        if (device.isHub) continue;
+        const std::string words = Lowered(device.productName + " " + device.deviceClass);
+        if (words.find("keyboard") == std::string::npos && words.find("keyb") == std::string::npos) continue;
+        DevicePanelEntry entry;
+        entry.title = UsbTitle(device);
+        entry.detail = JoinParts({"USB", device.vendorName});
+        content.entries.push_back(entry);
+    }
+    for (const WirelessBluetoothDevice& device : UltraCanvasWireless::ReadBluetooth().devices) {
+        if (device.kind != "Keyboard" || !device.paired) continue;
+        DevicePanelEntry entry;
+        entry.title = device.name;
+        entry.detail = JoinParts({"Bluetooth", device.connected ? "connected" : "not connected",
+                                  device.batteryPercent ? "battery " + std::to_string(*device.batteryPercent) + "%"
+                                                        : ""});
+        entry.highlighted = device.connected;
+        content.entries.push_back(entry);
+    }
+    content.empty = "No separate keyboard was recognised. A laptop's built-in keyboard, and a wireless "
+                    "receiver that does not name itself a keyboard, are not listed.";
+    return content;
+}
+
+DevicePanelContent ReadWebcamPanel(bool inUse) {
+    DevicePanelContent content;
+    content.summary = inUse ? "A program is using a camera now." : "No program is using a camera.";
+    for (const VideoDeviceInfo& camera : UltraCanvasVideoDevices::ListCameras()) {
+        DevicePanelEntry entry;
+        entry.title = camera.name.empty() ? camera.id : camera.name;
+        int best = 0, bestW = 0, bestH = 0;
+        for (const CameraMode& mode : camera.supportedModes) {
+            if (mode.width * mode.height > best) {
+                best = mode.width * mode.height;
+                bestW = mode.width;
+                bestH = mode.height;
+            }
+        }
+        entry.detail = JoinParts({camera.isDefault ? "default" : "",
+                                  best > 0 ? "up to " + std::to_string(bestW) + " x " + std::to_string(bestH) : ""});
+        entry.highlighted = camera.isDefault;
+        content.entries.push_back(entry);
+    }
+    // Without a video backend in this build the cameras still show as USB
+    // video devices.
+    if (content.entries.empty()) {
+        for (const USBDeviceInfo& device : UltraCanvasHardwareInfo::ListUSBDevices()) {
+            const std::string words = Lowered(device.productName + " " + device.deviceClass);
+            if (words.find("video") == std::string::npos && words.find("camera") == std::string::npos &&
+                words.find("webcam") == std::string::npos) {
+                continue;
+            }
+            DevicePanelEntry entry;
+            entry.title = UsbTitle(device);
+            entry.detail = JoinParts({"USB", device.vendorName});
+            content.entries.push_back(entry);
+        }
+    }
+    content.empty = UltraCanvasVideoDevices::IsAvailable()
+                        ? "No camera was found."
+                        : "No camera was found. (This build lists cameras through USB only.)";
+    return content;
+}
+
+DevicePanelContent ReadMicrophonePanel(bool inUse) {
+    DevicePanelContent content;
+    content.summary = inUse ? "A program is recording from a microphone now." : "No program is recording.";
+    for (const AudioDeviceInfo& input : UltraCanvasAudioDevices::ListInputDevices()) {
+        DevicePanelEntry entry;
+        entry.title = input.name.empty() ? input.id : input.name;
+        entry.detail = JoinParts({input.isDefault ? "default input" : "",
+                                  input.maxChannels == 1 ? "mono" : input.maxChannels == 2 ? "stereo" : ""});
+        entry.highlighted = input.isDefault;
+        content.entries.push_back(entry);
+    }
+    content.empty = UltraCanvasAudioDevices::IsAvailable() ? "No microphone was found."
+                                                           : "This build has no audio support to list microphones.";
+    return content;
+}
+
+DevicePanelContent ReadBatteryPanel(const DesktopDeviceActivity& activity) {
+    DevicePanelContent content;
+    if (!activity.batteryPresent) {
+        content.summary = "This computer runs on mains power: it has no battery.";
+        return content;
+    }
+    DevicePanelEntry entry;
+    entry.title = activity.batteryPercent >= 0 ? std::to_string(activity.batteryPercent) + "%" : "Battery";
+    entry.detail = activity.batteryCharging ? "charging" : "on battery";
+    entry.highlighted = activity.batteryCharging;
+    content.entries.push_back(entry);
+    content.summary = activity.batteryCharging ? "Plugged in and charging." : "Running on the battery.";
+    return content;
+}
+
+} // namespace
+
+void UltraDesktopWindow::OpenWifiPanel() {
+    if (!window_ || !info_) return;
+    if (!wifiPanel_) {
+        wifiPanel_ = std::make_shared<UltraDesktopWifiPanel>(
+            nullptr, []() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
+    }
+    if (wifiPanel_->IsOpen()) {
+        wifiPanel_->Close();
+        return;
+    }
+    const Rect2Df bounds = info_->GetWidget("wifi") ? info_->GetWidget("wifi")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    wifiPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    wifiPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
+}
+
+void UltraDesktopWindow::OpenBluetoothPanel() {
+    if (!window_ || !info_) return;
+    if (!bluetoothPanel_) bluetoothPanel_ = std::make_shared<UltraDesktopBluetoothPanel>(nullptr);
+    if (bluetoothPanel_->IsOpen()) {
+        bluetoothPanel_->Close();
+        return;
+    }
+    const Rect2Df bounds =
+        info_->GetWidget("bluetooth") ? info_->GetWidget("bluetooth")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    bluetoothPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    bluetoothPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
+}
+
+void UltraDesktopWindow::OpenDevicePanel(const std::string& device) {
+    if (!window_ || !info_) return;
+    auto& panel = devicePanels_[device];
+    if (panel && panel->IsOpen()) {
+        panel->Close();
+        return;
+    }
+    // Read afresh each time: the panel is made again with what the device
+    // poll saw last.
+    const DesktopDeviceActivity activity = lastActivity_;
+    const DevicePanelAction explorer{"Device Explorer", "Printers, scanners and cameras in detail",
+                                     []() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); }};
+    const DevicePanelAction tasks{"Task Manager", "The hardware page lists every device",
+                                  [this]() { OpenTasks(); }};
+    if (device == "usb") {
+        panel = std::make_shared<UltraDesktopDevicePanel>("USB", ReadUsbPanel,
+                                                          std::vector<DevicePanelAction>{explorer, tasks});
+    } else if (device == "keyboard") {
+        const std::string layout = activity.keyboardLayout;
+        panel = std::make_shared<UltraDesktopDevicePanel>(
+            "Keyboard", [layout]() { return ReadKeyboardPanel(layout); },
+            std::vector<DevicePanelAction>{
+                {"Bluetooth", "Pair a wireless keyboard", [this]() { OpenBluetoothPanel(); }}, tasks});
+    } else if (device == "webcam") {
+        const bool inUse = activity.webcamInUse;
+        panel = std::make_shared<UltraDesktopDevicePanel>(
+            "Webcam", [inUse]() { return ReadWebcamPanel(inUse); }, std::vector<DevicePanelAction>{explorer, tasks});
+    } else if (device == "mic") {
+        const bool inUse = activity.microphoneInUse;
+        panel = std::make_shared<UltraDesktopDevicePanel>(
+            "Microphone", [inUse]() { return ReadMicrophonePanel(inUse); },
+            std::vector<DevicePanelAction>{{"Loudspeaker", "The output's volume", [this]() { OpenVolumePanel(); }},
+                                           tasks});
+    } else if (device == "battery") {
+        panel = std::make_shared<UltraDesktopDevicePanel>(
+            "Battery", [activity]() { return ReadBatteryPanel(activity); }, std::vector<DevicePanelAction>{tasks});
+    } else {
+        return;
+    }
+    const Rect2Df bounds =
+        info_->GetWidget(device) ? info_->GetWidget(device)->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
+    panel->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
+    panel->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 120));
+}
+
 void UltraDesktopWindow::ReadSpeaker() {
     speaker_ = UltraCanvasDesktopShell::ReadAudioOutput();
     haveSpeaker_ = true;
@@ -671,14 +899,14 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     AddBarButton(info_, "download",  "Download",     IconPath("download.svg"),  [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     AddBarButton(info_, "lan",       "Internet / LAN", IconPath("lan.svg"),     [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
     AddBarButton(info_, "vpn",       "VPN",          IconPath("vpn.svg"),       [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "bluetooth", "Bluetooth",    IconPath("bluetooth.svg"), [this]() { OpenTasks(); });
-    AddBarButton(info_, "wifi",      "Wi-Fi",        IconPath("wifi.svg"),      [this]() { UltraCanvasDesktopShell::LaunchProgram("UltraNetMonitor"); });
-    AddBarButton(info_, "usb",       "USB",          IconPath("usb.svg"),       [this]() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); });
-    AddBarButton(info_, "keyboard",  "Keyboard",     IconPath("keyboard.svg"),  [this]() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); });
-    AddBarButton(info_, "webcam",    "Webcam",       IconPath("webcam.svg"),    [this]() { UltraCanvasDesktopShell::LaunchProgram("DeviceExplorer"); });
-    AddBarButton(info_, "mic",       "Microphone",   IconPath("mic.svg"),       [this]() { OpenTasks(); });
+    AddBarButton(info_, "bluetooth", "Bluetooth",    IconPath("bluetooth.svg"), [this]() { OpenBluetoothPanel(); });
+    AddBarButton(info_, "wifi",      "Wi-Fi",        IconPath("wifi.svg"),      [this]() { OpenWifiPanel(); });
+    AddBarButton(info_, "usb",       "USB",          IconPath("usb.svg"),       [this]() { OpenDevicePanel("usb"); });
+    AddBarButton(info_, "keyboard",  "Keyboard",     IconPath("keyboard.svg"),  [this]() { OpenDevicePanel("keyboard"); });
+    AddBarButton(info_, "webcam",    "Webcam",       IconPath("webcam.svg"),    [this]() { OpenDevicePanel("webcam"); });
+    AddBarButton(info_, "mic",       "Microphone",   IconPath("mic.svg"),       [this]() { OpenDevicePanel("mic"); });
     AddBarButton(info_, "speaker",   "Loudspeaker",  IconPath("speaker.svg"),   [this]() { OpenVolumePanel(); });
-    AddBarButton(info_, "battery",   "Battery",      IconPath("battery.svg"),   [this]() { OpenTasks(); });
+    AddBarButton(info_, "battery",   "Battery",      IconPath("battery.svg"),   [this]() { OpenDevicePanel("battery"); });
     AddBarButton(info_, "tasks",     "Task Manager", IconPath("tasks.svg"),     [this]() { OpenTasks(); });
     for (const auto& item : info_->GetItems()) {
         if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item)) {
