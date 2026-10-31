@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.3 - the ticks drawn as strokes (no font needed); a file that is a picture - an SVG
+//                  drawing above all - shows it in the bubble as a photo does
 // Version: 0.2.2 - a photo's preview picture shown while the photo is on its way
 // Version: 0.2.1 - pictures: avatars from the person's photo, photos and video previews in the bubbles,
 //                  a sender's avatar beside their bubble in a group, files as their name and size
@@ -7,7 +9,7 @@
 //                  rounded selection, bubbles without borders in the theme's colours, senders in
 //                  their avatar's colour
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeViews.h"
@@ -17,6 +19,7 @@
 #include "UltraCanvasRenderContext.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <ctime>
 
@@ -38,6 +41,8 @@ constexpr float kBodyFont = 11.0f;
 constexpr float kMetaFont = 8.5f;
 constexpr float kSenderFont = 9.5f;
 constexpr int   kMetaHeight = 14;
+constexpr int   kTicksGap = 4;           // between the time and the ticks
+const Color     kBadgeInk(255, 255, 255, 255);   // the words on a video's dark pill
 constexpr int   kSenderHeight = 16;
 constexpr int   kSeparatorHeight = 34;
 constexpr int   kLineHeightEstimate = 17;
@@ -82,15 +87,45 @@ std::tm LocalTime(int64_t timestampMs) {
     return out;
 }
 
+// What follows the time of our own message: words for the states without
+// a tick; the ticks themselves are drawn (PaintTicks, TickCount), since the
+// check mark glyph is missing from the fonts of many a Windows installation.
 const char* TickText(UltraIMDeliveryStatus status) {
     switch (status) {
         case UltraIMDeliveryStatus::Sending:   return "\xE2\x80\xA6";          // …
-        case UltraIMDeliveryStatus::Sent:      return "\xE2\x9C\x93";          // ✓
-        case UltraIMDeliveryStatus::Delivered: return "\xE2\x9C\x93\xE2\x9C\x93";
-        case UltraIMDeliveryStatus::Read:      return "\xE2\x9C\x93\xE2\x9C\x93";
         case UltraIMDeliveryStatus::Failed:    return "!";
+        case UltraIMDeliveryStatus::Sent:
+        case UltraIMDeliveryStatus::Delivered:
+        case UltraIMDeliveryStatus::Read:      break;
     }
     return "";
+}
+
+int TickCount(UltraIMDeliveryStatus status) {
+    switch (status) {
+        case UltraIMDeliveryStatus::Sent:      return 1;
+        case UltraIMDeliveryStatus::Delivered:
+        case UltraIMDeliveryStatus::Read:      return 2;
+        case UltraIMDeliveryStatus::Sending:
+        case UltraIMDeliveryStatus::Failed:    break;
+    }
+    return 0;
+}
+
+// A file that is a picture by its name: a drawing (SVG) or a photo sent as
+// a file rather than a photo. Shown in its bubble as a photo is, over its
+// name and size.
+bool IsPictureFileName(const std::string& path) {
+    const size_t dot = path.find_last_of('.');
+    if (dot == std::string::npos || path.find_first_of("/\\", dot) != std::string::npos) return false;
+    std::string ext = path.substr(dot + 1);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    static const char* const kPictures[] = {"svg", "svgz", "png", "jpg", "jpeg", "webp", "bmp", "gif",
+                                            "heic", "heif", "tif", "tiff", "jxl", "avif"};
+    for (const char* e : kPictures) {
+        if (ext == e) return true;
+    }
+    return false;
 }
 
 // The words of a bubble: the text, a caption under a picture (none when
@@ -119,9 +154,16 @@ std::string MessageText(const UltraIMMessage& m) {
 }
 
 // The picture file of a message that shows one: the photo or the sticker
-// itself (its preview picture while it is on its way), a video's preview picture.
+// itself (its preview picture while it is on its way), a video's preview
+// picture, a file's own picture when it is one (an SVG drawing) and here,
+// else the preview picture the provider has for it.
 const std::string& PicturePath(const UltraIMMessage& m) {
     if (m.type == UltraIMMessageType::Video) return m.attachment.thumbnailPath;
+    if (m.type == UltraIMMessageType::File) {
+        if (m.attachment.isDownloaded && !m.attachment.localPath.empty() && IsPictureFileName(m.attachment.localPath))
+            return m.attachment.localPath;
+        return m.attachment.thumbnailPath;
+    }
     return m.attachment.localPath.empty() ? m.attachment.thumbnailPath : m.attachment.localPath;
 }
 
@@ -174,7 +216,8 @@ std::string FormatSize(int64_t bytes) {
 
 bool HasPicture(const UltraIMMessage& message) {
     return message.type == UltraIMMessageType::Image || message.type == UltraIMMessageType::Video ||
-           (message.type == UltraIMMessageType::Sticker && !message.attachment.localPath.empty());
+           (message.type == UltraIMMessageType::Sticker && !message.attachment.localPath.empty()) ||
+           (message.type == UltraIMMessageType::File && !PicturePath(message).empty());
 }
 
 std::string GroupUserId(const std::string& userId) {
@@ -428,9 +471,13 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
     ctx->SetFontWeight(FontWeight::Normal);
     ctx->SetTextWrap(TextWrap::WrapWordChar);
     const Size2Di textSize = text.empty() ? Size2Di(0, 0) : ctx->GetTextDimensions(text, Size2Di(maxText, 0));
+    // The time, then for our own message its state: a word, or ticks drawn
+    // after the time.
     const std::string meta = FormatTime(m.timestampMs) + (m.isOwn ? std::string("  ") + TickText(m.deliveryStatus) : "");
+    const int ticks = m.isOwn ? TickCount(m.deliveryStatus) : 0;
+    const int ticksWidth = ticks ? TicksWidth(ticks, kMetaHeight) + kTicksGap : 0;
     ctx->SetFontSize(kMetaFont);
-    const int metaWidth = ctx->GetTextLineWidth(meta);
+    const int metaWidth = ctx->GetTextLineWidth(meta) + ticksWidth;
     int senderWidth = 0;
     if (showSender) {
         ctx->SetFontSize(kSenderFont);
@@ -501,26 +548,32 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
             PaintPlayMark(ctx, Point2Dd(box.x + box.width / 2.0, box.y + box.height / 2.0), kPlayMarkRadius);
             // Its length, bottom left, on a dark pill; "fetching" while the
             // video itself is on its way.
-            std::string badge = m.attachment.durationSeconds > 0 ? FormatDuration(m.attachment.durationSeconds) : "";
-            if (m.attachment.isDownloaded && !badge.empty()) badge += "  \xE2\x9C\x93";    // ✓ here to play
+            const std::string badge = m.attachment.durationSeconds > 0 ? FormatDuration(m.attachment.durationSeconds) : "";
             if (!badge.empty()) {
+                // A tick after the length once the video is here to play.
+                const bool here = m.attachment.isDownloaded;
+                const int tickWidth = here ? TicksWidth(1, kMetaHeight) + kTicksGap : 0;
                 ctx->SetFontSize(kMetaFont);
                 ctx->SetFontWeight(FontWeight::Bold);
                 ctx->SetTextWrap(TextWrap::WrapNone);
-                const int badgeWidth = ctx->GetTextLineWidth(badge) + 12;
+                const int badgeWidth = ctx->GetTextLineWidth(badge) + tickWidth + 12;
                 const Rect2Dd pill(box.x + 8, box.y + box.height - 8 - 18, badgeWidth, 18);
                 ctx->DrawFilledRectangle(pill, Color(0, 0, 0, 150), 0.0f, Colors::Transparent, 9.0f);
-                ctx->SetTextAlignment(TextAlignment::Center);
+                ctx->SetTextAlignment(TextAlignment::Left);
                 ctx->SetTextVerticalAlignment(VerticalAlignment::Middle);
-                ctx->SetTextPaint(Color(255, 255, 255, 255));
-                ctx->DrawTextInRect(badge, pill);
+                ctx->SetTextPaint(kBadgeInk);
+                ctx->DrawTextInRect(badge, Rect2Dd(pill.x + 6, pill.y, pill.width - 12 - tickWidth, pill.height));
+                if (here)
+                    PaintTicks(ctx, Rect2Dd(pill.x + 6, pill.y + (pill.height - kMetaHeight) / 2.0, pill.width - 12,
+                                            kMetaHeight), 1, kBadgeInk);
             }
         }
         media_[m.clientMessageId] = Rect2Di(static_cast<int>(box.x - cell.x), static_cast<int>(box.y - cell.y),
                                             pictureSize.width, pictureSize.height);
         y += pictureHeight;
-    } else if (m.type == UltraIMMessageType::File || m.type == UltraIMMessageType::Audio) {
-        // The whole bubble opens the file.
+    }
+    if (m.type == UltraIMMessageType::File || m.type == UltraIMMessageType::Audio) {
+        // The whole bubble opens the file, its picture included.
         media_[m.clientMessageId] = Rect2Di(static_cast<int>(bubble.x - cell.x), static_cast<int>(bubble.y - cell.y),
                                             bubbleWidth, bubbleHeight);
     }
@@ -543,7 +596,8 @@ void MessageBubbleDelegate::RenderItem(IRenderContext* ctx, const IListModel* mo
     if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Read) metaColor = look.accent;
     if (m.isOwn && m.deliveryStatus == UltraIMDeliveryStatus::Failed) metaColor = look.danger;
     ctx->SetTextPaint(metaColor);
-    ctx->DrawTextInRect(meta, Rect2Dd(bubble.x, y, bubble.width - kBubblePadH, kMetaHeight));
+    ctx->DrawTextInRect(meta, Rect2Dd(bubble.x, y, bubble.width - kBubblePadH - ticksWidth, kMetaHeight));
+    if (ticks) PaintTicks(ctx, Rect2Dd(bubble.x, y, bubble.width - kBubblePadH, kMetaHeight), ticks, metaColor);
 }
 
 // ============================================================================
