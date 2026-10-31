@@ -226,6 +226,16 @@ void UltraAIChatDialog::OnSend() {
         return;
     }
 
+    // A user turn left at the end of the history was never answered: the
+    // stream failed before it produced a reply, or the "Get a local model"
+    // dialog was dismissed. Replace it instead of appending after it, or the
+    // provider sees two user messages in a row - a chat template that
+    // demands alternating roles (Gemma on LocalAI, say) refuses the whole
+    // request with "Conversation roles must alternate user/assistant".
+    if (!messages_.empty() && messages_.back().role == Role::User) {
+        messages_.pop_back();
+    }
+
     // Build the user message (multimodal when attachments are present).
     Message um;
     um.role = Role::User;
@@ -376,6 +386,17 @@ void UltraAIChatDialog::OnStreamFinished(const std::string& errorMessage) {
         am.role = Role::Assistant;
         am.text = assistantAccum_;
         messages_.push_back(std::move(am));
+    } else if (!errorMessage.empty() && !messages_.empty() &&
+               messages_.back().role == Role::User) {
+        // The request failed before the model said anything, so the turn
+        // never happened: take the user message back out of the history.
+        // Left in, the next send would follow it with a second user message
+        // and a provider whose chat template requires alternating roles
+        // rejects the conversation (seen with LiteLLM + LocalAI: both the
+        // failed and the new question arrived as consecutive "user" turns).
+        // The transcript keeps the echo and the error so the user sees what
+        // was tried; a partial reply above is kept as the assistant turn.
+        messages_.pop_back();
     }
     AppendTranscript("\n\n---\n\n");
     assistantAccum_.clear();
