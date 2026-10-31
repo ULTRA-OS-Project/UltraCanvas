@@ -16,12 +16,16 @@
 //     so the shared system-bus connection is held for the life of the
 //     process; a discovery stops by itself after a minute.
 //
-// Pairing codes: while a pairing handler is set (SetPairingHandler), an
-// org.bluez.Agent1 ("KeyboardDisplay") is registered on the first pairing,
-// on a GLib loop of its own, and BlueZ's requests - show a code, confirm
-// one, type one - go to the handler. Without a handler no agent is
+// Pairing codes: as soon as a pairing handler is set (SetPairingHandler), an
+// org.bluez.Agent1 ("KeyboardDisplay") is registered - as BlueZ's default
+// agent, so pairings a device starts come here as well - on a GLib loop of
+// its own, and BlueZ's requests - show a code, confirm one, type one, let
+// an untrusted device connect - go to the handler. Without a handler no agent is
 // registered and a device that needs a code does not pair; the error says
 // so.
+// Version: 1.2.0 - the default agent: registered when the handler is set,
+//                  retried while BlueZ is away; AuthorizeService asks for
+//                  untrusted devices
 // Version: 1.1.0 - the pairing agent
 // Version: 1.0.0
 // Last Modified: 2026-10-31
@@ -398,14 +402,41 @@ namespace {
         g_dbus_method_invocation_return_dbus_error(invocation, "org.bluez.Error.Rejected", "Rejected");
     }
 
+    // The device PairBluetoothDevice is pairing now ("" when none): its
+    // service requests are the person's own doing and need no question.
+    std::mutex pairingPathMutex;
+    std::string pairingPath;
+
+    void SetPairingPath(const std::string& path) {
+        std::lock_guard<std::mutex> lock(pairingPathMutex);
+        pairingPath = path;
+    }
+
+    bool IsPairingPath(const std::string& path) {
+        std::lock_guard<std::mutex> lock(pairingPathMutex);
+        return !path.empty() && path == pairingPath;
+    }
+
     void AgentMethod(GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar* methodName,
                      GVariant* parameters, GDBusMethodInvocation* invocation, gpointer) {
         const std::string method = methodName;
-        if (method == "Release" || method == "AuthorizeService") {
-            // Release: BlueZ is done with the agent. AuthorizeService: a
-            // service of a device this person chose to pair - yes.
+        if (method == "Release") {
+            // BlueZ is done with the agent.
             g_dbus_method_invocation_return_value(invocation, nullptr);
             return;
+        }
+        if (method == "AuthorizeService") {
+            // A service of a device being paired here, or of a trusted one:
+            // yes. Anything else is a device nobody here vouched for, and the
+            // person is asked (below).
+            const gchar* device = nullptr;
+            const gchar* uuid = nullptr;
+            g_variant_get(parameters, "(&o&s)", &device, &uuid);
+            const std::string devicePath = device ? device : "";
+            if (IsPairingPath(devicePath) || GetBool(kBlueZ, devicePath, kDevice, "Trusted")) {
+                g_dbus_method_invocation_return_value(invocation, nullptr);
+                return;
+            }
         }
         if (method == "Cancel") {
             AskPairing(RequestFor(WirelessPairingStep::Finished, ""));
@@ -436,12 +467,18 @@ namespace {
         const gchar* device = nullptr;
         guint32 passkey = 0;
         if (method == "RequestConfirmation") g_variant_get(parameters, "(&ou)", &device, &passkey);
+        else if (method == "AuthorizeService") g_variant_get(parameters, "(&o&s)", &device, nullptr);
         else g_variant_get(parameters, "(&o)", &device);
         const std::string devicePath = device ? device : "";
         std::thread([method, devicePath, passkey, invocation]() {
             if (method == "RequestConfirmation") {
                 const WirelessPairingAnswer answer =
                     AskPairing(RequestFor(WirelessPairingStep::ConfirmCode, devicePath, SixDigits(passkey)));
+                if (answer.accept) g_dbus_method_invocation_return_value(invocation, nullptr);
+                else Reject(invocation);
+            } else if (method == "AuthorizeService") {
+                const WirelessPairingAnswer answer =
+                    AskPairing(RequestFor(WirelessPairingStep::AllowConnection, devicePath));
                 if (answer.accept) g_dbus_method_invocation_return_value(invocation, nullptr);
                 else Reject(invocation);
             } else if (method == "RequestAuthorization") {
@@ -474,11 +511,15 @@ namespace {
 
     // Register the agent once, on its own thread; false with the reason
     // when BlueZ or the bus refused it (the next pairing tries again).
+    std::atomic<bool> agentRegistered{false};
+    std::atomic<int64_t> agentLastAttempt{0};   // steady-clock seconds
+
     bool EnsureAgent(std::string& error) {
         static std::mutex mutex;
-        static bool registered = false;
         std::lock_guard<std::mutex> lock(mutex);
-        if (registered) return true;
+        if (agentRegistered.load()) return true;
+        agentLastAttempt.store(std::chrono::duration_cast<std::chrono::seconds>(
+                                   std::chrono::steady_clock::now().time_since_epoch()).count());
         auto ready = std::make_shared<std::promise<std::string>>();
         std::future<std::string> answer = ready->get_future();
         std::thread([ready]() {
@@ -496,9 +537,20 @@ namespace {
                 if (!id) reason = Message(gerror);
             }
             if (id && !CallVoid(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
-                                g_variant_new("(os)", kAgentPath, "KeyboardDisplay"), reason)) {
+                                g_variant_new("(os)", kAgentPath, "KeyboardDisplay"), reason) &&
+                reason.find("AlreadyExists") == std::string::npos && reason.find("Already Exists") == std::string::npos) {
                 g_dbus_connection_unregister_object(bus, id);
                 id = 0;
+            }
+            if (id) {
+                // The default agent: a pairing a device starts (a phone
+                // pairing with the computer) comes here too. Another
+                // desktop's agent may hold the place; ours then serves only
+                // the pairings started from here.
+                reason.clear();
+                std::string ignored;
+                CallVoid(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent",
+                         g_variant_new("(o)", kAgentPath), ignored);
             }
             if (node) g_dbus_node_info_unref(node);
             if (!id) {
@@ -517,8 +569,19 @@ namespace {
             return false;
         }
         error = answer.get();
-        registered = error.empty();
-        return registered;
+        agentRegistered.store(error.empty());
+        return error.empty();
+    }
+
+    // With a handler and no agent yet - BlueZ was not running when the
+    // handler came, or restarted - try again, at most every half minute.
+    void MaybeRegisterAgent() {
+        if (agentRegistered.load() || !HasPairingHandler()) return;
+        const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
+                                std::chrono::steady_clock::now().time_since_epoch()).count();
+        if (now - agentLastAttempt.load() < 30) return;
+        std::string ignored;
+        EnsureAgent(ignored);
     }
 
 } // namespace
@@ -698,6 +761,7 @@ bool ForgetWifi(const std::string& ssid, std::string& error) {
 
 WirelessBluetoothStatus ReadBluetooth() {
     WirelessBluetoothStatus status;
+    MaybeRegisterAgent();
     BlueZTree tree;
     if (!ReadTree(tree, status.error)) {
         status.available = status.error == "There is no Bluetooth adapter.";
@@ -795,10 +859,12 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
         agent = EnsureAgent(why);
         if (!agent) error = why;
     }
+    SetPairingPath(path);
     const bool paired = CallVoid(kBlueZ, path, kDevice, "Pair", nullptr, error, kPairTimeoutMs);
     if (agent) AskPairing(RequestFor(WirelessPairingStep::Finished, path));
     if (!paired && error.find("AlreadyExists") == std::string::npos &&
         error.find("Already Exists") == std::string::npos) {
+        SetPairingPath("");
         if (error.find("Authentication") != std::string::npos) {
             error = agent ? "The code was not confirmed, or was typed wrongly. Try again."
                           : "The device wants a code confirmed or typed, which nothing here can show. "
@@ -810,7 +876,9 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
     }
     error.clear();
     SetProperty(kBlueZ, path, kDevice, "Trusted", g_variant_new_boolean(TRUE), ignored);
-    if (!CallVoid(kBlueZ, path, kDevice, "Connect", nullptr, error, kConnectTimeoutMs)) {
+    const bool connected = CallVoid(kBlueZ, path, kDevice, "Connect", nullptr, error, kConnectTimeoutMs);
+    SetPairingPath("");
+    if (!connected) {
         error = "Paired, but could not connect: " + error;
         return false;
     }
@@ -837,6 +905,17 @@ bool RemoveBluetoothDevice(const std::string& address, std::string& error) {
         return false;
     }
     return true;
+}
+
+// ===== THE PAIRING HANDLER =====
+
+void PairingHandlerChanged(bool present) {
+    if (!present) return;   // the agent stays; with no handler it refuses
+    // Off the caller's thread: registering waits for BlueZ.
+    std::thread([]() {
+        std::string ignored;
+        EnsureAgent(ignored);
+    }).detach();
 }
 
 // ===== THE SYSTEM'S OWN SETTINGS =====

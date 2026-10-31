@@ -3,6 +3,7 @@
 // lists come in, and the fallback backend for platforms with none. The
 // platform halves are OS/Linux/UltraCanvasLinuxWireless.cpp and
 // OS/MSWindows/UltraCanvasWindowsWireless.cpp.
+// Version: 1.2.0 - SetPairingHandler tells the backend (PairingHandlerChanged)
 // Version: 1.1.0 - the pairing handler (SetPairingHandler, AskPairing)
 // Version: 1.0.0
 // Last Modified: 2026-10-31
@@ -226,8 +227,12 @@ namespace {
 } // namespace
 
 void UltraCanvasWireless::SetPairingHandler(WirelessPairingHandler handler) {
-    std::lock_guard<std::mutex> lock(PairingMutex());
-    PairingHandler() = std::move(handler);
+    const bool present = static_cast<bool>(handler);
+    {
+        std::lock_guard<std::mutex> lock(PairingMutex());
+        PairingHandler() = std::move(handler);
+    }
+    WirelessBackend::PairingHandlerChanged(present);
 }
 
 namespace WirelessBackend {
@@ -304,6 +309,7 @@ namespace WirelessBackend {
 
     bool HasSystemSettings(WirelessRadio) { return false; }
     bool OpenSystemSettings(WirelessRadio, std::string& error) { error = kNone; return false; }
+    void PairingHandlerChanged(bool) {}
 
 } // namespace WirelessBackend
 #endif // !ULTRACANVAS_WIRELESS_NATIVE

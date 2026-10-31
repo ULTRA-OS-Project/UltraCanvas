@@ -105,10 +105,15 @@ UltraCanvasWireless::SetPairingHandler([](const WirelessPairingRequest& request)
 });
 ```
 
-On Linux the handler makes the module register a BlueZ agent
-(`org.bluez.Agent1`, "KeyboardDisplay") on its first pairing, served from a
-GLib loop on a thread of its own; without a handler none is registered and a
-device that needs a code does not pair. macOS hands IOBluetoothDevicePair's
+On Linux setting the handler registers a BlueZ agent (`org.bluez.Agent1`,
+"KeyboardDisplay") at once, served from a GLib loop on a thread of its own,
+and asks BlueZ to make it the default agent: a pairing the device starts (a
+phone pairing with the computer) comes to the handler too, at any time, and
+so does a connection from a device that is not trusted
+(`WirelessPairingStep::AllowConnection`). Where BlueZ was not running yet,
+the next `ReadBluetooth` tries again, at most every half minute. Without a
+handler no agent is registered and a device that needs a code does not
+pair. macOS hands IOBluetoothDevicePair's
 passkey, comparison and PIN requests to it (without one a comparison is
 accepted unseen). Windows shows its own prompt and never calls it.
 

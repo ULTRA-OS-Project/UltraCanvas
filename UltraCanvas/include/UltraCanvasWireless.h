@@ -40,6 +40,8 @@
 //     itself connects headphones.
 //   - Elsewhere every read answers `available` false and every call fails
 //     saying so.
+// Version: 1.2.0 - the default pairing agent on Linux: pairings a device
+//                  starts and untrusted connections (AllowConnection)
 // Version: 1.1.0 - pairing codes: SetPairingHandler (a BlueZ agent on Linux,
 //                  IOBluetoothDevicePair's requests on macOS)
 // Version: 1.0.0
@@ -117,6 +119,7 @@ namespace UltraCanvas {
         EnterCode,      // the six-digit code the device shows, into `code`
         EnterPin,       // the device's PIN (often "0000"), into `code`
         Authorize,      // the device asks to pair without a code: `accept`?
+        AllowConnection,// a device that is not trusted asks to connect: `accept`?
         Finished        // the pairing has ended, either way: take the prompt away
     };
 
@@ -179,7 +182,13 @@ namespace UltraCanvas {
         // comparison unseen.
         static bool PairBluetoothDevice(const std::string& address, std::string* error = nullptr);
         // Who shows the codes; one per process (a desktop's Bluetooth
-        // panel). nullptr removes it.
+        // panel). nullptr removes it. On Linux setting one also makes this
+        // process the system's default pairing agent, so a pairing the
+        // device starts - a phone pairing with the computer - comes to the
+        // handler too, as do connections from devices that are not trusted
+        // (AllowConnection); the handler may be called at any time then,
+        // not only during PairBluetoothDevice. Windows and macOS keep those
+        // to the system's own prompts.
         static void SetPairingHandler(WirelessPairingHandler handler);
         static bool ConnectBluetoothDevice(const std::string& address, std::string* error = nullptr);
         static bool DisconnectBluetoothDevice(const std::string& address, std::string* error = nullptr);

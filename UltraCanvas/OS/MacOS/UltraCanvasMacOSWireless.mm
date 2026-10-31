@@ -631,6 +631,9 @@ bool RemoveBluetoothDevice(const std::string& address, std::string& error) {
 
 // ===== THE SYSTEM'S OWN SETTINGS =====
 
+// macOS pairs a device that starts pairing through its own prompt.
+void PairingHandlerChanged(bool) {}
+
 bool HasSystemSettings(WirelessRadio) { return true; }
 
 bool OpenSystemSettings(WirelessRadio radio, std::string& error) {

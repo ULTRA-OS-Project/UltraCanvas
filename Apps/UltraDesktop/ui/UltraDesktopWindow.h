@@ -146,6 +146,9 @@ public:
     // (UltraCanvasWireless).
     void OpenWifiPanel();
     void OpenBluetoothPanel();
+    // Opens it (never closes it) - for a pairing a device starts.
+    void ShowBluetoothPanel();
+    void EnsureBluetoothPanel();
     // The info panel's devices: "usb", "keyboard", "webcam", "mic",
     // "battery" - what is attached or in use, with a way on to
     // DeviceExplorer or the Task Manager.

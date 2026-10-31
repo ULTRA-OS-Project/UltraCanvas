@@ -36,3 +36,8 @@
   can be pulled out, or that a program still has a file open on it. The
   panel follows what is plugged in while it is open: a stick shows the
   moment it mounts, any other USB device within three seconds.
+- **A phone that pairs with the computer is answered on Linux.** UltraDesktop
+  is the system's Bluetooth pairing agent from the start: when a phone (or
+  any device) starts a pairing, the Bluetooth panel opens by itself and asks
+  whether the number matches - and a device that is not trusted and asks to
+  connect is asked about too.

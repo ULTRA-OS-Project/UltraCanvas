@@ -181,7 +181,10 @@ the right-hand monitor the primary.
   which *System settings* opens, and shows its own prompt when a device wants
   a code. On Linux and macOS the panel shows the code itself: the six digits
   to type on a keyboard (then Enter), *Yes, pair* / *No* when a phone shows a
-  number to compare, or a field for a PIN.
+  number to compare, or a field for a PIN. On Linux UltraDesktop is the
+  system's pairing agent from the start, so when a phone starts pairing
+  with the computer, or a device that is not trusted asks to connect, the
+  panel opens by itself and asks.
 - **Loudspeaker**: the volume panel beside the bar - the output's name, its
   volume on a slider, its mute on a switch - through the sound server
   (PulseAudio or PipeWire on Linux, Core Audio on Windows; the panel says so

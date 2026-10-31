@@ -4,6 +4,7 @@
 // exists so OS/<Platform>/UltraCanvas*Wireless.cpp and the shared core agree
 // on one set of entry points. The core validates the arguments, sorts what
 // the backend lists and fills `error` when a call fails without a reason.
+// Version: 1.2.0 - PairingHandlerChanged
 // Version: 1.1.0 - AskPairing / HasPairingHandler
 // Version: 1.0.0
 // Last Modified: 2026-10-31
@@ -52,6 +53,9 @@ namespace WirelessBackend {
     // is a refusal. HasPairingHandler says whether there is someone to ask.
     WirelessPairingAnswer AskPairing(const WirelessPairingRequest& request);
     bool HasPairingHandler();
+    // SetPairingHandler stored a handler (`present`) or removed it; the
+    // backend may get ready for requests the device starts. Returns at once.
+    void PairingHandlerChanged(bool present);
 
     bool HasSystemSettings(WirelessRadio radio);
     bool OpenSystemSettings(WirelessRadio radio, std::string& error);

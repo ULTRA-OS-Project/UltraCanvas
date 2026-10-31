@@ -205,6 +205,8 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     if (shellSession_) StartTray();
     StartDesktopShortcuts();
     StartDevicePoll();
+    // The pairing handler, from the start (see EnsureBluetoothPanel).
+    EnsureBluetoothPanel();
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         uiTimer_ = app->StartTimer(kUiTimerMs, /*periodic=*/true, [this](TimerId) { OnTimer(); });
     }
@@ -765,13 +767,26 @@ void UltraDesktopWindow::OpenWifiPanel() {
     wifiPanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 200));
 }
 
+void UltraDesktopWindow::EnsureBluetoothPanel() {
+    if (bluetoothPanel_) return;
+    // Made at start, not on the first click: it is the process's pairing
+    // handler, so a phone that starts pairing finds someone to ask - the
+    // panel then opens itself (ShowBluetoothPanel).
+    bluetoothPanel_ = std::make_shared<UltraDesktopBluetoothPanel>(nullptr, [this]() { ShowBluetoothPanel(); });
+}
+
 void UltraDesktopWindow::OpenBluetoothPanel() {
     if (!window_ || !info_) return;
-    if (!bluetoothPanel_) bluetoothPanel_ = std::make_shared<UltraDesktopBluetoothPanel>(nullptr);
+    EnsureBluetoothPanel();
     if (bluetoothPanel_->IsOpen()) {
         bluetoothPanel_->Close();
         return;
     }
+    ShowBluetoothPanel();
+}
+
+void UltraDesktopWindow::ShowBluetoothPanel() {
+    if (!window_ || !info_ || !bluetoothPanel_ || bluetoothPanel_->IsOpen()) return;
     const Rect2Df bounds =
         info_->GetWidget("bluetooth") ? info_->GetWidget("bluetooth")->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     bluetoothPanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);

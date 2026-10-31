@@ -9,6 +9,7 @@
 // While a device pairs, a prompt row shows the code to type on it, asks
 // whether the code it shows matches, or takes its PIN - the panel is the
 // process's pairing handler (UltraCanvasWireless::SetPairingHandler).
+// Version: 0.3.0 - requestOpen: pairings and connections a device starts
 // Version: 0.2.0 - the pairing prompt
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -36,7 +37,11 @@ namespace UltraDesktop {
 class UltraDesktopBluetoothPanel : public UltraDesktopPopupPanel {
 public:
     // `onChanged` runs after a change, so the bar can refresh its icon.
-    explicit UltraDesktopBluetoothPanel(std::function<void()> onChanged);
+    // `requestOpen` opens the panel where it belongs: a device that starts
+    // a pairing or asks to connect is answered here even when the panel
+    // was closed. The panel is the process's pairing handler from its
+    // construction on, so the desktop makes it at start.
+    UltraDesktopBluetoothPanel(std::function<void()> onChanged, std::function<void()> requestOpen);
     ~UltraDesktopBluetoothPanel() override;
 
 protected:
@@ -68,6 +73,8 @@ private:
     void AnswerPrompt(bool accept);
 
     std::function<void()> onChanged_;
+    std::function<void()> requestOpen_;
+    UltraCanvas::TimerId codeTimer_ = 0;
     UltraDesktopPanelWork work_;
     UltraCanvas::WirelessBluetoothStatus status_;
     bool haveStatus_ = false;

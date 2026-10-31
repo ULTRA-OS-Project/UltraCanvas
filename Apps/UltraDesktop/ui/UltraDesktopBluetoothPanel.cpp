@@ -1,5 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopBluetoothPanel.cpp
 // The Bluetooth panel. See the header.
+// Version: 0.3.0 - pairings and connections a device starts: the panel
+//                  opens itself for them (requestOpen)
 // Version: 0.2.0 - the pairing prompt
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -71,13 +73,16 @@ struct UltraDesktopBluetoothPanel::PairingPrompt {
 namespace {
 bool Waits(WirelessPairingStep step) {
     return step == WirelessPairingStep::ConfirmCode || step == WirelessPairingStep::EnterCode ||
-           step == WirelessPairingStep::EnterPin || step == WirelessPairingStep::Authorize;
+           step == WirelessPairingStep::EnterPin || step == WirelessPairingStep::Authorize ||
+           step == WirelessPairingStep::AllowConnection;
 }
 } // namespace
 
-UltraDesktopBluetoothPanel::UltraDesktopBluetoothPanel(std::function<void()> onChanged)
+UltraDesktopBluetoothPanel::UltraDesktopBluetoothPanel(std::function<void()> onChanged,
+                                                       std::function<void()> requestOpen)
     : UltraDesktopPopupPanel("Bluetooth", kPanelWidth, kPanelHeight),
       onChanged_(std::move(onChanged)),
+      requestOpen_(std::move(requestOpen)),
       pairing_(std::make_shared<PairingPrompt>()) {
     UltraCanvasWireless::SetPairingHandler([prompt = pairing_, panel = this](const WirelessPairingRequest& request) {
         return HandlePairing(prompt, panel, request);
@@ -91,8 +96,9 @@ UltraDesktopBluetoothPanel::~UltraDesktopBluetoothPanel() {
         pairing_->alive = false;
     }
     if (auto pending = pairing_->Take()) pending->set_value({});
-    if (timer_) {
-        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(timer_);
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        if (timer_) app->StopTimer(timer_);
+        if (codeTimer_) app->StopTimer(codeTimer_);
     }
 }
 
@@ -138,8 +144,10 @@ void UltraDesktopBluetoothPanel::ShowPrompt(const WirelessPairingRequest& reques
         HidePrompt();
         return;
     }
+    // A pairing the device started (or a connection it asks for) finds the
+    // panel closed: it opens beside its icon.
+    if (!IsOpen() && requestOpen_) requestOpen_();
     if (!promptRow_ || !IsOpen()) {
-        // Pairing starts from the panel; closed, there is no one to ask.
         AnswerPrompt(false);
         return;
     }
@@ -159,8 +167,14 @@ void UltraDesktopBluetoothPanel::ShowPrompt(const WirelessPairingRequest& reques
             no = "No";
             break;
         case WirelessPairingStep::Authorize:
-            text = "Pair with " + name + "?";
+            text = name + " asks to pair with this computer. Pair?";
             yes = "Pair";
+            no = "Refuse";
+            break;
+        case WirelessPairingStep::AllowConnection:
+            text = name + " asks to connect, and is not one of your trusted devices. Let it?";
+            yes = "Allow";
+            no = "Refuse";
             break;
         case WirelessPairingStep::EnterCode:
             text = "Type the six-digit code " + name + " shows:";
@@ -187,6 +201,17 @@ void UltraDesktopBluetoothPanel::ShowPrompt(const WirelessPairingRequest& reques
     if (auto* window = Window()) window->InvalidateLayout();
     if (input) promptInput_->SetFocus(true);
     if (Window()) Window()->RaiseAndFocus();
+    // A pairing the device started has no Pair call to say it ended: a
+    // shown code goes after a minute.
+    if (request.step == WirelessPairingStep::ShowCode) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) {
+            if (codeTimer_) app->StopTimer(codeTimer_);
+            codeTimer_ = app->StartTimer(60000, false, [this](TimerId) {
+                codeTimer_ = 0;
+                if (promptStep_ == WirelessPairingStep::ShowCode) HidePrompt();
+            });
+        }
+    }
 }
 
 void UltraDesktopBluetoothPanel::HidePrompt() {
