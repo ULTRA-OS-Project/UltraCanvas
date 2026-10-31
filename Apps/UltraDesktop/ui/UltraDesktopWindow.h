@@ -35,7 +35,9 @@
 // Applications window.
 // Version: 0.6.0 - the Wi-Fi and Bluetooth panels (join, pair, connect),
 //                  and the USB, keyboard, webcam, microphone and battery
-//                  panels behind the info panel's icons
+//                  panels behind the info panel's icons; the USB drives'
+//                  "Safely remove"; on a short screen the info panel's items
+//                  shrink and the least used fold into a menu (FitInfoPanel)
 // Version: 0.5.1 - on X11 the desktop covers the primary monitor and puts
 //                  wallpaper windows on the others, as it does as the
 //                  Windows shell; panels and toasts follow it, and so does

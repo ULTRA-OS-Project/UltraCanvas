@@ -993,6 +993,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     platform's own page (Windows, macOS).
   See `Docs/UltraCanvas/UltraCanvasWireless.md`.
 
+- **UltraCanvasRemovableDrives** (`UltraCanvasRemovableDrives.h`) — the drives
+  a person plugs in and "Safely remove" for them. `List` →
+  `RemovableDrive { id, name, bus, sizeBytes, mountPoints, labels }` (the
+  system's own drive never listed); `SafelyRemove(id)` unmounts every volume
+  and powers the drive off or ejects it, failing with a sentence when a file
+  is still open. Core in `core/UltraCanvasRemovableDrives.cpp` (order,
+  fallback); backends `OS/Linux/UltraCanvasLinuxRemovableDrives.cpp`
+  (UDisks2 over GDBus, sharing `OS/Linux/UltraCanvasLinuxSystemBus.h` with
+  the wireless backend), `OS/MSWindows/UltraCanvasWindowsRemovableDrives.cpp`
+  (SetupAPI, storage ioctls, `CM_Request_Device_Eject`),
+  `OS/MacOS/UltraCanvasMacOSRemovableDrives.mm` (volume resource values,
+  `NSWorkspace unmountAndEjectDeviceAtURL`). See
+  `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
+
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
   `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
   clipboard history of ULTRA OS: every copy (files, images, text with its

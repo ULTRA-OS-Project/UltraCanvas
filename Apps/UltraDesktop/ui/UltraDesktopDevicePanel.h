@@ -28,6 +28,14 @@ struct DevicePanelEntry {
     std::string title;          // "Logitech USB Receiver"
     std::string detail;         // "Human Interface Device · 12 Mbit/s"
     bool highlighted = false;   // in use, connected, the default
+    bool heading = false;       // a section's name, not an entry
+    // The entry's own button: `action` runs on a worker thread and answers
+    // "" when it worked, else the reason; `busyText` shows meanwhile and
+    // `doneText` after it worked.
+    std::string actionLabel;
+    std::string busyText;
+    std::string doneText;
+    std::function<std::string()> action;
 };
 
 struct DevicePanelContent {
@@ -55,6 +63,9 @@ protected:
 
 private:
     void Apply(const DevicePanelContent& content);
+    void Read();
+    void RunEntryAction(const DevicePanelEntry& entry);
+    void SetMessage(const std::string& text, bool error);
 
     std::string title_;
     std::function<DevicePanelContent()> read_;
@@ -62,6 +73,8 @@ private:
     UltraDesktopPanelWork work_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> summary_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> list_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> message_;
+    bool busy_ = false;
 };
 
 } // namespace UltraDesktop

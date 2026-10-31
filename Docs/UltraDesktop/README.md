@@ -153,6 +153,13 @@ the right-hand monitor the primary.
   keyboard, webcam, microphone and battery a panel saying what is attached
   or in use with a button on to Device Explorer or the Task Manager, the
   loudspeaker its volume panel, and the last icon the Task Manager.
+- **USB**: the USB panel lists the drives plugged in (USB sticks, external
+  disks, memory cards - never the system's own) with their size and where
+  they are mounted, each with *Safely remove*: its volumes are unmounted once
+  everything is written out and the drive is powered off, after which the
+  panel says it can be pulled out - or that a program still has a file open
+  on it. Below them, the other USB devices. Through UDisks2 on Linux,
+  Windows' "Safely Remove Hardware", and Finder's Eject on macOS.
 - **Wi-Fi**: the Wi-Fi panel beside the bar - Wi-Fi on a switch, the network
   joined, and the networks in reach with their signal and security. *Connect*
   joins a saved or open network at once and asks for the password of a new

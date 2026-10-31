@@ -29,3 +29,8 @@
   folded icon with its state ("USB: 2 devices") and opens it as the icon
   would. It used to scroll, hiding the last icons until the bar was
   scrolled.
+- **Safely remove a USB drive.** The USB panel lists the drives plugged in
+  - stick, external disk or memory card, with its size and where it is
+  mounted - each with *Safely remove*: the drive is unmounted once
+  everything is written to it and powered off, and the panel says when it
+  can be pulled out, or that a program still has a file open on it.

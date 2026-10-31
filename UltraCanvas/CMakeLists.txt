@@ -634,6 +634,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # The backends are OS/<Platform>/UltraCanvas*Wireless.*, picked up by
         # the platform glob below; this is the shared half and the fallback.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWireless.cpp
+        # The drives a person plugs in and "Safely remove" for them; backends
+        # OS/<Platform>/UltraCanvas*RemovableDrives.*, by the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRemovableDrives.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBusyIndicator.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
@@ -2329,6 +2332,9 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             iphlpapi
             wlanapi
             setupapi
+            # CM_Request_Device_Eject, CM_Locate_DevNode (the removable
+            # drives' "Safely remove", OS/MSWindows/UltraCanvasWindowsRemovableDrives.cpp)
+            cfgmgr32
             bthprops
             ${FONTCONFIG_LIBRARIES}
     )

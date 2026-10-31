@@ -39,6 +39,7 @@
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasAudioDevices.h"
 #include "UltraCanvasHardwareInfo.h"
+#include "UltraCanvasRemovableDrives.h"
 #include "UltraCanvasVideoDevices.h"
 #include "UltraCanvasWireless.h"
 #include "UltraCanvasApplication.h"
@@ -577,17 +578,73 @@ std::string UsbTitle(const USBDeviceInfo& device) {
     return "USB device " + std::string(ids);
 }
 
+// "15.6 GB", "512 MB" - whole numbers and a tenth, without the locale's
+// decimal point standing in for a dot it never needed.
+std::string SizeText(uint64_t bytes) {
+    if (bytes == 0) return "";
+    const char* units[] = {"KB", "MB", "GB", "TB"};
+    uint64_t scaled = bytes / 100;   // tenths of a kilobyte
+    int unit = 0;
+    while (scaled >= 10000 && unit < 3) {
+        scaled /= 1000;
+        ++unit;
+    }
+    const uint64_t whole = scaled / 10;
+    const uint64_t tenth = scaled % 10;
+    return std::to_string(whole) + (whole < 100 && tenth ? "." + std::to_string(tenth) : "") + " " + units[unit];
+}
+
 DevicePanelContent ReadUsbPanel() {
     DevicePanelContent content;
+    std::string driveError;
+    const std::vector<RemovableDrive> drives = UltraCanvasRemovableDrives::List(&driveError);
+    if (!drives.empty()) {
+        DevicePanelEntry heading;
+        heading.title = "Drives";
+        heading.heading = true;
+        content.entries.push_back(heading);
+    }
+    for (const RemovableDrive& drive : drives) {
+        DevicePanelEntry entry;
+        entry.title = drive.name;
+        std::vector<std::string> where;
+        for (size_t i = 0; i < drive.mountPoints.size(); ++i) {
+            where.push_back(drive.labels[i].empty() ? drive.mountPoints[i]
+                                                    : drive.labels[i] + " (" + drive.mountPoints[i] + ")");
+        }
+        entry.detail = JoinParts({drive.bus, SizeText(drive.sizeBytes),
+                                  where.empty() ? "nothing mounted" : JoinParts(where)});
+        entry.highlighted = !drive.mountPoints.empty();
+        entry.actionLabel = "Safely remove";
+        entry.busyText = "Writing out what is left and unmounting " + drive.name + "...";
+        entry.doneText = drive.name + " can be pulled out now.";
+        const std::string id = drive.id;
+        entry.action = [id]() {
+            std::string error;
+            UltraCanvasRemovableDrives::SafelyRemove(id, &error);
+            return error;
+        };
+        content.entries.push_back(entry);
+    }
+    size_t devices = 0;
     for (const USBDeviceInfo& device : UltraCanvasHardwareInfo::ListUSBDevices()) {
         if (device.isHub) continue;
+        if (devices++ == 0 && !drives.empty()) {
+            DevicePanelEntry heading;
+            heading.title = "Devices";
+            heading.heading = true;
+            content.entries.push_back(heading);
+        }
         DevicePanelEntry entry;
         entry.title = UsbTitle(device);
         entry.detail = JoinParts({device.vendorName, device.deviceClass, device.speed});
         content.entries.push_back(entry);
     }
-    const size_t count = content.entries.size();
-    content.summary = count == 0 ? "" : std::to_string(count) + (count == 1 ? " device attached" : " devices attached");
+    content.summary = devices == 0 ? "" : std::to_string(devices) + (devices == 1 ? " device attached" : " devices attached");
+    if (!drives.empty()) {
+        content.summary += std::string(content.summary.empty() ? "" : ", ") + std::to_string(drives.size()) +
+                           (drives.size() == 1 ? " drive" : " drives");
+    }
     content.empty = "No USB devices are attached (hubs are not counted).";
     return content;
 }
