@@ -24,6 +24,12 @@
 //   |                               | [+] [ Message...                   ] [Send]   |
 //   | status line                                                                   |
 //
+// A picture or a file chosen with the paperclip, or pasted (Ctrl+V with a
+// picture or a file on the clipboard), is not sent at once: it waits in a
+// strip above the message field, each with a x to take it out again, and
+// goes with Enter or the send button - what was typed as the caption of
+// the first picture or video.
+//
 // Next to ChatCube Direct, a Matrix account (the "matrix" provider) can be
 // added from the sidebar; its rooms join the same list, and everything done
 // in a conversation goes to that conversation's provider.
@@ -43,6 +49,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.2.3 - a picture or a file waits in the composer, with a x to drop it, until sent; a
+//                  picture on the clipboard pastes into it; an SVG drawing shows as a picture
 // Version: 0.2.2 - pictures: avatars from the person's photo, photos and videos in the bubbles and a
 //                  viewer for them, a paperclip that sends a picture, a video or a file
 // Version: 0.2.1 - Telegram signs in by a QR code too, scanned from the phone's Telegram app
@@ -51,7 +59,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -65,6 +73,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
 class UltraCanvasButton;
@@ -134,10 +143,25 @@ private:
     void OpenConversation(const std::string& conversationId);
     void SendCurrentMessage();
     // The paperclip: a picture, a video or any file, chosen through
-    // FileLoader's dialog, sent to the open conversation with the
-    // composer's text as its caption.
+    // FileLoader's dialog, into the composer's strip of what goes with the
+    // next message.
     void AttachFile();
-    void SendAttachment(const std::string& path);
+    // Ctrl+V in the message field with a file or a picture on the clipboard:
+    // the file, or the picture written to a file of ChatCube's own, into the
+    // strip. False when the clipboard holds neither (text pastes as text).
+    bool PasteAttachment();
+    // Into the strip: a tile with the picture, or the file's name and size,
+    // and a x that takes it out again. `ownFile`: a file ChatCube made (a
+    // pasted picture), deleted when dropped.
+    void StageAttachment(const std::string& path, bool ownFile);
+    void RemoveStagedAttachment(const UltraCanvas::UltraCanvasContainer* tile);
+    void UpdateAttachmentStrip();
+    // The text as a message of its own; a file to the open conversation with
+    // `caption` (a picture's or a video's; a file takes none).
+    void SendText(const std::string& text);
+    void SendAttachment(const std::string& path, const std::string& caption);
+    // Whether the open conversation's network takes pictures and files.
+    bool AttachmentsPossible() const;
     // A click on a bubble's picture or file: shown in the media viewer, fetched
     // first when the provider has not yet (a video, a file).
     void OpenAttachment(int row);
@@ -230,6 +254,15 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextArea>  input_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    attach_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    send_;
+    // What goes with the next message, in the strip above the field.
+    struct StagedAttachment {
+        std::string path;
+        bool ownFile = false;                                       // deleted when dropped
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> tile;    // its picture or name, and the x
+    };
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> attachmentStrip_;
+    std::vector<StagedAttachment>                      staged_;
+    int                                                stagedCount_ = 0;   // ids for the tiles
     UltraCanvas::UltraCanvasMediaViewerWindow          viewer_;         // a picture or a video, full size
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     status_;
     std::string actionStatus_;

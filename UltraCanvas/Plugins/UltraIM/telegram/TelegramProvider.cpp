@@ -1,5 +1,6 @@
 // Plugins/UltraIM/telegram/TelegramProvider.cpp
 // Telegram as an UltraIM provider, on TDLib's JSON interface
+// Version: 0.1.6 - a file sent that is a picture (an SVG drawing) goes with its preview picture too
 // Version: 0.1.5 - a video sent goes with its preview picture (UltraIM_MakePreview)
 // Version: 0.1.4 - avatars; photos, videos, files and stickers with their files (downloadFile, updateFile);
 //                  SendImage, SendVideo, SendFile; DownloadAttachment
@@ -7,7 +8,7 @@
 // Version: 0.1.1 - TDLib's connection state reported while signing in; a step TDLib does not
 //                  answer times out instead of hanging; TDLib's own log in the data folder
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
 
 #include "TelegramProvider.h"
@@ -1848,8 +1849,17 @@ UltraIMResult TelegramProvider::SendFile(const std::string& conversationId, cons
     UltraIMResult r = Connected(chatId, conversationId);
     if (!r) return r;
     if (!(r = CheckLocalFile(localPath))) return r;
+    // A document that is a picture - an SVG drawing, which Telegram takes as
+    // no photo - goes with its preview picture, when the application makes
+    // one, so the other side sees the drawing in the bubble.
+    Request::Thumbnail thumbnail;
+    std::string ext = UltraCanvas::PathToUtf8(UltraCanvas::PathFromUtf8(localPath).extension());
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext == ".svg" || ext == ".svgz")
+        thumbnail.localPath = UltraIM_MakePreview(localPath, "image/svg+xml", 320, thumbnail.width, thumbnail.height);
     return SendContent(conversationId,
-                       Request::SendDocument(chatId, localPath, std::string(), ToId(options.replyToMessageId)), options);
+                       Request::SendDocument(chatId, localPath, std::string(), ToId(options.replyToMessageId), thumbnail),
+                       options);
 }
 
 UltraIMResult TelegramProvider::SendContent(const std::string& conversationId, const TdObject& request,
