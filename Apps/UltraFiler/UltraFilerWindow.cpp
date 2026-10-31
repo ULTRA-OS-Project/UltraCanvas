@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.39.0 - the folder tree no longer lists macOS applications as
+//                  folders (IsTreeHiddenAppBundle), as the Finder does not
 // Version: 1.38.0 - a macOS application is never pinned into the folder tree's
 //                  Pinned section (it was a folder row that opened the bundle);
 //                  the tree's own "Pin > To Favorites" files it under Apps, and
@@ -471,6 +473,25 @@ namespace {
         return !rel.empty() && *rel.begin() != "..";
     }
 
+    // A macOS application bundle: a directory the Finder shows as one object,
+    // never as a folder in its sidebar or column view - and one the file
+    // display launches rather than enters. The tree left it as an expandable
+    // folder row, which opened the inside of the bundle. Asked for every entry
+    // of every folder the tree probes, so it is the cheap form of the file
+    // display's test (UltraCanvasMacBundle: the ".app" name and an
+    // Info.plist where a bundle keeps one) rather than a plist parse; a folder
+    // that merely ends in ".app" has no Info.plist and stays a folder.
+    bool IsTreeHiddenAppBundle(const fs::path& dir) {
+#ifdef __APPLE__
+        if (!IsApplicationBundlePath(PathToUtf8(dir))) return false;
+        std::error_code ec;
+        return fs::is_regular_file(dir / "Contents" / "Info.plist", ec) && !ec;
+#else
+        (void)dir;
+        return false;
+#endif
+    }
+
     // Does `path` contain at least one visible subfolder? (Cheap check that
     // decides whether a tree node gets an expand button.)
     // "Hidden" is the platform's own notion (IsHiddenFileSystemEntry): dot
@@ -486,7 +507,8 @@ namespace {
         for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec),
                  end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
-            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
+            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()) &&
+                !IsTreeHiddenAppBundle(it->path()))
                 return true;
         }
         return false;
@@ -513,14 +535,16 @@ namespace {
         return HasSubdirectories(path);
     }
 
-    // Visible subfolders of `path`, sorted case-insensitively by name.
+    // Visible subfolders of `path`, sorted case-insensitively by name - an
+    // application bundle on macOS is not one (IsTreeHiddenAppBundle).
     std::vector<fs::path> ListSubdirectories(const std::string& path) {
         std::vector<fs::path> dirs;
         std::error_code ec;
         for (fs::directory_iterator it(UltraCanvas::PathFromUtf8(path), fs::directory_options::skip_permission_denied, ec),
                  end; !ec && it != end; it.increment(ec)) {
             std::error_code dec;
-            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()))
+            if (it->is_directory(dec) && !dec && !IsHiddenFileSystemEntry(it->path()) &&
+                !IsTreeHiddenAppBundle(it->path()))
                 dirs.push_back(it->path());
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
