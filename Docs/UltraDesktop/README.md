@@ -171,8 +171,9 @@ the right-hand monitor the primary.
   connect). Through BlueZ on Linux, the Bluetooth API on Windows, IOBluetooth
   on macOS. Windows switches Bluetooth on and off only in its own settings,
   which *System settings* opens, and shows its own prompt when a device wants
-  a code; on Linux a device that needs a code typed or confirmed (most
-  keyboards) cannot be paired from the panel yet, and the panel says so.
+  a code. On Linux and macOS the panel shows the code itself: the six digits
+  to type on a keyboard (then Enter), *Yes, pair* / *No* when a phone shows a
+  number to compare, or a field for a PIN.
 - **Loudspeaker**: the volume panel beside the bar - the output's name, its
   volume on a slider, its mute on a switch - through the sound server
   (PulseAudio or PipeWire on Linux, Core Audio on Windows; the panel says so

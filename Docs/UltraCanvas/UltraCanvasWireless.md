@@ -80,9 +80,37 @@ person in `error` ("Could not join HomeNet - is the password right?").
 | `ReadBluetooth()` | `WirelessBluetoothStatus`: `available`, `adapterPresent`, `powered`, `discovering`, `adapterName`, and `devices` - `WirelessBluetoothDevice` (`address`, `name`, `kind`, `paired`, `connected`, `trusted`, `batteryPercent`, `rssiDbm`), paired first (connected before the others), then the ones a discovery found. |
 | `CanSetBluetoothPower()` / `SetBluetoothPowered(on, &error)` | The radio on or off, where the system lets a program switch it. |
 | `StartBluetoothDiscovery(&error)` / `StopBluetoothDiscovery(&error)` | Look for devices in pairing mode; it stops by itself after about a minute. |
-| `PairBluetoothDevice(address, &error)` | Pair with a found device, trust it and connect it. |
+| `PairBluetoothDevice(address, &error)` | Pair with a found device, trust it and connect it; codes go to the pairing handler (below). |
+| `SetPairingHandler(handler)` | Who shows the pairing codes and answers for the person. |
 | `ConnectBluetoothDevice` / `DisconnectBluetoothDevice(address, &error)` | A paired device's link. |
 | `RemoveBluetoothDevice(address, &error)` | Unpair: the device must be paired again. |
+
+### Pairing codes
+
+A device that shows a code (a keyboard), shows one to compare (a phone) or
+asks for a PIN goes, while `PairBluetoothDevice` runs, to the handler
+`SetPairingHandler` installed - one per process, a desktop's Bluetooth panel.
+The handler is called on a backend thread: for `ShowCode` and `Finished` it
+returns at once; for `ConfirmCode`, `Authorize`, `EnterCode` and `EnterPin`
+it may wait for the person (up to a minute) and answers
+`WirelessPairingAnswer { accept, code }`.
+
+```cpp
+UltraCanvasWireless::SetPairingHandler([](const WirelessPairingRequest& request) {
+    WirelessPairingAnswer answer;
+    if (request.step == WirelessPairingStep::ConfirmCode) {
+        answer.accept = true;   // after the person said request.code matches
+    }
+    return answer;
+});
+```
+
+On Linux the handler makes the module register a BlueZ agent
+(`org.bluez.Agent1`, "KeyboardDisplay") on its first pairing, served from a
+GLib loop on a thread of its own; without a handler none is registered and a
+device that needs a code does not pair. macOS hands IOBluetoothDevicePair's
+passkey, comparison and PIN requests to it (without one a comparison is
+accepted unseen). Windows shows its own prompt and never calls it.
 
 `address` is the unmasked `"AA:BB:CC:DD:EE:FF"`; the calls accept it in any
 case and with `-` for `:`. `kind` is for a person: `"Headphones"`,
@@ -101,7 +129,7 @@ are the settings.
 
 | | Wi-Fi | Bluetooth |
 |---|---|---|
-| Linux | NetworkManager on the system bus (GDBus); polkit decides what the user may change - on a desktop seat everything here | BlueZ on the system bus. No pairing agent is registered, so a device that needs a code typed or confirmed (most keyboards) does not pair from here yet; the error says so |
+| Linux | NetworkManager on the system bus (GDBus); polkit decides what the user may change - on a desktop seat everything here | BlueZ on the system bus; codes through the pairing handler and a BlueZ agent of the module's own |
 | Windows | Native Wifi (`wlanapi`); a new network gets a WLAN profile written from its security, deleted again - or the replaced one restored - when the join fails | The Bluetooth API (`bthprops`). The radio is switched only in Windows' settings (`CanSetBluetoothPower()` is false). Pairing shows Windows' own prompt when the device wants a code. Connect and disconnect switch the device's installed services (`BluetoothSetServiceState`), as Windows does for headphones |
 | macOS | CoreWLAN. From macOS 14 network names are shown only to an application Location Services allows; the first read asks, and `error` says why the list is empty while it is refused. Forgetting a network needs an administrator, so it is left to System Settings | IOBluetooth. Switching the radio and removing a pairing use the private calls every Bluetooth utility uses, looked up at run time; where they are gone the call fails saying so. The application's `Info.plist` needs `NSBluetoothAlwaysUsageDescription` and `NSLocationWhenInUseUsageDescription` (`package-macos.sh` writes both for UltraDesktop) |
 | Elsewhere | `available` false; every call fails saying so | the same |

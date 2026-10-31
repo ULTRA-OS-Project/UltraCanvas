@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopBluetoothPanel.cpp
 // The Bluetooth panel. See the header.
+// Version: 0.2.0 - the pairing prompt
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -11,8 +12,12 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSwitch.h"
+#include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
 
+#include <chrono>
+#include <future>
+#include <mutex>
 #include <sstream>
 
 using namespace UltraCanvas;
@@ -47,13 +52,162 @@ std::shared_ptr<UltraCanvasButton> SmallButton(const std::string& id, const std:
 }
 } // namespace
 
+// What the pairing handler's thread and the panel share: the answer the
+// thread waits for, and whether the panel is still there to give it.
+struct UltraDesktopBluetoothPanel::PairingPrompt {
+    std::mutex mutex;
+    std::shared_ptr<std::promise<WirelessPairingAnswer>> pending;
+    bool alive = true;
+
+    // The waiting request, taken out so it is answered exactly once.
+    std::shared_ptr<std::promise<WirelessPairingAnswer>> Take() {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto taken = std::move(pending);
+        pending.reset();
+        return taken;
+    }
+};
+
+namespace {
+bool Waits(WirelessPairingStep step) {
+    return step == WirelessPairingStep::ConfirmCode || step == WirelessPairingStep::EnterCode ||
+           step == WirelessPairingStep::EnterPin || step == WirelessPairingStep::Authorize;
+}
+} // namespace
+
 UltraDesktopBluetoothPanel::UltraDesktopBluetoothPanel(std::function<void()> onChanged)
-    : UltraDesktopPopupPanel("Bluetooth", kPanelWidth, kPanelHeight), onChanged_(std::move(onChanged)) {}
+    : UltraDesktopPopupPanel("Bluetooth", kPanelWidth, kPanelHeight),
+      onChanged_(std::move(onChanged)),
+      pairing_(std::make_shared<PairingPrompt>()) {
+    UltraCanvasWireless::SetPairingHandler([prompt = pairing_, panel = this](const WirelessPairingRequest& request) {
+        return HandlePairing(prompt, panel, request);
+    });
+}
 
 UltraDesktopBluetoothPanel::~UltraDesktopBluetoothPanel() {
+    UltraCanvasWireless::SetPairingHandler(nullptr);
+    {
+        std::lock_guard<std::mutex> lock(pairing_->mutex);
+        pairing_->alive = false;
+    }
+    if (auto pending = pairing_->Take()) pending->set_value({});
     if (timer_) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(timer_);
     }
+}
+
+// On the backend's thread. `panel` is touched only on the UI thread, and
+// only while the shared state says it is alive - the destructor, also on
+// the UI thread, says otherwise first.
+WirelessPairingAnswer UltraDesktopBluetoothPanel::HandlePairing(const std::shared_ptr<PairingPrompt>& prompt,
+                                                                UltraDesktopBluetoothPanel* panel,
+                                                                const WirelessPairingRequest& request) {
+    auto* app = UltraCanvasApplicationBase::GetCurrent();
+    if (!app) return {};
+    std::shared_ptr<std::promise<WirelessPairingAnswer>> promise;
+    std::future<WirelessPairingAnswer> answer;
+    {
+        std::lock_guard<std::mutex> lock(prompt->mutex);
+        if (!prompt->alive) return {};
+        if (Waits(request.step)) {
+            if (prompt->pending) prompt->pending->set_value({});   // a request BlueZ gave up on
+            promise = std::make_shared<std::promise<WirelessPairingAnswer>>();
+            answer = promise->get_future();
+            prompt->pending = promise;
+        }
+    }
+    app->PostToUIThread([panel, prompt, request]() {
+        bool alive = false;
+        {
+            std::lock_guard<std::mutex> lock(prompt->mutex);
+            alive = prompt->alive;
+        }
+        if (alive) panel->ShowPrompt(request);
+    });
+    if (!promise) return {};
+    if (answer.wait_for(std::chrono::seconds(90)) != std::future_status::ready) {
+        std::lock_guard<std::mutex> lock(prompt->mutex);
+        if (prompt->pending == promise) prompt->pending.reset();
+        return {};
+    }
+    return answer.get();
+}
+
+void UltraDesktopBluetoothPanel::ShowPrompt(const WirelessPairingRequest& request) {
+    if (request.step == WirelessPairingStep::Finished) {
+        HidePrompt();
+        return;
+    }
+    if (!promptRow_ || !IsOpen()) {
+        // Pairing starts from the panel; closed, there is no one to ask.
+        AnswerPrompt(false);
+        return;
+    }
+    promptStep_ = request.step;
+    const std::string name = !request.name.empty() ? request.name : !request.address.empty() ? request.address
+                                                                                                : "the device";
+    std::string text;
+    bool input = false;
+    std::string yes = "OK", no = "Cancel";
+    switch (request.step) {
+        case WirelessPairingStep::ShowCode:
+            text = "Type this code on " + name + ", then press Enter:";
+            break;
+        case WirelessPairingStep::ConfirmCode:
+            text = "Does " + name + " show this code?";
+            yes = "Yes, pair";
+            no = "No";
+            break;
+        case WirelessPairingStep::Authorize:
+            text = "Pair with " + name + "?";
+            yes = "Pair";
+            break;
+        case WirelessPairingStep::EnterCode:
+            text = "Type the six-digit code " + name + " shows:";
+            input = true;
+            break;
+        case WirelessPairingStep::EnterPin:
+            text = "The PIN of " + name + " (often 0000 or 1234 - see its manual):";
+            input = true;
+            break;
+        case WirelessPairingStep::Finished:
+            break;
+    }
+    promptText_->SetText(text);
+    promptCode_->SetText(request.code);
+    promptCode_->SetVisible(!request.code.empty());
+    promptInput_->SetText("");
+    promptInput_->SetVisible(input);
+    const bool answers = Waits(request.step);
+    promptYes_->SetText(yes);
+    promptNo_->SetText(no);
+    promptYes_->SetVisible(answers);
+    promptNo_->SetVisible(answers);
+    promptRow_->SetVisible(true);
+    if (auto* window = Window()) window->InvalidateLayout();
+    if (input) promptInput_->SetFocus(true);
+    if (Window()) Window()->RaiseAndFocus();
+}
+
+void UltraDesktopBluetoothPanel::HidePrompt() {
+    promptStep_ = WirelessPairingStep::Finished;
+    if (promptRow_) promptRow_->SetVisible(false);
+    if (auto* window = Window()) window->InvalidateLayout();
+}
+
+void UltraDesktopBluetoothPanel::AnswerPrompt(bool accept) {
+    WirelessPairingAnswer answer;
+    answer.accept = accept;
+    if (accept && promptInput_ && promptInput_->IsVisible()) {
+        answer.code = promptInput_->GetText();
+        if (answer.code.empty()) {
+            SetMessage("Type the code first.", true);
+            return;
+        }
+    }
+    if (auto pending = pairing_->Take()) pending->set_value(answer);
+    // A shown code stays until the pairing ends; an answered question goes.
+    if (promptStep_ != WirelessPairingStep::ShowCode) HidePrompt();
 }
 
 void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
@@ -96,6 +250,43 @@ void UltraDesktopBluetoothPanel::Build(UltraCanvasWindow& window) {
     list_->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     list_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     window.AddChild(list_);
+
+    promptRow_ = std::make_shared<UltraCanvasContainer>("bt.prompt");
+    promptRow_->layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    promptRow_->layoutItem.SetFlexShrink(0.0f);
+    promptRow_->SetBackgroundColor(kRow);
+    promptRow_->SetBorders(0, Colors::Transparent, 6);
+    promptRow_->SetPadding(8, 10);
+    promptText_ = CreateLabel("bt.promptText", 0, 0, kInnerWidth - 20, 32, "");
+    promptText_->SetTextColor(kText);
+    promptText_->SetFontSize(9.5f);
+    promptText_->SetWrap(TextWrap::WrapWord);
+    promptRow_->AddChild(promptText_);
+    promptCode_ = CreateLabel("bt.promptCode", 0, 0, kInnerWidth - 20, 34, "");
+    promptCode_->SetTextColor(kText);
+    promptCode_->SetFontSize(20.0f);
+    promptCode_->SetFontWeight(FontWeight::Bold);
+    promptCode_->SetAlignment(TextAlignment::Center);
+    promptRow_->AddChild(promptCode_);
+    auto answers = std::make_shared<UltraCanvasContainer>("bt.promptAnswers");
+    answers->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    promptInput_ = CreateTextInput("bt.promptInput", 0, 0, 120, 28);
+    promptInput_->SetPlaceholder("Code");
+    promptInput_->layoutItem.SetFlexGrow(1.0f);
+    promptInput_->onEnterPressed = [this](const std::string&) {
+        Later([this]() { AnswerPrompt(true); });
+        return true;
+    };
+    answers->AddChild(promptInput_);
+    promptYes_ = SmallButton("bt.promptYes", "OK", 76);
+    promptYes_->onClick = [this]() { Later([this]() { AnswerPrompt(true); }); };
+    answers->AddChild(promptYes_);
+    promptNo_ = SmallButton("bt.promptNo", "Cancel", 64);
+    promptNo_->onClick = [this]() { Later([this]() { AnswerPrompt(false); }); };
+    answers->AddChild(promptNo_);
+    promptRow_->AddChild(answers);
+    promptRow_->SetVisible(false);
+    window.AddChild(promptRow_);
 
     message_ = CreateLabel("bt.message", 0, 0, kInnerWidth, 34, "");
     message_->SetFontSize(9.0f);
@@ -148,11 +339,20 @@ void UltraDesktopBluetoothPanel::Unbuild() {
     if (status_.discovering) {
         work_.Run<bool>([]() { return UltraCanvasWireless::StopBluetoothDiscovery(); }, [](bool) {});
     }
+    // A question still open has no one to answer it now.
+    if (auto pending = pairing_->Take()) pending->set_value({});
+    promptStep_ = WirelessPairingStep::Finished;
     power_.reset();
     state_.reset();
     list_.reset();
     message_.reset();
     discover_.reset();
+    promptRow_.reset();
+    promptText_.reset();
+    promptCode_.reset();
+    promptInput_.reset();
+    promptYes_.reset();
+    promptNo_.reset();
 }
 
 void UltraDesktopBluetoothPanel::RestartTimer(unsigned intervalMs) {

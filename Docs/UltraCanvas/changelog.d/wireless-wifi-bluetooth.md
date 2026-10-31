@@ -15,3 +15,9 @@
   `NSLocationWhenInUseUsageDescription` (and the location entitlement) for
   the applications that list Bluetooth devices or Wi-Fi networks -
   UltraDesktop.
+- **Pairing codes.** `UltraCanvasWireless::SetPairingHandler` takes the codes
+  a device shows or asks for while it pairs - a code to type on a keyboard,
+  one to compare with a phone, a PIN, a yes to pair. On Linux the module
+  registers a BlueZ agent for them on a GLib loop of its own; on macOS
+  IOBluetoothDevicePair's requests go to the handler; Windows keeps its own
+  prompt.

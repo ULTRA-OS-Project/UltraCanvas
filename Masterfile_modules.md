@@ -985,7 +985,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     / `SetBluetoothPowered`, `StartBluetoothDiscovery` /
     `StopBluetoothDiscovery`, `PairBluetoothDevice`,
     `ConnectBluetoothDevice`, `DisconnectBluetoothDevice`,
-    `RemoveBluetoothDevice`.
+    `RemoveBluetoothDevice`; `SetPairingHandler` (`WirelessPairingRequest`
+    ShowCode / ConfirmCode / EnterCode / EnterPin / Authorize / Finished →
+    `WirelessPairingAnswer`), served by a BlueZ agent on Linux and
+    IOBluetoothDevicePair's requests on macOS.
   - `HasSystemSettings` / `OpenSystemSettings(WirelessRadio)` - the
     platform's own page (Windows, macOS).
   See `Docs/UltraCanvas/UltraCanvasWireless.md`.

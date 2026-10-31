@@ -16,9 +16,13 @@
 //     so the shared system-bus connection is held for the life of the
 //     process; a discovery stops by itself after a minute.
 //
-// No agent is registered with BlueZ: a device that needs a code typed or
-// confirmed does not pair from here (BlueZ answers AuthenticationFailed),
-// which the error says.
+// Pairing codes: while a pairing handler is set (SetPairingHandler), an
+// org.bluez.Agent1 ("KeyboardDisplay") is registered on the first pairing,
+// on a GLib loop of its own, and BlueZ's requests - show a code, confirm
+// one, type one - go to the handler. Without a handler no agent is
+// registered and a device that needs a code does not pair; the error says
+// so.
+// Version: 1.1.0 - the pairing agent
 // Version: 1.0.0
 // Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
@@ -32,7 +36,10 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <future>
 #include <map>
 #include <mutex>
 #include <set>
@@ -459,6 +466,187 @@ namespace {
 
     std::atomic<int> discoveryGeneration{0};
 
+    // ===== THE PAIRING AGENT =====
+    // BlueZ asks the agent registered by the connection that called Pair for
+    // the codes. The agent is an org.bluez.Agent1 object on the shared
+    // system-bus connection, whose calls GDBus delivers to the main context
+    // that was the thread default when it was registered - a thread of its
+    // own here, as the desktop's UI loop is not a GLib loop. A request that
+    // waits for the person is answered from a further thread, so that the
+    // agent's loop stays free for BlueZ's Cancel.
+
+    const char* kAgentPath = "/org/ultracanvas/BluetoothAgent";
+    const char* kAgentXml =
+        "<node><interface name='org.bluez.Agent1'>"
+        "<method name='Release'/>"
+        "<method name='RequestPinCode'><arg type='o' direction='in'/><arg type='s' direction='out'/></method>"
+        "<method name='DisplayPinCode'><arg type='o' direction='in'/><arg type='s' direction='in'/></method>"
+        "<method name='RequestPasskey'><arg type='o' direction='in'/><arg type='u' direction='out'/></method>"
+        "<method name='DisplayPasskey'><arg type='o' direction='in'/><arg type='u' direction='in'/>"
+        "<arg type='q' direction='in'/></method>"
+        "<method name='RequestConfirmation'><arg type='o' direction='in'/><arg type='u' direction='in'/></method>"
+        "<method name='RequestAuthorization'><arg type='o' direction='in'/></method>"
+        "<method name='AuthorizeService'><arg type='o' direction='in'/><arg type='s' direction='in'/></method>"
+        "<method name='Cancel'/>"
+        "</interface></node>";
+
+    std::string SixDigits(uint32_t passkey) {
+        char text[8];
+        std::snprintf(text, sizeof(text), "%06u", static_cast<unsigned>(passkey % 1000000U));
+        return text;
+    }
+
+    WirelessPairingRequest RequestFor(WirelessPairingStep step, const std::string& devicePath,
+                                      const std::string& code = "") {
+        WirelessPairingRequest request;
+        request.step = step;
+        request.code = code;
+        if (!devicePath.empty()) {
+            request.address = GetString(kBlueZ, devicePath, kDevice, "Address");
+            request.name = GetString(kBlueZ, devicePath, kDevice, "Alias");
+        }
+        if (!devicePath.empty() && (request.name.empty() || request.address.empty())) {
+            // From the object tree, where a property read is refused.
+            BlueZTree tree;
+            std::string ignored;
+            ReadTree(tree, ignored);
+            for (const WirelessBluetoothDevice& device : tree.devices) {
+                auto found = tree.devicePaths.find(device.address);
+                if (found == tree.devicePaths.end() || found->second != devicePath) continue;
+                if (request.address.empty()) request.address = device.address;
+                if (request.name.empty()) request.name = device.name;
+            }
+        }
+        return request;
+    }
+
+    void Reject(GDBusMethodInvocation* invocation) {
+        g_dbus_method_invocation_return_dbus_error(invocation, "org.bluez.Error.Rejected", "Rejected");
+    }
+
+    void AgentMethod(GDBusConnection*, const gchar*, const gchar*, const gchar*, const gchar* methodName,
+                     GVariant* parameters, GDBusMethodInvocation* invocation, gpointer) {
+        const std::string method = methodName;
+        if (method == "Release" || method == "AuthorizeService") {
+            // Release: BlueZ is done with the agent. AuthorizeService: a
+            // service of a device this person chose to pair - yes.
+            g_dbus_method_invocation_return_value(invocation, nullptr);
+            return;
+        }
+        if (method == "Cancel") {
+            AskPairing(RequestFor(WirelessPairingStep::Finished, ""));
+            g_dbus_method_invocation_return_value(invocation, nullptr);
+            return;
+        }
+        if (method == "DisplayPinCode") {
+            const gchar* device = nullptr;
+            const gchar* pin = nullptr;
+            g_variant_get(parameters, "(&o&s)", &device, &pin);
+            AskPairing(RequestFor(WirelessPairingStep::ShowCode, device, pin ? pin : ""));
+            g_dbus_method_invocation_return_value(invocation, nullptr);
+            return;
+        }
+        if (method == "DisplayPasskey") {
+            const gchar* device = nullptr;
+            guint32 passkey = 0;
+            guint16 entered = 0;
+            g_variant_get(parameters, "(&ouq)", &device, &passkey, &entered);
+            // Called again for every key typed on the device; the first
+            // call is the one that shows the code.
+            if (entered == 0) AskPairing(RequestFor(WirelessPairingStep::ShowCode, device, SixDigits(passkey)));
+            g_dbus_method_invocation_return_value(invocation, nullptr);
+            return;
+        }
+
+        // The rest wait for the person.
+        const gchar* device = nullptr;
+        guint32 passkey = 0;
+        if (method == "RequestConfirmation") g_variant_get(parameters, "(&ou)", &device, &passkey);
+        else g_variant_get(parameters, "(&o)", &device);
+        const std::string devicePath = device ? device : "";
+        std::thread([method, devicePath, passkey, invocation]() {
+            if (method == "RequestConfirmation") {
+                const WirelessPairingAnswer answer =
+                    AskPairing(RequestFor(WirelessPairingStep::ConfirmCode, devicePath, SixDigits(passkey)));
+                if (answer.accept) g_dbus_method_invocation_return_value(invocation, nullptr);
+                else Reject(invocation);
+            } else if (method == "RequestAuthorization") {
+                const WirelessPairingAnswer answer = AskPairing(RequestFor(WirelessPairingStep::Authorize, devicePath));
+                if (answer.accept) g_dbus_method_invocation_return_value(invocation, nullptr);
+                else Reject(invocation);
+            } else if (method == "RequestPinCode") {
+                const WirelessPairingAnswer answer = AskPairing(RequestFor(WirelessPairingStep::EnterPin, devicePath));
+                if (answer.accept && !answer.code.empty() && answer.code.size() <= 16) {
+                    g_dbus_method_invocation_return_value(invocation, g_variant_new("(s)", answer.code.c_str()));
+                } else {
+                    Reject(invocation);
+                }
+            } else if (method == "RequestPasskey") {
+                const WirelessPairingAnswer answer = AskPairing(RequestFor(WirelessPairingStep::EnterCode, devicePath));
+                char* end = nullptr;
+                const unsigned long value = std::strtoul(answer.code.c_str(), &end, 10);
+                if (answer.accept && !answer.code.empty() && end && *end == '\0' && value <= 999999UL) {
+                    g_dbus_method_invocation_return_value(invocation,
+                                                          g_variant_new("(u)", static_cast<guint32>(value)));
+                } else {
+                    Reject(invocation);
+                }
+            } else {
+                g_dbus_method_invocation_return_dbus_error(invocation, "org.freedesktop.DBus.Error.UnknownMethod",
+                                                           "Unknown method");
+            }
+        }).detach();
+    }
+
+    // Register the agent once, on its own thread; false with the reason
+    // when BlueZ or the bus refused it (the next pairing tries again).
+    bool EnsureAgent(std::string& error) {
+        static std::mutex mutex;
+        static bool registered = false;
+        std::lock_guard<std::mutex> lock(mutex);
+        if (registered) return true;
+        auto ready = std::make_shared<std::promise<std::string>>();
+        std::future<std::string> answer = ready->get_future();
+        std::thread([ready]() {
+            GMainContext* context = g_main_context_new();
+            g_main_context_push_thread_default(context);
+            std::string reason;
+            GDBusConnection* bus = SystemBus(reason);
+            GDBusNodeInfo* node = bus ? g_dbus_node_info_new_for_xml(kAgentXml, nullptr) : nullptr;
+            static const GDBusInterfaceVTable vtable = {AgentMethod, nullptr, nullptr, {nullptr}};
+            guint id = 0;
+            if (node) {
+                GError* gerror = nullptr;
+                id = g_dbus_connection_register_object(bus, kAgentPath, node->interfaces[0], &vtable, nullptr, nullptr,
+                                                       &gerror);
+                if (!id) reason = Message(gerror);
+            }
+            if (id && !CallVoid(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
+                                g_variant_new("(os)", kAgentPath, "KeyboardDisplay"), reason)) {
+                g_dbus_connection_unregister_object(bus, id);
+                id = 0;
+            }
+            if (node) g_dbus_node_info_unref(node);
+            if (!id) {
+                ready->set_value(reason.empty() ? "no agent" : reason);
+                g_main_context_pop_thread_default(context);
+                g_main_context_unref(context);
+                return;
+            }
+            ready->set_value("");
+            // For the life of the process: the agent answers BlueZ here.
+            GMainLoop* loop = g_main_loop_new(context, FALSE);
+            g_main_loop_run(loop);
+        }).detach();
+        if (answer.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
+            error = "the pairing agent did not start";
+            return false;
+        }
+        error = answer.get();
+        registered = error.empty();
+        return registered;
+    }
+
 } // namespace
 
 std::string BackendName() { return "networkmanager+bluez"; }
@@ -726,11 +914,21 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
     // Pairing works better without a discovery running beside it.
     std::string ignored;
     if (tree.discovering) CallVoid(kBlueZ, tree.adapterPath, kAdapter, "StopDiscovery", nullptr, ignored);
-    if (!CallVoid(kBlueZ, path, kDevice, "Pair", nullptr, error, kPairTimeoutMs) &&
-        error.find("AlreadyExists") == std::string::npos && error.find("Already Exists") == std::string::npos) {
+    // Someone to show the codes to: BlueZ asks this connection's agent.
+    bool agent = false;
+    if (HasPairingHandler()) {
+        std::string why;
+        agent = EnsureAgent(why);
+        if (!agent) error = why;
+    }
+    const bool paired = CallVoid(kBlueZ, path, kDevice, "Pair", nullptr, error, kPairTimeoutMs);
+    if (agent) AskPairing(RequestFor(WirelessPairingStep::Finished, path));
+    if (!paired && error.find("AlreadyExists") == std::string::npos &&
+        error.find("Already Exists") == std::string::npos) {
         if (error.find("Authentication") != std::string::npos) {
-            error = "The device wants a code confirmed or typed, which this panel cannot show yet. "
-                    "Pair it with bluetoothctl, then connect it here.";
+            error = agent ? "The code was not confirmed, or was typed wrongly. Try again."
+                          : "The device wants a code confirmed or typed, which nothing here can show. "
+                            "Pair it with bluetoothctl, then connect it here.";
         } else {
             error = "Could not pair: " + error + ". Is the device in pairing mode?";
         }

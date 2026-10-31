@@ -40,6 +40,8 @@
 //     itself connects headphones.
 //   - Elsewhere every read answers `available` false and every call fails
 //     saying so.
+// Version: 1.1.0 - pairing codes: SetPairingHandler (a BlueZ agent on Linux,
+//                  IOBluetoothDevicePair's requests on macOS)
 // Version: 1.0.0
 // Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
@@ -47,6 +49,7 @@
 #ifndef ULTRACANVASWIRELESS_H
 #define ULTRACANVASWIRELESS_H
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -104,6 +107,36 @@ namespace UltraCanvas {
 
     enum class WirelessRadio { WiFi, Bluetooth };
 
+    // ===== PAIRING CODES =====
+    // What a device asks for while PairBluetoothDevice runs. A keyboard shows
+    // a code to type on it; a phone shows one to compare; an old device asks
+    // for its PIN.
+    enum class WirelessPairingStep {
+        ShowCode,       // type `code` on the device, then Enter - nothing to answer
+        ConfirmCode,    // does the device show `code`? answer `accept`
+        EnterCode,      // the six-digit code the device shows, into `code`
+        EnterPin,       // the device's PIN (often "0000"), into `code`
+        Authorize,      // the device asks to pair without a code: `accept`?
+        Finished        // the pairing has ended, either way: take the prompt away
+    };
+
+    struct WirelessPairingRequest {
+        WirelessPairingStep step = WirelessPairingStep::Finished;
+        std::string address;
+        std::string name;
+        std::string code;               // ShowCode, ConfirmCode: the digits to show
+    };
+
+    struct WirelessPairingAnswer {
+        bool accept = false;
+        std::string code;               // EnterCode, EnterPin
+    };
+
+    // Called on a backend thread, never the UI thread's own call stack:
+    // ShowCode and Finished must return at once (the answer is ignored);
+    // the others may wait for the person - up to a minute - and answer.
+    using WirelessPairingHandler = std::function<WirelessPairingAnswer(const WirelessPairingRequest&)>;
+
     class UltraCanvasWireless {
     public:
         // "networkmanager+bluez" on Linux, "win32" on Windows, "null" elsewhere.
@@ -139,10 +172,15 @@ namespace UltraCanvas {
         static bool StartBluetoothDiscovery(std::string* error = nullptr);
         static bool StopBluetoothDiscovery(std::string* error = nullptr);
         // Pair with a device a discovery found, trust it and connect it.
-        // A device that shows or asks for a code is paired through the
-        // system's own prompt where it has one (Windows); on Linux only
-        // devices that need no code pair (headphones, speakers, most mice).
+        // A device that shows or asks for a code goes to the pairing
+        // handler (Linux, macOS) or to the system's own prompt (Windows).
+        // Without a handler only devices that need no code pair on Linux
+        // (headphones, speakers, most mice), and macOS accepts a code
+        // comparison unseen.
         static bool PairBluetoothDevice(const std::string& address, std::string* error = nullptr);
+        // Who shows the codes; one per process (a desktop's Bluetooth
+        // panel). nullptr removes it.
+        static void SetPairingHandler(WirelessPairingHandler handler);
         static bool ConnectBluetoothDevice(const std::string& address, std::string* error = nullptr);
         static bool DisconnectBluetoothDevice(const std::string& address, std::string* error = nullptr);
         // Unpair: the device is forgotten and must be paired again.

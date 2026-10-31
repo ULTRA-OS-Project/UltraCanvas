@@ -12,7 +12,9 @@
 //     administrator's authorization, so that is left to System Settings.
 //   - Bluetooth: the default host controller and IOBluetoothDevice. Device
 //     inquiries and pairing deliver their answers to a run loop, so they
-//     run on the main queue and a worker thread waits for them. Switching
+//     run on the main queue and a worker thread waits for them. A code to
+//     show, compare or type goes to the pairing handler (SetPairingHandler);
+//     without one a comparison is accepted unseen. Switching
 //     the radio and removing a pairing have no public API; the private
 //     calls every Bluetooth utility uses (IOBluetoothPreferenceSet-
 //     ControllerPowerState, -[IOBluetoothDevice remove]) are looked up at
@@ -22,6 +24,8 @@
 // ends an application that touches Bluetooth without it) and
 // NSLocationWhenInUseUsageDescription; package-macos.sh writes both for
 // UltraDesktop.
+// Version: 1.1.0 - pairing codes: IOBluetoothDevicePair's passkey, comparison
+//                  and PIN requests go to the pairing handler
 // Version: 1.0.0
 // Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
@@ -49,6 +53,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <chrono>
 #include <mutex>
 #include <set>
@@ -67,6 +72,8 @@
 // Waits for one pairing to finish; accepts a numeric comparison the user
 // started by asking to pair.
 @interface UCWirelessPairDelegate : NSObject
+@property (nonatomic, copy) NSString* address;
+@property (nonatomic, copy) NSString* name;
 @property (atomic, assign) IOReturn result;
 @property (nonatomic, strong) dispatch_semaphore_t done;
 @end
@@ -539,6 +546,8 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
         if (!device) return false;
         if (!device.isPaired) {
             UCWirelessPairDelegate* delegate = [[UCWirelessPairDelegate alloc] init];
+            delegate.address = @(address.c_str());
+            delegate.name = device.name;
             delegate.done = dispatch_semaphore_create(0);
             delegate.result = kIOReturnError;
             __block IOBluetoothDevicePair* pair = nil;
@@ -557,6 +566,10 @@ bool PairBluetoothDevice(const std::string& address, std::string& error) {
                 [pair stop];
                 pair.delegate = nil;
             });
+            WirelessPairingRequest finished;
+            finished.step = WirelessPairingStep::Finished;
+            finished.address = address;
+            AskPairing(finished);
             if (waited != 0 || delegate.result != kIOReturnSuccess) {
                 error = waited != 0 ? "The device did not answer. Is it in pairing mode?"
                                     : "Could not pair. Is the device in pairing mode?";
@@ -659,11 +672,58 @@ bool OpenSystemSettings(WirelessRadio radio, std::string& error) {
     dispatch_semaphore_signal(self.done);
 }
 
+// These arrive on the main thread, which is the application's UI thread:
+// a handler that waits for the person is asked from another queue, and the
+// answer goes back to the pairing on the main queue.
+
+- (UltraCanvas::WirelessPairingRequest)requestFor:(UltraCanvas::WirelessPairingStep)step code:(std::string)code {
+    UltraCanvas::WirelessPairingRequest request;
+    request.step = step;
+    request.code = code;
+    request.address = self.address ? std::string([self.address UTF8String] ?: "") : std::string();
+    request.name = self.name ? std::string([self.name UTF8String] ?: "") : std::string();
+    return request;
+}
+
+- (void)devicePairingUserPasskeyNotification:(id)sender passkey:(BluetoothPasskey)passkey {
+    (void)sender;
+    char digits[8];
+    snprintf(digits, sizeof(digits), "%06u", static_cast<unsigned>(passkey % 1000000U));
+    UltraCanvas::WirelessBackend::AskPairing([self requestFor:UltraCanvas::WirelessPairingStep::ShowCode code:digits]);
+}
+
 - (void)devicePairingUserConfirmationRequest:(id)sender numericValue:(BluetoothNumericValue)numericValue {
-    (void)numericValue;
-    // The person asked to pair this device; the comparison has no screen
-    // here to show on.
-    [sender replyUserConfirmation:YES];
+    if (!UltraCanvas::WirelessBackend::HasPairingHandler()) {
+        // Nobody to show the code to; the person asked to pair this device.
+        [sender replyUserConfirmation:YES];
+        return;
+    }
+    char digits[8];
+    snprintf(digits, sizeof(digits), "%06u", static_cast<unsigned>(numericValue % 1000000U));
+    const UltraCanvas::WirelessPairingRequest request =
+        [self requestFor:UltraCanvas::WirelessPairingStep::ConfirmCode code:digits];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        const bool accept = UltraCanvas::WirelessBackend::AskPairing(request).accept;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [sender replyUserConfirmation:accept];
+        });
+    });
+}
+
+- (void)devicePairingPINCodeRequest:(id)sender {
+    const UltraCanvas::WirelessPairingRequest request =
+        [self requestFor:UltraCanvas::WirelessPairingStep::EnterPin code:""];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        const UltraCanvas::WirelessPairingAnswer answer = UltraCanvas::WirelessBackend::AskPairing(request);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            BluetoothPINCode pin;
+            memset(&pin, 0, sizeof(pin));
+            const size_t length = std::min<size_t>(answer.code.size(), sizeof(pin.data));
+            memcpy(pin.data, answer.code.data(), length);
+            // An empty or refused PIN fails the pairing, which then reports it.
+            [sender replyPINCode:(answer.accept ? length : 0) PINCode:&pin];
+        });
+    });
 }
 
 @end

@@ -3,6 +3,7 @@
 // lists come in, and the fallback backend for platforms with none. The
 // platform halves are OS/Linux/UltraCanvasLinuxWireless.cpp and
 // OS/MSWindows/UltraCanvasWindowsWireless.cpp.
+// Version: 1.1.0 - the pairing handler (SetPairingHandler, AskPairing)
 // Version: 1.0.0
 // Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
@@ -12,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <mutex>
 
 namespace UltraCanvas {
 
@@ -209,6 +211,48 @@ bool UltraCanvasWireless::DisconnectBluetoothDevice(const std::string& address, 
 bool UltraCanvasWireless::RemoveBluetoothDevice(const std::string& address, std::string* error) {
     return DeviceCall(address, error, "The device could not be removed.", WirelessBackend::RemoveBluetoothDevice);
 }
+
+// ===== PAIRING CODES =====
+
+namespace {
+    std::mutex& PairingMutex() {
+        static std::mutex mutex;
+        return mutex;
+    }
+    WirelessPairingHandler& PairingHandler() {
+        static WirelessPairingHandler handler;
+        return handler;
+    }
+} // namespace
+
+void UltraCanvasWireless::SetPairingHandler(WirelessPairingHandler handler) {
+    std::lock_guard<std::mutex> lock(PairingMutex());
+    PairingHandler() = std::move(handler);
+}
+
+namespace WirelessBackend {
+
+    bool HasPairingHandler() {
+        std::lock_guard<std::mutex> lock(PairingMutex());
+        return static_cast<bool>(PairingHandler());
+    }
+
+    WirelessPairingAnswer AskPairing(const WirelessPairingRequest& request) {
+        WirelessPairingHandler handler;
+        {
+            // A copy: the handler may wait for the person, and the lock must
+            // not be held meanwhile.
+            std::lock_guard<std::mutex> lock(PairingMutex());
+            handler = PairingHandler();
+        }
+        if (!handler) return {};
+        WirelessPairingRequest normalized = request;
+        normalized.address = NormalizeAddress(request.address);
+        if (normalized.address.empty()) normalized.address = request.address;
+        return handler(normalized);
+    }
+
+} // namespace WirelessBackend
 
 // ===== THE SYSTEM'S OWN SETTINGS =====
 

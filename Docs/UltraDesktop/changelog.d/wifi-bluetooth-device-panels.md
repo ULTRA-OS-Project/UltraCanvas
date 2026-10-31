@@ -9,10 +9,11 @@
   Bluetooth on a switch, *My devices* - each with *Connect* or *Disconnect*,
   *Remove*, its kind and, where the device reports it, its battery - and
   *Add device*, which looks for devices in pairing mode for a minute and
-  lists them with *Pair*. Windows switches Bluetooth only in its own
-  settings, which a button there opens; on Linux a device that needs a code
-  typed or confirmed (most keyboards) cannot be paired from the panel yet,
-  and the panel says so.
+  lists them with *Pair*. A device that needs a code pairs from the panel:
+  it shows the code to type on a keyboard, asks whether a phone shows the
+  same number, or takes a PIN (Linux and macOS; Windows shows its own
+  prompt). Windows switches Bluetooth only in its own settings, which a
+  button there opens.
 - **USB, keyboard, webcam, microphone and battery panels.** Their icons now
   open a small panel saying what is attached or in use - the USB devices,
   the keyboard layout and the keyboards, the cameras (from USB where this
