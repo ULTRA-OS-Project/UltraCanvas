@@ -1077,6 +1077,10 @@ void UltraDesktopWindow::RefreshWindows() {
                 if (on) UltraCanvasDesktopShell::ActivateWindow(id);
                 else UltraCanvasDesktopShell::MinimizeWindow(id);
             });
+            // The application's own icon in its own colours, as the pins
+            // and the tray show it; only the bar's glyphs and the letter
+            // fallback are tinted through the mask.
+            button->SetUseIconAsMask(w.iconFile.empty());
             button->onContextMenu = [this, id](int x, int y) { ShowWindowMenu(id, x, y); };
             runningItems_[w.id] = itemId;
 
