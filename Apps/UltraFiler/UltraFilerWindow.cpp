@@ -65,6 +65,10 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.38.0 - a macOS application is never pinned into the folder tree's
+//                  Pinned section (it was a folder row that opened the bundle);
+//                  the tree's own "Pin > To Favorites" files it under Apps, and
+//                  earlier tree pins of applications move to Favorites > Apps
 // Version: 1.37.0 - a double-click on a macOS application in the folder display
 //                  launches it (it did nothing); History lists it under Apps;
 //                  pinning one files it under the Favorites' Apps tab, and
@@ -932,6 +936,22 @@ namespace {
                                         : FilerFavoriteKind::File;
     }
 
+    // The same for a folder tree row, which knows only its path. The tree
+    // lists every directory - an application bundle on macOS included - and
+    // its "Pin > To Favorites" filed that one under Folders, where the file
+    // display's Pin now looks for it under Apps.
+    FilerFavoriteKind FavoriteKindOfFolderPath(const std::string& path) {
+        return IsLaunchableBundlePath(path) ? FilerFavoriteKind::App
+                                            : FilerFavoriteKind::Folder;
+    }
+
+    // Whether an entry can go into the folder tree's "Pinned" section. Only a
+    // folder can - and an application bundle is not one there: as a tree row
+    // it was a brown folder whose click opened the inside of the bundle.
+    bool CanPinToTree(const FilerEntry& e) {
+        return e.isDirectory && !IsLaunchableBundle(e);
+    }
+
     // Is `path` equal to `folder` or somewhere below it?
     bool IsPathInside(const std::string& path, const std::string& folder) {
         if (folder.empty() || path.size() < folder.size()) return false;
@@ -1303,6 +1323,11 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // Folders: move them to Apps, where the heart toggle now looks for them
     // (left where they were, they could no longer be unpinned).
     favorites.Reclassify(FilerFavoriteKind::Folder, FilerFavoriteKind::App,
+                         IsLaunchableBundlePath);
+    // ... and those pinned into the folder tree's "Pinned" section, which
+    // holds folders only: they become Favorites > Apps rather than being
+    // dropped, so nothing the user pinned is lost.
+    favorites.Reclassify(FilerFavoriteKind::Tree, FilerFavoriteKind::App,
                          IsLaunchableBundlePath);
     folderViews.Load();
     // Loaded before the tree is built, so a folder the user gave an icon
@@ -2033,8 +2058,7 @@ std::vector<FilerEntry> UltraFilerWindow::PinTargets() const {
 std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     const std::vector<FilerEntry> targets = PinTargets();
     const bool allFolders = !targets.empty() &&
-            std::all_of(targets.begin(), targets.end(),
-                        [](const FilerEntry& e) { return e.isDirectory; });
+            std::all_of(targets.begin(), targets.end(), CanPinToTree);
 
     // The flags show where the selection is pinned right now: checked when
     // every target is pinned there. Pin stays enabled while something is
@@ -2048,13 +2072,14 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
     }
     bool allInTree = allFolders, anyInTree = false;
     for (const FilerEntry& e : targets) {
-        if (!e.isDirectory) continue;
+        if (!CanPinToTree(e)) continue;
         const bool pinned = favorites.IsPinned(FilerFavoriteKind::Tree, e.path);
         allInTree = allInTree && pinned;
         anyInTree = anyInTree || pinned;
     }
 
-    // Only a folder can live in the folder tree.
+    // Only a folder can live in the folder tree - not an application bundle,
+    // which goes to Favorites > Apps instead (CanPinToTree).
     MenuItemData pinTree = MenuItemData::Checkbox("To Treeview", allInTree,
             [this](bool) { PinTargetsToTree(); });
     pinTree.enabled = allFolders && !allInTree;
@@ -2407,7 +2432,7 @@ void UltraFilerWindow::PinTargetsToFavorites() {
 void UltraFilerWindow::PinTargetsToTree() {
     bool changed = false;
     for (const FilerEntry& e : PinTargets()) {
-        if (!e.isDirectory) continue;
+        if (!CanPinToTree(e)) continue;
         changed |= favorites.Pin(FilerFavoriteKind::Tree, e.path);
     }
     if (!changed) return;
@@ -4204,7 +4229,9 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         bool changed = false;
         for (const std::string& f : files) {
             std::error_code ec;
-            if (fs::is_directory(PathFromUtf8(f), ec) && !ec)
+            // A folder only; an application bundle dropped here is not one
+            // (CanPinToTree).
+            if (fs::is_directory(PathFromUtf8(f), ec) && !ec && !IsLaunchableBundlePath(f))
                 changed = favorites.Pin(FilerFavoriteKind::Tree, f) || changed;
         }
         if (changed) {
@@ -5355,7 +5382,12 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     pasteItem.enabled = isFolder && !clipboardFiles.empty();
 
     // Pin: the flags show where this folder is pinned right now; toggling a
-    // flag pins it there / unpins it from there.
+    // flag pins it there / unpins it from there. An application bundle (the
+    // tree lists those too on macOS) is pinned as the file display pins it:
+    // under Favorites > Apps, and never into the tree's Pinned section.
+    const FilerFavoriteKind favoriteKind =
+            isFolder ? FavoriteKindOfFolderPath(target) : FilerFavoriteKind::Folder;
+    const bool isApp = favoriteKind == FilerFavoriteKind::App;
     MenuItemData pinToTree = MenuItemData::Checkbox("To Treeview",
             isFolder && favorites.IsPinned(FilerFavoriteKind::Tree, target),
             [this, target](bool checked) {
@@ -5368,13 +5400,13 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
             RefreshPinnedTreeNodes();
         }
     });
-    pinToTree.enabled = isFolder;
+    pinToTree.enabled = isFolder && !isApp;
 
     MenuItemData pinToFavorites = MenuItemData::Checkbox("To Favorites",
-            isFolder && favorites.IsPinned(FilerFavoriteKind::Folder, target),
-            [this, target](bool checked) {
-        if (checked) favorites.Pin(FilerFavoriteKind::Folder, target);
-        else favorites.Unpin(FilerFavoriteKind::Folder, target);
+            isFolder && favorites.IsPinned(favoriteKind, target),
+            [this, target, favoriteKind](bool checked) {
+        if (checked) favorites.Pin(favoriteKind, target);
+        else favorites.Unpin(favoriteKind, target);
         RepaintFavoriteMarks();
         if (favoritesShown) {
             RefreshFavoritesTabs();

@@ -19,6 +19,7 @@
 // through the code page names a different file: every path here goes through
 // PathToUtf8 / PathFromUtf8, and the config folder is redirected through the
 // wide environment API that GetEnvUtf8 reads.
+// Version: 1.4.0 - Favorites: Reclassify out of the tree's Pinned section
 // Version: 1.3.0 - Favorites: Reclassify moves misfiled pins
 // Version: 1.2.0 - Handling > Protected files: the minutes before passwords are forgotten
 // Version: 1.1.0
@@ -434,6 +435,22 @@ void TestReclassifyMovesPins() {
     CheckEq(reloaded.Reclassify(FilerFavoriteKind::Folder, FilerFavoriteKind::App,
                                 [](const std::string&) { return false; }),
             0u, "nothing to move moves nothing");
+
+    // The folder tree's Pinned section holds folders only: an application
+    // pinned there moves to Apps too, and one already under Apps is not doubled.
+    reloaded.Pin(FilerFavoriteKind::Tree, "/Applications/Calculator.app");
+    reloaded.Pin(FilerFavoriteKind::Tree, "/Applications/Preview.app");
+    reloaded.Pin(FilerFavoriteKind::Tree, "/Users/someone/Projects");
+    CheckEq(reloaded.Reclassify(FilerFavoriteKind::Tree, FilerFavoriteKind::App,
+                                [](const std::string& path) {
+                                    return path.size() > 4 &&
+                                           path.compare(path.size() - 4, 4, ".app") == 0;
+                                }),
+            2u, "applications leave the tree's Pinned section");
+    CheckEq(reloaded.Items(FilerFavoriteKind::Tree).size(), 1u,
+            "the pinned folder stays in the tree");
+    CheckEq(reloaded.Items(FilerFavoriteKind::App).size(), 3u,
+            "Apps gains the new application only once");
     favorites.ClearAll();
 }
 
