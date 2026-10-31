@@ -1,5 +1,10 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
 // libarchive-based provider implementation
+// Version: 1.6.0 - VirtualFSOpenOptions::compressionMethod sets the method of a
+//                  ZIP / 7-Zip (NotSupported when libarchive cannot write it, or
+//                  when it contradicts a TAR's extension); followSymlinks makes
+//                  reads, listings and lookups follow links inside the archive
+//                  (ResolveLinks)
 // Version: 1.5.0 - creating an archive follows VirtualFSOpenOptions::compressionLevel,
 //                  which was ignored: ZIP / 7-Zip get it as their 0-9 level
 //                  (Store: stored), a stream compressor on its own scale;
@@ -10,7 +15,7 @@
 //                  file's own time / permissions / owner, symbolic links stored
 //                  as links, exclusions; files are streamed instead of read whole
 // Version: 1.3.1
-// Last Modified: 2026-10-30
+// Last Modified: 2026-10-31
 // Author: ULTRA OS Framework
 
 #include "VirtualFSLibArchiveProvider.h"
@@ -751,6 +756,67 @@ std::string VirtualFSLibArchiveProvider::NormalizeInternalPath(const std::string
     return normalized;
 }
 
+std::string VirtualFSLibArchiveProvider::ResolveLinks(const std::string& normalizedPath,
+                                                      bool followLast) const {
+    auto split = [](const std::string& path, std::vector<std::string>& into) {
+        // Pushed in reverse, so the next name to walk is at the back.
+        std::vector<std::string> names;
+        size_t start = 0;
+        while (start <= path.size()) {
+            const size_t slash = path.find('/', start);
+            const size_t end = slash == std::string::npos ? path.size() : slash;
+            names.push_back(path.substr(start, end - start));
+            if (slash == std::string::npos) break;
+            start = slash + 1;
+        }
+        into.insert(into.end(), names.rbegin(), names.rend());
+    };
+    auto join = [](const std::vector<std::string>& names) {
+        std::string path;
+        for (const std::string& name : names) {
+            if (!path.empty()) path += '/';
+            path += name;
+        }
+        return path;
+    };
+
+    // A path through more links than this is a circle (the limit Linux sets).
+    constexpr int kMaxLinks = 40;
+    std::vector<std::string> pending;
+    split(normalizedPath, pending);
+    std::vector<std::string> walked;
+    int links = 0;
+    while (!pending.empty()) {
+        const std::string name = pending.back();
+        pending.pop_back();
+        if (name.empty() || name == ".") continue;
+        if (name == "..") {
+            if (walked.empty()) return normalizedPath;   // above the archive's root
+            walked.pop_back();
+            continue;
+        }
+        walked.push_back(name);
+        if (pending.empty() && !followLast) break;
+        auto it = pImpl->entryCache.find(join(walked));
+        if (it == pImpl->entryCache.end()) {
+            // Nothing by that name: the path does not exist - unless a link
+            // got it here, in which case the link dangles.
+            if (links > 0) return normalizedPath;
+            continue;
+        }
+        if (it->second.type != VirtualFSEntryType::Symlink) continue;
+        std::string target = it->second.linkTarget;
+        std::replace(target.begin(), target.end(), '\\', '/');
+        const bool absolute = !target.empty() &&
+                (target[0] == '/' || (target.size() > 1 && target[1] == ':'));
+        if (target.empty() || absolute || ++links > kMaxLinks) return normalizedPath;
+        // The target is relative to the folder holding the link.
+        walked.pop_back();
+        split(target, pending);
+    }
+    return join(walked);
+}
+
 // ============================================================================
 // DIRECTORY OPERATIONS
 // ============================================================================
@@ -761,16 +827,21 @@ std::vector<VirtualFSEntry> VirtualFSLibArchiveProvider::ListDirectory(const std
     if (!pImpl->isOpen || !pImpl->cacheValid) return entries;
     
     std::string normalizedPath = NormalizeInternalPath(virtualPath);
+    // Listing a link to a folder lists that folder - under the name asked for.
+    const std::string listedPath = pImpl->openOptions.followSymlinks
+            ? ResolveLinks(normalizedPath, true) : normalizedPath;
     
-    auto it = pImpl->directoryContents.find(normalizedPath);
+    auto it = pImpl->directoryContents.find(listedPath);
     if (it == pImpl->directoryContents.end()) return entries;
     
     for (const auto& name : it->second) {
-        std::string fullPath = normalizedPath.empty() ? name : normalizedPath + "/" + name;
+        std::string fullPath = listedPath.empty() ? name : listedPath + "/" + name;
         
         auto entryIt = pImpl->entryCache.find(fullPath);
         if (entryIt != pImpl->entryCache.end()) {
             entries.push_back(entryIt->second);
+            if (listedPath != normalizedPath)
+                entries.back().path = normalizedPath.empty() ? name : normalizedPath + "/" + name;
         }
     }
     
@@ -792,6 +863,10 @@ bool VirtualFSLibArchiveProvider::Exists(const std::string& virtualPath) {
     if (!pImpl->isOpen || !pImpl->cacheValid) return false;
     
     std::string normalizedPath = NormalizeInternalPath(virtualPath);
+    // The folders on the way may be links; the name itself is asked about
+    // as it is, so a link exists even where its target does not.
+    if (pImpl->openOptions.followSymlinks)
+        normalizedPath = ResolveLinks(normalizedPath, false);
     return pImpl->entryCache.find(normalizedPath) != pImpl->entryCache.end();
 }
 
@@ -799,9 +874,16 @@ VirtualFSEntry VirtualFSLibArchiveProvider::GetInfo(const std::string& virtualPa
     if (!pImpl->isOpen || !pImpl->cacheValid) return VirtualFSEntry();
     
     std::string normalizedPath = NormalizeInternalPath(virtualPath);
+    // As Exists: a link is described as the link it is, but the folders
+    // leading to it may be links, and the entry carries the path asked for.
+    const std::string foundPath = pImpl->openOptions.followSymlinks
+            ? ResolveLinks(normalizedPath, false) : normalizedPath;
     
-    auto it = pImpl->entryCache.find(normalizedPath);
-    return (it != pImpl->entryCache.end()) ? it->second : VirtualFSEntry();
+    auto it = pImpl->entryCache.find(foundPath);
+    if (it == pImpl->entryCache.end()) return VirtualFSEntry();
+    VirtualFSEntry entry = it->second;
+    entry.path = normalizedPath;
+    return entry;
 }
 
 // ============================================================================
@@ -815,6 +897,9 @@ VirtualFSResult VirtualFSLibArchiveProvider::ReadFile(
     if (!pImpl->isOpen) return VirtualFSResult::ArchiveNotOpen;
     
     std::string normalizedPath = NormalizeInternalPath(virtualPath);
+    // Reading a link reads what it points to, as it does on a disk.
+    if (pImpl->openOptions.followSymlinks)
+        normalizedPath = ResolveLinks(normalizedPath, true);
     
     auto entryIt = pImpl->entryCache.find(normalizedPath);
     if (entryIt == pImpl->entryCache.end()) {
@@ -1126,7 +1211,12 @@ VirtualFSResult VirtualFSLibArchiveProvider::CreateArchive(
     }
     
     ConfigureWriteFormat(pImpl->writeArchive, archivePath);
-    ApplyArchiveWriteOptions(pImpl->writeArchive, options);
+    const VirtualFSResult tuned = ApplyArchiveWriteOptions(pImpl->writeArchive, options);
+    if (tuned != VirtualFSResult::Ok) {
+        archive_write_free(pImpl->writeArchive);
+        pImpl->writeArchive = nullptr;
+        return tuned;
+    }
 
     std::string ext = archivePath;
     size_t dotPos = ext.rfind('.');
@@ -1899,7 +1989,7 @@ void VirtualFSLibArchiveProvider::ConfigureWriteFormat(
     }
 }
 
-void VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
+VirtualFSResult VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
     void* writeArchivePtr, const VirtualFSOpenOptions& options) {
     auto* writeArchive = static_cast<struct archive*>(writeArchivePtr);
     const VirtualFSArchiveWriteOptions& tuning = options.archiveWrite;
@@ -1918,6 +2008,73 @@ void VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
         }
     }
 
+    // What to compress with. ZIP and 7-Zip choose per archive, and are asked
+    // for the method by libarchive's name for it - what a libarchive does
+    // not write (ZIP beyond store and deflate before 3.8) it refuses, and the
+    // archive is not made. A TAR, or a single compressed stream, is
+    // compressed by what its extension names; a method saying otherwise
+    // would write a file whose name lies about it, so that is refused too.
+    const VirtualFSCompressionMethod method = options.compressionMethod;
+    const int formatBase = archive_format(writeArchive) & ARCHIVE_FORMAT_BASE_MASK;
+    if (method != VirtualFSCompressionMethod::Auto) {
+        using M = VirtualFSCompressionMethod;
+        const std::string methodName = VirtualFSCompressionMethodToString(method);
+        const char* formatModule = nullptr;
+        const char* libraryName = nullptr;
+        if (formatBase == ARCHIVE_FORMAT_ZIP) {
+            formatModule = "zip";
+            switch (method) {
+                case M::Store:   libraryName = "store";   break;
+                case M::Deflate: libraryName = "deflate"; break;
+                case M::BZip2:   libraryName = "bzip2";   break;
+                case M::LZMA:    libraryName = "lzma";    break;
+                case M::LZMA2:                            // ZIP holds LZMA2 as xz
+                case M::XZ:      libraryName = "xz";      break;
+                case M::Zstd:    libraryName = "zstd";    break;
+                default:         break;   // Deflate64, PPMd, LZ4, Brotli: no ZIP writer has them
+            }
+        } else if (formatBase == ARCHIVE_FORMAT_7ZIP) {
+            formatModule = "7zip";
+            switch (method) {
+                case M::Store:   libraryName = "store";   break;
+                case M::Deflate: libraryName = "deflate"; break;
+                case M::BZip2:   libraryName = "bzip2";   break;
+                case M::LZMA:    libraryName = "lzma1";   break;
+                case M::LZMA2:                            // 7-Zip's xz is LZMA2
+                case M::XZ:      libraryName = "lzma2";   break;
+                case M::PPMd:    libraryName = "ppmd";    break;
+                default:         break;
+            }
+        }
+        if (formatModule) {
+            if (!libraryName ||
+                archive_write_set_format_option(writeArchive, formatModule, "compression",
+                                                libraryName) != ARCHIVE_OK) {
+                pImpl->lastError = std::string(formatBase == ARCHIVE_FORMAT_ZIP ? "ZIP" : "7-Zip") +
+                        " cannot be written with " + methodName +
+                        " by this build's libarchive";
+                return VirtualFSResult::NotSupported;
+            }
+        } else {
+            // The compressor the extension chose (none for a plain .tar).
+            bool agrees = false;
+            switch (archive_filter_code(writeArchive, 0)) {
+                case ARCHIVE_FILTER_GZIP:  agrees = method == M::Deflate; break;
+                case ARCHIVE_FILTER_BZIP2: agrees = method == M::BZip2;   break;
+                case ARCHIVE_FILTER_XZ:    agrees = method == M::XZ || method == M::LZMA2; break;
+                case ARCHIVE_FILTER_ZSTD:  agrees = method == M::Zstd;    break;
+                case ARCHIVE_FILTER_LZ4:   agrees = method == M::LZ4;     break;
+                default:                   agrees = method == M::Store;   break;
+            }
+            if (!agrees) {
+                pImpl->lastError = "The extension of " + pImpl->archivePath +
+                        " decides how it is compressed; " + methodName +
+                        " does not match it";
+                return VirtualFSResult::NotSupported;
+            }
+        }
+    }
+
     // How hard to compress: archiveWrite.filterLevel when it names one, else
     // the compressionLevel preset. Normal - the default - leaves every
     // library at its own default, so an archive nobody asked to tune is the
@@ -1926,11 +2083,20 @@ void VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
     const bool tunePreset = preset != VirtualFSCompressionLevel::Normal;
 
     // ZIP and 7-Zip compress inside the format, and take the preset as the
-    // format's own 0-9 level (Store: no compression at all).
-    const int baseFormat = archive_format(writeArchive) & ARCHIVE_FORMAT_BASE_MASK;
-    if (tunePreset && (baseFormat == ARCHIVE_FORMAT_ZIP || baseFormat == ARCHIVE_FORMAT_7ZIP)) {
-        const char* formatModule = baseFormat == ARCHIVE_FORMAT_ZIP ? "zip" : "7zip";
-        if (preset == VirtualFSCompressionLevel::Store) {
+    // format's own 0-9 level (Store: no compression at all - unless a method
+    // was asked for, which the level then only tunes). libarchive's ZIP
+    // writer reads any level but 0 as "deflate", which would undo a stored
+    // or other method, so a ZIP with a method other than Deflate keeps it at
+    // that method's default level.
+    const bool zipLevelUndoesMethod = formatBase == ARCHIVE_FORMAT_ZIP &&
+            method != VirtualFSCompressionMethod::Auto &&
+            (method != VirtualFSCompressionMethod::Deflate ||
+             preset == VirtualFSCompressionLevel::Store);
+    if (tunePreset && !zipLevelUndoesMethod &&
+        (formatBase == ARCHIVE_FORMAT_ZIP || formatBase == ARCHIVE_FORMAT_7ZIP)) {
+        const char* formatModule = formatBase == ARCHIVE_FORMAT_ZIP ? "zip" : "7zip";
+        if (preset == VirtualFSCompressionLevel::Store &&
+            method == VirtualFSCompressionMethod::Auto) {
             archive_write_set_format_option(writeArchive, formatModule,
                                             "compression", "store");
         } else {
@@ -1955,7 +2121,7 @@ void VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
     }
     if (!module) {
         archive_clear_error(writeArchive);
-        return;
+        return VirtualFSResult::Ok;
     }
     int level = -1;
     if (tuning.filterLevel >= 0) {
@@ -1995,7 +2161,8 @@ void VirtualFSLibArchiveProvider::ApplyArchiveWriteOptions(
         archive_write_set_filter_option(writeArchive, module, "long",
                                         std::to_string(windowLog).c_str());
     }
-    archive_clear_error(writeArchive);   // a refused option is not a failure
+    archive_clear_error(writeArchive);   // a refused tuning option is not a failure
+    return VirtualFSResult::Ok;
 }
 
 int VirtualFSLibArchiveProvider::GetLibArchiveFormat(const std::string& ext) {

@@ -13,17 +13,27 @@
 //      and a pattern with a '/' matched against the path;
 //   6. VirtualFSOpenOptions::compressionLevel reaches ZIP, 7-Zip and a
 //      stream compressor (Store stores a ZIP), and Normal writes what the
-//      library default does.
+//      library default does;
+//   7. VirtualFSOpenOptions::compressionMethod: ZIP and 7-Zip are written
+//      with the method asked for, or refused (NotSupported, no file left)
+//      when this libarchive cannot write it; a TAR takes only the method its
+//      extension names;
+//   8. VirtualFSOpenOptions::followSymlinks: reading an archive follows the
+//      links inside it - a linked file reads as its target, a linked folder
+//      lists and is walked through - and never out of the archive, into a
+//      dangling target or round a circle; off, a link is just an entry.
 //
 // Archives are written below the directory given as the first argument
 // (ctest passes one in the build tree), else the system temp directory.
+// Version: 1.2.0 - compressionMethod and followSymlinks
 // Version: 1.1.0 - the compressionLevel preset; repeat.bin, the data the
 //                  levels are told apart by (on the text alone xz -1 beats -9)
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework
 
 #include "VirtualFS/VirtualFS.h"
+#include "VirtualFSLibArchiveProvider.h"
 
 #include <archive.h>
 #include <archive_entry.h>
@@ -123,6 +133,16 @@ static bool Pack(const fs::path& archive, const fs::path& folder,
         std::printf("  CreateArchive(%s): %s\n", PathToUtf8(archive).c_str(),
                     VirtualFS_GetErrorMessage(r).c_str());
     return r == VirtualFSResult::Ok;
+}
+
+// Packs with a compression method; the result as CreateArchive gave it.
+static VirtualFSResult PackWith(const fs::path& archive, const fs::path& folder,
+                                VirtualFSCompressionMethod method) {
+    VirtualFSOpenOptions options = VirtualFSOpenOptions::ForCreating(
+            VirtualFSCompressionLevel::Normal, method);
+    std::error_code ec;
+    fs::remove(archive, ec);
+    return VirtualFS_CreateArchive(PathToUtf8(archive), {PathToUtf8(folder)}, options);
 }
 
 static uintmax_t SizeOf(const fs::path& path) {
@@ -343,6 +363,134 @@ int main(int argc, char** argv) {
               SizeOf(root / "override.tar.gz") == SizeOf(root / "fast.tar.gz"),
               "filterLevel wins over the preset");
     }
+
+    std::printf("== compressionMethod ==\n");
+    {
+        using M = VirtualFSCompressionMethod;
+        CHECK(PackWith(root / "stored.zip", src, M::Store) == VirtualFSResult::Ok &&
+              SizeOf(root / "stored.zip") > text.size(),
+              "ZIP with Store is stored");
+        CHECK(PackWith(root / "deflated.zip", src, M::Deflate) == VirtualFSResult::Ok &&
+              SizeOf(root / "deflated.zip") < SizeOf(root / "stored.zip"),
+              "ZIP with Deflate is compressed");
+        const ArchiveFacts storedZip = ReadArchive(root / "stored.zip");
+        CHECK(storedZip.entries.count("src/data.txt") == 1 &&
+              storedZip.entries.at("src/data.txt").content == text,
+              "the stored ZIP reads back");
+        // Zstandard in a ZIP: libarchive writes it from 3.8 on, refuses it
+        // before - either way never something else under the name.
+        const VirtualFSResult zipZstd = PackWith(root / "zstd.zip", src, M::Zstd);
+        CHECK((zipZstd == VirtualFSResult::NotSupported && !fs::exists(root / "zstd.zip")) ||
+              (zipZstd == VirtualFSResult::Ok &&
+               ReadArchive(root / "zstd.zip").entries.count("src/data.txt") == 1),
+              "ZIP with Zstandard is written, or refused without a file");
+        CHECK(PackWith(root / "ppmd.zip", src, M::PPMd) == VirtualFSResult::NotSupported,
+              "ZIP with PPMd is refused");
+
+        uintmax_t storedSize = 0;
+        for (M method : {M::Store, M::Deflate, M::BZip2, M::LZMA, M::LZMA2, M::PPMd}) {
+            const std::string name = VirtualFSCompressionMethodToString(method);
+            const fs::path archive = root / ("method-" + name + ".7z");
+            const bool packed = PackWith(archive, src, method) == VirtualFSResult::Ok;
+            const ArchiveFacts facts = ReadArchive(archive);
+            const bool readable = facts.entries.count("src/data.txt") == 1 &&
+                                  facts.entries.at("src/data.txt").content == text;
+            if (method == M::Store) storedSize = SizeOf(archive);
+            const bool compressed = method == M::Store || SizeOf(archive) < storedSize;
+            const std::string what = "7-Zip with " + name + " packs, reads back" +
+                                     (method == M::Store ? " uncompressed" : " and compresses");
+            CHECK(packed && readable && compressed, what.c_str());
+        }
+        CHECK(PackWith(root / "zstd.7z", src, M::Zstd) == VirtualFSResult::NotSupported &&
+              !fs::exists(root / "zstd.7z"),
+              "7-Zip with Zstandard is refused without a file");
+
+        CHECK(PackWith(root / "method.tar.gz", src, M::Deflate) == VirtualFSResult::Ok,
+              ".tar.gz with Deflate, the method its name says");
+        CHECK(PackWith(root / "method.tar.xz", src, M::LZMA2) == VirtualFSResult::Ok,
+              ".tar.xz with LZMA2, what xz is");
+        CHECK(PackWith(root / "method.tar", src, M::Store) == VirtualFSResult::Ok,
+              ".tar with Store");
+        CHECK(PackWith(root / "wrong.tar.gz", src, M::Zstd) == VirtualFSResult::NotSupported &&
+              !fs::exists(root / "wrong.tar.gz"),
+              ".tar.gz with Zstandard is refused without a file");
+        CHECK(PackWith(root / "wrong.tar", src, M::Deflate) == VirtualFSResult::NotSupported,
+              ".tar with Deflate is refused");
+    }
+
+#if !defined(_WIN32)
+    std::printf("== followSymlinks (reading) ==\n");
+    {
+        // A folder of its own, so its links do not change what the packing
+        // checks above see.
+        const fs::path linked = root / "linked";
+        fs::create_directories(linked / "real" / "deep", ec);
+        WriteFile(linked / "real" / "file.txt", "the target");
+        WriteFile(linked / "real" / "deep" / "inner.txt", "deep down");
+        fs::create_symlink("real/file.txt", linked / "to-file", ec);
+        fs::create_symlink("real", linked / "to-dir", ec);
+        fs::create_symlink("to-file", linked / "chain", ec);
+        fs::create_symlink("../../../etc/hostname", linked / "escape", ec);
+        fs::create_symlink("/etc/hostname", linked / "absolute", ec);
+        fs::create_symlink("missing.txt", linked / "dangling", ec);
+        fs::create_symlink("loop", linked / "loop", ec);
+        VirtualFSArchiveWriteOptions keepLinks;   // links stored as links
+        CHECK(Pack(root / "linked.tar", linked, keepLinks), "an archive of links packs");
+
+        auto readOn = [&](bool follow, const std::string& entry, std::string& out) {
+            VirtualFSLibArchiveProvider reader;
+            VirtualFSOpenOptions options;
+            options.followSymlinks = follow;
+            if (reader.Open(PathToUtf8(root / "linked.tar"), options) != VirtualFSResult::Ok)
+                return VirtualFSResult::Error;
+            std::vector<uint8_t> data;
+            const VirtualFSResult r = reader.ReadFile(entry, data);
+            out.assign(data.begin(), data.end());
+            return r;
+        };
+        std::string got;
+        CHECK(readOn(true, "linked/to-file", got) == VirtualFSResult::Ok && got == "the target",
+              "a link to a file reads as its target");
+        CHECK(readOn(true, "linked/chain", got) == VirtualFSResult::Ok && got == "the target",
+              "a link to a link is followed to the end");
+        CHECK(readOn(true, "linked/to-dir/deep/inner.txt", got) == VirtualFSResult::Ok &&
+              got == "deep down",
+              "a path through a linked folder reaches the file");
+        CHECK(readOn(true, "linked/escape", got) == VirtualFSResult::Ok && got.empty(),
+              "a link above the archive's root is not followed out of it");
+        CHECK(readOn(true, "linked/absolute", got) == VirtualFSResult::Ok && got.empty(),
+              "an absolute link is not followed out of the archive");
+        CHECK(readOn(true, "linked/dangling", got) == VirtualFSResult::Ok && got.empty(),
+              "a dangling link reads as the link itself");
+        CHECK(readOn(true, "linked/loop", got) == VirtualFSResult::Ok && got.empty(),
+              "a link to itself does not go round for ever");
+        CHECK(readOn(false, "linked/to-file", got) == VirtualFSResult::Ok && got.empty(),
+              "followSymlinks off: a link is only an entry");
+
+        VirtualFSLibArchiveProvider reader;
+        CHECK(reader.Open(PathToUtf8(root / "linked.tar")) == VirtualFSResult::Ok,
+              "the archive of links opens");
+        const std::vector<VirtualFSEntry> listed = reader.ListDirectory("linked/to-dir");
+        bool sawFile = false;
+        for (const VirtualFSEntry& e : listed)
+            if (e.name == "file.txt" && e.path == "linked/to-dir/file.txt") sawFile = true;
+        CHECK(listed.size() == 2 && sawFile,
+              "a linked folder lists the target's entries under the link's path");
+        CHECK(reader.Exists("linked/to-dir/deep/inner.txt"),
+              "an entry behind a linked folder exists");
+        CHECK(reader.GetInfo("linked/to-file").type == VirtualFSEntryType::Symlink,
+              "the link itself is still described as a link");
+        CHECK(reader.Exists("linked/dangling"), "a dangling link exists as a link");
+
+        VirtualFSLibArchiveProvider literal;
+        VirtualFSOpenOptions noFollow;
+        noFollow.followSymlinks = false;
+        CHECK(literal.Open(PathToUtf8(root / "linked.tar"), noFollow) == VirtualFSResult::Ok &&
+              literal.ListDirectory("linked/to-dir").empty() &&
+              !literal.Exists("linked/to-dir/deep/inner.txt"),
+              "followSymlinks off: a linked folder is not entered");
+    }
+#endif
 
     fs::remove_all(root, ec);
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "OK",

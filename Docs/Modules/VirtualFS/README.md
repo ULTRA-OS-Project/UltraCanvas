@@ -201,6 +201,24 @@ By default each file keeps its time and permissions, its owner is left
 out, links stay links, and the compressor runs at its default level on one
 thread. File content is streamed, never read into memory whole.
 
+`VirtualFSOpenOptions::compressionMethod` picks what a ZIP or 7-Zip is
+compressed with (`Auto`: Deflate and LZMA, the libraries' defaults). ZIP
+takes `Store` and `Deflate` - and `BZip2`, `LZMA`, `XZ` and `Zstd` where
+libarchive is 3.8 or newer - and 7-Zip takes `Store`, `Deflate`, `BZip2`,
+`LZMA`, `LZMA2` and `PPMd`. A TAR is compressed by what its extension names,
+so the only method it accepts is that one (`Store` for a plain `.tar`). A
+method that cannot be written is refused with `NotSupported` and no file,
+never quietly replaced by another.
+
+Reading follows the symbolic links inside an archive
+(`VirtualFSOpenOptions::followSymlinks`, on by default), as a disk does:
+`ReadFile` on a link reads its target, `ListDirectory` on a link to a folder
+lists that folder (under the link's path), and a path may pass through linked
+folders. `GetInfo` and `Exists` still describe a link as the link it is. A
+link that points out of the archive - an absolute target, or one climbing
+above its root - is never followed, nor is a dangling one or a circle; such
+a link reads as itself, which is empty. Off, every link is just an entry.
+
 ```cpp
 // UltraCanvas integration — drop-in compression
 #include <UltraCanvasVirtualFSBridge.h>

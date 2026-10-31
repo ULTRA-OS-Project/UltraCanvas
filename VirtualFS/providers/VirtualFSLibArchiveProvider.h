@@ -1,11 +1,13 @@
 // VirtualFS/providers/VirtualFSLibArchiveProvider.h
 // libarchive-based provider for multi-format archive support
+// Version: 1.2.0 - ApplyArchiveWriteOptions answers NotSupported for a
+//                  compressionMethod that cannot be written; ResolveLinks
 // Version: 1.1.0 - creating an archive follows VirtualFSOpenOptions::archiveWrite:
 //                  compressor level / threads / zstd long mode, the TAR header
 //                  format, each file's own time, permissions, owner and links,
 //                  and the exclusions; files are streamed, not read whole
 // Version: 1.0.1
-// Last Modified: 2026-10-30
+// Last Modified: 2026-10-31
 // Author: ULTRA OS Framework
 #pragma once
 
@@ -233,13 +235,22 @@ private:
     void ClearEntryCache();
     VirtualFSEntry ConvertArchiveEntry(void* archiveEntry);
     std::string NormalizeInternalPath(const std::string& path);
+    // `normalizedPath` with the symbolic links inside the archive followed:
+    // every folder on the way, and the last name too when `followLast`. A
+    // link whose target leaves the archive (absolute, or above its root),
+    // dangles, or goes round in a circle is not followed - the path is then
+    // returned as it was, and names the link itself.
+    std::string ResolveLinks(const std::string& normalizedPath, bool followLast) const;
     int GetLibArchiveFormat(const std::string& extension);
     int GetLibArchiveFilter(VirtualFSCompressionMethod method);
     int GetLibArchiveCompressionLevel(VirtualFSCompressionLevel level);
     void ConfigureWriteFormat(void* writeArchive, const std::string& archivePath);
-    // The TAR header format and the compressor options of
-    // options.archiveWrite, on a writer ConfigureWriteFormat has set up.
-    void ApplyArchiveWriteOptions(void* writeArchive, const VirtualFSOpenOptions& options);
+    // options.compressionMethod and compressionLevel, and the TAR header
+    // format and compressor options of options.archiveWrite, on a writer
+    // ConfigureWriteFormat has set up. NotSupported (lastError says why)
+    // when the method cannot be written to this format.
+    VirtualFSResult ApplyArchiveWriteOptions(void* writeArchive,
+                                             const VirtualFSOpenOptions& options);
     // Writes one file, folder or symbolic link from disk as `virtualPath`,
     // with what options.archiveWrite keeps of it; a file's content is
     // streamed, never read into memory whole.
