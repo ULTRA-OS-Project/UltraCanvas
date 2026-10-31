@@ -67,6 +67,7 @@
 
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -226,6 +227,12 @@ private:
     // marker: read on the device poll's thread now and then, and here after
     // the volume panel changed it.
     void ReadSpeaker();
+    // The info panel on a short screen: smaller items, and the least-used
+    // services folded into the chevron's menu (kInfoFoldOrder).
+    bool CompactInfoPanel() const;
+    int InfoButtonSize() const;
+    int InfoIconSize() const;
+    void FitInfoPanel();
     void ApplySpeaker();
     // Once a second: a session desktop whose switch was turned off closes.
     void CheckDesktopSwitch();
@@ -306,6 +313,10 @@ private:
     int clockMinute_ = -1;
     std::shared_ptr<UltraDesktopClockPanel> clockPanel_;
     std::shared_ptr<UltraDesktopVolumePanel> volumePanel_;
+    // The services FitInfoPanel last moved to the end of the info panel.
+    std::set<std::string> infoFolded_;
+    // The overflow chevron last given the bar's look (it is the toolbar's).
+    const UltraCanvas::UltraCanvasButton* styledChevron_ = nullptr;
     std::shared_ptr<UltraDesktopWifiPanel> wifiPanel_;
     std::shared_ptr<UltraDesktopBluetoothPanel> bluetoothPanel_;
     // One per device icon, by its item id; made on the first click.

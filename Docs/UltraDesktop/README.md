@@ -134,7 +134,11 @@ the right-hand monitor the primary.
   copies, as before.
 - **Info panel**, anchored to the bottom: Email, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
-  Loudspeaker, Battery and Task Manager. The markers:
+  Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
+  high the icons are smaller, and those that still do not fit fold into a
+  chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
+  upload, Task Manager, download, LAN, email - so the webcam's and
+  microphone's in-use dots stay in sight. The markers:
 
   | Marker | Meaning | On |
   |---|---|---|

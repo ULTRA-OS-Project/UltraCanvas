@@ -20,3 +20,11 @@
   microphones with the default marked, the battery's charge - with a
   button on to Device Explorer or the Task Manager, instead of opening
   those programs straight away.
+- **The right bar fits a short screen.** Below 960 pixels of height the
+  info panel's icons are smaller, and what still does not fit folds into a
+  chevron menu at the bar's foot - the least-used first (keyboard, VPN, USB,
+  upload, Task Manager, ...), so the webcam's and microphone's in-use dots,
+  the loudspeaker and the battery stay on the bar. The menu lists each
+  folded icon with its state ("USB: 2 devices") and opens it as the icon
+  would. It used to scroll, hiding the last icons until the bar was
+  scrolled.

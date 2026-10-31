@@ -89,6 +89,15 @@ constexpr int   kBarButton      = 40;   // one item's box
 constexpr int   kBarIcon        = 24;
 constexpr int   kInfoButton     = 36;   // the info panel's items, fourteen of them
 constexpr int   kInfoIcon       = 20;
+// Below this height the info panel's items are smaller, and what still does
+// not fit folds into the chevron's menu at the bar's foot - least used first.
+constexpr int   kCompactScreenHeight = 960;
+constexpr int   kInfoButtonCompact = 30;
+constexpr int   kInfoIconCompact   = 18;
+// The services that fold first, least used first. Webcam and microphone
+// come late: their red dot says a device is on, and that must stay seen.
+const char* const kInfoFoldOrder[] = {"keyboard", "vpn", "usb", "upload", "tasks", "download", "lan",
+                                      "mail", "battery", "bluetooth", "webcam", "mic", "speaker", "wifi"};
 constexpr int   kClockHeight    = 68;   // the face (48) over the date line
 constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
 constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
@@ -886,9 +895,15 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     // The info panel, anchored to the bottom by the stretch at its top.
     info_ = MakeGroup("InfoPanel", true, false);
     info_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
-    info_->SetOverflowMode(ToolbarOverflowMode::Scroll);
-    // Fourteen services have to fit under the organiser on a 768 px screen:
-    // tighter than the taskbar's items, still a 36 px target.
+    // Fourteen services and the tray icons do not fit under the organiser
+    // on a short screen even at the compact size: what is left over goes
+    // into the chevron's menu at the foot of the bar, and FitInfoPanel
+    // sees to it that the least-used services are the ones that go.
+    info_->SetOverflowMode(ToolbarOverflowMode::Menu);
+    infoFolded_.clear();
+    styledChevron_ = nullptr;
+    // Tighter than the taskbar's items, still a 36 px target (30 px on a
+    // short screen).
     ToolbarAppearance tight = info_->GetAppearance();
     tight.itemSpacing = 2.0f;
     info_->SetAppearance(tight);
@@ -910,8 +925,8 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
     AddBarButton(info_, "tasks",     "Task Manager", IconPath("tasks.svg"),     [this]() { OpenTasks(); });
     for (const auto& item : info_->GetItems()) {
         if (auto button = std::dynamic_pointer_cast<UltraCanvasButton>(item)) {
-            button->SetElementSize(Size2Df(static_cast<float>(kInfoButton), static_cast<float>(kInfoButton)));
-            button->SetIconSize(kInfoIcon, kInfoIcon);
+            button->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
+            button->SetIconSize(InfoIconSize(), InfoIconSize());
         }
     }
     bar->AddChild(info_);
@@ -1181,6 +1196,55 @@ void UltraDesktopWindow::CheckSettingsFile() {
 
 // ===== LIVE DATA =====
 
+// ===== THE INFO PANEL ON A SHORT SCREEN =====
+
+bool UltraDesktopWindow::CompactInfoPanel() const {
+    return area_.height > 0 && area_.height < kCompactScreenHeight;
+}
+
+int UltraDesktopWindow::InfoButtonSize() const {
+    return CompactInfoPanel() ? kInfoButtonCompact : kInfoButton;
+}
+
+int UltraDesktopWindow::InfoIconSize() const {
+    return CompactInfoPanel() ? kInfoIconCompact : kInfoIcon;
+}
+
+// The toolbar's Menu mode takes the items off the end of the bar; this
+// makes those the least-used services. It moves the `n` least-used ones to
+// the end - in their usual order - where `n` is how many the menu holds,
+// and is done once the menu holds exactly them. A bar that no longer
+// overflows (a taller screen) keeps the order until the bars are built again.
+void UltraDesktopWindow::FitInfoPanel() {
+    if (!info_) return;
+    // The chevron is the toolbar's own button: dress it like the bar's.
+    if (auto chevron = info_->GetOverflowButton(); chevron && chevron.get() != styledChevron_) {
+        styledChevron_ = chevron.get();
+        StyleBarButton(chevron);
+        chevron->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
+        chevron->SetIconSize(InfoIconSize(), InfoIconSize());
+        chevron->SetTooltip("More");
+    }
+    const std::vector<std::string> overflow = info_->GetOverflowItemIds();
+    if (overflow.empty()) return;
+    std::set<std::string> wanted;
+    for (const char* id : kInfoFoldOrder) {
+        if (wanted.size() >= overflow.size()) break;
+        if (info_->GetItemIndex(id) >= 0) wanted.insert(id);
+    }
+    if (std::set<std::string>(overflow.begin(), overflow.end()) == wanted || wanted == infoFolded_) return;
+    infoFolded_ = wanted;
+    const std::vector<std::string> order = info_->GetItemOrder();
+    const int last = static_cast<int>(order.size()) - 1;
+    for (const std::string& id : order) {
+        if (wanted.count(id) == 0) continue;
+        const int from = info_->GetItemIndex(id);
+        if (from >= 0 && from != last) info_->MoveItem(from, last);
+    }
+    info_->InvalidateLayout();
+    info_->RequestRedraw();
+}
+
 void UltraDesktopWindow::OnTimer() {
     CheckSettingsFile();
     CheckDesktopSwitch();
@@ -1198,6 +1262,7 @@ void UltraDesktopWindow::OnTimer() {
         RefreshWindows();
     }
     if (trayDirty_.exchange(false)) RefreshTray();
+    FitInfoPanel();
     UpdateClock();
 
     bool apply = false;
@@ -1838,8 +1903,8 @@ void UltraDesktopWindow::RefreshTray() {
             ButtonStyle style = button->GetStyle();
             style.useIconAsMask = false;
             button->SetStyle(style);
-            button->SetElementSize(Size2Df(static_cast<float>(kInfoButton), static_cast<float>(kInfoButton)));
-            button->SetIconSize(kInfoIcon, kInfoIcon);
+            button->SetElementSize(Size2Df(static_cast<float>(InfoButtonSize()), static_cast<float>(InfoButtonSize())));
+            button->SetIconSize(InfoIconSize(), InfoIconSize());
             // A program that hands its menu over as data gets it drawn here;
             // the others open their own on the click.
             button->onContextMenu = [this, id, itemId](int x, int y) {
