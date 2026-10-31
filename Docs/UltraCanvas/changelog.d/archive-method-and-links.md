@@ -15,3 +15,11 @@
     never followed. Writing keeps `archiveWrite.storeSymlinks`.
   - `VirtualFSArchiveWriteOptionsTest` covers every method on ZIP, 7-Zip
     and TAR and each kind of link.
+- **`UCVFSBridge::CreateArchive` takes the archive's method from
+  `UCVFSCompressionOptions::archive.method`** (`UCVFSArchiveWriteOptions`;
+  empty: the library's default). `UCVFSCompressionOptions::type` stays the
+  buffer compressors' choice and is said to be: passed on to an archive,
+  its default (Zstd) would have made every ZIP created through the bridge
+  fail before libarchive 3.8. A cabinet method (LZX, MS-ZIP, Quantum), which
+  nothing writes, fails with a reason in `GetLastError()`. New test
+  `VirtualFSBridgeArchiveTest`.

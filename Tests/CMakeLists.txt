@@ -3561,6 +3561,46 @@ if(LIBARCHIVE_TEST_FOUND)
     )
     message(STATUS "    Test registered: VirtualFSArchiveWriteOptionsTest")
 
+    # ===== VIRTUALFS BRIDGE ARCHIVE TEST =====
+    # UCVFSBridge::CreateArchive: UCVFSCompressionOptions::type stays the
+    # buffer compressors' choice; archive.method is what a ZIP / 7-Zip is
+    # written with, and a method no archive takes fails without a file.
+    message(STATUS "  Building VirtualFSBridgeArchiveTest...")
+    add_executable(VirtualFSBridgeArchiveTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSBridgeArchiveTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasVirtualFSBridge.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    )
+    target_include_directories(VirtualFSBridgeArchiveTest PRIVATE
+        ${ULTRACANVAS_ROOT}/UltraCanvas/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSBridgeArchiveTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+        VIRTUALFS_HAS_MINIZ
+    )
+    target_link_libraries(VirtualFSBridgeArchiveTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSBridgeArchiveTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSBridgeArchiveTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSBridgeArchiveTest
+        COMMAND VirtualFSBridgeArchiveTest ${CMAKE_BINARY_DIR}/vfs-bridge-archive-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSBridgeArchiveTest")
+
     # ===== VIRTUALFS NAME ENCODING TEST =====
     # ZIP entry names in the DOS code page (no UTF-8 flag, as Windows writes
     # "Namensänderung") list and extract as UTF-8; Thai / Russian / Chinese
