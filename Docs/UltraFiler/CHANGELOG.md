@@ -1,3 +1,22 @@
+#### 2026-10-31 *1.99.0*
+- **macOS: an application could be pinned into the folder tree, and the
+  tree pinned it to the wrong Favorites tab.** The tree lists every
+  directory, an `.app` included. Its "Pin > To Treeview" put the application
+  into the tree's Pinned section as a folder row whose click opened the
+  inside of the bundle, and its "Pin > To Favorites" filed it under Folders
+  rather than Apps. An application now never goes into the Pinned section -
+  not from the tree's menu, the file display's Pin menu, or a drop on the
+  section - and the tree pins it under Favorites > Apps like the file display
+  does. Applications pinned into the tree before move to Favorites > Apps at
+  the next start, with the date they were pinned.
+- **macOS: the folder tree listed every application as a folder.** An `.app`
+  is a directory on disk, so `/Applications` opened onto a column of
+  expandable folder rows that led into the inside of each bundle - where the
+  Finder's sidebar and column view show none. The tree now leaves application
+  bundles out, as it leaves hidden folders out; the file display still shows
+  them and starts them on a double-click. A folder that only ends in ".app"
+  (no `Contents/Info.plist`) and other bundle kinds stay in the tree.
+
 #### 2026-10-30 *1.98.0*
 - **On macOS a saved file now appears at once** instead of on the next poll of
   the folder, and on every platform a file saved while a folder was being
