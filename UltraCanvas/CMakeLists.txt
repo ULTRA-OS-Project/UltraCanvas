@@ -474,6 +474,10 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COREWLAN_FRAMEWORK CoreWLAN)
     find_library(IOBLUETOOTH_FRAMEWORK IOBluetooth)
     find_library(CORELOCATION_FRAMEWORK CoreLocation)
+    # DiskArbitration groups a removable drive's volumes by their disk
+    # (OS/MacOS/UltraCanvasMacOSRemovableDrives.mm); without it each volume
+    # is an entry of its own.
+    find_library(DISKARBITRATION_FRAMEWORK DiskArbitration)
     # OpenGL (CGL) backs only the GL surface. Apple has deprecated it since
     # macOS 10.14, so it is looked up only when that surface is wanted, and an
     # SDK without it turns the surface off instead of failing the configure -
@@ -2403,7 +2407,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
                 ${UNIFORMTYPEIDENTIFIERS_FRAMEWORK})
     endif()
-    foreach(_uc_wireless_fw COREWLAN_FRAMEWORK IOBLUETOOTH_FRAMEWORK CORELOCATION_FRAMEWORK)
+    foreach(_uc_wireless_fw COREWLAN_FRAMEWORK IOBLUETOOTH_FRAMEWORK CORELOCATION_FRAMEWORK DISKARBITRATION_FRAMEWORK)
         if(${_uc_wireless_fw})
             target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_uc_wireless_fw}})
         endif()

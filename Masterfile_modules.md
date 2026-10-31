@@ -1003,8 +1003,9 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (UDisks2 over GDBus, sharing `OS/Linux/UltraCanvasLinuxSystemBus.h` with
   the wireless backend), `OS/MSWindows/UltraCanvasWindowsRemovableDrives.cpp`
   (SetupAPI, storage ioctls, `CM_Request_Device_Eject`),
-  `OS/MacOS/UltraCanvasMacOSRemovableDrives.mm` (volume resource values,
-  `NSWorkspace unmountAndEjectDeviceAtURL`). See
+  `OS/MacOS/UltraCanvasMacOSRemovableDrives.mm` (volume resource values
+  grouped by DiskArbitration's whole disk, `NSWorkspace
+  unmountAndEjectDeviceAtURL`). See
   `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
 
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,

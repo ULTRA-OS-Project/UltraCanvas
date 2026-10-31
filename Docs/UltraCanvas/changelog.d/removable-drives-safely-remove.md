@@ -10,3 +10,7 @@
 - The Linux system-bus helpers the wireless backend used are shared now
   (`OS/Linux/UltraCanvasLinuxSystemBus.h`), one connection for NetworkManager,
   BlueZ and UDisks2.
+- On macOS the volumes of one drive are one entry, grouped by
+  DiskArbitration's whole disk and named by the drive's vendor and model,
+  with its size and bus, as on Linux and Windows (the framework links
+  DiskArbitration where the SDK has it).
