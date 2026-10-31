@@ -158,7 +158,8 @@ the right-hand monitor the primary.
   they are mounted, each with *Safely remove*: its volumes are unmounted once
   everything is written out and the drive is powered off, after which the
   panel says it can be pulled out - or that a program still has a file open
-  on it. Below them, the other USB devices. Through UDisks2 on Linux,
+  on it. Below them, the other USB devices. The list follows what is
+  plugged in while the panel is open. Through UDisks2 on Linux,
   Windows' "Safely Remove Hardware", and Finder's Eject on macOS.
 - **Wi-Fi**: the Wi-Fi panel beside the bar - Wi-Fi on a switch, the network
   joined, and the networks in reach with their signal and security. *Connect*

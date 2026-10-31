@@ -33,4 +33,6 @@
   - stick, external disk or memory card, with its size and where it is
   mounted - each with *Safely remove*: the drive is unmounted once
   everything is written to it and powered off, and the panel says when it
-  can be pulled out, or that a program still has a file open on it.
+  can be pulled out, or that a program still has a file open on it. The
+  panel follows what is plugged in while it is open: a stick shows the
+  moment it mounts, any other USB device within three seconds.

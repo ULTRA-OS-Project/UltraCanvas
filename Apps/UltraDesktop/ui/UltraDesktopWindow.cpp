@@ -795,6 +795,9 @@ void UltraDesktopWindow::OpenDevicePanel(const std::string& device) {
     if (device == "usb") {
         panel = std::make_shared<UltraDesktopDevicePanel>("USB", ReadUsbPanel,
                                                           std::vector<DevicePanelAction>{explorer, tasks});
+        // A stick plugged in or pulled out shows at once; a mouse, which
+        // mounts nothing, within three seconds.
+        panel->SetLiveRefresh(3000, true);
     } else if (device == "keyboard") {
         const std::string layout = activity.keyboardLayout;
         panel = std::make_shared<UltraDesktopDevicePanel>(

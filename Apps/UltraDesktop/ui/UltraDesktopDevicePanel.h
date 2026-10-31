@@ -11,6 +11,11 @@
 
 #include "UltraDesktopPanelWork.h"
 #include "UltraDesktopPopupPanel.h"
+#include "UltraCanvasTimer.h"
+#include "UltraCanvasVolumeMonitor.h"
+
+#include <atomic>
+#include <chrono>
 
 #include <functional>
 #include <memory>
@@ -57,6 +62,14 @@ public:
     UltraDesktopDevicePanel(std::string title, std::function<DevicePanelContent()> read,
                             std::vector<DevicePanelAction> actions);
 
+    ~UltraDesktopDevicePanel() override;
+
+    // Read again while the panel is open: every `intervalMs` (0: never), and
+    // with `watchVolumes` as soon as a volume mounts or unmounts - a stick
+    // plugged in shows at once. The list is rebuilt only when what it shows
+    // changed, and never while an entry's button is running.
+    void SetLiveRefresh(unsigned intervalMs, bool watchVolumes);
+
 protected:
     void Build(UltraCanvas::UltraCanvasWindow& window) override;
     void Unbuild() override;
@@ -66,6 +79,9 @@ private:
     void Read();
     void RunEntryAction(const DevicePanelEntry& entry);
     void SetMessage(const std::string& text, bool error);
+    void StartLiveRefresh();
+    void StopLiveRefresh();
+    static std::string Signature(const DevicePanelContent& content);
 
     std::string title_;
     std::function<DevicePanelContent()> read_;
@@ -75,6 +91,16 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> list_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> message_;
     bool busy_ = false;
+    bool reading_ = false;
+    std::string shown_;                 // Signature of what the list shows
+
+    unsigned refreshMs_ = 0;
+    bool watchVolumes_ = false;
+    UltraCanvas::TimerId timer_ = 0;
+    std::chrono::steady_clock::time_point nextRead_{};
+    std::unique_ptr<UltraCanvas::UltraCanvasVolumeMonitor> volumes_;
+    // Set on the monitor's thread, read by the UI timer.
+    std::shared_ptr<std::atomic<bool>> volumesChanged_ = std::make_shared<std::atomic<bool>>(false);
 };
 
 } // namespace UltraDesktop

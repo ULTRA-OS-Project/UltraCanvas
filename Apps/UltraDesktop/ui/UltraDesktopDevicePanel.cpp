@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopDevicePanel.cpp
 // The device panel. See the header.
+// Version: 0.3.0 - SetLiveRefresh
 // Version: 0.2.0 - an entry's own button, headings, the message line
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -33,6 +34,61 @@ UltraDesktopDevicePanel::UltraDesktopDevicePanel(std::string title, std::functio
       title_(std::move(title)),
       read_(std::move(read)),
       actions_(std::move(actions)) {}
+
+UltraDesktopDevicePanel::~UltraDesktopDevicePanel() {
+    StopLiveRefresh();
+}
+
+void UltraDesktopDevicePanel::SetLiveRefresh(unsigned intervalMs, bool watchVolumes) {
+    refreshMs_ = intervalMs;
+    watchVolumes_ = watchVolumes;
+    if (IsOpen()) {
+        StopLiveRefresh();
+        StartLiveRefresh();
+    }
+}
+
+void UltraDesktopDevicePanel::StartLiveRefresh() {
+    if (refreshMs_ == 0 && !watchVolumes_) return;
+    if (watchVolumes_) {
+        volumesChanged_->store(false);
+        volumes_ = std::make_unique<UltraCanvasVolumeMonitor>();
+        // On the monitor's thread: only hand the news over.
+        volumes_->Start([changed = volumesChanged_]() { changed->store(true); });
+    }
+    nextRead_ = std::chrono::steady_clock::now() + std::chrono::milliseconds(refreshMs_);
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    timer_ = app->StartTimer(250, true, [this](TimerId) {
+        if (!IsOpen() || busy_ || reading_) return;
+        const auto now = std::chrono::steady_clock::now();
+        bool due = volumesChanged_->exchange(false);
+        if (refreshMs_ > 0 && now >= nextRead_) due = true;
+        if (!due) return;
+        nextRead_ = now + std::chrono::milliseconds(refreshMs_);
+        Read();
+    });
+}
+
+void UltraDesktopDevicePanel::StopLiveRefresh() {
+    if (timer_) {
+        if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(timer_);
+        timer_ = 0;
+    }
+    if (volumes_) {
+        volumes_->Stop();
+        volumes_.reset();
+    }
+}
+
+std::string UltraDesktopDevicePanel::Signature(const DevicePanelContent& content) {
+    std::string signature = content.summary + '\n' + content.empty + '\n';
+    for (const DevicePanelEntry& entry : content.entries) {
+        signature += entry.title + '\t' + entry.detail + '\t' + (entry.highlighted ? "1" : "0") +
+                     (entry.heading ? "h" : "") + entry.actionLabel + '\n';
+    }
+    return signature;
+}
 
 void UltraDesktopDevicePanel::Build(UltraCanvasWindow& window) {
     window.layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -89,19 +145,26 @@ void UltraDesktopDevicePanel::Build(UltraCanvasWindow& window) {
     }
 
     busy_ = false;
+    reading_ = false;
+    shown_.clear();
     Read();
+    StartLiveRefresh();
 }
 
 void UltraDesktopDevicePanel::Unbuild() {
+    StopLiveRefresh();
     summary_.reset();
     list_.reset();
     message_.reset();
 }
 
 void UltraDesktopDevicePanel::Read() {
-    if (!read_) return;
+    if (!read_ || reading_) return;
+    reading_ = true;
     work_.Run<DevicePanelContent>(read_, [this](DevicePanelContent content) {
-        if (IsOpen()) Apply(content);
+        reading_ = false;
+        // A run that started meanwhile applies its own reading.
+        if (IsOpen() && !busy_) Apply(content);
     });
 }
 
@@ -133,6 +196,11 @@ void UltraDesktopDevicePanel::RunEntryAction(const DevicePanelEntry& entry) {
 
 void UltraDesktopDevicePanel::Apply(const DevicePanelContent& content) {
     if (!summary_ || !list_) return;
+    // The rows are buttons the person may be about to click: rebuilt only
+    // when something shown changed.
+    const std::string signature = Signature(content);
+    if (signature == shown_) return;
+    shown_ = signature;
     summary_->SetText(content.summary);
     list_->ClearChildren();
     int index = 0;
