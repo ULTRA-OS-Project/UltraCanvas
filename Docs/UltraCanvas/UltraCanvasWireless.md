@@ -110,8 +110,10 @@ On Linux setting the handler registers a BlueZ agent (`org.bluez.Agent1`,
 and asks BlueZ to make it the default agent: a pairing the device starts (a
 phone pairing with the computer) comes to the handler too, at any time, and
 so does a connection from a device that is not trusted
-(`WirelessPairingStep::AllowConnection`). Where BlueZ was not running yet,
-the next `ReadBluetooth` tries again, at most every half minute. Without a
+(`WirelessPairingStep::AllowConnection`). The agent's thread watches BlueZ's
+name on the bus and registers the agent again whenever BlueZ appears - when
+it starts after the handler was set, and after `bluetoothd` restarts, which
+forgets every agent. Without a
 handler no agent is registered and a device that needs a code does not
 pair. macOS hands IOBluetoothDevicePair's
 passkey, comparison and PIN requests to it (without one a comparison is

@@ -28,3 +28,7 @@
   trusted (`WirelessPairingStep::AllowConnection`); a service of a device
   being paired from here, or of a trusted one, is allowed without asking.
   When BlueZ was not running yet, the agent is registered on a later read.
+- The Linux pairing agent follows BlueZ: its thread watches `org.bluez` on
+  the system bus and registers the agent again - as the default - whenever
+  BlueZ appears, so a `bluetoothd` restart or a late start no longer leaves
+  the desktop without one.

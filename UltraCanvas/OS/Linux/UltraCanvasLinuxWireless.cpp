@@ -18,11 +18,13 @@
 //
 // Pairing codes: as soon as a pairing handler is set (SetPairingHandler), an
 // org.bluez.Agent1 ("KeyboardDisplay") is registered - as BlueZ's default
-// agent, so pairings a device starts come here as well - on a GLib loop of
-// its own, and BlueZ's requests - show a code, confirm one, type one, let
+// agent, so pairings a device starts come here as well, and again whenever
+// BlueZ reappears on the bus - on a GLib loop of its own, and BlueZ's requests - show a code, confirm one, type one, let
 // an untrusted device connect - go to the handler. Without a handler no agent is
 // registered and a device that needs a code does not pair; the error says
 // so.
+// Version: 1.3.0 - the agent is registered again whenever BlueZ appears on
+//                  the bus (bluetoothd restarted or started late)
 // Version: 1.2.0 - the default agent: registered when the handler is set,
 //                  retried while BlueZ is away; AuthorizeService asks for
 //                  untrusted devices
@@ -41,6 +43,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <condition_variable>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -511,77 +514,105 @@ namespace {
 
     // Register the agent once, on its own thread; false with the reason
     // when BlueZ or the bus refused it (the next pairing tries again).
-    std::atomic<bool> agentRegistered{false};
-    std::atomic<int64_t> agentLastAttempt{0};   // steady-clock seconds
+    // The agent's state, shared by its thread and the callers. The thread
+    // runs for the life of the process once the agent object is on the bus;
+    // BlueZ coming and going is followed on it (a name watch), and the
+    // agent is registered again each time BlueZ appears - at start, after
+    // bluetoothd restarts, after a late start.
+    std::mutex agentMutex;
+    std::condition_variable agentChanged;
+    bool agentThread = false;       // the thread runs
+    bool agentRegistered = false;   // BlueZ has the agent now
+    int agentAnswers = 0;           // counts every registration outcome
+    std::string agentError;
 
-    bool EnsureAgent(std::string& error) {
-        static std::mutex mutex;
-        std::lock_guard<std::mutex> lock(mutex);
-        if (agentRegistered.load()) return true;
-        agentLastAttempt.store(std::chrono::duration_cast<std::chrono::seconds>(
-                                   std::chrono::steady_clock::now().time_since_epoch()).count());
-        auto ready = std::make_shared<std::promise<std::string>>();
-        std::future<std::string> answer = ready->get_future();
-        std::thread([ready]() {
-            GMainContext* context = g_main_context_new();
-            g_main_context_push_thread_default(context);
-            std::string reason;
-            GDBusConnection* bus = SystemBus(reason);
-            GDBusNodeInfo* node = bus ? g_dbus_node_info_new_for_xml(kAgentXml, nullptr) : nullptr;
-            static const GDBusInterfaceVTable vtable = {AgentMethod, nullptr, nullptr, {nullptr}};
-            guint id = 0;
-            if (node) {
-                GError* gerror = nullptr;
-                id = g_dbus_connection_register_object(bus, kAgentPath, node->interfaces[0], &vtable, nullptr, nullptr,
-                                                       &gerror);
-                if (!id) reason = Message(gerror);
-            }
-            if (id && !CallVoid(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
-                                g_variant_new("(os)", kAgentPath, "KeyboardDisplay"), reason) &&
-                reason.find("AlreadyExists") == std::string::npos && reason.find("Already Exists") == std::string::npos) {
-                g_dbus_connection_unregister_object(bus, id);
-                id = 0;
-            }
-            if (id) {
-                // The default agent: a pairing a device starts (a phone
-                // pairing with the computer) comes here too. Another
-                // desktop's agent may hold the place; ours then serves only
-                // the pairings started from here.
-                reason.clear();
-                std::string ignored;
-                CallVoid(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent",
-                         g_variant_new("(o)", kAgentPath), ignored);
-            }
-            if (node) g_dbus_node_info_unref(node);
-            if (!id) {
-                ready->set_value(reason.empty() ? "no agent" : reason);
-                g_main_context_pop_thread_default(context);
-                g_main_context_unref(context);
-                return;
-            }
-            ready->set_value("");
-            // For the life of the process: the agent answers BlueZ here.
-            GMainLoop* loop = g_main_loop_new(context, FALSE);
-            g_main_loop_run(loop);
-        }).detach();
-        if (answer.wait_for(std::chrono::seconds(5)) != std::future_status::ready) {
-            error = "the pairing agent did not start";
-            return false;
+    void AgentOutcome(bool registered, const std::string& error) {
+        {
+            std::lock_guard<std::mutex> lock(agentMutex);
+            agentRegistered = registered;
+            agentError = error;
+            ++agentAnswers;
         }
-        error = answer.get();
-        agentRegistered.store(error.empty());
-        return error.empty();
+        agentChanged.notify_all();
     }
 
-    // With a handler and no agent yet - BlueZ was not running when the
-    // handler came, or restarted - try again, at most every half minute.
-    void MaybeRegisterAgent() {
-        if (agentRegistered.load() || !HasPairingHandler()) return;
-        const int64_t now = std::chrono::duration_cast<std::chrono::seconds>(
-                                std::chrono::steady_clock::now().time_since_epoch()).count();
-        if (now - agentLastAttempt.load() < 30) return;
-        std::string ignored;
-        EnsureAgent(ignored);
+    // On the agent's thread, when BlueZ is (back) on the bus.
+    void RegisterWithBlueZ() {
+        std::string reason;
+        const bool registered =
+            CallVoid(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RegisterAgent",
+                     g_variant_new("(os)", kAgentPath, "KeyboardDisplay"), reason) ||
+            reason.find("AlreadyExists") != std::string::npos || reason.find("Already Exists") != std::string::npos;
+        if (registered) {
+            // The default agent: a pairing a device starts (a phone pairing
+            // with the computer) comes here too. Another desktop's agent may
+            // hold the place; ours then serves only the pairings started
+            // from here.
+            std::string ignored;
+            CallVoid(kBlueZ, "/org/bluez", "org.bluez.AgentManager1", "RequestDefaultAgent",
+                     g_variant_new("(o)", kAgentPath), ignored);
+        }
+        AgentOutcome(registered, registered ? "" : reason);
+    }
+
+    void BlueZAppeared(GDBusConnection*, const gchar*, const gchar*, gpointer) {
+        RegisterWithBlueZ();
+    }
+
+    void BlueZVanished(GDBusConnection*, const gchar*, gpointer) {
+        // bluetoothd stopped: it forgot the agent. It is registered again
+        // when BlueZ is back.
+        AgentOutcome(false, "BlueZ is not running");
+    }
+
+    // Start the agent's thread once; wait (up to five seconds) for BlueZ's
+    // answer. False with the reason while BlueZ has not taken the agent -
+    // which it still will when it appears.
+    bool EnsureAgent(std::string& error) {
+        std::unique_lock<std::mutex> lock(agentMutex);
+        if (agentRegistered) return true;
+        const int answersBefore = agentAnswers;
+        if (!agentThread) {
+            agentThread = true;
+            std::thread([]() {
+                GMainContext* context = g_main_context_new();
+                g_main_context_push_thread_default(context);
+                std::string reason;
+                GDBusConnection* bus = SystemBus(reason);
+                GDBusNodeInfo* node = bus ? g_dbus_node_info_new_for_xml(kAgentXml, nullptr) : nullptr;
+                static const GDBusInterfaceVTable vtable = {AgentMethod, nullptr, nullptr, {nullptr}};
+                guint id = 0;
+                if (node) {
+                    GError* gerror = nullptr;
+                    id = g_dbus_connection_register_object(bus, kAgentPath, node->interfaces[0], &vtable, nullptr,
+                                                           nullptr, &gerror);
+                    if (!id) reason = Message(gerror);
+                    g_dbus_node_info_unref(node);
+                }
+                if (!id) {
+                    {
+                        std::lock_guard<std::mutex> stop(agentMutex);
+                        agentThread = false;   // the next pairing tries again
+                    }
+                    AgentOutcome(false, reason.empty() ? "no agent" : reason);
+                    g_main_context_pop_thread_default(context);
+                    g_main_context_unref(context);
+                    return;
+                }
+                // Calls BlueZAppeared at once when BlueZ runs, BlueZVanished
+                // when it does not, and again on every change after.
+                g_bus_watch_name_on_connection(bus, kBlueZ, G_BUS_NAME_WATCHER_FLAGS_NONE, BlueZAppeared,
+                                               BlueZVanished, nullptr, nullptr);
+                // For the life of the process: the agent answers BlueZ here.
+                GMainLoop* loop = g_main_loop_new(context, FALSE);
+                g_main_loop_run(loop);
+            }).detach();
+        }
+        agentChanged.wait_for(lock, std::chrono::seconds(5),
+                              [answersBefore]() { return agentRegistered || agentAnswers != answersBefore; });
+        if (agentRegistered) return true;
+        error = agentAnswers == answersBefore ? "the pairing agent did not start" : agentError;
+        return false;
     }
 
 } // namespace
@@ -761,7 +792,6 @@ bool ForgetWifi(const std::string& ssid, std::string& error) {
 
 WirelessBluetoothStatus ReadBluetooth() {
     WirelessBluetoothStatus status;
-    MaybeRegisterAgent();
     BlueZTree tree;
     if (!ReadTree(tree, status.error)) {
         status.available = status.error == "There is no Bluetooth adapter.";
