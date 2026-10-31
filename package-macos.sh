@@ -265,6 +265,22 @@ microphone_usage() {
     esac
 }
 
+# Bluetooth and the Wi-Fi network names (UltraCanvasWireless): TCC ends an
+# app that touches IOBluetooth without NSBluetoothAlwaysUsageDescription,
+# and from macOS 14 CoreWLAN names the networks in reach only to an app that
+# Location Services allows, which asks with NSLocationWhenInUseUsageDescription.
+bluetooth_usage() {
+    case "$1" in
+        UltraDesktop) echo "UltraDesktop lists, pairs and connects your Bluetooth devices from its Bluetooth panel." ;;
+    esac
+}
+
+location_usage() {
+    case "$1" in
+        UltraDesktop) echo "macOS shows the names of the Wi-Fi networks in reach only to apps allowed to use Location Services. UltraDesktop uses it for that list and nothing else." ;;
+    esac
+}
+
 # The local network is every app's: an app that prints looks for IPP printers
 # on it (IODeviceManager's printer enumeration browses Bonjour), and
 # DeviceExplorer looks for eSCL scanners as well. NSBonjourServices lists each
@@ -300,6 +316,18 @@ privacy_plist_entries() {
         printf '    <key>NSMicrophoneUsageDescription</key>\n'
         printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
     fi
+    reason="$(bluetooth_usage "$exe_name")"
+    if [ -n "$reason" ]; then
+        printf '    <key>NSBluetoothAlwaysUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+    fi
+    reason="$(location_usage "$exe_name")"
+    if [ -n "$reason" ]; then
+        printf '    <key>NSLocationWhenInUseUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+        printf '    <key>NSLocationUsageDescription</key>\n'
+        printf '    <string>%s</string>\n' "$(xml_escape "$reason")"
+    fi
 }
 
 # Where write_app_entitlements leaves each app's entitlements for
@@ -322,6 +350,10 @@ write_app_entitlements() {
     if [ -n "$(microphone_usage "$exe_name")" ]; then
         /usr/libexec/PlistBuddy -c "Add :com.apple.security.device.audio-input bool true" "$out"
         devices+=" microphone"
+    fi
+    if [ -n "$(location_usage "$exe_name")" ]; then
+        /usr/libexec/PlistBuddy -c "Add :com.apple.security.personal-information.location bool true" "$out"
+        devices+=" location"
     fi
     plutil -lint "$out"
     echo "  Entitlements written (devices:${devices:- none})"

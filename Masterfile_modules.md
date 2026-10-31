@@ -967,6 +967,29 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
+- **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
+  operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
+  Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,
+  the fallback backend); backends `OS/Linux/UltraCanvasLinuxWireless.cpp`
+  (NetworkManager and BlueZ over GDBus),
+  `OS/MSWindows/UltraCanvasWindowsWireless.cpp` (`wlanapi`, `bthprops`) and
+  `OS/MacOS/UltraCanvasMacOSWireless.mm` (CoreWLAN, IOBluetooth,
+  CoreLocation); internal `UltraCanvasWirelessBackend.h`. Synchronous calls
+  that take seconds: call them from a worker thread.
+  - `ReadWifi` → `WirelessWifiStatus` (`WirelessNetwork` per name: signal,
+    security, known, connected), `RequestWifiScan`, `SetWifiEnabled`,
+    `ConnectWifi(ssid, password)` (a new profile is kept only once joined),
+    `DisconnectWifi`, `ForgetWifi`.
+  - `ReadBluetooth` → `WirelessBluetoothStatus` (`WirelessBluetoothDevice`:
+    address, name, kind, paired, connected, battery), `CanSetBluetoothPower`
+    / `SetBluetoothPowered`, `StartBluetoothDiscovery` /
+    `StopBluetoothDiscovery`, `PairBluetoothDevice`,
+    `ConnectBluetoothDevice`, `DisconnectBluetoothDevice`,
+    `RemoveBluetoothDevice`.
+  - `HasSystemSettings` / `OpenSystemSettings(WirelessRadio)` - the
+    platform's own page (Windows, macOS).
+  See `Docs/UltraCanvas/UltraCanvasWireless.md`.
+
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
   `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
   clipboard history of ULTRA OS: every copy (files, images, text with its
