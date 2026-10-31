@@ -14,3 +14,6 @@
   DiskArbitration's whole disk and named by the drive's vendor and model,
   with its size and bus, as on Linux and Windows (the framework links
   DiskArbitration where the SDK has it).
+- The volumes of an APFS drive are grouped by the physical disk under their
+  container (found in the IOKit registry), so a drive with two containers
+  is one entry too, named and sized by the drive itself.

@@ -8,9 +8,11 @@
 // device ejected.
 //
 // The id is the path of one of the drive's volumes (ejecting one ejects
-// them all). The volumes of an APFS container share its synthesized whole
-// disk and are grouped by it; a build without DiskArbitration lists one
-// entry per volume, as 1.0.0 did.
+// them all). The volumes of an APFS container are grouped by the physical
+// disk under the container (the IOKit service plane, from the container's
+// synthesized disk up), so a drive with two containers is one entry; a
+// build without DiskArbitration lists one entry per volume, as 1.0.0 did.
+// Version: 1.2.0 - APFS: grouped by the physical disk, not the container
 // Version: 1.1.0 - one entry per drive (DiskArbitration's whole disk), named
 //                  by its vendor and model, with its size and bus
 // Version: 1.0.0
@@ -23,6 +25,8 @@
 #import <Foundation/Foundation.h>
 #if __has_include(<DiskArbitration/DiskArbitration.h>)
     #import <DiskArbitration/DiskArbitration.h>
+    #include <IOKit/IOKitLib.h>
+    #include <IOKit/IOBSD.h>
     #define ULTRACANVAS_DRIVES_HAS_DISKARBITRATION 1
 #endif
 
@@ -67,6 +71,38 @@ namespace {
         return std::string([[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]] UTF8String] ?: "");
     }
 
+    // The physical disk under `bsdName`: for an APFS container's
+    // synthesized disk ("disk5") the disk that holds its physical store
+    // ("disk4"), found by walking the IOKit service plane up from the
+    // container's IOMedia to the topmost whole IOMedia; any other whole
+    // disk is its own. "" when IOKit does not know the name.
+    std::string PhysicalWholeDisk(const std::string& bsdName) {
+        CFMutableDictionaryRef matching = IOBSDNameMatching(MACH_PORT_NULL, 0, bsdName.c_str());
+        if (!matching) return "";
+        io_registry_entry_t entry = IOServiceGetMatchingService(MACH_PORT_NULL, matching);   // consumes `matching`
+        if (!entry) return "";
+        std::string top = bsdName;
+        for (;;) {
+            io_registry_entry_t parent = 0;
+            if (IORegistryEntryGetParentEntry(entry, kIOServicePlane, &parent) != KERN_SUCCESS) break;
+            IOObjectRelease(entry);
+            entry = parent;
+            if (!IOObjectConformsTo(entry, "IOMedia")) continue;
+            CFTypeRef whole = IORegistryEntryCreateCFProperty(entry, CFSTR("Whole"), kCFAllocatorDefault, 0);
+            const bool isWhole = whole && CFGetTypeID(whole) == CFBooleanGetTypeID() &&
+                                 CFBooleanGetValue(static_cast<CFBooleanRef>(whole));
+            if (whole) CFRelease(whole);
+            if (!isWhole) continue;
+            CFTypeRef name = IORegistryEntryCreateCFProperty(entry, CFSTR("BSD Name"), kCFAllocatorDefault, 0);
+            if (name && CFGetTypeID(name) == CFStringGetTypeID()) {
+                top = std::string([(__bridge NSString*)name UTF8String] ?: "");
+            }
+            if (name) CFRelease(name);
+        }
+        IOObjectRelease(entry);
+        return top;
+    }
+
     bool WholeDiskOf(DASessionRef session, NSURL* volume, WholeDisk& out) {
         DADiskRef disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, (__bridge CFURLRef)volume);
         if (!disk) return false;
@@ -75,6 +111,17 @@ namespace {
         if (!whole) return false;
         const char* bsd = DADiskGetBSDName(whole);
         out.bsdName = bsd ? bsd : "";
+        // An APFS container's volumes sit on a synthesized disk: name, size
+        // and bus are the physical disk's, and so is the grouping, so that
+        // two containers on one drive are one entry.
+        const std::string physical = out.bsdName.empty() ? "" : PhysicalWholeDisk(out.bsdName);
+        if (!physical.empty() && physical != out.bsdName) {
+            if (DADiskRef store = DADiskCreateFromBSDName(kCFAllocatorDefault, session, physical.c_str())) {
+                CFRelease(whole);
+                whole = store;
+                out.bsdName = physical;
+            }
+        }
         CFDictionaryRef description = DADiskCopyDescription(whole);
         if (description) {
             const std::string vendor = StringOfKey(description, kDADiskDescriptionDeviceVendorKey);
