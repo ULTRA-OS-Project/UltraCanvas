@@ -2,6 +2,8 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.5.2 - the settings button shows the ULTRA OS logo in colour, wider
+//                  than the other items (media/icons/desktop/ultraos-logo-*.png)
 // Version: 0.5.1 - the desktop on the primary monitor (area_), the others
 //                  covered on X11 too; panels and toasts placed from it; a
 //                  primary that moves is followed (FollowPrimaryScreen)
@@ -88,6 +90,11 @@ constexpr int   kBarThickness   = 52;   // the taskbar's width (height when hori
 constexpr int   kInfoPanelWidth = 48;   // the right bar: icons only, labels are tooltips
 constexpr int   kBarButton      = 40;   // one item's box
 constexpr int   kBarIcon        = 24;
+// The settings button shows the ULTRA OS logo (384 x 200), wider than an icon.
+constexpr int   kLogoButtonWide = 64;
+constexpr int   kLogoWidth      = 384;
+constexpr int   kLogoHeight     = 200;
+const char* const kLogoForDarkBar = "ultraos-logo-dark.png";   // ultraos-logo-light.png: for a light ground
 constexpr int   kInfoButton     = 36;   // the info panel's items, fourteen of them
 constexpr int   kInfoIcon       = 20;
 // Below this height the info panel's items are smaller, and what still does
@@ -419,8 +426,16 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 
     // 1. System: ULTRA OS settings and the app starter.
     auto system = MakeGroup("Taskbar.System", vertical, false);
-    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath("ultraos.svg"),
+    // The ULTRA OS logo in its own colours, wider than the other items: it
+    // is twice as wide as it is high. The variant drawn for a dark ground
+    // (the bar is dark grey); the one for a light ground is beside it.
+    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(kLogoForDarkBar),
                                        [this]() { OpenSystemSettings(); });
+    settingsButton->SetUseIconAsMask(false);
+    const int logoBox = vertical ? kBarThickness - 4 : kLogoButtonWide;
+    const int logoWidth = logoBox - 4;
+    settingsButton->SetElementSize(Size2Df(static_cast<float>(logoBox), static_cast<float>(kBarButton)));
+    settingsButton->SetIconSize(logoWidth, logoWidth * kLogoHeight / kLogoWidth);
     settingsButton->onContextMenu = [this](int x, int y) { ShowSettingsButtonMenu(x, y); };
     AddBarButton(system, "apps", "Applications", IconPath("apps.svg"),
                  [this]() { OpenAppStarter(); });

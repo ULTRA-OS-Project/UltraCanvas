@@ -34,7 +34,11 @@ Changelog and version: [`Docs/UltraDesktop/CHANGELOG.md`](../../Docs/UltraDeskto
 | `UltraDesktop.desktop` | The freedesktop entry (NoDisplay: the session starts the desktop, not the menu); `make install` places it with the app icon (`media/appicon/UltraDesktop.png` / `.svg`) in the `hicolor` theme |
 
 Bar icons are in `media/icons/desktop/` — monochrome SVGs the toolbar tints
-through the icon mask.
+through the icon mask. The settings button is the exception: the ULTRA OS
+logo in its own colours, `ultraos-logo-dark.png` (drawn for a dark ground,
+the one the bar uses) with `ultraos-logo-light.png` beside it for a light
+ground; it is twice as wide as high, so its button is wider than the others
+(64 px on a horizontal bar, the bar's width less a margin on a vertical one).
 
 ## Data flow
 
