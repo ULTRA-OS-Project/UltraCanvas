@@ -24,6 +24,8 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.6.0 - CaptureScreenArea: one rectangle of the root window (XGetImage of
+//                  that much, not the whole screen and a crop)
 // Version: 1.2.1 - ReserveScreenEdges reserves only the root's edges the window
 //                  lies on, its strips the window's own extent: a desktop on
 //                  one monitor of several claims nothing on the others
@@ -723,7 +725,9 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
 // surfaces use, and the one the QR scanner reads as BGRA32, so the same rows
 // serve the PNG writer and an in-memory consumer alike. Caller holds
 // g_queryMutex.
-bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
+// `area` nullptr: the whole root window; else that rectangle of it, clipped
+// to the root (false when nothing of it lies on the screen).
+bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error, const int* area = nullptr) {
     out = DesktopScreenImage();
     Display* d = QueryDisplay();
     if (!d) {
@@ -732,13 +736,28 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
     }
     ScopedErrorHandler guard;
     const int screen = DefaultScreen(d);
-    const int width = DisplayWidth(d, screen);
-    const int height = DisplayHeight(d, screen);
-    if (width <= 0 || height <= 0) {
+    const int screenWidth = DisplayWidth(d, screen);
+    const int screenHeight = DisplayHeight(d, screen);
+    if (screenWidth <= 0 || screenHeight <= 0) {
         error = "The X server reports an empty screen.";
         return false;
     }
-    XImage* image = XGetImage(d, RootOf(d), 0, 0, static_cast<unsigned>(width),
+    int originX = 0, originY = 0, width = screenWidth, height = screenHeight;
+    if (area) {
+        const int left = std::max(0, area[0]);
+        const int top = std::max(0, area[1]);
+        const int right = std::min(screenWidth, area[0] + area[2]);
+        const int bottom = std::min(screenHeight, area[1] + area[3]);
+        if (right <= left || bottom <= top) {
+            error = "The area to capture lies off the screen.";
+            return false;
+        }
+        originX = left;
+        originY = top;
+        width = right - left;
+        height = bottom - top;
+    }
+    XImage* image = XGetImage(d, RootOf(d), originX, originY, static_cast<unsigned>(width),
                               static_cast<unsigned>(height), AllPlanes, ZPixmap);
     if (!image) {
         error = "The X server refused to hand over the screen contents.";
@@ -784,6 +803,8 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
         }
     }
     XDestroyImage(image);
+    out.x = originX;
+    out.y = originY;
     out.width = width;
     out.height = height;
     out.stride = stride;
@@ -793,6 +814,12 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
 bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
     std::lock_guard<std::mutex> lock(g_queryMutex);
     return CaptureScreenLocked(out, error);
+}
+
+bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error) {
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    const int area[4] = {x, y, width, height};
+    return CaptureScreenLocked(out, error, area);
 }
 
 bool CaptureScreen(const std::string& pngPath, std::string& error) {

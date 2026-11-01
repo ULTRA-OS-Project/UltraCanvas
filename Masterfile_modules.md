@@ -546,7 +546,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -914,8 +914,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
-    (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
-    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
+    (PNG), `CaptureScreenImage` (pixels in memory), `CaptureScreenArea` (one
+    rectangle of the screen as pixels, clipped to it - a screenshot tool's
+    snip, a screen recorder's frames; `DesktopScreenImage::x` / `y` say
+    where the pixels came from), `DefaultScreenshotPath`
+    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`),
+    `DefaultRecordingPath`
+    (`<Videos>/Screen Recordings/Screen recording <date> <time>.mp4`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
@@ -2478,7 +2483,7 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
   (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
-  `VideoFXPictureReader`
+  `VideoFXPictureReader`, `VideoFXRecorderSettings`, `VideoFXPixelLayout`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2497,6 +2502,12 @@ command-line tool. Planned: keyframed parameters.
   and, inside an overlap, the transition), `VideoFX_RenderFrame` (one frame
   in one call), `VideoFX_PlanSlideshow` (a slideshow's segments and
   settings before it is rendered)
+- Recording: `VideoFXFrameRecorder` (`Open`, `PushFrame` - pixels with
+  their stride and layout, RGBA or BGRA, and the frame's time - `Close`,
+  `IsOpen`, `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight`,
+  `GetEncoderName`): a live source's frames, pushed one by one as they
+  happen, encoded into a file as they come - what UltraSnip records the
+  screen with. No timeline, no sound, the fastest preset, fragmented MP4.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,

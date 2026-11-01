@@ -912,6 +912,45 @@ reach them too. Proxies can be made on the hardware as well
 
 ---
 
+## Recording a live source
+
+An export reads files; a recording takes frames as they happen. A screen
+recorder, a window capture or a camera hands `VideoFXFrameRecorder` one
+frame at a time with the moment it was taken, and the recorder encodes it
+into the file at once - the file grows while the recording runs and is
+complete after `Close()`. No sound: the microphone and loudspeaker capture
+stay the application's for now.
+
+```cpp
+VideoFXFrameRecorder recorder;
+VideoFXRecorderSettings settings;
+settings.frameRate = 20.0;                 // the file's rate
+if (recorder.Open("recording.mp4", settings) != VideoFXResult::Ok)
+    std::cerr << VideoFX_GetLastError() << "\n";
+while (recording) {
+    // the screen's pixels, four bytes each, B G R x - as every platform's
+    // screen capture gives them (UltraCanvasDesktopShell::CaptureScreenArea)
+    recorder.PushFrame(pixels, width, height, stride, SecondsSinceStart(), VideoFXPixelLayout::BGRA);
+}
+recorder.Close();
+```
+
+The frame's time places it: it lands on the nearest tick of the file's
+rate, a frame on a tick already written is dropped, and a gap (a slow
+capture) shows the last frame longer - so the recording keeps real time
+however many frames were caught. The size is the settings' or the first
+frame's, made even (H.264's 4:2:0 needs it), and every frame is scaled to
+it, so a source that changes size still records. `VideoFXRecorderSettings`
+takes the export's `container`, `videoCodec`, `quality`, `videoBitRate`,
+`keyframeInterval` and `acceleration`; its `encoderPreset` defaults to
+`"veryfast"` and the x264 / x265 encoders run with `zerolatency`, so a
+frame leaves the encoder as it comes in rather than after a look-ahead. An
+MP4 or MOV is written fragmented (`frag_keyframe`), so a recording cut
+short - the program killed, the machine off - still plays up to its last
+keyframe. `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight` and
+`GetEncoderName` describe the recording so far. UltraSnip (`Apps/UltraSnip`)
+records the screen with it.
+
 ## One-line helpers
 
 All of these are single-segment timelines over `VideoFX_Export`:

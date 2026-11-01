@@ -2,6 +2,9 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
+// Version: 0.5.2 - the screenshot button opens UltraSnip: a click snips an area, the
+//                  right click offers a window, the screen and a recording;
+//                  Super+Shift+S from any window; TakeScreenshot stays the fallback
 // Version: 0.5.1 - the desktop on the primary monitor (area_), the others
 //                  covered on X11 too; panels and toasts placed from it; a
 //                  primary that moves is followed (FollowPrimaryScreen)
@@ -162,6 +165,7 @@ UltraDesktopWindow::~UltraDesktopWindow() {
     trayHost_.Stop();
     appsShortcut_.Stop();
     lockShortcut_.Stop();
+    snipShortcut_.Stop();
     clipboardShortcut_.Stop();
     clipboardPanel_.reset();
     clockPanel_.reset();
@@ -217,6 +221,7 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     shellMonitor_.Start([this]() { windowsDirty_.store(true); });
     if (shellSession_) StartTray();
     StartDesktopShortcuts();
+    StartSnipShortcut();
     StartDevicePoll();
     // The pairing handler, from the start (see EnsureBluetoothPanel).
     EnsureBluetoothPanel();
@@ -1051,8 +1056,12 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
         if (history_) ShowClipboardButtonMenu(windowX, windowY);
     };
     UpdateClipboardButton();
-    AddBarButton(organiser_, "screenshot", "Screenshot of the screen", IconPath("screenshot.svg"),
-                 [this]() { TakeScreenshot(); });
+    // A click snips an area in UltraSnip; the right click offers the other
+    // shapes, a recording and the plain whole-screen capture.
+    auto screenshot = AddBarButton(organiser_, "screenshot",
+                                   "Snip: a picture or a video of the screen (Super+Shift+S)",
+                                   IconPath("screenshot.svg"), [this]() { OpenSnip({"--rectangle"}); });
+    screenshot->onContextMenu = [this](int windowX, int windowY) { ShowScreenshotMenu(windowX, windowY); };
     bar->AddChild(organiser_);
 
     // As on the taskbar, the wave starts 4 px past the organiser's last
@@ -1189,6 +1198,37 @@ void UltraDesktopWindow::OpenFiler(const std::string& path) {
     if (!UltraCanvasDesktopShell::LaunchProgram(settings_.filerProgram, arguments, &error)) {
         debugOutput << "UltraDesktop: " << error << std::endl;
     }
+}
+
+void UltraDesktopWindow::OpenSnip(const std::vector<std::string>& arguments) {
+    std::string error;
+    if (UltraCanvasDesktopShell::FindProgram("UltraSnip").empty()) {
+        // No UltraSnip beside the desktop: the whole screen to Pictures, as before
+        TakeScreenshot();
+        return;
+    }
+    if (UltraCanvasDesktopShell::LaunchProgram("UltraSnip", arguments, &error)) return;
+    debugOutput << "UltraDesktop: UltraSnip could not be started: " << error << std::endl;
+    UltraCanvasAlert::Error("UltraSnip could not be started: " + error, "Screenshot", nullptr, window_.get());
+}
+
+void UltraDesktopWindow::ShowScreenshotMenu(int windowX, int windowY) {
+    if (!window_) return;
+    popupMenu_ = std::make_shared<UltraCanvasMenu>("ScreenshotButtonMenu", 0, 0, 260, 0);
+    popupMenu_->SetMenuType(MenuType::PopupMenu);
+    popupMenu_->AddItem(MenuItemData::Header("Snip"));
+    popupMenu_->AddItem(MenuItemData::Action("Snip an area", [this]() { OpenSnip({"--rectangle"}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Snip a window", [this]() { OpenSnip({"--window"}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Snip the whole screen", [this]() { OpenSnip({"--screen"}); }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Record an area", [this]() { OpenSnip({"--rectangle", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Record a window", [this]() { OpenSnip({"--window", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Action("Record the whole screen", [this]() { OpenSnip({"--screen", "--video"}); }));
+    popupMenu_->AddItem(MenuItemData::Separator());
+    popupMenu_->AddItem(MenuItemData::Action("Screenshot now, to Pictures", [this]() { TakeScreenshot(); }));
+    popupMenu_->AddItem(MenuItemData::Action("Open UltraSnip", [this]() { OpenSnip({}); }));
+    PopupElementSettings settings;
+    popupMenu_->OpenMenu(Point2Di(windowX - 270, windowY), *window_, settings);
 }
 
 void UltraDesktopWindow::TakeScreenshot() {
@@ -2109,6 +2149,18 @@ void UltraDesktopWindow::StartDesktopShortcuts() {
         }
     }, &error);
     if (!lock) debugOutput << "UltraDesktop: Super+L does not lock the screen: " << error << std::endl;
+}
+
+void UltraDesktopWindow::StartSnipShortcut() {
+    // Super+Shift+S from any window, as the Windows snipping tool: an area
+    // in UltraSnip. The shortcut's thread hands the press to the UI thread.
+    std::string error;
+    const bool started = snipShortcut_.Start("Super+Shift+S", [this]() {
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([this]() { OpenSnip({"--rectangle"}); });
+        }
+    }, &error);
+    if (!started) debugOutput << "UltraDesktop: Super+Shift+S does not open UltraSnip: " << error << std::endl;
 }
 
 void UltraDesktopWindow::RefreshTray() {

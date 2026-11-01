@@ -5165,6 +5165,31 @@ endif()
 
 message(STATUS "")
 
+# ===== ULTRASNIP CAPTURE TEST =====
+# UltraSnip's pure helpers (Apps/UltraSnip/ui/UltraSnipCapture.cpp): the
+# rectangle from a drag, the crop of a BGRx capture into RGBA, the window
+# under a point, the recording bar's place. No display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraSnipCaptureTest...")
+    add_executable(UltraSnipCaptureTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraSnipCaptureTest.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraSnip/ui/UltraSnipCapture.cpp
+    )
+    target_include_directories(UltraSnipCaptureTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/UltraSnip/ui)
+    target_compile_features(UltraSnipCaptureTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraSnipCaptureTest PRIVATE UltraCanvas)
+    set_target_properties(UltraSnipCaptureTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraSnipCaptureTest COMMAND UltraSnipCaptureTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraSnipCaptureTest")
+endif()
+
+message(STATUS "")
+
 # ===== DESKTOP SHELL TEST =====
 # Kept in its own file so the Windows CI row can build it without the full
 # suite (ULTRACANVAS_BUILD_DESKTOPSHELL_TESTS in the top-level CMakeLists.txt).
