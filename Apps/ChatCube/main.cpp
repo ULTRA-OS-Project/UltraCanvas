@@ -7,22 +7,24 @@
 // Telegram; XMPP and others follow as further providers.
 //
 //   ChatCube                     open the window
-//   ChatCube --dark              in the dark look
+//   ChatCube --dark              in the dark look (else the one the Settings window chose)
 //   ChatCube --debug             and say what the networks do, on stderr
 //   ChatCube --log <file>        the same, appended to a file
 //   ChatCube --minimized         start in the background, the window minimized
 //                                (what UltraDesktop's "start with the desktop" asks)
 //   ChatCube --version / --help
 //
+// Version: 0.1.5 - the settings (ChatCubeSettings): the look from them unless --dark says, handed to the window
 // Version: 0.1.4 - --minimized (UltraDesktop's "start with the desktop")
 // Version: 0.1.3 - the preview pictures of files sent (UltraIM_SetPreviewMaker): pictures through the
 //                  image pipeline, videos through VideoFX when it is built in
 // Version: 0.1.2 - --dark
 // Version: 0.1.1 - --debug and --log
 // Version: 0.1.0
-// Last Modified: 2026-10-25
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 
+#include "ui/ChatCubeSettings.h"
 #include "ui/ChatCubeTheme.h"
 #include "ui/ChatCubeWindow.h"
 
@@ -150,7 +152,7 @@ bool MakePreview(const std::string& path, const std::string& mimeType, int maxSi
 void PrintUsage(const char* program) {
     std::printf("ChatCube %s - the ULTRA OS messenger\n\n"
                 "Usage: %s [--dark] [--minimized] [--debug | --log <file>] [--version | --help]\n\n"
-                "  --dark                the dark look (the light one otherwise)\n"
+                "  --dark                the dark look (otherwise the one chosen in Settings)\n"
                 "  --minimized           start with the window minimized: messages arrive in\n"
                 "                        the background (a desktop starting it with itself)\n"
                 "  --debug               say what the networks do (sign-ins, TDLib's answers,\n"
@@ -216,6 +218,10 @@ int main(int argc, char** argv) {
     }
     if (start == UltraCanvasSingleInstance::Start::AlreadyRunning)
         return UltraCanvasSingleInstance::RunAlreadyRunningAlert(app, "ChatCube");
+    // What the Settings window chose last; --dark wins over its look.
+    ChatCube::Settings settings;
+    settings.Load();
+    dark = dark || settings.dark;
     app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/ChatCube.png"));
     // The look, before any element is built: every element and the lists'
     // own painting take their colours from it (ui/ChatCubeTheme.h).
@@ -243,7 +249,7 @@ int main(int argc, char** argv) {
 
     int exitCode = EXIT_SUCCESS;
     {
-        ChatCube::ChatCubeWindow window(CHATCUBE_VERSION, "direct");
+        ChatCube::ChatCubeWindow window(CHATCUBE_VERSION, "direct", settings);
         if (!window.Create()) {
             std::fprintf(stderr, "ChatCube: the window could not be created.\n");
             exitCode = EXIT_FAILURE;

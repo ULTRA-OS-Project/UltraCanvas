@@ -1,5 +1,7 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.4 - the Settings window (the gear beside the copy button): the send key, typing either
+//                  way, the nearby list, 12-hour times and other date orders, signing out of a network
 // Version: 0.2.3 - a picture or a file waits in a strip above the field, with a x to drop it, and
 //                  goes with Enter or the send button; Ctrl+V pastes a picture or a file into it
 // Version: 0.2.2 - pictures: avatars from the person's photo, photos and videos in the bubbles and a
@@ -11,7 +13,7 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeWindow.h"
@@ -153,6 +155,15 @@ std::shared_ptr<UltraCanvasButton> MakeIconButton(const std::string& id, const s
     return b;
 }
 
+// A network's button in the sidebar (Matrix, Telegram): always the network's
+// name, which is what fits the third of the sidebar it has - where the
+// account stands ("Matrix: signed in as @alice:matrix.org") is its tooltip.
+void SetNetworkButton(const std::shared_ptr<UltraCanvasButton>& button, const std::string& name,
+                      const std::string& tooltip) {
+    button->SetText(name);
+    button->SetTooltip(tooltip);
+}
+
 std::shared_ptr<UltraCanvasTextInput> MakeInput(const std::string& id, const std::string& placeholder, int width,
                                                 bool pill = false) {
     auto t = std::make_shared<UltraCanvasTextInput>(id, 0, 0, width, kControlHeight);
@@ -255,8 +266,11 @@ std::string PresenceText(UltraIMPresence presence) {
 
 } // namespace
 
-ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId)
-    : version_(std::move(version)), providerId_(std::move(providerId)) {}
+ChatCubeWindow::ChatCubeWindow(std::string version, std::string providerId, Settings settings)
+    : version_(std::move(version)), providerId_(std::move(providerId)), settings_(settings),
+      dataFolder_(PathToUtf8(UltraCanvasDataFolder("ChatCube"))) {
+    SetDateTimeStyle(settings_.clock24, settings_.dateStyle);
+}
 
 ChatCubeWindow::~ChatCubeWindow() {
     // The tiles go with the window: no picture may be pushed into them after.
@@ -282,6 +296,7 @@ bool ChatCubeWindow::Create() {
     window_->SetBackgroundColor(L().ground);
     window_->AddChild(BuildSignInPage());
     window_->AddChild(BuildChatView());
+    ApplySettings();
     window_->onWindowClosed = [this]() { if (onClosed) onClosed(); };
 
     subscription_ = UltraIM_Subscribe([this](const UltraIMEvent& e) { OnEvent(e); });
@@ -406,6 +421,11 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSidebar() {
     copy->SetTooltip("Copy my ChatCube ID");
     copy->SetOnClick([this]() { CopyMyId(); });
     idRow->AddChild(copy);
+    // The gear opens the Settings window, as UltraFiler's does.
+    auto gear = MakeIconButton("cc-settings", "settings");
+    gear->SetTooltip("Settings");
+    gear->SetOnClick([this]() { OpenSettings(); });
+    idRow->AddChild(gear);
     sidebar->AddChild(idRow);
 
     // Adding someone: a pill, and a round plus.
@@ -721,7 +741,6 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     input_->SetWordWrap(true);
     input_->SetShowLineNumbers(false);
     input_->SetFontSize(11.0f);
-    input_->SetPlaceholder("Message\xE2\x80\xA6  (Enter sends, Shift+Enter for a new line)");
     input_->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
     {
         TextAreaStyle st = input_->GetStyle();
@@ -738,11 +757,13 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     input_->SetBackgroundColor(L().well);
     input_->SetBorders(0, Colors::Transparent);
     // Enter sends; Shift+Enter is left to the text area, which breaks the
-    // line. Ctrl+V (Shift+Insert) with a picture or a file on the clipboard
-    // puts it in the strip; with text, the area pastes it as usual.
+    // line - or, as the Settings window may say, Ctrl+Enter sends and Enter
+    // is the text area's. Ctrl+V (Shift+Insert) with a picture or a file on
+    // the clipboard puts it in the strip; with text, the area pastes it as usual.
     input_->onBeforeKeyDown = [this](const UCEvent& e) {
         const bool enter = e.virtualKey == UCKeys::Return || e.virtualKey == UCKeys::NumPadEnter;
-        if (enter && !e.shift) {
+        const bool sends = settings_.ctrlEnterSends ? (e.ctrl && !e.shift && !e.alt) : !e.shift;
+        if (enter && sends) {
             SendCurrentMessage();
             return true;
         }
@@ -751,7 +772,7 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
         return paste && PasteAttachment();
     };
     input_->SetOnTextChanged([this](const std::string& text) {
-        if (activeConversation_.empty() || text.empty()) return;
+        if (activeConversation_.empty() || text.empty() || !settings_.sendTyping) return;
         const int64_t now = NowMs();
         if (now - lastTypingSentMs_ < kTypingResendMs) return;
         lastTypingSentMs_ = now;
@@ -759,7 +780,6 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildConversationPane() {
     });
     composerRow->AddChild(input_);
     send_ = MakeIconButton("cc-send", "send", "", kIconButton, true);
-    send_->SetTooltip("Send (Enter)");
     send_->SetOnClick([this]() { SendCurrentMessage(); });
     composerRow->AddChild(send_);
     composer->AddChild(composerRow);
@@ -1235,7 +1255,7 @@ void ChatCubeWindow::RefreshNearby() {
             row->AddChild(add);
             nearbyBox_->AddChild(row);
         }
-        nearbyBox_->SetVisible(!list.empty());
+        nearbyBox_->SetVisible(!list.empty() && settings_.showNearby);
         if (window_) window_->RequestRedraw();
     });
 }
@@ -1620,8 +1640,9 @@ void ChatCubeWindow::RemoveStagedAttachment(const UltraCanvasContainer* tile) {
 
 void ChatCubeWindow::UpdateAttachmentStrip() {
     attachmentStrip_->SetVisible(!staged_.empty());
-    send_->SetTooltip(staged_.empty() ? "Send (Enter)"
-                                      : (staged_.size() == 1 ? "Send the file (Enter)" : "Send the files (Enter)"));
+    const std::string key = settings_.ctrlEnterSends ? "Ctrl+Enter" : "Enter";
+    send_->SetTooltip(staged_.empty() ? "Send (" + key + ")"
+                                      : (staged_.size() == 1 ? "Send the file (" : "Send the files (") + key + ")");
     if (window_) window_->RequestRedraw();
 }
 
@@ -1900,6 +1921,138 @@ void ChatCubeWindow::OnCallEvent(const UltraIMEvent& e) {
     UpdateHeader();
 }
 
+// ================================================================== settings
+
+void ChatCubeWindow::OpenSettings() {
+    if (!settingsWindow_) {
+        ChatCubeSettingsWindow::Hooks hooks;
+        hooks.applied = [this]() { ApplySettings(); };
+        hooks.accounts = [this]() { return Accounts(); };
+        hooks.myId = [this]() {
+            UltraIMProviderInfo info;
+            return UltraIM_GetProviderInfo(providerId_, info) ? info.localUserId : std::string();
+        };
+        hooks.copyMyId = [this]() { CopyMyId(); };
+        hooks.signOut = [this](const std::string& providerId) { SignOutOf(providerId); };
+        settingsWindow_ = std::make_unique<ChatCubeSettingsWindow>(settings_, version_, dataFolder_, std::move(hooks));
+    }
+    settingsWindow_->Show(window_.get());
+}
+
+void ChatCubeWindow::ApplySettings() {
+    // The send key, in the field's hint and on the send button.
+    if (input_) {
+        input_->SetPlaceholder(settings_.ctrlEnterSends
+                                   ? "Message\xE2\x80\xA6  (Ctrl+Enter sends, Enter for a new line)"
+                                   : "Message\xE2\x80\xA6  (Enter sends, Shift+Enter for a new line)");
+    }
+    if (send_) UpdateAttachmentStrip();     // the button's tooltip names the key
+    // Typing: nothing more goes out, and what was shown goes.
+    if (!settings_.sendTyping && !activeConversation_.empty() && lastTypingSentMs_ != 0) {
+        lastTypingSentMs_ = 0;
+        UltraIM_SetTyping(activeProvider_, activeConversation_, false);
+    }
+    if (!settings_.showTyping && !typingContact_.empty()) {
+        typingContact_.clear();
+        UpdateHeader();
+    }
+    // The people on this network: listed again, or put away.
+    if (nearbyBox_) {
+        if (settings_.showNearby) {
+            if (!nearbyBox_->IsVisible() && chatView_ && chatView_->IsVisible()) RefreshNearby();
+        } else {
+            nearbyBox_->SetVisible(false);
+        }
+    }
+    // Times and dates: the lists written again, the date lines of the open
+    // conversation with them.
+    SetDateTimeStyle(settings_.clock24, settings_.dateStyle);
+    if (messages_ && !activeConversation_.empty()) {
+        std::vector<UltraIMMessage> shown;
+        for (const MessageRow& row : messages_->Rows()) {
+            if (row.kind == MessageRow::Kind::Message) shown.push_back(row.message);
+        }
+        messages_->SetMessages(shown);
+        if (messageList_) {
+            messageList_->InvalidateRowHeights();
+            messageList_->RequestRedraw();
+        }
+    }
+    if (conversationList_) conversationList_->RequestRedraw();
+    if (window_) window_->RequestRedraw();
+}
+
+std::vector<ChatCubeSettingsWindow::Account> ChatCubeWindow::Accounts() const {
+    std::vector<ChatCubeSettingsWindow::Account> accounts;
+    const std::pair<std::string, const char*> networks[] = {
+        {providerId_, "ChatCube Direct"}, {matrixProviderId_, "Matrix"}, {telegramProviderId_, "Telegram"}};
+    for (const auto& [id, name] : networks) {
+        ChatCubeSettingsWindow::Account account;
+        account.providerId = id;
+        account.name = name;
+        UltraIMProviderInfo info;
+        if (!UltraIM_GetProviderInfo(id, info)) {
+            account.state = "Not in this ChatCube: its module was not found (Plugins/UltraIM).";
+            accounts.push_back(account);
+            continue;
+        }
+        const bool direct = id == providerId_;
+        switch (info.connectionState) {
+            case UltraIMConnectionState::Connected:
+                account.state = direct ? "Connected." : "Signed in as " + info.localUserId + ".";
+                account.canSignOut = !direct;
+                break;
+            case UltraIMConnectionState::Connecting:
+                account.state = "Signing in\xE2\x80\xA6";
+                account.canSignOut = !direct;
+                break;
+            case UltraIMConnectionState::Reconnecting:
+                account.state = "The connection was lost - reconnecting\xE2\x80\xA6";
+                account.canSignOut = !direct && !info.localUserId.empty();
+                break;
+            case UltraIMConnectionState::Error:
+                account.state = "Not connected: the last attempt failed.";
+                account.canSignOut = !direct && info.hasStoredSession;
+                break;
+            case UltraIMConnectionState::Disconnected:
+                account.state = direct ? "Not connected." : "Not signed in.";
+                break;
+        }
+        if (!info.version.empty()) account.state += "  Module " + info.version + ".";
+        accounts.push_back(account);
+    }
+    return accounts;
+}
+
+void ChatCubeWindow::SignOutOf(const std::string& providerId) {
+    if (providerId == providerId_) return;      // a ChatCube ID has nothing to sign out of
+    UltraIM_SignOut(providerId);
+    // Its conversations leave the list, the open one with them.
+    std::vector<std::string> gone;
+    for (const UltraIMConversation& c : conversations_->Conversations()) {
+        if (c.providerId == providerId) gone.push_back(c.conversationId);
+    }
+    for (const std::string& id : gone) conversations_->Remove(id);
+    if (activeProvider_ == providerId && !activeConversation_.empty()) {
+        activeConversation_.clear();
+        messages_->Clear();
+        messageList_->SetVisible(false);
+        emptyHint_->SetVisible(true);
+        UpdateHeader();
+    }
+    if (providerId == matrixProviderId_) {
+        SetNetworkButton(matrixToggle_, "Matrix", "Matrix account");
+        matrixKeysForm_->SetVisible(false);
+        SetProviderStatus(matrixProviderId_, "signed out");
+    } else if (providerId == telegramProviderId_) {
+        SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
+        telegramForm_->SetVisible(false);
+        SetProviderStatus(telegramProviderId_, "signed out");
+    }
+    if (conversationList_) conversationList_->RequestRedraw();
+    if (window_) window_->RequestRedraw();
+}
+
 // =================================================================== UltraIM
 
 void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
@@ -1947,7 +2100,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (e.conversationId == activeConversation_) UpdateHeader();
             break;
         case UltraIMEventType::TypingChange:
-            if (e.conversationId != activeConversation_) break;
+            if (e.conversationId != activeConversation_ || !settings_.showTyping) break;
             typingContact_ = e.isTyping ? e.contactId : std::string();
             typingUntilMs_ = NowMs() + kTypingShownMs;
             UpdateHeader();
@@ -1967,10 +2120,11 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (e.conversationId == activeConversation_) messages_->Remove(e.message.messageId);
             break;
         case UltraIMEventType::ConnectionStateChange:
+            if (settingsWindow_) settingsWindow_->RefreshAccounts();
             if (telegram) {
                 if (e.connectionState == UltraIMConnectionState::Connected) {
                     SetProviderStatus(telegramProviderId_, "signed in");
-                    telegramToggle_->SetText("Telegram: signed in");
+                    SetNetworkButton(telegramToggle_, "Telegram", "Telegram: signed in");
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetProviderStatus(telegramProviderId_, e.errorText);
@@ -1983,7 +2137,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     SetProviderStatus(telegramProviderId_, (e.errorText.empty() ? std::string("signing in") : e.errorText) + "\xE2\x80\xA6");
                 } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
                     SetProviderStatus(telegramProviderId_, "signed out");
-                    telegramToggle_->SetText("Telegram account");
+                    SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
                 }
                 break;
             }
@@ -1993,7 +2147,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     UltraIMProviderInfo info;
                     UltraIM_GetProviderInfo(matrixProviderId_, info);
                     SetProviderStatus(matrixProviderId_, "signed in as " + info.localUserId);
-                    matrixToggle_->SetText("Matrix: " + info.localUserId);
+                    SetNetworkButton(matrixToggle_, "Matrix", "Matrix: signed in as " + info.localUserId);
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetProviderStatus(matrixProviderId_, e.errorText);
@@ -2033,14 +2187,14 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (telegram) {
                 SetProviderStatus(telegramProviderId_, "the session ended - sign in again");
                 telegramForm_->SetVisible(true);
-                telegramToggle_->SetText("Telegram account");
+                SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
                 UpdateTelegramForm();
                 break;
             }
             if (matrix) {
                 SetProviderStatus(matrixProviderId_, "the session ended - sign in again");
                 matrixForm_->SetVisible(true);
-                matrixToggle_->SetText("Matrix account");
+                SetNetworkButton(matrixToggle_, "Matrix", "Matrix account");
                 break;
             }
             ShowSignInPage();
