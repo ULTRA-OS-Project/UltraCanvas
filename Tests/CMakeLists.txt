@@ -488,6 +488,26 @@ if(ULTRACANVAS_HAS_NATIVE_TRASH AND UNIX AND NOT APPLE)
     message(STATUS "    Test registered: TrashTest")
 endif()
 
+# ===== PORTABLE DEVICES TEST =====
+# The platform-independent half of UltraCanvasPortableDevices - its path rules
+# and what a build without a backend answers - from the core file alone, with
+# no define, so every row runs the same checks. The Windows WPD backend needs
+# a phone on a USB port and is not exercised in CI.
+message(STATUS "  Building PortableDevicesTest...")
+add_executable(PortableDevicesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PortableDevicesTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasPortableDevices.cpp
+)
+target_include_directories(PortableDevicesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(PortableDevicesTest PRIVATE cxx_std_20)
+target_link_libraries(PortableDevicesTest PRIVATE Threads::Threads)
+set_target_properties(PortableDevicesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME PortableDevicesTest COMMAND PortableDevicesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: PortableDevicesTest")
+
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.

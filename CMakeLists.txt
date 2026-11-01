@@ -457,6 +457,15 @@ if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
 endif()
 
+# Which platforms can reach phones, cameras and players that are not a drive
+# (UltraCanvasPortableDevices: Windows Portable Devices - MTP / PTP; on macOS
+# Image Capture - an iPhone's photos and a camera's card, read-only). Same
+# reason as above: the core file compiles a null-returning fallback unless this
+# is set. Linux desktops mount such devices themselves (gvfs).
+if(WIN32 OR APPLE)
+    set(ULTRACANVAS_HAS_PORTABLE_DEVICES ON)
+endif()
+
 # Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
 # flock() on Linux, the BSDs and macOS, LockFileEx on Windows). Same reason as
 # above: the core file compiles an "Unsupported" fallback unless this is set,
@@ -1804,6 +1813,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+            Apps/UltraFiler/UltraFilerDeviceProvider.cpp
             Apps/UltraFiler/UltraFilerConnectionLogWindow.cpp
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp

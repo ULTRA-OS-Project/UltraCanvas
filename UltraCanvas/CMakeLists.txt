@@ -464,6 +464,9 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # storage, USB and Bluetooth, and the CF property readers around it.
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    # ImageCaptureCore backs the portable devices on macOS - an iPhone's
+    # photos, a camera's card (OS/MacOS/UltraCanvasMacOSPortableDevices.mm).
+    find_library(IMAGECAPTURECORE_FRAMEWORK ImageCaptureCore REQUIRED)
     # CoreServices carries FSEvents, behind the folder watch
     # (OS/MacOS/UltraCanvasMacOSFolderWatcher.cpp).
     find_library(CORESERVICES_FRAMEWORK CoreServices REQUIRED)
@@ -714,6 +717,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDragIcon.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPortableDevices.cpp
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
@@ -2182,6 +2186,11 @@ if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
 endif()
 # File-lock probing: the same arrangement for UltraCanvasFileLock. PUBLIC so an
 # app can leave the "in use" display out entirely where nothing can answer.
+# Portable devices (phones, cameras over MTP / PTP): the same arrangement.
+# PUBLIC so an app can leave its device rows out where nothing can list them.
+if(ULTRACANVAS_HAS_PORTABLE_DEVICES)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_PORTABLE_DEVICES)
+endif()
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
 endif()
@@ -2402,6 +2411,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${IOKIT_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK}
             ${CORESERVICES_FRAMEWORK}
+            ${IMAGECAPTURECORE_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
     if(UNIFORMTYPEIDENTIFIERS_FRAMEWORK)
