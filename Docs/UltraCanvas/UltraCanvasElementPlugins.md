@@ -136,6 +136,27 @@ and bump the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG`, then run
 a change to the header that moves neither; a change that is not part of the
 contract is recorded with `--update --no-abi-change "why"`.
 
+**The classes themselves.** What a plugin's `create` returns is a class
+derived from `UltraCanvasUIElement` - often from a deeper framework class,
+as the charts derive from the chart engine's element - and the host calls
+its virtual functions and reads its members at places and offsets the
+framework's headers fix. Those headers change all the time and carry no
+version anybody bumps, so neither number above covers them. Instead CMake
+writes `UltraCanvasFrameworkHeadersId.h` when it configures: a hash of every
+header under `include/`, `libspecific/` and `OS/` (the way a framework DLL's
+build id is taken, `cmake/UltraCanvasLibraryBuildId.cmake`), in the build's
+`generated/include`, which the library's interface carries and the install
+puts beside the other headers. The macro exports it as a second symbol,
+`UltraCanvas_PluginHeadersId`, and the loader reads that before anything
+else: a plugin that answers another id, `"unknown"` (compiled without the
+generated header), or nothing (built before the symbol existed) is skipped -
+`UltraCanvas_PluginInit` is never called - with a log line naming both ids and
+saying to rebuild it. A plugin built separately from the framework therefore
+works with exactly the framework build whose headers it was compiled
+against, and is rebuilt for any other; one built in the same tree always
+matches. Like the DLL build id the hash is taken at configure time, so a
+header edited without a reconfigure leaves the id as it was on both sides.
+
 ## Loader behaviour
 
 ```cpp

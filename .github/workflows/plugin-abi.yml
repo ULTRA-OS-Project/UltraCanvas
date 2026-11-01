@@ -12,7 +12,10 @@ name: Plug-in ABIs
 #   element   the element plug-ins (UltraCanvasElementPlugins.h): the host
 #             table's ULTRACANVAS_PLUGIN_HOST_ABI_VERSION (append-only; a
 #             plugin requires a table as new as its own) and the "ucN" of
-#             ULTRACANVAS_FRAMEWORK_ABI_TAG for the types that cross.
+#             ULTRACANVAS_FRAMEWORK_ABI_TAG for the types that cross. (The
+#             classes a plug-in creates are covered by the build itself: the
+#             hash of every framework header, UltraCanvasFrameworkHeadersId.h,
+#             which a plug-in exports and the loader compares.)
 #
 # scripts/plugin_abi.txt records each version and a fingerprint of the
 # headers (comments, string texts and spacing left out); `--update` refuses to

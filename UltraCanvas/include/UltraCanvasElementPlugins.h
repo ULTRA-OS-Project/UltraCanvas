@@ -14,6 +14,9 @@
 // (which is what makes Windows work without -rdynamic), and refuse loading
 // cleanly on an ABI mismatch.
 //
+// Version: 1.0.2 - a plugin exports the id of the framework headers it was compiled against
+//                  (UltraCanvas_PluginHeadersId) and the loader refuses another: the classes a
+//                  plugin derives from UltraCanvasUIElement are laid out by those headers
 // Version: 1.0.1 - a plugin requires a host table at least as new as the one it was built for
 //                  (it asked for version 1 whatever it was built for); scripts/check_plugin_abi.py
 //                  fails a change to this header that moves neither the table's version nor "ucN"
@@ -144,6 +147,33 @@ inline constexpr int ULTRACANVAS_PLUGIN_HOST_ABI_VERSION = 1;
 #define ULTRACANVAS_FRAMEWORK_ABI_TAG \
     ULTRACANVAS_ABI_COMPILER "-" ULTRACANVAS_ABI_STDLIB "-cxx20-uc1"
 
+// Which framework headers a build is: a hash of every header under include/,
+// libspecific/ and OS/, written by CMake into UltraCanvasFrameworkHeadersId.h
+// (the build's generated/include, installed beside these headers). A plugin
+// creates classes derived from UltraCanvasUIElement - often from deeper
+// framework classes - and the host calls their virtual functions and reads
+// their members, at places and offsets those headers fix. They change all the
+// time and carry no version a person bumps, so the plugin exports the id of
+// the headers it was compiled against (UltraCanvas_PluginHeadersId, defined
+// by ULTRACANVAS_DEFINE_ELEMENT_PLUGIN) and the loader calls nothing else in
+// a plugin whose id is not its own: a plugin built separately from the
+// framework works with exactly the headers it was built with, and is rebuilt
+// for any other. Compiled without the generated header the id is "unknown",
+// which the loader refuses too.
+#if defined(__has_include)
+  #if __has_include("UltraCanvasFrameworkHeadersId.h")
+    #include "UltraCanvasFrameworkHeadersId.h"
+  #endif
+#endif
+#ifndef ULTRACANVAS_FRAMEWORK_HEADERS_ID
+  #define ULTRACANVAS_FRAMEWORK_HEADERS_ID "unknown"
+#endif
+// The id a plugin says it was compiled against. Defined differently only by
+// the loader's test, to build a plugin "against other headers".
+#ifndef ULTRACANVAS_PLUGIN_BUILT_WITH_HEADERS
+  #define ULTRACANVAS_PLUGIN_BUILT_WITH_HEADERS ULTRACANVAS_FRAMEWORK_HEADERS_ID
+#endif
+
 #if defined(_WIN32) || defined(_WIN64)
   #define ULTRACANVAS_PLUGIN_EXPORT __declspec(dllexport)
 #else
@@ -164,13 +194,19 @@ struct UltraCanvasPluginHost {
 // missing backend, ...): the host skips the plugin with a log line and nothing
 // is half-registered.
 using UltraCanvas_PluginInitFn = bool (*)(const UltraCanvasPluginHost* host);
+// The second symbol: the framework headers id the plugin was compiled
+// against. The loader reads it before UltraCanvas_PluginInit and refuses a
+// plugin without it (one built before it existed) or with another id.
+using UltraCanvas_PluginHeadersIdFn = const char* (*)();
 
-// Defines UltraCanvas_PluginInit with the ABI handshake and exception fence
-// already in place; `initFn` is bool(const UltraCanvasPluginHost*) and runs
+// Defines UltraCanvas_PluginHeadersId and UltraCanvas_PluginInit with the ABI
+// handshake and exception fence already in place; `initFn` is bool(const UltraCanvasPluginHost*) and runs
 // only after both checks pass: the host's table is at least the one the
 // plugin was built for (it may be longer), and the C++ types crossing the
 // boundary are laid out alike (the ABI tag, compared exactly).
 #define ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(initFn)                              \
+    extern "C" ULTRACANVAS_PLUGIN_EXPORT                                       \
+    const char* UltraCanvas_PluginHeadersId() { return ULTRACANVAS_PLUGIN_BUILT_WITH_HEADERS; } \
     extern "C" ULTRACANVAS_PLUGIN_EXPORT                                       \
     bool UltraCanvas_PluginInit(const UltraCanvas::UltraCanvasPluginHost* host) { \
         if (!host || !host->RegisterElement) return false;                     \

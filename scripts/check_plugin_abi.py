@@ -17,7 +17,12 @@ contract, each with a version that gates the loading:
             table at least as new as its own, ULTRACANVAS_PLUGIN_HOST_ABI_VERSION
             - and the C++ types crossing it carry the "ucN" of
             ULTRACANVAS_FRAMEWORK_ABI_TAG, compared exactly. A change to the
-            header moves one of the two.
+            header moves one of the two. The classes a plug-in creates
+            (derived from UltraCanvasUIElement) are not this script's: their
+            layout is every framework header's, and the build checks that
+            itself - a plug-in exports the hash of the headers it was
+            compiled against and the loader refuses another
+            (UltraCanvasFrameworkHeadersId.h).
 
 The gates only work if the numbers move whenever the contracts do - which
 used to be remembered, not checked. This script fingerprints each

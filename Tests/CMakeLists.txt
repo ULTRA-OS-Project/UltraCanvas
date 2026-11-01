@@ -3886,9 +3886,20 @@ add_library(TestRefusingPlugin MODULE
 add_library(TestNewerPlugin MODULE
     ${CMAKE_CURRENT_SOURCE_DIR}/TestNewerPlugin.cpp
 )
-foreach(plugin TestElementPlugin TestRefusingPlugin TestNewerPlugin)
+# Compiled against other framework headers, and from before plugins said
+# which: the loader calls neither.
+add_library(TestOtherHeadersPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestOtherHeadersPlugin.cpp
+)
+target_compile_definitions(TestOtherHeadersPlugin PRIVATE ULTRACANVAS_TEST_OTHER_HEADERS)
+add_library(TestNoHeadersIdPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestOtherHeadersPlugin.cpp
+)
+target_compile_definitions(TestNoHeadersIdPlugin PRIVATE ULTRACANVAS_TEST_NO_HEADERS_ID)
+foreach(plugin TestElementPlugin TestRefusingPlugin TestNewerPlugin TestOtherHeadersPlugin TestNoHeadersIdPlugin)
     target_include_directories(${plugin} PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_GENERATED_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
     )
     target_compile_features(${plugin} PRIVATE cxx_std_20)
@@ -3906,11 +3917,13 @@ add_executable(ElementPluginTest
 )
 target_include_directories(ElementPluginTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_GENERATED_INCLUDE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 target_compile_features(ElementPluginTest PRIVATE cxx_std_20)
 target_link_libraries(ElementPluginTest PRIVATE ${CMAKE_DL_LIBS})
-add_dependencies(ElementPluginTest TestElementPlugin TestRefusingPlugin TestNewerPlugin)
+add_dependencies(ElementPluginTest TestElementPlugin TestRefusingPlugin TestNewerPlugin
+                 TestOtherHeadersPlugin TestNoHeadersIdPlugin)
 set_target_properties(ElementPluginTest PROPERTIES
     OUTPUT_NAME "ElementPluginTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

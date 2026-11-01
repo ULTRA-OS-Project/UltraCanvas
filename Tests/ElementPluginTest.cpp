@@ -5,9 +5,10 @@
 //
 // Usage: ElementPluginTest [pluginDirectory]
 // The DSO tests run only when a directory containing the three test plugins
-// (TestElementPlugin, TestRefusingPlugin, TestNewerPlugin) is passed; the CMake registration
+// (TestElementPlugin and the ones it must refuse) is passed; the CMake registration
 // builds them and passes the directory.
 //
+// Version: 1.0.2 - plugins compiled against other framework headers, or not saying, are not called
 // Version: 1.0.1 - a plugin built for a newer host table is refused (TestNewerPlugin)
 // Version: 1.0.0
 // Last Modified: 2026-08-01
@@ -215,6 +216,9 @@ static void TestAbiContract() {
     std::printf("ABI contract\n");
 
     CHECK(ULTRACANVAS_PLUGIN_HOST_ABI_VERSION == 1, "the entry contract is at version 1");
+    const std::string headersId = ULTRACANVAS_FRAMEWORK_HEADERS_ID;
+    CHECK(headersId != "unknown" && headersId.size() == 16,
+          "this build knows which framework headers it is (UltraCanvasFrameworkHeadersId.h)");
     const std::string tag = ULTRACANVAS_FRAMEWORK_ABI_TAG;
     CHECK(!tag.empty() && tag.find("cxx20-uc1") != std::string::npos,
           "the ABI tag carries the standard and descriptor version");
@@ -257,6 +261,12 @@ static void TestDsoEndToEnd(const std::string& pluginDirectory) {
     // host does not pass, and its handshake refuses it.
     CHECK(!UltraCanvasElementRegistry::IsRegistered("newer-widget"),
           "a plugin built for a newer host table refuses to load");
+    // And two whose classes other framework headers laid out: the loader
+    // does not call them at all.
+    CHECK(!UltraCanvasElementRegistry::IsRegistered("other-headers-widget"),
+          "a plugin compiled against other framework headers is not called");
+    CHECK(!UltraCanvasElementRegistry::IsRegistered("no-headers-id-widget"),
+          "a plugin that does not say which headers it was compiled against is not called");
 
     CHECK(UltraCanvas_RefreshElementPlugins() == 0,
           "a second refresh loads nothing new (idempotent)");
