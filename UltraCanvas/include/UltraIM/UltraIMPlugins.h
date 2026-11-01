@@ -229,7 +229,28 @@ public:
         if (onResult) onResult(Unsupported("credentials for other providers"), UltraIMCredentials());
     }
 
+    // ---- Stickers ------------------------------------------------------------
+    virtual void FetchStickerPacks(UltraIMStickerPacksCallback onResult) {
+        if (onResult) onResult(Unsupported("stickers"), {});
+    }
+
+    // ---- End-to-end encryption keys ---------------------------------------------
+    // The keys to encrypted conversations as one passphrase-protected text
+    // (Matrix: the room-key export file other clients read and write), to keep
+    // or to carry to another device; and back. The passphrase is stretched on
+    // purpose, so this takes a moment: do it off the caller's thread.
+    virtual void ExportEncryptionKeys(const std::string& passphrase, UltraIMKeyExportCallback onResult) {
+        (void)passphrase;
+        if (onResult) onResult(Unsupported("exporting encryption keys"), std::string());
+    }
+    virtual void ImportEncryptionKeys(const std::string& data, const std::string& passphrase,
+                                      UltraIMKeyImportCallback onResult) {
+        (void)data; (void)passphrase;
+        if (onResult) onResult(Unsupported("importing encryption keys"), 0);
+    }
+
     // ---- The account's own profile -----------------------------------------------
+    // (Last in the class, so the slots before keep their places in the vtable.)
     // The signed-in account's name, e-mail address and phone number
     // (UltraIMAccountProfile; AccountProfile capability). Updating sends
     // the name to the contacts and the e-mail and phone to the provider's
@@ -259,26 +280,6 @@ public:
     virtual void SetSignInProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) {
         (void)change;
         if (onResult) onResult(Unsupported("sign-in protection"));
-    }
-
-    // ---- Stickers ------------------------------------------------------------
-    virtual void FetchStickerPacks(UltraIMStickerPacksCallback onResult) {
-        if (onResult) onResult(Unsupported("stickers"), {});
-    }
-
-    // ---- End-to-end encryption keys ---------------------------------------------
-    // The keys to encrypted conversations as one passphrase-protected text
-    // (Matrix: the room-key export file other clients read and write), to keep
-    // or to carry to another device; and back. The passphrase is stretched on
-    // purpose, so this takes a moment: do it off the caller's thread.
-    virtual void ExportEncryptionKeys(const std::string& passphrase, UltraIMKeyExportCallback onResult) {
-        (void)passphrase;
-        if (onResult) onResult(Unsupported("exporting encryption keys"), std::string());
-    }
-    virtual void ImportEncryptionKeys(const std::string& data, const std::string& passphrase,
-                                      UltraIMKeyImportCallback onResult) {
-        (void)data; (void)passphrase;
-        if (onResult) onResult(Unsupported("importing encryption keys"), 0);
     }
 
 protected:

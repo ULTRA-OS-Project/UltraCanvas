@@ -7,7 +7,6 @@
 #include "UltraCrypt/UltraOtp.h"
 
 #include <cstring>
-#include <strings.h>
 
 namespace UltraCanvas {
 namespace Otp {
@@ -33,8 +32,17 @@ UltraCryptHashAlgorithm ToHashAlgorithm(Algorithm algorithm) {
     return UltraCryptHashAlgorithm::SHA1;
 }
 
+// ASCII case folding: the names compared here are ASCII, and <strings.h>'s
+// strcasecmp is POSIX - the core library builds on Windows too.
+char AsciiLower(char c) {
+    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
 bool EqualsIgnoreCase(const std::string& a, const char* b) {
-    return strcasecmp(a.c_str(), b) == 0;
+    size_t i = 0;
+    for (; i < a.size() && b[i]; ++i)
+        if (AsciiLower(a[i]) != AsciiLower(b[i])) return false;
+    return i == a.size() && b[i] == '\0';
 }
 
 // Left-pads with '0' to exactly `digits` characters. RFC 4226 §5.3 requires

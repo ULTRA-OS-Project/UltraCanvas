@@ -9,20 +9,31 @@
 
 #include <cstdlib>
 #include <cstring>
-#include <strings.h>
 #include <vector>
 
 namespace UltraCanvas {
 namespace Otp {
 namespace {
 
+// ASCII case folding: the names compared here are ASCII, and <strings.h>'s
+// strcasecmp is POSIX - the core library builds on Windows too.
+char AsciiLower(char c) {
+    return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+}
+
 bool EqualsIgnoreCase(const std::string& a, const char* b) {
-    return strcasecmp(a.c_str(), b) == 0;
+    size_t i = 0;
+    for (; i < a.size() && b[i]; ++i)
+        if (AsciiLower(a[i]) != AsciiLower(b[i])) return false;
+    return i == a.size() && b[i] == '\0';
 }
 
 bool StartsWithIgnoreCase(const std::string& text, const char* prefix) {
     const size_t n = std::strlen(prefix);
-    return text.size() >= n && strncasecmp(text.c_str(), prefix, n) == 0;
+    if (text.size() < n) return false;
+    for (size_t i = 0; i < n; ++i)
+        if (AsciiLower(text[i]) != AsciiLower(prefix[i])) return false;
+    return true;
 }
 
 int HexValue(char c) {
