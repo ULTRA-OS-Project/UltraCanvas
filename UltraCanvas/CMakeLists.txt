@@ -1,7 +1,8 @@
 # UltraCanvas/CMakeLists.txt
 # UltraCanvas Core Library - Builds as separate static library with optional plugins
+# Version: 1.4.8 - the static link cycle between the core and UltraRTC is declared, so a static build links
 # Version: 1.4.7
-# Last Modified: 2026-07-22
+# Last Modified: 2026-11-01
 # Author: UltraCanvas Framework
 
 cmake_minimum_required(VERSION 3.16)
@@ -3930,6 +3931,13 @@ if(ULTRACANVAS_ENABLE_ULTRARTC)
     _ultracanvas_module_home(UltraRTC uc-rtc)
     if(NOT ULTRACANVAS_BUILD_SHARED)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraRTC)
+        # The engine calls back into the device glue compiled into the core
+        # (UltraRtcInternal::OpenCamera, OpenMicrophone, OpenSpeaker): a cycle
+        # between two static archives. Declared, so CMake repeats them on the
+        # link line; without it GNU ld's single pass left those three
+        # undefined in ChatCube and chatcube-peer, the executables that link
+        # UltraRTC, in every static build (CI builds shared and never saw it).
+        target_link_libraries(uc-rtc PRIVATE ${ULTRACANVAS_LIB_NAME})
     endif()
     if(_ultrartc_engine)
         if(UC_RTC_OPUS_FOUND)
