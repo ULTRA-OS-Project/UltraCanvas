@@ -535,6 +535,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
+  `SettingsPageKit`) — the look of an application's settings window, once:
+  `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
+  `AddPage`, `resets`, `Finish`, `ShowPage`, `SelectPage`, `onPageShown`,
+  `onClosed`) - the tree of pages on the left, the page on the right, the
+  page's Restore defaults and Close at the foot; a page's skeleton
+  (`MakePage` → `PageParts`, `AddNote`, `AddBodyCaption`) and the controls in
+  the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
+  / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
+  `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
+  settings window set the style; it and UltraSnip's are built on the kit.
+  Core in `core/UltraCanvasSettingsPageKit.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
+
 - **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
   copy of an application per user, built on UltraCanvasInstanceLock: a second
   start asks the running copy over UltraMessage (`<appId>.show`) to come

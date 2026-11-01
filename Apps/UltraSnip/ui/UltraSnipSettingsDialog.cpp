@@ -1,7 +1,8 @@
 // Apps/UltraSnip/ui/UltraSnipSettingsDialog.cpp
-// See the header. The page skeleton - title, caption, controls, the notes
-// block - and the text sizes are UltraFiler's settings window's, so the two
-// read as one family.
+// See the header. The window, the page skeleton and the controls come from
+// the framework's UltraCanvasSettingsPageKit, which UltraFiler's settings
+// window is built on too, so the two read as one family.
+// Version: 0.2.0 - on UltraCanvasSettingsPageKit
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -17,10 +18,9 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSupportedFormats.h"
-#include "UltraCanvasTreeView.h"
-#include "UltraCanvasUtils.h"
 #include "UltraCanvasWindow.h"
 
 #include <VideoFX/VideoFX.h>
@@ -38,22 +38,8 @@ namespace UltraSnip {
 
 namespace {
 
-// ----- one type scale for the whole window (UltraFiler's) -----
-constexpr float kTitleFontSize = 15.0f;
-constexpr float kTextFontSize = 10.0f;
-constexpr float kNoteFontSize = 9.0f;
-constexpr float kTreeFontSize = 9.0f;
+using namespace UltraCanvas::SettingsPageKit;
 
-const Color kTextColor(40, 40, 44, 255);
-const Color kNoteTextColor(96, 96, 104, 255);
-const Color kNoteBackground(244, 245, 248, 255);
-const Color kNoteAccent(160, 176, 200, 255);
-const Color kMutedTextColor(150, 150, 158, 255);
-
-constexpr int kPagePadding = 20;
-constexpr int kTextWidth = 440;
-constexpr int kNoteWidth = 430;
-constexpr int kControlHeight = 22;
 
 // Page ids double as tree node ids.
 constexpr const char* kPagePictures = "pictures";
@@ -65,22 +51,9 @@ constexpr const char* kPageBehaviour = "behaviour";
 constexpr const char* kPageAfterSnip = "behaviour/after";
 constexpr const char* kPageStart = "start";
 
-struct PageReset {
-    std::string label;
-    int width = 170;
-    std::function<void()> action;
-};
-
-struct DialogState {
-    std::shared_ptr<UltraCanvasWindow> window;
-    bool closed = false;
+// The one open settings window: the kit's shell with this window's controls
+struct DialogState : public UltraCanvasSettingsWindow {
     bool syncing = false;
-    std::shared_ptr<UltraCanvasTreeView> tree;
-    std::shared_ptr<UltraCanvasContainer> pageArea;
-    std::map<std::string, std::shared_ptr<UltraCanvasContainer>> pages;
-    std::map<std::string, PageReset> resets;
-    std::shared_ptr<UltraCanvasButton> restoreButton;
-    std::string shownPage;
 
     // Pictures > File type: one radio per recommended type, the "another
     // type" radio with its list, and the type's own settings button
@@ -699,151 +672,24 @@ std::shared_ptr<UltraCanvasContainer> BuildStartPage(DialogState*) {
     return parts.page;
 }
 
-// ===== PAGE SWITCHING =====
-
-void UpdateRestoreButton(DialogState* d) {
-    if (!d->restoreButton) return;
-    auto it = d->resets.find(d->shownPage);
-    if (it == d->resets.end()) {
-        d->restoreButton->SetVisible(false);
-        d->restoreButton->RequestRedraw();
-        return;
-    }
-    d->restoreButton->SetText(it->second.label);
-    d->restoreButton->size.width = CSSLayout::Dimension::Px(it->second.width);
-    d->restoreButton->SetVisible(true);
-    d->restoreButton->RequestRedraw();
-}
-
-void ShowPage(DialogState* d, const std::string& nodeId) {
-    std::string target = nodeId;
-    if (!d->pages.count(target)) {
-        TreeNode* node = d->tree ? d->tree->FindNode(nodeId) : nullptr;
-        std::function<TreeNode*(TreeNode*)> firstPage = [&](TreeNode* n) -> TreeNode* {
-            if (!n) return nullptr;
-            if (d->pages.count(n->data.nodeId)) return n;
-            for (auto& child : n->children)
-                if (TreeNode* hit = firstPage(child.get())) return hit;
-            return nullptr;
-        };
-        TreeNode* hit = firstPage(node);
-        if (!hit) return;
-        target = hit->data.nodeId;
-    }
-    d->shownPage = target;
-    for (auto& [id, page] : d->pages) page->SetVisible(id == target);
-    UpdateRestoreButton(d);
-}
-
-void AddPage(DialogState* d, const char* pageId, const std::shared_ptr<UltraCanvasContainer>& page) {
-    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    d->pages[pageId] = page;
-    d->pageArea->AddChild(page);
-}
-
-void AddTreeNode(DialogState* d, const char* parentId, const char* id, const char* text) {
-    TreeNodeData data;
-    data.nodeId = id;
-    data.text = text;
-    d->tree->AddNode(parentId, data);
-}
+// ===== THE WINDOW =====
 
 void BuildDialog(DialogState* d, UltraCanvasWindowBase* parent) {
-    WindowConfig wc;
-    wc.title = "UltraSnip - Settings";
-    wc.width = 700;
-    wc.height = 560;
-    wc.resizable = true;
-    wc.type = WindowType::Dialog;
-    wc.parentWindow = parent;
-    d->window = CreateWindow(wc);
-    if (!d->window || !d->window->IsCreated()) {
-        d->window.reset();
-        return;
-    }
-    d->window->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    d->window->SetBackgroundColor(Color(249, 249, 251, 255));
+    if (!d->Create(parent, "UltraSnip - Settings")) return;
+    d->AddSection(kPagePictures, "Pictures");
+    d->AddTreeNode(kPagePictures, kPagePictureType, "File type");
+    d->AddTreeNode(kPagePictures, kPagePictureSaving, "Saving");
+    d->AddSection(kPageVideos, "Videos");
+    d->AddTreeNode(kPageVideos, kPageRecording, "Recording");
+    d->AddSection(kPageBehaviour, "Behaviour");
+    d->AddTreeNode(kPageBehaviour, kPageAfterSnip, "After a snip");
 
-    auto content = std::make_shared<UltraCanvasContainer>("snip-set-content");
-    content->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    content->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    d->tree = std::make_shared<UltraCanvasTreeView>("snip-set-tree");
-    d->tree->SetFontSize(kTreeFontSize);
-    d->tree->SetRowHeight(24);
-    d->tree->SetSelectionMode(TreeSelectionMode::Single);
-    d->tree->SetLineStyle(TreeLineStyle::NoLine);
-    d->tree->SetBackgroundColor(Color(243, 243, 246, 255));
-    d->tree->SetShowFirstChildOnExpand(true);
-    d->tree->SetAutoExpandSelectedNode(true);
-    d->tree->size.width = CSSLayout::Dimension::Px(180);
-    d->tree->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    TreeNodeData rootData;
-    rootData.nodeId = "settings";
-    rootData.text = "Settings";
-    d->tree->SetRootNode(rootData);
-    AddTreeNode(d, "settings", kPagePictures, "Pictures");
-    AddTreeNode(d, kPagePictures, kPagePictureType, "File type");
-    AddTreeNode(d, kPagePictures, kPagePictureSaving, "Saving");
-    AddTreeNode(d, "settings", kPageVideos, "Videos");
-    AddTreeNode(d, kPageVideos, kPageRecording, "Recording");
-    AddTreeNode(d, "settings", kPageBehaviour, "Behaviour");
-    AddTreeNode(d, kPageBehaviour, kPageAfterSnip, "After a snip");
-    d->tree->SetRootVisible(false);
-    content->AddChild(d->tree);
-
-    d->pageArea = std::make_shared<UltraCanvasContainer>("snip-set-pages");
-    d->pageArea->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    d->pageArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    d->pageArea->SetBackgroundColor(Color(255, 255, 255, 255));
-    content->AddChild(d->pageArea);
-
-    AddPage(d, kPagePictureType, BuildPictureTypePage(d));
-    AddPage(d, kPagePictureSaving, BuildPictureSavingPage(d));
-    AddPage(d, kPageRecording, BuildRecordingPage(d));
-    AddPage(d, kPageAfterSnip, BuildAfterSnipPage(d));
-    AddPage(d, kPageStart, BuildStartPage(d));
-    d->window->AddChild(content);
-
-    auto bottom = std::make_shared<UltraCanvasContainer>("snip-set-bottom");
-    bottom->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    bottom->SetPadding(8, 12, 8, 12);
-    bottom->SetBorderTop(1, Color(225, 225, 230, 255));
-    auto bottomLeft = std::make_shared<UltraCanvasContainer>("snip-set-bottom-left");
-    bottomLeft->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    bottomLeft->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    d->restoreButton = MakeButton("snip-set-restore", "Restore defaults", 170, [d]() {
-        auto it = d->resets.find(d->shownPage);
-        if (it != d->resets.end() && it->second.action) it->second.action();
-    });
-    d->restoreButton->SetVisible(false);
-    bottomLeft->AddChild(d->restoreButton);
-    bottom->AddChild(bottomLeft);
-    bottom->AddChild(MakeButton("snip-set-close", "Close", 90, [d]() { if (d->window) d->window->Close(); }));
-    d->window->AddChild(bottom);
-
-    d->tree->onNodeSelected = [d](TreeNode* node) {
-        if (!node) return;
-        TreeNode* leaf = node;
-        while (leaf && leaf->HasChildren()) leaf = leaf->FirstChild();
-        if (leaf && leaf != node) {
-            d->tree->SelectNode(leaf);
-            return;
-        }
-        ShowPage(d, node->data.nodeId);
-    };
-    ShowPage(d, kPageStart);
-
-    d->window->SetEventCallback([](const UCEvent& event) {
-        if (event.type == UCEventType::KeyUp && event.virtualKey == UCKeys::Escape) {
-            if (auto tw = event.targetWindow.lock()) static_cast<UltraCanvasWindow*>(tw.get())->Close();
-            return true;
-        }
-        return false;
-    });
-    d->window->onWindowClosed = [d]() { d->closed = true; };
-    d->window->Show();
+    d->AddPage(kPagePictureType, BuildPictureTypePage(d));
+    d->AddPage(kPagePictureSaving, BuildPictureSavingPage(d));
+    d->AddPage(kPageRecording, BuildRecordingPage(d));
+    d->AddPage(kPageAfterSnip, BuildAfterSnipPage(d));
+    d->AddPage(kPageStart, BuildStartPage(d));
+    d->Finish(kPageStart);
 }
 
 } // namespace
