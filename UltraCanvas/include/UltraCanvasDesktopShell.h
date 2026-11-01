@@ -45,6 +45,7 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.11.0 - DesktopWindowInfo::maximized
 // Version: 1.10.0 - GetWindowBounds, MoveWindow, BringWindowOnScreen,
 //                   KillWindowProcess; CloseWindow brings the window to the front
 // Version: 1.9.0 - CloseWindow shows a minimized window before asking it to close
@@ -92,6 +93,7 @@ namespace UltraCanvas {
         int  processId = 0;             // _NET_WM_PID, 0 when the window does not say
         bool active = false;            // the focused window
         bool minimized = false;
+        bool maximized = false;         // both ways (_NET_WM_STATE_MAXIMIZED_VERT and _HORZ; IsZoomed)
         bool skipTaskbar = false;       // asked to stay out of taskbars: panels, docks,
                                         // the desktop itself, tooltips
     };

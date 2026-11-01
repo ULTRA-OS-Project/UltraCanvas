@@ -352,7 +352,7 @@ namespace {
 
     struct Atoms {
         Atom utf8, netWmName, wmClass, netWmDesktop, netWmPid, netWmState, stateHidden,
-             stateSkipTaskbar, netWmWindowType, typeNormal, typeDialog, typeUtility,
+             stateSkipTaskbar, stateMaximizedVert, stateMaximizedHorz, netWmWindowType, typeNormal, typeDialog, typeUtility,
              clientListStacking, clientList, activeWindow, currentDesktop, numberOfDesktops;
         explicit Atoms(Display* d)
             : utf8(InternAtom(d, "UTF8_STRING")),
@@ -363,6 +363,8 @@ namespace {
               netWmState(InternAtom(d, "_NET_WM_STATE")),
               stateHidden(InternAtom(d, "_NET_WM_STATE_HIDDEN")),
               stateSkipTaskbar(InternAtom(d, "_NET_WM_STATE_SKIP_TASKBAR")),
+              stateMaximizedVert(InternAtom(d, "_NET_WM_STATE_MAXIMIZED_VERT")),
+              stateMaximizedHorz(InternAtom(d, "_NET_WM_STATE_MAXIMIZED_HORZ")),
               netWmWindowType(InternAtom(d, "_NET_WM_WINDOW_TYPE")),
               typeNormal(InternAtom(d, "_NET_WM_WINDOW_TYPE_NORMAL")),
               typeDialog(InternAtom(d, "_NET_WM_WINDOW_TYPE_DIALOG")),
@@ -398,10 +400,14 @@ namespace {
         info.processId = static_cast<int>(GetLong(d, w, a.netWmPid, XA_CARDINAL, 0));
         info.active = (w == active);
 
+        bool vertical = false, horizontal = false;
         for (long state : GetLongs(d, w, a.netWmState, XA_ATOM)) {
             if (static_cast<Atom>(state) == a.stateHidden) info.minimized = true;
             if (static_cast<Atom>(state) == a.stateSkipTaskbar) info.skipTaskbar = true;
+            if (static_cast<Atom>(state) == a.stateMaximizedVert) vertical = true;
+            if (static_cast<Atom>(state) == a.stateMaximizedHorz) horizontal = true;
         }
+        info.maximized = vertical && horizontal;
         // Docks, panels, the desktop, menus, tooltips: not taskbar material,
         // whether or not they set the state.
         const std::vector<long> types = GetLongs(d, w, a.netWmWindowType, XA_ATOM);

@@ -42,7 +42,9 @@
   whether the number matches - and a device that is not trusted and asks to
   connect is asked about too.
 - **The Task Manager's window list** has a column header and shows each
-  window's application icon first, the display (monitor) it is on as a
+  window's application icon first, its state as an icon and a word (open,
+  maximized or minimized, in blue for the window in front), the display
+  (monitor) it is on as a
   number in a bordered box - the column said "desktop 1" for every window,
   which was the virtual desktop, not the monitor - and the virtual desktop
   only where there is more than one. *Activate* is now *Show*, and brings a

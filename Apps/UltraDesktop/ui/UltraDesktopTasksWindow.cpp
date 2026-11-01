@@ -17,6 +17,8 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasUtils.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
@@ -42,7 +44,7 @@ constexpr int kSensorTicks = 6;      // the sensors every 3 s
 // The window list's columns, shared by the header and the rows.
 constexpr int kColumnGap = 8;
 constexpr int kIconColumn = 22;
-constexpr int kStateColumn = 80;
+constexpr int kStateColumn = 106;
 constexpr int kDesktopColumn = 76;
 constexpr int kDisplayColumn = 66;
 constexpr int kButtonWidth = 70;
@@ -52,7 +54,8 @@ constexpr unsigned kShowSettleMs = 350;   // a restored window has its place by 
 
 } // namespace
 
-UltraDesktopTasksWindow::UltraDesktopTasksWindow() = default;
+UltraDesktopTasksWindow::UltraDesktopTasksWindow()
+    : iconsDir_(NormalizePath(GetResourcesDir() + "media/icons/desktop/")) {}
 
 UltraDesktopTasksWindow::~UltraDesktopTasksWindow() {
     if (timer_ != 0) {
@@ -238,7 +241,8 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
     std::ostringstream signature;
     for (const DesktopWindowInfo& w : windows) {
         if (w.skipTaskbar) continue;
-        signature << w.id << '|' << w.title << '|' << w.active << '|' << w.minimized << '|' << w.virtualDesktop
+        signature << w.id << '|' << w.title << '|' << w.active << '|' << w.minimized << '|' << w.maximized << '|'
+                  << w.virtualDesktop
                   << '|' << w.iconFile << '|' << displays[w.id] << '\n';
     }
     if (signature.str() == lastListing_) return;
@@ -285,12 +289,26 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
         name->SetTooltip(w.appClass + (w.processId > 0 ? " (pid " + std::to_string(w.processId) + ")" : ""));
         row->AddChild(name);
 
-        // Always there, empty for a window that is not minimized: the
-        // columns stay under the header.
-        auto state = CreateLabel("tmState" + key, 0, 0, kStateColumn, 22, w.minimized ? "minimized" : "");
-        state->SetTextColor(Color(110, 110, 110, 255));
-        state->layoutItem.SetFlexShrink(0.0f);
-        row->AddChild(state);
+        // The state as an icon and a word: minimized, maximized or open,
+        // in blue for the window in front.
+        const std::string stateIcon = w.minimized ? "window-minimized.svg"
+                                      : w.maximized ? (w.active ? "window-maximized-active.svg" : "window-maximized.svg")
+                                                    : (w.active ? "window-normal-active.svg" : "window-normal.svg");
+        const std::string stateWord = w.minimized ? "minimized" : w.maximized ? "maximized" : "open";
+        auto stateCell = CreateContainer("tmStateCell" + key, 0, 0, kStateColumn, 24);
+        stateCell->layout.SetFlexRow().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        stateCell->layoutItem.SetFlexShrink(0.0f);
+        auto stateImage = CreateImageElement("tmStateIcon" + key, 0, 0, 18, 18);
+        stateImage->LoadFromFile(iconsDir_ + stateIcon);
+        stateImage->SetFitMode(ImageFitMode::Contain);
+        stateImage->layoutItem.SetFlexShrink(0.0f);
+        stateCell->AddChild(stateImage);
+        auto state = CreateLabel("tmState" + key, 0, 0, kStateColumn - 24, 22, stateWord);
+        state->SetTextColor(w.active ? Color(31, 111, 209, 255) : Color(110, 110, 110, 255));
+        stateCell->AddChild(state);
+        stateCell->SetTooltip(std::string(w.minimized ? "Minimized" : w.maximized ? "Maximized" : "Open") +
+                              (w.active ? ", in front" : ""));
+        row->AddChild(stateCell);
 
         // The display (monitor) the window is on, and - where there are
         // several - its virtual desktop, each as a number in a bordered box.

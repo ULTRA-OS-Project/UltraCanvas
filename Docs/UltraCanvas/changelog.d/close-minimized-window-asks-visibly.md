@@ -13,3 +13,5 @@
   manager's "End task" (Linux `SIGTERM`, then `SIGKILL`; Windows
   `TerminateProcess`), refusing the desktop itself and programs it may not
   end.
+- `DesktopWindowInfo::maximized`: a window maximized both ways
+  (`_NET_WM_STATE_MAXIMIZED_VERT` and `_HORZ` on X11, `IsZoomed` on Windows).

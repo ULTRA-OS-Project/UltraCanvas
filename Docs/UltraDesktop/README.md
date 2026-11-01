@@ -213,7 +213,8 @@ the right-hand monitor the primary.
   Super key opens it from any window - on Linux, and on Windows as the
   shell (beside Explorer the key is the Start menu's).
 - **Task Manager**: the open windows on the first tab, under a header -
-  each with its application's icon, its state (minimized), the display
+  each with its application's icon, its state as an icon and a word (open,
+  maximized or minimized; blue for the window in front), the display
   (monitor) it is on as a number in a bordered box - 1 is the primary, the
   others left to right, "?" for a window on no display - and, where there
   is more than one virtual desktop, its desktop the same way. *Show* brings

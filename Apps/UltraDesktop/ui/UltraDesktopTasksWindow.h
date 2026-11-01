@@ -4,6 +4,7 @@
 // are several), and Show, Close and Kill task - and the machine itself on a second tab as
 // the framework's UltraCanvasHardwareInfoPanel shows it (CPU load and
 // temperature, memory, storage, the network interfaces and the rest).
+// Version: 0.4.0 - the state as an icon and a word
 // Version: 0.3.0 - the display column, Show onto a display, Kill task
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
@@ -50,7 +51,8 @@ private:
     UltraCanvas::TimerId timer_ = 0;
     int ticks_ = 0;
     std::string lastListing_;
-    bool showDesktops_ = false;     // more than one virtual desktop: their column shows
+    bool showDesktops_ = false;
+    std::string iconsDir_;          // media/icons/desktop/: the state icons     // more than one virtual desktop: their column shows
 };
 
 } // namespace UltraDesktop

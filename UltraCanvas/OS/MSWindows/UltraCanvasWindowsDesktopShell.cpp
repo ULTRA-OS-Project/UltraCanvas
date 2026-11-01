@@ -1246,6 +1246,7 @@ std::vector<DesktopWindowInfo> ListWindows() {
         info.title = WindowTitle(hwnd);
         info.skipTaskbar = IsShellWindow(hwnd, className) || !BelongsInTaskbar(hwnd, exStyle);
         info.minimized = IsIconic(hwnd) != FALSE;
+        info.maximized = !info.minimized && IsZoomed(hwnd) != FALSE;
         info.active = hwnd == foreground;
 
         DWORD pid = 0;
