@@ -3,6 +3,8 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.8.0 - macOS: ListNativeApplications and LaunchShortcut native
+//                  (ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS)
 // Version: 1.7.0 - GetWindowBounds, MoveWindowTo, KillProcess
 // Version: 1.6.0 - LockSession; the loudspeaker's volume; TrayHostMenuActivate
 // Version: 1.5.0 - LaunchPackagedApplication (Microsoft Store applications),
@@ -10,7 +12,7 @@
 // Version: 1.4.0 - DesktopReplacement::Instead, the tray host, EndSession
 // Version: 1.3.0 - the Windows backend; ListNativeApplications;
 //                  in place of the system's desktop
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVASDESKTOPSHELLBACKEND_H
@@ -24,6 +26,16 @@
 #if (defined(__linux__) && !defined(__ANDROID__)) || defined(__FreeBSD__) || \
     defined(__OpenBSD__) || defined(__NetBSD__) || defined(_WIN32)
     #define ULTRACANVAS_DESKTOPSHELL_NATIVE 1
+#endif
+// macOS has no window-list backend, but its applications are listed and
+// started natively (OS/MacOS/UltraCanvasMacOSApplications.mm):
+// ListNativeApplications and LaunchShortcut come from there, every other
+// entry point from the fallback.
+#if defined(__APPLE__) && !defined(ULTRACANVAS_DESKTOPSHELL_NATIVE)
+    #include <TargetConditionals.h>
+    #if TARGET_OS_OSX
+        #define ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS 1
+    #endif
 #endif
 
 namespace UltraCanvas {
@@ -64,12 +76,12 @@ namespace DesktopShellBackend {
 
     // The installed applications, where the platform keeps them somewhere
     // other than freedesktop desktop entries: the Start menu's shortcuts on
-    // Windows. False where desktop entries are the answer, and the core then
+    // Windows, the application bundles on macOS. False where desktop entries are the answer, and the core then
     // reads them itself; true with `out` filled (unsorted) otherwise.
     bool ListNativeApplications(int iconSize, std::vector<UCDesktopEntry>& out);
     // Open one of those applications' shortcuts the way the platform's own
-    // desktop would (Windows: the .lnk through the shell). Only called for
-    // an entry with shortcutPath set.
+    // desktop would (Windows: the .lnk through the shell; macOS: the bundle
+    // through NSWorkspace). Only called for an entry with shortcutPath set.
     bool LaunchShortcut(const std::string& shortcutPath, std::string& error);
     // Start a Microsoft Store application by its AppUserModelID (an entry
     // with appUserModelId set). False with the reason where there are none.
