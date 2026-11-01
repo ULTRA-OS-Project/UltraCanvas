@@ -374,8 +374,11 @@ void UltraFilerRemoteDrives::SetDevices(const std::vector<PortableDeviceInfo>& d
         // goes: who made it, which is what tells two phones apart.
         d.serverUrl = info.manufacturer;
         d.rootPath = MakeRemoteFilerPath(account.accountId, "/");
-        d.canModify = true;
-        d.canUpload = true;
+        // A device reached read-only (Image Capture on macOS) is browsed and
+        // copied from, and offers no change: no upload, rename, delete or
+        // new folder that could only fail.
+        d.canModify = !info.readOnly;
+        d.canUpload = !info.readOnly;
         d.isDevice = true;
         d.deviceKind = info.kind;
         d.deviceId = info.id;

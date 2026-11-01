@@ -259,8 +259,11 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     *File transfer* rather than an empty folder. On Linux, what the desktop
     mounted through GVFS — a phone, a camera, an iPhone, an SMB or SFTP share
     opened in the desktop's file manager — is listed with the drives under a
-    readable name (`Google Pixel 8`, `photos on nas`). macOS has no MTP of
-    its own; there an Android phone needs a third-party tool.
+    readable name (`Google Pixel 8`, `photos on nas`). On macOS an iPhone,
+    an iPad or a camera appears the same way through Image Capture —
+    read-only: its photos and videos open, preview and copy off, but nothing
+    is put on it, and its card shows no free space. macOS has no MTP of its
+    own; there an Android phone needs a third-party tool.
   - **Remote drive rows say what they are.** An FTP-family drive's row in
     the tree starts with its protocol, taken from the server address:
     `FTP: Backup NAS`, `FTPS: …`, `FTPES: …` or `SFTP: …`.

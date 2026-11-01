@@ -55,7 +55,7 @@ not cost a new MTP session — and a device answers one request at a time anyway
 | Call | Meaning |
 |---|---|
 | `Available()` | Whether this build can reach portable devices at all. |
-| `List()` | The devices connected now: `PortableDeviceInfo { id, name, manufacturer, description, kind }`. `id` is what every other call takes — stable while the device stays plugged in, and the same the next time it is plugged into the same port. `kind` is `Phone`, `Camera`, `MediaPlayer` or `Other`, from what the device says it is. |
+| `List()` | The devices connected now: `PortableDeviceInfo { id, name, manufacturer, description, kind, readOnly }`. `readOnly` marks a device files can only be copied off (macOS's Image Capture): `Upload`, `MakeFolder`, `Delete` and `Rename` fail on it, so a file manager does not offer them. `id` is what every other call takes — stable while the device stays plugged in, and the same the next time it is plugged into the same port. `kind` is `Phone`, `Camera`, `MediaPlayer` or `Other`, from what the device says it is. |
 | `ListFolder(id, path, out, error)` | The entries of a folder: `PortableDeviceEntry { name, isDirectory, size, modifiedTime }` (`modifiedTime` UTC seconds, 0 when unknown). `"/"` lists the storages — a phone's other services (contacts, messages) are not folders and are left out. A root with no storage at all is an error that says what to do: a locked phone, or one left on "charging only", shows none. |
 | `Download(id, path, localFile, error, progress)` | Copies a file off the device into `localFile` (UTF-8), replacing it; a copy that fails part way is removed. |
 | `Upload(id, localFile, path, error, progress)` | Copies a local file onto the device as `path`. A file of that name already there is **replaced** — MTP would otherwise keep both under one name, so the caller asks first. |
@@ -86,7 +86,8 @@ no backend. `Stop()` joins, so no callback runs after it returns.
 |---|---|
 | Windows | WPD (`IPortableDeviceManager`, `IPortableDevice`), built into Windows since 7 — no extra library. The class ids and property keys are defined by the backend itself (`initguid.h`), so no WPD GUID import library is linked; mingw-w64 ships none. |
 | Linux | none — the desktop mounts such a device itself (GNOME's GVFS), and [`ListMountedVolumes`](UltraCanvasVolumeMonitor.md#gvfs-places) lists those places as volumes. |
-| macOS, Android, WebAssembly | none — `Available()` is false, `List()` is empty and every call says why. macOS has no MTP of its own; its cameras and an iPhone's photos would come through Image Capture (`ImageCaptureCore`), which no backend uses yet. |
+| macOS | Image Capture (`ImageCaptureCore`) — an iPhone's or an iPad's photos and videos and a camera's card, the access Photos and Image Capture.app have. **Read-only** (`readOnly` set): copying off works; it cannot put a file on an iPhone, make or rename a folder, or say how full the device is (`GetSpace` fails). Image Capture answers on the main thread, so a call hands its work there and waits with a timeout — and a call made *on* the main thread fails at once rather than wait for an answer only it could deliver (`List()` excepted). The first look at a device opens a session; an iPhone must be unlocked and have accepted "Trust This Computer", and the error says so. macOS has no MTP of its own: an Android phone is not reachable. |
+| Android, WebAssembly | none — `Available()` is false, `List()` is empty and every call says why. |
 
 A platform is wired up by dropping its backend under `UltraCanvas/OS/<Platform>/`
 and adding it to the `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the

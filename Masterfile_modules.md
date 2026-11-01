@@ -1105,9 +1105,11 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete`, `Rename` by path
   (`"/"` is the device, its folders its storages); every call blocks, safe
   from any thread. `UltraCanvasPortableDeviceMonitor` reports plug-in and
-  pull-out. Backend: Windows Portable Devices on one COM thread of its own
-  (`OS/MSWindows/UltraCanvasWindowsPortableDevices.cpp`); none elsewhere
-  (Linux desktops mount devices through GVFS - see above). Wired up by the
+  pull-out. Backends: Windows Portable Devices on one COM thread of its own
+  (`OS/MSWindows/UltraCanvasWindowsPortableDevices.cpp`); macOS Image
+  Capture, read-only (`OS/MacOS/UltraCanvasMacOSPortableDevices.mm`: an
+  iPhone's photos, a camera's card); none on Linux (the desktop mounts
+  devices through GVFS - see above). Wired up by the
   `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the top-level
   `CMakeLists.txt`. UltraFiler carries devices as remote drives
   (`UltraFilerDeviceProvider.h`). See

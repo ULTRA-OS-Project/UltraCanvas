@@ -32,10 +32,14 @@
 // pulled out, on a thread of its own, like the volume monitor.
 //
 // Backends: Windows (WPD - the platform's own MTP / PTP access, built in
-// since Windows 7, no extra library). Elsewhere Available() is false, List()
+// since Windows 7, no extra library); macOS (Image Capture - an iPhone's or
+// an iPad's photos and videos and a camera's card, read-only, the access
+// Photos and Image Capture.app have; macOS has no MTP of its own, so an
+// Android phone is not among them). Elsewhere Available() is false, List()
 // is empty and every call fails with a message saying so: Linux desktops
 // mount such a device themselves (GNOME's gvfs under /run/user/<uid>/gvfs,
-// which ListMountedVolumes reports), and macOS has no MTP support of its own.
+// which ListMountedVolumes reports).
+// Version: 1.2.0 - PortableDeviceInfo::readOnly; the macOS backend (Image Capture)
 // Version: 1.1.0 - GetSpace: a device's capacity and free space
 // Version: 1.0.0
 // Last Modified: 2026-11-01
@@ -74,6 +78,10 @@ namespace UltraCanvas {
         std::string manufacturer;
         std::string description;
         PortableDeviceKind kind = PortableDeviceKind::Other;
+        // Files can be copied off the device but nothing on it changed:
+        // Upload, MakeFolder, Delete and Rename fail. What macOS's Image
+        // Capture gives on an iPhone or a camera.
+        bool readOnly = false;
     };
 
     // One file or folder on a device.

@@ -464,6 +464,9 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     # storage, USB and Bluetooth, and the CF property readers around it.
     find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
     find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+    # ImageCaptureCore backs the portable devices on macOS - an iPhone's
+    # photos, a camera's card (OS/MacOS/UltraCanvasMacOSPortableDevices.mm).
+    find_library(IMAGECAPTURECORE_FRAMEWORK ImageCaptureCore REQUIRED)
     # CoreServices carries FSEvents, behind the folder watch
     # (OS/MacOS/UltraCanvasMacOSFolderWatcher.cpp).
     find_library(CORESERVICES_FRAMEWORK CoreServices REQUIRED)
@@ -2408,6 +2411,7 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${IOKIT_FRAMEWORK}
             ${COREFOUNDATION_FRAMEWORK}
             ${CORESERVICES_FRAMEWORK}
+            ${IMAGECAPTURECORE_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
     if(UNIFORMTYPEIDENTIFIERS_FRAMEWORK)

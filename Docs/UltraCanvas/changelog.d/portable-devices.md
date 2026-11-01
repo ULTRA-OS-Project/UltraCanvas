@@ -8,7 +8,10 @@
   `UltraCanvasPortableDeviceMonitor` for plug-in and pull-out. The Windows
   backend is Windows Portable Devices - built in, no new library - running
   every call on one COM thread of its own, so the devices it opened stay open
-  between calls. Elsewhere `Available()` is false. `PortableDevicesTest`
+  between calls. The macOS backend is Image Capture (`ImageCaptureCore`): an
+  iPhone's or iPad's photos and videos and a camera's card, read-only
+  (`PortableDeviceInfo::readOnly`), the work handed to the main thread that
+  Image Capture answers on. Elsewhere `Available()` is false. `PortableDevicesTest`
   checks the path rules and the backend-less answers.
 - **Linux: the phones, cameras and shares the desktop mounted are volumes.**
   GNOME mounts a phone through GVFS as a directory of one FUSE file system
