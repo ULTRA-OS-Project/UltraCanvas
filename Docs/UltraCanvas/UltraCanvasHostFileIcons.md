@@ -150,12 +150,16 @@ like an empty sheet - while the caller's own icon for the type at least says
 what kind of file it is.
 
 **macOS** — `OS/MacOS/UltraCanvasMacOSHostFileIcons.mm`. `NSWorkspace`, asked
-for the content type the extension names rather than for the file, so one
-lookup serves every file of a kind. Where the content-type API is not
-available the path itself is asked, which also picks up a file's custom icon —
-what Finder shows there too. Drawing an `NSImage` into a bitmap is the one
-piece of AppKit rendering that is safe off the main thread, which is where a
-file display calls this from.
+for the content type the extension of `HostFileIconProbeName` names
+(`iconForContentType:`; `UTTypeFolder` for a folder, `UTTypeData` for a name
+with no extension), or before macOS 11 the same question through
+`iconForFileType:` — never `iconForFile:` with the path, which reads a file's
+custom icon and would file one file's picture under the whole type. (Until
+November 2026 the content-type branch was compiled out — its macro was only
+ever defined in the "Open with" backend — so every lookup read the file
+itself, and a folder was drawn with the startup disk's icon.) Drawing an
+`NSImage` into a bitmap is the one piece of AppKit rendering that is safe off
+the main thread, which is where a file display calls this from.
 
 **WebAssembly and Android** report unavailable: there is no desktop to ask, so
 `LoadHostFileIconPixmap` returns null and a caller keeps its own icons.
