@@ -28,17 +28,14 @@ Changelog and version: [`Docs/UltraDesktop/CHANGELOG.md`](../../Docs/UltraDeskto
 | `ui/UltraDesktopBluetoothPanel.*` | The Bluetooth panel: the radio, the paired devices with Connect / Disconnect / Remove, Add device (a minute's discovery) and the found devices with Pair; the same worker-thread arrangement |
 | `ui/UltraDesktopDevicePanel.*` | The USB, keyboard, webcam, microphone and battery panels: one class that shows entries read on a worker thread by a function the window hands it (`UltraDesktopWindow::OpenDevicePanel`), an entry's own button run off the UI thread (the USB drives' *Safely remove*, `UltraCanvasRemovableDrives`), and buttons on to Device Explorer or the Task Manager |
 | `ui/UltraDesktopPanelWork.h` | `UltraDesktopPanelWork::Run`: a call on a thread of its own, its answer handed to the UI thread with `PostToUIThread` unless the panel has gone meanwhile |
-| `ui/UltraDesktopAppStarter.*` | The Apps window: the applications from `UltraCanvasDesktopShell::ListApplications`, read on a worker thread after the window is open (and ahead of time by `Preload`), shown as category headings over tiles (`UltraCanvasButton` with `ButtonStyle::wrap`) or as a category `UltraCanvasTreeView` beside an `UltraCanvasListView`, switched by an `UltraCanvasSegmentedControl`; a filter box; a right click pins to the taskbar through the desktop's hooks |
+| `ui/UltraDesktopAppStarter.*` | The Apps window: the applications from `UltraCanvasDesktopShell::ListApplications`, read on a worker thread after the window is open (and ahead of time by `Preload`), shown as category headings over tiles (`UltraCanvasButton` with `ButtonStyle::wrap`) or as a category `UltraCanvasTreeView` beside an `UltraCanvasListView`, switched by an `UltraCanvasSegmentedControl`; its icons in `media/icons/appstarter/` (a coloured line icon per category, the two view switches white for the control to tint); a filter box; a right click pins to the taskbar through the desktop's hooks |
 | `ui/UltraDesktopAppCategories.*` | Where an application goes: the main category and sub-category from its freedesktop `Categories=`, or for a Windows shortcut from its name, program and Start-menu folder; `GroupApplications` builds Recent and splits a category above the threshold. No UI, tested by `Tests/UltraDesktopAppCategoriesTest.cpp` |
 | `ui/UltraDesktopTasksWindow.*` | The Task Manager: the open windows under a column header (icon, window, state as an icon from `media/icons/desktop/window-*.svg`, display and - with several - virtual desktop in bordered boxes) with Show (`BringWindowOnScreen`), Close and Kill task (`KillWindowProcess`, after a confirmation), and the machine on `UltraCanvasHardwareInfoPanel` |
 | `main.cpp` | Bootstrap and the command line: `--edge`, `--settings`, `--windows`, `--apps`, `--devices`, `--screenshot`, `--version`, `--help` |
 | `UltraDesktop.desktop` | The freedesktop entry (NoDisplay: the session starts the desktop, not the menu); `make install` places it with the app icon (`media/appicon/UltraDesktop.png` / `.svg`) in the `hicolor` theme |
 
 Bar icons are in `media/icons/desktop/` — monochrome SVGs the toolbar tints
-through the icon mask. The Apps window's are in `media/icons/appstarter/`: a
-coloured line icon per category (`recent.svg`, `office.svg` … `system.svg`)
-and the two view switches (`view-tiles.svg`, `view-tree.svg`, white, tinted
-by the segmented control).
+through the icon mask.
 
 ## Data flow
 

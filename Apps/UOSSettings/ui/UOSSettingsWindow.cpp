@@ -1,7 +1,6 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
-// Version: 0.7.0 - Desktop: the Apps window's view, sub-categories and Recent count
 // Version: 0.6.0 - Desktop: "Start with the desktop" (ChatCube, UltraMail)
 // Version: 0.5.1 - Desktop: from an MSIX package, why "At sign-in" is missing
 // Version: 0.5.0 - Notifications > Registrations: listed, and removed with one button
@@ -9,7 +8,7 @@
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-11-01
+// Last Modified: 2026-10-21
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
