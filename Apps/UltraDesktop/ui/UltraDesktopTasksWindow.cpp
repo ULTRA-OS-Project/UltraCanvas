@@ -15,6 +15,7 @@
 
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasArchiveRun.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasUtils.h"
@@ -163,6 +164,14 @@ void UltraDesktopTasksWindow::OnTimer() {
     if (ticks_ % kSensorTicks == 0 && hardware_) hardware_->RefreshSensors();
 }
 
+// The windows of other programs: not the desktop's own (this window, its
+// dialogs, the panels and the Sticker board), and not what keeps out of
+// taskbars.
+bool UltraDesktopTasksWindow::Listed(const DesktopWindowInfo& w) {
+    if (w.skipTaskbar || w.appClass == "UltraDesktop") return false;
+    return w.processId <= 0 || static_cast<uint64_t>(w.processId) != CurrentProcessId();
+}
+
 // A number in a bordered box, centred in its column.
 std::shared_ptr<UltraCanvasContainer> UltraDesktopTasksWindow::BadgeCell(const std::string& id, int width,
                                                                        const std::string& text,
@@ -220,7 +229,7 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
     const int screenCount = static_cast<int>(screens.size());
     std::map<uint64_t, int> displays;
     for (const DesktopWindowInfo& w : windows) {
-        if (w.skipTaskbar) continue;
+        if (!Listed(w)) continue;
         int x = 0, y = 0, width = 0, height = 0;
         int display = 0;
         if (UltraCanvasDesktopShell::GetWindowBounds(w.id, x, y, width, height)) {
@@ -228,7 +237,9 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
             for (int i = 0; i < screenCount; ++i) {
                 const DesktopScreenInfo& s = screens[static_cast<size_t>(i)];
                 if (cx >= s.x && cx < s.x + s.width && cy >= s.y && cy < s.y + s.height) {
-                    display = i + 1;
+                    // The system's own number where it has one (Windows),
+                    // else the place in ListScreens' order.
+                    display = s.number > 0 ? s.number : i + 1;
                     break;
                 }
             }
@@ -240,7 +251,7 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
     // about to click.
     std::ostringstream signature;
     for (const DesktopWindowInfo& w : windows) {
-        if (w.skipTaskbar) continue;
+        if (!Listed(w)) continue;
         signature << w.id << '|' << w.title << '|' << w.active << '|' << w.minimized << '|' << w.maximized << '|'
                   << w.virtualDesktop
                   << '|' << w.iconFile << '|' << displays[w.id] << '\n';
@@ -251,7 +262,7 @@ void UltraDesktopTasksWindow::RebuildWindowList() {
     windowRows_->ClearChildren();
     int shown = 0;
     for (const DesktopWindowInfo& w : windows) {
-        if (w.skipTaskbar) continue;
+        if (!Listed(w)) continue;
         auto row = CreateContainer("tmRow" + std::to_string(w.id), 0, 0, 0, 34);
         row->layout.SetFlexRow().SetFlexGap(kColumnGap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
         row->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(34));

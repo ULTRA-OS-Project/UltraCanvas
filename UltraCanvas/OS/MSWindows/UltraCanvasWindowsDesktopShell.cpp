@@ -1452,15 +1452,20 @@ bool GetScreenSize(int& width, int& height) {
 
 namespace {
     BOOL CALLBACK CollectMonitor(HMONITOR monitor, HDC, LPRECT, LPARAM param) {
-        MONITORINFO info = {};
+        MONITORINFOEXW info = {};
         info.cbSize = sizeof(info);
-        if (!GetMonitorInfoW(monitor, &info)) return TRUE;
+        if (!GetMonitorInfoW(monitor, reinterpret_cast<MONITORINFO*>(&info))) return TRUE;
         DesktopScreenInfo screen;
         screen.x = info.rcMonitor.left;
         screen.y = info.rcMonitor.top;
         screen.width = info.rcMonitor.right - info.rcMonitor.left;
         screen.height = info.rcMonitor.bottom - info.rcMonitor.top;
         screen.primary = (info.dwFlags & MONITORINFOF_PRIMARY) != 0;
+        // "\\.\DISPLAY2" -> 2: the number Windows' display settings show.
+        const std::wstring device = info.szDevice;
+        size_t digits = device.size();
+        while (digits > 0 && iswdigit(device[digits - 1])) --digits;
+        if (digits < device.size()) screen.number = std::stoi(device.substr(digits));
         reinterpret_cast<std::vector<DesktopScreenInfo>*>(param)->push_back(screen);
         return TRUE;
     }

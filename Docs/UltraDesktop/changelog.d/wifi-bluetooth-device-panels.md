@@ -61,3 +61,9 @@
   itself, or the icon for its type), and the cards' text is smaller, so a
   category holds more at a glance. It no longer has a panel to drag or
   resize, and it no longer opens by itself when the desktop starts.
+- **Sticker board thumbnails as UltraFiler shows them**: a PDF's first page,
+  a book's cover and a small page of a text document's first lines (Word,
+  LibreOffice, Markdown, spreadsheets) instead of a type icon.
+- **The Task Manager** no longer lists the desktop's own windows (itself, its
+  dialogs, the Sticker board), and on Windows numbers the displays the way
+  Windows' display settings do.

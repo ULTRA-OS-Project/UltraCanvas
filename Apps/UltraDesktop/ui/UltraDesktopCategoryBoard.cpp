@@ -1,5 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopCategoryBoard.cpp
 // The Sticker board: files sorted into categories. See the header.
+// Version: 0.3.0 - thumbnails as UltraFiler makes them (RenderFileThumbnail):
+//                  a PDF's first page, a page of a document's text
 // Version: 0.2.0 - its own window's content; close button; thumbnails;
 //                  smaller card text
 // Version: 0.1.0
@@ -14,10 +16,10 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasNativeFileIcons.h"
-#include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "Plugins/Charts/UltraCanvasKanbanBoard.h"
@@ -295,19 +297,17 @@ std::shared_ptr<UCPixmap> UltraDesktopCategoryBoard::Thumbnail(const KanbanCard&
     work_.Run<std::shared_ptr<UCPixmap>>(
         [path, icons]() -> std::shared_ptr<UCPixmap> {
             std::error_code ec;
-            const fs::path file = PathFromUtf8(path);
-            if (!fs::exists(file, ec)) return nullptr;   // a note, or a file gone
-            const bool folder = fs::is_directory(file, ec);
-            if (!folder && UltraCanvasSupportedFormats::CanImagePipelineLoad(PathToUtf8(file.extension()))) {
-                if (auto image = UCImage::GetFresh(path)) {
-                    if (image->GetWidth() > 0 && image->GetHeight() > 0) {
-                        if (auto pixmap = image->GetPixmap(kThumbnailPixels * 2, kThumbnailPixels,
-                                                           ImageFitMode::Contain, 1.0f)) {
-                            return pixmap;
-                        }
-                    }
+            if (!fs::exists(PathFromUtf8(path), ec)) return nullptr;   // a note, or a file gone
+            const bool folder = fs::is_directory(PathFromUtf8(path), ec);
+            // What the file holds, as UltraFiler's tiles show it: the
+            // picture, a PDF's first page, a book's cover, a page of a
+            // document's first lines ...
+            if (!folder) {
+                if (auto preview = RenderFileThumbnail(path, kThumbnailPixels * 2, kThumbnailPixels, 1.0f)) {
+                    return preview;
                 }
             }
+            // ... else the icon of its type.
             {
                 NativeFileIconThreadScope scope;
                 if (auto icon = LoadHostFileIconPixmap(path, folder, kThumbnailPixels)) return icon;

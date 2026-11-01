@@ -45,6 +45,7 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.12.0 - DesktopScreenInfo::number (Windows' own display numbers)
 // Version: 1.11.0 - DesktopWindowInfo::maximized
 // Version: 1.10.0 - GetWindowBounds, MoveWindow, BringWindowOnScreen,
 //                   KillWindowProcess; CloseWindow brings the window to the front
@@ -108,6 +109,10 @@ namespace UltraCanvas {
         int  width = 0;
         int  height = 0;
         bool primary = false;
+        // The system's own number for the monitor where it gives one -
+        // Windows: n of its \\.\DISPLAYn device, which its display settings
+        // show in the same way - else 0 (X11 numbers none).
+        int number = 0;
         bool operator==(const DesktopScreenInfo& other) const {
             return x == other.x && y == other.y && width == other.width && height == other.height &&
                    primary == other.primary;

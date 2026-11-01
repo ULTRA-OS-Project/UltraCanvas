@@ -215,13 +215,15 @@ the right-hand monitor the primary.
 - **Task Manager**: the open windows on the first tab, under a header -
   each with its application's icon, its state as an icon and a word (open,
   maximized or minimized; blue for the window in front), the display
-  (monitor) it is on as a number in a bordered box - 1 is the primary, the
-  others left to right, "?" for a window on no display - and, where there
+  (monitor) it is on as a number in a bordered box - on Windows the number
+  its display settings show, elsewhere 1 for the primary and the others left
+  to right; "?" for a window on no display - and, where there
   is more than one virtual desktop, its desktop the same way. *Show* brings
   the window to the front and, when it is off every display, centres it on
   one; *Close* brings it to the front first, so a program that asks "Save
   the changes?" asks where it is seen; *Kill task* ends the program at once
-  after asking, for one that does not close - the machine — CPU load and temperature, memory, storage, the
+  after asking, for one that does not close. The desktop's own windows (the
+  Task Manager itself, its dialogs, the Sticker board) are not listed - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
 - **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
@@ -233,8 +235,10 @@ the right-hand monitor the primary.
   It shows only when the pinboard button is clicked, and then just below the
   application that was in front - that application stays visible on top of
   it; *✕* in the board's bar (or the button again) hides it. A file's card
-  shows a small thumbnail: the picture itself for a photo or a drawing, the
-  system's icon for its type otherwise (a folder, a document). It starts with *Docs*,
+  shows a small thumbnail as UltraFiler's tiles do: the picture itself for a
+  photo or a drawing, a PDF's first page, a book's cover, a small page of a
+  text document's first lines (Word, LibreOffice, Markdown, a spreadsheet),
+  and the system's icon for anything else (a folder, an archive). It starts with *Docs*,
   *Work* and *Home*. Drop files from the file manager onto a category and
   they are added to it straight away, without a question; a file already on
   the board moves to the category it was dropped on. A double-click opens a

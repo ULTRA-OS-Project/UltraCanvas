@@ -4,12 +4,14 @@
 // are several), and Show, Close and Kill task - and the machine itself on a second tab as
 // the framework's UltraCanvasHardwareInfoPanel shows it (CPU load and
 // temperature, memory, storage, the network interfaces and the rest).
+// Version: 0.5.0 - the desktop's own windows left out; Windows' display numbers
 // Version: 0.4.0 - the state as an icon and a word
 // Version: 0.3.0 - the display column, Show onto a display, Kill task
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasTimer.h"
 
 #include "UltraCanvasWindow.h"
@@ -41,6 +43,7 @@ private:
                                                                        const std::string& text,
                                                                        const std::string& tooltip);
     static void ShowAndBringOnScreen(uint64_t id);
+    static bool Listed(const UltraCanvas::DesktopWindowInfo& w);
     // Asks first: the program is ended without being asked to close.
     void KillTask(uint64_t id, const std::string& title);
 
