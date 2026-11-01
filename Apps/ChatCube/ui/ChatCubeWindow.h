@@ -49,8 +49,9 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
-// Version: 0.2.4 - a gear beside the copy button opens the Settings window (ChatCubeSettingsWindow);
+// Version: 0.2.5 - a gear beside the copy button opens the Settings window (ChatCubeSettingsWindow);
 //                  the send key, typing either way, the nearby list and the clock follow its choices
+// Version: 0.2.4 - Minimize() (ChatCube --minimized)
 // Version: 0.2.3 - a picture or a file waits in the composer, with a x to drop it, until sent; a
 //                  picture on the clipboard pastes into it; an SVG drawing shows as a picture
 // Version: 0.2.2 - pictures: avatars from the person's photo, photos and videos in the bubbles and a
@@ -103,6 +104,8 @@ public:
 
     bool Create();
     void Show();
+    // The window to the taskbar (ChatCube --minimized).
+    void Minimize();
     std::function<void()> onClosed;
 
 private:

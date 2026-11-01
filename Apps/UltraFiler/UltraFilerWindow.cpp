@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.40.0 - the tab strip's "+" can open the Computer page
+//                  (Settings > Display > New tab: newTabStart)
 // Version: 1.39.0 - the folder tree no longer lists macOS applications as
 //                  folders (IsTreeHiddenAppBundle), as the Finder does not
 // Version: 1.38.0 - a macOS application is never pinned into the folder tree's
@@ -5547,8 +5549,9 @@ void UltraFilerWindow::BuildTabbedContainer() {
     tabbedContainer->SetContentHost(tabContentHost);
 
     // "+" at the end of the tab list opens another tab - on the folder the
-    // active tab is showing, or on the Home folder, per Settings > Handling >
-    // Tabs. The current folder is what it always was and stays the default.
+    // active tab is showing, on the Home folder, or on the Computer page, per
+    // Settings > Display > New tab. The current folder is what it always was
+    // and stays the default.
     tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
     tabbedContainer->SetShowNewTabButton(true);
     // Idle it is just the "+" on the strip; its shape and hover colour only
@@ -5559,9 +5562,16 @@ void UltraFilerWindow::BuildTabbedContainer() {
     ApplyTabStripStyle();
     tabbedContainer->onNewTabRequest = [this]() {
         std::string path;
-        if (!settings.newTabOpensHome && filer) path = filer->GetPath();
+        if (settings.newTabStart == FilerNewTabStart::CurrentFolder && filer)
+            path = filer->GetPath();
         if (path.empty()) path = UserHomeDir();
         AddNewTab(path, true);
+        // Computer is a page, not a folder: the new tab holds the Home folder
+        // and the page goes up over it - as the tree's "Computer" entry does
+        // for a tab that is already open - so picking a drive or a folder on
+        // it, Esc, or Back leaves the tab with a folder to show.
+        if (settings.newTabStart == FilerNewTabStart::Computer)
+            SetComputerPageVisible(true);
     };
 
     tabbedContainer->onTabClose = [this](int index) {

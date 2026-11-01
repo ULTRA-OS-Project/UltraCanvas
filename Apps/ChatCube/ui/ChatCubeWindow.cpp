@@ -320,6 +320,10 @@ void ChatCubeWindow::Show() {
     if (window_) window_->Show();
 }
 
+void ChatCubeWindow::Minimize() {
+    if (window_) window_->Minimize();
+}
+
 // ===================================================================== views
 
 std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {

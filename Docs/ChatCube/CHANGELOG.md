@@ -1,3 +1,8 @@
+#### 2026-11-01 *0.1.12*
+- **`ChatCube --minimized`** starts with the window minimized, so messages
+  arrive in the background - what UltraDesktop's *Start with the desktop*
+  asks for.
+
 #### 2026-10-31 *0.1.11*
 - **A picture or a file waits in the composer until you send it.** The
   paperclip, or Ctrl+V with a picture or a file on the clipboard, no longer

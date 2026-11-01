@@ -1,7 +1,7 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
 // The history is in the header (include/UltraCanvasTreeView.h).
-// Version: 1.10.0 - the +/- box in its own border and symbol colours (SetExpandButtonColors)
+// Version: 1.11.0 - the +/- box in its own border and symbol colours (SetExpandButtonColors)
 // Version: 1.8.0 - TreeExpanderStyle::Chevron, the expand button as an arrow
 // Version: 1.7.0 - a loading row (TreeNodeData::loading) slides a thin bar along its foot
 // Version: 1.6.0 - SetFilterText: rows hidden by a filter (TreeNode::IsShown)

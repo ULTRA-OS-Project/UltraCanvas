@@ -454,6 +454,10 @@ process started and the thread (`ui`, or `w<n>` for a worker):
 
 `ULTRAMAIL_TRACE=0` turns it off.
 
+`UltraMail --minimized` starts with the window minimized: mail is fetched
+and the unread count published to the desktop's mail icon as with the
+window open. UltraDesktop's *Start with the desktop* starts it so.
+
 ## What the engine provides now
 
 - **Accounts / folders / messages** persisted through UltraDatabase (SQLite),

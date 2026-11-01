@@ -7,6 +7,8 @@
 // every UltraCanvas application keeps its settings. The history, favorites,
 // folder views, folder icons and the remote drive list live beside it.
 // Settings are applied live by the settings dialog and saved on every change.
+// Version: 1.21.0 - Display > New tab: newTabStart (current folder / Home / Computer)
+//                  replaces newTabOpensHome
 // Version: 1.20.0 - Archives > TAR: tar, how Compress packs a TAR (the
 //                   compressor levels, threads, zstd long mode, header format,
 //                   what each file keeps, links, exclusions)
@@ -40,6 +42,13 @@
 #include <vector>
 
 namespace UltraCanvas {
+
+// Display > New tab: what the "+" at the end of the folder tab strip shows.
+enum class FilerNewTabStart {
+    CurrentFolder, // another view of the folder the active tab is showing
+    Home,          // the Home folder
+    Computer       // the Computer page (drives, Home, Cloud Storage)
+};
 
 // Display > Tab style: the three looks of the window's tab strip.
 enum class FilerTabStripStyle {
@@ -314,14 +323,18 @@ public:
     FilerProblemPolicy problemPolicy = FilerProblemPolicy::Ask;
     int progressDelaySeconds = kDefaultProgressDelaySeconds;
 
-    // Handling > Tabs: what the "+" at the end of the folder tab strip opens -
-    // another view of the folder the active tab is showing (the default, and
-    // what every earlier release did: the new tab continues where the work is)
-    // or the Home folder (a clean starting point, the way a browser opens a
-    // new tab on its start page). Everything else that opens a tab - "Open
-    // containing folder" from a search result, a folder opened in a new tab
-    // from the History view - names its own folder and is not affected.
-    bool newTabOpensHome = false;
+    // Display > New tab: what the "+" at the end of the folder tab strip opens
+    // - another view of the folder the active tab is showing (the default, and
+    // what every earlier release did: the new tab continues where the work is),
+    // the Home folder (a clean starting point, the way a browser opens a new
+    // tab on its start page), or the Computer page (the drives, Home and the
+    // cloud folders, with the Home folder behind it in the tab). Everything
+    // else that opens a tab - "Open containing folder" from a search result, a
+    // folder opened in a new tab from the History view - names its own folder
+    // and is not affected. Stored under its old key, handling.tabs.new.tab,
+    // so the choice made on the former Handling > Tabs page carries over; a
+    // build that predates "computer" reads it as the current folder.
+    FilerNewTabStart newTabStart = FilerNewTabStart::CurrentFolder;
 
     // Handling > Opening files: what a double-click (or Enter) on a file does
     // when this system has a program registered for that file type - start
@@ -564,7 +577,12 @@ public:
             ParseInt(it->second, progressDelaySeconds,
                      kMinProgressDelaySeconds, kMaxProgressDelaySeconds);
         it = kv.find("handling.tabs.new.tab");
-        if (it != kv.end()) newTabOpensHome = (it->second == "home");
+        if (it != kv.end()) {
+            const std::string start = Trim(it->second);
+            newTabStart = start == "home"     ? FilerNewTabStart::Home
+                        : start == "computer" ? FilerNewTabStart::Computer
+                                              : FilerNewTabStart::CurrentFolder;
+        }
         it = kv.find("handling.files.double.click");
         if (it != kv.end())
             doubleClickOpensRegisteredApp = (it->second == "application");
@@ -703,7 +721,10 @@ public:
              << "\n";
         file << "handling.fileops.progress.delay = " << progressDelaySeconds << "\n";
         file << "handling.tabs.new.tab = "
-             << (newTabOpensHome ? "home" : "current") << "\n";
+             << (newTabStart == FilerNewTabStart::Home     ? "home"
+               : newTabStart == FilerNewTabStart::Computer ? "computer"
+                                                           : "current")
+             << "\n";
         file << "handling.files.double.click = "
              << (doubleClickOpensRegisteredApp ? "application" : "preview")
              << "\n";

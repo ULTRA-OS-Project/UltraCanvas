@@ -48,6 +48,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Native application icons](#native-application-icons)
   - [Thumbnail memory](#thumbnail-memory)
   - [Thumbnails between runs](#thumbnails-between-runs)
+  - [A file's picture outside the Filer](#a-files-picture-outside-the-filer)
 - [Shortcuts](#shortcuts)
   - [Windows shortcuts (.lnk)](#windows-shortcuts-lnk)
   - [Desktop entries (.desktop)](#desktop-entries-desktop)
@@ -1015,6 +1016,25 @@ shown, or it looks like a fault.
 A disk cache is an optimisation and never a requirement: a full disk, a
 read-only cache directory or a platform with nowhere to write costs a
 re-decode, never a missing thumbnail.
+
+### A file's picture outside the Filer
+
+`RenderFileThumbnail(path, width, height, scale)` (a free function in
+`UltraCanvasFilerWidget.h`) makes the picture a tile would show, for a caller
+that has no Filer: the image itself, a PDF's first page, a book's cover, a 3D
+model, a font specimen, a video's poster frame, an embedded preview - and for
+a text document (Word, LibreOffice, Markdown, a spreadsheet, plain text) a
+small page with its first lines, which the tiles draw as text themselves. It
+is the switch the thumbnail workers run, so the two never disagree about
+what a format looks like. It blocks - call it from a worker thread - and
+answers nullptr where this build can make no picture (an archive, a
+program, audio); the caller then shows the type's icon. UltraDesktop's
+Sticker board draws its cards' thumbnails with it.
+
+<!-- doc-check: std::string path; -->
+```cpp
+std::shared_ptr<UCPixmap> picture = RenderFileThumbnail(path, 116, 58, 2.0f);
+```
 
 ## Shortcuts
 

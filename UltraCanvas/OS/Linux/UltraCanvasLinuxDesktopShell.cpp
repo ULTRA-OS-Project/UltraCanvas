@@ -61,6 +61,9 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <chrono>
+#include <thread>
+#include <csignal>
 #include <new>
 #include <sstream>
 
@@ -349,7 +352,7 @@ namespace {
 
     struct Atoms {
         Atom utf8, netWmName, wmClass, netWmDesktop, netWmPid, netWmState, stateHidden,
-             stateSkipTaskbar, netWmWindowType, typeNormal, typeDialog, typeUtility,
+             stateSkipTaskbar, stateMaximizedVert, stateMaximizedHorz, netWmWindowType, typeNormal, typeDialog, typeUtility,
              clientListStacking, clientList, activeWindow, currentDesktop, numberOfDesktops;
         explicit Atoms(Display* d)
             : utf8(InternAtom(d, "UTF8_STRING")),
@@ -360,6 +363,8 @@ namespace {
               netWmState(InternAtom(d, "_NET_WM_STATE")),
               stateHidden(InternAtom(d, "_NET_WM_STATE_HIDDEN")),
               stateSkipTaskbar(InternAtom(d, "_NET_WM_STATE_SKIP_TASKBAR")),
+              stateMaximizedVert(InternAtom(d, "_NET_WM_STATE_MAXIMIZED_VERT")),
+              stateMaximizedHorz(InternAtom(d, "_NET_WM_STATE_MAXIMIZED_HORZ")),
               netWmWindowType(InternAtom(d, "_NET_WM_WINDOW_TYPE")),
               typeNormal(InternAtom(d, "_NET_WM_WINDOW_TYPE_NORMAL")),
               typeDialog(InternAtom(d, "_NET_WM_WINDOW_TYPE_DIALOG")),
@@ -395,10 +400,14 @@ namespace {
         info.processId = static_cast<int>(GetLong(d, w, a.netWmPid, XA_CARDINAL, 0));
         info.active = (w == active);
 
+        bool vertical = false, horizontal = false;
         for (long state : GetLongs(d, w, a.netWmState, XA_ATOM)) {
             if (static_cast<Atom>(state) == a.stateHidden) info.minimized = true;
             if (static_cast<Atom>(state) == a.stateSkipTaskbar) info.skipTaskbar = true;
+            if (static_cast<Atom>(state) == a.stateMaximizedVert) vertical = true;
+            if (static_cast<Atom>(state) == a.stateMaximizedHorz) horizontal = true;
         }
+        info.maximized = vertical && horizontal;
         // Docks, panels, the desktop, menus, tooltips: not taskbar material,
         // whether or not they set the state.
         const std::vector<long> types = GetLongs(d, w, a.netWmWindowType, XA_ATOM);
@@ -509,6 +518,63 @@ bool CloseWindow(uint64_t id) {
     if (!d || id == 0) return false;
     ScopedErrorHandler guard;
     return SendRootMessage(d, static_cast<Window>(id), "_NET_CLOSE_WINDOW", CurrentTime, 2);
+}
+
+bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) {
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    Display* d = QueryDisplay();
+    if (!d || id == 0) return false;
+    ScopedErrorHandler guard;
+    const Window w = static_cast<Window>(id);
+    XWindowAttributes attributes;
+    if (!XGetWindowAttributes(d, w, &attributes)) return false;
+    Window child = 0;
+    int rootX = 0, rootY = 0;
+    if (!XTranslateCoordinates(d, w, RootOf(d), 0, 0, &rootX, &rootY, &child)) return false;
+    x = rootX;
+    y = rootY;
+    width = attributes.width;
+    height = attributes.height;
+    return true;
+}
+
+bool MoveWindowTo(uint64_t id, int x, int y) {
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    Display* d = QueryDisplay();
+    if (!d || id == 0) return false;
+    ScopedErrorHandler guard;
+    // _NET_MOVERESIZE_WINDOW through the manager, which places the frame:
+    // NorthWest gravity (1), x and y given (bits 8 and 9), from a pager or
+    // taskbar (source 2, bits 12-15).
+    const long flags = 1L | (1L << 8) | (1L << 9) | (2L << 12);
+    return SendRootMessage(d, static_cast<Window>(id), "_NET_MOVERESIZE_WINDOW", flags, x, y, 0, 0);
+}
+
+bool KillProcess(int processId, std::string& error) {
+    if (processId <= 1) {
+        error = "The window does not say which program it belongs to.";
+        return false;
+    }
+    if (processId == static_cast<int>(getpid())) {
+        error = "That is the desktop itself.";
+        return false;
+    }
+    if (kill(static_cast<pid_t>(processId), SIGTERM) != 0) {
+        error = errno == EPERM ? "The program runs as another user; the desktop may not end it."
+                               : errno == ESRCH ? "The program has already ended."
+                                                : std::string("The program could not be ended: ") + std::strerror(errno);
+        return false;
+    }
+    // A program that does not end on SIGTERM within two seconds is killed.
+    const pid_t pid = static_cast<pid_t>(processId);
+    std::thread([pid]() {
+        for (int i = 0; i < 20; ++i) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            if (kill(pid, 0) != 0) return;
+        }
+        kill(pid, SIGKILL);
+    }).detach();
+    return true;
 }
 
 int GetVirtualDesktopCount() {

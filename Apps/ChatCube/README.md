@@ -119,6 +119,11 @@ Its data - the identity's key vault, contacts, history - is in the per-user
 data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
 
+`ChatCube --minimized` starts with the window minimized, so messages
+arrive in the background - what UltraDesktop's *Start with the desktop*
+asks for (a running copy is left alone; a second start would only bring
+its window forward).
+
 `ChatCube --dark` is the dark look whatever Settings chose; the light one is
 the default. Both are
 one theme (`ui/ChatCubeTheme.h`: the ChatCube green on warm neutrals, the

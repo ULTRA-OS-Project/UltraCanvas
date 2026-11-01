@@ -3,6 +3,7 @@
 // backend. Applications include UltraCanvasDesktopShell.h instead; this
 // header exists so OS/<Platform>/UltraCanvas*DesktopShell.cpp and the shared
 // core agree on one set of entry points.
+// Version: 1.7.0 - GetWindowBounds, MoveWindowTo, KillProcess
 // Version: 1.6.0 - LockSession; the loudspeaker's volume; TrayHostMenuActivate
 // Version: 1.5.0 - LaunchPackagedApplication (Microsoft Store applications),
 //                  ListScreens
@@ -38,6 +39,15 @@ namespace DesktopShellBackend {
     bool ActivateWindow(uint64_t id);
     bool MinimizeWindow(uint64_t id);
     bool CloseWindow(uint64_t id);
+    // The window's outer rectangle in screen pixels (the same pixels as
+    // ListScreens); a minimized window's place when restored where the
+    // platform keeps it. False when the window is gone.
+    bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height);
+    // Move the window's top-left corner there, its size kept.
+    bool MoveWindowTo(uint64_t id, int x, int y);
+    // End the process at once (Linux: SIGTERM, then SIGKILL after two
+    // seconds; Windows: TerminateProcess). Refuses this process itself.
+    bool KillProcess(int processId, std::string& error);
     int  GetVirtualDesktopCount();
     int  GetCurrentVirtualDesktop();
     bool SetCurrentVirtualDesktop(int index);

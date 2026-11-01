@@ -1,3 +1,9 @@
+#### 2026-11-01 *0.10.83*
+- **`UltraMail --minimized`** starts with the window minimized: mail is
+  fetched and the unread count reaches the desktop's mail icon as with the
+  window open - what UltraDesktop's *Start with the desktop* asks for. On
+  Windows the command line now reaches the program (`WinMain` passes it on).
+
 #### 2026-10-30 *0.10.82*
 - **The threat scanner names the same attachments UltraMail refuses to
   open.** Whether an attachment is a program is now

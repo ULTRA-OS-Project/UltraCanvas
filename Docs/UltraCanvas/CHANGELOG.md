@@ -1,3 +1,145 @@
+#### 2026-11-01 *0.9.453*
+- **UltraCanvasButton: the text on several lines.** `ButtonStyle::wrap` /
+  `SetWrap(TextWrap::WrapWord)` breaks a button's text onto as many lines as
+  its text area holds, from the top of the area, the last one shortened with
+  "…" when more is left - an application's name under its icon on a tile.
+  `WrapNone`, the default, keeps the text on one line as before. Doc:
+  `Docs/UltraCanvas/UltraCanvasButtonExamples.md`.
+- **UltraCanvasTreeView: `GetNodeAtY` is public.** The row at an
+  element-local y, for a drop that starts in another element - UltraDesktop's
+  Apps window drops a list row on a category in its tree. Doc:
+  `Docs/UltraCanvas/UltraCanvasTreeViewExamples.md`.
+
+#### 2026-11-01 *0.9.452*
+- **UltraCanvasWireless on macOS: the Wi-Fi list says what to do while
+  macOS asks for Location Services.** Until the person answered macOS's
+  question, an empty network list pointed them to System Settings; now it
+  says to allow it when macOS asks, and System Settings only once it has
+  been refused.
+
+#### 2026-11-01 *0.9.451*
+- **`UltraCanvasVideoTimeline` 1.4.0: a close-gap button in every gap of a
+  free track.** Each empty stretch before a clip on a non-magnetic lane
+  shows a `|<-` button, centred in the part of the gap on screen; a click
+  reports a `Move` of the clip after it to the end of the clip before (or
+  to 0), `Shift`+click a rippled `Move` of every clip after the gap.
+  `SetShowGapButtons(false)` turns them off; a locked lane has none. The
+  model gains `TimelineGap`, `TimelineGaps` and `TimelineCloseGap`.
+
+#### 2026-11-01 *0.9.450*
+- **The vendored libcurl had no `sftp://`, so UltraStoreAdmin's SFTP upload
+  was refused with `Protocol "sftp" is disabled` even with libssh2
+  installed and linked.** The vendored `third_party/curl` carried the
+  output of an in-tree autotools `./configure` - `lib/curl_config.h`, the
+  Makefiles, `.deps/`, `config.status`, `libtool` and the rest - and
+  `curl_setup.h` includes `"curl_config.h"` with quotes, so the compiler
+  took that stale file beside it instead of the one CMake generates, and
+  every option CMake had decided (libssh2 among them) was lost while the
+  library still linked what CMake found. The generated files are removed;
+  `VendoredCurl.cmake` refuses to configure while such a `curl_config.h`
+  exists in the source tree, asks curl's CMake for libssh2 explicitly and
+  prints which SSH backend it got, warning when there is none; the Linux CI
+  leg installs `libssh2-1-dev` and fails when the vendored libcurl has no
+  SSH backend.
+
+#### 2026-11-01 *0.9.449*
+- **Closing a window that asks first no longer looks like nothing
+  happened.** `UltraCanvasDesktopShell::CloseWindow` brings the window to the
+  front - and onto a screen - before asking it to close, and an UltraCanvas
+  window whose `onWindowClosing` keeps it open (to ask "Save the changes?")
+  restores itself if it was minimized - so ArtCreator's question about an
+  unsaved drawing is seen when UltraDesktop's Task Manager or taskbar closes
+  it.
+- **Windows off every screen, and ending a program.**
+  `UltraCanvasDesktopShell::GetWindowBounds` and `MoveWindow` read and move a
+  window; `BringWindowOnScreen` centres a window whose title bar is on no
+  screen (one left on a monitor that was unplugged) on the screen it is
+  mostly over; `KillWindowProcess` ends a window's program at once, as a task
+  manager's "End task" (Linux `SIGTERM`, then `SIGKILL`; Windows
+  `TerminateProcess`), refusing the desktop itself and programs it may not
+  end.
+- `DesktopWindowInfo::maximized`: a window maximized both ways
+  (`_NET_WM_STATE_MAXIMIZED_VERT` and `_HORZ` on X11, `IsZoomed` on Windows).
+- **Kanban cards can show a picture.** `UltraCanvasKanbanBoardElement::cardImageProvider`
+  hands over a picture for a card - a file's thumbnail, a photo - drawn above
+  its title in a band `KanbanBoardStyle::cardImageHeight` high. The board
+  never loads anything itself: the provider answers with what is ready, and
+  the caller invalidates the layout when a thumbnail made elsewhere arrives.
+- **UltraCanvasRemovableDrives: "Safely remove".** A new module
+  (`UltraCanvasRemovableDrives.h`) lists the drives a person plugs in - USB
+  sticks, external disks, memory cards, never the system's own drive - with
+  their mount points, and removes one safely: every volume unmounted after
+  the system has written out what it still held, then the drive powered off
+  or ejected. A file still open on it is reported in words. Linux through
+  UDisks2, Windows through SetupAPI and `CM_Request_Device_Eject` (Windows'
+  own "Safely Remove Hardware"; the framework now links `cfgmgr32`), macOS
+  through NSWorkspace's eject. Doc: `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
+- The Linux system-bus helpers the wireless backend used are shared now
+  (`OS/Linux/UltraCanvasLinuxSystemBus.h`), one connection for NetworkManager,
+  BlueZ and UDisks2.
+- On macOS the volumes of one drive are one entry, grouped by
+  DiskArbitration's whole disk and named by the drive's vendor and model,
+  with its size and bus, as on Linux and Windows (the framework links
+  DiskArbitration where the SDK has it).
+- The volumes of an APFS drive are grouped by the physical disk under their
+  container (found in the IOKit registry), so a drive with two containers
+  is one entry too, named and sized by the drive itself.
+- **`RenderFileThumbnail`: a file's picture outside the Filer.** A free
+  function in `UltraCanvasFilerWidget.h` makes the picture a Filer tile
+  shows - the image, a PDF's first page, a book's cover, a 3D model, a font
+  specimen, a video's poster frame - and for a text document a small page of
+  its first lines. The thumbnail workers' decode switch is now this one
+  function, so the Filer and its other callers (UltraDesktop's Sticker board)
+  agree on every format.
+- `DesktopScreenInfo::number`: Windows' own number for a monitor (n of
+  `\\.\DISPLAYn`, as its display settings show it); 0 where the system numbers
+  none.
+- **UltraCanvasWireless: Wi-Fi and Bluetooth operated from a program.** A
+  new module (`UltraCanvasWireless.h`) lists the Wi-Fi networks in reach and
+  joins one (asking for the password only when the system has none saved,
+  and keeping a new profile only once the network has been joined), leaves
+  and forgets networks, and switches the radio; it lists the paired
+  Bluetooth devices and the ones in pairing mode nearby, pairs, connects,
+  disconnects and removes them, and switches the Bluetooth radio where the
+  system allows. Linux through NetworkManager and BlueZ on the system bus,
+  Windows through the Native Wifi and Bluetooth APIs, macOS through
+  CoreWLAN and IOBluetooth (with the Location Services permission macOS 14
+  asks before it names a network); other platforms answer that they have
+  none. UltraDesktop's new Wi-Fi and Bluetooth panels are built on it. Doc:
+  `Docs/UltraCanvas/UltraCanvasWireless.md`.
+- `package-macos.sh` writes `NSBluetoothAlwaysUsageDescription` and
+  `NSLocationWhenInUseUsageDescription` (and the location entitlement) for
+  the applications that list Bluetooth devices or Wi-Fi networks -
+  UltraDesktop.
+- **Pairing codes.** `UltraCanvasWireless::SetPairingHandler` takes the codes
+  a device shows or asks for while it pairs - a code to type on a keyboard,
+  one to compare with a phone, a PIN, a yes to pair. On Linux the module
+  registers a BlueZ agent for them on a GLib loop of its own; on macOS
+  IOBluetoothDevicePair's requests go to the handler; Windows keeps its own
+  prompt.
+- **The default pairing agent on Linux.** Setting a pairing handler now
+  registers the module's BlueZ agent straight away and as the default, so a
+  pairing the device starts - a phone pairing with the computer - reaches
+  the handler as well, and so does a connection from a device that is not
+  trusted (`WirelessPairingStep::AllowConnection`); a service of a device
+  being paired from here, or of a trusted one, is allowed without asking.
+  When BlueZ was not running yet, the agent is registered on a later read.
+- The Linux pairing agent follows BlueZ: its thread watches `org.bluez` on
+  the system bus and registers the agent again - as the default - whenever
+  BlueZ appears, so a `bluetoothd` restart or a late start no longer leaves
+  the desktop without one.
+
+#### 2026-11-01 *0.9.448*
+- **A static build links ChatCube and chatcube-peer again.** UltraRTC's
+  engine calls back into the device glue compiled into the core library
+  (`UltraRtcInternal::OpenCamera`, `OpenMicrophone`, `OpenSpeaker`), and the
+  core links UltraRTC: a cycle between two static archives that was declared
+  in one direction only, so GNU ld's single pass left those three undefined
+  in every executable that links UltraRTC (`ULTRACANVAS_BUILD_SHARED` off,
+  the default; CI builds shared and never saw it). `UltraCanvas/CMakeLists.txt`
+  now declares the back edge too, and CMake repeats the two archives on the
+  link line.
+
 #### 2026-10-31 *0.9.447*
 - **UltraIM: a file that is a picture goes with a preview picture.** ChatCube
   Direct now makes one (through the application's preview maker) for a file
