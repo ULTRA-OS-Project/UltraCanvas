@@ -19,6 +19,7 @@
 // through the code page names a different file: every path here goes through
 // PathToUtf8 / PathFromUtf8, and the config folder is redirected through the
 // wide environment API that GetEnvUtf8 reads.
+// Version: 1.5.0 - Display > New tab: newTabStart round trip
 // Version: 1.4.0 - Favorites: Reclassify out of the tree's Pinned section
 // Version: 1.3.0 - Favorites: Reclassify moves misfiled pins
 // Version: 1.2.0 - Handling > Protected files: the minutes before passwords are forgotten
@@ -247,6 +248,49 @@ void TestLimitClamped() {
 // ===== THE SETTING =====
 // Extras > History & Favorites' "Limit of entries" is written to the config
 // file and read back, and a hand-edited value out of range is brought inside it.
+// Display > New tab: the three choices survive a restart under the key the
+// former Handling > Tabs page used, so a choice made there carries over.
+void TestNewTabStartSetting() {
+    std::printf("\n-- Display > New tab --\n");
+    {
+        UltraFilerSettings settings;
+        Check(settings.newTabStart == FilerNewTabStart::CurrentFolder,
+              "a new tab shows the current folder by default");
+    }
+    const FilerNewTabStart all[] = {FilerNewTabStart::Home, FilerNewTabStart::Computer,
+                                    FilerNewTabStart::CurrentFolder};
+    const char* names[] = {"Home", "Computer", "the current folder"};
+    for (int i = 0; i < 3; ++i) {
+        {
+            UltraFilerSettings settings;
+            settings.Load();
+            settings.newTabStart = all[i];
+            settings.Save();
+        }
+        UltraFilerSettings reloaded;
+        reloaded.Load();
+        Check(reloaded.newTabStart == all[i],
+              std::string("\"") + names[i] + "\" comes back after a restart");
+    }
+    // What the former Handling > Tabs page wrote: "home" stays Home.
+    {
+        std::ofstream file(PathFromUtf8(UltraFilerSettings::GetConfigPath()), std::ios::app);
+        file << "handling.tabs.new.tab = home\n";
+    }
+    {
+        UltraFilerSettings settings;
+        settings.Load();
+        Check(settings.newTabStart == FilerNewTabStart::Home,
+              "the former Handling > Tabs choice carries over");
+    }
+    {
+        UltraFilerSettings settings;
+        settings.Load();
+        settings.newTabStart = FilerNewTabStart::CurrentFolder;
+        settings.Save();
+    }
+}
+
 void TestSettingRoundTrip() {
     std::printf("\n-- the setting --\n");
 
@@ -478,6 +522,7 @@ int main() {
     TestLoadTrimsAndRewrites();
     TestLimitClamped();
     TestSettingRoundTrip();
+    TestNewTabStartSetting();
     TestProtectedFilesSetting();
     TestMissingPathsDropOut();
     TestNonAsciiNameStays();
