@@ -726,6 +726,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
+  `SettingsPageKit`) — the look of an application's settings window, once:
+  `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
+  `AddPage`, `resets`, `Finish`, `ShowPage`, `SelectPage`, `onPageShown`,
+  `onClosed`) - the tree of pages on the left, the page on the right, the
+  page's Restore defaults and Close at the foot; a page's skeleton
+  (`MakePage` → `PageParts`, `AddNote`, `AddBodyCaption`) and the controls in
+  the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
+  / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
+  `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
+  settings window set the style; it and UltraSnip's are built on the kit.
+  Core in `core/UltraCanvasSettingsPageKit.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
+
 - **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
   copy of an application per user, built on UltraCanvasInstanceLock: a second
   start asks the running copy over UltraMessage (`<appId>.show`) to come
@@ -737,7 +751,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -1105,8 +1119,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
-    (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
-    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
+    (PNG), `CaptureScreenImage` (pixels in memory), `CaptureScreenArea` (one
+    rectangle of the screen as pixels, clipped to it - a screenshot tool's
+    snip, a screen recorder's frames; `DesktopScreenImage::x` / `y` say
+    where the pixels came from), `DefaultScreenshotPath`
+    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`),
+    `DefaultRecordingPath`
+    (`<Videos>/Screen Recordings/Screen recording <date> <time>.mp4`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
@@ -2689,7 +2708,7 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
   (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
-  `VideoFXPictureReader`
+  `VideoFXPictureReader`, `VideoFXRecorderSettings`, `VideoFXPixelLayout`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2708,6 +2727,12 @@ command-line tool. Planned: keyframed parameters.
   and, inside an overlap, the transition), `VideoFX_RenderFrame` (one frame
   in one call), `VideoFX_PlanSlideshow` (a slideshow's segments and
   settings before it is rendered)
+- Recording: `VideoFXFrameRecorder` (`Open`, `PushFrame` - pixels with
+  their stride and layout, RGBA or BGRA, and the frame's time - `Close`,
+  `IsOpen`, `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight`,
+  `GetEncoderName`): a live source's frames, pushed one by one as they
+  happen, encoded into a file as they come - what UltraSnip records the
+  screen with. No timeline, no sound, the fastest preset, fragmented MP4.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
@@ -11199,7 +11224,7 @@ drops one. The entries are the application's strings - a path it
 normalised, a name - compared as text.
 
 **File Location**: `include/UltraCanvasAppSettings.h`
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -11309,6 +11334,19 @@ test.Save();
 - `Set` on a dotted key makes the objects on the way and replaces a scalar
   in the way; `Set` with a scalar on a key that holds an object replaces
   the object.
+- An older file is never a problem: a key it does not have reads as the
+  fallback, and `Set` makes the objects on the way. Renaming or moving a
+  key is three calls, and the old file still reads:
+
+  <!-- doc-check: UltraCanvas::UltraCanvasAppSettings settings("UltraSnip"); -->
+  ```cpp
+  // 0.1 kept the rate under "video.fps"; 0.2 calls it "video.frameRate"
+  if (settings.Has("video.fps")) {
+      settings.Set("video.frameRate", settings.GetInt("video.fps", 20));
+      settings.Remove("video.fps");
+      settings.Save();
+  }
+  ```
 - `AppSettingsTest` (`Tests/AppSettingsTest.cpp`) covers it.
 
 ## Related
@@ -14428,6 +14466,20 @@ returns true and fires `onImageLoaded`; an image whose decode failed returns
 false, fires `onImageLoadFailed` with the reason and shows the error
 placeholder. A null or empty image (`std::make_shared<UCImage>()`) clears the
 element and fires neither.
+
+A picture that exists as pixels rather than as a file - a screen capture, a
+frame a program made - is shown without any encoding or decoding on the way:
+`UCImage::FromBgra(pixels, width, height, stride, opaque)` takes rows of
+32-bit pixels in memory order B, G, R, A (cairo's native layout, what the
+platforms' screen captures hand over; with `opaque` the fourth byte is
+ignored), and `UCImage::FromRgba(pixels, width, height)` takes straight
+R, G, B, A rows of `width * 4` bytes. Both copy the rows, and the image then
+draws, scales, saves and reports transparency like any other.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::vector<uint8_t> rgba; int width; int height; -->
+```cpp
+image->LoadFromImage(UCImage::FromRgba(rgba.data(), width, height));
+```
 
 ### GetLastError
 ```cpp
@@ -25885,7 +25937,9 @@ never to "every desktop".
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
+| `CaptureScreenArea(x, y, width, height, image, &error)` | One rectangle of the screen - `x`, `y`, `width`, `height` in the pixels of `ListScreens` - as pixels in memory, in the same `DesktopScreenImage` layout; the rectangle is clipped to the screen, and `image.x` / `image.y` say where the pixels came from (`CaptureScreenImage` sets them too: 0,0 on X11, the virtual screen's origin on Windows, which is negative when a monitor lies left of or above the primary). Cheaper than the whole screen and a crop - `XGetImage` of that much, a `BitBlt` of that much - which is what a screen recorder taking twenty frames a second of one window needs. False with the reason (a rectangle wholly off the screen among them), and `image` empty. |
 | `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
+| `DefaultRecordingPath()` | `<Videos>/Screen Recordings/Screen recording 2026-09-29 14.05.31.mp4` — the user's Videos folder, the home directory when there is none. Only names the file; the recorder (UltraSnip) creates the directory. |
 
 On Windows a desktop window covers the primary monitor; the others get a
 window each, kept while it is open:
@@ -66187,6 +66241,123 @@ already brings), `OS/MSWindows/UltraCanvasWindowsSessionLock.cpp` and
 `OS/MacOS/UltraCanvasMacOSSessionLock.mm`.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSettingsPageKit.md
+==============================================================================
+
+# UltraCanvas Settings Page Kit
+
+## Overview
+
+**UltraCanvasSettingsPageKit** is the look of an application's settings
+window, once: the window with the tree of pages on the left and the chosen
+page on the right, the page's *Restore defaults* and *Close* at the foot; a
+page's skeleton - the title, the caption, the controls, the notes block at
+the foot - and the controls in the window's one type scale. UltraFiler's
+settings window set the style; UltraSnip's is built on the kit, and so is
+the next application's, so every settings window reads as one family and a
+change to the look lands everywhere.
+
+**File Location**: `include/UltraCanvasSettingsPageKit.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+Everything is in `namespace UltraCanvas::SettingsPageKit`.
+
+## The window
+
+`UltraCanvasSettingsWindow` is the skeleton. An application's dialog state
+derives from it (or holds one), adds its sections, nodes, pages and resets,
+and calls `Finish`:
+
+| Call | Meaning |
+|---|---|
+| `Create(parent, title, width = 700, height = 560)` | The dialog window (not shown yet), the empty tree with a hidden root, the page area and the bottom bar; Escape closes it. False when the window could not be made. |
+| `AddSection(id, text)` | A top-level section of the tree (Display, Handling, ...). A section has no page of its own: selecting it moves on to its first page. |
+| `AddTreeNode(parentId, id, text)` | A node under any node; its id is the page id. |
+| `AddPage(pageId, page)` | A page under its node id. |
+| `resets[pageId] = PageReset{label, width, action}` | The page's *Restore defaults* button in the bottom bar: labelled and wired for it while the page is up, hidden for a page without one. |
+| `Finish(startPage)` | After the nodes and pages: hides the root (which promotes the sections to the top level), wires the selection, shows `startPage` and the window. The sections start closed. |
+| `ShowPage(nodeId)`, `SelectPage(pageId)` | Show a page; select its tree row (its section opened) and show it. |
+| `onPageShown`, `onClosed` | Called after a page is shown (a page of live figures re-reads them) and when the window has closed (`closed` is set first). |
+| `window`, `tree`, `pageArea`, `pages`, `restoreButton`, `shownPage`, `closed`, `IsOpen()` | The parts, for what the calls above do not cover. |
+
+## A page
+
+`MakePage(id, title, caption, scrolls = false)` returns `PageParts`: the
+whole `page`, the `body` the controls go into, and the `notes` block at
+the foot. `AddNote(parts, id, text)` adds a paragraph to the notes,
+`AddBodyCaption(parts, id, text)` a caption introducing a second group of
+controls. A page that `scrolls` (a long list of formats) puts its notes
+under the caption, before the list.
+
+## The controls
+
+| Call | Makes |
+|---|---|
+| `MakeLabel(id, text, fontSize, color)`, `MakeText(id, text, width, fontSize, color)` | A single-line label that hugs its text; a paragraph wrapped at `width`. |
+| `MakeChoice(id, text, checked, width)` | One choice of a radio group (`UltraCanvasRadioGroup::AddRadioButton` groups them). |
+| `MakeCheckbox(id, text, width, checked, onChange)` | A checkbox reporting its state. |
+| `MakeIntSlider(id, min, max, value, onChange)`, `MakeSliderValueLabel(id)`, `MakeSliderRow(id, caption, slider, value)` | A whole-number slider reporting while it moves, its value label, and the row holding both. |
+| `MakeButton(id, label, width, onClick, iconFile)`, `MakeButtonRow(id)` | The window's button (an icon from `media/icons/` as a mask), and a row of them. |
+| `MakeChoiceRow(id)`, `MakeLabelledRow(id, caption, control)` | A row of small choices that wraps; "caption [control]" on one line. |
+| `MakeColorBox(id, color, tooltip, onClick)`, `SetColorBoxColor(box, color)` | A box showing a configured colour, the same shade in every state. |
+| `IconPath(fileName)` | `media/icons/<fileName>` resolved. |
+
+The type scale and colours (`kTitleFontSize`, `kTextFontSize`,
+`kNoteFontSize`, `kTextColor`, `kNoteTextColor`, ...) and the page
+geometry (`kTextWidth`, `kControlHeight`, ...) are constants of the
+namespace, for a control a page builds itself.
+
+## Usage
+
+<!-- doc-check: UltraCanvasWindowBase* parent; struct MySettings { bool dark = false; int rate = 20; void Save() {} } settings; -->
+```cpp
+using namespace UltraCanvas::SettingsPageKit;
+
+struct Dialog : public UltraCanvasSettingsWindow {
+    std::shared_ptr<UltraCanvasSlider> rateSlider;
+    std::shared_ptr<UltraCanvasLabel> rateValue;
+};
+auto d = std::make_shared<Dialog>();
+if (!d->Create(parent, "MyApp - Settings")) return;
+d->AddSection("look", "Look");
+d->AddTreeNode("look", "look/colours", "Colours");
+
+PageParts page = MakePage("set-colours", "Colours", "How the window is drawn:");
+page.body->AddChild(MakeCheckbox("set-dark", "Dark", kTextWidth, settings.dark, [](bool on) {
+    settings.dark = on;
+    settings.Save();
+}));
+d->rateValue = MakeSliderValueLabel("set-rate-value");
+d->rateSlider = MakeIntSlider("set-rate", 5, 60, settings.rate, [d = d.get()](int rate) {
+    settings.rate = rate;
+    d->rateValue->SetText(std::to_string(rate) + " fps");
+    settings.Save();
+});
+page.body->AddChild(MakeSliderRow("set-rate-row", "Frame rate:", d->rateSlider, d->rateValue));
+AddNote(page, "set-colours-note", "Every change applies at once and is saved.");
+d->AddPage("look/colours", page.page);
+d->resets["look/colours"] = PageReset{"Restore defaults", 170, [d = d.get()]() {
+    settings.dark = false;
+    settings.rate = 20;
+    d->rateSlider->SetValue(20.0f);
+    settings.Save();
+}};
+d->Finish("look/colours");
+```
+
+The dialog state is kept alive by its owner (a `static std::shared_ptr`)
+while the window is up; `closed` says when it has gone. UltraFiler
+(`Apps/UltraFiler/UltraFilerSettingsDialog.cpp`) and UltraSnip
+(`Apps/UltraSnip/ui/UltraSnipSettingsDialog.cpp`) are the two windows
+built on it.
+
+## Related
+
+- `UltraCanvasAppSettings.h` - the file the settings are kept in
+- `UltraCanvasTreeView`, `UltraCanvasRadio`, `UltraCanvasCheckbox`, `UltraCanvasSlider` - the elements the kit makes
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasShellLink.md
 ==============================================================================
 
@@ -99037,6 +99208,45 @@ reach them too. Proxies can be made on the hardware as well
 
 ---
 
+## Recording a live source
+
+An export reads files; a recording takes frames as they happen. A screen
+recorder, a window capture or a camera hands `VideoFXFrameRecorder` one
+frame at a time with the moment it was taken, and the recorder encodes it
+into the file at once - the file grows while the recording runs and is
+complete after `Close()`. No sound: the microphone and loudspeaker capture
+stay the application's for now.
+
+```cpp
+VideoFXFrameRecorder recorder;
+VideoFXRecorderSettings settings;
+settings.frameRate = 20.0;                 // the file's rate
+if (recorder.Open("recording.mp4", settings) != VideoFXResult::Ok)
+    std::cerr << VideoFX_GetLastError() << "\n";
+while (recording) {
+    // the screen's pixels, four bytes each, B G R x - as every platform's
+    // screen capture gives them (UltraCanvasDesktopShell::CaptureScreenArea)
+    recorder.PushFrame(pixels, width, height, stride, SecondsSinceStart(), VideoFXPixelLayout::BGRA);
+}
+recorder.Close();
+```
+
+The frame's time places it: it lands on the nearest tick of the file's
+rate, a frame on a tick already written is dropped, and a gap (a slow
+capture) shows the last frame longer - so the recording keeps real time
+however many frames were caught. The size is the settings' or the first
+frame's, made even (H.264's 4:2:0 needs it), and every frame is scaled to
+it, so a source that changes size still records. `VideoFXRecorderSettings`
+takes the export's `container`, `videoCodec`, `quality`, `videoBitRate`,
+`keyframeInterval` and `acceleration`; its `encoderPreset` defaults to
+`"veryfast"` and the x264 / x265 encoders run with `zerolatency`, so a
+frame leaves the encoder as it comes in rather than after a look-ahead. An
+MP4 or MOV is written fragmented (`frag_keyframe`), so a recording cut
+short - the program killed, the machine off - still plays up to its last
+keyframe. `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight` and
+`GetEncoderName` describe the recording so far. UltraSnip (`Apps/UltraSnip`)
+records the screen with it.
+
 ## One-line helpers
 
 All of these are single-segment timelines over `VideoFX_Export`:
@@ -100912,6 +101122,115 @@ encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
 
 ==============================================================================
+FILE: Docs/UltraSnip/README.md
+==============================================================================
+
+# UltraSnip
+
+The screenshot and screen-recording tool of ULTRA OS: a picture or a video
+of an area you drag out, of a window you click, or of the whole screen -
+what the Snipping Tool is on Windows. A picture goes to the clipboard and to
+your Pictures folder as it is taken; a video goes to your Videos folder
+while it is recorded.
+
+Source: [`Apps/UltraSnip/`](../../Apps/UltraSnip/). Changelog:
+[`CHANGELOG.md`](CHANGELOG.md). The screen comes through
+[UltraCanvasDesktopShell](../UltraCanvas/UltraCanvasDesktopShell.md)
+(`CaptureScreenImage`, `CaptureScreenArea`), the video through
+[VideoFX](../Modules/VideoFX/README.md)'s `VideoFXFrameRecorder`.
+
+## Taking a snip
+
+**From the desktop.** Click the screenshot button on UltraDesktop's right
+bar, or press `Super+Shift+S` in any window: the screen freezes and you drag
+out the area. The button's right-click menu has the other shapes and the
+recordings.
+
+**From the window.** Start UltraSnip from the applications; choose the
+shape, the kind and the delay in its bar and click *New* (Ctrl+N):
+
+| Shape | What happens |
+|---|---|
+| *Rectangle* | The screen freezes, dimmed; drag out the area. Its size in pixels is shown beside it. Enter takes the whole screen, Escape or a right click cancels. |
+| *Window* | The window under the pointer is outlined with its title; click it. A drag takes an area instead. Enter takes the outlined window. |
+| *Full screen* | Everything, at once. |
+
+A *delay* of 3, 5 or 10 seconds lets you open a menu or a tooltip first.
+UltraSnip's own window hides itself while the snip is taken, so it is never
+in the picture, and comes back with the result.
+
+**From a prompt.** `UltraSnip --rectangle`, `--window` or `--screen` takes
+that snip at once; add `--video` for a recording and `--delay 3` (5, 10) for
+a wait. When UltraSnip is already running the request goes to it.
+
+## Pictures
+
+A picture is put on the clipboard and written to
+`Pictures/Screenshots/Screenshot <date> <time>.<type>` the moment it is
+taken, in the type chosen in the settings (PNG unless changed); either can
+be switched off there. The window shows it, with:
+
+| Button | Key | |
+|---|---|---|
+| Save as | Ctrl+S | under another name, in another folder, or as another picture type - every type this build writes, through the framework's Save dialog; the type's *Settings* there give the quality, and a size other than the picture's own |
+| Copy | Ctrl+C | onto the clipboard, again |
+| Open folder | | the saved file's folder in the file manager |
+| Edit in UltraPaint | | the saved picture in UltraPaint (saved first when it was not) |
+
+## Videos
+
+With *Video* chosen, the area you pick is recorded instead:
+`Videos/Screen Recordings/Screen recording <date> <time>.mp4` (H.264; or
+Matroska, or WebM with VP9, as the settings say), at the frame rate set
+there (5 to 60 a second; more is smoother and larger). A small bar
+appears beside the area - above it, else below, else at the top of the
+screen - with the elapsed time, *Pause* / *Resume* and *Stop*. The pause is
+left out of the recording. After *Stop* the recording plays in the window,
+with *Save as* (a copy under another name) and *Open folder*. The file is
+written as it goes, so a recording cut short by a crash or a power cut still
+plays up to its last seconds.
+
+Not yet: sound (the microphone, the loudspeaker), the pointer in the
+recording, and a recording on a build whose VideoFX has no FFmpeg - *New*
+says so then, and pictures still work.
+
+## Settings
+
+The *Settings* button under the picture opens a window laid out like
+UltraFiler's: the sections on the left, the page on the right, the page's
+*Restore defaults* and *Close* at the foot. Every change applies at once and
+is saved.
+
+| Page | What it sets |
+|---|---|
+| Pictures > File type | The type a picture is written as. The useful ones come first - PNG, JPEG XL, AVIF, HEIC, WebP, JPEG - each greyed when this build cannot write it, and *Another type* lists every other picture type this build writes. *Settings for .type* opens the type's own quality and compression settings, the same ones the framework's Save dialog keeps for every application. The clipboard always gets a PNG. A type the build cannot write falls back to PNG and says so. |
+| Pictures > Saving | Whether every picture is written as it is taken, whether it goes to the clipboard, and the folder it is written to (*Choose folder*, or back to Pictures/Screenshots). |
+| Videos > Recording | The recording's container - MP4 with H.264, Matroska with H.264, WebM with VP9, each greyed when the build's FFmpeg lacks the encoder - the frame rate (5 to 60 a second) and the folder. |
+| Behaviour > After a snip | Whether the UltraSnip window appears with the result after a snip started from the desktop's button, the shortcut or the command line, or stays out of the way: the picture is saved and copied and nothing appears (a recording still shows its bar). A snip taken from the window always returns to it. |
+
+## Where things are kept
+
+| What | Linux | Windows |
+|---|---|---|
+| Pictures | `~/Pictures/Screenshots/` | `Pictures\Screenshots\` in your user folder |
+| Recordings | `~/Videos/Screen Recordings/` | `Videos\Screen Recordings\` in your user folder |
+| Settings (shape, kind, delay, the types, folders and options, the Save-as folder) | `~/.config/UltraCanvas/UltraSnip/settings.json` | `%APPDATA%\UltraCanvas\UltraSnip\settings.json` |
+
+## How it is built
+
+| Path | What is in it |
+|---|---|
+| `ui/UltraSnipTypes.h` | The request: shape, kind, delay, as JSON between starts |
+| `ui/UltraSnipCapture.*` | No UI: the rectangle from a drag, the crop of a capture into RGBA, the topmost window under a point, where the recording bar goes, files written and copied |
+| `ui/UltraSnipSettings.*` | The settings file, through `UltraCanvasAppSettings`: the picture and video types and folders, the frame rate, the after-snip behaviour; the paths of a new snip |
+| `ui/UltraSnipSettingsDialog.*` | The settings window: `UltraCanvasTreeView` of pages on the left, a page of `UltraCanvasRadio` / `UltraCanvasCheckbox` / `UltraCanvasSlider` / `UltraCanvasDropdown` controls on the right, the notes block at the foot - UltraFiler's settings window's skeleton |
+| `ui/UltraSnipOverlay.*` | The selection: a borderless window the size of the screen showing the frozen capture (`UltraCanvasImageElement`) under the marquee element (the dimming, the rectangle and its size, the crosshair, the outlined window, the hint) |
+| `ui/UltraSnipRecorder.*` | The recording thread: `CaptureScreenArea` at the frame rate into `VideoFXFrameRecorder`; the clock that leaves pauses out |
+| `ui/UltraSnipRecordingBar.*` | The floating bar: a notification-type window (above everything, never taking the keyboard) with the time, Pause / Resume and Stop |
+| `ui/UltraSnipWindow.*` | The window: the bar (`UltraCanvasButton`, two `UltraCanvasSegmentedControl`s, an `UltraCanvasDropdown`), the result (`UltraCanvasImageElement` / `UltraCanvasMediaViewer`), the actions and the Settings button, and the capture step by step |
+| `main.cpp` | The command line and the single instance |
+
+==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md
 ==============================================================================
 
@@ -101437,14 +101756,25 @@ On Windows, while Explorer runs, Win+V belongs to Windows' own clipboard
 history. Use the clipboard button instead. When UltraDesktop runs instead of
 Explorer, Win+V opens UltraDesktop's panel.
 
-### 4.5 Screenshots
+### 4.5 Screenshots and screen recordings
 
-Click the screenshot button (📷). The whole screen is saved to
-`Pictures/Screenshots/Screenshot <date> <time>.png` in your home folder. The
+Click the screenshot button (📷), or press `Super+Shift+S` in any window:
+UltraSnip freezes the screen and you drag out the area you want. The picture
+goes to the clipboard and to `Pictures/Screenshots/Screenshot <date>
+<time>.png` in your home folder, and UltraSnip's window shows it with *Save
+as*, *Copy*, *Open folder* and *Edit in UltraPaint*. See the
+[UltraSnip manual](../UltraSnip/README.md) for the window and whole-screen
+shapes, the delay, and the video recording with its Pause and Stop bar.
+
+Right-click the button for the other shapes - *Snip a window*, *Snip the
+whole screen* - and for *Record an area*, *Record a window* and *Record the
+whole screen* (a video to `Videos/Screen Recordings`). *Screenshot now, to
+Pictures* saves the whole screen at once without opening anything: the
 button shows a green dot for three seconds, and its tooltip names the file.
+That is also what the click does on a desktop without UltraSnip beside it.
 
-From a prompt, `UltraDesktop --screenshot` does the same, and
-`UltraDesktop --screenshot <file>` saves to the file you name.
+From a prompt, `UltraDesktop --screenshot` takes the whole screen the same
+way, and `UltraDesktop --screenshot <file>` saves to the file you name.
 
 ### 4.6 Notes on the wallpaper
 
@@ -101705,6 +102035,7 @@ at sign-in.
 | Any window | Super+V (Win+V) | opens the clipboard history (on Windows only instead of Explorer) |
 | Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
 | Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
+| Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
 | Clock | click | the clock panel |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
@@ -101712,6 +102043,7 @@ at sign-in.
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
+| Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
 | A notification | click / × | its default action / dismiss |
@@ -101950,9 +102282,15 @@ the right-hand monitor the primary.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot* (the whole screen to
-  `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
-  green dot for three seconds and its tooltip names the file).
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot*. A click
+  on the screenshot button opens [UltraSnip](../UltraSnip/README.md) to snip
+  an area; its right-click menu offers a window, the whole screen, a video
+  recording of each, *Screenshot now, to Pictures* (the whole screen to
+  `~/Pictures/Screenshots/Screenshot <date> <time>.png` without UltraSnip; the
+  button shows a green dot for three seconds and its tooltip names the file)
+  and *Open UltraSnip*; `Super+Shift+S` from any window snips an area. Where
+  UltraSnip is not installed beside the desktop, the click takes the plain
+  screenshot.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as
@@ -102355,6 +102693,20 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/ultrasnip-button.md
+==============================================================================
+
+- **The screenshot button opens UltraSnip.** A click snips an area: UltraSnip
+  freezes the screen, the area is dragged out, and the picture goes to the
+  clipboard and to `Pictures/Screenshots`. The button's right-click menu
+  offers *Snip a window*, *Snip the whole screen*, *Record an area* /
+  *a window* / *the whole screen* (a video to `Videos/Screen Recordings`),
+  *Screenshot now, to Pictures* - the plain whole-screen capture of before,
+  green dot and all - and *Open UltraSnip*. `Super+Shift+S` from any window
+  snips an area, as on Windows. Where UltraSnip is not installed beside the
+  desktop, the click takes the plain screenshot as it did.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
