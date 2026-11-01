@@ -41,10 +41,13 @@
   any device) starts a pairing, the Bluetooth panel opens by itself and asks
   whether the number matches - and a device that is not trusted and asks to
   connect is asked about too.
-- **The Task Manager's window list** has a column header (window, state,
-  desktop), shows each window's application icon first and its desktop as
-  a number in a bordered box, and calls the button *Show* (it was
-  *Activate*). *Close* on a minimized window shows it first, so a program
-  that asks to save its changes - ArtCreator with an unsaved drawing - asks
-  where it can be seen; before, the question stayed hidden and the close
-  seemed to do nothing.
+- **The Task Manager's window list** has a column header and shows each
+  window's application icon first, the display (monitor) it is on as a
+  number in a bordered box - the column said "desktop 1" for every window,
+  which was the virtual desktop, not the monitor - and the virtual desktop
+  only where there is more than one. *Activate* is now *Show*, and brings a
+  window that is off every display back, centred on one. *Close* brings the
+  window to the front first, so a program that asks to save - ArtCreator
+  with an unsaved drawing - asks where it can be seen; before, the question
+  stayed behind and the close seemed to do nothing. A new *Kill task* ends a
+  program at once, after asking.

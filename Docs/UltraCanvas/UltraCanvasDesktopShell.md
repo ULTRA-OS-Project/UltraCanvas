@@ -61,7 +61,11 @@ panel never disagree about an interface.
 | `GetActiveWindow()` | The focused window's id, 0 if none. |
 | `ActivateWindow(id)` | Raise, un-minimize and focus; switches to the window's desktop first. |
 | `MinimizeWindow(id)` | Iconify. |
-| `CloseWindow(id)` | Ask the window to close through the window manager (`WM_DELETE_WINDOW`; on Windows `WM_SYSCOMMAND SC_CLOSE`, what the taskbar's *Close window* sends), never kill. A minimized window is shown first: a program that asks before closing ("Save the changes?") would otherwise ask unseen, and the close look as if it did nothing. |
+| `CloseWindow(id)` | Ask the window to close through the window manager (`WM_DELETE_WINDOW`; on Windows `WM_SYSCOMMAND SC_CLOSE`, what the taskbar's *Close window* sends), never kill. The window is brought to the front - and onto a screen - first: a program that asks before closing ("Save the changes?") would otherwise ask behind other windows or unseen, and the close look as if it did nothing. |
+| `GetWindowBounds(id, x, y, width, height)` | The window's rectangle in screen pixels, those of `ListScreens` (X11: the client area in root coordinates; Windows: `GetWindowRect`, and a minimized window's restored place). |
+| `MoveWindow(id, x, y)` | Its top-left corner there, its size kept (X11: `_NET_MOVERESIZE_WINDOW` through the manager; Windows: `SetWindowPos`, the restored place of a minimized window, a maximized one left alone). |
+| `BringWindowOnScreen(id)` | A window whose title bar is on no screen - so it cannot be taken and moved back - is centred on the screen it is mostly over, else the primary one; a window on a screen is left where it is. |
+| `KillWindowProcess(id, &error)` | End the window's program at once, as a task manager's "End task" - unsaved work is lost (Linux: `SIGTERM`, then `SIGKILL` after two seconds; Windows: `TerminateProcess`). Refused for a window that names no process, the desktop's own process, and a program of another user or run as administrator, with the reason. |
 
 ### Virtual desktops
 

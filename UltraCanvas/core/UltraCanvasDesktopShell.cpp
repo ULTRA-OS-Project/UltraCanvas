@@ -6,6 +6,9 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.9.0 - GetWindowBounds, MoveWindow, BringWindowOnScreen,
+//                  KillWindowProcess; CloseWindow brings the window to the
+//                  front (and onto a screen) before asking it to close
 // Version: 1.8.0 - CloseWindow shows a minimized window first, so a question
 //                  it asks before closing is seen
 // Version: 1.7.0 - FindProgram finds a sibling application's bundle on macOS
@@ -211,15 +214,77 @@ uint64_t UltraCanvasDesktopShell::GetActiveWindow() { return DesktopShellBackend
 bool UltraCanvasDesktopShell::ActivateWindow(uint64_t id) { return DesktopShellBackend::ActivateWindow(id); }
 bool UltraCanvasDesktopShell::MinimizeWindow(uint64_t id) { return DesktopShellBackend::MinimizeWindow(id); }
 bool UltraCanvasDesktopShell::CloseWindow(uint64_t id) {
-    // A program may ask before it closes ("Save the changes?"), and a
-    // minimized window asks unseen - the close then looks as if it did
-    // nothing. Such a window is shown first.
+    // A program may ask before it closes ("Save the changes?"), in a window
+    // of its own beside the one closed. Behind other windows, minimized or
+    // off the screen it asks unseen, and the close looks as if it did
+    // nothing: the window comes to the front, onto a screen, first.
+    DesktopShellBackend::ActivateWindow(id);
+    BringWindowOnScreen(id);
+    return DesktopShellBackend::CloseWindow(id);
+}
+
+bool UltraCanvasDesktopShell::GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) {
+    return DesktopShellBackend::GetWindowBounds(id, x, y, width, height);
+}
+
+bool UltraCanvasDesktopShell::MoveWindow(uint64_t id, int x, int y) {
+    return DesktopShellBackend::MoveWindowTo(id, x, y);
+}
+
+bool UltraCanvasDesktopShell::BringWindowOnScreen(uint64_t id) {
+    int x = 0, y = 0, width = 0, height = 0;
+    if (!DesktopShellBackend::GetWindowBounds(id, x, y, width, height) || width <= 0 || height <= 0) return false;
+    std::vector<DesktopScreenInfo> screens = DesktopShellBackend::ListScreens();
+    if (screens.empty()) {
+        DesktopScreenInfo whole;
+        if (!DesktopShellBackend::GetScreenSize(whole.width, whole.height)) return false;
+        whole.primary = true;
+        screens.push_back(whole);
+    }
+    auto overlap = [](int a0, int a1, int b0, int b1) { return std::max(0, std::min(a1, b1) - std::max(a0, b0)); };
+    // On a screen enough to be taken and moved: the top strip - where the
+    // title bar is - shows at least 100 px across (or all of a narrower
+    // window) and 20 px down.
+    const int strip = std::min(height, 40);
+    const DesktopScreenInfo* best = nullptr;
+    long bestArea = -1;
+    for (const DesktopScreenInfo& screen : screens) {
+        const int across = overlap(x, x + width, screen.x, screen.x + screen.width);
+        const int down = overlap(y, y + strip, screen.y, screen.y + screen.height);
+        if (across >= std::min(width, 100) && down >= std::min(strip, 20)) return true;
+        // The screen the window is mostly over, else the primary one.
+        const long area = static_cast<long>(across) * overlap(y, y + height, screen.y, screen.y + screen.height);
+        if (area > bestArea || (area == bestArea && screen.primary)) {
+            best = &screen;
+            bestArea = area;
+        }
+    }
+    if (bestArea <= 0) {
+        for (const DesktopScreenInfo& screen : screens) {
+            if (screen.primary) best = &screen;
+        }
+        if (!best) best = &screens.front();
+    }
+    // Centred on it; a window larger than the screen at its top-left.
+    const int nx = best->x + std::max(0, (best->width - width) / 2);
+    const int ny = best->y + std::max(0, (best->height - height) / 2);
+    return DesktopShellBackend::MoveWindowTo(id, nx, ny);
+}
+
+bool UltraCanvasDesktopShell::KillWindowProcess(uint64_t id, std::string* error) {
+    int processId = 0;
+    bool found = false;
     for (const DesktopWindowInfo& window : DesktopShellBackend::ListWindows()) {
         if (window.id != id) continue;
-        if (window.minimized) DesktopShellBackend::ActivateWindow(id);
+        processId = window.processId;
+        found = true;
         break;
     }
-    return DesktopShellBackend::CloseWindow(id);
+    std::string reason;
+    if (!found) reason = "The window is already gone.";
+    else if (DesktopShellBackend::KillProcess(processId, reason)) return true;
+    if (error) *error = reason;
+    return false;
 }
 int  UltraCanvasDesktopShell::GetVirtualDesktopCount() { return DesktopShellBackend::GetVirtualDesktopCount(); }
 int  UltraCanvasDesktopShell::GetCurrentVirtualDesktop() { return DesktopShellBackend::GetCurrentVirtualDesktop(); }
@@ -900,6 +965,12 @@ namespace DesktopShellBackend {
     bool ActivateWindow(uint64_t) { return false; }
     bool MinimizeWindow(uint64_t) { return false; }
     bool CloseWindow(uint64_t) { return false; }
+    bool GetWindowBounds(uint64_t, int&, int&, int&, int&) { return false; }
+    bool MoveWindowTo(uint64_t, int, int) { return false; }
+    bool KillProcess(int, std::string& error) {
+        error = "Programs are not ended from here on this platform yet.";
+        return false;
+    }
     int  GetVirtualDesktopCount() { return 0; }
     int  GetCurrentVirtualDesktop() { return -1; }
     bool SetCurrentVirtualDesktop(int) { return false; }

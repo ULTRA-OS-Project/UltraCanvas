@@ -1311,6 +1311,87 @@ bool CloseWindow(uint64_t id) {
     return PostMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0) != FALSE;
 }
 
+bool GetWindowBounds(uint64_t id, int& x, int& y, int& width, int& height) {
+    const HWND hwnd = ToHwnd(id);
+    if (id == 0 || !IsWindow(hwnd)) return false;
+    RECT rect = {};
+    if (IsIconic(hwnd)) {
+        // Where it will be when restored: the placement, in workspace
+        // coordinates - shifted by the work area's offset on its monitor.
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return false;
+        rect = placement.rcNormalPosition;
+        MONITORINFO info = {};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST), &info)) {
+            OffsetRect(&rect, info.rcWork.left - info.rcMonitor.left, info.rcWork.top - info.rcMonitor.top);
+        }
+    } else if (!GetWindowRect(hwnd, &rect)) {
+        return false;
+    }
+    x = rect.left;
+    y = rect.top;
+    width = rect.right - rect.left;
+    height = rect.bottom - rect.top;
+    return true;
+}
+
+bool MoveWindowTo(uint64_t id, int x, int y) {
+    const HWND hwnd = ToHwnd(id);
+    if (id == 0 || !IsWindow(hwnd)) return false;
+    // A maximized window is maximized on its monitor already; a minimized
+    // one is moved where it will be restored.
+    if (IsZoomed(hwnd)) return true;
+    if (IsIconic(hwnd)) {
+        WINDOWPLACEMENT placement = {};
+        placement.length = sizeof(placement);
+        if (!GetWindowPlacement(hwnd, &placement)) return false;
+        const int w = placement.rcNormalPosition.right - placement.rcNormalPosition.left;
+        const int h = placement.rcNormalPosition.bottom - placement.rcNormalPosition.top;
+        RECT target = {x, y, x + w, y + h};
+        MONITORINFO info = {};
+        info.cbSize = sizeof(info);
+        if (GetMonitorInfoW(MonitorFromRect(&target, MONITOR_DEFAULTTONEAREST), &info)) {
+            OffsetRect(&target, info.rcMonitor.left - info.rcWork.left, info.rcMonitor.top - info.rcWork.top);
+        }
+        placement.rcNormalPosition = target;
+        return SetWindowPlacement(hwnd, &placement) != FALSE;
+    }
+    // Asynchronous, as the rest: a hung program cannot hang the desktop.
+    return SetWindowPos(hwnd, nullptr, x, y, 0, 0,
+                        SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS) != FALSE;
+}
+
+bool KillProcess(int processId, std::string& error) {
+    if (processId <= 4) {
+        error = processId <= 0 ? "The window does not say which program it belongs to."
+                               : "That is a part of Windows itself.";
+        return false;
+    }
+    if (static_cast<DWORD>(processId) == GetCurrentProcessId()) {
+        error = "That is the desktop itself.";
+        return false;
+    }
+    HANDLE process = OpenProcess(PROCESS_TERMINATE, FALSE, static_cast<DWORD>(processId));
+    if (!process) {
+        const DWORD code = GetLastError();
+        error = code == ERROR_ACCESS_DENIED
+                    ? "The program runs as administrator (or as another user); the desktop may not end it."
+                    : code == ERROR_INVALID_PARAMETER ? "The program has already ended."
+                                                      : "The program could not be ended (error " + std::to_string(code) + ").";
+        return false;
+    }
+    const BOOL ended = ::TerminateProcess(process, 1);
+    const DWORD code = ended ? 0 : GetLastError();
+    CloseHandle(process);
+    if (!ended) {
+        error = "The program could not be ended (error " + std::to_string(code) + ").";
+        return false;
+    }
+    return true;
+}
+
 // ===== VIRTUAL DESKTOPS =====
 
 int GetVirtualDesktopCount() {
