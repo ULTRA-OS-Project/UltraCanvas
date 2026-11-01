@@ -58,7 +58,8 @@ The first ChatCube draft, which this replaces, is kept under
    have one. Your
    Telegram chats join the list; `@username`, `t.me/name` or `+phone` in
    *Add* or *New group* goes to Telegram.
-4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
+4. Enter sends, Shift+Enter starts a new line (or Ctrl+Enter sends - see
+   *Settings* below). A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
    green `✓✓` read (drawn, not typed, so they show on a Windows whose fonts
    have no check mark). The paperclip puts a picture, a video or any file
@@ -83,6 +84,20 @@ The first ChatCube draft, which this replaces, is kept under
    you turns the camera off the other sees "camera off" instead of a frozen
    picture.
 
+6. **Settings** - the gear beside the copy button at the top of the sidebar
+   - opens a window laid out as UltraFiler's: the sections on the left, the
+   chosen page on the right, *Restore defaults* and *Close* at the foot.
+   *Appearance*: the light or the dark look (from the next start) and how
+   times and dates are written (`14:05` or `2:05 PM`; `31.10.2026`,
+   `2026-10-31` or `10/31/2026`). *Messages*: whether Enter or Ctrl+Enter
+   sends, and whether typing is shown to the other side and to you.
+   *Networks*: where each network stands, your ChatCube ID to copy, signing
+   out of Matrix or Telegram, and whether the people on this network are
+   listed in the sidebar. *Extras*: the data folder, to open or copy, and the
+   version. A change applies at once and is kept in
+   `<settings folder>/ChatCube/settings.json` (`~/.config/UltraCanvas`,
+   `%APPDATA%\UltraCanvas`, `~/Library/Application Support/UltraCanvas`).
+
 ## Building and running
 
 ChatCube builds with the framework (`BUILD_CHATCUBE`, on by default) and needs
@@ -104,7 +119,8 @@ Its data - the identity's key vault, contacts, history - is in the per-user
 data folder (`~/.local/share/ChatCube`, `%APPDATA%\ChatCube`,
 `~/Library/Application Support/ChatCube`).
 
-`ChatCube --dark` is the dark look; the light one is the default. Both are
+`ChatCube --dark` is the dark look whatever Settings chose; the light one is
+the default. Both are
 one theme (`ui/ChatCubeTheme.h`: the ChatCube green on warm neutrals, the
 avatar palette, the bubble and presence colours), so every element of the
 window and everything the lists paint themselves take their colours from
@@ -154,6 +170,8 @@ card or the sidebar moves them; the pictures then show where they landed.
 | `main.cpp` | start-up: UltraNet, UltraRTC, UltraIM with the UI-thread dispatcher, provider modules |
 | `ui/ChatCubeWindow.*` | the window: sign-in page, sidebar, conversation pane, UltraIM events |
 | `ui/ChatCubeViews.*` | list models and delegates: conversation rows, chat bubbles, date separators |
+| `ui/ChatCubeSettings.*` | the preferences the Settings window sets, in `settings.json` |
+| `ui/ChatCubeSettingsWindow.*` | the Settings window: the tree of pages, each page, Restore defaults |
 | `ui/ChatCubeTheme.*` | the look: the light and the dark theme, avatars, icons, the colours the views paint with |
 | `peer/main.cpp` | `chatcube-peer` |
 | `tools/screenshot.sh`, `tools/xinput.c` | screenshots of the app under Xvfb, driven through XTest |

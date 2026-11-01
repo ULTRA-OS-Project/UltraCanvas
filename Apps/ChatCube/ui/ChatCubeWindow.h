@@ -13,7 +13,7 @@
 //
 // Chat view:
 //
-//   | My ID 3f2a 9c01 ... [Copy]   | Bob            ●  online          [Call] [Video] |
+//   | My ID 3f2a 9c01 [Copy][Gear] | Bob            ●  online          [Call] [Video] |
 //   | [ Contact's ChatCube ID ][Add]| ---------------- 21.10.2026 ---------------   |
 //   | [New group]                   |  ( hello )                                    |
 //   | On this network               |                                               |
@@ -49,6 +49,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.2.4 - a gear beside the copy button opens the Settings window (ChatCubeSettingsWindow);
+//                  the send key, typing either way, the nearby list and the clock follow its choices
 // Version: 0.2.3 - a picture or a file waits in the composer, with a x to drop it, until sent; a
 //                  picture on the clipboard pastes into it; an SVG drawing shows as a picture
 // Version: 0.2.2 - pictures: avatars from the person's photo, photos and videos in the bubbles and a
@@ -59,10 +61,12 @@
 // Version: 0.1.2 - the status line shows every network's state, one entry each, beside the last action
 // Version: 0.1.1 - the Telegram application's keys from the relay; TDLib's connection on the status line
 // Version: 0.1.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "ChatCubeSettings.h"
+#include "ChatCubeSettingsWindow.h"
 #include "ChatCubeViews.h"
 
 #include "UltraCanvasMediaViewerWindow.h"
@@ -92,7 +96,9 @@ namespace ChatCube {
 
 class ChatCubeWindow {
 public:
-    ChatCubeWindow(std::string version, std::string providerId);
+    // `settings`: what the Settings window set last (read by main.cpp,
+    // which takes the look from it before the window is built).
+    ChatCubeWindow(std::string version, std::string providerId, Settings settings = Settings());
     ~ChatCubeWindow();
 
     bool Create();
@@ -177,6 +183,17 @@ private:
     void RefreshConversations();
     void ScrollToEnd();
 
+    // ---- settings ------------------------------------------------------------
+    // The gear: the Settings window, opened or raised.
+    void OpenSettings();
+    // The settings as they are now, onto the window: the send key's words,
+    // the nearby list, the typing line, the times and dates in the lists.
+    void ApplySettings();
+    // Every network and where it stands, for the Settings window's Accounts page.
+    std::vector<ChatCubeSettingsWindow::Account> Accounts() const;
+    // Out of Matrix or Telegram: its conversations leave the list.
+    void SignOutOf(const std::string& providerId);
+
     // ---- calls ---------------------------------------------------------------
     void StartCall(bool video);
     void AcceptCall();
@@ -196,6 +213,9 @@ private:
     uint64_t    subscription_ = 0;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
+    Settings settings_;
+    std::string dataFolder_;
+    std::unique_ptr<ChatCubeSettingsWindow> settingsWindow_;   // made when the gear is first pressed
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> signInPage_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> name_;
