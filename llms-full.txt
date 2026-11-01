@@ -84646,7 +84646,7 @@ are the settings.
 |---|---|---|
 | Linux | NetworkManager on the system bus (GDBus); polkit decides what the user may change - on a desktop seat everything here | BlueZ on the system bus; codes through the pairing handler and a BlueZ agent of the module's own |
 | Windows | Native Wifi (`wlanapi`); a new network gets a WLAN profile written from its security, deleted again - or the replaced one restored - when the join fails | The Bluetooth API (`bthprops`). The radio is switched only in Windows' settings (`CanSetBluetoothPower()` is false). Pairing shows Windows' own prompt when the device wants a code. Connect and disconnect switch the device's installed services (`BluetoothSetServiceState`), as Windows does for headphones |
-| macOS | CoreWLAN. From macOS 14 network names are shown only to an application Location Services allows; the first read asks, and `error` says why the list is empty while it is refused. Forgetting a network needs an administrator, so it is left to System Settings | IOBluetooth. Switching the radio and removing a pairing use the private calls every Bluetooth utility uses, looked up at run time; where they are gone the call fails saying so. The application's `Info.plist` needs `NSBluetoothAlwaysUsageDescription` and `NSLocationWhenInUseUsageDescription` (`package-macos.sh` writes both for UltraDesktop) |
+| macOS | CoreWLAN. From macOS 14 network names are shown only to an application Location Services allows; the first read asks, and `error` says why the list is empty - to answer macOS's question while it is open, to allow the application in System Settings once it is refused. Forgetting a network needs an administrator, so it is left to System Settings | IOBluetooth. Switching the radio and removing a pairing use the private calls every Bluetooth utility uses, looked up at run time; where they are gone the call fails saying so. The application's `Info.plist` needs `NSBluetoothAlwaysUsageDescription` and `NSLocationWhenInUseUsageDescription` (`package-macos.sh` writes both for UltraDesktop) |
 | Elsewhere | `available` false; every call fails saying so | the same |
 
 ==============================================================================
@@ -101659,10 +101659,13 @@ system.
 
 On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
-separators:
+separators. The two waves mirror each other, so the dark band of running
+applications narrows the same way at both ends, and each wave starts 4 px
+from the icon next to it - as the right bar's wave does below the
+organiser.
 
-1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
-   settings* starts **UOS-Settings**, the system's settings application
+1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
+   *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
@@ -102084,6 +102087,31 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/taskbar-waves.md
+==============================================================================
+
+- **The bars' waves mirror each other and sit closer to the icons.** The
+  taskbar's wave between the system group and the running applications is
+  mirrored, so the dark band of running applications narrows the same way
+  at both ends. Every wave now starts 4 px from the icon next to it, where
+  it was 14 px away:
+  - on the taskbar, from the system group's last icon and from the pinned
+    group's first;
+  - on the right bar, from the organiser's last icon (the screenshot
+    button).
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/ultraos-logo-button.md
+==============================================================================
+
+- **The ULTRA OS logo on the settings button.** The taskbar's first button
+  showed a white "U" in a circle; it now shows the ULTRA OS logo in its own
+  colours, and, the logo being twice as wide as high, its button is wider
+  than the other items. The logo comes in two versions in
+  `media/icons/desktop/`: `ultraos-logo-dark.png` for a dark ground (the one
+  the bar uses) and `ultraos-logo-light.png` for a light ground.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
@@ -104328,17 +104356,6 @@ headless, the player part skips itself without GStreamer plugins).
 ## Not yet
 
 The proposal's roadmap (§11) has the order.
-
-==============================================================================
-FILE: Docs/UltraVideo/changelog.d/close-gap-button.md
-==============================================================================
-
-- **A gap left by a cut closes with one click.** Split a clip on the
-  overlay, title or sound lane, delete one part, and the empty stretch it
-  leaves shows a `|<-` button in its middle: a click moves the clip after
-  the gap back against the one before it (or to the start), `Shift`+click
-  moves everything after the gap with it, and either is one undo step
-  (`UltraCanvasVideoTimeline` 1.4.0, the close-gap button).
 
 ==============================================================================
 FILE: Docs/UltraPress/README.md
