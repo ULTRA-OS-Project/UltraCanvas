@@ -4,10 +4,11 @@
 // drag feedback, readouts), hit testing and the interactions that turn into
 // reported changes. The model operations it previews with live in
 // UltraCanvasVideoTimelineModel.cpp.
+// Version: 1.3.0 - the close-gap button in each gap of a free track
 // Version: 1.2.0 - the application's drop feedback, ring and marker in one (SetDropFeedback); DragLeave clears both
 // Version: 1.1.0 - the drop-target clip's ring
 // Version: 1.0.0
-// Last Modified: 2026-10-14
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimeline.h"
 #include "UltraCanvasEvent.h"
@@ -31,6 +32,8 @@ constexpr float kFadeKnobHit = 7.0f;      // half the hit box of a fade knob
 constexpr float kFadeKnobRadius = 4.0f;   // drawn 8 px across
 constexpr float kMarkerStripHeight = 11.0f;
 constexpr float kTransitionHeight = 18.0f;
+constexpr float kGapButtonSize = 20.0f;     // the close-gap button, square
+constexpr float kGapButtonMargin = 4.0f;    // the least room either side of it inside the gap
 
 std::string SecondsLabel(double seconds) {
     char buffer[32];
@@ -269,6 +272,12 @@ void UltraCanvasVideoTimeline::SetShowBeats(bool on) {
     RequestRedraw();
 }
 
+void UltraCanvasVideoTimeline::SetShowGapButtons(bool on) {
+    showGapButtons = on;
+    if (!on && hover.kind == Hit::GapClose) hover = Hit();
+    RequestRedraw();
+}
+
 void UltraCanvasVideoTimeline::SetStyle(const VideoTimelineStyle& s) {
     style = s;
     RequestRedraw();
@@ -475,6 +484,14 @@ UltraCanvasVideoTimeline::Hit UltraCanvasVideoTimeline::HitTest(float x, float y
                 return hit;
             }
         }
+        for (const GapButton& g : GapButtons(track, lane)) {
+            if (g.rect.Contains(Point2Df(x, y))) {
+                hit.kind = Hit::GapClose;
+                hit.clipId = g.gap.clipId;
+                hit.seconds = g.gap.start;
+                return hit;
+            }
+        }
         for (const TimelineClip& clip : track.clips) {
             const Rect2Df r = ClipRect(clip, lane);
             if (x < r.x || x > r.x + r.width) continue;
@@ -493,6 +510,31 @@ UltraCanvasVideoTimeline::Hit UltraCanvasVideoTimeline::HitTest(float x, float y
         return hit;
     }
     return hit;
+}
+
+std::vector<UltraCanvasVideoTimeline::GapButton> UltraCanvasVideoTimeline::GapButtons(const TimelineTrack& track,
+                                                                                    const TrackLayout& lane) const {
+    std::vector<GapButton> buttons;
+    if (!showGapButtons || track.locked || track.IsMagnetic()) return buttons;
+    const float size = std::min(kGapButtonSize, lane.height - 4.0f);
+    if (size < 10.0f) return buttons;
+    const Rect2Df body = BodyRect();
+    const double frame = 1.0 / std::max(1.0, model.frameRate);
+    for (const TimelineGap& gap : TimelineGaps(track, frame)) {
+        const float x0 = SecondsToX(gap.start);
+        const float x1 = SecondsToX(gap.end);
+        const float room = size + 2.0f * kGapButtonMargin;
+        if (x1 - x0 < room) continue;   // too narrow at this zoom
+        // the middle of the part of the gap on screen, so a long gap's button stays in reach
+        const float left = std::max(x0, body.x);
+        const float right = std::min(x1, body.x + body.width);
+        if (right - left < room) continue;
+        GapButton b;
+        b.rect = Rect2Df((left + right - size) / 2.0f, lane.top + (lane.height - size) / 2.0f, size, size);
+        b.gap = gap;
+        buttons.push_back(b);
+    }
+    return buttons;
 }
 
 bool UltraCanvasVideoTimeline::FadeKnobs(const TimelineClip& clip, const TimelineTrack& track, const TrackLayout& lane,
@@ -822,6 +864,33 @@ void UltraCanvasVideoTimeline::DrawLane(IRenderContext* ctx, const TimelineTrack
     }
     DrawTransitions(ctx, *shown, lane);
     ctx->PopState();
+    // the close-gap buttons; not on a lane being dragged, whose clips are shown where they would go
+    if (drag == Drag::NoDrag || dragTrackIndex != lane.index) DrawGapButtons(ctx, track, lane);
+}
+
+void UltraCanvasVideoTimeline::DrawGapButtons(IRenderContext* ctx, const TimelineTrack& track, const TrackLayout& lane) {
+    for (const GapButton& g : GapButtons(track, lane)) {
+        const Rect2Df& r = g.rect;
+        const bool hot = hover.kind == Hit::GapClose && hover.trackIndex == lane.index && hover.clipId == g.gap.clipId &&
+                         drag == Drag::NoDrag;
+        ctx->SetFillPaint(hot ? style.accentSoft : style.header);
+        ctx->FillRoundedRectangle(Rect2Dd(r.x, r.y, r.width, r.height), 3.0);
+        ctx->SetStrokePaint(hot ? style.accent : style.lineStrong);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawRoundedRectangle(Rect2Dd(r.x + 0.5, r.y + 0.5, r.width - 1.0, r.height - 1.0), 3.0);
+        // |<- : a bar on the left, the place the clip goes to, and an arrow into it
+        const Color ink = hot ? style.accent : style.inkMuted;
+        const double u = r.width / 20.0;   // the glyph is drawn on a 20-unit square
+        const double x = r.x, y = r.y, mid = r.y + r.height / 2.0;
+        ctx->SetStrokePaint(ink);
+        ctx->SetStrokeWidth(static_cast<float>(1.6 * u));
+        ctx->SetLineCap(LineCap::Round);
+        ctx->SetLineJoin(LineJoin::Round);
+        ctx->DrawLine(Point2Dd(x + 5.5 * u, y + 5.0 * u), Point2Dd(x + 5.5 * u, y + 15.0 * u));
+        ctx->DrawLine(Point2Dd(x + 8.5 * u, mid), Point2Dd(x + 15.5 * u, mid));
+        ctx->DrawLinePath({Point2Dd(x + 12.0 * u, mid - 3.5 * u), Point2Dd(x + 8.5 * u, mid), Point2Dd(x + 12.0 * u, mid + 3.5 * u)},
+                          false);
+    }
 }
 
 void UltraCanvasVideoTimeline::DrawBadge(IRenderContext* ctx, const std::string& text, float right, float top,
@@ -1232,6 +1301,7 @@ UCMouseCursor UltraCanvasVideoTimeline::GetMouseCursor() const {
             return UCMouseCursor::Default;
         case Hit::HeaderToggle:
         case Hit::Marker:
+        case Hit::GapClose:
             return UCMouseCursor::Hand;
         default:
             return UCMouseCursor::Default;
@@ -1254,6 +1324,7 @@ bool UltraCanvasVideoTimeline::OnEvent(const UCEvent& event) {
         case UCEventType::MouseWheelHorizontal: return HandleWheel(event, x, y, true);
         case UCEventType::MouseLeave:
             if (drag == Drag::NoDrag && hover.kind != Hit::Nothing) {
+                if (hover.kind == Hit::GapClose) SetTooltip("");
                 hover = Hit();
                 RequestRedraw();
             }
@@ -1361,6 +1432,12 @@ bool UltraCanvasVideoTimeline::HandleMouseDown(const UCEvent& event, float x, fl
             selectedTrack = model.tracks[hit.trackIndex].id;
             RequestRedraw();
             return true;
+        case Hit::GapClose:
+            selectedTrack = model.tracks[hit.trackIndex].id;
+            RequestCloseGap(hit.trackIndex, hit.clipId, event.shift);
+            hover = HitTest(x, y);   // the gap is gone when the application took the change
+            if (hover.kind != Hit::GapClose) SetTooltip("");
+            return true;
         case Hit::Lane:
             selectedTrack = model.tracks[hit.trackIndex].id;
             if (!event.shift && !event.ctrl) ClearSelection();
@@ -1447,6 +1524,10 @@ bool UltraCanvasVideoTimeline::HandleMouseMove(const UCEvent& event, float x, fl
         const Hit h = HitTest(x, y);
         const bool changed = h.kind != hover.kind || h.clipId != hover.clipId || h.trackIndex != hover.trackIndex ||
                              h.toggle != hover.toggle || tool == TimelineTool::Blade;
+        if (h.kind == Hit::GapClose && (hover.kind != Hit::GapClose || h.clipId != hover.clipId))
+            SetTooltip(GapTooltip(h));
+        else if (h.kind != Hit::GapClose && hover.kind == Hit::GapClose)
+            SetTooltip("");
         hover = h;
         if (changed) RequestRedraw();
         return h.kind != Hit::Nothing;
@@ -1841,6 +1922,39 @@ void UltraCanvasVideoTimeline::RequestMarkerAt(double seconds) {
     m.label = "Marker " + std::to_string(model.markers.size() + 1);
     change.markerAfter = m;
     Request(change);
+}
+
+void UltraCanvasVideoTimeline::RequestCloseGap(size_t trackIndex, const std::string& clipId, bool ripple) {
+    if (trackIndex >= model.tracks.size()) return;
+    const TimelineTrack& track = model.tracks[trackIndex];
+    if (track.locked || track.IsMagnetic()) return;
+    TimelineTrack after = track;
+    std::vector<TimelineClip> moved;
+    if (!TimelineCloseGap(after, clipId, ripple, 1.0 / std::max(1.0, model.frameRate), &moved) || moved.empty()) return;
+    TimelineChange change;
+    change.kind = TimelineChangeKind::Move;
+    change.trackId = track.id;
+    for (const TimelineClip& c : moved)
+        if (const TimelineClip* was = track.FindClip(c.id)) change.before.push_back(*was);
+    change.after = moved;
+    change.at = moved.front().start;
+    change.ripple = ripple;
+    Request(change);
+}
+
+std::string UltraCanvasVideoTimeline::GapTooltip(const Hit& hit) const {
+    if (hit.trackIndex >= model.tracks.size()) return "";
+    const TimelineTrack& track = model.tracks[hit.trackIndex];
+    const TimelineClip* clip = track.FindClip(hit.clipId);
+    if (!clip) return "";
+    // the clip whose end the gap starts at, if any
+    const TimelineClip* before = nullptr;
+    for (const TimelineClip& c : track.clips)
+        if (c.id != clip->id && std::fabs(c.End() - hit.seconds) < 1e-6) before = &c;
+    std::string text = "Close the gap: move " + (clip->name.empty() ? std::string("the clip") : clip->name) +
+                       (before ? " to the end of " + (before->name.empty() ? std::string("the clip before") : before->name)
+                               : std::string(" to the start"));
+    return text + " (Shift: move everything after the gap with it)";
 }
 
 bool UltraCanvasVideoTimeline::HandleKey(const UCEvent& event) {

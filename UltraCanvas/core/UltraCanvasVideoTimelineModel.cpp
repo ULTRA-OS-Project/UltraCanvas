@@ -2,8 +2,9 @@
 // The pure operations on the timeline model: deriving a magnetic track's
 // starts, splitting, trimming, moving, deleting and duplicating clips, the
 // ruler's steps, timecode and snapping. No framework dependency.
+// Version: 1.1.0 - TimelineGaps, TimelineCloseGap
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #include "UltraCanvasVideoTimelineModel.h"
 
@@ -239,6 +240,49 @@ bool TimelineDeleteClips(TimelineTrack& track, const std::vector<std::string>& c
     }
     if (any) TimelineDeriveStarts(track);
     return any;
+}
+
+std::vector<TimelineGap> TimelineGaps(const TimelineTrack& track, double minSeconds) {
+    std::vector<TimelineGap> gaps;
+    if (track.IsMagnetic()) return gaps;
+    minSeconds = std::max(minSeconds, 1e-6);
+    double reached = 0.0;   // the furthest clip end so far: overlapping clips leave no gap
+    for (size_t i : OrderByStart(track)) {
+        const TimelineClip& c = track.clips[i];
+        if (c.start - reached >= minSeconds - 1e-9) {
+            TimelineGap gap;
+            gap.start = reached;
+            gap.end = c.start;
+            gap.clipId = c.id;
+            gaps.push_back(gap);
+        }
+        reached = std::max(reached, c.End());
+    }
+    return gaps;
+}
+
+bool TimelineCloseGap(TimelineTrack& track, const std::string& clipId, bool ripple, double minSeconds,
+                      std::vector<TimelineClip>* moved) {
+    if (moved) moved->clear();
+    const std::vector<TimelineGap> gaps = TimelineGaps(track, minSeconds);
+    const auto gap = std::find_if(gaps.begin(), gaps.end(), [&](const TimelineGap& g) { return g.clipId == clipId; });
+    if (gap == gaps.end()) return false;
+    const double shift = gap->Length();
+    const double from = gap->end;
+    for (TimelineClip& c : track.clips) {
+        const bool closing = c.id == clipId;
+        if (!closing && !(ripple && c.start >= from - 1e-9)) continue;
+        c.start = std::max(0.0, c.start - shift);
+        if (moved) moved->push_back(c);
+    }
+    // the clip that closes the gap first, then the rest by time
+    if (moved) {
+        std::stable_sort(moved->begin(), moved->end(), [&](const TimelineClip& a, const TimelineClip& b) {
+            if ((a.id == clipId) != (b.id == clipId)) return a.id == clipId;
+            return a.start < b.start;
+        });
+    }
+    return true;
 }
 
 bool TimelineDuplicateClip(TimelineTrack& track, const std::string& clipId, const std::string& copyId) {
