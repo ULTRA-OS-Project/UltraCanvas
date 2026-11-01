@@ -114,6 +114,7 @@ constexpr int   kNoticeTicks    = 20;   // notices re-read every 5 s
 constexpr int   kScreenshotTicks = 12;  // the "saved" marker stays 3 s
 constexpr int   kDevicePollSeconds = 2;
 constexpr unsigned kStartupProgramsDelayMs = 3000;   // "start with the desktop", after the desktop
+constexpr unsigned kAppListPreloadDelayMs = 5000;    // the Apps window's list, read ahead
 constexpr uint64_t kActivityBytesPerPoll = 4096;   // below this a link is idle
 
 const Color kBarColor      (74, 74, 74, 255);
@@ -224,6 +225,9 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     // they do not slow the first picture.
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         app->StartTimer(kStartupProgramsDelayMs, false, [this](TimerId) { StartStartupPrograms(); });
+        // The Apps window's list, read ahead on a thread of its own, so the
+        // window has it to show the first time it opens.
+        app->StartTimer(kAppListPreloadDelayMs, false, [](TimerId) { UltraDesktopAppStarter::Preload(); });
     }
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         uiTimer_ = app->StartTimer(kUiTimerMs, /*periodic=*/true, [this](TimerId) { OnTimer(); });
@@ -512,7 +516,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
                 debugOutput << "UltraDesktop: could not start " << launched.name << ": " << error << std::endl;
                 UltraCanvasAlert::Error("Could not start " + launched.name + ": " + error, "UltraDesktop", nullptr,
                                         window_.get());
+                return;
             }
+            NoteAppStarted(launched);
         });
         StyleBarButton(button);
         ButtonStyle style = button->GetStyle();
@@ -1162,11 +1168,36 @@ void UltraDesktopWindow::OpenAppStarter() {
         appStarter_->Raise();
         return;
     }
-    UltraDesktopAppStarter::Pins pins;
-    pins.isPinned = [this](const UCDesktopEntry& entry) { return IsPinned(entry); };
-    pins.setPinned = [this](const UCDesktopEntry& entry, bool pinned) { SetPinned(entry, pinned); };
-    appStarter_ = std::make_shared<UltraDesktopAppStarter>(std::move(pins));
+    UltraDesktopAppStarter::Hooks hooks;
+    hooks.isPinned = [this](const UCDesktopEntry& entry) { return IsPinned(entry); };
+    hooks.setPinned = [this](const UCDesktopEntry& entry, bool pinned) { SetPinned(entry, pinned); };
+    hooks.keyOf = [](const UCDesktopEntry& entry) { return PinKey(entry); };
+    hooks.started = [this](const UCDesktopEntry& entry) { NoteAppStarted(entry); };
+    hooks.recent = [this]() { return settings_.recentApps; };
+    hooks.recentShown = static_cast<size_t>(settings_.recentAppsShown);
+    hooks.splitAbove = static_cast<size_t>(settings_.appsSplitAbove);
+    hooks.view = settings_.appsView;
+    hooks.setView = [this](const std::string& view) {
+        settings_.appsView = view;
+        SaveSettings();
+    };
+    hooks.moved = [this]() { return settings_.appMoves; };
+    hooks.setMoved = [this](const std::string& key, const std::string& groupKey) {
+        if (key.empty()) return;
+        if (groupKey.empty()) {
+            settings_.appMoves.erase(key);
+        } else {
+            settings_.appMoves[key] = groupKey;
+        }
+        SaveSettings();
+    };
+    appStarter_ = std::make_shared<UltraDesktopAppStarter>(std::move(hooks));
     appStarter_->Open();
+}
+
+void UltraDesktopWindow::NoteAppStarted(const UCDesktopEntry& entry) {
+    settings_.NoteAppStarted(PinKey(entry));
+    SaveSettings();
 }
 
 void UltraDesktopWindow::OpenTasks() {

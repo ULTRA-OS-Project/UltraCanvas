@@ -1050,6 +1050,34 @@ else()
     message(STATUS "  KanbanFileDropTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== ULTRADESKTOP APP CATEGORIES TEST =====
+# Where UltraDesktop's Apps window puts an application: freedesktop
+# Categories=, Windows shortcuts by name and folder (English and German), the
+# Games kinds, the split above the threshold, Recent from the history; and the
+# history, view and threshold kept across a save of the desktop's settings.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraDesktopAppCategoriesTest...")
+    add_executable(UltraDesktopAppCategoriesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraDesktopAppCategoriesTest.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCatalogue.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCategories.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopSettings.cpp
+    )
+    target_include_directories(UltraDesktopAppCategoriesTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui)
+    target_compile_features(UltraDesktopAppCategoriesTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraDesktopAppCategoriesTest PRIVATE UltraCanvas)
+    set_target_properties(UltraDesktopAppCategoriesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraDesktopAppCategoriesTest COMMAND UltraDesktopAppCategoriesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraDesktopAppCategoriesTest")
+else()
+    message(STATUS "  UltraDesktopAppCategoriesTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== UTF-8 FIND ALL TEST =====
 # utf8_find_all returns the same matches as a utf8_find loop, in one pass: the
 # loop was quadratic and hung UltraTexter's search bar on a large file.

@@ -1,5 +1,6 @@
 // include/UltraCanvasButton.h
 // Interactive button component with styling options
+// Version: 2.12.0 - ButtonStyle::wrap / SetWrap: the text on several lines (a tile's name under its icon)
 // Version: 2.11.0 - GetIconImage: the icon the button shows, for a menu entry standing in for it
 // Version: 2.10.2 - that layout is an UltraCanvasTextLayoutCache, the label's pattern too
 // Version: 2.10.1 - the shortened text's layout is kept from draw to draw and rebuilt when its inputs change
@@ -10,7 +11,7 @@
 // Version: 2.7.1 - GetIconWidth / GetIconHeight
 // Version: 2.7.0 - onDoubleClick
 // Version: 2.6.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -119,6 +120,11 @@ namespace UltraCanvas {
         // default), from the left, or in the middle - a path's first and
         // last parts stay readable then.
         EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;
+        // Word wrap: the text breaks onto as many lines as its area holds,
+        // from the area's top, and the last line that fits ends in "…" when
+        // more is left (an application's name under its icon on a tile).
+        // WrapNone (the default) keeps it on one line.
+        TextWrap wrap = TextWrap::WrapNone;
 
         int iconSpacing = 4;  // Space between icon and text
         float cornerRadius = 3.0f;
@@ -315,6 +321,7 @@ namespace UltraCanvas {
         void SetFontSize(float size);
         void SetTextAlign(TextAlignment align);
         void SetEllipsize(EllipsizeMode mode);   // ButtonStyle::ellipsize
+        void SetWrap(TextWrap wrap);             // ButtonStyle::wrap
         void SetIconSpacing(int spacing);
         void SetCornerRadius(float radius);
         void SetShadow(bool enabled, const Color& color = Color(0, 0, 0, 64),

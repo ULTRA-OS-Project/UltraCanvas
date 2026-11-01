@@ -1,6 +1,6 @@
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; Point2Di dropPoint; -->
 
 ## Contents
 
@@ -391,6 +391,22 @@ Removes a node and all its children from the tree.
 TreeNode* FindNode(const std::string& nodeId);
 ```
 Finds a node by its ID.
+
+#### `GetNodeAtY`
+```cpp
+TreeNode* GetNodeAtY(int y);
+```
+The row at an element-local y - as scrolled, so the y of `MapToLocal` of a
+window point - or `nullptr` below the last row. For a drop that starts in
+another element (a list's row dragged onto a category in the tree):
+
+```cpp
+// dropPoint: where the drag ended, in window coordinates (UCEvent::pointerWindow)
+const Point2Df local = treeView->MapToLocal(Point2Df(dropPoint.x, dropPoint.y));
+if (TreeNode* node = treeView->GetNodeAtY(static_cast<int>(local.y))) {
+    ShowPage(node->data.nodeId);
+}
+```
 
 ### Selection Management
 
