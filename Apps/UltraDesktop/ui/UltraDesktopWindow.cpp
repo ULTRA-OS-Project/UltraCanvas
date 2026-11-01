@@ -2,8 +2,6 @@
 // The desktop window: bars, wallpaper, and the live data behind the items.
 // See the header for the shape; the comments here say why each piece is
 // wired the way it is.
-// Version: 0.5.2 - the settings button shows the ULTRA OS logo in colour, wider
-//                  than the other items (media/icons/desktop/ultraos-logo-*.png)
 // Version: 0.5.1 - the desktop on the primary monitor (area_), the others
 //                  covered on X11 too; panels and toasts placed from it; a
 //                  primary that moves is followed (FollowPrimaryScreen)
@@ -94,7 +92,7 @@ constexpr int   kBarIcon        = 24;
 constexpr int   kLogoButtonWide = 64;
 constexpr int   kLogoWidth      = 384;
 constexpr int   kLogoHeight     = 200;
-const char* const kLogoForDarkBar = "ultraos-logo-dark.png";   // ultraos-logo-light.png: for a light ground
+const char* const kLogoForDarkBar = "ultraos-logo-dark.png";   // UOS-Settings shows ultraos-logo-light.png
 constexpr int   kInfoButton     = 36;   // the info panel's items, fourteen of them
 constexpr int   kInfoIcon       = 20;
 // Below this height the info panel's items are smaller, and what still does
@@ -428,7 +426,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     auto system = MakeGroup("Taskbar.System", vertical, false);
     // The ULTRA OS logo in its own colours, wider than the other items: it
     // is twice as wide as it is high. The variant drawn for a dark ground
-    // (the bar is dark grey); the one for a light ground is beside it.
+    // (the bar is dark grey).
     auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(kLogoForDarkBar),
                                        [this]() { OpenSystemSettings(); });
     settingsButton->SetUseIconAsMask(false);

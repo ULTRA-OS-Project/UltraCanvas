@@ -1,6 +1,7 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.6.1 - the ULTRA OS logo over the page tree
 // Version: 0.6.0 - Desktop: "Start with the desktop" (ChatCube, UltraMail)
 // Version: 0.5.1 - Desktop: from an MSIX package, why "At sign-in" is missing
 // Version: 0.5.0 - Notifications > Registrations: listed, and removed with one button
@@ -8,7 +9,7 @@
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -20,6 +21,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasEmojiSettings.h"
 #include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasFileLoader.h"
@@ -54,6 +56,11 @@ namespace {
     const Color kNoteAccent     = Color(160, 176, 200, 255);
     const Color kRuleColor      = Color(225, 225, 230, 255);
     const Color kHeaderBackground = Color(243, 243, 246, 255);
+    const Color kSidebarBackground = Color(243, 243, 246, 255);
+    constexpr int kSidebarWidth = 180;
+    // The ULTRA OS logo over the page tree: ultraos-logo-light.png, 384 x 200.
+    constexpr int kLogoWidth = 132;
+    constexpr int kLogoHeight = 132 * 200 / 384;
     constexpr int kPagePadding = 20;
     constexpr int kTextWidth   = 520;
     constexpr int kNoteWidth   = 510;
@@ -258,16 +265,34 @@ bool UOSSettingsWindow::Create() {
     content->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+    // The sidebar: the ULTRA OS logo - the version drawn for a light ground,
+    // as the desktop's taskbar shows the one for a dark ground - over the
+    // page tree.
+    auto sidebar = std::make_shared<UltraCanvasContainer>("uos-sidebar");
+    sidebar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    sidebar->SetBackgroundColor(kSidebarBackground);
+    sidebar->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
+    sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto logo = std::make_shared<UltraCanvasImageElement>("uos-logo", 0, 0, kLogoWidth, kLogoHeight);
+    logo->SetFitMode(ImageFitMode::Contain);
+    logo->LoadFromFile(GetResourcesDir() + "media/icons/desktop/ultraos-logo-light.png");
+    logo->SetElementSize(Size2Df(static_cast<float>(kLogoWidth), static_cast<float>(kLogoHeight)));
+    logo->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
+    logo->SetMargin(14, 0, 10, 0);
+    logo->SetTooltip("ULTRA OS");
+    sidebar->AddChild(logo);
+
     tree_ = std::make_shared<UltraCanvasTreeView>("uos-tree");
     tree_->SetFontSize(kTreeFontSize);
     tree_->SetRowHeight(24);
     tree_->SetSelectionMode(TreeSelectionMode::Single);
     tree_->SetLineStyle(TreeLineStyle::NoLine);
-    tree_->SetBackgroundColor(Color(243, 243, 246, 255));
+    tree_->SetBackgroundColor(kSidebarBackground);
     tree_->SetShowFirstChildOnExpand(true);
     tree_->SetAutoExpandSelectedNode(true);
-    tree_->size.width = CSSLayout::Dimension::Px(180);
-    tree_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+    tree_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     TreeNodeData rootData("settings", "Settings");
@@ -282,7 +307,8 @@ bool UOSSettingsWindow::Create() {
     tree_->AddNode("settings", TreeNodeData(kSectionDevices, "Devices"));
     tree_->AddNode(kSectionDevices, TreeNodeData(kPageCertificates, "Trusted certificates"));
     tree_->SetRootVisible(false);
-    content->AddChild(tree_);
+    sidebar->AddChild(tree_);
+    content->AddChild(sidebar);
 
     pageArea_ = std::make_shared<UltraCanvasContainer>("uos-pages");
     pageArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
