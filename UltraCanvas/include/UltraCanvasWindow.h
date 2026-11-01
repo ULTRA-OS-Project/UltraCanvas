@@ -1,5 +1,6 @@
 // include/UltraCanvasWindowBase.h
 // Enhanced abstract base window interface inheriting from UltraCanvasContainer
+// Version: 2.8.0 - WindowConfig::alwaysOnTop honoured on X11 and macOS (it was Windows only)
 // Version: 2.7.0 - WindowConfig::desktopArea: a Desktop window on any monitor
 // Version: 2.6.0 - RefreshAfterFontChange(): lays out and draws everything again
 // Version: 2.5.0 - popups composite with their alpha over the window, and a popup's
@@ -82,6 +83,9 @@ namespace UltraCanvas {
         bool minimizable = true;
         bool maximizable = true;
         bool closable = true;
+        // Kept above the other windows: _NET_WM_STATE_ABOVE on X11,
+        // WS_EX_TOPMOST on Windows, the floating level on macOS. A
+        // Notification window has it anyway.
         bool alwaysOnTop = false;
 
         Color backgroundColor = Colors::WindowBackground;

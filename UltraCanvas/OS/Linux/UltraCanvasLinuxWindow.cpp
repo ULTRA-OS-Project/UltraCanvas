@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasLinuxWindow.cpp
 // Complete Linux window implementation with all methods
+// Version: 1.5.0 - WindowConfig::alwaysOnTop: _NET_WM_STATE_ABOVE on any window type
 // Version: 1.4.0 - WindowType::Desktop covers config.desktopArea when given
 // Version: 1.3.0 - WindowType::Notification: EWMH notification type, above,
 //                  sticky, out of taskbars, input hint off
@@ -283,6 +284,17 @@ namespace UltraCanvas {
                 XSetWMHints(display, xWindow, wmHints);
                 XFree(wmHints);
             }
+        }
+
+        // Kept above the other windows (_NET_WM_STATE_ABOVE, set before the
+        // map so the manager applies it as the window appears): a recording
+        // bar, a floating palette. A notification has it already, with its
+        // other states; a desktop window is kept below by its type.
+        if (config_.alwaysOnTop && config_.type != WindowType::Notification && config_.type != WindowType::Desktop) {
+            Atom stateAtom = XInternAtom(display, "_NET_WM_STATE", False);
+            Atom above = XInternAtom(display, "_NET_WM_STATE_ABOVE", False);
+            XChangeProperty(display, xWindow, stateAtom, XA_ATOM, 32, PropModeAppend,
+                            reinterpret_cast<unsigned char*>(&above), 1);
         }
 
         // Apply borderless style if requested (remove window decorations)

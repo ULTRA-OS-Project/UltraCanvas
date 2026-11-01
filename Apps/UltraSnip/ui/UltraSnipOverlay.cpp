@@ -1,12 +1,12 @@
 // Apps/UltraSnip/ui/UltraSnipOverlay.cpp
 // See the header.
+// Version: 0.1.1 - the frozen screen shown from its pixels (UCImage::FromBgra), no PNG round trip
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraSnipOverlay.h"
 
 #include "UltraCanvasApplication.h"
-#include "UltraCanvasClipboardDib.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageElement.h"
@@ -213,19 +213,12 @@ bool UltraSnipOverlay::Open(const DesktopScreenImage& shot, SnipMode mode, const
         if (error) *error = "There is no screen picture to choose from.";
         return false;
     }
-    // The capture as a picture the image element shows: straight RGBA, as PNG
-    ClipboardDib::RgbaImage rgba;
-    std::vector<uint8_t> png;
-    if (!CropToRgba(shot, Rect2Di(shot.x, shot.y, shot.width, shot.height), rgba) ||
-        !ClipboardDib::EncodePng(rgba, png)) {
-        if (error) *error = "The screen picture could not be prepared.";
-        return false;
-    }
-    rgba = ClipboardDib::RgbaImage();
-    std::shared_ptr<UCImage> picture = UCImage::LoadFromMemory(png);
-    png.clear();
+    // The capture as the picture the image element shows: its B G R x rows
+    // taken as they are, no encoding and no decoding on the way
+    std::shared_ptr<UCImage> picture =
+        UCImage::FromBgra(shot.pixels.data(), shot.width, shot.height, shot.stride, /*opaque=*/true);
     if (!picture) {
-        if (error) *error = "The screen picture could not be read back.";
+        if (error) *error = "The screen picture could not be prepared.";
         return false;
     }
 

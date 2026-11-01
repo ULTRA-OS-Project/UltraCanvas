@@ -1,5 +1,6 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.9.0 - FromBgra / FromRgba: a picture from pixels, scaled from its own surface
 // Version: 2.8.0 - GIF through libvips everywhere: its gifsave, else the
 //                  framework's encoder registered as ucgifsave (VipsGifPlugin)
 // Version: 2.7.0 - VipsCanDecode asks libheif whether it decodes HEIC (HEVC) and
@@ -55,6 +56,7 @@
 #include <memory>
 #include <iostream>
 #include <unordered_map>
+#include <vector>
 #ifdef _WIN32
 #include <stdlib.h>
 #include <windows.h>
@@ -172,6 +174,146 @@ namespace UltraCanvas {
         // by deviceScale to report logical units to drawing code.
     }
 
+
+    // ===== A PICTURE FROM PIXELS =====
+    // The box w x h, by the fit mode, with the libvips thumbnail path's
+    // meaning: Fill stretches to the box, Contain fits it, ScaleDown fits it
+    // but never past the natural size, Cover covers it and is cropped to it,
+    // NoScale is the natural size. Rendered at device pixels (`scale`). Shared
+    // by the pixel-made pictures and the build without libvips.
+    namespace {
+        std::shared_ptr<UCPixmapCairo> ScaleSurfaceToBox(cairo_surface_t* source, int sw, int sh, int w, int h,
+                                                         ImageFitMode fitMode, float scale) {
+            if (!source || sw <= 0 || sh <= 0 || w <= 0 || h <= 0) return nullptr;
+            if (scale <= 0.0f) scale = 1.0f;
+            const double sx = static_cast<double>(w) / sw;
+            const double sy = static_cast<double>(h) / sh;
+            double fx = 1.0, fy = 1.0;
+            switch (fitMode) {
+                case ImageFitMode::Fill:      fx = sx; fy = sy; break;
+                case ImageFitMode::Contain:   fx = fy = std::min(sx, sy); break;
+                case ImageFitMode::ScaleDown: fx = fy = std::min(1.0, std::min(sx, sy)); break;
+                case ImageFitMode::Cover:     fx = fy = std::max(sx, sy); break;
+                case ImageFitMode::NoScale:   break;
+            }
+            const int tw = std::max(1, static_cast<int>(std::lround(sw * fx * scale)));
+            const int th = std::max(1, static_cast<int>(std::lround(sh * fy * scale)));
+            auto pm = std::make_shared<UCPixmapCairo>(tw, th);
+            if (!pm->IsValid()) return nullptr;
+            {
+                cairo_t* cr = cairo_create(pm->GetSurface());
+                cairo_scale(cr, static_cast<double>(tw) / sw, static_cast<double>(th) / sh);
+                cairo_set_source_surface(cr, source, 0, 0);
+                cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+                // The edge rows repeat outward: without it the filter blends
+                // the outermost pixels with the transparent nothing beyond
+                // them, and a scaled picture gets a soft, half-see-through rim
+                cairo_pattern_set_extend(cairo_get_source(cr), CAIRO_EXTEND_PAD);
+                cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+                cairo_paint(cr);
+                cairo_destroy(cr);
+            }
+            pm->MarkDirty();
+            pm->Flush();
+            if (fitMode == ImageFitMode::Cover && (tw > w * scale || th > h * scale)) {
+                // Centre crop to the box, in device pixels.
+                const int bw = std::max(1, static_cast<int>(std::lround(w * scale)));
+                const int bh = std::max(1, static_cast<int>(std::lround(h * scale)));
+                auto cropped = std::make_shared<UCPixmapCairo>(bw, bh);
+                if (!cropped->IsValid()) return nullptr;
+                cairo_t* cr = cairo_create(cropped->GetSurface());
+                cairo_set_source_surface(cr, pm->GetSurface(), -(tw - bw) / 2.0, -(th - bh) / 2.0);
+                cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+                cairo_paint(cr);
+                cairo_destroy(cr);
+                cropped->MarkDirty();
+                cropped->Flush();
+                pm = cropped;
+            }
+            if (scale != 1.0f) pm->SetDeviceScale(scale);
+            return pm;
+        }
+
+        // One premultiplied ARGB32 pixel (the native uint32 cairo reads) from
+        // straight channels
+        inline uint32_t PremultipliedPixel(unsigned r, unsigned g, unsigned b, unsigned a) {
+            if (a == 255) return 0xFF000000u | (r << 16) | (g << 8) | b;
+            if (a == 0) return 0;
+            r = (r * a + 127) / 255;
+            g = (g * a + 127) / 255;
+            b = (b * a + 127) / 255;
+            return (a << 24) | (r << 16) | (g << 8) | b;
+        }
+
+        std::shared_ptr<UCImageRaster> MakeFromPixels(const uint8_t* pixels, int width, int height, int stride,
+                                                      bool bgra, bool opaque, int& transparency,
+                                                      std::shared_ptr<UCPixmapCairo>& surface) {
+            static std::atomic<unsigned long long> s_pixel_image_id{0};
+            if (!pixels || width <= 0 || height <= 0 || stride < width * 4) return nullptr;
+            auto pm = std::make_shared<UCPixmapCairo>(width, height);
+            if (!pm->IsValid()) return nullptr;
+            cairo_surface_t* target = pm->GetSurface();
+            cairo_surface_flush(target);
+            unsigned char* data = cairo_image_surface_get_data(target);
+            const int targetStride = cairo_image_surface_get_stride(target);
+            bool seeThrough = false;
+            for (int y = 0; y < height; ++y) {
+                const uint8_t* src = pixels + static_cast<size_t>(y) * static_cast<size_t>(stride);
+                uint32_t* dst = reinterpret_cast<uint32_t*>(data + static_cast<size_t>(y) * targetStride);
+                for (int x = 0; x < width; ++x, src += 4) {
+                    const unsigned r = bgra ? src[2] : src[0];
+                    const unsigned g = src[1];
+                    const unsigned b = bgra ? src[0] : src[2];
+                    const unsigned a = opaque ? 255u : src[3];
+                    if (a != 255) seeThrough = true;
+                    dst[x] = PremultipliedPixel(r, g, b, a);
+                }
+            }
+            pm->MarkDirty();
+            pm->Flush();
+            char filename[64];
+            snprintf(filename, sizeof(filename), ":pix:%llu:%dx%d", s_pixel_image_id.fetch_add(1), width, height);
+            auto result = std::make_shared<UCImageRaster>(filename);
+            transparency = seeThrough ? 1 : 0;
+            surface = pm;
+            return result;
+        }
+    } // namespace
+
+    std::shared_ptr<UCImageRaster> UCImageRaster::FromBgra(const uint8_t* pixels, int width, int height, int stride,
+                                                           bool opaque) {
+        int transparency = 0;
+        std::shared_ptr<UCPixmapCairo> surface;
+        auto result = MakeFromPixels(pixels, width, height, stride, true, opaque, transparency, surface);
+        if (!result) return nullptr;
+        result->width = width;
+        result->height = height;
+        result->transparency = transparency;
+        result->pixelSource = surface;
+        return result;
+    }
+
+    std::shared_ptr<UCImageRaster> UCImageRaster::FromRgba(const uint8_t* pixels, int width, int height) {
+        int transparency = 0;
+        std::shared_ptr<UCPixmapCairo> surface;
+        auto result = MakeFromPixels(pixels, width, height, width * 4, false, false, transparency, surface);
+        if (!result) return nullptr;
+        result->width = width;
+        result->height = height;
+        result->transparency = transparency;
+        result->pixelSource = surface;
+        return result;
+    }
+
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapFromPixelSource(int w, int h, ImageFitMode fitMode,
+                                                                             float scale) {
+        if (!pixelSource) return nullptr;
+        if (w <= 0 || h <= 0) {
+            w = width;
+            h = height;
+        }
+        return ScaleSurfaceToBox(pixelSource->GetSurface(), width, height, w, h, fitMode, scale);
+    }
 
 #ifdef HAS_LIBVIPS
     bool UCImageRaster::InitializeImageSubsysterm(const char *programName) {
@@ -603,6 +745,7 @@ namespace UltraCanvas {
     }
 
     bool UCImageRaster::HasTransparency() {
+        if (pixelSource) return transparency == 1;   // known since the pixels came in
         if (transparency >= 0) return transparency == 1;
         transparency = 0;
 #ifdef HAS_LIBRSVG
@@ -663,6 +806,36 @@ namespace UltraCanvas {
     }
 
     vips::VImage UCImageRaster::GetVImage() {
+        if (pixelSource) {
+            // The surface's premultiplied ARGB32 back to straight R, G, B, A
+            // rows, which libvips takes as an sRGB image with alpha
+            cairo_surface_t* surface = pixelSource->GetSurface();
+            cairo_surface_flush(surface);
+            const unsigned char* data = cairo_image_surface_get_data(surface);
+            const int stride = cairo_image_surface_get_stride(surface);
+            std::vector<uint8_t> rgba(static_cast<size_t>(width) * height * 4);
+            for (int y = 0; y < height; ++y) {
+                const uint32_t* src = reinterpret_cast<const uint32_t*>(data + static_cast<size_t>(y) * stride);
+                uint8_t* dst = rgba.data() + static_cast<size_t>(y) * width * 4;
+                for (int x = 0; x < width; ++x, dst += 4) {
+                    const uint32_t p = src[x];
+                    const unsigned a = p >> 24;
+                    unsigned r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+                    if (a != 0 && a != 255) {
+                        r = std::min(255u, (r * 255 + a / 2) / a);
+                        g = std::min(255u, (g * 255 + a / 2) / a);
+                        b = std::min(255u, (b * 255 + a / 2) / a);
+                    }
+                    dst[0] = static_cast<uint8_t>(r);
+                    dst[1] = static_cast<uint8_t>(g);
+                    dst[2] = static_cast<uint8_t>(b);
+                    dst[3] = static_cast<uint8_t>(a);
+                }
+            }
+            vips::VImage image = vips::VImage::new_from_memory_copy(rgba.data(), rgba.size(), width, height, 4,
+                                                                    VIPS_FORMAT_UCHAR);
+            return image.copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB));
+        }
         if (imgDataPtr) { // Create VImage from memory buffer
             return vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "");
         } else { // Create VImage from file
@@ -930,6 +1103,7 @@ namespace UltraCanvas {
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
         if (scale <= 0.0f) scale = 1.0f;
+        if (pixelSource) return CreatePixmapFromPixelSource(w, h, fitMode, scale);
         if (vectorDocument) {
             return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
         }
@@ -1102,6 +1276,7 @@ namespace UltraCanvas {
     }
 #else
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int w, int h, ImageFitMode fitMode, float scale) {
+        if (pixelSource) return CreatePixmapFromPixelSource(w, h, fitMode, scale);
         if (vectorDocument) {
             return CreatePixmapFromVectorDocument(w, h, fitMode, scale);
         }
@@ -1119,61 +1294,8 @@ namespace UltraCanvas {
         }
         const int sw = cairo_image_surface_get_width(source);
         const int sh = cairo_image_surface_get_height(source);
-        if (sw <= 0 || sh <= 0) {
-            cairo_surface_destroy(source);
-            return nullptr;
-        }
-        // The box w x h, by the fit mode, with the libvips thumbnail path's
-        // meaning: Fill stretches to the box, Contain fits it, ScaleDown fits
-        // it but never past the natural size, Cover covers it and is cropped
-        // to it, NoScale is the natural size. Rendered at device pixels.
-        const double sx = static_cast<double>(w) / sw;
-        const double sy = static_cast<double>(h) / sh;
-        double fx = 1.0, fy = 1.0;
-        switch (fitMode) {
-            case ImageFitMode::Fill:      fx = sx; fy = sy; break;
-            case ImageFitMode::Contain:   fx = fy = std::min(sx, sy); break;
-            case ImageFitMode::ScaleDown: fx = fy = std::min(1.0, std::min(sx, sy)); break;
-            case ImageFitMode::Cover:     fx = fy = std::max(sx, sy); break;
-            case ImageFitMode::NoScale:   break;
-        }
-        const int tw = std::max(1, static_cast<int>(std::lround(sw * fx * scale)));
-        const int th = std::max(1, static_cast<int>(std::lround(sh * fy * scale)));
-        auto pm = std::make_shared<UCPixmapCairo>(tw, th);
-        if (!pm->IsValid()) {
-            cairo_surface_destroy(source);
-            return nullptr;
-        }
-        {
-            cairo_t* cr = cairo_create(pm->GetSurface());
-            cairo_scale(cr, static_cast<double>(tw) / sw, static_cast<double>(th) / sh);
-            cairo_set_source_surface(cr, source, 0, 0);
-            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
-            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(cr);
-            cairo_destroy(cr);
-        }
+        std::shared_ptr<UCPixmapCairo> pm = ScaleSurfaceToBox(source, sw, sh, w, h, fitMode, scale);
         cairo_surface_destroy(source);
-        pm->MarkDirty();
-        pm->Flush();
-        if (fitMode == ImageFitMode::Cover && (tw > w * scale || th > h * scale)) {
-            // Centre crop to the box, in device pixels.
-            const int bw = std::max(1, static_cast<int>(std::lround(w * scale)));
-            const int bh = std::max(1, static_cast<int>(std::lround(h * scale)));
-            auto cropped = std::make_shared<UCPixmapCairo>(bw, bh);
-            if (!cropped->IsValid()) return nullptr;
-            cairo_t* cr = cairo_create(cropped->GetSurface());
-            cairo_set_source_surface(cr, pm->GetSurface(), -(tw - bw) / 2.0, -(th - bh) / 2.0);
-            cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-            cairo_paint(cr);
-            cairo_destroy(cr);
-            cropped->MarkDirty();
-            cropped->Flush();
-            pm = cropped;
-        }
-        if (scale != 1.0f) {
-            pm->SetDeviceScale(scale);
-        }
         return pm;
     }
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {

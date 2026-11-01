@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipWindow.cpp
 // See the header.
+// Version: 0.1.1 - the result shown from its pixels (UCImage::FromRgba)
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -560,7 +561,8 @@ void UltraSnipWindow::ShowPicture() {
     }
     if (welcome_) welcome_->SetVisible(false);
     if (picture_) {
-        picture_->LoadFromImage(UCImage::LoadFromMemory(resultPng_));
+        // Straight from the pixels; the PNG is for the clipboard and the file
+        picture_->LoadFromImage(UCImage::FromRgba(resultImage_.pixels.data(), resultImage_.width, resultImage_.height));
         picture_->SetVisible(true);
     }
     UpdateActions();

@@ -5165,6 +5165,25 @@ endif()
 
 message(STATUS "")
 
+# ===== IMAGE FROM PIXELS TEST =====
+# UCImage::FromBgra / FromRgba (libspecific/Cairo/ImageCairo.cpp): a picture
+# made from rows in memory draws, scales, saves and reports transparency.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFromPixelsTest...")
+    add_executable(ImageFromPixelsTest ${CMAKE_CURRENT_SOURCE_DIR}/ImageFromPixelsTest.cpp)
+    target_include_directories(ImageFromPixelsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFromPixelsTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageFromPixelsTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFromPixelsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFromPixelsTest COMMAND ImageFromPixelsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFromPixelsTest")
+endif()
+
+message(STATUS "")
+
 # ===== ULTRASNIP CAPTURE TEST =====
 # UltraSnip's pure helpers (Apps/UltraSnip/ui/UltraSnipCapture.cpp): the
 # rectangle from a drag, the crop of a BGRx capture into RGBA, the window

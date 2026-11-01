@@ -1,5 +1,6 @@
 // OS/MacOS/UltraCanvasMacOSWindow.mm
 // Complete macOS window implementation with Cocoa and Cairo
+// Version: 2.6.0 - WindowConfig::alwaysOnTop (and a notification) at the floating window level
 // Version: 2.5.0 - the content view is an NSTextInputClient: an element that
 //   draws compositions gets the input method's pre-edit as TextComposition
 //   events, its candidate window at the caret
@@ -466,6 +467,12 @@ namespace UltraCanvas {
             // path crashes on macOS 26.x while encoding our custom Cairo NSView
             // (CFRelease alignment fault inside __CFBinaryPlistWriteOrPresize).
             [nsWindow setRestorable:NO];
+
+            // Kept above the other windows (WindowConfig::alwaysOnTop): the
+            // floating level, where palettes and a recording bar live.
+            if (config_.alwaysOnTop || config_.type == WindowType::Notification) {
+                [nsWindow setLevel:NSFloatingWindowLevel];
+            }
 
             // Create custom view for Cairo rendering
             NSRect contentFrame = [[nsWindow contentView] frame];
