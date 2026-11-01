@@ -10,6 +10,8 @@
 // joining segments of different sizes, GIF / WAV / WebM-free outputs, the
 // lossless cut, cancellation, the background job, a UTF-8 file name, and the
 // error codes. No media file from the repository is needed.
+// Version: 0.17.0 - VideoFXFrameRecorder: frames pushed with their time land on the
+//                  file's ticks, BGRA as RGBA, an odd size made even, duplicates dropped
 // Version: 0.16.2 - a clip re-exported over an old file of the same name has its faces looked for afresh
 // Version: 0.16.1 - a face only in a clip's last third still places the Fill crop
 // Version: 0.16.0 - overlay effects (filter text, the export, the preview, project files);
@@ -1203,6 +1205,123 @@ static void TestAudioClips(const VideoFXExportSettings& base);
 static void TestFileFormats();
 static void TestPictureReader();
 static void TestOverlayEffects(const VideoFXExportSettings& base);
+static void TestFrameRecorder();
+
+
+// ---------------------------------------------------------------------------
+// The frame recorder: a live source's frames, pushed one by one
+// ---------------------------------------------------------------------------
+static void TestFrameRecorder() {
+    std::printf("Frame recorder:\n");
+    // MPEG-4 in MKV, as the clips above: no libx264 needed
+    VideoFXRecorderSettings settings;
+    settings.container = VideoFXContainer::MKV;
+    settings.videoCodec = VideoFXVideoCodec::MPEG4;
+    settings.frameRate = 10.0;
+
+    auto fill = [](std::vector<uint8_t>& px, int w, int h, uint8_t a, uint8_t b, uint8_t c) {
+        px.assign(static_cast<size_t>(w) * h * 4, 0);
+        for (size_t i = 0; i < px.size(); i += 4) { px[i] = a; px[i + 1] = b; px[i + 2] = c; px[i + 3] = 255; }
+    };
+
+    {
+        VideoFXFrameRecorder recorder;
+        CHECK(!recorder.IsOpen(), "not open before Open");
+        VideoFXRecorderSettings bad = settings;
+        bad.frameRate = 0.0;
+        CHECK(recorder.Open(TempPath("rec-bad.mkv"), bad) == VideoFXResult::InvalidArgument, "a rate of 0 is refused");
+        VideoFXRecorderSettings wav = settings;
+        wav.container = VideoFXContainer::Auto;             // from the extension: a sound file
+        CHECK(recorder.Open(TempPath("rec-bad.wav"), wav) == VideoFXResult::UnsupportedFormat,
+              "a sound container is refused");
+        CHECK(!recorder.IsOpen(), "a refused Open leaves it closed");
+    }
+
+    // 2 s of red, then 1 s of blue, as RGBA at 320x240; the frame's time is
+    // the clock, and a frame on a tick already written is dropped
+    const std::string rgba = TempPath("rec-rgba.mkv");
+    {
+        VideoFXFrameRecorder recorder;
+        CHECK_OK(recorder.Open(rgba, settings), "open an RGBA recording (size from the first frame)");
+        CHECK(recorder.IsOpen() && recorder.GetWidth() == 0, "open, size not known yet");
+        std::vector<uint8_t> red, blue;
+        fill(red, 320, 240, 255, 0, 0);
+        fill(blue, 320, 240, 0, 0, 255);
+        for (int i = 0; i < 30; ++i) {
+            const std::vector<uint8_t>& px = i < 20 ? red : blue;
+            CHECK_OK(recorder.PushFrame(px.data(), 320, 240, 320 * 4, i / 10.0), "push a frame");
+        }
+        CHECK(recorder.GetWidth() == 320 && recorder.GetHeight() == 240, "the file is 320x240");
+        CHECK(recorder.GetFrameCount() == 30, "30 frames written");
+        CHECK_OK(recorder.PushFrame(blue.data(), 320, 240, 320 * 4, 2.9), "a frame on a written tick is accepted");
+        CHECK(recorder.GetFrameCount() == 30, "... and dropped");
+        CHECK(Near(recorder.GetDuration(), 3.0, 0.01), "3 s written");
+        CHECK(!recorder.GetEncoderName().empty(), "the encoder has a name");
+        CHECK_OK(recorder.Close(), "close");
+        CHECK(!recorder.IsOpen(), "closed");
+        CHECK_OK(recorder.Close(), "closing again is Ok");
+    }
+    VideoFXMediaInfo info;
+    CHECK_OK(VideoFX_Probe(rgba, info), "probe the recording");
+    CHECK(info.HasVideo() && !info.HasAudio(), "video, no sound");
+    CHECK(info.width == 320 && info.height == 240, "recorded at 320x240");
+    CHECK(Near(info.duration, 3.0, 0.2), "about 3 s long");
+    VideoFXFrame f;
+    double r, g, b;
+    CHECK_OK(VideoFX_ExtractFrame(rgba, 0.5, f), "frame at 0.5 s");
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 60 && b < 60, "0.5 s is red");
+    CHECK_OK(VideoFX_ExtractFrame(rgba, 2.5, f), "frame at 2.5 s");
+    CentreColour(f, r, g, b);
+    CHECK(b > 200 && r < 60 && g < 60, "2.5 s is blue");
+
+    // BGRA frames (what the screen captures hand over) of an odd size: the
+    // bytes are read in their order, and the file is made even
+    const std::string bgra = TempPath("rec-bgra.mp4");
+    {
+        VideoFXFrameRecorder recorder;
+        VideoFXRecorderSettings s = settings;
+        s.container = VideoFXContainer::Auto;
+        if (!VideoFX_IsVideoEncoderAvailable(VideoFXVideoCodec::H264)) s.videoCodec = VideoFXVideoCodec::MPEG4;
+        else s.videoCodec = VideoFXVideoCodec::Auto;
+        CHECK_OK(recorder.Open(bgra, s), "open an MP4 recording");
+        // a BGRA pixel 0,0,255 is red; as RGBA it would be blue
+        std::vector<uint8_t> redBgra;
+        fill(redBgra, 321, 241, 0, 0, 255);
+        for (int i = 0; i < 10; ++i)
+            CHECK_OK(recorder.PushFrame(redBgra.data(), 321, 241, 321 * 4, i / 10.0, VideoFXPixelLayout::BGRA),
+                     "push a BGRA frame");
+        CHECK(recorder.GetWidth() == 320 && recorder.GetHeight() == 240, "321x241 recorded as 320x240");
+        CHECK_OK(recorder.Close(), "close the MP4");
+    }
+    CHECK_OK(VideoFX_Probe(bgra, info), "probe the MP4 recording");
+    CHECK(info.width == 320 && info.height == 240, "the MP4 is 320x240");
+    CHECK_OK(VideoFX_ExtractFrame(bgra, 0.5, f), "frame of the BGRA recording");
+    CentreColour(f, r, g, b);
+    CHECK(r > 200 && g < 60 && b < 60, "a BGRA 0,0,255 pixel came out red");
+
+    // A VideoFXFrame carries its own time
+    {
+        VideoFXFrameRecorder recorder;
+        VideoFXRecorderSettings s = settings;
+        s.width = 64;
+        s.height = 48;
+        CHECK_OK(recorder.Open(TempPath("rec-frame.mkv"), s), "open with a size given");
+        CHECK(recorder.GetWidth() == 64 && recorder.GetHeight() == 48, "the size is known at once");
+        VideoFXFrame frame;
+        frame.width = 100;
+        frame.height = 80;
+        frame.pixels.assign(100 * 80 * 4, 128);
+        frame.timestamp = 0.0;
+        CHECK_OK(recorder.PushFrame(frame), "push a VideoFXFrame of another size (scaled)");
+        frame.timestamp = 1.0;
+        CHECK_OK(recorder.PushFrame(frame), "push one at 1 s");
+        CHECK(recorder.GetFrameCount() == 2 && Near(recorder.GetDuration(), 1.1, 0.01), "two frames, 1.1 s");
+        VideoFXFrame empty;
+        CHECK(recorder.PushFrame(empty) == VideoFXResult::InvalidArgument, "an empty frame is refused");
+        CHECK_OK(recorder.Close(), "close");
+    }
+}
 
 static void TestEngine() {
     std::printf("Engine: %s\n", VideoFX_GetBackendVersion().c_str());
@@ -1519,6 +1638,7 @@ static void TestEngine() {
     TestFileFormats();
     TestPictureReader();
     TestOverlayEffects(base);
+    TestFrameRecorder();
 
     std::error_code ec;
     fs::remove_all(UltraCanvas::PathFromUtf8(TempPath("")), ec);

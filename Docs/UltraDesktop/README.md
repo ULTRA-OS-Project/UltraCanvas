@@ -113,9 +113,15 @@ the right-hand monitor the primary.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot* (the whole screen to
-  `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
-  green dot for three seconds and its tooltip names the file).
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot*. A click
+  on the screenshot button opens [UltraSnip](../UltraSnip/README.md) to snip
+  an area; its right-click menu offers a window, the whole screen, a video
+  recording of each, *Screenshot now, to Pictures* (the whole screen to
+  `~/Pictures/Screenshots/Screenshot <date> <time>.png` without UltraSnip; the
+  button shows a green dot for three seconds and its tooltip names the file)
+  and *Open UltraSnip*; `Super+Shift+S` from any window snips an area. Where
+  UltraSnip is not installed beside the desktop, the click takes the plain
+  screenshot.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as

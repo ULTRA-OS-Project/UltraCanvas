@@ -701,6 +701,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # entries opened last, the open action, the app's own new-thing fields.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasStartPage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAppSettings.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsPageKit.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSettingsFolder.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDialogSettings.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmojiSettings.cpp

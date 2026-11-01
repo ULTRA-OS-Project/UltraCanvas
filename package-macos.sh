@@ -1638,6 +1638,16 @@ package_if_built "UltraClipboard" build_app_bundle \
     "public.app-category.utilities" \
     ""
 
+# Package UltraSnip, the screenshot and screen-recording tool (libVideoFX and
+# FFmpeg go to the shared Frameworks/ with the rest)
+package_if_built "UltraSnip" build_app_bundle \
+    "UltraSnip" \
+    "UltraSnip" \
+    "com.cloverleaf.UltraSnip" \
+    "media/appicon/UltraSnip.png" \
+    "public.app-category.utilities" \
+    ""
+
 # Document types for UltraVideo (the video editor): its own projects as the
 # editor, and the media it edits under "Open With" without claiming them.
 ULTRAVIDEO_DOC_TYPES='    <key>CFBundleDocumentTypes</key>

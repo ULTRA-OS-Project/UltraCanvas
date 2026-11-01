@@ -45,6 +45,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
+// Version: 1.19.0 - built on the framework's UltraCanvasSettingsPageKit: the window, the
+//                   page skeleton and the controls come from it, nothing changes on screen
 // Version: 1.18.0 - Archives > TAR: how Compress packs a TAR
 // Version: 1.17.0 - Handling > Protected files: the minutes without input before the
 //                   preview forgets Unlock's passwords (0: never)
@@ -69,6 +71,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasRadio.h"
+#include "UltraCanvasSettingsPageKit.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasSpinner.h"
 #include "UltraCanvasSwitch.h"
@@ -94,27 +97,10 @@ namespace UltraCanvas {
 
 namespace {
 
-    // ----- one type scale for the whole window -----
-    // Titles above the text, the text and every control at one size, and the
-    // notes a step below it and greyed: what is read first is the largest.
-    constexpr float kTitleFontSize = 15.0f;   // page title (bold)
-    constexpr float kTextFontSize  = 10.0f;   // captions, choices, buttons, fields
-    constexpr float kNoteFontSize  = 9.0f;    // the notes under the controls
-    constexpr float kTreeFontSize  = 9.0f;    // matches the main window's UI font
-
-    const Color kTextColor        = Color(40, 40, 44, 255);
-    const Color kNoteTextColor    = Color(96, 96, 104, 255);
-    const Color kNoteBackground   = Color(244, 245, 248, 255);
-    const Color kNoteAccent       = Color(160, 176, 200, 255);
-
-    // Page geometry: the window is 700 wide, the tree takes 180, so a page
-    // has 520; with its padding that leaves ~480 for content. Every text is
-    // wrapped at a fixed width because content measuring needs a render
-    // context, which the dialog does not have while it is first laid out.
-    constexpr int kPagePadding  = 20;
-    constexpr int kTextWidth    = 440;   // wrapped texts and choice rows
-    constexpr int kNoteWidth    = 430;   // wrapped notes inside their block
-    constexpr int kControlHeight = 22;   // one checkbox / radio row
+    // The look - the type scale, the page skeleton, the controls and the
+    // window with its tree of pages - is the framework's settings page kit,
+    // which this window set the style of before it was shared.
+    using namespace SettingsPageKit;
 
     // Page ids double as tree node ids.
     constexpr const char* kPageDisplay = "display";
@@ -146,28 +132,12 @@ namespace {
     // section closed, so there is no page to show yet.
     constexpr const char* kPageStart = "start";
 
-    // A page's "Restore default ..." action, shown in the bottom bar while
-    // that page is up.
-    struct PageReset {
-        std::string           label;
-        int                   width = 170;
-        std::function<void()> action;
-    };
-
     // The one open settings window (or the last closed one, until reopened).
-    struct DialogState {
-        std::shared_ptr<UltraCanvasWindow>    window;
-        bool                                  closed = false;
+    struct DialogState : public UltraCanvasSettingsWindow {
         // Set while SyncControlsFromSettings pushes the settings onto the
         // controls: the change handlers that fires write the same values
         // back, and must not save or re-apply them once more.
         bool                                  syncing = false;
-        std::shared_ptr<UltraCanvasTreeView>  tree;
-        std::shared_ptr<UltraCanvasContainer> pageArea;
-        std::map<std::string, std::shared_ptr<UltraCanvasContainer>> pages;
-        std::map<std::string, PageReset>      resets;
-        std::shared_ptr<UltraCanvasButton>    restoreButton;   // bottom bar, left
-        std::string                           shownPage;
 
         // Display > Treeview: the colour boxes that open the picker popup.
         std::shared_ptr<UltraCanvasButton> driveColorBox;
@@ -352,247 +322,7 @@ namespace {
         if (d->settings) d->settings->Save();
     }
 
-    // ===== TEXT =====
-
-    // A single-line label that hugs its text.
-    std::shared_ptr<UltraCanvasLabel> MakeLabel(const std::string& id,
-                                                const std::string& text,
-                                                float fontSize = kTextFontSize,
-                                                const Color& color = kTextColor) {
-        auto l = std::make_shared<UltraCanvasLabel>(id, 0, 0, 0, 20);
-        l->SetText(text);
-        l->SetFontSize(fontSize);
-        l->SetTextColor(color);
-        l->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        l->size.width  = CSSLayout::Dimension::Auto();
-        l->size.height = CSSLayout::Dimension::Auto();
-        return l;
-    }
-
-    // A paragraph: word-wrapped at `width`, as tall as its lines.
-    std::shared_ptr<UltraCanvasLabel> MakeText(const std::string& id,
-                                               const std::string& text,
-                                               int width = kTextWidth,
-                                               float fontSize = kTextFontSize,
-                                               const Color& color = kTextColor) {
-        auto l = MakeLabel(id, text, fontSize, color);
-        l->SetWrap(TextWrap::WrapWord);
-        l->size.width = CSSLayout::Dimension::Px(width);
-        return l;
-    }
-
-    // ===== PAGE SKELETON =====
-    // Title, caption, the controls, and the notes block at the foot - the
-    // same order and the same spacing on every page, so the eye finds the
-    // control where it found it on the last page.
-    struct PageParts {
-        std::shared_ptr<UltraCanvasContainer> page;    // the whole page
-        std::shared_ptr<UltraCanvasContainer> body;    // the controls
-        std::shared_ptr<UltraCanvasContainer> notes;   // the explanations
-    };
-
-    std::shared_ptr<UltraCanvasContainer> MakeNotesBlock(const std::string& id) {
-        auto notes = std::make_shared<UltraCanvasContainer>(id);
-        notes->layout.SetFlexColumn().SetFlexGap(6)
-                     .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-        notes->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        notes->SetBackgroundColor(kNoteBackground);
-        notes->SetBorderLeft(3, kNoteAccent);
-        notes->SetPadding(10, 12, 10, 12);
-        return notes;
-    }
-
-    // `scrolls`: a page longer than the window (the lists of formats) scrolls,
-    // and there the notes sit right under the caption, before the list, so
-    // they are read before the hundred checkboxes rather than found after
-    // them. Every other page keeps its notes at the foot, clear of the
-    // controls.
-    PageParts MakePage(const std::string& id, const std::string& title,
-                       const std::string& caption, bool scrolls = false) {
-        PageParts parts;
-        parts.page = std::make_shared<UltraCanvasContainer>(id);
-        parts.page->layout.SetFlexColumn().SetFlexGap(0)
-                          .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        parts.page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
-        if (scrolls) {
-            // A scroll view has to opt in - containers do not scroll unless
-            // asked (autoShowScrollbars defaults off since 0.9.x). Without
-            // this the Thumbnails and Detail view pages were cut off at the
-            // window's foot with no scrollbar and no wheel scrolling, so
-            // every kind below Vector graphics (3D, PDF, Text, ...) could
-            // not be reached. Vertically only: the vertical bar narrows the
-            // viewport, which would otherwise fabricate a horizontal overflow
-            // of its own width.
-            ContainerStyle cs;
-            cs.autoShowScrollbars = true;
-            cs.autoShowHorizontalScrollbar = false;
-            parts.page->SetContainerStyle(cs);
-        }
-
-        auto titleLabel = MakeLabel(id + "-title", title, kTitleFontSize);
-        titleLabel->SetFontWeight(FontWeight::Bold);
-        parts.page->AddChild(titleLabel);
-
-        auto captionLabel = MakeText(id + "-caption", caption);
-        captionLabel->SetMargin(6, 0, 0, 0);
-        parts.page->AddChild(captionLabel);
-
-        parts.body = std::make_shared<UltraCanvasContainer>(id + "-body");
-        parts.body->layout.SetFlexColumn().SetFlexGap(8)
-                          .SetFlexAlignItems(CSSLayout::AlignItems::Start);
-        parts.body->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        parts.body->SetMargin(14, 0, 0, 0);
-
-        parts.notes = MakeNotesBlock(id + "-notes");
-
-        if (scrolls) {
-            parts.notes->SetMargin(12, 0, 0, 0);
-            parts.page->AddChild(parts.notes);
-            parts.page->AddChild(parts.body);
-        } else {
-            parts.page->AddChild(parts.body);
-            // The spacer pushes the notes to the foot of the page, away from
-            // the controls, and gives way when the window is made small.
-            auto spacer = std::make_shared<UltraCanvasContainer>(id + "-spacer");
-            spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            spacer->size.height = CSSLayout::Dimension::Px(24);
-            parts.page->AddChild(spacer);
-            parts.page->AddChild(parts.notes);
-        }
-        return parts;
-    }
-
-    // One paragraph of a page's notes.
-    void AddNote(PageParts& parts, const std::string& id, const std::string& text) {
-        parts.notes->AddChild(MakeText(id, text, kNoteWidth, kNoteFontSize,
-                                       kNoteTextColor));
-    }
-
-    // A caption inside the body, introducing a second group of controls.
-    void AddBodyCaption(PageParts& parts, const std::string& id,
-                        const std::string& text) {
-        auto l = MakeText(id, text);
-        l->SetMargin(10, 0, 0, 0);
-        parts.body->AddChild(l);
-    }
-
-    // ===== CONTROLS =====
-
-    std::string IconPath(const std::string& fileName) {
-        return NormalizePath(GetResourcesDir() + "media/icons/" + fileName);
-    }
-
-    // Standard dialog button (the Close button and the ones on the pages).
-    // `iconFile` may be empty; an empty `label` gives an icon-only button.
-    std::shared_ptr<UltraCanvasButton> MakeButton(const std::string& id,
-                                                  const std::string& label,
-                                                  int width,
-                                                  std::function<void()> onClick,
-                                                  const std::string& iconFile = "") {
-        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, label);
-        b->SetFontSize(kTextFontSize);
-        b->SetCornerRadius(4.0f);
-        b->SetColors(Color(255, 255, 255, 255), Color(233, 238, 244, 255));
-        b->SetTextColors(kTextColor);
-        b->SetBorder(1.0f, Color(0, 0, 0, 60));
-        if (!iconFile.empty()) {
-            b->SetIcon(IconPath(iconFile));
-            b->SetIconSize(15, 15);
-            b->SetIconPosition(ButtonIconPosition::Left);
-            b->SetIconSpacing(label.empty() ? 0 : 5);
-            b->SetUseIconAsMask(true);
-            b->SetIconMaskColor(Color(55, 55, 60, 255));
-        }
-        if (onClick) b->SetOnClick(std::move(onClick));
-        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return b;
-    }
-
-    // A row of buttons inside a page body.
-    std::shared_ptr<UltraCanvasContainer> MakeButtonRow(const std::string& id) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        row->size.height = CSSLayout::Dimension::Px(34);
-        return row;
-    }
-
-    // One choice of a radio group, in the window's text size. Explicit
-    // sizes: content measuring needs a render context, which the dialog does
-    // not have while it is first laid out.
-    std::shared_ptr<UltraCanvasRadio> MakeChoice(const std::string& id,
-                                                 const std::string& text,
-                                                 bool checked,
-                                                 int width = kTextWidth) {
-        auto radio = UltraCanvasRadio::Create(id, -1, -1, text, checked);
-        RadioVisualStyle style = radio->GetVisualStyle();
-        style.base.fontSize       = kTextFontSize;
-        style.base.textColor      = kTextColor;
-        style.base.textHoverColor = kTextColor;
-        radio->SetVisualStyle(style);
-        radio->size.width  = CSSLayout::Dimension::Px(width);
-        radio->size.height = CSSLayout::Dimension::Px(kControlHeight);
-        radio->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return radio;
-    }
-
-    std::shared_ptr<UltraCanvasCheckbox> MakeCheckbox(
-            const std::string& id, const std::string& text, int width,
-            bool checked, std::function<void(bool)> onChange) {
-        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0,
-                static_cast<float>(width), static_cast<float>(kControlHeight),
-                text);
-        box->SetFontSize(kTextFontSize);
-        CheckboxVisualStyle style = box->GetVisualStyle();
-        style.base.textColor      = kTextColor;
-        style.base.textHoverColor = kTextColor;
-        box->SetVisualStyle(style);
-        box->SetChecked(checked);
-        // Explicit sizes: content measuring needs a render context, which the
-        // dialog does not have while it is first laid out.
-        box->size.width  = CSSLayout::Dimension::Px(width);
-        box->size.height = CSSLayout::Dimension::Px(kControlHeight);
-        box->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        box->onStateChanged = [onChange](CheckedState, CheckedState now) {
-            if (onChange) onChange(now == CheckedState::Checked);
-        };
-        return box;
-    }
-
-    // ===== COLOUR BOX + PICKER POPUP =====
-
-    // The box showing a configured colour. It is a button filled with that
-    // colour, so it hovers, focuses and reports its click like any other
-    // control - clicking it opens the picker popup below.
-    std::shared_ptr<UltraCanvasButton> MakeColorBox(const std::string& id,
-                                                    const Color& color,
-                                                    const std::string& tooltip,
-                                                    std::function<void()> onClick) {
-        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, 56, 24, "");
-        b->SetCornerRadius(3.0f);
-        // Same colour in every state: a colour box that changes shade under
-        // the pointer no longer shows the colour it stands for.
-        b->SetColors(color, color, color, color);
-        b->SetBorder(1.0f, Color(120, 120, 128, 255));
-        b->SetTooltip(tooltip);
-        if (onClick) b->SetOnClick(std::move(onClick));
-        b->size.width  = CSSLayout::Dimension::Px(56);
-        b->size.height = CSSLayout::Dimension::Px(24);
-        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        return b;
-    }
-
-    void SetColorBoxColor(const std::shared_ptr<UltraCanvasButton>& box,
-                          const Color& color) {
-        if (!box) return;
-        box->SetColors(color, color, color, color);
-        box->RequestRedraw();
-    }
+    // ===== COLOUR PICKER POPUP =====
 
     // The open colour-picker popup (kept alive while its window is up).
     struct ColorPopupState {
@@ -711,19 +441,7 @@ namespace {
     std::shared_ptr<UltraCanvasContainer> MakeColorRow(
             const std::string& id, const std::string& caption,
             const std::shared_ptr<UltraCanvasButton>& box) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(10)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        row->size.height = CSSLayout::Dimension::Px(30);
-
-        auto label = MakeLabel(id + "-label", caption);
-        label->size.width  = CSSLayout::Dimension::Px(190);
-        label->size.height = CSSLayout::Dimension::Px(20);
-        row->AddChild(label);
-        row->AddChild(box);
-        return row;
+        return MakeLabelledRow(id, caption, box);
     }
 
     std::shared_ptr<UltraCanvasContainer> BuildTreeviewPage(DialogState* d) {
@@ -860,60 +578,6 @@ namespace {
     // One "[caption] [slider] [value]" row. `indent` is what the caption
     // starts at - the PDF widths sit under the radio button they belong to,
     // a row that answers to nothing above it starts at the margin.
-    std::shared_ptr<UltraCanvasContainer> MakeSliderRow(
-            const std::string& id, const std::string& caption,
-            const std::shared_ptr<UltraCanvasSlider>& slider,
-            const std::shared_ptr<UltraCanvasLabel>& value,
-            int indent = 24, int labelWidth = 130) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(10)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        row->size.height = CSSLayout::Dimension::Px(32);
-        row->SetPadding(0, 0, 0, indent);
-
-        auto label = MakeLabel(id + "-label", caption);
-        label->size.width  = CSSLayout::Dimension::Px(labelWidth);
-        label->size.height = CSSLayout::Dimension::Px(20);
-        row->AddChild(label);
-        row->AddChild(slider);
-        row->AddChild(value);
-        return row;
-    }
-
-    // A whole-number slider over [minValue, maxValue].
-    std::shared_ptr<UltraCanvasSlider> MakeIntSlider(
-            const std::string& id, int minValue, int maxValue, int value,
-            std::function<void(int)> onChange) {
-        auto slider = CreateSlider(id, 0, 0, 200, 24);
-        slider->SetRange(static_cast<float>(minValue),
-                         static_cast<float>(maxValue));
-        slider->SetStep(1.0f);
-        slider->SetValue(static_cast<float>(value));
-        slider->size.width  = CSSLayout::Dimension::Px(200);
-        slider->size.height = CSSLayout::Dimension::Px(24);
-        slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        // Reported both while the handle is dragged and when it is let go, so
-        // what it sets follows the slider instead of jumping at the end.
-        slider->onValueChanging = [onChange](float v) {
-            if (onChange) onChange(static_cast<int>(v + 0.5f));
-        };
-        slider->onValueChanged = [onChange](float v) {
-            if (onChange) onChange(static_cast<int>(v + 0.5f));
-        };
-        return slider;
-    }
-
-    // The value label beside such a slider - "56 px", "300 entries".
-    std::shared_ptr<UltraCanvasLabel> MakeSliderValueLabel(
-            const std::string& id, int width = 50) {
-        auto label = MakeLabel(id, "");
-        label->size.width  = CSSLayout::Dimension::Px(width);
-        label->size.height = CSSLayout::Dimension::Px(20);
-        return label;
-    }
-
     // ===== DISPLAY > PDF INVENTORY =====
 
     // "56 px" / "25 %" next to the slider it belongs to.
@@ -1767,15 +1431,6 @@ namespace {
     // ===== HANDLING > FILE OPERATIONS =====
 
     // A row of radio buttons for one of the page's choices.
-    std::shared_ptr<UltraCanvasContainer> MakeChoiceRow(const std::string& id) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(6).SetFlexWrap(CSSLayout::FlexWrap::Wrap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width = CSSLayout::Dimension::Px(kTextWidth);
-        return row;
-    }
-
     void UpdateProgressDelayLabel(DialogState* d) {
         if (!d->progressDelayValue || !d->settings) return;
         const int s = d->settings->progressDelaySeconds;
@@ -2861,127 +2516,29 @@ namespace {
     }
 
     // ===== PAGE SWITCHING =====
-
-    // The bottom bar's "Restore default ..." button stands for the shown
-    // page: labelled and wired for that page, or hidden while the page has
-    // nothing to restore.
-    void UpdateRestoreButton(DialogState* d) {
-        if (!d->restoreButton) return;
-        auto it = d->resets.find(d->shownPage);
-        if (it == d->resets.end()) {
-            d->restoreButton->SetVisible(false);
-            d->restoreButton->RequestRedraw();
-            return;
-        }
-        const PageReset& reset = it->second;
-        d->restoreButton->SetText(reset.label);
-        d->restoreButton->size.width = CSSLayout::Dimension::Px(reset.width);
-        d->restoreButton->SetVisible(true);
-        d->restoreButton->RequestRedraw();
-    }
-
-    // Show the page of `nodeId`; a main page without its own panel falls
-    // through to its first sub page.
-    void ShowPage(DialogState* d, const std::string& nodeId) {
-        std::string target = nodeId;
-        if (!d->pages.count(target)) {
-            // Fall back to the first page below this node in tree order.
-            TreeNode* node = d->tree ? d->tree->FindNode(nodeId) : nullptr;
-            std::function<TreeNode*(TreeNode*)> firstPage =
-                    [&](TreeNode* n) -> TreeNode* {
-                if (!n) return nullptr;
-                if (d->pages.count(n->data.nodeId)) return n;
-                for (auto& child : n->children)
-                    if (TreeNode* hit = firstPage(child.get())) return hit;
-                return nullptr;
-            };
-            TreeNode* hit = firstPage(node);
-            if (!hit) return;
-            target = hit->data.nodeId;
-        }
-        d->shownPage = target;
-        for (auto& [id, pageContainer] : d->pages)
-            pageContainer->SetVisible(id == target);
-        // The Cache page shows live figures, so it is re-read on the way in
-        // rather than left showing what was true when the window was built.
-        if (target == kPageCache) RefreshCacheUsage(d);
-        UpdateRestoreButton(d);
-    }
-
-    // Selects the tree row of `pageId` - and shows its page, through the
-    // tree's selection callback.
-    void SelectPage(DialogState* d, const std::string& pageId) {
-        TreeNode* node = d->tree ? d->tree->FindNode(pageId) : nullptr;
-        if (node) {
-            // The sections start closed, so the one holding this page has to
-            // be opened for its row to be on screen at all.
-            for (TreeNode* parent = node->parent; parent; parent = parent->parent)
-                d->tree->ExpandNode(parent);
-            d->tree->SelectNode(node);
-        }
-        ShowPage(d, pageId);
-    }
-
+    // The kit's, under the names the pages below were written with.
+    void UpdateRestoreButton(DialogState* d) { d->UpdateRestoreButton(); }
+    void ShowPage(DialogState* d, const std::string& nodeId) { d->ShowPage(nodeId); }
+    void SelectPage(DialogState* d, const std::string& pageId) { d->SelectPage(pageId); }
     void AddPage(DialogState* d, const char* pageId,
                  const std::shared_ptr<UltraCanvasContainer>& page) {
-        page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->pages[pageId] = page;
-        d->pageArea->AddChild(page);
+        d->AddPage(pageId, page);
     }
-
     void AddTreeNode(DialogState* d, const char* parentId, const char* id,
                      const char* text) {
-        TreeNodeData data;
-        data.nodeId = id;
-        data.text = text;
-        d->tree->AddNode(parentId, data);
+        d->AddTreeNode(parentId, id, text);
     }
 
     void BuildDialog(DialogState* d, UltraCanvasWindowBase* parent) {
-        WindowConfig wc;
-        wc.title = "UltraFiler - Settings";
-        wc.width = 700;
-        wc.height = 560;
-        wc.resizable = true;
-        wc.type = WindowType::Dialog;
-        wc.parentWindow = parent;
-        d->window = CreateWindow(wc);
-        if (!d->window || !d->window->IsCreated()) { d->window.reset(); return; }
-
-        d->window->layout.SetFlexColumn()
-                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        d->window->SetBackgroundColor(Color(249, 249, 251, 255));
-
-        // ----- settings-page tree | page area -----
-        auto content = std::make_shared<UltraCanvasContainer>("ufl-set-content");
-        content->layout.SetFlexRow()
-                       .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        content->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        d->tree = std::make_shared<UltraCanvasTreeView>("ufl-set-tree");
-        d->tree->SetFontSize(kTreeFontSize);
-        d->tree->SetRowHeight(24);
-        d->tree->SetSelectionMode(TreeSelectionMode::Single);
-        d->tree->SetLineStyle(TreeLineStyle::NoLine);
-        d->tree->SetBackgroundColor(Color(243, 243, 246, 255));
-        // A heading (Display, Handling, ...) has no page of its own - it shows
-        // its first sub page - so selecting one moves straight on to that
-        // first entry rather than leaving two rows that show the same thing.
-        d->tree->SetShowFirstChildOnExpand(true);
-        d->tree->SetAutoExpandSelectedNode(true);
-        d->tree->size.width = CSSLayout::Dimension::Px(180);
-        d->tree->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-        // The root row itself is not shown: its children - Display, Handling,
-        // Extras - are the top level of the list, so the tree opens on the
-        // sections instead of on one row that holds them.
-        TreeNodeData rootData;
-        rootData.nodeId = "settings";
-        rootData.text = "Settings";
-        d->tree->SetRootNode(rootData);
+        if (!d->Create(parent, "UltraFiler - Settings")) return;
+        // The Cache page shows live figures, so it is re-read on the way in
+        // rather than left showing what was true when the window was built.
+        d->onPageShown = [d](const std::string& pageId) {
+            if (pageId == kPageCache) RefreshCacheUsage(d);
+        };
+        // The popup's callbacks reach back into this dialog state, so it
+        // must not outlive the window it was opened from.
+        d->onClosed = []() { CloseColorPopup(false); };
 
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
@@ -3009,21 +2566,6 @@ namespace {
         AddTreeNode(d, kPageExtras, kPageLists, "History & Favorites");
         AddTreeNode(d, kPageExtras, kPageCache, "Cache");
 
-        // After the nodes: hiding the root promotes its children to the top
-        // level, which it can only do once they exist. The sections themselves
-        // stay closed - the window opens on the list of sections, and opening
-        // one is the first step of finding a setting.
-        d->tree->SetRootVisible(false);
-        content->AddChild(d->tree);
-
-        d->pageArea = std::make_shared<UltraCanvasContainer>("ufl-set-pages");
-        d->pageArea->layout.SetFlexColumn()
-                           .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-        d->pageArea->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->pageArea->SetBackgroundColor(Color(255, 255, 255, 255));
-        content->AddChild(d->pageArea);
-
         // ----- pages -----
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
         AddPage(d, kPageTabStyle, BuildTabStylePage(d));
@@ -3050,74 +2592,10 @@ namespace {
         AddPage(d, kPageCache, BuildCachePage(d));
         AddPage(d, kPageStart, BuildStartPage(d));
 
-        d->window->AddChild(content);
-
-        // ----- bottom bar: [Restore default ...]            [Close] -----
-        auto bottom = std::make_shared<UltraCanvasContainer>("ufl-set-bottom");
-        bottom->layout.SetFlexRow().SetFlexGap(8)
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        bottom->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
-                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        bottom->SetPadding(8, 12, 8, 12);
-        bottom->SetBorderTop(1, Color(225, 225, 230, 255));
-
-        // The left half holds the page's restore button and takes the width
-        // the Close button leaves, so Close keeps its right-hand place whether
-        // or not a restore button is showing.
-        auto bottomLeft = std::make_shared<UltraCanvasContainer>("ufl-set-bottom-left");
-        bottomLeft->layout.SetFlexRow()
-                          .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        bottomLeft->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        d->restoreButton = MakeButton("ufl-set-restore", "Restore defaults", 170,
-                [d]() {
-            auto it = d->resets.find(d->shownPage);
-            if (it != d->resets.end() && it->second.action) it->second.action();
-        });
-        d->restoreButton->SetVisible(false);
-        bottomLeft->AddChild(d->restoreButton);
-        bottom->AddChild(bottomLeft);
-
-        bottom->AddChild(MakeButton("ufl-set-close", "Close", 90,
-                [d]() { if (d->window) d->window->Close(); }));
-        d->window->AddChild(bottom);
-
-        d->tree->onNodeSelected = [d](TreeNode* node) {
-            if (!node) return;
-            // A section (Display, Handling, Archives, Extras) has no page of its own:
-            // selecting one moves on to its first page. The tree jumps one
-            // level per selection, so this takes the remaining steps.
-            TreeNode* leaf = node;
-            while (leaf && leaf->HasChildren()) leaf = leaf->FirstChild();
-            if (leaf && leaf != node) {
-                d->tree->SelectNode(leaf);
-                return;
-            }
-            ShowPage(d, node->data.nodeId);
-        };
         // Nothing is selected while every section is closed, so the page
         // area opens on the start page. Show() selects a page from here when
         // the caller asked for one.
-        ShowPage(d, kPageStart);
-
-        // Escape closes, matching the framework's dialog convention.
-        d->window->SetEventCallback([](const UCEvent& event) {
-            if (event.type == UCEventType::KeyUp &&
-                event.virtualKey == UCKeys::Escape) {
-                if (auto tw = event.targetWindow.lock())
-                    static_cast<UltraCanvasWindow*>(tw.get())->Close();
-                return true;
-            }
-            return false;
-        });
-        d->window->onWindowClosed = [d]() {
-            // The popup's callbacks reach back into this dialog state, so it
-            // must not outlive the window it was opened from.
-            CloseColorPopup(false);
-            d->closed = true;
-        };
-
-        d->window->Show();
+        d->Finish(kPageStart);
     }
 
 } // namespace

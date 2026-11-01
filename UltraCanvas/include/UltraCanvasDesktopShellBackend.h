@@ -73,6 +73,10 @@ namespace DesktopShellBackend {
     bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom);
     bool CaptureScreen(const std::string& pngPath, std::string& error);
     bool CaptureScreenImage(DesktopScreenImage& out, std::string& error);
+    // One rectangle of the screen, in the pixels of ListScreens, clipped to
+    // the screen by the backend; false (with the reason) when nothing of it
+    // is on the screen. `out.x` / `out.y` say what was captured.
+    bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error);
 
     // The installed applications, where the platform keeps them somewhere
     // other than freedesktop desktop entries: the Start menu's shortcuts on

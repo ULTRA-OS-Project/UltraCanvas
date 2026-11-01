@@ -21,6 +21,23 @@
 // both do nothing. For anything beyond the typed calls the document is
 // there (Document()).
 //
+// An older file is never a problem: a key the file does not have - or holds
+// as another type, a string where a number is asked for - reads as the
+// fallback, and Set makes every missing object on a dotted path, so
+// `Set("video.frameRate", 20)` works on a file with no "video" at all.
+// Renaming or moving a key is therefore three calls, and the old file still
+// reads: take the old key with the new one's default as its fallback, set
+// the new key, drop the old one, and Save.
+//
+// doc-check: UltraCanvas::UltraCanvasAppSettings settings("UltraSnip");
+// doc-check: example
+//   // 0.1 kept the rate under "video.fps"; 0.2 calls it "video.frameRate"
+//   if (settings.Has("video.fps")) {
+//       settings.Set("video.frameRate", settings.GetInt("video.fps", 20));
+//       settings.Remove("video.fps");
+//       settings.Save();
+//   }
+//
 // doc-check: example
 //   UltraCanvas::UltraCanvasAppSettings settings("UltraPress");   // <settings folder>/UltraPress/settings.json
 //   settings.Load();
@@ -33,6 +50,7 @@
 //   settings.Forget("recent", "/home/erika/sites/old");
 //   settings.Save();
 //
+// Version: 1.0.1 - the note on older files and on renaming a key
 // Version: 1.0.0
 // Author: UltraCanvas Framework
 #pragma once

@@ -33,6 +33,8 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.5.2 - the screenshot button opens UltraSnip (OpenSnip, its menu of
+//                  shapes and the recording, Super+Shift+S), the plain capture as the fallback
 // Version: 0.6.0 - the Wi-Fi and Bluetooth panels (join, pair, connect),
 //                  and the USB, keyboard, webcam, microphone and battery
 //                  panels behind the info panel's icons; the USB drives'
@@ -140,6 +142,12 @@ public:
     void OpenRamDisc();
     void OpenFiler(const std::string& path = "");
     void TakeScreenshot();
+    // UltraSnip with these arguments (--rectangle, --window, --screen,
+    // --video); the plain whole-screen capture (TakeScreenshot) when the
+    // program is not installed
+    void OpenSnip(const std::vector<std::string>& arguments);
+    void ShowScreenshotMenu(int windowX, int windowY);
+    void StartSnipShortcut();
     void ToggleStickerboard(bool visible);
     void ToggleCategoryBoard(bool visible);
     // The Sticker board's window: over the work area, below the application
@@ -351,6 +359,7 @@ private:
     // One per device icon, by its item id; made on the first click.
     std::map<std::string, std::shared_ptr<UltraDesktopDevicePanel>> devicePanels_;
     UltraCanvas::UltraCanvasGlobalShortcut lockShortcut_;
+    UltraCanvas::UltraCanvasGlobalShortcut snipShortcut_;       // Super+Shift+S: UltraSnip
     // The pinned applications as resolved against the installed ones at the
     // last rebuild; a pin whose application is gone is kept, and shows again
     // when it is back.
