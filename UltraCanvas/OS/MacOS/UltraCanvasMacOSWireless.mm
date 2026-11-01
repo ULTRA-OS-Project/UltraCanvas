@@ -359,7 +359,12 @@ bool ConnectWifi(const std::string& ssid, const std::string& passphrase, std::st
             // A known network: the password the system keychain keeps.
             NSString* stored = nil;
             NSData* ssidData = [NSData dataWithBytes:ssid.data() length:ssid.size()];
-            if (CWKeychainFindWiFiPassword(kCWKeychainDomainSystem, ssidData, &stored) == noErr && stored) {
+            // CoreWLAN's header declares the C function without extern "C",
+            // so Objective-C++ would link a C++-mangled name: look it up.
+            using FindPassword = OSStatus (*)(CWKeychainDomain, NSData*, NSString**);
+            static const FindPassword findPassword =
+                reinterpret_cast<FindPassword>(dlsym(RTLD_DEFAULT, "CWKeychainFindWiFiPassword"));
+            if (findPassword && findPassword(kCWKeychainDomainSystem, ssidData, &stored) == noErr && stored) {
                 password = stored;
             } else {
                 error = ssid + " needs its password.";
