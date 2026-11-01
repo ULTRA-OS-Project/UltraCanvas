@@ -10,15 +10,26 @@
 // per extension serves a folder of ten thousand files, and a path on a
 // disconnected volume still gets its icon.
 //
+// Except where the registered icon is "%1" - .exe, .ico, .cur, .lnk - whose
+// icon handler reads the file it is named after whatever the flag says. Asked
+// with "...\ArtCreator.exe" the shell answered with ArtCreator's own icon,
+// the caller held that as THE ".exe" icon, and a folder of programs drew it
+// on every program whose own icon was still loading or which has none. So the
+// shell is never handed the caller's path: it is asked with
+// HostFileIconProbeName, a made-up name carrying only the type.
+//
 // A type nothing on this machine is registered for - ".7z", ".tar.xz",
 // ".tar.zst" on a Windows without 7-Zip - is the one answer that is not
 // passed on: the shell's icon for it is the blank "no program" page, which
 // says nothing about the file, so it is reported as no icon and the file
 // display draws its own type icon (an archive with "7Z" on it) instead.
+// Version: 1.3.0 - the shell is asked with HostFileIconProbeName, never the
+//                  file's path, so ".exe" is the type's icon and not the
+//                  first program's
 // Version: 1.2.0 - a type no program is registered for answers no icon, not
 //                  the shell's blank page, so the caller draws its own
 // Version: 1.1.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasWindowsIcons.h"
@@ -149,8 +160,8 @@ namespace UltraCanvas {
         // every answer goes through FitHostIconToSize, after the trim above
         // so the picture itself fills the size asked for.
 
-        // The shell's icon index for a file NAME - no disk access, and no
-        // requirement that the file exists.
+        // The shell's icon index for a file NAME, which need not exist - and
+        // must not, for the "%1" types (see the head of this file).
         bool SystemIconIndex(const std::wstring& path, bool isDirectory,
                              int& outIndex) {
             SHFILEINFOW info{};
@@ -227,7 +238,10 @@ namespace UltraCanvas {
     std::shared_ptr<UCPixmap> LoadHostFileIconPixmap(const std::string& path,
                                                      bool isDirectory,
                                                      int desiredSize) {
-        const std::wstring wide = Utf8ToWide(path);
+        if (path.empty()) return nullptr;
+        // The type, not the file: see the head of this file.
+        const std::wstring wide =
+                Utf8ToWide(HostFileIconProbeName(path, isDirectory));
         if (wide.empty()) return nullptr;
 
         int index = 0;

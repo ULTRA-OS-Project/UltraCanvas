@@ -88,6 +88,40 @@ namespace UltraCanvas {
 #endif
     UCCache<UCImageRaster, UCImageRasterCacheEntry> g_ImagesCache(50 * 1024 * 1024);
 
+    namespace {
+        // The name an image that arrived as bytes is known by. Never the
+        // address of the bytes: the caller's buffer is usually a temporary
+        // that is freed, and the allocator hands the same address to the
+        // next buffer of a similar size - two images under one name, and
+        // since the pixmap cache keys on the name (MakePixmapCacheKey), one
+        // drew the other's cached picture. A counter makes every in-memory
+        // image a name of its own, with or without libvips.
+        std::string NextMemoryImageName(size_t dataSize) {
+            static std::atomic<unsigned long long> s_memImageId{0};
+            return ":mem:" + std::to_string(s_memImageId.fetch_add(1)) + ":" +
+                   std::to_string(dataSize);
+        }
+
+        // What GetFromMemory files a buffer under: its content, not where it
+        // happens to live. 64-bit FNV-1a over eight bytes at a time - a
+        // decode costs orders of magnitude more than this pass - and a hit is
+        // checked against the bytes the cached image kept, so a collision
+        // costs a decode, never a wrong picture.
+        uint64_t HashImageBytes(const uint8_t* data, size_t size) {
+            uint64_t hash = 1469598103934665603ull;
+            constexpr uint64_t kPrime = 1099511628211ull;
+            size_t i = 0;
+            for (; i + 8 <= size; i += 8) {
+                uint64_t word;
+                std::memcpy(&word, data + i, 8);
+                hash = (hash ^ word) * kPrime;
+                hash ^= hash >> 29;
+            }
+            for (; i < size; ++i) hash = (hash ^ data[i]) * kPrime;
+            return hash ^ size;
+        }
+    } // namespace
+
 
     UCPixmapCairo::UCPixmapCairo(cairo_surface_t *surf) {
         surface = surf;
@@ -296,13 +330,27 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UCImageRaster> UCImageRaster::GetFromMemory(const uint8_t* data, size_t dataSize) {
-        char filename[200];
-        snprintf(filename, sizeof(filename), ":mem:%p:%ld", data, dataSize);
-        std::shared_ptr<UCImageRaster> im = g_ImagesCache.GetFromCache(filename);
+        if (!data || dataSize == 0) return LoadFromMemory(data, dataSize);
+        // Keyed by the bytes, not by their address: a buffer freed and
+        // another allocated at the same place with the same size found the
+        // first one's image here (see NextMemoryImageName).
+        char key[64];
+        snprintf(key, sizeof(key), ":memhash:%016llx:%zu",
+                 static_cast<unsigned long long>(HashImageBytes(data, dataSize)),
+                 dataSize);
+        std::shared_ptr<UCImageRaster> im = g_ImagesCache.GetFromCache(key);
+        // Two buffers can share a hash; the cached image kept its own copy of
+        // its bytes (an SVG decoded as a document is the exception), so a hit
+        // is only a hit when they are these bytes.
+        if (im && im->imgDataPtr &&
+            (im->imgDataSize != dataSize ||
+             std::memcmp(im->imgDataPtr, data, dataSize) != 0)) {
+            im = nullptr;
+        }
         if (!im) {
             im = UCImageRaster::LoadFromMemory(data, dataSize);
             if (im->IsValid()) {
-                g_ImagesCache.AddToCache(filename, im);
+                g_ImagesCache.AddToCache(key, im);
             }
         }
         return im;
@@ -672,16 +720,8 @@ namespace UltraCanvas {
 
 // With these two functions:
     std::shared_ptr<UCImageRaster> UCImageRaster::LoadFromMemory(const uint8_t* data, size_t dataSize) {
-        // Synthetic filename from a globally-unique id rather than the data POINTER: the
-        // caller's buffer is often a temporary that is freed and whose address the allocator
-        // then reuses, so two distinct in-memory images could end up with the same ":mem:ptr:size"
-        // fileName — and therefore the same shared pixmap-cache key (MakePixmapCacheKey embeds
-        // fileName). One image would then draw another's (or a stale/blank) cached pixmap. A
-        // monotonic id keeps every in-memory image's cache key distinct.
-        static std::atomic<unsigned long long> s_mem_image_id { 0 };
-        char filename[64];
-        snprintf(filename, sizeof(filename), ":mem:%llu:%zu", s_mem_image_id.fetch_add(1), dataSize);
-        auto result = std::make_shared<UCImageRaster>(filename);
+        // A name of its own, never the buffer's address (NextMemoryImageName).
+        auto result = std::make_shared<UCImageRaster>(NextMemoryImageName(dataSize));
 
         if (!data || dataSize == 0) {
             result->errorMessage = "Invalid data: null pointer or zero size";
@@ -774,9 +814,8 @@ namespace UltraCanvas {
     }
 
     std::shared_ptr<UCImageRaster> UCImageRaster::LoadFromMemory(const uint8_t* data, size_t dataSize) {
-        char filename[200];
-        snprintf(filename, sizeof(filename), ":mem:%p:%zu", data, dataSize);
-        auto result = std::make_shared<UCImageRaster>(filename);
+        // A name of its own, never the buffer's address (NextMemoryImageName).
+        auto result = std::make_shared<UCImageRaster>(NextMemoryImageName(dataSize));
         if (!data || dataSize == 0) {
             result->errorMessage = "Invalid data: null pointer or zero size";
             return result;

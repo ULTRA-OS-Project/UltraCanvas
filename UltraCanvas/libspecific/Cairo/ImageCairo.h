@@ -231,6 +231,10 @@ namespace VectorStorage { class VectorDocument; }
         static std::shared_ptr<UCImageRaster> LoadFromMemory(const std::vector<uint8_t>& data) {
             return LoadFromMemory(data.data(), data.size());
         };
+        // LoadFromMemory through the shared image cache, keyed by the bytes
+        // themselves: the same picture asked for again is not decoded again,
+        // wherever its buffer now lives, and a different picture in a buffer
+        // reusing a freed one's address is never handed the old image.
         static std::shared_ptr<UCImageRaster> GetFromMemory(const uint8_t* data, size_t dataSize);
 
         std::string Save(const std::string &imagePath, const UCImageSave::ImageExportOptions& options);

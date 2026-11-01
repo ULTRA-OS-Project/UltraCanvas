@@ -20,8 +20,12 @@
 //     UltraCanvasImageFileWatch's worker does that for a file that is no
 //     longer the version a view drew, so a paint path that only calls Get()
 //     draws the new picture.
+//   - GetFromMemory() answers by the bytes, not by their address: a buffer
+//     reused for another picture is that picture, and the same bytes in
+//     another buffer are the image already decoded.
+// Version: 1.2.0 - pictures that arrive as bytes
 // Version: 1.1.0
-// Last Modified: 2026-10-10
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
@@ -29,6 +33,7 @@
 #include "UltraCanvasImageFileWatch.h"
 #include "UltraCanvasFileStamp.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -84,6 +89,25 @@ namespace {
     }
 
     bool Near(int level, int expected) { return std::abs(level - expected) <= 2; }
+
+    // The same flat grey picture as WritePicture, as PNG bytes.
+    std::vector<uint8_t> EncodePicture(int width, int level) {
+        try {
+            void* buffer = nullptr;
+            size_t size = 0;
+            vips::VImage::black(width, 20, vips::VImage::option()->set("bands", 3))
+                    .linear(1.0, static_cast<double>(level))
+                    .cast(VIPS_FORMAT_UCHAR)
+                    .write_to_buffer(".png", &buffer, &size);
+            std::vector<uint8_t> bytes(static_cast<uint8_t*>(buffer),
+                                       static_cast<uint8_t*>(buffer) + size);
+            g_free(buffer);
+            return bytes;
+        } catch (vips::VError& err) {
+            std::cerr << "   could not encode: " << err.what() << std::endl;
+            return {};
+        }
+    }
 }
 #endif
 
@@ -185,6 +209,42 @@ int main() {
         TEST("An empty list watches nothing", watch.GetDrawnImages().empty());
     }
     TEST("Destroying the watch joins its worker", true);
+
+    std::cerr << "\n--- Pictures that arrive as bytes ---" << std::endl;
+    {
+        // One buffer, reused for a second picture: what a freed buffer and a
+        // new one at the same address look like to the cache. GetFromMemory
+        // used to key by the address and handed the first picture back.
+        const std::vector<uint8_t> dark = EncodePicture(40, 30);
+        const std::vector<uint8_t> light = EncodePicture(40, 200);
+        std::vector<uint8_t> buffer;
+        buffer.reserve(std::max(dark.size(), light.size()));
+        buffer.assign(dark.begin(), dark.end());
+        const uint8_t* const address = buffer.data();
+        auto first = UCImage::GetFromMemory(buffer.data(), buffer.size());
+        TEST("A picture from bytes is read",
+             first && first->IsValid() &&
+             Near(LevelOf(first->GetPixmap(16, 8, ImageFitMode::Fill)), 30));
+        buffer.assign(light.begin(), light.end());
+        TEST("The buffer is reused at the same address", buffer.data() == address);
+        auto second = UCImage::GetFromMemory(buffer.data(), buffer.size());
+        TEST("Other bytes at the same address are another picture",
+             second && second != first &&
+             Near(LevelOf(second->GetPixmap(16, 8, ImageFitMode::Fill)), 200));
+        // And the other way round: the same bytes wherever they now live are
+        // the picture already decoded.
+        const std::vector<uint8_t> copy = dark;
+        TEST("The same bytes in another buffer are the cached picture",
+             UCImage::GetFromMemory(copy.data(), copy.size()) == first);
+        // Two images loaded from bytes never share a pixmap: each gets a
+        // name of its own, which is what the pixmap cache keys on.
+        auto a = UCImage::LoadFromMemory(dark.data(), dark.size());
+        auto b = UCImage::LoadFromMemory(light.data(), light.size());
+        TEST("Two pictures loaded from bytes keep their own pixmaps",
+             a && b &&
+             Near(LevelOf(a->GetPixmap(16, 8, ImageFitMode::Fill)), 30) &&
+             Near(LevelOf(b->GetPixmap(16, 8, ImageFitMode::Fill)), 200));
+    }
 
     UCImage::RemoveFromCache(path);
     std::error_code ec;
