@@ -108,7 +108,7 @@ constexpr int   kClockHeight    = 68;   // the face (48) over the date line
 constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
 constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
 constexpr float kWaveLength     = 36;
-constexpr float kWaveGap        = 4;    // from the last icon before a taskbar wave to the wave
+constexpr float kWaveGap        = 4;    // from the icon next to a bar's wave to the wave
 constexpr unsigned kUiTimerMs   = 250;
 constexpr int   kNoticeTicks    = 20;   // notices re-read every 5 s
 constexpr int   kScreenshotTicks = 12;  // the "saved" marker stays 3 s
@@ -378,7 +378,8 @@ void UltraDesktopWindow::TuckAgainstWave(const std::shared_ptr<UltraCanvasToolba
                                          bool vertical, bool waveAfterGroup) {
     // The group loses its padding on the wave's side, and the wave reaches
     // over the inner margin of the group's nearest button (half the box
-    // less the icon) to kWaveGap from its icon.
+    // less the icon, for the kBarButton / kBarIcon items StyleBarButton
+    // makes) to kWaveGap from its icon.
     const float reach = static_cast<float>(kBarButton - kBarIcon) / 2.0f - kWaveGap;
     const float pad = 6.0f;   // MakeGroup's: 6 across the bar's ends, 4 along its sides
     if (vertical) {
@@ -1054,7 +1055,12 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
                  [this]() { TakeScreenshot(); });
     bar->AddChild(organiser_);
 
-    bar->AddChild(CreateWaveSeparator("RightBar.Wave", true, kBarInsetColor, kBarColor, kWaveLength));
+    // As on the taskbar, the wave starts 4 px past the organiser's last
+    // icon; the info panel below is anchored to the bar's foot, so the
+    // space on that side is its own stretch.
+    auto wave = CreateWaveSeparator("RightBar.Wave", true, kBarInsetColor, kBarColor, kWaveLength);
+    TuckAgainstWave(organiser_, wave, true, true);
+    bar->AddChild(wave);
 
     // The info panel, anchored to the bottom by the stretch at its top.
     info_ = MakeGroup("InfoPanel", true, false);

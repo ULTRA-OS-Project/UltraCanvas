@@ -210,7 +210,7 @@ private:
             const std::string& tooltip, const std::string& icon, const std::string& text,
             std::function<void(bool)> onToggle);
     void StyleBarButton(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& button);
-    // Brings a taskbar wave to kWaveGap from the icon of `group` next to it:
+    // Brings a bar's wave to kWaveGap from the icon of `group` next to it:
     // no padding on that side of the group, the wave over the button's margin.
     void TuckAgainstWave(const std::shared_ptr<UltraCanvas::UltraCanvasToolbar>& group,
                          const std::shared_ptr<UltraCanvas::UltraCanvasWaveSeparator>& wave,
