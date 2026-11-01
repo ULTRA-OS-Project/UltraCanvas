@@ -4,6 +4,7 @@
 // Version: 0.1.4 - UltraIMAttachment::thumbnailPath (a video's or a file's preview picture); UltraIMAttachmentCallback
 // Version: 0.1.3 - UltraIMAuthStep::OtherDevice: a sign-in confirmed on another device (a QR code scanned there)
 // Version: 0.1.2 - UltraIMProviderInfo::authResendHint: a sign-in code can be asked for another way
+// Version: 0.1.2 - UltraIMAccountProfile (name, e-mail, phone), UltraIMSignInProtection, credentials.email
 // Version: 0.1.1 - UltraIMSharedCredentialsCallback: credentials one provider's service keeps for another
 // Version: 0.1.0
 // Last Modified: 2026-10-29
@@ -154,7 +155,9 @@ enum class UltraIMCapabilityFlags : uint32_t {
     PeerToPeer      = 1u << 22,  // 1:1 content travels directly between the devices
     LocalNetwork    = 1u << 23,  // Works on a LAN with no server at all
     AddContact      = 1u << 24,  // UltraIM_AddContact
-    CreateGroup     = 1u << 25   // UltraIM_CreateGroup
+    CreateGroup     = 1u << 25,  // UltraIM_CreateGroup
+    AccountProfile  = 1u << 26,  // UltraIM_FetchAccountProfile / UltraIM_UpdateAccountProfile
+    SignInProtection = 1u << 27  // UltraIM_SetSignInProtection: a password, an authenticator code
 };
 
 inline UltraIMCapabilityFlags operator|(UltraIMCapabilityFlags a, UltraIMCapabilityFlags b) {
@@ -203,6 +206,10 @@ struct UltraIMCredentials {
     std::string username;
     std::string password;
     std::string displayName;        // KeyPair: the name shown to contacts
+    // KeyPair, createAccount: the account's e-mail address, kept by the
+    // provider's service for its owner alone (to recover the account) -
+    // with phoneNumber, which is the same for it. Never shown to contacts.
+    std::string email;
     bool        createAccount = false; // KeyPair: register a new identity
     // Also find and reach contacts on the local network, with no server
     // between (ChatCube Direct; always on when there is no relay). Remembered.
@@ -213,6 +220,52 @@ struct UltraIMCredentials {
     std::string apiHash;
     std::string accessToken;        // Restored session
     std::string refreshToken;
+};
+
+// ---- The account's own details ---------------------------------------------
+// The signed-in account as its owner sees it in an "Edit profile" window:
+// the name its contacts see, and the e-mail address and phone number its
+// service keeps for the owner alone, to recover the account with (ChatCube
+// Direct: the relay; never part of what contacts or anyone else are told).
+struct UltraIMAccountProfile {
+    std::string displayName;
+    std::string email;
+    std::string phoneNumber;        // international form, "+49 151 ..." as typed
+};
+
+// What signing in asks of the user on this device (ChatCube Direct, whose
+// identity is a key kept on the device). The password encrypts the key
+// vault (Argon2id, XChaCha20-Poly1305 - UltraCrypt through UltraVault), so
+// without it the key cannot be read; the authenticator code is a TOTP code
+// (RFC 6238) from an authenticator app - UltraAuthenticator, or any other -
+// checked by the provider, once per code. Stored by number: append only.
+enum class UltraIMSignInProtection {
+    DeviceKey = 0,                      // nothing to type: the key on this device signs in
+    Password = 1,                       // the password, at every start
+    AuthenticatorCode = 2,              // a code from the authenticator, at every start
+    PasswordAndAuthenticatorCode = 3    // both
+};
+inline bool UltraIM_ProtectionHasPassword(UltraIMSignInProtection p) {
+    return p == UltraIMSignInProtection::Password || p == UltraIMSignInProtection::PasswordAndAuthenticatorCode;
+}
+inline bool UltraIM_ProtectionHasCode(UltraIMSignInProtection p) {
+    return p == UltraIMSignInProtection::AuthenticatorCode || p == UltraIMSignInProtection::PasswordAndAuthenticatorCode;
+}
+
+// A change of the sign-in protection (UltraIM_SetSignInProtection): what it
+// becomes, proven with what it is now.
+struct UltraIMProtectionChange {
+    UltraIMSignInProtection protection = UltraIMSignInProtection::DeviceKey;
+    std::string currentPassword;    // when there is a password now
+    std::string currentCode;        // when a code is asked for now: the authenticator's code
+    // When the new protection has a password: the new one ("" keeps the
+    // current one, when there is one).
+    std::string newPassword;
+    // When the new protection asks for a code and an authenticator was set
+    // up for it (UltraIM_StartAuthenticatorSetup): the code the
+    // authenticator shows for it now, which proves it was added. Without a
+    // set-up the current authenticator stays.
+    std::string newCode;
 };
 
 enum class UltraIMConnectionState {
@@ -392,6 +445,8 @@ using UltraIMAttachmentCallback   = std::function<void(const UltraIMResult& resu
 // Returns false when it cannot read the file.
 using UltraIMPreviewMaker = std::function<bool(const std::string& path, const std::string& mimeType, int maxSide,
                                                const std::string& outJpegPath, int& outWidth, int& outHeight)>;
+using UltraIMAccountProfileCallback = std::function<void(const UltraIMResult& result,
+                                                         const UltraIMAccountProfile& profile)>;
 // Credentials a provider's service keeps for another provider (the ChatCube
 // relay: the Telegram application's API ID and hash), to hand that
 // provider's SignIn.

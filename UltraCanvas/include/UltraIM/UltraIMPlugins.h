@@ -1,5 +1,6 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.5 - the account's profile (name, e-mail, phone) and its sign-in protection
 // Version: 0.1.4 - SendVideo; DownloadAttachment (a video, a file, a voice note fetched when asked for)
 // Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
 // Version: 0.1.2 - GetAuthResendHint / ResendAuthCode: a sign-in code sent another way
@@ -226,6 +227,38 @@ public:
     virtual void FetchSharedCredentials(const std::string& forProviderId, UltraIMSharedCredentialsCallback onResult) {
         (void)forProviderId;
         if (onResult) onResult(Unsupported("credentials for other providers"), UltraIMCredentials());
+    }
+
+    // ---- The account's own profile -----------------------------------------------
+    // The signed-in account's name, e-mail address and phone number
+    // (UltraIMAccountProfile; AccountProfile capability). Updating sends
+    // the name to the contacts and the e-mail and phone to the provider's
+    // service, for the owner alone.
+    virtual void FetchAccountProfile(UltraIMAccountProfileCallback onResult) {
+        if (onResult) onResult(Unsupported("an account profile"), UltraIMAccountProfile());
+    }
+    virtual void UpdateAccountProfile(const UltraIMAccountProfile& profile, UltraIMResultCallback onResult) {
+        (void)profile;
+        if (onResult) onResult(Unsupported("an account profile"));
+    }
+
+    // ---- How signing in on this device is protected ---------------------------------
+    // (SignInProtection capability.) A protected sign-in goes in steps, as
+    // Telegram's does: SignIn answers NeedsInput with GetAuthStep() Password
+    // (credentials.password) and then Code (credentials.otpCode, the
+    // authenticator's code).
+    virtual UltraIMSignInProtection GetSignInProtection() const { return UltraIMSignInProtection::DeviceKey; }
+    // A new authenticator secret, as the otpauth:// link an authenticator
+    // app (UltraAuthenticator) takes from a QR code or pasted: kept until
+    // SetSignInProtection proves it with a code, or another set-up replaces
+    // it. The link holds the secret: show it, never log it.
+    virtual UltraIMResult StartAuthenticatorSetup(std::string& outOtpAuthUri) {
+        outOtpAuthUri.clear();
+        return Unsupported("an authenticator code");
+    }
+    virtual void SetSignInProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult) {
+        (void)change;
+        if (onResult) onResult(Unsupported("sign-in protection"));
     }
 
     // ---- Stickers ------------------------------------------------------------

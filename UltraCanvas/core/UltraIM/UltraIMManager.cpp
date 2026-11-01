@@ -3,6 +3,7 @@
 // Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
 // Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.2 - UltraIM_ResendAuthCode
+// Version: 0.1.2 - the account's profile and its sign-in protection
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
 // Last Modified: 2026-10-29
@@ -778,6 +779,50 @@ void UltraIM_FetchSharedCredentials(const std::string& providerId, const std::st
     }
     provider->FetchSharedCredentials(forProviderId,
                                      callback ? callback : [](const UltraIMResult&, const UltraIMCredentials&) {});
+}
+
+void UltraIM_FetchAccountProfile(const std::string& providerId, UltraIMAccountProfileCallback onResult) {
+    auto callback = Redispatch<UltraIMResult, UltraIMAccountProfile>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId), UltraIMAccountProfile());
+        return;
+    }
+    provider->FetchAccountProfile(callback ? callback : [](const UltraIMResult&, const UltraIMAccountProfile&) {});
+}
+
+void UltraIM_UpdateAccountProfile(const std::string& providerId, const UltraIMAccountProfile& profile,
+                                  UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    provider->UpdateAccountProfile(profile, callback ? callback : [](const UltraIMResult&) {});
+}
+
+UltraIMSignInProtection UltraIM_GetSignInProtection(const std::string& providerId) {
+    ProviderPtr provider = FindProvider(providerId);
+    return provider ? provider->GetSignInProtection() : UltraIMSignInProtection::DeviceKey;
+}
+
+UltraIMResult UltraIM_StartAuthenticatorSetup(const std::string& providerId, std::string& outOtpAuthUri) {
+    outOtpAuthUri.clear();
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) return NotFound(providerId);
+    return provider->StartAuthenticatorSetup(outOtpAuthUri);
+}
+
+void UltraIM_SetSignInProtection(const std::string& providerId, const UltraIMProtectionChange& change,
+                                 UltraIMResultCallback onResult) {
+    auto callback = Redispatch<UltraIMResult>(std::move(onResult));
+    ProviderPtr provider = FindProvider(providerId);
+    if (!provider) {
+        if (callback) callback(NotFound(providerId));
+        return;
+    }
+    provider->SetSignInProtection(change, callback ? callback : [](const UltraIMResult&) {});
 }
 
 // ============================================================================

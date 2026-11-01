@@ -2787,7 +2787,11 @@ set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # The archive is uc-crypt; UltraCrypt is its home (see "MODULE HOMES").
 add_library(uc-crypt STATIC
     ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptCore.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraCryptAes.cpp
+    # HOTP / TOTP (RFC 4226 / 6238) and the otpauth:// URI: UltraAuthenticator
+    # shows the codes, ChatCube Direct checks them at sign-in.
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/UltraOtp.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCrypt/OtpAuthUri.cpp)
 set_target_properties(uc-crypt PROPERTIES OUTPUT_NAME "UltraCrypt")
 target_include_directories(uc-crypt PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

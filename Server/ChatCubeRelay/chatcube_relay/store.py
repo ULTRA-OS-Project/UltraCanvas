@@ -56,6 +56,14 @@ CREATE TABLE IF NOT EXISTS messages (
     UNIQUE (recipient, message_id)
 );
 CREATE INDEX IF NOT EXISTS messages_by_recipient ON messages(recipient, id);
+-- What a user gave to recover the account with: theirs alone, never part of
+-- what anyone else is told about them (user_json).
+CREATE TABLE IF NOT EXISTS recovery (
+    user_id    TEXT PRIMARY KEY REFERENCES users(user_id),
+    email      TEXT NOT NULL DEFAULT '',
+    phone      TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL
+);
 """
 
 GROUP_PREFIX = "group:"
@@ -115,6 +123,24 @@ class Store:
     def set_display_name(self, user_id: str, display_name: str) -> None:
         with self._lock:
             self._db.execute("UPDATE users SET display_name=? WHERE user_id=?", (display_name, user_id))
+
+    def get_recovery(self, user_id: str) -> tuple[str, str]:
+        """The e-mail address and phone number the user gave, "" for none."""
+        with self._lock:
+            row = self._db.execute("SELECT email, phone FROM recovery WHERE user_id=?", (user_id,)).fetchone()
+        return (row["email"], row["phone"]) if row else ("", "")
+
+    def set_recovery(self, user_id: str, email: str | None, phone: str | None) -> None:
+        """None leaves a field as it is; "" removes it."""
+        current_email, current_phone = self.get_recovery(user_id)
+        email = current_email if email is None else email
+        phone = current_phone if phone is None else phone
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO recovery(user_id, email, phone, updated_at) VALUES (?,?,?,?) "
+                "ON CONFLICT(user_id) DO UPDATE SET email=excluded.email, phone=excluded.phone, "
+                "updated_at=excluded.updated_at",
+                (user_id, email, phone, int(time.time())))
 
     # ---- sessions ------------------------------------------------------------
 

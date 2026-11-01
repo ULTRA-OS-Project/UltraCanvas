@@ -1,9 +1,9 @@
-// Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
+// core/UltraCrypt/OtpAuthUri.cpp
 // otpauth:// Key URI parsing and building. See the header for the threat note.
 //
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
-#include "OtpAuthUri.h"
+#include "UltraCrypt/OtpAuthUri.h"
 
 #include "UltraCanvasTextUtils.h"
 

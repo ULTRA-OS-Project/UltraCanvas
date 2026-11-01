@@ -2520,8 +2520,6 @@ if (BUILD_TESTS)
         Apps/UltraAuthenticator/LockPolicy.cpp
         Apps/UltraAuthenticator/AccountExport.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
         UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
     )
     target_include_directories(UltraAuthenticatorExportTests PRIVATE
@@ -2556,8 +2554,6 @@ if (BUILD_TESTS)
     # UltraCrypt, so it runs headless.
     add_executable(UltraOtpTests
         Tests/UltraOtpTests.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
     )
     target_link_libraries(UltraOtpTests PRIVATE UltraCrypt)
     target_compile_features(UltraOtpTests PRIVATE cxx_std_20)
@@ -2580,8 +2576,6 @@ if (BUILD_TESTS)
         Apps/UltraAuthenticator/AccountExport.cpp
         UltraCanvas/Plugins/Documents/UCDCryptoEnvelope.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
-        Apps/UltraAuthenticator/otp/UltraOtp.cpp
-        Apps/UltraAuthenticator/otp/OtpAuthUri.cpp
     )
     target_include_directories(UltraAuthenticatorAccountTests PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator

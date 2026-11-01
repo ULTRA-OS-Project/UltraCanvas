@@ -148,7 +148,7 @@ vault.Lock();                                       // wipes the derived key
 
 | Group | Members |
 |---|---|
-| Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under the lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) take turns in it; a vault unlocked directly keeps working too - it re-opens its own file before each read or write when another vault took the store meanwhile (see below) |
+| Taking turns | `Use(function)`, `UseWithPassphrase(passphrase, function)` - opens this vault's file, runs the function, closes it again, under the lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) take turns in it; a vault unlocked directly keeps working too - it re-opens its own file before each read or write when another vault took the store meanwhile (see below) |
 | Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
 | A Primary Password | `NeedsPassphrase()` (a vault without a device key: it opens only with its passphrase), `ChangePassphrase(current, new, keepAsDeviceKey)`, `NewDeviceKey()`, `ForgetDeviceKey()` - see below |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
@@ -178,7 +178,18 @@ vault.ChangePassphrase("", typed, false);              // set: "" = the device k
 vault.NeedsPassphrase();                               // true from now on: ask at every start
 vault.ChangePassphrase(current, typed, false);         // change
 vault.ChangePassphrase(current, UltraVault::DeviceKeyVault::NewDeviceKey(), true);   // remove
+std::string secret;
+vault.UseWithPassphrase(typed, [&](UltraVault::DeviceKeyVault& v) { v.Retrieve("identity", secret); });
 ```
+
+`UseWithPassphrase(passphrase, function)` is `Use()` for such a vault: it
+opens the file with the typed passphrase, runs the function and closes it
+again in one turn of the process's lock, so no other vault takes the store
+in between - a vault with no device key cannot re-open by itself, and an
+`Unlock()` followed by a `Retrieve()` could find another module's file open
+by then (ChatCube's identity behind a password, next to its Matrix and
+Telegram vaults). It answers what `Unlock()` did; the function runs only on
+`Ok`.
 
 `ChangePassphrase` proves the current passphrase by opening the file with it,
 carries every secret in the file over - whatever its prefix, another module's
