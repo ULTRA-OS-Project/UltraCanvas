@@ -1,3 +1,9 @@
+#### 2026-11-01 *1.103.0*
+- **The settings window is built on the framework's settings page kit**
+  (`UltraCanvasSettingsPageKit`, framework changelog `settings-page-kit`):
+  the window, the page skeleton and the controls come from it, where they
+  were this window's own. Nothing changes on screen.
+
 #### 2026-11-01 *1.102.0*
 - **A folder of programs no longer shows one program's icon on all of them
   when it is first opened.** On Windows the programs that were still

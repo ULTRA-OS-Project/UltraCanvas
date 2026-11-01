@@ -1,3 +1,54 @@
+#### 2026-11-01 *0.9.458*
+- **A picture from pixels in memory.** `UCImage::FromBgra(pixels, width,
+  height, stride, opaque)` and `UCImage::FromRgba(pixels, width, height)`
+  make an image from rows already in memory - a screen capture, a frame a
+  program made - with no encoder or decoder on the way: it is drawn, scaled
+  to any fit, saved through libvips and asked for its transparency like a
+  loaded one. UltraSnip shows the frozen screen and the snip taken from it
+  this way, where before each went through a PNG and back
+  (`ImageFromPixelsTest`).
+- **UltraCanvasDesktopShell: one rectangle of the screen.** `CaptureScreenArea(x, y,
+  width, height, image)` captures that much of the screen as pixels in memory -
+  `XGetImage` of the rectangle on X11, a `BitBlt` of it on Windows - clipped to
+  the screen, instead of the whole screen and a crop: what UltraSnip's snips
+  and its screen recording (twenty frames a second of one window) take.
+  `DesktopScreenImage` carries `x` / `y`, where its pixels came from (the
+  virtual screen's origin on Windows, which is negative with a monitor left
+  of the primary). `DefaultRecordingPath()` names
+  `<Videos>/Screen Recordings/Screen recording <date> <time>.mp4`, as
+  `DefaultScreenshotPath()` names a screenshot.
+- **A settings window in one kit.** `UltraCanvasSettingsPageKit`
+  (`UltraCanvasSettingsPageKit.h`) holds the look of an application's
+  settings window once: `UltraCanvasSettingsWindow` - the tree of pages on
+  the left, the page on the right, the page's *Restore defaults* and *Close*
+  at the foot - and a page's skeleton (title, caption, controls, the notes
+  block) with the controls in the window's one type scale (radios,
+  checkboxes, sliders with their value, buttons, colour boxes, rows).
+  UltraFiler's settings window set the style and is built on the kit now,
+  with nothing changed on screen; UltraSnip's is the second; the next
+  application's gets the same look without a copy.
+- **`UltraCanvasAppSettings`: a note on older files and on renaming a key.**
+  A key an older file does not have reads as the fallback and `Set` makes
+  the objects on the way, so a rename is read-old, set-new, remove-old,
+  save; the header and the doc show it.
+- **VideoFX 0.17.0: a recorder for a live source.** `VideoFXFrameRecorder`
+  takes frames one by one with the moment each was taken - RGBA or BGRA, any
+  stride - and encodes them into the file as they come, so the file grows
+  while the recording runs: a frame lands on the nearest tick of the file's
+  rate, a duplicate is dropped, a gap shows the last frame longer, and the
+  recording keeps real time however many frames the source managed. The
+  export's codec, quality and hardware rules apply; the preset is
+  `veryfast` with `zerolatency`, and an MP4 is fragmented so a recording cut
+  short still plays. `VideoFXRecorderSettings`, `VideoFXPixelLayout`; the
+  stub answers NotAvailable. UltraSnip records the screen with it
+  (`VideoFXTest`: red then blue frames read back at their times, a BGRA
+  frame read in its own order, 321 x 241 recorded as 320 x 240).
+- **`WindowConfig::alwaysOnTop` works on X11 and macOS.** Only the Windows
+  backend honoured it; X11 now sets `_NET_WM_STATE_ABOVE` on the window
+  before it is mapped (any type but a notification, which has it, and a
+  desktop, which is kept below), and macOS puts the window at the floating
+  level, as it now does a notification too.
+
 #### 2026-11-01 *0.9.457*
 - **Every program in a folder showed one program's icon until its own
   loaded - and programs without an icon kept it.** On Windows, under
