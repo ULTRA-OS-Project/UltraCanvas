@@ -45,6 +45,7 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.9.0 - CloseWindow shows a minimized window before asking it to close
 // Version: 1.8.0 - FindProgram / LaunchProgram find a sibling application's
 //                  bundle on macOS
 // Version: 1.7.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
@@ -249,6 +250,8 @@ namespace UltraCanvas {
         static bool ActivateWindow(uint64_t id);
         static bool MinimizeWindow(uint64_t id);
         // Ask the window to close (WM_DELETE_WINDOW through the manager), never kill.
+        // A minimized window is shown first: a program that asks before
+        // closing ("Save the changes?") would otherwise ask unseen.
         static bool CloseWindow(uint64_t id);
 
         // ===== VIRTUAL DESKTOPS =====

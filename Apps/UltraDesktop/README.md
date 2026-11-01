@@ -29,7 +29,7 @@ Changelog and version: [`Docs/UltraDesktop/CHANGELOG.md`](../../Docs/UltraDeskto
 | `ui/UltraDesktopDevicePanel.*` | The USB, keyboard, webcam, microphone and battery panels: one class that shows entries read on a worker thread by a function the window hands it (`UltraDesktopWindow::OpenDevicePanel`), an entry's own button run off the UI thread (the USB drives' *Safely remove*, `UltraCanvasRemovableDrives`), and buttons on to Device Explorer or the Task Manager |
 | `ui/UltraDesktopPanelWork.h` | `UltraDesktopPanelWork::Run`: a call on a thread of its own, its answer handed to the UI thread with `PostToUIThread` unless the panel has gone meanwhile |
 | `ui/UltraDesktopAppStarter.*` | The Apps window: tiles from `UltraCanvasDesktopShell::ListApplications` with a filter box; a tile's right click pins it to the taskbar through the desktop's callbacks |
-| `ui/UltraDesktopTasksWindow.*` | The Task Manager: the open windows with Activate and Close, and the machine on `UltraCanvasHardwareInfoPanel` |
+| `ui/UltraDesktopTasksWindow.*` | The Task Manager: the open windows under a column header (icon, window, state, desktop in a bordered box) with Show and Close, and the machine on `UltraCanvasHardwareInfoPanel` |
 | `main.cpp` | Bootstrap and the command line: `--edge`, `--settings`, `--windows`, `--apps`, `--devices`, `--screenshot`, `--version`, `--help` |
 | `UltraDesktop.desktop` | The freedesktop entry (NoDisplay: the session starts the desktop, not the menu); `make install` places it with the app icon (`media/appicon/UltraDesktop.png` / `.svg`) in the `hicolor` theme |
 

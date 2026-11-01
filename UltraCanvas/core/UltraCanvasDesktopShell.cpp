@@ -6,6 +6,8 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.8.0 - CloseWindow shows a minimized window first, so a question
+//                  it asks before closing is seen
 // Version: 1.7.0 - FindProgram finds a sibling application's bundle on macOS
 // Version: 1.6.0 - LockSession, the loudspeaker's volume, ActivateMenuItem
 // Version: 1.5.0 - GetSystemDesktopSwitchUnavailableReason
@@ -208,7 +210,17 @@ std::vector<DesktopWindowInfo> UltraCanvasDesktopShell::ListWindows() {
 uint64_t UltraCanvasDesktopShell::GetActiveWindow() { return DesktopShellBackend::GetActiveWindow(); }
 bool UltraCanvasDesktopShell::ActivateWindow(uint64_t id) { return DesktopShellBackend::ActivateWindow(id); }
 bool UltraCanvasDesktopShell::MinimizeWindow(uint64_t id) { return DesktopShellBackend::MinimizeWindow(id); }
-bool UltraCanvasDesktopShell::CloseWindow(uint64_t id) { return DesktopShellBackend::CloseWindow(id); }
+bool UltraCanvasDesktopShell::CloseWindow(uint64_t id) {
+    // A program may ask before it closes ("Save the changes?"), and a
+    // minimized window asks unseen - the close then looks as if it did
+    // nothing. Such a window is shown first.
+    for (const DesktopWindowInfo& window : DesktopShellBackend::ListWindows()) {
+        if (window.id != id) continue;
+        if (window.minimized) DesktopShellBackend::ActivateWindow(id);
+        break;
+    }
+    return DesktopShellBackend::CloseWindow(id);
+}
 int  UltraCanvasDesktopShell::GetVirtualDesktopCount() { return DesktopShellBackend::GetVirtualDesktopCount(); }
 int  UltraCanvasDesktopShell::GetCurrentVirtualDesktop() { return DesktopShellBackend::GetCurrentVirtualDesktop(); }
 bool UltraCanvasDesktopShell::SetCurrentVirtualDesktop(int index) {

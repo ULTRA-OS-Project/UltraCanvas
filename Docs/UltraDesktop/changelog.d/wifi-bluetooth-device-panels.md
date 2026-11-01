@@ -41,3 +41,10 @@
   any device) starts a pairing, the Bluetooth panel opens by itself and asks
   whether the number matches - and a device that is not trusted and asks to
   connect is asked about too.
+- **The Task Manager's window list** has a column header (window, state,
+  desktop), shows each window's application icon first and its desktop as
+  a number in a bordered box, and calls the button *Show* (it was
+  *Activate*). *Close* on a minimized window shows it first, so a program
+  that asks to save its changes - ArtCreator with an unsaved drawing - asks
+  where it can be seen; before, the question stayed hidden and the close
+  seemed to do nothing.

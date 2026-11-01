@@ -212,8 +212,10 @@ the right-hand monitor the primary.
   by its package appears without being told about ULTRA OS. A tap of the
   Super key opens it from any window - on Linux, and on Windows as the
   shell (beside Explorer the key is the Start menu's).
-- **Task Manager**: the open windows with *Activate* and *Close* on the
-  first tab, the machine — CPU load and temperature, memory, storage, the
+- **Task Manager**: the open windows on the first tab, under a header -
+  each with its application's icon, its state (minimized), its desktop as a
+  number in a bordered box, and *Show* and *Close* (a minimized window is
+  shown first, so a program that asks "Save the changes?" asks visibly) - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
 - **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
