@@ -6,7 +6,8 @@
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
 // Version: 0.4.0 - the Apps window's view, split threshold, Recent count and
-//                  history (appsView, appsSplitAbove, recentAppsShown, recentApps)
+//                  history (appsView, appsSplitAbove, recentAppsShown, recentApps);
+//                  the applications dragged to another category (appMoves)
 // Version: 0.3.0 - the programs that start with the desktop (startWithDesktop,
 //                  StartupPrograms)
 // Version: 0.2.0 - the pinned applications (pinnedApps)
@@ -15,6 +16,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -91,6 +93,10 @@ struct DesktopSettings {
     int recentAppsShown = 8;
     std::vector<std::string> recentApps;
     static constexpr size_t kRecentAppsKept = 24;
+    // Applications the person dragged to another category of the Apps
+    // window: PinKey -> the category's key ("office", "games", or
+    // "folder:<Start-menu folder>").
+    std::map<std::string, std::string> appMoves;
 
     // "<config dir>/ultraos/desktop.json": $XDG_CONFIG_HOME, else ~/.config
     // (%APPDATA% on Windows, ~/Library/Application Support on macOS - the

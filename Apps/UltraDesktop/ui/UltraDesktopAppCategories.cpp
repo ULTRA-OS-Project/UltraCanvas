@@ -4,8 +4,10 @@
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraDesktopAppCategories.h"
+#include "UltraDesktopAppCatalogue.h"
 
 #include <algorithm>
+#include <iterator>
 #include <cctype>
 #include <map>
 #include <set>
@@ -16,6 +18,7 @@ using namespace UltraCanvas;
 namespace UltraDesktop {
 
 const char* const kOtherSubcategory = "Other";
+const char* const kFolderGroupPrefix = "folder:";
 
 namespace {
 
@@ -116,6 +119,15 @@ const Heading kHeadings[] = {
     {"Settings", "Settings"},
     {"PackageManager", "Software"},
     {"HomeAutomation", "Home automation"},
+    {"Notes", "Notes"},
+    {"Screenshot", "Screenshots"},
+    {"Weather", "Weather"},
+    {"Clipboard", "Clipboard"},
+    {"3DPrinting", "3D printing"},
+    {"Electronics", "Electronics"},
+    {"Virtualization", "Virtual machines"},
+    {"SportsGame", "Simulation"},
+    {"KidsGame", "Board games"},
     {"Viewer", "Viewers"},
     {"Maps", "Maps"},
     {"Science", "Science"},
@@ -164,346 +176,13 @@ std::string HeadingOf(const std::vector<std::string>& declared, AppCategory main
     return "";
 }
 
-// ===== WINDOWS: NAMES, PROGRAMS AND START-MENU FOLDERS =====
-// An entry without Categories= (a Start-menu shortcut, a Store application)
-// gets the ones its words suggest. A key is matched against whole words of
-// the name, the program file's name and the shortcut's folder ("media
-// player" against "Windows Media Player Legacy"); English and German, the
-// languages ULTRA OS is used in.
-struct Guess {
-    const char* words;
-    const char* categories;   // as Categories= would have them
-};
-const Guess kGuesses[] = {
-    // The table is read top to bottom and the first key found wins, so the
-    // keys that must beat a broader one come first: Windows Defender's
-    // firewall console is a system tool, not the antivirus "defender" below;
-    // Windows Media Player is a player before anything "windows" says.
-    {"firewall", "System;Security"},
-    {"media player", "AudioVideo;Video;Player"},
-    {"uninstall", "System;PackageManager"},
-    {"deinstallieren", "System;PackageManager"},
-    {"command line", "System;TerminalEmulator"},
-    {"registrierungs", "System"},
-    {"windows security", "System;Security"},
-    {"lav audio", "AudioVideo;Audio"},
-    {"music maker", "AudioVideo;Audio;Sequencer"},
-    {"smart microphone", "AudioVideo;Audio;HardwareSettings"},
-    {"microphone", "AudioVideo;Audio;HardwareSettings"},
-    {"mikrofon", "AudioVideo;Audio;HardwareSettings"},
-    {"fax und scan", "Office;Scanning"},
-    {"fax and scan", "Office;Scanning"},
-    {"downloader+", "Network;FileTransfer"},
-    {"windows media", "AudioVideo;Video;Player"},
-    {"clipchamp", "AudioVideo;Video;AudioVideoEditing"},
-    // Office
-    {"word", "Office;WordProcessor"},
-    {"wordpad", "Office;WordProcessor"},
-    {"writer", "Office;WordProcessor"},
-    {"texter", "Office;WordProcessor"},
-    {"excel", "Office;Spreadsheet"},
-    {"calc", "Office;Spreadsheet"},
-    {"powerpoint", "Office;Presentation"},
-    {"impress", "Office;Presentation"},
-    {"onenote", "Office;WordProcessor"},
-    {"access", "Office;Database"},
-    {"base", "Office;Database"},
-    {"publisher", "Office;Publishing"},
-    {"visio", "Office;Flowchart"},
-    {"project", "Office;ProjectManagement"},
-    {"libreoffice", "Office"},
-    {"openoffice", "Office"},
-    {"office", "Office"},
-    {"acrobat", "Office;Viewer"},
-    {"pdf", "Office;Viewer"},
-    {"reader", "Office;Viewer"},
-    {"calendar", "Office;Calendar"},
-    {"kalender", "Office;Calendar"},
-    {"contacts", "Office;ContactManagement"},
-    {"kontakte", "Office;ContactManagement"},
-    {"people", "Office;ContactManagement"},
-    {"exodus", "Office;Finance"},
-    {"wallet", "Office;Finance"},
-    {"finance", "Office;Finance"},
-    {"ultradbadmin", "Office;Database"},
-    {"ultracanvastexter", "Office;WordProcessor"},
-    {"pdf24", "Office;Viewer"},
-    {"to do", "Office;ProjectManagement"},
-    {"sticky notes", "Office;ProjectManagement"},
-    {"warenwirtschaft", "Office;Finance"},
-    {"selectline", "Office;Finance"},
-    {"moon atlas", "Office;Science"},
-    {"planetarium", "Office;Science"},
-    {"stellarium", "Office;Science"},
-    // Internet
-    {"outlook", "Network;Email"},
-    {"thunderbird", "Network;Email"},
-    {"mail", "Network;Email"},
-    {"ultramail", "Network;Email"},
-    {"chrome", "Network;WebBrowser"},
-    {"chromium", "Network;WebBrowser"},
-    {"firefox", "Network;WebBrowser"},
-    {"edge", "Network;WebBrowser"},
-    {"opera", "Network;WebBrowser"},
-    {"brave", "Network;WebBrowser"},
-    {"vivaldi", "Network;WebBrowser"},
-    {"browser", "Network;WebBrowser"},
-    {"duckduckgo", "Network;WebBrowser"},
-    {"tor", "Network;WebBrowser"},
-    {"teams", "Network;Chat"},
-    {"zoom", "Network;VideoConference"},
-    {"skype", "Network;Chat"},
-    {"discord", "Network;Chat"},
-    {"telegram", "Network;Chat"},
-    {"whatsapp", "Network;Chat"},
-    {"signal", "Network;Chat"},
-    {"slack", "Network;Chat"},
-    {"chatcube", "Network;Chat"},
-    {"dropbox", "Network;FileTransfer"},
-    {"onedrive", "Network;FileTransfer"},
-    {"filezilla", "Network;FileTransfer"},
-    {"winscp", "Network;FileTransfer"},
-    {"downloader", "Network;FileTransfer"},
-    {"stogram", "Network;FileTransfer"},
-    {"putty", "Network;RemoteAccess"},
-    {"remote desktop", "Network;RemoteAccess"},
-    {"remotedesktop", "Network;RemoteAccess"},
-    {"remotedesktopverbindung", "Network;RemoteAccess"},
-    {"teamviewer", "Network;RemoteAccess"},
-    {"anydesk", "Network;RemoteAccess"},
-    {"quick assist", "Network;RemoteAccess"},
-    {"line", "Network;Chat"},
-    {"phone link", "Network;Telephony"},
-    {"xing", "Network"},
-    {"linkedin", "Network"},
-    {"news", "Network;News"},
-    {"tunnelbear", "Network;VPN"},
-    {"wireguard", "Network;VPN"},
-    {"openvpn", "Network;VPN"},
-    {"nordvpn", "Network;VPN"},
-    {"vpn", "Network;VPN"},
-    // Graphics
-    {"paint", "Graphics;RasterGraphics"},
-    {"photoshop", "Graphics;RasterGraphics"},
-    {"gimp", "Graphics;RasterGraphics"},
-    {"krita", "Graphics;RasterGraphics"},
-    {"inkscape", "Graphics;VectorGraphics"},
-    {"illustrator", "Graphics;VectorGraphics"},
-    {"artcreator", "Graphics;VectorGraphics"},
-    {"animation", "Graphics;RasterGraphics"},
-    {"photos", "Graphics;Photography"},
-    {"fotos", "Graphics;Photography"},
-    {"lightroom", "Graphics;Photography"},
-    {"irfanview", "Graphics;Viewer"},
-    {"xnview", "Graphics;Viewer"},
-    {"snipping", "Graphics;RasterGraphics"},
-    {"snip", "Graphics;RasterGraphics"},
-    {"blender", "Graphics;3DGraphics"},
-    {"3d", "Graphics;3DGraphics"},
-    {"scan", "Graphics;Scanning"},
-    {"scanner", "Graphics;Scanning"},
-    {"jasc", "Graphics;RasterGraphics"},
-    {"xara", "Graphics;VectorGraphics"},
-    {"designer", "Graphics;VectorGraphics"},
-    // Video
-    {"vlc", "AudioVideo;Video;Player"},
-    {"movies", "AudioVideo;Video;Player"},
-    {"filme", "AudioVideo;Video;Player"},
-    {"video", "AudioVideo;Video"},
-    {"ultravideo", "AudioVideo;Video;Player"},
-    {"camera", "AudioVideo;Video;Recorder"},
-    {"kamera", "AudioVideo;Video;Recorder"},
-    {"obs", "AudioVideo;Video;Recorder"},
-    {"premiere", "AudioVideo;Video;AudioVideoEditing"},
-    {"davinci", "AudioVideo;Video;AudioVideoEditing"},
-    {"kdenlive", "AudioVideo;Video;AudioVideoEditing"},
-    {"handbrake", "AudioVideo;Video;AudioVideoEditing"},
-    {"codec", "AudioVideo;Video"},
-    {"directvobsub", "AudioVideo;Video"},
-    {"netflix", "AudioVideo;Video;Player"},
-    {"lav", "AudioVideo;Video"},
-    {"madvr", "AudioVideo;Video"},
-    {"mediainfo", "AudioVideo;Video"},
-    {"movie edit", "AudioVideo;Video;AudioVideoEditing"},
-    {"movie studio", "AudioVideo;Video;AudioVideoEditing"},
-    {"capture", "AudioVideo;Video;Recorder"},
-    {"tiktok", "AudioVideo;Video;Recorder"},
-    {"teleprompter", "AudioVideo;Video;Recorder"},
-    // Audio
-    {"spotify", "AudioVideo;Audio;Player"},
-    {"itunes", "AudioVideo;Audio;Player"},
-    {"music", "AudioVideo;Audio;Player"},
-    {"musik", "AudioVideo;Audio;Player"},
-    {"winamp", "AudioVideo;Audio;Player"},
-    {"foobar2000", "AudioVideo;Audio;Player"},
-    {"audacity", "AudioVideo;Audio;AudioVideoEditing"},
-    {"sound recorder", "AudioVideo;Audio;Recorder"},
-    {"soundrecorder", "AudioVideo;Audio;Recorder"},
-    {"voice recorder", "AudioVideo;Audio;Recorder"},
-    {"audiorecorder", "AudioVideo;Audio;Recorder"},
-    {"tonaufzeichnung", "AudioVideo;Audio;Recorder"},
-    {"dolby", "AudioVideo;Audio"},
-    {"audio", "AudioVideo;Audio"},
-    {"realtek", "AudioVideo;Audio"},
-    // CAD
-    {"autocad", "Graphics;Engineering"},
-    {"fusion 360", "Graphics;Engineering"},
-    {"revit", "Graphics;Engineering"},
-    // Games
-    {"steam", "Game"},
-    {"epic games", "Game"},
-    {"gog galaxy", "Game"},
-    {"xbox", "Game"},
-    {"solitaire", "Game;CardGame"},
-    {"minesweeper", "Game;LogicGame"},
-    {"chess", "Game;BoardGame"},
-    {"schach", "Game;BoardGame"},
-    {"mahjong", "Game;BoardGame"},
-    {"sudoku", "Game;LogicGame"},
-    {"minecraft", "Game;AdventureGame"},
-    {"flight simulator", "Game;Simulation"},
-    {"simulator", "Game;Simulation"},
-    {"dosbox", "Game;Emulator"},
-    {"retroarch", "Game;Emulator"},
-    {"mame", "Game;Emulator"},
-    {"rpcemu", "Game;Emulator"},
-    {"rpcemucl", "Game;Emulator"},
-    {"emulator", "Game;Emulator"},
-    {"game bar", "Game"},
-    {"games", "Game"},
-    {"spiele", "Game"},
-    // Tools
-    {"calculator", "Utility;Calculator"},
-    {"rechner", "Utility;Calculator"},
-    {"notepad", "Utility;TextEditor"},
-    {"notepad++", "Utility;TextEditor"},
-    {"editor", "Utility;TextEditor"},
-    {"7 zip", "Utility;Archiving"},
-    {"7zip", "Utility;Archiving"},
-    {"winrar", "Utility;Archiving"},
-    {"winzip", "Utility;Archiving"},
-    {"archive", "Utility;Archiving"},
-    {"extract", "Utility;Archiving"},
-    {"clock", "Utility;Clock"},
-    {"uhr", "Utility;Clock"},
-    {"alarms", "Utility;Clock"},
-    {"wecker", "Utility;Clock"},
-    {"magnifier", "Utility;Accessibility"},
-    {"bildschirmlupe", "Utility;Accessibility"},
-    {"narrator", "Utility;Accessibility"},
-    {"sprachausgabe", "Utility;Accessibility"},
-    {"on screen keyboard", "Utility;Accessibility"},
-    {"bildschirmtastatur", "Utility;Accessibility"},
-    {"antivirus", "Utility;Security"},
-    {"internet security", "Utility;Security"},
-    {"defender", "Utility;Security"},
-    {"malwarebytes", "Utility;Security"},
-    {"password", "Utility;Security"},
-    {"keepass", "Utility;Security"},
-    {"bitwarden", "Utility;Security"},
-    {"visual studio", "Development;IDE"},
-    {"code", "Development;IDE"},
-    {"git", "Development"},
-    {"python", "Development"},
-    {"copilot", "Utility;AIAssistant"},
-    {"claude", "Utility;AIAssistant"},
-    {"chatgpt", "Utility;AIAssistant"},
-    {"gemini", "Utility;AIAssistant"},
-    {"etcher", "Utility;DiscBurning"},
-    {"balenaetcher", "Utility;DiscBurning"},
-    {"rufus", "Utility;DiscBurning"},
-    {"command palette", "Utility"},
-    {"github", "Development"},
-    {"qt", "Development;IDE"},
-    {"google earth", "Utility;Maps"},
-    {"maps", "Utility;Maps"},
-    {"karten", "Utility;Maps"},
-    // System
-    {"command center", "System;HardwareSettings"},
-    {"lenovo", "System;HardwareSettings"},
-    {"dell", "System;HardwareSettings"},
-    {"hp", "System;HardwareSettings"},
-    {"feedback hub", "System"},
-    {"get help", "System"},
-    {"hilfe", "System"},
-    {"iscsi", "System"},
-    {"klick und los", "System"},
-    {"click to do", "System"},
-    {"komponentendienste", "System"},
-    {"component services", "System"},
-    {"defragmentieren", "System;Filesystem"},
-    {"partition", "System;Filesystem"},
-    {"mixed reality", "System"},
-    {"odbc", "System"},
-    {"health check", "System;Monitor"},
-    {"schrittaufzeichnung", "System"},
-    {"steps recorder", "System"},
-    {"systemkonfiguration", "System;Settings"},
-    {"system configuration", "System;Settings"},
-    {"msconfig", "System;Settings"},
-    {"wiederherstellungslaufwerk", "System"},
-    {"recovery drive", "System"},
-    {"sicherung", "System"},
-    {"backup", "System"},
-    {"speicherdiagnose", "System;Monitor"},
-    {"memory diagnostic", "System;Monitor"},
-    {"windows tools", "System"},
-    {"windows-tools", "System"},
-    {"administrative tools", "System"},
-    {"verwaltungsprogramme", "System"},
-    {"windows verwaltungsprogramme", "System"},
-    {"system tools", "System"},
-    {"systemprogramme", "System"},
-    {"control panel", "System;Settings"},
-    {"systemsteuerung", "System;Settings"},
-    {"settings", "System;Settings"},
-    {"einstellungen", "System;Settings"},
-    {"command prompt", "System;TerminalEmulator"},
-    {"eingabeaufforderung", "System;TerminalEmulator"},
-    {"cmd", "System;TerminalEmulator"},
-    {"powershell", "System;TerminalEmulator"},
-    {"terminal", "System;TerminalEmulator"},
-    {"explorer", "System;FileManager"},
-    {"ultrafiler", "System;FileManager"},
-    {"task manager", "System;Monitor"},
-    {"task-manager", "System;Monitor"},
-    {"resource monitor", "System;Monitor"},
-    {"ressourcenmonitor", "System;Monitor"},
-    {"performance monitor", "System;Monitor"},
-    {"leistungsuberwachung", "System;Monitor"},
-    {"event viewer", "System;Monitor"},
-    {"ereignisanzeige", "System;Monitor"},
-    {"task scheduler", "System"},
-    {"aufgabenplanung", "System"},
-    {"services", "System"},
-    {"dienste", "System"},
-    {"computer management", "System"},
-    {"computerverwaltung", "System"},
-    {"disk cleanup", "System;Filesystem"},
-    {"datentragerbereinigung", "System;Filesystem"},
-    {"defragment", "System;Filesystem"},
-    {"registry", "System"},
-    {"regedit", "System"},
-    {"run", "System"},
-    {"ausfuhren", "System"},
-    {"recovery", "System"},
-    {"wiederherstellung", "System"},
-    {"system information", "System;Monitor"},
-    {"systeminformationen", "System;Monitor"},
-    {"amd software", "System;HardwareSettings"},
-    {"nvidia", "System;HardwareSettings"},
-    {"intel", "System;HardwareSettings"},
-    {"brother", "System;HardwareSettings"},
-    {"printer", "System;HardwareSettings"},
-    {"drucker", "System;HardwareSettings"},
-    {"family", "System;Settings"},
-    {"get started", "System"},
-    {"erste schritte", "System"},
-    {"tips", "System"},
-    {"store", "System;PackageManager"},
-    // A maker's name last, for what nothing above named.
-    {"magix", "AudioVideo;Video"},
-};
+// ===== WINDOWS AND MACOS: NAMES, PROGRAMS AND START-MENU FOLDERS =====
+// An entry without Categories= (a Start-menu shortcut, a Store application,
+// a macOS bundle without LSApplicationCategoryType) gets the ones its words
+// suggest, from the catalogue of well-known applications
+// (UltraDesktopAppCatalogue). A key is matched against whole words of the
+// name, the program file's name and the shortcut's folder ("media player"
+// against "Windows Media Player Legacy").
 
 // German umlauts and ß folded, so "Datenträgerbereinigung" meets its key
 // "datentragerbereinigung" (UTF-8 input; any other byte is a separator or
@@ -599,9 +278,16 @@ std::vector<std::string> GuessCategories(const UCDesktopEntry& entry) {
         Words(FileStem(entry.program)) + Words(FileStem(entry.shortcutPath)),
         Words(FolderOf(entry.shortcutPath)),
     };
-    for (const std::string& words : sources) {
+    for (size_t source = 0; source < std::size(sources); ++source) {
+        const std::string& words = sources[source];
         if (words.size() <= 1) continue;
-        for (const Guess& guess : kGuesses) {
+        for (const AppGuess& guess : KnownApplications()) {
+            if (guess.words[0] == '=') {
+                // The whole name, and only the name: "=preview" is macOS'
+                // Preview, not "PowerToys (Preview)".
+                if (source == 0 && words == " " + std::string(guess.words + 1) + " ") return Split(guess.categories);
+                continue;
+            }
             if (words.find(" " + std::string(guess.words) + " ") != std::string::npos) return Split(guess.categories);
         }
     }
@@ -634,7 +320,16 @@ const AppCategoryInfo& AppCategoryInfoOf(AppCategory category) {
 }
 
 AppPlace PlaceApplication(const UCDesktopEntry& entry) {
-    std::vector<std::string> declared = entry.categories;
+    // macOS' LSApplicationCategoryType, as the backend reports it, read as
+    // the freedesktop categories it stands for.
+    std::vector<std::string> declared;
+    for (const std::string& category : entry.categories) {
+        if (category.rfind("public.app-category.", 0) == 0) {
+            for (const std::string& c : CategoriesOfMacCategoryType(category)) declared.push_back(c);
+        } else {
+            declared.push_back(category);
+        }
+    }
     if (declared.empty()) declared = GuessCategories(entry);
     const std::set<std::string> set(declared.begin(), declared.end());
     AppPlace place;
@@ -654,14 +349,103 @@ bool MatchesAppFilter(const UCDesktopEntry& entry, const std::string& lowerFilte
            Lower(entry.comment).find(lowerFilter) != std::string::npos;
 }
 
+std::string AppFolderOf(const UCDesktopEntry& entry) {
+    if (entry.shortcutPath.empty()) return "";
+    const std::string folder = FolderOf(entry.shortcutPath);
+    // Windows' own folders: their applications are the system's, and System
+    // and Tools hold them already.
+    static const char* const kSystemFolders[] = {
+        "programs", "start menu", "startmenu", "startup", "autostart", "accessories", "zubehor",
+        "windows accessories", "windows zubehor", "system tools", "systemprogramme", "windows tools",
+        "administrative tools", "windows administrative tools", "windows verwaltungsprogramme", "verwaltung",
+        "accessibility", "erleichterte bedienung", "windows accessibility", "windows erleichterte bedienung",
+        "maintenance", "wartung", "windows powershell", "windows system", "windows systemprogramme",
+    };
+    std::string words = Words(folder);
+    if (words.size() > 2) words = words.substr(1, words.size() - 2);
+    for (const char* system : kSystemFolders) {
+        if (words == system) return "";
+    }
+    return folder;
+}
+
 std::vector<AppGroup> GroupApplications(const std::vector<UCDesktopEntry>& apps,
                                         const AppGroupingOptions& options) {
-    std::map<AppCategory, std::vector<std::pair<size_t, std::string>>> placed;   // app, heading
+    // Where each application goes: a category's key ("office") or a
+    // folder's ("folder:MAGIX"), and the heading inside it.
+    std::map<std::string, size_t> perFolder;
+    if (options.folderGroupAt > 0) {
+        for (const UCDesktopEntry& entry : apps) {
+            const std::string folder = AppFolderOf(entry);
+            if (!folder.empty()) ++perFolder[folder];
+        }
+    }
+    std::map<std::string, std::vector<std::pair<size_t, std::string>>> placed;   // group key -> app, heading
+    std::map<std::string, std::string> folderTitles;                             // group key -> folder
     for (size_t i = 0; i < apps.size(); ++i) {
         if (!MatchesAppFilter(apps[i], options.filter)) continue;
         const AppPlace place = PlaceApplication(apps[i]);
-        placed[place.category].push_back({i, place.subcategory});
+        std::string group = AppCategoryInfoOf(place.category).key;
+        std::string heading = place.subcategory;
+        const std::string folder = AppFolderOf(apps[i]);
+        if (!folder.empty() && perFolder[folder] >= options.folderGroupAt && options.folderGroupAt > 0) {
+            group = kFolderGroupPrefix + folder;
+            folderTitles[group] = folder;
+        }
+        // The person's own choice, made by dragging the application.
+        if (options.keyOf && !options.moved.empty()) {
+            const auto moved = options.moved.find(options.keyOf(apps[i]));
+            if (moved != options.moved.end() && moved->second != group) {
+                const std::string& to = moved->second;
+                const bool isFolder = to.rfind(kFolderGroupPrefix, 0) == 0;
+                bool known = isFolder ? perFolder[to.substr(std::string(kFolderGroupPrefix).size())] >=
+                                            std::max<size_t>(1, options.folderGroupAt)
+                                      : false;
+                for (const AppCategoryInfo& info : AppCategories()) {
+                    if (to == info.key && info.category != AppCategory::Recent) known = true;
+                }
+                if (known) {
+                    group = to;
+                    if (isFolder) folderTitles[group] = to.substr(std::string(kFolderGroupPrefix).size());
+                    // Its own kind may mean nothing in the new category.
+                    if (!isFolder) {
+                        bool fits = false;
+                        for (const AppCategoryInfo& info : AppCategories()) {
+                            if (info.key == to && info.category == place.category) fits = true;
+                        }
+                        if (!fits) heading.clear();
+                    }
+                }
+            }
+        }
+        placed[group].push_back({i, heading});
     }
+
+    auto fill = [&options](AppGroup& group, const std::vector<std::pair<size_t, std::string>>& members) {
+        group.count = members.size();
+        if (options.splitAbove == 0 || members.size() <= options.splitAbove) {
+            AppSection section;
+            for (const auto& [index, heading] : members) section.apps.push_back(index);
+            group.sections.push_back(std::move(section));
+            return;
+        }
+        std::map<std::string, AppSection> byHeading;
+        for (const auto& [index, heading] : members) {
+            const std::string title = heading.empty() ? kOtherSubcategory : heading;
+            AppSection& section = byHeading[title];
+            section.title = title;
+            section.apps.push_back(index);
+        }
+        AppSection other;
+        for (auto& [title, section] : byHeading) {
+            if (title == kOtherSubcategory) {
+                other = std::move(section);
+            } else {
+                group.sections.push_back(std::move(section));
+            }
+        }
+        if (!other.apps.empty()) group.sections.push_back(std::move(other));
+    };
 
     std::vector<AppGroup> groups;
     for (const AppCategoryInfo& info : AppCategories()) {
@@ -685,36 +469,29 @@ std::vector<AppGroup> GroupApplications(const std::vector<UCDesktopEntry>& apps,
                 }
             }
             group.count = section.apps.size();
-            if (group.count > 0) group.sections.push_back(std::move(section));
-        } else {
-            const auto found = placed.find(info.category);
-            if (found == placed.end()) continue;
-            const auto& members = found->second;
-            group.count = members.size();
-            if (options.splitAbove == 0 || members.size() <= options.splitAbove) {
-                AppSection section;
-                for (const auto& [index, heading] : members) section.apps.push_back(index);
+            if (group.count > 0) {
                 group.sections.push_back(std::move(section));
-            } else {
-                std::map<std::string, AppSection> byHeading;
-                for (const auto& [index, heading] : members) {
-                    const std::string title = heading.empty() ? kOtherSubcategory : heading;
-                    AppSection& section = byHeading[title];
-                    section.title = title;
-                    section.apps.push_back(index);
-                }
-                AppSection other;
-                for (auto& [title, section] : byHeading) {
-                    if (title == kOtherSubcategory) {
-                        other = std::move(section);
-                    } else {
-                        group.sections.push_back(std::move(section));
-                    }
-                }
-                if (!other.apps.empty()) group.sections.push_back(std::move(other));
+                groups.push_back(std::move(group));
             }
+            continue;
         }
-        if (group.count > 0) groups.push_back(std::move(group));
+        const auto found = placed.find(info.key);
+        if (found == placed.end()) continue;
+        fill(group, found->second);
+        groups.push_back(std::move(group));
+    }
+    // The folders big enough to be categories of their own, by name, after
+    // the categories.
+    for (const auto& [key, title] : folderTitles) {
+        const auto found = placed.find(key);
+        if (found == placed.end()) continue;
+        AppGroup group;
+        group.category = AppCategory::Folder;
+        group.key = key;
+        group.title = title;
+        group.icon = "folder.svg";
+        fill(group, found->second);
+        groups.push_back(std::move(group));
     }
     return groups;
 }

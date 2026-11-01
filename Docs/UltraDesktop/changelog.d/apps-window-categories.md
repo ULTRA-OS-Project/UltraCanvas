@@ -16,6 +16,17 @@
   - The window opens first and fills when the list has been read, on a
     thread of its own; the desktop reads the list ahead of time five seconds
     after it starts, so the window usually shows it at once.
+  - About 2,400 well-known Windows, macOS and Linux applications are known
+    by name (`UltraDesktopAppCatalogue`), a German Windows 11 Start menu's
+    175 among them; on macOS a bundle's `LSApplicationCategoryType` counts.
+  - A Windows Start-menu folder with five or more applications (MAGIX,
+    Lenovo, LAV Filters) is a category of its own; Windows' own folders are
+    not.
+  - An application dragged onto another category - a tile onto a heading
+    or the tiles under it, a list row onto a category in the tree - or
+    moved with *Move to* on its menu stays there; *Back to …* returns it.
+  - A click on a row of the list starts the application on the release, so
+    a press can begin a drag.
   - The desktop's settings keep the history (`recentApps`), the view
-    (`appsView`), the threshold (`appsSplitAbove`) and Recent's count
-    (`recentAppsShown`).
+    (`appsView`), the threshold (`appsSplitAbove`), Recent's count
+    (`recentAppsShown`) and the moved applications (`appMoves`).

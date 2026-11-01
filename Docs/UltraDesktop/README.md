@@ -220,6 +220,19 @@ the right-hand monitor the primary.
     its Start-menu folder are matched against well-known applications and
     words in English and German (Excel, Outlook, *Datenträgerbereinigung*,
     a shortcut under *Windows Tools*); what matches nothing is in Tools.
+    The names come from a catalogue of about 2,400 well-known Windows,
+    macOS and Linux applications (`UltraDesktopAppCatalogue.cpp`); on macOS
+    a bundle's `LSApplicationCategoryType` is read as its category.
+  - **Folders.** On Windows a Start-menu folder holding five or more
+    applications - a maker's folder such as MAGIX, Lenovo or LAV Filters - is
+    a category of its own, after the others, named after the folder.
+    Windows' own folders (Windows Tools, Accessories, System Tools) are not:
+    their applications are in System.
+  - **Moving an application.** Drag a tile onto another category's heading
+    or tiles, or a row of the list onto a category in the tree; or choose
+    *Move to* on its right-click menu. It stays there (`appMoves` in the
+    desktop's settings); *Back to …* - or dragging it back - returns it to
+    the category its own name gives it.
   - **Sub-categories.** A category with more than eight applications (UOS-
     Settings > Desktop > *Sub-categories*) is split into its kinds - Web
     browsers, Email, Painting, Photos, Text editors; for Games 3D, Retro,

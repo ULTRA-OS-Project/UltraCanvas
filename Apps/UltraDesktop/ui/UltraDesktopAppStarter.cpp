@@ -1,5 +1,6 @@
 // Apps/UltraDesktop/ui/UltraDesktopAppStarter.cpp
 // The Apps window. See the header.
+// Version: 0.4.0 - drag an application onto another category; Move to; folder categories
 // Version: 0.3.0 - categories, Recent, tiles and tree-and-list, read after the window is open
 // Version: 0.2.0 - pin to the taskbar
 // Version: 0.1.0
@@ -10,6 +11,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasApplication.h"
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
@@ -42,6 +44,7 @@ constexpr float kGap = 6;
 constexpr int kListIcon = 24;
 constexpr float kTreeWidth = 210;
 constexpr auto kListFresh = std::chrono::minutes(2);   // a kept list older than this is read again
+constexpr int kDragDistance = 6;                       // px the pointer moves before a press is a drag
 
 const Color kHeadingColor(40, 40, 40, 255);
 const Color kSubheadingColor(105, 105, 105, 255);
@@ -199,6 +202,8 @@ void UltraDesktopAppStarter::Open() {
     // read on a thread of its own.
     window_->Show();
     filterBox_->SetFocus(true);
+    window_->InstallEventFilter("appsDrag", [this](const UCEvent& event) { return OnPointerEvent(event); },
+                                {UCEventType::MouseDown, UCEventType::MouseMove, UCEventType::MouseUp});
 
     AppList kept;
     bool fresh = false;
@@ -238,6 +243,10 @@ void UltraDesktopAppStarter::SetView(const std::string& view) {
 void UltraDesktopAppStarter::Rebuild() {
     if (!body_) return;
     body_->ClearChildren();
+    tileApps_.clear();
+    dropZones_.clear();
+    tilesArea_ = nullptr;
+    nodeGroup_.clear();
     tree_.reset();
     list_.reset();
     listModel_.reset();
@@ -254,7 +263,9 @@ void UltraDesktopAppStarter::Rebuild() {
     options.recentShown = hooks_.recentShown;
     options.splitAbove = hooks_.splitAbove;
     options.filter = filter_;
-    const std::vector<AppGroup> groups = GroupApplications(*apps_, options);
+    if (hooks_.moved) options.moved = hooks_.moved();
+    groups_ = GroupApplications(*apps_, options);
+    const std::vector<AppGroup>& groups = groups_;
 
     size_t shown = 0;
     for (const AppGroup& group : groups) {
@@ -299,6 +310,8 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
         heading->AddChild(icon);
         heading->AddChild(MakeHeading("appsTitle:" + group.key, group.title, 16, kHeadingColor));
         scroll->AddChild(heading);
+        const bool dropHere = group.category != AppCategory::Recent;
+        if (dropHere) dropZones_.push_back({heading.get(), group.key});
 
         for (size_t s = 0; s < group.sections.size(); ++s) {
             const AppSection& section = group.sections[s];
@@ -307,6 +320,7 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
                                        kSubheadingColor);
                 sub->SetMargin(6, 0, 0, 34);
                 scroll->AddChild(sub);
+                if (dropHere) dropZones_.push_back({sub.get(), group.key});
             }
             auto grid = CreateContainer("appsGrid:" + group.key + ":" + std::to_string(s), 0, 0, 0, 0);
             grid->layout.SetFlexRow().SetFlexWrap(CSSLayout::FlexWrap::Wrap).SetFlexGap(kGap)
@@ -339,13 +353,22 @@ void UltraDesktopAppStarter::BuildTiles(const std::vector<AppGroup>& groups) {
                 tile->SetTooltip(about.empty() ? entry.name : entry.name + "\n" + about);
                 tile->layoutItem.SetFlexShrink(0.0f);
                 const UCDesktopEntry launched = entry;
-                tile->onClick = [this, launched]() { Launch(launched); };
+                tile->onClick = [this, launched]() {
+                    if (suppressClick_) {   // the end of a drag, not a click
+                        suppressClick_ = false;
+                        return;
+                    }
+                    Launch(launched);
+                };
+                tileApps_.push_back({tile.get(), index});
                 tile->onContextMenu = [this, launched](int x, int y) { ShowAppMenu(launched, x, y); };
                 grid->AddChild(tile);
             }
             scroll->AddChild(grid);
+            if (dropHere) dropZones_.push_back({grid.get(), group.key});
         }
     }
+    tilesArea_ = scroll.get();
     body_->AddChild(scroll);
 }
 
@@ -372,6 +395,7 @@ void UltraDesktopAppStarter::BuildTreeAndList(const std::vector<AppGroup>& group
         data.leftIcon = TreeNodeIcon(IconsDir() + group.icon, 18, 18);
         data.showFirstChildOnExpand = false;
         tree_->AddNode("apps", data);
+        if (group.category != AppCategory::Recent) nodeGroup_[id] = group.key;
         std::vector<size_t>& all = nodeApps_[id];
         for (size_t s = 0; s < group.sections.size(); ++s) {
             const AppSection& section = group.sections[s];
@@ -380,6 +404,7 @@ void UltraDesktopAppStarter::BuildTreeAndList(const std::vector<AppGroup>& group
             const std::string subId = id + ":" + std::to_string(s);
             tree_->AddNode(id, TreeNodeData(subId, section.title + "  (" + std::to_string(section.apps.size()) + ")"));
             nodeApps_[subId] = section.apps;
+            if (group.category != AppCategory::Recent) nodeGroup_[subId] = group.key;
         }
         // A split category lists its applications by name.
         if (group.sections.size() > 1) {
@@ -405,10 +430,12 @@ void UltraDesktopAppStarter::BuildTreeAndList(const std::vector<AppGroup>& group
     list_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     list_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     // One click starts, as on the tiles; Return starts the selected row.
-    list_->onItemClicked = [this](int row) {
+    // One click starts, as on the tiles - on the release, which the drag
+    // filter sees (OnPointerEvent): the list reports a click on the press,
+    // and a press may be the start of a drag. Return starts the selected row.
+    list_->onItemActivated = [this](int row) {
         if (row >= 0 && static_cast<size_t>(row) < listed_.size()) Launch((*apps_)[listed_[row]]);
     };
-    list_->onItemActivated = list_->onItemClicked;
     list_->onContextMenu = [this](int row, const UCEvent& event) {
         if (row < 0 || static_cast<size_t>(row) >= listed_.size()) return;
         ShowAppMenu((*apps_)[listed_[row]], event.pointerWindow.x, event.pointerWindow.y);
@@ -459,8 +486,194 @@ void UltraDesktopAppStarter::ShowAppMenu(const UCDesktopEntry& entry, int window
         menu_->AddItem(MenuItemData::Action(pinned ? "Unpin from taskbar" : "Pin to taskbar",
                                             [this, entry, pinned]() { hooks_.setPinned(entry, !pinned); }));
     }
+    if (hooks_.setMoved && hooks_.keyOf) {
+        // The same as dragging it onto a category.
+        std::string current;
+        for (const AppGroup& group : groups_) {
+            if (group.category == AppCategory::Recent) continue;
+            for (const AppSection& section : group.sections) {
+                for (size_t index : section.apps) {
+                    if ((*apps_)[index].exec == entry.exec && (*apps_)[index].name == entry.name) current = group.key;
+                }
+            }
+        }
+        std::vector<MenuItemData> targets;
+        for (const AppGroup& group : groups_) {
+            if (group.category == AppCategory::Recent || group.key == current) continue;
+            const std::string key = group.key;
+            targets.push_back(MenuItemData::Action(group.title, IconsDir() + group.icon,
+                                                   [this, entry, key]() { MoveApp(entry, key); }));
+        }
+        // Categories with nothing in them yet are targets too.
+        for (const AppCategoryInfo& info : AppCategories()) {
+            if (info.category == AppCategory::Recent || current == info.key) continue;
+            bool listed = false;
+            for (const AppGroup& group : groups_) listed = listed || group.key == info.key;
+            if (listed) continue;
+            const std::string key = info.key;
+            targets.push_back(MenuItemData::Action(info.title, IconsDir() + info.icon,
+                                                   [this, entry, key]() { MoveApp(entry, key); }));
+        }
+        menu_->AddItem(MenuItemData::Submenu("Move to", targets));
+        const std::string natural = NaturalGroupOf(entry);
+        const auto moved = hooks_.moved ? hooks_.moved() : std::map<std::string, std::string>();
+        if (moved.count(hooks_.keyOf(entry)) && natural != current) {
+            std::string title = natural;
+            for (const AppCategoryInfo& info : AppCategories()) {
+                if (info.key == natural) title = info.title;
+            }
+            if (natural.rfind(kFolderGroupPrefix, 0) == 0) title = natural.substr(std::string(kFolderGroupPrefix).size());
+            menu_->AddItem(MenuItemData::Action("Back to " + title, [this, entry]() { MoveApp(entry, ""); }));
+        }
+    }
     PopupElementSettings settings;
     menu_->OpenMenu(Point2Di(windowX, windowY), *window_, settings);
+}
+
+// ===== DRAGGING TO ANOTHER CATEGORY =====
+
+long UltraDesktopAppStarter::AppAt(const Point2Df& point, int* listRow) const {
+    if (listRow) *listRow = -1;
+    if (tilesArea_ && tilesArea_->ContainsInWindow(point)) {
+        for (const auto& [tile, index] : tileApps_) {
+            if (tile->ContainsInWindow(point)) return static_cast<long>(index);
+        }
+    }
+    if (list_ && list_->ContainsInWindow(point) && apps_) {
+        const Point2Df local = list_->MapToLocal(point);
+        for (size_t row = 0; row < listed_.size(); ++row) {
+            const Rect2Di cell = list_->GetCellRect(static_cast<int>(row), 0);
+            if (cell.height <= 0) continue;
+            if (local.y >= cell.y && local.y < cell.y + cell.height) {
+                if (listRow) *listRow = static_cast<int>(row);
+                return static_cast<long>(listed_[row]);
+            }
+        }
+    }
+    return -1;
+}
+
+std::string UltraDesktopAppStarter::GroupAt(const Point2Df& point) const {
+    if (tilesArea_ && tilesArea_->ContainsInWindow(point)) {
+        for (const auto& [zone, key] : dropZones_) {
+            if (zone->ContainsInWindow(point)) return key;
+        }
+    }
+    if (tree_ && tree_->ContainsInWindow(point)) {
+        const Point2Df local = tree_->MapToLocal(point);
+        if (TreeNode* node = tree_->GetNodeAtY(static_cast<int>(local.y))) {
+            const auto found = nodeGroup_.find(node->data.nodeId);
+            if (found != nodeGroup_.end()) return found->second;
+        }
+    }
+    return "";
+}
+
+std::string UltraDesktopAppStarter::NaturalGroupOf(const UCDesktopEntry& entry) const {
+    const std::string folder = AppFolderOf(entry);
+    if (!folder.empty() && apps_) {
+        size_t inFolder = 0;
+        for (const UCDesktopEntry& other : *apps_) inFolder += AppFolderOf(other) == folder ? 1 : 0;
+        if (inFolder >= AppGroupingOptions().folderGroupAt) return kFolderGroupPrefix + folder;
+    }
+    return AppCategoryInfoOf(PlaceApplication(entry).category).key;
+}
+
+void UltraDesktopAppStarter::MoveApp(const UCDesktopEntry& entry, const std::string& groupKey) {
+    if (!hooks_.setMoved || !hooks_.keyOf) return;
+    // Moved back where it belongs: no move to remember.
+    const std::string to = groupKey == NaturalGroupOf(entry) ? std::string() : groupKey;
+    hooks_.setMoved(hooks_.keyOf(entry), to);
+    RebuildSoon();
+}
+
+void UltraDesktopAppStarter::RebuildSoon() {
+    // Not inside the event that asked for it: the tiles it would replace
+    // are the ones handling it.
+    std::weak_ptr<int> alive = alive_;
+    if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+        app->PostToUIThread([this, alive]() {
+            if (alive.lock() && open_) Rebuild();
+        });
+    }
+}
+
+void UltraDesktopAppStarter::ShowDragLabel(const Point2Di& at, const std::string& text) {
+    if (!window_) return;
+    if (!dragLabel_) {
+        dragLabel_ = CreateLabel("appsDragLabel", text);
+        dragLabel_->SetBackgroundColor(Color(32, 32, 36, 230));
+        dragLabel_->SetTextColor(Colors::White);
+        dragLabel_->SetPadding(4, 8);
+        dragLabel_->SetFontSize(12);
+        window_->AddChild(dragLabel_);
+    }
+    dragLabel_->SetText(text);
+    dragLabel_->SetElementSize(Size2Df(260, 24));
+    dragLabel_->SetElementAbsolutePosition(Point2Df(static_cast<float>(at.x + 14), static_cast<float>(at.y + 10)));
+    window_->RequestRedraw();
+}
+
+void UltraDesktopAppStarter::HideDragLabel() {
+    if (dragLabel_ && window_) {
+        window_->RemoveChild(dragLabel_);
+        window_->RequestRedraw();
+    }
+    dragLabel_.reset();
+}
+
+bool UltraDesktopAppStarter::OnPointerEvent(const UCEvent& event) {
+    const Point2Df point(static_cast<float>(event.pointerWindow.x), static_cast<float>(event.pointerWindow.y));
+    switch (event.type) {
+        case UCEventType::MouseDown: {
+            suppressClick_ = false;
+            drag_ = Drag();
+            if (event.button != UCMouseButton::Left || !apps_) return false;
+            int row = -1;
+            const long app = AppAt(point, &row);
+            if (app < 0) return false;
+            drag_.pressed = true;
+            drag_.app = app;
+            drag_.listRow = row;
+            drag_.start = event.pointerWindow;
+            return false;
+        }
+        case UCEventType::MouseMove: {
+            if (!drag_.pressed) return false;
+            const int dx = event.pointerWindow.x - drag_.start.x;
+            const int dy = event.pointerWindow.y - drag_.start.y;
+            if (!drag_.dragging && dx * dx + dy * dy < kDragDistance * kDragDistance) return false;
+            drag_.dragging = true;
+            drag_.target = GroupAt(point);
+            std::string target = "drop it on a category";
+            for (const AppGroup& group : groups_) {
+                if (group.key == drag_.target) target = group.title;
+            }
+            ShowDragLabel(event.pointerWindow, (*apps_)[drag_.app].name + "  \u2192  " + target);
+            return false;
+        }
+        case UCEventType::MouseUp: {
+            if (!drag_.pressed) return false;
+            const Drag ended = drag_;
+            drag_ = Drag();
+            if (ended.dragging) {
+                HideDragLabel();
+                suppressClick_ = true;
+                const std::string target = GroupAt(point);
+                if (!target.empty()) MoveApp((*apps_)[ended.app], target);
+                return false;
+            }
+            // A click on a list row starts the application, on the release.
+            if (ended.listRow >= 0) {
+                int row = -1;
+                const long app = AppAt(point, &row);
+                if (app == ended.app && row == ended.listRow) Launch((*apps_)[app]);
+            }
+            return false;
+        }
+        default:
+            return false;
+    }
 }
 
 void UltraDesktopAppStarter::Launch(const UCDesktopEntry& entry) {

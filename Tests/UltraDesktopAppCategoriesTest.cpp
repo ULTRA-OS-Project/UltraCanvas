@@ -22,6 +22,7 @@
 #include <iostream>
 #include <iterator>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace UltraCanvas;
@@ -204,6 +205,84 @@ void TestWindowsStartMenu() {
     Check(wrong == 0, std::to_string(std::size(expected)) + " Start-menu names, each in its category");
 }
 
+void CheckNames(const char* what, const std::vector<std::pair<const char*, AppCategory>>& expected,
+                const std::string& folder) {
+    int wrong = 0;
+    for (const auto& [name, category] : expected) {
+        const UCDesktopEntry entry =
+            Entry(name, {}, "", folder.empty() ? "" : folder + std::string(name) + ".lnk");
+        const AppPlace place = PlaceApplication(entry);
+        if (place.category != category) {
+            ++wrong;
+            std::cout << "         " << name << ": " << AppCategoryInfoOf(place.category).title << ", not "
+                      << AppCategoryInfoOf(category).title << "\n";
+        }
+    }
+    Check(wrong == 0, std::to_string(expected.size()) + " " + what + ", each in its category");
+}
+
+// macOS' own applications, by name (a macOS listing reports no categories
+// for most of them), and the type a bundle declares.
+void TestMacOS() {
+    std::cout << "macOS\n";
+    using C = AppCategory;
+    CheckNames("macOS applications",
+               {{"Pages", C::Office}, {"Numbers", C::Office}, {"Keynote", C::Office}, {"Safari", C::Internet},
+                {"Finder", C::System}, {"Xcode", C::Tools}, {"GarageBand", C::Audio}, {"iMovie", C::Video},
+                {"Final Cut Pro", C::Video}, {"Logic Pro", C::Audio}, {"Preview", C::Graphics},
+                {"TextEdit", C::Tools}, {"Activity Monitor", C::System}, {"Disk Utility", C::System},
+                {"System Settings", C::System}, {"App Store", C::System}, {"Messages", C::Internet},
+                {"FaceTime", C::Internet}, {"Music", C::Audio}, {"TV", C::Video}, {"Podcasts", C::Audio},
+                {"Photo Booth", C::Graphics}, {"QuickTime Player", C::Video}, {"Keychain Access", C::Tools},
+                {"Console", C::System}, {"Notes", C::Office}, {"Reminders", C::Office}, {"Books", C::Office},
+                {"Stocks", C::Office}, {"Home", C::Tools}, {"Find My", C::Tools}, {"Freeform", C::Office},
+                {"Chess", C::Games}, {"Font Book", C::Graphics}, {"Screenshot", C::Graphics},
+                {"Migration Assistant", C::System}, {"Time Machine", C::System}, {"VoiceOver Utility", C::Tools},
+                {"Grapher", C::Office}, {"Audio MIDI Setup", C::Audio}, {"Image Capture", C::Graphics},
+                {"Stickies", C::Office}, {"Dictionary", C::Office}, {"Calculator", C::Tools},
+                {"Weather", C::Tools}, {"Passwords", C::Tools}, {"Shortcuts", C::Tools}, {"Automator", C::Tools}},
+               "");
+    UCDesktopEntry bundle = Entry("Some Game", {"public.app-category.strategy-games"});
+    Check(Placed(bundle, AppCategory::Games, "Strategy"), "LSApplicationCategoryType strategy-games is Games, Strategy");
+    bundle = Entry("Some Editor", {"public.app-category.developer-tools"});
+    Check(PlaceApplication(bundle).category == AppCategory::Tools, "developer-tools is Tools");
+}
+
+// Applications people install on every system, by name.
+void TestPopularApplications() {
+    std::cout << "Popular applications\n";
+    using C = AppCategory;
+    CheckNames("popular applications",
+               {{"Spotify", C::Audio}, {"Slack", C::Internet}, {"Discord", C::Internet}, {"Steam", C::Games},
+                {"Visual Studio Code", C::Tools}, {"IntelliJ IDEA Community Edition", C::Tools},
+                {"Blender", C::Graphics}, {"OBS Studio", C::Video}, {"VLC media player", C::Video},
+                {"Zoom", C::Internet}, {"Notion", C::Office}, {"Obsidian", C::Office}, {"1Password", C::Tools},
+                {"Bitwarden", C::Tools}, {"DaVinci Resolve", C::Video}, {"Audacity", C::Audio}, {"GIMP", C::Graphics},
+                {"Inkscape", C::Graphics}, {"Krita", C::Graphics}, {"LibreOffice Writer", C::Office},
+                {"Docker Desktop", C::Tools}, {"Postman", C::Tools}, {"Oracle VM VirtualBox", C::System},
+                {"qBittorrent", C::Internet}, {"Minecraft Launcher", C::Games}, {"Epic Games Launcher", C::Games},
+                {"Cities: Skylines", C::Games}, {"Sid Meier's Civilization VI", C::Games},
+                {"Stardew Valley", C::Games}, {"Counter-Strike 2", C::Games}, {"RetroArch", C::Games},
+                {"Microsoft Solitaire Collection", C::Games}, {"PrusaSlicer", C::CAD}, {"KiCad", C::CAD},
+                {"FreeCAD", C::CAD}, {"SketchUp", C::CAD}, {"Signal", C::Internet}, {"Brave", C::Internet},
+                {"Adobe Photoshop 2025", C::Graphics}, {"Adobe Premiere Pro 2025", C::Video},
+                {"Adobe Acrobat", C::Office}, {"Microsoft Outlook", C::Internet}, {"Thunderbird", C::Internet},
+                {"Calibre", C::Office}, {"Zotero", C::Office}, {"Anki", C::Office}, {"GnuCash", C::Office},
+                {"FileZilla", C::Internet}, {"WinSCP", C::Internet}, {"PuTTY", C::Internet},
+                {"Wireshark", C::Internet}, {"7-Zip File Manager", C::Tools}, {"WinRAR", C::Tools},
+                {"Notepad++", C::Tools}, {"Sublime Text", C::Tools}, {"CCleaner", C::System},
+                {"HWiNFO64", C::System}, {"CPU-Z", C::System}, {"CrystalDiskInfo", C::System},
+                {"Logitech G HUB", C::System}, {"NVIDIA App", C::System}, {"Rufus", C::Tools},
+                {"Ventoy", C::Tools}, {"Kodi", C::Video}, {"Plex", C::Video}, {"foobar2000", C::Audio},
+                {"MusicBee", C::Audio}, {"Ableton Live 12 Suite", C::Audio}, {"FL Studio 2024", C::Audio},
+                {"REAPER", C::Audio}, {"Everything", C::Tools}, {"PowerToys (Preview)", C::Tools},
+                {"Total Commander", C::System}, {"WinDirStat", C::System}, {"Macrium Reflect", C::System},
+                {"VMware Workstation Pro", C::System}, {"ShareX", C::Graphics}, {"Greenshot", C::Graphics},
+                {"Paint.NET", C::Graphics}, {"IrfanView", C::Graphics}, {"Affinity Designer 2", C::Graphics},
+                {"Figma", C::Graphics}, {"Canva", C::Graphics}, {"Mixed Reality Portal", C::System}},
+               "");
+}
+
 void TestGrouping() {
     std::cout << "GroupApplications\n";
     std::vector<UCDesktopEntry> apps;
@@ -261,6 +340,62 @@ void TestGrouping() {
     Check(!groups.empty() && groups[0].category != AppCategory::Recent, "no history: no Recent");
 }
 
+void TestFoldersAndMoves() {
+    std::cout << "Folders and moves\n";
+    const std::string menu = "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\";
+    std::vector<UCDesktopEntry> apps;
+    const char* magix[] = {"MAGIX Capture", "MAGIX Connect", "MAGIX Movie Edit Pro Plus", "MAGIX Movie Studio",
+                           "MAGIX Travel Maps"};
+    for (const char* name : magix) apps.push_back(Entry(name, {}, "", menu + "MAGIX\\" + name + ".lnk"));
+    const char* tools[] = {"Dienste", "Ereignisanzeige", "Computerverwaltung", "Aufgabenplanung", "Ressourcenmonitor",
+                           "Komponentendienste"};
+    for (const char* name : tools) apps.push_back(Entry(name, {}, "", menu + "Windows Tools\\" + name + ".lnk"));
+    apps.push_back(Entry("Qt Creator", {}, "", menu + "Qt\\Qt Creator.lnk"));
+    apps.push_back(Entry("Qt Maintenance Tool", {}, "", menu + "Qt\\Qt Maintenance Tool.lnk"));
+    apps.push_back(Entry("Excel", {}, "", menu + "Excel.lnk"));
+
+    Check(AppFolderOf(apps[0]) == "MAGIX", "a shortcut's folder is its Start-menu folder");
+    Check(AppFolderOf(apps[5]).empty(), "Windows Tools is Windows' own folder, not a category");
+    Check(AppFolderOf(apps.back()).empty(), "a shortcut at the top of the Start menu has none");
+
+    AppGroupingOptions options;
+    options.keyOf = [](const UCDesktopEntry& e) { return e.program; };
+    std::vector<AppGroup> groups = GroupApplications(apps, options);
+    const AppGroup* folder = nullptr;
+    bool qt = false;
+    for (const AppGroup& g : groups) {
+        if (g.key == std::string(kFolderGroupPrefix) + "MAGIX") folder = &g;
+        if (g.key == std::string(kFolderGroupPrefix) + "Qt") qt = true;
+    }
+    Check(folder && folder->count == 5 && folder->title == "MAGIX" && folder->category == AppCategory::Folder,
+          "five applications in one folder are a category of their own, named after it");
+    Check(!groups.empty() && groups.back().category == AppCategory::Folder, "after the other categories");
+    Check(!qt, "two in a folder stay where their names put them");
+    size_t system = 0;
+    for (const AppGroup& g : groups) {
+        if (g.category == AppCategory::System) system = g.count;
+    }
+    Check(system == 6, "Windows Tools' applications stay in System");
+
+    options.moved["/usr/bin/Excel"] = "games";
+    options.moved["/usr/bin/MAGIX Travel Maps"] = "tools";
+    options.moved["/usr/bin/Dienste"] = "folder:MAGIX";
+    options.moved["/usr/bin/Qt Creator"] = "folder:Gone";
+    groups = GroupApplications(apps, options);
+    auto countOf = [&groups](const std::string& key) {
+        for (const AppGroup& g : groups) {
+            if (g.key == key) return g.count;
+        }
+        return size_t(0);
+    };
+    Check(countOf("games") == 1, "an application dragged to Games is in Games");
+    Check(countOf("folder:MAGIX") == 5, "one dragged out of a folder category and one into it");
+    Check(countOf("tools") >= 2, "the one dragged out is where it was dragged (Tools)");
+    Check(countOf("tools") + countOf("games") + countOf("system") + countOf("office") + countOf("folder:MAGIX") ==
+              apps.size(),
+          "a move to a folder category that is not there is ignored");
+}
+
 void TestSettings() {
     std::cout << "Settings\n";
     DesktopSettings settings;
@@ -270,6 +405,8 @@ void TestSettings() {
     Check(settings.recentApps == std::vector<std::string>({"a", "b"}), "the latest first, once each");
     for (int i = 0; i < 40; ++i) settings.NoteAppStarted("k" + std::to_string(i));
     Check(settings.recentApps.size() == DesktopSettings::kRecentAppsKept, "at most kRecentAppsKept kept");
+    settings.appMoves["/usr/bin/firefox"] = "games";
+    settings.appMoves["C:\\x.lnk"] = "folder:MAGIX";
     settings.appsView = "tree";
     settings.appsSplitAbove = 12;
     settings.recentAppsShown = 6;
@@ -277,6 +414,7 @@ void TestSettings() {
     DesktopSettings loaded;
     Check(loaded.FromJson(settings.ToJson()), "the settings read back");
     Check(loaded.recentApps == settings.recentApps, "the history survives a save");
+    Check(loaded.appMoves == settings.appMoves, "the applications moved to another category survive a save");
     Check(loaded.appsView == "tree" && loaded.appsSplitAbove == 12 && loaded.recentAppsShown == 6,
           "the view, the threshold and Recent's count survive a save");
 
@@ -294,7 +432,10 @@ int main() {
     TestGames();
     TestWindowsShortcuts();
     TestWindowsStartMenu();
+    TestMacOS();
+    TestPopularApplications();
     TestGrouping();
+    TestFoldersAndMoves();
     TestSettings();
     std::cout << (g_failures == 0 ? "All passed\n" : std::to_string(g_failures) + " failed\n");
     return g_failures == 0 ? 0 : 1;

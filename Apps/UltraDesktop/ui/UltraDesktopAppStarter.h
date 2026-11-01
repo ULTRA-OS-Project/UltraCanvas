@@ -20,6 +20,8 @@
 // of time (Preload, a little after it starts), and a later Open shows that
 // list at once and reads it again behind it. One click starts an
 // application; a right click pins it to the taskbar or unpins it.
+// Version: 0.4.0 - an application dragged onto another category (or moved by
+//                  its menu) stays there; a big Start-menu folder is a category
 // Version: 0.3.0 - categories and sub-categories, Recent, the tiles and the
 //                  tree-and-list views, read off the UI thread after the
 //                  window is open; names wrap on the tiles
@@ -50,6 +52,8 @@ namespace UltraCanvas {
     class UltraCanvasSegmentedControl;
     class UltraCanvasSimpleListModel;
     class UltraCanvasTreeView;
+    class UltraCanvasUIElement;
+    struct UCEvent;
 }
 
 namespace UltraDesktop {
@@ -76,6 +80,11 @@ public:
         std::string view = "tiles";      // "tiles" | "tree"
         // The person switched the view: remembered for the next time.
         std::function<void(const std::string& view)> setView;
+        // Applications dragged to another category (DesktopSettings::
+        // appMoves: history key -> category key), and a new move ("" puts
+        // the application back where its own categories put it).
+        std::function<std::map<std::string, std::string>()> moved;
+        std::function<void(const std::string& key, const std::string& groupKey)> setMoved;
     };
 
     explicit UltraDesktopAppStarter(Hooks hooks);
@@ -99,6 +108,41 @@ private:
     void SetView(const std::string& view);
     void Launch(const UltraCanvas::UCDesktopEntry& entry);
     void ShowAppMenu(const UltraCanvas::UCDesktopEntry& entry, int windowX, int windowY);
+
+    // ----- Dragging an application to another category -----
+    // The window's event filter: a press on a tile or a list row, a move of
+    // a few pixels, a release over a category (a heading or grid on the
+    // tiles, a node of the tree). It only watches - every event still
+    // reaches its element - and the tile's click after a drag is ignored.
+    bool OnPointerEvent(const UltraCanvas::UCEvent& event);
+    // The application under a window point (a tile, or a list row), -1 none.
+    long AppAt(const UltraCanvas::Point2Df& point, int* listRow = nullptr) const;
+    // The category under a window point ("" none, never Recent).
+    std::string GroupAt(const UltraCanvas::Point2Df& point) const;
+    // Where its own categories (and its Start-menu folder) put `entry`.
+    std::string NaturalGroupOf(const UltraCanvas::UCDesktopEntry& entry) const;
+    void MoveApp(const UltraCanvas::UCDesktopEntry& entry, const std::string& groupKey);
+    void ShowDragLabel(const UltraCanvas::Point2Di& at, const std::string& text);
+    void HideDragLabel();
+    void RebuildSoon();
+
+    struct Drag {
+        bool pressed = false;
+        bool dragging = false;
+        long app = -1;
+        int listRow = -1;              // the press was on this list row
+        UltraCanvas::Point2Di start;
+        std::string target;            // the category under the pointer
+    };
+    Drag drag_;
+    bool suppressClick_ = false;       // a drag just ended on a tile: no click
+    std::vector<std::pair<UltraCanvas::UltraCanvasUIElement*, size_t>> tileApps_;      // tile -> application
+    std::vector<std::pair<UltraCanvas::UltraCanvasUIElement*, std::string>> dropZones_; // heading/grid -> category
+    UltraCanvas::UltraCanvasUIElement* tilesArea_ = nullptr;
+    std::map<std::string, std::string> nodeGroup_;   // tree node id -> category key
+    std::vector<AppGroup> groups_;                    // what the view shows now
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> dragLabel_;
+    std::shared_ptr<int> alive_ = std::make_shared<int>(0);
 
     Hooks hooks_;
     UltraDesktopPanelWork work_;

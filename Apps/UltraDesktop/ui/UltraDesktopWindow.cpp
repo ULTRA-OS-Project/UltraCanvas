@@ -1126,6 +1126,16 @@ void UltraDesktopWindow::OpenAppStarter() {
         settings_.appsView = view;
         SaveSettings();
     };
+    hooks.moved = [this]() { return settings_.appMoves; };
+    hooks.setMoved = [this](const std::string& key, const std::string& groupKey) {
+        if (key.empty()) return;
+        if (groupKey.empty()) {
+            settings_.appMoves.erase(key);
+        } else {
+            settings_.appMoves[key] = groupKey;
+        }
+        SaveSettings();
+    };
     appStarter_ = std::make_shared<UltraDesktopAppStarter>(std::move(hooks));
     appStarter_->Open();
 }

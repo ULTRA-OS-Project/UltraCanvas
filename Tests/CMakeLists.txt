@@ -1059,6 +1059,7 @@ if(TARGET UltraCanvas)
     message(STATUS "  Building UltraDesktopAppCategoriesTest...")
     add_executable(UltraDesktopAppCategoriesTest
         ${CMAKE_CURRENT_SOURCE_DIR}/UltraDesktopAppCategoriesTest.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCatalogue.cpp
         ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCategories.cpp
         ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopSettings.cpp
     )
