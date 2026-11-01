@@ -228,7 +228,9 @@ the right-hand monitor the primary.
     a bundle's `LSApplicationCategoryType` is read as its category.
   - **Folders.** On Windows a Start-menu folder holding five or more
     applications - a maker's folder such as MAGIX, Lenovo or LAV Filters - is
-    a category of its own, after the others, named after the folder.
+    a category of its own, after the others, named after the folder; on
+    macOS so is such a folder under `/Applications` (not `/Applications` or
+    `Utilities` themselves).
     Windows' own folders (Windows Tools, Accessories, System Tools) are not:
     their applications are in System.
   - **Moving an application.** Drag a tile onto another category's heading

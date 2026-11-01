@@ -61,7 +61,9 @@ extern const char* const kFolderGroupPrefix;  // "folder:"
 // The Start-menu folder `entry`'s shortcut lies in ("MAGIX"), "" for none, for
 // a shortcut at the top of the Start menu, and for Windows' own folders
 // (Windows Tools, Accessories, System Tools ...; English and German), whose
-// applications System and Tools hold.
+// applications System and Tools hold. On macOS, where the shortcut is the
+// application bundle, the folder below /Applications ("Adobe Photoshop
+// 2025"); /Applications and Utilities themselves are no folder of their own.
 std::string AppFolderOf(const UltraCanvas::UCDesktopEntry& entry);
 
 // One heading's applications: indices into the list GroupApplications got.

@@ -990,10 +990,12 @@ namespace DesktopShellBackend {
         return false;
     }
 
+#ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
     bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
     bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
         return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
     }
+#endif
     bool LaunchPackagedApplication(const std::string&, std::string& error) {
         error = "Microsoft Store applications run on Windows only.";
         return false;
