@@ -1,3 +1,20 @@
+#### 2026-11-01 *0.4.5*
+- **The bars' waves mirror each other and sit closer to the icons.** The
+  taskbar's wave between the system group and the running applications is
+  mirrored, so the dark band of running applications narrows the same way
+  at both ends. Every wave now starts 4 px from the icon next to it, where
+  it was 14 px away:
+  - on the taskbar, from the system group's last icon and from the pinned
+    group's first;
+  - on the right bar, from the organiser's last icon (the screenshot
+    button).
+- **The ULTRA OS logo on the settings button.** The taskbar's first button
+  showed a white "U" in a circle; it now shows the ULTRA OS logo in its own
+  colours, and, the logo being twice as wide as high, its button is wider
+  than the other items. The logo comes in two versions in
+  `media/icons/desktop/`: `ultraos-logo-dark.png` for a dark ground (the one
+  the bar uses) and `ultraos-logo-light.png` for a light ground.
+
 #### 2026-11-01 *0.4.4*
 - **Running applications show their own icons, in their own colours.** The
   taskbar's running-windows buttons drew every application's icon through the

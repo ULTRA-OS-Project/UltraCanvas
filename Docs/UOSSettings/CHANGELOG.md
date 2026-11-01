@@ -1,3 +1,9 @@
+#### 2026-11-01 *0.10.0*
+- **The ULTRA OS logo over the page tree.** The sidebar starts with the
+  ULTRA OS logo - the version drawn for a light ground
+  (`media/icons/desktop/ultraos-logo-light.png`), as UltraDesktop's dark
+  taskbar shows the one for a dark ground.
+
 #### 2026-11-01 *0.9.0*
 - **Desktop > Start with the desktop**: ChatCube and UltraMail, each a
   checkbox. A ticked program starts minimized a few seconds after

@@ -1,3 +1,10 @@
+#### 2026-11-01 *0.9.452*
+- **UltraCanvasWireless on macOS: the Wi-Fi list says what to do while
+  macOS asks for Location Services.** Until the person answered macOS's
+  question, an empty network list pointed them to System Settings; now it
+  says to allow it when macOS asks, and System Settings only once it has
+  been refused.
+
 #### 2026-11-01 *0.9.451*
 - **`UltraCanvasVideoTimeline` 1.4.0: a close-gap button in every gap of a
   free track.** Each empty stretch before a clip on a non-magnetic lane
