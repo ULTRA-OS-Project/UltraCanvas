@@ -1281,10 +1281,30 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `GetPollIntervalMs`, static `NativeBackendAvailable`. The callback runs on
     the monitor's thread and must only hand the news over; one insertion
     produces several callbacks, so the receiver coalesces.
+  - `ListGvfsVolumes` / `GvfsVolumeLabel` — on Linux, the places the desktop
+    mounted through GVFS (a phone over MTP, a camera, an iPhone, an SMB / SFTP
+    / WebDAV share) as labelled volumes; part of `ListMountedVolumes`, watched
+    by the Linux monitor every two seconds.
   Wired up per platform by the `ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR`
   condition in the **top-level** `CMakeLists.txt`; without it the core file
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
+- **UltraCanvasPortableDevices** (`UltraCanvasPortableDevices.h`) — phones,
+  cameras and media players plugged in over USB that are not a drive (MTP /
+  PTP). `List` (`PortableDeviceInfo`: id, name, manufacturer, kind),
+  `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete`, `Rename` by path
+  (`"/"` is the device, its folders its storages); every call blocks, safe
+  from any thread. `UltraCanvasPortableDeviceMonitor` reports plug-in and
+  pull-out. Backends: Windows Portable Devices on one COM thread of its own
+  (`OS/MSWindows/UltraCanvasWindowsPortableDevices.cpp`); macOS Image
+  Capture, read-only (`OS/MacOS/UltraCanvasMacOSPortableDevices.mm`: an
+  iPhone's photos, a camera's card); none on Linux (the desktop mounts
+  devices through GVFS - see above). Wired up by the
+  `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the top-level
+  `CMakeLists.txt`. UltraFiler carries devices as remote drives
+  (`UltraFilerDeviceProvider.h`). See
+  `Docs/UltraCanvas/UltraCanvasPortableDevices.md`.
 
 - **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
   desktop session locks and when it unlocks, so a program forgets what should
@@ -57882,6 +57902,117 @@ Layout values (centerX, plot width, padding) are recomputed by `CalculateLayout(
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — Line chart component
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasPortableDevices.md
+==============================================================================
+
+# UltraCanvasPortableDevices
+
+<!-- doc-check: void AddDeviceRow(const std::string& id, const std::string& name, PortableDeviceKind kind); -->
+<!-- doc-check: std::atomic<bool> devicesDirty; std::string id; -->
+
+Phones, cameras and media players plugged in over USB that are **not a drive**.
+A device that speaks MTP (Android phones, players) or PTP (cameras, an iPhone's
+photos) gets no drive letter and no mount point, so nothing that lists mounted
+volumes ([`UltraCanvasVolumeMonitor`](UltraCanvasVolumeMonitor.md)) sees it.
+Windows Explorer reaches such a device through Windows Portable Devices (WPD);
+this is the same access for an UltraCanvas application: which devices are
+connected, what is in a folder on one, and copying files off it and onto it.
+
+```cpp
+#include "UltraCanvasPortableDevices.h"
+
+for (const PortableDeviceInfo& d : UltraCanvasPortableDevices::List())
+    AddDeviceRow(d.id, d.name, d.kind);
+
+std::vector<PortableDeviceEntry> entries;
+std::string error;
+UltraCanvasPortableDevices::ListFolder(id, "/Internal shared storage/DCIM",
+                                       entries, error);
+
+UltraCanvasPortableDeviceMonitor monitor;
+monitor.Start([this]() { devicesDirty.store(true); });   // background thread!
+```
+
+## Paths, not object ids
+
+A device is addressed by paths, the way a disk is: `"/"` is the device, its
+folders are the **storages** it offers ("Internal shared storage", "SD card"),
+and below them the folders and files as the device names them. WPD itself knows
+objects by id; the backend resolves a path one name at a time from the device
+object and keeps every id a listing taught it, so walking down a phone's
+folders costs one listing per folder, as it would on a disk. A call that fails
+on an id the cache handed it — the file was deleted on the phone meanwhile —
+forgets the device's ids and resolves the path afresh, once.
+
+Paths reach the backend normalised (`NormalizePortableDevicePath`): a leading
+`'/'`, no trailing one, no empty segments, a backslash read as `'/'`.
+
+## Every call blocks
+
+A device answers over USB, which can take a while — a DCIM folder of thousands
+of photos is a property read per photo, a video is hundreds of megabytes. Run
+the calls off the UI thread; UltraFiler's drive worker does. They are safe from
+any thread: the Windows backend runs every WPD call on **one COM thread of its
+own** and the caller's thread waits for it. That gives the devices it opened one
+owner — they stay open between calls, so a second folder on the same phone does
+not cost a new MTP session — and a device answers one request at a time anyway.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `Available()` | Whether this build can reach portable devices at all. |
+| `List()` | The devices connected now: `PortableDeviceInfo { id, name, manufacturer, description, kind, readOnly }`. `readOnly` marks a device files can only be copied off (macOS's Image Capture): `Upload`, `MakeFolder`, `Delete` and `Rename` fail on it, so a file manager does not offer them. `id` is what every other call takes — stable while the device stays plugged in, and the same the next time it is plugged into the same port. `kind` is `Phone`, `Camera`, `MediaPlayer` or `Other`, from what the device says it is. |
+| `ListFolder(id, path, out, error)` | The entries of a folder: `PortableDeviceEntry { name, isDirectory, size, modifiedTime }` (`modifiedTime` UTC seconds, 0 when unknown). `"/"` lists the storages — a phone's other services (contacts, messages) are not folders and are left out. A root with no storage at all is an error that says what to do: a locked phone, or one left on "charging only", shows none. |
+| `Download(id, path, localFile, error, progress)` | Copies a file off the device into `localFile` (UTF-8), replacing it; a copy that fails part way is removed. |
+| `Upload(id, localFile, path, error, progress)` | Copies a local file onto the device as `path`. A file of that name already there is **replaced** — MTP would otherwise keep both under one name, so the caller asks first. |
+| `MakeFolder(id, path, error)` | Creates a folder; its parent must exist. |
+| `Delete(id, path, error)` | Deletes a file, or a folder with everything in it. The device and its storages refuse. |
+| `Rename(id, path, newName, error)` | Renames in place; `newName` is a bare name. |
+| `GetSpace(id, total, free, error)` | The device's capacity and free space in bytes, its storages added up — a phone's internal storage and its SD card are one device to the user. Read off the storage objects, so no folder is walked. Fails, with a reason, on a device that shows no storage (locked, or on "charging only"). |
+
+`progress` is asked as a transfer moves — `(bytesDone, bytesTotal)`, total 0
+when the device did not say — and returning `false` calls the transfer off; the
+call then fails with `"cancelled"`. An upload called off leaves nothing on the
+device: the object is only made when the copy is committed.
+
+## The monitor
+
+`UltraCanvasPortableDeviceMonitor` reports a device being plugged in or pulled
+out. It compares the connected devices every interval (`SetPollIntervalMs`,
+default 2000 ms): asking Windows which portable devices are present is a look at
+its device list, the devices themselves are not opened for it, and it needs no
+window to receive notifications on. The callback runs on the monitor's thread
+and must only hand the news over. `Start()` takes the first look at once, so a
+device already connected is not reported as arriving; it refuses when there is
+no backend. `Stop()` joins, so no callback runs after it returns.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Windows | WPD (`IPortableDeviceManager`, `IPortableDevice`), built into Windows since 7 — no extra library. The class ids and property keys are defined by the backend itself (`initguid.h`), so no WPD GUID import library is linked; mingw-w64 ships none. |
+| Linux | none — the desktop mounts such a device itself (GNOME's GVFS), and [`ListMountedVolumes`](UltraCanvasVolumeMonitor.md#gvfs-places) lists those places as volumes. |
+| macOS | Image Capture (`ImageCaptureCore`) — an iPhone's or an iPad's photos and videos and a camera's card, the access Photos and Image Capture.app have. **Read-only** (`readOnly` set): copying off works; it cannot put a file on an iPhone, make or rename a folder, or say how full the device is (`GetSpace` fails). Image Capture answers on the main thread, so a call hands its work there and waits with a timeout — and a call made *on* the main thread fails at once rather than wait for an answer only it could deliver (`List()` excepted). The first look at a device opens a session; an iPhone must be unlocked and have accepted "Trust This Computer", and the error says so. macOS has no MTP of its own: an Android phone is not reachable. |
+| Android, WebAssembly | none — `Available()` is false, `List()` is empty and every call says why. |
+
+A platform is wired up by dropping its backend under `UltraCanvas/OS/<Platform>/`
+and adding it to the `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the
+**top-level** `CMakeLists.txt`; without the define the core file compiles the
+null backend. The backend object lives until the process ends on purpose: it
+owns the thread the devices were opened on, and releasing them from a static
+destructor, after that thread is gone, is how a program crashes on its way out.
+
+## UltraFiler
+
+UltraFiler carries each connected device as a drive of its remote-drive
+machinery (`Apps/UltraFiler/UltraFilerDeviceProvider.h`): rows under *Computer*
+and cards on the Computer page with the used and free space ring a drive card
+has (`GetSpace`), the listing cache and its worker, preview
+copies, copy off and onto the device, rename, delete and new folder — and the
+device's account lives in a store that is never written to disk.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPresentationPptx.md
 ==============================================================================
 
@@ -82481,6 +82612,8 @@ debounce for you, because how long to wait is the caller's decision.
 |---|---|
 | `ListMountedVolumes()` | Every volume mounted right now, system root first, the rest sorted by path. Each is a `MountedVolume { path, label, isSystemRoot }`. |
 | `ListVolumeRoots()` | The same list, mount points only — the shape a caller that just navigates wants. |
+| `ListGvfsVolumes()` | The places a Linux desktop mounted through GVFS — a phone (MTP), a camera (gphoto2), an iPhone (AFC), a network share or server (SMB, SFTP, FTP, WebDAV, NFS, AFP) — each with a readable label. Part of `ListMountedVolumes()`; empty on Windows and macOS. See [GVFS places](#gvfs-places). |
+| `GvfsVolumeLabel(name)` | The label one GVFS mount name gets (`"mtp:host=Google_Pixel_8"` → `"Google Pixel 8"`); empty for a name that is not listed. For tests. |
 | `Start(onChanged)` | Report mounts and unmounts until `Stop()`. Uses the platform's notification where there is one and a polling thread where there is not, so it only fails on a missing callback. |
 | `Stop()` | Stop reporting. Joins whatever is running, so **no callback runs after it returns** — which is what makes it safe for the callback to capture the caller. Safe to call twice. |
 | `IsRunning()` / `IsNative()` | Whether it is watching, and whether the operating system is doing the reporting rather than the fallback thread. |
@@ -82506,7 +82639,7 @@ is rebuilt on every navigation. The mount table alone answers the question.
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `poll()` on `/proc/self/mountinfo` — the kernel reports `POLLPRI` when the mount table changes. A thread waits on that plus a self-pipe so `Stop()` wakes it immediately |
+| Linux, BSD | `poll()` on `/proc/self/mountinfo` — the kernel reports `POLLPRI` when the mount table changes. A thread waits on that plus a self-pipe so `Stop()` wakes it immediately, and wakes every two seconds to compare the GVFS places, which come and go without the mount table changing |
 | Windows | `WM_DEVICECHANGE` on a hidden top-level window with its own thread and message loop. It has to be a *real* top-level window: broadcast messages are not delivered to message-only (`HWND_MESSAGE`) windows |
 | macOS | `NSWorkspace` mount / unmount / rename notifications, on its own notification centre (the default one does not carry them) |
 | Android, WebAssembly, anything else | none — `Start()` runs the polling thread instead, so callers never need a fallback of their own |
@@ -82541,6 +82674,32 @@ udisks and hand-made `/mnt` entries leave behind out of the drive list.
 `/media` and `/run/media` (both also one level down, for the per-user directory
 udisks creates: `/media/bob/USB STICK`), plus `/Volumes` and `/mnt` flat. On
 Windows the mount table is the drive letters, and there is nothing to scan.
+On Linux the GVFS places follow the mounts.
+
+## GVFS places
+
+A phone plugged into a GNOME desktop is mounted by GVFS, not by the kernel:
+GVFS keeps one FUSE file system at `$XDG_RUNTIME_DIR/gvfs` (else
+`/run/user/<uid>/gvfs`) and every place the desktop opened is a directory in it
+— `mtp:host=SAMSUNG_Galaxy_S21_R58M123`, `gphoto2:host=Canon_Inc._Canon_Digital_Camera`,
+`afc:host=<udid>,port=3`, `smb-share:server=nas,share=photos`. None of them is a
+mount point, so the scan above cannot find them, and before `ListGvfsVolumes()`
+a phone that the desktop's own file manager showed was missing from every drive
+list. They are listed after the mounts, labelled from their names:
+
+| Mount name | Label |
+|---|---|
+| `mtp:host=SAMSUNG_Galaxy_S21_R58M12345` | `SAMSUNG Galaxy S21` — the serial (the last token, eight or more letters and digits with a digit) dropped, underscores read as spaces |
+| `mtp:host=[usb:002,010]` (older GVFS) | `Phone` (`Camera` for gphoto2) — a USB address names no device |
+| `afc:host=<udid>,port=3` | `iPhone or iPad` |
+| `smb-share:server=nas,share=photos` | `photos on nas` |
+| `sftp:host=example.com,user=bob` | `bob@example.com` (FTP, WebDAV, NFS and AFP alike) |
+
+A cloud account mounted there (`google-drive:`, `onedrive:`) is not a volume:
+`UltraCanvasCloudStorage` (`GetCloudStorageFolders`) lists those. Listing the
+directory is one round trip to the local GVFS daemon and never reaches a device
+or the network. KDE mounts devices through KIO, which has no file system path,
+so on KDE a phone stays out of reach.
 
 ## Reacting to a change
 
