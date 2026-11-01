@@ -24,8 +24,8 @@
 // the system has a program registered for it - start that program, the way
 // Explorer and the Finder do, or show the file in UltraFiler's preview),
 // Handling > Protected files (how long UltraFiler may go without input before
-// the preview forgets the passwords its Unlock was given), Handling > Tabs (what the "+" of the folder tab strip opens - the
-// current folder again or the Home folder), Extras > Open prompt (the command
+// the preview forgets the passwords its Unlock was given), Display > New tab (what the "+" of the folder tab strip opens - the
+// current folder again, the Home folder or the Computer page), Extras > Open prompt (the command
 // line program UltraFiler opens, picked with the file dialog and stored with
 // "Save app"), Extras > History & Favorites (how many entries each of the
 // History view's three lists keeps, and clearing the recently-used
@@ -120,6 +120,7 @@ namespace {
     constexpr const char* kPageDisplay = "display";
     constexpr const char* kPageTreeview = "display/treeview";
     constexpr const char* kPageTabStyle = "display/tab-style";
+    constexpr const char* kPageNewTab = "display/new-tab";
     constexpr const char* kPageHomeFolder = "display/home";
     constexpr const char* kPageFiles = "display/files";
     constexpr const char* kPageIgnoredFiles = "display/ignored-files";
@@ -133,7 +134,6 @@ namespace {
     constexpr const char* kPageHandling = "handling";
     constexpr const char* kPageDragDrop = "handling/drag-drop";
     constexpr const char* kPageFileOperations = "handling/file-operations";
-    constexpr const char* kPageTabs = "handling/tabs";
     constexpr const char* kPageOpeningFiles = "handling/opening-files";
     constexpr const char* kPageProtectedFiles = "handling/protected-files";
     constexpr const char* kPageExtras = "extras";
@@ -268,9 +268,10 @@ namespace {
         std::shared_ptr<UltraCanvasSlider>      progressDelaySlider;
         std::shared_ptr<UltraCanvasLabel>       progressDelayValue;
 
-        // Handling > Tabs: what the tab strip's "+" opens.
+        // Display > New tab: what the tab strip's "+" opens.
         std::shared_ptr<UltraCanvasRadio>       newTabCurrentRadio;
         std::shared_ptr<UltraCanvasRadio>       newTabHomeRadio;
+        std::shared_ptr<UltraCanvasRadio>       newTabComputerRadio;
         UltraCanvasRadioGroup                   newTabGroup;
 
         // Handling > Opening files: what a double-click on a file does when
@@ -2042,33 +2043,44 @@ namespace {
         return parts.page;
     }
 
-    // ===== HANDLING > TABS =====
-    std::shared_ptr<UltraCanvasContainer> BuildTabsPage(DialogState* d) {
-        PageParts parts = MakePage("ufl-set-page-tabs", "Tabs",
-                "New tab - what the \"+\" at the end of the tab strip opens:");
+    // ===== DISPLAY > NEW TAB =====
+    std::shared_ptr<UltraCanvasContainer> BuildNewTabPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-new-tab", "New tab",
+                "What the \"+\" at the end of the tab strip opens:");
 
-        const bool home = d->settings->newTabOpensHome;
+        AddBodyCaption(parts, "ufl-set-tab-options-caption", "Display options");
 
+        const FilerNewTabStart start = d->settings->newTabStart;
         d->newTabCurrentRadio = MakeChoice("ufl-set-tab-current",
-                "New view of the current folder", !home);
+                "Show current folder", start == FilerNewTabStart::CurrentFolder);
         d->newTabHomeRadio = MakeChoice("ufl-set-tab-home",
-                "Open the Home folder", home);
+                "Show Home folder", start == FilerNewTabStart::Home);
+        d->newTabComputerRadio = MakeChoice("ufl-set-tab-computer",
+                "Show Computer", start == FilerNewTabStart::Computer);
         d->newTabGroup.AddRadioButton(d->newTabCurrentRadio);
         d->newTabGroup.AddRadioButton(d->newTabHomeRadio);
+        d->newTabGroup.AddRadioButton(d->newTabComputerRadio);
         d->newTabGroup.onSelectionChanged =
                 [d](std::shared_ptr<UltraCanvasRadio> selected) {
             if (!selected || !d->settings) return;
-            d->settings->newTabOpensHome = (selected == d->newTabHomeRadio);
+            d->settings->newTabStart =
+                    selected == d->newTabHomeRadio     ? FilerNewTabStart::Home
+                  : selected == d->newTabComputerRadio ? FilerNewTabStart::Computer
+                                                       : FilerNewTabStart::CurrentFolder;
             ApplyAndSave(d);
         };
         parts.body->AddChild(d->newTabCurrentRadio);
         parts.body->AddChild(d->newTabHomeRadio);
+        parts.body->AddChild(d->newTabComputerRadio);
 
         AddNote(parts, "ufl-set-tab-note1",
-                "A new view of the current folder opens the tab on the folder "
-                "the active tab is showing, so the work carries on where it "
-                "is; the Home folder opens every new tab on the same starting "
-                "point instead.");
+                "The current folder opens the tab on the folder the active tab "
+                "is showing, so the work carries on where it is; the Home "
+                "folder opens every new tab on the same starting point "
+                "instead. Computer opens the Computer page - the drives with "
+                "their free space, Home and the cloud folders - with the Home "
+                "folder behind it, so a tab opened that way still has a folder "
+                "to show once a drive or folder is picked.");
         AddNote(parts, "ufl-set-tab-note2",
                 "Only the \"+\" follows this. A tab opened on a named folder - "
                 "the containing folder of a search result, an entry of the "
@@ -2974,6 +2986,7 @@ namespace {
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
         AddTreeNode(d, kPageDisplay, kPageTabStyle, "Tab style");
+        AddTreeNode(d, kPageDisplay, kPageNewTab, "New tab");
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, "Home folder");
         AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
         AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, "Ignored files");
@@ -2989,7 +3002,6 @@ namespace {
         AddTreeNode(d, kPageHandling, kPageFileOperations, "File operations");
         AddTreeNode(d, kPageHandling, kPageOpeningFiles, "Opening files");
         AddTreeNode(d, kPageHandling, kPageProtectedFiles, "Protected files");
-        AddTreeNode(d, kPageHandling, kPageTabs, "Tabs");
         AddTreeNode(d, "settings", kPageArchives, "Archives");
         AddTreeNode(d, kPageArchives, kPageTar, "TAR");
         AddTreeNode(d, "settings", kPageExtras, "Extras");
@@ -3031,7 +3043,7 @@ namespace {
         AddPage(d, kPageFileOperations, BuildFileOperationsPage(d));
         AddPage(d, kPageOpeningFiles, BuildOpeningFilesPage(d));
         AddPage(d, kPageProtectedFiles, BuildProtectedFilesPage(d));
-        AddPage(d, kPageTabs, BuildTabsPage(d));
+        AddPage(d, kPageNewTab, BuildNewTabPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));
         AddPage(d, kPageLists, BuildListsPage(d));
         AddPage(d, kPageTar, BuildTarPage(d));
