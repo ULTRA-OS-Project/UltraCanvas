@@ -1,3 +1,8 @@
+#### 2026-11-01 *0.9.0*
+- **Desktop > Start with the desktop**: ChatCube and UltraMail, each a
+  checkbox. A ticked program starts minimized a few seconds after
+  UltraDesktop, unless it runs already.
+
 #### 2026-10-22 *0.8.0*
 - **Desktop: a packaged copy says why *At sign-in* is missing.** Run from the
   Microsoft Store (MSIX) package, the Desktop page cannot offer UltraDesktop in

@@ -1,3 +1,90 @@
+#### 2026-11-01 *0.9.449*
+- **Closing a window that asks first no longer looks like nothing
+  happened.** `UltraCanvasDesktopShell::CloseWindow` brings the window to the
+  front - and onto a screen - before asking it to close, and an UltraCanvas
+  window whose `onWindowClosing` keeps it open (to ask "Save the changes?")
+  restores itself if it was minimized - so ArtCreator's question about an
+  unsaved drawing is seen when UltraDesktop's Task Manager or taskbar closes
+  it.
+- **Windows off every screen, and ending a program.**
+  `UltraCanvasDesktopShell::GetWindowBounds` and `MoveWindow` read and move a
+  window; `BringWindowOnScreen` centres a window whose title bar is on no
+  screen (one left on a monitor that was unplugged) on the screen it is
+  mostly over; `KillWindowProcess` ends a window's program at once, as a task
+  manager's "End task" (Linux `SIGTERM`, then `SIGKILL`; Windows
+  `TerminateProcess`), refusing the desktop itself and programs it may not
+  end.
+- `DesktopWindowInfo::maximized`: a window maximized both ways
+  (`_NET_WM_STATE_MAXIMIZED_VERT` and `_HORZ` on X11, `IsZoomed` on Windows).
+- **Kanban cards can show a picture.** `UltraCanvasKanbanBoardElement::cardImageProvider`
+  hands over a picture for a card - a file's thumbnail, a photo - drawn above
+  its title in a band `KanbanBoardStyle::cardImageHeight` high. The board
+  never loads anything itself: the provider answers with what is ready, and
+  the caller invalidates the layout when a thumbnail made elsewhere arrives.
+- **UltraCanvasRemovableDrives: "Safely remove".** A new module
+  (`UltraCanvasRemovableDrives.h`) lists the drives a person plugs in - USB
+  sticks, external disks, memory cards, never the system's own drive - with
+  their mount points, and removes one safely: every volume unmounted after
+  the system has written out what it still held, then the drive powered off
+  or ejected. A file still open on it is reported in words. Linux through
+  UDisks2, Windows through SetupAPI and `CM_Request_Device_Eject` (Windows'
+  own "Safely Remove Hardware"; the framework now links `cfgmgr32`), macOS
+  through NSWorkspace's eject. Doc: `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
+- The Linux system-bus helpers the wireless backend used are shared now
+  (`OS/Linux/UltraCanvasLinuxSystemBus.h`), one connection for NetworkManager,
+  BlueZ and UDisks2.
+- On macOS the volumes of one drive are one entry, grouped by
+  DiskArbitration's whole disk and named by the drive's vendor and model,
+  with its size and bus, as on Linux and Windows (the framework links
+  DiskArbitration where the SDK has it).
+- The volumes of an APFS drive are grouped by the physical disk under their
+  container (found in the IOKit registry), so a drive with two containers
+  is one entry too, named and sized by the drive itself.
+- **`RenderFileThumbnail`: a file's picture outside the Filer.** A free
+  function in `UltraCanvasFilerWidget.h` makes the picture a Filer tile
+  shows - the image, a PDF's first page, a book's cover, a 3D model, a font
+  specimen, a video's poster frame - and for a text document a small page of
+  its first lines. The thumbnail workers' decode switch is now this one
+  function, so the Filer and its other callers (UltraDesktop's Sticker board)
+  agree on every format.
+- `DesktopScreenInfo::number`: Windows' own number for a monitor (n of
+  `\\.\DISPLAYn`, as its display settings show it); 0 where the system numbers
+  none.
+- **UltraCanvasWireless: Wi-Fi and Bluetooth operated from a program.** A
+  new module (`UltraCanvasWireless.h`) lists the Wi-Fi networks in reach and
+  joins one (asking for the password only when the system has none saved,
+  and keeping a new profile only once the network has been joined), leaves
+  and forgets networks, and switches the radio; it lists the paired
+  Bluetooth devices and the ones in pairing mode nearby, pairs, connects,
+  disconnects and removes them, and switches the Bluetooth radio where the
+  system allows. Linux through NetworkManager and BlueZ on the system bus,
+  Windows through the Native Wifi and Bluetooth APIs, macOS through
+  CoreWLAN and IOBluetooth (with the Location Services permission macOS 14
+  asks before it names a network); other platforms answer that they have
+  none. UltraDesktop's new Wi-Fi and Bluetooth panels are built on it. Doc:
+  `Docs/UltraCanvas/UltraCanvasWireless.md`.
+- `package-macos.sh` writes `NSBluetoothAlwaysUsageDescription` and
+  `NSLocationWhenInUseUsageDescription` (and the location entitlement) for
+  the applications that list Bluetooth devices or Wi-Fi networks -
+  UltraDesktop.
+- **Pairing codes.** `UltraCanvasWireless::SetPairingHandler` takes the codes
+  a device shows or asks for while it pairs - a code to type on a keyboard,
+  one to compare with a phone, a PIN, a yes to pair. On Linux the module
+  registers a BlueZ agent for them on a GLib loop of its own; on macOS
+  IOBluetoothDevicePair's requests go to the handler; Windows keeps its own
+  prompt.
+- **The default pairing agent on Linux.** Setting a pairing handler now
+  registers the module's BlueZ agent straight away and as the default, so a
+  pairing the device starts - a phone pairing with the computer - reaches
+  the handler as well, and so does a connection from a device that is not
+  trusted (`WirelessPairingStep::AllowConnection`); a service of a device
+  being paired from here, or of a trusted one, is allowed without asking.
+  When BlueZ was not running yet, the agent is registered on a later read.
+- The Linux pairing agent follows BlueZ: its thread watches `org.bluez` on
+  the system bus and registers the agent again - as the default - whenever
+  BlueZ appears, so a `bluetoothd` restart or a late start no longer leaves
+  the desktop without one.
+
 #### 2026-11-01 *0.9.448*
 - **A static build links ChatCube and chatcube-peer again.** UltraRTC's
   engine calls back into the device glue compiled into the core library
