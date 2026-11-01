@@ -88,6 +88,11 @@ constexpr int   kBarThickness   = 52;   // the taskbar's width (height when hori
 constexpr int   kInfoPanelWidth = 48;   // the right bar: icons only, labels are tooltips
 constexpr int   kBarButton      = 40;   // one item's box
 constexpr int   kBarIcon        = 24;
+// The settings button shows the ULTRA OS logo (384 x 200), wider than an icon.
+constexpr int   kLogoButtonWide = 64;
+constexpr int   kLogoWidth      = 384;
+constexpr int   kLogoHeight     = 200;
+const char* const kLogoForDarkBar = "ultraos-logo-dark.png";   // UOS-Settings shows ultraos-logo-light.png
 constexpr int   kInfoButton     = 36;   // the info panel's items, fourteen of them
 constexpr int   kInfoIcon       = 20;
 // Below this height the info panel's items are smaller, and what still does
@@ -103,6 +108,7 @@ constexpr int   kClockHeight    = 68;   // the face (48) over the date line
 constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
 constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
 constexpr float kWaveLength     = 36;
+constexpr float kWaveGap        = 4;    // from the icon next to a bar's wave to the wave
 constexpr unsigned kUiTimerMs   = 250;
 constexpr int   kNoticeTicks    = 20;   // notices re-read every 5 s
 constexpr int   kScreenshotTicks = 12;  // the "saved" marker stays 3 s
@@ -367,6 +373,34 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     return group;
 }
 
+void UltraDesktopWindow::TuckAgainstWave(const std::shared_ptr<UltraCanvasToolbar>& group,
+                                         const std::shared_ptr<UltraCanvasWaveSeparator>& wave,
+                                         bool vertical, bool waveAfterGroup) {
+    // The group loses its padding on the wave's side, and the wave reaches
+    // over the inner margin of the group's nearest button (half the box
+    // less the icon, for the kBarButton / kBarIcon items StyleBarButton
+    // makes) to kWaveGap from its icon.
+    const float reach = static_cast<float>(kBarButton - kBarIcon) / 2.0f - kWaveGap;
+    const float pad = 6.0f;   // MakeGroup's: 6 across the bar's ends, 4 along its sides
+    if (vertical) {
+        if (waveAfterGroup) {
+            group->SetPadding(pad, 4, 0, 4);
+            wave->SetMargin(-reach, 0, 0, 0);
+        } else {
+            group->SetPadding(0, 4, pad, 4);
+            wave->SetMargin(0, 0, -reach, 0);
+        }
+    } else {
+        if (waveAfterGroup) {
+            group->SetPadding(pad, 0, pad, 4);
+            wave->SetMargin(0, 0, 0, -reach);
+        } else {
+            group->SetPadding(pad, 4, pad, 0);
+            wave->SetMargin(0, -reach, 0, 0);
+        }
+    }
+}
+
 void UltraDesktopWindow::StyleBarButton(const std::shared_ptr<UltraCanvasButton>& button) {
     if (!button) return;
     ButtonStyle style = button->GetStyle();
@@ -419,14 +453,28 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
 
     // 1. System: ULTRA OS settings and the app starter.
     auto system = MakeGroup("Taskbar.System", vertical, false);
-    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath("ultraos.svg"),
+    // The ULTRA OS logo in its own colours, wider than the other items: it
+    // is twice as wide as it is high. The variant drawn for a dark ground
+    // (the bar is dark grey).
+    auto settingsButton = AddBarButton(system, "settings", "ULTRA OS settings", IconPath(kLogoForDarkBar),
                                        [this]() { OpenSystemSettings(); });
+    settingsButton->SetUseIconAsMask(false);
+    const int logoBox = vertical ? kBarThickness - 4 : kLogoButtonWide;
+    const int logoWidth = logoBox - 4;
+    settingsButton->SetElementSize(Size2Df(static_cast<float>(logoBox), static_cast<float>(kBarButton)));
+    settingsButton->SetIconSize(logoWidth, logoWidth * kLogoHeight / kLogoWidth);
     settingsButton->onContextMenu = [this](int x, int y) { ShowSettingsButtonMenu(x, y); };
     AddBarButton(system, "apps", "Applications", IconPath("apps.svg"),
                  [this]() { OpenAppStarter(); });
     bar->AddChild(system);
 
-    bar->AddChild(CreateWaveSeparator("Taskbar.Wave1", vertical, kBarColor, kBarInsetColor, kWaveLength));
+    // The two waves mirror each other, so the running apps sit in a band
+    // that narrows the same way at both ends; each wave starts 4 px past
+    // the icon before it (TuckAgainstWave).
+    auto wave1 = CreateWaveSeparator("Taskbar.Wave1", vertical, kBarColor, kBarInsetColor, kWaveLength);
+    wave1->SetFlipped(true);
+    TuckAgainstWave(system, wave1, vertical, true);
+    bar->AddChild(wave1);
 
     // 2. Running apps: fills the bar, scrolls when full, drag to reorder.
     running_ = MakeGroup("Taskbar.Running", vertical, true);
@@ -435,11 +483,13 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     running_->EnableItemReordering(true);
     bar->AddChild(running_);
 
-    bar->AddChild(CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength));
+    auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength);
+    bar->AddChild(wave2);
 
     // 3. Pinned: the RAM disc (when there is one - Windows has none of its
     // own) and UltraFiler.
     auto pinned = MakeGroup("Taskbar.Pinned", vertical, false);
+    TuckAgainstWave(pinned, wave2, vertical, false);
     if (!settings_.ramDiscPath.empty()) {
         AddBarButton(pinned, "ramdisc", "RAM disc (" + settings_.ramDiscPath + ")", IconPath("ramdisc.svg"),
                      [this]() { OpenRamDisc(); });
@@ -1005,7 +1055,12 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildRightBar() {
                  [this]() { TakeScreenshot(); });
     bar->AddChild(organiser_);
 
-    bar->AddChild(CreateWaveSeparator("RightBar.Wave", true, kBarInsetColor, kBarColor, kWaveLength));
+    // As on the taskbar, the wave starts 4 px past the organiser's last
+    // icon; the info panel below is anchored to the bar's foot, so the
+    // space on that side is its own stretch.
+    auto wave = CreateWaveSeparator("RightBar.Wave", true, kBarInsetColor, kBarColor, kWaveLength);
+    TuckAgainstWave(organiser_, wave, true, true);
+    bar->AddChild(wave);
 
     // The info panel, anchored to the bottom by the stretch at its top.
     info_ = MakeGroup("InfoPanel", true, false);

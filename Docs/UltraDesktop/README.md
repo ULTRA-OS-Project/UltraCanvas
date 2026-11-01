@@ -50,10 +50,13 @@ system.
 
 On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
-separators:
+separators. The two waves mirror each other, so the dark band of running
+applications narrows the same way at both ends, and each wave starts 4 px
+from the icon next to it - as the right bar's wave does below the
+organiser.
 
-1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
-   settings* starts **UOS-Settings**, the system's settings application
+1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
+   *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
