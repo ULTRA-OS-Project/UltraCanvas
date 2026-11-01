@@ -50,6 +50,7 @@ const Heading kHeadings[] = {
     {"News", "News"},
     {"Feed", "News"},
     {"RemoteAccess", "Remote access"},
+    {"VPN", "VPN"},
     {"WebDevelopment", "Web development"},
     // Graphics
     {"RasterGraphics", "Painting"},
@@ -116,6 +117,9 @@ const Heading kHeadings[] = {
     {"PackageManager", "Software"},
     {"HomeAutomation", "Home automation"},
     {"Viewer", "Viewers"},
+    {"Maps", "Maps"},
+    {"Science", "Science"},
+    {"Education", "Education"},
 };
 
 // What the main and additional categories say, in the order that settles an
@@ -145,6 +149,12 @@ std::string HeadingOf(const std::vector<std::string>& declared, AppCategory main
         // "Development" names Tools' heading; under Office or Internet it is
         // a web designer's tool and says nothing more than the category.
         if (std::string(heading.category) == "Development" && main != AppCategory::Tools) continue;
+        // Science and Education name a heading only under Office: FreeCAD's
+        // Science says nothing more than CAD does.
+        if ((std::string(heading.category) == "Science" || std::string(heading.category) == "Education") &&
+            main != AppCategory::Office) {
+            continue;
+        }
         return heading.title;
     }
     if (main == AppCategory::Games) return "";
@@ -171,6 +181,19 @@ const Guess kGuesses[] = {
     // Windows Media Player is a player before anything "windows" says.
     {"firewall", "System;Security"},
     {"media player", "AudioVideo;Video;Player"},
+    {"uninstall", "System;PackageManager"},
+    {"deinstallieren", "System;PackageManager"},
+    {"command line", "System;TerminalEmulator"},
+    {"registrierungs", "System"},
+    {"windows security", "System;Security"},
+    {"lav audio", "AudioVideo;Audio"},
+    {"music maker", "AudioVideo;Audio;Sequencer"},
+    {"smart microphone", "AudioVideo;Audio;HardwareSettings"},
+    {"microphone", "AudioVideo;Audio;HardwareSettings"},
+    {"mikrofon", "AudioVideo;Audio;HardwareSettings"},
+    {"fax und scan", "Office;Scanning"},
+    {"fax and scan", "Office;Scanning"},
+    {"downloader+", "Network;FileTransfer"},
     {"windows media", "AudioVideo;Video;Player"},
     {"clipchamp", "AudioVideo;Video;AudioVideoEditing"},
     // Office
@@ -203,6 +226,15 @@ const Guess kGuesses[] = {
     {"wallet", "Office;Finance"},
     {"finance", "Office;Finance"},
     {"ultradbadmin", "Office;Database"},
+    {"ultracanvastexter", "Office;WordProcessor"},
+    {"pdf24", "Office;Viewer"},
+    {"to do", "Office;ProjectManagement"},
+    {"sticky notes", "Office;ProjectManagement"},
+    {"warenwirtschaft", "Office;Finance"},
+    {"selectline", "Office;Finance"},
+    {"moon atlas", "Office;Science"},
+    {"planetarium", "Office;Science"},
+    {"stellarium", "Office;Science"},
     // Internet
     {"outlook", "Network;Email"},
     {"thunderbird", "Network;Email"},
@@ -239,6 +271,17 @@ const Guess kGuesses[] = {
     {"remotedesktopverbindung", "Network;RemoteAccess"},
     {"teamviewer", "Network;RemoteAccess"},
     {"anydesk", "Network;RemoteAccess"},
+    {"quick assist", "Network;RemoteAccess"},
+    {"line", "Network;Chat"},
+    {"phone link", "Network;Telephony"},
+    {"xing", "Network"},
+    {"linkedin", "Network"},
+    {"news", "Network;News"},
+    {"tunnelbear", "Network;VPN"},
+    {"wireguard", "Network;VPN"},
+    {"openvpn", "Network;VPN"},
+    {"nordvpn", "Network;VPN"},
+    {"vpn", "Network;VPN"},
     // Graphics
     {"paint", "Graphics;RasterGraphics"},
     {"photoshop", "Graphics;RasterGraphics"},
@@ -259,6 +302,9 @@ const Guess kGuesses[] = {
     {"3d", "Graphics;3DGraphics"},
     {"scan", "Graphics;Scanning"},
     {"scanner", "Graphics;Scanning"},
+    {"jasc", "Graphics;RasterGraphics"},
+    {"xara", "Graphics;VectorGraphics"},
+    {"designer", "Graphics;VectorGraphics"},
     // Video
     {"vlc", "AudioVideo;Video;Player"},
     {"movies", "AudioVideo;Video;Player"},
@@ -275,6 +321,14 @@ const Guess kGuesses[] = {
     {"codec", "AudioVideo;Video"},
     {"directvobsub", "AudioVideo;Video"},
     {"netflix", "AudioVideo;Video;Player"},
+    {"lav", "AudioVideo;Video"},
+    {"madvr", "AudioVideo;Video"},
+    {"mediainfo", "AudioVideo;Video"},
+    {"movie edit", "AudioVideo;Video;AudioVideoEditing"},
+    {"movie studio", "AudioVideo;Video;AudioVideoEditing"},
+    {"capture", "AudioVideo;Video;Recorder"},
+    {"tiktok", "AudioVideo;Video;Recorder"},
+    {"teleprompter", "AudioVideo;Video;Recorder"},
     // Audio
     {"spotify", "AudioVideo;Audio;Player"},
     {"itunes", "AudioVideo;Audio;Player"},
@@ -312,6 +366,10 @@ const Guess kGuesses[] = {
     {"dosbox", "Game;Emulator"},
     {"retroarch", "Game;Emulator"},
     {"mame", "Game;Emulator"},
+    {"rpcemu", "Game;Emulator"},
+    {"rpcemucl", "Game;Emulator"},
+    {"emulator", "Game;Emulator"},
+    {"game bar", "Game"},
     {"games", "Game"},
     {"spiele", "Game"},
     // Tools
@@ -355,7 +413,40 @@ const Guess kGuesses[] = {
     {"balenaetcher", "Utility;DiscBurning"},
     {"rufus", "Utility;DiscBurning"},
     {"command palette", "Utility"},
+    {"github", "Development"},
+    {"qt", "Development;IDE"},
+    {"google earth", "Utility;Maps"},
+    {"maps", "Utility;Maps"},
+    {"karten", "Utility;Maps"},
     // System
+    {"command center", "System;HardwareSettings"},
+    {"lenovo", "System;HardwareSettings"},
+    {"dell", "System;HardwareSettings"},
+    {"hp", "System;HardwareSettings"},
+    {"feedback hub", "System"},
+    {"get help", "System"},
+    {"hilfe", "System"},
+    {"iscsi", "System"},
+    {"klick und los", "System"},
+    {"click to do", "System"},
+    {"komponentendienste", "System"},
+    {"component services", "System"},
+    {"defragmentieren", "System;Filesystem"},
+    {"partition", "System;Filesystem"},
+    {"mixed reality", "System"},
+    {"odbc", "System"},
+    {"health check", "System;Monitor"},
+    {"schrittaufzeichnung", "System"},
+    {"steps recorder", "System"},
+    {"systemkonfiguration", "System;Settings"},
+    {"system configuration", "System;Settings"},
+    {"msconfig", "System;Settings"},
+    {"wiederherstellungslaufwerk", "System"},
+    {"recovery drive", "System"},
+    {"sicherung", "System"},
+    {"backup", "System"},
+    {"speicherdiagnose", "System;Monitor"},
+    {"memory diagnostic", "System;Monitor"},
     {"windows tools", "System"},
     {"windows-tools", "System"},
     {"administrative tools", "System"},
@@ -409,9 +500,9 @@ const Guess kGuesses[] = {
     {"get started", "System"},
     {"erste schritte", "System"},
     {"tips", "System"},
-    {"uninstall", "System;PackageManager"},
-    {"deinstallieren", "System;PackageManager"},
     {"store", "System;PackageManager"},
+    // A maker's name last, for what nothing above named.
+    {"magix", "AudioVideo;Video"},
 };
 
 // German umlauts and ß folded, so "Datenträgerbereinigung" meets its key

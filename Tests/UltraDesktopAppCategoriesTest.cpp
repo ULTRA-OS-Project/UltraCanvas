@@ -10,6 +10,8 @@
 // category only above the threshold, puts "Other" last, and fills Recent
 // from the history in its order, at most recentShown. The settings keep the
 // history (latest first, once each), the view and the threshold across a save.
+// The names of a German Windows 11 Start menu are each checked against the
+// category a person would look for them in.
 // Version: 1.0.0
 // Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
@@ -18,6 +20,7 @@
 #include "UltraDesktopSettings.h"
 
 #include <iostream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -108,8 +111,97 @@ void TestWindowsShortcuts() {
           "a shortcut in Windows Tools is System");
     Check(PlaceApplication(Entry("Add to archive", {}, "", menu + "7-Zip\\Add.lnk")).category == AppCategory::Tools,
           "Add to archive is Tools");
+    Check(PlaceApplication(Entry("Command Line", {}, "", menu + "cl.lnk")).category == AppCategory::System,
+          "\"Command Line\" is a terminal, not the LINE messenger");
     Check(PlaceApplication(Entry("Password Manager", {}, "", menu + "pm.lnk")).subcategory == "Security",
           "a whole word only: \"password\" is not \"word\"");
+}
+
+// The Start menu of a German Windows 11 machine, as the Apps window listed
+// it: every name must land in the category a person would look in.
+void TestWindowsStartMenu() {
+    std::cout << "A German Windows Start menu\n";
+    struct Expected {
+        const char* name;
+        AppCategory category;
+    };
+    using C = AppCategory;
+    const Expected expected[] = {
+        {"4K Stogram", C::Internet}, {"4K Video Downloader+", C::Internet}, {"Access", C::Office},
+        {"Add to archive", C::Tools}, {"AMD Software", C::System}, {"Animation Shop 3", C::Graphics},
+        {"Aufgabenplanung", C::System}, {"Ausf\xC3\xBChren", C::System}, {"AVG Internet Security", C::Tools},
+        {"AVG Secure Browser", C::Internet}, {"balenaEtcher", C::Tools}, {"Bildschirmlupe", C::Tools},
+        {"Bildschirmtastatur", C::Tools}, {"Brother Utilities", C::System}, {"Calculator", C::Tools},
+        {"Calendar", C::Office}, {"Camera", C::Video}, {"Claude", C::Tools}, {"Clock", C::Tools},
+        {"Codec Tweak Tool", C::Video}, {"Command Center", C::System}, {"Command Palette", C::Tools},
+        {"Computerverwaltung", C::System}, {"Copilot", C::Tools}, {"Datentr\xC3\xA4gerbereinigung", C::System},
+        {"Dienste", C::System}, {"DirectVobSub", C::Video}, {"Dolby Audio", C::Audio}, {"Dropbox", C::Internet},
+        {"DuckDuckGo", C::Internet}, {"Eingabeaufforderung", C::System}, {"Einstellungen", C::System},
+        {"Ereignisanzeige", C::System}, {"Erste Schritte", C::System}, {"Excel", C::Office}, {"Exodus", C::Office},
+        {"Explorer", C::System}, {"Extract\xE2\x80\xA6", C::Tools}, {"Family", C::System},
+        {"Feedback Hub", C::System}, {"FileZilla", C::Internet}, {"Firefox", C::Internet},
+        {"Firefox Privater Modus", C::Internet}, {"Game Bar", C::Games}, {"Get Help", C::System},
+        {"GitHub", C::Tools}, {"GitHub Desktop", C::Tools}, {"Google Chrome", C::Internet},
+        {"Google Earth Pro", C::Tools}, {"IJ Scan Utility", C::Graphics}, {"iSCSI-Initiator", C::System},
+        {"Jasc Tube Converter", C::Graphics}, {"KeePass 2", C::Tools}, {"Klick-und-Los", C::System},
+        {"Komponentendienste", C::System}, {"Laufwerke defragmentieren und optimieren", C::System},
+        {"LAV Audio", C::Audio}, {"LAV Audio (MPC-HC internal)", C::Audio}, {"LAV Splitter", C::Video},
+        {"LAV Splitter (MPC-HC internal)", C::Video}, {"LAV Video", C::Video}, {"LAV Video (MPC-HC internal)", C::Video},
+        {"Leistungs\xC3\xBC" "berwachung", C::System}, {"Lenovo Hotkeys", C::System},
+        {"Lenovo Smart Noise Cancellation", C::System}, {"Lenovo Vantage", C::System}, {"Lenovo Voice", C::System},
+        {"LINE", C::Internet}, {"LINE Uninstall", C::System}, {"Live-Untertitel", C::Tools},
+        {"Macrorit Partition Extender Free", C::System}, {"Macrorit Partition Expert Free", C::System},
+        {"madVR", C::Video}, {"MAGIX Capture", C::Video}, {"MAGIX Connect", C::Video},
+        {"MAGIX Movie Edit Pro Plus", C::Video}, {"MAGIX Movie Studio 2025 Suite", C::Video},
+        {"MAGIX Travel Maps", C::Tools}, {"Mail", C::Internet}, {"Maps", C::Tools}, {"Media Player", C::Video},
+        {"Media Player Classic", C::Video}, {"MediaInfo", C::Video}, {"Microsoft Defender", C::Tools},
+        {"Microsoft Edge", C::Internet}, {"Microsoft Store", C::System}, {"Microsoft Teams", C::Internet},
+        {"Microsoft To Do", C::Office}, {"Mixed Reality Portal", C::System}, {"Mozilla Thunderbird", C::Internet},
+        {"MPC Video Renderer", C::Video}, {"Music Maker (64-Bit)", C::Audio}, {"News", C::Internet},
+        {"Notepad", C::Tools}, {"OBS Studio (64bit)", C::Video}, {"ODBC-Datenquellen (32-Bit)", C::System},
+        {"ODBC-Datenquellen (64-Bit)", C::System}, {"Office-Spracheinstellungen", C::Office},
+        {"OneDrive", C::Internet}, {"OneNote", C::Office}, {"OneNote for Windows 10", C::Office},
+        {"Open as archive", C::Tools}, {"OpenOffice", C::Office}, {"OpenOffice Calc", C::Office},
+        {"OpenOffice Writer", C::Office}, {"Opera-Browser", C::Internet}, {"Outlook (classic)", C::Internet},
+        {"Outlook (new)", C::Internet}, {"Paint", C::Graphics}, {"Paint Shop Pro 7", C::Graphics},
+        {"PC Health Check", C::System}, {"PDF24", C::Office}, {"PeaZip", C::Tools}, {"Phone Link", C::Internet},
+        {"Photos", C::Graphics}, {"Power Automate", C::Tools}, {"PowerPoint", C::Office},
+        {"PowerToys (Preview)", C::Tools}, {"Publisher", C::Office}, {"Qt Creator 16.0.0 (Enterprise)", C::Tools},
+        {"Qt Design Studio", C::Tools}, {"Qt Maintenance Tool", C::Tools}, {"Quick Assist", C::Internet},
+        {"Realtek Audio Console", C::Audio}, {"Registrierungs-Editor", C::System},
+        {"Remotedesktopverbindung", C::Internet}, {"Ressourcenmonitor", C::System},
+        {"RPCEmu-Recompiler", C::Games}, {"RPCEmuCL", C::Games}, {"Schrittaufzeichnung", C::System},
+        {"SelectLine Warenwirtschaft", C::Office}, {"Smart Microphone Settings", C::Audio},
+        {"Snipping Tool", C::Graphics}, {"Solitaire & Casual Games", C::Games}, {"Sound Recorder", C::Audio},
+        {"Sprachausgabe", C::Tools}, {"Sprachzugriff", C::Tools}, {"Sticky Notes", C::Office},
+        {"Sticky Notes (new)", C::Office}, {"Systeminformationen", C::System}, {"Systemkonfiguration", C::System},
+        {"Systemsteuerung", C::System}, {"Task-Manager", C::System}, {"Telegram", C::Internet},
+        {"Terminal", C::System}, {"Thunderbird", C::Internet}, {"TikTok LIVE Studio", C::Video},
+        {"TunnelBear", C::Internet}, {"UltraCanvasTexter", C::Office}, {"Uninstall Qt", C::System},
+        {"USB Image Tool", C::Tools}, {"Virtual Moon Atlas", C::Office}, {"Virtual teleprompter Free", C::Video},
+        {"Weather", C::Tools}, {"WhatsApp", C::Internet}, {"Wiederherstellungslaufwerk", C::System},
+        {"Windows Defender Firewall mit erweiterter Sicherheit", C::System},
+        {"Windows Media Player Legacy", C::Video}, {"Windows PowerShell", C::System},
+        {"Windows PowerShell (x86)", C::System}, {"Windows PowerShell ISE", C::System},
+        {"Windows Security", C::System}, {"Windows-Fax und -Scan", C::Office}, {"Windows-Sicherung", C::System},
+        {"Windows-Speicherdiagnose", C::System}, {"Windows-Tools", C::System}, {"WireGuard", C::Internet},
+        {"Word", C::Office}, {"Xara Designer Pro X", C::Graphics}, {"Xara Designer Pro X (19)", C::Graphics},
+        {"XBOX", C::Games}, {"Xbox Console Companion", C::Games}, {"XING", C::Internet},
+        {"Zeichentabelle", C::Tools}, {"Zoom Workplace", C::Internet},
+    };
+    int wrong = 0;
+    for (const Expected& e : expected) {
+        const UCDesktopEntry entry =
+            Entry(e.name, {}, "", "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\" +
+                                      std::string(e.name) + ".lnk");
+        const AppPlace place = PlaceApplication(entry);
+        if (place.category != e.category) {
+            ++wrong;
+            std::cout << "         " << e.name << ": " << AppCategoryInfoOf(place.category).title << ", not "
+                      << AppCategoryInfoOf(e.category).title << "\n";
+        }
+    }
+    Check(wrong == 0, std::to_string(std::size(expected)) + " Start-menu names, each in its category");
 }
 
 void TestGrouping() {
@@ -201,6 +293,7 @@ int main() {
     TestFreedesktopCategories();
     TestGames();
     TestWindowsShortcuts();
+    TestWindowsStartMenu();
     TestGrouping();
     TestSettings();
     std::cout << (g_failures == 0 ? "All passed\n" : std::to_string(g_failures) + " failed\n");
