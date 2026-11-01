@@ -5,6 +5,7 @@
 // image element take), the topmost window under a point, where the
 // recording bar goes so it stays out of the recording, and a file written
 // whole under its UTF-8 name.
+// Version: 0.1.1 - SnipFilePath
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -49,6 +50,12 @@ int TopmostWindowAt(const std::vector<SnipWindowBounds>& windows, const UltraCan
 // helped); always within `screen`.
 UltraCanvas::Rect2Di PlaceBarOutside(const UltraCanvas::Rect2Di& region, const UltraCanvas::Rect2Di& screen,
                                      int barWidth, int barHeight, int gap);
+
+// The file a new snip goes to: `defaultPath` (the shell's default name and
+// folder, "<Pictures>/Screenshots/Screenshot <date> <time>.png") with its
+// extension replaced by `extension` (with or without the dot) and, when
+// `folder` is not empty, its folder replaced by that one
+std::string SnipFilePath(const std::string& defaultPath, const std::string& folder, const std::string& extension);
 
 // `seconds` as "m:ss" / "h:mm:ss"
 std::string FormatElapsed(double seconds);

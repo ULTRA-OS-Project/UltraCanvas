@@ -1,5 +1,6 @@
 // Apps/UltraSnip/ui/UltraSnipCapture.cpp
 // See the header.
+// Version: 0.1.1 - SnipFilePath
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -76,6 +77,16 @@ Rect2Di PlaceBarOutside(const Rect2Di& region, const Rect2Di& screen, int barWid
         if (y + barHeight > screen.y + screen.height) y = screen.y + gap;
     }
     return Rect2Di(x, y, barWidth, barHeight);
+}
+
+std::string SnipFilePath(const std::string& defaultPath, const std::string& folder, const std::string& extension) {
+    namespace fs = std::filesystem;
+    fs::path path = PathFromUtf8(defaultPath);
+    std::string ext = extension;
+    if (!ext.empty() && ext[0] != '.') ext = "." + ext;
+    if (!ext.empty()) path.replace_extension(PathFromUtf8(ext));
+    if (!folder.empty()) path = PathFromUtf8(folder) / path.filename();
+    return PathToUtf8(path);
 }
 
 std::string FormatElapsed(double seconds) {

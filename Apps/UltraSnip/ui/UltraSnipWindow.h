@@ -5,6 +5,8 @@
 // viewer); and under that Save as, Copy, Open folder, Edit in UltraPaint and
 // the options. The window hides itself while a snip is taken, so it is never
 // in the picture, and comes back with the result.
+// Version: 0.2.0 - the settings window; pictures written in the chosen type and folder;
+//                  the window stays hidden after a desktop snip when asked
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -26,7 +28,6 @@
 
 namespace UltraCanvas {
 class UltraCanvasButton;
-class UltraCanvasCheckbox;
 class UltraCanvasContainer;
 class UltraCanvasDropdown;
 class UltraCanvasImageElement;
@@ -82,6 +83,7 @@ private:
     void SaveAs();
     void OpenFolder();
     void EditInPaint();
+    void OpenSettings();
     bool OnKey(const UltraCanvas::UCEvent& event);
 
     UltraCanvas::UltraCanvasApplication& app_;
@@ -103,9 +105,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton> copyButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> folderButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> paintButton_;
-    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> autoSave_;
-    std::shared_ptr<UltraCanvas::UltraCanvasCheckbox> autoCopy_;
-    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> frameRates_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> settingsButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> status_;
 
     // A capture in flight

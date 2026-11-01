@@ -4,6 +4,7 @@
 // screen capture (with an origin, as a Windows virtual screen has) into
 // straight RGBA, the topmost window under a point, where the recording bar
 // goes, the elapsed-time words, and a file written whole under its UTF-8 name.
+// Version: 0.1.1 - SnipFilePath
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -106,6 +107,17 @@ int main() {
         Check(bar.x == 0, "PlaceBarOutside: never left of the screen");
         bar = PlaceBarOutside(Rect2Di(900, 300, 400, 100), screen, 280, 44, 12);
         Check(bar.x == 720, "PlaceBarOutside: never right of the screen");
+    }
+    // ---- the file of a new snip ----
+    {
+        const std::string base = "/home/erika/Pictures/Screenshots/Screenshot 2026-11-01 18.11.22.png";
+        Check(SnipFilePath(base, "", "jxl") == "/home/erika/Pictures/Screenshots/Screenshot 2026-11-01 18.11.22.jxl",
+              "SnipFilePath: the type replaced, the folder kept");
+        Check(SnipFilePath(base, "", ".webp").size() == base.size() + 1, "SnipFilePath: a dotted extension works too");
+        Check(SnipFilePath(base, "/tmp/\xE0\xB8\xA0\xE0\xB8\xB2\xE0\xB8\x9E", "avif") ==
+                  "/tmp/\xE0\xB8\xA0\xE0\xB8\xB2\xE0\xB8\x9E/Screenshot 2026-11-01 18.11.22.avif",
+              "SnipFilePath: another folder, in any script");
+        Check(SnipFilePath(base, "", "") == base, "SnipFilePath: no type given keeps the default's");
     }
     // ---- words ----
     Check(FormatElapsed(0.0) == "0:00" && FormatElapsed(65.9) == "1:05" && FormatElapsed(3600 + 61) == "1:01:01",

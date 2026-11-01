@@ -20,6 +20,7 @@ add_executable(UltraSnip
     ui/UltraSnipRecorder.cpp
     ui/UltraSnipRecordingBar.cpp
     ui/UltraSnipSettings.cpp
+    ui/UltraSnipSettingsDialog.cpp
     ui/UltraSnipWindow.cpp
 )
 
