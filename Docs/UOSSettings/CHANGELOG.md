@@ -1,3 +1,10 @@
+#### 2026-11-01 *0.11.0*
+- **Desktop: the Apps window's view, sub-categories and Recent count.**
+  Three new choices on the Desktop page: the Apps window's view (tiles, or
+  the categories and a list), above how many applications a category is
+  split into its sub-categories (or never), and how many applications
+  Recent shows.
+
 #### 2026-11-01 *0.10.0*
 - **The ULTRA OS logo over the page tree.** The sidebar starts with the
   ULTRA OS logo - the version drawn for a light ground

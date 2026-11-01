@@ -1,3 +1,15 @@
+#### 2026-11-01 *0.9.453*
+- **UltraCanvasButton: the text on several lines.** `ButtonStyle::wrap` /
+  `SetWrap(TextWrap::WrapWord)` breaks a button's text onto as many lines as
+  its text area holds, from the top of the area, the last one shortened with
+  "…" when more is left - an application's name under its icon on a tile.
+  `WrapNone`, the default, keeps the text on one line as before. Doc:
+  `Docs/UltraCanvas/UltraCanvasButtonExamples.md`.
+- **UltraCanvasTreeView: `GetNodeAtY` is public.** The row at an
+  element-local y, for a drop that starts in another element - UltraDesktop's
+  Apps window drops a list row on a category in its tree. Doc:
+  `Docs/UltraCanvas/UltraCanvasTreeViewExamples.md`.
+
 #### 2026-11-01 *0.9.452*
 - **UltraCanvasWireless on macOS: the Wi-Fi list says what to do while
   macOS asks for Location Services.** Until the person answered macOS's
