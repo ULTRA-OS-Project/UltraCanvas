@@ -352,14 +352,18 @@ bool MatchesAppFilter(const UCDesktopEntry& entry, const std::string& lowerFilte
 std::string AppFolderOf(const UCDesktopEntry& entry) {
     if (entry.shortcutPath.empty()) return "";
     const std::string folder = FolderOf(entry.shortcutPath);
-    // Windows' own folders: their applications are the system's, and System
-    // and Tools hold them already.
+    // Windows' and macOS' own folders: their applications are the system's,
+    // and the categories hold them already.
     static const char* const kSystemFolders[] = {
         "programs", "start menu", "startmenu", "startup", "autostart", "accessories", "zubehor",
         "windows accessories", "windows zubehor", "system tools", "systemprogramme", "windows tools",
         "administrative tools", "windows administrative tools", "windows verwaltungsprogramme", "verwaltung",
         "accessibility", "erleichterte bedienung", "windows accessibility", "windows erleichterte bedienung",
         "maintenance", "wartung", "windows powershell", "windows system", "windows systemprogramme",
+        // macOS: an application bundle's own place (/Applications,
+        // /System/Applications, ~/Applications and their Utilities); only a
+        // folder below them - a maker's - is a category.
+        "applications", "utilities",
     };
     std::string words = Words(folder);
     if (words.size() > 2) words = words.substr(1, words.size() - 2);

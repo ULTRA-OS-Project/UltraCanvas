@@ -10,3 +10,7 @@
   `NSWorkspace`, as Finder does. New file
   `OS/MacOS/UltraCanvasMacOSApplications.mm`; the rest of the macOS desktop
   shell is unchanged. Doc: `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+- UltraDesktop's Apps window: on macOS a maker's folder under
+  `/Applications` holding five or more applications is a category of its
+  own, as a Start-menu folder is on Windows; `/Applications` and `Utilities`
+  are not.

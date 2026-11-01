@@ -396,6 +396,38 @@ void TestFoldersAndMoves() {
           "a move to a folder category that is not there is ignored");
 }
 
+// macOS: the shortcut is the bundle (UltraCanvasMacOSApplications.mm), so a
+// maker's folder under /Applications is a category and /Applications is not.
+void TestMacOSFolders() {
+    std::cout << "macOS folders\n";
+    std::vector<UCDesktopEntry> apps;
+    const char* adobe[] = {"Adobe Photoshop 2025", "Adobe Illustrator 2025", "Adobe InDesign 2025",
+                           "Adobe Bridge 2025", "Adobe Acrobat"};
+    for (const char* name : adobe) {
+        apps.push_back(Entry(name, {}, "", std::string("/Applications/Adobe Creative Cloud/") + name + ".app"));
+    }
+    const char* top[] = {"Safari", "Mail", "Pages", "Numbers", "Keynote", "Xcode", "GarageBand"};
+    for (const char* name : top) apps.push_back(Entry(name, {}, "", std::string("/Applications/") + name + ".app"));
+    const char* utilities[] = {"Terminal", "Activity Monitor", "Disk Utility", "Console", "Script Editor"};
+    for (const char* name : utilities) {
+        apps.push_back(Entry(name, {}, "", std::string("/System/Applications/Utilities/") + name + ".app"));
+    }
+    Check(AppFolderOf(apps[0]) == "Adobe Creative Cloud", "a maker's folder under /Applications is a folder");
+    Check(AppFolderOf(apps[5]).empty() && AppFolderOf(apps[12]).empty(),
+          "/Applications and Utilities are not folders of their own");
+    AppGroupingOptions options;
+    options.keyOf = [](const UCDesktopEntry& e) { return e.program; };
+    const std::vector<AppGroup> groups = GroupApplications(apps, options);
+    bool adobeGroup = false, applicationsGroup = false, utilitiesGroup = false;
+    for (const AppGroup& g : groups) {
+        adobeGroup = adobeGroup || g.key == std::string(kFolderGroupPrefix) + "Adobe Creative Cloud";
+        applicationsGroup = applicationsGroup || g.title == "Applications";
+        utilitiesGroup = utilitiesGroup || g.title == "Utilities";
+    }
+    Check(adobeGroup && !applicationsGroup && !utilitiesGroup,
+          "five in a maker's folder are a category; the system's folders are none");
+}
+
 void TestSettings() {
     std::cout << "Settings\n";
     DesktopSettings settings;
@@ -436,6 +468,7 @@ int main() {
     TestPopularApplications();
     TestGrouping();
     TestFoldersAndMoves();
+    TestMacOSFolders();
     TestSettings();
     std::cout << (g_failures == 0 ? "All passed\n" : std::to_string(g_failures) + " failed\n");
     return g_failures == 0 ? 0 : 1;
