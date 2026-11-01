@@ -8,9 +8,10 @@
 // presence colours, the avatar palette) and a fallback for each, so a theme
 // that does not name them still looks right.
 //
+// Version: 0.1.2 - PaintTicks: a bubble's ticks drawn as strokes, not as a glyph a font may lack
 // Version: 0.1.1 - an avatar from the person's picture; a picture in a rounded box; a play mark
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-10-31
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -67,6 +68,14 @@ bool PaintPicture(UltraCanvas::IRenderContext* ctx, const std::string& path, con
                   double radius);
 // A play mark - a white triangle on a dark disc - over a video's preview picture.
 void PaintPlayMark(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& centre, double radius);
+// A message's ticks - one (sent) or two (delivered, read) check marks - as
+// strokes, right-aligned in `area` and centred on its height. Drawn, not
+// typed: U+2713 is in no font a Windows installation is sure to have, and
+// Segoe UI leaves a box where the tick should be. TicksWidth is the room
+// they take at that height, for laying the line out.
+void PaintTicks(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Rect2Dd& area, int count,
+                const UltraCanvas::Color& color);
+int  TicksWidth(int count, double height);
 // A presence dot at the avatar's lower right, ringed in the surface it sits on.
 void PaintPresence(UltraCanvas::IRenderContext* ctx, const UltraCanvas::Point2Dd& avatarCentre, double avatarRadius,
                    const UltraCanvas::Color& presence, const UltraCanvas::Color& ring);

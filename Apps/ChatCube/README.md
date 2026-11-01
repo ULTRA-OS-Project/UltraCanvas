@@ -60,14 +60,20 @@ The first ChatCube draft, which this replaces, is kept under
    *Add* or *New group* goes to Telegram.
 4. Enter sends, Shift+Enter starts a new line. A bubble's ticks:
    `…` sending, `✓` waiting on the relay, `✓✓` on the other computer,
-   green `✓✓` read. The paperclip sends a picture, a video or any file to
-   the open chat (ChatCube Direct, Telegram and Matrix, encrypted rooms
-   included), with what you typed as its caption. A photo
-   shows as its picture, a video as its preview under a play mark with its
-   length, a file as its name and size; a click on a picture opens it full
-   size, on a video or a file fetches it and opens it. People's Telegram
-   profile pictures are their avatars in the sidebar, the header and, in a
-   group, beside their bubbles.
+   green `✓✓` read (drawn, not typed, so they show on a Windows whose fonts
+   have no check mark). The paperclip puts a picture, a video or any file
+   in a strip above the message field - so does Ctrl+V with a picture on
+   the clipboard (a screenshot, a copy from a browser or a drawing program)
+   or a file copied in a file manager - each with a × to take it out again;
+   Enter or the send button sends them to the open chat (ChatCube Direct,
+   Telegram and Matrix, encrypted rooms included), with what you typed as
+   the caption of the first picture or video. A photo shows as its picture,
+   a video as its preview under a play mark with its length, a file as its
+   name and size - an SVG drawing, which goes as a file, with its picture
+   over them, as a photo; a click on a picture opens it full size, on a
+   video or a file fetches it and opens it. People's Telegram profile
+   pictures are their avatars in the sidebar, the header and, in a group,
+   beside their bubbles.
 
 5. **Call** rings the open contact, **Video** makes it a video call (1:1;
    the buttons are off for groups and while not connected). A bar across
