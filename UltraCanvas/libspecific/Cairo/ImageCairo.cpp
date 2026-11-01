@@ -1,9 +1,5 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.9.0 - in-memory images are named by a counter in every build (the
-//                  build without libvips named them by buffer address, so a
-//                  reused address drew another image's cached pixmap), and
-//                  GetFromMemory keys by the bytes, not by where they live
 // Version: 2.8.0 - GIF through libvips everywhere: its gifsave, else the
 //                  framework's encoder registered as ucgifsave (VipsGifPlugin)
 // Version: 2.7.0 - VipsCanDecode asks libheif whether it decodes HEIC (HEVC) and
@@ -20,7 +16,7 @@
 // Version: 2.4.0 - GetFresh reads a file saved over again, RemoveFromCacheIfChanged
 //                  drops it; RemoveFromCache releases libvips' cached operations
 //                  too; pixmap keys carry the source stamp
-// Last Modified: 2026-11-01
+// Last Modified: 2026-10-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"

@@ -1,6 +1,5 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
-// Version: 1.9.0 - GetFromMemory keyed by the bytes, not by their address
 // Version: 1.7.0 - VipsCanDecode: a loader that can decode here (HEIC / AVIF need
 //                  libheif's decoder)
 // Version: 1.6.0 - VipsCanEncode: a saver that can encode here (AVIF / HEIC need
@@ -10,7 +9,7 @@
 //                  and JPEG, BMP, GIF through the bundled stb_image
 // Version: 1.5.0 - An SVG libvips cannot load is read through the vector preview seam
 // Version: 1.4.0 - GetFresh: the cached image checked against the file
-// Last Modified: 2026-11-01
+// Last Modified: 2026-10-14
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef IMAGECAIRO_H
