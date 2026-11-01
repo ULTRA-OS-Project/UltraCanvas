@@ -714,6 +714,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileDragIcon.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPortableDevices.cpp
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
@@ -2182,6 +2183,11 @@ if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
 endif()
 # File-lock probing: the same arrangement for UltraCanvasFileLock. PUBLIC so an
 # app can leave the "in use" display out entirely where nothing can answer.
+# Portable devices (phones, cameras over MTP / PTP): the same arrangement.
+# PUBLIC so an app can leave its device rows out where nothing can list them.
+if(ULTRACANVAS_HAS_PORTABLE_DEVICES)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_PORTABLE_DEVICES)
+endif()
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
 endif()

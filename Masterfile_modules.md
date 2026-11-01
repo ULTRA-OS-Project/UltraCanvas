@@ -1090,10 +1090,28 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `GetPollIntervalMs`, static `NativeBackendAvailable`. The callback runs on
     the monitor's thread and must only hand the news over; one insertion
     produces several callbacks, so the receiver coalesces.
+  - `ListGvfsVolumes` / `GvfsVolumeLabel` — on Linux, the places the desktop
+    mounted through GVFS (a phone over MTP, a camera, an iPhone, an SMB / SFTP
+    / WebDAV share) as labelled volumes; part of `ListMountedVolumes`, watched
+    by the Linux monitor every two seconds.
   Wired up per platform by the `ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR`
   condition in the **top-level** `CMakeLists.txt`; without it the core file
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
+- **UltraCanvasPortableDevices** (`UltraCanvasPortableDevices.h`) — phones,
+  cameras and media players plugged in over USB that are not a drive (MTP /
+  PTP). `List` (`PortableDeviceInfo`: id, name, manufacturer, kind),
+  `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete`, `Rename` by path
+  (`"/"` is the device, its folders its storages); every call blocks, safe
+  from any thread. `UltraCanvasPortableDeviceMonitor` reports plug-in and
+  pull-out. Backend: Windows Portable Devices on one COM thread of its own
+  (`OS/MSWindows/UltraCanvasWindowsPortableDevices.cpp`); none elsewhere
+  (Linux desktops mount devices through GVFS - see above). Wired up by the
+  `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the top-level
+  `CMakeLists.txt`. UltraFiler carries devices as remote drives
+  (`UltraFilerDeviceProvider.h`). See
+  `Docs/UltraCanvas/UltraCanvasPortableDevices.md`.
 
 - **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
   desktop session locks and when it unlocks, so a program forgets what should

@@ -245,6 +245,20 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     and `/Volumes` is where every removable volume on macOS lands — neither
     used to be looked at, so on those systems a stick was missing from the
     tree even after a restart.
+  - **Phones and cameras.** A phone, camera or media player plugged in over
+    USB (MTP / PTP) gets no drive letter, so it was never listed. On Windows
+    it now appears under **Computer** — in the tree, with a phone or camera
+    icon, and as a card on the Computer page — the moment it is plugged in,
+    and goes when it is pulled out (a display showing it goes Home). It is
+    browsed like a remote drive: folders open from a cache filled by a worker,
+    pictures and videos preview, files copy off the phone and onto it by
+    dragging them out or in, and rename, delete and new folder work. A locked phone,
+    or one left on "charging only", shows a note saying to unlock it and pick
+    *File transfer* rather than an empty folder. On Linux, what the desktop
+    mounted through GVFS — a phone, a camera, an iPhone, an SMB or SFTP share
+    opened in the desktop's file manager — is listed with the drives under a
+    readable name (`Google Pixel 8`, `photos on nas`). macOS has no MTP of
+    its own; there an Android phone needs a third-party tool.
   - **Remote drive rows say what they are.** An FTP-family drive's row in
     the tree starts with its protocol, taken from the server address:
     `FTP: Backup NAS`, `FTPS: …`, `FTPES: …` or `SFTP: …`.
