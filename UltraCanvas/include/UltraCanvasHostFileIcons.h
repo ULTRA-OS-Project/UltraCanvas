@@ -33,10 +33,12 @@
 // system image list, which is what Explorer itself draws from) and macOS
 // (NSWorkspace). Platforms with no desktop to ask — WebAssembly, Android —
 // report unavailable, and a caller then keeps its own drawn icons.
+// Version: 1.4.0 - HostFileIconProbeName; Windows asks the shell with it, so
+//                  ".exe" no longer answers with the first program's own icon
 // Version: 1.3.0 - Windows: a type no program is registered for answers null
 //                  rather than the shell's blank page
 // Version: 1.2.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -68,6 +70,22 @@ namespace UltraCanvas {
     // it carries of its own is the native module's answer, not this one's,
     // and what the host says for ".exe" is the same for every ".exe".
     std::string HostFileIconKey(const std::string& path, bool isDirectory);
+
+    // A file name that carries exactly what HostFileIconKey carries and
+    // nothing else - no folder, and a made-up stem in front of the key's
+    // suffix chain ("ultracanvas-host-icon-probe.exe" for any ".exe"). Pure
+    // string work.
+    //
+    // For a backend whose host can look at the file it is handed. The
+    // Windows shell does, for every type whose registered icon is "%1" -
+    // .exe, .ico, .cur, .lnk - even when told not to touch the disk
+    // (SHGFI_USEFILEATTRIBUTES): given a real program's path it answers with
+    // that program's own icon. Under a per-type key that answer then stood
+    // for every ".exe", so a folder drew one application's icon on all the
+    // programs whose own icon had not loaded yet, and on every program that
+    // has none. Asked with this name, the shell has no file to find and
+    // answers for the type.
+    std::string HostFileIconProbeName(const std::string& path, bool isDirectory);
 
     // The host's icon for `path`, rasterized at roughly `desiredSize` pixels.
     // `isDirectory` is passed rather than probed so a caller that has already

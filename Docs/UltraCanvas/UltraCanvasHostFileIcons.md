@@ -39,6 +39,7 @@ if (UltraCanvas::HostFileIconsAvailable()) {
 | `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` | the icon as a `UCPixmap`, or null |
 | `RefreshHostFileIcons()` | forget the lookups — after a theme change |
 | `FitHostIconToSize(pixmap, desiredSize)` | the answer resampled down to the size it is drawn at; never scaled up |
+| `HostFileIconProbeName(path, isDirectory)` | the made-up name a backend asks its host with — the key's type and nothing of the file |
 
 ## The key is the whole design
 
@@ -69,6 +70,20 @@ icon for `.exe` or `.lnk`, resolved from the name alone on every backend, and
 so the same for every file of the kind. (Until October 2026 those were keyed
 per file, which made a folder of ninety DLLs hold ninety copies of one
 picture.)
+
+A key is only as good as the question asked under it, though: an answer that
+depends on more than the key is filed under the key all the same. So a
+backend whose host might look at the file asks with `HostFileIconProbeName`
+instead of the path — the key's suffix chain on a stem no file is given
+(`ultracanvas-host-icon-probe.exe` for any `.exe`, the bare stem for a folder
+or an extension-less name). Every file of a kind is then asked about under
+the very same name, and the host has no file to find.
+
+```cpp
+// Both "ultracanvas-host-icon-probe.exe": the shell cannot tell them apart.
+const std::string first  = UltraCanvas::HostFileIconProbeName("C:/Apps/ArtCreator.exe", false);
+const std::string second = UltraCanvas::HostFileIconProbeName("C:/Tools/videofx.exe", false);
+```
 
 ## Held at the size it is drawn
 
@@ -120,6 +135,14 @@ plain associated icon where a locked-down shell refuses the lists. A
 transparent border is trimmed off what comes back: the jumbo list is a 256×256
 canvas, and a type whose icon exists only at 48 sits in the middle of it with
 empty space all round, which drawn into a tile would be a postage stamp.
+The shell is handed `HostFileIconProbeName`, never the caller's path. The
+flag keeps it off the disk for most types, but not for those whose registered
+icon is `%1` — `.exe`, `.ico`, `.cur`, `.lnk` — whose handler reads the file
+it is named after regardless. Until November 2026 the path went through, and
+a folder of programs drew the first one's own icon (ArtCreator's, in the
+report) on every other program whose icon was still loading, and on every
+console tool that has none, until the slot happened to be evicted and asked
+again by a program without an icon.
 A type no program is registered for answers **null**, not the shell's icon
 for it: that is the blank "no program" page (`SIID_DOCNOASSOC`), which tells
 the reader nothing - a `.7z` or `.tar.xz` on a machine without 7-Zip looked
