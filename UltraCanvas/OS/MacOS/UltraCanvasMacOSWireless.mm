@@ -24,10 +24,12 @@
 // ends an application that touches Bluetooth without it) and
 // NSLocationWhenInUseUsageDescription; package-macos.sh writes both for
 // UltraDesktop.
+// Version: 1.1.1 - while macOS asks for Location Services the Wi-Fi panel says so,
+//                  instead of pointing to System Settings
 // Version: 1.1.0 - pairing codes: IOBluetoothDevicePair's passkey, comparison
 //                  and PIN requests go to the pairing handler
 // Version: 1.0.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasWirelessBackend.h"
@@ -109,10 +111,14 @@ namespace {
         return opened;
     }
 
+    // Where Location Services stands for this application: macOS 14 shows
+    // the network names only once it is allowed.
+    enum class LocationState { Allowed, Asking, Refused };
+
 #ifdef ULTRACANVAS_WIRELESS_HAS_CORELOCATION
-    // Asks once for Location Services, which macOS 14 requires for network
-    // names. The manager must live on the main thread and stay alive.
-    bool LocationAllowed() {
+    // Asks once for Location Services. The manager must live on the main
+    // thread and stay alive while macOS's question is open.
+    LocationState LocationStatus() {
         static CLLocationManager* manager = nil;
         static std::once_flag asked;
         std::call_once(asked, [] {
@@ -125,10 +131,13 @@ namespace {
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
         const CLAuthorizationStatus status = [CLLocationManager authorizationStatus];
 #pragma clang diagnostic pop
-        return status != kCLAuthorizationStatusDenied && status != kCLAuthorizationStatusRestricted;
+        if (status == kCLAuthorizationStatusDenied || status == kCLAuthorizationStatusRestricted) {
+            return LocationState::Refused;
+        }
+        return status == kCLAuthorizationStatusNotDetermined ? LocationState::Asking : LocationState::Allowed;
     }
 #else
-    bool LocationAllowed() { return true; }
+    LocationState LocationStatus() { return LocationState::Allowed; }
 #endif
 
 #ifdef ULTRACANVAS_WIRELESS_HAS_COREWLAN
@@ -272,7 +281,7 @@ WirelessWifiStatus ReadWifi() {
         status.adapterName = ToUtf8(interface.interfaceName);
         status.enabled = interface.powerOn;
         if (!status.enabled) return status;
-        const bool located = LocationAllowed();
+        const LocationState location = LocationStatus();
         status.connectedSsid = ToUtf8(interface.ssid);
         const std::set<std::string> known = KnownSsids(interface);
         size_t nameless = 0;
@@ -290,9 +299,13 @@ WirelessWifiStatus ReadWifi() {
             network.connected = !status.connectedSsid.empty() && network.ssid == status.connectedSsid;
             status.networks.push_back(network);
         }
-        if (status.networks.empty() && (nameless > 0 || !located)) {
-            status.error = "macOS shows the names of Wi-Fi networks only to applications allowed to use Location "
-                           "Services: allow this one in System Settings > Privacy & Security > Location Services.";
+        if (status.networks.empty() && (nameless > 0 || location != LocationState::Allowed)) {
+            status.error =
+                location == LocationState::Asking
+                    ? "macOS shows the names of Wi-Fi networks only to applications allowed to use Location "
+                      "Services: allow it when macOS asks, and the networks show."
+                    : "macOS shows the names of Wi-Fi networks only to applications allowed to use Location "
+                      "Services: allow this one in System Settings > Privacy & Security > Location Services.";
         }
     }
 #else
