@@ -108,6 +108,7 @@ constexpr int   kClockHeight    = 68;   // the face (48) over the date line
 constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
 constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
 constexpr float kWaveLength     = 36;
+constexpr float kWaveGap        = 4;    // from the last icon before a taskbar wave to the wave
 constexpr unsigned kUiTimerMs   = 250;
 constexpr int   kNoticeTicks    = 20;   // notices re-read every 5 s
 constexpr int   kScreenshotTicks = 12;  // the "saved" marker stays 3 s
@@ -372,6 +373,33 @@ std::shared_ptr<UltraCanvasToolbar> UltraDesktopWindow::MakeGroup(const std::str
     return group;
 }
 
+void UltraDesktopWindow::TuckAgainstWave(const std::shared_ptr<UltraCanvasToolbar>& group,
+                                         const std::shared_ptr<UltraCanvasWaveSeparator>& wave,
+                                         bool vertical, bool waveAfterGroup) {
+    // The group loses its padding on the wave's side, and the wave reaches
+    // over the inner margin of the group's nearest button (half the box
+    // less the icon) to kWaveGap from its icon.
+    const float reach = static_cast<float>(kBarButton - kBarIcon) / 2.0f - kWaveGap;
+    const float pad = 6.0f;   // MakeGroup's: 6 across the bar's ends, 4 along its sides
+    if (vertical) {
+        if (waveAfterGroup) {
+            group->SetPadding(pad, 4, 0, 4);
+            wave->SetMargin(-reach, 0, 0, 0);
+        } else {
+            group->SetPadding(0, 4, pad, 4);
+            wave->SetMargin(0, 0, -reach, 0);
+        }
+    } else {
+        if (waveAfterGroup) {
+            group->SetPadding(pad, 0, pad, 4);
+            wave->SetMargin(0, 0, 0, -reach);
+        } else {
+            group->SetPadding(pad, 4, pad, 0);
+            wave->SetMargin(0, -reach, 0, 0);
+        }
+    }
+}
+
 void UltraDesktopWindow::StyleBarButton(const std::shared_ptr<UltraCanvasButton>& button) {
     if (!button) return;
     ButtonStyle style = button->GetStyle();
@@ -439,7 +467,13 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
                  [this]() { OpenAppStarter(); });
     bar->AddChild(system);
 
-    bar->AddChild(CreateWaveSeparator("Taskbar.Wave1", vertical, kBarColor, kBarInsetColor, kWaveLength));
+    // The two waves mirror each other, so the running apps sit in a band
+    // that narrows the same way at both ends; each wave starts 4 px past
+    // the icon before it (TuckAgainstWave).
+    auto wave1 = CreateWaveSeparator("Taskbar.Wave1", vertical, kBarColor, kBarInsetColor, kWaveLength);
+    wave1->SetFlipped(true);
+    TuckAgainstWave(system, wave1, vertical, true);
+    bar->AddChild(wave1);
 
     // 2. Running apps: fills the bar, scrolls when full, drag to reorder.
     running_ = MakeGroup("Taskbar.Running", vertical, true);
@@ -448,11 +482,13 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
     running_->EnableItemReordering(true);
     bar->AddChild(running_);
 
-    bar->AddChild(CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength));
+    auto wave2 = CreateWaveSeparator("Taskbar.Wave2", vertical, kBarInsetColor, kBarColor, kWaveLength);
+    bar->AddChild(wave2);
 
     // 3. Pinned: the RAM disc (when there is one - Windows has none of its
     // own) and UltraFiler.
     auto pinned = MakeGroup("Taskbar.Pinned", vertical, false);
+    TuckAgainstWave(pinned, wave2, vertical, false);
     if (!settings_.ramDiscPath.empty()) {
         AddBarButton(pinned, "ramdisc", "RAM disc (" + settings_.ramDiscPath + ")", IconPath("ramdisc.svg"),
                      [this]() { OpenRamDisc(); });
