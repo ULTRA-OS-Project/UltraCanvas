@@ -1158,6 +1158,47 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
+- **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
+  operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
+  Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,
+  the fallback backend); backends `OS/Linux/UltraCanvasLinuxWireless.cpp`
+  (NetworkManager and BlueZ over GDBus),
+  `OS/MSWindows/UltraCanvasWindowsWireless.cpp` (`wlanapi`, `bthprops`) and
+  `OS/MacOS/UltraCanvasMacOSWireless.mm` (CoreWLAN, IOBluetooth,
+  CoreLocation); internal `UltraCanvasWirelessBackend.h`. Synchronous calls
+  that take seconds: call them from a worker thread.
+  - `ReadWifi` → `WirelessWifiStatus` (`WirelessNetwork` per name: signal,
+    security, known, connected), `RequestWifiScan`, `SetWifiEnabled`,
+    `ConnectWifi(ssid, password)` (a new profile is kept only once joined),
+    `DisconnectWifi`, `ForgetWifi`.
+  - `ReadBluetooth` → `WirelessBluetoothStatus` (`WirelessBluetoothDevice`:
+    address, name, kind, paired, connected, battery), `CanSetBluetoothPower`
+    / `SetBluetoothPowered`, `StartBluetoothDiscovery` /
+    `StopBluetoothDiscovery`, `PairBluetoothDevice`,
+    `ConnectBluetoothDevice`, `DisconnectBluetoothDevice`,
+    `RemoveBluetoothDevice`; `SetPairingHandler` (`WirelessPairingRequest`
+    ShowCode / ConfirmCode / EnterCode / EnterPin / Authorize / Finished →
+    `WirelessPairingAnswer`), served by a BlueZ agent on Linux and
+    IOBluetoothDevicePair's requests on macOS.
+  - `HasSystemSettings` / `OpenSystemSettings(WirelessRadio)` - the
+    platform's own page (Windows, macOS).
+  See `Docs/UltraCanvas/UltraCanvasWireless.md`.
+
+- **UltraCanvasRemovableDrives** (`UltraCanvasRemovableDrives.h`) — the drives
+  a person plugs in and "Safely remove" for them. `List` →
+  `RemovableDrive { id, name, bus, sizeBytes, mountPoints, labels }` (the
+  system's own drive never listed); `SafelyRemove(id)` unmounts every volume
+  and powers the drive off or ejects it, failing with a sentence when a file
+  is still open. Core in `core/UltraCanvasRemovableDrives.cpp` (order,
+  fallback); backends `OS/Linux/UltraCanvasLinuxRemovableDrives.cpp`
+  (UDisks2 over GDBus, sharing `OS/Linux/UltraCanvasLinuxSystemBus.h` with
+  the wireless backend), `OS/MSWindows/UltraCanvasWindowsRemovableDrives.cpp`
+  (SetupAPI, storage ioctls, `CM_Request_Device_Eject`),
+  `OS/MacOS/UltraCanvasMacOSRemovableDrives.mm` (volume resource values
+  grouped by DiskArbitration's whole disk, `NSWorkspace
+  unmountAndEjectDeviceAtURL`). See
+  `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
+
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
   `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
   clipboard history of ULTRA OS: every copy (files, images, text with its
@@ -25768,11 +25809,15 @@ panel never disagree about an interface.
 
 | Call | Meaning |
 |---|---|
-| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, virtualDesktop, processId, active, minimized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. On Windows `id` is the `HWND`, `appClass` the program's name (`firefox`, `UltraFiler` — for a Microsoft Store application the program inside its frame), `appName` the same in lower case, and `iconFile` the executable's icon as a PNG. |
+| `ListWindows()` | Every managed window in stacking order, bottom first, as `DesktopWindowInfo { id, title, appClass, appName, iconFile, virtualDesktop, processId, active, minimized, maximized, skipTaskbar }`. Docks, panels, the desktop and tooltips are included with `skipTaskbar` true so a caller can tell them apart; a taskbar lists the rest. `iconFile` is the application's own icon, resolved from `appClass` through the icon themes ([UltraCanvasDesktopEntry](UltraCanvasDesktopEntry.md)) — for the applications this repository ships, `StartupWMClass` and `Icon=` carry the same name. On Windows `id` is the `HWND`, `appClass` the program's name (`firefox`, `UltraFiler` — for a Microsoft Store application the program inside its frame), `appName` the same in lower case, and `iconFile` the executable's icon as a PNG. |
 | `GetActiveWindow()` | The focused window's id, 0 if none. |
 | `ActivateWindow(id)` | Raise, un-minimize and focus; switches to the window's desktop first. |
 | `MinimizeWindow(id)` | Iconify. |
-| `CloseWindow(id)` | Ask the window to close through the window manager (`WM_DELETE_WINDOW`; on Windows `WM_SYSCOMMAND SC_CLOSE`, what the taskbar's *Close window* sends), never kill. |
+| `CloseWindow(id)` | Ask the window to close through the window manager (`WM_DELETE_WINDOW`; on Windows `WM_SYSCOMMAND SC_CLOSE`, what the taskbar's *Close window* sends), never kill. The window is brought to the front - and onto a screen - first: a program that asks before closing ("Save the changes?") would otherwise ask behind other windows or unseen, and the close look as if it did nothing. |
+| `GetWindowBounds(id, x, y, width, height)` | The window's rectangle in screen pixels, those of `ListScreens` (X11: the client area in root coordinates; Windows: `GetWindowRect`, and a minimized window's restored place). |
+| `MoveWindow(id, x, y)` | Its top-left corner there, its size kept (X11: `_NET_MOVERESIZE_WINDOW` through the manager; Windows: `SetWindowPos`, the restored place of a minimized window, a maximized one left alone). |
+| `BringWindowOnScreen(id)` | A window whose title bar is on no screen - so it cannot be taken and moved back - is centred on the screen it is mostly over, else the primary one; a window on a screen is left where it is. |
+| `KillWindowProcess(id, &error)` | End the window's program at once, as a task manager's "End task" - unsaved work is lost (Linux: `SIGTERM`, then `SIGKILL` after two seconds; Windows: `TerminateProcess`). Refused for a window that names no process, the desktop's own process, and a program of another user or run as administrator, with the reason. |
 
 ### Virtual desktops
 
@@ -25794,7 +25839,7 @@ never to "every desktop".
 | Call | Meaning |
 |---|---|
 | `GetScreenSize(w, h)` | The default screen's size in pixels; on Windows the primary monitor's, the one at 0,0 that a desktop window covers. |
-| `ListScreens()` | Every monitor as a `DesktopScreenInfo` — `x`, `y`, `width`, `height` in physical pixels and `primary` — the primary first, the rest left to right. On Windows `EnumDisplayMonitors`, the primary at 0,0 and a monitor left of or above it at negative coordinates; on X11 RandR's monitors in root-window coordinates, and while nobody chose a primary the one at the origin. Where the platform tells no monitors apart, the one screen `GetScreenSize` reports; a monitor that spans others (a server's automatic whole-screen monitor listed beside ones set with `xrandr --setmonitor`) is left out. A desktop puts its own window on the primary monitor through `WindowConfig::desktopArea` and covers the others with windows of `WindowType::Desktop` placed the same way — UltraDesktop puts its wallpaper there, so a monitor is not left black. |
+| `ListScreens()` | Every monitor as a `DesktopScreenInfo` — `x`, `y`, `width`, `height` in physical pixels, `primary`, and `number` - the system's own number for the monitor where it gives one (Windows: n of `\\.\DISPLAYn`, as its display settings number them; 0 on X11) — the primary first, the rest left to right. On Windows `EnumDisplayMonitors`, the primary at 0,0 and a monitor left of or above it at negative coordinates; on X11 RandR's monitors in root-window coordinates, and while nobody chose a primary the one at the origin. Where the platform tells no monitors apart, the one screen `GetScreenSize` reports; a monitor that spans others (a server's automatic whole-screen monitor listed beside ones set with `xrandr --setmonitor`) is left out. A desktop puts its own window on the primary monitor through `WindowConfig::desktopArea` and covers the others with windows of `WindowType::Desktop` placed the same way — UltraDesktop puts its wallpaper there, so a monitor is not left black. |
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
@@ -31051,6 +31096,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
   - [Native application icons](#native-application-icons)
   - [Thumbnail memory](#thumbnail-memory)
   - [Thumbnails between runs](#thumbnails-between-runs)
+  - [A file's picture outside the Filer](#a-files-picture-outside-the-filer)
 - [Shortcuts](#shortcuts)
   - [Windows shortcuts (.lnk)](#windows-shortcuts-lnk)
   - [Desktop entries (.desktop)](#desktop-entries-desktop)
@@ -32018,6 +32064,25 @@ shown, or it looks like a fault.
 A disk cache is an optimisation and never a requirement: a full disk, a
 read-only cache directory or a platform with nowhere to write costs a
 re-decode, never a missing thumbnail.
+
+### A file's picture outside the Filer
+
+`RenderFileThumbnail(path, width, height, scale)` (a free function in
+`UltraCanvasFilerWidget.h`) makes the picture a tile would show, for a caller
+that has no Filer: the image itself, a PDF's first page, a book's cover, a 3D
+model, a font specimen, a video's poster frame, an embedded preview - and for
+a text document (Word, LibreOffice, Markdown, a spreadsheet, plain text) a
+small page with its first lines, which the tiles draw as text themselves. It
+is the switch the thumbnail workers run, so the two never disagree about
+what a format looks like. It blocks - call it from a worker thread - and
+answers nullptr where this build can make no picture (an archive, a
+program, audio); the caller then shows the type's icon. UltraDesktop's
+Sticker board draws its cards' thumbnails with it.
+
+<!-- doc-check: std::string path; -->
+```cpp
+std::shared_ptr<UCPixmap> picture = RenderFileThumbnail(path, 116, 58, 2.0f);
+```
 
 ## Shortcuts
 
@@ -43068,6 +43133,23 @@ history entry. Per-card setters: `SetCardTitle`, `SetCardDescription`,
 `SetCardDueDate` / `ClearCardDueDate`, `SetCardColor`, `SetCardBlocked`
 (draws a red edge stripe; the reason joins the tooltip), `SetCardTags` /
 `AddCardTag`.
+
+A card can carry a picture - a file's thumbnail, a photo - drawn above its
+title in a band `style.cardImageHeight` high (0 turns pictures off). The
+board does not load it: `cardImageProvider` hands over whatever is ready for
+a card, and is asked while the board lays out and draws, so it must answer
+at once; a caller that makes thumbnails on a worker thread returns nullptr
+until one is done, then calls `InvalidateLayout()` so the card grows to show
+it. Pill and Grid cards have no room for a picture.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasKanbanBoardElement> board; std::map<std::string, std::shared_ptr<UCPixmap>> thumbnails; -->
+```cpp
+board->EditStyle().cardImageHeight = 56.0f;
+board->cardImageProvider = [&thumbnails](const KanbanCard& card) -> std::shared_ptr<UCPixmap> {
+    auto found = thumbnails.find(card.description);   // the card's file
+    return found == thumbnails.end() ? nullptr : found->second;
+};
+```
 
 `MoveCard(cardId, toColumnId, index = -1)` is the single mutation path for
 workflow state: it reorders instantly, records a `KanbanMoveRecord` when the
@@ -60214,6 +60296,62 @@ the side of a point and of the picked point.
   point lies. To assistive technology its value is then "Free point".
 - ArtCreator's transform bar is the reference user
   (`Apps/ArtCreator/ArtCreatorWindow.cpp`, `BuildTransformBar`).
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasRemovableDrives.md
+==============================================================================
+
+# UltraCanvasRemovableDrives
+
+<!-- doc-check: std::string error; -->
+
+The drives a person plugs in and pulls out - USB sticks, external disks,
+memory cards - and "Safely remove": every volume on the drive unmounted, after
+the system has written out what it still held, then the drive powered off or
+ejected, so it can be pulled without losing data.
+
+```cpp
+#include "UltraCanvasRemovableDrives.h"
+
+for (const RemovableDrive& drive : UltraCanvasRemovableDrives::List()) {
+    // drive.name "SanDisk Ultra", drive.bus "USB", drive.mountPoints {"/media/bob/STICK"}
+    if (!UltraCanvasRemovableDrives::SafelyRemove(drive.id, &error)) {
+        // error: "A program still has a file open on /media/bob/STICK. Close it and try again."
+    }
+}
+```
+
+It is what the ULTRA OS desktop's USB panel ([UltraDesktop](../UltraDesktop/README.md))
+offers "Safely remove" with. Distinct from
+[UltraCanvasVolumeMonitor](UltraCanvasVolumeMonitor.md), which lists every
+mounted volume and says when that set changes - a panel re-reads the drives
+when the monitor fires - and from
+[UltraCanvasHardwareInfo](UltraCanvasHardwareInfo.md), which describes the
+storage devices.
+
+Headers: `UltraCanvasRemovableDrives.h`; `UltraCanvasRemovableDrivesBackend.h`
+is the internal contract with the platform backends.
+
+## API
+
+| Call | What it does |
+|---|---|
+| `List(&error)` | The drives plugged in now, by name: `RemovableDrive { id, name, bus, sizeBytes, mountPoints, labels }`. `bus` is `"USB"`, `"SD card"`, `"FireWire"`, `"External"` or `""`; `labels[i]` names `mountPoints[i]`. A drive with nothing mounted (a blank card) is listed too. The system's own drive never is, even a USB disk the computer started from. `error` is set when the system service did not answer. |
+| `SafelyRemove(id, &error)` | Unmount the drive's volumes and power it off or eject it. False with a sentence for the person - most often that a program still has a file open on it. |
+| `GetBackendName()` | `"udisks2"`, `"win32"`, `"macos"` or `"null"`. |
+
+Both calls are synchronous. Listing is a quick system-service query; removing
+takes as long as the system needs to write out the drive's cached data -
+seconds on a slow stick - so call `SafelyRemove` from a worker thread.
+
+## Platforms
+
+| | List | Safely remove |
+|---|---|---|
+| Linux | UDisks2's drives on a USB, SD/MMC or FireWire bus or calling themselves removable, with their blocks' mount points (through an unlocked encrypted container too); `id` is the drive's UDisks2 object | `Filesystem.Unmount` on each mounted filesystem, `Encrypted.Lock` on each unlocked container, then `Drive.PowerOff` (or `Eject`). polkit lets the active local session do it without a password |
+| Windows | SetupAPI's disks on a USB, SD, MMC or FireWire bus or with removable media, and their drive letters (only removable and fixed letters are opened: no optical drive spins up, no network mapping is waited for); `id` is the disk's device instance id | The volumes flushed, then `CM_Request_Device_Eject` on the disk's parent - Windows' own "Safely Remove Hardware". Windows refuses while a file is open, and the error says so |
+| macOS | The mounted local volumes that are removable, ejectable or external, grouped by their physical disk (DiskArbitration's whole disk; for an APFS container the disk under it, found in the IOKit registry, so two containers on one drive are one entry) into one entry named by the drive's vendor and model, with its size and bus; `id` is one of its volumes' mount path | `NSWorkspace unmountAndEjectDeviceAtURL`, as Finder's Eject: every volume of the device, then the device |
+| Elsewhere | empty, with `error` saying so | fails saying so |
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasRenderContext.md
@@ -84342,6 +84480,153 @@ A manifest that breaks the schema fails here with the line and the rule it
 broke, for example an Application Id with a `-` in it.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasWireless.md
+==============================================================================
+
+# UltraCanvasWireless
+
+<!-- doc-check: std::string error; std::string password; -->
+
+Wi-Fi and Bluetooth as a person operates them from a desktop's panel: the
+networks in reach and the one joined, joining with a password, leaving and
+forgetting; the Bluetooth devices paired and in reach, pairing, connecting,
+disconnecting and removing; and the radios on and off.
+
+```cpp
+#include "UltraCanvasWireless.h"
+
+WirelessWifiStatus wifi = UltraCanvasWireless::ReadWifi();
+for (const WirelessNetwork& network : wifi.networks) {
+    if (network.connected) continue;
+    if (network.known || !network.secured) {
+        UltraCanvasWireless::ConnectWifi(network.ssid, "", &error);   // saved or open: no password
+    } else {
+        UltraCanvasWireless::ConnectWifi(network.ssid, password, &error);
+    }
+}
+
+WirelessBluetoothStatus bluetooth = UltraCanvasWireless::ReadBluetooth();
+for (const WirelessBluetoothDevice& device : bluetooth.devices) {
+    if (device.paired && !device.connected) UltraCanvasWireless::ConnectBluetoothDevice(device.address, &error);
+}
+```
+
+It is what the ULTRA OS desktop's Wi-Fi and Bluetooth panels
+([UltraDesktop](../UltraDesktop/README.md)) are built on. Distinct from
+[UltraCanvasHardwareInfo](UltraCanvasHardwareInfo.md), which describes the
+adapters (and masks their addresses), and from
+[UltraCanvasDesktopShell](UltraCanvasDesktopShell.md), which reports what is
+happening on the desktop: this module changes the radios' state.
+
+Headers: `UltraCanvasWireless.h` (the data and the API);
+`UltraCanvasWirelessBackend.h` is the internal contract with the platform
+backends.
+
+## Threads
+
+Every call is synchronous, and the changes take seconds: joining a network
+waits until the system has joined it or given up (up to 30 s), pairing waits
+for the device (up to a minute). Call them from a worker thread and hand the
+answer back with `UltraCanvasApplicationBase::PostToUIThread`. The reads take
+tens of milliseconds, but they too talk to a system service, so a panel that
+polls reads off the UI thread as well.
+
+```cpp
+std::thread([]() {
+    std::string reason;
+    const bool joined = UltraCanvasWireless::ConnectWifi("HomeNet", "", &reason);
+    UltraCanvasApplicationBase::GetCurrent()->PostToUIThread([joined, reason]() {
+        // show `reason` when !joined
+    });
+}).detach();
+```
+
+Every call that changes something answers `false` with a sentence for the
+person in `error` ("Could not join HomeNet - is the password right?").
+
+## Wi-Fi
+
+| Call | What it does |
+|---|---|
+| `ReadWifi()` | `WirelessWifiStatus`: `available` (the backend answered), `adapterPresent`, `enabled`, `hardwareBlocked` (a switch or key on the computer), `adapterName`, `connectedSsid`, and `networks` - one `WirelessNetwork` per name (`ssid`, `signalPercent`, `secured`, `security`, `known`, `connected`), the joined one first, then by signal. Hidden networks are left out. |
+| `RequestWifiScan(&error)` | Ask the adapter to scan; the networks show in `ReadWifi` a few seconds later. |
+| `SetWifiEnabled(on, &error)` | The radio on or off. |
+| `ConnectWifi(ssid, password, &error)` | Join. A `known` network or an open one needs no password. For a new secured network the profile is saved only once the network has been joined, so a mistyped password leaves nothing behind. WPA2/WPA3 personal, WPA and WEP; WPA Enterprise is refused with a reason. |
+| `DisconnectWifi(&error)` | Leave the network; the adapter stays on. |
+| `ForgetWifi(ssid, &error)` | Delete the saved profiles for the network (leaving it first if joined). |
+
+`security` is one of `"WPA3"`, `"WPA2"`, `"WPA"`, `"WEP"`, `"Enterprise"`,
+`"Open"` (Enhanced Open counts as open: it asks for no password).
+
+## Bluetooth
+
+| Call | What it does |
+|---|---|
+| `ReadBluetooth()` | `WirelessBluetoothStatus`: `available`, `adapterPresent`, `powered`, `discovering`, `adapterName`, and `devices` - `WirelessBluetoothDevice` (`address`, `name`, `kind`, `paired`, `connected`, `trusted`, `batteryPercent`, `rssiDbm`), paired first (connected before the others), then the ones a discovery found. |
+| `CanSetBluetoothPower()` / `SetBluetoothPowered(on, &error)` | The radio on or off, where the system lets a program switch it. |
+| `StartBluetoothDiscovery(&error)` / `StopBluetoothDiscovery(&error)` | Look for devices in pairing mode; it stops by itself after about a minute. |
+| `PairBluetoothDevice(address, &error)` | Pair with a found device, trust it and connect it; codes go to the pairing handler (below). |
+| `SetPairingHandler(handler)` | Who shows the pairing codes and answers for the person. |
+| `ConnectBluetoothDevice` / `DisconnectBluetoothDevice(address, &error)` | A paired device's link. |
+| `RemoveBluetoothDevice(address, &error)` | Unpair: the device must be paired again. |
+
+### Pairing codes
+
+A device that shows a code (a keyboard), shows one to compare (a phone) or
+asks for a PIN goes, while `PairBluetoothDevice` runs, to the handler
+`SetPairingHandler` installed - one per process, a desktop's Bluetooth panel.
+The handler is called on a backend thread: for `ShowCode` and `Finished` it
+returns at once; for `ConfirmCode`, `Authorize`, `EnterCode` and `EnterPin`
+it may wait for the person (up to a minute) and answers
+`WirelessPairingAnswer { accept, code }`.
+
+```cpp
+UltraCanvasWireless::SetPairingHandler([](const WirelessPairingRequest& request) {
+    WirelessPairingAnswer answer;
+    if (request.step == WirelessPairingStep::ConfirmCode) {
+        answer.accept = true;   // after the person said request.code matches
+    }
+    return answer;
+});
+```
+
+On Linux setting the handler registers a BlueZ agent (`org.bluez.Agent1`,
+"KeyboardDisplay") at once, served from a GLib loop on a thread of its own,
+and asks BlueZ to make it the default agent: a pairing the device starts (a
+phone pairing with the computer) comes to the handler too, at any time, and
+so does a connection from a device that is not trusted
+(`WirelessPairingStep::AllowConnection`). The agent's thread watches BlueZ's
+name on the bus and registers the agent again whenever BlueZ appears - when
+it starts after the handler was set, and after `bluetoothd` restarts, which
+forgets every agent. Without a
+handler no agent is registered and a device that needs a code does not
+pair. macOS hands IOBluetoothDevicePair's
+passkey, comparison and PIN requests to it (without one a comparison is
+accepted unseen). Windows shows its own prompt and never calls it.
+
+`address` is the unmasked `"AA:BB:CC:DD:EE:FF"`; the calls accept it in any
+case and with `-` for `:`. `kind` is for a person: `"Headphones"`,
+`"Headset"`, `"Speaker"`, `"Keyboard"`, `"Mouse"`, `"Game controller"`,
+`"Phone"`, `"Computer"`, `"Watch"`, or `""` when the device does not say.
+
+## The system's own settings
+
+`HasSystemSettings(WirelessRadio::WiFi)` / `OpenSystemSettings(radio, &error)`
+open the platform's own page for the radio, for what this module leaves to it
+(Windows: `ms-settings:network-wifi` / `ms-settings:bluetooth`; macOS: System
+Settings' Wi-Fi and Bluetooth). Linux has none to open: the desktop's panels
+are the settings.
+
+## Platforms
+
+| | Wi-Fi | Bluetooth |
+|---|---|---|
+| Linux | NetworkManager on the system bus (GDBus); polkit decides what the user may change - on a desktop seat everything here | BlueZ on the system bus; codes through the pairing handler and a BlueZ agent of the module's own |
+| Windows | Native Wifi (`wlanapi`); a new network gets a WLAN profile written from its security, deleted again - or the replaced one restored - when the join fails | The Bluetooth API (`bthprops`). The radio is switched only in Windows' settings (`CanSetBluetoothPower()` is false). Pairing shows Windows' own prompt when the device wants a code. Connect and disconnect switch the device's installed services (`BluetoothSetServiceState`), as Windows does for headphones |
+| macOS | CoreWLAN. From macOS 14 network names are shown only to an application Location Services allows; the first read asks, and `error` says why the list is empty while it is refused. Forgetting a network needs an administrator, so it is left to System Settings | IOBluetooth. Switching the radio and removing a pairing use the private calls every Bluetooth utility uses, looked up at run time; where they are gone the call fails saying so. The application's `Info.plist` needs `NSBluetoothAlwaysUsageDescription` and `NSLocationWhenInUseUsageDescription` (`package-macos.sh` writes both for UltraDesktop) |
+| Elsewhere | `available` false; every call fails saying so | the same |
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasWordCloudExamples.md
 ==============================================================================
 
@@ -101435,7 +101720,11 @@ the right-hand monitor the primary.
   copies, as before.
 - **Info panel**, anchored to the bottom: Email, Upload, Download,
   Internet/LAN, VPN, Bluetooth, Wi-Fi, USB, Keyboard, Webcam, Microphone,
-  Loudspeaker, Battery and Task Manager. The markers:
+  Loudspeaker, Battery and Task Manager. On a screen less than 960 pixels
+  high the icons are smaller, and those that still do not fit fold into a
+  chevron menu at the bar's foot, least used first - keyboard, VPN, USB,
+  upload, Task Manager, download, LAN, email - so the webcam's and
+  microphone's in-use dots stay in sight. The markers:
 
   | Marker | Meaning | On |
   |---|---|---|
@@ -101445,9 +101734,43 @@ the right-hand monitor the primary.
 
   The tooltip of every icon says it in words ("Wi-Fi: HomeNet", "Download:
   1.2 MB/s", "Battery: 84%, charging", "Loudspeaker: 63%, playing"). Clicking
-  opens what the icon is about: Email starts UltraMail, the network icons
-  UltraNetMonitor, USB, keyboard and webcam DeviceExplorer, the loudspeaker
-  its volume panel, the rest the Task Manager.
+  opens what the icon is about: Email starts UltraMail, the traffic, LAN and
+  VPN icons UltraNetMonitor, Wi-Fi and Bluetooth their panels (below), USB,
+  keyboard, webcam, microphone and battery a panel saying what is attached
+  or in use with a button on to Device Explorer or the Task Manager, the
+  loudspeaker its volume panel, and the last icon the Task Manager.
+- **USB**: the USB panel lists the drives plugged in (USB sticks, external
+  disks, memory cards - never the system's own) with their size and where
+  they are mounted, each with *Safely remove*: its volumes are unmounted once
+  everything is written out and the drive is powered off, after which the
+  panel says it can be pulled out - or that a program still has a file open
+  on it. Below them, the other USB devices. The list follows what is
+  plugged in while the panel is open. Through UDisks2 on Linux,
+  Windows' "Safely Remove Hardware", and Finder's Eject on macOS.
+- **Wi-Fi**: the Wi-Fi panel beside the bar - Wi-Fi on a switch, the network
+  joined, and the networks in reach with their signal and security. *Connect*
+  joins a saved or open network at once and asks for the password of a new
+  one (kept only once the network has been joined, so a mistyped password is
+  not saved); *Disconnect* leaves the network, *Forget* deletes its saved
+  password, *Scan* looks again, *Traffic* opens UltraNetMonitor. The list is
+  read again every five seconds while the panel is open. Through
+  NetworkManager on Linux, Windows' Wi-Fi service, and CoreWLAN on macOS,
+  which shows network names only once Location Services allows UltraDesktop
+  (the panel says so until then). On Windows and macOS *System settings*
+  opens the system's own page.
+- **Bluetooth**: the Bluetooth panel - Bluetooth on a switch, *My devices*
+  with *Connect* / *Disconnect* and *Remove* (unpair), the device's kind and,
+  where it reports it, its battery, and *Add device*, which looks for devices
+  in pairing mode for a minute and lists them with *Pair* (pair, trust,
+  connect). Through BlueZ on Linux, the Bluetooth API on Windows, IOBluetooth
+  on macOS. Windows switches Bluetooth on and off only in its own settings,
+  which *System settings* opens, and shows its own prompt when a device wants
+  a code. On Linux and macOS the panel shows the code itself: the six digits
+  to type on a keyboard (then Enter), *Yes, pair* / *No* when a phone shows a
+  number to compare, or a field for a PIN. On Linux UltraDesktop is the
+  system's pairing agent from the start, so when a phone starts pairing
+  with the computer, or a device that is not trusted asks to connect, the
+  panel opens by itself and asks.
 - **Loudspeaker**: the volume panel beside the bar - the output's name, its
   volume on a slider, its mute on a switch - through the sound server
   (PulseAudio or PipeWire on Linux, Core Audio on Windows; the panel says so
@@ -101475,8 +101798,18 @@ the right-hand monitor the primary.
   by its package appears without being told about ULTRA OS. A tap of the
   Super key opens it from any window - on Linux, and on Windows as the
   shell (beside Explorer the key is the Start menu's).
-- **Task Manager**: the open windows with *Activate* and *Close* on the
-  first tab, the machine — CPU load and temperature, memory, storage, the
+- **Task Manager**: the open windows on the first tab, under a header -
+  each with its application's icon, its state as an icon and a word (open,
+  maximized or minimized; blue for the window in front), the display
+  (monitor) it is on as a number in a bordered box - on Windows the number
+  its display settings show, elsewhere 1 for the primary and the others left
+  to right; "?" for a window on no display - and, where there
+  is more than one virtual desktop, its desktop the same way. *Show* brings
+  the window to the front and, when it is off every display, centres it on
+  one; *Close* brings it to the front first, so a program that asks "Save
+  the changes?" asks where it is seen; *Kill task* ends the program at once
+  after asking, for one that does not close. The desktop's own windows (the
+  Task Manager itself, its dialogs, the Sticker board) are not listed - the machine — CPU load and temperature, memory, storage, the
   interfaces — on the framework's hardware panel on the second.
 - **Settings**: the desktop's settings - the taskbar's edge, the wallpaper,
   the RAM disc path, the file manager program, the number of virtual
@@ -101484,7 +101817,14 @@ the right-hand monitor the primary.
   desktop's settings file; the desktop checks it once a second and rebuilds
   the bars in place when UOS-Settings changed one of them.
 - **Sticker board** (the pinboard button): files and notes sorted into
-  categories on a Kanban board over the wallpaper. It starts with *Docs*,
+  categories on a Kanban board that fills the whole space between the bars.
+  It shows only when the pinboard button is clicked, and then just below the
+  application that was in front - that application stays visible on top of
+  it; *✕* in the board's bar (or the button again) hides it. A file's card
+  shows a small thumbnail as UltraFiler's tiles do: the picture itself for a
+  photo or a drawing, a PDF's first page, a book's cover, a small page of a
+  text document's first lines (Word, LibreOffice, Markdown, a spreadsheet),
+  and the system's icon for anything else (a folder, an archive). It starts with *Docs*,
   *Work* and *Home*. Drop files from the file manager onto a category and
   they are added to it straight away, without a question; a file already on
   the board moves to the category it was dropped on. A double-click opens a
@@ -101493,9 +101833,7 @@ the right-hand monitor the primary.
   scrolls to it when the board is too wide to show them all, and lets you
   type its name (double-click a category's title to rename it later). The
   picker in the bar switches the display style: *Sticky notes*, *Poster*,
-  *Schematic* or *Dark*. Drag the panel by its title and resize it by the
-  grip in its bottom-right corner; the board, its style, its place and its
-  size are kept.
+  *Schematic* or *Dark*. The board and its style are kept.
 - **Notes** (the note button below it): free sticky notes over the
   wallpaper. *+* in the corner adds one; each note is edited in place,
   dragged by its top bar, cycled through six paper colours and closed with
@@ -101573,7 +101911,8 @@ earlier versions kept under `~/.config` is moved on the first start):
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
                      "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } },
-  "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ]
+  "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ],
+  "startWithDesktop": [ "ChatCube", "UltraMail" ]
 }
 ```
 
@@ -101583,9 +101922,25 @@ RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
-`stickynotes`, `poster`, `schematic`, `dark`. `pinnedApps` are the pinned
+`stickynotes`, `poster`, `schematic`, `dark`. `visible`, `x`, `y`, `width`
+and `height` are kept for older versions and no longer used: the board fills
+the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
+`startWithDesktop` names the programs started with the desktop - `ChatCube`
+and `UltraMail` are the ones it offers; empty (the default), none.
+
+## Programs that start with the desktop
+
+ChatCube and UltraMail can start with the desktop, so messages arrive and
+mail is counted on the mail icon without opening them first. Tick them in
+UOS-Settings > Desktop > *Start with the desktop*, or on the settings
+button's right-click menu (*Start with the desktop*). Three seconds after the
+desktop starts - so it shows first - each ticked program that is not
+running yet is started with `--minimized`: its window goes to the taskbar
+and it works in the background. One that is running already is left alone,
+since a second start of these single-copy programs would only bring their
+window forward. Ticking one in the menu starts it at once as well.
 
 ## How the mail count gets there
 
