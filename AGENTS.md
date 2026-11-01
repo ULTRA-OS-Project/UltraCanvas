@@ -772,8 +772,11 @@ and never introduce a new literal copy of one:
    (`UltraIMPlugins.h`) or a type in `UltraIMTypes.h`? Bump
    `ULTRAIM_PLUGIN_HOST_ABI_VERSION` - the provider modules are called through
    that vtable and those structs, and the host loads only a module of its own
-   version - and run `python3 scripts/check_ultraim_abi.py --update`; CI runs
-   the check. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
+   version. Changing `UltraCanvasElementPlugins.h`? Bump
+   `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION` for a member appended to the host
+   table, or the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG` for a type that
+   crosses to the plug-ins. Then run `python3 scripts/check_plugin_abi.py
+   --update`; CI runs the check. Changing VideoFX? Run `scripts/check_libcxx_syntax.sh`:
    the Windows builds compile it against libc++, which refuses what libstdc++
    lets through (`std::to_string` of a file time's tick count, say), and the
    script type-checks the module against libc++ in seconds. Reading HTML,

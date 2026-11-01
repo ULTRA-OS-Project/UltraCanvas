@@ -4,10 +4,11 @@
 // the ABI handshake, and a real end-to-end DSO load through the host vtable.
 //
 // Usage: ElementPluginTest [pluginDirectory]
-// The DSO tests run only when a directory containing the two test plugins
-// (TestElementPlugin, TestRefusingPlugin) is passed; the CMake registration
+// The DSO tests run only when a directory containing the three test plugins
+// (TestElementPlugin, TestRefusingPlugin, TestNewerPlugin) is passed; the CMake registration
 // builds them and passes the directory.
 //
+// Version: 1.0.1 - a plugin built for a newer host table is refused (TestNewerPlugin)
 // Version: 1.0.0
 // Last Modified: 2026-08-01
 // Author: UltraCanvas Framework
@@ -252,6 +253,10 @@ static void TestDsoEndToEnd(const std::string& pluginDirectory) {
     // The refusing plugin was in the same directory: skipped, nothing registered.
     CHECK(UltraCanvasElementRegistry::ListAll().size() == 1,
           "the refusing plugin registered nothing");
+    // So was one built for a newer host table: it would call members this
+    // host does not pass, and its handshake refuses it.
+    CHECK(!UltraCanvasElementRegistry::IsRegistered("newer-widget"),
+          "a plugin built for a newer host table refuses to load");
 
     CHECK(UltraCanvas_RefreshElementPlugins() == 0,
           "a second refresh loads nothing new (idempotent)");

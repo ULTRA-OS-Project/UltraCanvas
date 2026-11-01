@@ -14,8 +14,11 @@
 // (which is what makes Windows work without -rdynamic), and refuse loading
 // cleanly on an ABI mismatch.
 //
+// Version: 1.0.1 - a plugin requires a host table at least as new as the one it was built for
+//                  (it asked for version 1 whatever it was built for); scripts/check_plugin_abi.py
+//                  fails a change to this header that moves neither the table's version nor "ucN"
 // Version: 1.0.0
-// Last Modified: 2026-08-01
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -100,8 +103,20 @@ public:
 // =============================================================================
 
 // Version of the C entry contract. Grows append-only: a newer host passes a
-// larger vtable, an older plugin simply ignores the tail.
+// larger vtable, an older plugin simply ignores the tail - and a plugin built
+// for a newer table than the host's refuses to load, since the members it
+// would call are not there. Bump it with every member appended to
+// UltraCanvasPluginHost; scripts/check_plugin_abi.py (CI: plugin-abi.yml)
+// fails a change to this header that moves neither it nor the "ucN" of
+// ULTRACANVAS_FRAMEWORK_ABI_TAG below.
 inline constexpr int ULTRACANVAS_PLUGIN_HOST_ABI_VERSION = 1;
+
+// The table version a plugin requires of its host: the one it is built
+// against. Defined differently only by the loader's test, to build a plugin
+// "from a newer framework" and see it refused.
+#ifndef ULTRACANVAS_PLUGIN_BUILT_FOR_ABI
+  #define ULTRACANVAS_PLUGIN_BUILT_FOR_ABI ::UltraCanvas::ULTRACANVAS_PLUGIN_HOST_ABI_VERSION
+#endif
 
 // Toolchain/stdlib tag guarding the C++ boundary - the thing that actually
 // breaks when a plugin is built with a different compiler or standard library.
@@ -152,11 +167,18 @@ using UltraCanvas_PluginInitFn = bool (*)(const UltraCanvasPluginHost* host);
 
 // Defines UltraCanvas_PluginInit with the ABI handshake and exception fence
 // already in place; `initFn` is bool(const UltraCanvasPluginHost*) and runs
-// only after both checks pass.
+// only after both checks pass: the host's table is at least the one the
+// plugin was built for (it may be longer), and the C++ types crossing the
+// boundary are laid out alike (the ABI tag, compared exactly).
 #define ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(initFn)                              \
     extern "C" ULTRACANVAS_PLUGIN_EXPORT                                       \
     bool UltraCanvas_PluginInit(const UltraCanvas::UltraCanvasPluginHost* host) { \
-        if (!host || host->abiVersion < 1 || !host->RegisterElement) return false; \
+        if (!host || !host->RegisterElement) return false;                     \
+        if (host->abiVersion < ULTRACANVAS_PLUGIN_BUILT_FOR_ABI) {             \
+            if (host->Log) host->Log(2, "plugin refused: the host's table is older than the " \
+                                        "one the plugin was built for - update the framework"); \
+            return false;                                                      \
+        }                                                                      \
         if (!host->frameworkAbiTag ||                                          \
             std::string(host->frameworkAbiTag) != ULTRACANVAS_FRAMEWORK_ABI_TAG) { \
             if (host->Log) host->Log(2, "plugin refused: ABI tag mismatch, "   \

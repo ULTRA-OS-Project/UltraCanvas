@@ -224,9 +224,9 @@ rebuild it; the module refuses a host of another version too. So a stale
 module in a plug-in folder is skipped instead of being called through a
 vtable that no longer matches. Changing the interface or a type in
 `UltraIMTypes.h` therefore bumps the version (with a word on what changed
-in the comment above it), and `python3 scripts/check_ultraim_abi.py
---update` records the new fingerprint in `scripts/ultraim_abi.txt`; CI
-(`ultraim-abi.yml`) fails a change to those headers that leaves the version
+in the comment above it), and `python3 scripts/check_plugin_abi.py
+--update` records the new fingerprint in `scripts/plugin_abi.txt`; CI
+(`plugin-abi.yml`) fails a change to those headers that leaves the version
 as it was. A change that is not part of the contract - a free inline
 function, a constant, the text of a default body's message - is recorded
 with `--update --no-abi-change "why"`. Version 1 was the first modules;

@@ -3882,7 +3882,11 @@ add_library(TestElementPlugin MODULE
 add_library(TestRefusingPlugin MODULE
     ${CMAKE_CURRENT_SOURCE_DIR}/TestRefusingPlugin.cpp
 )
-foreach(plugin TestElementPlugin TestRefusingPlugin)
+# Built for a newer host table than this framework's: refused by the handshake.
+add_library(TestNewerPlugin MODULE
+    ${CMAKE_CURRENT_SOURCE_DIR}/TestNewerPlugin.cpp
+)
+foreach(plugin TestElementPlugin TestRefusingPlugin TestNewerPlugin)
     target_include_directories(${plugin} PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -3906,7 +3910,7 @@ target_include_directories(ElementPluginTest PRIVATE
 )
 target_compile_features(ElementPluginTest PRIVATE cxx_std_20)
 target_link_libraries(ElementPluginTest PRIVATE ${CMAKE_DL_LIBS})
-add_dependencies(ElementPluginTest TestElementPlugin TestRefusingPlugin)
+add_dependencies(ElementPluginTest TestElementPlugin TestRefusingPlugin TestNewerPlugin)
 set_target_properties(ElementPluginTest PROPERTIES
     OUTPUT_NAME "ElementPluginTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

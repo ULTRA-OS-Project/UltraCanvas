@@ -1,0 +1,11 @@
+# The plug-in ABIs as last recorded - see scripts/check_plugin_abi.py.
+# Written by `check_plugin_abi.py --update`; never edit by hand.
+
+# ultraim: recorded at abi 2
+ultraim abi 2
+ultraim fingerprint 1d270905fbbaa431fd38342a44fc40a3c63911bc726f4ffc6b0e507b11cd435d
+
+# element: no ABI change at table 1, uc 1: the handshake macro's own check (a plugin needs a table as new as its own) and its test hook; no table member or crossing type changed
+element table 1
+element uc 1
+element fingerprint 0bc955eecb3d1596c4285bf0247af602df5087e4a61cf1ba8ddcdf71659bd394

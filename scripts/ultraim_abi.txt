@@ -1,5 +1,0 @@
-# UltraIM's module ABI as last recorded - see scripts/check_ultraim_abi.py.
-# Written by `check_ultraim_abi.py --update`; never edit by hand.
-# recorded with the version bumped to 2
-version 2
-fingerprint 67950e3b5316ff3802fa049484d1f2f4fa8ab8ba6bb56dd054eea512ddee0fc0

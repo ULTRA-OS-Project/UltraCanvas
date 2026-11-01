@@ -312,8 +312,8 @@ protected:
 // has no answer (one built before version 2); the module checks the host's
 // in UltraIM_PluginInit. Bump the version with any change to those - a new
 // virtual, a new member of a struct, a reordered enum.
-// scripts/check_ultraim_abi.py fails CI when they change and the version
-// does not (scripts/ultraim_abi.txt records the version and a fingerprint).
+// scripts/check_plugin_abi.py fails CI when they change and the version
+// does not (scripts/plugin_abi.txt records the version and a fingerprint).
 //
 // Version 1: the first modules. Version 2 (2026-11): the account profile and
 // sign-in protection, UltraIMCredentials::email - and the version check.
