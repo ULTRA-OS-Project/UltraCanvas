@@ -36,6 +36,7 @@
 // is empty and every call fails with a message saying so: Linux desktops
 // mount such a device themselves (GNOME's gvfs under /run/user/<uid>/gvfs,
 // which ListMountedVolumes reports), and macOS has no MTP support of its own.
+// Version: 1.1.0 - GetSpace: a device's capacity and free space
 // Version: 1.0.0
 // Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
@@ -110,6 +111,8 @@ namespace UltraCanvas {
                             std::string& error) = 0;
         virtual bool Rename(const std::string& deviceId, const std::string& path,
                             const std::string& newName, std::string& error) = 0;
+        virtual bool Space(const std::string& deviceId, uint64_t& totalBytes,
+                           uint64_t& freeBytes, std::string& error) = 0;
     };
 
     // Provided by the platform backend where one exists; the core file
@@ -162,6 +165,13 @@ namespace UltraCanvas {
         // Renames `path` in place; `newName` is a bare name.
         static bool Rename(const std::string& deviceId, const std::string& path,
                            const std::string& newName, std::string& error);
+
+        // The capacity and free space of the device, its storages added up -
+        // a phone's internal storage and its SD card are one device to the
+        // user. False with a reason when the device is gone or shows no
+        // storage (locked, or on "charging only").
+        static bool GetSpace(const std::string& deviceId, uint64_t& totalBytes,
+                             uint64_t& freeBytes, std::string& error);
     };
 
     // ===== THE MONITOR =====

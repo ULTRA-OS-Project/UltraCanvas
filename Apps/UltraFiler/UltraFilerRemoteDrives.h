@@ -132,6 +132,9 @@ struct RemoteDrive {
     // Remote Drives, and gone when the device is pulled out.
     bool isDevice = false;
     PortableDeviceKind deviceKind = PortableDeviceKind::Other;
+    // The device's id for UltraCanvasPortableDevices - what its free space
+    // is asked under (GetSpace). Empty for a configured drive.
+    std::string deviceId;
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which

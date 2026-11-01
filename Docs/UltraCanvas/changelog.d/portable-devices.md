@@ -3,7 +3,8 @@
   mount point, so nothing in the framework could see it. New
   `UltraCanvasPortableDevices.h`: `List` (name, manufacturer, phone / camera /
   player), `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete` and
-  `Rename` by path (`"/"` is the device, its folders its storages), and
+  `Rename` by path (`"/"` is the device, its folders its storages),
+  `GetSpace` (capacity and free space, storages added up), and
   `UltraCanvasPortableDeviceMonitor` for plug-in and pull-out. The Windows
   backend is Windows Portable Devices - built in, no new library - running
   every call on one COM thread of its own, so the devices it opened stay open

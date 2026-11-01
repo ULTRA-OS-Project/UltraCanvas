@@ -6889,11 +6889,32 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
     computerDriveRow->ClearChildren();
     computerDriveCards.clear();
 
+    // One card per volume, then one per connected phone or camera - the same
+    // card, so a phone shows its used and free space like a drive does (the
+    // sizes come in from QueueVolumeSpaceQuery, which asks the device).
+    struct CardSource {
+        std::string path, label, icon;
+        std::string under;   // the line at the foot of the card
+    };
+    std::vector<CardSource> sources;
+    for (const MountedVolume& volume : volumes)
+        sources.push_back({volume.path, DriveNodeLabel(volume), "drive.png", volume.path});
+    if (remoteDrives) {
+        for (const RemoteDrive& d : remoteDrives->Drives()) {
+            if (!d.isDevice) continue;
+            // What it is and who made it, where a volume says where it is
+            // mounted: a phone has no path worth reading.
+            std::string under = DeviceKindWord(d.deviceKind);
+            if (!d.serverUrl.empty()) under += " - " + d.serverUrl;   // the manufacturer
+            sources.push_back({d.rootPath, d.displayName, DeviceIconFile(d.deviceKind), under});
+        }
+    }
+
     int index = 0;
-    for (const MountedVolume& volume : volumes) {
+    for (const CardSource& source : sources) {
         const std::string id = "ufl-computer-drive-" + std::to_string(index++);
-        const std::string path = volume.path;
-        const std::string label = DriveNodeLabel(volume);
+        const std::string path = source.path;
+        const std::string label = source.label;
 
         auto card = MakeLayoutBox(id, kComputerCardWidth, kComputerCardHeight);
         card->layout.SetFlexColumn().SetFlexGap(2)
@@ -6925,7 +6946,7 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         card->AddChild(pie);
 
         // The drive's name is the button that opens it.
-        card->AddChild(MakeToolButton(id + "-open", label, "drive.png", 0,
+        card->AddChild(MakeToolButton(id + "-open", label, source.icon, 0,
                                       [this, path]() { NavigateTo(path); }));
 
         auto usage = CreateLabel(id + "-usage", 0, 0, kComputerCardWidth, 18, "");
@@ -6942,8 +6963,9 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         card->AddChild(space);
 
         // Where it is mounted: "/" under "File System", the /media path under
-        // a stick's volume name, the root under a drive letter.
-        auto mount = CreateLabel(id + "-mount", 0, 0, kComputerCardWidth, 18, path);
+        // a stick's volume name, the root under a drive letter - and for a
+        // phone, what it is and who made it.
+        auto mount = CreateLabel(id + "-mount", 0, 0, kComputerCardWidth, 18, source.under);
         mount->SetFontSize(kUiFontSize);
         mount->SetAlignment(TextAlignment::Center);
         mount->SetTextColor(Color(150, 150, 156, 255));
@@ -6962,40 +6984,6 @@ void UltraFilerWindow::RebuildComputerDriveCards(const std::vector<MountedVolume
         ApplyVolumeSpaceToCard(known != volumeSpaces.end() ? known->second : unknown);
     }
 
-    // The connected phones and cameras, after the drives: no pie - a device
-    // over MTP is not a volume whose free space the system can be asked for
-    // - but the same card, its name the button that opens it.
-    if (remoteDrives) {
-        for (const RemoteDrive& d : remoteDrives->Drives()) {
-            if (!d.isDevice) continue;
-            const std::string id = "ufl-computer-device-" + std::to_string(index++);
-            const std::string path = d.rootPath;
-            auto card = MakeLayoutBox(id, kComputerCardWidth, kComputerCardHeight);
-            card->layout.SetFlexColumn().SetFlexGap(2)
-                        .SetFlexAlignItems(CSSLayout::AlignItems::Center)
-                        .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-            card->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            card->AddChild(MakeToolButton(id + "-open", d.displayName,
-                                          DeviceIconFile(d.deviceKind), 0,
-                                          [this, path]() { NavigateTo(path); }));
-            auto kind = CreateLabel(id + "-kind", 0, 0, kComputerCardWidth, 18,
-                                    DeviceKindWord(d.deviceKind));
-            kind->SetFontSize(kUiFontSize);
-            kind->SetAlignment(TextAlignment::Center);
-            kind->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-            card->AddChild(kind);
-            if (!d.serverUrl.empty()) {   // the manufacturer (SetDevices)
-                auto maker = CreateLabel(id + "-maker", 0, 0, kComputerCardWidth, 18,
-                                         d.serverUrl);
-                maker->SetFontSize(kUiFontSize);
-                maker->SetAlignment(TextAlignment::Center);
-                maker->SetTextColor(Color(150, 150, 156, 255));
-                maker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-                card->AddChild(maker);
-            }
-            computerDriveRow->AddChild(card);
-        }
-    }
     computerDriveRow->RequestRedraw();
 }
 
@@ -7040,15 +7028,36 @@ void UltraFilerWindow::QueueVolumeSpaceQuery() {
         return;
     }
     if (spaceWorker.joinable()) spaceWorker.join();
-    std::vector<std::string> paths;
-    for (const ComputerDriveCard& card : computerDriveCards) paths.push_back(card.path);
+    // Each card's path, and for a connected phone or camera the device to
+    // ask: a device over MTP is no volume std::filesystem can measure.
+    std::vector<std::pair<std::string, std::string>> paths;
+    std::map<std::string, std::string> deviceIds;
+    if (remoteDrives)
+        for (const RemoteDrive& d : remoteDrives->Drives())
+            if (d.isDevice) deviceIds[d.rootPath] = d.deviceId;
+    for (const ComputerDriveCard& card : computerDriveCards) {
+        auto device = deviceIds.find(card.path);
+        paths.emplace_back(card.path, device != deviceIds.end() ? device->second : std::string());
+    }
     auto alive = probeAlive;
     spaceWorker = std::thread([this, alive, paths = std::move(paths)]() {
         // std::filesystem::space with an error_code never throws; this is
-        // where a share that stopped answering spends its timeout.
+        // where a share that stopped answering spends its timeout - and a
+        // phone the time it takes to answer over USB.
         std::vector<VolumeSpace> spaces;
         spaces.reserve(paths.size());
-        for (const std::string& path : paths) spaces.push_back(QueryVolumeSpace(path));
+        for (const auto& [path, deviceId] : paths) {
+            if (deviceId.empty()) {
+                spaces.push_back(QueryVolumeSpace(path));
+                continue;
+            }
+            VolumeSpace space;
+            space.path = path;
+            std::string ignored;
+            space.known = UltraCanvasPortableDevices::GetSpace(deviceId, space.totalBytes,
+                                                               space.freeBytes, ignored);
+            spaces.push_back(space);
+        }
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
         if (!app || !alive->load()) {
             spaceWorkerBusy.store(false);

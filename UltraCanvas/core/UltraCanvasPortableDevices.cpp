@@ -3,6 +3,7 @@
 // the one backend every call goes through, the monitor, and the fallback for
 // platforms without a backend. Every operating system call lives in
 // OS/<Platform>/.
+// Version: 1.1.0 - GetSpace
 // Version: 1.0.0
 // Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
@@ -176,6 +177,16 @@ namespace UltraCanvas {
             return false;
         }
         return b->Rename(deviceId, p, newName, error);
+    }
+
+    bool UltraCanvasPortableDevices::GetSpace(const std::string& deviceId,
+                                              uint64_t& totalBytes, uint64_t& freeBytes,
+                                              std::string& error) {
+        totalBytes = 0;
+        freeBytes = 0;
+        IPortableDeviceBackend* b = Backend();
+        if (!b) { error = kNoBackend; return false; }
+        return b->Space(deviceId, totalBytes, freeBytes, error);
     }
 
     // ===== THE MONITOR =====

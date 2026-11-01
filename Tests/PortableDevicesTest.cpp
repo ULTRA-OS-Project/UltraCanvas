@@ -4,6 +4,7 @@
 // backend answers. Built from the core file alone - no device, no display and
 // no UltraCanvas library - so it runs the same on every CI row; the Windows
 // WPD backend needs a phone on a USB port and is not exercised here.
+// Version: 1.1.0 - GetSpace without a backend
 // Version: 1.0.0
 // Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
@@ -61,6 +62,12 @@ int main() {
     error.clear();
     CHECK(!UltraCanvasPortableDevices::Download("dev", "/a/b", "/tmp/x", error) && !error.empty(),
           "a download fails with a reason");
+
+    uint64_t total = 1, free = 1;
+    error.clear();
+    CHECK(!UltraCanvasPortableDevices::GetSpace("dev", total, free, error) && !error.empty(),
+          "free space fails with a reason");
+    CHECK(total == 0 && free == 0, "and reports no sizes");
 
     UltraCanvasPortableDeviceMonitor monitor;
     CHECK(!monitor.Start([]() {}), "a monitor with nothing to watch is refused");

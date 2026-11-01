@@ -18,6 +18,7 @@
 // folders costs one listing per folder, as it would on a disk. A call that
 // fails on an id the cache handed it - the file was deleted on the phone -
 // forgets the device's ids and resolves the path afresh, once.
+// Version: 1.1.0 - Space: the storages' capacity and free space
 // Version: 1.0.0
 // Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
@@ -235,6 +236,13 @@ namespace UltraCanvas {
             bool Rename(const std::string& deviceId, const std::string& path,
                         const std::string& newName, std::string& error) override {
                 return com.Call<bool>([&]() { return DoRename(deviceId, path, newName, error); });
+            }
+
+            bool Space(const std::string& deviceId, uint64_t& totalBytes,
+                       uint64_t& freeBytes, std::string& error) override {
+                return com.Call<bool>([&]() {
+                    return DoSpace(deviceId, totalBytes, freeBytes, error);
+                });
             }
 
         private:
@@ -836,6 +844,66 @@ namespace UltraCanvas {
                             ForgetTree(d, path);
                             return S_OK;
                         }, "rename it");
+            }
+
+            // The storages' capacity and free space, added up. Read straight
+            // off the storage objects - the device keeps the numbers current
+            // and answers them without walking any folder.
+            bool DoSpace(const std::string& deviceId, uint64_t& totalBytes,
+                         uint64_t& freeBytes, std::string& error) {
+                totalBytes = 0;
+                freeBytes = 0;
+                int storages = 0;
+                const bool ok = WithObject(deviceId, "/", error,
+                        [&](Device& d, const std::wstring& id) -> HRESULT {
+                            totalBytes = 0;
+                            freeBytes = 0;
+                            storages = 0;
+                            Com<IEnumPortableDeviceObjectIDs> items;
+                            HRESULT hr = d.content->EnumObjects(0, id.c_str(), nullptr, items.Out());
+                            if (FAILED(hr)) return hr;
+                            Com<IPortableDeviceKeyCollection> keys;
+                            hr = CoCreateInstance(CLSID_PortableDeviceKeyCollection, nullptr,
+                                                  CLSCTX_INPROC_SERVER, IID_IPortableDeviceKeyCollection,
+                                                  keys.OutVoid());
+                            if (FAILED(hr)) return hr;
+                            keys->Add(WPD_OBJECT_CONTENT_TYPE);
+                            keys->Add(WPD_FUNCTIONAL_OBJECT_CATEGORY);
+                            keys->Add(WPD_STORAGE_CAPACITY);
+                            keys->Add(WPD_STORAGE_FREE_SPACE_IN_BYTES);
+                            for (;;) {
+                                LPWSTR batch[16] = {};
+                                ULONG fetched = 0;
+                                hr = items->Next(16, batch, &fetched);
+                                for (ULONG i = 0; i < fetched; ++i) {
+                                    Com<IPortableDeviceValues> values;
+                                    const HRESULT got = d.properties->GetValues(batch[i], keys.Get(),
+                                                                               values.Out());
+                                    CoTaskMemFree(batch[i]);
+                                    if (FAILED(got)) continue;
+                                    GUID category = GUID_NULL;
+                                    values->GetGuidValue(WPD_FUNCTIONAL_OBJECT_CATEGORY, &category);
+                                    if (category != WPD_FUNCTIONAL_CATEGORY_STORAGE) continue;
+                                    ULONGLONG capacity = 0, free = 0;
+                                    if (FAILED(values->GetUnsignedLargeIntegerValue(WPD_STORAGE_CAPACITY,
+                                                                                    &capacity)))
+                                        continue;
+                                    values->GetUnsignedLargeIntegerValue(WPD_STORAGE_FREE_SPACE_IN_BYTES,
+                                                                        &free);
+                                    totalBytes += capacity;
+                                    freeBytes += free < capacity ? free : capacity;
+                                    ++storages;
+                                }
+                                if (hr != S_OK || fetched == 0) break;
+                            }
+                            return S_OK;
+                        }, "read the device's free space");
+                if (!ok) return false;
+                if (storages == 0) {
+                    error = "the device shows no storage";
+                    return false;
+                }
+                return true;
             }
 
             ComThread com;

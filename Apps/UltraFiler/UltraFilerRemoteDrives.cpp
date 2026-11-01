@@ -378,6 +378,7 @@ void UltraFilerRemoteDrives::SetDevices(const std::vector<PortableDeviceInfo>& d
         d.canUpload = true;
         d.isDevice = true;
         d.deviceKind = info.kind;
+        d.deviceId = info.id;
         drives.push_back(std::move(d));
     }
     std::sort(drives.begin(), drives.end(),

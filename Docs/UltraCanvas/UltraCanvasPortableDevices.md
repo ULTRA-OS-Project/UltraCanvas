@@ -62,6 +62,7 @@ not cost a new MTP session — and a device answers one request at a time anyway
 | `MakeFolder(id, path, error)` | Creates a folder; its parent must exist. |
 | `Delete(id, path, error)` | Deletes a file, or a folder with everything in it. The device and its storages refuse. |
 | `Rename(id, path, newName, error)` | Renames in place; `newName` is a bare name. |
+| `GetSpace(id, total, free, error)` | The device's capacity and free space in bytes, its storages added up — a phone's internal storage and its SD card are one device to the user. Read off the storage objects, so no folder is walked. Fails, with a reason, on a device that shows no storage (locked, or on "charging only"). |
 
 `progress` is asked as a transfer moves — `(bytesDone, bytesTotal)`, total 0
 when the device did not say — and returning `false` calls the transfer off; the
@@ -98,6 +99,7 @@ destructor, after that thread is gone, is how a program crashes on its way out.
 
 UltraFiler carries each connected device as a drive of its remote-drive
 machinery (`Apps/UltraFiler/UltraFilerDeviceProvider.h`): rows under *Computer*
-and cards on the Computer page, the listing cache and its worker, preview
+and cards on the Computer page with the used and free space ring a drive card
+has (`GetSpace`), the listing cache and its worker, preview
 copies, copy off and onto the device, rename, delete and new folder — and the
 device's account lives in a store that is never written to disk.

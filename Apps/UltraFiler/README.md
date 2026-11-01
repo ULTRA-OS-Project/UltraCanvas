@@ -248,7 +248,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   - **Phones and cameras.** A phone, camera or media player plugged in over
     USB (MTP / PTP) gets no drive letter, so it was never listed. On Windows
     it now appears under **Computer** — in the tree, with a phone or camera
-    icon, and as a card on the Computer page — the moment it is plugged in,
+    icon, and as a card on the Computer page with its used and free space
+    (internal storage and SD card together) like a drive's — the moment it
+    is plugged in,
     and goes when it is pulled out (a display showing it goes Home). It is
     browsed like a remote drive: folders open from a cache filled by a worker,
     pictures and videos preview, files copy off the phone and onto it by
