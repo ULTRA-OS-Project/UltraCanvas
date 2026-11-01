@@ -1,5 +1,7 @@
 // Apps/UltraDesktop/ui/UltraDesktopCategoryBoard.cpp
 // The Sticker board: files sorted into categories. See the header.
+// Version: 0.2.0 - its own window's content; close button; thumbnails;
+//                  smaller card text
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 
@@ -8,10 +10,15 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasUtils.h"
 #include "UltraCanvasPathUtf8.h"
 #include "Plugins/Charts/UltraCanvasKanbanBoard.h"
 
@@ -26,13 +33,16 @@ namespace fs = std::filesystem;
 namespace UltraDesktop {
 namespace {
 
-constexpr float kBarHeight = 34;
-constexpr float kPanelMinWidth = 360;
-constexpr float kPanelMinHeight = 220;
-// The part of the bar the drag answers on: the title, left of the picker.
-constexpr float kGripWidth = 150;
-// The resize grip in the panel's bottom-right corner.
-constexpr float kResizeGrip = 18;
+constexpr float kBarHeight = 38;
+// A card's text: smaller than the board's own default, so a category holds
+// more files at a glance.
+constexpr float kCardTitleFont = 10.0f;
+constexpr float kCardTextFont = 9.0f;
+constexpr float kCardMetaFont = 8.5f;
+// The thumbnail band on a card, and the pixels it is made at (twice the
+// band, sharp on a HiDPI screen).
+constexpr float kThumbnailHeight = 58.0f;
+constexpr int kThumbnailPixels = 2 * 58;
 
 struct DesignChoice {
     const char* key;
@@ -97,33 +107,28 @@ const std::vector<std::string>& UltraDesktopCategoryBoard::DefaultCategories() {
 UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifier,
                                                      UltraDesktopWindow* desktop)
     : UltraCanvasContainer(identifier, 0, 0, 0, 0), desktop_(desktop) {
-    SetBackgroundColor(Colors::Transparent);
+    SetBackgroundColor(Color(250, 250, 250, 255));
     ContainerStyle plain;
     plain.autoShowScrollbars = false;
     SetContainerStyle(plain);
+    layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    panel_ = CreateContainer("CategoryBoard.Panel", 0, 0, 0, 0);
-    panel_->SetBackgroundColor(Color(250, 250, 250, 245));
-    panel_->SetBorders(1, Color(0, 0, 0, 60), 8);
-    panel_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    panel_->SetContainerStyle(plain);
-
-    // The bar: the title to drag by, the display style, "Add category".
+    // The bar: the title, the display style, "Add category", close.
     auto bar = CreateContainer("CategoryBoard.Bar", 0, 0, 0, kBarHeight);
     bar->SetBackgroundColor(Color(0, 0, 0, 18));
     bar->layout.SetFlexRow().SetFlexAlignItems(CSSLayout::AlignItems::Center).SetFlexGap(8);
     bar->SetElementSize(CSSLayout::Dimension::Auto(), CSSLayout::Dimension::Px(kBarHeight));
-    bar->SetPadding(0, 8, 0, 8);
+    bar->SetPadding(0, 8, 0, 12);
     bar->layoutItem.SetFlexShrink(0.0f);
     bar->SetContainerStyle(plain);
 
-    grip_ = CreateLabel("CategoryBoard.Title", kGripWidth, 24, "Sticker board");
-    grip_->SetFontSize(13);
-    grip_->SetFontWeight(FontWeight::Bold);
-    grip_->SetTextColor(Color(50, 50, 50, 255));
-    grip_->SetTooltip("Drag to move. Drop files onto a category to add them.");
-    grip_->layoutItem.SetFlexShrink(0.0f);
-    bar->AddChild(grip_);
+    title_ = CreateLabel("CategoryBoard.Title", 150, 24, "Sticker board");
+    title_->SetFontSize(13);
+    title_->SetFontWeight(FontWeight::Bold);
+    title_->SetTextColor(Color(50, 50, 50, 255));
+    title_->SetTooltip("Drop files onto a category to add them; double-click one to open it.");
+    title_->layoutItem.SetFlexShrink(0.0f);
+    bar->AddChild(title_);
 
     auto spacer = CreateContainer("CategoryBoard.Spacer", 0, 0, 0, 1);
     spacer->SetBackgroundColor(Colors::Transparent);
@@ -149,7 +154,20 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     add->layoutItem.SetFlexShrink(0.0f);
     add->onClick = [this]() { AddCategory(); };
     bar->AddChild(add);
-    panel_->AddChild(bar);
+
+    auto close = CreateButton("CategoryBoard.Close", 0, 0, 30, 26, "\u2715");
+    close->SetTooltip("Hide the Sticker board (the pinboard icon shows it again)");
+    close->layoutItem.SetFlexShrink(0.0f);
+    close->onClick = [this]() {
+        // After this click: hiding takes the window this button is in.
+        if (auto* app = UltraCanvasApplicationBase::GetCurrent()) {
+            app->PostToUIThread([desktop = desktop_]() {
+                if (desktop) desktop->ToggleCategoryBoard(false);
+            });
+        }
+    };
+    bar->AddChild(close);
+    AddChild(bar);
 
     data_ = std::make_shared<KanbanDataSource>();
     board_ = std::make_shared<UltraCanvasKanbanBoardElement>("CategoryBoard.Board", 0, 0, 0, 0);
@@ -165,23 +183,9 @@ UltraDesktopCategoryBoard::UltraDesktopCategoryBoard(const std::string& identifi
     // A file's card opens the file; a note's card keeps the editor the
     // board opened for it.
     board_->onCardDoubleClick = [this](int cardId) { OpenCardFile(cardId); };
-    panel_->AddChild(board_);
-
-    // The resize grip: a label over the board's corner, out of the flow. It
-    // takes no events, so a press on it bubbles here (see OnEvent).
-    resizeGrip_ = CreateLabel("CategoryBoard.Resize", kResizeGrip, kResizeGrip, "◢");
-    resizeGrip_->SetFontSize(12);
-    resizeGrip_->SetTextColor(Color(0, 0, 0, 110));
-    resizeGrip_->SetAlignment(TextAlignment::Center);
-    resizeGrip_->SetTooltip("Drag to resize");
-    if (!resizeGrip_->layoutItem.position) resizeGrip_->layoutItem.position = CSSLayout::Position();
-    resizeGrip_->layoutItem.position->right = CSSLayout::Dimension::Px(1);
-    resizeGrip_->layoutItem.position->bottom = CSSLayout::Dimension::Px(1);
-    resizeGrip_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
-    panel_->AddChild(resizeGrip_);
+    board_->cardImageProvider = [this](const KanbanCard& card) { return Thumbnail(card); };
+    AddChild(board_);
     SetDesign(kDesigns[0].key);
-
-    AddChild(panel_);
 }
 
 void UltraDesktopCategoryBoard::LoadFrom(const DesktopSettings& settings) {
@@ -196,7 +200,6 @@ void UltraDesktopCategoryBoard::LoadFrom(const DesktopSettings& settings) {
     data_->SetCurrentDate(Today());
     designPicker_->SetSelectedIndex(DesignIndex(cb.design), /*runNotifications=*/false);
     SetDesign(cb.design);
-    PlacePanel();
     InvalidateLayout();
     RequestRedraw();
 }
@@ -210,6 +213,10 @@ void UltraDesktopCategoryBoard::SetDesign(const std::string& design) {
     // A file's path is its description: the tooltip shows it, the card
     // keeps to the name.
     style.showCardDescription = false;
+    style.cardTitleFontSize = kCardTitleFont;
+    style.cardTextFontSize = kCardTextFont;
+    style.metaFontSize = kCardMetaFont;
+    style.cardImageHeight = kThumbnailHeight;
     board_->StyleChanged();
     board_->SetToday(Today());
     RequestRedraw();
@@ -276,80 +283,55 @@ void UltraDesktopCategoryBoard::SaveBoard() {
     desktop_->SaveSettings();
 }
 
-void UltraDesktopCategoryBoard::PlacePanel() {
-    if (!desktop_) return;
-    const CategoryBoardSettings& cb = desktop_->Settings().categoryBoard;
-    PlaceChildAt(panel_, Rect2Df(cb.x, cb.y, std::max(kPanelMinWidth, cb.width),
-                                 std::max(kPanelMinHeight, cb.height)));
-}
-
-bool UltraDesktopCategoryBoard::Contains(const Point2Df& point) {
-    if (!IsVisible()) return false;
-    return panel_ && panel_->GetBounds().Contains(point);
-}
-
-bool UltraDesktopCategoryBoard::OnEvent(const UCEvent& event) {
-    // Moving the panel by its title, resizing it by the corner grip: the
-    // press lands on a label (they take no events, so it bubbles here), the
-    // moves follow the pointer, the release writes the result into the
-    // settings.
-    auto* app = UltraCanvasApplication::GetInstance();
-    switch (event.type) {
-        case UCEventType::MouseDown:
-            if (event.button == UCMouseButton::Left && panel_) {
-                const Rect2Df panel = panel_->GetBounds();
-                const Rect2Df corner(panel.x + panel.width - kResizeGrip - 2,
-                                     panel.y + panel.height - kResizeGrip - 2,
-                                     kResizeGrip + 2, kResizeGrip + 2);
-                if (corner.Contains(event.pointer)) {
-                    resizing_ = true;
-                    dragOffset_ = Point2Df(panel.x + panel.width - event.pointer.x,
-                                           panel.y + panel.height - event.pointer.y);
-                    if (app) app->CaptureMouse(this);
-                    return true;
-                }
-                const Rect2Df grip(panel.x, panel.y, kGripWidth + 8, kBarHeight);
-                if (grip.Contains(event.pointer)) {
-                    dragging_ = true;
-                    dragOffset_ = Point2Df(event.pointer.x - panel.x, event.pointer.y - panel.y);
-                    if (app) app->CaptureMouse(this);
-                    return true;
+std::shared_ptr<UCPixmap> UltraDesktopCategoryBoard::Thumbnail(const KanbanCard& card) {
+    const std::string& path = card.description;   // a file's card keeps its path there
+    if (path.empty()) return nullptr;
+    auto ready = thumbnails_.find(path);
+    if (ready != thumbnails_.end()) return ready->second;
+    if (pending_.count(path) || missing_.count(path)) return nullptr;
+    pending_.insert(path);
+    const std::string icons = NormalizePath(GetResourcesDir() + "media/icons/");
+    // Off the UI thread: a photo decodes, the system is asked for an icon.
+    work_.Run<std::shared_ptr<UCPixmap>>(
+        [path, icons]() -> std::shared_ptr<UCPixmap> {
+            std::error_code ec;
+            const fs::path file = PathFromUtf8(path);
+            if (!fs::exists(file, ec)) return nullptr;   // a note, or a file gone
+            const bool folder = fs::is_directory(file, ec);
+            if (!folder && UltraCanvasSupportedFormats::CanImagePipelineLoad(PathToUtf8(file.extension()))) {
+                if (auto image = UCImage::GetFresh(path)) {
+                    if (image->GetWidth() > 0 && image->GetHeight() > 0) {
+                        if (auto pixmap = image->GetPixmap(kThumbnailPixels * 2, kThumbnailPixels,
+                                                           ImageFitMode::Contain, 1.0f)) {
+                            return pixmap;
+                        }
+                    }
                 }
             }
-            break;
-        case UCEventType::MouseMove:
-            if ((dragging_ || resizing_) && desktop_) {
-                CategoryBoardSettings& cb = desktop_->Settings().categoryBoard;
-                if (resizing_) {
-                    // Never past the work area: the grip must stay reachable.
-                    const Rect2Df area = GetBounds();
-                    const float maxWidth = std::max(kPanelMinWidth, area.width - cb.x);
-                    const float maxHeight = std::max(kPanelMinHeight, area.height - cb.y);
-                    cb.width = std::clamp(event.pointer.x + dragOffset_.x - cb.x, kPanelMinWidth, maxWidth);
-                    cb.height = std::clamp(event.pointer.y + dragOffset_.y - cb.y, kPanelMinHeight, maxHeight);
-                } else {
-                    cb.x = std::max(0.0f, event.pointer.x - dragOffset_.x);
-                    cb.y = std::max(0.0f, event.pointer.y - dragOffset_.y);
-                }
-                PlacePanel();
-                InvalidateLayout();
-                RequestRedraw();
-                return true;
+            {
+                NativeFileIconThreadScope scope;
+                if (auto icon = LoadHostFileIconPixmap(path, folder, kThumbnailPixels)) return icon;
             }
-            break;
-        case UCEventType::MouseUp:
-            if (dragging_ || resizing_) {
-                dragging_ = false;
-                resizing_ = false;
-                if (app) app->ReleaseMouse();
-                if (desktop_) desktop_->SaveSettings();
-                return true;
+            // No icon theme to ask (a bare system): the framework's own.
+            const std::string kind = folder ? "folder" : KindTag(path);
+            const std::string fallback = icons + (folder ? "folder-brown.svg" : kind == "pdf" ? "pdf.png" : "document.svg");
+            if (auto image = UCImage::GetFresh(fallback)) {
+                return image->GetPixmap(kThumbnailPixels, kThumbnailPixels, ImageFitMode::Contain, 1.0f);
             }
-            break;
-        default:
-            break;
-    }
-    return UltraCanvasContainer::OnEvent(event);
+            return nullptr;
+        },
+        [this, path](std::shared_ptr<UCPixmap> pixmap) {
+            pending_.erase(path);
+            if (!pixmap) {
+                missing_.insert(path);
+                return;
+            }
+            thumbnails_[path] = pixmap;
+            // The card grows to take the picture.
+            board_->InvalidateLayout();
+            board_->RequestRedraw();
+        });
+    return nullptr;
 }
 
 } // namespace UltraDesktop

@@ -229,7 +229,12 @@ the right-hand monitor the primary.
   desktop's settings file; the desktop checks it once a second and rebuilds
   the bars in place when UOS-Settings changed one of them.
 - **Sticker board** (the pinboard button): files and notes sorted into
-  categories on a Kanban board over the wallpaper. It starts with *Docs*,
+  categories on a Kanban board that fills the whole space between the bars.
+  It shows only when the pinboard button is clicked, and then just below the
+  application that was in front - that application stays visible on top of
+  it; *✕* in the board's bar (or the button again) hides it. A file's card
+  shows a small thumbnail: the picture itself for a photo or a drawing, the
+  system's icon for its type otherwise (a folder, a document). It starts with *Docs*,
   *Work* and *Home*. Drop files from the file manager onto a category and
   they are added to it straight away, without a question; a file already on
   the board moves to the category it was dropped on. A double-click opens a
@@ -238,9 +243,7 @@ the right-hand monitor the primary.
   scrolls to it when the board is too wide to show them all, and lets you
   type its name (double-click a category's title to rename it later). The
   picker in the bar switches the display style: *Sticky notes*, *Poster*,
-  *Schematic* or *Dark*. Drag the panel by its title and resize it by the
-  grip in its bottom-right corner; the board, its style, its place and its
-  size are kept.
+  *Schematic* or *Dark*. The board and its style are kept.
 - **Notes** (the note button below it): free sticky notes over the
   wallpaper. *+* in the corner adds one; each note is edited in place,
   dragged by its top bar, cycled through six paper colours and closed with
@@ -328,7 +331,9 @@ RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
 ([UltraCanvasKanbanBoard](../UltraCanvas/UltraCanvasKanbanBoard.md)); without
 it the Sticker board starts with Docs, Work and Home. `design` is one of
-`stickynotes`, `poster`, `schematic`, `dark`. `pinnedApps` are the pinned
+`stickynotes`, `poster`, `schematic`, `dark`. `visible`, `x`, `y`, `width`
+and `height` are kept for older versions and no longer used: the board fills
+the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
 

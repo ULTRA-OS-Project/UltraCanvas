@@ -53,3 +53,11 @@
   with an unsaved drawing - asks where it can be seen; before, the question
   stayed behind and the close seemed to do nothing. A new *Kill task* ends a
   program at once, after asking.
+- **The Sticker board fills the desktop and shows on request.** It is a
+  window of its own covering the whole space between the bars, shown only
+  when the pinboard button is clicked - and then just below the application
+  that was in front, which stays visible above it. A close button in its
+  bar hides it again. Each file's card shows a small thumbnail (the picture
+  itself, or the icon for its type), and the cards' text is smaller, so a
+  category holds more at a glance. It no longer has a panel to drag or
+  resize, and it no longer opens by itself when the desktop starts.

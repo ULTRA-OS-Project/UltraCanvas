@@ -137,6 +137,10 @@ public:
     void TakeScreenshot();
     void ToggleStickerboard(bool visible);
     void ToggleCategoryBoard(bool visible);
+    // The Sticker board's window: over the work area, below the application
+    // that was in front.
+    void ShowCategoryBoard();
+    void PlaceCategoryBoard();
     void SwitchToDesktop(int index);
     // The clock's panel (a click on the clock) and the loudspeaker's (a
     // click on the speaker icon).
@@ -308,6 +312,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasMenu> popupMenu_;
     std::shared_ptr<UltraDesktopStickerboard> stickerboard_;
     std::shared_ptr<UltraDesktopCategoryBoard> categoryBoard_;
+    std::shared_ptr<UltraCanvas::UltraCanvasWindow> boardWindow_;
+    UltraCanvas::Rect2Di boardRect_;    // where PlaceCategoryBoard last put it
     std::shared_ptr<UltraDesktopAppStarter> appStarter_;
     std::shared_ptr<UltraDesktopTasksWindow> tasks_;
     std::unique_ptr<UltraCanvas::UltraCanvasNotificationToastHost> toasts_;

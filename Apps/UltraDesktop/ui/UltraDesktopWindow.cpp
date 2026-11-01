@@ -160,6 +160,12 @@ UltraDesktopWindow::~UltraDesktopWindow() {
     clockPanel_.reset();
     volumePanel_.reset();
     wifiPanel_.reset();
+    if (boardWindow_) {
+        boardWindow_->onWindowClosed = nullptr;
+        boardWindow_->Close();
+    }
+    categoryBoard_.reset();
+    boardWindow_.reset();
     bluetoothPanel_.reset();
     devicePanels_.clear();
     if (recorder_) recorder_->Detach();
@@ -1036,24 +1042,14 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     stickerboard_->LoadFrom(settings_);
     area->AddChild(stickerboard_);
 
-    // The Sticker board too, above the notes: its panel is the one place it
-    // answers, so the notes stay reachable around it.
-    categoryBoard_ = std::make_shared<UltraDesktopCategoryBoard>("CategoryBoard", this);
-    if (!categoryBoard_->layoutItem.position) categoryBoard_->layoutItem.position = CSSLayout::Position();
-    categoryBoard_->layoutItem.position->left = CSSLayout::Dimension::Px(0);
-    categoryBoard_->layoutItem.position->top = CSSLayout::Dimension::Px(0);
-    categoryBoard_->layoutItem.position->right = CSSLayout::Dimension::Px(0);
-    categoryBoard_->layoutItem.position->bottom = CSSLayout::Dimension::Px(0);
-    categoryBoard_->layoutItem.SetPositionType(CSSLayout::PositionType::AbsoluteUI);
-    categoryBoard_->SetVisible(settings_.categoryBoard.visible);
-    categoryBoard_->LoadFrom(settings_);
-    area->AddChild(categoryBoard_);
+    // The Sticker board is a window of its own over this area (see
+    // ShowCategoryBoard): only the pinboard button shows it.
     if (organiser_) {
         if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("stickerboard"))) {
             toggle->SetPressed(settings_.stickerboardVisible);
         }
         if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("categoryboard"))) {
-            toggle->SetPressed(settings_.categoryBoard.visible);
+            toggle->SetPressed(boardWindow_ && settings_.categoryBoard.visible);
         }
     }
     return area;
@@ -1134,12 +1130,87 @@ void UltraDesktopWindow::ToggleStickerboard(bool visible) {
 
 void UltraDesktopWindow::ToggleCategoryBoard(bool visible) {
     settings_.categoryBoard.visible = visible;
-    if (categoryBoard_) {
-        categoryBoard_->SetVisible(visible);
-        if (workArea_) workArea_->InvalidateLayout();
-        window_->RequestRedraw();
+    if (visible) ShowCategoryBoard();
+    else if (boardWindow_) boardWindow_->Hide();
+    if (organiser_) {
+        if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("categoryboard"))) {
+            toggle->SetPressed(visible);
+        }
     }
     SaveSettings();
+}
+
+// The Sticker board fills the work area - the space between the bars - in a
+// window of its own, so it can sit in the stack of windows rather than under
+// all of them: shown, then the application that was in front is brought
+// back above it, so the board is second from the top and the application
+// stays where the person was working.
+void UltraDesktopWindow::ShowCategoryBoard() {
+    if (!window_ || !workArea_) return;
+    if (!boardWindow_) {
+        WindowConfig config;
+        config.title = "Sticker board";
+        config.type = WindowType::Borderless;
+        const Rect2Df bounds = workArea_->GetBoundsInWindow();
+        config.width = std::max(400, static_cast<int>(bounds.width));
+        config.height = std::max(300, static_cast<int>(bounds.height));
+        config.resizable = false;
+        config.minimizable = false;
+        config.maximizable = false;
+        config.minWidth = 200;
+        config.minHeight = 150;
+        config.backgroundColor = Color(250, 250, 250, 255);
+        boardWindow_ = CreateWindow(config);
+        if (!boardWindow_) return;
+        boardRect_ = Rect2Di(0, 0, 0, 0);
+        categoryBoard_ = std::make_shared<UltraDesktopCategoryBoard>("CategoryBoard", this);
+        categoryBoard_->LoadFrom(settings_);
+        boardWindow_->AddChild(categoryBoard_);
+        auto fit = [board = categoryBoard_.get(), win = boardWindow_.get()](int w, int h) {
+            board->SetElementAbsolutePosition(Point2Df(0, 0));
+            board->SetElementSize(Size2Df(static_cast<float>(std::max(1, w)), static_cast<float>(std::max(1, h))));
+            board->InvalidateLayout();
+            win->AddDirtyRectangle(Rect2Di(0, 0, w, h));
+        };
+        int w = 0, h = 0;
+        boardWindow_->GetWindowSize(w, h);
+        fit(w, h);
+        boardWindow_->onWindowResize = fit;
+        // Closed from outside (the window manager, a task manager): gone,
+        // and the button says so.
+        boardWindow_->onWindowClosed = [this]() {
+            categoryBoard_.reset();
+            boardWindow_.reset();
+            settings_.categoryBoard.visible = false;
+            if (organiser_) {
+                if (auto toggle = std::dynamic_pointer_cast<UltraCanvasButton>(organiser_->GetWidget("categoryboard"))) {
+                    toggle->SetPressed(false);
+                }
+            }
+        };
+    }
+    PlaceCategoryBoard();
+    boardWindow_->Show();
+    boardWindow_->RaiseAndFocus();
+    // The application in front before the click goes back above the board.
+    if (lastPasteWindow_ != 0) UltraCanvasDesktopShell::ActivateWindow(lastPasteWindow_);
+}
+
+// Over the work area, in screen pixels; again whenever the bars move (a
+// monitor change, the taskbar's edge) - the UI timer asks.
+void UltraDesktopWindow::PlaceCategoryBoard() {
+    if (!boardWindow_ || !workArea_) return;
+    const Rect2Df bounds = workArea_->GetBoundsInWindow();
+    if (bounds.width < 10 || bounds.height < 10) return;
+    const Rect2Di wanted(ScreenX(bounds.x), ScreenY(bounds.y), static_cast<int>(bounds.width),
+                         static_cast<int>(bounds.height));
+    if (wanted.x == boardRect_.x && wanted.y == boardRect_.y && wanted.width == boardRect_.width &&
+        wanted.height == boardRect_.height) {
+        return;
+    }
+    boardRect_ = wanted;
+    boardWindow_->SetWindowSize(wanted.width, wanted.height);
+    boardWindow_->SetWindowPosition(wanted.x, wanted.y);
 }
 
 int UltraDesktopWindow::DesiredDesktopCount() const {
@@ -1338,6 +1409,7 @@ void UltraDesktopWindow::OnTimer() {
     }
     if (trayDirty_.exchange(false)) RefreshTray();
     FitInfoPanel();
+    if (boardWindow_ && settings_.categoryBoard.visible) PlaceCategoryBoard();
     UpdateClock();
 
     bool apply = false;
