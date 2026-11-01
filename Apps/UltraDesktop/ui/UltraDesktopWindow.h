@@ -216,7 +216,13 @@ private:
                          const std::shared_ptr<UltraCanvas::UltraCanvasWaveSeparator>& wave,
                          bool vertical, bool waveAfterGroup);
     std::string IconPath(const std::string& name) const;
+    // The settings' wallpaper, else DefaultWallpaperPath.
     std::string WallpaperPath() const;
+    // ULTRA OS's own picture (media/images/desktop/ULTRA OS A.avif), else
+    // the framework's landscape.
+    static std::string DefaultWallpaperPath();
+    // WallpaperPath into `wallpaper`; the landscape when it cannot be read.
+    void LoadWallpaper(UltraCanvas::UltraCanvasImageElement& wallpaper) const;
 
     // ===== LIVE DATA =====
     void OnTimer();

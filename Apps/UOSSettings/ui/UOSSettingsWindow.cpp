@@ -450,7 +450,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     addRow("uos-dt-edge-row", "Taskbar", edge_);
 
     wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
-    wallpaper_->SetPlaceholder("The framework's picture");
+    wallpaper_->SetPlaceholder("ULTRA OS A (the default picture)");
     wireText(wallpaper_);
     auto browse = std::make_shared<UltraCanvasButton>("uos-dt-browse", 0, 0, 90, 28, "Browse...");
     browse->SetFontSize(kTextFontSize);
