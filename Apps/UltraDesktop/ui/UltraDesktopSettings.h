@@ -5,6 +5,8 @@
 // Stickerboard and the Sticker board's categories. One JSON file, read at
 // start-up and written on every change. No UI in here, which is what lets
 // the test read and write it.
+// Version: 0.4.0 - the Apps window's view, split threshold, Recent count and
+//                  history (appsView, appsSplitAbove, recentAppsShown, recentApps)
 // Version: 0.3.0 - the programs that start with the desktop (startWithDesktop,
 //                  StartupPrograms)
 // Version: 0.2.0 - the pinned applications (pinnedApps)
@@ -78,6 +80,18 @@ struct DesktopSettings {
     // minimized, unless a copy runs already. Off by default.
     std::vector<std::string> startWithDesktop;
 
+    // The Apps window. Its view ("tiles", a grid per category as on Windows'
+    // Start, or "tree", the categories beside a list of their applications);
+    // how many applications a category may hold before it is split into its
+    // sub-categories (0: never, else 2..50); how many of the recently
+    // started ones Recent shows (1..24); and the history itself: the
+    // started applications' PinKeys, the latest first, at most kRecentAppsKept.
+    std::string appsView = "tiles";
+    int appsSplitAbove = 8;
+    int recentAppsShown = 8;
+    std::vector<std::string> recentApps;
+    static constexpr size_t kRecentAppsKept = 24;
+
     // "<config dir>/ultraos/desktop.json": $XDG_CONFIG_HOME, else ~/.config
     // (%APPDATA% on Windows, ~/Library/Application Support on macOS - the
     // framework's UltraCanvasDesktopSettingsFolder). "" when there is no home
@@ -96,6 +110,9 @@ struct DesktopSettings {
     static const std::vector<StartupProgram>& StartupPrograms();
     bool StartsWithDesktop(const std::string& program) const;
     void SetStartsWithDesktop(const std::string& program, bool start);
+
+    // `key` was started: first in recentApps, once, the oldest dropped.
+    void NoteAppStarted(const std::string& key);
 
     bool IsPinned(const std::string& key) const;
     // Pins at the end, or unpins; a key is pinned once.

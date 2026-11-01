@@ -20,6 +20,7 @@ endif()
 
 add_executable(UltraDesktop
     main.cpp
+    ui/UltraDesktopAppCategories.cpp
     ui/UltraDesktopAppStarter.cpp
     ui/UltraDesktopBluetoothPanel.cpp
     ui/UltraDesktopCategoryBoard.cpp
