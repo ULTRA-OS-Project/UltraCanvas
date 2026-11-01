@@ -10,8 +10,11 @@
 //   ChatCube --dark              in the dark look
 //   ChatCube --debug             and say what the networks do, on stderr
 //   ChatCube --log <file>        the same, appended to a file
+//   ChatCube --minimized         start in the background, the window minimized
+//                                (what UltraDesktop's "start with the desktop" asks)
 //   ChatCube --version / --help
 //
+// Version: 0.1.4 - --minimized (UltraDesktop's "start with the desktop")
 // Version: 0.1.3 - the preview pictures of files sent (UltraIM_SetPreviewMaker): pictures through the
 //                  image pipeline, videos through VideoFX when it is built in
 // Version: 0.1.2 - --dark
@@ -146,8 +149,10 @@ bool MakePreview(const std::string& path, const std::string& mimeType, int maxSi
 
 void PrintUsage(const char* program) {
     std::printf("ChatCube %s - the ULTRA OS messenger\n\n"
-                "Usage: %s [--dark] [--debug | --log <file>] [--version | --help]\n\n"
+                "Usage: %s [--dark] [--minimized] [--debug | --log <file>] [--version | --help]\n\n"
                 "  --dark                the dark look (the light one otherwise)\n"
+                "  --minimized           start with the window minimized: messages arrive in\n"
+                "                        the background (a desktop starting it with itself)\n"
                 "  --debug               say what the networks do (sign-ins, TDLib's answers,\n"
                 "                        the relay) on stderr; Telegram's own log goes to\n"
                 "                        telegram/tdlib.log in the data folder either way\n"
@@ -163,6 +168,7 @@ void PrintUsage(const char* program) {
 
 int main(int argc, char** argv) {
     bool dark = false;
+    bool minimized = false;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--version") == 0) {
             std::printf("ChatCube %s\n", CHATCUBE_VERSION);
@@ -174,6 +180,10 @@ int main(int argc, char** argv) {
         }
         if (std::strcmp(argv[i], "--dark") == 0) {
             dark = true;
+            continue;
+        }
+        if (std::strcmp(argv[i], "--minimized") == 0) {
+            minimized = true;
             continue;
         }
         if (std::strcmp(argv[i], "--debug") == 0) {
@@ -240,6 +250,11 @@ int main(int argc, char** argv) {
         } else {
             window.onClosed = [&app]() { app.Exit(); };
             window.Show();
+            if (minimized) {
+                // Once the window manager has it: a window not yet mapped
+                // cannot be iconified.
+                app.StartTimer(400, false, [&window](UltraCanvas::TimerId) { window.Minimize(); });
+            }
             instance.ListenRaise();
             app.Run();
             instance.Close();

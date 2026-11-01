@@ -1,6 +1,7 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.6.0 - Desktop: "Start with the desktop" (ChatCube, UltraMail)
 // Version: 0.5.1 - Desktop: from an MSIX package, why "At sign-in" is missing
 // Version: 0.5.0 - Notifications > Registrations: listed, and removed with one button
 // Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
@@ -12,6 +13,7 @@
 
 #include "UOSSettingsWindow.h"
 
+#include "UltraCanvasCheckbox.h"
 #include "UltraDesktopSettings.h"   // Apps/UltraDesktop: the desktop's settings file
 
 #include "UltraCanvasButton.h"
@@ -463,6 +465,24 @@ void UOSSettingsWindow::BuildDesktopPage() {
     }
     page->AddChild(body);
 
+    // The programs that start with the desktop, minimized, in the
+    // background: their messages and mail arrive without opening them.
+    auto startupTitle = MakeLabel("uos-dt-startup-title", "Start with the desktop", kTextFontSize);
+    startupTitle->SetFontWeight(FontWeight::Bold);
+    startupTitle->SetMargin(16, 0, 4, 0);
+    page->AddChild(startupTitle);
+    startup_.clear();
+    for (const UltraDesktop::StartupProgram& program : UltraDesktop::DesktopSettings::StartupPrograms()) {
+        const std::string id = std::string("uos-dt-startup-") + program.program;
+        auto box = std::make_shared<UltraCanvasCheckbox>(id, 0, 0, 520, 26, program.label);
+        box->layoutItem.SetFlexShrink(0);
+        box->onStateChanged = [this](CheckedState, CheckedState) {
+            if (!refreshing_) SaveDesktopPage();
+        };
+        startup_.emplace_back(program.program, box);
+        page->AddChild(box);
+    }
+
     // Windows, but a copy that cannot switch (the Microsoft Store one, whose
     // registry changes sign-in never sees): say why the choice is missing.
     if (const std::string why = UltraCanvasDesktopShell::GetSystemDesktopSwitchUnavailableReason();
@@ -488,7 +508,12 @@ void UOSSettingsWindow::BuildDesktopPage() {
             "The RAM disc is the folder the desktop's drive button opens - empty, "
             "no button; the file manager is the program its folder buttons start. "
             "Virtual desktops are asked of the window manager, which may offer a "
-            "different number."};
+            "different number.",
+            "A program that starts with the desktop opens minimized a few seconds "
+            "after it - unless it is running already - and keeps working in the "
+            "background: ChatCube receives messages, UltraMail fetches mail and "
+            "shows the unread count on the desktop's mail icon. The desktop's "
+            "settings button offers the same choice on its right-click menu."};
     if (systemDesktop_) {
         noteTexts.push_back(
             "At sign-in, for this account: beside Explorer, UltraDesktop starts "
@@ -529,6 +554,7 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
     if (desktops_) desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
+    for (auto& [program, box] : startup_) box->SetChecked(settings.StartsWithDesktop(program));
     if (systemDesktop_) {
         const DesktopReplacement mode = UltraCanvasDesktopShell::GetSystemDesktopReplacement();
         systemDesktop_->SetSelectedIndex(mode == DesktopReplacement::Instead ? 2
@@ -561,6 +587,7 @@ void UOSSettingsWindow::SaveDesktopPage() {
     if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();
     if (desktops_) settings.virtualDesktops = std::clamp(desktops_->GetSelectedIndex() + 1, 1, 9);
+    for (const auto& [program, box] : startup_) settings.SetStartsWithDesktop(program, box->IsChecked());
     if (!settings.Save(path, &error)) {
         if (desktopStatus_) desktopStatus_->SetText("Not saved: " + error);
         return;

@@ -50,6 +50,8 @@
 // itself is never touched, so renaming and every file operation still work on
 // the real one. A name that is not UTF-8 — written in a legacy code page by an
 // old tool or an unconverting unzip — is drawn decoded rather than as U+FFFD.
+// Version: 1.43.0 - RenderFileThumbnail; the workers' decode switch is
+//                  DecodeContentThumbnail, shared with it; RenderTextPagePixmap
 // Version: 1.42.0 - Compress packs a TAR with the host's FilerTarSettings
 //                  (CompressOptionsFor), ZIP and 7-Zip storing what a link
 //                  points to; each Compress menu entry's tooltip is the
@@ -1731,6 +1733,142 @@ namespace UltraCanvas {
             return true;
         }
 
+        // A page of a text document's first lines, as a picture - what a
+        // tile draws for Text / Docs / Spreadsheets, rasterized so a caller
+        // that wants a picture (the desktop's Sticker board) gets one: a
+        // white portrait page in the box, the lines in a small font.
+        std::shared_ptr<UCPixmap> RenderTextPagePixmap(const std::string& path, int width, int height,
+                                                       float scale) {
+            std::vector<std::string> previewLines;
+            bool tabular = false;
+            if (!ExtractTextPreview(path, previewLines, tabular) || previewLines.empty()) return nullptr;
+            const float s = std::max(1.0f, scale);
+            const int pw = std::max(16, static_cast<int>(std::lround(width * s)));
+            const int ph = std::max(16, static_cast<int>(std::lround(height * s)));
+            auto pixmap = std::make_shared<UCPixmap>();
+            if (!pixmap->Init(pw, ph)) return nullptr;
+            std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(pw, ph), nullptr);
+            if (!ctx) return nullptr;
+            ctx->Clear(Colors::Transparent);
+            // A page three quarters as wide as it is tall, centred.
+            const double pageH = ph - 2.0;
+            const double pageW = std::min(static_cast<double>(pw) - 2.0, pageH * 0.75);
+            const Rect2Dd page((pw - pageW) / 2.0, 1.0, pageW, pageH);
+            ctx->DrawFilledRectangle(page, Colors::White, 1.0f, Color(170, 170, 170, 255));
+            const double margin = std::max(2.0, pageW * 0.08);
+            const double fontSize = std::max(4.0, pageH / 16.0);
+            const double lineHeight = fontSize * 1.3;
+            ctx->ClipRect(Rect2Dd(page.x + margin, page.y + margin, page.width - 2 * margin,
+                                  page.height - 2 * margin));
+            ctx->SetFontSize(fontSize);
+            ctx->SetTextPaint(Color(60, 60, 60, 255));
+            double y = page.y + margin;
+            for (const std::string& line : previewLines) {
+                if (y + lineHeight > page.y + page.height - margin) break;
+                if (!line.empty()) ctx->DrawText(line, Point2Dd(page.x + margin, y));
+                y += lineHeight;
+            }
+            ctx->ClearClipRect();
+            ctx->FlushToSurface(pixmap->GetSurface(), Point2Dd(0, 0));
+            pixmap->MarkDirty();
+            return pixmap;
+        }
+
+        // A file's content as a picture `w` x `h` (logical pixels at `scale`):
+        // the switch the thumbnail workers run, shared with
+        // RenderFileThumbnail. With `textPages`, a text document gets a page
+        // of its first lines; the Filer's own tiles draw those as text.
+        std::shared_ptr<UCPixmap> DecodeContentThumbnail(const std::string& path, int w, int h,
+                                                         ImageFitMode fit, float scale, bool textPages) {
+            std::shared_ptr<UCPixmap> pm;
+            switch (PreviewTypeForPath(path)) {
+                case FilerPreviewType::Videos: {
+                    // Poster frame of a video (may block for a few seconds on
+                    // a cold file — that is exactly what these workers are
+                    // for).
+                    VideoThumbnailRequest vreq;
+                    vreq.maxWidth = std::max(
+                            1, static_cast<int>(std::lround(w * scale)));
+                    vreq.maxHeight = std::max(
+                            1, static_cast<int>(std::lround(h * scale)));
+                    pm = CaptureVideoThumbnailPixmap(path, vreq);
+                    break;
+                }
+                case FilerPreviewType::PDF:
+                    pm = RenderPdfPreviewPixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::Models3D:
+                    pm = RenderModelPreviewPixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::Fonts:
+                    pm = RenderFontSpecimenPixmap(path, w, h, scale);
+                    break;
+                // A book shows its cover. (The Filer's workers see a document
+                // only as a book whose cover ThumbSourceFor asked for; its tiles
+                // draw the other documents' text themselves.)
+                case FilerPreviewType::Docs:
+                    if (EBookCoverReadable(LowerExtension(path))) {
+                        pm = RenderEBookCoverPixmap(path, w, h, fit, scale);
+                    } else if (textPages) {
+                        pm = RenderTextPagePixmap(path, w, h, scale);
+                    }
+                    break;
+                case FilerPreviewType::Text:
+                case FilerPreviewType::Spreadsheets:
+                    if (textPages) pm = RenderTextPagePixmap(path, w, h, scale);
+                    break;
+                case FilerPreviewType::VectorGraphics: {
+                    // The image pipeline first (svg/svgz, and eps/ps on a
+                    // libvips build with a PostScript loader); a format it
+                    // does not rasterize - or one it fails on - falls back to
+                    // the preview bitmap the document carries.
+                    const std::string ext = LowerExtension(path);
+                    if (ImagePipelineLoadsExtension(ext)) {
+                        auto img = UCImage::GetFresh(path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
+                            pm = img->GetPixmap(w, h, fit, scale);
+                    }
+                    // The drawing itself, where a registered Vector plugin
+                    // reads the format: rendered from the document at the
+                    // tile's size rather than scaled from whatever bitmap
+                    // the authoring program happened to store.
+                    if (!pm && CanPreviewVectorExtension(path)) {
+                        pm = RenderVectorDrawingPixmap(path, w, h,
+                                                       scale);
+                    }
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(path, w, h,
+                                                         fit, scale);
+                    }
+                    // PDF-compatible Illustrator files (CS2 and newer) carry
+                    // no EPS preview but are a PDF from the first byte, so
+                    // the page renderer draws them like any document.
+                    if (!pm && PdfPreviewAvailable() &&
+                        FileStartsWithPdfSignature(path)) {
+                        pm = RenderPdfPreviewPixmap(path, w, h,
+                                                    scale);
+                    }
+                    break;
+                }
+                default: {
+                    const std::string ext = LowerExtension(path);
+                    if (ImagePipelineLoadsExtension(ext) || !FormatCarriesEmbeddedPreview(ext)) {
+                        auto img = UCImage::GetFresh(path);
+                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
+                            pm = img->GetPixmap(w, h, fit, scale);
+                        }
+                    }
+                    // A layered image (*.ucd): the thumbnail it carries.
+                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
+                        pm = RenderEmbeddedPreviewPixmap(path, w, h,
+                                                         fit, scale);
+                    }
+                    break;
+                }
+            }
+            return pm;
+        }
+
         bool IsBrowsableArchiveExt(const std::string& ext) {
             static const char* exts[] = {"zip", "7z", "rar", "tar", "gz", "tgz",
                                          "bz2", "xz", "zst", "jar"};
@@ -2421,6 +2559,19 @@ namespace UltraCanvas {
             if (ext == "wmv" || ext == "asf" || ext == "wma") return ProbeAsf(f, out);
             return false;
         }
+    }
+
+    // ===== A FILE'S PICTURE, FOR ANYONE =====
+    std::shared_ptr<UCPixmap> RenderFileThumbnail(const std::string& path, int width, int height, float scale) {
+        if (path.empty() || width <= 0 || height <= 0) return nullptr;
+        std::shared_ptr<UCPixmap> pixmap;
+        try {
+            pixmap = DecodeContentThumbnail(path, width, height, ImageFitMode::Contain, scale, /*textPages=*/true);
+        } catch (const std::exception& e) {
+            debugOutput << "RenderFileThumbnail: " << path << ": " << e.what() << std::endl;
+            pixmap = nullptr;
+        }
+        return pixmap;
     }
 
     // ===== CONSTRUCTION =====
@@ -12598,82 +12749,8 @@ namespace UltraCanvas {
                 const int edge = std::max(1, static_cast<int>(std::lround(
                         std::max(req.w, req.h) * req.scale)));
                 pm = LoadNativeFileIconPixmap(req.path, edge);
-            } else switch (PreviewTypeForPath(req.path)) {
-                case FilerPreviewType::Videos: {
-                    // Poster frame of a video (may block for a few seconds on
-                    // a cold file — that is exactly what these workers are
-                    // for).
-                    VideoThumbnailRequest vreq;
-                    vreq.maxWidth = std::max(
-                            1, static_cast<int>(std::lround(req.w * req.scale)));
-                    vreq.maxHeight = std::max(
-                            1, static_cast<int>(std::lround(req.h * req.scale)));
-                    pm = CaptureVideoThumbnailPixmap(req.path, vreq);
-                    break;
-                }
-                case FilerPreviewType::PDF:
-                    pm = RenderPdfPreviewPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                case FilerPreviewType::Models3D:
-                    pm = RenderModelPreviewPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                case FilerPreviewType::Fonts:
-                    pm = RenderFontSpecimenPixmap(req.path, req.w, req.h, req.scale);
-                    break;
-                // A document reaches the image workers only as a book whose
-                // cover ThumbSourceFor asked for.
-                case FilerPreviewType::Docs:
-                    pm = RenderEBookCoverPixmap(req.path, req.w, req.h, req.fit,
-                                                req.scale);
-                    break;
-                case FilerPreviewType::VectorGraphics: {
-                    // The image pipeline first (svg/svgz, and eps/ps on a
-                    // libvips build with a PostScript loader); a format it
-                    // does not rasterize - or one it fails on - falls back to
-                    // the preview bitmap the document carries.
-                    const std::string ext = LowerExtension(req.path);
-                    if (ImagePipelineLoadsExtension(ext)) {
-                        auto img = UCImage::GetFresh(req.path);
-                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
-                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
-                    }
-                    // The drawing itself, where a registered Vector plugin
-                    // reads the format: rendered from the document at the
-                    // tile's size rather than scaled from whatever bitmap
-                    // the authoring program happened to store.
-                    if (!pm && CanPreviewVectorExtension(req.path)) {
-                        pm = RenderVectorDrawingPixmap(req.path, req.w, req.h,
-                                                       req.scale);
-                    }
-                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
-                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
-                                                         req.fit, req.scale);
-                    }
-                    // PDF-compatible Illustrator files (CS2 and newer) carry
-                    // no EPS preview but are a PDF from the first byte, so
-                    // the page renderer draws them like any document.
-                    if (!pm && PdfPreviewAvailable() &&
-                        FileStartsWithPdfSignature(req.path)) {
-                        pm = RenderPdfPreviewPixmap(req.path, req.w, req.h,
-                                                    req.scale);
-                    }
-                    break;
-                }
-                default: {
-                    const std::string ext = LowerExtension(req.path);
-                    if (ImagePipelineLoadsExtension(ext) || !FormatCarriesEmbeddedPreview(ext)) {
-                        auto img = UCImage::GetFresh(req.path);
-                        if (img && img->GetWidth() > 0 && img->GetHeight() > 0) {
-                            pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
-                        }
-                    }
-                    // A layered image (*.ucd): the thumbnail it carries.
-                    if (!pm && FormatCarriesEmbeddedPreview(ext)) {
-                        pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
-                                                         req.fit, req.scale);
-                    }
-                    break;
-                }
+            } else {
+                pm = DecodeContentThumbnail(req.path, req.w, req.h, req.fit, req.scale, /*textPages=*/false);
             }
             });
 

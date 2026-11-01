@@ -967,6 +967,47 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     items' dbusmenus, refused while another watcher owns the name).
   See `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
 
+- **UltraCanvasWireless** (`UltraCanvasWireless.h`) — Wi-Fi and Bluetooth
+  operated from a panel, as UltraDesktop's Wi-Fi and Bluetooth panels do.
+  Core in `core/UltraCanvasWireless.cpp` (argument checks, the lists' order,
+  the fallback backend); backends `OS/Linux/UltraCanvasLinuxWireless.cpp`
+  (NetworkManager and BlueZ over GDBus),
+  `OS/MSWindows/UltraCanvasWindowsWireless.cpp` (`wlanapi`, `bthprops`) and
+  `OS/MacOS/UltraCanvasMacOSWireless.mm` (CoreWLAN, IOBluetooth,
+  CoreLocation); internal `UltraCanvasWirelessBackend.h`. Synchronous calls
+  that take seconds: call them from a worker thread.
+  - `ReadWifi` → `WirelessWifiStatus` (`WirelessNetwork` per name: signal,
+    security, known, connected), `RequestWifiScan`, `SetWifiEnabled`,
+    `ConnectWifi(ssid, password)` (a new profile is kept only once joined),
+    `DisconnectWifi`, `ForgetWifi`.
+  - `ReadBluetooth` → `WirelessBluetoothStatus` (`WirelessBluetoothDevice`:
+    address, name, kind, paired, connected, battery), `CanSetBluetoothPower`
+    / `SetBluetoothPowered`, `StartBluetoothDiscovery` /
+    `StopBluetoothDiscovery`, `PairBluetoothDevice`,
+    `ConnectBluetoothDevice`, `DisconnectBluetoothDevice`,
+    `RemoveBluetoothDevice`; `SetPairingHandler` (`WirelessPairingRequest`
+    ShowCode / ConfirmCode / EnterCode / EnterPin / Authorize / Finished →
+    `WirelessPairingAnswer`), served by a BlueZ agent on Linux and
+    IOBluetoothDevicePair's requests on macOS.
+  - `HasSystemSettings` / `OpenSystemSettings(WirelessRadio)` - the
+    platform's own page (Windows, macOS).
+  See `Docs/UltraCanvas/UltraCanvasWireless.md`.
+
+- **UltraCanvasRemovableDrives** (`UltraCanvasRemovableDrives.h`) — the drives
+  a person plugs in and "Safely remove" for them. `List` →
+  `RemovableDrive { id, name, bus, sizeBytes, mountPoints, labels }` (the
+  system's own drive never listed); `SafelyRemove(id)` unmounts every volume
+  and powers the drive off or ejects it, failing with a sentence when a file
+  is still open. Core in `core/UltraCanvasRemovableDrives.cpp` (order,
+  fallback); backends `OS/Linux/UltraCanvasLinuxRemovableDrives.cpp`
+  (UDisks2 over GDBus, sharing `OS/Linux/UltraCanvasLinuxSystemBus.h` with
+  the wireless backend), `OS/MSWindows/UltraCanvasWindowsRemovableDrives.cpp`
+  (SetupAPI, storage ioctls, `CM_Request_Device_Eject`),
+  `OS/MacOS/UltraCanvasMacOSRemovableDrives.mm` (volume resource values
+  grouped by DiskArbitration's whole disk, `NSWorkspace
+  unmountAndEjectDeviceAtURL`). See
+  `Docs/UltraCanvas/UltraCanvasRemovableDrives.md`.
+
 - **UltraCanvasClipboardHistory** (`UltraCanvasClipboardHistory.h`,
   `UltraCanvasClipboardHistoryView.h`; library `UltraClipboardHistory`) — the
   clipboard history of ULTRA OS: every copy (files, images, text with its

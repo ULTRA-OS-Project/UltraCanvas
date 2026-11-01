@@ -2,6 +2,7 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.3.0 - startWithDesktop, StartupPrograms
 // Version: 0.2.0 - the pinned applications
 // Version: 0.1.1 - the file lives in the framework's desktop settings folder
 //                  (UltraCanvasDesktopSettingsFolder): Application Support on macOS,
@@ -139,6 +140,9 @@ std::string DesktopSettings::ToJson() const {
     JSONValue pinned = JSONValue::MakeArray();
     for (const std::string& key : pinnedApps) pinned.Append(JSONValue(key));
     root.Set("pinnedApps", std::move(pinned));
+    JSONValue startup = JSONValue::MakeArray();
+    for (const std::string& program : startWithDesktop) startup.Append(JSONValue(program));
+    root.Set("startWithDesktop", std::move(startup));
     JSONSerializeOptions options;
     options.pretty = true;
     return JSON::Serialize(root, options);
@@ -190,6 +194,10 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
         const JSONValue& kanban = board.Get("board");
         if (kanban.IsObject()) cb.board = JSON::Serialize(kanban);
     }
+    const JSONValue& startup = root.Get("startWithDesktop");
+    if (startup.IsArray()) {
+        for (size_t i = 0; i < startup.GetSize(); ++i) loaded.SetStartsWithDesktop(startup.At(i).GetString(), true);
+    }
     const JSONValue& pinned = root.Get("pinnedApps");
     if (pinned.IsArray()) {
         for (size_t i = 0; i < pinned.GetSize(); ++i) {
@@ -203,6 +211,31 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
 
 bool DesktopSettings::IsPinned(const std::string& key) const {
     return std::find(pinnedApps.begin(), pinnedApps.end(), key) != pinnedApps.end();
+}
+
+const std::vector<StartupProgram>& DesktopSettings::StartupPrograms() {
+    static const std::vector<StartupProgram> programs = {
+        {"ChatCube", "org.ultraos.chatcube", "ChatCube - messages arrive while its window is closed"},
+        {"UltraMail", "org.ultraos.ultramail", "UltraMail - new mail is fetched and counted on the mail icon"},
+    };
+    return programs;
+}
+
+bool DesktopSettings::StartsWithDesktop(const std::string& program) const {
+    return std::find(startWithDesktop.begin(), startWithDesktop.end(), program) != startWithDesktop.end();
+}
+
+void DesktopSettings::SetStartsWithDesktop(const std::string& program, bool start) {
+    // Only the programs that can be started this way.
+    bool known = false;
+    for (const StartupProgram& candidate : StartupPrograms()) known = known || program == candidate.program;
+    if (!known) return;
+    const bool already = StartsWithDesktop(program);
+    if (start && !already) startWithDesktop.push_back(program);
+    if (!start && already) {
+        startWithDesktop.erase(std::remove(startWithDesktop.begin(), startWithDesktop.end(), program),
+                               startWithDesktop.end());
+    }
 }
 
 void DesktopSettings::SetPinned(const std::string& key, bool pinned) {

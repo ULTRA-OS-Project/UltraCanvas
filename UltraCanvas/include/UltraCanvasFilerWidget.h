@@ -104,6 +104,9 @@
 // thin blue bar sliding along the foot of the file area - its entries, or an
 // empty area, stay as they are - and the words go to the host's status line
 // (GetListingPendingStatus, onListingPendingChanged).
+// Version: 1.46.0 - RenderFileThumbnail: a file's content as a picture, for
+//                  any caller (the thumbnail workers' switch, shared), with
+//                  a page of first lines for text documents
 // Version: 1.45.0 - FilerTarSettings (SetTarSettings): how Compress packs a
 //                  TAR - each compressor's level, threads, zstd long mode, the
 //                  header format, what of a file is kept, links, exclusions;
@@ -751,6 +754,19 @@ namespace UltraCanvas {
             columnSplitter.splitterColor = Color(226, 226, 230, 255);
         }
     };
+
+    // ===== A FILE'S PICTURE =====
+    // A file's content as a small picture, made the way the Filer's tiles
+    // make theirs: a photo or drawing itself, a PDF's first page, a book's
+    // cover, a 3D model, a font specimen, a video's poster frame, the preview
+    // a layered image carries - and for a text document (Word, LibreOffice,
+    // Markdown, a spreadsheet, plain text) a page with its first lines.
+    // `width` x `height` are logical pixels, drawn at `scale` device pixels
+    // each. Blocking - it decodes and renders - so call it from a worker
+    // thread. nullptr when this build can make no picture of the format (a
+    // program, an archive, audio): the caller shows the type's icon.
+    std::shared_ptr<UCPixmap> RenderFileThumbnail(const std::string& path, int width, int height,
+                                                  float scale = 1.0f);
 
     // ===== THE FILER ELEMENT =====
     // Self-rendered (Album pattern): rows, tiles, treemap cells, the hover icon

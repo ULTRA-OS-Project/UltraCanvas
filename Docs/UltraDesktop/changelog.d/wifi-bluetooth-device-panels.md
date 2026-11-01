@@ -1,0 +1,75 @@
+- **A Wi-Fi panel.** A click on the Wi-Fi icon opens a panel beside the bar:
+  Wi-Fi on a switch, the network joined, and the networks in reach with
+  their signal and security. *Connect* joins a saved or open network at
+  once and asks for the password of a new one; *Disconnect* leaves the
+  network, *Forget* deletes its saved password, *Scan* looks again, and
+  *Traffic* opens UltraNetMonitor. On Windows and macOS a button opens the
+  system's own Wi-Fi settings.
+- **A Bluetooth panel.** A click on the Bluetooth icon opens a panel with
+  Bluetooth on a switch, *My devices* - each with *Connect* or *Disconnect*,
+  *Remove*, its kind and, where the device reports it, its battery - and
+  *Add device*, which looks for devices in pairing mode for a minute and
+  lists them with *Pair*. A device that needs a code pairs from the panel:
+  it shows the code to type on a keyboard, asks whether a phone shows the
+  same number, or takes a PIN (Linux and macOS; Windows shows its own
+  prompt). Windows switches Bluetooth only in its own settings, which a
+  button there opens.
+- **USB, keyboard, webcam, microphone and battery panels.** Their icons now
+  open a small panel saying what is attached or in use - the USB devices,
+  the keyboard layout and the keyboards, the cameras (from USB where this
+  build lists no cameras, so a webcam shows on Windows too), the
+  microphones with the default marked, the battery's charge - with a
+  button on to Device Explorer or the Task Manager, instead of opening
+  those programs straight away.
+- **The right bar fits a short screen.** Below 960 pixels of height the
+  info panel's icons are smaller, and what still does not fit folds into a
+  chevron menu at the bar's foot - the least-used first (keyboard, VPN, USB,
+  upload, Task Manager, ...), so the webcam's and microphone's in-use dots,
+  the loudspeaker and the battery stay on the bar. The menu lists each
+  folded icon with its state ("USB: 2 devices") and opens it as the icon
+  would. It used to scroll, hiding the last icons until the bar was
+  scrolled.
+- **Safely remove a USB drive.** The USB panel lists the drives plugged in
+  - stick, external disk or memory card, with its size and where it is
+  mounted - each with *Safely remove*: the drive is unmounted once
+  everything is written to it and powered off, and the panel says when it
+  can be pulled out, or that a program still has a file open on it. The
+  panel follows what is plugged in while it is open: a stick shows the
+  moment it mounts, any other USB device within three seconds.
+- **A phone that pairs with the computer is answered on Linux.** UltraDesktop
+  is the system's Bluetooth pairing agent from the start: when a phone (or
+  any device) starts a pairing, the Bluetooth panel opens by itself and asks
+  whether the number matches - and a device that is not trusted and asks to
+  connect is asked about too.
+- **The Task Manager's window list** has a column header and shows each
+  window's application icon first, its state as an icon and a word (open,
+  maximized or minimized, in blue for the window in front), the display
+  (monitor) it is on as a
+  number in a bordered box - the column said "desktop 1" for every window,
+  which was the virtual desktop, not the monitor - and the virtual desktop
+  only where there is more than one. *Activate* is now *Show*, and brings a
+  window that is off every display back, centred on one. *Close* brings the
+  window to the front first, so a program that asks to save - ArtCreator
+  with an unsaved drawing - asks where it can be seen; before, the question
+  stayed behind and the close seemed to do nothing. A new *Kill task* ends a
+  program at once, after asking.
+- **The Sticker board fills the desktop and shows on request.** It is a
+  window of its own covering the whole space between the bars, shown only
+  when the pinboard button is clicked - and then just below the application
+  that was in front, which stays visible above it. A close button in its
+  bar hides it again. Each file's card shows a small thumbnail (the picture
+  itself, or the icon for its type), and the cards' text is smaller, so a
+  category holds more at a glance. It no longer has a panel to drag or
+  resize, and it no longer opens by itself when the desktop starts.
+- **Sticker board thumbnails as UltraFiler shows them**: a PDF's first page,
+  a book's cover and a small page of a text document's first lines (Word,
+  LibreOffice, Markdown, spreadsheets) instead of a type icon.
+- **The Task Manager** no longer lists the desktop's own windows (itself, its
+  dialogs, the Sticker board), and on Windows numbers the displays the way
+  Windows' display settings do.
+- **Programs that start with the desktop.** ChatCube and UltraMail can be
+  ticked under *Start with the desktop* - on the settings button's
+  right-click menu or in UOS-Settings > Desktop. Three seconds after the
+  desktop starts, each ticked one that is not running yet starts minimized
+  and works in the background: messages arrive, mail is counted on the mail
+  icon. Kept in the settings file as `startWithDesktop`.

@@ -3,6 +3,8 @@
 // with priorities/due dates/assignees/tags, drag & drop, a built-in card
 // editor, move history for flow metrics, text-definition (Mermaid kanban)
 // and JSON loading, and a preset-based design/palette system.
+// Version: 1.1.0 - a picture on a card: cardImageProvider and the style's
+//                  cardImageHeight (a file's thumbnail, a photo of a note)
 // Version: 1.0.1 - default bodies mark unused parameters (void): no -Wunused-parameter
 // Version: 1.0.0
 // Last Modified: 2026-10-08
@@ -337,6 +339,9 @@ namespace UltraCanvas {
         float cardTitleFontSize = 12.5f;
         float cardTextFontSize = 11.0f;
         float metaFontSize = 10.0f;        // Due date / assignee / tag text
+        // The band a card's picture takes above its title, when
+        // cardImageProvider hands one over; 0 = no pictures.
+        float cardImageHeight = 64.0f;
 
         // ----- Card content -----
         bool showCardDescription = true;
@@ -506,6 +511,14 @@ namespace UltraCanvas {
         std::function<void(const std::vector<std::string>& files, int columnId,
                            int laneId)> onFilesDropped;
 
+        // A picture for a card - a file's thumbnail - drawn above its title,
+        // fitted into a band style.cardImageHeight high. Called while the
+        // board lays out and draws, on the UI thread, so it must answer at
+        // once: hand over what is ready, or nullptr (no picture, or not yet;
+        // InvalidateLayout() when it arrives). Not used by Pill or Grid
+        // cards.
+        std::function<std::shared_ptr<UCPixmap>(const KanbanCard& card)> cardImageProvider;
+
         // ===== FRAMEWORK OVERRIDES =====
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
         void RenderChart(IRenderContext* ctx) override;
@@ -602,6 +615,9 @@ namespace UltraCanvas {
 
         // ----- Layout helpers -----
         void ComputeLayout(IRenderContext* ctx);
+        // The card's picture from cardImageProvider; nullptr where there is
+        // none or the card's shape has no room for one.
+        std::shared_ptr<UCPixmap> CardImage(const KanbanCard& card) const;
         double CardHeight(IRenderContext* ctx, const KanbanCard& card,
                           double cardWidth) const;
         const CardLayout* CardAt(const Point2Di& pos) const;

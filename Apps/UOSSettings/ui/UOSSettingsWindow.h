@@ -31,6 +31,7 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.6.0 - Desktop: the programs that start with the desktop
 // Version: 0.5.0 - Notifications > Registrations: the applications' Windows
 //                  notification registrations, listed and removed
 // Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
@@ -48,6 +49,8 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace UltraCanvas {
     class UltraCanvasContainer;
@@ -55,6 +58,7 @@ namespace UltraCanvas {
     class UltraCanvasSegmentedControl;
     class UltraCanvasLabel;
     class UltraCanvasDropdown;
+    class UltraCanvasCheckbox;
     class UltraCanvasTextInput;
     class UltraCanvasButton;
     enum class DesktopReplacement;   // UltraCanvasDesktopShell.h
@@ -118,6 +122,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> desktops_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> systemDesktop_;   // only where the platform has the switch
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> desktopStatus_;
+    // "Start with the desktop": one per DesktopSettings::StartupPrograms(),
+    // with the program's name.
+    std::vector<std::pair<std::string, std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>>> startup_;
 
     // ----- Last used folder -----
     // One table row per application. Rows are made once and then updated in
