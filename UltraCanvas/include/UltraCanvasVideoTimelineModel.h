@@ -7,8 +7,9 @@
 // builds and is tested without a display, and an application maps it to and
 // from its own media engine (VideoFX segments, say) without the element ever
 // knowing that engine's types.
+// Version: 1.1.0 - TimelineGaps and TimelineCloseGap: the empty stretches of a free track, and closing one
 // Version: 1.0.0
-// Last Modified: 2026-10-11
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -185,6 +186,30 @@ bool TimelineDeleteClips(TimelineTrack& track, const std::vector<std::string>& c
 // A copy of the clip placed right after it (a magnetic track) or in the
 // first gap after it that holds it (a free track), with `copyId`
 bool TimelineDuplicateClip(TimelineTrack& track, const std::string& clipId, const std::string& copyId);
+
+// An empty stretch of a free track: from the end of the clip before it (or
+// the start of the timeline) to the start of the clip after it, `clipId`
+struct TimelineGap {
+    double start = 0.0;
+    double end = 0.0;
+    std::string clipId;     // the clip right of the gap, which closing it moves
+
+    double Length() const { return end - start; }
+};
+
+// The gaps of a free track, earliest first: every stretch of at least
+// `minSeconds` with no clip, before a clip (the one from 0 to the first clip
+// included; the time after the last clip is not a gap). A magnetic track
+// has none.
+std::vector<TimelineGap> TimelineGaps(const TimelineTrack& track, double minSeconds);
+
+// Close the gap whose right-hand clip is `clipId`: that clip moves left to
+// the gap's start (the end of the clip before it, or 0), and with `ripple`
+// every clip after it moves by the same amount, so the spacing behind it is
+// kept. Returns the clips that moved, as they would be, through `moved`.
+// False when there is no gap before the clip or the track is magnetic.
+bool TimelineCloseGap(TimelineTrack& track, const std::string& clipId, bool ripple, double minSeconds,
+                      std::vector<TimelineClip>* moved = nullptr);
 
 // The ruler's tick steps for a zoom: the minor step is the smallest of one
 // frame, five frames, 0.5, 1, 2, 5, 10, 30 and 60 seconds that puts minor
