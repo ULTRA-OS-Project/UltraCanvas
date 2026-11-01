@@ -43,6 +43,7 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.2.3 - Minimize()
 // Version: 0.2.2 - pictures: avatars from the person's photo, photos and videos in the bubbles and a
 //                  viewer for them, a paperclip that sends a picture, a video or a file
 // Version: 0.2.1 - Telegram signs in by a QR code too, scanned from the phone's Telegram app
@@ -88,6 +89,8 @@ public:
 
     bool Create();
     void Show();
+    // The window to the taskbar (ChatCube --minimized).
+    void Minimize();
     std::function<void()> onClosed;
 
 private:

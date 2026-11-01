@@ -37,7 +37,8 @@
 //                  and the USB, keyboard, webcam, microphone and battery
 //                  panels behind the info panel's icons; the USB drives'
 //                  "Safely remove"; on a short screen the info panel's items
-//                  shrink and the least used fold into a menu (FitInfoPanel)
+//                  shrink and the least used fold into a menu (FitInfoPanel);
+//                  programs that start with the desktop (StartStartupPrograms)
 // Version: 0.5.1 - on X11 the desktop covers the primary monitor and puts
 //                  wallpaper windows on the others, as it does as the
 //                  Windows shell; panels and toasts follow it, and so does
@@ -140,6 +141,8 @@ public:
     // The Sticker board's window: over the work area, below the application
     // that was in front.
     void ShowCategoryBoard();
+    // settings_.startWithDesktop: started minimized unless running already.
+    void StartStartupPrograms();
     void PlaceCategoryBoard();
     void SwitchToDesktop(int index);
     // The clock's panel (a click on the clock) and the loudspeaker's (a

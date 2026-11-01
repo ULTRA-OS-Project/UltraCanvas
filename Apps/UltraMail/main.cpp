@@ -4,6 +4,8 @@
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop. One UltraMail per user: a second start brings the running one
 // forward and quits (UltraCanvasSingleInstance.h).
+// Version: 0.9.0 - --minimized: started in the background, the window minimized
+//                  (UltraDesktop's "start with the desktop")
 // Version: 0.8.0 - the vault opens before the mailbox, and a Primary Password is asked
 //                  for first; the data folder made owner-only before anything is written
 // Version: 0.7.1 - the data folder is Application Support on macOS (UltraMailPaths.h),
@@ -33,6 +35,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <optional>
+#include <memory>
 #include <string>
 
 namespace {
@@ -82,8 +85,15 @@ bool TraceWanted() {
 
 } // namespace
 
-int main() {
+int main(int argc, char** argv) {
     namespace Trace = UltraMail::Trace;
+    // --minimized: start in the background, the window minimized - what
+    // UltraDesktop's "start with the desktop" asks. Mail is fetched and the
+    // unread count published as with the window open.
+    bool minimized = false;
+    for (int i = 1; i < argc; ++i) {
+        if (std::string(argv[i]) == "--minimized") minimized = true;
+    }
     Trace::Enable(TraceWanted());
     Trace::MarkUiThread();
     {
@@ -189,6 +199,14 @@ int main() {
         step.emplace("Startup: show the main window");
         window->Show();
         step.reset();
+        if (minimized) {
+            // Once the window manager has it: a window not yet mapped cannot
+            // be iconified.
+            std::weak_ptr<UltraCanvas::UltraCanvasWindow> shown = window;
+            app.StartTimer(400, false, [shown](UltraCanvas::TimerId) {
+                if (auto w = shown.lock()) w->Minimize();
+            });
+        }
         // A later start asks this window to come forward.
         instance.Listen([](const UltraCanvas::JSONValue&) {
             Trace::Line("Single instance: another start asked for the window; bringing it forward");
@@ -261,6 +279,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     (void)hPrevInstance;
     (void)lpCmdLine;
     (void)nCmdShow;
-    return main();
+    return main(__argc, __argv);
 }
 #endif

@@ -325,7 +325,8 @@ earlier versions kept under `~/.config` is moved on the first start):
   "stickers": [ { "id": "note1", "text": "…", "x": 60, "y": 60, "width": 220, "height": 160, "color": "#FFF59D" } ],
   "categoryBoard": { "visible": false, "design": "stickynotes", "x": 320, "y": 60, "width": 780, "height": 460,
                      "board": { "type": "kanban-board", "version": 1, "columns": [ … ], "cards": [ … ] } },
-  "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ]
+  "pinnedApps": [ "/usr/bin/gimp", "/usr/bin/kate" ],
+  "startWithDesktop": [ "ChatCube", "UltraMail" ]
 }
 ```
 
@@ -340,6 +341,20 @@ and `height` are kept for older versions and no longer used: the board fills
 the work area and starts hidden. `pinnedApps` are the pinned
 applications' keys in the order they were pinned: the program's path, or on
 Windows the shortcut's path or `store:<AppUserModelID>`.
+`startWithDesktop` names the programs started with the desktop - `ChatCube`
+and `UltraMail` are the ones it offers; empty (the default), none.
+
+## Programs that start with the desktop
+
+ChatCube and UltraMail can start with the desktop, so messages arrive and
+mail is counted on the mail icon without opening them first. Tick them in
+UOS-Settings > Desktop > *Start with the desktop*, or on the settings
+button's right-click menu (*Start with the desktop*). Three seconds after the
+desktop starts - so it shows first - each ticked program that is not
+running yet is started with `--minimized`: its window goes to the taskbar
+and it works in the background. One that is running already is left alone,
+since a second start of these single-copy programs would only bring their
+window forward. Ticking one in the menu starts it at once as well.
 
 ## How the mail count gets there
 

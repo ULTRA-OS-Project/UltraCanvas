@@ -107,6 +107,7 @@ constexpr unsigned kUiTimerMs   = 250;
 constexpr int   kNoticeTicks    = 20;   // notices re-read every 5 s
 constexpr int   kScreenshotTicks = 12;  // the "saved" marker stays 3 s
 constexpr int   kDevicePollSeconds = 2;
+constexpr unsigned kStartupProgramsDelayMs = 3000;   // "start with the desktop", after the desktop
 constexpr uint64_t kActivityBytesPerPoll = 4096;   // below this a link is idle
 
 const Color kBarColor      (74, 74, 74, 255);
@@ -213,6 +214,11 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     StartDevicePoll();
     // The pairing handler, from the start (see EnsureBluetoothPanel).
     EnsureBluetoothPanel();
+    // The programs that start with the desktop: once the desktop is up, so
+    // they do not slow the first picture.
+    if (auto* app = UltraCanvasApplication::GetInstance()) {
+        app->StartTimer(kStartupProgramsDelayMs, false, [this](TimerId) { StartStartupPrograms(); });
+    }
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         uiTimer_ = app->StartTimer(kUiTimerMs, /*periodic=*/true, [this](TimerId) { OnTimer(); });
     }
@@ -557,6 +563,34 @@ void UltraDesktopWindow::OpenVolumePanel() {
     const Rect2Df bounds = speaker ? speaker->GetBoundsInWindow() : Rect2Df(0, 0, 0, 0);
     volumePanel_->SetScreenArea(area_.x, area_.y, area_.width, area_.height);
     volumePanel_->Open(ScreenX(bounds.x - 10), ScreenY(bounds.y - 60));
+}
+
+// ===== THE PROGRAMS THAT START WITH THE DESKTOP =====
+
+// Each one listed in settings_.startWithDesktop, minimized, unless it runs
+// already: both keep a window while they run (UltraMail's password prompt
+// too), and a second start would only bring that window forward.
+void UltraDesktopWindow::StartStartupPrograms() {
+    const std::vector<DesktopWindowInfo> windows = UltraCanvasDesktopShell::ListWindows();
+    const auto lower = [](std::string text) {
+        std::transform(text.begin(), text.end(), text.begin(),
+                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return text;
+    };
+    for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
+        if (!settings_.StartsWithDesktop(program.program)) continue;
+        const std::string name = lower(program.program);
+        bool running = false;
+        for (const DesktopWindowInfo& w : windows) {
+            if (lower(w.appClass) == name || lower(w.appName) == name) running = true;
+        }
+        if (running) continue;
+        std::string error;
+        if (!UltraCanvasDesktopShell::LaunchProgram(program.program, {"--minimized"}, &error)) {
+            debugOutput << "UltraDesktop: " << program.program << " did not start with the desktop: " << error
+                        << std::endl;
+        }
+    }
 }
 
 // ===== THE RADIOS AND THE DEVICES =====
@@ -1727,6 +1761,18 @@ void UltraDesktopWindow::ShowSettingsButtonMenu(int windowX, int windowY) {
     popupMenu_ = std::make_shared<UltraCanvasMenu>("SettingsButtonMenu", 0, 0, 300, 0);
     popupMenu_->SetMenuType(MenuType::PopupMenu);
     popupMenu_->AddItem(MenuItemData::Action("ULTRA OS settings", [this]() { OpenSystemSettings(); }));
+    // The programs that start with the desktop, in the background.
+    std::vector<MenuItemData> startup;
+    for (const StartupProgram& program : DesktopSettings::StartupPrograms()) {
+        const std::string name = program.program;
+        startup.push_back(MenuItemData::Checkbox(name, settings_.StartsWithDesktop(name), [this, name](bool on) {
+            settings_.SetStartsWithDesktop(name, on);
+            SaveSettings();
+            // Now as well, not only from the next start.
+            if (on) StartStartupPrograms();
+        }));
+    }
+    popupMenu_->AddItem(MenuItemData::Submenu("Start with the desktop", startup));
     // Only Windows has a desktop of its own to switch from, and back to.
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
         popupMenu_->AddItem(MenuItemData::Separator());

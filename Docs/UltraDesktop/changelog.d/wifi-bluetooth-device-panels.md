@@ -67,3 +67,9 @@
 - **The Task Manager** no longer lists the desktop's own windows (itself, its
   dialogs, the Sticker board), and on Windows numbers the displays the way
   Windows' display settings do.
+- **Programs that start with the desktop.** ChatCube and UltraMail can be
+  ticked under *Start with the desktop* - on the settings button's
+  right-click menu or in UOS-Settings > Desktop. Three seconds after the
+  desktop starts, each ticked one that is not running yet starts minimized
+  and works in the background: messages arrive, mail is counted on the mail
+  icon. Kept in the settings file as `startWithDesktop`.
