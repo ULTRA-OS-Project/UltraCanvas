@@ -78938,7 +78938,7 @@ const Color& GetExpanderArrowColor() const;
 ```
 How the expand button of a row with children looks. `TreeExpanderStyle::Box`
 (the default) is the `+` / `-` in a square, coloured by
-`SetExpandButtonColor`. `TreeExpanderStyle::Chevron` is an arrow instead,
+`SetExpandButtonColor` / `SetExpandButtonColors`. `TreeExpanderStyle::Chevron` is an arrow instead,
 pointing right on a closed row and down on an open one, drawn with a 1.5 px
 round stroke in `SetExpanderArrowColor` (default a mid grey,
 `Color(0x70, 0x70, 0x78)`). It takes the same place and the same click as the
@@ -79156,6 +79156,7 @@ void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
+void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol);
 void SetExpanderArrowColor(const Color& color);
 void SetCheckboxColors(const Color& background, const Color& border, const Color& check);
 ```
@@ -79163,7 +79164,9 @@ Sets various color properties for the tree view. `SetBackgroundColor` is
 inherited from `UltraCanvasUIElement`.
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
-(default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
+(default `#E0E0E0`). `SetExpandButtonColors` sets the fill, the 1 px border
+(default gray) and the `+`/`-` glyph (default black) together - what a dark
+theme needs, where a black glyph on a light box stands out of the tree.
 `SetExpanderArrowColor` is the arrow's colour under `TreeExpanderStyle::Chevron`
 (see [Expander Style](#expander-style)).
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
