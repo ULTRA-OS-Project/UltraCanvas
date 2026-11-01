@@ -1,5 +1,7 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.10.0 - 2026-11-01 - GetNodeAtY is public: the row under a point, for a drop
+//                  from another element
 // Version: 1.9.0 - 2026-10-30 - SetNodeDragEnabled: rows dragged onto other rows, the target
 //                  highlighted, onNodeDragAccept / onNodeDragDrop (declared since 1.0.0,
 //                  never fired until now); Escape cancels the drag
@@ -461,6 +463,10 @@ public:
     // from under the tree.
     void RemoveNode(const std::string& nodeId);
     TreeNode* FindNode(const std::string& nodeId);
+    // The row at element-local y (as scrolled: MapToLocal of a window
+    // point), null below the last row - where something dragged from
+    // another element (a list's row) is dropped.
+    TreeNode* GetNodeAtY(int y);
     
     // ===== SELECTION MANAGEMENT =====
     void SelectNode(TreeNode* node, bool addToSelection = false);
@@ -807,8 +813,6 @@ private:
     int FindShownNodeY(const TreeNode* node) const;
 
     int GetNodeDisplayY(TreeNode* node);
-    
-    TreeNode* GetNodeAtY(int y);
     
     // `pipes` carries one flag per drawn level down to this row, the top level
     // included: pipes[k] is true when the row's ancestor at display level k still

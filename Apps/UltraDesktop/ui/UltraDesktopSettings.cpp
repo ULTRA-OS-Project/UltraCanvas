@@ -2,6 +2,7 @@
 // The desktop's settings file, through the framework's JSON (UltraCanvasJSON).
 // Numbers in the file are dot-decimal by construction: the JSON writer and
 // reader never consult the locale.
+// Version: 0.4.0 - appsView, appsSplitAbove, recentAppsShown, recentApps (NoteAppStarted), appMoves
 // Version: 0.3.0 - startWithDesktop, StartupPrograms
 // Version: 0.2.0 - the pinned applications
 // Version: 0.1.1 - the file lives in the framework's desktop settings folder
@@ -143,6 +144,15 @@ std::string DesktopSettings::ToJson() const {
     JSONValue startup = JSONValue::MakeArray();
     for (const std::string& program : startWithDesktop) startup.Append(JSONValue(program));
     root.Set("startWithDesktop", std::move(startup));
+    root.Set("appsView", appsView);
+    root.Set("appsSplitAbove", appsSplitAbove);
+    root.Set("recentAppsShown", recentAppsShown);
+    JSONValue recent = JSONValue::MakeArray();
+    for (const std::string& key : recentApps) recent.Append(JSONValue(key));
+    root.Set("recentApps", std::move(recent));
+    JSONValue moves = JSONValue::MakeObject();
+    for (const auto& [key, group] : appMoves) moves.Set(key, group);
+    root.Set("appMoves", std::move(moves));
     JSONSerializeOptions options;
     options.pretty = true;
     return JSON::Serialize(root, options);
@@ -205,8 +215,38 @@ bool DesktopSettings::FromJson(const std::string& json, std::string* error) {
             if (!key.empty()) loaded.SetPinned(key, true);
         }
     }
+    const std::string view = root.Get("appsView").GetString(loaded.appsView);
+    if (view == "tiles" || view == "tree") loaded.appsView = view;
+    const int split = static_cast<int>(root.Get("appsSplitAbove").GetInteger(loaded.appsSplitAbove));
+    loaded.appsSplitAbove = split <= 0 ? 0 : std::clamp(split, 2, 50);
+    const int shown = static_cast<int>(root.Get("recentAppsShown").GetInteger(loaded.recentAppsShown));
+    loaded.recentAppsShown = std::clamp(shown, 1, 24);
+    const JSONValue& recent = root.Get("recentApps");
+    if (recent.IsArray()) {
+        for (size_t i = 0; i < recent.GetSize() && loaded.recentApps.size() < kRecentAppsKept; ++i) {
+            const std::string key = recent.At(i).GetString();
+            if (!key.empty() && std::find(loaded.recentApps.begin(), loaded.recentApps.end(), key) ==
+                                    loaded.recentApps.end()) {
+                loaded.recentApps.push_back(key);
+            }
+        }
+    }
+    const JSONValue& moves = root.Get("appMoves");
+    if (moves.IsObject()) {
+        for (const auto& [key, value] : moves.GetMembers()) {
+            const std::string group = value.GetString();
+            if (!key.empty() && !group.empty()) loaded.appMoves[key] = group;
+        }
+    }
     *this = std::move(loaded);
     return true;
+}
+
+void DesktopSettings::NoteAppStarted(const std::string& key) {
+    if (key.empty()) return;
+    recentApps.erase(std::remove(recentApps.begin(), recentApps.end(), key), recentApps.end());
+    recentApps.insert(recentApps.begin(), key);
+    if (recentApps.size() > kRecentAppsKept) recentApps.resize(kRecentAppsKept);
 }
 
 bool DesktopSettings::IsPinned(const std::string& key) const {

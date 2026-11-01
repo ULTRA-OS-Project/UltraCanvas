@@ -133,6 +133,9 @@ public:
     // RAM disc, file manager, virtual desktops).
     void OpenSystemSettings();
     void OpenAppStarter();
+    // An application was started from the Apps window or a taskbar pin:
+    // first in the Apps window's Recent (DesktopSettings::recentApps).
+    void NoteAppStarted(const UltraCanvas::UCDesktopEntry& entry);
     void OpenTasks();
     void OpenRamDisc();
     void OpenFiler(const std::string& path = "");
