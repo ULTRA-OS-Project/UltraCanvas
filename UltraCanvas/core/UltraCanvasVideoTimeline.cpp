@@ -1518,7 +1518,7 @@ bool UltraCanvasVideoTimeline::HandleMouseDown(const UCEvent& event, float x, fl
     }
 }
 
-bool UltraCanvasVideoTimeline::HandleMouseMove(const UCEvent& event, float x, float y) {
+bool UltraCanvasVideoTimeline::HandleMouseMove(const UCEvent& /*event*/, float x, float y) {
     lastPointer = Point2Df(x, y);
     if (drag == Drag::NoDrag) {
         const Hit h = HitTest(x, y);
