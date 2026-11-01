@@ -1,6 +1,7 @@
 // core/UltraCanvasTreeView.cpp
 // Hierarchical tree view with icons and text for each row
 // The history is in the header (include/UltraCanvasTreeView.h).
+// Version: 1.10.0 - the +/- box in its own border and symbol colours (SetExpandButtonColors)
 // Version: 1.8.0 - TreeExpanderStyle::Chevron, the expand button as an arrow
 // Version: 1.7.0 - a loading row (TreeNodeData::loading) slides a thin bar along its foot
 // Version: 1.6.0 - SetFilterText: rows hidden by a filter (TreeNode::IsShown)
@@ -1454,12 +1455,12 @@ namespace UltraCanvas {
                 } else {
                     // Draw button background
                     ctx->DrawFilledRectangle(Rect2Di(buttonX, buttonY, kExpanderButtonSize, kExpanderButtonSize),
-                                             expandButtonColor, 1.0, Colors::Gray);
+                                             expandButtonColor, 1.0, expandButtonBorderColor);
 
                     // Draw +/- symbol
-                    ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), Colors::Black);
+                    ctx->DrawFilledRectangle(Rect2Di(buttonX + 3, buttonY + 5, 6, 2), expandButtonSymbolColor);
                     if (!node->IsExpanded()) {
-                        ctx->DrawFilledRectangle(Rect2Di(buttonX + 5, buttonY + 3, 2, 6), Colors::Black);
+                        ctx->DrawFilledRectangle(Rect2Di(buttonX + 5, buttonY + 3, 2, 6), expandButtonSymbolColor);
                     }
                 }
             }

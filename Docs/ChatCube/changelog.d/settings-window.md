@@ -20,3 +20,8 @@
     are listed in the sidebar.
   - *Extras > Data folder*: where your identity, contacts and history are
     kept, to open or copy; *Extras > About*.
+- **The Matrix and Telegram buttons keep their names.** Signed in, they
+  read "Matrix: @you:matrix.org" and "Telegram: signed in", and signed out
+  "Matrix account" / "Telegram account" - all longer than the third of the
+  sidebar each has. They now always say *Matrix* and *Telegram*; where the
+  account stands is their tooltip.

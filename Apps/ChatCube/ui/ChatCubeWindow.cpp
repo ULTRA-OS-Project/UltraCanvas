@@ -155,6 +155,15 @@ std::shared_ptr<UltraCanvasButton> MakeIconButton(const std::string& id, const s
     return b;
 }
 
+// A network's button in the sidebar (Matrix, Telegram): always the network's
+// name, which is what fits the third of the sidebar it has - where the
+// account stands ("Matrix: signed in as @alice:matrix.org") is its tooltip.
+void SetNetworkButton(const std::shared_ptr<UltraCanvasButton>& button, const std::string& name,
+                      const std::string& tooltip) {
+    button->SetText(name);
+    button->SetTooltip(tooltip);
+}
+
 std::shared_ptr<UltraCanvasTextInput> MakeInput(const std::string& id, const std::string& placeholder, int width,
                                                 bool pill = false) {
     auto t = std::make_shared<UltraCanvasTextInput>(id, 0, 0, width, kControlHeight);
@@ -2028,11 +2037,11 @@ void ChatCubeWindow::SignOutOf(const std::string& providerId) {
         UpdateHeader();
     }
     if (providerId == matrixProviderId_) {
-        matrixToggle_->SetText("Matrix");
+        SetNetworkButton(matrixToggle_, "Matrix", "Matrix account");
         matrixKeysForm_->SetVisible(false);
         SetProviderStatus(matrixProviderId_, "signed out");
     } else if (providerId == telegramProviderId_) {
-        telegramToggle_->SetText("Telegram");
+        SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
         telegramForm_->SetVisible(false);
         SetProviderStatus(telegramProviderId_, "signed out");
     }
@@ -2111,7 +2120,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (telegram) {
                 if (e.connectionState == UltraIMConnectionState::Connected) {
                     SetProviderStatus(telegramProviderId_, "signed in");
-                    telegramToggle_->SetText("Telegram: signed in");
+                    SetNetworkButton(telegramToggle_, "Telegram", "Telegram: signed in");
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetProviderStatus(telegramProviderId_, e.errorText);
@@ -2124,7 +2133,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     SetProviderStatus(telegramProviderId_, (e.errorText.empty() ? std::string("signing in") : e.errorText) + "\xE2\x80\xA6");
                 } else if (e.connectionState == UltraIMConnectionState::Disconnected) {
                     SetProviderStatus(telegramProviderId_, "signed out");
-                    telegramToggle_->SetText("Telegram account");
+                    SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
                 }
                 break;
             }
@@ -2134,7 +2143,7 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
                     UltraIMProviderInfo info;
                     UltraIM_GetProviderInfo(matrixProviderId_, info);
                     SetProviderStatus(matrixProviderId_, "signed in as " + info.localUserId);
-                    matrixToggle_->SetText("Matrix: " + info.localUserId);
+                    SetNetworkButton(matrixToggle_, "Matrix", "Matrix: signed in as " + info.localUserId);
                     RefreshConversations();
                 } else if (e.connectionState == UltraIMConnectionState::Error) {
                     SetProviderStatus(matrixProviderId_, e.errorText);
@@ -2174,14 +2183,14 @@ void ChatCubeWindow::OnEvent(const UltraIMEvent& e) {
             if (telegram) {
                 SetProviderStatus(telegramProviderId_, "the session ended - sign in again");
                 telegramForm_->SetVisible(true);
-                telegramToggle_->SetText("Telegram account");
+                SetNetworkButton(telegramToggle_, "Telegram", "Telegram account");
                 UpdateTelegramForm();
                 break;
             }
             if (matrix) {
                 SetProviderStatus(matrixProviderId_, "the session ended - sign in again");
                 matrixForm_->SetVisible(true);
-                matrixToggle_->SetText("Matrix account");
+                SetNetworkButton(matrixToggle_, "Matrix", "Matrix account");
                 break;
             }
             ShowSignInPage();

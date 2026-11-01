@@ -682,10 +682,8 @@ void BuildWindow(State* d, UltraCanvasWindowBase* parent) {
     d->tree->SetTextColor(L().ink);
     d->tree->SetSelectionColor(L().accentSoft);
     d->tree->SetHoverColor(L().hover);
-    // Chevrons, drawn in the look's colour: the boxed +/- keeps a black
-    // glyph, which the dark look would leave on a white box.
-    d->tree->SetExpanderStyle(TreeExpanderStyle::Chevron);
-    d->tree->SetExpanderArrowColor(L().inkMuted);
+    // The +/- boxes of UltraFiler's tree, in the look's colours.
+    d->tree->SetExpandButtonColors(L().well, L().lineStrong, L().inkMuted);
     d->tree->SetFocusRingColor(L().accent);
     d->tree->SetBorderRight(1, L().line);
     // A section has no page of its own: opening one moves on to its first page.
