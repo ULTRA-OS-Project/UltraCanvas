@@ -1,3 +1,7 @@
+#### 2026-11-01 *0.12.0*
+- Desktop: the empty Wallpaper field names the default it stands for,
+  "ULTRA OS A (the default picture)".
+
 #### 2026-11-01 *0.11.0*
 - **Desktop: the Apps window's view, sub-categories and Recent count.**
   Three new choices on the Desktop page: the Apps window's view (tiles, or
