@@ -1,3 +1,39 @@
+#### 2026-11-01 *0.9.457*
+- **Every program in a folder showed one program's icon until its own
+  loaded - and programs without an icon kept it.** On Windows, under
+  Display > File icons = Host OS, the type icon for `.exe` was asked of the
+  shell with the path of whichever program was drawn first. For the types
+  whose registered icon is `%1` (`.exe`, `.ico`, `.cur`, `.lnk`) the shell
+  reads that file even with `SHGFI_USEFILEATTRIBUTES`, so it answered with
+  that program's own icon, and the filer held it as *the* `.exe` icon: every
+  program drew it while its own icon was still being extracted, and the
+  console tools, which carry no icon, drew it for good - until the slot was
+  evicted and happened to be asked again by an icon-less program.
+  `HostFileIconProbeName` (`UltraCanvasHostFileIcons.h`) gives the made-up
+  name the key stands for (`ultracanvas-host-icon-probe.exe`), and the
+  Windows backend asks the shell with it, never with the file's path - which
+  also stops a special folder's icon from standing in for every folder.
+  `FilerHostIconsTest` checks that two programs, a Windows and a POSIX path,
+  and any two folders are asked about under one name that carries nothing of
+  the file.
+- **macOS host file icons are the type's icon, never one file's.** The
+  content-type branch of `UltraCanvasMacOSHostFileIcons.mm` was compiled out
+  (its `ULTRACANVAS_HAS_UTTYPE` was only defined in the "Open with" backend),
+  so every lookup called `iconForFile:` with the real path: one file's custom
+  icon was cached as the icon of its whole type, and a folder was drawn with
+  the startup disk's icon. The backend now detects the SDK itself and asks by
+  `HostFileIconProbeName` only - `iconForContentType:` (folder, the type of
+  the extension, or plain data), or `iconForFileType:` before macOS 11.
+- **An image that arrives as bytes can no longer draw another one's
+  picture.** In a build without libvips `UCImageRaster::LoadFromMemory` still
+  named the image after the buffer's address, and so did
+  `UCImageRaster::GetFromMemory` in every build: a freed buffer's address
+  reused for another picture of the same size found the first picture in the
+  pixmap or image cache. In-memory images are named by a counter in both
+  builds now, and `GetFromMemory` keys by a hash of the bytes and checks a
+  hit against the bytes the cached image kept. `ImageCacheFreshnessTest`
+  reuses one buffer for two pictures and checks each is drawn as itself.
+
 #### 2026-11-01 *0.9.456*
 - **UltraCanvasPortableDevices: phones, cameras and players over MTP / PTP.**
   A device plugged in over USB that is not a drive gets no drive letter or
