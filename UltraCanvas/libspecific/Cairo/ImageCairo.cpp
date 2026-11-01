@@ -1,5 +1,6 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
+// Version: 2.9.1 - GetVImage of a pixel-made picture through the C call, for libvips 8.12 (Ubuntu 22.04)
 // Version: 2.9.0 - FromBgra / FromRgba: a picture from pixels, scaled from its own surface
 // Version: 2.8.0 - GIF through libvips everywhere: its gifsave, else the
 //                  framework's encoder registered as ucgifsave (VipsGifPlugin)
@@ -832,8 +833,13 @@ namespace UltraCanvas {
                     dst[3] = static_cast<uint8_t>(a);
                 }
             }
-            vips::VImage image = vips::VImage::new_from_memory_copy(rgba.data(), rgba.size(), width, height, 4,
-                                                                    VIPS_FORMAT_UCHAR);
+            // The C call: VImage::new_from_memory_copy is newer than the
+            // libvips 8.12 of Ubuntu 22.04, which CI builds on. The copy
+            // lets the vector go at the end of this function.
+            VipsImage* raw = vips_image_new_from_memory_copy(rgba.data(), rgba.size(), width, height, 4,
+                                                              VIPS_FORMAT_UCHAR);
+            if (!raw) throw vips::VError();
+            vips::VImage image(raw);   // takes the reference
             return image.copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB));
         }
         if (imgDataPtr) { // Create VImage from memory buffer
