@@ -1,5 +1,7 @@
 // include/UltraIM/UltraIMPlugins.h
 // UltraIM - the provider plug-in interface and the module (DSO) host contract
+// Version: 0.1.6 - ABI 2: the version covers the provider interface and its types, a module says
+//                  which it was built for (UltraIM_PluginAbiVersion) and the host loads only an equal one
 // Version: 0.1.5 - the account's profile (name, e-mail, phone) and its sign-in protection
 // Version: 0.1.4 - SendVideo; DownloadAttachment (a video, a file, a voice note fetched when asked for)
 // Version: 0.1.3 - a sign-in by a QR code (credentials.loginType QRCode, UltraIMAuthStep::OtherDevice)
@@ -291,18 +293,33 @@ protected:
 
 // ============================================================================
 // MODULE (DSO) HOST CONTRACT
-// A provider module exports
+// A provider module exports two functions:
 //
+//     ULTRAIM_DEFINE_PLUGIN_ABI_VERSION()     // UltraIM_PluginAbiVersion: the version it was built for
 //     extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost* host);
 //
-// and, when host->abiVersion is one it was built for, calls
+// and, when host->abiVersion is the version it was built for, calls
 // host->RegisterProvider for each provider it carries. Modules link the
-// shared UltraCanvas core like any other library; the table is the version
-// gate, so an outdated module is skipped instead of crashing. Append new
-// members only, and bump the version when you do.
+// shared UltraCanvas core like any other library.
+//
+// The version covers the whole binary contract between the host and a
+// module: this table, the IUltraIMProviderPlugin interface above (its
+// virtual functions and their order) and every type that crosses it - all
+// of UltraIMTypes.h. A module built against another version would call
+// past the end of a vtable or read a struct laid out differently, so both
+// sides refuse a mismatch: the host reads UltraIM_PluginAbiVersion before
+// it calls anything and skips a module that answers another version, or
+// has no answer (one built before version 2); the module checks the host's
+// in UltraIM_PluginInit. Bump the version with any change to those - a new
+// virtual, a new member of a struct, a reordered enum.
+// scripts/check_ultraim_abi.py fails CI when they change and the version
+// does not (scripts/ultraim_abi.txt records the version and a fingerprint).
+//
+// Version 1: the first modules. Version 2 (2026-11): the account profile and
+// sign-in protection, UltraIMCredentials::email - and the version check.
 // ============================================================================
 
-constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 1;
+constexpr int ULTRAIM_PLUGIN_HOST_ABI_VERSION = 2;
 
 struct UltraIMPluginHost {
     int abiVersion;
@@ -310,9 +327,15 @@ struct UltraIMPluginHost {
 };
 
 using UltraIM_PluginInitFn = void (*)(const UltraIMPluginHost* host);
+using UltraIM_PluginAbiVersionFn = int (*)();
 
 #if defined(_WIN32)
 #define ULTRAIM_PLUGIN_EXPORT __declspec(dllexport)
 #else
 #define ULTRAIM_PLUGIN_EXPORT __attribute__((visibility("default")))
 #endif
+
+// The version a module was built for, which the host reads before it calls
+// anything else in it. One line in every provider module, at file scope.
+#define ULTRAIM_DEFINE_PLUGIN_ABI_VERSION() \
+    extern "C" ULTRAIM_PLUGIN_EXPORT int UltraIM_PluginAbiVersion() { return ULTRAIM_PLUGIN_HOST_ABI_VERSION; }

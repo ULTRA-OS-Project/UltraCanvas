@@ -3,6 +3,7 @@
 // Version: 0.1.4 - UltraIM_SetPreviewMaker, UltraIM_MakePreview
 // Version: 0.1.3 - UltraIM_SendVideo, UltraIM_DownloadAttachment
 // Version: 0.1.2 - UltraIM_ResendAuthCode
+// Version: 0.1.3 - a module is loaded only when UltraIM_PluginAbiVersion answers this host's version
 // Version: 0.1.2 - the account's profile and its sign-in protection
 // Version: 0.1.1 - UltraIM_FetchSharedCredentials
 // Version: 0.1.0
@@ -183,9 +184,24 @@ bool IsModuleFile(const fs::path& path) {
 #endif
 }
 
-// Loads one module and calls its entry point. Modules are never unloaded:
-// a provider's code (its vtable, the callbacks it handed out) must outlive
-// every task still queued in the dispatcher.
+// Whether a module built for `moduleVersion` (-1: it does not say) may be
+// called; says why not on stderr. Version 1 modules do not say, and they
+// accepted any host - so the host refuses them, not they the host.
+bool AcceptModuleVersion(const fs::path& path, int moduleVersion) {
+    if (moduleVersion == ULTRAIM_PLUGIN_HOST_ABI_VERSION) return true;
+    if (moduleVersion < 0)
+        std::fprintf(stderr, "[UltraIM] %s does not say which UltraIM it was built for (an old module); "
+                             "skipped - rebuild it\n", UltraCanvas::PathToUtf8(path).c_str());
+    else
+        std::fprintf(stderr, "[UltraIM] %s was built for UltraIM ABI %d, this is %d; skipped - rebuild it\n",
+                     UltraCanvas::PathToUtf8(path).c_str(), moduleVersion, ULTRAIM_PLUGIN_HOST_ABI_VERSION);
+    return false;
+}
+
+// Loads one module and calls its entry point - once it has said it was
+// built for this host's version. Modules are never unloaded: a provider's
+// code (its vtable, the callbacks it handed out) must outlive every task
+// still queued in the dispatcher.
 void LoadModule(const fs::path& path) {
 #if defined(_WIN32)
     HMODULE module = LoadLibraryW(path.c_str());   // path-string-ok: wide path
@@ -194,6 +210,8 @@ void LoadModule(const fs::path& path) {
                      UltraCanvas::PathToUtf8(path).c_str(), GetLastError());
         return;
     }
+    auto version = reinterpret_cast<UltraIM_PluginAbiVersionFn>(
+        reinterpret_cast<void*>(GetProcAddress(module, "UltraIM_PluginAbiVersion")));
     auto init = reinterpret_cast<UltraIM_PluginInitFn>(
         reinterpret_cast<void*>(GetProcAddress(module, "UltraIM_PluginInit")));
 #else
@@ -203,8 +221,10 @@ void LoadModule(const fs::path& path) {
                      UltraCanvas::PathToUtf8(path).c_str(), dlerror());
         return;
     }
+    auto version = reinterpret_cast<UltraIM_PluginAbiVersionFn>(dlsym(module, "UltraIM_PluginAbiVersion"));
     auto init = reinterpret_cast<UltraIM_PluginInitFn>(dlsym(module, "UltraIM_PluginInit"));
 #endif
+    if (!AcceptModuleVersion(path, version ? version() : -1)) return;
     if (!init) {
         std::fprintf(stderr, "[UltraIM] %s has no UltraIM_PluginInit; skipped\n",
                      UltraCanvas::PathToUtf8(path).c_str());

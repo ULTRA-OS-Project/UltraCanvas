@@ -197,11 +197,14 @@ session, `FetchConversations`, `FetchMessages` and `SendText` are required;
 everything else has a default that answers `CapabilityMissing`. Raise events
 through the sink `Initialize` hands you; every method must return at once.
 
-A provider ships as a module that links the core and exports one function:
+A provider ships as a module that links the core and exports two
+functions - the version it was built for, and its entry point:
 
 ```cpp
+ULTRAIM_DEFINE_PLUGIN_ABI_VERSION()     // UltraIM_PluginAbiVersion()
+
 extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost* host) {
-    if (!host || host->abiVersion < 1 || !host->RegisterProvider) return;
+    if (!host || host->abiVersion != ULTRAIM_PLUGIN_HOST_ABI_VERSION || !host->RegisterProvider) return;
     host->RegisterProvider(std::make_shared<MyProvider>());
 }
 ```
@@ -209,6 +212,27 @@ extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost
 `UltraIM_RefreshProviders` loads each module in `pluginDirectory` once and
 never unloads it (queued callbacks may still point into it). A provider
 compiled into the application uses `UltraIM_RegisterProvider` instead.
+
+**The module ABI.** `ULTRAIM_PLUGIN_HOST_ABI_VERSION` covers everything a
+module and the host share in binary form: the host table, the
+`IUltraIMProviderPlugin` interface (its virtual functions and their order)
+and every type in `UltraIMTypes.h`. The host asks a module for
+`UltraIM_PluginAbiVersion()` before it calls anything else in it, and skips
+one that answers another version - or does not answer, as modules built
+before version 2 do (they also accepted any host) - saying on stderr to
+rebuild it; the module refuses a host of another version too. So a stale
+module in a plug-in folder is skipped instead of being called through a
+vtable that no longer matches. Changing the interface or a type in
+`UltraIMTypes.h` therefore bumps the version (with a word on what changed
+in the comment above it), and `python3 scripts/check_ultraim_abi.py
+--update` records the new fingerprint in `scripts/ultraim_abi.txt`; CI
+(`ultraim-abi.yml`) fails a change to those headers that leaves the version
+as it was. A change that is not part of the contract - a free inline
+function, a constant, the text of a default body's message - is recorded
+with `--update --no-abi-change "why"`. Version 1 was the first modules;
+version 2 (2026-11) added the account profile and the sign-in protection,
+`UltraIMCredentials::email`, and the check itself - versions 1 had grown
+three interface methods with no bump.
 
 ## Provider: ChatCube Direct
 

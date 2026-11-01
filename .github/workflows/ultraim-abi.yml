@@ -1,0 +1,48 @@
+name: UltraIM module ABI
+
+# A change to UltraIM's provider interface or to the types it passes must bump
+# ULTRAIM_PLUGIN_HOST_ABI_VERSION (scripts/check_ultraim_abi.py). The provider
+# modules (ChatCube Direct, Matrix, Telegram) are called through
+# IUltraIMProviderPlugin's vtable and UltraIMTypes.h's structs; the host loads
+# only a module that says it was built for the host's version, so the number
+# must move whenever the contract does. Three interface methods were added
+# under version 1 before this was checked. scripts/ultraim_abi.txt records the
+# version and a fingerprint of the two headers (comments, string texts and
+# spacing left out); `--update` refuses to record a new fingerprint under the
+# old version unless told it is no ABI change (`--no-abi-change "why"`).
+
+# Trigger policy matches platform-names.yml: `pull_request` covers feature
+# branches, so listing them under `push` too would run this check twice.
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/include/UltraIM/UltraIMPlugins.h'
+      - 'UltraCanvas/include/UltraIM/UltraIMTypes.h'
+      - 'scripts/check_ultraim_abi.py'
+      - 'scripts/ultraim_abi.txt'
+      - '.github/workflows/ultraim-abi.yml'
+  pull_request:
+    # `branches` filters the BASE branch; see locale-numbers.yml for why
+    # `claude/**` is listed too.
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-22.04   # the pool the build legs use (see platform-names.yml)
+    steps:
+      - uses: actions/checkout@v5
+      # The normalisation first, against examples of its own - one that
+      # stopped seeing a new virtual would otherwise pass everything.
+      - name: Self-test the check
+        run: python3 scripts/check_ultraim_abi.py --self-test
+      - name: Check that the ABI version moved with the interface
+        run: python3 scripts/check_ultraim_abi.py
