@@ -1,5 +1,9 @@
 // include/UltraCanvasTreeView.h
 // Hierarchical tree view with icons and text for each row
+// Version: 1.11.0 - 2026-11-01 - SetExpandButtonColors: the +/- box's fill, border and symbol,
+//                  so a dark theme gets a box it can read (the symbol was always black)
+// Version: 1.10.0 - 2026-11-01 - GetNodeAtY is public: the row under a point, for a drop
+//                  from another element
 // Version: 1.9.0 - 2026-10-30 - SetNodeDragEnabled: rows dragged onto other rows, the target
 //                  highlighted, onNodeDragAccept / onNodeDragDrop (declared since 1.0.0,
 //                  never fired until now); Escape cancels the drag
@@ -25,7 +29,7 @@
 //                  into the removed subtree
 // Version: 1.0.0 - the tree view: rows with icons and text, expanders, check flags, lines
 //                  (the numbers before 1.6.0 were given afterwards, from the framework changelog)
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-01
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -307,6 +311,8 @@ private:
     Color lineColor;            // Connecting line color
     Color textColor;            // Default text color
     Color expandButtonColor = Color(0xE0, 0xE0, 0xE0); // +/- node icon background
+    Color expandButtonBorderColor = Colors::Gray;       // its 1 px border
+    Color expandButtonSymbolColor = Colors::Black;      // the + / - itself
     TreeExpanderStyle expanderStyle = TreeExpanderStyle::Box;
     Color expanderArrowColor = Color(0x70, 0x70, 0x78);        // the Chevron style's arrow
     Color checkboxBackgroundColor = Colors::White;             // check flag box fill
@@ -461,6 +467,10 @@ public:
     // from under the tree.
     void RemoveNode(const std::string& nodeId);
     TreeNode* FindNode(const std::string& nodeId);
+    // The row at element-local y (as scrolled: MapToLocal of a window
+    // point), null below the last row - where something dragged from
+    // another element (a list's row) is dropped.
+    TreeNode* GetNodeAtY(int y);
     
     // ===== SELECTION MANAGEMENT =====
     void SelectNode(TreeNode* node, bool addToSelection = false);
@@ -608,6 +618,13 @@ public:
     void SetLineColor(const Color &color) { lineColor = color; }
     void SetTextColor(const Color &color) { textColor = color; }
     void SetExpandButtonColor(const Color &color) { expandButtonColor = color; }
+    // The +/- box whole: its fill, its border and the + / - (TreeExpanderStyle::Box).
+    void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol) {
+        expandButtonColor = fill;
+        expandButtonBorderColor = border;
+        expandButtonSymbolColor = symbol;
+        RequestRedraw();
+    }
     void SetCheckboxColors(const Color& background, const Color& border, const Color& check) {
         checkboxBackgroundColor = background;
         checkboxBorderColor = border;
@@ -763,6 +780,8 @@ protected:
     int   GetTextPadding() const { return textPadding; }
     Color GetTextColor()   const { return textColor; }
     Color GetExpandButtonColor() const { return expandButtonColor; }
+    Color GetExpandButtonBorderColor() const { return expandButtonBorderColor; }
+    Color GetExpandButtonSymbolColor() const { return expandButtonSymbolColor; }
     // Width reserved on the right for the vertical scrollbar (0 when hidden).
     int   GetVerticalScrollbarWidth() const {
         return (verticalScrollbar && verticalScrollbar->IsVisible()) ? verticalScrollbar->GetWidth() : 0;
@@ -807,8 +826,6 @@ private:
     int FindShownNodeY(const TreeNode* node) const;
 
     int GetNodeDisplayY(TreeNode* node);
-    
-    TreeNode* GetNodeAtY(int y);
     
     // `pipes` carries one flag per drawn level down to this row, the top level
     // included: pipes[k] is true when the row's ancestor at display level k still

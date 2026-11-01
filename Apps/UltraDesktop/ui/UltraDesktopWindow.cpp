@@ -107,6 +107,9 @@ const char* const kInfoFoldOrder[] = {"keyboard", "vpn", "usb", "upload", "tasks
 constexpr int   kClockHeight    = 68;   // the face (48) over the date line
 constexpr int   kClockFaceBox   = 66;   // the gauge's box: its face lands at the top, 48 px across
 constexpr int   kPollsPerSpeakerRead = 5;   // the loudspeaker every 10 s
+// The desktop's own picture, and the framework's for a package without it.
+const char* const kDefaultWallpaper  = "media/images/desktop/ULTRA OS A.avif";
+const char* const kFallbackWallpaper = "media/images/landscape.jpg";
 constexpr float kWaveLength     = 36;
 constexpr float kWaveGap        = 4;    // from the icon next to a bar's wave to the wave
 constexpr unsigned kUiTimerMs   = 250;
@@ -114,6 +117,7 @@ constexpr int   kNoticeTicks    = 20;   // notices re-read every 5 s
 constexpr int   kScreenshotTicks = 12;  // the "saved" marker stays 3 s
 constexpr int   kDevicePollSeconds = 2;
 constexpr unsigned kStartupProgramsDelayMs = 3000;   // "start with the desktop", after the desktop
+constexpr unsigned kAppListPreloadDelayMs = 5000;    // the Apps window's list, read ahead
 constexpr uint64_t kActivityBytesPerPoll = 4096;   // below this a link is idle
 
 const Color kBarColor      (74, 74, 74, 255);
@@ -224,6 +228,9 @@ bool UltraDesktopWindow::Initialize(const std::string& settingsPath, const Taskb
     // they do not slow the first picture.
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         app->StartTimer(kStartupProgramsDelayMs, false, [this](TimerId) { StartStartupPrograms(); });
+        // The Apps window's list, read ahead on a thread of its own, so the
+        // window has it to show the first time it opens.
+        app->StartTimer(kAppListPreloadDelayMs, false, [](TimerId) { UltraDesktopAppStarter::Preload(); });
     }
     if (auto* app = UltraCanvasApplication::GetInstance()) {
         uiTimer_ = app->StartTimer(kUiTimerMs, /*periodic=*/true, [this](TimerId) { OnTimer(); });
@@ -248,7 +255,26 @@ std::string UltraDesktopWindow::WallpaperPath() const {
         debugOutput << "UltraDesktop: wallpaper \"" << settings_.wallpaper
                     << "\" is not there, showing the default" << std::endl;
     }
-    return NormalizePath(GetResourcesDir() + "media/images/landscape.jpg");
+    return DefaultWallpaperPath();
+}
+
+std::string UltraDesktopWindow::DefaultWallpaperPath() {
+    // ULTRA OS's own picture; the framework's landscape where it is missing.
+    const std::string own = NormalizePath(GetResourcesDir() + kDefaultWallpaper);
+    std::error_code ec;
+    if (fs::is_regular_file(PathFromUtf8(own), ec)) return own;
+    return NormalizePath(GetResourcesDir() + kFallbackWallpaper);
+}
+
+void UltraDesktopWindow::LoadWallpaper(UltraCanvasImageElement& wallpaper) const {
+    const std::string path = WallpaperPath();
+    if (wallpaper.LoadFromFile(path)) return;
+    // A picture this build cannot read (an AVIF without libheif): the
+    // framework's landscape rather than an empty desktop.
+    const std::string fallback = NormalizePath(GetResourcesDir() + kFallbackWallpaper);
+    debugOutput << "UltraDesktop: the wallpaper \"" << path << "\" could not be read, showing " << fallback
+                << std::endl;
+    if (path != fallback) wallpaper.LoadFromFile(fallback);
 }
 
 void UltraDesktopWindow::BuildLayout() {
@@ -512,7 +538,9 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildTaskbar(bool vert
                 debugOutput << "UltraDesktop: could not start " << launched.name << ": " << error << std::endl;
                 UltraCanvasAlert::Error("Could not start " + launched.name + ": " + error, "UltraDesktop", nullptr,
                                         window_.get());
+                return;
             }
+            NoteAppStarted(launched);
         });
         StyleBarButton(button);
         ButtonStyle style = button->GetStyle();
@@ -1113,7 +1141,7 @@ std::shared_ptr<UltraCanvasContainer> UltraDesktopWindow::BuildWorkArea() {
     // desktop window itself, so nothing else lives here but the board.
     wallpaper_ = std::make_shared<UltraCanvasImageElement>("Wallpaper", 0, 0, 0, 0);
     wallpaper_->SetFitMode(ImageFitMode::Cover);
-    wallpaper_->LoadFromFile(WallpaperPath());
+    LoadWallpaper(*wallpaper_);
     wallpaper_->layoutItem.SetFlexGrow(1.0f).SetFlexShrink(1.0f).SetFlexBasis(CSSLayout::Dimension::Px(0));
     wallpaper_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     area->AddChild(wallpaper_);
@@ -1162,11 +1190,36 @@ void UltraDesktopWindow::OpenAppStarter() {
         appStarter_->Raise();
         return;
     }
-    UltraDesktopAppStarter::Pins pins;
-    pins.isPinned = [this](const UCDesktopEntry& entry) { return IsPinned(entry); };
-    pins.setPinned = [this](const UCDesktopEntry& entry, bool pinned) { SetPinned(entry, pinned); };
-    appStarter_ = std::make_shared<UltraDesktopAppStarter>(std::move(pins));
+    UltraDesktopAppStarter::Hooks hooks;
+    hooks.isPinned = [this](const UCDesktopEntry& entry) { return IsPinned(entry); };
+    hooks.setPinned = [this](const UCDesktopEntry& entry, bool pinned) { SetPinned(entry, pinned); };
+    hooks.keyOf = [](const UCDesktopEntry& entry) { return PinKey(entry); };
+    hooks.started = [this](const UCDesktopEntry& entry) { NoteAppStarted(entry); };
+    hooks.recent = [this]() { return settings_.recentApps; };
+    hooks.recentShown = static_cast<size_t>(settings_.recentAppsShown);
+    hooks.splitAbove = static_cast<size_t>(settings_.appsSplitAbove);
+    hooks.view = settings_.appsView;
+    hooks.setView = [this](const std::string& view) {
+        settings_.appsView = view;
+        SaveSettings();
+    };
+    hooks.moved = [this]() { return settings_.appMoves; };
+    hooks.setMoved = [this](const std::string& key, const std::string& groupKey) {
+        if (key.empty()) return;
+        if (groupKey.empty()) {
+            settings_.appMoves.erase(key);
+        } else {
+            settings_.appMoves[key] = groupKey;
+        }
+        SaveSettings();
+    };
+    appStarter_ = std::make_shared<UltraDesktopAppStarter>(std::move(hooks));
     appStarter_->Open();
+}
+
+void UltraDesktopWindow::NoteAppStarted(const UCDesktopEntry& entry) {
+    settings_.NoteAppStarted(PinKey(entry));
+    SaveSettings();
 }
 
 void UltraDesktopWindow::OpenTasks() {
@@ -1341,7 +1394,7 @@ void UltraDesktopWindow::ApplySettings() {
     PlaceNotifications();   // the taskbar may have moved
     // The other screens show the same picture.
     for (const auto& wallpaper : screenWallpapers_) {
-        if (wallpaper) wallpaper->LoadFromFile(WallpaperPath());
+        if (wallpaper) LoadWallpaper(*wallpaper);
     }
 }
 
@@ -2015,7 +2068,7 @@ void UltraDesktopWindow::OpenScreenWindow(size_t index, bool report) {
     }
     auto wallpaper = std::make_shared<UltraCanvasImageElement>("ScreenWallpaper" + std::to_string(index), 0, 0, 0, 0);
     wallpaper->SetFitMode(ImageFitMode::Cover);
-    wallpaper->LoadFromFile(WallpaperPath());
+    LoadWallpaper(*wallpaper);
     int width = 0, height = 0;
     window->GetWindowSize(width, height);
     wallpaper->SetElementAbsolutePosition(Point2Df(0, 0));

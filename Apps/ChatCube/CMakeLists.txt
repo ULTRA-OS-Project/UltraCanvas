@@ -4,6 +4,7 @@
 # Matrix and Telegram: UltraCanvas/Plugins/UltraIM/direct, matrix and
 # telegram, built into <build>/Plugins/UltraIM).
 #
+# Version: 0.1.3 - ChatCubeSettings.cpp and ChatCubeSettingsWindow.cpp: the Settings window
 # Version: 0.1.2 - VideoFX, when it is built, for the preview pictures of videos sent
 # Version: 0.1.1 - ChatCubeTheme.cpp
 # Version: 0.1.0
@@ -20,6 +21,8 @@ endif()
 
 add_executable(ChatCube
     main.cpp
+    ui/ChatCubeSettings.cpp
+    ui/ChatCubeSettingsWindow.cpp
     ui/ChatCubeTheme.cpp
     ui/ChatCubeViews.cpp
     ui/ChatCubeWindow.cpp

@@ -133,6 +133,9 @@ public:
     // RAM disc, file manager, virtual desktops).
     void OpenSystemSettings();
     void OpenAppStarter();
+    // An application was started from the Apps window or a taskbar pin:
+    // first in the Apps window's Recent (DesktopSettings::recentApps).
+    void NoteAppStarted(const UltraCanvas::UCDesktopEntry& entry);
     void OpenTasks();
     void OpenRamDisc();
     void OpenFiler(const std::string& path = "");
@@ -216,7 +219,13 @@ private:
                          const std::shared_ptr<UltraCanvas::UltraCanvasWaveSeparator>& wave,
                          bool vertical, bool waveAfterGroup);
     std::string IconPath(const std::string& name) const;
+    // The settings' wallpaper, else DefaultWallpaperPath.
     std::string WallpaperPath() const;
+    // ULTRA OS's own picture (media/images/desktop/ULTRA OS A.avif), else
+    // the framework's landscape.
+    static std::string DefaultWallpaperPath();
+    // WallpaperPath into `wallpaper`; the landscape when it cannot be read.
+    void LoadWallpaper(UltraCanvas::UltraCanvasImageElement& wallpaper) const;
 
     // ===== LIVE DATA =====
     void OnTimer();

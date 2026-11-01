@@ -16196,8 +16196,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.2.0 - a button grows to fit its text  
-**Last Modified:** 2026-10-16  
+**Version:** 1.3.0 - `SetWrap`: the text on several lines  
+**Last Modified:** 2026-11-01  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -16223,6 +16223,7 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
   - [Auto-sized Button](#auto-sized-button)
   - [A Fixed Width Is a Minimum](#a-fixed-width-is-a-minimum)
   - [Split Button (a primary action plus a menu)](#split-button-a-primary-action-plus-a-menu)
+  - [A Tile: an Icon over a Wrapped Name](#a-tile-an-icon-over-a-wrapped-name)
   - [Disabled Button](#disabled-button)
 - [Keyboard Support](#keyboard-support)
 - [Rendering](#rendering)
@@ -16369,6 +16370,7 @@ void SetFont(const std::string& family, float size,
 void SetFontSize(float size);
 void SetTextAlign(TextAlignment align);
 void SetEllipsize(EllipsizeMode mode);   // how a text that does not fit is shortened: End (default), Middle, Start
+void SetWrap(TextWrap wrap);             // WrapWord: the text on as many lines as its area holds
 
 // Layout configuration
 void SetPadding(float all);                                      // inherited from UltraCanvasUIElement
@@ -16504,6 +16506,7 @@ struct ButtonStyle {
     FontWeight fontWeight = FontWeight::Normal;
     TextAlignment textAlign = TextAlignment::Center;
     EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;   // Middle keeps a path's first and last part
+    TextWrap wrap = TextWrap::WrapNone;      // WrapWord: several lines, from the top of the text area
 
     int iconSpacing = 4;          // space between icon and text
     float cornerRadius = 3.0f;
@@ -16716,6 +16719,24 @@ newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
                                        Color(55, 55, 60, 128));  // disabled
 ```
 
+### A Tile: an Icon over a Wrapped Name
+
+A launcher's tile is a button with its icon on top and its name wrapped
+onto as many lines as the box below the icon holds. Wrapped text starts at
+the top of that box, and the last line that fits ends in "…" when more is
+left.
+
+```cpp
+auto tile = std::make_shared<UltraCanvasButton>("tile", 0, 0, 116, 120,
+                                                "Windows Defender Firewall mit erweiterter Sicherheit");
+tile->SetIcon("media/icons/apps/office.svg");
+tile->SetIconSize(48, 48);
+tile->SetIconPosition(ButtonIconPosition::Top);
+tile->SetWrap(TextWrap::WrapWord);
+tile->SetFontSize(12);
+tile->SetGrowToFitText(false);   // the tile keeps its width: the name wraps instead
+```
+
 ### Disabled Button
 
 ```cpp
@@ -16753,6 +16774,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |
 | 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
 | 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
@@ -25885,8 +25907,8 @@ second or two is fine.
 
 | Call | Meaning |
 |---|---|
-| `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Then the Microsoft Store (packaged) applications, which have no shortcut there: the shell's *Applications* folder (`FOLDERID_AppsFolder`, what the Start menu's list is made of), each entry with its `appUserModelId` (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), its display name and a PNG of the tile icon the shell gives it, `program` empty. |
-| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. An entry with an `appUserModelId` is started through `IApplicationActivationManager`, as the Start menu starts it (`shell:AppsFolder\<id>` when that is not there); it takes no files and refuses them with a reason. |
+| `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Then the Microsoft Store (packaged) applications, which have no shortcut there: the shell's *Applications* folder (`FOLDERID_AppsFolder`, what the Start menu's list is made of), each entry with its `appUserModelId` (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), its display name and a PNG of the tile icon the shell gives it, `program` empty. On macOS the application bundles in `~/Applications`, `/Applications`, `/Applications/Utilities`, `/System/Applications` and `/System/Applications/Utilities`, and one level of subfolders below them (`/Applications/Adobe Photoshop 2025/…`); agents and background-only bundles (`LSUIElement`, `LSBackgroundOnly`) left out, a bundle identifier listed once (the user's copy first): named as Finder names it (localized), `genericName` the bundle's `CFBundleName`, `program`, `exec` and `shortcutPath` the bundle, `startupWMClass` its bundle identifier, `categories` its `LSApplicationCategoryType` (`public.app-category.productivity`) when it declares one, `iconFile` a PNG of the icon Finder shows, at twice `iconSize`. |
+| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. An entry with an `appUserModelId` is started through `IApplicationActivationManager`, as the Start menu starts it (`shell:AppsFolder\<id>` when that is not there); it takes no files and refuses them with a reason. On macOS an application bundle is started through `NSWorkspace openApplicationAtURL` and brought to the front, as Finder starts it; a failure macOS reports later is logged. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. On macOS, where each application is a bundle of its own, `<name>.app` beside this application's bundle and in `~/Applications` and `/Applications` comes before `PATH`. |
 | `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
@@ -26145,6 +26167,7 @@ the shell they are free.
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
 | macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
+| macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -78322,7 +78345,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; Point2Di dropPoint; -->
 
 ## Contents
 
@@ -78714,6 +78737,22 @@ TreeNode* FindNode(const std::string& nodeId);
 ```
 Finds a node by its ID.
 
+#### `GetNodeAtY`
+```cpp
+TreeNode* GetNodeAtY(int y);
+```
+The row at an element-local y - as scrolled, so the y of `MapToLocal` of a
+window point - or `nullptr` below the last row. For a drop that starts in
+another element (a list's row dragged onto a category in the tree):
+
+```cpp
+// dropPoint: where the drag ended, in window coordinates (UCEvent::pointerWindow)
+const Point2Df local = treeView->MapToLocal(Point2Df(dropPoint.x, dropPoint.y));
+if (TreeNode* node = treeView->GetNodeAtY(static_cast<int>(local.y))) {
+    ShowPage(node->data.nodeId);
+}
+```
+
 ### Selection Management
 
 #### `SelectNode`
@@ -78899,7 +78938,7 @@ const Color& GetExpanderArrowColor() const;
 ```
 How the expand button of a row with children looks. `TreeExpanderStyle::Box`
 (the default) is the `+` / `-` in a square, coloured by
-`SetExpandButtonColor`. `TreeExpanderStyle::Chevron` is an arrow instead,
+`SetExpandButtonColor` / `SetExpandButtonColors`. `TreeExpanderStyle::Chevron` is an arrow instead,
 pointing right on a closed row and down on an open one, drawn with a 1.5 px
 round stroke in `SetExpanderArrowColor` (default a mid grey,
 `Color(0x70, 0x70, 0x78)`). It takes the same place and the same click as the
@@ -79117,6 +79156,7 @@ void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
+void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol);
 void SetExpanderArrowColor(const Color& color);
 void SetCheckboxColors(const Color& background, const Color& border, const Color& check);
 ```
@@ -79124,7 +79164,9 @@ Sets various color properties for the tree view. `SetBackgroundColor` is
 inherited from `UltraCanvasUIElement`.
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
-(default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
+(default `#E0E0E0`). `SetExpandButtonColors` sets the fill, the 1 px border
+(default gray) and the `+`/`-` glyph (default black) together - what a dark
+theme needs, where a black glyph on a light box stands out of the tree.
 `SetExpanderArrowColor` is the arrow's colour under `TreeExpanderStyle::Chevron`
 (see [Expander Style](#expander-style)).
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
@@ -101818,12 +101860,50 @@ the right-hand monitor the primary.
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its
-  desktop entry as an icon tile, a filter box above them, one click to
-  start; a right click pins it to the taskbar or unpins it. What the
-  application menu of any other desktop shows, so an application installed
-  by its package appears without being told about ULTRA OS. A tap of the
-  Super key opens it from any window - on Linux, and on Windows as the
-  shell (beside Explorer the key is the Start menu's).
+  desktop entry, one click to start; a right click pins it to the taskbar
+  or unpins it. What the application menu of any other desktop shows, so an
+  application installed by its package appears without being told about
+  ULTRA OS. A tap of the Super key opens it from any window - on Linux, and
+  on Windows as the shell (beside Explorer the key is the Start menu's).
+  - **Categories.** *Recent* (the last applications started - from this
+    window or a taskbar pin - eight by default), then *Office*, *Internet*,
+    *Graphics*, *Video*, *Audio*, *CAD*, *Games*, *Tools* and *System*;
+    an empty one is left out. The category is the one the application's
+    desktop entry declares (`Categories=Network;WebBrowser` is Internet). A
+    Windows Start-menu shortcut declares none, so its name, its program and
+    its Start-menu folder are matched against well-known applications and
+    words in English and German (Excel, Outlook, *Datenträgerbereinigung*,
+    a shortcut under *Windows Tools*); what matches nothing is in Tools.
+    The names come from a catalogue of about 2,400 well-known Windows,
+    macOS and Linux applications (`UltraDesktopAppCatalogue.cpp`); on macOS
+    a bundle's `LSApplicationCategoryType` is read as its category.
+  - **Folders.** On Windows a Start-menu folder holding five or more
+    applications - a maker's folder such as MAGIX, Lenovo or LAV Filters - is
+    a category of its own, after the others, named after the folder; on
+    macOS so is such a folder under `/Applications` (not `/Applications` or
+    `Utilities` themselves).
+    Windows' own folders (Windows Tools, Accessories, System Tools) are not:
+    their applications are in System.
+  - **Moving an application.** Drag a tile onto another category's heading
+    or tiles, or a row of the list onto a category in the tree; or choose
+    *Move to* on its right-click menu. It stays there (`appMoves` in the
+    desktop's settings); *Back to …* - or dragging it back - returns it to
+    the category its own name gives it.
+  - **Sub-categories.** A category with more than eight applications (UOS-
+    Settings > Desktop > *Sub-categories*) is split into its kinds - Web
+    browsers, Email, Painting, Photos, Text editors; for Games 3D, Retro,
+    Board games, Adventure, Strategy and Simulation - with *Other* last.
+  - **Two views**, switched by the two icons at the window's top left and
+    remembered: *Tiles*, each category a heading over a grid of tiles as on
+    Windows' Start, the name under the icon on as many lines as it needs
+    (four, then "…"; the tooltip has the whole name); and *Categories and a
+    list*, the categories as a tree, their sub-categories under them, beside
+    a list of the chosen one's applications.
+  - **Opens at once.** The window opens first and says it is loading; the
+    applications come after it, read on a thread of their own. The desktop
+    reads them once ahead of time, five seconds after it starts, so the
+    window usually shows them straight away and reads them again behind
+    them.
 - **Task Manager**: the open windows on the first tab, under a header -
   each with its application's icon, its state as an icon and a word (open,
   maximized or minimized; blue for the window in front), the display
@@ -101942,7 +102022,9 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows the framework's `media/images/landscape.jpg`. An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
+(the framework's `media/images/landscape.jpg` where a package lacks it or
+cannot read AVIF). An
 empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
 RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
@@ -102087,31 +102169,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/taskbar-waves.md
-==============================================================================
-
-- **The bars' waves mirror each other and sit closer to the icons.** The
-  taskbar's wave between the system group and the running applications is
-  mirrored, so the dark band of running applications narrows the same way
-  at both ends. Every wave now starts 4 px from the icon next to it, where
-  it was 14 px away:
-  - on the taskbar, from the system group's last icon and from the pinned
-    group's first;
-  - on the right bar, from the organiser's last icon (the screenshot
-    button).
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/ultraos-logo-button.md
-==============================================================================
-
-- **The ULTRA OS logo on the settings button.** The taskbar's first button
-  showed a white "U" in a circle; it now shows the ULTRA OS logo in its own
-  colours, and, the logo being twice as wide as high, its button is wider
-  than the other items. The logo comes in two versions in
-  `media/icons/desktop/`: `ultraos-logo-dark.png` for a dark ground (the one
-  the bar uses) and `ultraos-logo-light.png` for a light ground.
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

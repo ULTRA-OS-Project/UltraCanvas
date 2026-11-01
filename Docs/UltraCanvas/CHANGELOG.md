@@ -1,3 +1,42 @@
+#### 2026-11-01 *0.9.455*
+- **UltraCanvasTreeView: the +/- box takes the theme's colours.**
+  `SetExpandButtonColors(fill, border, symbol)` sets the expand button's
+  fill, its 1 px border and the `+` / `-` together. The border was always
+  gray and the glyph always black, so on a dark theme the box could only be
+  a light square with a black mark in it; ChatCube's Settings window is the
+  first to use it, in its dark look. `SetExpandButtonColor` (the fill
+  alone) is unchanged.
+
+#### 2026-11-01 *0.9.454*
+- **macOS: `UltraCanvasDesktopShell::ListApplications` lists the
+  installed applications.** It read freedesktop desktop entries there,
+  which macOS does not have, so UltraDesktop's Apps window was empty. It now
+  reads the application bundles in `~/Applications`, `/Applications`,
+  `/System/Applications` (their `Utilities` too) and one level of subfolders
+  below them: named as Finder names them, with the icon Finder shows (a PNG
+  in the disk cache's `desktop-icons` folder) and the bundle's
+  `LSApplicationCategoryType` as its category; agents and background-only
+  bundles are left out. `LaunchApplication` starts such an entry through
+  `NSWorkspace`, as Finder does. New file
+  `OS/MacOS/UltraCanvasMacOSApplications.mm`; the rest of the macOS desktop
+  shell is unchanged. Doc: `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+- UltraDesktop's Apps window: on macOS a maker's folder under
+  `/Applications` holding five or more applications is a category of its
+  own, as a Start-menu folder is on Windows; `/Applications` and `Utilities`
+  are not.
+
+#### 2026-11-01 *0.9.453*
+- **UltraCanvasButton: the text on several lines.** `ButtonStyle::wrap` /
+  `SetWrap(TextWrap::WrapWord)` breaks a button's text onto as many lines as
+  its text area holds, from the top of the area, the last one shortened with
+  "…" when more is left - an application's name under its icon on a tile.
+  `WrapNone`, the default, keeps the text on one line as before. Doc:
+  `Docs/UltraCanvas/UltraCanvasButtonExamples.md`.
+- **UltraCanvasTreeView: `GetNodeAtY` is public.** The row at an
+  element-local y, for a drop that starts in another element - UltraDesktop's
+  Apps window drops a list row on a category in its tree. Doc:
+  `Docs/UltraCanvas/UltraCanvasTreeViewExamples.md`.
+
 #### 2026-11-01 *0.9.452*
 - **UltraCanvasWireless on macOS: the Wi-Fi list says what to do while
   macOS asks for Location Services.** Until the person answered macOS's
