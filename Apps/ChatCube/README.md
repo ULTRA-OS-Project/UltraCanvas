@@ -50,6 +50,22 @@ The first ChatCube draft, which this replaces, is kept under
    code - UltraAuthenticator's *Add account* scans it from the screen, a
    phone's authenticator app from across the desk, or type the key shown
    beside it - proven with the first code it shows.
+
+   **Getting your ID back.** Your relay confirms the e-mail address and the
+   phone number with a code it sends to each - type them under the fields
+   in Edit profile. With both confirmed, *Turn recovery on* (under *Getting
+   this ID back*) lets the relay keep a copy of your key; on another
+   computer, *Recover my ChatCube ID* under the sign-in card asks for the
+   relay and your e-mail or phone, then for the code that went to each, and
+   signs in as you - same ID, same contacts. You are told on both whenever
+   it happens. The window says the price plainly: whoever runs the relay can
+   read that copy, so turn it on only with a relay you trust. Without it, an
+   ID lost with its computer cannot come back (keep the data folder in your
+   backups). The relay must be set up for it - an SMTP server, an SMS gateway
+   and a recovery key ([`Server/ChatCubeRelay`](../../Server/ChatCubeRelay/README.md),
+   *Account recovery*); one that is not says so. A recovered ID starts with
+   no password and no authenticator on the new computer: those are each
+   computer's to choose.
 3. **Copy** your ID and send it to the people who should reach you; paste
    theirs into *Contact's ChatCube ID* and press **Add**. People on your
    network are listed under *On this network* - **Add** takes them over

@@ -2717,6 +2717,10 @@ UltraIM elements must comply with the following rules:
   recover it), `UltraIM_GetSignInProtection`,
   `UltraIM_StartAuthenticatorSetup`, `UltraIM_SetSignInProtection` (a
   password and/or an authenticator code to sign in on the device)
+- `UltraIM_VerifyContact`, `UltraIM_ResendContactCode` (the e-mail and phone
+  confirmed by the service's codes), `UltraIM_SetRecoveryEnabled`,
+  `UltraIM_StartRecovery`, `UltraIM_FinishRecovery` (the account back on a
+  new computer for codes sent to both)
 
 **Implementation status:** Phase 1 core implemented — target `UltraIM`
 (`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
