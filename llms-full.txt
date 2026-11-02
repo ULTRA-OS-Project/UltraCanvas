@@ -5627,7 +5627,16 @@ version in the name is the framework's, from the first line of
 
 **Where to get one.** The download page is
 [ultraos.eu/download-file](https://ultraos.eu/download-file/): pick the archive
-for your platform and architecture there. Each version of `main` also has a GitHub release tagged
+for your platform and architecture there. The `publish-sdk-website` job of
+`.github/workflows/build.yml` puts each release's six archives on the server
+behind that page, over SFTP, as `<ULTRAOS_SFTP_DIR>/<version>/<archive>` with a
+`SHA256SUMS` beside them (`scripts/upload-sdk-website.sh`). It runs once the
+GitHub release below has them. It uploads nothing until `ULTRAOS_SFTP_HOST`
+is set, as a repository variable or a secret; the script's head lists the
+other settings. The *SDK website check* workflow
+(`.github/workflows/sdk-website-check.yml`, *Run workflow* in the Actions tab)
+tests those settings without a release: it logs in, writes, renames and
+removes a probe file in the directory. Each version of `main` also has a GitHub release tagged
 `v<version>` (the `publish-sdk` job of `.github/workflows/build.yml` creates
 it from the release build that `changelog-fold.yml` dispatches, with the
 version's changelog section as its notes), and the archives are its assets at
