@@ -22272,7 +22272,7 @@ FILE: Docs/UltraCanvas/UltraCanvasCommandConfigWidget.md
 
 # Menus and Toolbars Editor
 
-<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); std::shared_ptr<UltraCanvasMenu> menuBar; std::shared_ptr<UltraCanvasToolbar> toolbar; UltraCanvasCommandRegistry* registry; UltraCanvasAppSettings settings{"MyApp"}; ToolbarLayout toolbarDefaults; ToolbarLayout toolbarLayout; std::shared_ptr<UltraCanvasWindowBase> window; -->
+<!-- doc-check: void OnOpen(); void SetWordWrap(bool on); MenuItemData BuildRecentFilesSubmenu(); std::string ConfigDir(); std::shared_ptr<UltraCanvasMenu> menuBar; std::shared_ptr<UltraCanvasToolbar> toolbar; UltraCanvasCommandRegistry* registry; UltraCanvasAppSettings settings{"MyApp"}; ToolbarLayout toolbarDefaults; ToolbarLayout toolbarLayout; std::shared_ptr<UltraCanvasWindowBase> window; MenuLayoutSet defaultMenus; -->
 
 `UltraCanvasCommandConfigWidget` lets end users customise an application's menus
 **and toolbars** at runtime, in one editor: reorder entries, add or remove
@@ -22504,7 +22504,26 @@ ID=file.new
 ```
 
 Only ids are stored; labels, icons and shortcuts are resolved from the registry when
-the layout is materialized, so they never drift out of sync. An optional per-node
+the layout is materialized, so they never drift out of sync.
+
+Save with the program's default menus and load with them, and a layout the user
+arranged is brought forward to each newer program:
+
+```cpp
+SaveMenuLayoutSet(s.menus, ConfigDir() + "/menu_layout.txt", defaultMenus);   // + [KNOWN]
+MenuLayoutSet menus;
+LoadMenuLayoutSet(menus, ConfigDir() + "/menu_layout.txt", defaultMenus, registry);
+```
+
+The file then starts with a `[KNOWN]` section - the command ids the program's
+menus held when it was saved (`MenuLayoutSet::knownCommands`; a reader without
+it passes over the section). `MergeMenuLayoutSet` puts each command the newer
+defaults hold that the saved program did not know at its place: after the entry
+it follows there, in the submenu of the same label; a submenu new as a whole, and
+a menu the saved set has no menu of that name for, go in whole. A command the user
+removed stays removed, one the user already has elsewhere is not added again, and
+with the registry given an id it does not know is dropped. A file saved without
+the record counts what it holds as what its program had. An optional per-node
 `LABEL` records a user rename. Unknown ids materialize as a disabled `<id>`
 placeholder so a stale layout degrades visibly rather than silently dropping
 entries.
@@ -76753,7 +76772,7 @@ FILE: Docs/UltraCanvas/UltraCanvasToolbarConfigInvestigation.md
 
 # A Toolbar Configuration Widget — Investigation
 
-Status: **Investigation — phases 1 and 2 built.** The command catalogue,
+Status: **Investigation — phases 1, 2 and 3 built.** The command catalogue,
 the group model, building a toolbar from it and keeping the user's
 arrangement (§4.1–§4.5, §6 phase 1) are documented in
 [`UltraCanvasToolbarLayout.md`](UltraCanvasToolbarLayout.md); the editor and
@@ -76765,8 +76784,8 @@ menus and toolbars have **one** editor, `UltraCanvasCommandConfigWidget` (the
 menu editor grown, `UltraCanvasMenuConfigWidget` an alias) - so §4.4's
 `UltraCanvasToolbarConfigWidget` and `ShowToolbarConfigDialog` became
 `UltraCanvasCommandConfigWidget` and `ShowCommandConfigDialog`. The
-group-aware drag on the bar itself (§4.6, item 6 of §5) and ArtCreator
-(phase 3) are not built. The names in the code blocks that do not exist are
+group-aware drag on the bar itself (§4.6, item 6 of §5) is not built.
+ArtCreator (phase 3) runs on it - see §6 for what is left of that phase. The names in the code blocks that do not exist are
 recorded in `scripts/doc_examples_baseline.txt`.
 
 **Since written (2026-10-30):** three of the gaps it found are fixed —
@@ -77307,6 +77326,20 @@ Filer model's menu and toolbar together; `Tests/CommandConfigWidgetTest.cpp`.
    registry. The single-letter tool keys remain as they are.
 6. Draw the 25 missing 24 px icons (§3.3).
 7. *View → Toolbars* lists the groups and ends with *Customise Toolbars…*.
+
+*Built:* `Apps/ArtCreator/ArtCreatorCommands.cpp` registers
+every command once per window - the menus' ~80, the 19 tools as Radio commands
+with their letters, Quality as a widget command, Customise, and View >
+Toolbars and the two size submenus as `prototype` commands; the menu headings
+are commands of their own. The menu bar, the toolbar and the palette are built
+from layouts (steps 2-4), the keyboard runs `FindByShortcut` (step 5), and
+View > Toolbars and the right-click menus offer the groups (step 7). Undo /
+Redo carry their step, what needs a selection is greyed without one, and the
+palette follows the active tool through `RefreshCommandStates`. The menus are
+kept with `SaveMenuLayoutSet`, the toolbars with `SaveToolbarLayout`. The 24
+command icons that had no 24 px drawing (step 6) are drawn, and a saved menu
+layout gains a command a later release adds, as a toolbar's does
+(`MergeMenuLayoutSet`, with the program's commands recorded in the file).
 
 **Phase 4: the other programs.** UltraPaint and Texter first, because they
 share ArtCreator's *File / History / Zoom* groups. Texter's existing *Main
@@ -78129,6 +78162,9 @@ registry.Register(quality);
 `FindShortcutConflicts()` lists the shortcuts given to more than one
 command, with their ids; `"Ctrl+Shift+S"` and `"shift+ctrl+s"` are one
 shortcut. A program can check it once at start in a debug build.
+`FindByShortcut("Ctrl+Shift+S")` finds the command a key press names: a key
+handler that spells the key it got that way and runs what this finds keeps
+the shortcut the menu shows and the one that works the same.
 
 ## 2. Describe the default groups
 
@@ -78151,7 +78187,14 @@ A group's fields: `id`, `label`, `iconName` (the slot's icon when folded),
 `visible`, `folded`, `userMade`. `SetCommandShown`, `IsCommandShown` and
 `ShownCommands` work on `hidden`; a hidden command stays in its group and
 comes back in its place. `ToolbarLayout::FindGroup` and `MoveGroup` find and
-reorder groups.
+reorder groups. `separateGroups` (on by default) puts a separator between two
+shown groups; a tool palette of folded groups turns it off. It is the
+program's choice: loading takes it from the defaults.
+
+A tool palette is a layout of Radio commands with `isChecked` (the active
+tool), each group folded: `RefreshCommandStates` presses the slot of the
+group that holds the active tool, shows that tool in it, and releases the
+others.
 
 ## 3. Build the toolbar
 
