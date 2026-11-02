@@ -234,11 +234,22 @@ UltraNet_HttpRequest(up, upResp);
 ```cpp
 #include <UltraNet/UltraNetWebSocket.h>
 
-UltraNetHandle ws = UltraNet_WebSocketConnect("wss://stream.example.com");
+UltraNetWebSocketOptions options;
+options.pingIntervalMs = 25000;     // ping, and notice a peer that went silent
+UltraNetHandle ws = UltraNet_WebSocketConnect("wss://stream.example.com", options);
 UltraNet_WebSocketSendText(ws, R"({"subscribe":"BTCUSD"})");
-// inbound frames arrive via onWebSocketText / onWebSocketBinary callbacks
+// inbound messages arrive whole via the onText / onBinary callbacks
 UltraNet_WebSocketClose(ws);
 ```
+
+A connection is kept alive by itself: the server's PINGs are answered with
+PONGs (a server that pings and closes an unanswered connection - uvicorn
+does, every 20 s - no longer drops an idle one), and with `pingIntervalMs`
+the client pings too and takes a peer that sends nothing at all for two
+intervals as gone - `onError` once, so the owner can reconnect rather than
+wait on a dead connection. A message reaches `onText` / `onBinary` whole,
+however many reads it took. Sends from any thread are safe while the
+receiver reads: one mutex covers every read and write of the connection.
 
 ```cpp
 #include <UltraNet/UltraNetDns.h>

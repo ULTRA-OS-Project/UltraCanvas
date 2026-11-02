@@ -1,6 +1,7 @@
 // include/UltraNet/UltraNetWebSocket.h
 // WebSocket client surface (ws:// and wss://). Backed by libcurl's native
 // curl_ws_* API (libcurl >= 7.86; the Stage-3 CI/dev requirement).
+// Version: 0.4.0 - pingIntervalMs pings and notices a silent peer; the server's PINGs are answered
 // Version: 0.3.0 (Stage 3)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -25,7 +26,11 @@ struct UltraNetWebSocketOptions {
     UltraNetHttpHeaders headers;
     std::vector<std::string> subprotocols;
     int connectTimeoutMs = 10000;
-    int pingIntervalMs = 0;             // 0 = disabled
+    // The client PINGs every pingIntervalMs (0: never), and a peer that sends
+    // nothing at all - not even the PONG - for two intervals is taken as gone:
+    // onError once and the state Closed, so the owner can reconnect. The
+    // server's PINGs are answered either way.
+    int pingIntervalMs = 0;
     bool autoReconnect = false;
     int maxReconnectAttempts = 0;
     int reconnectDelayMs = 2000;
