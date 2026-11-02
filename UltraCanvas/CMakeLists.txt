@@ -565,9 +565,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCaret.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasWindow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenu.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenuRegistry.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCommandRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenuLayout.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMenuConfigWidget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCommandConfigWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUIElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextInput.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasClipboard.cpp

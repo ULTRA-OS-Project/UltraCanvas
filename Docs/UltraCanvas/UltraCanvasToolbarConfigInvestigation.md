@@ -1,12 +1,20 @@
 # A Toolbar Configuration Widget — Investigation
 
-Status: **Investigation — phase 1 built.** The command catalogue, the
-group model, building a toolbar from it and keeping the user's arrangement
-(§4.1–§4.5, §6 phase 1) exist now and are documented in
-[`UltraCanvasToolbarLayout.md`](UltraCanvasToolbarLayout.md). The editor
-(§4.4) and the changes on the bar itself (§4.6) are phase 2 and are not
-built; their names are recorded in `scripts/doc_examples_baseline.txt`
-until they are.
+Status: **Investigation — phases 1 and 2 built.** The command catalogue,
+the group model, building a toolbar from it and keeping the user's
+arrangement (§4.1–§4.5, §6 phase 1) are documented in
+[`UltraCanvasToolbarLayout.md`](UltraCanvasToolbarLayout.md); the editor and
+the toolbar's right-click menu (§4.4, §4.6, §6 phase 2) in
+[`UltraCanvasCommandConfigWidget.md`](UltraCanvasCommandConfigWidget.md). The
+owner settled §8's questions 1 and 2: the registry is
+`UltraCanvasCommandRegistry` now (`UltraCanvasMenuRegistry` an alias), and
+menus and toolbars have **one** editor, `UltraCanvasCommandConfigWidget` (the
+menu editor grown, `UltraCanvasMenuConfigWidget` an alias) - so §4.4's
+`UltraCanvasToolbarConfigWidget` and `ShowToolbarConfigDialog` became
+`UltraCanvasCommandConfigWidget` and `ShowCommandConfigDialog`. The
+group-aware drag on the bar itself (§4.6, item 6 of §5) and ArtCreator
+(phase 3) are not built. The names in the code blocks that do not exist are
+recorded in `scripts/doc_examples_baseline.txt`.
 
 **Since written (2026-10-30):** three of the gaps it found are fixed —
 `groupSpacing` is read (the gap across a separator), `ToolbarOverflowMode::Menu`
@@ -23,7 +31,7 @@ each cover one function? Use ArtCreator as the first example.*
 
 The answer has four parts:
 
-1. **Half of it is already built, for menus.** `UltraCanvasMenuRegistry`
+1. **Half of it is already built, for menus.** `UltraCanvasCommandRegistry`
    (a catalogue of commands under stable ids), `MenuLayout` (a list of ids
    that can be saved) and `UltraCanvasMenuConfigWidget` (the editor) exist
    and work. No application uses them yet; only a DemoApp page does. A
@@ -115,7 +123,7 @@ What it lacks:
 
 | Piece | File | What it does |
 |---|---|---|
-| `MenuCommand` / `UltraCanvasMenuRegistry` | `UltraCanvasMenuRegistry.h` (98 lines) | A catalogue of commands. Each command has an id (`"file.open"`), a category, a label, an icon path, shortcut text, a type (Action / Checkbox / Radio), callbacks and a `prototype` escape hatch for dynamic submenus. `Default()` is the shared instance for the whole process. |
+| `MenuCommand` / `UltraCanvasCommandRegistry` | `UltraCanvasCommandRegistry.h` (98 lines) | A catalogue of commands. Each command has an id (`"file.open"`), a category, a label, an icon path, shortcut text, a type (Action / Checkbox / Radio), callbacks and a `prototype` escape hatch for dynamic submenus. `Default()` is the shared instance for the whole process. |
 | `MenuLayout` / `MenuLayoutSet` | `UltraCanvasMenuLayout.h` (105 lines) | A tree of command ids, groups and separators, made of plain data. It is saved in a line/section text format and turned back into live menu items by `MaterializeLayout` / `MaterializeInto`. |
 | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` (117 lines), `.cpp` (420 lines) | Two `UltraCanvasTreeView`s in an `UltraCanvasSplitPane`, holding the layout and the catalogue. Add / Remove / Up / Down / Separator / Submenu buttons; `onApply`, `onSave`, `onReset` and `onCancel` callbacks. |
 
@@ -279,10 +287,10 @@ registers each command once, and the menu editor and the toolbar editor
 offer the same catalogue.
 
 <!-- The fields below are MenuCommand's, listed outside the struct, so the
-     doc check cannot place them; they exist (UltraCanvasMenuRegistry.h). -->
+     doc check cannot place them; they exist (UltraCanvasCommandRegistry.h). -->
 
 ```cpp
-// UltraCanvasMenuRegistry.h, MenuCommand gains:
+// UltraCanvasCommandRegistry.h, MenuCommand gains:
 std::string iconName;                    // "to-front.svg": resolved per size by the registry's icon resolver
 std::string tooltip;                     // optional; default: label + " (" + shortcut + ")"
 std::function<bool()> isEnabled;         // live state; empty = always enabled
@@ -291,7 +299,7 @@ std::function<std::string()> dynamicLabel;   // "Undo Move"; empty = label
 // A command that is a widget rather than a button (ArtCreator's Quality slider).
 std::function<std::shared_ptr<UltraCanvasUIElement>(const std::string& itemId)> makeToolbarWidget;
 
-// UltraCanvasMenuRegistry gains:
+// UltraCanvasCommandRegistry gains:
 // Turns an icon name and a pixel size into a file. Set once per program:
 // ArtCreator maps 16 to artcreator/16/, 24 to artcreator/ (then menu/), 28 to artcreator/28/.
 void SetIconResolver(std::function<std::string(const std::string& iconName, int pixelSize)> resolver);
@@ -299,9 +307,9 @@ std::string ResolveIcon(const MenuCommand& command, int pixelSize) const;
 ```
 
 Existing callers are not affected: `iconPath` keeps working, and
-`iconName` is consulted only when it is set. Whether to rename the type to
-`UltraCanvasCommandRegistry` and keep `UltraCanvasMenuRegistry` as an alias
-is an open question (§8). Because no application uses the registry yet,
+`iconName` is consulted only when it is set. Whether to rename the type
+(it was `UltraCanvasMenuRegistry`) to `UltraCanvasCommandRegistry` and keep the
+old name as an alias is an open question (§8). Because no application uses the registry yet,
 now is the cheapest time to rename it.
 
 ### 4.2 `ToolbarLayout`: groups of command ids
@@ -350,7 +358,7 @@ Three rules make the layout behave predictably:
 // and a separator between groups. Each item's id is the command id, so
 // GetWidget("edit.undo") finds the Undo button if it is shown.
 void MaterializeToolbar(UltraCanvasToolbar& toolbar, const ToolbarLayout& layout,
-                        const UltraCanvasMenuRegistry& registry);
+                        const UltraCanvasCommandRegistry& registry);
 
 // UltraCanvasToolbar gains:
 // Re-reads isEnabled / isChecked / dynamicLabel for every item that came from a command.
@@ -411,7 +419,7 @@ It is assembled from existing elements, as AGENTS.md requires:
 class UltraCanvasToolbarConfigWidget : public UltraCanvasContainer {
 public:
     explicit UltraCanvasToolbarConfigWidget(const std::string& id);
-    void SetRegistry(UltraCanvasMenuRegistry* registry);
+    void SetRegistry(UltraCanvasCommandRegistry* registry);
     // One entry per toolbar the program offers. `defaults` is what Reset returns to.
     void AddToolbar(const std::string& title, const ToolbarLayout& current, const ToolbarLayout& defaults);
     // Commands that may not go on this toolbar (the palette takes tools only).
@@ -459,7 +467,7 @@ release adds to `zoom` appears for users who never customised the group.
 bool SaveToolbarLayout(UltraCanvasAppSettings& settings, const ToolbarLayout& layout, const ToolbarLayout& defaults);
 // Reads toolbars.<defaults.name>: the defaults with the saved changes applied, unknown ids dropped.
 ToolbarLayout LoadToolbarLayout(const UltraCanvasAppSettings& settings, const ToolbarLayout& defaults,
-                                const UltraCanvasMenuRegistry* registry = nullptr);
+                                const UltraCanvasCommandRegistry* registry = nullptr);
 ```
 
 ArtCreator keeps its other settings in its own `config.ini`
@@ -488,8 +496,8 @@ The editor is the complete tool, but the common changes should not need it:
 
 | # | Piece | Where | Size |
 |---|---|---|---|
-| 1 | `MenuCommand`: `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`; the registry's icon resolver | `UltraCanvasMenuRegistry.{h,cpp}` | ~80 lines |
-| 2 | Menus honour `isEnabled` / `isChecked` / `dynamicLabel` when they open | `UltraCanvasMenuRegistry::Materialize`, `UltraCanvasMenu` | ~40 lines |
+| 1 | `MenuCommand`: `iconName`, `tooltip`, `isEnabled`, `isChecked`, `dynamicLabel`, `makeToolbarWidget`; the registry's icon resolver | `UltraCanvasCommandRegistry.{h,cpp}` | ~80 lines |
+| 2 | Menus honour `isEnabled` / `isChecked` / `dynamicLabel` when they open | `UltraCanvasCommandRegistry::Materialize`, `UltraCanvasMenu` | ~40 lines |
 | 3 | `ToolbarLayout`, merge with defaults, AppSettings load and save | new `UltraCanvasToolbarLayout.{h,cpp}` | ~300 lines |
 | 4 | `MaterializeToolbar`, `RefreshCommandStates`, a separator between groups, `groupSpacing` honoured | `UltraCanvasToolbar.{h,cpp}` + layout file | ~200 lines |
 | 5 | `onContextMenu` (right button), and the standard group popup | `UltraCanvasToolbar.cpp` | ~80 lines |
@@ -518,7 +526,14 @@ calls `RefreshCommandStates`, rather than at every opening.
 
 **Phase 2: the editor and the right-click menu (framework).** Items 5, 7
 and 8, plus a DemoApp page beside the menu-configuration page that uses
-both on one sample program.
+both on one sample program. *Built, as one editor:* the menu editor became
+`UltraCanvasCommandConfigWidget`, with the program's toolbars in its tree
+(groups and commands with check boxes, New Group, Fold, the name, icon size
+and labels, a catalog filter, a live preview) and `ShowCommandConfigDialog`;
+the toolbar's `SetOnContextMenu` and `InstallToolbarContextMenu` (its groups,
+Fold, Hide, Customise); a program group now keeps the user's order and
+additions across releases; the DemoApp's "Menus and Toolbars" page edits the
+Filer model's menu and toolbar together; `Tests/CommandConfigWidgetTest.cpp`.
 
 **Phase 3: ArtCreator.**
 1. Register its ~95 commands (the 75 menu commands, the 19 tools, and
@@ -574,13 +589,10 @@ toolbar picker.
 
 ## 8. Questions for the owner
 
-1. **Rename** `UltraCanvasMenuRegistry` to `UltraCanvasCommandRegistry`
-   (keeping an alias) now, while it has no users? Recommended: yes.
-2. **One editor or two?** Phase 2 adds a toolbar editor next to the menu
-   editor. A later step could put both in one *Customise* dialog with a
-   *Menus* tab and a *Toolbars* tab (`UltraCanvasTabbedContainer`).
-   Recommended: build the widgets separately and offer the tabbed dialog
-   as a convenience.
+1. ~~**Rename** `UltraCanvasMenuRegistry` to `UltraCanvasCommandRegistry`
+   (keeping an alias) now, while it has no users?~~ Settled: renamed.
+2. ~~**One editor or two?**~~ Settled: one editor for menus and toolbars,
+   `UltraCanvasCommandConfigWidget`.
 3. ~~**Which shortcut does ArtCreator mean by Ctrl+Shift+S?**~~ Settled:
    Save As keeps it, and Convert to Editable Shapes is Ctrl+Shift+C.
 4. **Should a layout be shared across the suite?** For example, a user who

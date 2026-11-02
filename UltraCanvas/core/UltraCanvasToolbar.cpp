@@ -1,5 +1,6 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
+// Version: 1.11.0 - SetOnContextMenu (a right click, watched at the window)
 // Version: 1.10.0 - AddWidget, RefreshCommandStates
 // Version: 1.9.0 - groupSpacing sets a separator's margins; ToolbarOverflowMode::Menu
 //                  (Arrange takes what does not fit off the end, behind a chevron button)
@@ -18,7 +19,7 @@
 
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasApplication.h"
-#include "UltraCanvasMenuRegistry.h"
+#include "UltraCanvasCommandRegistry.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
@@ -1039,8 +1040,44 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasToolbar::NeedsPointerFilter() const {
-        return IsItemReorderingEnabled() ||
+        return IsItemReorderingEnabled() || HasContextMenu() ||
                (overflowMode == ToolbarOverflowMode::Scroll && scrollHints);
+    }
+
+    void UltraCanvasToolbar::SetOnContextMenu(ContextMenuHandler handler) {
+        contextMenuHandler = std::move(handler);
+        contextPressPending = false;
+        UpdatePointerFilter();
+    }
+
+    bool UltraCanvasToolbar::HandleContextMenuEvent(const UCEvent& event) {
+        if (!contextMenuHandler || !IsVisible()) return false;
+        if (event.button != UCMouseButton::Right) return false;
+        if (event.type != UCEventType::MouseDown && event.type != UCEventType::MouseUp) return false;
+        const Point2Df local = MapToLocal(Point2Df(static_cast<float>(event.pointerWindow.x),
+                                                   static_cast<float>(event.pointerWindow.y)));
+        if (!GetLocalBounds().Contains(local)) {
+            if (event.type == UCEventType::MouseUp) contextPressPending = false;
+            return false;
+        }
+        // The press is taken, so no item reacts to it; the release opens the
+        // menu, which then does not see a release it would take for a pick.
+        if (event.type == UCEventType::MouseDown) {
+            contextPressPending = true;
+            return true;
+        }
+        if (!contextPressPending) return false;
+        contextPressPending = false;
+        std::string itemId;
+        const int index = ItemIndexAtLocal(local);
+        if (index >= 0) {
+            const auto order = GetItemOrder();
+            if (index < static_cast<int>(order.size())) itemId = order[static_cast<size_t>(index)];
+        }
+        // A copy: the handler may rebuild the bar and set another handler.
+        ContextMenuHandler handler = contextMenuHandler;
+        handler(event.pointerWindow, itemId);
+        return true;
     }
 
     void UltraCanvasToolbar::UpdatePointerFilter() {
@@ -1060,7 +1097,7 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasToolbar::HandlePointerEvent(const UCEvent& event) {
-        return HandleScrollHintEvent(event) || HandleReorderEvent(event);
+        return HandleContextMenuEvent(event) || HandleScrollHintEvent(event) || HandleReorderEvent(event);
     }
 
 // ===== SCROLL HINTS =====

@@ -21,8 +21,13 @@
 // Headless: no window, the settings file in the temp folder. No image library
 // either, so the toolbars are built without icon files (icon resolution is
 // checked on its own).
+// - A program's group keeps the order the user gave its commands and the ones
+//   the user added, and still gains a command the next release adds.
+// - The context menu: a check per group, Fold / Unfold and Hide for the group
+//   and command under the pointer, Customise; each rebuilds the toolbar.
+// Version: 1.1.0 - a program group's order and additions kept; the context menu
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMenu.h"
@@ -55,7 +60,7 @@ std::string Join(const std::vector<std::string>& ids) {
 
 // A small program's commands and the state they read.
 struct Program {
-    UltraCanvasMenuRegistry registry;
+    UltraCanvasCommandRegistry registry;
     bool canUndo = false;
     std::string undoStep;
     bool grid = false;
@@ -288,6 +293,20 @@ void TestPersist() {
     Check(Join(loaded.FindGroup("mine")->commands) == "file.save",
           "a command no longer registered is dropped from the user's group");
 
+    // The user reorders a program's group and adds to it.
+    ToolbarLayout ordered = defaults;
+    ordered.FindGroup("file")->commands = { "file.save", "file.new", "file.export", "file.open" };
+    Check(SaveToolbarLayout(reread, ordered, defaults), "a reordered program group is saved");
+    loaded = LoadToolbarLayout(reread, defaults, &p.registry);
+    Check(Join(loaded.FindGroup("file")->commands) == "file.save,file.new,file.export,file.open",
+          "with its order and the command the user added");
+    ToolbarLayout later = defaults;
+    later.FindGroup("file")->commands = { "file.new", "edit.undo", "file.open", "file.save" };
+    loaded = LoadToolbarLayout(reread, later, &p.registry);
+    Check(Join(loaded.FindGroup("file")->commands) == "file.save,file.new,edit.undo,file.export,file.open",
+          "and a command the next release adds goes in after the one it follows (got " +
+                  Join(loaded.FindGroup("file")->commands) + ")");
+
     Check(ForgetToolbarLayout(reread, "main"), "the kept layout is forgotten");
     loaded = LoadToolbarLayout(reread, defaults);
     Check(loaded.groups.size() == 5 && loaded.FindGroup("history")->visible && !loaded.FindGroup("mine"),
@@ -297,11 +316,54 @@ void TestPersist() {
 
 }  // namespace
 
+void TestContextMenu() {
+    std::printf("The toolbar's context menu\n");
+    Program p;
+    p.registry.SetIconResolver(nullptr);
+    auto layout = std::make_shared<ToolbarLayout>(Defaults());
+    auto toolbar = std::make_shared<UltraCanvasToolbar>("main", 0, 0, 0, 38);
+    MaterializeToolbar(*toolbar, *layout, p.registry);
+
+    Check(ToolbarGroupOfItem(*layout, "edit.undo") == "history" && ToolbarGroupOfItem(*layout, "sep.view") == "view" &&
+                  ToolbarGroupOfItem(*layout, "arrange") == "arrange" && ToolbarGroupOfItem(*layout, "").empty(),
+          "an item's group: a command's, a separator's, a folded slot's");
+
+    int changes = 0, customised = 0;
+    auto items = ToolbarContextMenuItems(*toolbar, layout, p.registry, "file.open",
+                                         [&changes]() { ++changes; }, [&customised]() { ++customised; });
+    // a check per group (5), separator, Fold "File", Hide "Open", separator, Customise
+    Check(items.size() == 10 && items[0].type == MenuItemType::Checkbox && items[0].label == "File" &&
+                  items[0].checked,
+          "a check per group, shown or not (got " + std::to_string(items.size()) + " entries)");
+    Check(items.size() == 10 && items[6].label == "Fold \"File\"" && items[7].label == "Hide \"Open\"" &&
+                  items[9].label == "Customise Toolbars",
+          "then the group and command under the pointer, then Customise");
+    if (items.size() != 10) return;
+
+    items[1].onToggle(false);   // History off
+    Check(!layout->FindGroup("history")->visible && changes == 1 &&
+                  Join(toolbar->GetItemOrder()).find("edit.undo") == std::string::npos,
+          "unchecking a group hides it, rebuilds the toolbar and says so");
+    items[6].onClick();          // Fold File
+    Check(layout->FindGroup("file")->folded && toolbar->GetWidget("file") != nullptr, "Fold folds the group");
+    items[7].onClick();          // Hide Open
+    Check(!layout->FindGroup("file")->IsCommandShown("file.open") && changes == 3, "Hide hides the command");
+    items[9].onClick();
+    Check(customised == 1, "Customise opens the editor");
+
+    auto onSlot = ToolbarContextMenuItems(*toolbar, layout, p.registry, "file");
+    Check(onSlot.size() == 7 && onSlot[6].label == "Unfold \"File\"",
+          "on a folded group's slot: Unfold, no Hide, no Customise without a handler");
+    InstallToolbarContextMenu(*toolbar, layout, p.registry);
+    Check(toolbar->HasContextMenu(), "InstallToolbarContextMenu gives the toolbar the menu");
+}
+
 int main() {
     TestRegistry();
     TestGroupHelpers();
     TestMaterialize();
     TestPersist();
+    TestContextMenu();
     if (g_failures == 0) {
         std::printf("All toolbar layout checks passed.\n");
         return 0;

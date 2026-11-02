@@ -3,7 +3,7 @@
 //
 // A MenuLayout is pure data: a tree of command ids and submenu groups. It carries
 // no callbacks, so it can be saved to disk and reloaded. The registry
-// (UltraCanvasMenuRegistry) turns a layout back into live MenuItemData by resolving
+// (UltraCanvasCommandRegistry) turns a layout back into live MenuItemData by resolving
 // each command id to its registered action. This is the "special way to organise
 // menus" that makes menus reconfigurable at runtime and persistable across restarts.
 //
@@ -16,7 +16,7 @@
 #pragma once
 
 #include "UltraCanvasMenu.h"
-#include "UltraCanvasMenuRegistry.h"
+#include "UltraCanvasCommandRegistry.h"
 #include <string>
 #include <vector>
 
@@ -87,12 +87,12 @@ namespace UltraCanvas {
 
 // ===== MATERIALIZE (layout -> live menu items) =====
     std::vector<MenuItemData> MaterializeLayout(const MenuLayout& layout,
-                                                const UltraCanvasMenuRegistry& registry);
+                                                const UltraCanvasCommandRegistry& registry);
 
     // Rebuild a live menu in place from a layout: Clear() + AddItem() for each
     // top-level entry. Works for a persistent menubar or a freshly-created popup.
     void MaterializeInto(UltraCanvasMenu& menu, const MenuLayout& layout,
-                         const UltraCanvasMenuRegistry& registry);
+                         const UltraCanvasCommandRegistry& registry);
 
 // ===== INTROSPECT (live menu -> layout) =====
 // Build an editable layout from an existing menu. Command leaves are captured by

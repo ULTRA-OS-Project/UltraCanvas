@@ -7,7 +7,7 @@
 // nothing can save it, move a group of it, or hide one of its buttons and get
 // it back. The layout is the arrangement only - which groups in which order,
 // which of their commands shown, folded into one slot or not - and refers to
-// commands by id. UltraCanvasMenuRegistry, which menus are built from, says
+// commands by id. UltraCanvasCommandRegistry, which menus are built from, says
 // what each command is: label, icon, shortcut, callback, live state. So one
 // command, registered once, is the same in the menu, on the toolbar and in a
 // shortcut, and MaterializeToolbar turns a layout and a registry into the
@@ -19,15 +19,19 @@
 // listed in `hidden`, and comes back in its place.
 //
 // Saving keeps only what the user changed (SaveToolbarLayout): the order of
-// the groups, which are shown, folded or partly hidden, and the groups the
-// user made. What is in a group the program defines comes from the program's
-// defaults every time, so a command a new release adds to "Zoom" appears for
-// everyone who never touched that group, and LoadToolbarLayout merges the two
-// - a new group goes in at its default place, an id no longer registered is
-// dropped.
+// the groups, which are shown, folded or partly hidden, the order of a
+// program group's commands and what the user added to it, and the groups the
+// user made. The rest of a program's group comes from the program's defaults
+// every time, so a command a new release adds to "Zoom" appears for everyone,
+// and LoadToolbarLayout merges the two - a new group or command goes in at its
+// default place, an id no longer registered is dropped.
+//
+// A right click on the toolbar offers the groups to show or hide, folding the
+// group under the pointer, hiding the command under it, and the editor
+// (InstallToolbarContextMenu); UltraCanvasCommandConfigWidget is the editor.
 //
 // doc-check: example
-//   UltraCanvas::UltraCanvasMenuRegistry registry;
+//   UltraCanvas::UltraCanvasCommandRegistry registry;
 //   registry.RegisterAction("file.new", "File", "New", "", "Ctrl+N", []() {});
 //   registry.RegisterAction("file.open", "File", "Open", "", "Ctrl+O", []() {});
 //   registry.RegisterAction("view.zoom-in", "View", "Zoom In", "", "+", []() {});
@@ -45,15 +49,19 @@
 //   UltraCanvas::MaterializeToolbar(*toolbar, layout, registry);
 //   UltraCanvas::SaveToolbarLayout(settings, layout, defaults);
 //
+// Version: 1.1.0 - a program group keeps the user's order and additions;
+//                  InstallToolbarContextMenu, ToolbarContextMenuItems, ToolbarGroupOfItem
 // Version: 1.0.0
-// Last Modified: 2026-10-30
+// Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasAppSettings.h"
-#include "UltraCanvasMenuRegistry.h"
+#include "UltraCanvasCommandRegistry.h"
 #include "UltraCanvasToolbar.h"
 
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -112,18 +120,20 @@ namespace UltraCanvas {
     // (SetCommandRegistry), which must outlive it, and its state is read in
     // at the end (RefreshCommandStates).
     void MaterializeToolbar(UltraCanvasToolbar& toolbar, const ToolbarLayout& layout,
-                            const UltraCanvasMenuRegistry& registry);
+                            const UltraCanvasCommandRegistry& registry);
 
 // ===== MERGE AND PERSIST =====
     // The defaults with the user's changes `saved` applied: the saved order of
-    // the groups, their visibility, folding and hidden commands, and the
-    // user's own groups whole. A program group missing from `saved` (new in
-    // this release) goes in after the group it follows in the defaults; a
-    // program group no longer in the defaults is dropped; a hidden id that is
-    // not in its group is dropped. With `registry`, commands it does not know
-    // are dropped from every group.
+    // the groups, their visibility, folding and hidden commands, the order of
+    // a program group's commands and the commands the user added to it, and
+    // the user's own groups whole. A program group missing from `saved` (new
+    // in this release) goes in after the group it follows in the defaults, and
+    // so does a command new in a program group; a program group no longer in
+    // the defaults is dropped; a hidden id that is not in its group is
+    // dropped. With `registry`, commands it does not know are dropped from
+    // every group.
     ToolbarLayout MergeToolbarLayout(const ToolbarLayout& defaults, const ToolbarLayout& saved,
-                                     const UltraCanvasMenuRegistry* registry = nullptr);
+                                     const UltraCanvasCommandRegistry* registry = nullptr);
 
     // Writes what `layout` changes from `defaults` under
     // "toolbars.<layout.name>" in `settings` and saves the file; false when
@@ -134,9 +144,35 @@ namespace UltraCanvas {
     // defaults (MergeToolbarLayout); the defaults when nothing is kept.
     // `settings` must have been loaded.
     ToolbarLayout LoadToolbarLayout(const UltraCanvasAppSettings& settings, const ToolbarLayout& defaults,
-                                    const UltraCanvasMenuRegistry* registry = nullptr);
+                                    const UltraCanvasCommandRegistry* registry = nullptr);
     // Drops the kept layout of the toolbar `name` and saves the file: the
     // program's defaults from then on (an editor's Reset).
     bool ForgetToolbarLayout(UltraCanvasAppSettings& settings, const std::string& name);
+
+// ===== THE TOOLBAR'S CONTEXT MENU =====
+    // The id of the group the toolbar item `itemId` belongs to in `layout` -
+    // a command's group (the first that shows it), a folded group's slot, a
+    // separator before a group - or "" for none.
+    std::string ToolbarGroupOfItem(const ToolbarLayout& layout, const std::string& itemId);
+
+    // What a right click on `itemId` offers: a check per group (shown or not),
+    // then, for the group under the pointer, Fold / Unfold and - on a command
+    // - Hide that command, then "Customise Toolbars" when `onCustomise` is set.
+    // A change edits `*layout`, rebuilds `toolbar` from it and calls
+    // `onChanged` (where the program saves it).
+    std::vector<MenuItemData> ToolbarContextMenuItems(UltraCanvasToolbar& toolbar,
+                                                      const std::shared_ptr<ToolbarLayout>& layout,
+                                                      const UltraCanvasCommandRegistry& registry,
+                                                      const std::string& itemId,
+                                                      std::function<void()> onChanged = nullptr,
+                                                      std::function<void()> onCustomise = nullptr);
+
+    // Gives `toolbar` that menu on a right click (SetOnContextMenu). The
+    // layout is shared with the program, which keeps it and saves it in
+    // `onChanged`; the registry must outlive the toolbar.
+    void InstallToolbarContextMenu(UltraCanvasToolbar& toolbar, std::shared_ptr<ToolbarLayout> layout,
+                                   const UltraCanvasCommandRegistry& registry,
+                                   std::function<void()> onChanged = nullptr,
+                                   std::function<void()> onCustomise = nullptr);
 
 } // namespace UltraCanvas

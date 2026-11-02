@@ -176,9 +176,14 @@ button, so the program keeps no pointers to buttons the user may remove.
 See [Toolbar Layout](UltraCanvasToolbarLayout.md).
 
 ```cpp
-void SetCommandRegistry(const UltraCanvasMenuRegistry* registry);   // MaterializeToolbar sets it
-const UltraCanvasMenuRegistry* GetCommandRegistry() const;
+void SetCommandRegistry(const UltraCanvasCommandRegistry* registry);   // MaterializeToolbar sets it
+const UltraCanvasCommandRegistry* GetCommandRegistry() const;
 void RefreshCommandStates();   // isEnabled / isChecked / dynamicLabel into the items
+// A right click on the bar or an item: the pointer in window coordinates and
+// the item's id. InstallToolbarContextMenu gives a bar built from a layout the
+// standard menu (its groups, Fold, Hide, Customise).
+void SetOnContextMenu(ContextMenuHandler handler);
+bool HasContextMenu() const;
 ```
 
 ### Tool Groups
