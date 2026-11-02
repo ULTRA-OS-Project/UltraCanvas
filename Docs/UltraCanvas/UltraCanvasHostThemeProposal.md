@@ -298,7 +298,7 @@ on the UI thread, bursts coalesced), turns `Appearance.conf`,
 Windows, where the watcher has a backend; on macOS, where it polls, a
 five-second mtime poll of three files is nothing. The appearance handler
 rebuilds the theme as a host change does; the language handler is the
-localisation proposal's §6; the emoji handler re-runs
+localisation proposal's §7; the emoji handler re-runs
 `ApplyEmojiSettings` and `RefreshAfterFontChange`.
 
 On ULTRA OS the desktop has no host above it, so `Appearance.conf` *is*

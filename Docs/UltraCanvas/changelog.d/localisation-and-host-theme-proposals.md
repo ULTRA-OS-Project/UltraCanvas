@@ -1,13 +1,19 @@
 - **Two design documents for the next framework-wide jobs.**
   `Docs/UltraCanvas/UltraCanvasLocalisationProposal.md` proposes the
-  localisation system: `Tr` / `TrC` / `TrN` / `TrF` with the English text
-  as the key, one JSON catalogue per language and domain under
-  `media/locale/<lang>/<Domain>.json` with a per-user override under the
-  UltraCanvas settings folder, the language chosen once for every
-  application in UOS-Settings (`Language.conf`, the system's language by
-  default), locale number, date and file-size formatting, and the
-  extraction, check, wrapping and UltraAI-draft scripts that make the 30
-  applications' migration mechanical.
+  **UltraLocalisation** module: `Tr` / `TrC` / `TrN` / `TrF` with the
+  English text as the key; a **standard set** UltraCanvas ships for every
+  application (the framework's own strings and the common application
+  vocabulary, translated once) and the application's **own set** over it,
+  one JSON per language and set under `media/locale/<lang>/` with a
+  per-user override under the UltraCanvas settings folder; the language
+  chosen once for every application in UOS-Settings (`Language.conf`, the
+  system's language by default); a **localisation editor** element that
+  shows the standard and the application set in one grid - inherited,
+  overridden, own and untranslated rows - hosted in UOS-Settings, in an
+  application's Help menu and in DemoApp, saving into a checkout or into
+  the settings folder; locale number, date and file-size formatting; and
+  the extraction, check, wrapping and UltraAI-draft scripts that make the
+  30 applications' migration mechanical.
   `Docs/UltraCanvas/UltraCanvasHostThemeProposal.md` proposes following the
   host's look: `HostAppearance` read from the Windows registry, AppKit,
   XSETTINGS / GSettings / kdeglobals, the browser's media queries and

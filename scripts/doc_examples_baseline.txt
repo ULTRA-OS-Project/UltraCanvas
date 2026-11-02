@@ -197,9 +197,12 @@ Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `SetFollowThemeByD
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `FitColumns(`, which no header declares
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `GetStageCounts(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::prose names `FT_Load_Glyph(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'Tr' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasMenu, nor a free function
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'TrC' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasMenu, nor a free function
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'TrN' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasMenu, nor a free function
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'Tr' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasListSortFilterProxy, nor a free function
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'TrC' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasListSortFilterProxy, nor a free function
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'TrN' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasListSortFilterProxy, nor a free function
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
