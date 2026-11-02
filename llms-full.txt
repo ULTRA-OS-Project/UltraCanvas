@@ -2701,7 +2701,14 @@ L1. Public surface:
   `OriginOf` / `StandardKeys` / `EntryCount` (which layer answered),
   `PluralCategory` (pure), `ReadCatalogue`, `Reset` (for tests).
 
-See `Docs/Modules/UltraLocalisation/README.md`.
+The English catalogues are `media/locale/en/Standard.json` (the
+framework's `Tr` keys and the curated application vocabulary) and
+`media/locale/en/base/<Base>.json` (the sixteen base sets);
+`scripts/extract_ui_strings.py` rewrites them from the sources,
+`scripts/check_locale_catalogues.py` is the CI gate over every
+translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
+`Tr` for review. See `Docs/Modules/UltraLocalisation/README.md`.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -87518,8 +87525,8 @@ FILE: Docs/Modules/UltraLocalisation/README.md
 
 <!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
 
-**Status:** Phase L1 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring. The standard and base sets' contents (L2), the scripts (L2), the editor (L4) and locale formatting (L6) follow.
-**Version:** 1.0.0
+**Status:** Phases L1 and L2 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2). The drafts in other languages (L3), the editor (L4), the applications (L5) and locale formatting (L6) follow.
+**Version:** 1.1.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-11-02
 
@@ -87652,6 +87659,29 @@ settings.Save("/home/erika/.config/UltraCanvas");
 A language change reaches applications started after it; a running one
 that wants to follow rebuilds what it built from strings in a change
 handler, as the proposal's §7 says, since elements store text, not keys.
+
+## The catalogues and the scripts
+
+`media/locale/en/Standard.json` is the English standard set: the
+framework's own strings, collected from the `Tr` sites in
+`UltraCanvas/`, and the application vocabulary of the proposal's
+Appendix A, curated by hand. `media/locale/en/base/<Base>.json` are the
+sixteen base sets of Appendix B: Computer, Web, Audio, Image, Video, Text,
+Spreadsheet, Presentation, Planning, CAD, Banking, Games, Shopping,
+Fashion, Communication and Security. An English file's value is its key;
+a translation (`de/Standard.json`, `de/base/Video.json`) is the same file
+with the values in its language.
+
+| Script | Does |
+|---|---|
+| `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
+| `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
+| `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
+
+The framework's own dialogs - the modal dialogs' buttons and titles, the
+file dialog, the filer widget's menus and messages, the colour, time and
+new-document dialogs, the media viewer - are wrapped, so they show in the
+person's language as soon as a translation of `Standard.json` exists.
 
 ## Related
 

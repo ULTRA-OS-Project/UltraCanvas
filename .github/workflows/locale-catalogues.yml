@@ -1,0 +1,41 @@
+name: Locale catalogues
+
+# The translation catalogues under media/locale/ (UltraLocalisation,
+# Docs/UltraCanvas/UltraCanvasLocalisationProposal.md §8): the English
+# source catalogues are in sync with the Tr() sites in the sources
+# (scripts/extract_ui_strings.py --check), and every translation parses,
+# has no stale key, keeps the source's placeholders, has the plural forms
+# its language needs and repeats no entry of a set below it.
+#
+# Findings that predate the check are in scripts/locale_catalogues_baseline.txt;
+# only additions fail.
+
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - 'UltraCanvas/**'
+      - 'Apps/**'
+      - 'media/locale/**'
+      - 'scripts/check_locale_catalogues.py'
+      - 'scripts/extract_ui_strings.py'
+      - 'scripts/locale_catalogues_baseline.txt'
+      - '.github/workflows/locale-catalogues.yml'
+  pull_request:
+    branches:
+      - main
+      - 'claude/**'
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check the translation catalogues and their sync with the sources
+        run: python3 scripts/check_locale_catalogues.py --strict

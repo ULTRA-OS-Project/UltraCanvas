@@ -7,8 +7,15 @@ module, `Docs/Modules/UltraLocalisation/README.md` - the three layers, the
 override folder, the fallback walk, plurals, `Language.conf`, the language
 choice, the start-up wiring; one difference from §3 below: the module
 takes its folders and the desktop's languages as arguments, `SetFolders`
-and `Initialize`, so that it stands without the core). L2 onwards are
-still to do. Revised 2026-11-02: the module is
+and `Initialize`, so that it stands without the core). **Phase L2
+implemented** (2026-11-02): `media/locale/en/Standard.json` from Appendix A
+and the framework's `Tr` sites, the sixteen base sets of Appendix B under
+`media/locale/en/base/`, the framework's own dialogs wrapped (the modal
+dialogs, the file dialog, the filer widget, the colour, time and
+new-document dialogs, the media viewer - the remaining framework strings
+are wrapped as their files are touched), and `extract_ui_strings.py`,
+`check_locale_catalogues.py` with `locale-catalogues.yml`, and
+`wrap_ui_strings.py`. L3 onwards are still to do. Revised 2026-11-02: the module is
 `UltraLocalisation`, it loads a **standard set** UltraCanvas ships for every
 application, the **base sets** of the application's type (video editing,
 banking, shopping, ...) and the application's **own set** over them, and a

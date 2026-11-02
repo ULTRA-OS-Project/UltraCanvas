@@ -674,7 +674,15 @@ number anywhere else, and never introduce a new literal copy of one:
    HTMLReader module (`HTML::Parser`, `HTML::StyleSheet`,
    `HTML::ExtractPlainText`, `HTML::DecodeEntities`), never a stripper or
    entity table of your own — run `python3 scripts/check_html_reuse.py`; CI
-   runs that too.
+   runs that too. Writing text a person reads in a window? Through `Tr`
+   (`UltraLocalisation/UltraLocalisation.h`: `Tr("Save")`, `TrC`, `TrN`,
+   `TrF`), never a bare literal in a label, a menu or a dialog — then run
+   `python3 scripts/extract_ui_strings.py` so the English catalogues under
+   `media/locale/en/` carry the key, and `python3
+   scripts/check_locale_catalogues.py`; CI runs that too. A word every
+   application has is in `Standard.json` or a base set already (the
+   proposal's appendices): an application's own catalogue holds only what
+   is its own.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change. Then run `python3 scripts/check_doc_examples.py <doc>`:

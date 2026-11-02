@@ -3,6 +3,7 @@
 // with the vendored yyjson engine directly, as UltraWin's QMP client does,
 // so the archive stands without the core; the format is the one
 // UltraCanvasLocalisationProposal.md §4 shows.
+// Version: 1.1.0 - the plural rules of Breton, Scottish Gaelic, Manx, Cornish, Tachelhit, Tamazight, Filipino, Colognian, the Sami languages, Hebrew's many, pt-PT
 // Version: 1.0.0
 // Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
@@ -595,18 +596,68 @@ void UltraLocalisation::Reset() {
 // ===== PLURALS =====
 
 std::string UltraLocalisation::PluralCategory(const std::string& language, long long count) {
-    const std::string base = Lower(FallbackWalk(language).empty() ? std::string("en") : FallbackWalk(language).back());
+    // The CLDR plural rules for integers (cardinal), by base language, with
+    // the two regional exceptions that have a rule of their own.
+    const std::vector<std::string> walk = FallbackWalk(language);
+    const std::string base = Lower(walk.empty() ? std::string("en") : walk.back());
+    const std::string full = Lower(walk.empty() ? std::string("en") : walk.front());
     const long long n = count < 0 ? -count : count;
-    const long long m10 = n % 10, m100 = n % 100;
+    const long long m10 = n % 10, m100 = n % 100, m1000 = n % 1000, m100000 = n % 100000, m1000000 = n % 1000000;
     auto in = [](long long v, long long lo, long long hi) { return v >= lo && v <= hi; };
     auto oneOf = [&](std::initializer_list<const char*> langs) {
         for (const char* l : langs) if (base == l) return true;
         return false;
     };
-    if (oneOf({"ja", "zh", "ko", "th", "vi", "id", "ms", "my", "km", "lo", "yue", "jv", "ig", "yo"})) return "other";
-    if (oneOf({"fr", "hy", "kab", "ff"})) return n <= 1 ? "one" : "other";
-    if (oneOf({"pt"})) return n <= 1 ? "one" : "other";                         // pt (Brazil's rule); pt-PT in CLDR is one for 1 alone
-    if (oneOf({"hi", "bn", "gu", "fa", "mr", "kn", "zu", "am", "as"})) return n <= 1 ? "one" : "other";
+    // One form: the East and South-East Asian languages and a few more
+    if (oneOf({"ja", "zh", "yue", "ko", "th", "vi", "id", "ms", "my", "km", "lo", "jv", "ig", "yo", "bo", "dz", "ii",
+               "kde", "kea", "ses", "sg", "to", "wo", "jbo", "nqo", "sah", "su", "osa", "hnj", "tpi"})) return "other";
+    // 0 and 1 are singular
+    if (oneOf({"fr", "hy", "kab", "ff", "pt"}) && full != "pt-pt") return n <= 1 ? "one" : "other";
+    if (oneOf({"hi", "bn", "gu", "fa", "mr", "kn", "zu", "am", "as", "si", "ln", "mg", "nso", "ti", "wa", "ak", "pa", "pcm", "doi"}))
+        return n <= 1 ? "one" : "other";
+    // Filipino: one unless the last digit is 4, 6 or 9
+    if (oneOf({"fil", "tl"})) return (m10 != 4 && m10 != 6 && m10 != 9) ? "one" : "other";
+    // Tachelhit: 0 and 1 singular, 2 to 10 few
+    if (oneOf({"shi"})) return n <= 1 ? "one" : in(n, 2, 10) ? "few" : "other";
+    // Central Atlas Tamazight: 0, 1 and 11 to 99 singular
+    if (oneOf({"tzm"})) return (n <= 1 || in(n, 11, 99)) ? "one" : "other";
+    // Colognian and Langi: a zero form
+    if (oneOf({"ksh", "lag"})) return n == 0 ? "zero" : n == 1 ? "one" : "other";
+    // One, two, other: the Sami languages, Inuktitut, Nama, Northern Sami
+    if (oneOf({"iu", "naq", "se", "sma", "smi", "smj", "smn", "sms"})) return n == 1 ? "one" : n == 2 ? "two" : "other";
+    // Scottish Gaelic: 1 and 11, 2 and 12, 3 to 10 and 13 to 19
+    if (oneOf({"gd"})) {
+        if (n == 1 || n == 11) return "one";
+        if (n == 2 || n == 12) return "two";
+        if (in(n, 3, 10) || in(n, 13, 19)) return "few";
+        return "other";
+    }
+    // Breton: by the last digit, with the teens and the seventies and nineties excepted; many for the millions
+    if (oneOf({"br"})) {
+        if (m10 == 1 && m100 != 11 && m100 != 71 && m100 != 91) return "one";
+        if (m10 == 2 && m100 != 12 && m100 != 72 && m100 != 92) return "two";
+        if ((in(m10, 3, 4) || m10 == 9) && !in(m100, 10, 19) && !in(m100, 70, 79) && !in(m100, 90, 99)) return "few";
+        if (n != 0 && m1000000 == 0) return "many";
+        return "other";
+    }
+    // Manx: by the last digit, few for the round twenties
+    if (oneOf({"gv"})) {
+        if (m10 == 1) return "one";
+        if (m10 == 2) return "two";
+        if (m100 == 0 || m100 == 20 || m100 == 40 || m100 == 60 || m100 == 80) return "few";
+        return "other";
+    }
+    // Cornish: the full CLDR rule
+    if (oneOf({"kw"})) {
+        if (n == 0) return "zero";
+        if (n == 1) return "one";
+        if (m100 == 2 || m100 == 22 || m100 == 42 || m100 == 62 || m100 == 82) return "two";
+        if (m1000 == 0 && (in(m100000, 1000, 20000) || m100000 == 40000 || m100000 == 60000 || m100000 == 80000)) return "two";
+        if (n != 0 && m1000000 == 100000) return "two";
+        if (m100 == 3 || m100 == 23 || m100 == 43 || m100 == 63 || m100 == 83) return "few";
+        if (n != 1 && (m100 == 1 || m100 == 21 || m100 == 41 || m100 == 61 || m100 == 81)) return "many";
+        return "other";
+    }
     if (oneOf({"ru", "uk", "be"})) {
         if (m10 == 1 && m100 != 11) return "one";
         if (in(m10, 2, 4) && !in(m100, 12, 14)) return "few";
@@ -644,11 +695,13 @@ std::string UltraLocalisation::PluralCategory(const std::string& language, long 
         if (in(m100, 11, 99)) return "many";
         return "other";
     }
-    if (oneOf({"he", "iw"})) return n == 1 ? "one" : n == 2 ? "two" : "other";
+    if (oneOf({"he", "iw"})) return n == 1 ? "one" : n == 2 ? "two" : (m10 == 0 && n > 10) ? "many" : "other";
     if (oneOf({"cy"})) return n == 0 ? "zero" : n == 1 ? "one" : n == 2 ? "two" : n == 3 ? "few" : n == 6 ? "many" : "other";
     if (oneOf({"mt"})) return n == 1 ? "one" : (n == 0 || in(m100, 2, 10)) ? "few" : in(m100, 11, 19) ? "many" : "other";
     if (oneOf({"is", "mk"})) return (m10 == 1 && m100 != 11) ? "one" : "other";
-    // en, de, nl, sv, da, nb, nn, fi, et, it, es, ca, el, hu, tr, bg, sq, eu, gl, ka, sw, ur, ... : one for 1
+    // Everything else - en, de, nl, sv, da, nb, nn, fi, et, it, es, ca, el,
+    // hu, tr, bg, sq, eu, gl, ka, sw, ur, pt-PT and the rest of the
+    // one-for-1 languages, which are most of them: one for 1
     return n == 1 ? "one" : "other";
 }
 

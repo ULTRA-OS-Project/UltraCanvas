@@ -2522,5 +2522,12 @@ L1. Public surface:
   `OriginOf` / `StandardKeys` / `EntryCount` (which layer answered),
   `PluralCategory` (pure), `ReadCatalogue`, `Reset` (for tests).
 
-See `Docs/Modules/UltraLocalisation/README.md`.
+The English catalogues are `media/locale/en/Standard.json` (the
+framework's `Tr` keys and the curated application vocabulary) and
+`media/locale/en/base/<Base>.json` (the sixteen base sets);
+`scripts/extract_ui_strings.py` rewrites them from the sources,
+`scripts/check_locale_catalogues.py` is the CI gate over every
+translation (`locale-catalogues.yml`, `scripts/locale_catalogues_baseline.txt`),
+and `scripts/wrap_ui_strings.py` wraps a file's interface strings in
+`Tr` for review. See `Docs/Modules/UltraLocalisation/README.md`.
 

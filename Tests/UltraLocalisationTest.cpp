@@ -5,6 +5,7 @@
 // the settings-folder override, the fallback walk, the base sets from a
 // catalogue and from code, Language.conf and the language choice, the
 // plural rules, the change handlers, and the catalogue's own round trip.
+// Version: 1.1.0 - the added plural rules
 // Version: 1.0.0
 // Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
@@ -187,6 +188,23 @@ int main() {
     Check(UltraLocalisation::PluralCategory("ga", 4) == "few" && UltraLocalisation::PluralCategory("ga", 8) == "many", "ga");
     Check(UltraLocalisation::PluralCategory("sl", 102) == "two" && UltraLocalisation::PluralCategory("sl", 3) == "few", "sl");
     Check(UltraLocalisation::PluralCategory("de-AT", 1) == "one", "a regional tag uses its language's rule");
+    Check(UltraLocalisation::PluralCategory("br", 1) == "one" && UltraLocalisation::PluralCategory("br", 71) == "other" &&
+          UltraLocalisation::PluralCategory("br", 22) == "two" && UltraLocalisation::PluralCategory("br", 3) == "few" &&
+          UltraLocalisation::PluralCategory("br", 13) == "other" && UltraLocalisation::PluralCategory("br", 1000000) == "many", "Breton");
+    Check(UltraLocalisation::PluralCategory("gd", 11) == "one" && UltraLocalisation::PluralCategory("gd", 12) == "two" &&
+          UltraLocalisation::PluralCategory("gd", 15) == "few" && UltraLocalisation::PluralCategory("gd", 20) == "other", "Scottish Gaelic");
+    Check(UltraLocalisation::PluralCategory("shi", 0) == "one" && UltraLocalisation::PluralCategory("shi", 5) == "few" &&
+          UltraLocalisation::PluralCategory("shi", 11) == "other", "Tachelhit");
+    Check(UltraLocalisation::PluralCategory("tzm", 50) == "one" && UltraLocalisation::PluralCategory("tzm", 5) == "other", "Tamazight");
+    Check(UltraLocalisation::PluralCategory("gv", 21) == "one" && UltraLocalisation::PluralCategory("gv", 40) == "few" &&
+          UltraLocalisation::PluralCategory("gv", 5) == "other", "Manx");
+    Check(UltraLocalisation::PluralCategory("kw", 0) == "zero" && UltraLocalisation::PluralCategory("kw", 22) == "two" &&
+          UltraLocalisation::PluralCategory("kw", 43) == "few" && UltraLocalisation::PluralCategory("kw", 21) == "many" &&
+          UltraLocalisation::PluralCategory("kw", 7) == "other", "Cornish");
+    Check(UltraLocalisation::PluralCategory("fil", 3) == "one" && UltraLocalisation::PluralCategory("fil", 14) == "other", "Filipino");
+    Check(UltraLocalisation::PluralCategory("he", 20) == "many" && UltraLocalisation::PluralCategory("he", 3) == "other", "Hebrew's many");
+    Check(UltraLocalisation::PluralCategory("pt-BR", 0) == "one" && UltraLocalisation::PluralCategory("pt-PT", 0) == "other", "pt and pt-PT differ");
+    Check(UltraLocalisation::PluralCategory("se", 2) == "two" && UltraLocalisation::PluralCategory("ksh", 0) == "zero", "Sami and Colognian");
     UltraLocalisation::UseBaseSets({});
     UltraLocalisation::Load("pl", "");
     Check(TrN("{n} file", "{n} files", 1) == "1 plik" && TrN("{n} file", "{n} files", 3) == "3 pliki" &&

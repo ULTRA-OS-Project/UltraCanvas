@@ -167,6 +167,7 @@
 #include <set>
 #include <sys/stat.h>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #if defined(_WIN32) || defined(_WIN64)
 #include <windows.h>   // GetFileAttributesExW: the attribute bits ::stat cannot see
 // The MSVC UCRT <sys/stat.h> exposes _S_IREAD/_S_IWRITE/_S_IEXEC but not the POSIX permission-bit
@@ -3011,7 +3012,7 @@ namespace UltraCanvas {
         if (!hiddenNoticeButton) {
             hiddenNoticeButton = CreateButton(
                     GetIdentifier() + "-hidden-notice", 0, 0, 140, 24,
-                    "Show hidden files");
+                    Tr("Show hidden files"));
             ButtonStyle bs;
             bs.normalColor  = Color(66, 133, 244, 255);
             bs.hoverColor   = Color(90, 150, 250, 255);
@@ -5757,10 +5758,10 @@ namespace UltraCanvas {
         // ("newer", or why an entry was skipped) when the rows carry them.
         auto model = std::make_shared<UltraCanvasMultiColumnListModel>();
         if (labels) model->AddColumn(ListColumnDef("", 76));
-        model->AddColumn(ListColumnDef("Name", details ? (notes ? 230 : 270) : 280));
+        model->AddColumn(ListColumnDef(Tr("Name"), details ? (notes ? 230 : 270) : 280));
         if (details) {
-            model->AddColumn(ListColumnDef("Size", 80, TextAlignment::Right));
-            model->AddColumn(ListColumnDef("Modified", 130));
+            model->AddColumn(ListColumnDef(Tr("Size"), 80, TextAlignment::Right));
+            model->AddColumn(ListColumnDef(Tr("Modified"), 130));
         }
         if (notes) model->AddColumn(ListColumnDef(details ? "" : "Reason", details ? 90 : 260));
         for (size_t i = 0; i < listed.size(); ++i) {
@@ -7440,7 +7441,7 @@ namespace UltraCanvas {
         spec.type = DialogType::Warning;
         spec.width = 640;
         if (writeProtected) {
-            spec.title = "Delete: a " + kindWord + " is write-protected";
+            spec.title = TrF("Delete: a {0} is write-protected", kindWord);
             spec.question = "\"" + name + "\" is write-protected.";
             spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
                        + FactPath(entry.path)
@@ -7489,7 +7490,7 @@ namespace UltraCanvas {
             // Explorer's "You'll need to provide administrator permission to
             // delete this file": the entry is deletable, just not by this
             // user. Windows asks for consent before the helper runs.
-            spec.title = "Delete: administrator permission needed";
+            spec.title = Tr("Delete: administrator permission needed");
             spec.question = culprit.empty()
                     ? "\"" + name + "\" needs administrator permission to be deleted."
                     : "\"" + culpritName + "\" in \"" + name
@@ -7505,7 +7506,7 @@ namespace UltraCanvas {
             answers = {Elevate, TryAgain, Skip};
         } else if (toTrash) {
             const std::string trash = TrashDisplayName();
-            spec.title = "Delete: a " + kindWord + " could not be moved to the " + trash;
+            spec.title = TrF("Delete: a {0} could not be moved to the {1}", kindWord, trash);
             spec.question = "\"" + name + "\" could not be moved to the " + trash + ".";
             spec.facts = "**" + std::string(entry.isDirectory ? "Folder" : "File") + ":** "
                        + FactPath(entry.path) + "\n\n**Reason:** " + why;
@@ -7517,7 +7518,7 @@ namespace UltraCanvas {
                             {"Stop", DialogButtonRole::Cancel}};
             answers = {TryAgain, Skip};
         } else {
-            spec.title = "Delete: a " + kindWord + " could not be deleted";
+            spec.title = TrF("Delete: a {0} could not be deleted", kindWord);
             spec.question = culprit.empty()
                     ? "\"" + name + "\" could not be deleted."
                     : "\"" + culpritName + "\" in \"" + name + "\" could not be deleted.";
@@ -7633,7 +7634,7 @@ namespace UltraCanvas {
         const bool whole = PathIsSameOrBelowCI(ownDir, hit->path);
 
         DialogConfig cfg;
-        cfg.title = "Cannot delete: " + program + " is running from here";
+        cfg.title = TrF("Cannot delete: {0} is running from here", program);
         cfg.dialogType = DialogType::Warning;
         cfg.width = 560;
         cfg.height = 240;
@@ -7755,7 +7756,7 @@ namespace UltraCanvas {
         const bool one = victims.size() == 1;
 
         OperationDialogSpec spec;
-        spec.title = "Delete";
+        spec.title = Tr("Delete");
         spec.type = DialogType::Warning;
         spec.question = one
                 ? "Delete \"" + RepairLegacyEncodedName(victims.front().name) + "\"?"
@@ -8037,7 +8038,7 @@ namespace UltraCanvas {
         NewerOlderNotes(existing, renamed, existingNote, renamedNote);
 
         OperationDialogSpec spec;
-        spec.title = "Rename: the name is already taken";
+        spec.title = Tr("Rename: the name is already taken");
         spec.type = DialogType::Warning;
         spec.question = "A " + kind + " \"" + newName + "\" already exists in this folder.";
         spec.facts = "**Folder:** " + FactPath(PathToUtf8(target.parent_path()));
@@ -8847,18 +8848,17 @@ namespace UltraCanvas {
         const std::string folderName = PathToUtf8(PathFromUtf8(archive.name).stem());
 
         DialogConfig cfg;
-        cfg.title = "Folder Already Exists";
+        cfg.title = Tr("Folder Already Exists");
         cfg.dialogType = DialogType::Question;
-        cfg.message = "A folder named \"" + folderName
-                + "\" already exists in this folder.";
-        cfg.details = "Choose where to extract \"" + archive.name + "\":";
+        cfg.message = TrF("A folder named \"{0}\" already exists in this folder.", folderName);
+        cfg.details = TrF("Choose where to extract \"{0}\":", archive.name);
         cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
         cfg.width = 560;
         cfg.height = 330;
 
         auto self = this;
         OperationDialogSpec spec;
-        spec.title = "Extract: the folder name is already taken";
+        spec.title = Tr("Extract: the folder name is already taken");
         spec.type = DialogType::Question;
         spec.question = cfg.message;
         spec.facts = "**Archive:** " + FactPath(archive.path)
@@ -9390,7 +9390,7 @@ namespace UltraCanvas {
         smallFont.fontSize = style.smallFontSize;
         ctx->SetFontStyle(smallFont);
         ctx->SetTextPaint(style.secondaryTextColor);
-        std::string hint = "Drag the icon onto a folder to change the location";
+        std::string hint = Tr("Drag the icon onto a folder to change the location");
         std::string hintFit = EllipsizeText(ctx, hint, d.panel.width - 24);
         Size2Di hts = ctx->GetTextLineDimensions(hintFit);
         ctx->DrawText(hintFit,
@@ -9632,7 +9632,7 @@ namespace UltraCanvas {
         const FileAssociations::ApplicationFilter filter =
                 FileAssociations::GetApplicationFilter();
         FileDialogOptions opts;
-        opts.SetTitle("Select the application to open with")
+        opts.SetTitle(Tr("Select the application to open with"))
             .SetInitialDirectory(FileAssociations::GetApplicationsDirectory())
             // Picking a program is not a document the shell should remember.
             .SetRegisterAsRecent(false)
@@ -9736,8 +9736,7 @@ namespace UltraCanvas {
                                    std::string()});
             }
         }
-        const std::string message = "Not everything in \"" + name + "\" was extracted. "
-                                    "The rest of the archive was unpacked.";
+        const std::string message = TrF("Not everything in \"{0}\" was extracted. The rest of the archive was unpacked.", name);
         if (skipped.empty()) {   // text in a shape not expected: still say it
             ReportError(message + " " + detail);
             return;
@@ -15274,7 +15273,7 @@ namespace UltraCanvas {
         };
 
         OperationDialogSpec spec;
-        spec.title = "Run or open";
+        spec.title = Tr("Run or open");
         spec.type = DialogType::Question;
         spec.question = "\"" + RepairLegacyEncodedName(e.name) + "\" is an executable script.";
         spec.facts = "**File:** " + FactPath(e.path);
@@ -15388,7 +15387,7 @@ namespace UltraCanvas {
                 if (!openItems.empty())
                     openItems.push_back(MenuItemData::Separator());
                 openItems.push_back(MenuItemData::Action(
-                        "Other application…",
+                        Tr("Other application…"),
                         [this]() { OpenSelectionWithChooser(); }));
             }
             if (openItems.empty()) {
@@ -15397,7 +15396,7 @@ namespace UltraCanvas {
                 openItems.push_back(none);
             }
             MenuItemData openWith = MenuItemData::Submenu(
-                    "Open with", MenuIconPath("open-with.svg"), openItems);
+                    Tr("Open with"), MenuIconPath("open-with.svg"), openItems);
             if (openable) {
                 openWith.onClick = [this]() { OpenSelectionWithDefaultApp(); };
             }
@@ -15464,7 +15463,7 @@ namespace UltraCanvas {
                 newItems.push_back(MenuItemData::Action(
                         t.label, [this, copy]() { CreateNewDocument(copy); }));
             }
-            menu.AddItem(MenuItemData::Submenu("New", MenuIconPath("new.svg"), newItems));
+            menu.AddItem(MenuItemData::Submenu(Tr("New"), MenuIconPath("new.svg"), newItems));
         }
         menu.AddItem(MenuItemData::Separator());
 
@@ -15492,7 +15491,7 @@ namespace UltraCanvas {
                 compressItems.push_back(item);
             }
             MenuItemData compressSub = MenuItemData::Submenu(
-                    "Compress", MenuIconPath("compress.svg"), compressItems);
+                    Tr("Compress"), MenuIconPath("compress.svg"), compressItems);
             compressSub.enabled = canCompress;
             menu.AddItem(compressSub);
         }
@@ -15507,19 +15506,19 @@ namespace UltraCanvas {
         // Extras >
         {
             std::vector<MenuItemData> extraItems;
-            MenuItemData share = MenuItemData::Action("Share", [this]() {
+            MenuItemData share = MenuItemData::Action(Tr("Share"), [this]() {
                 if (onShare) onShare(SelectionOrAll());
             });
             share.enabled = static_cast<bool>(onShare);
             extraItems.push_back(share);
 
-            MenuItemData attrs = MenuItemData::Action("Attributes", [this]() {
+            MenuItemData attrs = MenuItemData::Action(Tr("Attributes"), [this]() {
                 if (onAttributes) onAttributes(SelectionOrAll());
             });
             attrs.enabled = static_cast<bool>(onAttributes);
             extraItems.push_back(attrs);
 
-            extraItems.push_back(MenuItemData::Action("Copy path", [this]() {
+            extraItems.push_back(MenuItemData::Action(Tr("Copy path"), [this]() {
                 std::string text;
                 std::vector<FilerEntry> sel = GetSelectedEntries();
                 if (sel.empty()) text = currentPath;
@@ -15530,7 +15529,7 @@ namespace UltraCanvas {
                 SetClipboardText(text);
             }));
 
-            MenuItemData access = MenuItemData::Action("Access", [this]() {
+            MenuItemData access = MenuItemData::Action(Tr("Access"), [this]() {
                 if (onAccess) onAccess(SelectionOrAll());
             });
             access.enabled = static_cast<bool>(onAccess);
@@ -15547,7 +15546,7 @@ namespace UltraCanvas {
                 }
             }
 
-            menu.AddItem(MenuItemData::Submenu("Extras", MenuIconPath("extras.svg"),
+            menu.AddItem(MenuItemData::Submenu(Tr("Extras"), MenuIconPath("extras.svg"),
                                                extraItems));
         }
 
@@ -15565,10 +15564,10 @@ namespace UltraCanvas {
             }
             sortItems.push_back(MenuItemData::Separator());
             sortItems.push_back(MenuItemData::Radio(
-                    "Ascending", 2, sortAscending,
+                    Tr("Ascending"), 2, sortAscending,
                     [this]() { SetSortAscending(true); }));
             sortItems.push_back(MenuItemData::Radio(
-                    "Descending", 2, !sortAscending,
+                    Tr("Descending"), 2, !sortAscending,
                     [this]() { SetSortAscending(false); }));
 
             std::vector<MenuItemData> typeItems;
@@ -15644,7 +15643,7 @@ namespace UltraCanvas {
             // tag the thumbnail tiles show instead of / beside them.
             std::vector<MenuItemData> extensionItems;
             extensionItems.push_back(MenuItemData::Checkbox(
-                    "Show in names", fileExtensionsInNames,
+                    Tr("Show in names"), fileExtensionsInNames,
                     [this](bool on) { SetFileExtensionsInNames(on); }));
             extensionItems.push_back(MenuItemData::Separator());
             for (FilerExtensionBadge b : AllExtensionBadges()) {
@@ -15679,24 +15678,24 @@ namespace UltraCanvas {
                 displayItems.push_back(std::move(item));
             };
             MenuItemData sortSub = MenuItemData::Submenu(
-                    "Sort", MenuIconPath("sort.svg"), sortItems);
+                    Tr("Sort"), MenuIconPath("sort.svg"), sortItems);
             sortSub.enabled = !(fileListMode && preserveFileListOrder);
             displayItems.push_back(std::move(sortSub));
             displayItems.push_back(MenuItemData::Submenu(
-                    "Type", MenuIconPath("view-type.svg"), typeItems));
+                    Tr("Type"), MenuIconPath("view-type.svg"), typeItems));
             displayItems.push_back(MenuItemData::Submenu(
-                    "File extensions", MenuIconPath("file-extensions.svg"),
+                    Tr("File extensions"), MenuIconPath("file-extensions.svg"),
                     extensionItems));
             if (!fileIconItems.empty()) {
                 displayItems.push_back(MenuItemData::Submenu(
-                        "File icons", MenuIconPath("file-icons.svg"), fileIconItems));
+                        Tr("File icons"), MenuIconPath("file-icons.svg"), fileIconItems));
             }
             displayItems.push_back(MenuItemData::Submenu(
-                    "Thumbnails", MenuIconPath("thumbnails.svg"), thumbnailItems));
+                    Tr("Thumbnails"), MenuIconPath("thumbnails.svg"), thumbnailItems));
             displayItems.push_back(MenuItemData::Submenu(
-                    "Detail view", MenuIconPath("detail-view.svg"), detailViewItems));
+                    Tr("Detail view"), MenuIconPath("detail-view.svg"), detailViewItems));
             displayItems.push_back(MenuItemData::Submenu(
-                    "Dataset", MenuIconPath("dataset.svg"), datasetItems));
+                    Tr("Dataset"), MenuIconPath("dataset.svg"), datasetItems));
             addSwitch("Icon-Menu", "icon-menu.svg", hoverIconMenu,
                       [this](bool on) { SetHoverIconMenuEnabled(on); });
             // The first pictures inside a folder peeking out of its icon.
@@ -15708,7 +15707,7 @@ namespace UltraCanvas {
             // listing of a curated home folder (SetCuratedHomeFolder).
             addSwitch("Hidden files", "hidden-files.svg", showHiddenFiles,
                       [this](bool on) { SetShowHiddenFiles(on); });
-            menu.AddItem(MenuItemData::Submenu("Display", MenuIconPath("display.svg"),
+            menu.AddItem(MenuItemData::Submenu(Tr("Display"), MenuIconPath("display.svg"),
                                                displayItems));
         }
 
