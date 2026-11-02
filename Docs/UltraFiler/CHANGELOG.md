@@ -1,3 +1,21 @@
+#### 2026-11-02 *1.104.0*
+- **Windows: "Linux" and "Network" in the folder tree.** Two sections after
+  Computer, where Explorer has them. *Linux* lists the WSL distributions
+  (`\\wsl$\Ubuntu`), each opened like a drive - and not touched before it is
+  opened, since touching one starts it. *Network* lists the computers of the
+  workgroup or domain and the servers of your connections; opening one lists
+  its shared folders under its row and in the folder display, read off the UI
+  thread. Typing `\\NAS` into the path bar opens that computer too, and it is
+  kept in the section, so a NAS the network list does not show stays one
+  click away. Rests on the framework's new `UltraCanvasNetworkPlaces` - see
+  the UltraCanvas changelog.
+- **Windows: the Network section finds the computers Explorer finds.** It
+  showed only the computers of the old network browser list, which a current
+  network (SMB 1 off) leaves short or empty; it now also lists the computers
+  that announce themselves through WS-Discovery - other Windows PCs, NAS
+  boxes running wsdd - as Explorer does. A computer on another subnet is still
+  opened by typing `\\NAS` into the path bar and kept in the section.
+
 #### 2026-11-01 *1.103.0*
 - **The settings window is built on the framework's settings page kit**
   (`UltraCanvasSettingsPageKit`, framework changelog `settings-page-kit`):
