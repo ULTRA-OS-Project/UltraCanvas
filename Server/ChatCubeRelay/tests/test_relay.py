@@ -271,3 +271,174 @@ def test_telegram_credentials_come_from_the_environment(monkeypatch):
     assert s.telegram_api_id == 1017053 and s.telegram_api_hash == "0123456789abcdef0123456789abcdef"
     monkeypatch.setenv("CHATCUBE_RELAY_TELEGRAM_API_ID", "")
     assert Settings.from_environment().telegram_api_id == 0
+
+
+# ---- confirming the e-mail and phone; account recovery ------------------------
+
+import json
+import os
+import time as _time
+
+from cryptography.hazmat.primitives.serialization import NoEncryption, PrivateFormat
+
+
+@pytest.fixture
+def recovering(tmp_path):
+    """A relay that offers recovery, its e-mail and SMS going to an outbox file."""
+    outbox = tmp_path / "outbox.jsonl"
+    settings = Settings(database=str(tmp_path / "relay.sqlite3"), outbox=str(outbox),
+                        recovery_key=base64.b64encode(os.urandom(32)).decode())
+    with TestClient(create_app(settings)) as c:
+        c.outbox = outbox
+        yield c
+
+
+def sent(client, channel: str, to: str, count: int = 1, timeout: float = 5.0) -> list[dict]:
+    """The messages to `to` on `channel`, once at least `count` are there
+    (they are sent on a worker thread after the answer)."""
+    deadline = _time.time() + timeout
+    while True:
+        found = []
+        if client.outbox.exists():
+            for line in client.outbox.read_text().splitlines():
+                entry = json.loads(line)
+                if entry["channel"] == channel and entry["to"] == to:
+                    found.append(entry)
+        if len(found) >= count or _time.time() > deadline:
+            return found
+        _time.sleep(0.05)
+
+
+def code_in(entry: dict) -> str:
+    import re as _re
+    return _re.search(r"\b(\d{6})\b", entry.get("subject", "") + " " + entry["text"]).group(1)
+
+
+def secret_of(person: Person) -> str:
+    seed = person.key.private_bytes(Encoding.Raw, PrivateFormat.Raw, NoEncryption())
+    return base64.b64encode(seed + person.public).decode()
+
+
+def verified(client, person: Person, email: str, phone: str) -> None:
+    r = client.put("/v1/profile", headers=person.auth, json={"email": email, "phone": phone})
+    assert r.status_code == 200 and sorted(r.json()["codes_sent"]) == ["email", "phone"], r.text
+    assert not r.json()["email_verified"] and not r.json()["phone_verified"]
+    for channel, to in (("email", email), ("phone", "+" + "".join(c for c in phone if c.isdigit()))):
+        code = code_in(sent(client, channel, to)[-1])
+        r = client.post("/v1/profile/verify", headers=person.auth, json={"channel": channel, "code": code})
+        assert r.status_code == 200, r.text
+    assert client.get("/v1/profile", headers=person.auth).json()["phone_verified"]
+
+
+def test_an_address_is_verified_by_the_code_sent_to_it(recovering):
+    erin = Person(recovering, "Erin").join()
+    r = recovering.put("/v1/profile", headers=erin.auth, json={"email": "erin@example.org"})
+    assert r.json()["codes_sent"] == ["email"] and not r.json()["email_verified"]
+    assert r.json()["recovery_available"] and not r.json()["recovery_enabled"]
+    code = code_in(sent(recovering, "email", "erin@example.org")[-1])
+    wrong = "000000" if code != "000000" else "111111"
+    assert recovering.post("/v1/profile/verify", headers=erin.auth,
+                           json={"channel": "email", "code": wrong}).status_code == 400
+    r = recovering.post("/v1/profile/verify", headers=erin.auth, json={"channel": "email", "code": code})
+    assert r.status_code == 200 and r.json()["email_verified"]
+    # A code is good once.
+    assert recovering.post("/v1/profile/verify", headers=erin.auth,
+                           json={"channel": "email", "code": code}).status_code == 400
+    # Changing the address takes the verification away and sends a new code.
+    r = recovering.put("/v1/profile", headers=erin.auth, json={"email": "erin@example.net"})
+    assert not r.json()["email_verified"] and r.json()["codes_sent"] == ["email"]
+    # The name alone sends nothing.
+    assert recovering.put("/v1/profile", headers=erin.auth, json={"display_name": "Erin K."}).json()["codes_sent"] == []
+    # Five wrong codes spend it.
+    for _ in range(5):
+        recovering.post("/v1/profile/verify", headers=erin.auth, json={"channel": "email", "code": wrong})
+    right = code_in(sent(recovering, "email", "erin@example.net")[-1])
+    assert recovering.post("/v1/profile/verify", headers=erin.auth,
+                           json={"channel": "email", "code": right}).status_code == 400
+    # A new one comes on asking; only so many an hour.
+    assert recovering.post("/v1/profile/verify/resend", headers=erin.auth,
+                           json={"channel": "email"}).json()["codes_sent"] == ["email"]
+    for _ in range(5):
+        r = recovering.post("/v1/profile/verify/resend", headers=erin.auth, json={"channel": "email"})
+    assert r.status_code == 429
+
+
+def test_recovery_needs_both_codes_and_hands_the_key_back(recovering):
+    erin = Person(recovering, "Erin").join()
+    # Not before both are confirmed, and only Erin's own key.
+    assert recovering.put("/v1/recovery/escrow", headers=erin.auth,
+                          json={"secret_key": secret_of(erin)}).status_code == 409
+    verified(recovering, erin, "erin@example.org", "+49 151 2345 6789")
+    mallory = Person(recovering, "Mallory").join()
+    assert recovering.put("/v1/recovery/escrow", headers=erin.auth,
+                          json={"secret_key": secret_of(mallory)}).status_code == 400
+    r = recovering.put("/v1/recovery/escrow", headers=erin.auth, json={"secret_key": secret_of(erin)})
+    assert r.status_code == 200 and r.json()["recovery_enabled"]
+    # The copy at rest is not the key.
+    raw = recovering.app.state.store._db.execute("SELECT sealed FROM escrow").fetchone()[0]
+    assert base64.b64decode(secret_of(erin)) not in bytes(raw)
+
+    # On another computer: by the phone number, written another way.
+    start = recovering.post("/v1/recovery/start", json={"address": "+49 (151) 23456789"})
+    assert start.status_code == 200, start.text
+    rid = start.json()["recovery_id"]
+    email_code = code_in(sent(recovering, "email", "erin@example.org", 2)[-1])
+    phone_code = code_in(sent(recovering, "phone", "+4915123456789", 2)[-1])
+    # One code is not enough.
+    bad = "000000" if phone_code != "000000" else "111111"
+    assert recovering.post("/v1/recovery/finish", json={"recovery_id": rid, "email_code": email_code,
+                                                         "phone_code": bad}).status_code == 401
+    r = recovering.post("/v1/recovery/finish", json={"recovery_id": rid, "email_code": email_code,
+                                                      "phone_code": phone_code})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["user_id"] == erin.user_id and body["secret_key"] == secret_of(erin)
+    assert body["email"] == "erin@example.org" and body["display_name"] == "Erin"
+    # The owner is told, on both.
+    assert any("recovered" in e["subject"] for e in sent(recovering, "email", "erin@example.org", 3))
+    assert any("recovered" in e["text"] for e in sent(recovering, "phone", "+4915123456789", 3))
+    # And the recovery is spent.
+    assert recovering.post("/v1/recovery/finish", json={"recovery_id": rid, "email_code": email_code,
+                                                         "phone_code": phone_code}).status_code == 401
+
+
+def test_recovery_does_not_tell_whether_an_address_is_known(recovering):
+    erin = Person(recovering, "Erin").join()
+    verified(recovering, erin, "erin@example.org", "+4915123456789")
+    recovering.put("/v1/recovery/escrow", headers=erin.auth, json={"secret_key": secret_of(erin)})
+    known = recovering.post("/v1/recovery/start", json={"address": "Erin@Example.org"})
+    unknown = recovering.post("/v1/recovery/start", json={"address": "nobody@example.org"})
+    assert known.status_code == unknown.status_code == 200
+    assert set(known.json()) == set(unknown.json()) and known.json()["channels"] == unknown.json()["channels"]
+    # Nothing goes to an address nobody has, and no codes finish it.
+    assert sent(recovering, "email", "nobody@example.org", timeout=0.5) == []
+    for _ in range(6):
+        r = recovering.post("/v1/recovery/finish", json={"recovery_id": unknown.json()["recovery_id"],
+                                                          "email_code": "123456", "phone_code": "123456"})
+        assert r.status_code == 401
+    # Five wrong pairs spend a real one too.
+    rid = known.json()["recovery_id"]
+    email_code = code_in(sent(recovering, "email", "erin@example.org", 2)[-1])
+    phone_code = code_in(sent(recovering, "phone", "+4915123456789", 2)[-1])
+    for _ in range(5):
+        recovering.post("/v1/recovery/finish", json={"recovery_id": rid, "email_code": "999999",
+                                                      "phone_code": "999999"})
+    assert recovering.post("/v1/recovery/finish", json={"recovery_id": rid, "email_code": email_code,
+                                                         "phone_code": phone_code}).status_code == 401
+
+
+def test_recovery_turned_off_or_not_offered(recovering, client):
+    erin = Person(recovering, "Erin").join()
+    verified(recovering, erin, "erin@example.org", "+4915123456789")
+    recovering.put("/v1/recovery/escrow", headers=erin.auth, json={"secret_key": secret_of(erin)})
+    r = recovering.delete("/v1/recovery/escrow", headers=erin.auth)
+    assert r.status_code == 200 and not r.json()["recovery_enabled"]
+    rid = recovering.post("/v1/recovery/start", json={"address": "erin@example.org"}).json()["recovery_id"]
+    # Recovery is off: no codes go out - the one e-mail is still the confirmation.
+    assert len(sent(recovering, "email", "erin@example.org", 2, timeout=0.5)) == 1
+    assert recovering.post("/v1/recovery/finish", json={"recovery_id": rid, "email_code": "1",
+                                                         "phone_code": "1"}).status_code == 401
+    # A relay without a recovery key and senders offers none.
+    bob = Person(client, "Bob").join()
+    assert client.get("/v1/profile", headers=bob.auth).json()["recovery_available"] is False
+    assert client.post("/v1/recovery/start", json={"address": "bob@example.org"}).status_code == 503

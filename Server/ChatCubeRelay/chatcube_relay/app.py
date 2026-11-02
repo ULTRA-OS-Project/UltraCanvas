@@ -24,8 +24,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from . import __version__
 from .config import Settings
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
 from .identity import decode_b64, login_message, register_message, user_id_for, verify
-from .store import GROUP_PREFIX, Store
+from .notify import Notifier, mask_email, mask_phone
+from .store import GROUP_PREFIX, Store, normalize_email, normalize_phone
 
 # Plausible, not proven: an address is proven by the mail that reaches it.
 EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -127,6 +133,34 @@ class ProfileBody(BaseModel):
         return value
 
 
+class VerifyBody(BaseModel):
+    channel: str = Field(pattern="^(email|phone)$")
+    code: str = Field(default="", max_length=16)
+
+
+class EscrowBody(BaseModel):
+    # The 64-byte Ed25519 secret key (seed and public key), base64.
+    secret_key: str = Field(min_length=1, max_length=200)
+
+
+class RecoveryStartBody(BaseModel):
+    address: str = Field(min_length=3, max_length=254)     # the e-mail address or the phone number
+
+
+class RecoveryFinishBody(BaseModel):
+    recovery_id: str = Field(min_length=8, max_length=128)
+    email_code: str = Field(min_length=1, max_length=16)
+    phone_code: str = Field(min_length=1, max_length=16)
+
+
+def new_code() -> str:
+    return f"{secrets.randbelow(10 ** 6):06d}"
+
+
+def digits_of(code: str) -> str:
+    return "".join(c for c in code if c.isdigit())
+
+
 class OutgoingMessage(BaseModel):
     to: str
     message_id: str = Field(min_length=1, max_length=64)
@@ -169,9 +203,13 @@ def group_json(group) -> dict[str, Any]:
 # APPLICATION
 # ============================================================================
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, notifier: Notifier | None = None) -> FastAPI:
     settings = settings or Settings.from_environment()
+    notifier = notifier or Notifier(settings)
     store = Store(settings.database)
+    recovery_key = decode_b64(settings.recovery_key) if settings.recovery_key else None
+    if recovery_key is not None and len(recovery_key) != 32:
+        raise ValueError("CHATCUBE_RELAY_RECOVERY_KEY must be 32 bytes, base64 (openssl rand -base64 32)")
     hub = Hub()
     challenges: dict[str, tuple[str, float]] = {}     # nonce -> (user_id, expiry)
 
@@ -273,9 +311,53 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         store.remove_session(authorization[7:])
         return {"status": "ok", "user_id": user_id}
 
-    def own_profile(user_id: str) -> dict[str, Any]:
-        email, phone = store.get_recovery(user_id)
-        return {**user_json(store.get_user(user_id)), "email": email, "phone": phone}
+    # ---- the owner's e-mail and phone; account recovery ---------------------
+    #
+    # An address or a number is verified once the code sent to it comes back.
+    # Recovery is offered when the relay can send to both and has a recovery
+    # key; a user turns it on by giving the relay a copy of their key, which
+    # it keeps encrypted with that key (README: "Account recovery"). Then
+    # codes sent to both, typed on another computer, hand the key back.
+
+    def recovery_offered() -> bool:
+        return recovery_key is not None and notifier.can_email and notifier.can_sms
+
+    def send_later(job) -> None:
+        # After the answer, on a worker thread: an SMTP server or an SMS
+        # gateway takes its time, and how long must not tell anything.
+        asyncio.get_running_loop().run_in_executor(None, job)
+
+    def send_code(user_id: str, channel: str, address: str) -> bool:
+        if channel == "email" and not notifier.can_email:
+            return False
+        if channel == "phone" and not notifier.can_sms:
+            return False
+        limit_key = f"verify:{user_id}:{channel}"
+        if store.count_sends(limit_key, 3600) >= settings.sends_per_hour:
+            raise error(429, "too_many_codes", "Too many codes were sent - try again in an hour")
+        code = new_code()
+        store.put_code(limit_key, code, settings.code_ttl_seconds)
+        store.note_send(limit_key)
+        minutes = settings.code_ttl_seconds // 60
+        if channel == "email":
+            send_later(lambda: notifier.send_email(
+                address, f"ChatCube: {code} confirms this e-mail address",
+                f"Your ChatCube code is {code}.\n\nType it in ChatCube's Edit profile window to confirm "
+                f"that this address is yours. It works for {minutes} minutes.\n\nIf you did not add this "
+                "address to a ChatCube ID, ignore this message."))
+        else:
+            send_later(lambda: notifier.send_sms(
+                normalize_phone(address),
+                f"ChatCube code {code} - confirms this phone number for your ChatCube ID ({minutes} min)."))
+        return True
+
+    def own_profile(user_id: str, sent: list[str] | None = None) -> dict[str, Any]:
+        c = store.get_contacts(user_id)
+        return {**user_json(store.get_user(user_id)), "email": c.email, "phone": c.phone,
+                "email_verified": c.email_verified, "phone_verified": c.phone_verified,
+                "recovery_available": recovery_offered(),
+                "recovery_enabled": store.get_escrow(user_id) is not None,
+                "codes_sent": sent or []}
 
     @app.get("/v1/profile")
     async def get_profile(user_id: str = Depends(current_user)):
@@ -285,9 +367,127 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def set_profile(body: ProfileBody, user_id: str = Depends(current_user)):
         if body.display_name is not None:
             store.set_display_name(user_id, body.display_name)
+        sent: list[str] = []
         if body.email is not None or body.phone is not None:
-            store.set_recovery(user_id, body.email, body.phone)
+            # A changed address or number is confirmed again: a code to it.
+            for channel in store.set_contacts(user_id, body.email, body.phone):
+                address = body.email if channel == "email" else body.phone
+                if send_code(user_id, channel, address or ""):
+                    sent.append(channel)
+        return own_profile(user_id, sent)
+
+    @app.post("/v1/profile/verify")
+    async def verify_contact(body: VerifyBody, user_id: str = Depends(current_user)):
+        contacts = store.get_contacts(user_id)
+        if not (contacts.email if body.channel == "email" else contacts.phone):
+            raise error(404, "not_set", "There is no address to confirm")
+        if not store.take_code(f"verify:{user_id}:{body.channel}", digits_of(body.code), settings.code_attempts):
+            raise error(400, "invalid_code", "That is not the code, or it has expired - ask for a new one")
+        store.mark_verified(user_id, body.channel)
         return own_profile(user_id)
+
+    @app.post("/v1/profile/verify/resend")
+    async def resend_code(body: VerifyBody, user_id: str = Depends(current_user)):
+        contacts = store.get_contacts(user_id)
+        address = contacts.email if body.channel == "email" else contacts.phone
+        if not address:
+            raise error(404, "not_set", "There is no address to confirm")
+        verified = contacts.email_verified if body.channel == "email" else contacts.phone_verified
+        if verified:
+            return own_profile(user_id)
+        if not send_code(user_id, body.channel, address):
+            raise error(503, "not_configured", "This relay cannot send to that channel")
+        return own_profile(user_id, [body.channel])
+
+    @app.put("/v1/recovery/escrow")
+    async def put_escrow(body: EscrowBody, user_id: str = Depends(current_user)):
+        if not recovery_offered():
+            raise error(503, "not_configured", "This relay offers no account recovery")
+        contacts = store.get_contacts(user_id)
+        if not (contacts.email_verified and contacts.phone_verified):
+            raise error(409, "not_verified", "Confirm the e-mail address and the phone number first")
+        secret = decode_b64(body.secret_key)
+        user = store.get_user(user_id)
+        if not secret or len(secret) != 64 or not user:
+            raise error(400, "invalid_request", "secret_key must be the 64-byte key, base64")
+        # Only this user's own key: the public half must be theirs.
+        public = Ed25519PrivateKey.from_private_bytes(secret[:32]).public_key().public_bytes(
+            Encoding.Raw, PublicFormat.Raw)
+        if public != user.public_key or secret[32:] != user.public_key:
+            raise error(400, "wrong_key", "That is not this account's key")
+        nonce = secrets.token_bytes(12)
+        store.put_escrow(user_id, nonce, AESGCM(recovery_key).encrypt(nonce, secret, user_id.encode()))
+        return own_profile(user_id)
+
+    @app.delete("/v1/recovery/escrow")
+    async def remove_escrow(user_id: str = Depends(current_user)):
+        store.remove_escrow(user_id)
+        return own_profile(user_id)
+
+    @app.post("/v1/recovery/start")
+    async def recovery_start(body: RecoveryStartBody, request: Request):
+        if not recovery_offered():
+            raise error(503, "not_configured", "This relay offers no account recovery")
+        address = body.address.strip()
+        key = normalize_email(address) if "@" in address else normalize_phone(address)
+        client = request.client.host if request.client else "?"
+        if (store.count_sends("recover:" + key, 3600) >= settings.sends_per_hour or
+                store.count_sends("recover-from:" + client, 3600) >= settings.sends_per_hour * 4):
+            raise error(429, "too_many_codes", "Too many recoveries were started - try again in an hour")
+        store.note_send("recover:" + key)
+        store.note_send("recover-from:" + client)
+        # The same answer whether the address belongs to anyone: a recovery is
+        # recorded either way, only a real one gets codes and can finish.
+        user_id = store.find_verified(address)
+        contacts = store.get_contacts(user_id) if user_id else None
+        if not (user_id and contacts and contacts.email_verified and contacts.phone_verified and
+                store.get_escrow(user_id)):
+            user_id, contacts = None, None
+        recovery_id = secrets.token_urlsafe(24)
+        email_code, phone_code = new_code(), new_code()
+        store.start_recovery(recovery_id, user_id, email_code, phone_code, settings.code_ttl_seconds)
+        if contacts:
+            minutes = settings.code_ttl_seconds // 60
+            email, phone = contacts.email, normalize_phone(contacts.phone)
+            send_later(lambda: notifier.send_email(
+                email, f"ChatCube: {email_code} recovers your ChatCube ID",
+                f"Someone - you, we hope - is recovering your ChatCube ID on another computer.\n\n"
+                f"The e-mail code is {email_code}. A second code went to your phone; both are needed. "
+                f"They work for {minutes} minutes.\n\nIf this was not you, do not pass the codes on to "
+                "anyone, and turn recovery off in ChatCube's Edit profile window."))
+            send_later(lambda: notifier.send_sms(
+                phone, f"ChatCube recovery code {phone_code} ({minutes} min). Not you? Do not share it."))
+        return {"recovery_id": recovery_id, "channels": ["email", "phone"],
+                "expires_in": settings.code_ttl_seconds}
+
+    @app.post("/v1/recovery/finish")
+    async def recovery_finish(body: RecoveryFinishBody):
+        if not recovery_offered():
+            raise error(503, "not_configured", "This relay offers no account recovery")
+        user_id = store.finish_recovery(body.recovery_id, digits_of(body.email_code), digits_of(body.phone_code),
+                                        settings.code_attempts)
+        if not user_id:
+            raise error(401, "invalid_code", "Those are not the codes, or they have expired")
+        sealed = store.get_escrow(user_id)
+        user = store.get_user(user_id)
+        if not sealed or not user:
+            raise error(401, "invalid_code", "Those are not the codes, or they have expired")
+        try:
+            secret = AESGCM(recovery_key).decrypt(sealed[0], sealed[1], user_id.encode())
+        except InvalidTag:
+            raise error(500, "escrow_unreadable", "The recovery copy cannot be read with this relay's key")
+        contacts = store.get_contacts(user_id)
+        # The owner hears of it on both, whoever did it.
+        when = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
+        email, phone = contacts.email, normalize_phone(contacts.phone)
+        send_later(lambda: notifier.send_email(
+            email, "ChatCube: your ID was recovered on another computer",
+            f"Your ChatCube ID was recovered on another computer at {when}.\n\nIf this was you, there is "
+            "nothing to do. If it was not, someone has your e-mail and your phone: secure both, and make a "
+            "new ChatCube ID - a recovered key cannot be taken back."))
+        send_later(lambda: notifier.send_sms(phone, f"Your ChatCube ID was recovered on another computer at {when}."))
+        return {"user_id": user_id, "secret_key": base64.b64encode(secret).decode(),
+                "display_name": user.display_name, "email": contacts.email, "phone": contacts.phone}
 
     @app.get("/v1/users/{other}")
     async def get_user(other: str, user_id: str = Depends(current_user)):

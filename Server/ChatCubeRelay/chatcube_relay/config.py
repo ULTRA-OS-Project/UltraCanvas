@@ -33,6 +33,34 @@ class Settings:
     telegram_api_id: int = 0
     telegram_api_hash: str = ""
 
+    # ---- account recovery (README: "Account recovery") ----------------------
+    # The key the relay encrypts the recovery copies of its users' keys with:
+    # 32 random bytes, base64 (`openssl rand -base64 32`). Without it, and
+    # without both an e-mail and an SMS sender, the relay offers no recovery.
+    recovery_key: str = ""
+    # E-mail: an SMTP server. smtp_security: "starttls" (port 587), "ssl"
+    # (port 465) or "none" (a local MTA).
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_security: str = "starttls"
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""                  # "ChatCube <no-reply@example.org>"
+    # SMS: "twilio", "webhook" (a POST of {"to", "text"} to a URL, with a
+    # Bearer token when one is set), or "" for none.
+    sms: str = ""
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from: str = ""                # the sending number, "+1555..."
+    sms_webhook_url: str = ""
+    sms_webhook_token: str = ""
+    # Development and tests only: every e-mail and SMS is appended to this
+    # file (a JSON object per line) instead of being sent.
+    outbox: str = ""
+    code_ttl_seconds: int = 600          # a code is good for ten minutes
+    code_attempts: int = 5               # then it is spent
+    sends_per_hour: int = 5              # codes to one address or account in an hour
+
     @classmethod
     def from_environment(cls) -> "Settings":
         s = cls()
@@ -45,4 +73,19 @@ class Settings:
         s.turn_secret = os.environ.get("CHATCUBE_RELAY_TURN_SECRET", "")
         s.telegram_api_id = int(os.environ.get("CHATCUBE_RELAY_TELEGRAM_API_ID", "0") or 0)
         s.telegram_api_hash = os.environ.get("CHATCUBE_RELAY_TELEGRAM_API_HASH", "").strip()
+        env = lambda name, default="": os.environ.get("CHATCUBE_RELAY_" + name, default).strip()
+        s.recovery_key = env("RECOVERY_KEY")
+        s.smtp_host = env("SMTP_HOST")
+        s.smtp_port = int(env("SMTP_PORT", str(s.smtp_port)) or s.smtp_port)
+        s.smtp_security = env("SMTP_SECURITY", s.smtp_security).lower()
+        s.smtp_user = env("SMTP_USER")
+        s.smtp_password = os.environ.get("CHATCUBE_RELAY_SMTP_PASSWORD", "")
+        s.smtp_from = env("SMTP_FROM")
+        s.sms = env("SMS").lower()
+        s.twilio_account_sid = env("TWILIO_ACCOUNT_SID")
+        s.twilio_auth_token = env("TWILIO_AUTH_TOKEN")
+        s.twilio_from = env("TWILIO_FROM")
+        s.sms_webhook_url = env("SMS_WEBHOOK_URL")
+        s.sms_webhook_token = env("SMS_WEBHOOK_TOKEN")
+        s.outbox = env("OUTBOX")
         return s
