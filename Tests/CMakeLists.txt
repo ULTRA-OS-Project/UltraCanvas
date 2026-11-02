@@ -5957,6 +5957,27 @@ else()
     message(STATUS "  ToolbarLayoutTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== COMMAND CONFIG WIDGET TEST =====
+# One editor for a program's menus and toolbars: the tree, the toolbar and menu
+# edits, the preview, Apply and Reset. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building CommandConfigWidgetTest...")
+    add_executable(CommandConfigWidgetTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CommandConfigWidgetTest.cpp
+    )
+    target_include_directories(CommandConfigWidgetTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CommandConfigWidgetTest PRIVATE cxx_std_20)
+    target_link_libraries(CommandConfigWidgetTest PRIVATE UltraCanvas)
+    set_target_properties(CommandConfigWidgetTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CommandConfigWidgetTest COMMAND CommandConfigWidgetTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CommandConfigWidgetTest")
+else()
+    message(STATUS "  CommandConfigWidgetTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CSS LAYOUT FORM GRID TEST =====
 # The two-column [auto, 1fr] form grid every dialog is built from: captions
 # share a column, controls line up under each other, a full-width row does not

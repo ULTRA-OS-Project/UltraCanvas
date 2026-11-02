@@ -181,7 +181,7 @@ namespace UltraCanvas {
 
 // ===== Materialize =====
     namespace {
-        MenuItemData MaterializeNode(const MenuLayoutNode& n, const UltraCanvasMenuRegistry& reg) {
+        MenuItemData MaterializeNode(const MenuLayoutNode& n, const UltraCanvasCommandRegistry& reg) {
             switch (n.kind) {
                 case MenuLayoutNode::Kind::Separator:
                     return MenuItemData::Separator();
@@ -206,7 +206,7 @@ namespace UltraCanvas {
     } // namespace
 
     std::vector<MenuItemData> MaterializeLayout(const MenuLayout& layout,
-                                                const UltraCanvasMenuRegistry& registry) {
+                                                const UltraCanvasCommandRegistry& registry) {
         std::vector<MenuItemData> out;
         out.reserve(layout.topLevel.size());
         for (const auto& n : layout.topLevel) {
@@ -216,7 +216,7 @@ namespace UltraCanvas {
     }
 
     void MaterializeInto(UltraCanvasMenu& menu, const MenuLayout& layout,
-                         const UltraCanvasMenuRegistry& registry) {
+                         const UltraCanvasCommandRegistry& registry) {
         menu.Clear();
         for (auto& item : MaterializeLayout(layout, registry)) {
             menu.AddItem(item);

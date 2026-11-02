@@ -2319,12 +2319,12 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasVectorCanvasExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasVectorCanvas.md");
 
-        widgetsBuilder.AddItem("menuconfig", "Menu Configurator",
-                               "Customise menus: command registry, editable layout, live Apply",
+        widgetsBuilder.AddItem("menuconfig", "Menus and Toolbars",
+                               "One editor for a program's menus and toolbars: command registry, groups, live Apply",
                                ImplementationStatus::FullyImplemented,
                                [this]() { return CreateMenuConfigExamples(); },
                                "DemoApp/UltraCanvasMenuConfigExamples.cpp",
-                               "Docs/UltraCanvas/UltraCanvasMenuConfigWidget.md");
+                               "Docs/UltraCanvas/UltraCanvasCommandConfigWidget.md");
 
         widgetsBuilder.AddItem("colorpicker", "Colour Picker",
                                "HSV colour wheel with saturation/value square, preview "

@@ -1,17 +1,18 @@
-// core/UltraCanvasMenuRegistry.cpp
-// Implementation of the id-addressable menu command catalog.
+// core/UltraCanvasCommandRegistry.cpp
+// Implementation of the id-addressable command catalog.
+// Version: 2.0.0 - renamed from UltraCanvasMenuRegistry
 // Version: 1.1.0 - icons resolved by size, live state, shortcut conflicts, RefreshMenuStates
 // Version: 1.0.1 - the commented-out Input callback copy is gone
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasMenuRegistry.h"
+#include "UltraCanvasCommandRegistry.h"
 #include <algorithm>
 #include <cctype>
 #include <map>
 
 namespace UltraCanvas {
 
-    void UltraCanvasMenuRegistry::Register(const MenuCommand& command) {
+    void UltraCanvasCommandRegistry::Register(const MenuCommand& command) {
         if (command.id.empty()) {
             return; // an id-less command can never be referenced from a layout
         }
@@ -32,12 +33,12 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenuRegistry::RegisterAction(const std::string& id, const std::string& category,
+    void UltraCanvasCommandRegistry::RegisterAction(const std::string& id, const std::string& category,
                                                  const std::string& label, std::function<void()> onClick) {
         RegisterAction(id, category, label, "", "", std::move(onClick));
     }
 
-    void UltraCanvasMenuRegistry::RegisterAction(const std::string& id, const std::string& category,
+    void UltraCanvasCommandRegistry::RegisterAction(const std::string& id, const std::string& category,
                                                  const std::string& label, const std::string& iconPath,
                                                  const std::string& shortcut, std::function<void()> onClick) {
         MenuCommand cmd(id, category, label);
@@ -48,23 +49,23 @@ namespace UltraCanvas {
         Register(cmd);
     }
 
-    void UltraCanvasMenuRegistry::Clear() {
+    void UltraCanvasCommandRegistry::Clear() {
         commands.clear();
         index.clear();
         categoryOrder.clear();
     }
 
-    bool UltraCanvasMenuRegistry::Contains(const std::string& id) const {
+    bool UltraCanvasCommandRegistry::Contains(const std::string& id) const {
         return index.find(id) != index.end();
     }
 
-    const MenuCommand* UltraCanvasMenuRegistry::Find(const std::string& id) const {
+    const MenuCommand* UltraCanvasCommandRegistry::Find(const std::string& id) const {
         auto it = index.find(id);
         if (it == index.end()) return nullptr;
         return commands[it->second].get();
     }
 
-    std::vector<const MenuCommand*> UltraCanvasMenuRegistry::InCategory(const std::string& category) const {
+    std::vector<const MenuCommand*> UltraCanvasCommandRegistry::InCategory(const std::string& category) const {
         std::vector<const MenuCommand*> out;
         for (const auto& cmd : commands) {
             if (cmd->category == category) out.push_back(cmd.get());
@@ -72,7 +73,7 @@ namespace UltraCanvas {
         return out;
     }
 
-    MenuItemData UltraCanvasMenuRegistry::Materialize(const std::string& id) const {
+    MenuItemData UltraCanvasCommandRegistry::Materialize(const std::string& id) const {
         const MenuCommand* cmd = Find(id);
         if (!cmd) {
             // Unknown id: visible, disabled placeholder so stale layouts are obvious.
@@ -105,7 +106,7 @@ namespace UltraCanvas {
         return item;
     }
 
-    std::string UltraCanvasMenuRegistry::ResolveIcon(const MenuCommand& command, int pixelSize) const {
+    std::string UltraCanvasCommandRegistry::ResolveIcon(const MenuCommand& command, int pixelSize) const {
         if (!command.iconName.empty() && iconResolver) {
             std::string file = iconResolver(command.iconName, pixelSize);
             if (!file.empty()) return file;
@@ -134,7 +135,7 @@ namespace UltraCanvas {
         }
     }
 
-    std::vector<UltraCanvasMenuRegistry::ShortcutConflict> UltraCanvasMenuRegistry::FindShortcutConflicts() const {
+    std::vector<UltraCanvasCommandRegistry::ShortcutConflict> UltraCanvasCommandRegistry::FindShortcutConflicts() const {
         std::vector<ShortcutConflict> conflicts;
         std::map<std::string, size_t> byShortcut;   // normalized -> index in `conflicts`
         for (const auto& cmd : commands) {
@@ -156,7 +157,7 @@ namespace UltraCanvas {
 
     namespace {
         // True when a label changed: the menu's width may have.
-        bool RefreshItems(std::vector<MenuItemData>& items, const UltraCanvasMenuRegistry& registry) {
+        bool RefreshItems(std::vector<MenuItemData>& items, const UltraCanvasCommandRegistry& registry) {
             bool relabelled = false;
             for (auto& item : items) {
                 if (!item.subItems.empty() && RefreshItems(item.subItems, registry)) relabelled = true;
@@ -175,13 +176,13 @@ namespace UltraCanvas {
         }
     }
 
-    void UltraCanvasMenuRegistry::RefreshMenuStates(UltraCanvasMenu& menu) const {
+    void UltraCanvasCommandRegistry::RefreshMenuStates(UltraCanvasMenu& menu) const {
         if (RefreshItems(menu.GetItems(), *this)) menu.InvalidateLayout();
         menu.RequestRedraw();
     }
 
-    UltraCanvasMenuRegistry& UltraCanvasMenuRegistry::Default() {
-        static UltraCanvasMenuRegistry instance;
+    UltraCanvasCommandRegistry& UltraCanvasCommandRegistry::Default() {
+        static UltraCanvasCommandRegistry instance;
         return instance;
     }
 
