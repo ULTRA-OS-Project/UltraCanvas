@@ -687,6 +687,13 @@ jobs:
           echo "Building Linux dependencies for $MULTIARCH ($(uname -m))"
           scripts/ci-apt.sh install libcairo2-dev libpango1.0-dev libharfbuzz-dev
           scripts/ci-apt.sh install libvips-dev libglib2.0-dev libfreetype6-dev dbus
+          # libheif's HEVC and AV1 decoders: linked into libheif on
+          # ubuntu-22.04, separate plug-in packages from 24.04 on - installed
+          # wherever apt knows them, so HEIC and AVIF decode on every runner
+          # (ImageFormatsTest insists on it).
+          for p in libheif-plugin-libde265 libheif-plugin-aomdec; do
+            apt-cache show "$p" >/dev/null 2>&1 && scripts/ci-apt.sh install "$p"
+          done
           scripts/ci-apt.sh install libtinyxml2-dev libfmt-dev
           scripts/ci-apt.sh install libx11-dev libxcursor-dev libxi-dev libgl1-mesa-dev libgtk-3-dev
           scripts/ci-apt.sh install libcdr-dev librevenge-dev zlib1g-dev
@@ -850,8 +857,12 @@ jobs:
           # WebSocket-capability probe. On ubuntu-22.04 that libcurl is 7.81,
           # which predates WebSockets (curl_ws_* arrived in 7.86), so UltraNet
           # falls back to building the vendored third_party/curl (8.21). That
-          # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON).
-          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev
+          # build needs libpsl (curl's CURL_USE_LIBPSL defaults ON), and
+          # libssh2 for SCP / SFTP: UltraStoreAdmin uploads the publish
+          # folder over sftp://, and curl's CMake drops the protocol without
+          # a word when libssh2 is missing (the configure prints which SSH
+          # backend it took; "Verify libcurl selection" insists on one).
+          scripts/ci-apt.sh install libcurl4-openssl-dev libpsl-dev libssh2-1-dev
           # libsodium: cryptographic backend for UltraCrypt
           scripts/ci-apt.sh install libsodium-dev
           # UltraMail's OpenPGP: GPGME, and GnuPG for its tests (S/MIME uses
@@ -1198,6 +1209,15 @@ jobs:
               exit 1
             fi
             echo "Confirmed: Linux links the vendored WS-capable libcurl (CURL_OPENSSL_4 version node)."
+            # The vendored libcurl must carry sftp://: UltraStoreAdmin's upload
+            # speaks it, and curl's CMake builds without it silently when
+            # libssh2 is missing (VendoredCurl.cmake prints the backend it took).
+            if ! grep -q "Vendored libcurl: SSH backend = libssh" configure.log; then
+              echo "::error::The vendored third_party/curl was built without an SSH backend (no sftp://); libssh2-1-dev is missing or was not found."
+              grep -i "Vendored libcurl" configure.log || true
+              exit 1
+            fi
+            echo "Confirmed: the vendored libcurl has an SSH backend (sftp://)."
           else
             if grep -q "UltraNet libcurl: VENDORED" configure.log; then
               echo "::error::CI selected the vendored third_party/curl build on ${{ runner.os }}; the platform system libcurl should provide WebSocket support here."
@@ -1924,6 +1944,12 @@ jobs:
           # tunnel tests"; the rest comes from that step via GITHUB_ENV.
           ULTRANET_TEST_SSH_REQUIRED: 1
           ULTRADB_TEST_TUNNEL_REQUIRED: 1
+          # ImageFormatsTest insists on every picture format - except JPEG
+          # XL here: ubuntu-22.04's libvips is built without libjxl (jammy
+          # has no libjxl package), the one codec this runner cannot have.
+          # JPEG XL is checked on Ubuntu 24.04 in image-codecs.yml and on the
+          # macOS and Windows rows ("Run JPEG XL test").
+          UC_IMAGE_FORMATS_OPTIONAL: jxl
         run: ctest --output-on-failure 2>&1 | tee ctest.log
 
       # "Run unit tests" runs DesktopShellTest with no display, where the X11

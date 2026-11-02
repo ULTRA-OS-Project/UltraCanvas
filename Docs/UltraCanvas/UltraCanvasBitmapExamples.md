@@ -145,6 +145,20 @@ false, fires `onImageLoadFailed` with the reason and shows the error
 placeholder. A null or empty image (`std::make_shared<UCImage>()`) clears the
 element and fires neither.
 
+A picture that exists as pixels rather than as a file - a screen capture, a
+frame a program made - is shown without any encoding or decoding on the way:
+`UCImage::FromBgra(pixels, width, height, stride, opaque)` takes rows of
+32-bit pixels in memory order B, G, R, A (cairo's native layout, what the
+platforms' screen captures hand over; with `opaque` the fourth byte is
+ignored), and `UCImage::FromRgba(pixels, width, height)` takes straight
+R, G, B, A rows of `width * 4` bytes. Both copy the rows, and the image then
+draws, scales, saves and reports transparency like any other.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::vector<uint8_t> rgba; int width; int height; -->
+```cpp
+image->LoadFromImage(UCImage::FromRgba(rgba.data(), width, height));
+```
+
 ### GetLastError
 ```cpp
 const std::string& GetLastError() const;

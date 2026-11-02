@@ -1,5 +1,6 @@
 // core/UltraCanvasButton.cpp
 // Interactive button component implementation with secondary icon support
+// Version: 2.13.0 - ButtonStyle::wrap: the text wrapped onto the lines its area holds, from the top
 // Version: 2.12.4 - a split button's two captions are centred on their capitals, not their line box
 // Version: 2.12.3 - SetText fits the width to the new text at once, so a parent
 //                  breaking a row into lines reads the new width
@@ -14,7 +15,7 @@
 // Version: 2.8.0 - icons are drawn on whole pixels (SnapToPixelGrid): an icon
 //                  centred half a pixel off was resampled and blurred
 // Version: 2.7.0
-// Last Modified: 2026-10-24
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasButton.h"
@@ -337,6 +338,11 @@ namespace UltraCanvas {
 
     void UltraCanvasButton::SetEllipsize(EllipsizeMode mode) {
         style.ellipsize = mode;
+        RequestRedraw();
+    }
+
+    void UltraCanvasButton::SetWrap(TextWrap wrap) {
+        style.wrap = wrap;
         RequestRedraw();
     }
 
@@ -945,6 +951,19 @@ namespace UltraCanvas {
         const std::string drawnText = useMarkup ? BuildMnemonicMarkup() : text;
         const double nudge = GetPrimaryState() == ElementState::Pressed ? 1.0 : 0.0;
         const Rect2Dd rect(textRect.x + nudge, textRect.y + nudge, textRect.width, textRect.height);
+
+        // Wrapped: the lines from the area's top (under a top icon, where a
+        // tile's name starts), as many as the area holds, the last one
+        // shortened at its end. The context's wrap is put back afterwards:
+        // the elements drawn next did not ask for it.
+        if (style.wrap != TextWrap::WrapNone) {
+            const TextWrap previous = ctx->GetTextStyle().wrap;
+            ctx->SetTextWrap(style.wrap);
+            ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
+            ctx->DrawTextInRect(drawnText, rect, useMarkup);
+            ctx->SetTextWrap(previous);
+            return;
+        }
 
         // Shortened anywhere but at the end: DrawTextInRect cuts from the
         // right only, so the text goes through a layout of the rectangle's

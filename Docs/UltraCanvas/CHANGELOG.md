@@ -1,3 +1,267 @@
+#### 2026-11-02 *0.9.459*
+- **A picture without an alpha channel is an opaque pixmap.** `UCImage`
+  decodes a JPEG, a HEIC, an opaque WebP - any picture with no alpha band -
+  to a `CAIRO_FORMAT_RGB24` pixmap: the same four bytes a pixel (cairo has
+  no packed 24-bit image format), the top byte 0xFF and ignored, so cairo
+  composites it as a copy instead of blending every pixel, and the QOI
+  pixmap blob the thumbnail cache stores says so and inflates it opaque
+  again (`UCPixmapCairo::IsOpaque`, `Init(w, h, opaque)`). A picture with
+  an alpha channel is ARGB32 as before. The decode itself is quicker too,
+  the opaque rows needing no premultiplication: the wallpaper fitted to
+  3840 × 2160 took 300 ms and takes 155.
+- **A large fitted pixmap is kept on disk between runs.** `UCImage::GetPixmap`
+  for a raster file fitted to a box of at least 640 × 480 raw pixels - a
+  desktop's wallpaper, a viewer's photo - looks in the thumbnail disk cache
+  first and stores its pixmap there as a QOI blob after the first decode,
+  stamped against the file as it was before; the next run inflates the
+  blob instead of decoding the file and resizing it. Measured on the
+  2752 × 1536 desktop wallpaper as a JPEG: 40 ms (decode and fit to 1280 × 800)
+  against 10 ms from the blob, 155 ms against 75 at 3840 × 2160; the first
+  run pays once for the blob's compression and write. The QOI
+  *file* format was measured for that wallpaper and not taken: libjpeg-turbo
+  reads the 4-megapixel JPEG in 31 ms and fits it in 40, the QOI reference
+  decoder 41 and 54 (it has no reduced-size decode), and the file is six
+  times the size - QOI pays only without a decode and a resize, which is
+  what the cached blob is.
+- **Every modern picture format in every build.** `ImageFormatsTest` (under
+  `BUILD_TESTS`, so every CI row) reads a JPEG, PNG, GIF, BMP, TIFF, WebP,
+  AVIF, HEIC, JPEG XL, QOI and Windows icon from `media/images` and fails
+  the build that cannot decode one of them (`UC_IMAGE_FORMATS_OPTIONAL`
+  names the formats a machine cannot have: CI sets it to `jxl` on the
+  ubuntu-22.04 runners, whose libvips is built without libjxl); the Linux CI rows and the
+  dependency lists in the READMEs and `AGENTS.md` name libheif's HEVC and
+  AV1 plug-in packages (separate from Ubuntu 24.04 on), and
+  `package-linux.sh` bundles libvips' loader modules and libheif's plug-ins
+  - both opened at run time, so the library closure never carried them -
+  with the launcher pointing `VIPSHOME` and `LIBHEIF_PLUGIN_PATH` at them.
+  `media/images/dice.ico` is the icon sample.
+- **A Wayland windowing backend, behind `-DULTRACANVAS_WAYLAND=ON`.** The
+  framework runs as a native Wayland client: `UltraCanvasApplication` and
+  `UltraCanvasWindow` are then `UltraCanvasWaylandApplication` and
+  `UltraCanvasWaylandWindow` (`OS/Linux/Wayland/`), every window a
+  `wl_surface` with an `xdg_toplevel` drawn through shared-memory buffers
+  at the output's scale, the seat's keyboard through xkbcommon (keymap,
+  modifiers, key repeat) and its pointer (buttons, double clicks, wheel
+  notches, smooth scrolling folded into notches), the cursor from the
+  theme through libwayland-cursor, and the clipboard the seat's
+  `wl_data_device` with the same MIME types as the X11 backend, so a copy
+  pastes between the two sessions alike. Server-side decorations are asked
+  for an ordinary window and none for a borderless one; maximize,
+  fullscreen and minimize go through xdg-shell. The default stays X11: one
+  library speaks one display protocol, and a consumer of the Wayland build
+  sees `ULTRACANVAS_DISPLAY_WAYLAND=1`. Dependencies: libwayland-client,
+  libwayland-cursor, wayland-protocols, libxkbcommon and wayland-scanner,
+  which generates the xdg-shell and xdg-decoration bindings into the build
+  directory. GL surfaces are off in a Wayland build for now (the context
+  managers are GLX and EGL-on-Xlib), and so are file drags out of a window;
+  a client neither sets nor learns its windows' positions on Wayland, so
+  `SetWindowPosition` keeps the wish and `RaiseAndFocus` waits for
+  xdg-activation. The decision behind it and the plan for the desktop
+  shell's own protocols: `Docs/UltraCanvas/WaylandDesktopShellProposal.md`.
+- **UltraCanvasDesktopShell on Wayland: the `wayland` backend, phase 1.**
+  `ListScreens` and `GetScreenSize` from the compositor's outputs (the
+  first announced counts as the primary), the devices from the shared
+  Linux probes, the keyboard layout from the seat's keymap; the session's
+  end and lock, the loudspeaker and the notification area are the shared
+  Linux files and work as on X11 (a tray click's position is the last
+  pointer position in the shell's own window). The window list, virtual
+  desktops, reserved edges, screenshots and global shortcuts answer false
+  with "not available on Wayland yet" until the layer-shell and
+  foreign-toplevel protocols and the portals are in (phase 2 of the
+  proposal).
+- **The X11-free parts of the Linux backend are shared files.** The
+  fontconfig and bundled-font code (`OS/Linux/UltraCanvasLinuxFonts`), the
+  keysym-to-`UCKeys` table (`UltraCanvasLinuxKeys`), the procfs and sysfs
+  device probes (`UltraCanvasLinuxDeviceProbes`) and the file-URI helpers
+  (`UltraCanvasLinuxUriList`) moved out of the X11 application, desktop
+  shell and clipboard files, which now call them; the X11 build is
+  unchanged. `UltraCanvasLinuxNativeDialogs.cpp` builds without X11 (the
+  GTK dialogs stay above instead of transient for a Wayland window).
+
+#### 2026-11-01 *0.9.458*
+- **A picture from pixels in memory.** `UCImage::FromBgra(pixels, width,
+  height, stride, opaque)` and `UCImage::FromRgba(pixels, width, height)`
+  make an image from rows already in memory - a screen capture, a frame a
+  program made - with no encoder or decoder on the way: it is drawn, scaled
+  to any fit, saved through libvips and asked for its transparency like a
+  loaded one. UltraSnip shows the frozen screen and the snip taken from it
+  this way, where before each went through a PNG and back
+  (`ImageFromPixelsTest`).
+- **UltraCanvasDesktopShell: one rectangle of the screen.** `CaptureScreenArea(x, y,
+  width, height, image)` captures that much of the screen as pixels in memory -
+  `XGetImage` of the rectangle on X11, a `BitBlt` of it on Windows - clipped to
+  the screen, instead of the whole screen and a crop: what UltraSnip's snips
+  and its screen recording (twenty frames a second of one window) take.
+  `DesktopScreenImage` carries `x` / `y`, where its pixels came from (the
+  virtual screen's origin on Windows, which is negative with a monitor left
+  of the primary). `DefaultRecordingPath()` names
+  `<Videos>/Screen Recordings/Screen recording <date> <time>.mp4`, as
+  `DefaultScreenshotPath()` names a screenshot.
+- **A settings window in one kit.** `UltraCanvasSettingsPageKit`
+  (`UltraCanvasSettingsPageKit.h`) holds the look of an application's
+  settings window once: `UltraCanvasSettingsWindow` - the tree of pages on
+  the left, the page on the right, the page's *Restore defaults* and *Close*
+  at the foot - and a page's skeleton (title, caption, controls, the notes
+  block) with the controls in the window's one type scale (radios,
+  checkboxes, sliders with their value, buttons, colour boxes, rows).
+  UltraFiler's settings window set the style and is built on the kit now,
+  with nothing changed on screen; UltraSnip's is the second; the next
+  application's gets the same look without a copy.
+- **`UltraCanvasAppSettings`: a note on older files and on renaming a key.**
+  A key an older file does not have reads as the fallback and `Set` makes
+  the objects on the way, so a rename is read-old, set-new, remove-old,
+  save; the header and the doc show it.
+- **VideoFX 0.17.0: a recorder for a live source.** `VideoFXFrameRecorder`
+  takes frames one by one with the moment each was taken - RGBA or BGRA, any
+  stride - and encodes them into the file as they come, so the file grows
+  while the recording runs: a frame lands on the nearest tick of the file's
+  rate, a duplicate is dropped, a gap shows the last frame longer, and the
+  recording keeps real time however many frames the source managed. The
+  export's codec, quality and hardware rules apply; the preset is
+  `veryfast` with `zerolatency`, and an MP4 is fragmented so a recording cut
+  short still plays. `VideoFXRecorderSettings`, `VideoFXPixelLayout`; the
+  stub answers NotAvailable. UltraSnip records the screen with it
+  (`VideoFXTest`: red then blue frames read back at their times, a BGRA
+  frame read in its own order, 321 x 241 recorded as 320 x 240).
+- **`WindowConfig::alwaysOnTop` works on X11 and macOS.** Only the Windows
+  backend honoured it; X11 now sets `_NET_WM_STATE_ABOVE` on the window
+  before it is mapped (any type but a notification, which has it, and a
+  desktop, which is kept below), and macOS puts the window at the floating
+  level, as it now does a notification too.
+
+#### 2026-11-01 *0.9.457*
+- **Every program in a folder showed one program's icon until its own
+  loaded - and programs without an icon kept it.** On Windows, under
+  Display > File icons = Host OS, the type icon for `.exe` was asked of the
+  shell with the path of whichever program was drawn first. For the types
+  whose registered icon is `%1` (`.exe`, `.ico`, `.cur`, `.lnk`) the shell
+  reads that file even with `SHGFI_USEFILEATTRIBUTES`, so it answered with
+  that program's own icon, and the filer held it as *the* `.exe` icon: every
+  program drew it while its own icon was still being extracted, and the
+  console tools, which carry no icon, drew it for good - until the slot was
+  evicted and happened to be asked again by an icon-less program.
+  `HostFileIconProbeName` (`UltraCanvasHostFileIcons.h`) gives the made-up
+  name the key stands for (`ultracanvas-host-icon-probe.exe`), and the
+  Windows backend asks the shell with it, never with the file's path - which
+  also stops a special folder's icon from standing in for every folder.
+  `FilerHostIconsTest` checks that two programs, a Windows and a POSIX path,
+  and any two folders are asked about under one name that carries nothing of
+  the file.
+- **macOS host file icons are the type's icon, never one file's.** The
+  content-type branch of `UltraCanvasMacOSHostFileIcons.mm` was compiled out
+  (its `ULTRACANVAS_HAS_UTTYPE` was only defined in the "Open with" backend),
+  so every lookup called `iconForFile:` with the real path: one file's custom
+  icon was cached as the icon of its whole type, and a folder was drawn with
+  the startup disk's icon. The backend now detects the SDK itself and asks by
+  `HostFileIconProbeName` only - `iconForContentType:` (folder, the type of
+  the extension, or plain data), or `iconForFileType:` before macOS 11.
+- **An image that arrives as bytes can no longer draw another one's
+  picture.** In a build without libvips `UCImageRaster::LoadFromMemory` still
+  named the image after the buffer's address, and so did
+  `UCImageRaster::GetFromMemory` in every build: a freed buffer's address
+  reused for another picture of the same size found the first picture in the
+  pixmap or image cache. In-memory images are named by a counter in both
+  builds now, and `GetFromMemory` keys by a hash of the bytes and checks a
+  hit against the bytes the cached image kept. `ImageCacheFreshnessTest`
+  reuses one buffer for two pictures and checks each is drawn as itself.
+
+#### 2026-11-01 *0.9.456*
+- **UltraCanvasPortableDevices: phones, cameras and players over MTP / PTP.**
+  A device plugged in over USB that is not a drive gets no drive letter or
+  mount point, so nothing in the framework could see it. New
+  `UltraCanvasPortableDevices.h`: `List` (name, manufacturer, phone / camera /
+  player), `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete` and
+  `Rename` by path (`"/"` is the device, its folders its storages),
+  `GetSpace` (capacity and free space, storages added up), and
+  `UltraCanvasPortableDeviceMonitor` for plug-in and pull-out. The Windows
+  backend is Windows Portable Devices - built in, no new library - running
+  every call on one COM thread of its own, so the devices it opened stay open
+  between calls. The macOS backend is Image Capture (`ImageCaptureCore`): an
+  iPhone's or iPad's photos and videos and a camera's card, read-only
+  (`PortableDeviceInfo::readOnly`), the work handed to the main thread that
+  Image Capture answers on. Elsewhere `Available()` is false. `PortableDevicesTest`
+  checks the path rules and the backend-less answers.
+- **Linux: the phones, cameras and shares the desktop mounted are volumes.**
+  GNOME mounts a phone through GVFS as a directory of one FUSE file system
+  (`$XDG_RUNTIME_DIR/gvfs/mtp:host=...`), which is no mount point, so
+  `ListMountedVolumes` never listed it. `ListGvfsVolumes` adds those places -
+  MTP, gphoto2, AFC (iPhone), SMB, SFTP, FTP, WebDAV, NFS, AFP - with readable
+  labels ("Google Pixel 8", "photos on nas"); cloud accounts stay with
+  `UltraCanvasCloudStorage`. The Linux volume monitor looks at them every two
+  seconds, since they change without the mount table changing.
+  `VolumeMonitorTest` covers the labels and the listing.
+
+#### 2026-11-01 *0.9.455*
+- **UltraCanvasTreeView: the +/- box takes the theme's colours.**
+  `SetExpandButtonColors(fill, border, symbol)` sets the expand button's
+  fill, its 1 px border and the `+` / `-` together. The border was always
+  gray and the glyph always black, so on a dark theme the box could only be
+  a light square with a black mark in it; ChatCube's Settings window is the
+  first to use it, in its dark look. `SetExpandButtonColor` (the fill
+  alone) is unchanged.
+
+#### 2026-11-01 *0.9.454*
+- **macOS: `UltraCanvasDesktopShell::ListApplications` lists the
+  installed applications.** It read freedesktop desktop entries there,
+  which macOS does not have, so UltraDesktop's Apps window was empty. It now
+  reads the application bundles in `~/Applications`, `/Applications`,
+  `/System/Applications` (their `Utilities` too) and one level of subfolders
+  below them: named as Finder names them, with the icon Finder shows (a PNG
+  in the disk cache's `desktop-icons` folder) and the bundle's
+  `LSApplicationCategoryType` as its category; agents and background-only
+  bundles are left out. `LaunchApplication` starts such an entry through
+  `NSWorkspace`, as Finder does. New file
+  `OS/MacOS/UltraCanvasMacOSApplications.mm`; the rest of the macOS desktop
+  shell is unchanged. Doc: `Docs/UltraCanvas/UltraCanvasDesktopShell.md`.
+- UltraDesktop's Apps window: on macOS a maker's folder under
+  `/Applications` holding five or more applications is a category of its
+  own, as a Start-menu folder is on Windows; `/Applications` and `Utilities`
+  are not.
+
+#### 2026-11-01 *0.9.453*
+- **UltraCanvasButton: the text on several lines.** `ButtonStyle::wrap` /
+  `SetWrap(TextWrap::WrapWord)` breaks a button's text onto as many lines as
+  its text area holds, from the top of the area, the last one shortened with
+  "…" when more is left - an application's name under its icon on a tile.
+  `WrapNone`, the default, keeps the text on one line as before. Doc:
+  `Docs/UltraCanvas/UltraCanvasButtonExamples.md`.
+- **UltraCanvasTreeView: `GetNodeAtY` is public.** The row at an
+  element-local y, for a drop that starts in another element - UltraDesktop's
+  Apps window drops a list row on a category in its tree. Doc:
+  `Docs/UltraCanvas/UltraCanvasTreeViewExamples.md`.
+
+#### 2026-11-01 *0.9.452*
+- **UltraCanvasWireless on macOS: the Wi-Fi list says what to do while
+  macOS asks for Location Services.** Until the person answered macOS's
+  question, an empty network list pointed them to System Settings; now it
+  says to allow it when macOS asks, and System Settings only once it has
+  been refused.
+
+#### 2026-11-01 *0.9.451*
+- **`UltraCanvasVideoTimeline` 1.4.0: a close-gap button in every gap of a
+  free track.** Each empty stretch before a clip on a non-magnetic lane
+  shows a `|<-` button, centred in the part of the gap on screen; a click
+  reports a `Move` of the clip after it to the end of the clip before (or
+  to 0), `Shift`+click a rippled `Move` of every clip after the gap.
+  `SetShowGapButtons(false)` turns them off; a locked lane has none. The
+  model gains `TimelineGap`, `TimelineGaps` and `TimelineCloseGap`.
+
+#### 2026-11-01 *0.9.450*
+- **The vendored libcurl had no `sftp://`, so UltraStoreAdmin's SFTP upload
+  was refused with `Protocol "sftp" is disabled` even with libssh2
+  installed and linked.** The vendored `third_party/curl` carried the
+  output of an in-tree autotools `./configure` - `lib/curl_config.h`, the
+  Makefiles, `.deps/`, `config.status`, `libtool` and the rest - and
+  `curl_setup.h` includes `"curl_config.h"` with quotes, so the compiler
+  took that stale file beside it instead of the one CMake generates, and
+  every option CMake had decided (libssh2 among them) was lost while the
+  library still linked what CMake found. The generated files are removed;
+  `VendoredCurl.cmake` refuses to configure while such a `curl_config.h`
+  exists in the source tree, asks curl's CMake for libssh2 explicitly and
+  prints which SSH backend it got, warning when there is none; the Linux CI
+  leg installs `libssh2-1-dev` and fails when the vendored libcurl has no
+  SSH backend.
+
 #### 2026-11-01 *0.9.449*
 - **Closing a window that asks first no longer looks like nothing
   happened.** `UltraCanvasDesktopShell::CloseWindow` brings the window to the

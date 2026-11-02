@@ -6,6 +6,7 @@
 // UltraCanvasHardwareInfo), the monitor's thread - and the fallback backend
 // for platforms that have none. The window system itself is in
 // OS/<Platform>/UltraCanvas*DesktopShell.cpp.
+// Version: 1.10.0 - CaptureScreenArea, DefaultRecordingPath
 // Version: 1.9.0 - GetWindowBounds, MoveWindow, BringWindowOnScreen,
 //                  KillWindowProcess; CloseWindow brings the window to the
 //                  front (and onto a screen) before asking it to close
@@ -363,6 +364,19 @@ bool UltraCanvasDesktopShell::CaptureScreenImage(DesktopScreenImage& out, std::s
     return false;
 }
 
+bool UltraCanvasDesktopShell::CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out,
+                                                std::string* error) {
+    std::string reason;
+    if (width <= 0 || height <= 0) {
+        reason = "The area to capture is empty.";
+    } else if (DesktopShellBackend::CaptureScreenArea(x, y, width, height, out, reason)) {
+        return true;
+    }
+    out = DesktopScreenImage();
+    if (error) *error = reason;
+    return false;
+}
+
 std::string UltraCanvasDesktopShell::DefaultScreenshotPath() {
     std::string base;
     for (const UserFolderInfo& folder : GetWellKnownUserFolders()) {
@@ -372,6 +386,18 @@ std::string UltraCanvasDesktopShell::DefaultScreenshotPath() {
     if (base.empty()) base = ".";
     const fs::path file = PathFromUtf8(base) / "Screenshots" /
                           PathFromUtf8("Screenshot " + TimestampForFileName() + ".png");
+    return PathToUtf8(file);
+}
+
+std::string UltraCanvasDesktopShell::DefaultRecordingPath() {
+    std::string base;
+    for (const UserFolderInfo& folder : GetWellKnownUserFolders()) {
+        if (folder.kind == UserFolderKind::Videos) { base = folder.path; break; }
+    }
+    if (base.empty()) base = HomeDirectory();
+    if (base.empty()) base = ".";
+    const fs::path file = PathFromUtf8(base) / "Screen Recordings" /
+                          PathFromUtf8("Screen recording " + TimestampForFileName() + ".mp4");
     return PathToUtf8(file);
 }
 
@@ -989,11 +1015,18 @@ namespace DesktopShellBackend {
         error = "Screenshots are not available on this platform yet.";
         return false;
     }
+    bool CaptureScreenArea(int, int, int, int, DesktopScreenImage& out, std::string& error) {
+        out = DesktopScreenImage();
+        error = "Screenshots are not available on this platform yet.";
+        return false;
+    }
 
+#ifndef ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS
     bool ListNativeApplications(int, std::vector<UCDesktopEntry>&) { return false; }
     bool LaunchShortcut(const std::string& shortcutPath, std::string& error) {
         return FileAssociations::OpenWithDefaultApplication({shortcutPath}, error);
     }
+#endif
     bool LaunchPackagedApplication(const std::string&, std::string& error) {
         error = "Microsoft Store applications run on Windows only.";
         return false;

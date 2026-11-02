@@ -1,3 +1,36 @@
+#### 2026-11-01 *1.103.0*
+- **The settings window is built on the framework's settings page kit**
+  (`UltraCanvasSettingsPageKit`, framework changelog `settings-page-kit`):
+  the window, the page skeleton and the controls come from it, where they
+  were this window's own. Nothing changes on screen.
+
+#### 2026-11-01 *1.102.0*
+- **A folder of programs no longer shows one program's icon on all of them
+  when it is first opened.** On Windows the programs that were still
+  loading their icon, and the console tools that have none, drew the icon of
+  whichever program came first (ArtCreator's, in the report) instead of the
+  generic application icon. Fixed in the framework (see its changelog,
+  `HostFileIconProbeName`).
+
+#### 2026-11-01 *1.101.0*
+- **Phones and cameras show up under Computer.** A phone, camera or media
+  player plugged in over USB (MTP / PTP) has no drive letter, so UltraFiler
+  never listed it while Explorer did. On Windows it now appears under
+  Computer in the tree and as a card on the Computer page - with its used
+  and free space, internal storage and SD card together, like a drive's card
+  - as soon as it is plugged in, and goes when it is pulled out (a display showing it goes Home).
+  It is browsed through the remote-drive machinery - folders from a cache
+  filled by a worker, previews, copying off and onto the phone, rename,
+  delete, new folder - and its account is never saved. A locked phone, or
+  one on "charging only", says to unlock it and choose File transfer instead
+  of showing an empty folder. On macOS an iPhone, iPad or camera appears the
+  same way through Image Capture, read-only: its photos and videos open,
+  preview and copy off. On Linux the phones, cameras and shares the
+  desktop mounted through GVFS are listed with the drives under readable
+  names. Both rest on framework changes - see the UltraCanvas changelog
+  entries "UltraCanvasPortableDevices" and "Linux: the phones, cameras and
+  shares the desktop mounted are volumes".
+
 #### 2026-11-01 *1.100.0*
 - **Settings > Display > New tab** decides what the "+" at the end of the tab
   strip opens: **Show current folder** (the default, as before), **Show Home

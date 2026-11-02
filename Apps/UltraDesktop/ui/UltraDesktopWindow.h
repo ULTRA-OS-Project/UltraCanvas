@@ -33,6 +33,8 @@
 // settings button offers sign out, restart and shut down, which Explorer's
 // Start menu would otherwise, and a tap of the Win key opens the
 // Applications window.
+// Version: 0.5.2 - the screenshot button opens UltraSnip (OpenSnip, its menu of
+//                  shapes and the recording, Super+Shift+S), the plain capture as the fallback
 // Version: 0.6.0 - the Wi-Fi and Bluetooth panels (join, pair, connect),
 //                  and the USB, keyboard, webcam, microphone and battery
 //                  panels behind the info panel's icons; the USB drives'
@@ -81,6 +83,7 @@ namespace UltraCanvas {
     class UltraCanvasClipboardRecorder;
     class UltraCanvasContainer;
     class UltraCanvasToolbar;
+    class UltraCanvasWaveSeparator;
     class UltraCanvasImageElement;
     class UltraCanvasMenu;
     class UltraCanvasButton;
@@ -132,10 +135,19 @@ public:
     // RAM disc, file manager, virtual desktops).
     void OpenSystemSettings();
     void OpenAppStarter();
+    // An application was started from the Apps window or a taskbar pin:
+    // first in the Apps window's Recent (DesktopSettings::recentApps).
+    void NoteAppStarted(const UltraCanvas::UCDesktopEntry& entry);
     void OpenTasks();
     void OpenRamDisc();
     void OpenFiler(const std::string& path = "");
     void TakeScreenshot();
+    // UltraSnip with these arguments (--rectangle, --window, --screen,
+    // --video); the plain whole-screen capture (TakeScreenshot) when the
+    // program is not installed
+    void OpenSnip(const std::vector<std::string>& arguments);
+    void ShowScreenshotMenu(int windowX, int windowY);
+    void StartSnipShortcut();
     void ToggleStickerboard(bool visible);
     void ToggleCategoryBoard(bool visible);
     // The Sticker board's window: over the work area, below the application
@@ -209,8 +221,19 @@ private:
             const std::string& tooltip, const std::string& icon, const std::string& text,
             std::function<void(bool)> onToggle);
     void StyleBarButton(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& button);
+    // Brings a bar's wave to kWaveGap from the icon of `group` next to it:
+    // no padding on that side of the group, the wave over the button's margin.
+    void TuckAgainstWave(const std::shared_ptr<UltraCanvas::UltraCanvasToolbar>& group,
+                         const std::shared_ptr<UltraCanvas::UltraCanvasWaveSeparator>& wave,
+                         bool vertical, bool waveAfterGroup);
     std::string IconPath(const std::string& name) const;
+    // The settings' wallpaper, else DefaultWallpaperPath.
     std::string WallpaperPath() const;
+    // ULTRA OS's own picture (media/images/desktop/ULTRA OS A.avif), else
+    // the framework's landscape.
+    static std::string DefaultWallpaperPath();
+    // WallpaperPath into `wallpaper`; the landscape when it cannot be read.
+    void LoadWallpaper(UltraCanvas::UltraCanvasImageElement& wallpaper) const;
 
     // ===== LIVE DATA =====
     void OnTimer();
@@ -336,6 +359,7 @@ private:
     // One per device icon, by its item id; made on the first click.
     std::map<std::string, std::shared_ptr<UltraDesktopDevicePanel>> devicePanels_;
     UltraCanvas::UltraCanvasGlobalShortcut lockShortcut_;
+    UltraCanvas::UltraCanvasGlobalShortcut snipShortcut_;       // Super+Shift+S: UltraSnip
     // The pinned applications as resolved against the installed ones at the
     // last rebuild; a pin whose application is gone is kept, and shows again
     // when it is back.

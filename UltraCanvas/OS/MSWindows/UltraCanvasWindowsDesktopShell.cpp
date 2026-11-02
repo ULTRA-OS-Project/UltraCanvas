@@ -51,6 +51,8 @@
 //     (UltraCanvasWindowsTrayHost.cpp).
 //   - The end of the session: ExitWindowsEx; the lock: LockWorkStation.
 //   - The loudspeaker: the default render endpoint's IAudioEndpointVolume.
+// Version: 1.6.0 - CaptureScreenArea: one rectangle of the virtual screen (a BitBlt of
+//                  that much); DesktopScreenImage::x / y carry the virtual screen's origin
 // Version: 1.5.0 - LockSession; the loudspeaker's volume (ReadAudioOutput,
 //                  SetAudioOutputVolume, SetAudioOutputMuted)
 // Version: 1.4.0 - no desktop switch from an MSIX package: its registry
@@ -1524,16 +1526,33 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
     return all;
 }
 
-bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
+// `area` nullptr: the whole virtual screen, every monitor, as X11's root
+// window is; else that rectangle of it (screen coordinates, as ListScreens
+// gives them), clipped to the virtual screen.
+bool CaptureScreenPixels(DesktopScreenImage& out, std::string& error, const int* area) {
     out = DesktopScreenImage();
-    // The whole virtual screen, every monitor, as X11's root window is.
-    const int left = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    const int top = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    const int width = GetSystemMetrics(SM_CXVIRTUALSCREEN);
-    const int height = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-    if (width <= 0 || height <= 0) {
+    const int screenLeft = GetSystemMetrics(SM_XVIRTUALSCREEN);
+    const int screenTop = GetSystemMetrics(SM_YVIRTUALSCREEN);
+    const int screenWidth = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+    const int screenHeight = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+    if (screenWidth <= 0 || screenHeight <= 0) {
         error = "Windows reports an empty screen.";
         return false;
+    }
+    int left = screenLeft, top = screenTop, width = screenWidth, height = screenHeight;
+    if (area) {
+        const int l = std::max(screenLeft, area[0]);
+        const int t = std::max(screenTop, area[1]);
+        const int r = std::min(screenLeft + screenWidth, area[0] + area[2]);
+        const int b = std::min(screenTop + screenHeight, area[1] + area[3]);
+        if (r <= l || b <= t) {
+            error = "The area to capture lies off the screen.";
+            return false;
+        }
+        left = l;
+        top = t;
+        width = r - l;
+        height = b - t;
     }
     HDC screen = GetDC(nullptr);
     if (!screen) {
@@ -1567,6 +1586,8 @@ bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
             try {
                 out.pixels.assign(static_cast<const uint8_t*>(bits),
                                   static_cast<const uint8_t*>(bits) + static_cast<size_t>(stride) * height);
+                out.x = left;
+                out.y = top;
                 out.width = width;
                 out.height = height;
                 out.stride = stride;
@@ -1583,6 +1604,15 @@ bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
     if (dib) DeleteObject(dib);
     ReleaseDC(nullptr, screen);
     return ok;
+}
+
+bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
+    return CaptureScreenPixels(out, error, nullptr);
+}
+
+bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error) {
+    const int area[4] = {x, y, width, height};
+    return CaptureScreenPixels(out, error, area);
 }
 
 bool CaptureScreen(const std::string& pngPath, std::string& error) {

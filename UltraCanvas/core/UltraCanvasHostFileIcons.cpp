@@ -5,8 +5,10 @@
 // OS/Linux/UltraCanvasLinuxHostFileIcons.cpp (freedesktop icon themes),
 // OS/MSWindows/UltraCanvasWindowsHostFileIcons.cpp (the shell's system image
 // list) and OS/MacOS/UltraCanvasMacOSHostFileIcons.mm (NSWorkspace).
+// Version: 1.3.0 - HostFileIconProbeName: the name a backend asks the shell
+//                  with, so the answer cannot depend on which file asked
 // Version: 1.2.0
-// Last Modified: 2026-10-12
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasUtils.h"   // PathFromUtf8 / PathToUtf8
@@ -61,6 +63,24 @@ namespace UltraCanvas {
         if (dot == std::string::npos || dot + 1 >= name.size())
             return "name:" + name;
         return "ext:" + name.substr(dot + 1);
+    }
+
+    std::string HostFileIconProbeName(const std::string& path,
+                                      bool isDirectory) {
+        // A stem no real file is given, so a shell that does look on disk
+        // finds nothing there and has only the type to answer from.
+        static const std::string kStem = "ultracanvas-host-icon-probe";
+        const std::string key = HostFileIconKey(path, isDirectory);
+        // The suffix chain the key carries, on the made-up stem: every file
+        // of the kind asks with the very same name.
+        if (key.rfind("ext:", 0) == 0) return kStem + "." + key.substr(4);
+        // A folder, and a name with no extension: no shell picks an icon for
+        // either from anything but the attribute - an extension-less name
+        // has no registered type to read - so the stem alone says it all.
+        // (The freedesktop backend, which does type a "makefile" by its
+        // name, reads only the name and never the file, and asks with the
+        // path.)
+        return kStem;
     }
 
     std::shared_ptr<UCPixmap> FitHostIconToSize(

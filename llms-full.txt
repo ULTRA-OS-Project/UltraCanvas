@@ -53,7 +53,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 -   Vector graphics with SVG parsing and transformations
 -   Gradients (linear, radial, conic)
 -   Path filling with multiple modes
--   Bitmap formats: PNG, JPG, BMP, GIF, AVIF, WebP, QOI
+-   Bitmap formats in every build: PNG, JPEG, BMP, TIFF, GIF, WebP, AVIF, HEIC, JPEG XL, QOI, icons
 -   Double buffering for smooth rendering
 
 **Extensible Plugin System**
@@ -85,7 +85,7 @@ UltraCanvas/
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
 │   ├── core/             # Platform-independent implementations
-│   ├── OS/Linux/         # Linux-specific code (X11, Cairo)
+│   ├── OS/Linux/         # Linux-specific code (X11, Cairo; OS/Linux/Wayland/ the Wayland backend)
 │   ├── OS/MSWindows/     # Windows-specific code (Win32, Direct2D)
 │   ├── OS/MacOS/         # macOS-specific code (Cocoa, Core Graphics)
 │   ├── OS/BSD/           # BSD-specific code
@@ -137,7 +137,8 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev clang
+    libfreetype6-dev libvips-dev libharfbuzz-dev \
+    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -150,6 +151,11 @@ mkdir build && cd build
 cmake ..
 make
 ```
+
+On Linux the default is the X11 backend. `cmake -DULTRACANVAS_WAYLAND=ON ..`
+builds the Wayland backend in its place (`libwayland-dev`,
+`wayland-protocols`, `libxkbcommon-dev`); one build speaks one display
+protocol.
 
 ----------
 
@@ -173,7 +179,9 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland support** - Native Wayland windowing on Linux
+-   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
+    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
+    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -726,6 +734,20 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   unset). `Tests/InstanceLockTest.cpp`. Used by UltraCanvasSingleInstance. See
   `Docs/UltraCanvas/UltraCanvasInstanceLock.md`.
 
+- **UltraCanvasSettingsPageKit** (`UltraCanvasSettingsPageKit.h`, namespace
+  `SettingsPageKit`) — the look of an application's settings window, once:
+  `UltraCanvasSettingsWindow` (`Create`, `AddSection`, `AddTreeNode`,
+  `AddPage`, `resets`, `Finish`, `ShowPage`, `SelectPage`, `onPageShown`,
+  `onClosed`) - the tree of pages on the left, the page on the right, the
+  page's Restore defaults and Close at the foot; a page's skeleton
+  (`MakePage` → `PageParts`, `AddNote`, `AddBodyCaption`) and the controls in
+  the window's one type scale (`MakeChoice`, `MakeCheckbox`, `MakeIntSlider`
+  / `MakeSliderRow`, `MakeButton` / `MakeButtonRow`, `MakeChoiceRow`,
+  `MakeLabelledRow`, `MakeColorBox`, `MakeLabel` / `MakeText`). UltraFiler's
+  settings window set the style; it and UltraSnip's are built on the kit.
+  Core in `core/UltraCanvasSettingsPageKit.cpp`. See
+  `Docs/UltraCanvas/UltraCanvasSettingsPageKit.md`.
+
 - **UltraCanvasSingleInstance** (`UltraCanvasSingleInstance.h`) — one running
   copy of an application per user, built on UltraCanvasInstanceLock: a second
   start asks the running copy over UltraMessage (`<appId>.show`) to come
@@ -737,7 +759,7 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   (`cmake/UltraCanvasSingleInstance.cmake`) compiles
   `core/AppEntry/UltraCanvasSingleInstance.cpp` into the application and links
   UltraMessage where present. Used by the single-window applications (UltraMail,
-  UltraClipboard, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
+  UltraClipboard, UltraSnip, DeviceExplorer, UOS-Settings, UltraNetMonitor, UltraDBAdmin, UltraPassword,
   UltraAuthenticator, UltraCleaner, EmailCleaner, UltraClaude, UltraAI,
   UltraSocial, UltraFIBU, UltraWin Manager) and, with their files handed over,
   the document applications (Texter, UltraFiler, UltraViewer, UltraPaint,
@@ -1079,7 +1101,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend's first
+  phase (the outputs, the devices; the shell protocols are the next step,
+  `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
@@ -1105,8 +1130,13 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `ReserveScreenEdges` (a window's strips along the
     screen's edges, `_NET_WM_STRUT_PARTIAL` on X11 and appbars on Windows,
     so maximised windows stop short of a desktop's bars), `CaptureScreen`
-    (PNG), `CaptureScreenImage` (pixels in memory), `DefaultScreenshotPath`
-    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`).
+    (PNG), `CaptureScreenImage` (pixels in memory), `CaptureScreenArea` (one
+    rectangle of the screen as pixels, clipped to it - a screenshot tool's
+    snip, a screen recorder's frames; `DesktopScreenImage::x` / `y` say
+    where the pixels came from), `DefaultScreenshotPath`
+    (`<Pictures>/Screenshots/Screenshot <date> <time>.png`),
+    `DefaultRecordingPath`
+    (`<Videos>/Screen Recordings/Screen recording <date> <time>.mp4`).
   - `ReadDeviceActivity` → `DesktopDeviceActivity`: webcam / microphone /
     speaker in use, Bluetooth, Wi-Fi with SSID, LAN, VPN, traffic totals,
     USB device count, battery, keyboard layout, plus `warnings`.
@@ -1281,10 +1311,30 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
     `GetPollIntervalMs`, static `NativeBackendAvailable`. The callback runs on
     the monitor's thread and must only hand the news over; one insertion
     produces several callbacks, so the receiver coalesces.
+  - `ListGvfsVolumes` / `GvfsVolumeLabel` — on Linux, the places the desktop
+    mounted through GVFS (a phone over MTP, a camera, an iPhone, an SMB / SFTP
+    / WebDAV share) as labelled volumes; part of `ListMountedVolumes`, watched
+    by the Linux monitor every two seconds.
   Wired up per platform by the `ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR`
   condition in the **top-level** `CMakeLists.txt`; without it the core file
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
+- **UltraCanvasPortableDevices** (`UltraCanvasPortableDevices.h`) — phones,
+  cameras and media players plugged in over USB that are not a drive (MTP /
+  PTP). `List` (`PortableDeviceInfo`: id, name, manufacturer, kind),
+  `ListFolder`, `Download`, `Upload`, `MakeFolder`, `Delete`, `Rename` by path
+  (`"/"` is the device, its folders its storages); every call blocks, safe
+  from any thread. `UltraCanvasPortableDeviceMonitor` reports plug-in and
+  pull-out. Backends: Windows Portable Devices on one COM thread of its own
+  (`OS/MSWindows/UltraCanvasWindowsPortableDevices.cpp`); macOS Image
+  Capture, read-only (`OS/MacOS/UltraCanvasMacOSPortableDevices.mm`: an
+  iPhone's photos, a camera's card); none on Linux (the desktop mounts
+  devices through GVFS - see above). Wired up by the
+  `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the top-level
+  `CMakeLists.txt`. UltraFiler carries devices as remote drives
+  (`UltraFilerDeviceProvider.h`). See
+  `Docs/UltraCanvas/UltraCanvasPortableDevices.md`.
 
 - **UltraCanvasSessionLock** (`UltraCanvasSessionLock.h`) — a call when the
   desktop session locks and when it unlocks, so a program forgets what should
@@ -2669,7 +2719,7 @@ command-line tool. Planned: keyframed parameters.
   `VideoFXProject`, `VideoFXProjectKind`, `VideoFXProxySettings`,
   `VideoFXAcceleration` (`VideoFXExportSettings::acceleration`), `VideoFXEncoderInfo`
   (`VideoFXExportSettings::keyframeInterval`), `VideoFXFileFormat`, `VideoFXFileKind`,
-  `VideoFXPictureReader`
+  `VideoFXPictureReader`, `VideoFXRecorderSettings`, `VideoFXPixelLayout`
 - Module: `VideoFX_GetVersion`, `VideoFX_GetBackendVersion`,
   `VideoFX_IsAvailable`, `VideoFX_GetLastError`, `VideoFX_ResultToString`,
   `VideoFX_IsVideoEncoderAvailable`, `VideoFX_IsAudioEncoderAvailable`,
@@ -2688,6 +2738,12 @@ command-line tool. Planned: keyframed parameters.
   and, inside an overlap, the transition), `VideoFX_RenderFrame` (one frame
   in one call), `VideoFX_PlanSlideshow` (a slideshow's segments and
   settings before it is rendered)
+- Recording: `VideoFXFrameRecorder` (`Open`, `PushFrame` - pixels with
+  their stride and layout, RGBA or BGRA, and the frame's time - `Close`,
+  `IsOpen`, `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight`,
+  `GetEncoderName`): a live source's frames, pushed one by one as they
+  happen, encoded into a file as they come - what UltraSnip records the
+  screen with. No timeline, no sound, the fastest preset, fragmented MP4.
 - Editing and export: `VideoFX_Export` (the general call), `VideoFX_Transcode`,
   `VideoFX_Trim`, `VideoFX_ApplyEffects`, `VideoFX_Concatenate`,
   `VideoFX_ExtractAudio`, `VideoFX_TrimLossless`, `VideoFX_CreateSlideshow`,
@@ -8370,7 +8426,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 -   Vector graphics with SVG parsing and transformations
 -   Gradients (linear, radial, conic)
 -   Path filling with multiple modes
--   Bitmap formats: PNG, JPG, BMP, GIF, AVIF, WebP, QOI
+-   Bitmap formats in every build: PNG, JPEG, BMP, TIFF, GIF, WebP, AVIF, HEIC, JPEG XL, QOI, icons
 -   Double buffering for smooth rendering
 
 **Extensible Plugin System**
@@ -8402,7 +8458,7 @@ UltraCanvas/
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
 │   ├── core/             # Platform-independent implementations
-│   ├── OS/Linux/         # Linux-specific code (X11, Cairo)
+│   ├── OS/Linux/         # Linux-specific code (X11, Cairo; OS/Linux/Wayland/ the Wayland backend)
 │   ├── OS/MSWindows/     # Windows-specific code (Win32, Direct2D)
 │   ├── OS/MacOS/         # macOS-specific code (Cocoa, Core Graphics)
 │   ├── OS/BSD/           # BSD-specific code
@@ -8435,7 +8491,8 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev
+    libfreetype6-dev libvips-dev libharfbuzz-dev \
+    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -8448,6 +8505,11 @@ mkdir build && cd build
 cmake ..
 make
 ```
+
+On Linux the default is the X11 backend. `cmake -DULTRACANVAS_WAYLAND=ON ..`
+builds the Wayland backend in its place (`libwayland-dev`,
+`wayland-protocols`, `libxkbcommon-dev`); one build speaks one display
+protocol.
 
 ----------
 
@@ -8496,7 +8558,9 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland support** - Native Wayland windowing on Linux
+-   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
+    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
+    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -11179,7 +11243,7 @@ drops one. The entries are the application's strings - a path it
 normalised, a name - compared as text.
 
 **File Location**: `include/UltraCanvasAppSettings.h`
-**Version**: 1.0.0
+**Version**: 1.0.1
 **Author**: UltraCanvas Framework
 
 ## Features
@@ -11289,6 +11353,19 @@ test.Save();
 - `Set` on a dotted key makes the objects on the way and replaces a scalar
   in the way; `Set` with a scalar on a key that holds an object replaces
   the object.
+- An older file is never a problem: a key it does not have reads as the
+  fallback, and `Set` makes the objects on the way. Renaming or moving a
+  key is three calls, and the old file still reads:
+
+  <!-- doc-check: UltraCanvas::UltraCanvasAppSettings settings("UltraSnip"); -->
+  ```cpp
+  // 0.1 kept the rate under "video.fps"; 0.2 calls it "video.frameRate"
+  if (settings.Has("video.fps")) {
+      settings.Set("video.frameRate", settings.GetInt("video.fps", 20));
+      settings.Remove("video.fps");
+      settings.Save();
+  }
+  ```
 - `AppSettingsTest` (`Tests/AppSettingsTest.cpp`) covers it.
 
 ## Related
@@ -14409,6 +14486,20 @@ false, fires `onImageLoadFailed` with the reason and shows the error
 placeholder. A null or empty image (`std::make_shared<UCImage>()`) clears the
 element and fires neither.
 
+A picture that exists as pixels rather than as a file - a screen capture, a
+frame a program made - is shown without any encoding or decoding on the way:
+`UCImage::FromBgra(pixels, width, height, stride, opaque)` takes rows of
+32-bit pixels in memory order B, G, R, A (cairo's native layout, what the
+platforms' screen captures hand over; with `opaque` the fourth byte is
+ignored), and `UCImage::FromRgba(pixels, width, height)` takes straight
+R, G, B, A rows of `width * 4` bytes. Both copy the rows, and the image then
+draws, scales, saves and reports transparency like any other.
+
+<!-- doc-check: std::shared_ptr<UltraCanvasImageElement> image; std::vector<uint8_t> rgba; int width; int height; -->
+```cpp
+image->LoadFromImage(UCImage::FromRgba(rgba.data(), width, height));
+```
+
 ### GetLastError
 ```cpp
 const std::string& GetLastError() const;
@@ -16196,8 +16287,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 <!-- doc-check: void CreateFolder(); void ShowNewEntryMenu(); -->
 
-**Version:** 1.2.0 - a button grows to fit its text  
-**Last Modified:** 2026-10-16  
+**Version:** 1.3.0 - `SetWrap`: the text on several lines  
+**Last Modified:** 2026-11-01  
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -16223,6 +16314,7 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
   - [Auto-sized Button](#auto-sized-button)
   - [A Fixed Width Is a Minimum](#a-fixed-width-is-a-minimum)
   - [Split Button (a primary action plus a menu)](#split-button-a-primary-action-plus-a-menu)
+  - [A Tile: an Icon over a Wrapped Name](#a-tile-an-icon-over-a-wrapped-name)
   - [Disabled Button](#disabled-button)
 - [Keyboard Support](#keyboard-support)
 - [Rendering](#rendering)
@@ -16369,6 +16461,7 @@ void SetFont(const std::string& family, float size,
 void SetFontSize(float size);
 void SetTextAlign(TextAlignment align);
 void SetEllipsize(EllipsizeMode mode);   // how a text that does not fit is shortened: End (default), Middle, Start
+void SetWrap(TextWrap wrap);             // WrapWord: the text on as many lines as its area holds
 
 // Layout configuration
 void SetPadding(float all);                                      // inherited from UltraCanvasUIElement
@@ -16504,6 +16597,7 @@ struct ButtonStyle {
     FontWeight fontWeight = FontWeight::Normal;
     TextAlignment textAlign = TextAlignment::Center;
     EllipsizeMode ellipsize = EllipsizeMode::EllipsizeEnd;   // Middle keeps a path's first and last part
+    TextWrap wrap = TextWrap::WrapNone;      // WrapWord: several lines, from the top of the text area
 
     int iconSpacing = 4;          // space between icon and text
     float cornerRadius = 3.0f;
@@ -16716,6 +16810,24 @@ newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
                                        Color(55, 55, 60, 128));  // disabled
 ```
 
+### A Tile: an Icon over a Wrapped Name
+
+A launcher's tile is a button with its icon on top and its name wrapped
+onto as many lines as the box below the icon holds. Wrapped text starts at
+the top of that box, and the last line that fits ends in "…" when more is
+left.
+
+```cpp
+auto tile = std::make_shared<UltraCanvasButton>("tile", 0, 0, 116, 120,
+                                                "Windows Defender Firewall mit erweiterter Sicherheit");
+tile->SetIcon("media/icons/apps/office.svg");
+tile->SetIconSize(48, 48);
+tile->SetIconPosition(ButtonIconPosition::Top);
+tile->SetWrap(TextWrap::WrapWord);
+tile->SetFontSize(12);
+tile->SetGrowToFitText(false);   // the tile keeps its width: the name wraps instead
+```
+
 ### Disabled Button
 
 ```cpp
@@ -16753,6 +16865,7 @@ icon at 24 px, not 22).
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.3.0 | 2026-11-01 | `ButtonStyle::wrap` / `SetWrap()`: the text on several lines (A Tile: an Icon over a Wrapped Name) |
 | 1.2.0 | 2026-10-16 | A fixed width is a minimum: a button grows to fit its text; `SetGrowToFitText()` (A Fixed Width Is a Minimum) |
 | 1.0.6 | 2026-10-12 | `GetIconWidth()` / `GetIconHeight()` (Style Configuration) |
 | 1.0.5 | 2026-10-11 | `onDoubleClick` (Events) |
@@ -25843,7 +25956,9 @@ never to "every desktop".
 | `ReserveScreenEdges(windowId, left, right, top, bottom)` | Reserve strips along the screen's edges for a window — a desktop's bars, a dock — so maximised and tiled windows stop short of them (`_NET_WM_STRUT_PARTIAL` and `_NET_WM_STRUT` on X11; the work area shrinks accordingly). Physical pixels, 0 for an edge that reserves nothing, each strip the full length of its edge; call again to change, four zeros to release. `windowId` is the window's native handle. On X11 a strut is measured from the root window's edge whatever monitor the window is on, so a window that covers one monitor of several reserves an edge only where its monitor lies on that edge of the root (a strip from the root's edge across another monitor would push that monitor's windows aside) and its strips run the window's own extent, not the root's: a desktop on the right monitor reserves its right bar along its own height and nothing on the left. On Windows each edge is an appbar of its own while Explorer's taskbar runs (placed beside Explorer's bars, and released when the window closes), and the work area itself (`SPI_SETWORKAREA`) when nothing else keeps it — UltraDesktop as the shell; call it from the window's own thread. Asking again for the same strips changes nothing. |
 | `CaptureScreen(pngPath, &error)` | The whole screen as PNG. The directory is created; false with the reason. |
 | `CaptureScreenImage(image, &error)` | The whole screen as pixels in memory, in a `DesktopScreenImage`: `width`, `height`, `stride` and `pixels`, four bytes a pixel in memory order B, G, R, unused — cairo's RGB24, the QR scanner's `BGRA32` — so a row goes to either without a copy. Nothing is written anywhere; for a caller that must not leave a file behind (UltraAuthenticator reads an enrolment QR code off the screen this way, and a PNG of it would be the seed in the clear). False with the reason, and `image` empty. |
+| `CaptureScreenArea(x, y, width, height, image, &error)` | One rectangle of the screen - `x`, `y`, `width`, `height` in the pixels of `ListScreens` - as pixels in memory, in the same `DesktopScreenImage` layout; the rectangle is clipped to the screen, and `image.x` / `image.y` say where the pixels came from (`CaptureScreenImage` sets them too: 0,0 on X11, the virtual screen's origin on Windows, which is negative when a monitor lies left of or above the primary). Cheaper than the whole screen and a crop - `XGetImage` of that much, a `BitBlt` of that much - which is what a screen recorder taking twenty frames a second of one window needs. False with the reason (a rectangle wholly off the screen among them), and `image` empty. |
 | `DefaultScreenshotPath()` | `<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png` — the user's Pictures folder from `GetWellKnownUserFolders`, the home directory when there is none. Dots in the time, since a colon is not a file-name character on Windows. |
+| `DefaultRecordingPath()` | `<Videos>/Screen Recordings/Screen recording 2026-09-29 14.05.31.mp4` — the user's Videos folder, the home directory when there is none. Only names the file; the recorder (UltraSnip) creates the directory. |
 
 On Windows a desktop window covers the primary monitor; the others get a
 window each, kept while it is open:
@@ -25885,8 +26000,8 @@ second or two is fine.
 
 | Call | Meaning |
 |---|---|
-| `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Then the Microsoft Store (packaged) applications, which have no shortcut there: the shell's *Applications* folder (`FOLDERID_AppsFolder`, what the Start menu's list is made of), each entry with its `appUserModelId` (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), its display name and a PNG of the tile icon the shell gives it, `program` empty. |
-| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. An entry with an `appUserModelId` is started through `IApplicationActivationManager`, as the Start menu starts it (`shell:AppsFolder\<id>` when that is not there); it takes no files and refuses them with a reason. |
+| `ListApplications(iconSize)` | Every menu-visible desktop entry in the standard `applications` directories (`XDG_DATA_HOME`, then `XDG_DATA_DIRS`), one per desktop-file id — a user's entry shadows the system's, and a hidden user entry hides it — sorted by name, `iconFile` resolved at `iconSize`. Entries whose `TryExec` is not installed are left out. On Windows the Start menu's shortcuts instead (`%APPDATA%` and `%ProgramData%` `\Microsoft\Windows\Start Menu\Programs`), the user's shadowing the machine's of the same name: named as the folder's `desktop.ini` names them, programs only (no uninstallers, help files or web links), `program` the shortcut's target, `startupWMClass` its name (so `MatchApplication` finds its windows), `shortcutPath` the `.lnk`, `iconFile` a PNG of its icon. Then the Microsoft Store (packaged) applications, which have no shortcut there: the shell's *Applications* folder (`FOLDERID_AppsFolder`, what the Start menu's list is made of), each entry with its `appUserModelId` (`Microsoft.WindowsCalculator_8wekyb3d8bbwe!App`), its display name and a PNG of the tile icon the shell gives it, `program` empty. On macOS the application bundles in `~/Applications`, `/Applications`, `/Applications/Utilities`, `/System/Applications` and `/System/Applications/Utilities`, and one level of subfolders below them (`/Applications/Adobe Photoshop 2025/…`); agents and background-only bundles (`LSUIElement`, `LSBackgroundOnly`) left out, a bundle identifier listed once (the user's copy first): named as Finder names it (localized), `genericName` the bundle's `CFBundleName`, `program`, `exec` and `shortcutPath` the bundle, `startupWMClass` its bundle identifier, `categories` its `LSApplicationCategoryType` (`public.app-category.productivity`) when it declares one, `iconFile` a PNG of the icon Finder shows, at twice `iconSize`. |
+| `LaunchApplication(entry, files, &error)` | Start it detached through `DesktopEntryCommand`; a `Terminal=true` entry is wrapped in the terminal the machine has. An entry with a `shortcutPath` is opened the way Explorer opens the shortcut — files, if any, go to its `program`. While no Explorer taskbar runs (the desktop is the shell), a shortcut to a bare `explorer.exe` — the Start menu's *File Explorer* — opens *This PC*: started with nothing to open, Explorer would take over as the session's desktop. An entry with an `appUserModelId` is started through `IApplicationActivationManager`, as the Start menu starts it (`shell:AppsFolder\<id>` when that is not there); it takes no files and refuses them with a reason. On macOS an application bundle is started through `NSWorkspace openApplicationAtURL` and brought to the front, as Finder starts it; a failure macOS reports later is logged. |
 | `LaunchProgram(name, args, &error)` / `FindProgram(name)` | A program by name — `"UltraFiler"` — looked for next to this executable first (a build tree, a bundle), then on `PATH`. On macOS, where each application is a bundle of its own, `<name>.app` beside this application's bundle and in `~/Applications` and `/Applications` comes before `PATH`. |
 | `MatchApplication(window, applications)` | The desktop entry a window (`DesktopWindowInfo`) belongs to, among `ListApplications()`: the entry whose `StartupWMClass` is the window's `WM_CLASS`, else whose program, icon name or name the class or instance spells, case aside (`Gimp-2.10` is `gimp-2.10`'s). `nullptr` when none matches. UltraDesktop's clipboard panel uses it to know what the window being pasted into takes. |
 
@@ -26143,8 +26258,10 @@ the shell they are free.
 | Platform | Backend |
 |---|---|
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
+| Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
 | macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
+| macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
 
 The split is `ULTRACANVAS_DESKTOPSHELL_NATIVE`, decided in
 `UltraCanvasDesktopShellBackend.h` by platform macro; the core file emits the
@@ -32021,6 +32138,14 @@ showed the old picture. The decode itself reads images with
 `UCImage::GetFresh()`, which checks the shared cache against the file and reads
 a file that changed since it was cached again; plain `UCImage::Get()` never
 looks at the disk.
+
+**Not only the Filer's thumbnails live there.** `UCImage::GetPixmap` keeps a
+raster file's fitted pixmap in the same cache when the box is at least
+640 × 480 raw pixels - a desktop's wallpaper, a viewer's photo - stored as
+the same QOI blob after the first decode and inflated on the next run
+instead of decoding and resizing the file; a picture without an alpha
+channel is stored and inflated opaque (RGB24). The same stamp and the same
+sweep apply.
 
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
@@ -40917,6 +41042,7 @@ if (UltraCanvas::HostFileIconsAvailable()) {
 | `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` | the icon as a `UCPixmap`, or null |
 | `RefreshHostFileIcons()` | forget the lookups — after a theme change |
 | `FitHostIconToSize(pixmap, desiredSize)` | the answer resampled down to the size it is drawn at; never scaled up |
+| `HostFileIconProbeName(path, isDirectory)` | the made-up name a backend asks its host with — the key's type and nothing of the file |
 
 ## The key is the whole design
 
@@ -40947,6 +41073,20 @@ icon for `.exe` or `.lnk`, resolved from the name alone on every backend, and
 so the same for every file of the kind. (Until October 2026 those were keyed
 per file, which made a folder of ninety DLLs hold ninety copies of one
 picture.)
+
+A key is only as good as the question asked under it, though: an answer that
+depends on more than the key is filed under the key all the same. So a
+backend whose host might look at the file asks with `HostFileIconProbeName`
+instead of the path — the key's suffix chain on a stem no file is given
+(`ultracanvas-host-icon-probe.exe` for any `.exe`, the bare stem for a folder
+or an extension-less name). Every file of a kind is then asked about under
+the very same name, and the host has no file to find.
+
+```cpp
+// Both "ultracanvas-host-icon-probe.exe": the shell cannot tell them apart.
+const std::string first  = UltraCanvas::HostFileIconProbeName("C:/Apps/ArtCreator.exe", false);
+const std::string second = UltraCanvas::HostFileIconProbeName("C:/Tools/videofx.exe", false);
+```
 
 ## Held at the size it is drawn
 
@@ -40998,6 +41138,14 @@ plain associated icon where a locked-down shell refuses the lists. A
 transparent border is trimmed off what comes back: the jumbo list is a 256×256
 canvas, and a type whose icon exists only at 48 sits in the middle of it with
 empty space all round, which drawn into a tile would be a postage stamp.
+The shell is handed `HostFileIconProbeName`, never the caller's path. The
+flag keeps it off the disk for most types, but not for those whose registered
+icon is `%1` — `.exe`, `.ico`, `.cur`, `.lnk` — whose handler reads the file
+it is named after regardless. Until November 2026 the path went through, and
+a folder of programs drew the first one's own icon (ArtCreator's, in the
+report) on every other program whose icon was still loading, and on every
+console tool that has none, until the slot happened to be evicted and asked
+again by a program without an icon.
 A type no program is registered for answers **null**, not the shell's icon
 for it: that is the blank "no program" page (`SIID_DOCNOASSOC`), which tells
 the reader nothing - a `.7z` or `.tar.xz` on a machine without 7-Zip looked
@@ -41005,12 +41153,16 @@ like an empty sheet - while the caller's own icon for the type at least says
 what kind of file it is.
 
 **macOS** — `OS/MacOS/UltraCanvasMacOSHostFileIcons.mm`. `NSWorkspace`, asked
-for the content type the extension names rather than for the file, so one
-lookup serves every file of a kind. Where the content-type API is not
-available the path itself is asked, which also picks up a file's custom icon —
-what Finder shows there too. Drawing an `NSImage` into a bitmap is the one
-piece of AppKit rendering that is safe off the main thread, which is where a
-file display calls this from.
+for the content type the extension of `HostFileIconProbeName` names
+(`iconForContentType:`; `UTTypeFolder` for a folder, `UTTypeData` for a name
+with no extension), or before macOS 11 the same question through
+`iconForFileType:` — never `iconForFile:` with the path, which reads a file's
+custom icon and would file one file's picture under the whole type. (Until
+November 2026 the content-type branch was compiled out — its macro was only
+ever defined in the "Open with" backend — so every lookup read the file
+itself, and a folder was drawn with the startup disk's icon.) Drawing an
+`NSImage` into a bitmap is the one piece of AppKit rendering that is safe off
+the main thread, which is where a file display calls this from.
 
 **WebAssembly and Android** report unavailable: there is no desktop to ask, so
 `LoadHostFileIconPixmap` returns null and a caller keeps its own icons.
@@ -57859,6 +58011,117 @@ Layout values (centerX, plot width, padding) are recomputed by `CalculateLayout(
 - [UltraCanvasLineChartElement](UltraCanvasLineChartElement.md) — Line chart component
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasPortableDevices.md
+==============================================================================
+
+# UltraCanvasPortableDevices
+
+<!-- doc-check: void AddDeviceRow(const std::string& id, const std::string& name, PortableDeviceKind kind); -->
+<!-- doc-check: std::atomic<bool> devicesDirty; std::string id; -->
+
+Phones, cameras and media players plugged in over USB that are **not a drive**.
+A device that speaks MTP (Android phones, players) or PTP (cameras, an iPhone's
+photos) gets no drive letter and no mount point, so nothing that lists mounted
+volumes ([`UltraCanvasVolumeMonitor`](UltraCanvasVolumeMonitor.md)) sees it.
+Windows Explorer reaches such a device through Windows Portable Devices (WPD);
+this is the same access for an UltraCanvas application: which devices are
+connected, what is in a folder on one, and copying files off it and onto it.
+
+```cpp
+#include "UltraCanvasPortableDevices.h"
+
+for (const PortableDeviceInfo& d : UltraCanvasPortableDevices::List())
+    AddDeviceRow(d.id, d.name, d.kind);
+
+std::vector<PortableDeviceEntry> entries;
+std::string error;
+UltraCanvasPortableDevices::ListFolder(id, "/Internal shared storage/DCIM",
+                                       entries, error);
+
+UltraCanvasPortableDeviceMonitor monitor;
+monitor.Start([this]() { devicesDirty.store(true); });   // background thread!
+```
+
+## Paths, not object ids
+
+A device is addressed by paths, the way a disk is: `"/"` is the device, its
+folders are the **storages** it offers ("Internal shared storage", "SD card"),
+and below them the folders and files as the device names them. WPD itself knows
+objects by id; the backend resolves a path one name at a time from the device
+object and keeps every id a listing taught it, so walking down a phone's
+folders costs one listing per folder, as it would on a disk. A call that fails
+on an id the cache handed it — the file was deleted on the phone meanwhile —
+forgets the device's ids and resolves the path afresh, once.
+
+Paths reach the backend normalised (`NormalizePortableDevicePath`): a leading
+`'/'`, no trailing one, no empty segments, a backslash read as `'/'`.
+
+## Every call blocks
+
+A device answers over USB, which can take a while — a DCIM folder of thousands
+of photos is a property read per photo, a video is hundreds of megabytes. Run
+the calls off the UI thread; UltraFiler's drive worker does. They are safe from
+any thread: the Windows backend runs every WPD call on **one COM thread of its
+own** and the caller's thread waits for it. That gives the devices it opened one
+owner — they stay open between calls, so a second folder on the same phone does
+not cost a new MTP session — and a device answers one request at a time anyway.
+
+## API
+
+| Call | Meaning |
+|---|---|
+| `Available()` | Whether this build can reach portable devices at all. |
+| `List()` | The devices connected now: `PortableDeviceInfo { id, name, manufacturer, description, kind, readOnly }`. `readOnly` marks a device files can only be copied off (macOS's Image Capture): `Upload`, `MakeFolder`, `Delete` and `Rename` fail on it, so a file manager does not offer them. `id` is what every other call takes — stable while the device stays plugged in, and the same the next time it is plugged into the same port. `kind` is `Phone`, `Camera`, `MediaPlayer` or `Other`, from what the device says it is. |
+| `ListFolder(id, path, out, error)` | The entries of a folder: `PortableDeviceEntry { name, isDirectory, size, modifiedTime }` (`modifiedTime` UTC seconds, 0 when unknown). `"/"` lists the storages — a phone's other services (contacts, messages) are not folders and are left out. A root with no storage at all is an error that says what to do: a locked phone, or one left on "charging only", shows none. |
+| `Download(id, path, localFile, error, progress)` | Copies a file off the device into `localFile` (UTF-8), replacing it; a copy that fails part way is removed. |
+| `Upload(id, localFile, path, error, progress)` | Copies a local file onto the device as `path`. A file of that name already there is **replaced** — MTP would otherwise keep both under one name, so the caller asks first. |
+| `MakeFolder(id, path, error)` | Creates a folder; its parent must exist. |
+| `Delete(id, path, error)` | Deletes a file, or a folder with everything in it. The device and its storages refuse. |
+| `Rename(id, path, newName, error)` | Renames in place; `newName` is a bare name. |
+| `GetSpace(id, total, free, error)` | The device's capacity and free space in bytes, its storages added up — a phone's internal storage and its SD card are one device to the user. Read off the storage objects, so no folder is walked. Fails, with a reason, on a device that shows no storage (locked, or on "charging only"). |
+
+`progress` is asked as a transfer moves — `(bytesDone, bytesTotal)`, total 0
+when the device did not say — and returning `false` calls the transfer off; the
+call then fails with `"cancelled"`. An upload called off leaves nothing on the
+device: the object is only made when the copy is committed.
+
+## The monitor
+
+`UltraCanvasPortableDeviceMonitor` reports a device being plugged in or pulled
+out. It compares the connected devices every interval (`SetPollIntervalMs`,
+default 2000 ms): asking Windows which portable devices are present is a look at
+its device list, the devices themselves are not opened for it, and it needs no
+window to receive notifications on. The callback runs on the monitor's thread
+and must only hand the news over. `Start()` takes the first look at once, so a
+device already connected is not reported as arriving; it refuses when there is
+no backend. `Stop()` joins, so no callback runs after it returns.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Windows | WPD (`IPortableDeviceManager`, `IPortableDevice`), built into Windows since 7 — no extra library. The class ids and property keys are defined by the backend itself (`initguid.h`), so no WPD GUID import library is linked; mingw-w64 ships none. |
+| Linux | none — the desktop mounts such a device itself (GNOME's GVFS), and [`ListMountedVolumes`](UltraCanvasVolumeMonitor.md#gvfs-places) lists those places as volumes. |
+| macOS | Image Capture (`ImageCaptureCore`) — an iPhone's or an iPad's photos and videos and a camera's card, the access Photos and Image Capture.app have. **Read-only** (`readOnly` set): copying off works; it cannot put a file on an iPhone, make or rename a folder, or say how full the device is (`GetSpace` fails). Image Capture answers on the main thread, so a call hands its work there and waits with a timeout — and a call made *on* the main thread fails at once rather than wait for an answer only it could deliver (`List()` excepted). The first look at a device opens a session; an iPhone must be unlocked and have accepted "Trust This Computer", and the error says so. macOS has no MTP of its own: an Android phone is not reachable. |
+| Android, WebAssembly | none — `Available()` is false, `List()` is empty and every call says why. |
+
+A platform is wired up by dropping its backend under `UltraCanvas/OS/<Platform>/`
+and adding it to the `ULTRACANVAS_HAS_PORTABLE_DEVICES` condition in the
+**top-level** `CMakeLists.txt`; without the define the core file compiles the
+null backend. The backend object lives until the process ends on purpose: it
+owns the thread the devices were opened on, and releasing them from a static
+destructor, after that thread is gone, is how a program crashes on its way out.
+
+## UltraFiler
+
+UltraFiler carries each connected device as a drive of its remote-drive
+machinery (`Apps/UltraFiler/UltraFilerDeviceProvider.h`): rows under *Computer*
+and cards on the Computer page with the used and free space ring a drive card
+has (`GetSpace`), the listing cache and its worker, preview
+copies, copy off and onto the device, rename, delete and new folder — and the
+device's account lives in a store that is never written to disk.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasPresentationPptx.md
 ==============================================================================
 
@@ -66004,6 +66267,123 @@ it `core/UltraCanvasSessionLock.cpp` compiles a backend that never starts. The
 backends are `OS/Linux/UltraCanvasLinuxSessionLock.cpp` (gio, which GTK
 already brings), `OS/MSWindows/UltraCanvasWindowsSessionLock.cpp` and
 `OS/MacOS/UltraCanvasMacOSSessionLock.mm`.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasSettingsPageKit.md
+==============================================================================
+
+# UltraCanvas Settings Page Kit
+
+## Overview
+
+**UltraCanvasSettingsPageKit** is the look of an application's settings
+window, once: the window with the tree of pages on the left and the chosen
+page on the right, the page's *Restore defaults* and *Close* at the foot; a
+page's skeleton - the title, the caption, the controls, the notes block at
+the foot - and the controls in the window's one type scale. UltraFiler's
+settings window set the style; UltraSnip's is built on the kit, and so is
+the next application's, so every settings window reads as one family and a
+change to the look lands everywhere.
+
+**File Location**: `include/UltraCanvasSettingsPageKit.h`
+**Version**: 1.0.0
+**Author**: UltraCanvas Framework
+
+Everything is in `namespace UltraCanvas::SettingsPageKit`.
+
+## The window
+
+`UltraCanvasSettingsWindow` is the skeleton. An application's dialog state
+derives from it (or holds one), adds its sections, nodes, pages and resets,
+and calls `Finish`:
+
+| Call | Meaning |
+|---|---|
+| `Create(parent, title, width = 700, height = 560)` | The dialog window (not shown yet), the empty tree with a hidden root, the page area and the bottom bar; Escape closes it. False when the window could not be made. |
+| `AddSection(id, text)` | A top-level section of the tree (Display, Handling, ...). A section has no page of its own: selecting it moves on to its first page. |
+| `AddTreeNode(parentId, id, text)` | A node under any node; its id is the page id. |
+| `AddPage(pageId, page)` | A page under its node id. |
+| `resets[pageId] = PageReset{label, width, action}` | The page's *Restore defaults* button in the bottom bar: labelled and wired for it while the page is up, hidden for a page without one. |
+| `Finish(startPage)` | After the nodes and pages: hides the root (which promotes the sections to the top level), wires the selection, shows `startPage` and the window. The sections start closed. |
+| `ShowPage(nodeId)`, `SelectPage(pageId)` | Show a page; select its tree row (its section opened) and show it. |
+| `onPageShown`, `onClosed` | Called after a page is shown (a page of live figures re-reads them) and when the window has closed (`closed` is set first). |
+| `window`, `tree`, `pageArea`, `pages`, `restoreButton`, `shownPage`, `closed`, `IsOpen()` | The parts, for what the calls above do not cover. |
+
+## A page
+
+`MakePage(id, title, caption, scrolls = false)` returns `PageParts`: the
+whole `page`, the `body` the controls go into, and the `notes` block at
+the foot. `AddNote(parts, id, text)` adds a paragraph to the notes,
+`AddBodyCaption(parts, id, text)` a caption introducing a second group of
+controls. A page that `scrolls` (a long list of formats) puts its notes
+under the caption, before the list.
+
+## The controls
+
+| Call | Makes |
+|---|---|
+| `MakeLabel(id, text, fontSize, color)`, `MakeText(id, text, width, fontSize, color)` | A single-line label that hugs its text; a paragraph wrapped at `width`. |
+| `MakeChoice(id, text, checked, width)` | One choice of a radio group (`UltraCanvasRadioGroup::AddRadioButton` groups them). |
+| `MakeCheckbox(id, text, width, checked, onChange)` | A checkbox reporting its state. |
+| `MakeIntSlider(id, min, max, value, onChange)`, `MakeSliderValueLabel(id)`, `MakeSliderRow(id, caption, slider, value)` | A whole-number slider reporting while it moves, its value label, and the row holding both. |
+| `MakeButton(id, label, width, onClick, iconFile)`, `MakeButtonRow(id)` | The window's button (an icon from `media/icons/` as a mask), and a row of them. |
+| `MakeChoiceRow(id)`, `MakeLabelledRow(id, caption, control)` | A row of small choices that wraps; "caption [control]" on one line. |
+| `MakeColorBox(id, color, tooltip, onClick)`, `SetColorBoxColor(box, color)` | A box showing a configured colour, the same shade in every state. |
+| `IconPath(fileName)` | `media/icons/<fileName>` resolved. |
+
+The type scale and colours (`kTitleFontSize`, `kTextFontSize`,
+`kNoteFontSize`, `kTextColor`, `kNoteTextColor`, ...) and the page
+geometry (`kTextWidth`, `kControlHeight`, ...) are constants of the
+namespace, for a control a page builds itself.
+
+## Usage
+
+<!-- doc-check: UltraCanvasWindowBase* parent; struct MySettings { bool dark = false; int rate = 20; void Save() {} } settings; -->
+```cpp
+using namespace UltraCanvas::SettingsPageKit;
+
+struct Dialog : public UltraCanvasSettingsWindow {
+    std::shared_ptr<UltraCanvasSlider> rateSlider;
+    std::shared_ptr<UltraCanvasLabel> rateValue;
+};
+auto d = std::make_shared<Dialog>();
+if (!d->Create(parent, "MyApp - Settings")) return;
+d->AddSection("look", "Look");
+d->AddTreeNode("look", "look/colours", "Colours");
+
+PageParts page = MakePage("set-colours", "Colours", "How the window is drawn:");
+page.body->AddChild(MakeCheckbox("set-dark", "Dark", kTextWidth, settings.dark, [](bool on) {
+    settings.dark = on;
+    settings.Save();
+}));
+d->rateValue = MakeSliderValueLabel("set-rate-value");
+d->rateSlider = MakeIntSlider("set-rate", 5, 60, settings.rate, [d = d.get()](int rate) {
+    settings.rate = rate;
+    d->rateValue->SetText(std::to_string(rate) + " fps");
+    settings.Save();
+});
+page.body->AddChild(MakeSliderRow("set-rate-row", "Frame rate:", d->rateSlider, d->rateValue));
+AddNote(page, "set-colours-note", "Every change applies at once and is saved.");
+d->AddPage("look/colours", page.page);
+d->resets["look/colours"] = PageReset{"Restore defaults", 170, [d = d.get()]() {
+    settings.dark = false;
+    settings.rate = 20;
+    d->rateSlider->SetValue(20.0f);
+    settings.Save();
+}};
+d->Finish("look/colours");
+```
+
+The dialog state is kept alive by its owner (a `static std::shared_ptr`)
+while the window is up; `closed` says when it has gone. UltraFiler
+(`Apps/UltraFiler/UltraFilerSettingsDialog.cpp`) and UltraSnip
+(`Apps/UltraSnip/ui/UltraSnipSettingsDialog.cpp`) are the two windows
+built on it.
+
+## Related
+
+- `UltraCanvasAppSettings.h` - the file the settings are kept in
+- `UltraCanvasTreeView`, `UltraCanvasRadio`, `UltraCanvasCheckbox`, `UltraCanvasSlider` - the elements the kit makes
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasShellLink.md
@@ -78322,7 +78702,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTreeViewExamples.md
 
 # UltraCanvasTreeView Documentation
 
-<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; -->
+<!-- doc-check: void ShowPage(const std::string& pageId); void OpenItem(TreeNode* node); void LoadChildrenFromDisk(TreeNode* node); void ShowContextMenu(TreeNode* node, const UCEvent& event); void StartFetch(const std::string& nodeId); std::shared_ptr<UltraCanvasSplitPane> splitPane; Point2Di dropPoint; -->
 
 ## Contents
 
@@ -78714,6 +79094,22 @@ TreeNode* FindNode(const std::string& nodeId);
 ```
 Finds a node by its ID.
 
+#### `GetNodeAtY`
+```cpp
+TreeNode* GetNodeAtY(int y);
+```
+The row at an element-local y - as scrolled, so the y of `MapToLocal` of a
+window point - or `nullptr` below the last row. For a drop that starts in
+another element (a list's row dragged onto a category in the tree):
+
+```cpp
+// dropPoint: where the drag ended, in window coordinates (UCEvent::pointerWindow)
+const Point2Df local = treeView->MapToLocal(Point2Df(dropPoint.x, dropPoint.y));
+if (TreeNode* node = treeView->GetNodeAtY(static_cast<int>(local.y))) {
+    ShowPage(node->data.nodeId);
+}
+```
+
 ### Selection Management
 
 #### `SelectNode`
@@ -78899,7 +79295,7 @@ const Color& GetExpanderArrowColor() const;
 ```
 How the expand button of a row with children looks. `TreeExpanderStyle::Box`
 (the default) is the `+` / `-` in a square, coloured by
-`SetExpandButtonColor`. `TreeExpanderStyle::Chevron` is an arrow instead,
+`SetExpandButtonColor` / `SetExpandButtonColors`. `TreeExpanderStyle::Chevron` is an arrow instead,
 pointing right on a closed row and down on an open one, drawn with a 1.5 px
 round stroke in `SetExpanderArrowColor` (default a mid grey,
 `Color(0x70, 0x70, 0x78)`). It takes the same place and the same click as the
@@ -79117,6 +79513,7 @@ void SetLoadingBarColor(const Color& color);
 void SetLineColor(const Color& color);
 void SetTextColor(const Color& color);
 void SetExpandButtonColor(const Color& color);
+void SetExpandButtonColors(const Color& fill, const Color& border, const Color& symbol);
 void SetExpanderArrowColor(const Color& color);
 void SetCheckboxColors(const Color& background, const Color& border, const Color& check);
 ```
@@ -79124,7 +79521,9 @@ Sets various color properties for the tree view. `SetBackgroundColor` is
 inherited from `UltraCanvasUIElement`.
 
 `SetExpandButtonColor` controls the background fill of the `+`/`-` node icon
-(default `#E0E0E0`); the icon keeps its gray 1px border and black `+`/`-` glyph.
+(default `#E0E0E0`). `SetExpandButtonColors` sets the fill, the 1 px border
+(default gray) and the `+`/`-` glyph (default black) together - what a dark
+theme needs, where a black glyph on a light box stands out of the tree.
 `SetExpanderArrowColor` is the arrow's colour under `TreeExpanderStyle::Chevron`
 (see [Expander Style](#expander-style)).
 `SetCheckboxColors` restyles the check flags: the box fill, its outline, and the
@@ -82028,7 +82427,7 @@ FILE: Docs/UltraCanvas/UltraCanvasVideoTimeline.md
 
 # UltraCanvas Video Timeline
 
-<!-- doc-check: struct MyDocument { UltraCanvas::TimelineModel model; }; MyDocument document; bool ApplyToDocument(MyDocument& document, const UltraCanvas::TimelineChange& change); std::vector<UltraCanvas::UCPixmapPtr> DecodeThumbnails(const std::string& source, double in, double out, int frames, int height); UltraCanvas::WaveformChannelData DecodePeaks(const std::string& source, double in, double out, double blocksPerSecond); std::shared_ptr<UltraCanvasVideoPlayerElement> player; -->
+<!-- doc-check: struct MyDocument { UltraCanvas::TimelineModel model; }; MyDocument document; bool ApplyToDocument(MyDocument& document, const UltraCanvas::TimelineChange& change); std::vector<UltraCanvas::UCPixmapPtr> DecodeThumbnails(const std::string& source, double in, double out, int frames, int height); UltraCanvas::WaveformChannelData DecodePeaks(const std::string& source, double in, double out, double blocksPerSecond); std::shared_ptr<UltraCanvasVideoPlayerElement> player; UltraCanvas::TimelineTrack overlays; -->
 
 `UltraCanvasVideoTimeline` — a **media timeline editor**: clips on tracks under
 a time ruler, with a playhead, trim handles, reordering, splitting,
@@ -82061,11 +82460,12 @@ Two things make it different from a chart that merely draws spans:
 **Base class:** `UltraCanvasUIElement` (a self-rendered view; it adds no
 child elements of its own)
 **Demo:** `Apps/DemoApp/UltraCanvasVideoTimelineExamples.cpp` (Video > Video Timeline)
-**Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display)
+**Tests:** `Tests/VideoTimelineModelTest.cpp` (the model, without a display),
+`Tests/VideoTimelineElementTest.cpp` (the element in a window, under Xvfb)
 **Design:** the screens and specifications in `Apps/UltraVideo/screens/`, and
 `Docs/Research/UltraVideoDesignProposal.md` §7
-**Version:** 1.3.0
-**Last Modified:** 2026-10-14
+**Version:** 1.4.0
+**Last Modified:** 2026-11-01
 **Author:** UltraCanvas Framework
 
 ## Contents
@@ -82092,7 +82492,8 @@ muted scrim and the unused source beyond an edge; transitions as badges on
 the cut with a draggable length; the playhead; zoom around the pointer,
 scrolling, fit; reorder on the magnetic main track with an insertion
 marker, free placement elsewhere; trim with snapping and a live readout;
-split with the blade tool or `S`; delete with ripple; duplicate; nudge;
+split with the blade tool or `S`; delete with ripple; a close-gap button
+in every gap of a free track; duplicate; nudge;
 markers; the work area; rubber-band selection; file drop with an insertion
 marker; a context-menu hook; keyboard throughout. Light and dark palettes,
 and `VideoTimelineStyle::FromTheme` for the framework theme
@@ -82190,6 +82591,7 @@ timeline->SetFollowPlayhead(true);           // page the view during playback
 timeline->SetTool(TimelineTool::Blade);      // Select, Blade, Trim, Slip
 timeline->SetSnapping(true);
 timeline->SetShowBeats(true);
+timeline->SetShowGapButtons(true);           // the |<- in each gap of a free track (the default)
 timeline->SetStyle(VideoTimelineStyle::DarkPalette());
 timeline->SetSelection({"beach"});
 timeline->SetSelectedTransition("photo");    // the badge on the cut into `photo`
@@ -82241,7 +82643,7 @@ timeline->onChangeRequested = [&](const TimelineChange& change) {   // capture t
 
 | `TimelineChangeKind` | `before` / `after` | Also |
 |---|---|---|
-| `Move` | Magnetic track: every clip of the track, in the old and the new order, with derived starts. Free track: the one clip, at its old and new `start` | `ripple` |
+| `Move` | Magnetic track: every clip of the track, in the old and the new order, with derived starts. Free track: the one clip, at its old and new `start` — or, from a `Shift`-click on a close-gap button, every clip after the gap, the one closing it first | `ripple`, `at` the new start |
 | `Trim` | As for `Move`; the trimmed clip carries its new `start`, `duration` and `sourceIn` | `at` the edge's time |
 | `Split` | The one clip; the two parts, the right one with the id `<id>:2` (the app may rename it on apply) | `at` |
 | `Delete` | The removed clips; on a magnetic track `after` is what remains | `ripple` |
@@ -82294,6 +82696,11 @@ TimelineTrimClip(main, "beach", false, 9.0, 25.0, &applied);   // the right edge
 TimelineMoveClip(main, "photo", 0, 0.0);                 // magnetic: to the front
 TimelineDeleteClips(main, {"photo"}, true);
 TimelineDuplicateClip(main, "beach", "beach:copy");
+double empty = 0.0;
+for (const TimelineGap& gap : TimelineGaps(overlays, 1.0 / 25.0))   // a free track's empty stretches, a frame or longer
+    empty += gap.Length();                                         // gap.start..gap.end, before the clip gap.clipId
+std::vector<TimelineClip> moved;
+TimelineCloseGap(overlays, "logo", false, 1.0 / 25.0, &moved);   // logo to the end of the clip before it (or 0)
 double minor = 0.0, major = 0.0;
 TimelineRulerSteps(80.0, 25.0, minor, major);            // 0.2 s ticks, labels every second
 std::string tc = TimelineTimecode(11.2, 25.0);           // "00:00:11:05"
@@ -82330,6 +82737,21 @@ the change is a `FadeSet`); click or drag the ruler for the playhead;
 double-click a clip, a transition or a marker to activate it; right-click
 for the context-menu hook. A hidden or locked track draws dimmed and a
 locked one takes no edits.
+
+**Closing a gap.** On a free track (titles, overlays, sounds — not the
+magnetic main track, which has none), every empty stretch before a clip
+that is wide enough at the current zoom shows a small `|<-` button: a bar,
+where the clip will go, and an arrow into it. It sits in the middle of the
+part of the gap that is on screen, halfway up the lane, so the button of a
+gap longer than the view is still in reach; its tooltip says which clip
+moves where ("Close the gap: move logo.mp4 to the end of intro.mp4"). A
+click moves the clip after the gap left to the end of the clip before it,
+or to 0 for the gap at the start of the track; `Shift`+click moves every
+clip after the gap by the same amount, so the spacing behind it is kept.
+Both arrive as one `Move` change. A locked lane, or a timeline with
+`SetShowGapButtons(false)`, shows none. This is what a cut leaves behind:
+split a clip with the blade, delete one part, and the gap's button puts the
+rest back against its neighbour.
 
 ## Style
 
@@ -82416,6 +82838,8 @@ debounce for you, because how long to wait is the caller's decision.
 |---|---|
 | `ListMountedVolumes()` | Every volume mounted right now, system root first, the rest sorted by path. Each is a `MountedVolume { path, label, isSystemRoot }`. |
 | `ListVolumeRoots()` | The same list, mount points only — the shape a caller that just navigates wants. |
+| `ListGvfsVolumes()` | The places a Linux desktop mounted through GVFS — a phone (MTP), a camera (gphoto2), an iPhone (AFC), a network share or server (SMB, SFTP, FTP, WebDAV, NFS, AFP) — each with a readable label. Part of `ListMountedVolumes()`; empty on Windows and macOS. See [GVFS places](#gvfs-places). |
+| `GvfsVolumeLabel(name)` | The label one GVFS mount name gets (`"mtp:host=Google_Pixel_8"` → `"Google Pixel 8"`); empty for a name that is not listed. For tests. |
 | `Start(onChanged)` | Report mounts and unmounts until `Stop()`. Uses the platform's notification where there is one and a polling thread where there is not, so it only fails on a missing callback. |
 | `Stop()` | Stop reporting. Joins whatever is running, so **no callback runs after it returns** — which is what makes it safe for the callback to capture the caller. Safe to call twice. |
 | `IsRunning()` / `IsNative()` | Whether it is watching, and whether the operating system is doing the reporting rather than the fallback thread. |
@@ -82441,7 +82865,7 @@ is rebuilt on every navigation. The mount table alone answers the question.
 
 | Platform | Backend |
 |---|---|
-| Linux, BSD | `poll()` on `/proc/self/mountinfo` — the kernel reports `POLLPRI` when the mount table changes. A thread waits on that plus a self-pipe so `Stop()` wakes it immediately |
+| Linux, BSD | `poll()` on `/proc/self/mountinfo` — the kernel reports `POLLPRI` when the mount table changes. A thread waits on that plus a self-pipe so `Stop()` wakes it immediately, and wakes every two seconds to compare the GVFS places, which come and go without the mount table changing |
 | Windows | `WM_DEVICECHANGE` on a hidden top-level window with its own thread and message loop. It has to be a *real* top-level window: broadcast messages are not delivered to message-only (`HWND_MESSAGE`) windows |
 | macOS | `NSWorkspace` mount / unmount / rename notifications, on its own notification centre (the default one does not carry them) |
 | Android, WebAssembly, anything else | none — `Start()` runs the polling thread instead, so callers never need a fallback of their own |
@@ -82476,6 +82900,32 @@ udisks and hand-made `/mnt` entries leave behind out of the drive list.
 `/media` and `/run/media` (both also one level down, for the per-user directory
 udisks creates: `/media/bob/USB STICK`), plus `/Volumes` and `/mnt` flat. On
 Windows the mount table is the drive letters, and there is nothing to scan.
+On Linux the GVFS places follow the mounts.
+
+## GVFS places
+
+A phone plugged into a GNOME desktop is mounted by GVFS, not by the kernel:
+GVFS keeps one FUSE file system at `$XDG_RUNTIME_DIR/gvfs` (else
+`/run/user/<uid>/gvfs`) and every place the desktop opened is a directory in it
+— `mtp:host=SAMSUNG_Galaxy_S21_R58M123`, `gphoto2:host=Canon_Inc._Canon_Digital_Camera`,
+`afc:host=<udid>,port=3`, `smb-share:server=nas,share=photos`. None of them is a
+mount point, so the scan above cannot find them, and before `ListGvfsVolumes()`
+a phone that the desktop's own file manager showed was missing from every drive
+list. They are listed after the mounts, labelled from their names:
+
+| Mount name | Label |
+|---|---|
+| `mtp:host=SAMSUNG_Galaxy_S21_R58M12345` | `SAMSUNG Galaxy S21` — the serial (the last token, eight or more letters and digits with a digit) dropped, underscores read as spaces |
+| `mtp:host=[usb:002,010]` (older GVFS) | `Phone` (`Camera` for gphoto2) — a USB address names no device |
+| `afc:host=<udid>,port=3` | `iPhone or iPad` |
+| `smb-share:server=nas,share=photos` | `photos on nas` |
+| `sftp:host=example.com,user=bob` | `bob@example.com` (FTP, WebDAV, NFS and AFP alike) |
+
+A cloud account mounted there (`google-drive:`, `onedrive:`) is not a volume:
+`UltraCanvasCloudStorage` (`GetCloudStorageFolders`) lists those. Listing the
+directory is one round trip to the local GVFS daemon and never reaches a device
+or the network. KDE mounts devices through KIO, which has no file system path,
+so on KDE a phone stays out of reach.
 
 ## Reacting to a change
 
@@ -84623,7 +85073,7 @@ are the settings.
 |---|---|---|
 | Linux | NetworkManager on the system bus (GDBus); polkit decides what the user may change - on a desktop seat everything here | BlueZ on the system bus; codes through the pairing handler and a BlueZ agent of the module's own |
 | Windows | Native Wifi (`wlanapi`); a new network gets a WLAN profile written from its security, deleted again - or the replaced one restored - when the join fails | The Bluetooth API (`bthprops`). The radio is switched only in Windows' settings (`CanSetBluetoothPower()` is false). Pairing shows Windows' own prompt when the device wants a code. Connect and disconnect switch the device's installed services (`BluetoothSetServiceState`), as Windows does for headphones |
-| macOS | CoreWLAN. From macOS 14 network names are shown only to an application Location Services allows; the first read asks, and `error` says why the list is empty while it is refused. Forgetting a network needs an administrator, so it is left to System Settings | IOBluetooth. Switching the radio and removing a pairing use the private calls every Bluetooth utility uses, looked up at run time; where they are gone the call fails saying so. The application's `Info.plist` needs `NSBluetoothAlwaysUsageDescription` and `NSLocationWhenInUseUsageDescription` (`package-macos.sh` writes both for UltraDesktop) |
+| macOS | CoreWLAN. From macOS 14 network names are shown only to an application Location Services allows; the first read asks, and `error` says why the list is empty - to answer macOS's question while it is open, to allow the application in System Settings once it is refused. Forgetting a network needs an administrator, so it is left to System Settings | IOBluetooth. Switching the radio and removing a pairing use the private calls every Bluetooth utility uses, looked up at run time; where they are gone the call fails saying so. The application's `Info.plist` needs `NSBluetoothAlwaysUsageDescription` and `NSLocationWhenInUseUsageDescription` (`package-macos.sh` writes both for UltraDesktop) |
 | Elsewhere | `available` false; every call fails saying so | the same |
 
 ==============================================================================
@@ -98786,6 +99236,45 @@ reach them too. Proxies can be made on the hardware as well
 
 ---
 
+## Recording a live source
+
+An export reads files; a recording takes frames as they happen. A screen
+recorder, a window capture or a camera hands `VideoFXFrameRecorder` one
+frame at a time with the moment it was taken, and the recorder encodes it
+into the file at once - the file grows while the recording runs and is
+complete after `Close()`. No sound: the microphone and loudspeaker capture
+stay the application's for now.
+
+```cpp
+VideoFXFrameRecorder recorder;
+VideoFXRecorderSettings settings;
+settings.frameRate = 20.0;                 // the file's rate
+if (recorder.Open("recording.mp4", settings) != VideoFXResult::Ok)
+    std::cerr << VideoFX_GetLastError() << "\n";
+while (recording) {
+    // the screen's pixels, four bytes each, B G R x - as every platform's
+    // screen capture gives them (UltraCanvasDesktopShell::CaptureScreenArea)
+    recorder.PushFrame(pixels, width, height, stride, SecondsSinceStart(), VideoFXPixelLayout::BGRA);
+}
+recorder.Close();
+```
+
+The frame's time places it: it lands on the nearest tick of the file's
+rate, a frame on a tick already written is dropped, and a gap (a slow
+capture) shows the last frame longer - so the recording keeps real time
+however many frames were caught. The size is the settings' or the first
+frame's, made even (H.264's 4:2:0 needs it), and every frame is scaled to
+it, so a source that changes size still records. `VideoFXRecorderSettings`
+takes the export's `container`, `videoCodec`, `quality`, `videoBitRate`,
+`keyframeInterval` and `acceleration`; its `encoderPreset` defaults to
+`"veryfast"` and the x264 / x265 encoders run with `zerolatency`, so a
+frame leaves the encoder as it comes in rather than after a look-ahead. An
+MP4 or MOV is written fragmented (`frag_keyframe`), so a recording cut
+short - the program killed, the machine off - still plays up to its last
+keyframe. `GetFrameCount`, `GetDuration`, `GetWidth` / `GetHeight` and
+`GetEncoderName` describe the recording so far. UltraSnip (`Apps/UltraSnip`)
+records the screen with it.
+
 ## One-line helpers
 
 All of these are single-segment timelines over `VideoFX_Export`:
@@ -100661,6 +101150,115 @@ encryption does not protect against that; leaving such programs' copies out,
 or pausing the recording, does.
 
 ==============================================================================
+FILE: Docs/UltraSnip/README.md
+==============================================================================
+
+# UltraSnip
+
+The screenshot and screen-recording tool of ULTRA OS: a picture or a video
+of an area you drag out, of a window you click, or of the whole screen -
+what the Snipping Tool is on Windows. A picture goes to the clipboard and to
+your Pictures folder as it is taken; a video goes to your Videos folder
+while it is recorded.
+
+Source: [`Apps/UltraSnip/`](../../Apps/UltraSnip/). Changelog:
+[`CHANGELOG.md`](CHANGELOG.md). The screen comes through
+[UltraCanvasDesktopShell](../UltraCanvas/UltraCanvasDesktopShell.md)
+(`CaptureScreenImage`, `CaptureScreenArea`), the video through
+[VideoFX](../Modules/VideoFX/README.md)'s `VideoFXFrameRecorder`.
+
+## Taking a snip
+
+**From the desktop.** Click the screenshot button on UltraDesktop's right
+bar, or press `Super+Shift+S` in any window: the screen freezes and you drag
+out the area. The button's right-click menu has the other shapes and the
+recordings.
+
+**From the window.** Start UltraSnip from the applications; choose the
+shape, the kind and the delay in its bar and click *New* (Ctrl+N):
+
+| Shape | What happens |
+|---|---|
+| *Rectangle* | The screen freezes, dimmed; drag out the area. Its size in pixels is shown beside it. Enter takes the whole screen, Escape or a right click cancels. |
+| *Window* | The window under the pointer is outlined with its title; click it. A drag takes an area instead. Enter takes the outlined window. |
+| *Full screen* | Everything, at once. |
+
+A *delay* of 3, 5 or 10 seconds lets you open a menu or a tooltip first.
+UltraSnip's own window hides itself while the snip is taken, so it is never
+in the picture, and comes back with the result.
+
+**From a prompt.** `UltraSnip --rectangle`, `--window` or `--screen` takes
+that snip at once; add `--video` for a recording and `--delay 3` (5, 10) for
+a wait. When UltraSnip is already running the request goes to it.
+
+## Pictures
+
+A picture is put on the clipboard and written to
+`Pictures/Screenshots/Screenshot <date> <time>.<type>` the moment it is
+taken, in the type chosen in the settings (PNG unless changed); either can
+be switched off there. The window shows it, with:
+
+| Button | Key | |
+|---|---|---|
+| Save as | Ctrl+S | under another name, in another folder, or as another picture type - every type this build writes, through the framework's Save dialog; the type's *Settings* there give the quality, and a size other than the picture's own |
+| Copy | Ctrl+C | onto the clipboard, again |
+| Open folder | | the saved file's folder in the file manager |
+| Edit in UltraPaint | | the saved picture in UltraPaint (saved first when it was not) |
+
+## Videos
+
+With *Video* chosen, the area you pick is recorded instead:
+`Videos/Screen Recordings/Screen recording <date> <time>.mp4` (H.264; or
+Matroska, or WebM with VP9, as the settings say), at the frame rate set
+there (5 to 60 a second; more is smoother and larger). A small bar
+appears beside the area - above it, else below, else at the top of the
+screen - with the elapsed time, *Pause* / *Resume* and *Stop*. The pause is
+left out of the recording. After *Stop* the recording plays in the window,
+with *Save as* (a copy under another name) and *Open folder*. The file is
+written as it goes, so a recording cut short by a crash or a power cut still
+plays up to its last seconds.
+
+Not yet: sound (the microphone, the loudspeaker), the pointer in the
+recording, and a recording on a build whose VideoFX has no FFmpeg - *New*
+says so then, and pictures still work.
+
+## Settings
+
+The *Settings* button under the picture opens a window laid out like
+UltraFiler's: the sections on the left, the page on the right, the page's
+*Restore defaults* and *Close* at the foot. Every change applies at once and
+is saved.
+
+| Page | What it sets |
+|---|---|
+| Pictures > File type | The type a picture is written as. The useful ones come first - PNG, JPEG XL, AVIF, HEIC, WebP, JPEG - each greyed when this build cannot write it, and *Another type* lists every other picture type this build writes. *Settings for .type* opens the type's own quality and compression settings, the same ones the framework's Save dialog keeps for every application. The clipboard always gets a PNG. A type the build cannot write falls back to PNG and says so. |
+| Pictures > Saving | Whether every picture is written as it is taken, whether it goes to the clipboard, and the folder it is written to (*Choose folder*, or back to Pictures/Screenshots). |
+| Videos > Recording | The recording's container - MP4 with H.264, Matroska with H.264, WebM with VP9, each greyed when the build's FFmpeg lacks the encoder - the frame rate (5 to 60 a second) and the folder. |
+| Behaviour > After a snip | Whether the UltraSnip window appears with the result after a snip started from the desktop's button, the shortcut or the command line, or stays out of the way: the picture is saved and copied and nothing appears (a recording still shows its bar). A snip taken from the window always returns to it. |
+
+## Where things are kept
+
+| What | Linux | Windows |
+|---|---|---|
+| Pictures | `~/Pictures/Screenshots/` | `Pictures\Screenshots\` in your user folder |
+| Recordings | `~/Videos/Screen Recordings/` | `Videos\Screen Recordings\` in your user folder |
+| Settings (shape, kind, delay, the types, folders and options, the Save-as folder) | `~/.config/UltraCanvas/UltraSnip/settings.json` | `%APPDATA%\UltraCanvas\UltraSnip\settings.json` |
+
+## How it is built
+
+| Path | What is in it |
+|---|---|
+| `ui/UltraSnipTypes.h` | The request: shape, kind, delay, as JSON between starts |
+| `ui/UltraSnipCapture.*` | No UI: the rectangle from a drag, the crop of a capture into RGBA, the topmost window under a point, where the recording bar goes, files written and copied |
+| `ui/UltraSnipSettings.*` | The settings file, through `UltraCanvasAppSettings`: the picture and video types and folders, the frame rate, the after-snip behaviour; the paths of a new snip |
+| `ui/UltraSnipSettingsDialog.*` | The settings window: `UltraCanvasTreeView` of pages on the left, a page of `UltraCanvasRadio` / `UltraCanvasCheckbox` / `UltraCanvasSlider` / `UltraCanvasDropdown` controls on the right, the notes block at the foot - UltraFiler's settings window's skeleton |
+| `ui/UltraSnipOverlay.*` | The selection: a borderless window the size of the screen showing the frozen capture (`UltraCanvasImageElement`) under the marquee element (the dimming, the rectangle and its size, the crosshair, the outlined window, the hint) |
+| `ui/UltraSnipRecorder.*` | The recording thread: `CaptureScreenArea` at the frame rate into `VideoFXFrameRecorder`; the clock that leaves pauses out |
+| `ui/UltraSnipRecordingBar.*` | The floating bar: a notification-type window (above everything, never taking the keyboard) with the time, Pause / Resume and Stop |
+| `ui/UltraSnipWindow.*` | The window: the bar (`UltraCanvasButton`, two `UltraCanvasSegmentedControl`s, an `UltraCanvasDropdown`), the result (`UltraCanvasImageElement` / `UltraCanvasMediaViewer`), the actions and the Settings button, and the capture step by step |
+| `main.cpp` | The command line and the single instance |
+
+==============================================================================
 FILE: Docs/UltraPaint/FeatureGapAnalysis.md
 ==============================================================================
 
@@ -101186,14 +101784,25 @@ On Windows, while Explorer runs, Win+V belongs to Windows' own clipboard
 history. Use the clipboard button instead. When UltraDesktop runs instead of
 Explorer, Win+V opens UltraDesktop's panel.
 
-### 4.5 Screenshots
+### 4.5 Screenshots and screen recordings
 
-Click the screenshot button (📷). The whole screen is saved to
-`Pictures/Screenshots/Screenshot <date> <time>.png` in your home folder. The
+Click the screenshot button (📷), or press `Super+Shift+S` in any window:
+UltraSnip freezes the screen and you drag out the area you want. The picture
+goes to the clipboard and to `Pictures/Screenshots/Screenshot <date>
+<time>.png` in your home folder, and UltraSnip's window shows it with *Save
+as*, *Copy*, *Open folder* and *Edit in UltraPaint*. See the
+[UltraSnip manual](../UltraSnip/README.md) for the window and whole-screen
+shapes, the delay, and the video recording with its Pause and Stop bar.
+
+Right-click the button for the other shapes - *Snip a window*, *Snip the
+whole screen* - and for *Record an area*, *Record a window* and *Record the
+whole screen* (a video to `Videos/Screen Recordings`). *Screenshot now, to
+Pictures* saves the whole screen at once without opening anything: the
 button shows a green dot for three seconds, and its tooltip names the file.
+That is also what the click does on a desktop without UltraSnip beside it.
 
-From a prompt, `UltraDesktop --screenshot` does the same, and
-`UltraDesktop --screenshot <file>` saves to the file you name.
+From a prompt, `UltraDesktop --screenshot` takes the whole screen the same
+way, and `UltraDesktop --screenshot <file>` saves to the file you name.
 
 ### 4.6 Notes on the wallpaper
 
@@ -101454,6 +102063,7 @@ at sign-in.
 | Any window | Super+V (Win+V) | opens the clipboard history (on Windows only instead of Explorer) |
 | Any window | Super key (Win key) alone | opens Applications (on Linux; on Windows only instead of Explorer) |
 | Any window, Linux | Super+L | locks the screen (on Windows Win+L is Windows' own) |
+| Any window | Super+Shift+S (Win+Shift+S) | UltraSnip snips an area (on Windows only instead of Explorer; Win+Shift+S is Windows' own beside it) |
 | Clock | click | the clock panel |
 | Loudspeaker icon | click | the volume panel |
 | Pinned program | click / right-click | start it / open, unpin |
@@ -101461,6 +102071,7 @@ at sign-in.
 | Taskbar window button | click / right-click / drag / wheel | activate or minimise / window menu / reorder / scroll the row |
 | ⚙ button | click / right-click | UOS-Settings / desktop menu (switching, sign out …) |
 | Clipboard button | click / right-click | the panel / pause, open UltraClipboard, clear |
+| Screenshot button | click / right-click | UltraSnip snips an area / a window, the whole screen, a recording, the plain screenshot, open UltraSnip |
 | Clipboard panel | Up, Down, Enter, Delete, F2, Escape | choose, copy, delete, edit, close |
 | Sticker board | drop files / double-click a card / double-click a category title | add / open / rename |
 | A notification | click / × | its default action / dismiss |
@@ -101636,10 +102247,13 @@ system.
 
 On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
-separators:
+separators. The two waves mirror each other, so the dark band of running
+applications narrows the same way at both ends, and each wave starts 4 px
+from the icon next to it - as the right bar's wave does below the
+organiser.
 
-1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
-   settings* starts **UOS-Settings**, the system's settings application
+1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
+   *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
@@ -101696,9 +102310,15 @@ the right-hand monitor the primary.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot* (the whole screen to
-  `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
-  green dot for three seconds and its tooltip names the file).
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot*. A click
+  on the screenshot button opens [UltraSnip](../UltraSnip/README.md) to snip
+  an area; its right-click menu offers a window, the whole screen, a video
+  recording of each, *Screenshot now, to Pictures* (the whole screen to
+  `~/Pictures/Screenshots/Screenshot <date> <time>.png` without UltraSnip; the
+  button shows a green dot for three seconds and its tooltip names the file)
+  and *Open UltraSnip*; `Super+Shift+S` from any window snips an area. Where
+  UltraSnip is not installed beside the desktop, the click takes the plain
+  screenshot.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as
@@ -101792,12 +102412,50 @@ the right-hand monitor the primary.
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its
-  desktop entry as an icon tile, a filter box above them, one click to
-  start; a right click pins it to the taskbar or unpins it. What the
-  application menu of any other desktop shows, so an application installed
-  by its package appears without being told about ULTRA OS. A tap of the
-  Super key opens it from any window - on Linux, and on Windows as the
-  shell (beside Explorer the key is the Start menu's).
+  desktop entry, one click to start; a right click pins it to the taskbar
+  or unpins it. What the application menu of any other desktop shows, so an
+  application installed by its package appears without being told about
+  ULTRA OS. A tap of the Super key opens it from any window - on Linux, and
+  on Windows as the shell (beside Explorer the key is the Start menu's).
+  - **Categories.** *Recent* (the last applications started - from this
+    window or a taskbar pin - eight by default), then *Office*, *Internet*,
+    *Graphics*, *Video*, *Audio*, *CAD*, *Games*, *Tools* and *System*;
+    an empty one is left out. The category is the one the application's
+    desktop entry declares (`Categories=Network;WebBrowser` is Internet). A
+    Windows Start-menu shortcut declares none, so its name, its program and
+    its Start-menu folder are matched against well-known applications and
+    words in English and German (Excel, Outlook, *Datenträgerbereinigung*,
+    a shortcut under *Windows Tools*); what matches nothing is in Tools.
+    The names come from a catalogue of about 2,400 well-known Windows,
+    macOS and Linux applications (`UltraDesktopAppCatalogue.cpp`); on macOS
+    a bundle's `LSApplicationCategoryType` is read as its category.
+  - **Folders.** On Windows a Start-menu folder holding five or more
+    applications - a maker's folder such as MAGIX, Lenovo or LAV Filters - is
+    a category of its own, after the others, named after the folder; on
+    macOS so is such a folder under `/Applications` (not `/Applications` or
+    `Utilities` themselves).
+    Windows' own folders (Windows Tools, Accessories, System Tools) are not:
+    their applications are in System.
+  - **Moving an application.** Drag a tile onto another category's heading
+    or tiles, or a row of the list onto a category in the tree; or choose
+    *Move to* on its right-click menu. It stays there (`appMoves` in the
+    desktop's settings); *Back to …* - or dragging it back - returns it to
+    the category its own name gives it.
+  - **Sub-categories.** A category with more than eight applications (UOS-
+    Settings > Desktop > *Sub-categories*) is split into its kinds - Web
+    browsers, Email, Painting, Photos, Text editors; for Games 3D, Retro,
+    Board games, Adventure, Strategy and Simulation - with *Other* last.
+  - **Two views**, switched by the two icons at the window's top left and
+    remembered: *Tiles*, each category a heading over a grid of tiles as on
+    Windows' Start, the name under the icon on as many lines as it needs
+    (four, then "…"; the tooltip has the whole name); and *Categories and a
+    list*, the categories as a tree, their sub-categories under them, beside
+    a list of the chosen one's applications.
+  - **Opens at once.** The window opens first and says it is loading; the
+    applications come after it, read on a thread of their own. The desktop
+    reads them once ahead of time, five seconds after it starts, so the
+    window usually shows them straight away and reads them again behind
+    them.
 - **Task Manager**: the open windows on the first tab, under a header -
   each with its application's icon, its state as an icon and a word (open,
   maximized or minimized; blue for the window in front), the display
@@ -101916,7 +102574,9 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows the framework's `media/images/landscape.jpg`. An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
+(the framework's `media/images/landscape.jpg` where a package lacks it or
+cannot read AVIF). An
 empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
 RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document
@@ -102061,6 +102721,18 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
+
+==============================================================================
+FILE: Docs/UltraDesktop/changelog.d/wallpaper-disk-cache.md
+==============================================================================
+
+- **The wallpaper comes up from the disk cache.** The desktop's wallpaper
+  is decoded and fitted to the monitor once; the fitted picture is kept in
+  the framework's thumbnail disk cache as a QOI blob (framework changelog:
+  `opaque-pixmaps-formats`), and the next start inflates it in 10 ms on a
+  1280 × 800 monitor (75 ms at 3840 × 2160) instead of decoding and
+  resizing the picture. A picture without an alpha channel is held
+  without one (RGB24).
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md

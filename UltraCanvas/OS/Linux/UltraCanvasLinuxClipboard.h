@@ -13,6 +13,7 @@
 // A copy too large for one X request travels in pieces (ICCCM INCR), both
 // ways: one read from another program is followed piece by piece, and one
 // served from here is sent that way above IncrChunkSize().
+// Version: 1.4.1 - the file URI helpers forward to UltraCanvasLinuxUriList
 // Version: 1.4.0
 // Last Modified: 2026-10-08
 // Author: UltraCanvas Framework

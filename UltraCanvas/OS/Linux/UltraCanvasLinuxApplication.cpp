@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
+// Version: 1.11.0 - the fonts and the keysym table shared with the Wayland backend (UltraCanvasLinuxFonts, UltraCanvasLinuxKeys)
 // Version: 1.10.0 - a held key is one press, its repeats, and one release: detectable
 //                   auto-repeat, and the fake releases dropped where the server lacks it
 // Version: 1.9.0 - Property events of a clipboard copy sent in pieces go to the clipboard
@@ -9,6 +10,8 @@
 #include "UltraCanvasLinuxAccessibility.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLinuxClipboard.h"
+#include "UltraCanvasLinuxFonts.h"
+#include "UltraCanvasLinuxKeys.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasEmojiSettings.h"
 #include <iostream>
@@ -809,134 +812,8 @@ namespace UltraCanvas {
 
 // ===== KEY AND MOUSE CONVERSION =====
     UCKeys UltraCanvasLinuxApplication::ConvertXKeyToUCKey(KeySym keysym) {
-        switch (keysym) {
-            // Special keys
-            case XK_Return: return UCKeys::Enter;
-            case XK_Escape: return UCKeys::Escape;
-            case XK_space: return UCKeys::Space;
-            case XK_BackSpace: return UCKeys::Backspace;
-            case XK_Tab: return UCKeys::Tab;
-            case XK_Delete: return UCKeys::Delete;
-            case XK_Insert: return UCKeys::Insert;
-
-                // Arrow keys
-            case XK_Left: return UCKeys::Left;
-            case XK_Right: return UCKeys::Right;
-            case XK_Up: return UCKeys::Up;
-            case XK_Down: return UCKeys::Down;
-
-                // Navigation
-            case XK_Home: return UCKeys::Home;
-            case XK_End: return UCKeys::End;
-            case XK_Page_Up: return UCKeys::PageUp;
-            case XK_Page_Down: return UCKeys::PageDown;
-
-                // Function keys
-            case XK_F1: return UCKeys::F1;
-            case XK_F2: return UCKeys::F2;
-            case XK_F3: return UCKeys::F3;
-            case XK_F4: return UCKeys::F4;
-            case XK_F5: return UCKeys::F5;
-            case XK_F6: return UCKeys::F6;
-            case XK_F7: return UCKeys::F7;
-            case XK_F8: return UCKeys::F8;
-            case XK_F9: return UCKeys::F9;
-            case XK_F10: return UCKeys::F10;
-            case XK_F11: return UCKeys::F11;
-            case XK_F12: return UCKeys::F12;
-
-                // Modifier keys
-            case XK_Shift_L: return UCKeys::LeftShift;
-            case XK_Shift_R: return UCKeys::RightShift;
-            case XK_Control_L: return UCKeys::LeftCtrl;
-            case XK_Control_R: return UCKeys::RightCtrl;
-            case XK_Alt_L: return UCKeys::LeftAlt;
-            case XK_Alt_R: return UCKeys::RightAlt;
-            case XK_Super_L: return UCKeys::LeftMeta;
-            case XK_Super_R: return UCKeys::RightMeta;
-
-                // Number row (main row 0-9)
-            case XK_0: return UCKeys::Key0;
-            case XK_1: return UCKeys::Key1;
-            case XK_2: return UCKeys::Key2;
-            case XK_3: return UCKeys::Key3;
-            case XK_4: return UCKeys::Key4;
-            case XK_5: return UCKeys::Key5;
-            case XK_6: return UCKeys::Key6;
-            case XK_7: return UCKeys::Key7;
-            case XK_8: return UCKeys::Key8;
-            case XK_9: return UCKeys::Key9;
-
-                // ASCII punctuation / symbols (main row)
-            case XK_equal: return UCKeys::Equal;
-            case XK_plus: return UCKeys::Plus;
-            case XK_minus: return UCKeys::Minus;
-            case XK_underscore: return UCKeys::Underscore;
-            case XK_comma: return UCKeys::Comma;
-            case XK_period: return UCKeys::Period;
-            case XK_slash: return UCKeys::Slash;
-            case XK_backslash: return UCKeys::Backslash;
-            case XK_semicolon: return UCKeys::Semicolon;
-            case XK_colon: return UCKeys::Colon;
-            case XK_apostrophe: return UCKeys::Quote;
-            case XK_quotedbl: return UCKeys::DoubleQuote;
-            case XK_grave: return UCKeys::Grave;
-            case XK_asciitilde: return UCKeys::Tilde;
-            case XK_bracketleft: return UCKeys::LeftBracket;
-            case XK_bracketright: return UCKeys::RightBracket;
-            case XK_braceleft: return UCKeys::LeftBrace;
-            case XK_braceright: return UCKeys::RightBrace;
-            case XK_parenleft: return UCKeys::LeftParen;
-            case XK_parenright: return UCKeys::RightParen;
-            case XK_bar: return UCKeys::Pipe;
-            case XK_less: return UCKeys::Less;
-            case XK_greater: return UCKeys::Greater;
-            case XK_question: return UCKeys::Question;
-            case XK_exclam: return UCKeys::Exclamation;
-            case XK_at: return UCKeys::At;
-            case XK_numbersign: return UCKeys::Hash;
-            case XK_dollar: return UCKeys::Dollar;
-            case XK_percent: return UCKeys::Percent;
-            case XK_asciicircum: return UCKeys::Caret;
-            case XK_ampersand: return UCKeys::Ampersand;
-            case XK_asterisk: return UCKeys::Asterisk;
-
-                // Number pad
-            case XK_Num_Lock: return UCKeys::NumLock;
-            case XK_KP_Home: return UCKeys::NumPadHome;
-            case XK_KP_Up: return UCKeys::NumPadUp;
-            case XK_KP_Page_Up: return UCKeys::NumPadPageUp;
-            case XK_KP_Left: return UCKeys::NumPadLeft;
-            case XK_KP_Right: return UCKeys::NumPadRight;
-            case XK_KP_End: return UCKeys::NumPadEnd;
-            case XK_KP_Down: return UCKeys::NumPadDown;
-            case XK_KP_Page_Down: return UCKeys::NumPadPageDown;
-            case XK_KP_0: return UCKeys::NumPad0;
-            case XK_KP_1: return UCKeys::NumPad1;
-            case XK_KP_2: return UCKeys::NumPad2;
-            case XK_KP_3: return UCKeys::NumPad3;
-            case XK_KP_4: return UCKeys::NumPad4;
-            case XK_KP_5: return UCKeys::NumPad5;
-            case XK_KP_6: return UCKeys::NumPad6;
-            case XK_KP_7: return UCKeys::NumPad7;
-            case XK_KP_8: return UCKeys::NumPad8;
-            case XK_KP_9: return UCKeys::NumPad9;
-            case XK_KP_Add: return UCKeys::NumPadPlus;
-            case XK_KP_Subtract: return UCKeys::NumPadMinus;
-            case XK_KP_Divide: return UCKeys::NumPadDivide;
-            case XK_KP_Enter: return UCKeys::NumPadEnter;
-            case XK_KP_Multiply: return UCKeys::NumPadMultiply;
-            case XK_KP_Decimal: return UCKeys::NumPadDecimal;
-            case XK_KP_Insert: return UCKeys::NumPadInsert;
-            case XK_KP_Delete: return UCKeys::NumPadDelete;
-
-                // ASCII characters
-            default:
-                if (keysym >= 0x0020 && keysym <= 0x007E) {
-                    return static_cast<UCKeys>(toupper((char)keysym));
-                }
-                return UCKeys::Unknown;
-        }
+        // The table is shared with the Wayland backend (UltraCanvasLinuxKeys.cpp).
+        return UCKeyFromKeysym(static_cast<unsigned long>(keysym));
     }
 
     UCMouseButton UltraCanvasLinuxApplication::ConvertXButtonToUCButton(unsigned int button) {
@@ -1060,107 +937,13 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas X11 Error in " << context << ": code " << errorCode << std::endl;
     }
 
-    FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu";
-        result.fontSize = 12.0;
-        return result;
-    }
-
-    FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu Mono";
-        result.fontSize = 12.0;
-        return result;
-    }
-
-    void UltraCanvasLinuxApplication::LoadBundledFontsNative() {
-        FcConfig* cfg = FcConfigGetCurrent();
-        if (!cfg) {
-            debugOutput << "UltraCanvas: FcConfigGetCurrent() returned null; bundled fonts not registered" << std::endl;
-            return;
-        }
-
-        const std::string dir = GetBundledFontsDir();
-        for (size_t i = 0; i < kEmbeddedAllFontsCount; ++i) {
-            std::string path = dir + kEmbeddedAllFonts[i];
-            if (!std::filesystem::exists(path)) {
-                debugOutput << "UltraCanvas: bundled font missing: " << path << std::endl;
-                continue;
-            }
-            if (!FcConfigAppFontAddFile(cfg,
-                    reinterpret_cast<const FcChar8*>(path.c_str()))) {
-                debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for " << path << std::endl;
-            }
-        }
-        // The emoji font the emoji setting picks (UOS-Settings), and the rule
-        // that draws emoji in it.
-        ApplyEmojiSettings();
-        // Materialise the FontSet so FcMatch (and therefore Pango) can
-        // actually find the just-added app fonts. No-op on a system-loaded
-        // config; required on a FcConfigCreate'd fallback one.
-        FcConfigBuildFonts(cfg);
-
-        // Force an FC-backed font map as the default, replacing whatever
-        // default was cached. On Linux this is a no-op pattern (Pango is
-        // already FC-only); on Windows MSYS2 it bypasses Pango's Win32
-        // backend default. set_default takes its own ref so we drop ours.
-        PangoFontMap* fcFm = pango_cairo_font_map_new_for_font_type(CAIRO_FONT_TYPE_FT);
-        if (fcFm) {
-            pango_cairo_font_map_set_default(PANGO_CAIRO_FONT_MAP(fcFm));
-            g_object_unref(fcFm);
-        } else {
-            debugOutput << "UltraCanvas: pango_cairo_font_map_new_for_font_type(FT) returned null" << std::endl;
-            pango_cairo_font_map_set_default(nullptr);
-        }
-
-#ifdef ULTRACANVAS_DEBUG
-        // Diagnostic: how many fonts does FC know about now? If this is small
-        // (<10) on a packaged build, FC likely couldn't find any system fonts
-        // and only our bundled DejaVu families are available. Also log a
-        // sample of family names so we can tell whether DejaVu Sans was
-        // actually picked up by FC's dir scan.
-        {
-            FcPattern* pat = FcPatternCreate();
-            FcObjectSet* os = FcObjectSetBuild(FC_FAMILY, FC_FILE, (char*)nullptr);
-            FcFontSet* fs = FcFontList(cfg, pat, os);
-            debugOutput << "UltraCanvas: FC font count after init=" << (fs ? fs->nfont : -1) << std::endl;
-            if (fs) {
-                int sampleN = std::min(fs->nfont, 500);
-                std::ostringstream fams;
-                for (int i = 0; i < sampleN; ++i) {
-                    FcChar8* fam = nullptr;
-                    if (FcPatternGetString(fs->fonts[i], FC_FAMILY, 0, &fam) == FcResultMatch && fam) {
-                        if (i) fams << ", ";
-                        fams << reinterpret_cast<const char*>(fam);
-                    }
-                }
-                debugOutput << "UltraCanvas: FC family sample (" << sampleN << "/" << fs->nfont
-                            << "): " << fams.str() << std::endl;
-                FcFontSetDestroy(fs);
-            }
-            FcObjectSetDestroy(os);
-            FcPatternDestroy(pat);
-        }
-#endif
-    }
-
+    // The fonts are fontconfig's and Pango's, not the display's: shared with
+    // the Wayland backend (UltraCanvasLinuxFonts.cpp).
+    FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() { return LinuxFonts::DetectSystemFontStyle(); }
+    FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() { return LinuxFonts::DetectMonospacedFontStyle(); }
+    void UltraCanvasLinuxApplication::LoadBundledFontsNative() { LinuxFonts::LoadBundledFonts(); }
     bool UltraCanvasLinuxApplication::RegisterFontFileNative(const std::string& fontFilePath) {
-        // An application font: added to this process's FcConfig only, so
-        // nothing is installed for the user or for other applications.
-        FcConfig* cfg = FcConfigGetCurrent();
-        if (!cfg) {
-            debugOutput << "UltraCanvas: RegisterFontFileNative: no current "
-                           "fontconfig config" << std::endl;
-            return false;
-        }
-        if (!FcConfigAppFontAddFile(
-                cfg, reinterpret_cast<const FcChar8*>(fontFilePath.c_str()))) {
-            debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for "
-                        << fontFilePath << std::endl;
-            return false;
-        }
-        return true;
+        return LinuxFonts::RegisterFontFile(fontFilePath);
     }
 
 } // namespace UltraCanvas

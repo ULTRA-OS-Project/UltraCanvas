@@ -1,3 +1,80 @@
+#### 2026-11-02 *0.4.9*
+- **The wallpaper comes up from the disk cache.** The desktop's wallpaper
+  is decoded and fitted to the monitor once; the fitted picture is kept in
+  the framework's thumbnail disk cache as a QOI blob (framework changelog:
+  `opaque-pixmaps-formats`), and the next start inflates it in 10 ms on a
+  1280 × 800 monitor (75 ms at 3840 × 2160) instead of decoding and
+  resizing the picture. A picture without an alpha channel is held
+  without one (RGB24).
+
+#### 2026-11-01 *0.4.8*
+- **The screenshot button opens UltraSnip.** A click snips an area: UltraSnip
+  freezes the screen, the area is dragged out, and the picture goes to the
+  clipboard and to `Pictures/Screenshots`. The button's right-click menu
+  offers *Snip a window*, *Snip the whole screen*, *Record an area* /
+  *a window* / *the whole screen* (a video to `Videos/Screen Recordings`),
+  *Screenshot now, to Pictures* - the plain whole-screen capture of before,
+  green dot and all - and *Open UltraSnip*. `Super+Shift+S` from any window
+  snips an area, as on Windows. Where UltraSnip is not installed beside the
+  desktop, the click takes the plain screenshot as it did.
+
+#### 2026-11-01 *0.4.7*
+- **The desktop's default wallpaper is ULTRA OS's own picture,**
+  `media/images/desktop/ULTRA OS A.avif`, where it was the framework's
+  landscape. The landscape is still shown where a package lacks the picture
+  or a build cannot read AVIF. A wallpaper chosen in the settings is kept.
+
+#### 2026-11-01 *0.4.6*
+- **The Apps window sorts the applications into categories, in two
+  views, and opens at once.**
+  - *Recent* first - the last applications started from the window or a
+    taskbar pin, eight by default - then Office, Internet, Graphics, Video,
+    Audio, CAD, Games, Tools and System, each from the application's
+    freedesktop `Categories=`. Windows' Start-menu shortcuts, which declare
+    none, are placed by their name, program and Start-menu folder, in
+    English and German.
+  - A category with more than eight applications (configurable) is split
+    into its kinds: Web browsers, Email, Painting, Text editors …; Games
+    into 3D, Retro, Board games, Adventure, Strategy and Simulation.
+  - Two views, switched by the icons at the window's top left and
+    remembered: tiles under category headings, as on Windows' Start, with
+    long names wrapped onto up to four lines; or the categories as a tree
+    beside a list of the chosen one's applications.
+  - The window opens first and fills when the list has been read, on a
+    thread of its own; the desktop reads the list ahead of time five seconds
+    after it starts, so the window usually shows it at once.
+  - About 2,400 well-known Windows, macOS and Linux applications are known
+    by name (`UltraDesktopAppCatalogue`), a German Windows 11 Start menu's
+    175 among them; on macOS a bundle's `LSApplicationCategoryType` counts.
+  - A Windows Start-menu folder with five or more applications (MAGIX,
+    Lenovo, LAV Filters) is a category of its own; Windows' own folders are
+    not.
+  - An application dragged onto another category - a tile onto a heading
+    or the tiles under it, a list row onto a category in the tree - or
+    moved with *Move to* on its menu stays there; *Back to …* returns it.
+  - A click on a row of the list starts the application on the release, so
+    a press can begin a drag.
+  - The desktop's settings keep the history (`recentApps`), the view
+    (`appsView`), the threshold (`appsSplitAbove`), Recent's count
+    (`recentAppsShown`) and the moved applications (`appMoves`).
+
+#### 2026-11-01 *0.4.5*
+- **The bars' waves mirror each other and sit closer to the icons.** The
+  taskbar's wave between the system group and the running applications is
+  mirrored, so the dark band of running applications narrows the same way
+  at both ends. Every wave now starts 4 px from the icon next to it, where
+  it was 14 px away:
+  - on the taskbar, from the system group's last icon and from the pinned
+    group's first;
+  - on the right bar, from the organiser's last icon (the screenshot
+    button).
+- **The ULTRA OS logo on the settings button.** The taskbar's first button
+  showed a white "U" in a circle; it now shows the ULTRA OS logo in its own
+  colours, and, the logo being twice as wide as high, its button is wider
+  than the other items. The logo comes in two versions in
+  `media/icons/desktop/`: `ultraos-logo-dark.png` for a dark ground (the one
+  the bar uses) and `ultraos-logo-light.png` for a light ground.
+
 #### 2026-11-01 *0.4.4*
 - **Running applications show their own icons, in their own colours.** The
   taskbar's running-windows buttons drew every application's icon through the

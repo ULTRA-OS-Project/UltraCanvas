@@ -4,13 +4,16 @@
 // separators, delivery ticks). Models adapt UltraIM data to
 // UltraCanvasListView; delegates paint one row's content - the list view
 // paints selection, hover and scrolling.
+// Version: 0.2.2 - times and dates written as the Settings window says (SetDateTimeStyle)
 // Version: 0.2.1 - pictures: avatars from the person's photo, photos and video previews in the bubbles,
 //                  a sender's avatar beside their bubble in a group, files as their name and size
 // Version: 0.2.0 - avatars, a rounded selection, the theme's colours
 // Version: 0.1.0
-// Last Modified: 2026-10-29
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "ChatCubeSettings.h"
 
 #include "UltraCanvasListDelegate.h"
 #include "UltraCanvasListModel.h"
@@ -23,9 +26,11 @@
 
 namespace ChatCube {
 
-// "14:05" / "21.10.2026" in local time.
+// "14:05" / "21.10.2026" in local time - or "2:05 PM" / "2026-10-21" /
+// "10/21/2026", as SetDateTimeStyle last said (Settings: Time & date).
 std::string FormatTime(int64_t timestampMs);
 std::string FormatDate(int64_t timestampMs);
+void SetDateTimeStyle(bool clock24, DateStyle dateStyle);
 // "0:12" / "1:05:09" for a video's or a voice message's length.
 std::string FormatDuration(double seconds);
 // "840 bytes" / "12 KB" / "1.2 MB" for a file's size.

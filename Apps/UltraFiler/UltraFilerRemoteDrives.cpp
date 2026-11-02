@@ -34,6 +34,7 @@
 #include <fstream>
 #include <sstream>
 #include "UltraCanvasPathUtf8.h"
+#include "UltraFilerDeviceProvider.h"
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
@@ -71,6 +72,39 @@ struct UltraFilerRemoteDrives::Impl {
     std::shared_ptr<UltraCloud::ISecretStore> secrets;
     std::shared_ptr<UltraCloud::CloudService> service;
     bool opened = false;
+
+    // The phones and cameras plugged in right now (SetDevices) are accounts
+    // of a service of their own: an account store in memory - a device is a
+    // drive while it is connected, never a configured one, so nothing of it
+    // may reach remote-drives.db - and no secrets, because a device has no
+    // password. Made here, before any worker can ask for it, and independent
+    // of Open(): a phone is browsable even when the vault the configured
+    // drives keep their passwords in cannot be opened.
+    std::shared_ptr<UltraCloud::AccountStore> deviceAccounts =
+            std::make_shared<UltraCloud::AccountStore>();
+    std::shared_ptr<UltraCloud::CloudService> deviceService;
+    // The account ids that are devices; the worker asks under the lock.
+    mutable std::mutex deviceIdsMutex;
+    std::unordered_set<std::string> deviceAccountIds;
+
+    Impl() {
+        RegisterPortableDeviceProvider();
+        if (deviceAccounts->Open("ultrafiler-devices", ":memory:").IsOk())
+            deviceService = std::make_shared<UltraCloud::CloudService>(
+                    deviceAccounts, std::make_shared<UltraCloud::MemorySecretStore>());
+    }
+
+    bool IsDeviceAccount(const std::string& accountId) const {
+        std::lock_guard<std::mutex> lk(deviceIdsMutex);
+        return deviceAccountIds.count(accountId) != 0;
+    }
+
+    // The service that carries `accountId`: the devices' for a connected
+    // device, the configured drives' for everything else.
+    UltraCloud::CloudService* ServiceFor(const std::string& accountId) {
+        if (deviceService && IsDeviceAccount(accountId)) return deviceService.get();
+        return service.get();
+    }
 
     // Opens the account store, the vault and the secret store once. The
     // accounts are an UltraDatabase file beside UltraFiler's settings; the
@@ -254,6 +288,9 @@ bool UltraFilerRemoteDrives::ProviderBelongsToKind(const std::string& providerId
     // the Cloud Storage choice offers. The in-process "memory" provider is a
     // test fake and belongs in neither list.
     if (providerId == "memory") return false;
+    // A phone or camera is not added by hand: it is a drive while it is
+    // plugged in (SetDevices).
+    if (providerId == PortableDeviceProviderId()) return false;
     const bool isFtp = providerId == "ftp";
     return kind == RemoteDriveKind::FtpOrSftp ? isFtp : !isFtp;
 }
@@ -302,11 +339,74 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
               });
 
     std::lock_guard<std::mutex> lk(mutex_);
-    drives_ = std::move(drives);
+    configuredDrives_ = std::move(drives);
+    drives_ = configuredDrives_;
+    drives_.insert(drives_.end(), deviceDrives_.begin(), deviceDrives_.end());
     // The first time the drives are known is the first time the listings
     // kept from the last run can be matched to them.
     LoadDiskCacheLocked();
     return true;
+#endif
+}
+
+void UltraFilerRemoteDrives::SetDevices(const std::vector<PortableDeviceInfo>& devices) {
+#ifndef ULTRAFILER_HAS_ULTRACLOUD
+    (void)devices;
+#else
+    if (!impl_->deviceService) return;
+
+    std::vector<RemoteDrive> drives;
+    std::unordered_set<std::string> ids;
+    for (const PortableDeviceInfo& info : devices) {
+        UltraCloud::Account account;
+        account.accountId = PortableDeviceAccountId(info.id);
+        account.providerId = PortableDeviceProviderId();
+        account.displayName = info.name;
+        account.serverUrl = info.id;   // what the provider opens
+        impl_->deviceAccounts->Upsert(account);
+        ids.insert(account.accountId);
+
+        RemoteDrive d;
+        d.accountId = account.accountId;
+        d.providerId = account.providerId;
+        d.displayName = info.name;
+        // Under the name on the Computer page, where a server's address
+        // goes: who made it, which is what tells two phones apart.
+        d.serverUrl = info.manufacturer;
+        d.rootPath = MakeRemoteFilerPath(account.accountId, "/");
+        // A device reached read-only (Image Capture on macOS) is browsed and
+        // copied from, and offers no change: no upload, rename, delete or
+        // new folder that could only fail.
+        d.canModify = !info.readOnly;
+        d.canUpload = !info.readOnly;
+        d.isDevice = true;
+        d.deviceKind = info.kind;
+        d.deviceId = info.id;
+        drives.push_back(std::move(d));
+    }
+    std::sort(drives.begin(), drives.end(),
+              [](const RemoteDrive& a, const RemoteDrive& b) {
+                  return a.displayName < b.displayName;
+              });
+
+    // A device pulled out: its account goes, and so does what was cached of
+    // it - the next device on that port may be a different phone.
+    std::vector<std::string> gone;
+    {
+        std::lock_guard<std::mutex> lk(impl_->deviceIdsMutex);
+        for (const std::string& id : impl_->deviceAccountIds)
+            if (!ids.count(id)) gone.push_back(id);
+        impl_->deviceAccountIds = ids;
+    }
+    for (const std::string& id : gone) {
+        impl_->deviceAccounts->Remove(id);
+        Invalidate(MakeRemoteFilerPath(id, "/"));
+    }
+
+    std::lock_guard<std::mutex> lk(mutex_);
+    deviceDrives_ = std::move(drives);
+    drives_ = configuredDrives_;
+    drives_.insert(drives_.end(), deviceDrives_.begin(), deviceDrives_.end());
 #endif
 }
 
@@ -1139,17 +1239,17 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
     UltraCloud::Result r = UltraCloud::Result::Ok();
     switch (job.operation) {
         case RemoteOperation::Delete:
-            r = impl_->service->Delete(accountId, remotePath, job.isDirectory);
+            r = impl_->ServiceFor(accountId)->Delete(accountId, remotePath, job.isDirectory);
             break;
         case RemoteOperation::Rename:
-            r = impl_->service->Rename(accountId, remotePath, job.argument);
+            r = impl_->ServiceFor(accountId)->Rename(accountId, remotePath, job.argument);
             break;
         case RemoteOperation::MakeDirectory: {
             // The provider takes the full path of the folder to create, so the
             // name is appended to the folder it goes in.
             const std::string parent = remotePath == "/" ? std::string()
                                                          : remotePath;
-            r = impl_->service->MakeDirectory(accountId, parent + "/" + job.argument);
+            r = impl_->ServiceFor(accountId)->MakeDirectory(accountId, parent + "/" + job.argument);
             break;
         }
         case RemoteOperation::Upload: {
@@ -1157,7 +1257,7 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
             const std::string parent = remotePath == "/" ? std::string()
                                                          : remotePath;
             const std::string name = UploadedName(job.argument, job.remoteName);
-            r = impl_->service->Upload(accountId, job.argument, parent + "/" + name);
+            r = impl_->ServiceFor(accountId)->Upload(accountId, job.argument, parent + "/" + name);
             break;
         }
         case RemoteOperation::Download: {
@@ -1167,7 +1267,7 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job, JobOutcome& outcome) {
             // window closed - rather than fetching the file from the start.
             const bool previousContinues =
                     UltraCloud::SetThreadDownloadContinues(job.isPreview);
-            r = impl_->service->Download(accountId, remotePath, job.argument);
+            r = impl_->ServiceFor(accountId)->Download(accountId, remotePath, job.argument);
             UltraCloud::SetThreadDownloadContinues(previousContinues);
             // A download that failed part way - the connection lost, the
             // window closed (Stop) - leaves no half a file behind: an FTP
@@ -2197,7 +2297,7 @@ bool UltraFilerRemoteDrives::FetchListing(const std::string& path, bool isPrefet
 
     std::vector<UltraCloud::Entry> entries;
     const UltraCloud::Result r =
-            impl_->service->List(accountId, remotePath, entries);
+            impl_->ServiceFor(accountId)->List(accountId, remotePath, entries);
 
     if (!r.IsOk()) {
         // The provider's own words: "530 Login incorrect" tells the user what

@@ -20,13 +20,17 @@
 // post to the UI thread - and return. One insertion can produce several
 // callbacks; the receiver coalesces.
 //
-// Backends: Linux/BSD (poll() on /proc/self/mountinfo), Windows
+// Backends: Linux/BSD (poll() on /proc/self/mountinfo, and a look every two
+// seconds at the GVFS places - ListGvfsVolumes - which change without the
+// mount table changing), Windows
 // (WM_DEVICECHANGE on a hidden top-level window), macOS (NSWorkspace mount
 // notifications). Where none exists the monitor polls the volume list on a
 // background thread instead, so Start() succeeds on every platform and the
 // caller never needs a fallback of its own.
+// Version: 1.1.0 - ListGvfsVolumes: phones, cameras and shares a Linux desktop
+//                  mounted through GVFS are volumes too
 // Version: 1.0.0
-// Last Modified: 2026-09-01
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -69,6 +73,24 @@ namespace UltraCanvas {
     // Just the mount points of the above, in the same order. The shape a
     // caller that only navigates - a path strip's drive dropdown - wants.
     std::vector<std::string> ListVolumeRoots();
+
+    // The places a Linux desktop mounted through GVFS - GNOME's Files and
+    // every GIO application share them - below $XDG_RUNTIME_DIR/gvfs: a phone
+    // (MTP), a camera (gphoto2), an iPhone (AFC), a network share or server
+    // opened there (SMB, SFTP, FTP, WebDAV, NFS, AFP). None of them is a
+    // mount point of its own - they are directories of one FUSE file system -
+    // so the scan above cannot see them; ListMountedVolumes adds these after
+    // the mounts. Each is labelled from its name: "mtp:host=SAMSUNG_Galaxy_S21_
+    // R58M123" reads "SAMSUNG Galaxy S21", "smb-share:server=nas,share=photos"
+    // reads "photos on nas". Cloud accounts mounted there (Google Drive,
+    // OneDrive) are left to UltraCanvasCloudStorage. Empty on Windows and
+    // macOS, and where GVFS is not running. Listing the directory is one
+    // round trip to the local GVFS daemon; it never reaches a device or the
+    // network.
+    std::vector<MountedVolume> ListGvfsVolumes();
+    // The label ListGvfsVolumes gives a GVFS mount name - exposed for tests.
+    // Empty for a name it does not list.
+    std::string GvfsVolumeLabel(const std::string& mountName);
 
     // ===== PLATFORM MOUNT TABLE (implemented per platform under OS/<Platform>/) =====
     // The mount points the operating system's own mount table lists, or an

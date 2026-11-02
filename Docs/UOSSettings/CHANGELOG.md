@@ -1,3 +1,20 @@
+#### 2026-11-01 *0.12.0*
+- Desktop: the empty Wallpaper field names the default it stands for,
+  "ULTRA OS A (the default picture)".
+
+#### 2026-11-01 *0.11.0*
+- **Desktop: the Apps window's view, sub-categories and Recent count.**
+  Three new choices on the Desktop page: the Apps window's view (tiles, or
+  the categories and a list), above how many applications a category is
+  split into its sub-categories (or never), and how many applications
+  Recent shows.
+
+#### 2026-11-01 *0.10.0*
+- **The ULTRA OS logo over the page tree.** The sidebar starts with the
+  ULTRA OS logo - the version drawn for a light ground
+  (`media/icons/desktop/ultraos-logo-light.png`), as UltraDesktop's dark
+  taskbar shows the one for a dark ground.
+
 #### 2026-11-01 *0.9.0*
 - **Desktop > Start with the desktop**: ChatCube and UltraMail, each a
   checkbox. A ticked program starts minimized a few seconds after

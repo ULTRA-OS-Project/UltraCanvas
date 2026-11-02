@@ -488,6 +488,26 @@ if(ULTRACANVAS_HAS_NATIVE_TRASH AND UNIX AND NOT APPLE)
     message(STATUS "    Test registered: TrashTest")
 endif()
 
+# ===== PORTABLE DEVICES TEST =====
+# The platform-independent half of UltraCanvasPortableDevices - its path rules
+# and what a build without a backend answers - from the core file alone, with
+# no define, so every row runs the same checks. The Windows WPD backend needs
+# a phone on a USB port and is not exercised in CI.
+message(STATUS "  Building PortableDevicesTest...")
+add_executable(PortableDevicesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/PortableDevicesTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasPortableDevices.cpp
+)
+target_include_directories(PortableDevicesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(PortableDevicesTest PRIVATE cxx_std_20)
+target_link_libraries(PortableDevicesTest PRIVATE Threads::Threads)
+set_target_properties(PortableDevicesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME PortableDevicesTest COMMAND PortableDevicesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: PortableDevicesTest")
+
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.
@@ -1048,6 +1068,34 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: KanbanFileDropTest")
 else()
     message(STATUS "  KanbanFileDropTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ULTRADESKTOP APP CATEGORIES TEST =====
+# Where UltraDesktop's Apps window puts an application: freedesktop
+# Categories=, Windows shortcuts by name and folder (English and German), the
+# Games kinds, the split above the threshold, Recent from the history; and the
+# history, view and threshold kept across a save of the desktop's settings.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraDesktopAppCategoriesTest...")
+    add_executable(UltraDesktopAppCategoriesTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraDesktopAppCategoriesTest.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCatalogue.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopAppCategories.cpp
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui/UltraDesktopSettings.cpp
+    )
+    target_include_directories(UltraDesktopAppCategoriesTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${CMAKE_SOURCE_DIR}/Apps/UltraDesktop/ui)
+    target_compile_features(UltraDesktopAppCategoriesTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraDesktopAppCategoriesTest PRIVATE UltraCanvas)
+    set_target_properties(UltraDesktopAppCategoriesTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraDesktopAppCategoriesTest COMMAND UltraDesktopAppCategoriesTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraDesktopAppCategoriesTest")
+else()
+    message(STATUS "  UltraDesktopAppCategoriesTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== UTF-8 FIND ALL TEST =====
@@ -4948,7 +4996,7 @@ endif()
 # Every format another program offers is seen: the X11 backend read a
 # TARGETS list (format 32, C longs) at 4 bytes an item and saw half of it.
 # Skips without DISPLAY.
-if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
     message(STATUS "  Building ClipboardTargetsTest...")
     add_executable(ClipboardTargetsTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardTargetsTest.cpp
@@ -4970,7 +5018,7 @@ endif()
 # A copy too large for one X request travels in pieces (ICCCM INCR), both
 # ways; checked against xclip as well when it is installed. Skips without
 # DISPLAY.
-if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
     message(STATUS "  Building ClipboardIncrTest...")
     add_executable(ClipboardIncrTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardIncrTest.cpp
@@ -5178,6 +5226,50 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: DesktopEntryTest")
 else()
     message(STATUS "  DesktopEntryTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== IMAGE FROM PIXELS TEST =====
+# UCImage::FromBgra / FromRgba (libspecific/Cairo/ImageCairo.cpp): a picture
+# made from rows in memory draws, scales, saves and reports transparency.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFromPixelsTest...")
+    add_executable(ImageFromPixelsTest ${CMAKE_CURRENT_SOURCE_DIR}/ImageFromPixelsTest.cpp)
+    target_include_directories(ImageFromPixelsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFromPixelsTest PRIVATE cxx_std_20)
+    target_link_libraries(ImageFromPixelsTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFromPixelsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFromPixelsTest COMMAND ImageFromPixelsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFromPixelsTest")
+endif()
+
+message(STATUS "")
+
+# ===== ULTRASNIP CAPTURE TEST =====
+# UltraSnip's pure helpers (Apps/UltraSnip/ui/UltraSnipCapture.cpp): the
+# rectangle from a drag, the crop of a BGRx capture into RGBA, the window
+# under a point, the recording bar's place. No display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building UltraSnipCaptureTest...")
+    add_executable(UltraSnipCaptureTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraSnipCaptureTest.cpp
+        ${ULTRACANVAS_ROOT}/Apps/UltraSnip/ui/UltraSnipCapture.cpp
+    )
+    target_include_directories(UltraSnipCaptureTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/UltraSnip/ui)
+    target_compile_features(UltraSnipCaptureTest PRIVATE cxx_std_20)
+    target_link_libraries(UltraSnipCaptureTest PRIVATE UltraCanvas)
+    set_target_properties(UltraSnipCaptureTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraSnipCaptureTest COMMAND UltraSnipCaptureTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraSnipCaptureTest")
 endif()
 
 message(STATUS "")
@@ -6437,6 +6529,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: ImageIcoQoiTest")
 else()
     message(STATUS "  ImageIcoQoiTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMAGE FORMATS TEST =====
+# Every modern picture format decodes in this build - JPEG, PNG, GIF, BMP,
+# TIFF, WebP, AVIF, HEIC, JPEG XL, QOI and icons, the samples under
+# media/images - and a picture without an alpha channel is an opaque RGB24
+# pixmap that keeps its format through the QOI pixmap blob. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFormatsTest...")
+    add_executable(ImageFormatsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageFormatsTest.cpp
+    )
+    target_include_directories(ImageFormatsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFormatsTest PRIVATE cxx_std_20)
+    target_compile_definitions(ImageFormatsTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(ImageFormatsTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFormatsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFormatsTest COMMAND ImageFormatsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFormatsTest")
+else()
+    message(STATUS "  ImageFormatsTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== IMAGE JPEG XL TEST =====

@@ -31,6 +31,7 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.7.0 - Desktop: the Apps window (view, sub-categories, Recent)
 // Version: 0.6.0 - Desktop: the programs that start with the desktop
 // Version: 0.5.0 - Notifications > Registrations: the applications' Windows
 //                  notification registrations, listed and removed
@@ -120,6 +121,9 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> ramDisc_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filer_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> desktops_;
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsView_;     // the Apps window: tiles or tree
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> appsSplit_;    // split a category above N
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> recentShown_;  // Recent's count
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown> systemDesktop_;   // only where the platform has the switch
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> desktopStatus_;
     // "Start with the desktop": one per DesktopSettings::StartupPrograms(),

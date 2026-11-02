@@ -1,6 +1,7 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.6.1 - the ULTRA OS logo over the page tree
 // Version: 0.6.0 - Desktop: "Start with the desktop" (ChatCube, UltraMail)
 // Version: 0.5.1 - Desktop: from an MSIX package, why "At sign-in" is missing
 // Version: 0.5.0 - Notifications > Registrations: listed, and removed with one button
@@ -8,7 +9,7 @@
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
 // Version: 0.1.0
-// Last Modified: 2026-10-21
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UOSSettingsWindow.h"
@@ -20,6 +21,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDesktopShell.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasImageElement.h"
 #include "UltraCanvasEmojiSettings.h"
 #include "UltraCanvasNotificationActivation.h"
 #include "UltraCanvasFileLoader.h"
@@ -33,6 +35,7 @@
 #include "UltraCanvasWindow.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <set>
 #include <utility>
 #include <vector>
@@ -44,6 +47,24 @@ namespace UOSSettings {
 namespace {
     // The look of UltraFiler's settings window, so the two read as one family.
     constexpr float kTitleFontSize = 15.0f;
+    // The Apps window's choices: when a category is split (0 = never) and
+    // how many applications Recent shows.
+    constexpr int kAppsSplitChoices[] = {0, 4, 6, 8, 10, 12, 16, 20};
+    constexpr int kRecentShownChoices[] = {4, 6, 8, 10, 12, 16, 24};
+
+    template <size_t N>
+    int NearestChoice(const int (&choices)[N], int value) {
+        int best = 0;
+        for (size_t i = 0; i < N; ++i) {
+            if (std::abs(choices[i] - value) < std::abs(choices[best] - value)) best = static_cast<int>(i);
+        }
+        return best;
+    }
+
+    template <size_t N>
+    int ChoiceAt(const int (&choices)[N], int index, int fallback) {
+        return index >= 0 && static_cast<size_t>(index) < N ? choices[index] : fallback;
+    }
     constexpr float kTextFontSize  = 10.0f;
     constexpr float kNoteFontSize  = 9.0f;
     constexpr float kTreeFontSize  = 9.0f;
@@ -54,6 +75,11 @@ namespace {
     const Color kNoteAccent     = Color(160, 176, 200, 255);
     const Color kRuleColor      = Color(225, 225, 230, 255);
     const Color kHeaderBackground = Color(243, 243, 246, 255);
+    const Color kSidebarBackground = Color(243, 243, 246, 255);
+    constexpr int kSidebarWidth = 180;
+    // The ULTRA OS logo over the page tree: ultraos-logo-light.png, 384 x 200.
+    constexpr int kLogoWidth = 132;
+    constexpr int kLogoHeight = 132 * 200 / 384;
     constexpr int kPagePadding = 20;
     constexpr int kTextWidth   = 520;
     constexpr int kNoteWidth   = 510;
@@ -258,16 +284,34 @@ bool UOSSettingsWindow::Create() {
     content->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+    // The sidebar: the ULTRA OS logo - the version drawn for a light ground,
+    // as the desktop's taskbar shows the one for a dark ground - over the
+    // page tree.
+    auto sidebar = std::make_shared<UltraCanvasContainer>("uos-sidebar");
+    sidebar->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    sidebar->SetBackgroundColor(kSidebarBackground);
+    sidebar->size.width = CSSLayout::Dimension::Px(kSidebarWidth);
+    sidebar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto logo = std::make_shared<UltraCanvasImageElement>("uos-logo", 0, 0, kLogoWidth, kLogoHeight);
+    logo->SetFitMode(ImageFitMode::Contain);
+    logo->LoadFromFile(GetResourcesDir() + "media/icons/desktop/ultraos-logo-light.png");
+    logo->SetElementSize(Size2Df(static_cast<float>(kLogoWidth), static_cast<float>(kLogoHeight)));
+    logo->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Center);
+    logo->SetMargin(14, 0, 10, 0);
+    logo->SetTooltip("ULTRA OS");
+    sidebar->AddChild(logo);
+
     tree_ = std::make_shared<UltraCanvasTreeView>("uos-tree");
     tree_->SetFontSize(kTreeFontSize);
     tree_->SetRowHeight(24);
     tree_->SetSelectionMode(TreeSelectionMode::Single);
     tree_->SetLineStyle(TreeLineStyle::NoLine);
-    tree_->SetBackgroundColor(Color(243, 243, 246, 255));
+    tree_->SetBackgroundColor(kSidebarBackground);
     tree_->SetShowFirstChildOnExpand(true);
     tree_->SetAutoExpandSelectedNode(true);
-    tree_->size.width = CSSLayout::Dimension::Px(180);
-    tree_->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+    tree_->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexBasis(CSSLayout::Dimension::Px(0))
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     TreeNodeData rootData("settings", "Settings");
@@ -282,7 +326,8 @@ bool UOSSettingsWindow::Create() {
     tree_->AddNode("settings", TreeNodeData(kSectionDevices, "Devices"));
     tree_->AddNode(kSectionDevices, TreeNodeData(kPageCertificates, "Trusted certificates"));
     tree_->SetRootVisible(false);
-    content->AddChild(tree_);
+    sidebar->AddChild(tree_);
+    content->AddChild(sidebar);
 
     pageArea_ = std::make_shared<UltraCanvasContainer>("uos-pages");
     pageArea_->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -424,7 +469,7 @@ void UOSSettingsWindow::BuildDesktopPage() {
     addRow("uos-dt-edge-row", "Taskbar", edge_);
 
     wallpaper_ = std::make_shared<UltraCanvasTextInput>("uos-dt-wallpaper", 0, 0, 260, 28);
-    wallpaper_->SetPlaceholder("The framework's picture");
+    wallpaper_->SetPlaceholder("ULTRA OS A (the default picture)");
     wireText(wallpaper_);
     auto browse = std::make_shared<UltraCanvasButton>("uos-dt-browse", 0, 0, 90, 28, "Browse...");
     browse->SetFontSize(kTextFontSize);
@@ -446,6 +491,33 @@ void UOSSettingsWindow::BuildDesktopPage() {
         if (!refreshing_) SaveDesktopPage();
     };
     addRow("uos-dt-desktops-row", "Virtual desktops", desktops_);
+
+    // The Apps window: its view, when a category is split into its
+    // sub-categories, and how many applications Recent shows.
+    appsView_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appsview", 0, 0, 200, 28);
+    appsView_->AddItem("Tiles", "tiles");
+    appsView_->AddItem("Categories and a list", "tree");
+    appsView_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-appsview-row", "Apps window", appsView_);
+
+    appsSplit_ = std::make_shared<UltraCanvasDropdown>("uos-dt-appssplit", 0, 0, 200, 28);
+    for (int above : kAppsSplitChoices) {
+        appsSplit_->AddItem(above == 0 ? "Never" : "Above " + std::to_string(above) + " applications",
+                            std::to_string(above));
+    }
+    appsSplit_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-appssplit-row", "Sub-categories", appsSplit_);
+
+    recentShown_ = std::make_shared<UltraCanvasDropdown>("uos-dt-recent", 0, 0, 120, 28);
+    for (int shown : kRecentShownChoices) recentShown_->AddItem(std::to_string(shown), std::to_string(shown));
+    recentShown_->onSelectionChanged = [this](int, const DropdownItem&) {
+        if (!refreshing_) SaveDesktopPage();
+    };
+    addRow("uos-dt-recent-row", "Recent shows", recentShown_);
 
     // Only where there is a system desktop to take the place of (Windows).
     if (UltraCanvasDesktopShell::CanReplaceSystemDesktop()) {
@@ -509,6 +581,12 @@ void UOSSettingsWindow::BuildDesktopPage() {
             "no button; the file manager is the program its folder buttons start. "
             "Virtual desktops are asked of the window manager, which may offer a "
             "different number.",
+            "The Apps window sorts the applications into Office, Internet, "
+            "Graphics, Video, Audio, CAD, Games, Tools and System, after the "
+            "ones started last (Recent). A category with more applications than "
+            "the Sub-categories choice is split into its kinds - Web browsers, "
+            "Painting, Board games - and the window's two icons at its top left "
+            "switch between the tiles and the categories beside a list.",
             "A program that starts with the desktop opens minimized a few seconds "
             "after it - unless it is running already - and keeps working in the "
             "background: ChatCube receives messages, UltraMail fetches mail and "
@@ -554,6 +632,9 @@ void UOSSettingsWindow::RefreshDesktopPage() {
     if (ramDisc_) ramDisc_->SetText(settings.ramDiscPath);
     if (filer_) filer_->SetText(settings.filerProgram);
     if (desktops_) desktops_->SetSelectedIndex(std::clamp(settings.virtualDesktops, 1, 9) - 1, false);
+    if (appsView_) appsView_->SetSelectedIndex(settings.appsView == "tree" ? 1 : 0, false);
+    if (appsSplit_) appsSplit_->SetSelectedIndex(NearestChoice(kAppsSplitChoices, settings.appsSplitAbove), false);
+    if (recentShown_) recentShown_->SetSelectedIndex(NearestChoice(kRecentShownChoices, settings.recentAppsShown), false);
     for (auto& [program, box] : startup_) box->SetChecked(settings.StartsWithDesktop(program));
     if (systemDesktop_) {
         const DesktopReplacement mode = UltraCanvasDesktopShell::GetSystemDesktopReplacement();
@@ -587,6 +668,9 @@ void UOSSettingsWindow::SaveDesktopPage() {
     if (ramDisc_) settings.ramDiscPath = ramDisc_->GetText();   // "" = no RAM disc button
     if (filer_ && !filer_->GetText().empty()) settings.filerProgram = filer_->GetText();
     if (desktops_) settings.virtualDesktops = std::clamp(desktops_->GetSelectedIndex() + 1, 1, 9);
+    if (appsView_) settings.appsView = appsView_->GetSelectedIndex() == 1 ? "tree" : "tiles";
+    if (appsSplit_) settings.appsSplitAbove = ChoiceAt(kAppsSplitChoices, appsSplit_->GetSelectedIndex(), 8);
+    if (recentShown_) settings.recentAppsShown = ChoiceAt(kRecentShownChoices, recentShown_->GetSelectedIndex(), 8);
     for (const auto& [program, box] : startup_) settings.SetStartsWithDesktop(program, box->IsChecked());
     if (!settings.Save(path, &error)) {
         if (desktopStatus_) desktopStatus_->SetText("Not saved: " + error);

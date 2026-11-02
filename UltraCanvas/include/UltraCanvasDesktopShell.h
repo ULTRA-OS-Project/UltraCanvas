@@ -45,6 +45,9 @@
 // none exists every query answers empty with IsAvailable() false, the
 // monitor polls nothing, and the platform-neutral parts - the application
 // list from desktop entries, the notices, the launcher - still work.
+// Version: 1.13.0 - CaptureScreenArea (one rectangle of the screen, for a
+//                   screenshot tool and a screen recorder), DesktopScreenImage::x / y,
+//                   DefaultRecordingPath
 // Version: 1.12.0 - DesktopScreenInfo::number (Windows' own display numbers)
 // Version: 1.11.0 - DesktopWindowInfo::maximized
 // Version: 1.10.0 - GetWindowBounds, MoveWindow, BringWindowOnScreen,
@@ -124,6 +127,8 @@ namespace UltraCanvas {
     // memory order B, G, R, unused - the layout cairo calls RGB24 and the QR
     // scanner calls BGRA32 - so a row can be handed to either without a copy.
     struct DesktopScreenImage {
+        int x = 0;                      // where the image's top-left corner lies on the
+        int y = 0;                      // screen, in the pixels of ListScreens (0,0 for the whole screen on X11)
         int width  = 0;
         int height = 0;
         int stride = 0;                 // bytes between row starts, >= width * 4
@@ -315,11 +320,24 @@ namespace UltraCanvas {
         // be the account's seed in the clear. Nothing is written anywhere.
         // False with the reason in `error`; `out` is then empty.
         static bool CaptureScreenImage(DesktopScreenImage& out, std::string* error = nullptr);
+        // One rectangle of the screen - `x`, `y`, `width`, `height` in the
+        // pixels of ListScreens - as pixels in memory, the same layout as
+        // CaptureScreenImage. The rectangle is clipped to the screen; `out.x`
+        // and `out.y` say where the pixels came from. Cheaper than the whole
+        // screen and a crop, which is what a screen recorder taking twenty
+        // frames a second of one window needs. False with the reason (a
+        // rectangle wholly off the screen among them); `out` is then empty.
+        static bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out,
+                                      std::string* error = nullptr);
         // "<Pictures>/Screenshots/Screenshot 2026-09-29 14.05.31.png" - the
         // user's Pictures folder through GetWellKnownUserFolders, the home
         // directory when there is none. Only names the file; CaptureScreen
         // creates the directory.
         static std::string DefaultScreenshotPath();
+        // "<Videos>/Screen Recordings/Screen recording 2026-09-29 14.05.31.mp4"
+        // - the user's Videos folder, the home directory when there is none.
+        // Only names the file; the recorder creates the directory.
+        static std::string DefaultRecordingPath();
 
         // ===== DEVICES =====
         // Cheap enough to poll once a second: procfs and sysfs reads, and one

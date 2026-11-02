@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeViews.cpp
 // The conversation list and the message list of the ChatCube window
+// Version: 0.2.4 - times on a 12-hour clock and dates in three orders, from the Settings window
 // Version: 0.2.3 - the ticks drawn as strokes (no font needed); a file that is a picture - an SVG
 //                  drawing above all - shows it in the bubble as a photo does
 // Version: 0.2.2 - a photo's preview picture shown while the photo is on its way
@@ -9,7 +10,7 @@
 //                  rounded selection, bubbles without borders in the theme's colours, senders in
 //                  their avatar's colour
 // Version: 0.1.0
-// Last Modified: 2026-10-31
+// Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "ChatCubeViews.h"
@@ -169,11 +170,28 @@ const std::string& PicturePath(const UltraIMMessage& m) {
 
 } // namespace
 
+namespace {
+bool      g_clock24 = true;
+DateStyle g_dateStyle = DateStyle::DayMonthYear;
+} // namespace
+
+void SetDateTimeStyle(bool clock24, DateStyle dateStyle) {
+    g_clock24 = clock24;
+    g_dateStyle = dateStyle;
+}
+
 std::string FormatTime(int64_t timestampMs) {
     if (timestampMs <= 0) return std::string();
     const std::tm tm = LocalTime(timestampMs);
-    char buffer[8];
-    std::strftime(buffer, sizeof(buffer), "%H:%M", &tm);
+    char buffer[16];
+    if (g_clock24) {
+        std::strftime(buffer, sizeof(buffer), "%H:%M", &tm);
+    } else {
+        // "2:05 PM": no leading zero, and AM / PM whatever the locale says
+        // (strftime's %p is empty in many of them).
+        const int hour = tm.tm_hour % 12 == 0 ? 12 : tm.tm_hour % 12;
+        std::snprintf(buffer, sizeof(buffer), "%d:%02d %s", hour, tm.tm_min, tm.tm_hour < 12 ? "AM" : "PM");
+    }
     return buffer;
 }
 
@@ -181,7 +199,10 @@ std::string FormatDate(int64_t timestampMs) {
     if (timestampMs <= 0) return std::string();
     const std::tm tm = LocalTime(timestampMs);
     char buffer[16];
-    std::strftime(buffer, sizeof(buffer), "%d.%m.%Y", &tm);
+    const char* format = g_dateStyle == DateStyle::YearMonthDay   ? "%Y-%m-%d"
+                         : g_dateStyle == DateStyle::MonthDayYear ? "%m/%d/%Y"
+                                                                  : "%d.%m.%Y";
+    std::strftime(buffer, sizeof(buffer), format, &tm);
     return buffer;
 }
 

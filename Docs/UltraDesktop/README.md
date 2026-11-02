@@ -50,10 +50,13 @@ system.
 
 On the left by default; the settings move it to the top or bottom edge, and
 `--edge top` does so for one run. Three groups, joined by the S-curve wave
-separators:
+separators. The two waves mirror each other, so the dark band of running
+applications narrows the same way at both ends, and each wave starts 4 px
+from the icon next to it - as the right bar's wave does below the
+organiser.
 
-1. **System** — *ULTRA OS settings* and the *app starter*. *ULTRA OS
-   settings* starts **UOS-Settings**, the system's settings application
+1. **System** — *ULTRA OS settings*, shown as the ULTRA OS logo, and the
+   *app starter*. *ULTRA OS settings* starts **UOS-Settings**, the system's settings application
    (`Docs/UOSSettings/README.md`), which opens on its *Desktop* page.
 2. **Running applications** — one button per open window on the current
    desktop, with the application's own icon (resolved from its desktop
@@ -110,9 +113,15 @@ the right-hand monitor the primary.
   as the window manager has (read at start-up and followed when it changes),
   the settings' count only where there is no window manager to ask; choosing
   a count in the settings asks the window manager for that many — the
-  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot* (the whole screen to
-  `~/Pictures/Screenshots/Screenshot <date> <time>.png`; the button shows a
-  green dot for three seconds and its tooltip names the file).
+  *Sticker board* (the pinboard) and the *notes* toggles, the *clipboard* and *screenshot*. A click
+  on the screenshot button opens [UltraSnip](../UltraSnip/README.md) to snip
+  an area; its right-click menu offers a window, the whole screen, a video
+  recording of each, *Screenshot now, to Pictures* (the whole screen to
+  `~/Pictures/Screenshots/Screenshot <date> <time>.png` without UltraSnip; the
+  button shows a green dot for three seconds and its tooltip names the file)
+  and *Open UltraSnip*; `Super+Shift+S` from any window snips an area. Where
+  UltraSnip is not installed beside the desktop, the click takes the plain
+  screenshot.
 - **Clipboard**: the desktop records every copy into the clipboard history
   ([UltraCanvasClipboardHistory](../UltraCanvas/UltraCanvasClipboardHistory.md)),
   on disk and encrypted, leaving out copies a password manager marks as
@@ -206,12 +215,50 @@ the right-hand monitor the primary.
 ### Windows the desktop opens
 
 - **Applications** (app starter): every installed application from its
-  desktop entry as an icon tile, a filter box above them, one click to
-  start; a right click pins it to the taskbar or unpins it. What the
-  application menu of any other desktop shows, so an application installed
-  by its package appears without being told about ULTRA OS. A tap of the
-  Super key opens it from any window - on Linux, and on Windows as the
-  shell (beside Explorer the key is the Start menu's).
+  desktop entry, one click to start; a right click pins it to the taskbar
+  or unpins it. What the application menu of any other desktop shows, so an
+  application installed by its package appears without being told about
+  ULTRA OS. A tap of the Super key opens it from any window - on Linux, and
+  on Windows as the shell (beside Explorer the key is the Start menu's).
+  - **Categories.** *Recent* (the last applications started - from this
+    window or a taskbar pin - eight by default), then *Office*, *Internet*,
+    *Graphics*, *Video*, *Audio*, *CAD*, *Games*, *Tools* and *System*;
+    an empty one is left out. The category is the one the application's
+    desktop entry declares (`Categories=Network;WebBrowser` is Internet). A
+    Windows Start-menu shortcut declares none, so its name, its program and
+    its Start-menu folder are matched against well-known applications and
+    words in English and German (Excel, Outlook, *Datenträgerbereinigung*,
+    a shortcut under *Windows Tools*); what matches nothing is in Tools.
+    The names come from a catalogue of about 2,400 well-known Windows,
+    macOS and Linux applications (`UltraDesktopAppCatalogue.cpp`); on macOS
+    a bundle's `LSApplicationCategoryType` is read as its category.
+  - **Folders.** On Windows a Start-menu folder holding five or more
+    applications - a maker's folder such as MAGIX, Lenovo or LAV Filters - is
+    a category of its own, after the others, named after the folder; on
+    macOS so is such a folder under `/Applications` (not `/Applications` or
+    `Utilities` themselves).
+    Windows' own folders (Windows Tools, Accessories, System Tools) are not:
+    their applications are in System.
+  - **Moving an application.** Drag a tile onto another category's heading
+    or tiles, or a row of the list onto a category in the tree; or choose
+    *Move to* on its right-click menu. It stays there (`appMoves` in the
+    desktop's settings); *Back to …* - or dragging it back - returns it to
+    the category its own name gives it.
+  - **Sub-categories.** A category with more than eight applications (UOS-
+    Settings > Desktop > *Sub-categories*) is split into its kinds - Web
+    browsers, Email, Painting, Photos, Text editors; for Games 3D, Retro,
+    Board games, Adventure, Strategy and Simulation - with *Other* last.
+  - **Two views**, switched by the two icons at the window's top left and
+    remembered: *Tiles*, each category a heading over a grid of tiles as on
+    Windows' Start, the name under the icon on as many lines as it needs
+    (four, then "…"; the tooltip has the whole name); and *Categories and a
+    list*, the categories as a tree, their sub-categories under them, beside
+    a list of the chosen one's applications.
+  - **Opens at once.** The window opens first and says it is loading; the
+    applications come after it, read on a thread of their own. The desktop
+    reads them once ahead of time, five seconds after it starts, so the
+    window usually shows them straight away and reads them again behind
+    them.
 - **Task Manager**: the open windows on the first tab, under a header -
   each with its application's icon, its state as an icon and a word (open,
   maximized or minimized; blue for the window in front), the display
@@ -330,7 +377,9 @@ earlier versions kept under `~/.config` is moved on the first start):
 }
 ```
 
-An empty wallpaper shows the framework's `media/images/landscape.jpg`. An
+An empty wallpaper shows ULTRA OS's own picture, `media/images/desktop/ULTRA OS A.avif`
+(the framework's `media/images/landscape.jpg` where a package lacks it or
+cannot read AVIF). An
 empty `ramDiscPath` leaves the RAM disc button out; on Windows, which has no
 RAM disc of its own, that is the default.
 `categoryBoard.board` is the Kanban element's own JSON document

@@ -356,6 +356,7 @@ if(EMSCRIPTEN)
     set(BUILD_ULTRAWEB OFF CACHE BOOL "Build the UltraWeb browser")
     set(BUILD_ULTRADESKTOP OFF CACHE BOOL "Build the UltraDesktop application")
     set(BUILD_ULTRACLIPBOARD OFF CACHE BOOL "Build the UltraClipboard application")
+    set(BUILD_ULTRASNIP OFF CACHE BOOL "Build the UltraSnip application")
     set(BUILD_ULTRAVIDEO OFF CACHE BOOL "Build the UltraVideo application")
     set(BUILD_DEVICEEXPLORER OFF CACHE BOOL "Build the DeviceExplorer application")
     set(BUILD_ULTRAAUTHENTICATOR OFF CACHE BOOL "Build the UltraAuthenticator application")
@@ -455,6 +456,15 @@ endif()
 # and Tests/ must agree about which side defines the backend.
 if(WIN32 OR (UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN))
     set(ULTRACANVAS_HAS_NATIVE_FILE_LOCK ON)
+endif()
+
+# Which platforms can reach phones, cameras and players that are not a drive
+# (UltraCanvasPortableDevices: Windows Portable Devices - MTP / PTP; on macOS
+# Image Capture - an iPhone's photos and a camera's card, read-only). Same
+# reason as above: the core file compiles a null-returning fallback unless this
+# is set. Linux desktops mount such devices themselves (gvfs).
+if(WIN32 OR APPLE)
+    set(ULTRACANVAS_HAS_PORTABLE_DEVICES ON)
 endif()
 
 # Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
@@ -743,6 +753,16 @@ endif()
 option(BUILD_ULTRACLIPBOARD "Build the UltraClipboard application" ON)
 if(BUILD_ULTRACLIPBOARD)
     add_subdirectory(Apps/UltraClipboard)
+endif()
+
+# ===== ULTRASNIP =====
+# The screenshot and screen-recording tool of ULTRA OS: a rectangle, a window
+# or the whole screen as a picture (clipboard, Pictures/Screenshots) or as a
+# video (Videos/Screen Recordings, through VideoFX's frame recorder).
+# UltraDesktop's screenshot button and Super+Shift+S start it.
+option(BUILD_ULTRASNIP "Build the UltraSnip application" ON)
+if(BUILD_ULTRASNIP)
+    add_subdirectory(Apps/UltraSnip)
 endif()
 
 # ===== ULTRAVIDEO =====
@@ -1804,6 +1824,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
             Apps/UltraFiler/UltraFilerRemoteDrives.cpp
+            Apps/UltraFiler/UltraFilerDeviceProvider.cpp
             Apps/UltraFiler/UltraFilerConnectionLogWindow.cpp
             Apps/UltraFiler/UltraFilerRamDisks.cpp
             Apps/UltraFiler/UltraFilerRamDiskDialog.cpp
@@ -2811,7 +2832,7 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     foreach(_uc_gui_app
             UltraCanvasDemo Texter UltraFiler UltraViewer UltraPaint ArtCreator
             UCFileManager UltraAIApp EmailCleaner UltraSocial UOSSettings
-            UltraClipboard UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
+            UltraClipboard UltraSnip UltraAuthenticator UltraPassword UltraVideo UltraDBAdmin)
         if(TARGET ${_uc_gui_app})
             ultracanvas_windows_gui_app(${_uc_gui_app})
         endif()

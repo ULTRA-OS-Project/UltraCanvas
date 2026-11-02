@@ -974,6 +974,14 @@ showed the old picture. The decode itself reads images with
 a file that changed since it was cached again; plain `UCImage::Get()` never
 looks at the disk.
 
+**Not only the Filer's thumbnails live there.** `UCImage::GetPixmap` keeps a
+raster file's fitted pixmap in the same cache when the box is at least
+640 × 480 raw pixels - a desktop's wallpaper, a viewer's photo - stored as
+the same QOI blob after the first decode and inflated on the next run
+instead of decoding and resizing the file; a picture without an alpha
+channel is stored and inflated opaque (RGB24). The same stamp and the same
+sweep apply.
+
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
 (`ThumbnailDiskCache::kRendererGeneration`), and an entry of another

@@ -24,6 +24,10 @@
 // The monitor keeps a second connection with PropertyChangeMask on the root
 // window and sleeps in poll() on it and on a wake pipe, so Stop() returns
 // promptly and nothing spins.
+// Version: 1.6.1 - the procfs and sysfs probes moved to
+//                  UltraCanvasLinuxDeviceProbes.cpp, shared with the Wayland backend
+// Version: 1.6.0 - CaptureScreenArea: one rectangle of the root window (XGetImage of
+//                  that much, not the whole screen and a crop)
 // Version: 1.2.1 - ReserveScreenEdges reserves only the root's edges the window
 //                  lies on, its strips the window's own extent: a desktop on
 //                  one monitor of several claims nothing on the others
@@ -50,6 +54,7 @@
 
 #include "UltraCanvasDesktopShellBackend.h"
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasLinuxDeviceProbes.h"
 #include "UltraCanvasLinuxDesktopShellInternal.h"
 #include "UltraCanvasPathUtf8.h"
 
@@ -212,110 +217,12 @@ namespace {
     }
 
     // ===== PROCFS / SYSFS READS =====
-
-    std::string ReadTextFile(const std::string& path) {
-        std::ifstream in(PathFromUtf8(path));
-        if (!in) return "";
-        std::stringstream buffer;
-        buffer << in.rdbuf();
-        std::string text = buffer.str();
-        while (!text.empty() && (text.back() == '\n' || text.back() == '\r' || text.back() == ' ')) text.pop_back();
-        return text;
-    }
-
-    std::vector<std::string> ListDirectory(const std::string& path) {
-        std::vector<std::string> names;
-        DIR* dir = ::opendir(path.c_str());
-        if (!dir) return names;
-        while (dirent* entry = ::readdir(dir)) {
-            const std::string name = entry->d_name;
-            if (name == "." || name == "..") continue;
-            names.push_back(name);
-        }
-        ::closedir(dir);
-        std::sort(names.begin(), names.end());
-        return names;
-    }
-
-    bool StreamRunning(const std::string& pcmDir) {
-        // pcm0c/sub0/status, pcm0c/sub1/status, ...
-        for (const std::string& sub : ListDirectory(pcmDir)) {
-            if (sub.rfind("sub", 0) != 0) continue;
-            const std::string status = ReadTextFile(pcmDir + "/" + sub + "/status");
-            if (status.find("state: RUNNING") != std::string::npos) return true;
-        }
-        return false;
-    }
-
-    void ProbeAudio(DesktopDeviceActivity& activity) {
-        const std::string root = "/proc/asound";
-        bool anyCard = false;
-        for (const std::string& card : ListDirectory(root)) {
-            if (card.rfind("card", 0) != 0) continue;
-            anyCard = true;
-            for (const std::string& pcm : ListDirectory(root + "/" + card)) {
-                if (pcm.rfind("pcm", 0) != 0 || pcm.size() < 5) continue;
-                const char kind = pcm.back();   // 'c' capture, 'p' playback
-                if (kind != 'c' && kind != 'p') continue;
-                if (!StreamRunning(root + "/" + card + "/" + pcm)) continue;
-                if (kind == 'c') activity.microphoneInUse = true;
-                else activity.speakerPlaying = true;
-            }
-        }
-        if (!anyCard) {
-            activity.warnings.push_back("No sound card is listed under /proc/asound, so the "
-                                        "microphone and speaker state is unknown.");
-        }
-    }
-
-    void ProbeCamera(DesktopDeviceActivity& activity) {
-        // Any process of ours with a /dev/video* descriptor. Other users'
-        // processes are not readable and cannot open our camera either.
-        bool anyDevice = false;
-        for (const std::string& dev : ListDirectory("/dev")) {
-            if (dev.rfind("video", 0) == 0) { anyDevice = true; break; }
-        }
-        if (!anyDevice) return;
-        const uid_t me = ::getuid();
-        for (const std::string& pid : ListDirectory("/proc")) {
-            if (pid.empty() || !std::isdigit(static_cast<unsigned char>(pid[0]))) continue;
-            const std::string fdDir = "/proc/" + pid + "/fd";
-            struct stat st;
-            if (::stat(fdDir.c_str(), &st) != 0 || st.st_uid != me) continue;
-            DIR* dir = ::opendir(fdDir.c_str());
-            if (!dir) continue;
-            bool found = false;
-            while (dirent* entry = ::readdir(dir)) {
-                if (entry->d_name[0] == '.') continue;
-                char target[256];
-                const std::string link = fdDir + "/" + entry->d_name;
-                const ssize_t n = ::readlink(link.c_str(), target, sizeof(target) - 1);
-                if (n <= 0) continue;
-                target[n] = '\0';
-                if (std::strncmp(target, "/dev/video", 10) == 0) { found = true; break; }
-            }
-            ::closedir(dir);
-            if (found) { activity.webcamInUse = true; return; }
-        }
-    }
-
-    void ProbeBattery(DesktopDeviceActivity& activity) {
-        const std::string root = "/sys/class/power_supply";
-        for (const std::string& supply : ListDirectory(root)) {
-            const std::string dir = root + "/" + supply;
-            if (ReadTextFile(dir + "/type") != "Battery") continue;
-            const std::string present = ReadTextFile(dir + "/present");
-            if (present == "0") continue;
-            activity.batteryPresent = true;
-            const std::string capacity = ReadTextFile(dir + "/capacity");
-            if (!capacity.empty()) {
-                try { activity.batteryPercent = std::stoi(capacity); } catch (...) {}
-            }
-            const std::string status = ReadTextFile(dir + "/status");
-            activity.batteryCharging = (status == "Charging" || status == "Full");
-            return;   // the first battery is the one a panel shows
-        }
-    }
+    // Shared with the Wayland backend (UltraCanvasLinuxDeviceProbes.cpp).
+    using LinuxProbes::ReadTextFile;
+    using LinuxProbes::ListDirectory;
+    using LinuxProbes::ProbeAudio;
+    using LinuxProbes::ProbeCamera;
+    using LinuxProbes::ProbeBattery;
 
     // The layouts the server was configured with ("us,de") and the group in
     // effect. Held under the query mutex because it uses the query display.
@@ -723,7 +630,9 @@ bool ReserveScreenEdges(uint64_t id, int left, int right, int top, int bottom) {
 // surfaces use, and the one the QR scanner reads as BGRA32, so the same rows
 // serve the PNG writer and an in-memory consumer alike. Caller holds
 // g_queryMutex.
-bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
+// `area` nullptr: the whole root window; else that rectangle of it, clipped
+// to the root (false when nothing of it lies on the screen).
+bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error, const int* area = nullptr) {
     out = DesktopScreenImage();
     Display* d = QueryDisplay();
     if (!d) {
@@ -732,13 +641,28 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
     }
     ScopedErrorHandler guard;
     const int screen = DefaultScreen(d);
-    const int width = DisplayWidth(d, screen);
-    const int height = DisplayHeight(d, screen);
-    if (width <= 0 || height <= 0) {
+    const int screenWidth = DisplayWidth(d, screen);
+    const int screenHeight = DisplayHeight(d, screen);
+    if (screenWidth <= 0 || screenHeight <= 0) {
         error = "The X server reports an empty screen.";
         return false;
     }
-    XImage* image = XGetImage(d, RootOf(d), 0, 0, static_cast<unsigned>(width),
+    int originX = 0, originY = 0, width = screenWidth, height = screenHeight;
+    if (area) {
+        const int left = std::max(0, area[0]);
+        const int top = std::max(0, area[1]);
+        const int right = std::min(screenWidth, area[0] + area[2]);
+        const int bottom = std::min(screenHeight, area[1] + area[3]);
+        if (right <= left || bottom <= top) {
+            error = "The area to capture lies off the screen.";
+            return false;
+        }
+        originX = left;
+        originY = top;
+        width = right - left;
+        height = bottom - top;
+    }
+    XImage* image = XGetImage(d, RootOf(d), originX, originY, static_cast<unsigned>(width),
                               static_cast<unsigned>(height), AllPlanes, ZPixmap);
     if (!image) {
         error = "The X server refused to hand over the screen contents.";
@@ -784,6 +708,8 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
         }
     }
     XDestroyImage(image);
+    out.x = originX;
+    out.y = originY;
     out.width = width;
     out.height = height;
     out.stride = stride;
@@ -793,6 +719,12 @@ bool CaptureScreenLocked(DesktopScreenImage& out, std::string& error) {
 bool CaptureScreenImage(DesktopScreenImage& out, std::string& error) {
     std::lock_guard<std::mutex> lock(g_queryMutex);
     return CaptureScreenLocked(out, error);
+}
+
+bool CaptureScreenArea(int x, int y, int width, int height, DesktopScreenImage& out, std::string& error) {
+    std::lock_guard<std::mutex> lock(g_queryMutex);
+    const int area[4] = {x, y, width, height};
+    return CaptureScreenLocked(out, error, area);
 }
 
 bool CaptureScreen(const std::string& pngPath, std::string& error) {
