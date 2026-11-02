@@ -113,6 +113,21 @@ set_target_properties(anchorpoint-cli PROPERTIES OUTPUT_NAME "anchorpoint-cli")
 ultracanvas_embed_windows_manifest(anchorpoint-cli)
 install(TARGETS anchorpoint-cli RUNTIME DESTINATION bin)
 
+# The app icon (media/appicon/AnchorPoint.svg, and its 256 px PNG) and the
+# Linux desktop entries. The icon is installed here, with the CLI, because
+# both entries name it: AnchorPoint.desktop (the window, below) and
+# anchorpoint-cli.desktop ("AnchorPoint Receive": a terminal that waits for
+# one file and saves it in Downloads), which exists whenever the CLI does.
+set(ANCHORPOINT_ICON_DIR "${CMAKE_CURRENT_LIST_DIR}/../../media/appicon")
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/anchorpoint-cli.desktop
+            DESTINATION share/applications)
+    install(FILES ${ANCHORPOINT_ICON_DIR}/AnchorPoint.png
+            DESTINATION share/icons/hicolor/256x256/apps)
+    install(FILES ${ANCHORPOINT_ICON_DIR}/AnchorPoint.svg
+            DESTINATION share/icons/hicolor/scalable/apps)
+endif()
+
 # ===========================================================================
 # Tests (headless, core only)
 # ===========================================================================
@@ -226,21 +241,14 @@ if(ANCHORPOINT_BUILD_GUI)
         ultracanvas_embed_windows_manifest(AnchorPoint)
 
         # The app icon: an anchor with 101011 across its shank, in the
-        # UltraCanvas logo's colours. media/appicon/AnchorPoint.svg is the
-        # source; the PNG beside it is its 256 px render, which main.cpp
-        # hands to the window. Embedded in the .exe for Explorer and the
-        # taskbar (Windows only), and installed as the theme icon the
-        # desktop entry names (Linux).
-        set(ANCHORPOINT_ICON_DIR "${CMAKE_CURRENT_LIST_DIR}/../../media/appicon")
+        # UltraCanvas logo's colours. main.cpp hands the PNG to the window;
+        # embedded in the .exe for Explorer and the taskbar (Windows only).
+        # The theme icons are installed with the CLI, above.
         ultracanvas_embed_app_icon(AnchorPoint "${ANCHORPOINT_ICON_DIR}/AnchorPoint.png")
         install(TARGETS AnchorPoint RUNTIME DESTINATION bin)
         if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
             install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/AnchorPoint.desktop
                     DESTINATION share/applications)
-            install(FILES ${ANCHORPOINT_ICON_DIR}/AnchorPoint.png
-                    DESTINATION share/icons/hicolor/256x256/apps)
-            install(FILES ${ANCHORPOINT_ICON_DIR}/AnchorPoint.svg
-                    DESTINATION share/icons/hicolor/scalable/apps)
         endif()
         message(STATUS "AnchorPoint ${PROJECT_VERSION}: building core + CLI + GUI (${ANCHORPOINT_PLATFORM}).")
     endif()
