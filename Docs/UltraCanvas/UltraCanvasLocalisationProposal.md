@@ -15,7 +15,12 @@ dialogs, the file dialog, the filer widget, the colour, time and
 new-document dialogs, the media viewer - the remaining framework strings
 are wrapped as their files are touched), and `extract_ui_strings.py`,
 `check_locale_catalogues.py` with `locale-catalogues.yml`, and
-`wrap_ui_strings.py`. L3 onwards are still to do. Revised 2026-11-02: the module is
+`wrap_ui_strings.py`. **Phase L3 implemented** (2026-11-02): the
+`ultralocalisation-draft` tool over UltraAI's translator with
+`translate_catalogue.py` driving it per language and set, the first
+drafts of the standard and base sets in de, fr, es, it, nl, pt, ja and
+zh-Hans (machine drafts, marked so until reviewed), and the UOS-Settings
+Language page with the translator's name. L4 onwards are still to do. Revised 2026-11-02: the module is
 `UltraLocalisation`, it loads a **standard set** UltraCanvas ships for every
 application, the **base sets** of the application's type (video editing,
 banking, shopping, ...) and the application's **own set** over them, and a

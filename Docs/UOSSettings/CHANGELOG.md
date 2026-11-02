@@ -1,3 +1,12 @@
+#### 2026-11-02 *0.7.0*
+- **Language: the language every application shows.** A new top-level page
+  chooses the language for all UltraCanvas applications - *System*, or any
+  language a translation of the standard set ships for, listed by its own
+  name - and writes `Language.conf` in the UltraCanvas settings folder,
+  which every application reads when it starts (UltraLocalisation,
+  `Docs/Modules/UltraLocalisation/README.md`). A *Translator* field keeps
+  the name the localisation editor will write into the catalogues it saves.
+
 #### 2026-10-20 *0.6.0*
 - **Appearance → Emoji: colour, black and white, or the system's.** A new
   page chooses how every application draws emoji: *Colour* (Noto Color Emoji,

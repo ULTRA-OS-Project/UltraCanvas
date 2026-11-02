@@ -2,8 +2,8 @@
 
 <!-- doc-check: int count = 3; int done = 1; std::vector<std::string> systemLanguages; -->
 
-**Status:** Phases L1 and L2 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2). The drafts in other languages (L3), the editor (L4), the applications (L5) and locale formatting (L6) follow.
-**Version:** 1.1.0
+**Status:** Phases L1 to L3 of [`UltraCanvasLocalisationProposal.md`](../../UltraCanvas/UltraCanvasLocalisationProposal.md) implemented: the module, the three layers of catalogues, the override folder, the fallback walk, plurals, `Language.conf`, the language choice, the start-up wiring (L1); the English standard set and the sixteen base sets under `media/locale/en/`, the framework's own dialogs wrapped in `Tr`, and the three scripts with their CI check (L2); the drafting tool over UltraAI with its script, the first drafts of the standard and base sets in German, French, Spanish, Italian, Dutch, Portuguese, Japanese and Simplified Chinese, and the UOS-Settings Language page (L3). The editor (L4), the applications (L5) and locale formatting (L6) follow.
+**Version:** 1.2.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-11-02
 
@@ -154,6 +154,32 @@ with the values in its language.
 | `scripts/extract_ui_strings.py` | rewrites the English catalogues from the sources: adds the framework's `Tr` keys to `Standard.json` (never removes one, so the vocabulary stays) and rewrites each application's `en/<Name>.json` from its sites, keeping its metadata and listing what it inherits under `@inherited`; `--check` is the CI sync test |
 | `scripts/check_locale_catalogues.py` | the CI gate (`locale-catalogues.yml`): every translation parses, has no stale key, keeps the source's placeholders, has the plural forms its language needs, repeats no entry of a set below it, names only base sets that exist; and the English files are in sync. Findings that predate it are in `scripts/locale_catalogues_baseline.txt` |
 | `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
+
+## Drafting a language
+
+`ultralocalisation-draft` (`Apps/UltraLocalisationDraft`, built when the
+UltraAI module is) reads an English source catalogue, translates every
+entry the target lacks through UltraAI's translator - any text-LLM
+provider the person has configured, or a translation provider - and
+writes the target marked `"@translated-by": "UltraAI draft <date> ...,
+reviewed by -"` until a person changes it. A context key sends its text
+alone; a plural entry sends its singular for the `one` form and its
+plural for every other form the language's rule needs; a translation
+that lost a placeholder is left untranslated and reported, so the
+catalogue check never sees it. `scripts/translate_catalogue.py` runs the
+tool over a language's sets - the standard set first, then the base
+sets, then the applications' - with a one-line context per set:
+
+```
+python3 scripts/translate_catalogue.py de fr --provider anthropic --api-key-env ANTHROPIC_API_KEY
+python3 scripts/translate_catalogue.py ja --sets Standard base/Video --dry-run
+```
+
+The editor's drafting button (L4) is this same step. The first drafts of
+the standard and base sets ship in eight languages - `de`, `fr`, `es`,
+`it`, `nl`, `pt`, `ja`, `zh-Hans` - each file marked as a machine draft
+in `@translated-by` until reviewed; the UOS-Settings Language page lists
+a language as soon as its `Standard.json` is there.
 
 The framework's own dialogs - the modal dialogs' buttons and titles, the
 file dialog, the filer widget's menus and messages, the colour, date,

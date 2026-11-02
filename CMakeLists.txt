@@ -1335,6 +1335,18 @@ if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
         "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraMsg.png")
 endif()
 
+# ===== ULTRALOCALISATION DRAFT TOOL =====
+# ultralocalisation-draft (Apps/UltraLocalisationDraft): drafts a translation
+# catalogue with UltraAI's translator; scripts/translate_catalogue.py runs it
+# over every set of a language. Needs the UltraAI module.
+option(BUILD_ULTRALOCALISATION_DRAFT "Build the ultralocalisation-draft tool" ON)
+if(BUILD_ULTRALOCALISATION_DRAFT AND BUILD_ULTRAAI_MODULE AND TARGET UltraAI_Core AND TARGET UltraLocalisation)
+    add_executable(ultralocalisation-draft Apps/UltraLocalisationDraft/main.cpp)
+    target_compile_features(ultralocalisation-draft PRIVATE cxx_std_20)
+    target_link_libraries(ultralocalisation-draft PRIVATE UltraLocalisation UltraAI_Core)
+    set_target_properties(ultralocalisation-draft PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+endif()
+
 # ===== ULTRADATABASE TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraDatabase is built.

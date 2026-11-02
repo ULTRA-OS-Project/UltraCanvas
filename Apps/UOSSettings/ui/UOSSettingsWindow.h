@@ -25,6 +25,7 @@
 //       Forget button for a device that was reset or replaced and now
 //       presents a new certificate.
 //
+// Version: 0.7.0 - the Language page
 // Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
 // Version: 0.3.0 - Desktop: at sign-in the Windows desktop, UltraDesktop
 //                  beside Explorer, or UltraDesktop instead of Explorer
@@ -38,6 +39,7 @@
 
 #include <functional>
 #include <map>
+#include <vector>
 #include <memory>
 #include <string>
 
@@ -83,8 +85,10 @@ private:
     void RefreshLastFolderPage();
     void SetMode(bool individual);
     void SetAppScope(const std::string& appName, bool individual);
+    void BuildLanguagePage();
     void BuildEmojiPage();
     // Re-reads Emoji.conf into the page's switch.
+    void RefreshLanguagePage();
     void RefreshEmojiPage();
     void BuildCertificatesPage();
     // Re-reads DeviceCertificates.conf and shows a row per device in it.
@@ -121,6 +125,10 @@ private:
     std::map<std::string, AppRow> rows_;
 
     // ----- Emoji -----
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> language_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> translator_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> languageStatus_;
+    std::vector<std::string> languageTags_;   // the dropdown's rows: "system", then the tags
     std::shared_ptr<UltraCanvas::UltraCanvasSegmentedControl> emojiStyle_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> emojiStatus_;
 

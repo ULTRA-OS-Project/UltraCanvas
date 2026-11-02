@@ -1,6 +1,7 @@
 // Apps/UOSSettings/ui/UOSSettingsWindow.cpp
 // The UOS-Settings window: page tree | page, Close at the foot - the layout
 // of UltraFiler's settings window. See UOSSettingsWindow.h.
+// Version: 0.5.0 - the Language page: the language every application shows, Language.conf
 // Version: 0.4.0 - Appearance > Emoji: colour, black and white, or the system's
 // Version: 0.3.0 - Desktop: the Windows desktop, beside Explorer, or instead of it
 // Version: 0.2.0 - Desktop: UltraDesktop in place of the Windows desktop
@@ -20,6 +21,8 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasFileDialogSettings.h"
+#include "UltraCanvasSettingsFolder.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include "IODeviceManager/UltraCanvasIODeviceTlsTrust.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasPathUtf8.h"   // PathToUtf8
@@ -68,6 +71,7 @@ namespace {
     constexpr const char* kPageLastFolder     = "file-dialogs/last-folder";
     constexpr const char* kSectionAppearance  = "appearance";
     constexpr const char* kPageEmoji          = "appearance/emoji";
+    constexpr const char* kPageLanguage       = "language";
     constexpr const char* kSectionDevices     = "devices";
     constexpr const char* kPageCertificates   = "devices/certificates";
 
@@ -262,6 +266,7 @@ bool UOSSettingsWindow::Create() {
     TreeNodeData rootData("settings", "Settings");
     tree_->SetRootNode(rootData);
     tree_->AddNode("settings", TreeNodeData(kPageDesktop, "Desktop"));
+    tree_->AddNode("settings", TreeNodeData(kPageLanguage, "Language"));
     tree_->AddNode("settings", TreeNodeData(kSectionFileDialogs, "File dialogs"));
     tree_->AddNode(kSectionFileDialogs, TreeNodeData(kPageLastFolder, "Last used folder"));
     tree_->AddNode("settings", TreeNodeData(kSectionAppearance, "Appearance"));
@@ -280,6 +285,7 @@ bool UOSSettingsWindow::Create() {
 
     BuildDesktopPage();
     BuildLastFolderPage();
+    BuildLanguagePage();
     BuildEmojiPage();
     BuildCertificatesPage();
     window_->AddChild(content);
@@ -341,6 +347,7 @@ void UOSSettingsWindow::ShowPage(const std::string& pageId) {
     if (pageId == kPageDesktop) RefreshDesktopPage();
     if (pageId == kPageCertificates) RefreshCertificatesPage();
     if (pageId == kPageEmoji) RefreshEmojiPage();
+    if (pageId == kPageLanguage) RefreshLanguagePage();
 }
 
 // ===== DESKTOP =====
@@ -845,6 +852,117 @@ void UOSSettingsWindow::RefreshEmojiPage() {
     emojiStyle_->SetSelectedIndex(style == EmojiStyle::Monochrome ? kSegmentEmojiMonochrome
                                 : style == EmojiStyle::System     ? kSegmentEmojiSystem
                                                                   : kSegmentEmojiColour);
+    refreshing_ = false;
+}
+
+// ===== LANGUAGE =====
+
+void UOSSettingsWindow::BuildLanguagePage() {
+    auto page = std::make_shared<UltraCanvasContainer>("uos-page-language");
+    page->layout.SetFlexColumn().SetFlexGap(0)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    page->SetPadding(kPagePadding, kPagePadding, kPagePadding, kPagePadding);
+    page->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    auto title = MakeLabel("uos-lang-title", "Language", kTitleFontSize);
+    title->SetFontWeight(FontWeight::Bold);
+    page->AddChild(title);
+    auto caption = MakeText("uos-lang-caption",
+            "The language every application shows its menus, buttons and messages "
+            "in. \"System\" follows the computer's own language setting; a language "
+            "is offered here when a translation of the standard set ships for it.");
+    caption->SetMargin(6, 0, 0, 0);
+    page->AddChild(caption);
+
+    auto row = std::make_shared<UltraCanvasContainer>("uos-lang-row");
+    row->layout.SetFlexRow().SetFlexGap(12)
+               .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    row->size.height = CSSLayout::Dimension::Px(32);
+    row->SetMargin(14, 0, 0, 0);
+    row->AddChild(MakeLabel("uos-lang-label", "Language:"));
+    language_ = std::make_shared<UltraCanvasDropdown>("uos-lang-dropdown", 0, 0, 300, 28);
+    language_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    language_->onSelectionChanged = [this](int index, const DropdownItem&) {
+        if (refreshing_ || index < 0 || index >= static_cast<int>(languageTags_.size())) return;
+        LanguageSettings settings = LanguageSettings::Load(PathToUtf8(UltraCanvasSettingsFolder()));
+        settings.language = languageTags_[static_cast<size_t>(index)];
+        if (languageStatus_) {
+            languageStatus_->SetText(settings.Save(PathToUtf8(UltraCanvasSettingsFolder()))
+                    ? "Saved. Applications started from now on use this language."
+                    : "Could not write " + LanguageSettings::FilePath(PathToUtf8(UltraCanvasSettingsFolder())) + ".");
+        }
+    };
+    row->AddChild(language_);
+    page->AddChild(row);
+
+    auto translatorRow = std::make_shared<UltraCanvasContainer>("uos-lang-translator-row");
+    translatorRow->layout.SetFlexRow().SetFlexGap(12)
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    translatorRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    translatorRow->size.height = CSSLayout::Dimension::Px(32);
+    translatorRow->SetMargin(10, 0, 0, 0);
+    translatorRow->AddChild(MakeLabel("uos-lang-translator-label", "Translator:"));
+    translator_ = std::make_shared<UltraCanvasTextInput>("uos-lang-translator", 0, 0, 300, 28);
+    translator_->SetPlaceholder("Your name, for the catalogues you edit");
+    translator_->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    translator_->onFocusLost = [this]() {
+        if (refreshing_ || !translator_) return;
+        LanguageSettings settings = LanguageSettings::Load(PathToUtf8(UltraCanvasSettingsFolder()));
+        if (settings.translator == translator_->GetText()) return;
+        settings.translator = translator_->GetText();
+        if (languageStatus_) {
+            languageStatus_->SetText(settings.Save(PathToUtf8(UltraCanvasSettingsFolder()))
+                    ? "Saved."
+                    : "Could not write " + LanguageSettings::FilePath(PathToUtf8(UltraCanvasSettingsFolder())) + ".");
+        }
+    };
+    translatorRow->AddChild(translator_);
+    page->AddChild(translatorRow);
+
+    languageStatus_ = MakeLabel("uos-lang-status", "", kTextFontSize, kMutedTextColor);
+    languageStatus_->SetMargin(10, 0, 0, 0);
+    page->AddChild(languageStatus_);
+
+    auto spacer = std::make_shared<UltraCanvasContainer>("uos-lang-spacer");
+    spacer->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    page->AddChild(spacer);
+
+    auto notes = MakeNotes("uos-lang-note", {
+            "The languages come from media/locale/ in the applications' resources "
+            "and from locale/ in the UltraCanvas settings folder, where a translator "
+            "puts a draft to see it in the real window.",
+            "An application uses a change the next time it starts. The command line "
+            "(--lang) and the ULTRACANVAS_LANG variable override this setting for "
+            "one start.",
+            "The translator's name goes into the catalogues the localisation editor "
+            "saves, so a draft says who reviewed it."});
+    notes->SetMargin(14, 0, 0, 0);
+    page->AddChild(notes);
+
+    pages_[kPageLanguage] = page;
+    pageArea_->AddChild(page);
+}
+
+void UOSSettingsWindow::RefreshLanguagePage() {
+    if (!language_) return;
+    const std::string settingsFolder = PathToUtf8(UltraCanvasSettingsFolder());
+    const LanguageSettings settings = LanguageSettings::Load(settingsFolder);
+    refreshing_ = true;
+    language_->ClearItems();
+    languageTags_.clear();
+    language_->AddItem("System", "system");
+    languageTags_.push_back("system");
+    int selected = 0;
+    for (const std::string& tag : UltraLocalisation::AvailableLanguages()) {
+        const std::string name = UltraLocalisation::NativeName(tag);
+        language_->AddItem(name == tag ? tag : name + "  (" + tag + ")", tag);
+        languageTags_.push_back(tag);
+        if (tag == settings.language) selected = static_cast<int>(languageTags_.size()) - 1;
+    }
+    language_->SetSelectedIndex(selected, false);
+    if (translator_) translator_->SetText(settings.translator);
     refreshing_ = false;
 }
 

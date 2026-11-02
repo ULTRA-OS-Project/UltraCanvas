@@ -40,6 +40,19 @@ changed. The file is read and written by UltraDesktop's own settings code
 (`Apps/UltraDesktop/ui/UltraDesktopSettings.*`, compiled into UOS-Settings
 too), so the two programs agree on it.
 
+### Language
+
+The language every application shows its menus, buttons and messages in:
+*System* follows the computer's own language setting, and a language is
+offered when a translation of the standard set ships for it (a folder
+under `media/locale/` or under `locale/` in the UltraCanvas settings
+folder with a `Standard.json`). The choice is written to `Language.conf`
+in the UltraCanvas settings folder and read by every application when it
+starts; the command line (`--lang`) and the `ULTRACANVAS_LANG` variable
+override it for one start. The *Translator* field is the name the
+localisation editor writes into the catalogues it saves. See
+`Docs/Modules/UltraLocalisation/README.md`.
+
 ### File dialogs > Last used folder
 
 Where the framework's file dialog (`UltraCanvasFileDialog`) opens when the
