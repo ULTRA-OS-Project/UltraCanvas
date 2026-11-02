@@ -173,6 +173,16 @@ TEST(links_qr_codes_and_the_landing_page) {
     REQUIRE(page.find("UltraCanvas runtime") == std::string::npos);   // not one of the code's apps
     REQUIRE(page.find("ultrastore://code/ANNA-20") != std::string::npos);
     REQUIRE(page.find("2027-06-30") != std::string::npos);
+    // The join page names the inviting partner, their id and their contact.
+    Affiliate anna = Aff("aff-anna", "Anna & Co", 20, 5);
+    anna.contact = "anna@example.com";
+    const std::string join = JoinPage(anna, "https://store.example/v1/");
+    REQUIRE(join.find("<strong>Anna &amp; Co</strong> invites you") != std::string::npos);
+    REQUIRE(join.find("<code>aff-anna</code>") != std::string::npos);
+    REQUIRE(join.find("anna@example.com") != std::string::npos);
+    REQUIRE(join.find("https://store.example/v1<") != std::string::npos);   // the base, slash trimmed
+    anna.contact.clear();
+    REQUIRE(JoinPage(anna, "https://store.example/v1").find("Questions about") == std::string::npos);
     RemoveDir(dir);
 }
 
@@ -191,6 +201,9 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     REQUIRE(WriteFile(f.file, "zip bytes"));
     REQUIRE(db.PutPackageFile(f).Ok());
     REQUIRE(db.PutAffiliate(Aff("aff-anna", "Anna", 20, 0)).Ok());
+    Affiliate gone = Aff("aff-gone", "Gone", 10, 0);
+    gone.enabled = false;
+    REQUIRE(db.PutAffiliate(gone).Ok());
     REQUIRE(db.PutCode(Code("anna-20", UltraStore::CodeKind::Affiliate, "aff-anna", 20)).Ok());
     CodeRecord off = Code("off", UltraStore::CodeKind::Discount, "", 5);
     off.enabled = false;
@@ -229,6 +242,13 @@ TEST(the_catalog_carries_the_enabled_codes_and_publish_writes_their_pages) {
     REQUIRE(page.find("ultrastore://code/ANNA-20") != std::string::npos);
     REQUIRE(page.find("<li>Hello</li>") != std::string::npos);
     REQUIRE(std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "go/STALE/index.html"))));
+    // And join/<affiliate>/index.html for each enabled partner: the join QR
+    // code's link is <base>/join/<affiliate>. A partner switched off has none.
+    REQUIRE_EQ(report.Value().joinPages, size_t(1));
+    const std::string join = ReadFile(Join(options.outDirUtf8, "join/aff-anna/index.html"));
+    REQUIRE(join.find("<code>aff-anna</code>") != std::string::npos);
+    REQUIRE(join.find("Anna") != std::string::npos);
+    REQUIRE(!std::filesystem::exists(UltraCanvas::PathFromUtf8(Join(options.outDirUtf8, "join/aff-gone/index.html"))));
     RemoveDir(dir);
 }
 

@@ -318,8 +318,9 @@ something off the price. The scheme is decided as follows.
   carries (`go/<CODE>/index.html`, so the extension-less link is served by
   any static web server: what the code gives and the `ultrastore://`
   link), so a phone that scans it lands somewhere useful; a future partner
-  scans `https://<catalog base>/join/<affiliate>` and names the recruiter
-  when the admin signs them up.
+  scans `https://<catalog base>/join/<affiliate>` (`join/<affiliate>/index.html`:
+  who invites, what a partner earns, the id to name) and names the
+  recruiter when the admin signs them up.
 - **A partner may use their own code.** Nothing distinguishes a partner's
   purchase from any other, and the share they earn on it is theirs by the
   same rule; the admin backend does not try to tell them apart.
@@ -563,10 +564,12 @@ instead of the servers' (no signature check, Refresh does nothing), with
 against a catalog served from `python3 -m http.server`, and how a creator
 previews an entry before it is published.
 
-**Nothing configured yet.** Until the admin backend publishes the first
-catalog, no server and no key are compiled in (`Apps/UltraStore/keys/`,
-`ULTRASTORE_SERVERS`), and Discover says so and points at Settings, where a
-server and a key are entered by hand.
+**What a build trusts.** The production server is the default of
+`ULTRASTORE_SERVERS` (`https://store.ultraos.eu/v1`) and its signing key's
+public half is `Apps/UltraStore/keys/publish.pub`, so a store built from
+the repository finds the catalog with nothing entered. A build with both
+emptied (`-DULTRASTORE_SERVERS=""`, no `.pub`) has Discover say so and
+point at Settings, where a server and a key are entered by hand.
 
 ## The command line
 

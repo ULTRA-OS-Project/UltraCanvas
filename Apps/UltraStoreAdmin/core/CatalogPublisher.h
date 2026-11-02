@@ -13,6 +13,7 @@
 //   <out>/restricted/<sha256>.<format>      the packages of paid apps - the server hands
 //                                           these out only through a buyer's short-lived
 //                                           signed URL (the access scheme, see the README)
+// Version: 0.3.2 - a join page per enabled partner, join/<affiliate>/index.html, behind the join QR code
 // Version: 0.3.1 - a code's landing page is go/<CODE>/index.html, so the QR link <base>/go/<CODE> serves it as it is
 // Version: 0.3.0 - the codes in the catalog, their landing pages under go/
 // Version: 0.2.0 - trusted_keys from the active keys
@@ -46,6 +47,7 @@ struct PublishReport {
     std::string publicKeyHex;
     size_t apps = 0, components = 0, packagesCopied = 0, mediaCopied = 0;
     size_t codePages = 0;            // go/<CODE>/index.html written, one per code in the catalog
+    size_t joinPages = 0;            // join/<affiliate>/index.html written, one per enabled partner
     std::vector<std::string> warnings;
 };
 

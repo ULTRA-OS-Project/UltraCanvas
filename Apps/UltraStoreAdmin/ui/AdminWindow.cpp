@@ -644,7 +644,8 @@ void AdminWindow::PublishNow() {
         const PublishReport& r = report.Value();
         out.message = "Published sequence " + std::to_string(r.sequence) + ": " + std::to_string(r.apps) + " app(s), " +
                       std::to_string(r.components) + " component(s), " + std::to_string(r.packagesCopied) + " package file(s), " +
-                      std::to_string(r.mediaCopied) + " picture(s)";
+                      std::to_string(r.mediaCopied) + " picture(s), " + std::to_string(r.codePages) + " code page(s), " +
+                      std::to_string(r.joinPages) + " join page(s)";
         out.lines.push_back(r.catalogPath);
         out.lines.push_back(r.signaturePath);
         out.lines.push_back("key " + r.publicKeyHex);

@@ -262,6 +262,23 @@ Result<PublishReport> Publish(AdminDatabase& db, int64_t keyId, const std::strin
             ++report.codePages;
         }
     }
+    // A join page per enabled partner, join/<affiliate>/index.html: what the
+    // join QR code and link open, so a future partner lands on who invited
+    // them and the id to name when they are signed up. The same folder-and-
+    // index layout as go/, for the same reason. A partner switched off has
+    // no page; what the server already holds stays, as with everything the
+    // uploader sends.
+    if (const auto affiliates = db.Affiliates(); affiliates && !affiliates.Value().empty()) {
+        const std::string catalogBase = TrimSlash(options.catalogBaseUrl.empty() ? db.Setting("catalog.base_url") : options.catalogBaseUrl);
+        for (const Affiliate& partner : affiliates.Value()) {
+            if (!partner.enabled) continue;
+            const fs::path folder = out / "join" / UltraCanvas::PathFromUtf8(partner.id);
+            fs::create_directories(folder, ec);
+            if (ec) return R::Failure(ErrorCode::IoError, "cannot create " + UltraCanvas::PathToUtf8(folder) + ": " + ec.message());
+            if (!WriteFileAtomically(folder / "index.html", JoinPage(partner, catalogBase), error)) return R::Failure(ErrorCode::IoError, error);
+            ++report.joinPages;
+        }
+    }
 
     // The catalog and its signature over those exact bytes.
     const std::string bytes = UltraStore::SerializeCatalog(catalog);

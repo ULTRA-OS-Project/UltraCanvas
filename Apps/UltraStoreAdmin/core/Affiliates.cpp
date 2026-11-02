@@ -269,4 +269,23 @@ std::string CodeLandingPage(const UltraStore::PromoCode& code, const std::vector
     return page;
 }
 
+std::string JoinPage(const Affiliate& recruiter, const std::string& catalogBase) {
+    std::string page =
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n"
+        "<title>Become an UltraStore partner</title>\n"
+        "<style>body{font-family:sans-serif;max-width:36em;margin:3em auto;padding:0 1em;color:#1f2937}code{font-size:1.2em;background:#f3f4f6;padding:.2em .5em;border-radius:.3em}</style>\n"
+        "</head>\n<body>\n"
+        "<h1>Become an UltraStore partner</h1>\n"
+        "<p><strong>" + Escape(recruiter.name) + "</strong> invites you to join the UltraStore partner programme.</p>\n"
+        "<p>A partner has a code. Buyers enter it in the store or scan the partner's QR code, and every sale made with it "
+        "credits the partner a share of the price. A partner who was brought in by another partner earns that one a "
+        "recruit share of their sales - once, one level up and no further.</p>\n"
+        "<p>When you sign up, name the partner who invited you so they are credited for bringing you in:</p>\n"
+        "<p>Partner id <code>" + Escape(recruiter.id) + "</code> (" + Escape(recruiter.name) + ")</p>\n";
+    if (!recruiter.contact.empty()) page += "<p>Questions about the programme go to " + Escape(recruiter.name) + ": " + Escape(recruiter.contact) + "</p>\n";
+    page += "<p>Signing up is done by the store's team; they create your partner code and tell you your share.</p>\n"
+            "<p><small>" + Escape(TrimSlash(catalogBase)) + "</small></p>\n</body>\n</html>\n";
+    return page;
+}
+
 } // namespace UltraStoreAdmin
