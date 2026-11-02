@@ -1,3 +1,22 @@
+#### 2026-11-02 *0.9.464*
+- **`UltraCanvasCommandRegistry::FindByShortcut`** finds the command a key
+  press names ("Ctrl+Shift+S", however spelt), so a program's key handler runs
+  the command whose shortcut its menu shows.
+- **A tool palette from a toolbar layout.** `ToolbarLayout::separateGroups`
+  (on by default) can be turned off for a palette of folded groups, and
+  `UltraCanvasToolbar::RefreshCommandStates` presses a folded group of check
+  commands on the checked one - the active tool - and releases the others.
+- **A menu layout the user arranged gains a newer program's commands.**
+  `SaveMenuLayoutSet(set, path, defaults)` records the commands the
+  program's menus held (`MenuLayoutSet::knownCommands`, a `[KNOWN]` section
+  an older reader passes over), and `LoadMenuLayoutSet(out, path, defaults,
+  registry)` / `MergeMenuLayoutSet` put each command added since at its place
+  in the defaults - after the entry it follows, in the submenu of the same
+  label, a new submenu or menu whole - while a command the user removed stays
+  removed and one the user has elsewhere is not added twice. A saved layout
+  used to load as it was, so a new command never appeared for a user who had
+  customised the menus.
+
 #### 2026-11-02 *0.9.463*
 - **UltraCanvasNetworkPlaces: computers announced through WS-Discovery.**
   `ListNetworkComputers` listed only what the Windows network provider knows
