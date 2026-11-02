@@ -22,9 +22,11 @@
 // them off its UI thread. ListWslDistributions reads the registry and touches
 // no distribution (opening one starts it).
 //
-// Backends: Windows (WNetOpenEnum, NetShareEnum, the Lxss registry key).
+// Backends: Windows (WNetOpenEnum and Function Discovery's WS-Discovery
+// provider, NetShareEnum, the Lxss registry key).
 // Elsewhere every list is empty: a Linux desktop mounts the shares it opens
 // through GVFS (ListGvfsVolumes), and macOS mounts them under /Volumes.
+// Version: 1.1.0 - ListNetworkComputers also finds the computers announced only through WS-Discovery
 // Version: 1.0.0
 // Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
@@ -60,12 +62,16 @@ namespace UltraCanvas {
     bool NetworkPlacesAvailable();
 
     // The computers this machine can see on the network: the ones the
-    // Windows network lists for its workgroup or domain, and the servers of
-    // the connections the user has made (a mapped drive, a share opened
-    // before), each once, by name. A network that publishes its computers
-    // only through WS-Discovery shows fewer here than in Explorer; a computer
-    // missing from the list is still reached by its name (ListNetworkShares).
-    // Blocks for as long as the network takes to answer.
+    // Windows network lists for its workgroup or domain, the ones that
+    // announce themselves through WS-Discovery (current Windows, NAS boxes
+    // running wsdd - the computers Explorer adds through Function
+    // Discovery), and the servers of the connections the user has made (a
+    // mapped drive, a share opened before), each once, by name. A computer
+    // that answers WS-Discovery without a name is listed by its IPv4 address
+    // ("\\192.168.1.20"). One on another subnet - out of reach of
+    // WS-Discovery's multicast - is still reached by its name
+    // (ListNetworkShares). Blocks for as long as the network takes to answer,
+    // up to some six seconds for the WS-Discovery search.
     std::vector<NetworkComputer> ListNetworkComputers();
 
     // The folders `server` shares ("\\NAS", "NAS" or "//NAS"), hidden and

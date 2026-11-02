@@ -391,8 +391,8 @@ public:
 
     // The Network section's computers that were opened by name ("\\NAS"
     // typed into the path bar) - kept, so a computer the network list does
-    // not show (one that only advertises itself through WS-Discovery, or on
-    // another subnet) is still there the next time. One key per entry.
+    // not show (one on another subnet, out of reach of WS-Discovery, or with
+    // network discovery off) is still there the next time. One key per entry.
     static constexpr size_t kMaxNetworkServers = 20;
     std::vector<std::string> networkServers;
 

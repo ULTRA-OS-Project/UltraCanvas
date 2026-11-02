@@ -5,11 +5,24 @@
 // them shares (NetShareEnum, else the provider's list of the server), and the
 // WSL distributions (HKCU\...\Lxss, the registry WSL keeps them in).
 //
+// The computers also come from Function Discovery's WS-Discovery provider:
+// current Windows (SMB 1 off) and NAS boxes running wsdd announce themselves
+// only that way, so the WNet list misses them while Explorer, which asks
+// Function Discovery, shows them. The query runs on a thread of its own in
+// the multithreaded apartment - its answers arrive as calls from Function
+// Discovery's threads, whatever apartment the caller is in - alongside the
+// WNet enumeration, and is waited for at most kWsdSearchTimeout.
+// The Function Discovery interfaces are declared here, not taken from
+// <functiondiscoveryapi.h>: mingw-w64's copy puts IFunctionInstance's
+// QueryService last instead of first (IServiceProvider is its base), which
+// would call the wrong slot.
+//
 // mpr.dll and netapi32.dll are loaded from System32 the first time they are
 // needed, not imported: an installed package can carry an ImageMagick coder
 // named mpr.dll (UltraCanvasCoderModuleRepair.h), and Windows matches modules
 // by base name - an import of MPR.dll by the core library would be bound at
 // start-up, in every application, for a list only a file manager asks for.
+// Version: 1.1.0 - computers announced only through WS-Discovery (Function Discovery)
 // Version: 1.0.0
 // Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
@@ -18,9 +31,12 @@
 #include "UltraCanvasUtils.h"   // Utf8ToWide, WideToUtf8
 
 #include <algorithm>
+#include <chrono>
+#include <condition_variable>
 #include <cwctype>
 #include <mutex>
 #include <set>
+#include <thread>
 #include <vector>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -29,6 +45,9 @@
 #include <windows.h>
 #include <winnetwk.h>   // WNetOpenEnumW (mpr)
 #include <lm.h>         // NetShareEnum (netapi32)
+#include <objbase.h>    // CoCreateInstance (ole32)
+#include <propidl.h>    // PROPVARIANT, PropVariantClear
+#include <propsys.h>    // IPropertyStore
 
 // The share type's low byte (disk, printer, device, IPC). The Windows SDK
 // names it; mingw-w64's lmshare.h does not.
@@ -137,18 +156,277 @@ namespace UltraCanvas {
             return value;
         }
 
+
+        // ===== WS-DISCOVERY (FUNCTION DISCOVERY) =====
+
+        // How long to wait for the WS-Discovery search to report it is
+        // complete. The provider probes and collects answers for a few
+        // seconds; a network that answers slower is cut off here.
+        constexpr std::chrono::seconds kWsdSearchTimeout{6};
+
+        // The Function Discovery interfaces this file calls, in the Windows
+        // SDK's slot order (functiondiscoveryapi.idl). Only the slots up to
+        // the last one called are declared.
+        enum FdUpdateAction { FdUpdateAdd = 0, FdUpdateRemove = 1, FdUpdateChange = 2 };
+        constexpr DWORD kFdEventSearchComplete = 1000;   // FD_EVENTID_SEARCHCOMPLETE
+        typedef DWORDLONG FdQueryContext;
+
+        struct FdInstance : public IUnknown {               // IFunctionInstance
+            virtual HRESULT STDMETHODCALLTYPE QueryService(REFGUID, REFIID, void**) = 0;  // IServiceProvider
+            virtual HRESULT STDMETHODCALLTYPE GetID(WCHAR** id) = 0;
+            virtual HRESULT STDMETHODCALLTYPE GetProviderInstanceID(WCHAR** id) = 0;
+            virtual HRESULT STDMETHODCALLTYPE OpenPropertyStore(DWORD access, IPropertyStore** store) = 0;
+        };
+        struct FdInstanceCollection : public IUnknown {     // IFunctionInstanceCollection
+            virtual HRESULT STDMETHODCALLTYPE GetCount(DWORD* count) = 0;
+            virtual HRESULT STDMETHODCALLTYPE Get(const WCHAR* id, DWORD* index, FdInstance** instance) = 0;
+            virtual HRESULT STDMETHODCALLTYPE Item(DWORD index, FdInstance** instance) = 0;
+        };
+        struct FdNotification : public IUnknown {           // IFunctionDiscoveryNotification
+            virtual HRESULT STDMETHODCALLTYPE OnUpdate(FdUpdateAction action, FdQueryContext context,
+                                                       FdInstance* instance) = 0;
+            virtual HRESULT STDMETHODCALLTYPE OnError(HRESULT hr, FdQueryContext context,
+                                                      const WCHAR* provider) = 0;
+            virtual HRESULT STDMETHODCALLTYPE OnEvent(DWORD eventId, FdQueryContext context,
+                                                      const WCHAR* provider) = 0;
+        };
+        struct FdCollectionQuery : public IUnknown {        // IFunctionInstanceCollectionQuery
+            virtual HRESULT STDMETHODCALLTYPE AddQueryConstraint(const WCHAR* name, const WCHAR* value) = 0;
+            virtual HRESULT STDMETHODCALLTYPE AddPropertyConstraint(const PROPERTYKEY& key,
+                                                                    const PROPVARIANT* value, int how) = 0;
+            virtual HRESULT STDMETHODCALLTYPE Execute(FdInstanceCollection** collection) = 0;
+        };
+        struct FdDiscovery : public IUnknown {              // IFunctionDiscovery
+            virtual HRESULT STDMETHODCALLTYPE GetInstanceCollection(const WCHAR* category,
+                const WCHAR* subCategory, BOOL allSubCategories, FdInstanceCollection** collection) = 0;
+            virtual HRESULT STDMETHODCALLTYPE GetInstance(const WCHAR* id, FdInstance** instance) = 0;
+            virtual HRESULT STDMETHODCALLTYPE CreateInstanceCollectionQuery(const WCHAR* category,
+                const WCHAR* subCategory, BOOL allSubCategories, FdNotification* notification,
+                FdQueryContext* context, FdCollectionQuery** query) = 0;
+        };
+
+        // {C72BE2EC-8E90-452C-B29A-AB8FF1C071FC} CLSID_FunctionDiscovery
+        const CLSID kClsidFunctionDiscovery =
+            {0xC72BE2EC, 0x8E90, 0x452C, {0xB2, 0x9A, 0xAB, 0x8F, 0xF1, 0xC0, 0x71, 0xFC}};
+        // {4DF99B70-E148-4432-B004-4C9EEB535A5E} IID_IFunctionDiscovery
+        const IID kIidFunctionDiscovery =
+            {0x4DF99B70, 0xE148, 0x4432, {0xB0, 0x04, 0x4C, 0x9E, 0xEB, 0x53, 0x5A, 0x5E}};
+        // {5F6C1BA8-5330-422E-A368-572B244D3F87} IID_IFunctionDiscoveryNotification
+        const IID kIidFunctionDiscoveryNotification =
+            {0x5F6C1BA8, 0x5330, 0x422E, {0xA3, 0x68, 0x57, 0x2B, 0x24, 0x4D, 0x3F, 0x87}};
+        const wchar_t* const kCategoryWsDiscovery = L"Provider\\Microsoft.Networking.WSD";
+
+        // The property keys read (functiondiscoverykeys.h, propkey.h).
+        const GUID kFmtidPnpx =
+            {0x656A3BB3, 0xECC0, 0x43FD, {0x84, 0x77, 0x4A, 0xE0, 0x40, 0x4A, 0x96, 0xCD}};
+        const PROPERTYKEY kPkeyPnpxTypes          = {kFmtidPnpx, 0x1001};  // VT_VECTOR|VT_LPWSTR
+        const PROPERTYKEY kPkeyFriendlyName       = {kFmtidPnpx, 0x3000};  // VT_LPWSTR
+        const PROPERTYKEY kPkeyPnpxDeviceCategory = {kFmtidPnpx, 0x3004};  // VT_VECTOR|VT_LPWSTR
+        const PROPERTYKEY kPkeyPnpxIpAddress      = {kFmtidPnpx, 0x3009};  // VT_VECTOR|VT_LPWSTR
+        const PROPERTYKEY kPkeyComputerName =                              // VT_LPWSTR
+            {{0x28636AA6, 0x953D, 0x11D2, {0xB5, 0xD6, 0x00, 0xC0, 0x4F, 0xD9, 0x18, 0xD0}}, 5};
+
+        // A property as strings: one for VT_LPWSTR, each for a vector of them.
+        std::vector<std::wstring> PropertyStrings(IPropertyStore* store, const PROPERTYKEY& key) {
+            std::vector<std::wstring> values;
+            PROPVARIANT value;
+            PropVariantInit(&value);
+            if (SUCCEEDED(store->GetValue(key, &value))) {
+                if (value.vt == VT_LPWSTR && value.pwszVal) {
+                    values.emplace_back(value.pwszVal);
+                } else if (value.vt == (VT_VECTOR | VT_LPWSTR)) {
+                    for (ULONG i = 0; i < value.calpwstr.cElems; ++i)
+                        if (value.calpwstr.pElems[i]) values.emplace_back(value.calpwstr.pElems[i]);
+                }
+            }
+            PropVariantClear(&value);
+            return values;
+        }
+
+        bool IsIpv4Address(const std::wstring& text) {
+            int dots = 0;
+            for (wchar_t c : text) {
+                if (c == L'.') ++dots;
+                else if (c < L'0' || c > L'9') return false;
+            }
+            return dots == 3;
+        }
+
+        // A computer found through WS-Discovery: `server` is what goes after
+        // "\\" (its name, or an IPv4 address when it gave none).
+        struct WsdComputer {
+            std::wstring server;
+            std::wstring name;
+            std::wstring comment;
+        };
+
+        // The computer a WS-Discovery device is, or nothing when it is a
+        // printer, scanner, media player or anything else that is not one.
+        bool ReadWsdComputer(FdInstance* instance, WsdComputer& out) {
+            if (!instance) return false;
+            IPropertyStore* store = nullptr;
+            if (FAILED(instance->OpenPropertyStore(STGM_READ, &store)) || !store) return false;
+
+            // A computer says so in its types ("pub:Computer", the prefix
+            // varies) or in its PnP-X device category ("Computers").
+            bool computer = false;
+            for (const std::wstring& type : PropertyStrings(store, kPkeyPnpxTypes)) {
+                const size_t cut = type.find_last_of(L":/");
+                if (Lower(cut == std::wstring::npos ? type : type.substr(cut + 1)) == L"computer")
+                    computer = true;
+            }
+            for (const std::wstring& category : PropertyStrings(store, kPkeyPnpxDeviceCategory))
+                if (Lower(category) == L"computers") computer = true;
+
+            if (computer) {
+                std::vector<std::wstring> names = PropertyStrings(store, kPkeyComputerName);
+                std::wstring name = names.empty() ? std::wstring() : names.front();
+                // "NAS/Workgroup:WORKGROUP" is how pub:Computer reads on the wire.
+                name = name.substr(0, name.find(L'/'));
+                std::vector<std::wstring> friendly = PropertyStrings(store, kPkeyFriendlyName);
+                out.comment = friendly.empty() ? std::wstring() : friendly.front();
+                if (!name.empty()) {
+                    out.server = name;
+                    out.name = name;
+                } else {
+                    // No name: its address, which an SMB path takes as well.
+                    for (const std::wstring& address : PropertyStrings(store, kPkeyPnpxIpAddress))
+                        if (IsIpv4Address(address)) { out.server = address; break; }
+                    out.name = out.comment.empty() ? out.server : out.comment;
+                }
+                if (Lower(out.comment) == Lower(out.name)) out.comment.clear();
+                computer = !out.server.empty();
+            }
+            store->Release();
+            return computer;
+        }
+
+        // Receives the WS-Discovery answers on Function Discovery's threads.
+        class WsdSink final : public FdNotification {
+        public:
+            HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** object) override {
+                if (!object) return E_POINTER;
+                if (IsEqualIID(riid, IID_IUnknown) || IsEqualIID(riid, kIidFunctionDiscoveryNotification)) {
+                    *object = static_cast<FdNotification*>(this);
+                    AddRef();
+                    return S_OK;
+                }
+                *object = nullptr;
+                return E_NOINTERFACE;
+            }
+            ULONG STDMETHODCALLTYPE AddRef() override { return static_cast<ULONG>(InterlockedIncrement(&refs)); }
+            ULONG STDMETHODCALLTYPE Release() override {
+                const LONG left = InterlockedDecrement(&refs);
+                if (left == 0) delete this;
+                return static_cast<ULONG>(left);
+            }
+
+            HRESULT STDMETHODCALLTYPE OnUpdate(FdUpdateAction action, FdQueryContext,
+                                               FdInstance* instance) override {
+                if (action == FdUpdateRemove) return S_OK;
+                Add(instance);
+                return S_OK;
+            }
+            HRESULT STDMETHODCALLTYPE OnError(HRESULT, FdQueryContext, const WCHAR*) override {
+                Finish();
+                return S_OK;
+            }
+            HRESULT STDMETHODCALLTYPE OnEvent(DWORD eventId, FdQueryContext, const WCHAR*) override {
+                if (eventId == kFdEventSearchComplete) Finish();
+                return S_OK;
+            }
+
+            void Add(FdInstance* instance) {
+                WsdComputer computer;
+                if (!ReadWsdComputer(instance, computer)) return;
+                std::lock_guard<std::mutex> lock(mutex);
+                found.push_back(std::move(computer));
+            }
+            void Finish() {
+                {
+                    std::lock_guard<std::mutex> lock(mutex);
+                    complete = true;
+                }
+                changed.notify_all();
+            }
+            std::vector<WsdComputer> Wait(std::chrono::steady_clock::duration timeout) {
+                std::unique_lock<std::mutex> lock(mutex);
+                changed.wait_for(lock, timeout, [this] { return complete; });
+                return found;
+            }
+
+        private:
+            ~WsdSink() = default;
+            LONG refs = 1;
+            std::mutex mutex;
+            std::condition_variable changed;
+            bool complete = false;
+            std::vector<WsdComputer> found;
+        };
+
+        // The computers WS-Discovery finds. Call on a thread of its own: it
+        // enters the multithreaded apartment and blocks up to
+        // kWsdSearchTimeout.
+        std::vector<WsdComputer> ListWsdComputers() {
+            std::vector<WsdComputer> found;
+            const HRESULT init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            if (FAILED(init)) return found;
+
+            FdDiscovery* discovery = nullptr;
+            if (SUCCEEDED(CoCreateInstance(kClsidFunctionDiscovery, nullptr, CLSCTX_INPROC_SERVER,
+                                           kIidFunctionDiscovery,
+                                           reinterpret_cast<void**>(&discovery))) && discovery) {
+                WsdSink* sink = new WsdSink();
+                FdQueryContext context = 0;
+                FdCollectionQuery* query = nullptr;
+                if (SUCCEEDED(discovery->CreateInstanceCollectionQuery(
+                        kCategoryWsDiscovery, nullptr, FALSE, sink, &context, &query)) && query) {
+                    FdInstanceCollection* collection = nullptr;
+                    const HRESULT hr = query->Execute(&collection);
+                    // What the provider already knows comes back at once;
+                    // E_PENDING means the rest follows through the sink.
+                    if (collection) {
+                        DWORD count = 0;
+                        if (SUCCEEDED(collection->GetCount(&count))) {
+                            for (DWORD i = 0; i < count; ++i) {
+                                FdInstance* instance = nullptr;
+                                if (SUCCEEDED(collection->Item(i, &instance)) && instance) {
+                                    sink->Add(instance);
+                                    instance->Release();
+                                }
+                            }
+                        }
+                        collection->Release();
+                    }
+                    if (hr == E_PENDING) found = sink->Wait(kWsdSearchTimeout);
+                    else if (SUCCEEDED(hr)) found = sink->Wait(std::chrono::seconds(0));
+                    query->Release();   // ends the search
+                }
+                sink->Release();
+                discovery->Release();
+            }
+            CoUninitialize();
+            return found;
+        }
+
     } // namespace
 
     bool NetworkPlacesAvailable() { return true; }
 
     std::vector<NetworkComputer> ListNetworkComputers() {
+        // WS-Discovery waits out its search; run it while WNet enumerates.
+        std::vector<WsdComputer> announced;
+        std::thread wsd([&announced] { announced = ListWsdComputers(); });
+
         std::vector<NetworkComputer> computers;
         std::set<std::wstring> seen;
-        auto add = [&](const std::wstring& name, const std::wstring& comment) {
-            if (name.empty() || !seen.insert(Lower(name)).second) return;
+        // `server` is what follows "\\" in the path; `name` is shown.
+        auto add = [&](const std::wstring& server, const std::wstring& name,
+                       const std::wstring& comment) {
+            if (server.empty() || !seen.insert(Lower(server)).second) return;
             NetworkComputer c;
-            c.name = WideToUtf8(name);
-            c.path = "\\\\" + c.name;
+            c.name = WideToUtf8(name.empty() ? server : name);
+            c.path = "\\\\" + WideToUtf8(server);
             c.comment = WideToUtf8(comment);
             computers.push_back(std::move(c));
         };
@@ -159,7 +437,7 @@ namespace UltraCanvas {
         // level down are its servers.
         EnumerateNetwork(RESOURCE_CONTEXT, nullptr, [&](const NETRESOURCEW& r) {
             if (r.dwDisplayType == RESOURCEDISPLAYTYPE_SERVER && r.lpRemoteName)
-                add(ServerOfUnc(r.lpRemoteName), r.lpComment ? r.lpComment : L"");
+                add(ServerOfUnc(r.lpRemoteName), {}, r.lpComment ? r.lpComment : L"");
         });
 
         // The servers of the user's own connections - a mapped drive, a
@@ -167,9 +445,13 @@ namespace UltraCanvas {
         // advertises (or does not advertise) its computers.
         for (DWORD scope : {static_cast<DWORD>(RESOURCE_CONNECTED), static_cast<DWORD>(RESOURCE_REMEMBERED)}) {
             EnumerateNetwork(scope, nullptr, [&](const NETRESOURCEW& r) {
-                if (r.lpRemoteName) add(ServerOfUnc(r.lpRemoteName), L"");
+                if (r.lpRemoteName) add(ServerOfUnc(r.lpRemoteName), {}, L"");
             });
         }
+
+        // The computers that announce themselves only through WS-Discovery.
+        wsd.join();
+        for (const WsdComputer& c : announced) add(c.server, c.name, c.comment);
 
         std::sort(computers.begin(), computers.end(),
                   [](const NetworkComputer& a, const NetworkComputer& b) {
