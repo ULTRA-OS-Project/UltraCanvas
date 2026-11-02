@@ -748,6 +748,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPortableDevices.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNetworkPlaces.cpp
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
@@ -2266,6 +2267,12 @@ endif()
 # PUBLIC so an app can leave its device rows out where nothing can list them.
 if(ULTRACANVAS_HAS_PORTABLE_DEVICES)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_PORTABLE_DEVICES)
+endif()
+# Network places (the network's computers and shares, WSL): the same. Nothing
+# to link - the Windows backend loads mpr.dll and netapi32.dll from System32 when
+# first asked, never importing MPR.dll (UltraCanvasCoderModuleRepair.h says why).
+if(ULTRACANVAS_HAS_NETWORK_PLACES)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NETWORK_PLACES)
 endif()
 if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)

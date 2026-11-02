@@ -508,6 +508,24 @@ add_test(NAME PortableDevicesTest COMMAND PortableDevicesTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: PortableDevicesTest")
 
+# ===== NETWORK PLACES TEST =====
+# The platform-independent half of UltraCanvasNetworkPlaces - which paths name
+# a computer - from the core file alone, with no define, so every row runs the
+# same checks. The Windows backend needs a network and is not exercised in CI.
+message(STATUS "  Building NetworkPlacesTest...")
+add_executable(NetworkPlacesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/NetworkPlacesTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasNetworkPlaces.cpp
+)
+target_include_directories(NetworkPlacesTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(NetworkPlacesTest PRIVATE cxx_std_20)
+set_target_properties(NetworkPlacesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME NetworkPlacesTest COMMAND NetworkPlacesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: NetworkPlacesTest")
+
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.

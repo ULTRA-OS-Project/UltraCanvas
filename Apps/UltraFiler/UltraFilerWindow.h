@@ -81,6 +81,8 @@
 // that finds it changed reopens it, at most every couple of seconds - a video
 // or sound only once its file has settled and it is not playing
 // (ReloadChangedPreview).
+// Version: 1.32.0 - RefreshWslNodes, the Network section (OpenNetworkServer and the
+//                  network jobs)
 // Version: 1.31.0 - a double-click on a picture, audio file or video starts
 //                  UltraViewer with it (OpenInUltraViewer, Settings >
 //                  Handling > Opening files)
@@ -128,6 +130,7 @@
 #include "UltraCanvasCloudStorage.h"   // CloudStorageInfo (the Cloud Storage section)
 #include "UltraCanvasVolumeMonitor.h" // mounted volumes + mount/unmount notification
 #include "UltraCanvasPortableDevices.h" // phones and cameras over MTP / PTP
+#include "UltraCanvasNetworkPlaces.h"   // the network's computers and shares, WSL
 #include "Plugins/Charts/UltraCanvasPieChart.h"  // the drive cards' used / free pie
 #include "UltraFilerFavorites.h"
 #include "UltraFilerFolderIcons.h"
@@ -401,6 +404,31 @@ private:
     void AddTreeDeviceNode(const RemoteDrive& drive);
     // Starts watching for devices being plugged in and pulled out.
     void StartDeviceMonitor();
+    // ===== LINUX (WSL) AND NETWORK (Windows) =====
+    // "Linux": one row per installed WSL distribution (\\wsl$\Ubuntu), read
+    // from the registry. A row is not probed - touching a distribution starts
+    // it - but offered with an expand button and listed when opened.
+    void RefreshWslNodes();
+    // "Network": one row per computer - those the network lists, the servers
+    // of the user's connections, and those opened by name before
+    // (settings.networkServers). Listed off the UI thread (RunNetworkJob).
+    void RefreshNetworkComputers();
+    void ApplyNetworkComputers(const std::vector<NetworkComputer>& computers);
+    void AddTreeNetworkComputerNode(const std::string& serverPath, const std::string& label);
+    // A computer's shares: listed off the UI thread, then put under its row,
+    // and shown in the folder display when the computer was opened there
+    // (OpenNetworkServer).
+    void QueueNetworkShares(const std::string& serverPath);
+    void ApplyNetworkShares(const std::string& serverPath, const std::vector<NetworkShare>& shares,
+                            const std::string& error);
+    // "\\NAS" - typed into the path bar, or its row clicked: a computer is not
+    // a folder, so its row is opened and its shares listed in the display.
+    void OpenNetworkServer(const std::string& serverPath);
+    // One job at a time on networkWorker: "" lists the computers, a server
+    // path lists its shares. Network calls wait out a computer that does not
+    // answer, which must never be the UI thread.
+    void QueueNetworkJob(const std::string& job);
+    void RunNextNetworkJob();
     // ===== RAM DISCS =====
     // Asks the system, on a worker thread, whether it can make RAM discs and
     // which discs are mounted now, then brings the "+ Drive" button and the
@@ -1357,6 +1385,15 @@ private:
     std::thread driveListWorker;
     std::atomic<bool> driveListBusy{false};
     std::atomic<bool> driveListPending{false};
+    // The network jobs (QueueNetworkJob): UI thread only, but for the flag
+    // the worker clears when it cannot post its answer back.
+    std::thread networkWorker;
+    std::atomic<bool> networkBusy{false};
+    std::deque<std::string> networkQueue;
+    // The computer whose shares go into the folder display once listed.
+    std::string networkPendingOpen;
+    std::vector<std::string> treeNetworkNodeIds;   // the computer rows
+    std::vector<std::string> treeWslNodeIds;       // the distribution rows
     // RefreshDevices' worker, the same arrangement.
     std::thread deviceListWorker;
     std::atomic<bool> deviceListBusy{false};

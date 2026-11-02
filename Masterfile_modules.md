@@ -1121,6 +1121,19 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   compiles null-returning fallbacks and the monitor polls.
   See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
 
+- **UltraCanvasNetworkPlaces** (`UltraCanvasNetworkPlaces.h`) — the places
+  Explorer lists outside *This PC*: `ListNetworkComputers` (the Windows
+  network's workgroup / domain and the servers of the user's connections),
+  `ListNetworkShares` (a computer's folders, hidden and admin shares left
+  out), `ListWslDistributions` (the WSL distributions from the registry,
+  `\\wsl$\<name>`), and the path rules `IsNetworkServerPath` /
+  `NetworkServerName` / `NetworkServerPath`. The two network calls block.
+  Windows backend `OS/MSWindows/UltraCanvasWindowsNetworkPlaces.cpp`, which
+  loads `mpr.dll` / `netapi32.dll` from System32 at first use rather than
+  importing them; empty lists elsewhere (`ULTRACANVAS_HAS_NETWORK_PLACES`).
+  UltraFiler shows them as its *Linux* and *Network* sections. See
+  `Docs/UltraCanvas/UltraCanvasNetworkPlaces.md`.
+
 - **UltraCanvasPortableDevices** (`UltraCanvasPortableDevices.h`) — phones,
   cameras and media players plugged in over USB that are not a drive (MTP /
   PTP). `List` (`PortableDeviceInfo`: id, name, manufacturer, kind),
