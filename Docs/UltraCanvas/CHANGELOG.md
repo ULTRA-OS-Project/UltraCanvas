@@ -1,3 +1,61 @@
+#### 2026-11-02 *0.9.460*
+- **An element plug-in compiled against other framework headers is not
+  called.** The classes a plug-in creates derive from `UltraCanvasUIElement`
+  (the charts from deeper framework classes still), and the host calls their
+  virtual functions and reads their members where the framework's headers put
+  them - which no version number covered. CMake now writes
+  `UltraCanvasFrameworkHeadersId.h` (a hash of every header under
+  `include/`, `libspecific/` and `OS/`, taken at configure time like a DLL's
+  build id, carried by the library's interface and installed beside the
+  headers), `ULTRACANVAS_DEFINE_ELEMENT_PLUGIN` exports it as
+  `UltraCanvas_PluginHeadersId`, and `UltraCanvas_RefreshElementPlugins`
+  skips a plug-in with another id, `"unknown"` or none before it calls
+  `UltraCanvas_PluginInit`, logging both ids and that it must be rebuilt.
+  `cmake/UltraCanvasLibraryBuildId.cmake` gains `ultracanvas_hash_headers`,
+  which the DLL build id now uses too (the ids it gives are unchanged).
+- **One-time passwords are UltraCrypt's.** The HOTP / TOTP engine and the
+  `otpauth://` parser and builder move from `Apps/UltraAuthenticator/otp/`
+  into the UltraCrypt module (`include/UltraCrypt/UltraOtp.h`,
+  `OtpAuthUri.h`), with the checking side a sign-in needs:
+  `Otp::VerifyTotp` (a time step either side, each code once, every
+  candidate compared in constant time) and `Otp::NewTotpSecret`.
+  UltraAuthenticator and its tests use them from there.
+- **`DeviceKeyVault::UseWithPassphrase`.** `Use()` for a vault behind a
+  Primary Password: opened with the typed passphrase, used and closed in one
+  turn of the process's lock, so no other vault takes the store in between.
+- **UltraIM: the account's profile and its sign-in protection.**
+  `UltraIMAccountProfile` (name, e-mail, phone) through
+  `UltraIM_FetchAccountProfile` / `UltraIM_UpdateAccountProfile`, and
+  `UltraIMSignInProtection` - a password and/or an authenticator code -
+  through `UltraIM_GetSignInProtection`, `UltraIM_StartAuthenticatorSetup`
+  (an `otpauth://` link for a QR code) and `UltraIM_SetSignInProtection`;
+  a protected sign-in answers `NeedsInput` with the step `Password`, then
+  `Code`. `credentials.email` goes with a new account. ChatCube Direct
+  implements them; its relay (1.1.0) keeps the e-mail and the phone for the
+  owner alone (`GET` / `PUT /v1/profile`).
+- **UltraIM loads only a provider module built for it.** A module now
+  exports the version it was built for (`ULTRAIM_DEFINE_PLUGIN_ABI_VERSION()`,
+  `UltraIM_PluginAbiVersion`), and `UltraIM_RefreshProviders` skips one that
+  answers another version or none - saying on stderr to rebuild it - before
+  it calls anything in it; the module refuses a host of another version too.
+  Until now a module accepted any host from version 1 on and the host asked
+  nothing, so a stale `ultraim_*` module would have been called through a
+  vtable that no longer matched. `ULTRAIM_PLUGIN_HOST_ABI_VERSION` is 2 and
+  covers the provider interface and every type in `UltraIMTypes.h`, not only
+  the host table; `scripts/check_plugin_abi.py` (CI: `plugin-abi.yml`)
+  fails a change to those headers that leaves it as it was.
+- **An element plug-in built for a newer host table refuses to load.** The
+  handshake in `ULTRACANVAS_DEFINE_ELEMENT_PLUGIN` asked the host for table
+  version 1 whatever the plugin was built for, so a plugin built against a
+  longer `UltraCanvasPluginHost` would have read members past the end of an
+  older host's table. It now asks for at least its own version
+  (`ULTRACANVAS_PLUGIN_BUILT_FOR_ABI`, the build's
+  `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION`; the table stays append-only, so an
+  older plugin still loads in a newer host) and says why on the log. The
+  same check covers this header: a change to it moves the table's version
+  or the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG`. ElementPluginTest loads a
+  plugin built one version ahead and sees it refused.
+
 #### 2026-11-02 *0.9.459*
 - **A picture without an alpha channel is an opaque pixmap.** `UCImage`
   decodes a JPEG, a HEIC, an opaque WebP - any picture with no alpha band -
