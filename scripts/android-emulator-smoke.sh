@@ -7,7 +7,9 @@
 # it presents a frame (OS/Android/UltraCanvasAndroidWindow.cpp, tag
 # UltraCanvas), saying whether that frame has content or is one colour
 # everywhere. This waits for that line, and fails when the process dies
-# first, when the frame is blank, or when the time runs out.
+# first, when the frame is blank, or when the time runs out - and, once the
+# frame is there, when an SVG failed to load ("is not a known file format":
+# the APK's libvips was built without SVG support).
 #
 # Whatever happens it leaves the evidence in OUT_DIR: a screenshot, the whole
 # logcat, the crash buffer, and the app's own lines (tags UltraCanvas and
@@ -51,6 +53,14 @@ for ((elapsed = 0; elapsed < timeout; elapsed += 2)); do
         # Leave it running a moment so the screenshot shows the settled UI.
         sleep 5
         if grep -q 'with content' <<<"$line"; then
+            # The demo's icons are SVG: one that libvips cannot read means the
+            # APK's libvips was built without SVG support (packaging/vcpkg.json).
+            svg_failures="$(adb logcat -d -s UltraCanvas:V | grep -c '\.svg.*is not a known file format' || true)"
+            if [ "${svg_failures:-0}" -gt 0 ]; then
+                echo "::error::$svg_failures SVG load(s) failed: libvips cannot read SVG (see logcat-ultracanvas.txt)"
+                adb logcat -d -s UltraCanvas:V | grep -m3 '\.svg.*is not a known file format' || true
+                exit 1
+            fi
             echo "android-emulator-smoke: PASS"
             exit 0
         fi
