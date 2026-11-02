@@ -53,7 +53,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 -   Vector graphics with SVG parsing and transformations
 -   Gradients (linear, radial, conic)
 -   Path filling with multiple modes
--   Bitmap formats: PNG, JPG, BMP, GIF, AVIF, WebP, QOI
+-   Bitmap formats in every build: PNG, JPEG, BMP, TIFF, GIF, WebP, AVIF, HEIC, JPEG XL, QOI, icons
 -   Double buffering for smooth rendering
 
 **Extensible Plugin System**
@@ -85,7 +85,7 @@ UltraCanvas/
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
 │   ├── core/             # Platform-independent implementations
-│   ├── OS/Linux/         # Linux-specific code (X11, Cairo)
+│   ├── OS/Linux/         # Linux-specific code (X11, Cairo; OS/Linux/Wayland/ the Wayland backend)
 │   ├── OS/MSWindows/     # Windows-specific code (Win32, Direct2D)
 │   ├── OS/MacOS/         # macOS-specific code (Cocoa, Core Graphics)
 │   ├── OS/BSD/           # BSD-specific code
@@ -137,7 +137,8 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev clang
+    libfreetype6-dev libvips-dev libharfbuzz-dev \
+    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -150,6 +151,11 @@ mkdir build && cd build
 cmake ..
 make
 ```
+
+On Linux the default is the X11 backend. `cmake -DULTRACANVAS_WAYLAND=ON ..`
+builds the Wayland backend in its place (`libwayland-dev`,
+`wayland-protocols`, `libxkbcommon-dev`); one build speaks one display
+protocol.
 
 ----------
 
@@ -173,7 +179,9 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland support** - Native Wayland windowing on Linux
+-   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
+    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
+    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -1093,7 +1101,10 @@ plugin's SVG reader and UltraWeb's web pages. Doc:
   its network, USB and Bluetooth lists) and **IODeviceManager** (operates
   peripherals). Core in `core/UltraCanvasDesktopShell.cpp`; the X11 backend
   (EWMH properties and client messages, `XGetImage`, procfs/sysfs) in
-  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp` and the Win32 backend
+  `OS/Linux/UltraCanvasLinuxDesktopShell.cpp`, the Wayland backend's first
+  phase (the outputs, the devices; the shell protocols are the next step,
+  `Docs/UltraCanvas/WaylandDesktopShellProposal.md`) in
+  `OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`, and the Win32 backend
   (`EnumWindows` filtered as Explorer's taskbar, appbars, `BitBlt`, WinEvent
   hooks, `RegisterHotKey`, the Start menu) in
   `OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and
@@ -8415,7 +8426,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 -   Vector graphics with SVG parsing and transformations
 -   Gradients (linear, radial, conic)
 -   Path filling with multiple modes
--   Bitmap formats: PNG, JPG, BMP, GIF, AVIF, WebP, QOI
+-   Bitmap formats in every build: PNG, JPEG, BMP, TIFF, GIF, WebP, AVIF, HEIC, JPEG XL, QOI, icons
 -   Double buffering for smooth rendering
 
 **Extensible Plugin System**
@@ -8447,7 +8458,7 @@ UltraCanvas/
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
 │   ├── core/             # Platform-independent implementations
-│   ├── OS/Linux/         # Linux-specific code (X11, Cairo)
+│   ├── OS/Linux/         # Linux-specific code (X11, Cairo; OS/Linux/Wayland/ the Wayland backend)
 │   ├── OS/MSWindows/     # Windows-specific code (Win32, Direct2D)
 │   ├── OS/MacOS/         # macOS-specific code (Cocoa, Core Graphics)
 │   ├── OS/BSD/           # BSD-specific code
@@ -8480,7 +8491,8 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev
+    libfreetype6-dev libvips-dev libharfbuzz-dev \
+    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -8493,6 +8505,11 @@ mkdir build && cd build
 cmake ..
 make
 ```
+
+On Linux the default is the X11 backend. `cmake -DULTRACANVAS_WAYLAND=ON ..`
+builds the Wayland backend in its place (`libwayland-dev`,
+`wayland-protocols`, `libxkbcommon-dev`); one build speaks one display
+protocol.
 
 ----------
 
@@ -8541,7 +8558,9 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland support** - Native Wayland windowing on Linux
+-   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
+    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
+    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 
@@ -26239,6 +26258,7 @@ the shell they are free.
 | Platform | Backend |
 |---|---|
 | Linux, BSD | `x11`: the EWMH root-window properties every window manager on ULTRA OS and the Linux desktops maintains (`_NET_CLIENT_LIST_STACKING`, `_NET_ACTIVE_WINDOW`, `_NET_WM_DESKTOP`, `_NET_CURRENT_DESKTOP`, …); actions as the client messages the specification prescribes, so the manager decides how a window is raised or closed; the screenshot through `XGetImage` on the root window into a BGRx buffer, which `CaptureScreenImage` hands over as is and `CaptureScreen` writes with cairo's PNG writer; the monitors from RandR (`XRRGetMonitors`); the monitor on its own connection with `PropertyChangeMask` on the root, sleeping in `poll()` on it and a wake pipe; a global shortcut as a passive `XGrabKey` on the root window (with the Caps Lock and Num Lock variants), on a connection and thread of its own the same way, and `BadAccess` reported as "another program holds it"; the Super tap through XInput2's raw key events on that connection. The queries open a connection of their own, so they run from any thread and without an UltraCanvas window (the headless `UltraDesktop --windows`). The end of the session and the lock through logind on the system bus (`OS/Linux/UltraCanvasLinuxDesktopShellSession.cpp`), the loudspeaker through libpulse loaded at run time (`UltraCanvasLinuxDesktopShellAudio.cpp`), the notification area (`UltraCanvasLinuxTrayHost.cpp`) as a StatusNotifierWatcher and host on the D-Bus session bus through GDBus, on a private connection and a `GMainContext` of its own: items' properties over `org.freedesktop.DBus.Properties`, pixmaps written through cairo as PNG files in the disk cache's `desktop-icons` folder (`$XDG_CACHE_HOME/UltraCanvas`, named after their pixels and swept by its rule), theme names through the item's `IconThemePath` and `FindDesktopIconFile`, dbusmenu menus (`com.canonical.dbusmenu`) as data, clicks as `Activate` / `SecondaryActivate` / `ContextMenu` at the pointer read from the query connection; refused while another watcher owns the name. No switch at sign-in: the session owns that. |
+| Linux on Wayland (`-DULTRACANVAS_WAYLAND=ON`) | `wayland` (`OS/Linux/Wayland/UltraCanvasWaylandDesktopShell.cpp`), phase 1 of `WaylandDesktopShellProposal.md`: the monitors from the compositor's `wl_output`s (position, mode and scale; the first announced is the primary, Wayland naming none), the devices from the same procfs and sysfs probes as X11, the keyboard layout from the seat's xkb keymap; the session's end and lock, the loudspeaker and the notification area are the shared Linux files above, a tray click reported at the last pointer position in the shell's own window (a Wayland client knows no screen position). The window list, the virtual desktops, `ReserveScreenEdges`, the screenshot, the monitor and the global shortcuts answer false with "not available on Wayland yet" until the layer-shell and foreign-toplevel protocols and the Screenshot and GlobalShortcuts portals are in. |
 | Windows | `win32` (`OS/MSWindows/UltraCanvasWindowsDesktopShell.cpp` and `UltraCanvasWindowsTrayHost.cpp`), with Explorer running beside UltraDesktop or with UltraDesktop as the shell: the window list from `EnumWindows`, filtered as Explorer's taskbar filters (visible; `WS_EX_APPWINDOW`, or unowned and no tool window), cloaked windows on the current desktop left out, the shell's own windows listed with `skipTaskbar`; titles through `InternalGetWindowText`, which sends nothing, so a hung program cannot block the list; actions asynchronous (`ShowWindowAsync`, a posted `SC_CLOSE`), and activation through `SetForegroundWindow`; virtual desktops as described above; the screenshot through `BitBlt` of the whole virtual screen into a 32-bit DIB, already the BGRx layout; the edges as appbars or the work area; the devices from the consent store, Core Audio, the power status and the keyboard layout; the monitor through WinEvent hooks and a registry notification, pumping its own thread's messages in `MsgWaitForMultipleObjectsEx`; a global shortcut through `RegisterHotKey`, the Win key's tap through a `WH_KEYBOARD_LL` hook; the monitors from `EnumDisplayMonitors`; the application list from the Start menu and the shell's *Applications* folder, Store applications started through `IApplicationActivationManager`; the switch at sign-in through the `Run` key or the account's shell setting and UltraCanvasShellGuard; the notification area as a `Shell_TrayWnd` of its own, reading the `WM_COPYDATA` `Shell_NotifyIcon` sends — `NOTIFYICONDATAW` in its 32-bit layout behind a two-word header, the layout every replacement shell reads; the end of the session through `ExitWindowsEx`. Executable, shortcut and tray icons are extracted into PNG files in the disk cache's `desktop-icons` folder (`%LOCALAPPDATA%\UltraCanvas`) and swept by its rule. |
 | macOS, Android, WebAssembly | `null`: `IsAvailable()` false, every window and desktop query empty, `CaptureScreen`, `CaptureScreenImage`, `UltraCanvasGlobalShortcut::Start`, `UltraCanvasTrayHost::Start`, `EndSession`, `LockSession` and the loudspeaker calls fail with a reason (`ReadAudioOutput` answers `available` false); the application list, launcher and notices still work. |
 | macOS: the applications | `OS/MacOS/UltraCanvasMacOSApplications.mm` (`ULTRACANVAS_DESKTOPSHELL_NATIVE_APPLICATIONS`): the application list from the bundles and their `Info.plist`, icons drawn from `NSWorkspace iconForFile:` into PNG files in the disk cache's `desktop-icons` folder (`~/Library/Caches/UltraCanvas`, swept by its rule), launch through `NSWorkspace`; on any thread. The rest of the backend is the `null` one above. |
@@ -32118,6 +32138,14 @@ showed the old picture. The decode itself reads images with
 `UCImage::GetFresh()`, which checks the shared cache against the file and reads
 a file that changed since it was cached again; plain `UCImage::Get()` never
 looks at the disk.
+
+**Not only the Filer's thumbnails live there.** `UCImage::GetPixmap` keeps a
+raster file's fitted pixmap in the same cache when the box is at least
+640 × 480 raw pixels - a desktop's wallpaper, a viewer's photo - stored as
+the same QOI blob after the first decode and inflated on the next run
+instead of decoding and resizing the file; a picture without an alpha
+channel is stored and inflated opaque (RGB24). The same stamp and the same
+sweep apply.
 
 **The renderer that drew it counts too.** Every entry also records the
 renderer generation of the build that wrote it
@@ -102695,18 +102723,16 @@ same.
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
 
 ==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/ultrasnip-button.md
+FILE: Docs/UltraDesktop/changelog.d/wallpaper-disk-cache.md
 ==============================================================================
 
-- **The screenshot button opens UltraSnip.** A click snips an area: UltraSnip
-  freezes the screen, the area is dragged out, and the picture goes to the
-  clipboard and to `Pictures/Screenshots`. The button's right-click menu
-  offers *Snip a window*, *Snip the whole screen*, *Record an area* /
-  *a window* / *the whole screen* (a video to `Videos/Screen Recordings`),
-  *Screenshot now, to Pictures* - the plain whole-screen capture of before,
-  green dot and all - and *Open UltraSnip*. `Super+Shift+S` from any window
-  snips an area, as on Windows. Where UltraSnip is not installed beside the
-  desktop, the click takes the plain screenshot as it did.
+- **The wallpaper comes up from the disk cache.** The desktop's wallpaper
+  is decoded and fitted to the monitor once; the fitted picture is kept in
+  the framework's thumbnail disk cache as a QOI blob (framework changelog:
+  `opaque-pixmaps-formats`), and the next start inflates it in 10 ms on a
+  1280 × 800 monitor (75 ms at 3840 × 2160) instead of decoding and
+  resizing the picture. A picture without an alpha channel is held
+  without one (RGB24).
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
