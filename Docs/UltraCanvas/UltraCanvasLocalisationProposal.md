@@ -47,12 +47,13 @@ what the standard set is for (§4).
 
 What does exist and is reused by this design:
 
-- **The language the user wants is already detected once**, for spelling:
-  `UltraCanvasSpellChecker::DetectPreferredLanguage` reads `LC_ALL`,
-  `LC_MESSAGES`, `LANG`, `LANGUAGE`, then asks the backend
-  (`GetPreferredLanguageHint`: `GetUserDefaultLocaleName` on Windows,
-  `NSLocale` on macOS). `UltraCanvasDesktopEntry` reads `LC_MESSAGES` /
-  `LC_ALL` again to pick a `.desktop` file's localised `Name[de]`.
+- **The language the user wants is detected once, for everyone**:
+  `UltraCanvasSystemLanguage.h` (`SystemLanguageTags()`, 2026-11-02) reads
+  the POSIX variables as gettext does and the platform's own list (Windows'
+  preferred UI languages, macOS's Language & Region, the browser's
+  `navigator.languages`, Android's configuration); the spell checker's
+  `DetectPreferredLanguage` already uses it. `UltraCanvasDesktopEntry`
+  reads the raw locale itself for a `.desktop` file's `Name[de_DE@euro]`.
 - **Shared per-user settings have a folder and a file pattern**:
   `UltraCanvasSettingsFolder()` (`%APPDATA%\UltraCanvas`,
   `~/Library/Application Support/UltraCanvas`, `~/.config/UltraCanvas`),
@@ -72,9 +73,12 @@ What does exist and is reused by this design:
   shared by the application and every plugin.
 - **Stable command ids** on menu items (`MenuItemData::commandId`,
   `UltraCanvasMenuRegistry`), which a translated menu can be rebuilt from.
-- **A columns tree view** (`UltraCanvasColumnsTreeView`) with editable
-  cells, and `UltraCanvasListSortFilterProxy` - what the editor's grid is
-  made of, not a grid of its own.
+- **A columns tree view** (`UltraCanvasColumnsTreeView`, documented in
+  `UltraCanvasTreeViewExamples.md`) with aligned columns, a header band and
+  section-header rows, and `UltraCanvasListSortFilterProxy` - what the
+  editor's grid is made of, not a grid of its own. Its cells are not
+  editable yet; the editor adds in-place editing to it rather than a grid
+  of its own.
 - **Numbers**: the rule that file formats are dot-decimal and UI numbers
   follow the person (`locale-ok`), and `UltraCanvasMoney`'s three explicit
   styles - the groundwork for §6.
@@ -358,11 +362,11 @@ translator whose tool wants one.
 2. `ULTRACANVAS_LANG` in the environment, for a script or a CI screenshot.
 3. `Language.conf` in the UltraCanvas settings folder (`language=de`),
    written by UOS-Settings; `language=system` or no file means step 4.
-4. The operating system: `DetectPreferredLanguage` moved out of the spell
-   checker into UltraLocalisation (the spell checker then calls it), with
-   the backends it lacks today - `GetUserPreferredUILanguages` on Windows,
-   `NSLocale.preferredLanguages` on macOS, `navigator.language` on
-   WebAssembly, `Locale.getDefault()` through the JNI bridge on Android.
+4. The operating system: `SystemLanguageTags()` from
+   `UltraCanvasSystemLanguage.h`, best first - the POSIX variables, then
+   `GetUserPreferredUILanguages` on Windows, `NSLocale.preferredLanguages`
+   on macOS, `navigator.languages` on WebAssembly, the device configuration
+   on Android - the first tag a catalogue exists for.
 5. `en`, which needs no catalogue: the source is the text.
 
 A set is looked up from the most specific tag down: `zh-Hant-TW` →
@@ -558,7 +562,7 @@ run in CI:
 
 | Phase | What | Where | Effort |
 |---|---|---|---|
-| **L1** | The UltraLocalisation module: `Tr`/`TrC`/`TrN`/`TrF`, the two sets from both folders, `OriginOf`, the fallback walk, the plural table, `DetectPreferredLanguage` moved from the spell checker with the missing backends, `Language.conf`, `Initialize()` wiring, the Masterfile section, `Tests/UltraLocalisationTest.cpp` (no display) | module, OS backends | 4 days |
+| **L1** | The UltraLocalisation module: `Tr`/`TrC`/`TrN`/`TrF`, the two sets from both folders, `OriginOf`, the fallback walk over `SystemLanguageTags()`, the plural table, `Language.conf`, `Initialize()` wiring, the Masterfile section, `Tests/UltraLocalisationTest.cpp` (no display) | module | 3 days |
 | **L2** | The standard set: the framework's own strings wrapped (file dialog, modal dialogs, alert, filer widget, colour picker, date picker, spell-check menu, tooltips, media viewer) and the curated vocabulary written into `en/Standard.json`; `extract_ui_strings.py`, `check_locale_catalogues.py` with its baseline, `wrap_ui_strings.py` | core, scripts | 5 days (every application gains translated dialogs and the vocabulary at once) |
 | **L3** | `translate_catalogue.py`; the standard set drafted and reviewed in de, fr, es, it, nl, pt, ja, zh-Hans; UOS-Settings Language page | scripts, UOSSettings | 2 days |
 | **L4** | The editor element: the merged grid over the columns tree view, the two save paths, the compare column, the drafting button; its dialog opener; the UOS-Settings Translations page; the DemoApp page; `UltraCanvasLocalisationEditor.md` | core, UOSSettings, DemoApp | 5 days |
@@ -601,12 +605,136 @@ work for several sessions once L2 is merged.
   see §4.
 - **Live re-labelling of every element**: see §7.
 
+## Appendix A. The standard set, measured
+
+What the applications actually share, counted on 2026-11-02 with
+`scripts/survey_ui_strings.py`: every string literal in `Apps/<App>/` that
+looks like interface text (a capital first letter, letters and light
+punctuation, 2-60 characters, no identifier shapes), counted once per
+application, DemoApp left out; the same over `UltraCanvas/core/` for the
+framework's own. It over-counts a little (a log line can look like a
+label) and under-counts a little (a string built from pieces), so the
+numbers are a measure, not a gate.
+
+| | |
+|---|---|
+| Applications surveyed | 27 |
+| Distinct UI-looking strings in them | 5,158 |
+| ... in 2 or more applications | 423 |
+| ... in 3 or more | 166 |
+| ... in 4 or more | 56 |
+| Framework's own (`core/`), distinct | 311 |
+
+The long tail is each application's own vocabulary ("Mark as spam",
+"Fade out the audio", "Move Layer Up") and stays in its set. The head is
+the standard set. Three things the survey turned up that shape it:
+
+- **Shortcuts are written into labels.** "Undo (Ctrl+Z)" is in 4
+  applications, "Save (Ctrl+S)" in 3, "Open (Ctrl+O)" in 2, and the bare
+  "Undo" in 6 more. The standard entry is "Undo"; the shortcut is the
+  menu item's own `shortcut` field, which the menu draws right-aligned
+  and the wrapping script (§8) splits off. A label that embeds its key
+  cannot be translated once.
+- **Sentences are concatenated.** "Could not read " (4 applications),
+  "Saved " (5), "Opening " (4), "Not saved: " (3), "Could not write " (3,
+  and 4 framework files) are prefixes with a trailing space, joined to a
+  file name at the site. A translator cannot reorder a prefix, so the
+  standard entry is the sentence with its placeholder - "Could not read
+  {0}" - and the site becomes `TrF`.
+- **Two spellings of the same word.** "Colour" (4 applications, 2
+  framework files) and "Color" (3 framework files); "Centre" (4) and
+  "Center" (2). The source language of the standard set is the
+  framework's own British English - `Colour`, `Centre`, `Cancelled`,
+  `Grey` - and the check (§8) reports the other spelling as a key the
+  standard set already has.
+
+### A.1 The draft contents
+
+The number after an entry is how many applications write it today;
+`fw` marks the framework's own dialogs and widgets. An entry with no
+number is vocabulary the survey did not find shared yet but every
+application will need the moment it is translated - a word it is cheaper
+to translate once than to leave each application to discover.
+
+**Menus.** File 4, Edit 9, View 4, Window, Help 2, Tools, Settings 7,
+Options, Preferences..., Recent.
+
+**Actions.** New... 2, Open 9 `fw`, Open... 3, Open Recent, Save 9 `fw`,
+Save As... 3, Save a Copy..., Close 14 `fw`, Close All, Quit 4, Undo 6,
+Redo 3, Cut 4 `fw`, Copy 8 `fw`, Paste 3 `fw`, Delete 8 `fw`, Remove 6,
+Rename 2 `fw`, Duplicate 2, Select All 4, Deselect, Find 3, Find... 2,
+Find Next, Replace 3 `fw`, Refresh 4, Reload, Import, Export 4, Print...,
+Add 3 `fw`, Create 4 `fw`, Edit 9, Clear 3 `fw`, Reset `fw`, Restore
+defaults 4, Apply 2 `fw`, Run 2, Start 3, Stop 5, Pause, Resume 2,
+Continue 2, Send 5, Back 2, Forward 3, Up, Down, Move up 2, Move down 2,
+Zoom In 2, Zoom Out 2, Zoom 3, Fit, Show 2, Hide, Pin 2, Unpin 2, Lock 3,
+Unlock 4, Install 2, Download 2, Upload 2, Preview 2, Browse..., Choose...,
+Change 2, Check 2, Generate 2, Scan 2, Submit 2, Sort `fw`, Filter, Search,
+Help 2, About.
+
+**Dialog buttons and answers.** OK, Cancel 14 `fw`, Yes `fw`, No `fw`,
+Apply, Retry `fw`, Ignore `fw`, Abort `fw`, Don't Save, Save Changes, Quit
+anyway 2, Discard, Overwrite, Replace File `fw`, Skip, Skip All, Try Again.
+
+**States and messages.** Ready 4, Done 2, Failed 4, Error 2 `fw`, Warning,
+Information `fw`, Success `fw`, Cancelled 2 `fw`, Unknown 6 `fw`, None 6
+`fw`, Never 3, On, Off 3, Auto 3 `fw`, Default 2 `fw`, Custom 2 `fw`,
+Normal 2 `fw`, Connected `fw`, Offline 3, Locked 3, Visible 2, Hidden
+`fw`, Loading..., Saving..., Working..., No results, Nothing selected 2,
+No file chosen `fw`, Unsaved changes 2, Copied to the clipboard 2, Saved
+{0} 5, Opening {0} 4, Could not read {0} 4 `fw`, Could not write {0} 3
+`fw`, Could not save {0} 3, Cannot open file {0} `fw`, Not saved: {0} 3,
+Do you want to save the changes to {0}?, {0} could not be opened, Are you
+sure you want to delete {n} item / {n} items, The two passwords do not
+match. 2, Version `fw`.
+
+**Nouns and column headers.** Name 13 `fw`, Size 7 `fw`, Type 5 `fw`, Date
+2, Modified 2, Created, Path 2 `fw`, Folder 3 `fw`, Folders 2, File 4
+`fw`, Files 2, Title 4 `fw`, Status 5, State 6, Details 4 `fw`, Description
+2, Value 2 `fw`, Category 3, Group 5, Tags, Account 2, Accounts 3, Password
+3, Username 2, Email 3, Address 2, Device 2, Devices 3, Network 2 `fw`,
+History 2, Text 9 `fw`, Image 2 `fw`, Images 6, Documents 2 `fw`, Pictures
+4, Downloads 4, Music 2, Videos `fw`, Desktop 3, Home 5, Library 4,
+Computer 2, This computer 2, Untitled 4, New Folder, Move to Trash 2, All
+files 10 `fw`, Properties, Location 2 `fw`, Comment `fw`, Icon `fw`,
+Application `fw`, Program `fw`, Link 3 `fw`, Font 3 `fw`.
+
+**Layout and formatting.** Left 5 `fw`, Right 4 `fw`, Top 5 `fw`, Bottom
+4 `fw`, Centre 4, Middle 2, Justify `fw`, Width 2, Height 2, Bold 3 `fw`,
+Italic 3 `fw`, Underline 2 `fw`, Colour 4 `fw`, Black 3 `fw`, White 2, Red
+`fw`, Green `fw`, Blue `fw`, Yellow `fw`, Opacity 2, Brightness 3 `fw`,
+Display 5, Sans 3 `fw`, Serif 2, Monospace 3, Regular `fw`, Fill `fw`,
+Background `fw`, Style `fw`, Alignment `fw`.
+
+**Units and time.** {n} byte / bytes, KB, MB, GB, TB, {n} second /
+seconds, {n} minute / minutes, {n} hour / hours, {n} day / days, Today,
+Yesterday, Last seen 2, Time 2. The month and weekday names the survey
+found in 4 applications are not entries: a date is formatted through §6,
+not assembled from translated words.
+
+About 330 entries. The framework's own dialogs add the strings only they
+show - the file dialog's view names and settings, the colour picker's
+labels, the spell-check menu's "Add to dictionary", the paper sizes, the
+media viewer's controls - which the extraction script (§8) collects from
+`core/` into the same file; the survey counts 311 candidates there, of
+which perhaps 150 are interface text.
+
+### A.2 What this means for the applications
+
+After the standard set, an application's own set is what the survey's
+long tail says it is: UltraMail's mail words, UltraPaint's and
+ArtCreator's tool and layer words (which the two share - a candidate for
+a `UltraCanvasGraphics` library set registered with `AddSet`, since both
+draw with the same engine), UltraFIBU's bookkeeping, SmartHomeCenter's
+devices. For the median application that is 40 to 80 entries; for
+UltraMail about 150. The half-day per application in §9 rests on that.
+
 ## 11. Related
 
 - `UltraCanvasHostThemeProposal.md` - the shared settings watcher, UOS-Settings Appearance, and the host font a CJK or Thai language needs (the bundled Ubuntu family has neither script).
 - `UltraCanvasEmojiSettings.md` - the shared-setting pattern this follows.
 - `UltraCanvasSettingsFolder.h`, `UltraCanvasDataFolder.h` - the folders.
 - `UltraCanvasJSON.md` - the catalogue parser.
-- `UltraCanvasUIElements.md` (the list, tree and columns tree row), `UltraCanvasListSortFilterProxy.md` - the editor's grid.
+- `UltraCanvasTreeViewExamples.md` (*Columnar Layout: UltraCanvasColumnsTreeView*), `UltraCanvasListSortFilterProxy.md` - the editor's grid.
 - `UltraCanvasMenuExamples.md` - `commandId` and the registry a translated menu is rebuilt from.
 - `AGENTS.md`, *One shared core, on every platform* - the module pattern UltraLocalisation follows.
