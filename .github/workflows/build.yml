@@ -2461,8 +2461,9 @@ jobs:
   # and the six UltraCanvasStart archives to a GitHub release tagged
   # v<version>, where a fixed URL serves them to anyone:
   # https://github.com/<repo>/releases/download/v<version>/<archive>.
-  # UltraCanvasStart's Project page downloads the SDK for its platform from
-  # there (Apps/UltraCanvasStart/engine/StartSdk.cpp names the URL), and
+  # UltraCanvasStart's Framework step links the release page beside the
+  # UltraOS download page (Apps/UltraCanvasStart/engine/StartSdk.cpp; the
+  # publish-sdk-website job below fills that page's server), and
   # UltraCanvasStart itself is what a computer with nothing on it yet
   # downloads first (Docs/GettingStarted.md). The release is created with
   # the version's changelog section as its notes; a re-run of the same
@@ -2474,6 +2475,10 @@ jobs:
     runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     permissions:
       contents: write
+    # The version, for publish-sdk-website below: it reads the same first
+    # line, and the two must not disagree about which archives to send.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -2561,6 +2566,74 @@ jobs:
           fi
           gh release upload "$tag" sdk-release/* --repo "${{ github.repository }}" --clobber
           echo "https://github.com/${{ github.repository }}/releases/tag/$tag"
+
+  # ===== THE SDKS ON THE ULTRAOS WEBSITE =====
+  # UltraCanvasStart's Framework step opens https://ultraos.eu/download-file/
+  # (Apps/UltraCanvasStart/engine/StartSdk.cpp) and names the archive for
+  # its version; this job puts the same six archives the release above
+  # carries on the server behind that page, so the page can offer a version
+  # the moment it is released instead of when someone copies it over. Over
+  # SFTP, into <ULTRAOS_SFTP_DIR>/<version>/ with a SHA256SUMS beside them
+  # (scripts/upload-sdk-website.sh, which documents every setting). After
+  # publish-sdk, so the website never has a version the release lacks; a job
+  # of its own, so an unreachable server turns this job red, not the
+  # release, and it can be re-run alone.
+  #
+  # Configured in the repository's Settings -> Secrets and variables ->
+  # Actions: ULTRAOS_SFTP_HOST, ULTRAOS_SFTP_USER, ULTRAOS_SFTP_DIR (and
+  # ULTRAOS_SFTP_PORT when not 22), each a variable or a secret, and the
+  # secrets ULTRAOS_SFTP_KEY and ULTRAOS_SFTP_KNOWN_HOSTS. Until
+  # ULTRAOS_SFTP_HOST is set the job uploads nothing and says so; with it
+  # set, a missing setting fails it. The decision is a step's, not the
+  # job's `if`: a job condition cannot read secrets, and a host kept in one
+  # would skip the job for good. sdk-website-check.yml tests the settings
+  # without a release.
+  publish-sdk-website:
+    name: Upload the SDKs to the UltraOS website
+    needs: publish-sdk
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    # Six archives of a few hundred MB in all; a stalled connection is cut
+    # by ServerAliveInterval, this is the backstop.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      ULTRAOS_SFTP_HOST: ${{ vars.ULTRAOS_SFTP_HOST || secrets.ULTRAOS_SFTP_HOST }}
+    steps:
+      - name: Is the website configured?
+        id: configured
+        run: |
+          if [ -n "$ULTRAOS_SFTP_HOST" ]; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ULTRAOS_SFTP_HOST is not set (as a variable or a secret) - the SDKs were not uploaded to the website"
+          fi
+
+      - name: Checkout repository
+        if: steps.configured.outputs.upload == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+
+      - name: Download the SDK artifacts
+        if: steps.configured.outputs.upload == 'true'
+        uses: actions/download-artifact@v6
+        with:
+          pattern: UltraCanvas-SDK-*
+          path: sdk-release
+          merge-multiple: true
+
+      - name: Upload the SDKs over SFTP
+        if: steps.configured.outputs.upload == 'true'
+        env:
+          VERSION: ${{ needs.publish-sdk.outputs.version }}
+          ULTRAOS_SFTP_PORT: ${{ vars.ULTRAOS_SFTP_PORT || secrets.ULTRAOS_SFTP_PORT }}
+          ULTRAOS_SFTP_USER: ${{ vars.ULTRAOS_SFTP_USER || secrets.ULTRAOS_SFTP_USER }}
+          ULTRAOS_SFTP_DIR: ${{ vars.ULTRAOS_SFTP_DIR || secrets.ULTRAOS_SFTP_DIR }}
+          ULTRAOS_SFTP_KEY: ${{ secrets.ULTRAOS_SFTP_KEY }}
+          ULTRAOS_SFTP_KNOWN_HOSTS: ${{ secrets.ULTRAOS_SFTP_KNOWN_HOSTS }}
+        run: scripts/upload-sdk-website.sh sdk-release "$VERSION"
 
   # ===== ANDROID BACKEND CHECK =====
   # Separate job, not a matrix row (investigation §5): there is no

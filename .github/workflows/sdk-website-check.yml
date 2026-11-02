@@ -1,0 +1,47 @@
+# Checks the SFTP settings the publish-sdk-website job of build.yml uploads
+# the SDKs with, without a release: scripts/upload-sdk-website.sh --check
+# logs in, writes, renames and removes a probe file in ULTRAOS_SFTP_DIR and
+# lists the directory. That job runs only on a release build of main, so a
+# wrong key, host key or directory would otherwise surface on the first
+# release after the settings changed.
+#
+# Runs on a push that changes the script or this file (on any branch: the
+# check is seconds long and touches nothing but its own probe), and by hand
+# from the Actions tab after the settings change (Run workflow).
+name: SDK website check
+
+on:
+  push:
+    paths:
+      - scripts/upload-sdk-website.sh
+      - .github/workflows/sdk-website-check.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-website-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Log in to the website's SFTP server and write a probe
+    runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      # Each setting a variable or, when no variable has it, a secret - the
+      # same lookup publish-sdk-website does. A missing one fails the check
+      # and the error names it.
+      - name: Check the SFTP settings
+        env:
+          ULTRAOS_SFTP_HOST: ${{ vars.ULTRAOS_SFTP_HOST || secrets.ULTRAOS_SFTP_HOST }}
+          ULTRAOS_SFTP_PORT: ${{ vars.ULTRAOS_SFTP_PORT || secrets.ULTRAOS_SFTP_PORT }}
+          ULTRAOS_SFTP_USER: ${{ vars.ULTRAOS_SFTP_USER || secrets.ULTRAOS_SFTP_USER }}
+          ULTRAOS_SFTP_DIR: ${{ vars.ULTRAOS_SFTP_DIR || secrets.ULTRAOS_SFTP_DIR }}
+          ULTRAOS_SFTP_KEY: ${{ secrets.ULTRAOS_SFTP_KEY }}
+          ULTRAOS_SFTP_KNOWN_HOSTS: ${{ secrets.ULTRAOS_SFTP_KNOWN_HOSTS }}
+        run: scripts/upload-sdk-website.sh --check
