@@ -656,7 +656,7 @@ void DirectProvider::Enqueue(std::function<void()> job) {
 
 void DirectProvider::SendProfileToRelay(std::function<void(const UltraIMResult&)> onDone) {
     std::shared_ptr<RelayClient> relay = Relay();
-    if (!relay || state_ != UltraIMConnectionState::Connected) {
+    if (!relay || !HasRelaySession()) {
         if (onDone) onDone(UltraIMResult::Ok());     // the next sign-in sends it
         return;
     }
@@ -688,7 +688,7 @@ void DirectProvider::FetchAccountProfile(UltraIMAccountProfileCallback onResult)
     }
     // What only the relay knows: whether the codes came back, and recovery.
     std::shared_ptr<RelayClient> relay = Relay();
-    if (!relay || state_ != UltraIMConnectionState::Connected) {
+    if (!relay || !HasRelaySession()) {
         onResult(UltraIMResult::Ok(), profile);
         return;
     }
@@ -717,7 +717,7 @@ void DirectProvider::VerifyContact(UltraIMContactChannel channel, const std::str
                                    UltraIMResultCallback onResult) {
     auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
     std::shared_ptr<RelayClient> relay = Relay();
-    if (!relay || state_ != UltraIMConnectionState::Connected) {
+    if (!relay || !HasRelaySession()) {
         finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
         return;
     }
@@ -732,7 +732,7 @@ void DirectProvider::VerifyContact(UltraIMContactChannel channel, const std::str
 void DirectProvider::ResendContactCode(UltraIMContactChannel channel, UltraIMResultCallback onResult) {
     auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
     std::shared_ptr<RelayClient> relay = Relay();
-    if (!relay || state_ != UltraIMConnectionState::Connected) {
+    if (!relay || !HasRelaySession()) {
         finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
         return;
     }
@@ -746,7 +746,7 @@ void DirectProvider::ResendContactCode(UltraIMContactChannel channel, UltraIMRes
 void DirectProvider::SetRecoveryEnabled(bool enabled, UltraIMResultCallback onResult) {
     auto finish = [onResult](const UltraIMResult& r) { if (onResult) onResult(r); };
     std::shared_ptr<RelayClient> relay = Relay();
-    if (!identity_.IsValid() || !relay || state_ != UltraIMConnectionState::Connected) {
+    if (!identity_.IsValid() || !relay || !HasRelaySession()) {
         finish(UltraIMResult::Error(UltraIMResultCode::NotConnected, "The relay is not connected"));
         return;
     }
@@ -765,6 +765,13 @@ void DirectProvider::SetRecoveryEnabled(bool enabled, UltraIMResultCallback onRe
     relay->Request("PUT", "/v1/recovery/escrow", &body, [finish](const RelayResponse& r) {
         finish(r.Ok() ? UltraIMResult::Ok() : RelayError(r, UltraIMResultCode::InvalidArgument));
     });
+}
+
+// Signed in to the relay: a session token, whether or not the socket is up
+// right now (it reconnects by itself; REST calls do not need it).
+bool DirectProvider::HasRelaySession() const {
+    const UltraIMConnectionState state = state_.load();
+    return state == UltraIMConnectionState::Connected || state == UltraIMConnectionState::Reconnecting;
 }
 
 bool DirectProvider::HasIdentityHere() {

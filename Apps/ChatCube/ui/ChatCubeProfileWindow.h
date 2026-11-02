@@ -20,6 +20,12 @@
 //                                                [Save sign-in protection]
 //     status line
 //
+// Under the e-mail address and the phone number: "Confirmed", or the code
+// the relay sent there to type back (and another one asked for). Below,
+// "Getting this ID back": account recovery on or off - the relay then keeps
+// a copy of the key, which codes to both confirmed bring back on another
+// computer (the sign-in page's "Recover my ChatCube ID").
+//
 // The name goes to the contacts; the e-mail and the phone number into the
 // identity's key vault and to the relay, for the owner alone (UltraIM's
 // account profile). The protection is UltraIM's sign-in protection: the
@@ -27,6 +33,7 @@
 // app - UltraAuthenticator scans the QR code from this screen, any other
 // authenticator from a phone. Changing it asks for what protects it now.
 //
+// Version: 0.1.1 - confirming the e-mail and phone with the relay's codes; account recovery on or off
 // Version: 0.1.0
 // Last Modified: 2026-11-01
 // Author: UltraCanvas Framework / ULTRA OS
@@ -77,6 +84,13 @@ private:
     // A new authenticator secret, shown as a QR code (and its key).
     void StartAuthenticator();
     void SaveProtection();
+    // The profile again from the provider: what is confirmed, and recovery.
+    void Refresh();
+    void UpdateVerification();
+    void Confirm(UltraIMContactChannel channel);
+    void SendAgain(UltraIMContactChannel channel);
+    void UpdateRecovery();
+    void ToggleRecovery();
     void SetProfileStatus(const std::string& text, bool error = false);
     void SetProtectionStatus(const std::string& text, bool error = false);
     UltraIMSignInProtection Chosen() const;
@@ -92,6 +106,19 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> phone_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    saveProfile_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     profileStatus_;
+    UltraIMAccountProfile profile_;             // as the provider said last
+    // Under each of the two fields (UltraIMContactChannel's order).
+    struct VerifyRow {
+        std::shared_ptr<UltraCanvas::UltraCanvasContainer> row;
+        std::shared_ptr<UltraCanvas::UltraCanvasLabel>     state;     // "Confirmed" / "Type the code sent to it"
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> code;
+        std::shared_ptr<UltraCanvas::UltraCanvasButton>    confirm;
+        std::shared_ptr<UltraCanvas::UltraCanvasButton>    again;
+    };
+    VerifyRow verify_[2];
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     recoveryText_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    recoveryButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     recoveryStatus_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  protection_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     protectionText_;

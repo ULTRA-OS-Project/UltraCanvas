@@ -1,5 +1,6 @@
 // Apps/ChatCube/ui/ChatCubeWindow.cpp
 // The ChatCube window: sign-in page, conversations, messages
+// Version: 0.2.6 - "Recover my ChatCube ID": the codes sent to the e-mail and phone bring an ID back
 // Version: 0.2.5 - an e-mail address and a phone number for a new ID, a password and/or an
 //                  UltraAuthenticator code to sign in; the Edit profile window
 // Version: 0.2.4 - the Settings window (the gear beside the copy button): the send key, typing either
@@ -306,9 +307,25 @@ std::shared_ptr<UltraCanvasContainer> ChatCubeWindow::BuildSignInPage() {
     newPasswordRow_->AddChild(repeatPassword_);
     card->AddChild(newPasswordRow_);
 
+    // Recovering an ID made on another computer: the address it has, then
+    // the code sent to each of its e-mail and phone.
+    recoverAddress_ = MakeInput("cc-recover-address", "Your ID's e-mail address or phone number",
+                                static_cast<int>(kFormWidth));
+    recoverAddress_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    card->AddChild(recoverAddress_);
+    recoverEmailCode_ = MakeInput("cc-recover-email-code", "The code from the e-mail", static_cast<int>(kFormWidth));
+    card->AddChild(recoverEmailCode_);
+    recoverPhoneCode_ = MakeInput("cc-recover-phone-code", "The code from the SMS", static_cast<int>(kFormWidth));
+    recoverPhoneCode_->onEnterPressed = [this](const std::string&) { SignIn(); return true; };
+    card->AddChild(recoverPhoneCode_);
+
     signIn_ = MakeButton("cc-signin-go", "Create my ChatCube ID", static_cast<int>(kFormWidth), true);
     signIn_->SetOnClick([this]() { SignIn(); });
     card->AddChild(signIn_);
+    recoverToggle_ = MakeButton("cc-recover-toggle", "Recover my ChatCube ID", static_cast<int>(kFormWidth));
+    StyleButton(recoverToggle_, false, true);
+    recoverToggle_->SetOnClick([this]() { ToggleRecoveryForm(); });
+    card->AddChild(recoverToggle_);
 
     signInStatus_ = MakeLabel("cc-signin-status", "", kTextFont, L().inkMuted);
     signInStatus_->SetWrap(TextWrap::WrapWord);
@@ -848,7 +865,8 @@ void ChatCubeWindow::SetSignInStatus(const std::string& text) {
 // =================================================================== actions
 
 void ChatCubeWindow::UpdateSignInForm() {
-    const bool creating = !hasIdentity_;
+    const bool recovering = !hasIdentity_ && recovering_;
+    const bool creating = !hasIdentity_ && !recovering_;
     const int chosen = protection_->GetSelectedIndex();
     const auto protection = static_cast<UltraIMSignInProtection>(std::clamp(chosen, 0, 3));
     name_->SetVisible(creating);
@@ -856,15 +874,98 @@ void ChatCubeWindow::UpdateSignInForm() {
     phone_->SetVisible(creating);
     protectionRow_->SetVisible(creating);
     newPasswordRow_->SetVisible(creating && UltraIM_ProtectionHasPassword(protection));
-    unlockPassword_->SetVisible(!creating && unlockStep_ == UltraIMAuthStep::Password);
-    unlockCode_->SetVisible(!creating && unlockStep_ == UltraIMAuthStep::Code);
-    if (creating) signIn_->SetText("Create my ChatCube ID");
+    localNetwork_->SetVisible(!recovering);
+    unlockPassword_->SetVisible(!hasIdentity_ ? false : unlockStep_ == UltraIMAuthStep::Password);
+    unlockCode_->SetVisible(!hasIdentity_ ? false : unlockStep_ == UltraIMAuthStep::Code);
+    recoverAddress_->SetVisible(recovering && recoveryId_.empty());
+    recoverEmailCode_->SetVisible(recovering && !recoveryId_.empty());
+    recoverPhoneCode_->SetVisible(recovering && !recoveryId_.empty());
+    recoverToggle_->SetVisible(!hasIdentity_);
+    recoverToggle_->SetText(!recovering ? "Recover my ChatCube ID"
+                            : recoveryId_.empty() ? "Make a new ChatCube ID instead"
+                                                  : "Start over - send new codes");
+    relay_->SetPlaceholder(recovering ? "Your relay, e.g. https://relay.example.org"
+                                      : "Relay server (optional), e.g. https://relay.example.org");
+    if (recovering) signIn_->SetText(recoveryId_.empty() ? "Send the codes" : "Recover my ID");
+    else if (creating) signIn_->SetText("Create my ChatCube ID");
     else if (unlockStep_ == UltraIMAuthStep::Password || unlockStep_ == UltraIMAuthStep::Code) signIn_->SetText("Unlock");
     else signIn_->SetText("Sign in");
     if (window_) window_->RequestRedraw();
 }
 
+void ChatCubeWindow::ToggleRecoveryForm() {
+    // From the codes back to the address (new codes); from there, or from
+    // making an ID, between the two.
+    if (recovering_ && !recoveryId_.empty()) {
+        recoveryId_.clear();
+        recoverEmailCode_->SetText(std::string());
+        recoverPhoneCode_->SetText(std::string());
+        SetSignInStatus("Ask for new codes - the ones before no longer work.");
+        UpdateSignInForm();
+        return;
+    }
+    recovering_ = !recovering_;
+    recoveryId_.clear();
+    recoverEmailCode_->SetText(std::string());
+    recoverPhoneCode_->SetText(std::string());
+    SetSignInStatus(recovering_ ? "Your ID comes back from your relay, if recovery was turned on in Edit profile: "
+                                  "it sends a code to your e-mail address and one to your phone."
+                                : std::string());
+    UpdateSignInForm();
+}
+
+void ChatCubeWindow::Recover() {
+    const std::string server = Trim(relay_->GetText());
+    if (recoveryId_.empty()) {
+        // First step: the codes to both.
+        const std::string address = Trim(recoverAddress_->GetText());
+        if (server.empty()) return SetSignInStatus("Type the address of the relay your ID used.");
+        if (address.empty()) return SetSignInStatus("Type your ID's e-mail address or phone number.");
+        signIn_->SetDisabled(true);
+        SetSignInStatus("Asking the relay\xE2\x80\xA6");
+        UltraIM_StartRecovery(providerId_, server, address,
+                              [this](const UltraIMResult& r, const UltraIMRecoveryChallenge& challenge) {
+            signIn_->SetDisabled(false);
+            if (!r) return SetSignInStatus(r.message);
+            recoveryId_ = challenge.recoveryId;
+            SetSignInStatus("If that address belongs to an ID with recovery on, a code is on its way to its e-mail "
+                            "and one to its phone. Type both.");
+            UpdateSignInForm();
+            recoverEmailCode_->SetFocus(true);
+        });
+        return;
+    }
+    // Second: both codes, and the ID is on this computer - then signed in.
+    UltraIMRecoveryAnswer answer;
+    answer.server = server;
+    answer.recoveryId = recoveryId_;
+    answer.emailCode = Trim(recoverEmailCode_->GetText());
+    answer.phoneCode = Trim(recoverPhoneCode_->GetText());
+    if (answer.emailCode.empty() || answer.phoneCode.empty())
+        return SetSignInStatus("Type the code from the e-mail and the one from the SMS.");
+    signIn_->SetDisabled(true);
+    SetSignInStatus("Recovering your ID\xE2\x80\xA6");
+    UltraIM_FinishRecovery(providerId_, answer, [this](const UltraIMResult& r) {
+        signIn_->SetDisabled(false);
+        if (!r) {
+            // A typo leaves the codes to try again (the relay allows five);
+            // "Start over" asks for new ones.
+            return SetSignInStatus(r.code == UltraIMResultCode::AuthFailed
+                                       ? "Those are not the codes, or they have expired. Check both - or "
+                                         "\"Start over\" for new ones."
+                                       : r.message);
+        }
+        hasIdentity_ = true;
+        recovering_ = false;
+        recoveryId_.clear();
+        UpdateSignInForm();
+        SetSignInStatus("Your ChatCube ID is back on this computer.");
+        SignIn();                       // with what FinishRecovery stored
+    });
+}
+
 void ChatCubeWindow::SignIn() {
+    if (!hasIdentity_ && recovering_) return Recover();
     UltraIMCredentials credentials;
     credentials.loginType = UltraIMLoginType::KeyPair;
     credentials.server = Trim(relay_->GetText());

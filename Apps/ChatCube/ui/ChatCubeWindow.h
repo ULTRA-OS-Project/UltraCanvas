@@ -59,6 +59,8 @@
 // MessageDelivered events move its ticks (✓ in the relay's queue, ✓✓ on the
 // other device, green ✓✓ read).
 //
+// Version: 0.2.7 - "Recover my ChatCube ID" on the sign-in page: the codes sent to the e-mail and phone
+//                  bring an ID back on a computer without one
 // Version: 0.2.6 - an e-mail address and a phone number for every ID; a password and/or an
 //                  UltraAuthenticator code to sign in, chosen at the start or in Edit profile
 // Version: 0.2.5 - a gear beside the copy button opens the Settings window (ChatCubeSettingsWindow);
@@ -141,6 +143,9 @@ private:
     // once; an authenticator finished in the Edit profile window).
     void FinishCreatedProtection(UltraIMSignInProtection chosen, const std::string& password);
     void EditProfile();
+    // "Recover my ChatCube ID": the address, then the two codes, then signed in.
+    void ToggleRecoveryForm();
+    void Recover();
     void AddContact();
     void AddContactById(const std::string& id);
     void RefreshNearby();           // the "On this network" list
@@ -254,6 +259,13 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> unlockPassword_;  // asked by the provider
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> unlockCode_;
     UltraIMAuthStep unlockStep_ = UltraIMAuthStep::Idle;
+    // Recovering an ID instead of making one (a computer without one).
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>    recoverToggle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> recoverAddress_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> recoverEmailCode_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> recoverPhoneCode_;
+    bool        recovering_ = false;
+    std::string recoveryId_;           // "" until the codes are on their way
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> relay_;
     std::shared_ptr<UltraCanvas::UltraCanvasCheckbox>  localNetwork_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>    signIn_;

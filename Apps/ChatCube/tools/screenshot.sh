@@ -25,6 +25,7 @@
 # (ChatCubeWindow.cpp: Build*): a change to the sign-in card or the sidebar
 # moves them, and the pictures then show where the clicks landed.
 #
+# Version: 0.1.2 - the card's fields 21 pixels higher ("Recover my ChatCube ID" under the button)
 # Version: 0.1.1 - the e-mail and phone on the sign-in card; profile.png, the Edit profile window
 # Version: 0.1.0
 # Last Modified: 2026-10-28
@@ -106,8 +107,8 @@ xvfb-run -a -s "-screen 0 1200x850x24" bash -c '
     sleep 5
     import -window root "$OUT/signin.png"
     # The sign-in card: the name, the e-mail, the phone, the relay, the button.
-    "$XINPUT" click 499 254 type "Alice Park" click 499 296 type "alice@example.org" \
-        click 499 338 type "+49 151 2345 6789" click 499 380 type "http://127.0.0.1:$PORT" click 499 513 sleep 4000
+    "$XINPUT" click 499 233 type "Alice Park" click 499 275 type "alice@example.org" \
+        click 499 317 type "+49 151 2345 6789" click 499 359 type "http://127.0.0.1:$PORT" click 499 492 sleep 4000
     import -window root "$OUT/empty.png"
     # The sidebar: the add-a-contact pill, then the first conversation row,
     # then the composer at the bottom of the window.

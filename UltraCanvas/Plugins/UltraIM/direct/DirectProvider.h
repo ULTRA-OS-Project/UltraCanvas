@@ -205,6 +205,8 @@ private:
     void SignInNow(const UltraIMCredentials& credentials, UltraIMResultCallback onResult);
     void ChangeProtection(const UltraIMProtectionChange& change, UltraIMResultCallback onResult);
     void SendProfileToRelay(std::function<void(const UltraIMResult&)> onDone);
+    // Signed in to the relay (Connected, or the socket Reconnecting).
+    bool HasRelaySession() const;
     // Whether this computer holds an ID already (in the vault, behind a password or not).
     bool HasIdentityHere();
     // The relay a recovery talks to, before there is a session (one at a time).
