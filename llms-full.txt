@@ -2119,6 +2119,14 @@ backing library is never visible in a public header.
   1252 / UTF-8 as UTF-8, for the `.xls` and `.msg` readers);
   UltraCrypt's former copies were removed.
 
+- One-time passwords (`UltraCrypt/UltraOtp.h`, `UltraCrypt/OtpAuthUri.h`,
+  namespace `UltraCanvas::Otp`): `GenerateHotp`, `GenerateTotp`,
+  `VerifyTotp` (a step either side, each code once, constant-time),
+  `NewTotpSecret`, `TimeStepCounter`, `SecondsRemaining`,
+  `ParseOtpAuthUri`, `BuildOtpAuthUri` - UltraAuthenticator shows the
+  codes, ChatCube Direct's sign-in checks them (until 2026-11 in
+  `Apps/UltraAuthenticator/otp/`)
+
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
 
 UltraCrypt is the required cryptographic module for the UCD v2 file format,
@@ -2164,7 +2172,9 @@ the per-application vault on top of that: one encrypted vault file in the
 application's directory, unlocked without a prompt by an owner-only
 `device.key` beside it (`TryAutoUnlock`, with `GetLastUnlockStatus` /
 `DescribeUnlockStatus` saying why it stayed closed) or by a master password
-(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), per-account
+(`Unlock` -> `UnlockStatus`, `PersistDeviceKey`), a Primary Password
+(`ChangePassphrase`, `NeedsPassphrase`, `ForgetDeviceKey`, and
+`UseWithPassphrase` - one turn of the process lock with a typed one), per-account
 `Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
 slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
 the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
@@ -2901,6 +2911,11 @@ UltraIM elements must comply with the following rules:
 - `UltraIM_FetchNearbyContacts` (people on the local network)
 - `UltraIM_ExportEncryptionKeys`, `UltraIM_ImportEncryptionKeys` (the keys
   to encrypted conversations as a passphrase-protected file)
+- `UltraIM_FetchAccountProfile`, `UltraIM_UpdateAccountProfile` (the
+  account's name, and the e-mail and phone kept for its owner alone to
+  recover it), `UltraIM_GetSignInProtection`,
+  `UltraIM_StartAuthenticatorSetup`, `UltraIM_SetSignInProtection` (a
+  password and/or an authenticator code to sign in on the device)
 
 **Implementation status:** Phase 1 core implemented — target `UltraIM`
 (`UltraCanvas/{include,core}/UltraIM/`, umbrella `<UltraIM/UltraIM.h>`): the
@@ -29657,11 +29672,44 @@ ULTRACANVAS_DEFINE_ELEMENT_PLUGIN(Init)
 ```
 
 The macro defines the one exported symbol, `UltraCanvas_PluginInit`, with the
-handshake already in place: it verifies the host's `abiVersion`, compares the
-host's `frameworkAbiTag` (compiler + standard library + C++ standard +
-descriptor version, e.g. `gcc-libstdc++-cxx20-uc1`) against the plugin's own,
-and fences exceptions. A mismatched or unhappy plugin is skipped with a log
-line — never half-registered. One DSO may register many descriptors.
+handshake already in place: it requires the host's table (`abiVersion`) to be
+at least the one the plugin was built for - the table only grows at its end,
+so a newer host still loads an older plugin, while a plugin built for a newer
+table than the host's refuses instead of calling members that are not there -
+compares the host's `frameworkAbiTag` (compiler + standard library + C++
+standard + descriptor version, e.g. `gcc-libstdc++-cxx20-uc1`) against the
+plugin's own, and fences exceptions. A mismatched or unhappy plugin is skipped
+with a log line — never half-registered. One DSO may register many
+descriptors.
+
+Changing the header is changing that contract: append a member to
+`UltraCanvasPluginHost` and bump `ULTRACANVAS_PLUGIN_HOST_ABI_VERSION`, or
+change a type that crosses to the plug-ins (`UCElementDescriptor` and friends)
+and bump the `ucN` of `ULTRACANVAS_FRAMEWORK_ABI_TAG`, then run
+`python3 scripts/check_plugin_abi.py --update`. CI (`plugin-abi.yml`) fails
+a change to the header that moves neither; a change that is not part of the
+contract is recorded with `--update --no-abi-change "why"`.
+
+**The classes themselves.** What a plugin's `create` returns is a class
+derived from `UltraCanvasUIElement` - often from a deeper framework class,
+as the charts derive from the chart engine's element - and the host calls
+its virtual functions and reads its members at places and offsets the
+framework's headers fix. Those headers change all the time and carry no
+version anybody bumps, so neither number above covers them. Instead CMake
+writes `UltraCanvasFrameworkHeadersId.h` when it configures: a hash of every
+header under `include/`, `libspecific/` and `OS/` (the way a framework DLL's
+build id is taken, `cmake/UltraCanvasLibraryBuildId.cmake`), in the build's
+`generated/include`, which the library's interface carries and the install
+puts beside the other headers. The macro exports it as a second symbol,
+`UltraCanvas_PluginHeadersId`, and the loader reads that before anything
+else: a plugin that answers another id, `"unknown"` (compiled without the
+generated header), or nothing (built before the symbol existed) is skipped -
+`UltraCanvas_PluginInit` is never called - with a log line naming both ids and
+saying to rebuild it. A plugin built separately from the framework therefore
+works with exactly the framework build whose headers it was compiled
+against, and is rebuilt for any other; one built in the same tree always
+matches. Like the DLL build id the hash is taken at configure time, so a
+header edited without a reconfigure leaves the id as it was on both sides.
 
 ## Loader behaviour
 
@@ -92911,9 +92959,11 @@ world defined, X.509 certificates and CMS (§5.11): what S/MIME is made of.
   message's signer, a recipient's key (§5.11).
 - **Credential storage and policy.** That is UltraVault's job; UltraVault
   *consumes* UltraCrypt for its file-backed fallback backend.
-- **Protocol-level constructions** (TOTP, the UCD envelope, SuperVault's
-  request flow). Those live in their consumers and are built *from* these
-  primitives.
+- **Protocol-level constructions** (the UCD envelope, SuperVault's request
+  flow). Those live in their consumers and are built *from* these
+  primitives. The one exception is one-time passwords (§5.13): HOTP / TOTP
+  and the `otpauth://` link moved in from UltraAuthenticator once a second
+  program - ChatCube's sign-in - had to check the codes the first one shows.
 
 ---
 
@@ -93959,6 +94009,45 @@ signatures holding, a changed byte of the data or the signature, another
 modulus, a 1024-bit modulus, an even exponent, a point off the curve, short
 coordinates and signatures.
 
+### 5.13 One-time passwords — HOTP, TOTP and `otpauth://`
+
+`include/UltraCrypt/UltraOtp.h` and `include/UltraCrypt/OtpAuthUri.h`
+(namespace `UltraCanvas::Otp`), `core/UltraCrypt/UltraOtp.cpp` and
+`OtpAuthUri.cpp`: RFC 4226 / RFC 6238 on `UltraCrypt_Hmac`, and the
+de-facto `otpauth://` key URI an authenticator scans from a QR code. Until
+2026-11 the files were UltraAuthenticator's (`Apps/UltraAuthenticator/otp/`).
+
+```cpp
+namespace Otp = UltraCanvas::Otp;
+Otp::Parameters params;                         // TOTP, SHA-1, 6 digits, 30 s
+UltraCryptSecureBuffer secret;
+Otp::NewTotpSecret(secret);                     // 20 random bytes
+params.issuer = "ChatCube";
+params.accountName = "Erin";
+std::string link;
+Otp::BuildOtpAuthUri(params, secret, link);     // show as a QR code; it holds the secret
+
+std::string code;
+Otp::GenerateTotp(secret, params, unixTime, code);                 // the showing side
+
+uint64_t accepted = 0;                                             // the checking side
+Otp::Result ok = Otp::VerifyTotp(secret, params, unixTime, typed,
+                                 1 /* steps either side */, lastAcceptedStep, accepted);
+```
+
+`VerifyTotp` accepts the code of the current time step or of up to
+`windowSteps` (at most 2) either side, and only a step later than the one
+accepted last: a code is good once, so the caller keeps `accepted` and hands
+it back. Every candidate is computed and compared in constant time, whichever
+matched; spaces in the typed code are ignored, anything else but its digits
+fails, and the message never says which part was wrong. Rate limiting is the
+caller's: ChatCube Direct pauses after five wrong codes.
+
+*Serves:* UltraAuthenticator (generation, the URI parser it scans with),
+ChatCube Direct's sign-in (`NewTotpSecret`, `BuildOtpAuthUri`, `VerifyTotp`).
+Tested by `Tests/UltraOtpTests.cpp`: the RFC vectors, the window, single
+use, the digit count, a short secret.
+
 ## 6. Usage sketches
 
 **UCD v2 section encryption (§4.3 pipeline):**
@@ -94981,6 +95070,34 @@ the cache directory, or `""` - and sends it along (Telegram's
 Direct's inline preview), so the other side sees something before the file
 has arrived. Without a maker, files go without one.
 
+The signed-in account's own details are `UltraIMAccountProfile` - the name
+its contacts see, and the e-mail address and phone number its service keeps
+for the owner alone, to recover the account with:
+`UltraIM_FetchAccountProfile(provider, cb)` and
+`UltraIM_UpdateAccountProfile(provider, profile, cb)` (the
+`AccountProfile` capability; `InvalidArgument` for an address or a number
+that is plainly not one - the phone with `+` and the country code). A new
+account's are `credentials.email` and `credentials.phoneNumber` with
+`createAccount`.
+
+How signing in on the device is protected is `UltraIMSignInProtection`
+(the `SignInProtection` capability): `DeviceKey` (nothing to type),
+`Password`, `AuthenticatorCode` (a TOTP code from an authenticator app -
+UltraAuthenticator or any other) or `PasswordAndAuthenticatorCode`.
+`UltraIM_GetSignInProtection(provider)` says which;
+`UltraIM_StartAuthenticatorSetup(provider, link)` makes a new authenticator
+secret and answers it as an `otpauth://` link to show as a QR code (it holds
+the secret: show it, never log it); and
+`UltraIM_SetSignInProtection(provider, change, cb)` changes it -
+`UltraIMProtectionChange` carries the new protection, the current password
+and code that prove the change (`AuthFailed` when one is wrong), the new
+password (`""` keeps the current one) and the first code of a new
+authenticator, which proves it was added. A protected sign-in goes in steps
+as Telegram's does: `SignIn` answers `NeedsInput` (or `AuthFailed` for a
+wrong one) with the provider's `authStep` `Password`
+(`credentials.password`), then `Code` (`credentials.otpCode`), an
+`AuthStepChange` event each, the hint in `authHint`.
+
 End-to-end encrypted conversations say so (`UltraIMConversation::isEncrypted`).
 Their keys travel as a passphrase-protected text:
 `UltraIM_ExportEncryptionKeys(provider, passphrase, cb)` hands it back, to
@@ -94997,11 +95114,14 @@ session, `FetchConversations`, `FetchMessages` and `SendText` are required;
 everything else has a default that answers `CapabilityMissing`. Raise events
 through the sink `Initialize` hands you; every method must return at once.
 
-A provider ships as a module that links the core and exports one function:
+A provider ships as a module that links the core and exports two
+functions - the version it was built for, and its entry point:
 
 ```cpp
+ULTRAIM_DEFINE_PLUGIN_ABI_VERSION()     // UltraIM_PluginAbiVersion()
+
 extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost* host) {
-    if (!host || host->abiVersion < 1 || !host->RegisterProvider) return;
+    if (!host || host->abiVersion != ULTRAIM_PLUGIN_HOST_ABI_VERSION || !host->RegisterProvider) return;
     host->RegisterProvider(std::make_shared<MyProvider>());
 }
 ```
@@ -95009,6 +95129,27 @@ extern "C" ULTRAIM_PLUGIN_EXPORT void UltraIM_PluginInit(const UltraIMPluginHost
 `UltraIM_RefreshProviders` loads each module in `pluginDirectory` once and
 never unloads it (queued callbacks may still point into it). A provider
 compiled into the application uses `UltraIM_RegisterProvider` instead.
+
+**The module ABI.** `ULTRAIM_PLUGIN_HOST_ABI_VERSION` covers everything a
+module and the host share in binary form: the host table, the
+`IUltraIMProviderPlugin` interface (its virtual functions and their order)
+and every type in `UltraIMTypes.h`. The host asks a module for
+`UltraIM_PluginAbiVersion()` before it calls anything else in it, and skips
+one that answers another version - or does not answer, as modules built
+before version 2 do (they also accepted any host) - saying on stderr to
+rebuild it; the module refuses a host of another version too. So a stale
+module in a plug-in folder is skipped instead of being called through a
+vtable that no longer matches. Changing the interface or a type in
+`UltraIMTypes.h` therefore bumps the version (with a word on what changed
+in the comment above it), and `python3 scripts/check_plugin_abi.py
+--update` records the new fingerprint in `scripts/plugin_abi.txt`; CI
+(`plugin-abi.yml`) fails a change to those headers that leaves the version
+as it was. A change that is not part of the contract - a free inline
+function, a constant, the text of a default body's message - is recorded
+with `--update --no-abi-change "why"`. Version 1 was the first modules;
+version 2 (2026-11) added the account profile and the sign-in protection,
+`UltraIMCredentials::email`, and the check itself - versions 1 had grown
+three interface methods with no bump.
 
 ## Provider: ChatCube Direct
 
@@ -95022,7 +95163,8 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   `createAccount = true` and a `displayName` makes an Ed25519 key pair on the
   device, kept in the provider's `DeviceKeyVault` under
   `<dataDirectory>/direct/`; later sign-ins reuse it (`server` may then be
-  empty: the relay URL is remembered). The user id is 32 hex characters,
+  empty: the relay URL is remembered). `email` and `phoneNumber` go with a
+  new identity (both optional to the provider; ChatCube asks for both). The user id is 32 hex characters,
   derived from the public key - it is what a contact types into
   `UltraIM_AddContact`.
 - **Messages** are end-to-end encrypted envelopes (X25519 + HKDF +
@@ -95065,6 +95207,22 @@ server: [`Server/ChatCubeRelay`](../../../Server/ChatCubeRelay/README.md).
   relay a message waits in the outbox until the other side is back, and
   groups (which the relay keeps) are refused. `AddLanAddress(host, port)`
   reaches a ChatCube by address where multicast does not get through.
+- **Profile and sign-in protection.** The e-mail address and the phone
+  number are kept in the identity's vault and sent to the relay
+  (`PUT /v1/profile`) at every sign-in, which keeps them for the owner alone
+  (`GET /v1/profile`; no other answer carries them). A password re-encrypts
+  the vault under it (`DeviceKeyVault::ChangePassphrase`: Argon2id,
+  XChaCha20-Poly1305) and drops the device key, so the identity's key
+  cannot be read without it; the provider then opens the vault with
+  `UseWithPassphrase` and keeps the password in memory while it runs, as it
+  keeps the key. A typed password is stretched on the provider's worker
+  thread. The authenticator's secret is kept in the vault too and checked
+  with UltraCrypt's `VerifyTotp`: a step either side, each code once (the
+  step accepted last is remembered), and after five wrong codes a pause of
+  30 s that doubles with each further one up to 15 minutes, kept across
+  starts. The code is a gate ChatCube keeps, not encryption: without a
+  password, whoever can read the files and the device key can read the
+  identity - so the strongest choice is both.
 - **For the Telegram provider:** `FetchSharedCredentials("telegram")` asks
   the relay for the Telegram application's API ID and hash
   (`GET /v1/telegram-credentials`, from the relay's
@@ -97242,7 +97400,7 @@ vault.Lock();                                       // wipes the derived key
 
 | Group | Members |
 |---|---|
-| Taking turns | `Use(function)` - opens this vault's file, runs the function, closes it again, under the lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) take turns in it; a vault unlocked directly keeps working too - it re-opens its own file before each read or write when another vault took the store meanwhile (see below) |
+| Taking turns | `Use(function)`, `UseWithPassphrase(passphrase, function)` - opens this vault's file, runs the function, closes it again, under the lock every `DeviceKeyVault` in the process shares. The process has **one** open UltraVault store, so two vaults in one program (two messenger providers, say) take turns in it; a vault unlocked directly keeps working too - it re-opens its own file before each read or write when another vault took the store meanwhile (see below) |
 | Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `GetLastUnlockStatus()` (why the last attempt left it closed), `DescribeUnlockStatus(status)` (that, in words), `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
 | A Primary Password | `NeedsPassphrase()` (a vault without a device key: it opens only with its passphrase), `ChangePassphrase(current, new, keepAsDeviceKey)`, `NewDeviceKey()`, `ForgetDeviceKey()` - see below |
 | Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
@@ -97272,7 +97430,18 @@ vault.ChangePassphrase("", typed, false);              // set: "" = the device k
 vault.NeedsPassphrase();                               // true from now on: ask at every start
 vault.ChangePassphrase(current, typed, false);         // change
 vault.ChangePassphrase(current, UltraVault::DeviceKeyVault::NewDeviceKey(), true);   // remove
+std::string secret;
+vault.UseWithPassphrase(typed, [&](UltraVault::DeviceKeyVault& v) { v.Retrieve("identity", secret); });
 ```
+
+`UseWithPassphrase(passphrase, function)` is `Use()` for such a vault: it
+opens the file with the typed passphrase, runs the function and closes it
+again in one turn of the process's lock, so no other vault takes the store
+in between - a vault with no device key cannot re-open by itself, and an
+`Unlock()` followed by a `Retrieve()` could find another module's file open
+by then (ChatCube's identity behind a password, next to its Matrix and
+Telegram vaults). It answers what `Unlock()` did; the function runs only on
+`Ok`.
 
 `ChangePassphrase` proves the current passphrase by opening the file with it,
 carries every secret in the file over - whatever its prefix, another module's
@@ -102721,18 +102890,6 @@ same.
 | Info panel | webcam from Windows' privacy indicator, microphone and speaker from the audio sessions, the volume from the default endpoint, battery, keyboard layout, network, USB and Bluetooth; instead of Explorer also the tray icons |
 | Lock screen | `LockWorkStation`, from the ⚙ menu; Win+L is Windows' own |
 | Notifications | beside Explorer other programs' notifications are drawn by Windows, as before; instead of Explorer the tray icons' balloons are drawn by UltraDesktop |
-
-==============================================================================
-FILE: Docs/UltraDesktop/changelog.d/wallpaper-disk-cache.md
-==============================================================================
-
-- **The wallpaper comes up from the disk cache.** The desktop's wallpaper
-  is decoded and fitted to the monitor once; the fitted picture is kept in
-  the framework's thumbnail disk cache as a QOI blob (framework changelog:
-  `opaque-pixmaps-formats`), and the next start inflates it in 10 ms on a
-  1280 × 800 monitor (75 ms at 3840 × 2160) instead of decoding and
-  resizing the picture. A picture without an alpha channel is held
-  without one (RGB24).
 
 ==============================================================================
 FILE: Docs/UltraCanvasStart/README.md
