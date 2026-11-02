@@ -25,7 +25,9 @@
 - **Every modern picture format in every build.** `ImageFormatsTest` (under
   `BUILD_TESTS`, so every CI row) reads a JPEG, PNG, GIF, BMP, TIFF, WebP,
   AVIF, HEIC, JPEG XL, QOI and Windows icon from `media/images` and fails
-  the build that cannot decode one of them; the Linux CI rows and the
+  the build that cannot decode one of them (`UC_IMAGE_FORMATS_OPTIONAL`
+  names the formats a machine cannot have: CI sets it to `jxl` on the
+  ubuntu-22.04 runners, whose libvips is built without libjxl); the Linux CI rows and the
   dependency lists in the READMEs and `AGENTS.md` name libheif's HEVC and
   AV1 plug-in packages (separate from Ubuntu 24.04 on), and
   `package-linux.sh` bundles libvips' loader modules and libheif's plug-ins

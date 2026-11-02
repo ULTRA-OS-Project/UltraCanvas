@@ -1944,6 +1944,12 @@ jobs:
           # tunnel tests"; the rest comes from that step via GITHUB_ENV.
           ULTRANET_TEST_SSH_REQUIRED: 1
           ULTRADB_TEST_TUNNEL_REQUIRED: 1
+          # ImageFormatsTest insists on every picture format - except JPEG
+          # XL here: ubuntu-22.04's libvips is built without libjxl (jammy
+          # has no libjxl package), the one codec this runner cannot have.
+          # JPEG XL is checked on Ubuntu 24.04 in image-codecs.yml and on the
+          # macOS and Windows rows ("Run JPEG XL test").
+          UC_IMAGE_FORMATS_OPTIONAL: jxl
         run: ctest --output-on-failure 2>&1 | tee ctest.log
 
       # "Run unit tests" runs DesktopShellTest with no display, where the X11

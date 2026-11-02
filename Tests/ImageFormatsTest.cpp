@@ -10,11 +10,15 @@
 // (the JPEG) is an opaque RGB24 pixmap, one with it (the PNG) ARGB32, and
 // both keep their format through the QOI pixmap blob the disk cache stores.
 //
-// A machine that genuinely cannot have a codec (a developer's box without
-// the plug-in package) sets UC_IMAGE_FORMATS_OPTIONAL to the formats to
-// report rather than fail, e.g. "heic,avif". CI never does.
+// A machine that genuinely cannot have a codec sets UC_IMAGE_FORMATS_OPTIONAL
+// to the formats to report rather than fail, e.g. "heic,avif" on a
+// developer's box without the plug-in package. CI sets it only where the
+// runner's platform has no such codec at all: "jxl" on ubuntu-22.04, whose
+// libvips is built without libjxl (the 24.04 row of image-codecs.yml and
+// the macOS and Windows rows check JPEG XL).
 //
 // Headless; needs libvips (reports SKIP without it).
+// Version: 1.0.1 - UC_IMAGE_FORMATS_OPTIONAL named for the 22.04 runner (no libjxl)
 // Version: 1.0.0
 // Last Modified: 2026-11-02
 // Author: UltraCanvas Framework
