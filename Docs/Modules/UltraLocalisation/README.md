@@ -186,9 +186,11 @@ file dialog, the filer widget's menus and messages, the colour, date,
 time and new-document dialogs, the progress dialog, the spell-check
 menu, the media viewer - are wrapped, so they show in the person's
 language as soon as a translation of `Standard.json` exists. The date
-picker's weekday and month names are entries with a context
-(`"weekday|Mo"`, `"month|May"`, `"month-short|May"`) until the locale's
-own calendar names arrive with phase L6.
+picker's weekday and month names are the standard set's context entries
+(`"weekday|Mo"`, `"month|May"`, `"month-short|May"`), re-read when the
+language changes while a picker is open, and they are what phase L6's
+date formatting will take the names from: the platform gives a date's
+shape, the chosen language its words.
 
 ## Related
 

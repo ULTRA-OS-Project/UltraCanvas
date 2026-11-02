@@ -619,7 +619,14 @@ Sources: `GetLocaleInfoEx` / `GetDateFormatEx` on Windows, `NSNumberFormatter`
 backend already calls `setlocale(LC_ALL, "")` for XIM, which is exactly what
 these need), `Intl` through an `EM_ASM` bridge on WebAssembly. This is the
 one place that is allowed to depend on `LC_NUMERIC`, and each site says so
-with the existing `// locale-ok:` marker. File formats keep
+with the existing `// locale-ok:` marker. The platform gives a date's
+*shape* - the order of day, month and year, the separators, the clock -
+but its month and weekday *names* are the standard set's `month|May`,
+`month-short|May` and `weekday|Mo` entries in the chosen language, which
+the date picker shows already: the person chose the language once, and a
+German interface with an English "May" because the C locale is English
+would not be what they chose. So the calendar entries are not a stopgap
+for L6; they are what L6 formats with. File formats keep
 `FormatFloatClassic` / `TryParseFloat`, as the rule in `AGENTS.md` says.
 `UltraCanvasMoney`'s formatting is untouched: an invoice amount's style is
 the document's, not the desktop's.
@@ -861,9 +868,11 @@ Background `fw`, Style `fw`, Alignment `fw`.
 
 **Units and time.** {n} byte / bytes, KB, MB, GB, TB, {n} second /
 seconds, {n} minute / minutes, {n} hour / hours, {n} day / days, Today,
-Yesterday, Last seen 2, Time 2. The month and weekday names the survey
-found in 4 applications are not entries: a date is formatted through §6,
-not assembled from translated words.
+Yesterday, Last seen 2, Time 2, and the month and weekday names the
+survey found in 4 applications as context entries - `month|May`,
+`month-short|May`, `weekday|Mo` - which the date picker shows and §6's
+date formatting uses for the names, while the platform gives the order
+and the separators.
 
 About 330 entries. The framework's own dialogs add the strings only they
 show - the file dialog's view names and settings, the colour picker's

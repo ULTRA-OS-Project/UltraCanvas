@@ -184,19 +184,15 @@ namespace UltraCanvas {
     UltraCanvasCalendarView::UltraCanvasCalendarView(const std::string& identifier,
                                                      float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
-        // Translated as entries with a context, until the locale's own
-        // calendar names arrive with the formatting phase of
-        // UltraCanvasLocalisationProposal.md (its L6)
-        weekdayNames = {TrC("weekday", "Su"), TrC("weekday", "Mo"), TrC("weekday", "Tu"), TrC("weekday", "We"),
-                        TrC("weekday", "Th"), TrC("weekday", "Fr"), TrC("weekday", "Sa")};
-        monthNamesLong = {TrC("month", "January"), TrC("month", "February"), TrC("month", "March"),
-                          TrC("month", "April"), TrC("month", "May"), TrC("month", "June"),
-                          TrC("month", "July"), TrC("month", "August"), TrC("month", "September"),
-                          TrC("month", "October"), TrC("month", "November"), TrC("month", "December")};
-        monthNamesShort = {TrC("month-short", "Jan"), TrC("month-short", "Feb"), TrC("month-short", "Mar"),
-                           TrC("month-short", "Apr"), TrC("month-short", "May"), TrC("month-short", "Jun"),
-                           TrC("month-short", "Jul"), TrC("month-short", "Aug"), TrC("month-short", "Sep"),
-                           TrC("month-short", "Oct"), TrC("month-short", "Nov"), TrC("month-short", "Dec")};
+        // The current language's calendar names, and again whenever the
+        // language changes while the picker is open - unless the
+        // application set names of its own.
+        ResolveCalendarNames();
+        languageHandler = UltraLocalisation::AddChangeHandler([this](const std::string&) {
+            if (customCalendarNames) return;
+            ResolveCalendarNames();
+            RequestRedraw();
+        });
         UCDate today = UCDate::Today();
         visibleYear = today.year;
         visibleMonth = today.month;
@@ -291,14 +287,31 @@ namespace UltraCanvas {
         SetVisibleMonth(t.year, t.month);
     }
 
+    UltraCanvasCalendarView::~UltraCanvasCalendarView() {
+        if (languageHandler != 0) UltraLocalisation::RemoveChangeHandler(languageHandler);
+    }
+
+    void UltraCanvasCalendarView::ResolveCalendarNames() {
+        weekdayNames = {TrC("weekday", "Su"), TrC("weekday", "Mo"), TrC("weekday", "Tu"), TrC("weekday", "We"),
+                        TrC("weekday", "Th"), TrC("weekday", "Fr"), TrC("weekday", "Sa")};
+        monthNamesLong = {TrC("month", "January"), TrC("month", "February"), TrC("month", "March"),
+                          TrC("month", "April"), TrC("month", "May"), TrC("month", "June"),
+                          TrC("month", "July"), TrC("month", "August"), TrC("month", "September"),
+                          TrC("month", "October"), TrC("month", "November"), TrC("month", "December")};
+        monthNamesShort = {TrC("month-short", "Jan"), TrC("month-short", "Feb"), TrC("month-short", "Mar"),
+                           TrC("month-short", "Apr"), TrC("month-short", "May"), TrC("month-short", "Jun"),
+                           TrC("month-short", "Jul"), TrC("month-short", "Aug"), TrC("month-short", "Sep"),
+                           TrC("month-short", "Oct"), TrC("month-short", "Nov"), TrC("month-short", "Dec")};
+    }
+
     void UltraCanvasCalendarView::SetWeekdayNames(const std::vector<std::string>& shortNames) {
-        if (shortNames.size() == 7) { weekdayNames = shortNames; RequestRedraw(); }
+        if (shortNames.size() == 7) { weekdayNames = shortNames; customCalendarNames = true; RequestRedraw(); }
     }
 
     void UltraCanvasCalendarView::SetMonthNames(const std::vector<std::string>& longNames,
                                                 const std::vector<std::string>& shortNames) {
-        if (longNames.size() == 12) monthNamesLong = longNames;
-        if (shortNames.size() == 12) monthNamesShort = shortNames;
+        if (longNames.size() == 12) { monthNamesLong = longNames; customCalendarNames = true; }
+        if (shortNames.size() == 12) { monthNamesShort = shortNames; customCalendarNames = true; }
         RequestRedraw();
     }
 

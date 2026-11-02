@@ -146,7 +146,7 @@ Selection callbacks:
 Appearance: `SetStyle(CalendarStyle)` with predefined `CalendarStyles::Default()`,
 `CalendarStyles::Compact()` and `CalendarStyles::Dark()`; or tweak any colour /
 metric on `CalendarStyle` directly. `SetShowFooter`, `SetShowAdjacentMonthDays`,
-`SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest.
+`SetWeekdayNames`, `SetMonthNames`, `SetWeekendDays` cover the rest. Without them the names are the standard set's `weekday|Mo`, `month|May` and `month-short|May` entries in the current language (UltraLocalisation), and a language switched at run time re-reads them in every open picker; names the application set stay through a switch; `GetWeekdayNames`, `GetMonthNamesLong` and `GetMonthNamesShort` read the names in use (`Tests/DatePickerLanguageTest.cpp` holds the rule).
 
 ## 6. Date range picking & blocked dates
 

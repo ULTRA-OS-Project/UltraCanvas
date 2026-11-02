@@ -1502,6 +1502,21 @@ if(TARGET UltraLocalisation)
     message(STATUS "    Test registered: UltraLocalisationTest")
 endif()
 
+# ===== DATE PICKER LANGUAGE TEST =====
+# The calendar view's weekday and month names follow the language: from
+# the standard set at construction, again on a switch, never once the
+# application set its own. Builds the view without showing it; no display.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DatePickerLanguageTest...")
+    add_executable(DatePickerLanguageTest ${CMAKE_CURRENT_SOURCE_DIR}/DatePickerLanguageTest.cpp)
+    target_include_directories(DatePickerLanguageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(DatePickerLanguageTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(DatePickerLanguageTest PRIVATE cxx_std_20)
+    set_target_properties(DatePickerLanguageTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME DatePickerLanguageTest COMMAND DatePickerLanguageTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DatePickerLanguageTest")
+endif()
+
 # ===== SYSTEM LANGUAGE TEST =====
 # UltraCanvasSystemLanguage.h without a desktop: the POSIX locale and
 # LANGUAGE rules, the canonical spelling of a tag, and the live detector.

@@ -11,8 +11,9 @@
   and messages, the colour, date, time and new-document dialogs, the
   progress dialog, the spell-check menu, the media viewer; a title built
   from pieces became a `TrF` with placeholders, and the date picker's
-  weekday and month names are context entries (`"month|May"`) until the
-  locale's own calendar names arrive with phase L6.
+  weekday and month names are the standard set's context entries
+  (`"month|May"`, `"weekday|Mo"`), re-read when the language changes
+  while a picker is open.
   `scripts/extract_ui_strings.py` rewrites the English catalogues from the
   `Tr` sites (adding to the standard set, never removing; an application's
   file from its own sites with what it inherits listed),
