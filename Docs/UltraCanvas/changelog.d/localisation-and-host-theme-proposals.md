@@ -3,13 +3,20 @@
   **UltraLocalisation** module: `Tr` / `TrC` / `TrN` / `TrF` with the
   English text as the key; a **standard set** UltraCanvas ships for every
   application (the framework's own strings and the common application
-  vocabulary, translated once) and the application's **own set** over it,
+  vocabulary, translated once), **base sets** per kind of application
+  (Computer, Web, Audio, Image, Video, Text, Spreadsheet, Presentation,
+  Planning, CAD, Banking, Games, Shopping, Fashion, and Communication and
+  Security for the applications the tree has) that an application takes
+  by name, drafted in an appendix, and the application's **own set** over
+  them,
   one JSON per language and set under `media/locale/<lang>/` with a
   per-user override under the UltraCanvas settings folder; the language
   chosen once for every application in UOS-Settings (`Language.conf`, the
   system's language by default); a **localisation editor** element that
-  shows the standard and the application set in one grid - inherited,
-  overridden, own and untranslated rows - hosted in UOS-Settings, in an
+  shows the standard set, the base sets and the application set in one
+  grid - inherited, overridden, own and untranslated rows - and merges
+  them (take a base, promote or demote an entry, merge two bases), hosted
+  in UOS-Settings, in an
   application's Help menu and in DemoApp, saving into a checkout or into
   the settings folder; locale number, date and file-size formatting; and
   the extraction, check, wrapping and UltraAI-draft scripts that make the
