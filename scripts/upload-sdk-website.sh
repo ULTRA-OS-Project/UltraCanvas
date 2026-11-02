@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # scripts/upload-sdk-website.sh <archive-dir> <version>
+# scripts/upload-sdk-website.sh --check
 #
 # Puts the six SDK archives of one release on the UltraOS website, the server
 # behind https://ultraos.eu/download-file/ (the page UltraCanvasStart's
@@ -22,13 +23,20 @@
 # second run for the same version replaces the files; older versions are
 # left alone.
 #
-# Settings, from the environment (the job takes them from the repository's
-# Actions secrets and variables):
+# --check uploads no archive: it logs in, puts a small probe file into
+# ULTRAOS_SFTP_DIR, renames it the way an archive is renamed, lists the
+# directory and removes the probe. That proves the key, the host key, the
+# directory and the rights the upload needs, without a release
+# (.github/workflows/sdk-website-check.yml runs it).
 #
-#   ULTRAOS_SFTP_HOST         the server's host name                (variable)
-#   ULTRAOS_SFTP_PORT         its SSH port; 22 when empty           (variable)
-#   ULTRAOS_SFTP_USER         the SFTP account                      (variable)
-#   ULTRAOS_SFTP_DIR          the directory the versions go under   (variable)
+# Settings, from the environment (the jobs take each from the repository's
+# Actions variables, or from a secret of the same name when no variable has
+# it; the key and the known hosts belong in secrets):
+#
+#   ULTRAOS_SFTP_HOST         the server's host name
+#   ULTRAOS_SFTP_PORT         its SSH port; 22 when empty
+#   ULTRAOS_SFTP_USER         the SFTP account
+#   ULTRAOS_SFTP_DIR          the directory the versions go under
 #   ULTRAOS_SFTP_KEY          the account's private key, OpenSSH    (secret)
 #   ULTRAOS_SFTP_KNOWN_HOSTS  the server's line(s) from
 #                             `ssh-keyscan -p <port> <host>`        (secret)
@@ -37,24 +45,31 @@
 # accepted on first sight: a runner that connects to whatever answers would
 # hand the archives - and the account - to an impostor.
 #
+# Version: 0.2.0 - --check; the settings may be variables or secrets
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 set -euo pipefail
 
 usage() {
     echo "usage: $0 <archive-dir> <version>" >&2
+    echo "       $0 --check" >&2
     exit 2
 }
 
-[ $# -eq 2 ] || usage
-ARCHIVE_DIR=$1
-VERSION=$2
-
-[ -d "$ARCHIVE_DIR" ] || { echo "error: $ARCHIVE_DIR is not a directory" >&2; exit 1; }
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-    echo "error: '$VERSION' is not a version (x.y.z)" >&2
-    exit 1
-}
+CHECK=0
+if [ $# -eq 1 ] && [ "$1" = --check ]; then
+    CHECK=1
+elif [ $# -eq 2 ]; then
+    ARCHIVE_DIR=$1
+    VERSION=$2
+    [ -d "$ARCHIVE_DIR" ] || { echo "error: $ARCHIVE_DIR is not a directory" >&2; exit 1; }
+    [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+        echo "error: '$VERSION' is not a version (x.y.z)" >&2
+        exit 1
+    }
+else
+    usage
+fi
 
 missing=()
 for name in ULTRAOS_SFTP_HOST ULTRAOS_SFTP_USER ULTRAOS_SFTP_DIR \
@@ -79,6 +94,47 @@ case "$REMOTE_DIR" in
         exit 1 ;;
 esac
 
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+umask 077
+printf '%s\n' "$ULTRAOS_SFTP_KEY" > "$WORK/key"
+printf '%s\n' "$ULTRAOS_SFTP_KNOWN_HOSTS" > "$WORK/known_hosts"
+
+# One sftp session over $WORK/batch. The host key is checked, never learnt.
+run_sftp() {
+    sftp -b "$WORK/batch" -P "$PORT" -i "$WORK/key" \
+        -o BatchMode=yes \
+        -o IdentitiesOnly=yes \
+        -o StrictHostKeyChecking=yes \
+        -o UserKnownHostsFile="$WORK/known_hosts" \
+        -o GlobalKnownHostsFile=/dev/null \
+        -o ConnectTimeout=30 \
+        -o ServerAliveInterval=30 \
+        "$ULTRAOS_SFTP_USER@$ULTRAOS_SFTP_HOST"
+}
+
+if [ "$CHECK" = 1 ]; then
+    probe=".upload-check-$(date -u +%Y%m%dT%H%M%SZ)-$$"
+    echo "probe file written by scripts/upload-sdk-website.sh --check" > "$WORK/probe"
+    # No leading '-': every step must work, the way the upload needs it to.
+    {
+        echo "put \"$WORK/probe\" \"$REMOTE_DIR/$probe.part\""
+        echo "rename \"$REMOTE_DIR/$probe.part\" \"$REMOTE_DIR/$probe\""
+        echo "ls -l $REMOTE_DIR"
+        echo "rm \"$REMOTE_DIR/$probe\""
+    } > "$WORK/batch"
+    echo "Checking $ULTRAOS_SFTP_USER@$ULTRAOS_SFTP_HOST:$REMOTE_DIR (port $PORT)"
+    if ! run_sftp; then
+        echo "::error::the SFTP check failed - the lines above say at which step"
+        echo "  'Permission denied (publickey...)': the server does not accept ULTRAOS_SFTP_KEY for ULTRAOS_SFTP_USER"
+        echo "  'Host key verification failed': ULTRAOS_SFTP_KNOWN_HOSTS is not this server's key (ssh-keyscan -p $PORT $ULTRAOS_SFTP_HOST)"
+        echo "  'No such file' / 'Permission denied' at put or rename: ULTRAOS_SFTP_DIR is missing or not writable for the account"
+        exit 1
+    fi
+    echo "OK: the account can log in, write, rename and delete in $REMOTE_DIR"
+    exit 0
+fi
+
 # The archives: the names SdkArchiveName gives, for this version only.
 shopt -s nullglob
 archives=()
@@ -99,14 +155,7 @@ if [ ${#archives[@]} -ne 6 ]; then
     echo "::warning::${#archives[@]} SDK archives for $VERSION instead of 6"
 fi
 
-WORK=$(mktemp -d)
-trap 'rm -rf "$WORK"' EXIT
-
 ( cd "$ARCHIVE_DIR" && sha256sum "${archives[@]}" ) > "$WORK/SHA256SUMS"
-
-umask 077
-printf '%s\n' "$ULTRAOS_SFTP_KEY" > "$WORK/key"
-printf '%s\n' "$ULTRAOS_SFTP_KNOWN_HOSTS" > "$WORK/known_hosts"
 
 # The batch: a leading '-' lets a command fail without ending the batch
 # (the version directory exists on a re-run; there is no old file to remove
@@ -124,13 +173,5 @@ target="$REMOTE_DIR/$VERSION"
 } > "$WORK/batch"
 
 echo "Uploading ${#archives[@]} archives and SHA256SUMS to $ULTRAOS_SFTP_USER@$ULTRAOS_SFTP_HOST:$target"
-sftp -b "$WORK/batch" -P "$PORT" -i "$WORK/key" \
-    -o BatchMode=yes \
-    -o IdentitiesOnly=yes \
-    -o StrictHostKeyChecking=yes \
-    -o UserKnownHostsFile="$WORK/known_hosts" \
-    -o GlobalKnownHostsFile=/dev/null \
-    -o ConnectTimeout=30 \
-    -o ServerAliveInterval=30 \
-    "$ULTRAOS_SFTP_USER@$ULTRAOS_SFTP_HOST"
+run_sftp
 echo "Done: $target"

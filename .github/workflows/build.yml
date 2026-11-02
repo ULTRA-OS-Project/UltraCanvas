@@ -2554,27 +2554,44 @@ jobs:
   # release, and it can be re-run alone.
   #
   # Configured in the repository's Settings -> Secrets and variables ->
-  # Actions: the variables ULTRAOS_SFTP_HOST, ULTRAOS_SFTP_USER,
-  # ULTRAOS_SFTP_DIR (and ULTRAOS_SFTP_PORT when not 22), the secrets
-  # ULTRAOS_SFTP_KEY and ULTRAOS_SFTP_KNOWN_HOSTS. Until ULTRAOS_SFTP_HOST
-  # is set the job is skipped; with it set, a missing setting fails it.
+  # Actions: ULTRAOS_SFTP_HOST, ULTRAOS_SFTP_USER, ULTRAOS_SFTP_DIR (and
+  # ULTRAOS_SFTP_PORT when not 22), each a variable or a secret, and the
+  # secrets ULTRAOS_SFTP_KEY and ULTRAOS_SFTP_KNOWN_HOSTS. Until
+  # ULTRAOS_SFTP_HOST is set the job uploads nothing and says so; with it
+  # set, a missing setting fails it. The decision is a step's, not the
+  # job's `if`: a job condition cannot read secrets, and a host kept in one
+  # would skip the job for good. sdk-website-check.yml tests the settings
+  # without a release.
   publish-sdk-website:
     name: Upload the SDKs to the UltraOS website
     needs: publish-sdk
-    if: vars.ULTRAOS_SFTP_HOST != ''
     runs-on: ubuntu-22.04   # the pool the build legs use; the ubuntu-latest (24.04) one held jobs for hours on 2026-10-21
     # Six archives of a few hundred MB in all; a stalled connection is cut
     # by ServerAliveInterval, this is the backstop.
     timeout-minutes: 30
     permissions:
       contents: read
+    env:
+      ULTRAOS_SFTP_HOST: ${{ vars.ULTRAOS_SFTP_HOST || secrets.ULTRAOS_SFTP_HOST }}
     steps:
+      - name: Is the website configured?
+        id: configured
+        run: |
+          if [ -n "$ULTRAOS_SFTP_HOST" ]; then
+            echo "upload=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ULTRAOS_SFTP_HOST is not set (as a variable or a secret) - the SDKs were not uploaded to the website"
+          fi
+
       - name: Checkout repository
+        if: steps.configured.outputs.upload == 'true'
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.sha || github.sha }}
 
       - name: Download the SDK artifacts
+        if: steps.configured.outputs.upload == 'true'
         uses: actions/download-artifact@v6
         with:
           pattern: UltraCanvas-SDK-*
@@ -2582,12 +2599,12 @@ jobs:
           merge-multiple: true
 
       - name: Upload the SDKs over SFTP
+        if: steps.configured.outputs.upload == 'true'
         env:
           VERSION: ${{ needs.publish-sdk.outputs.version }}
-          ULTRAOS_SFTP_HOST: ${{ vars.ULTRAOS_SFTP_HOST }}
-          ULTRAOS_SFTP_PORT: ${{ vars.ULTRAOS_SFTP_PORT }}
-          ULTRAOS_SFTP_USER: ${{ vars.ULTRAOS_SFTP_USER }}
-          ULTRAOS_SFTP_DIR: ${{ vars.ULTRAOS_SFTP_DIR }}
+          ULTRAOS_SFTP_PORT: ${{ vars.ULTRAOS_SFTP_PORT || secrets.ULTRAOS_SFTP_PORT }}
+          ULTRAOS_SFTP_USER: ${{ vars.ULTRAOS_SFTP_USER || secrets.ULTRAOS_SFTP_USER }}
+          ULTRAOS_SFTP_DIR: ${{ vars.ULTRAOS_SFTP_DIR || secrets.ULTRAOS_SFTP_DIR }}
           ULTRAOS_SFTP_KEY: ${{ secrets.ULTRAOS_SFTP_KEY }}
           ULTRAOS_SFTP_KNOWN_HOSTS: ${{ secrets.ULTRAOS_SFTP_KNOWN_HOSTS }}
         run: scripts/upload-sdk-website.sh sdk-release "$VERSION"

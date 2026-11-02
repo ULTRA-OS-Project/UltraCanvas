@@ -14,13 +14,23 @@
     A re-run of the same version replaces the files; older versions stay.
   - The server's host key is checked against the `ULTRAOS_SFTP_KNOWN_HOSTS`
     secret, never accepted on first sight. The private key is the
-    `ULTRAOS_SFTP_KEY` secret. Host, user, directory and port are the
-    repository variables `ULTRAOS_SFTP_HOST`, `ULTRAOS_SFTP_USER`,
-    `ULTRAOS_SFTP_DIR` and `ULTRAOS_SFTP_PORT` (22 when empty).
-  - The job is skipped until `ULTRAOS_SFTP_HOST` is set. Once it is set, a
-    missing setting fails the job instead of skipping it quietly. The job is
-    separate from `publish-sdk`, so an unreachable server turns only this
-    job red, and it can be re-run on its own.
+    `ULTRAOS_SFTP_KEY` secret. Host, user, directory and port are
+    `ULTRAOS_SFTP_HOST`, `ULTRAOS_SFTP_USER`, `ULTRAOS_SFTP_DIR` and
+    `ULTRAOS_SFTP_PORT` (22 when empty), each a repository variable or, when
+    no variable has it, a secret.
+  - The job uploads nothing, and says so, until `ULTRAOS_SFTP_HOST` is set.
+    Once it is set, a missing setting fails the job instead of skipping it
+    quietly. A step makes that decision, not the job's `if`: a job condition
+    cannot read secrets, so a host kept in a secret would have skipped the
+    job on every release. The job is separate from `publish-sdk`, so an
+    unreachable server turns only this job red, and it can be re-run on its
+    own.
+  - `scripts/upload-sdk-website.sh --check` tests the settings without a
+    release: it logs in, writes a probe file, renames it, lists the
+    directory and removes the probe. It names the likely cause of a failure
+    (key, host key or directory). The new *SDK website check* workflow runs
+    it on a push that changes the script and from the Actions tab, since the
+    upload itself runs only on a release build of `main`.
   - `publish-sdk` now has the version as a job output, so the two jobs read
     it from the same place and cannot disagree about which archives to send.
   - The comment above `publish-sdk` still said UltraCanvasStart downloads the
@@ -31,4 +41,6 @@
     arrived byte-identical, and `SHA256SUMS` verifies them), a re-run that
     replaces a changed archive and leaves no `.part` files, five archives
     (uploaded, with a warning), a missing server directory, a wrong host key
-    and an unset setting (each fails).
+    and an unset setting (each fails). `--check` was tested the same way: it
+    passes and leaves no probe behind, and it fails, naming the cause, on a
+    wrong key, a wrong host key, a missing directory and a read-only one.
