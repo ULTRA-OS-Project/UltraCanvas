@@ -65,6 +65,8 @@
 // display and the switch itself are remembered in the settings.
 // A previewed file that changes on disk is reopened in the preview pane
 // (ReloadChangedPreview): throttled, and never restarting a playing video.
+// Version: 1.41.0 - "Linux" (WSL distributions) and "Network" (computers and their
+//                  shares) sections in the folder tree; \\NAS opens a computer
 // Version: 1.40.0 - the tab strip's "+" can open the Computer page
 //                  (Settings > Display > New tab: newTabStart)
 // Version: 1.39.0 - the folder tree no longer lists macOS applications as
@@ -194,6 +196,11 @@ namespace {
     // "Computer": the section Home, Cloud Storage and the drives hang under -
     // and the entry that opens the Computer page (BuildComputerPage).
     constexpr const char* kComputerNodeId = "ufl-computer";
+    // "Linux" and "Network": top-level sections after Computer, as Explorer
+    // has them (Windows only) - the WSL distributions, and the computers of
+    // the network with their shares. Headers, never scanned as paths.
+    constexpr const char* kWslNodeId = "ufl-wsl";
+    constexpr const char* kNetworkNodeId = "ufl-network";
 
     // Single UI font size (pt) used by every element of the window.
     constexpr float kUiFontSize = 9.0f;
@@ -1090,6 +1097,9 @@ UltraFilerWindow::~UltraFilerWindow() {
     if (ramDiskFactsWorker.joinable()) ramDiskFactsWorker.join();
     if (driveListWorker.joinable()) driveListWorker.join();
     if (deviceListWorker.joinable()) deviceListWorker.join();
+    // A network list can be waiting out a computer that does not answer;
+    // its answer is neutralised by the flag above, but its thread is ours.
+    if (networkWorker.joinable()) networkWorker.join();
     StopCloudStorageDiscovery();
     // Its worker posts into this window, so it has to be joined here like the
     // others - and before the widgets its callback touches are destroyed. The
@@ -4016,6 +4026,22 @@ void UltraFilerWindow::BuildFolderTree() {
             MakeFolderNodeData(kComputerNodeId, "Computer", "computer.png"));
     treeChildrenLoaded.insert(kComputerNodeId);
 
+    // "Linux" (the WSL distributions) and "Network" (the network's computers
+    // and their shares) after Computer, where Explorer has them. Created
+    // here to keep their place; filled once the window is up
+    // (RefreshWslNodes, RefreshNetworkComputers). Linux stays hidden while
+    // no distribution is installed; Network shows on Windows, where a
+    // computer can always be opened by name.
+    if (NetworkPlacesAvailable()) {
+        folderTree->AddNode(kTreeRootNodeId,
+                MakeFolderNodeData(kWslNodeId, "Linux", "computer.svg"));
+        treeChildrenLoaded.insert(kWslNodeId);
+        if (TreeNode* wsl = folderTree->FindNode(kWslNodeId)) wsl->data.visible = false;
+        folderTree->AddNode(kTreeRootNodeId,
+                MakeFolderNodeData(kNetworkNodeId, "Network", "network.svg"));
+        treeChildrenLoaded.insert(kNetworkNodeId);
+    }
+
     RefreshPinnedTreeNodes();
 
     const std::string home = UserHomeDir();
@@ -4185,6 +4211,10 @@ void UltraFilerWindow::BuildFolderTree() {
     // whenever one is plugged in or pulled out.
     StartDeviceMonitor();
     RefreshDevices();
+    // The WSL distributions (a registry read) and the network's computers
+    // (off the UI thread - a network list can take seconds).
+    RefreshWslNodes();
+    RefreshNetworkComputers();
 
     folderTree->onNodeExpanded = [this](TreeNode* node) {
         EnsureTreeChildren(node);
@@ -4199,9 +4229,16 @@ void UltraFilerWindow::BuildFolderTree() {
             SetComputerPageVisible(true);
             return;
         }
+        // "Network" looks again for the computers on the network.
+        if (node->data.nodeId == kNetworkNodeId) {
+            RefreshNetworkComputers();
+            return;
+        }
         // A pinned entry navigates to its target folder, like a bookmark.
         const std::string path = TreeNodeTargetPath(node);
         if (path.empty()) return;
+        // A computer is not a folder: its shares are listed and shown.
+        if (IsNetworkServerPath(path)) { OpenNetworkServer(path); return; }
         // A remote drive's row is not a local folder, and asking the local
         // filesystem about it would only answer "no" - after a timeout, for a
         // path that looks like a dead mount. The drive answers for itself.
@@ -4952,6 +4989,177 @@ void UltraFilerWindow::RefreshDeviceNodes() {
     ScheduleTreeFit();
 }
 
+// ===== LINUX (WSL) AND NETWORK =====
+
+void UltraFilerWindow::RefreshWslNodes() {
+    if (!folderTree) return;
+    TreeNode* section = folderTree->FindNode(kWslNodeId);
+    if (!section) return;
+    for (const std::string& id : treeWslNodeIds) DropTreeSubtree(id);
+    treeWslNodeIds.clear();
+    for (const WslDistribution& d : ListWslDistributions()) {
+        // Not AddTreeFolderNode: its subfolder probe would open the
+        // distribution, and opening one starts it - every distribution, at
+        // every start of UltraFiler. The expand button is offered instead,
+        // and the folders are listed when the row is opened.
+        if (!folderTree->AddNode(kWslNodeId, MakeFolderNodeData(d.path, d.name, "drive.png")))
+            continue;
+        treeWslNodeIds.push_back(d.path);
+        AddRemoteTreePlaceholder(d.path);
+    }
+    section->data.visible = !treeWslNodeIds.empty();
+    folderTree->RequestRedraw();
+    ScheduleTreeFit();
+}
+
+void UltraFilerWindow::RefreshNetworkComputers() {
+    if (!NetworkPlacesAvailable()) return;
+    // The computers opened by name before are there at once; the network's
+    // own list follows when it has answered.
+    for (const std::string& server : settings.networkServers) {
+        const std::string path = NetworkServerPath(server);
+        if (!path.empty() && folderTree && !folderTree->FindNode(path))
+            AddTreeNetworkComputerNode(path, NetworkServerName(path));
+    }
+    QueueNetworkJob(std::string());
+}
+
+void UltraFilerWindow::ApplyNetworkComputers(const std::vector<NetworkComputer>& computers) {
+    if (!folderTree) return;
+    // Rows are added, never taken away: a computer that missed one look
+    // (asleep, or the network list being slow) keeps its row and whatever
+    // was opened under it.
+    for (const NetworkComputer& c : computers)
+        if (!folderTree->FindNode(c.path)) AddTreeNetworkComputerNode(c.path, c.name);
+    folderTree->RequestRedraw();
+    ScheduleTreeFit();
+}
+
+void UltraFilerWindow::AddTreeNetworkComputerNode(const std::string& serverPath,
+                                                  const std::string& label) {
+    if (!folderTree || serverPath.empty()) return;
+    if (!folderTree->AddNode(kNetworkNodeId,
+                             MakeFolderNodeData(serverPath, label, "server.svg")))
+        return;
+    treeNetworkNodeIds.push_back(serverPath);
+    // Its shares are listed when it is opened (EnsureTreeChildren).
+    AddRemoteTreePlaceholder(serverPath);
+}
+
+void UltraFilerWindow::QueueNetworkShares(const std::string& serverPath) {
+    const std::string server = NetworkServerPath(serverPath);
+    if (server.empty()) return;
+    if (TreeNode* row = folderTree ? folderTree->FindNode(server) : nullptr) {
+        row->data.loading = true;   // the row's own loading bar while it waits
+        folderTree->RequestRedraw();
+    }
+    QueueNetworkJob(server);
+}
+
+void UltraFilerWindow::ApplyNetworkShares(const std::string& serverPath,
+                                          const std::vector<NetworkShare>& shares,
+                                          const std::string& error) {
+    const bool shown = networkPendingOpen == serverPath;
+    if (shown) networkPendingOpen.clear();
+    if (TreeNode* row = folderTree ? folderTree->FindNode(serverPath) : nullptr) {
+        row->data.loading = false;
+        // The shares are ordinary folders from here on (UNC paths): rows
+        // like any other, probed for subfolders off the UI thread.
+        for (const NetworkShare& share : shares)
+            if (!folderTree->FindNode(share.path))
+                AddTreeFolderNode(serverPath, share.path, share.name, "folder-brown.svg");
+        folderTree->RemoveNode(PlaceholderId(serverPath));
+        treeChildrenLoaded.insert(serverPath);
+        folderTree->RequestRedraw();
+        ScheduleTreeFit();
+    }
+    if (!error.empty()) {
+        if (statusLabel) statusLabel->SetText(error);
+        return;
+    }
+    if (!shown) return;
+    // Opened in the display: its shares as folders there, one click from
+    // each - the way Explorer shows \\NAS.
+    std::vector<std::string> paths;
+    for (const NetworkShare& share : shares) paths.push_back(share.path);
+    if (filer) filer->ShowFileList(paths);
+    if (statusLabel)
+        statusLabel->SetText(serverPath + ": " + std::to_string(shares.size()) +
+                             (shares.size() == 1 ? " shared folder" : " shared folders"));
+    // Kept, so it is in the Network section next time even when the network
+    // list does not name it.
+    auto& kept = settings.networkServers;
+    const std::string name = NetworkServerName(serverPath);
+    bool known = false;
+    for (const std::string& s : kept)
+        if (NetworkServerName(NetworkServerPath(s)) == name) known = true;
+    if (!known && !name.empty()) {
+        kept.insert(kept.begin(), serverPath);
+        if (kept.size() > UltraFilerSettings::kMaxNetworkServers)
+            kept.resize(UltraFilerSettings::kMaxNetworkServers);
+        settings.Save();
+    }
+}
+
+void UltraFilerWindow::OpenNetworkServer(const std::string& serverPath) {
+    const std::string server = NetworkServerPath(serverPath);
+    if (server.empty() || !NetworkPlacesAvailable()) return;
+    ShowBrowsingView();
+    if (folderTree && !folderTree->FindNode(server))
+        AddTreeNetworkComputerNode(server, NetworkServerName(server));
+    if (TreeNode* row = folderTree ? folderTree->FindNode(server) : nullptr) {
+        if (TreeNode* section = folderTree->FindNode(kNetworkNodeId))
+            folderTree->ExpandNode(section);
+        syncingTree = true;
+        folderTree->SelectNode(row);
+        syncingTree = false;
+    }
+    networkPendingOpen = server;
+    if (statusLabel) statusLabel->SetText("Listing the shared folders of " + server + "...");
+    // Always asked afresh: a share added on the computer since shows up.
+    QueueNetworkShares(server);
+}
+
+void UltraFilerWindow::QueueNetworkJob(const std::string& job) {
+    if (std::find(networkQueue.begin(), networkQueue.end(), job) != networkQueue.end()) return;
+    networkQueue.push_back(job);
+    RunNextNetworkJob();
+}
+
+void UltraFilerWindow::RunNextNetworkJob() {
+    if (networkBusy.load() || networkQueue.empty()) return;
+    if (networkWorker.joinable()) networkWorker.join();
+    const std::string job = networkQueue.front();
+    networkQueue.pop_front();
+    networkBusy.store(true);
+    auto alive = probeAlive;
+    networkWorker = std::thread([this, alive, job]() {
+        std::vector<NetworkComputer> computers;
+        std::vector<NetworkShare> shares;
+        std::string error;
+        try {
+            if (job.empty()) computers = ListNetworkComputers();
+            else ListNetworkShares(job, shares, error);
+        } catch (const std::exception& e) {
+            // An exception leaving a std::thread ends the process.
+            error = e.what();
+        }
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app || !alive->load()) {
+            networkBusy.store(false);
+            return;
+        }
+        app->PostToUIThread([this, alive, job, computers = std::move(computers),
+                             shares = std::move(shares), error]() {
+            if (!alive->load()) return;
+            networkBusy.store(false);
+            if (job.empty()) ApplyNetworkComputers(computers);
+            else ApplyNetworkShares(job, shares, error);
+            RunNextNetworkJob();
+        });
+    });
+}
+
 void UltraFilerWindow::ApplyTreeColors() {
     if (!folderTree) return;
     folderTree->SetSelectionColor(settings.treeSelectedFolderColor);
@@ -5088,6 +5296,12 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
         if (TreeNode* row = folderTree ? folderTree->FindNode(path) : nullptr;
             row && row->data.loading)
             WatchTreeFetch(path);
+        return;
+    }
+    // A computer of the Network section: its children are its shares, listed
+    // off the UI thread (they arrive through ApplyNetworkShares).
+    if (IsNetworkServerPath(path)) {
+        if (!treeChildrenLoaded.count(path)) QueueNetworkShares(path);
         return;
     }
     // Once per node: the placeholder is only a hint that a scan is due, and a
@@ -5442,7 +5656,8 @@ std::string UltraFilerWindow::TreeNodeTargetPath(const TreeNode* node) const {
     if (!node) return {};
     const std::string& id = node->data.nodeId;
     if (id == kTreeRootNodeId || id == kComputerNodeId || id == kPinnedNodeId ||
-        id == kCloudNodeId || id == kRemoteNodeId || id == kRamNodeId)
+        id == kCloudNodeId || id == kRemoteNodeId || id == kRamNodeId ||
+        id == kWslNodeId || id == kNetworkNodeId)
         return {};
     if (id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
         return id.substr(kPinnedChildPrefixLen);
@@ -7211,6 +7426,11 @@ void UltraFilerWindow::NavigateTo(const std::string& path) {
     remoteDropNote.clear();
     ClearTransferNote();
     if (!filer || path.empty() || path == filer->GetPath()) return;
+    // "\\NAS" typed or clicked: no folder to set, a computer to open.
+    if (IsNetworkServerPath(path)) {
+        OpenNetworkServer(path);
+        return;
+    }
     filer->SetPath(path);
 }
 

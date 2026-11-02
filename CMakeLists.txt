@@ -467,6 +467,13 @@ if(WIN32 OR APPLE)
     set(ULTRACANVAS_HAS_PORTABLE_DEVICES ON)
 endif()
 
+# Which platforms can list the network's computers and shares and the WSL
+# distributions (UltraCanvasNetworkPlaces: WNetOpenEnum, NetShareEnum, the Lxss
+# registry key). Windows only; elsewhere the core file compiles empty lists.
+if(WIN32)
+    set(ULTRACANVAS_HAS_NETWORK_PLACES ON)
+endif()
+
 # Which platforms can hold a single-instance lock (UltraCanvasInstanceLock:
 # flock() on Linux, the BSDs and macOS, LockFileEx on Windows). Same reason as
 # above: the core file compiles an "Unsupported" fallback unless this is set,
