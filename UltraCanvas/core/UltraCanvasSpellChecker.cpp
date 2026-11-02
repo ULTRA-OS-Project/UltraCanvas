@@ -1,5 +1,6 @@
 // core/UltraCanvasSpellChecker.cpp
 // Implementation of the cross-platform spell checking service
+// Version: 1.2.0 - DetectPreferredLanguage asks the desktop (UltraCanvasSystemLanguage.h), not the POSIX variables alone
 // Version: 1.1.1 - the user dictionary lives in the framework's data folder rule
 //                  (UltraCanvasDataFolder.h): Application Support on macOS, with the
 //                  folder an earlier version left in ~/.local/share moved there once
@@ -8,6 +9,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpellChecker.h"
+#include "UltraCanvasSystemLanguage.h"
 #include "UltraCanvasDebug.h"
 
 #include <fstream>
@@ -424,7 +426,7 @@ static std::string NormaliseLanguageTag(std::string value) {
     return value;
 }
 
-static std::string LanguageTagBase(const std::string& normalisedTag) {
+static std::string NormalisedTagBase(const std::string& normalisedTag) {
     return normalisedTag.substr(0, normalisedTag.find('_'));
 }
 
@@ -497,9 +499,9 @@ std::string UltraCanvasSpellChecker::ResolveAvailableLanguageCode(
     }
 
     // "de" on a machine that only has "de-DE" still means German.
-    const std::string base = LanguageTagBase(tag);
+    const std::string base = NormalisedTagBase(tag);
     for (const SpellLanguageInfo& info : languages) {
-        if (info.isAvailable && LanguageTagBase(NormaliseLanguageTag(info.code)) == base) {
+        if (info.isAvailable && NormalisedTagBase(NormaliseLanguageTag(info.code)) == base) {
             return info.code;
         }
     }
@@ -519,19 +521,17 @@ std::string UltraCanvasSpellChecker::DetectPreferredLanguage() const {
     }
     if (languages.empty()) return std::string();
 
-    // The candidates, best first: what the POSIX variables ask for, then what
-    // the platform itself would pick. On Windows none of the variables is
-    // normally set, so without the backend hint every user would get whatever
-    // dictionary happened to enumerate first - "English (India)" for a German
-    // desktop, which is what this loop exists to avoid.
+    // The candidates, best first: the person's languages as the desktop
+    // knows them (UltraCanvasSystemLanguage.h: the POSIX variables, then the
+    // platform's own list - Windows' preferred UI languages, macOS's
+    // Language & Region), then what the backend itself would pick. Without
+    // the platform's answer every first run on Windows, where the variables
+    // are normally unset, got whatever dictionary happened to enumerate
+    // first - "English (India)" for a German desktop.
     std::vector<std::string> wanted;
-    const char* environmentKeys[] = { "LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE" };
-    for (const char* key : environmentKeys) {
-        const char* raw = std::getenv(key);
-        if (!raw || !*raw) continue;
-        const std::string tag = NormaliseLanguageTag(raw);
-        if (tag.empty() || tag == "c" || tag == "posix") continue;
-        wanted.push_back(tag);
+    for (const std::string& language : SystemLanguageTags()) {
+        const std::string tag = NormaliseLanguageTag(language);
+        if (!tag.empty()) wanted.push_back(tag);
     }
     {
         std::lock_guard<std::mutex> lock(backendMutex);
@@ -547,9 +547,9 @@ std::string UltraCanvasSpellChecker::DetectPreferredLanguage() const {
         }
         // Fall back to the same base language with a different region, matching
         // whole tag components so "en" never matches "eng" or "enm".
-        const std::string base = LanguageTagBase(tag);
+        const std::string base = NormalisedTagBase(tag);
         for (const SpellLanguageInfo& info : languages) {
-            if (info.isAvailable && LanguageTagBase(NormaliseLanguageTag(info.code)) == base) {
+            if (info.isAvailable && NormalisedTagBase(NormaliseLanguageTag(info.code)) == base) {
                 return info.code;
             }
         }

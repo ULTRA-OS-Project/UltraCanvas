@@ -537,6 +537,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # it lands in the build twice.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_SpellCheck.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpellChecker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSystemLanguage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckLanguageNames.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckBackendHunspell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp

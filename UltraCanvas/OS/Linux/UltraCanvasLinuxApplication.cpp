@@ -1,5 +1,6 @@
 // OS/Linux/UltraCanvasLinuxApplication.cpp
 // Complete Linux application implementation with all methods
+// Version: 1.11.0 - the system fonts are the desktop's (UltraCanvasLinuxSystemFont.cpp), not Ubuntu 12
 // Version: 1.10.0 - a held key is one press, its repeats, and one release: detectable
 //                   auto-repeat, and the fake releases dropped where the server lacks it
 // Version: 1.9.0 - Property events of a clipboard copy sent in pieces go to the clipboard
@@ -1060,19 +1061,8 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas X11 Error in " << context << ": code " << errorCode << std::endl;
     }
 
-    FontStyle UltraCanvasLinuxApplication::DetectSystemFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu";
-        result.fontSize = 12.0;
-        return result;
-    }
-
-    FontStyle UltraCanvasLinuxApplication::DetectMonospacedFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu Mono";
-        result.fontSize = 12.0;
-        return result;
-    }
+    // DetectSystemFontStyleNative / DetectMonospacedFontStyleNative: the
+    // desktop's fonts, in UltraCanvasLinuxSystemFont.cpp.
 
     void UltraCanvasLinuxApplication::LoadBundledFontsNative() {
         FcConfig* cfg = FcConfigGetCurrent();

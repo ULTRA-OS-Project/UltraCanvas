@@ -274,11 +274,13 @@ its argument through `ResolveAvailableLanguageCode()` first and reports the
 resolved spelling through `onSpellLanguageChange`, so what a host stores in its
 settings is what the backend enumerated.
 
-`DetectPreferredLanguage()` asks, in order: `LC_ALL`, `LC_MESSAGES`, `LANG`,
-`LANGUAGE`; then the backend's `GetPreferredLanguageHint()` (on Windows the
-locale from `GetUserDefaultLocaleName`, since the POSIX variables are normally
-unset there); then the same base language with any region; then the first
-available dictionary.
+`DetectPreferredLanguage()` asks, in order: the desktop's languages, best
+first, from [`UltraCanvasSystemLanguage.md`](UltraCanvasSystemLanguage.md)
+(the POSIX variables as gettext reads them, then the platform's own list -
+Windows' preferred UI languages and default locale, macOS's Language &
+Region); then the backend's `GetPreferredLanguageHint()` as a tie-breaker;
+for each, the same base language with any region; then the first available
+dictionary.
 
 ### Mode and style
 ```cpp

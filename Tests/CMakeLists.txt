@@ -1487,6 +1487,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: UltraCanvasThemeTest")
 endif()
 
+# ===== SYSTEM LANGUAGE TEST =====
+# UltraCanvasSystemLanguage.h without a desktop: the POSIX locale and
+# LANGUAGE rules, the canonical spelling of a tag, and the live detector.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building SystemLanguageTest...")
+    add_executable(SystemLanguageTest ${CMAKE_CURRENT_SOURCE_DIR}/SystemLanguageTest.cpp)
+    target_include_directories(SystemLanguageTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(SystemLanguageTest PRIVATE ${ULTRACANVAS_LIBRARY})
+    target_compile_features(SystemLanguageTest PRIVATE cxx_std_20)
+    set_target_properties(SystemLanguageTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME SystemLanguageTest COMMAND SystemLanguageTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SystemLanguageTest")
+endif()
+
+# ===== SYSTEM FONT TEST =====
+# UltraCanvasSystemFont.h's parsers: the GTK / Pango font name, the
+# kdeglobals entry and the .ini reader. Header-only; no display.
+message(STATUS "  Building SystemFontTest...")
+add_executable(SystemFontTest ${CMAKE_CURRENT_SOURCE_DIR}/SystemFontTest.cpp)
+target_include_directories(SystemFontTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SystemFontTest PRIVATE cxx_std_20)
+set_target_properties(SystemFontTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+add_test(NAME SystemFontTest COMMAND SystemFontTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SystemFontTest")
+
 # ===== VIDEO TIMELINE ELEMENT TEST =====
 # UltraCanvasVideoTimeline in a real window: geometry, hit testing and the
 # edits that mouse and key events turn into reported changes (trim with

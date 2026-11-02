@@ -1,5 +1,6 @@
 // OS/MacOS/UltraCanvasMacOSApplication.mm
 // Complete macOS application implementation with Cocoa/Cairo support
+// Version: 2.8.0 - the monospace font is the system's (SF Mono by Menlo) at the interface size, not Ubuntu Mono 12
 // Version: 2.7.0 - key presses for an element that draws input method
 //   compositions go through the input method (TextComposition events); a
 //   click commits a composition in progress
@@ -786,9 +787,24 @@ static UltraCanvasAppDelegate* g_appDelegate = nil;
     }
 
     FontStyle UltraCanvasMacOSApplication::DetectMonospacedFontStyleNative() {
+        // The system's monospace at the interface size: SF Mono where AppKit
+        // offers it (10.15), which Pango cannot resolve by its private name,
+        // so Menlo - the face Terminal and Xcode showed before SF Mono - at
+        // that size. Ubuntu Mono 12 only when the system font is unknown.
         FontStyle result;
         result.fontFamily = "Ubuntu Mono";
         result.fontSize = 12.0f;
+        @autoreleasepool {
+            const FontStyle ui = DetectSystemFontStyleNative();
+            if (ui.fontSize > 0) result.fontSize = ui.fontSize;
+            std::string family;
+            if (@available(macOS 10.15, *)) {
+                NSFont* mono = [NSFont monospacedSystemFontOfSize:0 weight:NSFontWeightRegular];
+                if (mono) family = [[mono familyName] UTF8String];
+            }
+            if (family.empty() || family[0] == '.') family = "Menlo";
+            result.fontFamily = family;
+        }
         return result;
     }
 

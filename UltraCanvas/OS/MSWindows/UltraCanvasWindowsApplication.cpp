@@ -1,5 +1,6 @@
 // OS/MSWindows/UltraCanvasWindowsApplication.cpp
 // Complete Windows application implementation with all methods
+// Version: 1.8.0 - the system fonts are the desktop's (UltraCanvasWindowsSystemFont.cpp), not Ubuntu 12
 // Version: 1.7.0 - the inline config for an empty fontconfig carries the generic aliases
 //                 (GenerateFontAliasConfig), and the emoji setting is applied (ApplyEmojiSettings)
 // Version: 1.6.0 - every thread's Pango font map reads fontconfig (PANGOCAIRO_BACKEND=fc
@@ -1006,19 +1007,9 @@ namespace UltraCanvas {
         return result;
     }
 
-    FontStyle UltraCanvasWindowsApplication::DetectSystemFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu";
-        result.fontSize = 12.0f;
-        return result;
-    }
-
-    FontStyle UltraCanvasWindowsApplication::DetectMonospacedFontStyleNative() {
-        FontStyle result;
-        result.fontFamily = "Ubuntu Mono";
-        result.fontSize = 12.0f;
-        return result;
-    }
+    // DetectSystemFontStyleNative / DetectMonospacedFontStyleNative: the
+    // message font of the non-client metrics and Consolas, in
+    // UltraCanvasWindowsSystemFont.cpp.
 
     void UltraCanvasWindowsApplication::LoadBundledFontsNative() {
         const std::string dir = GetBundledFontsDir();
