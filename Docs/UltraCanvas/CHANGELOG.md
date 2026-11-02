@@ -1,3 +1,83 @@
+#### 2026-11-02 *0.9.459*
+- **A picture without an alpha channel is an opaque pixmap.** `UCImage`
+  decodes a JPEG, a HEIC, an opaque WebP - any picture with no alpha band -
+  to a `CAIRO_FORMAT_RGB24` pixmap: the same four bytes a pixel (cairo has
+  no packed 24-bit image format), the top byte 0xFF and ignored, so cairo
+  composites it as a copy instead of blending every pixel, and the QOI
+  pixmap blob the thumbnail cache stores says so and inflates it opaque
+  again (`UCPixmapCairo::IsOpaque`, `Init(w, h, opaque)`). A picture with
+  an alpha channel is ARGB32 as before. The decode itself is quicker too,
+  the opaque rows needing no premultiplication: the wallpaper fitted to
+  3840 × 2160 took 300 ms and takes 155.
+- **A large fitted pixmap is kept on disk between runs.** `UCImage::GetPixmap`
+  for a raster file fitted to a box of at least 640 × 480 raw pixels - a
+  desktop's wallpaper, a viewer's photo - looks in the thumbnail disk cache
+  first and stores its pixmap there as a QOI blob after the first decode,
+  stamped against the file as it was before; the next run inflates the
+  blob instead of decoding the file and resizing it. Measured on the
+  2752 × 1536 desktop wallpaper as a JPEG: 40 ms (decode and fit to 1280 × 800)
+  against 10 ms from the blob, 155 ms against 75 at 3840 × 2160; the first
+  run pays once for the blob's compression and write. The QOI
+  *file* format was measured for that wallpaper and not taken: libjpeg-turbo
+  reads the 4-megapixel JPEG in 31 ms and fits it in 40, the QOI reference
+  decoder 41 and 54 (it has no reduced-size decode), and the file is six
+  times the size - QOI pays only without a decode and a resize, which is
+  what the cached blob is.
+- **Every modern picture format in every build.** `ImageFormatsTest` (under
+  `BUILD_TESTS`, so every CI row) reads a JPEG, PNG, GIF, BMP, TIFF, WebP,
+  AVIF, HEIC, JPEG XL, QOI and Windows icon from `media/images` and fails
+  the build that cannot decode one of them (`UC_IMAGE_FORMATS_OPTIONAL`
+  names the formats a machine cannot have: CI sets it to `jxl` on the
+  ubuntu-22.04 runners, whose libvips is built without libjxl); the Linux CI rows and the
+  dependency lists in the READMEs and `AGENTS.md` name libheif's HEVC and
+  AV1 plug-in packages (separate from Ubuntu 24.04 on), and
+  `package-linux.sh` bundles libvips' loader modules and libheif's plug-ins
+  - both opened at run time, so the library closure never carried them -
+  with the launcher pointing `VIPSHOME` and `LIBHEIF_PLUGIN_PATH` at them.
+  `media/images/dice.ico` is the icon sample.
+- **A Wayland windowing backend, behind `-DULTRACANVAS_WAYLAND=ON`.** The
+  framework runs as a native Wayland client: `UltraCanvasApplication` and
+  `UltraCanvasWindow` are then `UltraCanvasWaylandApplication` and
+  `UltraCanvasWaylandWindow` (`OS/Linux/Wayland/`), every window a
+  `wl_surface` with an `xdg_toplevel` drawn through shared-memory buffers
+  at the output's scale, the seat's keyboard through xkbcommon (keymap,
+  modifiers, key repeat) and its pointer (buttons, double clicks, wheel
+  notches, smooth scrolling folded into notches), the cursor from the
+  theme through libwayland-cursor, and the clipboard the seat's
+  `wl_data_device` with the same MIME types as the X11 backend, so a copy
+  pastes between the two sessions alike. Server-side decorations are asked
+  for an ordinary window and none for a borderless one; maximize,
+  fullscreen and minimize go through xdg-shell. The default stays X11: one
+  library speaks one display protocol, and a consumer of the Wayland build
+  sees `ULTRACANVAS_DISPLAY_WAYLAND=1`. Dependencies: libwayland-client,
+  libwayland-cursor, wayland-protocols, libxkbcommon and wayland-scanner,
+  which generates the xdg-shell and xdg-decoration bindings into the build
+  directory. GL surfaces are off in a Wayland build for now (the context
+  managers are GLX and EGL-on-Xlib), and so are file drags out of a window;
+  a client neither sets nor learns its windows' positions on Wayland, so
+  `SetWindowPosition` keeps the wish and `RaiseAndFocus` waits for
+  xdg-activation. The decision behind it and the plan for the desktop
+  shell's own protocols: `Docs/UltraCanvas/WaylandDesktopShellProposal.md`.
+- **UltraCanvasDesktopShell on Wayland: the `wayland` backend, phase 1.**
+  `ListScreens` and `GetScreenSize` from the compositor's outputs (the
+  first announced counts as the primary), the devices from the shared
+  Linux probes, the keyboard layout from the seat's keymap; the session's
+  end and lock, the loudspeaker and the notification area are the shared
+  Linux files and work as on X11 (a tray click's position is the last
+  pointer position in the shell's own window). The window list, virtual
+  desktops, reserved edges, screenshots and global shortcuts answer false
+  with "not available on Wayland yet" until the layer-shell and
+  foreign-toplevel protocols and the portals are in (phase 2 of the
+  proposal).
+- **The X11-free parts of the Linux backend are shared files.** The
+  fontconfig and bundled-font code (`OS/Linux/UltraCanvasLinuxFonts`), the
+  keysym-to-`UCKeys` table (`UltraCanvasLinuxKeys`), the procfs and sysfs
+  device probes (`UltraCanvasLinuxDeviceProbes`) and the file-URI helpers
+  (`UltraCanvasLinuxUriList`) moved out of the X11 application, desktop
+  shell and clipboard files, which now call them; the X11 build is
+  unchanged. `UltraCanvasLinuxNativeDialogs.cpp` builds without X11 (the
+  GTK dialogs stay above instead of transient for a Wayland window).
+
 #### 2026-11-01 *0.9.458*
 - **A picture from pixels in memory.** `UCImage::FromBgra(pixels, width,
   height, stride, opaque)` and `UCImage::FromRgba(pixels, width, height)`
