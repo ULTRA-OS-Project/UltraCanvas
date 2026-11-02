@@ -2484,3 +2484,43 @@ a crash or a hang of the host; after a trap or an interruption an instance
 refuses further calls; host functions are registered through the unchecked
 host-function API (measured at 7 ns per empty call against 82 ns for the
 checked one). Tests: `Tests/WasmHostTest.cpp`, `Tests/UltraWebGuestTest.cpp`.
+
+### **18. UltraLocalisation**
+
+The text of every application in the person's language. `Tr("Save")`
+gives the translation of the English text written at the site from three
+layers of JSON catalogues - the application's own set
+(`media/locale/<lang>/<App>.json`), the base sets of its kind
+(`media/locale/<lang>/base/<Base>.json`: video editing, banking, shopping,
+...) and the standard set (`media/locale/<lang>/Standard.json`) - looked
+up in that order, the English itself when none has it; a file of the same
+name under the UltraCanvas settings folder's `locale/` is read first; a
+regional tag walks down (`zh-Hant-TW` → `zh-Hant` → `zh`). UI-free and
+free of the core (the vendored yyjson engine and the header-only path
+helpers only), built as the `uc-localisation` archive and absorbed whole
+into the shared core; linked by the public name `UltraLocalisation`.
+Sources `UltraCanvas/{include,core}/UltraLocalisation/`; wired into
+`UltraCanvasApplicationBase::Initialize`. The design is
+`Docs/UltraCanvas/UltraCanvasLocalisationProposal.md`; this is its phase
+L1. Public surface:
+
+- `Tr`, `TrC` (a context: `"button|Open"`), `TrN` (plural by the
+  language's CLDR rule, `{n}` the count), `TrF` (`{0}`, `{1}`, ... filled).
+- `LocalisationCatalogue` - the file: `Parse` / `Serialize`, entries,
+  plural forms, and the metadata `@language`, `@name`, `@source-language`,
+  `@translated-by`, `@bases`, `@inherited`.
+- `LanguageSettings` - `Language.conf` in the settings folder
+  (`language=de` or `system`, `translator=`): `Parse` / `Serialize` /
+  `FilePath` / `Load` / `Save`.
+- `UltraLocalisation` - `SetFolders` (the shipped tree and the settings
+  folder, handed in because the module knows neither), `SetLanguageOverride`
+  (`--lang`), `ChooseLanguage` (override, `ULTRACANVAS_LANG`, `Language.conf`,
+  the first desktop language with a catalogue, `en`), `Initialize`, `Load`,
+  `SetLanguage` with `AddChangeHandler` / `RemoveChangeHandler`,
+  `CurrentLanguage`, `CurrentApplication`, `AvailableLanguages`, `NativeName`,
+  `UseBaseSets` / `BaseSets`, `AddSet` / `LibrarySets` (a plugin's own set),
+  `OriginOf` / `StandardKeys` / `EntryCount` (which layer answered),
+  `PluralCategory` (pure), `ReadCatalogue`, `Reset` (for tests).
+
+See `Docs/Modules/UltraLocalisation/README.md`.
+

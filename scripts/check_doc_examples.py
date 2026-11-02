@@ -1706,7 +1706,7 @@ BASELINE_HEADER = """\
 # mistakes in a description of an API that exists, not a design document's
 # unwritten one, so they are fixed, never baselined. The FileLoader README had
 # eight broken examples for months because nothing compiled it.
-CHECKED_MODULE_DOCS = ["FileLoader"]
+CHECKED_MODULE_DOCS = ["FileLoader", "UltraLocalisation"]
 
 
 def component_docs():

@@ -1,5 +1,6 @@
 // UltraCanvasApplication.cpp
 // Main UltraCanvas App
+// Version: 1.13.0 - Initialize loads the translation catalogues (UltraLocalisation)
 // Version: 1.12.0 - GenerateFontAliasConfig: the generic family aliases alone, for a
 //                  config the generated fonts.conf did not make (Windows' inline one)
 // Version: 1.11.1 - the generated fonts.conf aliases "emoji" (Pango's family for an emoji
@@ -46,6 +47,9 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasEmojiSettings.h"
+#include "UltraCanvasSettingsFolder.h"
+#include "UltraCanvasSystemLanguage.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 #if !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
@@ -938,6 +942,23 @@ namespace UltraCanvas {
 
         UCImage::InitializeImageSubsysterm(appName.c_str());
         endStep("image subsystem");
+
+        // The translation catalogues (UltraLocalisation): the shipped tree
+        // under media/locale/, the person's overrides and Language.conf in
+        // the UltraCanvas settings folder, the language from --lang /
+        // ULTRACANVAS_LANG / Language.conf / the desktop's languages. Before
+        // the native backend, so the first window is built translated.
+        {
+            const std::filesystem::path settings = UltraCanvasSettingsFolder();
+            UltraLocalisation::SetFolders(NormalizePath(GetResourcesDir() + "media/locale/"),
+                                          settings.empty() ? std::string() : PathToUtf8(settings));
+            UltraLocalisation::Initialize(appName, SystemLanguageTags());
+            debugOutput << "UltraCanvas: language " << UltraLocalisation::CurrentLanguage()
+                        << " (" << UltraLocalisation::EntryCount(LocalisationOrigin::Application) << " application, "
+                        << UltraLocalisation::EntryCount(LocalisationOrigin::Base) << " base, "
+                        << UltraLocalisation::EntryCount(LocalisationOrigin::Standard) << " standard entries)" << std::endl;
+        }
+        endStep("translation catalogues");
 
         const bool nativeOk = InitializeNative();
         endStep("native backend");

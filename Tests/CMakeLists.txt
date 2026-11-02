@@ -1487,6 +1487,21 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: UltraCanvasThemeTest")
 endif()
 
+# ===== ULTRALOCALISATION TEST =====
+# The localisation module over a temporary catalogue tree: the three
+# layers, the override folder, the fallback walk, plurals, Language.conf,
+# the language choice, the handlers. No display.
+if(TARGET UltraLocalisation)
+    message(STATUS "  Building UltraLocalisationTest...")
+    add_executable(UltraLocalisationTest ${CMAKE_CURRENT_SOURCE_DIR}/UltraLocalisationTest.cpp)
+    target_include_directories(UltraLocalisationTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_link_libraries(UltraLocalisationTest PRIVATE UltraLocalisation)
+    target_compile_features(UltraLocalisationTest PRIVATE cxx_std_20)
+    set_target_properties(UltraLocalisationTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME UltraLocalisationTest COMMAND UltraLocalisationTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: UltraLocalisationTest")
+endif()
+
 # ===== SYSTEM LANGUAGE TEST =====
 # UltraCanvasSystemLanguage.h without a desktop: the POSIX locale and
 # LANGUAGE rules, the canonical spelling of a tag, and the live detector.

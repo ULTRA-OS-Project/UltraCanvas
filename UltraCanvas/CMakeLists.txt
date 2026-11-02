@@ -2656,6 +2656,26 @@ set_target_properties(uc-vault PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(uc-vault PUBLIC uc-crypt)
 _ultracanvas_module_home(UltraVault uc-vault)
 
+# The text of every application in the person's language
+# (Docs/Modules/UltraLocalisation/README.md): Tr() over the application's
+# set, the base sets of its kind and the standard set, the catalogues as
+# JSON through the vendored yyjson engine (shared with UltraCanvasJSON and
+# UltraWin). UI-free and free of the core, so a headless engine links it as
+# it links UltraVault; the shared core absorbs it whole below.
+add_library(uc-localisation STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraLocalisation/UltraLocalisation.cpp)
+set_target_properties(uc-localisation PROPERTIES OUTPUT_NAME "UltraLocalisation")
+target_include_directories(uc-localisation PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas/include>)
+target_compile_features(uc-localisation PUBLIC cxx_std_20)
+set_target_properties(uc-localisation PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(uc-localisation PRIVATE uc-yyjson)
+_ultracanvas_module_home(UltraLocalisation uc-localisation)
+if(NOT ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraLocalisation)
+endif()
+
 # System-wide network activity (Docs/Modules/NetworkMonitor/README.md): the
 # operating system's socket table with process attribution. UI-free like
 # UltraCrypt, so the command line and the test suite link it headless. The
@@ -3570,7 +3590,7 @@ endif()
 # through its home instead. VirtualFS has no dependency on the others.
 _ultracanvas_absorb_modules(
     uc-net uc-win uc-message uc-networkmonitor uc-database uc-vault uc-crypt
-    VirtualFS)
+    uc-localisation VirtualFS)
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")

@@ -2,7 +2,13 @@
 
 <!-- doc-check: std::shared_ptr<UltraCanvasMenu> menu; std::shared_ptr<UltraCanvasWindow> window; -->
 
-Status: **Proposal, nothing implemented.** Revised 2026-11-02: the module is
+Status: **Phase L1 implemented** (2026-11-02: the `UltraLocalisation`
+module, `Docs/Modules/UltraLocalisation/README.md` - the three layers, the
+override folder, the fallback walk, plurals, `Language.conf`, the language
+choice, the start-up wiring; one difference from §3 below: the module
+takes its folders and the desktop's languages as arguments, `SetFolders`
+and `Initialize`, so that it stands without the core). L2 onwards are
+still to do. Revised 2026-11-02: the module is
 `UltraLocalisation`, it loads a **standard set** UltraCanvas ships for every
 application, the **base sets** of the application's type (video editing,
 banking, shopping, ...) and the application's **own set** over them, and a

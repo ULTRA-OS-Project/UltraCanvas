@@ -197,23 +197,13 @@ Docs/UltraCanvas/UltraCanvasHostThemeProposal.md::prose names `SetFollowThemeByD
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `FitColumns(`, which no header declares
 Docs/UltraCanvas/UltraCanvasKanbanBoardProposal.md::prose names `GetStageCounts(`, which no header declares
 Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md::prose names `FT_Load_Glyph(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'Tr' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasColumnsTreeView, nor a free function
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'TrC' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasColumnsTreeView, nor a free function
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'TrN' is not a member of UltraCanvasButton, UltraCanvasDialogManager, UltraCanvasMenuRegistry, UltraCanvasColumnsTreeView, nor a free function
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `Tr(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `TrC(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `TrF(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::prose names `TrN(`, which no header declares
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::unknown type name 'DateStyle'
-Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::unknown type name 'TimeStyle'
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'DecimalSeparator' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatDate' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatFileSize' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatInteger' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatNumber' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatPercent' is not a member of UltraLocalisation
+Docs/UltraCanvas/UltraCanvasLocalisationProposal.md::'FormatTime' is not a member of UltraLocalisation
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::prose names `BuildAdjacencyMatrix(`, which no header declares
 Docs/UltraCanvas/UltraCanvasMatrixDiagramProposal.md::signature differs: `bool ImportMatrixCsv(const std::string& csv, MatrixModel& out)` - the header has: bool ImportMatrixCsv(const std::string& csv, MatrixModel& model, int panel = 0);
