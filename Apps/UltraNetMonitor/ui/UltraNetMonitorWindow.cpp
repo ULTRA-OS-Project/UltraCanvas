@@ -145,7 +145,7 @@ bool IsEventNote(const std::string& note) {
 // One source on a status line: its count while it works, else one word -
 // "stopped", or `troubleWord` for a source that runs but reports an error
 // ("failed" for a name source, "idle" for an event source whose tracker
-// has nothing to report) - the error itself is under Info… and in the
+// has nothing to report) - the error itself is under Info and in the
 // line's tooltip, where there is room for it.
 std::string SourceOnLine(const std::string& name, bool running, const std::string& lastError,
                          int64_t count, const char* unit, const char* troubleWord) {
@@ -251,7 +251,7 @@ bool UltraNetMonitorWindow::Initialize(std::vector<std::string> nameNotes) {
     // Laid out, not positioned: a flex column of toolbar and tabs, sized by
     // LayoutForSize so the window's size is the page's size. The window
     // starts at the toolbar; the version is in the title bar and what the
-    // backend and the sources can do is under Info….
+    // backend and the sources can do is under Info.
     page_ = CreateContainer("nmPage", 0, 0, 0, 0);
     MakePlainColumn(page_);
     page_->SetPadding(kPagePadding);
@@ -354,7 +354,7 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildToolbar() {
     statusLabel_ = MakeBarStatus("nmStatus");
     bar->AddChild(statusLabel_);
 
-    infoButton_ = MakeToolbarButton("nmInfo", "Info…");
+    infoButton_ = MakeToolbarButton("nmInfo", "Info");
     infoButton_->SetTooltip("What this build can see: the backend, the name and event sources, and what each could not do");
     infoButton_->SetOnClick([this]() { ShowInfo(); });
     bar->AddChild(infoButton_);
@@ -413,7 +413,7 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildHistoryPage() 
     refreshButton_->SetOnClick([this]() { RefreshHistory(); });
     bar->AddChild(refreshButton_);
 
-    purgeButton_ = MakeToolbarButton("nmPurge", "Purge…");
+    purgeButton_ = MakeToolbarButton("nmPurge", "Purge");
     purgeButton_->SetTooltip("Delete everything recorded; asks a second time before it does");
     purgeButton_->SetOnClick([this]() { PurgeHistory(); });
     bar->AddChild(purgeButton_);
@@ -710,7 +710,7 @@ void UltraNetMonitorWindow::RefreshStatus() {
         // The first note is the one that changes what the table means. Its
         // headline is on the line; the explanation ("named from the process
         // list, without path or user (elevate for those)") is in the tooltip
-        // and under Info….
+        // and under Info.
         for (const auto& note : capabilities_.notes) {
             if (note.find("could not be") != std::string::npos) {
                 status += " · " + NoteHeadline(note);
@@ -823,7 +823,7 @@ void UltraNetMonitorWindow::RefreshNames() {
     for (const auto& record : records) if (NetworkMonitor_NameIsObserved(record.source)) ++observed;
     nameModel_->Replace(std::move(records));
 
-    // The line counts; the tooltip and Info… carry the errors and the notes.
+    // The line counts; the tooltip and Info carry the errors and the notes.
     std::string text = std::to_string(count) + " addresses named, " + std::to_string(observed) +
                        " from observed queries";
     std::string detail;
@@ -842,7 +842,7 @@ void UltraNetMonitorWindow::RefreshNames() {
         detail += (detail.empty() ? "" : "\n") + note;
         trouble = true;
     }
-    if (trouble) text += " · details under Info…";
+    if (trouble) text += " · details under Info";
     if (namesStatus_) {
         namesStatus_->SetText(text);
         namesStatus_->SetTooltip(detail);
@@ -888,7 +888,7 @@ void UltraNetMonitorWindow::RefreshEvents() {
         text = std::to_string(events.size()) + " recent events (newest " + std::to_string(kEventsShown) + " kept)";
     }
     eventModel_->Replace(std::move(events));
-    // The line counts; the tooltip and Info… carry the errors and the notes.
+    // The line counts; the tooltip and Info carry the errors and the notes.
     std::string detail;
     bool trouble = false;
     std::vector<EventSourceStatus> sources;
@@ -904,7 +904,7 @@ void UltraNetMonitorWindow::RefreshEvents() {
         detail += (detail.empty() ? "" : "\n") + note;
         trouble = true;
     }
-    if (trouble) text += " · details under Info…";
+    if (trouble) text += " · details under Info";
     if (eventsStatus_) {
         eventsStatus_->SetText(text);
         eventsStatus_->SetTooltip(detail);
@@ -1096,7 +1096,7 @@ int64_t UltraNetMonitorWindow::HistoryRangeSeconds() const {
 void UltraNetMonitorWindow::RefreshHistory() {
     purgeArmed_ = false;
     historyRefreshPending_ = false;   // any read counts as the first one
-    if (purgeButton_) purgeButton_->SetText("Purge…");
+    if (purgeButton_) purgeButton_->SetText("Purge");
     std::vector<RecordedFlow> flows;
     NetworkMonitorStoreStats stats;
     std::string error;
@@ -1136,7 +1136,7 @@ void UltraNetMonitorWindow::PurgeHistory() {
         return;
     }
     purgeArmed_ = false;
-    if (purgeButton_) purgeButton_->SetText("Purge…");
+    if (purgeButton_) purgeButton_->SetText("Purge");
     std::string error;
     {
         std::lock_guard<std::mutex> lock(storeMutex_);

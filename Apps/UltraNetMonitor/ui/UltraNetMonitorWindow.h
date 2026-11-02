@@ -7,7 +7,7 @@
 // as they open and close, from the event sources, live or as recorded. A
 // *Record* toggle on the toolbar writes every snapshot the worker takes,
 // every DNS observation and every connection event the sources report,
-// into the store at the platform's per-user data path, and an *Info…*
+// into the store at the platform's per-user data path, and an *Info*
 // button opens a dialog with what this build can see: the backend and its
 // limits, every name and event source with its count or its error, the
 // notes from start-up and the store's path - the status lines only say
@@ -94,7 +94,7 @@ private:
     void SetPaused(bool paused);
 
     // ===== INFO =====
-    // The Info… dialog: the backend, the sources, the notes and the store,
+    // The Info dialog: the backend, the sources, the notes and the store,
     // as Markdown for the dialog's message area.
     void ShowInfo();
     std::string BuildInfoMarkdown();
