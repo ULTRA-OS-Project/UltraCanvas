@@ -4,6 +4,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 #include <ctime>
 #include <cstdio>
 #include <cctype>
@@ -183,11 +184,19 @@ namespace UltraCanvas {
     UltraCanvasCalendarView::UltraCanvasCalendarView(const std::string& identifier,
                                                      float x, float y, float w, float h)
             : UltraCanvasUIElement(identifier, x, y, w, h) {
-        weekdayNames = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
-        monthNamesLong = {"January", "February", "March", "April", "May", "June",
-                          "July", "August", "September", "October", "November", "December"};
-        monthNamesShort = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+        // Translated as entries with a context, until the locale's own
+        // calendar names arrive with the formatting phase of
+        // UltraCanvasLocalisationProposal.md (its L6)
+        weekdayNames = {TrC("weekday", "Su"), TrC("weekday", "Mo"), TrC("weekday", "Tu"), TrC("weekday", "We"),
+                        TrC("weekday", "Th"), TrC("weekday", "Fr"), TrC("weekday", "Sa")};
+        monthNamesLong = {TrC("month", "January"), TrC("month", "February"), TrC("month", "March"),
+                          TrC("month", "April"), TrC("month", "May"), TrC("month", "June"),
+                          TrC("month", "July"), TrC("month", "August"), TrC("month", "September"),
+                          TrC("month", "October"), TrC("month", "November"), TrC("month", "December")};
+        monthNamesShort = {TrC("month-short", "Jan"), TrC("month-short", "Feb"), TrC("month-short", "Mar"),
+                           TrC("month-short", "Apr"), TrC("month-short", "May"), TrC("month-short", "Jun"),
+                           TrC("month-short", "Jul"), TrC("month-short", "Aug"), TrC("month-short", "Sep"),
+                           TrC("month-short", "Oct"), TrC("month-short", "Nov"), TrC("month-short", "Dec")};
         UCDate today = UCDate::Today();
         visibleYear = today.year;
         visibleMonth = today.month;
@@ -520,8 +529,8 @@ namespace UltraCanvas {
         if (hoverNavRegion == 5)
             ctx->DrawFilledRectangle(l.clearButton, style.footerHoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
 
-        DrawCenteredText(ctx, "Today", l.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
-        DrawCenteredText(ctx, "Clear", l.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+        DrawCenteredText(ctx, Tr("Today"), l.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+        DrawCenteredText(ctx, Tr("Clear"), l.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
     }
 
     void UltraCanvasCalendarView::DrawDaysLevel(IRenderContext* ctx, const Layout& l) {
@@ -1219,8 +1228,8 @@ namespace UltraCanvas {
                 ctx->DrawFilledRectangle(ml.todayButton, style.footerHoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
             if (hoverNavRegion == 5)
                 ctx->DrawFilledRectangle(ml.clearButton, style.footerHoverColor, 0.0f, Colors::Transparent, style.cellCornerRadius);
-            DrawCenteredText(ctx, "Today", ml.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
-            DrawCenteredText(ctx, "Clear", ml.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+            DrawCenteredText(ctx, Tr("Today"), ml.todayButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
+            DrawCenteredText(ctx, Tr("Clear"), ml.clearButton, style.footerTextColor, style.fontSize, FontWeight::Normal);
         }
     }
 

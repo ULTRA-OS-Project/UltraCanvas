@@ -8,8 +8,11 @@
   translation of a language is those files with the values in that
   language. The framework's own dialogs are wrapped in `Tr`: the modal
   dialogs' buttons and titles, the file dialog, the filer widget's menus
-  and messages, the colour, time and new-document dialogs, the media
-  viewer; a title built from pieces became a `TrF` with placeholders.
+  and messages, the colour, date, time and new-document dialogs, the
+  progress dialog, the spell-check menu, the media viewer; a title built
+  from pieces became a `TrF` with placeholders, and the date picker's
+  weekday and month names are context entries (`"month|May"`) until the
+  locale's own calendar names arrive with phase L6.
   `scripts/extract_ui_strings.py` rewrites the English catalogues from the
   `Tr` sites (adding to the standard set, never removing; an application's
   file from its own sites with what it inherits listed),

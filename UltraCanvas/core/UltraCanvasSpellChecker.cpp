@@ -1,5 +1,6 @@
 // core/UltraCanvasSpellChecker.cpp
 // Implementation of the cross-platform spell checking service
+// Version: 1.3.0 - the suggestion menu's labels go through Tr
 // Version: 1.2.0 - DetectPreferredLanguage asks the desktop (UltraCanvasSystemLanguage.h), not the POSIX variables alone
 // Version: 1.1.1 - the user dictionary lives in the framework's data folder rule
 //                  (UltraCanvasDataFolder.h): Application Support on macOS, with the
@@ -21,6 +22,7 @@
 #include <filesystem>
 #include "UltraCanvasDataFolder.h"   // UltraCanvasDataFolderRoot / AdoptLegacyDataFolder
 #include "UltraCanvasPathUtf8.h"
+#include "UltraLocalisation/UltraLocalisation.h"
 
 namespace UltraCanvas {
 
@@ -1148,7 +1150,7 @@ std::vector<MenuItemData> UltraCanvasSpellChecker::BuildSuggestionMenuItems(
     }
 
     if (suggestions.empty()) {
-        items.push_back(MenuItemData::Action("(no suggestions)", []() {}));
+        items.push_back(MenuItemData::Action(Tr("(no suggestions)"), []() {}));
     } else {
         for (const std::string& suggestion : suggestions) {
             items.push_back(MenuItemData::Action(suggestion,
@@ -1161,13 +1163,13 @@ std::vector<MenuItemData> UltraCanvasSpellChecker::BuildSuggestionMenuItems(
     items.push_back(MenuItemData::Separator());
 
     const std::string word = error.word;
-    items.push_back(MenuItemData::Action("Add to Dictionary",
+    items.push_back(MenuItemData::Action(Tr("Add to Dictionary"),
         [word, onRecheck]() {
             UltraCanvasSpellChecker::Instance().AddToUserDictionary(word);
             if (onRecheck) onRecheck();
         }));
 
-    items.push_back(MenuItemData::Action("Ignore",
+    items.push_back(MenuItemData::Action(Tr("Ignore"),
         [word, onRecheck]() {
             UltraCanvasSpellChecker::Instance().IgnoreWord(word);
             if (onRecheck) onRecheck();

@@ -87679,9 +87679,13 @@ with the values in its language.
 | `scripts/wrap_ui_strings.py` | the migration tool: wraps the literal in the text-taking parameter of every known entry point in `Tr(...)` and writes the file (or, with `--diff`, prints the change) for a person to review; a sentence built from pieces is rewritten as `TrF` by hand |
 
 The framework's own dialogs - the modal dialogs' buttons and titles, the
-file dialog, the filer widget's menus and messages, the colour, time and
-new-document dialogs, the media viewer - are wrapped, so they show in the
-person's language as soon as a translation of `Standard.json` exists.
+file dialog, the filer widget's menus and messages, the colour, date,
+time and new-document dialogs, the progress dialog, the spell-check
+menu, the media viewer - are wrapped, so they show in the person's
+language as soon as a translation of `Standard.json` exists. The date
+picker's weekday and month names are entries with a context
+(`"weekday|Mo"`, `"month|May"`, `"month-short|May"`) until the locale's
+own calendar names arrive with phase L6.
 
 ## Related
 

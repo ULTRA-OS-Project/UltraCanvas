@@ -23,8 +23,8 @@ never touched here.
     python3 scripts/extract_ui_strings.py --check    # exit 1 when a rewrite would change one (CI)
 
 A key is the literal as written, escapes decoded; a TrC key is
-"context|text"; a TrN key is the singular, its entry the two forms; a
-TrF key keeps its {0} placeholders. Adjacent literals ("a" "b") are one.
+"context|text" with the text alone as its English value; a TrN key is the
+singular, its entry the two forms; a TrF key keeps its {0} placeholders. Adjacent literals ("a" "b") are one.
 """
 import argparse
 import json
@@ -95,7 +95,7 @@ def sites_in(path: Path):
         elif name == "TrF" and len(args) >= 1:
             found.append(("entry", args[0], None))
         elif name == "TrC" and len(args) >= 2:
-            found.append(("entry", args[0] + "|" + args[1], None))
+            found.append(("context", args[0] + "|" + args[1], args[1]))
         elif name == "TrN" and len(args) >= 2:
             found.append(("plural", args[0], args[1]))
     return found
@@ -114,6 +114,8 @@ def collect(folders):
             for kind, key, plural in sites_in(path):
                 if kind == "entry":
                     entries.setdefault(key, key)
+                elif kind == "context":
+                    entries.setdefault(key, plural)        # "button|Open": "Open" - the text without its context
                 else:
                     plurals.setdefault(key, {"one": key, "other": plural})
     return entries, plurals
