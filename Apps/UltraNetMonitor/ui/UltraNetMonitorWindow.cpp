@@ -51,6 +51,9 @@ constexpr int kEventsShown = 1000;
 const int64_t kRanges[] = { 3600, 24 * 3600, 7 * 24 * 3600, 30 * 24 * 3600 };
 const char* const kRangeLabels[] = { "Last hour", "Last 24 hours", "Last 7 days", "Last 30 days" };
 constexpr int kHistoryLimit = 5000;
+// Snapshots recorded before the History tab reads the store on its own after
+// Record - a few seconds at kSnapshotIntervalMs, enough for rows to exist.
+constexpr int64_t kHistoryFirstRefreshSnapshots = 3;
 
 // A split pane's panes are plain containers; a list fills one edge to edge.
 // Basis zero and grow one rather than a percentage, so the pane's size is
@@ -249,6 +252,9 @@ bool UltraNetMonitorWindow::Initialize(std::vector<std::string> nameNotes) {
     tabs_->AddTab("Events", BuildEventsPage());
     tabs_->SetActiveTab(kLiveTab);
     tabs_->onTabChange = [this](int, int newTab) {
+        // History reads the store when it comes to the front, so a tab that
+        // was recorded into earlier is never blank; Refresh re-reads it.
+        if (newTab == kHistoryTab) RefreshHistory();
         if (newTab == kNamesTab) RefreshNames();
         if (newTab == kEventsTab) RefreshEvents();
     };
@@ -396,8 +402,12 @@ std::shared_ptr<UltraCanvasContainer> UltraNetMonitorWindow::BuildHistoryPage() 
     purgeButton_->SetOnClick([this]() { PurgeHistory(); });
     bar->AddChild(purgeButton_);
 
-    historyStatus_ = MakeBarStatus("nmHistoryStatus",
-                                   "Nothing loaded yet — press Refresh, or Record on the toolbar.");
+    // The idle line names the store the way the loaded one does, so the
+    // person knows where the record will live before anything is recorded.
+    if (storePath_.empty()) storePath_ = DefaultStorePath();
+    std::string idle = "Nothing loaded yet — press Refresh, or Record on the toolbar.";
+    if (!storePath_.empty()) idle += " · " + storePath_;
+    historyStatus_ = MakeBarStatus("nmHistoryStatus", idle);
     bar->AddChild(historyStatus_);
 
     history->AddChild(bar);
@@ -623,6 +633,13 @@ void UltraNetMonitorWindow::ApplyPendingSnapshot() {
         // The live event list follows the ring every snapshot; the
         // recorded view only on Refresh, since a query is not free.
         if (tabs_ && tabs_->GetActiveTab() == kEventsTab && !eventsRecorded_) RefreshEvents();
+        // The first rows after Record appear on their own while History is
+        // in front: one read once a few snapshots are in, not one per
+        // snapshot - a flow query is not free.
+        if (historyRefreshPending_ && tabs_ && tabs_->GetActiveTab() == kHistoryTab &&
+            recordedSnapshots_.load() >= kHistoryFirstRefreshSnapshots) {
+            RefreshHistory();
+        }
     }
     // Attribution notes ("N processes could not be inspected") move with
     // each snapshot, so the capabilities are re-read here, not once.
@@ -1027,6 +1044,7 @@ bool UltraNetMonitorWindow::EnsureStoreOpen() {
 void UltraNetMonitorWindow::ToggleRecording() {
     if (recording_.load()) {
         recording_ = false;
+        historyRefreshPending_ = false;
         if (recordButton_) recordButton_->SetText("Record");
         std::lock_guard<std::mutex> lock(storeMutex_);
         if (store_ != NetworkMonitorInvalidStore) NetworkMonitor_ApplyRetention(store_);
@@ -1042,6 +1060,7 @@ void UltraNetMonitorWindow::ToggleRecording() {
         recordedEvents_ = 0;
         recordError_.clear();
         recording_ = true;
+        historyRefreshPending_ = true;
         if (recordButton_) recordButton_->SetText("Stop recording");
     }
     RefreshStatus();
@@ -1055,6 +1074,7 @@ int64_t UltraNetMonitorWindow::HistoryRangeSeconds() const {
 
 void UltraNetMonitorWindow::RefreshHistory() {
     purgeArmed_ = false;
+    historyRefreshPending_ = false;   // any read counts as the first one
     if (purgeButton_) purgeButton_->SetText("Purge…");
     std::vector<RecordedFlow> flows;
     NetworkMonitorStoreStats stats;

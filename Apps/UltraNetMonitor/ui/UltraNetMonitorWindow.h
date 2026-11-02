@@ -165,6 +165,10 @@ private:
     // "Purge" asks twice: the first click arms it, the second acts. A refresh
     // or a tab change disarms it.
     bool purgeArmed_ = false;
+    // Set by Record, cleared by the first RefreshHistory or Stop recording:
+    // ApplyPendingSnapshot reads the store once a few snapshots are in while
+    // the tab is in front, so the first rows need no second click.
+    bool historyRefreshPending_ = false;
     bool layoutDebug_ = false;
 
     // Names tab
