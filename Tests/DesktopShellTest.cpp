@@ -44,6 +44,7 @@
 // StatusNotifierItem the test exports itself over GDBus, with a pixmap, a
 // tooltip and a dbusmenu, is listed by UltraCanvasTrayHost with its PNG and
 // its menu as data, clicked, hidden and dropped when its connection closes.
+// Version: 1.8.1 - the X11 checks are left out of a Wayland build of the framework
 // Version: 1.8.0 - two RandR monitors under Xvfb: ListScreens and the per-monitor struts;
 //                  the lock, session and loudspeaker calls
 // Version: 1.7.0 - the Linux notification area (--tray)
@@ -93,9 +94,10 @@
 #include <shellapi.h>   // SHAppBarMessage, Shell_NotifyIconW
 #endif
 
-// The platforms whose backend is X11 (UltraCanvasDesktopShellBackend.h).
-#if (defined(__linux__) && !defined(__ANDROID__)) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
-    defined(__NetBSD__)
+// The platforms whose backend is X11 (UltraCanvasDesktopShellBackend.h);
+// a Wayland build of the framework (ULTRACANVAS_WAYLAND) has none of it.
+#if ((defined(__linux__) && !defined(__ANDROID__)) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+     defined(__NetBSD__)) && !defined(ULTRACANVAS_DISPLAY_WAYLAND)
 #  define DESKTOPSHELLTEST_X11 1
 #  include <X11/Xlib.h>
 #  include <X11/Xatom.h>

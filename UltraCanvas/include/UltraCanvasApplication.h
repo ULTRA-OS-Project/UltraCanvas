@@ -1,5 +1,6 @@
 // include/UltraCanvasBaseApplication.h
 // Main UltraCanvas Framework Entry Point - Unified System
+// Version: 1.14.0 - UltraCanvasApplication is the Wayland backend under ULTRACANVAS_DISPLAY_WAYLAND
 // Version: 1.13.0 - RunAfterMainLoop(): the platform's step once the main loop has ended
 // Version: 1.12.0 - GenerateBitmapScalingConfig: fontconfig's bitmap-font scaling rules
 // Version: 1.11.0 - CloseAllWindows(), and ULTRACANVAS_CLOSE_AFTER_MS for a test that must end
@@ -558,6 +559,11 @@ namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasAndroidApplica
 // Web/WASM (checked before __unix__, which Emscripten also defines)
 #include "../OS/WASM/UltraCanvasWASMApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWASMApplication; }
+#elif defined(ULTRACANVAS_DISPLAY_WAYLAND)
+// Linux on Wayland (the ULTRACANVAS_WAYLAND build option): before the X11
+// branch, which the same compilers would otherwise take.
+#include "../OS/Linux/Wayland/UltraCanvasWaylandApplication.h"
+namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasWaylandApplication; }
 #elif defined(__linux__) || defined(__unix__) || defined(__unix)
 #include "../OS/Linux/UltraCanvasLinuxApplication.h"
 namespace UltraCanvas { using UltraCanvasApplication = UltraCanvasLinuxApplication; }

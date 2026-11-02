@@ -4979,7 +4979,7 @@ endif()
 # Every format another program offers is seen: the X11 backend read a
 # TARGETS list (format 32, C longs) at 4 bytes an item and saw half of it.
 # Skips without DISPLAY.
-if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
     message(STATUS "  Building ClipboardTargetsTest...")
     add_executable(ClipboardTargetsTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardTargetsTest.cpp
@@ -5001,7 +5001,7 @@ endif()
 # A copy too large for one X request travels in pieces (ICCCM INCR), both
 # ways; checked against xclip as well when it is installed. Skips without
 # DISPLAY.
-if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+if(TARGET UltraCanvas AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN AND NOT ULTRACANVAS_WAYLAND)
     message(STATUS "  Building ClipboardIncrTest...")
     add_executable(ClipboardIncrTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ClipboardIncrTest.cpp
@@ -6512,6 +6512,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: ImageIcoQoiTest")
 else()
     message(STATUS "  ImageIcoQoiTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== IMAGE FORMATS TEST =====
+# Every modern picture format decodes in this build - JPEG, PNG, GIF, BMP,
+# TIFF, WebP, AVIF, HEIC, JPEG XL, QOI and icons, the samples under
+# media/images - and a picture without an alpha channel is an opaque RGB24
+# pixmap that keeps its format through the QOI pixmap blob. Headless.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ImageFormatsTest...")
+    add_executable(ImageFormatsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ImageFormatsTest.cpp
+    )
+    target_include_directories(ImageFormatsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ImageFormatsTest PRIVATE cxx_std_20)
+    target_compile_definitions(ImageFormatsTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(ImageFormatsTest PRIVATE UltraCanvas)
+    set_target_properties(ImageFormatsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ImageFormatsTest COMMAND ImageFormatsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ImageFormatsTest")
+else()
+    message(STATUS "  ImageFormatsTest skipped (UltraCanvas target not present)")
 endif()
 
 # ===== IMAGE JPEG XL TEST =====

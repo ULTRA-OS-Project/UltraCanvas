@@ -43,7 +43,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 -   Vector graphics with SVG parsing and transformations
 -   Gradients (linear, radial, conic)
 -   Path filling with multiple modes
--   Bitmap formats: PNG, JPG, BMP, GIF, AVIF, WebP, QOI
+-   Bitmap formats in every build: PNG, JPEG, BMP, TIFF, GIF, WebP, AVIF, HEIC, JPEG XL, QOI, icons
 -   Double buffering for smooth rendering
 
 **Extensible Plugin System**
@@ -75,7 +75,7 @@ UltraCanvas/
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
 │   ├── core/             # Platform-independent implementations
-│   ├── OS/Linux/         # Linux-specific code (X11, Cairo)
+│   ├── OS/Linux/         # Linux-specific code (X11, Cairo; OS/Linux/Wayland/ the Wayland backend)
 │   ├── OS/MSWindows/     # Windows-specific code (Win32, Direct2D)
 │   ├── OS/MacOS/         # macOS-specific code (Cocoa, Core Graphics)
 │   ├── OS/BSD/           # BSD-specific code
@@ -127,7 +127,8 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev clang
+    libfreetype6-dev libvips-dev libharfbuzz-dev \
+    libheif-plugin-libde265 libheif-plugin-aomdec   # Ubuntu 24.04 on: HEIC and AVIF clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -140,6 +141,11 @@ mkdir build && cd build
 cmake ..
 make
 ```
+
+On Linux the default is the X11 backend. `cmake -DULTRACANVAS_WAYLAND=ON ..`
+builds the Wayland backend in its place (`libwayland-dev`,
+`wayland-protocols`, `libxkbcommon-dev`); one build speaks one display
+protocol.
 
 ----------
 
@@ -163,7 +169,9 @@ The following features are planned for future releases:
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
 -   **SmartHome drivers** - Device drivers for the protocols the module specifies:
     Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
--   **Wayland support** - Native Wayland windowing on Linux
+-   **Wayland desktop shell** - the windowing backend is in (`-DULTRACANVAS_WAYLAND=ON`);
+    the layer-shell, foreign-toplevel and portal pieces the desktop shell needs
+    come next (see `Docs/UltraCanvas/WaylandDesktopShellProposal.md`)
 
 ----------
 

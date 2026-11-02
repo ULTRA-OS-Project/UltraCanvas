@@ -13,6 +13,7 @@
 // Blobs are for in-process caching only (thumbnail caches and similar):
 // they embed the raw pixel dimensions and the HiDPI device scale, but their
 // byte layout is endian-local and carries no interchange guarantees.
+// Version: 1.1.0 - an opaque (RGB24) pixmap comes back opaque
 // Version: 1.0.0
 // Last Modified: 2026-07-19
 // Author: UltraCanvas Framework
